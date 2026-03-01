@@ -1,0 +1,6 @@
+{
+  "github": {
+    "type": "sse",
+    "url": "https://mcp.github.com/sse"
+  }
+}

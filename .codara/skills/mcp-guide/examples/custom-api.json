@@ -1,0 +1,11 @@
+{
+  "custom-api": {
+    "type": "http",
+    "url": "https://api.myservice.com/mcp",
+    "headers": {
+      "Authorization": "Bearer ${API_TOKEN}",
+      "X-API-Version": "v1",
+      "Content-Type": "application/json"
+    }
+  }
+}

@@ -1,0 +1,11 @@
+{
+  "database": {
+    "command": "python",
+    "args": ["-m", "mcp_server_postgres"],
+    "env": {
+      "DATABASE_URL": "${DATABASE_URL}",
+      "DB_POOL_SIZE": "10",
+      "LOG_LEVEL": "info"
+    }
+  }
+}
