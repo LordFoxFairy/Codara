@@ -1,6 +1,10 @@
-# Explanatory Output Style
+---
+command-name: explanatory-output-style
+description: Add educational insights and explanations to responses
+user-invocable: false
+---
 
-**user-invocable**: false
+# Explanatory Output Style
 
 Adds educational insights about implementation choices and codebase patterns (mimics the deprecated Explanatory output style).
 

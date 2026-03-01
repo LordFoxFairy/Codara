@@ -1,6 +1,10 @@
-# Learning Style Skill
+---
+command-name: learning-output-style
+description: Interactive learning mode with educational guidance
+user-invocable: false
+---
 
-**User-invocable:** false
+# Learning Style Skill
 
 This skill combines interactive learning with explanatory functionality as a SessionStart hook.
 
