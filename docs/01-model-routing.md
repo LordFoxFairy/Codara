@@ -1,6 +1,6 @@
 # 模型路由 — 提供商抽象与模型创建
 
-> [← 上一篇: 代理循环](./01-agent-loop.md) | [目录](./README.md) | [下一篇: 工具 →](./03-tools.md)
+> [← 上一篇: 代理循环](./02-agent-loop.md) | [目录](./README.md) | [下一篇: 工具 →](./03-tools.md)
 
 > 所有模型解析都通过路由器完成。代码库中没有任何硬编码的模型 ID。
 
@@ -337,4 +337,4 @@ options.model → customDef.model → builtin.model → parentConfig.model
 
 ---
 
-> [← 上一篇: 代理循环](./01-agent-loop.md) | [目录](./README.md) | [下一篇: 工具 →](./03-tools.md)
+> [← 上一篇: 代理循环](./02-agent-loop.md) | [目录](./README.md) | [下一篇: 工具 →](./03-tools.md)

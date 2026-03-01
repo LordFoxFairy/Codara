@@ -1,6 +1,6 @@
 # 生命周期钩子
 
-> [← 上一篇: 权限引擎](./04-permissions.md) | [目录](./README.md) | [下一篇: 技能系统 →](./06-skills.md)
+> [← 上一篇: 权限引擎](./05-permissions.md) | [目录](./README.md) | [下一篇: 技能系统 →](./06-skills.md)
 
 ## 概述
 

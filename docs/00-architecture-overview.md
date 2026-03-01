@@ -1,6 +1,6 @@
 # CodeTerm 架构概览
 
-> [目录](./README.md) | [下一篇: 代理循环 →](./01-agent-loop.md)
+> [目录](./README.md) | [下一篇: 代理循环 →](./02-agent-loop.md)
 
 CodeTerm 是一个基于终端的 AI 编程助手，设计理念类似 Claude Code。它以 CLI 应用的形式运行，连接到 LLM 提供商（Anthropic、OpenAI 或任何 OpenAI 兼容 API），并为模型提供文件系统工具、Shell 执行和代码搜索功能——全部在交互式终端 UI 中完成。
 

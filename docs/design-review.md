@@ -7,11 +7,11 @@
 当前文档覆盖了完整的系统架构，每个环节都有详细说明：
 
 1. **00-architecture-overview.md** — 全局架构视图
-2. **01-agent-loop.md** — 核心执行循环
-3. **02-model-routing.md** — 模型路由与提供商
+2. **02-agent-loop.md** — 核心执行循环
+3. **01-model-routing.md** — 模型路由与提供商
 4. **03-tools.md** — 工具系统
-5. **04-permissions.md** — 权限与安全
-6. **05-hooks.md** — 中间件与钩子
+5. **05-permissions.md** — 权限与安全
+6. **04-hooks.md** — 中间件与钩子
 7. **06-skills.md** — 技能扩展系统
 8. **07-agent-collaboration.md** — 代理协作
 9. **08-memory-system.md** — 记忆与上下文
