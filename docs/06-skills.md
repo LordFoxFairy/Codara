@@ -4,7 +4,55 @@
 
 技能（Skills）是 Codara 的**统一扩展单元**，允许用户和项目定义可复用的 AI 驱动工作流。每个技能是一个目录，包含 SKILL.md 定义文件以及可选的 agents、hooks、scripts 等资源。用户通过在输入区域输入 `/<name>` 来调用技能。
 
-核心理念：**核心通用（middleware + tools + TUI），领域扩展全靠 Skill**。code-review、feature-dev、commit 工作流等都是 skill，不是硬编码功能。
+## 设计理念
+
+**Skills 是扩展 Codara 的唯一入口。**
+
+```
+┌─────────────────────────────────────────────────────────┐
+│                    用户扩展需求                          │
+│  "我需要安全检查" "我需要审计日志" "我需要自动化部署"    │
+└─────────────────────────────────────────────────────────┘
+                          ↓
+┌─────────────────────────────────────────────────────────┐
+│                  通过 Skills 封装                        │
+│  .codara/skills/security-check/                         │
+│  .codara/skills/audit-logger/                           │
+│  .codara/skills/deploy/                                 │
+└─────────────────────────────────────────────────────────┘
+                          ↓
+┌─────────────────────────────────────────────────────────┐
+│          Skills 内部组合底层机制                         │
+│  - Hooks: 拦截工具调用、修改输入、审计日志               │
+│  - Permissions: 临时授权、减少提示                       │
+│  - Agents: 自定义代理逻辑                                │
+│  - Scripts: 可执行脚本                                   │
+└─────────────────────────────────────────────────────────┘
+                          ↓
+┌─────────────────────────────────────────────────────────┐
+│                  底层机制执行                            │
+│  ShellHookMiddleware → PermissionMiddleware → Tools     │
+└─────────────────────────────────────────────────────────┘
+```
+
+### 核心原则
+
+1. **不要直接配置 settings.json 中的 hooks** — 通过 Skills 封装钩子逻辑
+2. **不要直接配置全局 permissions** — 通过 Skills 的 allowed-tools 临时授权
+3. **Skills 是自包含的** — 一个 skill 目录包含所有需要的资源（hooks、scripts、agents）
+4. **Skills 是可复用的** — 项目级和用户级技能可以共享和分发
+
+### 为什么这样设计？
+
+| 直接配置 settings.json | 通过 Skills 封装 |
+|----------------------|-----------------|
+| 配置分散，难以管理 | 所有资源集中在一个目录 |
+| 难以复用和分享 | 可以打包分发整个 skill 目录 |
+| 缺乏上下文和文档 | SKILL.md 提供完整说明 |
+| 全局生效，影响所有会话 | 按需调用，作用域清晰 |
+| 需要手动编写 JSON | 可以使用模板变量和动态注入 |
+
+**核心理念：核心通用（middleware + tools + TUI），领域扩展全靠 Skill**。code-review、feature-dev、commit 工作流等都是 skill，不是硬编码功能。
 
 ---
 
@@ -634,5 +682,431 @@ exit 0  # 放行到权限检查
 1. **Hook 层**：验证环境和分支（硬性要求，无法绕过）
 2. **权限层**：技能临时允许 `npm run deploy*`（减少提示）
 3. **用户配置**：用户可以添加 `deny: ["Bash(npm run deploy*)"]` 覆盖技能的临时权限
+
+---
+
+## 实战：如何构造 Skills
+
+本节展示如何通过 Skills 封装 Hooks 和 Permissions，实现各种扩展需求。
+
+### 示例 1：安全检查技能
+
+**需求**：阻止所有危险的 `rm -rf` 命令，并提供友好的错误提示。
+
+**错误做法**：直接在 `settings.json` 中配置 hooks
+
+```json
+{
+  "hooks": {
+    "PreToolUse": [
+      {
+        "matcher": "Bash",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "bash /path/to/check-rm.sh"
+          }
+        ]
+      }
+    ]
+  }
+}
+```
+
+**正确做法**：创建 `security-check` 技能
+
+```
+.codara/skills/security-check/
+├── SKILL.md
+└── scripts/
+    └── check-dangerous-commands.sh
+```
+
+**SKILL.md：**
+
+```markdown
+---
+name: security-check
+description: 启用安全检查，阻止危险命令
+user-invocable: true
+disable-model-invocation: true
+hooks:
+  PreToolUse:
+    - matcher: "Bash"
+      hooks:
+        - type: command
+          command: "bash ${CODARA_SKILL_ROOT}/scripts/check-dangerous-commands.sh"
+---
+
+安全检查已启用。以下命令将被阻止：
+- `rm -rf /`
+- `rm -rf /*`
+- `chmod -R 777 /`
+
+调用方式：`/security-check`
+```
+
+**scripts/check-dangerous-commands.sh：**
+
+```bash
+#!/bin/bash
+COMMAND=$(echo "$TOOL_INPUT" | jq -r '.command // ""')
+
+# 危险命令模式
+DANGEROUS_PATTERNS=(
+  "rm -rf /"
+  "rm -rf /*"
+  "chmod -R 777 /"
+  "> /dev/sda"
+)
+
+for pattern in "${DANGEROUS_PATTERNS[@]}"; do
+  if echo "$COMMAND" | grep -qF "$pattern"; then
+    echo "🚫 安全检查失败：检测到危险命令 '$pattern'" >&2
+    echo "提示：请检查命令是否正确，或联系管理员" >&2
+    exit 2  # 拒绝
+  fi
+done
+
+exit 0  # 放行
+```
+
+**使用方式：**
+
+```bash
+# 用户在会话开始时调用
+/security-check
+
+# 之后所有 Bash 命令都会经过安全检查
+```
+
+**优势：**
+- ✅ 自包含：脚本和配置都在 skill 目录中
+- ✅ 可复用：可以分享给其他项目或用户
+- ✅ 按需启用：只在需要时调用，不影响其他会话
+- ✅ 易于维护：修改检查规则只需编辑脚本
+
+---
+
+### 示例 2：审计日志技能
+
+**需求**：记录所有工具调用到日志文件，用于审计和调试。
+
+```
+.codara/skills/audit-logger/
+├── SKILL.md
+└── scripts/
+    └── log-tool-call.sh
+```
+
+**SKILL.md：**
+
+```markdown
+---
+name: audit-logger
+description: 启用审计日志，记录所有工具调用
+user-invocable: true
+disable-model-invocation: true
+hooks:
+  PreToolUse:
+    - matcher: "*"
+      hooks:
+        - type: command
+          command: "bash ${CODARA_SKILL_ROOT}/scripts/log-tool-call.sh pre"
+  PostToolUse:
+    - matcher: "*"
+      hooks:
+        - type: command
+          command: "bash ${CODARA_SKILL_ROOT}/scripts/log-tool-call.sh post"
+---
+
+审计日志已启用。所有工具调用将记录到：
+`~/.codara/logs/audit-$(date +%Y%m%d).log`
+
+调用方式：`/audit-logger`
+```
+
+**scripts/log-tool-call.sh：**
+
+```bash
+#!/bin/bash
+PHASE=$1
+LOG_DIR="$HOME/.codara/logs"
+LOG_FILE="$LOG_DIR/audit-$(date +%Y%m%d).log"
+
+mkdir -p "$LOG_DIR"
+
+TIMESTAMP=$(date -Iseconds)
+TOOL_NAME=${TOOL_NAME:-"unknown"}
+
+if [[ "$PHASE" == "pre" ]]; then
+  echo "[$TIMESTAMP] PRE  | $TOOL_NAME | $TOOL_INPUT" >> "$LOG_FILE"
+elif [[ "$PHASE" == "post" ]]; then
+  echo "[$TIMESTAMP] POST | $TOOL_NAME | Success" >> "$LOG_FILE"
+fi
+
+exit 0
+```
+
+**日志输出示例：**
+
+```
+[2026-03-01T16:45:23+08:00] PRE  | Bash | {"command":"git status"}
+[2026-03-01T16:45:23+08:00] POST | Bash | Success
+[2026-03-01T16:45:25+08:00] PRE  | Read | {"file_path":"src/app.ts"}
+[2026-03-01T16:45:25+08:00] POST | Read | Success
+```
+
+---
+
+### 示例 3：沙箱技能
+
+**需求**：将所有文件写入操作重定向到沙箱目录，保护生产文件。
+
+```
+.codara/skills/sandbox/
+├── SKILL.md
+└── scripts/
+    └── redirect-to-sandbox.sh
+```
+
+**SKILL.md：**
+
+```markdown
+---
+name: sandbox
+description: 启用沙箱模式，所有写入操作重定向到 /tmp/codara-sandbox
+user-invocable: true
+disable-model-invocation: true
+hooks:
+  PreToolUse:
+    - matcher: "Write"
+      hooks:
+        - type: command
+          command: "bash ${CODARA_SKILL_ROOT}/scripts/redirect-to-sandbox.sh"
+    - matcher: "Edit"
+      hooks:
+        - type: command
+          command: "bash ${CODARA_SKILL_ROOT}/scripts/redirect-to-sandbox.sh"
+---
+
+沙箱模式已启用。所有 Write/Edit 操作将重定向到：
+`/tmp/codara-sandbox/`
+
+调用方式：`/sandbox`
+```
+
+**scripts/redirect-to-sandbox.sh：**
+
+```bash
+#!/bin/bash
+CONTEXT=$(cat)
+FILE_PATH=$(echo "$CONTEXT" | jq -r '.input.file_path // ""')
+
+if [[ -z "$FILE_PATH" ]]; then
+  exit 0  # 无文件路径，放行
+fi
+
+# 重定向到沙箱
+SANDBOX_DIR="/tmp/codara-sandbox"
+SANDBOX_PATH="$SANDBOX_DIR$FILE_PATH"
+
+mkdir -p "$(dirname "$SANDBOX_PATH")"
+
+# 修改输入，替换文件路径
+MODIFIED_INPUT=$(echo "$CONTEXT" | jq ".input.file_path = \"$SANDBOX_PATH\"")
+
+echo "{\"action\": \"modify\", \"modifiedInput\": $(echo "$MODIFIED_INPUT" | jq '.input')}"
+exit 0
+```
+
+**效果：**
+
+```bash
+# 代理尝试写入 /etc/config.json
+Write: /etc/config.json
+
+# 实际写入到 /tmp/codara-sandbox/etc/config.json
+```
+
+---
+
+### 示例 4：代码审查技能（组合 Hooks + Permissions）
+
+**需求**：审查代码时只允许读取操作，并在读取后自动触发质量检查。
+
+```
+.codara/skills/code-review/
+├── SKILL.md
+├── scripts/
+│   └── quality-check.sh
+└── agents/
+    └── reviewer.md
+```
+
+**SKILL.md：**
+
+```markdown
+---
+name: code-review
+description: 代码审查模式，只读访问 + 自动质量检查
+allowed-tools: "Read(*),Grep(*),Glob(*)"
+user-invocable: true
+hooks:
+  PostToolUse:
+    - matcher: "Read"
+      hooks:
+        - type: command
+          command: "bash ${CODARA_SKILL_ROOT}/scripts/quality-check.sh"
+---
+
+Review the code in the current directory.
+
+Focus on:
+1. Security vulnerabilities
+2. Performance issues
+3. Code style consistency
+4. Potential bugs
+
+Use the reviewer agent for detailed analysis.
+```
+
+**scripts/quality-check.sh：**
+
+```bash
+#!/bin/bash
+FILE_PATH=$(echo "$TOOL_INPUT" | jq -r '.file_path // ""')
+
+# 检查文件扩展名
+if [[ "$FILE_PATH" =~ \.(ts|js|py)$ ]]; then
+  echo "📊 质量检查：$FILE_PATH" >&2
+
+  # 运行 linter（示例）
+  if command -v eslint &> /dev/null && [[ "$FILE_PATH" =~ \.(ts|js)$ ]]; then
+    eslint "$FILE_PATH" 2>&1 | head -5 >&2
+  fi
+fi
+
+exit 0
+```
+
+**优势：**
+- ✅ 权限控制：`allowed-tools` 限制只能读取，不能修改
+- ✅ 自动检查：读取文件后自动运行质量检查
+- ✅ 可扩展：可以添加更多检查工具（prettier、pylint 等）
+
+---
+
+### 示例 5：Git 工作流技能
+
+**需求**：强制执行 Git 工作流规范（必须在 feature 分支、commit 前必须有测试）。
+
+```
+.codara/skills/git-workflow/
+├── SKILL.md
+└── scripts/
+    ├── check-branch.sh
+    └── check-tests.sh
+```
+
+**SKILL.md：**
+
+```markdown
+---
+name: git-workflow
+description: 强制执行 Git 工作流规范
+user-invocable: true
+disable-model-invocation: true
+allowed-tools: "Bash(git *)"
+hooks:
+  PreToolUse:
+    - matcher: "Bash"
+      hooks:
+        - type: command
+          command: "bash ${CODARA_SKILL_ROOT}/scripts/check-branch.sh"
+        - type: command
+          command: "bash ${CODARA_SKILL_ROOT}/scripts/check-tests.sh"
+---
+
+Git 工作流规范已启用：
+1. 禁止在 main/master 分支直接提交
+2. commit 前必须运行测试
+3. 禁止 force push 到 main/master
+
+调用方式：`/git-workflow`
+```
+
+**scripts/check-branch.sh：**
+
+```bash
+#!/bin/bash
+COMMAND=$(echo "$TOOL_INPUT" | jq -r '.command // ""')
+
+# 检查是否是 commit 命令
+if [[ "$COMMAND" =~ ^git\ commit ]]; then
+  BRANCH=$(git branch --show-current)
+
+  if [[ "$BRANCH" == "main" || "$BRANCH" == "master" ]]; then
+    echo "❌ 禁止在 $BRANCH 分支直接提交" >&2
+    echo "请切换到 feature 分支：git checkout -b feature/your-feature" >&2
+    exit 2
+  fi
+fi
+
+# 检查是否是 force push 到 main/master
+if [[ "$COMMAND" =~ ^git\ push.*--force ]]; then
+  if [[ "$COMMAND" =~ (main|master) ]]; then
+    echo "❌ 禁止 force push 到 main/master 分支" >&2
+    exit 2
+  fi
+fi
+
+exit 0
+```
+
+**scripts/check-tests.sh：**
+
+```bash
+#!/bin/bash
+COMMAND=$(echo "$TOOL_INPUT" | jq -r '.command // ""')
+
+# 检查是否是 commit 命令
+if [[ "$COMMAND" =~ ^git\ commit ]]; then
+  # 检查是否有测试文件被修改
+  if git diff --cached --name-only | grep -qE '\.(test|spec)\.(ts|js|py)$'; then
+    echo "✅ 检测到测试文件修改" >&2
+  else
+    echo "⚠️  警告：未检测到测试文件修改" >&2
+    echo "建议：为你的更改添加测试" >&2
+    # 不阻止，只是警告
+  fi
+fi
+
+exit 0
+```
+
+---
+
+### 构造 Skills 的最佳实践
+
+1. **单一职责**：每个 skill 只做一件事，做好一件事
+2. **自包含**：所有依赖的脚本、配置都放在 skill 目录中
+3. **使用 ${CODARA_SKILL_ROOT}**：引用 skill 内部资源时使用此变量
+4. **提供清晰的文档**：在 SKILL.md 中说明用途、使用方式、注意事项
+5. **优雅降级**：脚本失败时不应阻止整个流程（除非是安全检查）
+6. **组合使用**：可以同时调用多个 skills（如 `/security-check` + `/audit-logger`）
+7. **测试你的 skill**：在沙箱环境中测试钩子脚本的行为
+
+### Skills vs 直接配置对比
+
+| 场景 | 直接配置 settings.json | 通过 Skills 封装 |
+|------|----------------------|-----------------|
+| 安全检查 | 全局生效，无法关闭 | 按需启用，作用域清晰 |
+| 审计日志 | 配置分散，难以管理 | 自包含，易于维护 |
+| 沙箱模式 | 需要手动编写复杂 JSON | 提供模板，开箱即用 |
+| 代码审查 | 无法组合 hooks + permissions | 自然组合，功能完整 |
+| Git 工作流 | 难以复用和分享 | 可以打包分发 |
+
+**结论：通过 Skills 封装 Hooks 和 Permissions，是扩展 Codara 的最佳实践。**
 
 ---
