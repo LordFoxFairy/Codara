@@ -298,6 +298,22 @@ allowed-tools: "Bash(git *),Read(*),Grep(*)"
 
 ## 预配置技能
 
+Codara 附带以下内置技能：
+
+### 文档查看 Skills
+
+| Skill | 用途 |
+|-------|------|
+| `/skills-guide` | 技能系统快速入门和完整文档 |
+| `/hooks-guide` | 生命周期钩子参考文档 |
+| `/permissions-guide` | 权限引擎参考文档 |
+
+这些 skills 使用 `disable-model-invocation: true`，直接展示文档内容，无需调用 LLM。
+
+**示例**：在 Codara 中输入 `/hooks-guide` 即可查看钩子文档，无需离开终端。
+
+### 工作流 Skills
+
 CodeTerm 在 `.codeterm/skills/` 中附带三个内置技能：
 
 ### /commit
