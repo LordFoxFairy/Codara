@@ -1,8 +1,8 @@
-# CodeTerm 架构概览
+# Codara 架构概览
 
 > [目录](./README.md) | [下一篇: 代理循环 →](./02-agent-loop.md)
 
-CodeTerm 是一个基于终端的 AI 编程助手，设计理念类似 Claude Code。它以 CLI 应用的形式运行，连接到 LLM 提供商（Anthropic、OpenAI 或任何 OpenAI 兼容 API），并为模型提供文件系统工具、Shell 执行和代码搜索功能——全部在交互式终端 UI 中完成。
+Codara 是一个基于终端的 AI 编程助手，设计理念类似 Claude Code。它以 CLI 应用的形式运行，连接到 LLM 提供商（Anthropic、OpenAI 或任何 OpenAI 兼容 API），并为模型提供文件系统工具、Shell 执行和代码搜索功能——全部在交互式终端 UI 中完成。
 
 本文档面向维护或扩展代码库的开发者，描述项目的整体架构。
 
@@ -71,9 +71,9 @@ src/
 │   └── theme.ts           6 主题语义颜色系统
 │
 ├── memory/                记忆与上下文管理
-│   ├── loader.ts          6 层记忆加载（托管 → 自动）
+│   ├── loader.ts          3 层记忆加载（用户 → 项目 → 会话）
 │   ├── compactor.ts       上下文窗口压缩（裁剪 + LLM 摘要）
-│   ├── session-store.ts   会话持久化（~/.codeterm/sessions/）
+│   ├── session-store.ts   会话持久化（~/.codara/sessions/）
 │   ├── token-tracker.ts   Token 计数 + 费用计算
 │   └── auto-memory.ts     跨会话持久化记忆
 │
@@ -119,7 +119,7 @@ src/
      │              │   │   │   │   │   │                  │
 ┌────▼────┐  ┌──────▼┐ ┌▼───▼┐ ┌▼───▼┐ ┌▼──────────┐ ┌───▼────────┐
 │model.ts │  │tools/ │ │perm/│ │hooks│ │  memory/   │ │  skills/   │
-│(路由器) │  │(9个)  │ │管理 │ │引擎 │ │(6层)       │ │(加载器 +   │
+│(路由器) │  │(9个)  │ │管理 │ │引擎 │ │(3层)       │ │(加载器 +   │
 │         │  │       │ │     │ │     │ │            │ │ 执行器)    │
 └────┬────┘  └───────┘ └─────┘ └─────┘ └────────────┘ └────────────┘
      │
@@ -213,14 +213,14 @@ resolveConfig() 与设置文件合并
        │
        ▼
 设置文件（按低 → 高优先级合并）：
-  1. ~/.codeterm/settings.json           （用户全局）
-  2. <cwd>/.codeterm/settings.json       （项目共享）
-  3. <cwd>/.codeterm/settings.local.json  （项目本地，已 gitignore）
+  1. ~/.codara/settings.json           （用户全局）
+  2. <cwd>/.codara/settings.json       （项目共享）
+  3. <cwd>/.codara/settings.local.json  （项目本地，已 gitignore）
        │
        ▼
 模型路由（config.json）：
-  1. <cwd>/.codeterm/config.json          （项目）
-  2. ~/.codeterm/config.json              （用户回退）
+  1. <cwd>/.codara/config.json          （项目）
+  2. ~/.codara/config.json              （用户回退）
        │
        ▼
 AppConfig {
@@ -298,22 +298,19 @@ TUI 永远不会同步调用 Agent。相反：
    - 提供商为 `"anthropic"` 且无 baseUrl → 原生 `ChatAnthropic`
    - 否则 → 原生 `ChatOpenAI`
 
-这意味着只需在 `config.json` 中添加提供商，CodeTerm 就能与任何 OpenAI 兼容 API 配合使用。
+这意味着只需在 `config.json` 中添加提供商，Codara 就能与任何 OpenAI 兼容 API 配合使用。
 
-### 4. 6 层记忆系统
+### 4. 3 层记忆系统
 
-系统提示词由 6 层指令记忆组装而成，按优先级顺序加载：
+系统提示词由 3 层指令记忆组装而成，按优先级顺序加载：
 
 | 层级    | 来源                                     | 范围         |
 |----------|--------------------------------------------|---------------|
-| managed  | `/etc/codeterm/CODETERM.md`                | 系统管理员  |
-| user     | `~/.codeterm/CODETERM.md`                  | 用户全局   |
-| rules    | `~/.codeterm/rules/*.md`                   | 用户规则    |
-| project  | `CODETERM.md` 或 `.codeterm/CODETERM.md`   | 团队共享   |
-| local    | `CODETERM.local.md`                        | 个人      |
-| auto     | `~/.codeterm/projects/<hash>/memory/MEMORY.md` | Agent 自动写入 |
+| 用户上下文 | `~/.codara/CODARA.md` + `~/.codara/rules/*.md` | 用户全局   |
+| 项目上下文 | `CODARA.md` 或 `.codara/CODARA.md` + `.codara/rules/*.md` + `CODARA.local.md` | 团队共享 + 个人覆盖 |
+| 会话记忆 | `~/.codara/projects/{hash}/memory/MEMORY.md` | Agent 自动写入 |
 
-加载器会沿目录树向上查找至 git 根目录，收集 project 和 local 层。规则文件支持 frontmatter 剥离。`@import` 语法允许包含其他文件（最大深度 5 层，并有路径遍历防护）。
+加载器会沿目录树向上查找至 git 根目录，收集项目上下文层。规则文件支持 frontmatter 剥离和 globs 条件加载。`@import` 语法允许包含其他文件（1 层直接引用，并有路径遍历防护）。
 
 ### 5. 隔离的子 Agent
 
@@ -325,7 +322,7 @@ TUI 永远不会同步调用 Agent。相反：
 - 不能向用户提问（排除 AskUserQuestion 工具）。
 - 向父级返回压缩摘要，而非完整输出。
 
-三种内置 Agent 类型：`Explore`（只读，使用 haiku 模型）、`Plan`（只读，架构师）和 `general-purpose`（完整工具集）。自定义 Agent 在 `.codeterm/agents/*.md` 中定义，通过 frontmatter 配置工具、模型、权限和最大轮次。
+三种内置 Agent 类型：`Explore`（只读，使用 haiku 模型）、`Plan`（只读，架构师）和 `general-purpose`（完整工具集）。自定义 Agent 在 `.codara/skills/*/agents/*.md` 中定义，通过 frontmatter 配置工具、模型、权限和最大轮次。
 
 ### 6. 权限引擎
 
@@ -383,7 +380,7 @@ default 模式？ → 询问用户
 6. 注册 9 个工具到 toolRegistry
 7. new AgentManager() 用于后台子 Agent 追踪
 8. agent.init()：
-   a. 加载 6 层记忆
+   a. 加载 3 层记忆
    b. 发现技能
    c. 组装系统提示词
    d. 创建 LLM 模型（提供商路由 + 工具绑定）
@@ -411,7 +408,7 @@ default 模式？ → 询问用户
 | `src/tools/registry.ts`        | ~35   | 基于名称的工具映射                        |
 | `src/tui/App.tsx`              | ~395  | TUI 根组件、事件分发         |
 | `src/tui/theme.ts`             | ~225  | 6 种颜色主题                             |
-| `src/memory/loader.ts`         | ~220  | 6 层记忆加载                     |
+| `src/memory/loader.ts`         | ~220  | 3 层记忆加载                     |
 | `src/memory/compactor.ts`      | ~120  | 上下文压缩                         |
 | `src/memory/session-store.ts`  | ~126  | 会话持久化                        |
 | `src/memory/token-tracker.ts`  | ~96   | Token 计数 + 费用计算          |

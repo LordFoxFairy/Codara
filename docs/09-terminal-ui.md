@@ -1563,3 +1563,56 @@ Agent 循环恢复，根据 result 继续执行
 3. 可测试性（Mock resolve 回调即可测试 Agent 逻辑）
 
 ---
+
+## 12. 输出样式
+
+输出样式（Output Styles）通过修改系统提示影响代理的回复风格。它不改变代理的能力或工具集，只改变代理如何表达。
+
+### 内置样式
+
+| 样式 | 描述 |
+|------|------|
+| `default` | 简洁、面向代码的输出 |
+| `Explanatory` | 更详细的解释，适合理解代码 |
+| `Learning` | 教学模式，逐步讲解 |
+
+### 自定义样式
+
+自定义输出样式存储为 Markdown 文件，支持 YAML frontmatter：
+
+- 用户级：`~/.codara/output-styles/`
+- 项目级：`.codara/output-styles/`
+
+#### 格式
+
+```markdown
+---
+name: concise-chinese
+description: 用简洁的中文回复
+keep-coding-instructions: true
+---
+
+所有回复使用中文。保持简洁，避免冗余。
+代码注释使用英文，解释使用中文。
+```
+
+#### Frontmatter 字段
+
+| 字段 | 类型 | 说明 |
+|------|------|------|
+| `name` | string | 样式名称，用于选择 |
+| `description` | string | 人类可读的描述 |
+| `keep-coding-instructions` | boolean | 是否保留默认的编码指令（默认 true） |
+
+当 `keep-coding-instructions: true` 时，自定义样式的内容追加到默认编码指令之后。设为 `false` 则完全替换默认指令。
+
+### 输出样式 vs 其他自定义机制
+
+| 机制 | 作用域 | 用途 |
+|------|--------|------|
+| Output Styles | 回复风格 | 控制代理如何表达 |
+| CODARA.md | 项目指令 | 控制代理做什么 |
+| Agent 定义 | 代理行为 | 控制代理的能力和约束 |
+| Skill 定义 | 工作流 | 定义特定任务流程 |
+
+---

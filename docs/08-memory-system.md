@@ -16,8 +16,9 @@
 4. [Token 追踪与成本计算](#4-token-追踪与成本计算)
 5. [会话持久化](#5-会话持久化)
 6. [自动记忆](#6-自动记忆)
-7. [文件检查点系统](#7-文件检查点系统)
-8. [记忆加载与系统提示组装](#8-记忆加载与系统提示组装)
+7. [子代理记忆](#7-子代理记忆)
+8. [文件检查点系统](#8-文件检查点系统)
+9. [记忆加载与系统提示组装](#9-记忆加载与系统提示组装)
 
 ---
 
@@ -152,6 +153,22 @@ Always use strict TypeScript. No `any` types unless explicitly justified.
 ```
 
 上面的 frontmatter 会被剥离，只有正文内容会被注入。
+
+#### globs 条件加载
+
+当规则文件的 frontmatter 包含 `globs` 字段时，该规则仅在代理操作匹配 glob 模式的文件时加载。这避免了不相关规则污染上下文。
+
+```markdown
+---
+description: React component conventions
+globs: ["*.tsx", "*.jsx"]
+---
+
+组件使用函数式声明，禁止 class 组件。
+Props 类型使用 interface 而非 type。
+```
+
+上述规则仅在代理读取或编辑 `.tsx` / `.jsx` 文件时才会注入上下文。如果 `globs` 字段不存在，规则始终加载。
 
 ---
 
@@ -435,7 +452,44 @@ TUI 层监听压缩事件：
 
 ---
 
-## 7. 文件检查点系统
+## 7. 子代理记忆
+
+子代理可以拥有独立于主代理的跨会话持久化记忆。通过代理定义 frontmatter 的 `memory` 字段声明作用域（详见 [07-代理协作](./07-agent-collaboration.md)）。
+
+### 记忆作用域
+
+| 作用域 | 路径 | 说明 |
+|--------|------|------|
+| `user` | `~/.codara/agent-memory/{name}/` | 用户级，跨项目共享 |
+| `project` | `.codara/agent-memory/{name}/` | 项目级，团队共享 |
+| `local` | `.codara/agent-memory-local/{name}/` | 本地，被 gitignore |
+
+其中 `{name}` 为代理名称。
+
+### 与主代理自动记忆的关系
+
+子代理记忆与主代理的自动记忆机制相同：
+
+- 加载 `MEMORY.md` 的前 200 行到上下文
+- 代理可通过 Write/Edit 工具更新记忆文件
+- 按主题语义组织，避免重复
+
+区别在于路径隔离方式不同：主代理记忆按项目哈希隔离（`~/.codara/projects/{hash}/memory/`），子代理记忆按代理名称隔离。
+
+### 作用域组合示例
+
+```markdown
+---
+name: code-reviewer
+memory: user,project
+---
+```
+
+加载顺序：先 `user` 级，再 `project` 级。后加载的内容补充而非覆盖先加载的内容。
+
+---
+
+## 8. 文件检查点系统
 
 在任何文件修改（Write 或 Edit）之前，检查点系统会快照原始内容。这使得可以回退到任何先前状态。
 
@@ -489,7 +543,7 @@ TUI 层监听压缩事件：
 
 ---
 
-## 8. 记忆加载与系统提示组装
+## 9. 记忆加载与系统提示组装
 
 > **与 Claude Code 对齐：** Claude Code 在代理初始化阶段（非中间件）完成记忆加载和系统提示组装。Codara 将此过程封装为初始化流程的一部分，在 `agent.init()` 阶段执行。
 
@@ -555,4 +609,11 @@ TUI 层监听压缩事件：
      │ SessionStore  │
      │  （持久化）   │
      └──────────────┘
+
+     子代理记忆（独立于主代理记忆）:
+     ┌─────────────────────────────────────────────┐
+     │  ~/.codara/agent-memory/{name}/   (user)    │
+     │  .codara/agent-memory/{name}/     (project) │
+     │  .codara/agent-memory-local/{name}/ (local) │
+     └─────────────────────────────────────────────┘
 ```
