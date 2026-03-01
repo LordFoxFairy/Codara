@@ -1,0 +1,15 @@
+{
+  "permissions": {
+    "mode": "auto",
+    "allow": [
+      "Bash(git *:*)",
+      "Bash(npm *:*)",
+      "Bash(yarn *:*)"
+    ],
+    "deny": [
+      "Bash(rm -rf:*)",
+      "Bash(sudo:*)",
+      "Bash(*production*:*)"
+    ]
+  ]
+}

@@ -1,0 +1,16 @@
+{
+  "hooks": [
+    {
+      "matcher": {
+        "event": "PreToolUse",
+        "tool": "Bash"
+      },
+      "hooks": [
+        {
+          "command": "echo '{\"command\": \"docker exec sandbox bash -c \\\"'\"$TOOL_INPUT\"'\\\"\"}'",
+          "exit": 0
+        }
+      ]
+    }
+  ]
+}

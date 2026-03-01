@@ -1,0 +1,30 @@
+{
+  "hooks": [
+    {
+      "matcher": {
+        "event": "PreToolUse",
+        "tool": "Bash",
+        "pattern": "rm -rf*"
+      },
+      "hooks": [
+        {
+          "command": "echo 'Blocked: rm -rf is dangerous' >&2",
+          "exit": 2
+        }
+      ]
+    },
+    {
+      "matcher": {
+        "event": "PreToolUse",
+        "tool": "Bash",
+        "pattern": "sudo*"
+      },
+      "hooks": [
+        {
+          "command": "echo 'Blocked: sudo requires manual approval' >&2",
+          "exit": 2
+        }
+      ]
+    }
+  ]
+}

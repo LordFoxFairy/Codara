@@ -1,0 +1,11 @@
+{
+  "permissions": {
+    "mode": "dontAsk",
+    "allow": [
+      "Bash(docker exec sandbox:*)"
+    ],
+    "deny": [
+      "Bash(*:*)"
+    ]
+  }
+}
