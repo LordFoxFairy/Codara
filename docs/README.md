@@ -33,7 +33,6 @@
 
 | 文档 | 说明 |
 |------|------|
-| [设计审查](./design-review.md) | 架构设计质量评估与改进建议 |
-| [内置代理组织](./builtin-agents-final.md) | builtin-agents skill 最终方案 |
-| [Task 渲染机制](./task-rendering-clarification.md) | Main/Subagent TUI 渲染差异 |
-| [已解决问题](./problems.md) | Middleware 6-Hook 架构重构中已解决的设计问题 |
+| [设计理念对比](./design-alignment.md) | Codara vs Claude Code 设计理念一致性分析 |
+| [Claude Code 参考](./claude-code-reference/) | Claude Code 官方文档参考（需手动下载） |
+| [归档文档](./archive/) | 设计过程文档归档 |
