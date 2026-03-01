@@ -1,50 +1,80 @@
-# 记忆系统 — 6 层层级结构与上下文管理
+# 记忆与上下文 — 3 层层级结构与上下文管理
 
-> [← 上一篇: 子代理系统](./07-subagent-system.md) | [目录](./README.md) | [下一篇: TUI 组件 →](./09-tui-components.md)
+> [← 上一篇: 代理协作](./07-agent-collaboration.md) | [目录](./README.md) | [下一篇: 终端 UI →](./09-terminal-ui.md)
 
-> 代理"知道"的一切都通过记忆层流转。从管理员控制的系统指令到 AI 维护的项目笔记，每一层在塑造代理行为方面都有独特的作用。
+> 代理"知道"的一切都通过记忆层流转。从用户全局偏好到 AI 维护的项目笔记，每一层在塑造代理行为方面都有独特的作用。
 
-本文档涵盖完整的记忆和上下文管理流水线：指令如何加载、上下文如何在压力下压缩、会话如何持久化、成本如何追踪，以及代理如何维护自己的长期记忆。
+本文档涵盖完整的记忆和上下文管理流水线：3 层记忆如何加载与合并、上下文如何在压力下压缩、会话如何持久化、成本如何追踪，以及代理如何维护自己的长期记忆。
 
 ---
 
 ## 目录
 
-1. [6 层记忆层级](#1-6-层记忆层级)
+1. [3 层记忆层级](#1-3-层记忆层级)
 2. [导入系统](#2-导入系统)
 3. [上下文压缩](#3-上下文压缩)
 4. [Token 追踪与成本计算](#4-token-追踪与成本计算)
 5. [会话持久化](#5-会话持久化)
 6. [自动记忆](#6-自动记忆)
 7. [文件检查点系统](#7-文件检查点系统)
+8. [记忆加载与系统提示组装](#8-记忆加载与系统提示组装)
 
 ---
 
-## 1. 6 层记忆层级
+## 1. 3 层记忆层级
 
-所有记忆层由 `MemoryLoader.load(cwd)` 加载，并按优先级顺序注入系统提示。每一层是一个包含 `scope`、`path` 和 `content` 字段的 `MemoryLayer`。
+Codara 采用 **3 层记忆模型**，将所有上下文来源归纳为用户、项目、会话三个维度。相较于旧的 6 层设计，3 层模型更易理解、更少冲突，同时保留了所有必要的灵活性。
 
-来源：`src/memory/loader.ts`
+所有记忆层由 MemoryLoader 加载，并按优先级顺序注入系统提示。每一层是一个包含 `scope`、`path` 和 `content` 字段的 `MemoryLayer`。
+
+### 层级总览
+
+```
+┌─────────────────────────────────────────┐
+│  第 1 层: 用户上下文 (User Context)      │
+│  ~/.codara/CODARA.md                    │
+│  ~/.codara/rules/*.md                   │
+│  ─── 用户全局偏好、习惯、约定 ───        │
+├─────────────────────────────────────────┤
+│  第 2 层: 项目上下文 (Project Context)   │
+│  {git-root}/CODARA.md                   │
+│  {git-root}/.codara/rules/*.md          │
+│  {git-root}/CODARA.local.md (gitignored)│
+│  ─── 项目指令、架构决策、本地覆盖 ───    │
+├─────────────────────────────────────────┤
+│  第 3 层: 会话记忆 (Session Memory)      │
+│  ~/.codara/projects/{hash}/memory/      │
+│  ─── 自动记忆、对话历史、文件检查点 ───  │
+└─────────────────────────────────────────┘
+```
 
 ### 加载顺序
 
 | 层 | 作用域 | 源路径 | 用途 |
 |-------|-------|-------------|---------|
-| 1. 托管层 | `managed` | `/etc/codeterm/CODETERM.md` | 系统级指令，管理员控制 |
-| 2. 用户层 | `user` | `~/.codeterm/CODETERM.md` | 用户全局指令 |
-| 2.5 用户规则层 | `rules` | `~/.codeterm/rules/*.md` | 用户规则文件（目录中所有 `.md` 文件） |
-| 3. 项目层 | `project` | `{git-root}/CODETERM.md` 或 `{git-root}/.codeterm/CODETERM.md` | 项目共享指令（提交到仓库） |
-| 4. 项目本地层 | `local` | `{git-root}/CODETERM.local.md` | 项目本地覆盖（被 gitignore） |
-| 5. 项目规则层 | `rules` | `{cwd}/.codeterm/rules/*.md` | 项目特定规则文件 |
-| 6. 自动记忆层 | `auto` | `~/.codeterm/projects/{hash}/memory/MEMORY.md` | AI 维护的每项目记忆（前 200 行） |
+| **第 1 层: 用户上下文** | `user` | `~/.codara/CODARA.md` | 用户全局偏好与指令 |
+| | `rules` | `~/.codara/rules/*.md` | 用户全局规则文件 |
+| **第 2 层: 项目上下文** | `project` | `{git-root}/CODARA.md` 或 `{git-root}/.codara/CODARA.md` | 项目共享指令（提交到仓库） |
+| | `rules` | `{git-root}/.codara/rules/*.md` | 项目特定规则文件 |
+| | `local` | `{git-root}/CODARA.local.md` | 项目本地覆盖（被 gitignore） |
+| **第 3 层: 会话记忆** | `auto` | `~/.codara/projects/{hash}/memory/MEMORY.md` | AI 维护的每项目记忆（前 200 行） |
 
-在 Windows 上，托管层路径为 `%PROGRAMDATA%\codeterm\CODETERM.md` 而非 `/etc/codeterm/CODETERM.md`。
+**优先级规则**：后加载的层覆盖先加载的层。即项目上下文覆盖用户上下文，本地覆盖覆盖项目共享指令。会话记忆作为补充信息注入，不参与覆盖。
+
+### 设计取舍
+
+旧的 6 层模型包含独立的托管层（`/etc/codara/`）、用户层、用户规则层、项目层、项目本地层、项目规则层。新设计做了以下简化：
+
+- **移除托管层** — 开源项目无需系统管理员级别的控制。如有需要，用户可通过 `~/.codara/CODARA.md` 实现等效效果。
+- **合并用户 + 用户规则** → 统一为「用户上下文」。两者都表达用户全局意图，无需在概念上分离。
+- **合并项目 + 项目本地 + 项目规则** → 统一为「项目上下文」。`CODARA.local.md` 仍然被 gitignore，但它属于项目维度而非独立层。
+- **保留会话记忆** → AI 自动维护的长期记忆本质上不同于人工编写的指令，保持独立。
 
 ### Git 根目录检测
 
 加载器从当前工作目录向上遍历，检查每个父目录是否有 `.git` 目录。这决定了：
 
-- **在何处停止**查找项目/本地指令文件
+- **在何处停止**查找项目指令文件
 - **哪个目录**作为规则和自动记忆的项目根目录
 
 如果未找到 `.git` 目录，则使用当前工作目录作为根目录。
@@ -52,23 +82,23 @@
 ```
 /home/user/projects/myapp/src/components/
   └── 向上遍历在 /home/user/projects/myapp/ 找到 .git
-      ├── CODETERM.md          → 第 3 层（项目）
-      ├── CODETERM.local.md    → 第 4 层（本地）
-      └── .codeterm/rules/     → 第 5 层（项目规则）
+      ├── CODARA.md          → 第 2 层（项目上下文）
+      ├── CODARA.local.md    → 第 2 层（项目本地覆盖）
+      └── .codara/rules/     → 第 2 层（项目规则）
 ```
 
 ### 项目层向上遍历
 
-第 3 层和第 4 层使用向上遍历策略。从 `cwd` 开始，加载器逐级向上检查每个目录直到 git 根目录：
+第 2 层中的项目文件和本地文件使用向上遍历策略。从 `cwd` 开始，加载器逐级向上检查每个目录直到 git 根目录：
 
-- **项目文件**（`CODETERM.md`）：在每个目录的两个位置检查 -- 先检查根目录，再检查 `.codeterm/CODETERM.md`。每个目录只加载第一个匹配项。
-- **本地文件**（`CODETERM.local.md`）：在每个目录的根目录检查。
+- **项目文件**（`CODARA.md`）：在每个目录的两个位置检查 -- 先检查根目录，再检查 `.codara/CODARA.md`。每个目录只加载第一个匹配项。
+- **本地文件**（`CODARA.local.md`）：在每个目录的根目录检查。
 
 结果使用 `unshift` 添加，因此父目录出现在子目录之前的最终层列表中。
 
 ### 规则加载
 
-规则文件从 `rules/` 目录加载。支持用户级（`~/.codeterm/rules/`）和项目级（`.codeterm/rules/`）。
+规则文件从 `rules/` 目录加载。支持用户级（`~/.codara/rules/`）和项目级（`.codara/rules/`）。
 
 - 仅包含 `.md` 文件
 - YAML frontmatter（由 `---` 分隔）会被自动剥离
@@ -91,8 +121,6 @@ Always use strict TypeScript. No `any` types unless explicitly justified.
 
 所有层支持 `@import` 语法来包含其他文件的内容。所有层加载后，每一层的内容都会被处理以解析导入。
 
-来源：`src/memory/loader.ts` — `resolveImports()`
-
 ### 语法
 
 ```markdown
@@ -110,14 +138,16 @@ Always use strict TypeScript. No `any` types unless explicitly justified.
 
 ### 深度限制
 
-导入递归解析最深 **5 层**。这防止了循环导入导致的无限递归。在第 5 层，任何剩余的 `@import` 引用保持未解析状态。
+导入仅支持 **1 层直接引用**，不进行递归解析。即被引入的文件中如果包含 `@import`，这些二级引用不会被进一步展开，保持未解析状态。
+
+这一设计简化了依赖关系，避免了循环引用的可能性，同时在实践中满足绝大多数使用场景 -- 指令文件通常引用具体的规则或片段，而非构建深层嵌套的导入链。
 
 ### 路径遍历防护
 
 导入路径会针对两个允许的根目录进行验证：
 
 1. 包含导入的文件所在的基目录
-2. `~/.codeterm/`
+2. `~/.codara/`
 
 任何解析后落在这两个根目录之外的路径会被静默跳过。这防止了项目指令文件读取任意系统文件。
 
@@ -135,16 +165,9 @@ Always use strict TypeScript. No `any` types unless explicitly justified.
 
 当对话接近 token 限制时，压缩器收缩上下文以腾出空间继续交互。
 
-来源：`src/memory/compactor.ts`
-
 ### 触发条件
 
-当估计的 token 使用量超过最大 token 容量的 **95%**（默认：200,000 tokens）时触发压缩。容量和阈值百分比均可通过 `ContextCompactor` 构造函数配置。
-
-```typescript
-const compactor = new ContextCompactor(200_000, 95);
-// 在 190,000 估计 token 时触发
-```
+当估计的 token 使用量超过最大 token 容量的 **95%**（默认：200,000 tokens）时触发压缩。容量和阈值百分比均可配置。
 
 Token 估算使用简单启发式方法：每个 token 约 `Math.ceil(content.length / 3.5)` 个字符。
 
@@ -218,15 +241,9 @@ TUI 层监听压缩事件：
 
 每次 API 调用的 token 使用量都会被记录，用于成本估算和上下文利用率追踪。
 
-来源：`src/memory/token-tracker.ts`
-
 ### 使用量记录
 
-每次 API 调用报告 `input_tokens` 和 `output_tokens`。追踪器将这些存储为带时间戳的记录：
-
-```typescript
-tracker.record({ input_tokens: 1500, output_tokens: 350 });
-```
+每次 API 调用报告 `input_tokens` 和 `output_tokens`。追踪器将这些存储为带时间戳的记录。
 
 ### 定价表
 
@@ -254,21 +271,11 @@ tracker.record({ input_tokens: 1500, output_tokens: 350 });
 
 这处理了不同 provider 的各种模型名称格式（OpenRouter 添加前缀，API 响应可能包含日期后缀）。
 
-### 摘要格式
-
-```typescript
-tracker.getSummary("claude-sonnet-4");
-// → "12500 in / 3200 out / $0.0855"
-```
+摘要格式示例：`"12500 in / 3200 out / $0.0855"`
 
 ### 上下文利用率
 
-追踪器可以报告最近一次 API 调用消耗了上下文窗口的百分比：
-
-```typescript
-tracker.getContextUtilization(200_000);
-// → 0.75 (75% of context used)
-```
+追踪器可以报告最近一次 API 调用消耗了上下文窗口的百分比。例如 200K 上下文窗口中使用了 75% 返回 `0.75`。
 
 ---
 
@@ -276,33 +283,27 @@ tracker.getContextUtilization(200_000);
 
 会话被保存到磁盘，以便后续可以使用 `--resume` 标志恢复。
 
-来源：`src/memory/session-store.ts`
-
 ### 存储位置
 
 ```
-~/.codeterm/sessions/{uuid}.json
+~/.codara/sessions/{uuid}.json
 ```
 
 每个会话是一个以其 UUID 命名的 JSON 文件。
 
 ### 会话数据结构
 
-```typescript
-interface Session {
-  id: string;           // UUID
-  createdAt: string;    // ISO 时间戳
-  lastActive: string;   // ISO 时间戳，每次保存时更新
-  cwd: string;          // 会话开始时的工作目录
-  messages: SerializedMessage[];  // 完整对话历史
-  metadata: {
-    totalTurns: number;
-    totalCostUsd: number;
-    model: string;
-    summary?: string;   // 可选的列表描述
-  };
-}
-```
+| 字段 | 类型 | 说明 |
+|------|------|------|
+| `id` | string | UUID |
+| `createdAt` | string | ISO 时间戳 |
+| `lastActive` | string | ISO 时间戳，每次保存时更新 |
+| `cwd` | string | 会话开始时的工作目录 |
+| `messages` | array | 完整对话历史（序列化消息） |
+| `metadata.totalTurns` | number | 总轮次 |
+| `metadata.totalCostUsd` | number | 总费用 |
+| `metadata.model` | string | 使用的模型 |
+| `metadata.summary` | string? | 可选的列表描述 |
 
 ### 原子写入
 
@@ -334,15 +335,15 @@ interface Session {
 
 ## 6. 自动记忆
 
-代理可以写入跨会话持久化的笔记。这是代理"记住"项目特定模式、偏好和决策的方式。
+代理可以写入跨会话持久化的笔记。这是代理"记住"项目特定模式、偏好和决策的方式。自动记忆构成第 3 层（会话记忆）的核心。
 
-来源：`src/memory/auto-memory.ts`
+> **与 Claude Code 对齐：** 代理通过标准的 Write/Edit 工具直接操作记忆文件，无需专用 API。这与 Claude Code 的做法一致——代理将记忆目录视为普通文件系统目录，使用 Read 工具查阅、Write/Edit 工具更新。系统提示词中告知代理记忆目录路径和使用规范。
 
 ### 存储
 
 ```
-~/.codeterm/projects/{md5-hash}/memory/
-  ├── MEMORY.md          ← 主索引，始终加载
+~/.codara/projects/{md5-hash}/memory/
+  ├── MEMORY.md          ← 主索引，始终加载（前 200 行）
   ├── debugging.md       ← 主题特定文件
   ├── patterns.md        ← 主题特定文件
   └── architecture.md    ← 主题特定文件
@@ -350,38 +351,35 @@ interface Session {
 
 `{md5-hash}` 是 git 根路径的 MD5 哈希的前 12 个字符。这为每个项目提供一个唯一但稳定的目录。
 
-### MEMORY.md — 索引文件
+### MEMORY.md — 主索引
 
-`MEMORY.md` 始终被注入对话上下文（前 200 行）。它作为代理的"工作记忆" -- 关于项目已学到的内容的简洁摘要。
+`MEMORY.md` 始终被注入对话上下文（前 200 行）。它作为代理的"工作记忆"——关于项目已学到的内容的简洁摘要。
 
-代理通过 `remember(content)`（不指定主题）写入，追加一个要点：
+代理通过 Write/Edit 工具直接维护此文件：
 
 ```markdown
+# 项目记忆
+
+## 技术栈
 - Uses Bun instead of npm for package management
 - Database migrations are in src/db/migrations/
+
+## 用户偏好
 - User prefers functional style over classes
+- Commit messages use Chinese
 ```
+
+代理在使用 Write/Edit 操作记忆文件时，应遵循以下规范（通过系统提示注入）：
+- 按主题语义组织，不按时间顺序
+- 保持简洁，200 行上限
+- 更新或删除过时的记忆，避免重复
+- 详细内容写入主题文件，MEMORY.md 中索引链接
 
 ### 主题文件
 
-对于会使 `MEMORY.md` 膨胀的详细笔记，代理通过 `remember(content, topic)` 写入主题特定文件：
+对于会使 `MEMORY.md` 膨胀的详细笔记，代理创建主题特定文件（如 `debugging.md`），存放在同一 `memory/` 目录下。
 
-```typescript
-autoMemory.remember("Stack trace showed...", "debugging");
-// 追加到 ~/.codeterm/projects/{hash}/memory/debugging.md
-```
-
-主题文件不会自动加载到上下文中。代理必须在相关时显式读取它们。
-
-### 可用操作
-
-| 方法 | 描述 |
-|--------|-------------|
-| `remember(content)` | 向 `MEMORY.md` 追加一个要点 |
-| `remember(content, topic)` | 追加到 `{topic}.md` |
-| `loadIndex()` | 读取 `MEMORY.md`（前 200 行） |
-| `loadTopic(topic)` | 读取特定主题文件 |
-| `listTopics()` | 列出所有主题文件（不包括 `MEMORY.md`） |
+主题文件不会自动加载到上下文中。代理在相关时使用 Read 工具显式读取。
 
 ### 代理记忆的内容
 
@@ -402,8 +400,6 @@ autoMemory.remember("Stack trace showed...", "debugging");
 ## 7. 文件检查点系统
 
 在任何文件修改（Write 或 Edit）之前，检查点系统会快照原始内容。这使得可以回退到任何先前状态。
-
-来源：`src/agent/checkpoint.ts`
 
 ### 工作原理
 
@@ -455,36 +451,70 @@ autoMemory.remember("Stack trace showed...", "debugging");
 
 ---
 
+## 8. 记忆加载与系统提示组装
+
+> **与 Claude Code 对齐：** Claude Code 在代理初始化阶段（非中间件）完成记忆加载和系统提示组装。Codara 将此过程封装为初始化流程的一部分，在 `agent.init()` 阶段执行。
+
+### 加载流程
+
+代理初始化时的完整加载流程：
+
+1. **检测 git 根目录** — 从 `cwd` 向上遍历查找 `.git`
+2. **加载第 1 层** — 读取 `~/.codara/CODARA.md`，扫描 `~/.codara/rules/*.md`
+3. **加载第 2 层** — 向上遍历加载 `CODARA.md`、`CODARA.local.md`，扫描 `.codara/rules/*.md`
+4. **加载第 3 层** — 读取 `MEMORY.md` 前 200 行
+5. **解析导入** — 对每层内容执行 1 层 `@import` 解析
+6. **注入系统提示** — 按层级顺序拼接，追加到系统消息 `messages[0]`
+
+### 会话保存
+
+每轮对话结束后，会话自动持久化：
+
+1. **序列化消息** — 将对话历史序列化为 JSON
+2. **更新元数据** — 更新 `lastActive`、`totalTurns`、`totalCostUsd`
+3. **原子写入** — 通过 `SessionStore` 写入临时文件后重命名
+
+记忆加载在所有其他初始化步骤之前执行，确保代理在处理任何请求时已拥有完整的上下文信息。
+
+---
+
 ## 架构总结
 
 ```
                     系统提示组装
-                    ┌─────────────────────┐
-  /etc/codeterm/    │ 第 1 层: 托管层      │
-  ~/.codeterm/      │ 第 2 层: 用户层      │
-  ~/.codeterm/rules │ 第 2.5 层: 规则层    │
-  {git-root}/       │ 第 3 层: 项目层      │
-  {git-root}/       │ 第 4 层: 本地层      │
-  .codeterm/rules/  │ 第 5 层: 规则层      │
-  ~/.codeterm/      │ 第 6 层: 自动记忆层  │
-                    └────────┬────────────┘
-                             │
-                             ▼
-                    ┌─────────────────────┐
-                    │    代理循环          │
-                    │  （对话）            │
-                    └────────┬────────────┘
-                             │
-              ┌──────────────┼──────────────┐
-              ▼              ▼              ▼
-     ┌──────────────┐ ┌───────────┐ ┌──────────────┐
-     │ TokenTracker │ │ Compactor │ │ Checkpoints  │
-     │ （成本/利用率）│ │ （收缩）  │ │ （快照）     │
-     └──────────────┘ └───────────┘ └──────────────┘
+                    ┌─────────────────────────────┐
+  ~/.codara/        │ 第 1 层: 用户上下文          │
+                    │  CODARA.md + rules/*.md      │
+                    ├─────────────────────────────┤
+  {git-root}/       │ 第 2 层: 项目上下文          │
+                    │  CODARA.md + .codara/rules/  │
+                    │  + CODARA.local.md           │
+                    ├─────────────────────────────┤
+  ~/.codara/        │ 第 3 层: 会话记忆            │
+  projects/{hash}/  │  MEMORY.md (前 200 行)       │
+                    └────────────┬────────────────┘
+                                 │
+                    ┌────────────▼────────────────┐
+                    │      agent.init()            │
+                    │  加载 3 层记忆 → 注入系统提示 │
+                    │  会话结束 → 序列化 → 保存    │
+                    └────────────┬────────────────┘
+                                 │
+                    ┌────────────▼────────────────┐
+                    │        代理循环              │
+                    │      （对话）                │
+                    └────────────┬────────────────┘
+                                 │
+              ┌──────────────────┼──────────────────┐
+              ▼                  ▼                  ▼
+     ┌──────────────┐  ┌───────────────┐  ┌──────────────┐
+     │ TokenTracker  │  │   Compactor   │  │ Checkpoints  │
+     │ （成本/利用率）│  │   （收缩）    │  │  （快照）    │
+     └──────────────┘  └───────────────┘  └──────────────┘
               │
               ▼
      ┌──────────────┐
-     │ SessionStore │
-     │ （持久化）    │
+     │ SessionStore  │
+     │  （持久化）   │
      └──────────────┘
 ```

@@ -1,9 +1,6 @@
-# CodeTerm UI 交互设计规范
+# 终端界面设计
 
-> [← 上一篇: TUI 组件](./09-tui-components.md) | [目录](./README.md)
-
-> 本文档定义 CodeTerm 终端 UI 的布局架构、组件形态、交互模式和视觉规范。
-> 所有 TUI 组件开发必须遵循本规范。
+> [← 上一篇: 记忆与上下文](./08-memory-system.md) | [目录](./README.md)
 
 ---
 
@@ -11,7 +8,7 @@
 
 ### 1.1 三区布局模型
 
-CodeTerm 采用**底部锚定**布局，全部内容从底部向上生长：
+Codara 采用**底部锚定**布局，全部内容从底部向上生长：
 
 ```
 ┌─────────────────────────────────────────────────────────┐
@@ -59,7 +56,25 @@ CodeTerm 采用**底部锚定**布局，全部内容从底部向上生长：
 | **Messages 自然流动** | 已完成消息通过 `<Static>` 推入终端 scrollback，用户可原生滚动回看 |
 | **StreamingText 紧贴最后一条消息** | 流式输出不悬浮，而是跟随消息流自然延伸 |
 
-### 1.3 Flexbox 实现
+### 1.3 组件层级
+
+```
+App (根组件 — src/tui/App.tsx)
+│
+├── ThemeProvider (上下文包装器)
+│   │
+│   ├── 内容区域 (flexGrow=1, justifyContent="flex-end")
+│   │   ├── MessageStream (消息流列表)
+│   │   ├── StreamingText (实时 token 流)
+│   │   ├── PermissionDialog (条件显示 — 工具审批)
+│   │   ├── QuestionDialog (条件显示 — 用户问题)
+│   │   ├── Separator (分隔线 ─────)
+│   │   └── InputArea (底部输入区 — ❯ 提示符，无边框)
+│   │
+│   └── StatusBar (底部状态栏 — 固定)
+```
+
+### 1.4 Flexbox 实现
 
 ```tsx
 <Box flexDirection="column" height={rows}>
@@ -88,26 +103,98 @@ CodeTerm 采用**底部锚定**布局，全部内容从底部向上生长：
 </Box>
 ```
 
+内容区域使用 `justifyContent="flex-end"` 使内容锚定在底部向上增长。`InputArea` 在 `isRunning` 或对话框活跃时被禁用。`overflowY="hidden"` 防止 ink 渲染溢出。
+
+### 1.5 入口点 (index.tsx)
+
+**文件**: `src/tui/index.tsx`
+
+```typescript
+export function startTUI(agent: AgentLoop, theme: ThemeName = "dark") {
+  const { waitUntilExit } = render(
+    <App agent={agent} initialTheme={theme} />,
+  );
+  return waitUntilExit;
+}
+```
+
+通过 ink 的 `render()` 渲染 `<App>` 组件，返回 `waitUntilExit` promise，调用方等待此 promise 直到用户退出。
+
 ---
 
-## 2. 组件形态规范
+## 2. 主题系统
 
-### 2.1 StatusBar — 底部全局信息栏
+**文件**: `src/tui/theme.ts` (225 行)
 
+### 2.1 可用主题
+
+六套主题，分三组：
+
+| 主题 | 适用环境 | 色彩空间 |
+|------|---------|---------|
+| `dark` | 深色终端 | 24 位 hex (`#RRGGBB`) |
+| `light` | 浅色终端 | 24 位 hex |
+| `dark-ansi` | 基础 16 色终端 | ANSI 命名颜色 |
+| `light-ansi` | 基础 16 色浅色终端 | ANSI 命名颜色 |
+| `dark-daltonized` | 色盲用户，深色 | 蓝/橙替代绿/红 |
+| `light-daltonized` | 色盲用户，浅色 | 蓝/橙替代绿/红 |
+
+### 2.2 语义化颜色 Token (ThemeColors)
+
+`ThemeColors` 接口定义约 22 个语义化 token：
+
+| 类别 | Token | 用途 |
+|------|-------|------|
+| **文本** | `text`, `secondaryText`, `mutedText` | 主要、次要、灰色文本 |
+| **状态** | `success`, `error`, `warning`, `info` | 语义化状态颜色 |
+| **品牌** | `accent`, `brand` | 强调色、品牌色（spinner/标题） |
+| **边框** | `border`, `activeBorder`, `toolBorder`, `inputBorder`, `bashBorder` | 各种边框上下文 |
+| **工具** | `toolTitle` | ToolBlock 标题文本颜色 |
+| **权限** | `permissionBorder`, `permissionText`, `autoAccept` | 权限对话框样式 |
+| **Diff** | `diffAdd`, `diffRemove`, `diffContext` | 内联 diff 预览颜色 |
+| **Spinner** | `spinner`, `spinnerShimmer` | Spinner 动画颜色 |
+
+### 2.3 API
+
+**`ThemeProvider`** — React 上下文 Provider：
+```typescript
+<ThemeProvider theme="dark">{children}</ThemeProvider>
+```
+
+**`useTheme()`** — 从任何组件获取当前 `ThemeColors`：
+```typescript
+const theme = useTheme();
+```
+
+**`themeColor(hexOrName)`** — 返回对应颜色的 chalk 实例，支持 hex 和 ANSI 名称：
+```typescript
+themeColor("#818CF8")("some text");  // hex
+themeColor("magenta")("some text");  // ANSI
+```
+
+**`hexToRgbSafe(color)`** — 将颜色转为 `"R;G;B"` 格式，用于原始 ANSI 转义序列。
+
+---
+
+## 3. 组件规范
+
+### 3.1 StatusBar — 状态栏
+
+**文件**: `src/tui/StatusBar.tsx`
 **位置**: 屏幕最底部，固定不动
 **高度**: 1 行 + 边框 = 3 行
 
 ```
 ╭─────────────────────────────────────────────────────────────────────╮
-│  CodeTerm │ claude-sonnet-4 │ $0.03 │ 1.2k │ T5 │ suggest │ ⣾     │
+│  Codara │ claude-sonnet-4 │ $0.03 │ 1.2k │ T5 │ suggest │ ⣾     │
 ╰─────────────────────────────────────────────────────────────────────╯
 ```
 
-**信息段（从左到右）**:
+#### 信息段（从左到右）
 
 | 段 | 内容 | 颜色 | 示例 |
 |----|------|------|------|
-| Brand | 产品名 | `theme.brand` | `CodeTerm` |
+| Brand | 产品名 | `theme.brand`（粗体） | `Codara` |
 | Model | 当前模型名 | `theme.secondaryText` | `claude-sonnet-4` |
 | Cost | 累计花费 | `theme.warning` | `$0.03` |
 | Tokens | token 用量 | `theme.mutedText` | `1.2k` |
@@ -115,22 +202,29 @@ CodeTerm 采用**底部锚定**布局，全部内容从底部向上生长：
 | Mode | 权限模式 | 按模式变色（见下） | `suggest` |
 | Spinner | 运行中指示 | `theme.spinner` | `⣾` |
 
-**权限模式颜色**:
-- `default` (suggest) → `theme.info` 蓝色
-- `acceptEdits` (auto-edit) → `theme.autoAccept` 青色
-- `plan` → `theme.accent` 紫色
-- `bypassPermissions` (YOLO) → `theme.warning` 黄色
-- `dontAsk` (auto) → `theme.success` 绿色
+#### 权限模式颜色
 
-**运行状态**:
+| 模式值 | 显示标签 | 颜色 |
+|--------|---------|------|
+| `default` | `suggest` | `theme.info` 蓝色 |
+| `acceptEdits` | `auto-edit` | `theme.autoAccept` 青色 |
+| `plan` | `plan` | `theme.accent` 紫色 |
+| `dontAsk` | `auto` | `theme.success` 绿色 |
+| `bypassPermissions` | `YOLO` | `theme.warning` 黄色 |
+
+#### 运行状态与响应式行为
+
 - 空闲时: 不显示 spinner
 - 运行中: 显示 braille spinner
 - 窄终端时: 按优先级省略段（Turns → Tokens → Cost）
 
-### 2.2 InputArea — 输入区
+---
 
+### 3.2 InputArea — 输入区
+
+**文件**: `src/tui/InputArea.tsx`
 **位置**: StatusBar 正上方，紧贴消息流底部
-**高度**: 1 行 + 边框 = 3 行（单行模式）
+**风格**: 无边框，❯ 提示符
 
 #### 状态 A: 空闲可输入
 
@@ -141,8 +235,8 @@ CodeTerm 采用**底部锚定**布局，全部内容从底部向上生长：
 ```
 
 - 边框: `theme.activeBorder`（高亮）
-- 提示符: `>` + `theme.accent` 颜色
-- 占位符: `theme.mutedText` 淡色
+- 提示符: accent 粗体 `❯ `
+- 占位符: `"Type a message or /help…"`（`theme.mutedText` 淡色）
 - 快捷键: `↑↓` 历史浏览, `Enter` 提交, `Shift+Tab` 切换模式
 
 #### 状态 B: Agent 运行中
@@ -154,9 +248,9 @@ CodeTerm 采用**底部锚定**布局，全部内容从底部向上生长：
 ```
 
 - 边框: `theme.border`（默认/淡色）
-- 左侧: star spinner + "Working..."
-- 右侧: `Esc to stop` 提示（仅在无弹窗时显示）
-- 输入被禁用
+- 左侧: star spinner + "Working…" 标签
+- 右侧: `Esc to interrupt` 提示（`showInterruptHint` 为 true 时，仅无弹窗时显示）
+- 输入禁用
 
 #### 状态 C: 弹窗激活（InputArea 被遮蔽）
 
@@ -168,162 +262,45 @@ CodeTerm 采用**底部锚定**布局，全部内容从底部向上生长：
 
 - 边框: `theme.border`（默认/淡色）
 - 显示等待提示
-- 输入被禁用
+- 输入禁用
 
-### 2.3 Dialog Zone — 弹窗区
+#### 命令历史
 
-弹窗出现在 InputArea **正上方**，有多种形态：
+组件内维护历史栈：
+- `上箭头`：向后导航（最近优先）
+- `下箭头`：向前导航；在索引 0 时清空输入（标准 shell 行为）
+- 提交时：将输入压入历史，重置索引为 -1
+- 最多保存 100 条历史
 
-#### 形态 1: PermissionDialog — 权限审批
+---
 
-最常见的弹窗，紧凑 2-3 行布局：
+### 3.3 MessageStream — 消息流
 
-```
-╭──────────────────────────────────────────────────────────────────────╮
-│  ⚡ Bash: npm test --filter auth                                     │
-│  Allow? [Y] Yes  [N] No  [A] Always  [S] Session        [Esc] Deny  │
-╰──────────────────────────────────────────────────────────────────────╯
-```
+**文件**: `src/tui/MessageStream.tsx`
 
-**危险级别分色**:
+#### RenderMessage 类型
 
-```
-# 安全操作 (Read, Glob, Grep)
-╭── theme.info (蓝色边框) ──────────────────────────────────────╮
-│  ⚡ Read: src/utils/auth.ts                                   │
-│  Allow? [Y] Yes  [N] No  [A] Always  [S] Session             │
-╰───────────────────────────────────────────────────────────────╯
-
-# 修改操作 (Edit, Write)
-╭── theme.warning (黄色边框) ───────────────────────────────────╮
-│  ⚡ Edit: src/utils/auth.ts                                   │
-│    - return decoded.valid;                                    │
-│    + return decoded.valid && decoded.exp > now();             │
-│  Allow? [Y] Yes  [N] No  [A] Always  [S] Session             │
-╰───────────────────────────────────────────────────────────────╯
-
-# 危险操作 (Bash with rm, chmod, git push, etc.)
-╭── theme.error (红色边框) ─────────────────────────────────────╮
-│  ⚠️ Bash: rm -rf node_modules && git push --force             │
-│  Allow? [Y] Yes  [N] No  [A] Always  [S] Session             │
-╰───────────────────────────────────────────────────────────────╯
+```typescript
+type RenderMessage =
+  | { role: "user"; content: string; id?: string }
+  | { role: "assistant"; content: string; id?: string }
+  | { role: "tool"; tool: string; input: Record<string, unknown>;
+      output?: string; status: "running" | "done" | "error";
+      isError?: boolean; callId?: string; id?: string }
+  | { role: "system"; content: string; id?: string };
 ```
 
-**Edit 工具特殊形态** — 带 diff 预览：
+#### 按角色渲染
 
-```
-╭── theme.warning ──────────────────────────────────────────────╮
-│  ⚡ Edit: src/auth.ts                                         │
-│    - const token = jwt.sign(payload, secret);                 │
-│    + const token = jwt.sign(payload, secret, { expiresIn });  │
-│  Allow? [Y] Yes  [N] No  [A] Always  [S] Session             │
-╰───────────────────────────────────────────────────────────────╯
-```
+| 角色 | 渲染方式 | 视觉示例 |
+|------|---------|---------|
+| `user` | accent 粗体 `❯ ` 前缀 + 纯文本内容 | `> 请帮我重构 auth 模块` |
+| `assistant` | 完整 markdown 渲染，通过 `renderMarkdown(content, theme)` | 标题 accent bold，代码块 box-wrapped + 语法高亮 |
+| `tool` | 委托给 `<ToolBlock>` 组件（无边框，紧凑风格） | 见 3.5 节 |
+| `system` | `theme.mutedText` 灰色斜体文本，不加前缀 | `Mode switched to: auto-edit` |
 
-**Write 工具特殊形态** — 显示首行+行数：
+#### 助手消息 Markdown 渲染示例
 
-```
-╭── theme.warning ──────────────────────────────────────────────╮
-│  ⚡ Write: src/config.ts (42 lines)                           │
-│    + import { z } from "zod";                                 │
-│  Allow? [Y] Yes  [N] No  [A] Always  [S] Session             │
-╰───────────────────────────────────────────────────────────────╯
-```
-
-**交互规则**:
-- 快捷键: `Y` = allow_once, `N` = deny, `A` = always_allow, `S` = allow_session, `Esc` = deny
-- Tab/Arrow 在按钮间导航, Enter 确认焦点按钮
-- 200ms 防抖防止误触发
-- 焦点按钮使用 `inverse` + `bold` 高亮
-
-#### 形态 2: QuestionDialog — 问题选择
-
-**单选模式**:
-
-```
-╭──────────────────────────────────────────────────────────────────────╮
-│  Authentication                                          [1/3]      │
-│  Which authentication method should we use?                         │
-│                                                                     │
-│  ● JWT tokens (Recommended)                                         │
-│    Stateless, scalable, standard for APIs                           │
-│  ○ Session cookies                                                  │
-│    Server-side sessions, simpler but stateful                       │
-│  ○ OAuth 2.0                                                        │
-│    Federated identity, complex setup                                │
-│  ○ Other...                                                         │
-│                                                                     │
-│  Tab/↑↓ navigate · Enter select                                     │
-╰──────────────────────────────────────────────────────────────────────╯
-```
-
-**多选模式**:
-
-```
-╭──────────────────────────────────────────────────────────────────────╮
-│  Features                                                [2/3]      │
-│  Which features do you want to enable?                              │
-│                                                                     │
-│  ■ TypeScript strict mode                                           │
-│  ■ ESLint integration                                               │
-│  □ Prettier formatting                                              │
-│  □ Husky pre-commit hooks                                           │
-│  □ Other...                                                         │
-│                                                                     │
-│  Tab/↑↓ navigate · Space toggle · Enter submit                      │
-╰──────────────────────────────────────────────────────────────────────╯
-```
-
-**带预览的单选模式** (选项有 markdown 内容时):
-
-```
-╭──────────────────────────────────────────────────────────────────────╮
-│  Layout                                                             │
-│  Which layout approach?                                             │
-│                                                                     │
-│  ● Approach A        │  ┌──────────────┐                            │
-│  ○ Approach B        │  │ Header       │                            │
-│  ○ Approach C        │  │ ┌──────────┐ │                            │
-│                      │  │ │ Content  │ │                            │
-│                      │  │ └──────────┘ │                            │
-│                      │  │ Footer       │                            │
-│                      │  └──────────────┘                            │
-│                                                                     │
-│  Tab/↑↓ navigate · Enter select                                     │
-╰──────────────────────────────────────────────────────────────────────╯
-```
-
-**交互规则**:
-- Tab/Arrow: 在选项间导航
-- Enter: 单选模式下选择当前项
-- Space: 多选模式下切换当前项
-- Enter (多选): 提交所有选中项
-- "Other" 选项: 选中后展开 TextInput，Esc 退出编辑
-- 多问题时: 显示 `[1/3]` 进度，逐个回答
-
-#### 形态 3: ConfirmDialog — 确认弹窗 (简化版)
-
-用于简单的 Yes/No 确认：
-
-```
-╭── theme.warning ──────────────────────────────────────────────╮
-│  ⚠ This will delete 47 files. Continue?                       │
-│  [Y] Yes  [N] No                                  [Esc] No   │
-╰───────────────────────────────────────────────────────────────╯
-```
-
-### 2.4 MessageStream — 消息流
-
-#### 消息类型与渲染
-
-**用户消息**:
-```
-  > 请帮我重构 auth 模块
-```
-- 前缀: `>` + `theme.info` 蓝色 bold
-- 内容: `theme.text`
-
-**助手消息** (markdown 渲染后):
 ```
   好的，我来分析一下 auth 模块的结构。
 
@@ -343,32 +320,93 @@ CodeTerm 采用**底部锚定**布局，全部内容从底部向上生长：
   └──────────────────────────────────────────────────────────┘
   ```
 ```
+
 - 标题: `theme.accent` bold
 - 列表标记: `theme.accent`
 - 代码块: box-wrapped + 语法高亮
 - 链接: `theme.accent` underline + `theme.mutedText` URL
 - 行内代码: `theme.accent` + 反引号包裹
 
-**工具消息** (ToolBlock):
-```
-  ╭──────────────────────────────────────────────────────────╮
-  │  ✔ Read  src/auth/validate.ts                            │
-  │                                                          │
-  │  export function validateToken(token: string) {          │
-  │    const decoded = jwt.decode(token);                    │
-  │    ...                                                   │
-  │    (42 lines total)                                      │
-  ╰──────────────────────────────────────────────────────────╯
+#### 虚拟窗口
+
+为防止 ink 渲染溢出，只显示最近的消息：
+
+```typescript
+const maxVisible = Math.max((rows ?? 24) - 6, 10);
 ```
 
-**系统消息**:
-```
-  Mode switched to: auto-edit
-```
-- `theme.mutedText` 斜体
-- 不加前缀
+#### "Thinking..." Spinner
 
-#### ToolBlock 生命周期
+Star spinner + "Thinking..." 标签在以下条件显示：
+- 代理运行中 (`isRunning`)
+- 无对话框 (`!hasDialog`)
+- 无流式文本 (`!hasStreamingText`)
+- 最后一条可见消息不是工具消息
+
+#### 性能
+
+- 使用 `React.memo` 包装，防止不必要的重渲染
+- 消息 ID（来自 App 的自增计数器）用作 React key
+
+---
+
+### 3.4 StreamingText — 流式文本
+
+**文件**: `src/tui/StreamingText.tsx`
+
+渲染原始文本（不走 markdown），带闪烁光标用于实时流式输出。
+
+| 属性 | 类型 | 说明 |
+|------|------|------|
+| `text` | `string \| null` | 当前流式缓冲；`null` = 隐藏 |
+
+#### 渲染规则
+
+- 使用 `theme.text` 颜色（与助手消息一致）
+- 末尾显示闪烁光标 `▊`（accent 颜色，500ms 间隔切换可见性）
+- 不做 markdown 渲染（避免每帧重新 parse）
+- 紧贴最后一条消息，无额外间距
+- flush 后推入 MessageStream 并做完整 markdown 渲染
+
+```
+  I'll analyze the authentication module. The main issues are:
+  1. Token validation is scattered across multiple files▊
+```
+
+#### 性能优化
+
+- `text` 为 `null` 时返回 `null`（组件不渲染）
+- 闪烁定时器依赖 `hasText`（boolean），而非 `text`（string），避免每个 delta 重启定时器
+
+---
+
+### 3.5 ToolBlock — 工具调用渲染
+
+**文件**: `src/tui/ToolBlock.tsx`
+**风格**: 无边框卡片，紧凑的树形结构渲染
+
+#### 生命周期状态
+
+| 状态 | 图标 | 边框/前缀颜色 | 输出 |
+|------|------|-------------|------|
+| `running` | braille spinner / star spinner | `theme.toolBorder`（Bash 用 `theme.bashBorder`） | 不显示 |
+| `done` | `✓` / `✔`（绿色） | `theme.success` 绿色 | 缩进显示（非空时） |
+| `error` | `✗` / `✘`（红色） | `theme.error` 红色 | 缩进显示（红色） |
+
+#### 渲染结构（无边框风格）
+
+```
+╭─⏺ Bash: npm test           （运行中）
+╭─✓ Read: src/index.tsx       （完成，无输出）
+╰─done
+╭─✓ Bash: git diff            （完成，有输出）
+╰─M  src/app.ts
+   A  src/utils.ts
+╭─✗ Grep: pattern not found   （错误）
+╰─Error: no matches
+```
+
+#### 带边框风格
 
 ```
 状态: running
@@ -398,61 +436,231 @@ CodeTerm 采用**底部锚定**布局，全部内容从底部向上生长：
 ╰──────────────────────────────────────────────────────────╯
 ```
 
-**工具标题格式**:
+#### 标题生成 (getToolTitle)
 
-| 工具 | 标题格式 | 示例 |
-|------|---------|------|
-| Bash | `{icon} Bash  {command}` | `✦ Bash  npm test` |
-| Read | `{icon} Read  {file_path}` | `✔ Read  src/auth.ts` |
-| Write | `{icon} Write  {file_path} ({lines} lines)` | `✔ Write  src/config.ts (42 lines)` |
-| Edit | `{icon} Edit  {file_path}` | `✔ Edit  src/auth.ts` |
-| Glob | `{icon} Glob  {pattern}` | `✔ Glob  src/**/*.ts` |
-| Grep | `{icon} Grep  {pattern} in {path}` | `✔ Grep  "validateToken" in src/` |
-| Task | `{icon} Task  {agent_name}` | `✦ Task  explore-agent` |
-| WebSearch | `{icon} WebSearch  {query}` | `✔ WebSearch  "React 19 features"` |
+| 工具 | 格式 | 示例 |
+|------|------|------|
+| `Bash` | `Bash: {command}` | `Bash: npm test` |
+| `Read` | `Read: {file_path}` | `Read: src/auth.ts` |
+| `Write` | `Write: {file_path} ({N} lines)` | `Write: src/config.ts (42 lines)` |
+| `Edit` | `Edit: {file_path} ({old}→{new} lines)` | `Edit: src/auth.ts (3→5 lines)` |
+| `Glob` | `Glob: {pattern}` | `Glob: src/**/*.ts` |
+| `Grep` | `Grep: {pattern} in {path}` | `Grep: "validateToken" in src/` |
+| `Task` | `Task: {description}` | `Task: explore-agent` |
+| `WebSearch` | `WebSearch: {query}` | `WebSearch: "React 19 features"` |
+| 其他 | 工具名 | `CustomTool` |
 
-**输出截断规则**:
+#### 输出截断 (smartTruncate)
+
+当输出超过限制行数时：
 - 保留前 10 行 + 后 10 行
-- 中间显示 `... ({n} lines omitted) ...`
+- 中间显示 `... ({N} lines omitted) ...`
 - 单行超过终端宽度时由终端自动换行
-- 空输出不渲染输出区域
-
-### 2.5 StreamingText — 流式文本
-
-**渲染规则**:
-- 使用 `theme.text` 颜色（与助手消息一致）
-- 末尾显示闪烁光标 `▊`（500ms 间隔切换可见性）
-- 不做 markdown 渲染（避免每帧重新 parse）
-- 紧贴最后一条消息，无额外间距
-- flush 后推入 MessageStream 并做完整 markdown 渲染
-
-```
-  I'll analyze the authentication module. The main issues are:
-  1. Token validation is scattered across multiple files▊
-```
-
-### 2.6 Spinner — 动画指示器
-
-两种类型:
-
-| 类型 | 帧 | 间隔 | 用途 |
-|------|-----|------|------|
-| `star` | `✦ ✶ ✳ ✵ ❋ ✿` | 120ms | InputArea "Working...", Thinking |
-| `braille` | `⣾ ⣽ ⣻ ⢿ ⡿ ⣟ ⣯ ⣷` | 80ms | StatusBar 运行指示, ToolBlock running |
+- 空输出完全不渲染
 
 ---
 
-## 3. 交互模式
+### 3.6 PermissionDialog — 权限对话框
 
-### 3.1 键盘快捷键总表
+**文件**: `src/tui/PermissionDialog.tsx` (191 行)
+
+紧凑的内联权限栏，当工具需要审批时显示在 InputArea 上方。保留圆角边框。
+
+#### 四种权限选择
+
+| 选择 | 快捷键 | 标签 | 含义 |
+|------|--------|------|------|
+| `allow_once` | `Y` | Yes | 仅允许此次调用 |
+| `deny` | `N` | No | 拒绝此次调用 |
+| `always_allow` | `A` | Always | 始终允许此工具 |
+| `allow_session` | `S` | Session | 本次会话允许 |
+
+`Esc` 是快速拒绝的快捷键。
+
+#### 危险级别分色
+
+```
+# 安全操作 (Read, Glob, Grep)
+╭── theme.info (蓝色边框) ──────────────────────────────────────╮
+│  ⚡ Read: src/utils/auth.ts                                   │
+│  Allow? [Y] Yes  [N] No  [A] Always  [S] Session             │
+╰───────────────────────────────────────────────────────────────╯
+
+# 修改操作 (Edit, Write)
+╭── theme.warning (黄色边框) ───────────────────────────────────╮
+│  ⚡ Edit: src/utils/auth.ts                                   │
+│    - return decoded.valid;                                    │
+│    + return decoded.valid && decoded.exp > now();             │
+│  Allow? [Y] Yes  [N] No  [A] Always  [S] Session             │
+╰───────────────────────────────────────────────────────────────╯
+
+# 危险操作 (Bash with rm, chmod, git push, etc.)
+╭── theme.error (红色边框) ─────────────────────────────────────╮
+│  ⚠️ Bash: rm -rf node_modules && git push --force             │
+│  Allow? [Y] Yes  [N] No  [A] Always  [S] Session             │
+╰───────────────────────────────────────────────────────────────╯
+```
+
+#### Diff 预览
+
+**Edit 工具** — 显示旧/新内容的首行对比：
+```
+╭── theme.warning ──────────────────────────────────────────────╮
+│  ⚡ Edit: src/auth.ts                                         │
+│    - const token = jwt.sign(payload, secret);                 │
+│    + const token = jwt.sign(payload, secret, { expiresIn });  │
+│  Allow? [Y] Yes  [N] No  [A] Always  [S] Session             │
+╰───────────────────────────────────────────────────────────────╯
+```
+
+**Write 工具** — 显示首行 + 行数：
+```
+╭── theme.warning ──────────────────────────────────────────────╮
+│  ⚡ Write: src/config.ts (42 lines)                           │
+│    + import { z } from "zod";                                 │
+│  Allow? [Y] Yes  [N] No  [A] Always  [S] Session             │
+╰───────────────────────────────────────────────────────────────╯
+```
+
+#### 200ms 防抖
+
+对话框出现后的前 200ms 忽略所有按键，防止用户正在打字时误操作。
+
+#### 导航
+
+- `Tab` / 方向键：移动焦点
+- `Enter`：提交聚焦按钮
+- 快捷键（`Y/N/A/S`）：直接执行
+- 聚焦按钮使用 `inverse` + `bold` 样式
+
+---
+
+### 3.7 QuestionDialog — 问题对话框
+
+**文件**: `src/tui/QuestionDialog.tsx` (308 行)
+
+处理 `ask_user` 事件，支持单选和多选问题流。
+
+#### 单选模式
+
+```
+╭──────────────────────────────────────────────────────────────────────╮
+│  Authentication                                          [1/3]      │
+│  Which authentication method should we use?                         │
+│                                                                     │
+│  ● JWT tokens (Recommended)                                         │
+│    Stateless, scalable, standard for APIs                           │
+│  ○ Session cookies                                                  │
+│    Server-side sessions, simpler but stateful                       │
+│  ○ OAuth 2.0                                                        │
+│    Federated identity, complex setup                                │
+│  ○ Other...                                                         │
+│                                                                     │
+│  Tab/↑↓ navigate · Enter select                                     │
+╰──────────────────────────────────────────────────────────────────────╯
+```
+
+- `●`（选中）/ `○`（未选中）
+- `Tab/↑↓` 导航，`Enter` 选择
+- 底部自动有 "Other" 选项供自由输入
+- 多问题时: 显示 `[1/3]` 进度，逐个回答
+
+#### 多选模式
+
+```
+╭──────────────────────────────────────────────────────────────────────╮
+│  Features                                                [2/3]      │
+│  Which features do you want to enable?                              │
+│                                                                     │
+│  ■ TypeScript strict mode                                           │
+│  ■ ESLint integration                                               │
+│  □ Prettier formatting                                              │
+│  □ Husky pre-commit hooks                                           │
+│  □ Other...                                                         │
+│                                                                     │
+│  Tab/↑↓ navigate · Space toggle · Enter submit                      │
+╰──────────────────────────────────────────────────────────────────────╯
+```
+
+- `■`（选中）/ `□`（未选中）
+- `Tab/↑↓` 导航，`Space` 切换，`Enter` 提交
+- 选中项以逗号分隔连接
+
+#### Markdown 预览面板
+
+当选项有 `markdown` 属性时，单选模式使用左右分栏布局：左列选项，右列预览。
+
+```
+╭──────────────────────────────────────────────────────────────────────╮
+│  Layout                                                             │
+│  Which layout approach?                                             │
+│                                                                     │
+│  ● Approach A        │  ┌──────────────┐                            │
+│  ○ Approach B        │  │ Header       │                            │
+│  ○ Approach C        │  │ ┌──────────┐ │                            │
+│                      │  │ │ Content  │ │                            │
+│                      │  │ └──────────┘ │                            │
+│                      │  │ Footer       │                            │
+│                      │  └──────────────┘                            │
+│                                                                     │
+│  Tab/↑↓ navigate · Enter select                                     │
+╰──────────────────────────────────────────────────────────────────────╯
+```
+
+#### 交互规则
+
+- Tab/Arrow: 在选项间导航
+- Enter: 单选模式下选择当前项
+- Space: 多选模式下切换当前项
+- Enter (多选): 提交所有选中项
+- "Other" 选项: 选中后展开 TextInput，Esc 退出编辑
+
+---
+
+### 3.8 ConfirmDialog — 确认对话框
+
+用于计划审批、危险操作确认等需要明确 Yes/No 决策的场景。
+
+```
+╭──────────────────────────────────────────────────────────────────────╮
+│  Plan Approval                                                       │
+│  The agent has prepared an implementation plan.                      │
+│  Do you want to proceed?                                             │
+│                                                                      │
+│  [Y] Approve   [N] Reject with feedback                             │
+╰──────────────────────────────────────────────────────────────────────╯
+```
+
+- `Y`：批准，代理继续执行
+- `N`：拒绝，展开 TextInput 输入反馈理由
+- 用于 Plan 模式退出审批、worktree 清理确认等
+
+---
+
+### 3.9 Spinner — 动画指示器
+
+**文件**: `src/tui/Spinner.tsx` (41 行)
+
+两种类型:
+
+| 类型 | 帧序列 | 间隔 | 用途 |
+|------|--------|------|------|
+| `star` | `✦ ✶ ✳ ✵ ❋ ✿` | 120ms | InputArea "Working..."、MessageStream "Thinking..." |
+| `braille` | `⣾ ⣽ ⣻ ⢿ ⡿ ⣟ ⣯ ⣷` | 80ms | StatusBar 运行指示器、ToolBlock 运行状态 |
+
+---
+
+## 4. 交互模式
+
+### 4.1 键盘快捷键总表
 
 | 快捷键 | 上下文 | 行为 |
 |--------|--------|------|
 | `Enter` | 输入框 | 提交消息 |
 | `↑` / `↓` | 输入框 | 浏览命令历史 |
 | `Shift+Tab` | 空闲时 | 循环权限模式: default → acceptEdits → plan → default |
-| `Esc` | Agent 运行中 | 中断当前执行 |
-| `Ctrl+C` | 任何时候 | 退出 CodeTerm |
+| `Esc` | Agent 运行中 | 通过 `AbortController` 中断当前执行 |
+| `Ctrl+C` | 任何时候 | 退出 Codara |
 | `Y` | 权限弹窗 | Allow once |
 | `N` | 权限弹窗 | Deny |
 | `A` | 权限弹窗 | Always allow |
@@ -462,7 +670,7 @@ CodeTerm 采用**底部锚定**布局，全部内容从底部向上生长：
 | `Enter` | 弹窗中 | 确认选择 |
 | `Space` | 多选弹窗 | 切换选中状态 |
 
-### 3.2 状态机
+### 4.2 状态机
 
 ```
                     ┌──────────┐
@@ -495,7 +703,7 @@ CodeTerm 采用**底部锚定**布局，全部内容从底部向上生长：
        └──────────┘
 ```
 
-### 3.3 消息流转生命周期
+### 4.3 消息流转生命周期
 
 ```
 用户输入
@@ -527,11 +735,21 @@ done event ──→ flush 残余 StreamingText, 显示终止原因 (如有)
 回到 IDLE
 ```
 
+### 4.4 斜杠命令
+
+| 命令 | 行为 | 反馈 |
+|------|------|------|
+| `/clear` | 清空消息列表 | 静默清除 |
+| `/compact` | 触发上下文压缩 | 系统消息: `⟳ Triggering manual compaction...` → `Compaction complete: N → M tokens` |
+| `/help` | 显示帮助信息 | 系统消息: 命令列表 + 快捷键列表 + 技能列表 |
+| `/quit` `/exit` | 退出 Codara | 直接退出 |
+| `/<skill>` | 运行自定义技能 | 作为用户消息发送给 agent |
+
 ---
 
-## 4. 视觉规范
+## 5. 视觉规范
 
-### 4.1 间距规则
+### 5.1 间距规则
 
 | 元素 | 间距 |
 |------|------|
@@ -542,7 +760,7 @@ done event ──→ flush 残余 StreamingText, 显示终止原因 (如有)
 | StatusBar 内部 | `paddingX={1}` |
 | 弹窗与 InputArea 之间 | 无额外间距（自然紧贴） |
 
-### 4.2 边框规范
+### 5.2 边框规范
 
 所有边框使用 `borderStyle="round"` (圆角)。
 
@@ -559,7 +777,7 @@ done event ──→ flush 残余 StreamingText, 显示终止原因 (如有)
 | PermissionDialog (危险) | `theme.error` | Bash(rm/chmod/push...) |
 | QuestionDialog | `theme.permissionBorder` | 始终 |
 
-### 4.3 图标规范
+### 5.3 图标规范
 
 | 图标 | 含义 | 使用场景 |
 |------|------|---------|
@@ -567,18 +785,20 @@ done event ──→ flush 残余 StreamingText, 显示终止原因 (如有)
 | `⚠️` | 危险操作 | 危险权限请求 |
 | `✦` | 运行中 (star spinner) | ToolBlock running, InputArea working |
 | `⣾` | 运行中 (braille spinner) | StatusBar |
-| `✔` | 完成 | ToolBlock done |
-| `✘` | 错误 | ToolBlock error |
-| `>` | 用户输入 | InputArea, 用户消息前缀 |
+| `✔` / `✓` | 完成 | ToolBlock done |
+| `✘` / `✗` | 错误 | ToolBlock error |
+| `>` / `❯` | 用户输入 | InputArea, 用户消息前缀 |
 | `▊` | 光标 | StreamingText 闪烁光标 |
 | `↳` | 子 agent | agent_spawned/completed 系统消息 |
 | `⊘` | 拒绝/中断 | tool_denied, done(非 complete) |
 | `⟳` | 压缩 | compact_start/end |
 | `•` | 列表项 | Markdown 无序列表 |
-| `●` / `○` | 单选 | QuestionDialog 单选选中/未选 |
-| `■` / `□` | 多选 | QuestionDialog 多选选中/未选 |
+| `●` / `○` | 单选 选中/未选中 | QuestionDialog 单选 |
+| `■` / `□` | 多选 选中/未选中 | QuestionDialog 多选 |
+| `│` | 引用前缀 | Markdown 块引用 |
+| `╭─` / `╰─` | 工具调用结构线 | ToolBlock 标题/输出 |
 
-### 4.4 截断规则
+### 5.4 截断规则
 
 | 内容 | 规则 |
 |------|------|
@@ -592,13 +812,13 @@ done event ──→ flush 残余 StreamingText, 显示终止原因 (如有)
 
 ---
 
-## 5. `<Static>` 消息滚动方案
+## 6. `<Static>` 消息滚动方案
 
-### 5.1 核心思路
+### 6.1 核心思路
 
 将**已完成的完整 turn**（包含该 turn 所有的 assistant 文本、tool 调用、系统消息）推入 `<Static>`，使其进入终端原生 scrollback 缓冲区。仅保留**当前活跃 turn** 的内容在 ink 动态渲染区。
 
-### 5.2 消息分类
+### 6.2 消息分类
 
 ```typescript
 // 已完成的消息 → <Static> (终端原生 scrollback)
@@ -608,14 +828,14 @@ const completedMessages = messages.filter(m => m.turnComplete);
 const activeMessages = messages.filter(m => !m.turnComplete);
 ```
 
-### 5.3 Turn 完成判定
+### 6.3 Turn 完成判定
 
 一个 turn 在以下条件之一满足时标记为 complete:
 1. 收到 `done` 事件
 2. 用户提交了新的输入（前一个 turn 的所有消息标记为 complete）
 3. 收到 `interrupted` 事件
 
-### 5.4 优势
+### 6.4 优势
 
 | 方面 | 之前 (slice window) | 之后 (Static) |
 |------|---------------------|----------------|
@@ -626,9 +846,9 @@ const activeMessages = messages.filter(m => !m.turnComplete);
 
 ---
 
-## 6. 响应式行为
+## 7. 响应式行为
 
-### 6.1 终端尺寸适应
+### 7.1 终端尺寸适应
 
 ```typescript
 // 监听终端 resize
@@ -642,14 +862,14 @@ useEffect(() => {
 }, [stdout]);
 ```
 
-### 6.2 窄终端适应（< 60 columns）
+### 7.2 窄终端适应（< 60 columns）
 
 - StatusBar: 省略 Turns → Tokens → Cost 段
 - ToolBlock: 标题截断更激进
 - PermissionDialog: 按钮缩写 `[Y] [N] [A] [S]`（去掉 label）
 - QuestionDialog: 描述文字折行
 
-### 6.3 矮终端适应（< 15 rows）
+### 7.3 矮终端适应（< 15 rows）
 
 - 弹窗和 InputArea 压缩到最小高度
 - StreamingText 限制最大显示行数
@@ -657,32 +877,147 @@ useEffect(() => {
 
 ---
 
-## 7. 斜杠命令 UI
+## 8. Markdown 渲染管线
 
-| 命令 | 行为 | 反馈 |
-|------|------|------|
-| `/clear` | 清空消息列表 | 静默清除 |
-| `/compact` | 触发上下文压缩 | 系统消息: `⟳ Triggering manual compaction...` → `Compaction complete: N → M tokens` |
-| `/help` | 显示帮助信息 | 系统消息: 命令列表 + 快捷键列表 + 技能列表 |
-| `/quit` `/exit` | 退出 CodeTerm | 直接退出 |
-| `/<skill>` | 运行自定义技能 | 作为用户消息发送给 agent |
+**文件**: `src/tui/markdown.ts` (207 行)
+
+### 8.1 管线流程
+
+```
+Markdown 字符串
+    │
+    ▼
+marked.lexer(md) → Token[]
+    │
+    ▼
+renderTokens(tokens, theme) → 遍历每个 token
+    │
+    ▼
+renderToken(token, theme) → 每个块级元素的 ANSI 格式化字符串
+    │
+    ▼
+最终 ANSI 字符串 (.trim())
+```
+
+### 8.2 块级 Token
+
+| Token 类型 | 渲染方式 |
+|-----------|---------|
+| `heading` | `#` 前缀（按深度重复），accent 颜色 + 粗体 |
+| `paragraph` | 子 token 的行内渲染 |
+| `code` | 语言标签（灰色） + 语法高亮 + `boxWrap()` 边框包裹 |
+| `list` | 有序（`1.`, `2.`）或无序（`•`），accent 颜色标记 |
+| `blockquote` | 每行前缀 `│ `（边框色），内容斜体次要文本 |
+| `hr` | 水平线：`─` 重复至 `min(columns, 80) - 4` 字符 |
+| `space` | 换行 |
+
+### 8.3 行内 Token
+
+| Token 类型 | 渲染方式 |
+|-----------|---------|
+| `strong` | `chalk.bold()` |
+| `em` | `chalk.italic()` |
+| `del` | `chalk.strikethrough()` |
+| `link` | 下划线文本（accent） + URL 括号（灰色） |
+| `codespan` | accent 颜色文本包裹在反引号中，HTML 实体已解码 |
+| `text` | 主题文本颜色，HTML 实体已解码 |
+
+### 8.4 代码语法高亮
+
+使用 highlight.js 管线：
+
+```
+代码字符串 + 语言
+    │
+    ▼
+hljs.highlight(code, { language }) → 带 <span class="hljs-*"> 的 HTML
+    │
+    ▼
+hljsToAnsi(html, theme) → ANSI 转义序列
+```
+
+`hljsToAnsi` 使用**颜色栈**处理嵌套 span：
+- 遇到 `<span class="hljs-keyword">`：压入颜色栈，输出 `\x1b[38;2;R;G;Bm`
+- 遇到 `</span>`：弹出栈，恢复父颜色（不是完全重置）
+
+### 8.5 boxWrap 代码块边框
+
+```
+┌──────────────────────┐
+│ code line 1          │
+│ code line 2          │
+└──────────────────────┘
+```
+
+- 宽度：`min(max(maxLineLength, 40), termWidth - 4)`
+- 行尾用空格填充以对齐右边框 `│`
+- 使用 `stripAnsi()` 测量可见字符宽度
 
 ---
 
-## 8. 变更映射
+## 9. App.tsx 状态管理
 
-本规范对应的组件文件变更:
+**文件**: `src/tui/App.tsx`
 
-| 规范章节 | 影响文件 | 变更类型 |
-|---------|---------|---------|
-| 1. 全局布局 | `App.tsx` | 重构: StatusBar 移到底部, 引入 `<Static>` |
-| 2.1 StatusBar | `StatusBar.tsx` | 位置移到底部, 响应式段省略 |
-| 2.2 InputArea | `InputArea.tsx` | 状态 C (弹窗等待) 新增 |
-| 2.3 Dialog Zone | `PermissionDialog.tsx` | 危险级别分色 |
-| 2.4 MessageStream | `MessageStream.tsx` | `<Static>` 集成, 移除 slice window |
-| 2.5 StreamingText | `StreamingText.tsx` | 已完成 (仅需确认 theme 颜色) |
-| 2.6 Spinner | `Spinner.tsx` | 无变更 |
-| 5. Static 方案 | `App.tsx`, `MessageStream.tsx` | 核心重构 |
+### 9.1 状态
+
+| 状态 | 类型 | 用途 |
+|------|------|------|
+| `messages` | `RenderMessage[]` | 所有显示的消息（用户、助手、工具、系统） |
+| `isRunning` | `boolean` | 代理是否正在执行 |
+| `status` | `StatusData` | 模型名、成本、token 数、轮次、权限模式 |
+| `pendingPerm` | `object \| null` | 活跃的权限对话框状态 + resolve 回调 |
+| `pendingQuestion` | `object \| null` | 活跃的问题对话框状态 + resolve 回调 |
+| `streamingText` | `string \| null` | 当前流式文本缓冲（独立于 messages） |
+| `rows` | `number` | 终端高度，通过 resize 监听器跟踪 |
+
+### 9.2 事件分发
+
+`handleAgentEvent` 回调处理代理循环发出的所有 `AgentEvent` 类型：
+
+| 事件类型 | 行为 |
+|---------|------|
+| `text_delta` | 追加到 `streamingText`（绕过 messages 数组） |
+| `tool_start` | flush 流式文本，添加 `status: "running"` 的工具消息 |
+| `tool_end` | 更新匹配的工具消息为 `"done"` 或 `"error"` |
+| `permission_request` | flush 流式文本，显示 `PermissionDialog` |
+| `ask_user` | flush 流式文本，显示 `QuestionDialog` |
+| `status_update` | 更新状态栏数据 |
+| `tool_denied` | 添加系统消息，显示拒绝原因 |
+| `compact_start` / `compact_end` | 添加系统消息，显示压缩进度 |
+| `agent_spawned` / `agent_completed` | 添加系统消息，显示子代理生命周期 |
+| `done` | flush 流式文本，非 "complete" 时显示终止原因 |
+
+### 9.3 流式文本架构
+
+流式文本有意与 `messages` 数组分离，避免每个 token delta 都重渲染整个 `MessageStream`（涉及 markdown 解析）。流程：
+
+1. `text_delta` 事件追加到 `streamingTextRef` 并更新 `streamingText` 状态
+2. `StreamingText` 组件渲染原始文本 + 闪烁光标
+3. 当非文本事件到来（或轮次结束），`flushStreamingText()` 将累积文本作为 `assistant` 消息移入 `messages`，触发一次 markdown 渲染
+
+---
+
+## 10. 渲染注意事项
+
+### 10.1 终端尺寸
+
+- **行数**：通过 React 状态 + `stdout.on("resize")` 监听器跟踪，默认 24
+- **列数**：直接从 `process.stdout.columns` 读取（默认 80），不跟踪状态
+
+### 10.2 溢出防护
+
+- 内容区域：`overflowY="hidden"` 防止 ink 渲染超出终端边界
+- MessageStream 虚拟窗口：只渲染 `rows - 6` 条消息（最少 10 条）
+- ToolBlock 标题截断：`max(columns - 12, 40)` 字符
+- 代码块边框宽度：上限 `termWidth - 4`
+
+### 10.3 性能优化
+
+- **StreamingText 分离**：token delta 只更新 `streamingText` 状态，不触动 `messages` 数组，避免每次 delta 重新解析 markdown
+- **React.memo on MessageStream**：仅在 messages/isRunning 等核心 prop 变化时重渲染
+- **消息 ID**：自增计数器提供稳定的 React key
+- **Ref 事件处理器**：`handleAgentEventRef` 确保事件处理器始终引用最新闭包
 
 ---
 
@@ -715,7 +1050,7 @@ useEffect(() => {
   ╰──────────────────────────────────────────────────────╯
 
   ╭──────────────────────────────────────────────────────╮  ← StatusBar (底部固定)
-  │  CodeTerm │ claude-sonnet-4 │ $0.05 │ 2.1k │ T3     │
+  │  Codara │ claude-sonnet-4 │ $0.05 │ 2.1k │ T3     │
   ╰──────────────────────────────────────────────────────╯
 ```
 
@@ -731,7 +1066,7 @@ useEffect(() => {
   ╰──────────────────────────────────────────────────────╯
 
   ╭──────────────────────────────────────────────────────╮  ← StatusBar
-  │  CodeTerm │ claude-sonnet-4 │ $0.02 │ 0.8k │ T1 │⣾ │
+  │  Codara │ claude-sonnet-4 │ $0.02 │ 0.8k │ T1 │⣾ │
   ╰──────────────────────────────────────────────────────╯
 ```
 
@@ -740,13 +1075,13 @@ useEffect(() => {
 ```
   > 你好
 
-  你好！我是 CodeTerm，一个终端 AI 编程助手。有什么可以帮你的？
+  你好！我是 Codara，一个终端 AI 编程助手。有什么可以帮你的？
 
   ╭──────────────────────────────────────────────────────╮  ← InputArea (active)
   │  > |                                                 │
   ╰──────────────────────────────────────────────────────╯
 
   ╭──────────────────────────────────────────────────────╮  ← StatusBar
-  │  CodeTerm │ claude-sonnet-4 │ $0.01 │ 0.3k │ T1     │
+  │  Codara │ claude-sonnet-4 │ $0.01 │ 0.3k │ T1     │
   ╰──────────────────────────────────────────────────────╯
 ```
