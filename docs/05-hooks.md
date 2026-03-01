@@ -359,9 +359,55 @@ fi
 
 ## 配置文件位置
 
-钩子可以在 CodeTerm 加载的任何 `settings.json` 中定义。配置按从低到高的优先级合并：
+钩子可以在多个位置定义。配置按从低到高的优先级合并：
 
-1. 全局配置（`~/.codeterm/settings.json`）
-2. 项目配置（项目根目录的 `.codeterm/settings.json`）
+1. 全局配置（`~/.codara/settings.json`）
+2. 项目配置（项目根目录的 `.codara/settings.json`）
+3. 技能钩子（`.codara/skills/*/hooks/hooks.json` 和 `~/.codara/skills/*/hooks/hooks.json`）
 
-当同一事件出现在多个文件中时，优先级更高的文件的钩子优先。
+### 技能钩子发现
+
+ShellHookMiddleware 在启动时扫描所有技能目录，加载技能钩子配置：
+
+```
+.codara/skills/{skill-name}/hooks/hooks.json
+~/.codara/skills/{skill-name}/hooks/hooks.json
+```
+
+技能钩子格式与 `settings.json` 中的 hooks 相同。所有钩子按优先级合并，同一事件的钩子按顺序执行。
+
+#### 技能钩子路径变量
+
+技能钩子中的命令可以使用 `${CODARA_SKILL_ROOT}` 变量引用技能根目录：
+
+```json
+{
+  "hooks": {
+    "PreToolUse": [
+      {
+        "matcher": "Bash",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "bash ${CODARA_SKILL_ROOT}/scripts/validate.sh $TOOL_INPUT"
+          }
+        ]
+      }
+    ]
+  }
+}
+```
+
+执行时，`${CODARA_SKILL_ROOT}` 会被替换为技能的绝对路径（例如 `.codara/skills/code-review`）。
+
+#### 合并顺序
+
+钩子按以下顺序合并和执行：
+
+1. `settings.json` 中的 hooks（用户全局 + 项目级）
+2. 项目技能钩子（`.codara/skills/*/hooks/hooks.json`）
+3. 用户技能钩子（`~/.codara/skills/*/hooks/hooks.json`）
+
+同一事件的多个钩子按注册顺序依次执行。
+
+---

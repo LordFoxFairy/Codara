@@ -1,26 +1,47 @@
 # 技能系统
 
-> [← 上一篇: 生命周期钩子](./05-hooks.md) | [目录](./README.md) | [下一篇: 子代理系统 →](./07-subagent-system.md)
+> [← 上一篇: 中间件与钩子](./05-hooks.md) | [目录](./README.md) | [下一篇: 代理协作 →](./07-agent-collaboration.md)
 
-技能（Skills）是可扩展的斜杠命令，允许用户和项目定义可复用的 AI 驱动工作流。每个技能是一个带有 YAML frontmatter 的 markdown 文件，指定元数据和提示模板。用户通过在输入区域输入 `/<name>` 来调用技能。技能系统支持参数替换、通过 shell 命令进行动态上下文注入以及文件内容内联。
+技能（Skills）是 Codara 的**统一扩展单元**，允许用户和项目定义可复用的 AI 驱动工作流。每个技能是一个目录，包含 SKILL.md 定义文件以及可选的 agents、hooks、scripts 等资源。用户通过在输入区域输入 `/<name>` 来调用技能。
 
-**源文件：**
-- `src/skills/types.ts` — `SkillDefinition` 和 `SkillInvocation` 接口
-- `src/skills/loader.ts` — 发现、解析和缓存
-- `src/skills/executor.ts` — 模板展开（参数、命令、文件链接）
+核心理念：**核心通用（middleware + tools + TUI），领域扩展全靠 Skill**。code-review、feature-dev、commit 工作流等都是 skill，不是硬编码功能。
 
 ---
 
 ## 技能发现
 
-`SkillLoader` 扫描两个目录树来查找技能定义：
+SkillLoader 扫描两个目录树来查找技能定义：
 
 | 优先级 | 路径 | 作用域 |
 |----------|------|-------|
-| 1（最高） | `.codeterm/skills/{name}/SKILL.md` | 项目级 |
-| 2 | `~/.codeterm/skills/{name}/SKILL.md` | 用户级 |
+| 1（最高） | `.codara/skills/{name}/SKILL.md` | 项目级 |
+| 2 | `~/.codara/skills/{name}/SKILL.md` | 用户级 |
 
-每个技能位于 `skills/` 文件夹下的独立目录中。该目录必须包含一个 `SKILL.md` 文件。如果项目级技能与用户级技能同名，项目级技能优先，用户级技能将被忽略。
+每个技能位于 `skills/` 文件夹下的独立目录中。该目录必须包含一个 `SKILL.md` 文件。如果项目级技能与用户级技能同名，项目级技能优先。
+
+### 技能目录结构
+
+```
+.codara/skills/{name}/
+├── SKILL.md         # 必需：技能定义（YAML frontmatter + 提示模板）
+├── agents/          # 可选：该技能相关的自定义代理定义
+│   └── reviewer.md
+├── scripts/         # 可选：可执行脚本
+│   └── run.sh
+├── hooks/           # 可选：该技能的钩子配置
+│   └── hooks.json
+├── references/      # 可选：参考文档
+│   └── guide.md
+└── assets/          # 可选：模板、资源文件
+```
+
+| 目录 | 用途 | 访问方式 |
+|------|------|---------|
+| `agents/` | 存放技能相关的自定义代理 | 通过 Task 工具调用，代理类型解析时发现 |
+| `scripts/` | 存放技能相关的可执行脚本 | 通过 `` !`./scripts/run.sh` `` 动态注入 |
+| `hooks/` | 存放技能的钩子配置 | 启动时加载，与 settings.json hooks 合并 |
+| `references/` | 存放技能引用的文档 | 通过 `[label](./references/guide.md)` 文件链接内联 |
+| `assets/` | 存放模板和资源文件 | 技能提示中引用，代理按需读取 |
 
 ### 缓存
 

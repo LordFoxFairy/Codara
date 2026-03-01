@@ -86,7 +86,7 @@ src/
 │   └── types.ts           钩子事件/动作/结果类型定义
 │
 └── skills/                可扩展的斜杠命令
-    ├── loader.ts          扫描 .codeterm/skills/ 目录
+    ├── loader.ts          扫描 .codara/skills/ 目录（含 agents/hooks 发现）
     ├── executor.ts        参数替换 + 动态上下文注入
     └── types.ts           SkillDefinition / SkillInvocation 类型
 ```
