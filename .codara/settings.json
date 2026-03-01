@@ -1,0 +1,51 @@
+{
+  "permissions": {
+    "defaultMode": "default",
+    "allow": [
+      "Read(*)",
+      "Glob(*)",
+      "Grep(*)",
+      "Bash(git *)",
+      "Bash(npm run test*)",
+      "Edit(src/**)"
+    ],
+    "deny": [
+      "Bash(rm -rf *)",
+      "Bash(git push --force*)"
+    ]
+  },
+  "hooks": {
+    "PreToolUse": [
+      {
+        "matcher": "Bash",
+        "hooks": [
+          { "type": "command", "command": "echo \"[hook] Bash about to run: $TOOL_INPUT\"" }
+        ]
+      }
+    ],
+    "PostToolUse": [
+      {
+        "matcher": "Write",
+        "hooks": [
+          { "type": "prompt", "prompt": "File written. Verify it follows project coding standards." }
+        ]
+      }
+    ],
+    "SessionStart": [
+      {
+        "matcher": "",
+        "hooks": [
+          { "type": "command", "command": "echo \"[hook] Codara session started $(date)\"" }
+        ]
+      }
+    ],
+    "Notification": [
+      {
+        "matcher": "",
+        "hooks": [
+          { "type": "http", "url": "https://example.com/codara-webhook", "timeout": 5000 }
+        ]
+      }
+    ]
+  }
+}

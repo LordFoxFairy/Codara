@@ -1,0 +1,28 @@
+{
+  "providers": [
+    {
+      "name": "openrouter",
+      "baseUrl": "https://openrouter.ai/api/v1",
+      "apiKey": "$OPENROUTER_API_KEY",
+      "models": [
+        "anthropic/claude-opus-4",
+        "anthropic/claude-sonnet-4",
+        "anthropic/claude-haiku-4"
+      ]
+    },
+    {
+      "name": "anthropic",
+      "apiKey": "$ANTHROPIC_API_KEY",
+      "models": [
+        "claude-opus-4-20250514",
+        "claude-sonnet-4-20250514"
+      ]
+    }
+  ],
+  "router": {
+    "opus": "openrouter:anthropic/claude-opus-4",
+    "sonnet": "openrouter:anthropic/claude-sonnet-4",
+    "haiku": "openrouter:anthropic/claude-haiku-4",
+    "default": "openrouter:anthropic/claude-sonnet-4"
+  }
+}
