@@ -1110,3 +1110,209 @@ exit 0
 **结论：通过 Skills 封装 Hooks 和 Permissions，是扩展 Codara 的最佳实践。**
 
 ---
+## Skills 生态与分发
+
+Skills 不仅是 Codara 内部的扩展机制，也是构建外部生态的基础。
+
+### 内部 vs 外部扩展
+
+| 类型 | 位置 | 用途 | 示例 |
+|------|------|------|------|
+| **内部扩展** | Codara 代码库内置 | 核心工作流 | commit, code-review, init |
+| **项目级扩展** | `.codara/skills/` | 项目特定工作流 | deploy, test, build |
+| **用户级扩展** | `~/.codara/skills/` | 个人工作流 | my-workflow, custom-check |
+| **社区扩展** | 第三方仓库 | 可复用的通用工作流 | security-scanner, doc-generator |
+
+### Skills 分发模式
+
+#### 1. 直接复制
+
+最简单的分发方式：
+
+```bash
+# 分享者
+cd .codara/skills/my-skill
+tar -czf my-skill.tar.gz .
+
+# 使用者
+mkdir -p ~/.codara/skills/my-skill
+cd ~/.codara/skills/my-skill
+tar -xzf my-skill.tar.gz
+```
+
+#### 2. Git 子模块
+
+适合团队协作：
+
+```bash
+# 项目中添加 skill 子模块
+git submodule add https://github.com/org/codara-skill-deploy .codara/skills/deploy
+
+# 其他成员克隆时
+git clone --recursive <repo-url>
+```
+
+#### 3. npm 包（推荐）
+
+适合社区分发：
+
+```bash
+# 发布 skill 为 npm 包
+npm publish codara-skill-security-check
+
+# 用户安装
+npm install -g codara-skill-security-check
+# 自动链接到 ~/.codara/skills/security-check
+```
+
+#### 4. Skill Registry（未来）
+
+类似 VSCode 插件市场：
+
+```bash
+# 搜索 skills
+codara skill search security
+
+# 安装 skill
+codara skill install security-check
+
+# 列出已安装 skills
+codara skill list
+```
+
+### Skill 打包规范
+
+一个可分发的 Skill 应该包含：
+
+```
+my-skill/
+├── SKILL.md              # 必需：技能定义
+├── README.md             # 推荐：使用说明
+├── LICENSE               # 推荐：开源协议
+├── package.json          # 可选：npm 包元数据
+├── scripts/              # 可选：可执行脚本
+├── hooks/                # 可选：钩子配置
+├── agents/               # 可选：自定义代理
+└── tests/                # 推荐：测试用例
+```
+
+**package.json 示例：**
+
+```json
+{
+  "name": "codara-skill-security-check",
+  "version": "1.0.0",
+  "description": "Security check skill for Codara",
+  "keywords": ["codara", "skill", "security"],
+  "author": "Your Name",
+  "license": "MIT",
+  "codara": {
+    "skillName": "security-check",
+    "installPath": "~/.codara/skills/security-check"
+  }
+}
+```
+
+### 社区贡献指南
+
+#### 创建一个 Skill
+
+1. **规划功能**：明确 skill 的单一职责
+2. **创建目录**：`mkdir -p ~/.codara/skills/my-skill`
+3. **编写 SKILL.md**：定义 frontmatter 和提示模板
+4. **添加资源**：scripts、hooks、agents（按需）
+5. **测试**：在本地项目中调用 `/my-skill` 测试
+6. **文档化**：编写 README.md，说明用途和用法
+
+#### 分享 Skill
+
+1. **开源**：发布到 GitHub
+2. **打标签**：使用 `codara-skill-*` 命名规范
+3. **添加 README**：包含安装和使用说明
+4. **提交到 Awesome List**：（未来）提交到 `awesome-codara-skills`
+
+#### Skill 质量标准
+
+优秀的 Skill 应该：
+- ✅ 单一职责，功能清晰
+- ✅ 自包含，无外部依赖（或明确声明依赖）
+- ✅ 提供清晰的文档和示例
+- ✅ 包含测试用例
+- ✅ 遵循安全最佳实践（不泄露敏感信息）
+- ✅ 优雅降级（脚本失败不应阻止整个流程）
+
+### Skills 生态愿景
+
+**Codara 的目标是构建一个繁荣的 Skills 生态：**
+
+```
+┌─────────────────────────────────────────────────────────┐
+│                    Codara 核心                           │
+│  (通用的 Agent Loop + Tools + Middleware)                │
+└─────────────────────────────────────────────────────────┘
+                          ↑
+                          │
+┌─────────────────────────────────────────────────────────┐
+│                  Skills 生态层                           │
+│                                                          │
+│  内置 Skills     项目 Skills     用户 Skills             │
+│  ├─ commit       ├─ deploy       ├─ my-workflow         │
+│  ├─ review       ├─ test         └─ custom-check        │
+│  └─ init         └─ build                               │
+│                                                          │
+│  社区 Skills（第三方）                                   │
+│  ├─ security-scanner (GitHub)                           │
+│  ├─ doc-generator (npm)                                 │
+│  ├─ api-tester (Git submodule)                          │
+│  └─ ... (更多社区贡献)                                   │
+└─────────────────────────────────────────────────────────┘
+```
+
+**核心保持通用和稳定，生态通过 Skills 不断扩展。**
+
+### 示例：社区 Skill
+
+**codara-skill-api-tester**（假设的社区 skill）
+
+```markdown
+---
+name: api-test
+description: Test REST APIs with automatic request generation
+allowed-tools: "Bash(curl *),Read(*),Write(*.json)"
+---
+
+Test the API endpoints defined in $ARGUMENTS.
+
+Steps:
+1. Read API spec from $ARGUMENTS (OpenAPI/Swagger)
+2. Generate test requests
+3. Execute requests with curl
+4. Validate responses
+5. Generate test report
+```
+
+用户安装后：
+
+```bash
+# 安装
+npm install -g codara-skill-api-tester
+
+# 使用
+/api-test openapi.yaml
+```
+
+---
+
+## 总结
+
+**Skills 是 Codara 扩展的唯一入口，也是生态建设的基础。**
+
+- **内部扩展**：Codara 核心功能通过 Skills 实现
+- **外部扩展**：用户、社区、第三方通过 Skills 扩展
+- **统一接口**：所有扩展遵循相同的 Skill 规范
+- **可复用**：Skills 可以打包、分发、分享
+- **生态驱动**：社区贡献推动 Codara 功能丰富
+
+**通过 Skills，Codara 从一个工具变成一个平台。**
+
+---
