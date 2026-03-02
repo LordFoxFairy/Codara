@@ -1260,319 +1260,40 @@ hljsToAnsi(html, theme) → ANSI 转义序列
 
 ## 11. 人在回路机制
 
-### 11.1 概述
+本章给出人在回路交互的运行契约，详细交互样式与组件行为见前文：
 
-Codara 的人在回路（Human-in-the-Loop）交互通过三种对话框实现：
+- `PermissionDialog`：见 3.6
+- `QuestionDialog`：见 3.7
+- `ConfirmDialog`：见 3.8
+- 事件生命周期：见 4.3
 
-| 对话框类型 | 选项数量 | 用途 | 实现文件 |
-|-----------|---------|------|---------|
-| **PermissionDialog** | 4 个固定选项 | 工具调用权限审批 | 交互对话组件 |
-| **QuestionDialog** | 2-4 个可配置选项 | AI 驱动的决策询问 | 交互对话组件 |
-| **ConfirmDialog** | 2 个固定选项 | 明确的 Yes/No 决策 | 交互对话组件 |
+### 11.1 事件契约
 
-### 11.2 PermissionDialog — 工具权限审批
+| 事件 | 触发来源 | UI 动作 | 回调结果 |
+|---|---|---|---|
+| `permission_request` | 权限层命中 `ask` | 显示 PermissionDialog | `allow_once` / `deny` / `always_allow` / `allow_session` |
+| `ask_user` | `AskUserQuestion` 工具 | 显示 QuestionDialog | 结构化答案对象 |
+| `confirm_request` | 需要明确确认的流程点 | 显示 ConfirmDialog | `{ approve, feedback? }` |
 
-#### 触发时机
+### 11.2 同步阻塞语义
 
-当 Agent 调用工具时，PermissionMiddleware 根据权限模式和规则决定是否需要用户审批：
+1. 事件发出后，Agent 循环进入等待态，直到 `resolve(result)` 被调用。
+2. UI 必须保证每个待决事件恰好回调一次，避免重复提交或悬挂等待。
+3. 若用户取消，需返回明确拒绝/取消结果，而不是丢弃事件。
+4. 回调完成后，循环从同一执行点恢复，继续推进后续中间件链。
 
-```typescript
-// 触发条件（appendix/permissions.md 详细说明）
-1. 命中 deny 规则（直接拒绝，不显示对话框）
-2. 命中 ask 规则（发出 permission_request）
-3. 未命中 allow 且不属于只读豁免（按模式进入询问或拒绝）
-4. PreToolUse Hook 返回拒绝动作（优先级最高，短路后续流程）
-```
+### 11.3 失败与超时处理
 
-#### 四种权限选择
+1. 对话框渲染失败时，回退为最小文本交互，不中断会话。
+2. 用户无输入超时（如配置启用）时，采用保守决策（默认拒绝或返回空答案）。
+3. 所有失败路径都应产生可观测事件和日志，避免静默吞错。
 
-| 选择 | 快捷键 | 效果 | 持久化 |
-|------|--------|------|--------|
-| `allow_once` | `Y` | 仅允许此次调用 | 否 |
-| `deny` | `N` | 拒绝此次调用 | 否 |
-| `always_allow` | `A` | 始终允许此工具 | 写入 `settings.local.json` |
-| `allow_session` | `S` | 本次会话允许 | 内存中，会话结束失效 |
+### 11.4 与权限/钩子的边界
 
-#### 事件回调模式
-
-```typescript
-// Agent 循环发出 permission_request 事件
-type PermissionRequestEvent = {
-  type: "permission_request";
-  toolName: string;
-  toolInput: Record<string, unknown>;
-  dangerLevel: "safe" | "modify" | "danger";
-  resolve: (decision: PermissionDecision) => void;
-};
-
-// 交互控制层处理
-const handleAgentEvent = (event: AgentEvent) => {
-  if (event.type === "permission_request") {
-    setPendingPerm({
-      toolName: event.toolName,
-      toolInput: event.toolInput,
-      dangerLevel: event.dangerLevel,
-      resolve: event.resolve,
-    });
-  }
-};
-
-// PermissionDialog 用户选择后
-const onDecision = (decision: PermissionDecision) => {
-  pendingPerm.resolve(decision);
-  setPendingPerm(null);
-};
-```
-
-#### 与权限系统集成
-
-PermissionDialog 是 PermissionMiddleware 的 UI 层：
-
-```
-ToolCall 请求
-    │
-    ▼
-PreToolUse Hooks (priority 55) ──→ 可直接拒绝
-    │
-    ▼
-PermissionMiddleware (priority 50)
-    │
-    ├─→ 命中 deny 规则 ──→ 直接拒绝
-    ├─→ 命中 allow 规则 / 只读豁免 / acceptEdits ──→ 直接通过
-    └─→ 需要审批 ──→ 发出 permission_request 事件
-                        │
-                        ▼
-                   PermissionDialog 显示
-                        │
-                        ▼
-                   用户选择 (Y/N/A/S)
-                        │
-                        ▼
-                   resolve(decision)
-                        │
-                        ▼
-            PermissionMiddleware 根据决策执行/拒绝
-```
-
-### 11.3 QuestionDialog — AI 驱动决策询问
-
-#### 触发时机
-
-Agent 通过 `AskUserQuestion` 工具主动询问用户：
-
-```typescript
-// Agent 调用 AskUserQuestion 工具
-{
-  questions: [
-    {
-      question: "Which authentication method should we use?",
-      header: "Auth method",
-      options: [
-        { label: "JWT tokens", description: "Stateless, scalable..." },
-        { label: "Session cookies", description: "Server-side..." },
-        { label: "OAuth 2.0", description: "Federated identity..." }
-      ],
-      multiSelect: false
-    }
-  ]
-}
-```
-
-#### 单选 vs 多选
-
-**单选模式** (`multiSelect: false`):
-- 用户只能选择一个选项
-- `Tab/↑↓` 导航，`Enter` 确认
-- 自动添加 "Other..." 选项供自由输入
-
-**多选模式** (`multiSelect: true`):
-- 用户可选择多个选项
-- `Tab/↑↓` 导航，`Space` 切换，`Enter` 提交
-- 选中项以逗号分隔返回
-
-#### Markdown 预览面板
-
-当选项有 `markdown` 属性时，单选模式使用左右分栏布局：
-
-```
-╭──────────────────────────────────────────────────────────────────────╮
-│  Layout                                                             │
-│  Which layout approach?                                             │
-│                                                                     │
-│  ● Approach A        │  ┌──────────────┐                            │
-│  ○ Approach B        │  │ Header       │                            │
-│  ○ Approach C        │  │ ┌──────────┐ │                            │
-│                      │  │ │ Content  │ │                            │
-│                      │  │ └──────────┘ │                            │
-│                      │  │ Footer       │                            │
-│                      │  └──────────────┘                            │
-│                                                                     │
-│  Tab/↑↓ navigate · Enter select                                     │
-╰──────────────────────────────────────────────────────────────────────╯
-```
-
-用于可视化比较不同方案（ASCII 布局图、代码片段、配置示例）。
-
-#### 事件回调模式
-
-```typescript
-// Agent 循环发出 ask_user 事件
-type AskUserEvent = {
-  type: "ask_user";
-  questions: Question[];
-  resolve: (answers: Record<string, string>) => void;
-};
-
-// 交互控制层处理
-const handleAgentEvent = (event: AgentEvent) => {
-  if (event.type === "ask_user") {
-    setPendingQuestion({
-      questions: event.questions,
-      resolve: event.resolve,
-    });
-  }
-};
-
-// QuestionDialog 用户完成所有问题后
-const onComplete = (answers: Record<string, string>) => {
-  pendingQuestion.resolve(answers);
-  setPendingQuestion(null);
-};
-```
-
-#### 多问题流程
-
-当 `questions` 数组包含多个问题时，QuestionDialog 逐个显示：
-
-```
-Question 1/3 → 用户回答 → Question 2/3 → 用户回答 → Question 3/3 → 提交所有答案
-```
-
-右上角显示进度 `[1/3]`，所有问题回答完毕后一次性返回 `answers` 对象。
-
-### 11.4 ConfirmDialog — 明确决策
-
-#### 触发场景
-
-用于需要明确 Yes/No 决策的场景：
-
-1. **Plan 模式退出审批**: Agent 完成计划后请求用户批准
-2. **Worktree 清理确认**: 会话结束时询问是否保留 worktree
-3. **危险操作二次确认**: 如删除分支、force push 等
-
-#### 两种选择
-
-| 选择 | 快捷键 | 行为 |
-|------|--------|------|
-| `approve` | `Y` | 批准操作，继续执行 |
-| `reject` | `N` | 拒绝操作，展开 TextInput 输入反馈理由 |
-
-#### 反馈输入
-
-当用户选择 `N` 拒绝时，对话框展开为文本输入框：
-
-```
-╭──────────────────────────────────────────────────────────────────────╮
-│  Plan Approval                                                       │
-│  The agent has prepared an implementation plan.                      │
-│  Do you want to proceed?                                             │
-│                                                                      │
-│  Feedback (optional):                                                │
-│  > Please add error handling for the API calls|                     │
-│                                                                      │
-│  Enter to submit · Esc to cancel                                     │
-╰──────────────────────────────────────────────────────────────────────╯
-```
-
-反馈内容会传递给 Agent，用于调整计划或操作。
-
-#### 事件回调模式
-
-```typescript
-// Agent 循环发出 confirm_request 事件
-type ConfirmRequestEvent = {
-  type: "confirm_request";
-  title: string;
-  message: string;
-  resolve: (result: { approve: boolean; feedback?: string }) => void;
-};
-
-// 交互控制层处理
-const handleAgentEvent = (event: AgentEvent) => {
-  if (event.type === "confirm_request") {
-    setPendingConfirm({
-      title: event.title,
-      message: event.message,
-      resolve: event.resolve,
-    });
-  }
-};
-
-// ConfirmDialog 用户决策后
-const onDecision = (approve: boolean, feedback?: string) => {
-  pendingConfirm.resolve({ approve, feedback });
-  setPendingConfirm(null);
-};
-```
-
-### 11.5 设计原则
-
-#### 一致性
-
-所有对话框遵循统一的交互模式：
-
-- **圆角边框**: `borderStyle="round"`
-- **快捷键优先**: 单键快捷键（Y/N/A/S）无需 Ctrl/Alt 修饰
-- **Esc 退出**: 所有对话框支持 Esc 快速取消/拒绝
-- **200ms 防抖**: 对话框出现后前 200ms 忽略按键，防止误操作
-
-#### 可访问性
-
-- **键盘导航**: Tab/方向键在所有选项间移动
-- **视觉反馈**: 聚焦项使用 `inverse` + `bold` 样式
-- **状态指示**: 单选 `●/○`，多选 `■/□`，清晰区分选中状态
-- **进度提示**: 多问题流程显示 `[1/3]` 进度
-
-#### 用户体验
-
-- **内联显示**: 对话框显示在 InputArea 上方，不遮挡历史消息
-- **上下文保留**: 对话框显示时，相关工具调用/问题内容仍可见
-- **即时反馈**: 用户选择后立即关闭对话框，无延迟
-- **错误恢复**: 拒绝操作不会中断会话，Agent 可调整策略继续
-
-### 11.6 与 Agent 循环集成
-
-人在回路机制是 Agent 循环的同步阻塞点：
-
-```
-Agent 执行
-    │
-    ▼
-需要用户输入 (权限/问题/确认)
-    │
-    ▼
-发出事件 (permission_request / ask_user / confirm_request)
-    │
-    ▼
-Agent 循环暂停，等待 resolve() 回调
-    │
-    ▼
-TUI 显示对话框
-    │
-    ▼
-用户交互 (选择/输入)
-    │
-    ▼
-调用 resolve(result)
-    │
-    ▼
-Agent 循环恢复，根据 result 继续执行
-```
-
-这种事件回调模式确保：
-1. Agent 逻辑与 UI 解耦（Agent 不依赖 TUI 实现）
-2. 支持多种 UI 前端（TUI、GUI、Web）
-3. 可测试性（Mock resolve 回调即可测试 Agent 逻辑）
+1. UI 只负责展示与回传，不做权限规则求值。
+2. `PreToolUse` 已拒绝的调用不应再次弹出权限对话框。
+3. `deny > ask > allow` 的裁决顺序在权限层生效，UI 不改变该语义。
+4. 会话结束时应清理所有待决对话状态，避免残留阻塞。
 
 ---
 
