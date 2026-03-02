@@ -4,19 +4,6 @@
 
 技能（Skills）是 Codara 的**统一扩展单元**，允许用户和项目定义可复用的 AI 驱动工作流。每个技能是一个目录，包含 SKILL.md 定义文件以及可选的 agents、hooks、scripts 等资源。用户通过在输入区域输入 `/<name>` 来调用技能。
 
-## 本文与 04/05 的分工
-
-- [04-hooks](./04-hooks.md)：定义 Hook 原语（事件、动作、执行模型）。
-- [appendix/permissions](./appendix/permissions.md)：权限策略附录速查（非主线）。
-- 本文（06）：定义如何把 hooks 原语组合为可复用 skill。
-
-## 设计目标对齐（Agent Loop + Hooks + Skills）
-
-1. 核心只保留通用运行时：`agent loop + hooks`。
-2. 项目策略不硬编码在核心：通过 skills 组合 hooks（必要时配合权限规则）。
-3. `permissions`、`security-check`、`audit-logger`、协作模式等都应优先 skill 化。
-4. 多代理协作策略同样通过 skills 组织（见 [06-agent-collaboration](./06-agent-collaboration.md)）。
-
 ## 设计理念
 
 **Skills 是扩展 Codara 的唯一入口。**
@@ -24,14 +11,13 @@
 ```
 ┌─────────────────────────────────────────────────────────┐
 │                    用户扩展需求                          │
-│  "我需要安全检查" "我需要审计日志" "我需要自动化部署"    │
+│  “我需要安全检查” “我需要审计日志” “我需要自动化部署”    │
 └─────────────────────────────────────────────────────────┘
                           ↓
 ┌─────────────────────────────────────────────────────────┐
 │                  通过 Skills 封装                        │
 │  .codara/skills/security-check/                         │
 │  .codara/skills/audit-logger/                           │
-│  .codara/skills/deploy/                                 │
 └─────────────────────────────────────────────────────────┘
                           ↓
 ┌─────────────────────────────────────────────────────────┐
@@ -41,11 +27,6 @@
 │  - Agents: 自定义代理逻辑                                │
 │  - Scripts: 可执行脚本                                   │
 └─────────────────────────────────────────────────────────┘
-                          ↓
-┌─────────────────────────────────────────────────────────┐
-│                  底层机制执行                            │
-│  ShellHookMiddleware → PermissionMiddleware → Tools     │
-└─────────────────────────────────────────────────────────┘
 ```
 
 ### 核心原则
@@ -54,14 +35,6 @@
 2. **不要直接配置全局 permissions** — 通过 Skills 的 allowed-tools 临时授权
 3. **Skills 是自包含的** — 一个 skill 目录包含所有需要的资源（hooks、scripts、agents）
 4. **Skills 是可复用的** — 项目级和用户级技能可以共享和分发
-
-### 当前阶段配置约定
-
-当前项目约定使用**项目根目录**配置文件：
-- `settings.json`（团队共享）
-- `settings.local.json`（个人覆盖，加入 `.gitignore`）
-
-skills 负责生成/维护这些配置中的策略片段，而不是让用户长期手写大段配置。
 
 ### 为什么这样设计？
 
@@ -73,38 +46,7 @@ skills 负责生成/维护这些配置中的策略片段，而不是让用户长
 | 全局生效，影响所有会话 | 按需调用，作用域清晰 |
 | 需要手动编写 JSON | 可以使用模板变量和动态注入 |
 
-**核心理念：核心通用（middleware + tools + TUI），领域扩展全靠 Skill**。code-review、feature-dev、commit 工作流等都是 skill，不是硬编码功能。
-
-### 为什么要前置构建 Skills（在核心功能完善前）
-
-1. 先把扩展边界稳定下来，避免后续把业务逻辑硬塞进核心。
-2. 用真实 skill（security/audit/permissions）反向验证 hooks 与 permission 原语是否够用。
-3. 为 Codara 正式构建阶段准备可直接复用的能力目录，降低集成成本。
-
-### 分层边界：什么进核心，什么进 Skill？
-
-| 问题 | 进核心（`src/**`） | 进 Skill（`.codara/skills/**`） |
-|------|-------------------|-------------------------------|
-| 这是稳定机制还是业务策略？ | 稳定机制（事件模型、工具协议、权限求值链） | 业务策略（部署流、安全策略、审计规则） |
-| 是否跨多数场景复用且与领域无关？ | 是 | 否 |
-| 是否需要频繁调整以适应团队/项目？ | 否 | 是 |
-| 是否会引入“某个工作流专属分支”到核心？ | 不应引入 | 应在 Skill 中实现 |
-
-**一句话判断**：  
-如果功能在“换一个团队/项目”后仍然成立，优先进核心；如果功能表达的是“这个团队如何做事”，应进 Skill。
-
-### 能力分工模型
-
-- **Hooks / Permissions / Tools**：底层能力原语（primitive），负责“能做什么”和“何时允许做”。
-- **Skills**：能力编排层（orchestration），负责“为某个目标如何组合这些能力”。
-- **Agent Loop / TUI / Memory**：运行时基础设施，负责稳定执行与交互，不承载领域工作流。
-
-### 反模式（应避免）
-
-1. 在核心代码中硬编码某个业务工作流（如固定 `deploy`、`review-pr` 流程）。
-2. 直接要求用户长期维护 `settings.json` 大片段策略，而不是封装成 skill。
-3. 为单个场景在权限/钩子引擎里增加特判分支。
-4. 将可执行逻辑写成冗长提示词，而不是放入 `scripts/` 形成可测试资产。
+**核心理念：核心通用（middleware + tools + TUI），领域扩展全靠 Skill**。
 
 ---
 
@@ -623,60 +565,6 @@ ShellHookMiddleware 在启动时扫描所有技能目录，加载技能钩子配
 - 技能需要特定工具但不想频繁提示用户
 - 临时授权，技能完成后自动撤销
 - 减少用户交互，提升技能体验
-
-### 实际案例：安全的部署技能
-
-**SKILL.md：**
-
-```markdown
----
-name: deploy
-allowed-tools: "Bash(npm run deploy*),Read(*)"
-hooks:
-  PreToolUse:
-    - matcher: "Bash"
-      hooks:
-        - type: command
-          command: "bash ${CODARA_SKILL_ROOT}/scripts/validate-deploy.sh"
----
-
-Deploy the application to production.
-
-Steps:
-1. Read deployment configuration
-2. Run deployment script
-```
-
-**scripts/validate-deploy.sh：**
-
-```bash
-#!/bin/bash
-COMMAND=$(echo "$TOOL_INPUT" | jq -r '.command')
-
-# 检查是否是部署命令
-if [[ "$COMMAND" == npm\ run\ deploy* ]]; then
-  # 验证环境变量
-  if [[ -z "$DEPLOY_ENV" ]]; then
-    echo "Error: DEPLOY_ENV not set" >&2
-    exit 2  # 拒绝
-  fi
-
-  # 验证分支
-  BRANCH=$(git branch --show-current)
-  if [[ "$BRANCH" != "main" ]]; then
-    echo "Error: Must deploy from main branch" >&2
-    exit 2  # 拒绝
-  fi
-fi
-
-exit 0  # 放行到权限检查
-```
-
-**这个设计的安全层次：**
-
-1. **Hook 层**：验证环境和分支（硬性要求，无法绕过）
-2. **权限层**：技能临时允许 `npm run deploy*`（减少提示）
-3. **用户配置**：用户可以添加 `deny: ["Bash(npm run deploy*)"]` 覆盖技能的临时权限
 
 ---
 
