@@ -30,6 +30,13 @@
       "category": "development"
     },
     {
+      "name": "builtin-agents",
+      "description": "Built-in agent types for sub-agent delegation - Explore (fast search), Plan (architecture), general-purpose (full capabilities)",
+      "version": "1.0.0",
+      "source": "./builtin-agents",
+      "category": "development"
+    },
+    {
       "name": "mcp",
       "description": "Model Context Protocol (MCP) integration guide - connect external services and tools to Codara",
       "version": "1.0.0",
