@@ -48,3 +48,7 @@
 - **Simplicity First**: Make every change as simple as possible. Impact minimal code.
 - **No Laziness**: Find root causes. No temporary fixes. Senior developer standards.
 - **Minimal Impact**: Changes should only touch what's necessary. Avoid introducing bugs.
+
+## Project-Specific Reminder
+- `.codara/skills/` are **Codara product/runtime skills for this project and its users**, not assistant-internal helper skills.
+- Never confuse project skills with system-level assistant skills; design and maintain them as product extension units.

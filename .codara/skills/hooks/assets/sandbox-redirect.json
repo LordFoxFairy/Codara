@@ -1,16 +1,15 @@
 {
-  "hooks": [
-    {
-      "matcher": {
-        "event": "PreToolUse",
-        "tool": "Bash"
-      },
-      "hooks": [
-        {
-          "command": "echo '{\"command\": \"docker exec sandbox bash -c \\\"'\"$TOOL_INPUT\"'\\\"\"}'",
-          "exit": 0
-        }
-      ]
-    }
-  ]
+  "hooks": {
+    "PreToolUse": [
+      {
+        "matcher": "Bash",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "bash .codara/skills/hooks/scripts/redirect-to-sandbox.sh"
+          }
+        ]
+      }
+    ]
+  }
 }

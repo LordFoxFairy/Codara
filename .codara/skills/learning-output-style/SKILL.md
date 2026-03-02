@@ -1,4 +1,5 @@
 ---
+name: learning-output-style
 command-name: learning-output-style
 description: Interactive learning mode with educational guidance
 user-invocable: false

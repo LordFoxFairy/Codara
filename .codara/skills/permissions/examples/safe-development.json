@@ -1,15 +1,20 @@
 {
   "permissions": {
-    "mode": "auto",
+    "defaultMode": "acceptEdits",
     "allow": [
-      "Bash(git *:*)",
-      "Bash(npm *:*)",
-      "Bash(yarn *:*)"
+      "Read(*)",
+      "Glob(*)",
+      "Grep(*)",
+      "Edit(src/**)",
+      "Write(src/**)",
+      "Bash(git *)",
+      "Bash(npm run *)",
+      "Bash(bun run *)"
     ],
     "deny": [
-      "Bash(rm -rf:*)",
-      "Bash(sudo:*)",
-      "Bash(*production*:*)"
+      "Bash(rm -rf *)",
+      "Bash(sudo *)",
+      "Bash(*production*)"
     ]
-  ]
+  }
 }

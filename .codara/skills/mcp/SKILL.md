@@ -1,4 +1,5 @@
 ---
+name: mcp
 command-name: mcp
 description: Guide for integrating Model Context Protocol (MCP) servers. Use when user asks "add MCP", "integrate MCP", "connect external service", "use MCP server", or mentions Model Context Protocol.
 user-invocable: true

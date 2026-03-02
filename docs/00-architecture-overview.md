@@ -6,6 +6,17 @@ Codara 是一个基于终端的 AI 编程助手，设计理念类似 Claude Code
 
 本文档面向维护或扩展代码库的开发者，描述项目的整体架构。
 
+## 文档主线
+
+当前文档体系按“机制优先、策略后置”组织：
+
+1. `02-agent-loop`：执行引擎（核心运行时）
+2. `04-hooks`：生命周期扩展原语（核心扩展面）
+3. `06-skills`：策略编排（能力扩展入口）
+4. `07-agent-collaboration`：多代理协作机制与策略编排
+
+权限规则细节收敛到附录：`docs/appendix/permissions.md`。
+
 ---
 
 ## 核心设计理念
@@ -49,6 +60,19 @@ Codara 是一个基于终端的 AI 编程助手，设计理念类似 Claude Code
 - ✅ 生态建设（可分享、可分发、社区驱动）
 
 详见 [06-技能系统](./06-skills.md) 了解如何通过 Skills 扩展 Codara。
+
+### 核心与 Skills 的职责边界
+
+| 层 | 职责 | 示例 | 不应承载 |
+|----|------|------|----------|
+| 核心运行时（`src/**`） | 稳定机制与通用契约 | Tool 调度、Hook 事件模型、Permission 求值链、TUI 事件流 | 项目特定流程（如某团队部署步骤） |
+| Skills（`.codara/skills/**`） | 场景化能力编排与策略 | `security-check`、`audit-logger`、`code-review`、`commit` | 重写底层引擎语义 |
+
+**设计准则**：
+1. 先问“这是机制还是策略”。机制进核心，策略进 Skill。  
+2. 若需求经常因项目/团队变化，优先 Skill。  
+3. 若需求需要稳定 API 保证并被多 Skill 复用，考虑核心化。  
+4. 核心新增能力应服务“更多 Skill”，而不是服务“某一个 Skill”。
 
 ---
 
@@ -263,9 +287,8 @@ resolveConfig() 与设置文件合并
        │
        ▼
 设置文件（按低 → 高优先级合并）：
-  1. ~/.codara/settings.json           （用户全局）
-  2. <cwd>/.codara/settings.json       （项目共享）
-  3. <cwd>/.codara/settings.local.json  （项目本地，已 gitignore）
+  1. <cwd>/settings.json          （项目共享）
+  2. <cwd>/settings.local.json    （项目本地，已 gitignore）
        │
        ▼
 模型路由（config.json）：

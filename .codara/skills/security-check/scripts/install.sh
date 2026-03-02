@@ -1,66 +1,55 @@
-#!/bin/bash
-# Install security-check configuration
+#!/usr/bin/env bash
+set -euo pipefail
 
-CONFIG_FILE=".codara/settings.json"
+CONFIG_FILE="settings.json"
+HOOK_COMMAND="bash .codara/skills/security-check/scripts/check-dangerous-command.sh"
 
 echo "Installing security checks..."
 echo ""
 
-# Create .codara directory if it doesn't exist
-mkdir -p .codara
-
-# Check if settings.json exists
 if [ ! -f "$CONFIG_FILE" ]; then
   echo "Creating $CONFIG_FILE..."
   echo '{}' > "$CONFIG_FILE"
 fi
 
-# Backup existing config
 cp "$CONFIG_FILE" "$CONFIG_FILE.backup"
-echo "✓ Backed up existing config to $CONFIG_FILE.backup"
+echo "Backed up existing config to $CONFIG_FILE.backup"
 
-# Add permissions deny rules
-echo "✓ Adding permissions deny rules..."
-jq '.permissions.deny = (.permissions.deny // []) + [
-  "Bash(rm -rf*:*)",
-  "Bash(sudo*:*)",
-  "Bash(chmod 777*:*)",
-  "Bash(dd if=*:*)",
-  "Bash(mkfs*:*)",
-  "Bash(*production*:*)"
-] | .permissions.deny |= unique' "$CONFIG_FILE" > "$CONFIG_FILE.tmp" && mv "$CONFIG_FILE.tmp" "$CONFIG_FILE"
+TMP_FILE="$(mktemp)"
 
-# Add hooks
-echo "✓ Adding PreToolUse hooks..."
-jq '.hooks = (.hooks // []) + [
-  {
-    "matcher": {"event": "PreToolUse", "tool": "Bash", "pattern": "rm -rf*"},
-    "hooks": [{"command": "echo \"BLOCKED: rm -rf is dangerous\" >&2", "exit": 2}]
-  },
-  {
-    "matcher": {"event": "PreToolUse", "tool": "Bash", "pattern": "sudo*"},
-    "hooks": [{"command": "echo \"BLOCKED: sudo requires manual approval\" >&2", "exit": 2}]
-  },
-  {
-    "matcher": {"event": "PreToolUse", "tool": "Bash", "pattern": "chmod 777*"},
-    "hooks": [{"command": "echo \"BLOCKED: chmod 777 is insecure\" >&2", "exit": 2}]
-  },
-  {
-    "matcher": {"event": "PreToolUse", "tool": "Bash", "pattern": "*production*"},
-    "hooks": [{"command": "echo \"BLOCKED: production commands require manual review\" >&2", "exit": 2}]
-  }
-]' "$CONFIG_FILE" > "$CONFIG_FILE.tmp" && mv "$CONFIG_FILE.tmp" "$CONFIG_FILE"
+jq --arg hook_command "$HOOK_COMMAND" '
+  if (.hooks == null or (.hooks | type) == "object") then .
+  else error("hooks must be an object keyed by event names")
+  end
+  | .permissions = (.permissions // {})
+  | .permissions.deny = ((.permissions.deny // []) + [
+      "Bash(rm -rf *)",
+      "Bash(sudo *)",
+      "Bash(chmod 777*)",
+      "Bash(chmod -R 777*)",
+      "Bash(dd if=*)",
+      "Bash(mkfs*)",
+      "Bash(*production*)"
+    ] | unique)
+  | .hooks = (.hooks // {})
+  | .hooks.PreToolUse = ((.hooks.PreToolUse // []) + [
+      {
+        "matcher": "Bash",
+        "hooks": [
+          {
+            "type": "command",
+            "command": $hook_command
+          }
+        ]
+      }
+    ])
+  | .hooks.PreToolUse |= unique_by(.matcher, (.hooks | tostring))
+' "$CONFIG_FILE" > "$TMP_FILE"
+
+mv "$TMP_FILE" "$CONFIG_FILE"
 
 echo ""
-echo "✅ Security checks installed successfully!"
-echo ""
-echo "Protected against:"
-echo "  - rm -rf (recursive delete)"
-echo "  - sudo (superuser commands)"
-echo "  - chmod 777 (insecure permissions)"
-echo "  - dd if= (disk operations)"
-echo "  - mkfs (filesystem formatting)"
-echo "  - *production* (production commands)"
+echo "Security checks installed successfully"
 echo ""
 echo "Configuration saved to: $CONFIG_FILE"
 echo "Backup saved to: $CONFIG_FILE.backup"

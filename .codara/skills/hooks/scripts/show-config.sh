@@ -5,7 +5,7 @@ echo "## Current Configuration"
 echo ""
 
 found=false
-for f in .codara/settings.json .codara/settings.local.json; do
+for f in settings.json settings.local.json; do
   if [ -f "$f" ]; then
     found=true
     echo "📄 **$f**:"
@@ -19,8 +19,8 @@ done
 if [ "$found" = false ]; then
   echo "No configuration files found."
   echo ""
-  echo "To add hooks, create \`.codara/settings.json\` with:"
+  echo "To add hooks, create \`settings.json\` with:"
   echo '```json'
-  echo '{"hooks": [...]}'
+  echo '{"hooks": {"PreToolUse": []}}'
   echo '```'
 fi

@@ -5,56 +5,54 @@ Ready-to-use hook configurations for common use cases.
 ## Available Examples
 
 ### 1. Block Dangerous Commands
-**File**: `block-dangerous-commands.json`
+**File**: `assets/block-dangerous-commands.json`
 
 Prevents execution of dangerous bash commands like `rm -rf` and `sudo`.
 
 - **Event**: PreToolUse
-- **Use case**: Production safety, shared projects
-- **[Full documentation](./block-dangerous-commands.md)**
+- **Use case**: production safety, shared projects
+- **[Full documentation](./example-block-dangerous.md)**
 
 ### 2. Audit All Tool Calls
-**File**: `audit-all-tools.json`
+**File**: `assets/audit-all-tools.json`
 
-Logs every tool call to `.codara/audit.log` for security auditing.
+Logs every tool call to `.codara/audit.log` for auditing.
 
 - **Event**: PostToolUse
-- **Use case**: Compliance, debugging, security
-- **[Full documentation](./audit-all-tools.md)**
+- **Use case**: compliance, debugging, security
+- **[Full documentation](./example-audit-tools.md)**
 
 ### 3. Redirect to Sandbox
-**File**: `sandbox-redirect.json`
+**File**: `assets/sandbox-redirect.json`
 
-Redirects all bash commands to run inside a Docker sandbox container.
+Redirects bash commands to a sandbox container before execution.
 
-- **Event**: PreToolUse (with modification)
-- **Use case**: Testing, isolation, CI/CD
-- **[Full documentation](./sandbox-redirect.md)**
+- **Event**: PreToolUse (modify input)
+- **Use case**: testing, isolation, CI/CD
+- **[Full documentation](./example-sandbox.md)**
 
 ## How to Use
 
-1. Choose an example that matches your need
-2. Copy the JSON configuration
-3. Add to `.codara/settings.json` or `.codara/settings.local.json`
-4. Test by triggering the relevant event
+1. Pick a template from `assets/`.
+2. Merge it into `settings.json`.
+3. Trigger the event and verify behavior.
 
 ## Combining Examples
 
-You can combine multiple hooks in the same configuration:
-
 ```json
 {
-  "hooks": [
-    ...block-dangerous-commands hooks...,
-    ...audit-all-tools hooks...
-  ]
+  "hooks": {
+    "PreToolUse": [
+      "...security hook...",
+      "...sandbox hook..."
+    ],
+    "PostToolUse": [
+      "...audit hook..."
+    ]
+  }
 }
 ```
 
-## Creating Custom Hooks
+## Custom Hook Development
 
-See the [Complete Hooks Documentation](../references/hooks-complete.md) for:
-- All 16 hook events
-- Configuration syntax
-- Environment variables
-- Advanced patterns
+See `hooks-complete.md` for all events and runtime semantics.

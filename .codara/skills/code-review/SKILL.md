@@ -1,4 +1,5 @@
 ---
+name: code-review
 command-name: code-review
 description: Code review a pull request with multi-agent analysis
 argument-hint: PR number or URL (optional --comment flag)

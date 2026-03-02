@@ -46,3 +46,6 @@ coverage/
 # package-lock.json
 # yarn.lock
 # pnpm-lock.yamltasks/
+
+
+PR_DESCRIPTION.md

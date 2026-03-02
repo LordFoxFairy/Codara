@@ -1,11 +1,15 @@
 {
   "permissions": {
-    "mode": "dontAsk",
+    "defaultMode": "dontAsk",
     "allow": [
-      "Bash(docker exec sandbox:*)"
+      "Read(*)",
+      "Glob(*)",
+      "Grep(*)",
+      "Bash(docker exec sandbox *)"
     ],
     "deny": [
-      "Bash(*:*)"
+      "Bash(rm -rf *)",
+      "Bash(sudo *)"
     ]
   }
 }

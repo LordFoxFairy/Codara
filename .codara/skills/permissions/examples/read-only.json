@@ -1,13 +1,13 @@
 {
   "permissions": {
-    "mode": "ask",
+    "defaultMode": "plan",
     "allow": [
-      "Read",
-      "Glob",
-      "Grep",
-      "Bash(git status:*)",
-      "Bash(git log:*)",
-      "Bash(git diff:*)"
+      "Read(*)",
+      "Glob(*)",
+      "Grep(*)",
+      "Bash(git status*)",
+      "Bash(git log*)",
+      "Bash(git diff*)"
     ]
   }
 }

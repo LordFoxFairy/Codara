@@ -8,7 +8,8 @@
     "build": "tsc",
     "lint": "eslint src/",
     "lint:fix": "eslint src/ --fix",
-    "format": "prettier --write src/"
+    "format": "prettier --write src/",
+    "validate:skills": "bash scripts/validate-skills.sh"
   },
   "dependencies": {},
   "devDependencies": {

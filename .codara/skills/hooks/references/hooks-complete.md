@@ -4,7 +4,50 @@
 
 钩子（Hooks）允许你在代理生命周期事件发生时运行自定义操作。它们在 `settings.json` 中配置，并遵循 Claude Code 兼容的约定。
 
+> **Skills-first 说明**
+>
+> 这是 hooks 原语参考。推荐将策略封装为 skills（例如 `security-check`、`audit-logger`、自定义 hook skills），通过 skill 组合 hooks + scripts，而非维护零散全局配置。
+>
+> 项目配置文件位置：
+> - `settings.json`（项目共享）
+> - `settings.local.json`（项目本地覆盖）
+
 使用钩子来执行项目策略、转换工具输入、记录活动、触发外部工作流或阻止不安全操作 —— 所有这些都无需修改代理核心代码。
+
+## Hook 与 Permission 一体化策略
+
+在 Codara 运行时，`permissions` 是工具调用链里的策略步骤，不应被当作独立产品层：
+
+```
+PreToolUse Hooks → Permission 求值 → Tool 执行 → PostToolUse Hooks
+```
+
+职责分工：
+- `hooks`：优先拦截，可 deny 或 modify。
+- `permissions`：规则求值与用户授权。
+- `skills`：组合 hooks + permissions，形成场景化能力。
+
+### 权限模式（速查）
+
+| 模式 | 行为 |
+|------|------|
+| `default` | 自动允许 Read/Glob/Grep，其余询问 |
+| `acceptEdits` | 自动允许只读 + Write/Edit |
+| `plan` | 仅只读自动允许，Write/Edit 拒绝 |
+| `dontAsk` | 不询问，未 allow 即拒绝 |
+| `bypassPermissions` | 全放行（高风险） |
+
+### 规则求值顺序（简版）
+
+1. `bypassPermissions`  
+2. `plan` 特判  
+3. `deny`  
+4. `ask`  
+5. `allow`（含 skill 临时规则）  
+6. 只读豁免  
+7. `acceptEdits`  
+8. `dontAsk`  
+9. 兜底询问
 
 ## 钩子事件
 
@@ -390,11 +433,10 @@ fi
 
 ## 配置文件位置
 
-钩子可以在多个位置定义。配置按从低到高的优先级合并：
+钩子配置使用项目根目录文件，并按从低到高优先级合并：
 
-1. 全局配置（`~/.codara/settings.json`）
-2. 项目配置（项目根目录的 `.codara/settings.json`）
-3. 项目本地配置（`.codara/settings.local.json`）— 被 gitignore，用于个人覆盖
+1. 项目共享配置（`settings.json`）
+2. 项目本地配置（`settings.local.json`）— 被 gitignore，用于个人覆盖
 
 **技能钩子**：技能可以在 `.codara/skills/<skill-name>/hooks/hooks.json` 中定义自己的钩子配置。
 

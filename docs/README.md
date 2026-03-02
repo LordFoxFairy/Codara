@@ -25,15 +25,14 @@
 | # | 文档 | 说明 |
 |---|------|------|
 | 03 | [工具系统](./03-tools.md) | 工具注册、Schema 定义与执行流程 |
-| 04 | [生命周期钩子](./04-hooks.md) | 16 个钩子事件、配置语法与执行模型（底层机制参考） |
-| 05 | [权限引擎](./05-permissions.md) | 5 种权限模式、规则语法与 9 步求值链（底层机制参考） |
+| 04 | [生命周期钩子](./04-hooks.md) | Hook 原语：事件、动作、执行模型（机制层） |
 | **06** | **[技能系统](./06-skills.md)** | **⭐ 扩展唯一入口：技能权限、技能钩子、工具调用流程、实战示例、生态建设** |
 | 07 | [代理协作](./07-agent-collaboration.md) | 主从代理架构、Task 管理与协作模式 |
 | 08 | [记忆与上下文](./08-memory-system.md) | 3 层记忆层级与上下文压缩管线 |
 
 > **推荐阅读路径**：
-> 1. 先读 **06-技能系统**，了解如何扩展 Codara
-> 2. 需要深入了解底层机制时，再查阅 04-hooks 和 05-permissions
+> 1. 主线机制：`00-architecture-overview → 02-agent-loop → 04-hooks → 06-skills → 07-agent-collaboration`
+> 2. 需要权限规则细节时，再查阅附录 [appendix/permissions](./appendix/permissions.md)
 
 ## 前端与交互
 
@@ -45,6 +44,7 @@
 
 | 文档 | 说明 |
 |------|------|
-| [设计理念对比](./design-alignment.md) | Codara vs Claude Code 设计理念一致性分析 |
-| [Claude Code 参考](./claude-code-reference/) | Claude Code 官方文档参考（需手动下载） |
-| [归档文档](./archive/) | 设计过程文档归档 |
+| [设计理念对比](../tmp/design-alignment.md) | Codara vs Claude Code 设计理念一致性分析 |
+| [权限策略（附录）](./appendix/permissions.md) | hooks 链上的权限模式与规则速查 |
+| [Claude Code 参考](../tmp/claude-code-reference/) | Claude Code 官方文档参考（需手动下载） |
+| [归档文档](../tmp/archive/) | 设计过程文档归档 |

@@ -1,14 +1,15 @@
 {
-  "hooks": [
-    {
-      "matcher": {
-        "event": "PostToolUse"
-      },
-      "hooks": [
-        {
-          "command": "jq -c '{time: now, tool: .tool, input: .input}' >> .codara/audit.log"
-        }
-      ]
-    }
-  ]
+  "hooks": {
+    "PostToolUse": [
+      {
+        "matcher": "*",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "jq -c '{time: now, tool: .tool, input: .input, sessionId: .sessionId}' >> .codara/audit.log"
+          }
+        ]
+      }
+    ]
+  }
 }

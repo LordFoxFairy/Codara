@@ -1,4 +1,5 @@
 ---
+name: explanatory-output-style
 command-name: explanatory-output-style
 description: Add educational insights and explanations to responses
 user-invocable: false

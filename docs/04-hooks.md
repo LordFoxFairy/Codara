@@ -1,12 +1,25 @@
 # 生命周期钩子
 
-> [← 上一篇: 权限引擎](./05-permissions.md) | [目录](./README.md) | [下一篇: 技能系统 →](./06-skills.md)
+> [← 上一篇: 工具](./03-tools.md) | [目录](./README.md) | [下一篇: 技能系统 →](./06-skills.md)
 
 ## 概述
 
 钩子（Hooks）允许你在代理生命周期事件发生时运行自定义操作。它们在 `settings.json` 中配置，并遵循 Claude Code 兼容的约定。
 
 使用钩子来执行项目策略、转换工具输入、记录活动、触发外部工作流或阻止不安全操作 —— 所有这些都无需修改代理核心代码。
+
+## 主轴定位（Agent Loop + Hooks）
+
+在 Codara 的文档主线上，`hooks` 是 `agent loop` 之后的第一扩展面。  
+`permissions`、`security-check`、`audit-logger`、协作策略等能力，推荐都通过 skills 在 hooks 之上编排，而不是继续扩展核心硬编码分支。
+
+## 本文与 06/05 的关系
+
+- 本文（04）定义 **Hooks 原语**：事件、动作类型、执行模型、退出码。
+- [06-skills](./06-skills.md) 定义 **能力编排**：如何用 skill 组合 hooks + permissions。
+- [appendix/permissions](./appendix/permissions.md) 是附录速查：仅保留权限策略细节，不作为独立主线。
+
+建议阅读顺序：`02-agent-loop → 04-hooks → 06-skills`（需要规则细节时再查 05）。
 
 > **💡 使用建议**
 >
@@ -20,7 +33,50 @@
 > - ✅ 可复用和分享（打包整个 skill 目录）
 > - ✅ 清晰的文档和示例
 >
-> 参见 [06-技能系统 > 实战：如何构造 Skills](./06-skills.md#实战如何构造-skills) 了解如何通过 Skills 使用 Hooks。
+> 参见 [06-技能系统](./06-skills.md) 的「实战：如何构造 Skills」章节，了解如何通过 Skills 使用 Hooks。
+
+## Hook 与 Permission 一体化策略
+
+在运行时，`permissions` 不是和 hooks 并列的“独立产品入口”，而是工具调用链中的策略层：
+
+```
+PreToolUse Hooks → Permission 求值 → Tool 执行 → PostToolUse Hooks
+```
+
+这条链路决定了职责边界：
+- **Hooks**：先拦截、可拒绝、可改写输入（硬策略）。
+- **Permissions**：用户授权与规则求值（交互策略）。
+- **Skills**：把 hooks + permissions 组合成可复用能力（业务策略）。
+
+### 权限模式（作为 Hook 链中的策略步骤）
+
+| 模式 | 行为 |
+|------|------|
+| `default` | 自动允许 Read/Glob/Grep，其余询问 |
+| `acceptEdits` | 自动允许只读 + Write/Edit，Bash 询问 |
+| `plan` | 仅只读自动允许，Write/Edit 拒绝 |
+| `dontAsk` | 不弹框，未命中 allow 即拒绝 |
+| `bypassPermissions` | 全放行（高风险） |
+
+### 规则求值顺序（简版）
+
+1. `bypassPermissions`  
+2. `plan` 特判  
+3. `deny`  
+4. `ask`  
+5. `allow`（含 skill 的 `allowed-tools` 临时规则）  
+6. 只读豁免  
+7. `acceptEdits`  
+8. `dontAsk`  
+9. 兜底询问
+
+完整的规则语法、会话/持久化授权与实践边界，见 [权限策略附录](./appendix/permissions.md)。
+
+### 设计建议
+
+1. 把“必须阻断/改写”的逻辑放到 `PreToolUse`。  
+2. 把“需要用户授权”的逻辑交给 `permissions`。  
+3. 把“某个场景怎么组合这两者”封装成 skill，而不是长期手写 `settings.json`。  
 
 ## 钩子事件
 
@@ -406,11 +462,10 @@ fi
 
 ## 配置文件位置
 
-钩子可以在多个位置定义。配置按从低到高的优先级合并：
+钩子配置使用项目根目录文件，并按从低到高的优先级合并：
 
-1. 全局配置（`~/.codara/settings.json`）
-2. 项目配置（项目根目录的 `.codara/settings.json`）
-3. 项目本地配置（`.codara/settings.local.json`）— 被 gitignore，用于个人覆盖
+1. 项目共享配置（`settings.json`）
+2. 项目本地配置（`settings.local.json`）— 被 gitignore，用于个人覆盖
 
 **技能钩子**：技能可以定义自己的钩子配置，由 Skills 系统管理。详见 [06-技能系统](./06-skills.md) 的「技能钩子」章节。
 

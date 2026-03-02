@@ -1,59 +1,62 @@
 ---
+name: permissions
 command-name: permissions
-description: Help users configure permission system. Use when user asks about "permissions", "permission modes", "allowed-tools", "deny rules", or tool access control.
+description: Configure Codara permissions safely using defaultMode plus allow/deny/ask rules. Use when users ask about permission mode, allowed-tools, deny rules, or tool access policy.
 user-invocable: true
 ---
 
+# Permissions Configuration
+
 ## Current Project Permissions
 
-!`if [ -f .codara/settings.json ]; then echo "=== .codara/settings.json ==="; jq '.permissions // "No permissions"' .codara/settings.json 2>/dev/null || echo "No permissions"; else echo "No .codara/settings.json"; fi`
+!`if [ -f settings.json ]; then echo "=== settings.json ==="; jq '.permissions // "No permissions"' settings.json 2>/dev/null || echo "No permissions"; else echo "No settings.json"; fi`
 
-!`if [ -f .codara/settings.local.json ]; then echo "\n=== .codara/settings.local.json ==="; jq '.permissions // "No permissions"' .codara/settings.local.json 2>/dev/null || echo "No permissions"; else echo "No .codara/settings.local.json"; fi`
+!`if [ -f settings.local.json ]; then echo "\n=== settings.local.json ==="; jq '.permissions // "No permissions"' settings.local.json 2>/dev/null || echo "No permissions"; else echo "No settings.local.json"; fi`
 
 ## Your Task
 
-Help the user configure permissions. Ask about their workflow, then provide the exact JSON configuration.
+1. Ask for workflow intent (interactive dev, read-only review, CI automation).
+2. Choose `defaultMode` and minimal rules.
+3. Return exact JSON that can be merged into `settings.json` or `settings.local.json` (project root).
+4. Explain why each allow/deny/ask rule exists.
 
 ## Quick Reference
 
-**5 Permission Modes**:
-- `ask` - Prompt for every tool (maximum control)
-- `auto` - Auto-approve safe tools, ask for risky (balanced)
-- `acceptEdits` - Auto-approve edits, ask for bash/web (code-focused)
-- `dontAsk` - Auto-approve all except denies (trusted automation)
-- `bypassPermissions` - No checks (emergency only)
+**Modes**:
+- `default`
+- `acceptEdits`
+- `plan`
+- `dontAsk`
+- `bypassPermissions`
 
-**Rule Syntax**: `ToolName(pattern)`
+**Rule syntax**: `ToolName(pattern)`
+- `Bash(git *)`
+- `Bash(rm -rf *)`
+- `Read(*)`
+- `Edit(src/**)`
 
-Examples:
-- `Bash(git status:*)` - Allow git status
-- `Bash(rm -rf:*)` - Match rm -rf
-- `Read` - All Read operations
-- `Edit(*.md:*)` - Edit markdown only
+**Evaluation order (summary)**:
+`bypass -> plan -> deny -> ask -> allow -> readonly -> acceptEdits -> dontAsk -> ask`
 
-**Configuration Format**:
+## Canonical Example
+
 ```json
 {
   "permissions": {
-    "mode": "auto",
-    "allow": ["Bash(git *:*)", "Read"],
-    "deny": ["Bash(rm -rf:*)", "Bash(sudo:*)"]
+    "defaultMode": "default",
+    "allow": ["Read(*)", "Glob(*)", "Grep(*)", "Bash(git *)"],
+    "deny": ["Bash(rm -rf *)", "Bash(sudo *)"],
+    "ask": ["Bash(npm publish*)"]
   }
 }
 ```
 
-**Evaluation Order**: Bypass → Deny → Allow → Skill → Mode
-
-**Bash Chain Protection**: Each command in `cmd1 && cmd2 && cmd3` is checked separately.
-
 ## Ready-to-Use Examples
 
-See `examples/` directory:
-- `safe-development.json` - Allow git/npm, deny dangerous commands
-- `read-only.json` - Only allow reading and git status
-- `sandbox-only.json` - Only allow docker sandbox commands
+- `examples/safe-development.json`
+- `examples/read-only.json`
+- `examples/sandbox-only.json`
 
 ## Complete Reference
 
-For evaluation chain, pattern matching, and advanced configurations:
-[Complete Permissions Documentation](./references/permissions-complete.md)
+- `references/permissions-complete.md`

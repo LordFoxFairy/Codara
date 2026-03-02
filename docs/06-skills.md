@@ -4,6 +4,19 @@
 
 技能（Skills）是 Codara 的**统一扩展单元**，允许用户和项目定义可复用的 AI 驱动工作流。每个技能是一个目录，包含 SKILL.md 定义文件以及可选的 agents、hooks、scripts 等资源。用户通过在输入区域输入 `/<name>` 来调用技能。
 
+## 本文与 04/05 的分工
+
+- [04-hooks](./04-hooks.md)：定义 Hook 原语（事件、动作、执行模型）。
+- [appendix/permissions](./appendix/permissions.md)：权限策略附录速查（非主线）。
+- 本文（06）：定义如何把 hooks 原语组合为可复用 skill。
+
+## 设计目标对齐（Agent Loop + Hooks + Skills）
+
+1. 核心只保留通用运行时：`agent loop + hooks`。
+2. 项目策略不硬编码在核心：通过 skills 组合 hooks（必要时配合权限规则）。
+3. `permissions`、`security-check`、`audit-logger`、协作模式等都应优先 skill 化。
+4. 多代理协作策略同样通过 skills 组织（见 [07-agent-collaboration](./07-agent-collaboration.md)）。
+
 ## 设计理念
 
 **Skills 是扩展 Codara 的唯一入口。**
@@ -42,6 +55,14 @@
 3. **Skills 是自包含的** — 一个 skill 目录包含所有需要的资源（hooks、scripts、agents）
 4. **Skills 是可复用的** — 项目级和用户级技能可以共享和分发
 
+### 当前阶段配置约定
+
+当前项目约定使用**项目根目录**配置文件：
+- `settings.json`（团队共享）
+- `settings.local.json`（个人覆盖，加入 `.gitignore`）
+
+skills 负责生成/维护这些配置中的策略片段，而不是让用户长期手写大段配置。
+
 ### 为什么这样设计？
 
 | 直接配置 settings.json | 通过 Skills 封装 |
@@ -53,6 +74,37 @@
 | 需要手动编写 JSON | 可以使用模板变量和动态注入 |
 
 **核心理念：核心通用（middleware + tools + TUI），领域扩展全靠 Skill**。code-review、feature-dev、commit 工作流等都是 skill，不是硬编码功能。
+
+### 为什么要前置构建 Skills（在核心功能完善前）
+
+1. 先把扩展边界稳定下来，避免后续把业务逻辑硬塞进核心。
+2. 用真实 skill（security/audit/permissions）反向验证 hooks 与 permission 原语是否够用。
+3. 为 Codara 正式构建阶段准备可直接复用的能力目录，降低集成成本。
+
+### 分层边界：什么进核心，什么进 Skill？
+
+| 问题 | 进核心（`src/**`） | 进 Skill（`.codara/skills/**`） |
+|------|-------------------|-------------------------------|
+| 这是稳定机制还是业务策略？ | 稳定机制（事件模型、工具协议、权限求值链） | 业务策略（部署流、安全策略、审计规则） |
+| 是否跨多数场景复用且与领域无关？ | 是 | 否 |
+| 是否需要频繁调整以适应团队/项目？ | 否 | 是 |
+| 是否会引入“某个工作流专属分支”到核心？ | 不应引入 | 应在 Skill 中实现 |
+
+**一句话判断**：  
+如果功能在“换一个团队/项目”后仍然成立，优先进核心；如果功能表达的是“这个团队如何做事”，应进 Skill。
+
+### 能力分工模型
+
+- **Hooks / Permissions / Tools**：底层能力原语（primitive），负责“能做什么”和“何时允许做”。
+- **Skills**：能力编排层（orchestration），负责“为某个目标如何组合这些能力”。
+- **Agent Loop / TUI / Memory**：运行时基础设施，负责稳定执行与交互，不承载领域工作流。
+
+### 反模式（应避免）
+
+1. 在核心代码中硬编码某个业务工作流（如固定 `deploy`、`review-pr` 流程）。
+2. 直接要求用户长期维护 `settings.json` 大片段策略，而不是封装成 skill。
+3. 为单个场景在权限/钩子引擎里增加特判分支。
+4. 将可执行逻辑写成冗长提示词，而不是放入 `scripts/` 形成可测试资产。
 
 ---
 
@@ -88,7 +140,7 @@ SkillLoader 扫描两个目录树来查找技能定义：
 | `agents/` | 存放技能相关的自定义代理 | 通过 Task 工具调用，代理类型解析时发现 |
 | `scripts/` | 存放技能相关的可执行脚本 | 通过 `` !`./scripts/run.sh` `` 动态注入 |
 | `hooks/` | 存放技能的钩子配置 | 启动时加载，与 settings.json hooks 合并 |
-| `references/` | 存放技能引用的文档 | 通过 `[label](./references/guide.md)` 文件链接内联 |
+| `references/` | 存放技能引用的文档 | 通过 Markdown 相对路径链接将文件内容内联 |
 | `assets/` | 存放模板和资源文件 | 技能提示中引用，代理按需读取 |
 
 ### 缓存
@@ -209,21 +261,21 @@ b0e001d fix: subagent routing
 
 带有相对路径的 markdown 风格链接从技能目录解析，链接文件的内容被内联到提示中。
 
-**语法：** `[label](relative/path.md)`
+**语法：** Markdown 相对路径链接（label + `./path/to/file.md`）
 
 **示例：**
 ```markdown
 Follow these guidelines:
-[coding standards](./standards.md)
+<markdown-link label=\"coding standards\" path=\"./references/coding-standards.md\">
 ```
 
 展开后，文件内容被注入到链接之后：
 ```markdown
 Follow these guidelines:
-[coding standards](./standards.md)
+<markdown-link label=\"coding standards\" path=\"./references/coding-standards.md\">
 
-<file path="./standards.md">
-... contents of standards.md ...
+<file path=\"./references/coding-standards.md\">
+... contents of coding-standards.md ...
 </file>
 ```
 
@@ -249,7 +301,7 @@ const skills = await this.skillLoader.discover();
 // 添加到系统提示：
 // # Available Skills
 // - /commit: Auto-generate a commit message and create a git commit
-// - /init: Generate a CODETERM.md configuration file
+// - /init: Generate a CODARA.md configuration file
 // - /review-pr: Review a pull request or current branch changes
 ```
 
@@ -300,10 +352,10 @@ allowed-tools: "Bash(git *),Read(*),Grep(*)"
 
 要创建新技能：
 
-1. 在 `.codeterm/skills/`（项目级）或 `~/.codeterm/skills/`（用户级）下创建目录：
+1. 在 `.codara/skills/`（项目级）或 `~/.codara/skills/`（用户级）下创建目录：
 
 ```bash
-mkdir -p .codeterm/skills/my-skill
+mkdir -p .codara/skills/my-skill
 ```
 
 2. 创建带有 frontmatter 和提示模板的 `SKILL.md` 文件：
@@ -366,7 +418,7 @@ Analyze staged changes and create a commit.
 ### 临时权限生命周期
 
 1. **激活**：技能调用时，`allowed-tools` 解析为临时 allow 规则，添加到 PermissionMiddleware
-2. **执行**：技能执行期间，这些规则参与权限求值（步骤 5，详见 [05-权限引擎](./05-permissions.md)）
+2. **执行**：技能执行期间，这些规则参与权限求值（步骤 5，详见 [权限策略附录](./appendix/permissions.md)）
 3. **撤销**：技能完成后，临时规则自动移除
 
 ### deny 规则覆盖
@@ -385,7 +437,7 @@ Analyze staged changes and create a commit.
 
 ### 权限模式和规则详解
 
-技能的临时权限遵循完整的权限求值链。详细的权限模式、规则语法、求值顺序等，请参阅 [05-权限引擎](./05-permissions.md)。
+技能的临时权限遵循完整的权限求值链。详细的权限模式、规则语法、求值顺序等，请参阅 [权限策略附录](./appendix/permissions.md)。
 
 ---
 
@@ -494,7 +546,7 @@ ShellHookMiddleware 在启动时扫描所有技能目录，加载技能钩子配
 
 钩子按以下顺序合并和执行：
 
-1. `settings.json` 中的 hooks（用户全局 + 项目级）
+1. 项目配置中的 hooks（`settings.json` + `settings.local.json`）
 2. 项目技能钩子（`.codara/skills/*/hooks/hooks.json`）
 3. 用户技能钩子（`~/.codara/skills/*/hooks/hooks.json`）
 
