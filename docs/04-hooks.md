@@ -46,6 +46,25 @@ PreToolUse Hooks → Permission 求值 → Tool 执行 → PostToolUse Hooks
 - **Permissions**：用户授权与规则求值（交互策略）。
 - **Skills**：把 hooks + permissions 组合成可复用能力（业务策略）。
 
+### 标准化动作输出（建议实现）
+
+建议 Hook 引擎对动作做统一归一化，避免各钩子各自返回格式导致冲突：
+
+```json
+{
+  "action": "allow | deny | modify",
+  "source": "hook",
+  "reason": "string",
+  "modifiedInput": {}
+}
+```
+
+约束：
+
+1. 同一 `PreToolUse` 链只接受第一个 `deny`（短路）。
+2. 多个 `modify` 按执行顺序叠加，并产出最终输入快照。
+3. 非法 JSON 或未知 `action` 视为执行失败并记录告警。
+
 ## 钩子周期设计（时序）
 
 ### 单次工具调用周期
@@ -62,6 +81,12 @@ PreToolUse Hooks → Permission 求值 → Tool 执行 → PostToolUse Hooks
 - `Permission` 只负责授权，不做输入改写。
 - `PostToolUse*` 主要用于日志、通知、审计，不回写工具输入。
 - 钩子链与权限链共同形成“拦截 -> 校验 -> 执行 -> 记录”的闭环。
+
+工程建议：
+
+1. 为每次工具调用生成 `request_id`，贯穿 Hook/Permission/Tool 全链路。
+2. `PostToolUseFailure` 记录失败域（hook / permission / tool / runtime）。
+3. Hook 超时策略显式配置：默认 `allow`，安全关键链路可设 `deny`。
 
 ### 会话级钩子周期
 

@@ -110,6 +110,19 @@ yield done("complete")
 
 **关键点：** 循环只认识 `pipeline`，不认识任何子系统。安全阀（turns/budget/abort）在 `SafetyMiddleware.beforeAgent()` 中检查，上下文压缩在 `CompressionMiddleware.beforeModel()` 中触发，Token 统计在 `MetricsMiddleware.afterModel()` 中完成。循环的分支判断仅基于 LLM 响应中是否包含 `tool_calls`——有调用就执行并继续，没有就结束。
 
+### 回合状态机（建议实现）
+
+为提升可预测性与可调试性，建议将循环实现为显式状态机：
+
+`INIT -> READY -> MODELING -> TOOL_PRECHECK -> TOOL_AUTH -> TOOL_RUN -> TOOL_POST -> TURN_CLOSE -> READY/DONE`
+
+状态约束：
+
+1. 每个状态都要有进入/退出事件，便于日志追踪。
+2. `permission_request` 仅允许在 `TOOL_AUTH` 状态发出。
+3. 非法状态跳转应立即报错并附带当前 `turn_id` 与 `request_id`。
+4. `DONE` 为终态，禁止再次进入执行态。
+
 ### stop_reason 的辅助作用
 
 LLM 响应中的 `stop_reason` 作为辅助信号处理边缘情况：
@@ -155,6 +168,27 @@ tool_call 请求
 ```
 
 每层 `wrapToolCall(ctx, next)` 通过 `try/catch/finally` 统一 pre/post/error 三阶段。完整中间件架构详见 [04-hooks](./04-hooks.md)。
+
+### 统一裁决输出（建议实现）
+
+为避免多层冲突覆盖，建议工具调用先收敛为单一裁决对象：
+
+```ts
+Decision = {
+  decision: "deny" | "ask" | "allow",
+  source: "hook" | "permission" | "skill" | "user",
+  reason: string,
+  request_id: string,
+  turn_id: string,
+  modified_input?: Record<string, unknown>
+}
+```
+
+约束：
+
+1. 同一 `request_id` 只允许一个最终 `decision`。
+2. 裁决对象进入事件流并与 `tool_start/tool_end/tool_denied` 关联。
+3. 若 `modified_input` 存在，后续权限求值必须基于修改后的输入。
 
 ### 权限交互（事件回调模式）
 
