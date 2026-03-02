@@ -1,6 +1,6 @@
-# Team 协作架构设计
+# Team 运行时设计
 
-> [目录](./README.md) | [相关章节: 07-代理协作](./07-agent-collaboration.md)
+> [← 上一篇: 终端界面](./08-terminal-ui.md) | [目录](./README.md) | [相关章节: 07-代理协作](./07-agent-collaboration.md)
 
 本文定义 Codara 的 Team 级协作模型，基线对齐你描述的 Claude Code 使用方式：
 
@@ -433,3 +433,7 @@ Team 模式下建议所有关键事件至少包含：
 2. Phase 2：实现 `TeamSwitch` 和 `TeamOutput`，先支持“切换查看 + 拉取结果”。
 3. Phase 3：实现 `TeamMessage`，支持 Leader 直接与 SubTeam 交互。
 4. Phase 4：补齐恢复机制和 Team 级审计面板。
+
+---
+
+> [← 上一篇: 终端界面](./08-terminal-ui.md) | [目录](./README.md)

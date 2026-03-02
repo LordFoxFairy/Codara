@@ -506,6 +506,7 @@ sequenceDiagram
 - [06-技能系统](./06-skills.md)：Skills 发现、注入、权限、钩子编排。
 - [07-代理协作](./07-agent-collaboration.md)：主从代理与任务协作。
 - [08-终端界面](./08-terminal-ui.md)：交互渲染与事件消费。
+- [09-Team 运行时](./09-team-runtime.md)：Team Session、Leader/SubTeam 调度、进程隔离与文件总线协作。
 
 ---
 

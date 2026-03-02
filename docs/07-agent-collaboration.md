@@ -558,7 +558,7 @@ memory: user,project
 
 当前文档主要覆盖 Subagent 主从委派机制。Team 级别协作的完整契约（Leader/SubTeam 边界、切换交互、权限转发、日志字段）已单独整理为：
 
-- [Team 协作架构设计](./team.md)
+- [09-Team 运行时](./09-team-runtime.md)
 
 ---
 

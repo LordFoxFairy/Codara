@@ -1,6 +1,6 @@
 # 终端界面设计
 
-> [← 上一篇: 代理协作](./07-agent-collaboration.md) | [目录](./README.md)
+> [← 上一篇: 代理协作](./07-agent-collaboration.md) | [目录](./README.md) | [下一篇: Team 运行时 →](./09-team-runtime.md)
 
 > UI 负责“可见交互与人在回路”，不承载业务策略。策略仍由 hooks + skills 定义。
 
@@ -1350,4 +1350,4 @@ keep-coding-instructions: true
 
 ---
 
-> [← 上一篇: 代理协作](./07-agent-collaboration.md) | [目录](./README.md)
+> [← 上一篇: 代理协作](./07-agent-collaboration.md) | [目录](./README.md) | [下一篇: Team 运行时 →](./09-team-runtime.md)
