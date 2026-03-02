@@ -26,19 +26,26 @@
 |---|------|------|
 | 03 | [工具系统](./03-tools.md) | 工具注册、Schema 定义与执行流程 |
 | 04 | [生命周期钩子](./04-hooks.md) | Hook 原语：事件、动作、执行模型（机制层） |
-| **06** | **[技能系统](./06-skills.md)** | **⭐ 扩展唯一入口：技能权限、技能钩子、工具调用流程、实战示例、生态建设** |
-| 07 | [代理协作](./07-agent-collaboration.md) | 主从代理架构、Task 管理与协作模式 |
-| 08 | [记忆与上下文](./08-memory-system.md) | 3 层记忆层级与上下文压缩管线 |
+| **05** | **[技能系统](./05-skills.md)** | **⭐ 扩展唯一入口：技能权限、技能钩子、工具调用流程、实战示例、生态建设** |
 
-> **推荐阅读路径**：
-> 1. 主线机制：`00-architecture-overview → 02-agent-loop → 04-hooks → 06-skills → 07-agent-collaboration`
-> 2. 需要权限规则细节时，再查阅附录 [appendix/permissions](./appendix/permissions.md)
-
-## 前端与交互
+## 高级特性
 
 | # | 文档 | 说明 |
 |---|------|------|
-| 09 | [终端界面](./09-terminal-ui.md) | TUI 组件、布局架构与交互模式 |
+| 06 | [代理协作](./06-agent-collaboration.md) | 主从代理架构、Task 管理与协作模式 |
+| 07 | [记忆与上下文](./07-memory-system.md) | 3 层记忆层级与上下文压缩管线 |
+| 08 | [终端界面](./08-terminal-ui.md) | TUI 组件、布局架构与交互模式 |
+
+> **推荐阅读路径**:
+>
+> **核心主线**（必读）:
+> `00-architecture-overview → 01-model-routing → 02-agent-loop → 03-tools → 04-hooks → 05-skills`
+>
+> **高级特性**（按需）:
+> `06-agent-collaboration → 07-memory-system → 08-terminal-ui`
+>
+> **附录**（需要规则细节时查阅）:
+> - [appendix/permissions](./appendix/permissions.md) - 权限策略速查
 
 ## 附录
 

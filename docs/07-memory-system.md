@@ -1,6 +1,6 @@
 # 记忆与上下文 — 3 层层级结构与上下文管理
 
-> [← 上一篇: 代理协作](./07-agent-collaboration.md) | [目录](./README.md) | [下一篇: 终端 UI →](./09-terminal-ui.md)
+> [← 上一篇: 代理协作](./06-agent-collaboration.md) | [目录](./README.md) | [下一篇: 终端 UI →](./08-terminal-ui.md)
 
 > 代理"知道"的一切都通过记忆层流转。从用户全局偏好到 AI 维护的项目笔记，每一层在塑造代理行为方面都有独特的作用。
 
@@ -459,7 +459,7 @@ TUI 层监听压缩事件：
 
 ## 7. 子代理记忆
 
-子代理可以拥有独立于主代理的跨会话持久化记忆。通过代理定义 frontmatter 的 `memory` 字段声明作用域（详见 [07-代理协作](./07-agent-collaboration.md)）。
+子代理可以拥有独立于主代理的跨会话持久化记忆。通过代理定义 frontmatter 的 `memory` 字段声明作用域（详见 [06-代理协作](./06-agent-collaboration.md)）。
 
 ### 记忆作用域
 

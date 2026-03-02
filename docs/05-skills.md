@@ -1,6 +1,6 @@
 # 技能系统
 
-> [← 上一篇: 生命周期钩子](./04-hooks.md) | [目录](./README.md) | [下一篇: 代理协作 →](./07-agent-collaboration.md)
+> [← 上一篇: 生命周期钩子](./04-hooks.md) | [目录](./README.md) | [下一篇: 代理协作 →](./06-agent-collaboration.md)
 
 技能（Skills）是 Codara 的**统一扩展单元**，允许用户和项目定义可复用的 AI 驱动工作流。每个技能是一个目录，包含 SKILL.md 定义文件以及可选的 agents、hooks、scripts 等资源。用户通过在输入区域输入 `/<name>` 来调用技能。
 
@@ -15,7 +15,7 @@
 1. 核心只保留通用运行时：`agent loop + hooks`。
 2. 项目策略不硬编码在核心：通过 skills 组合 hooks（必要时配合权限规则）。
 3. `permissions`、`security-check`、`audit-logger`、协作模式等都应优先 skill 化。
-4. 多代理协作策略同样通过 skills 组织（见 [07-agent-collaboration](./07-agent-collaboration.md)）。
+4. 多代理协作策略同样通过 skills 组织（见 [06-agent-collaboration](./06-agent-collaboration.md)）。
 
 ## 设计理念
 
@@ -688,98 +688,14 @@ exit 0  # 放行到权限检查
 
 **需求**：阻止所有危险的 `rm -rf` 命令，并提供友好的错误提示。
 
-**错误做法**：直接在 `settings.json` 中配置 hooks
+**实现位置**：`.codara/skills/security-check/`
 
-```json
-{
-  "hooks": {
-    "PreToolUse": [
-      {
-        "matcher": "Bash",
-        "hooks": [
-          {
-            "type": "command",
-            "command": "bash /path/to/check-rm.sh"
-          }
-        ]
-      }
-    ]
-  }
-}
-```
+**核心机制**：
+- 使用 PreToolUse Hook 拦截 Bash 命令
+- 通过脚本检查危险命令模式
+- 退出码 2 拒绝执行
 
-**正确做法**：创建 `security-check` 技能
-
-```
-.codara/skills/security-check/
-├── SKILL.md
-└── scripts/
-    └── check-dangerous-commands.sh
-```
-
-**SKILL.md：**
-
-```markdown
----
-name: security-check
-description: 启用安全检查，阻止危险命令
-user-invocable: true
-disable-model-invocation: true
-hooks:
-  PreToolUse:
-    - matcher: "Bash"
-      hooks:
-        - type: command
-          command: "bash ${CODARA_SKILL_ROOT}/scripts/check-dangerous-commands.sh"
----
-
-安全检查已启用。以下命令将被阻止：
-- `rm -rf /`
-- `rm -rf /*`
-- `chmod -R 777 /`
-
-调用方式：`/security-check`
-```
-
-**scripts/check-dangerous-commands.sh：**
-
-```bash
-#!/bin/bash
-COMMAND=$(echo "$TOOL_INPUT" | jq -r '.command // ""')
-
-# 危险命令模式
-DANGEROUS_PATTERNS=(
-  "rm -rf /"
-  "rm -rf /*"
-  "chmod -R 777 /"
-  "> /dev/sda"
-)
-
-for pattern in "${DANGEROUS_PATTERNS[@]}"; do
-  if echo "$COMMAND" | grep -qF "$pattern"; then
-    echo "🚫 安全检查失败：检测到危险命令 '$pattern'" >&2
-    echo "提示：请检查命令是否正确，或联系管理员" >&2
-    exit 2  # 拒绝
-  fi
-done
-
-exit 0  # 放行
-```
-
-**使用方式：**
-
-```bash
-# 用户在会话开始时调用
-/security-check
-
-# 之后所有 Bash 命令都会经过安全检查
-```
-
-**优势：**
-- ✅ 自包含：脚本和配置都在 skill 目录中
-- ✅ 可复用：可以分享给其他项目或用户
-- ✅ 按需启用：只在需要时调用，不影响其他会话
-- ✅ 易于维护：修改检查规则只需编辑脚本
+**参考实现**：查看 `.codara/skills/security-check/` 目录了解完整实现。
 
 ---
 
@@ -787,298 +703,25 @@ exit 0  # 放行
 
 **需求**：记录所有工具调用到日志文件，用于审计和调试。
 
-```
-.codara/skills/audit-logger/
-├── SKILL.md
-└── scripts/
-    └── log-tool-call.sh
-```
+**实现位置**：`.codara/skills/audit-logger/`
 
-**SKILL.md：**
+**核心机制**：
+- 使用 PreToolUse 和 PostToolUse Hook 记录工具调用
+- 日志记录到 `~/.codara/logs/audit-$(date +%Y%m%d).log`
+- 不阻塞工具执行（退出码 0）
 
-```markdown
----
-name: audit-logger
-description: 启用审计日志，记录所有工具调用
-user-invocable: true
-disable-model-invocation: true
-hooks:
-  PreToolUse:
-    - matcher: "*"
-      hooks:
-        - type: command
-          command: "bash ${CODARA_SKILL_ROOT}/scripts/log-tool-call.sh pre"
-  PostToolUse:
-    - matcher: "*"
-      hooks:
-        - type: command
-          command: "bash ${CODARA_SKILL_ROOT}/scripts/log-tool-call.sh post"
----
-
-审计日志已启用。所有工具调用将记录到：
-`~/.codara/logs/audit-$(date +%Y%m%d).log`
-
-调用方式：`/audit-logger`
-```
-
-**scripts/log-tool-call.sh：**
-
-```bash
-#!/bin/bash
-PHASE=$1
-LOG_DIR="$HOME/.codara/logs"
-LOG_FILE="$LOG_DIR/audit-$(date +%Y%m%d).log"
-
-mkdir -p "$LOG_DIR"
-
-TIMESTAMP=$(date -Iseconds)
-TOOL_NAME=${TOOL_NAME:-"unknown"}
-
-if [[ "$PHASE" == "pre" ]]; then
-  echo "[$TIMESTAMP] PRE  | $TOOL_NAME | $TOOL_INPUT" >> "$LOG_FILE"
-elif [[ "$PHASE" == "post" ]]; then
-  echo "[$TIMESTAMP] POST | $TOOL_NAME | Success" >> "$LOG_FILE"
-fi
-
-exit 0
-```
-
-**日志输出示例：**
-
-```
-[2026-03-01T16:45:23+08:00] PRE  | Bash | {"command":"git status"}
-[2026-03-01T16:45:23+08:00] POST | Bash | Success
-[2026-03-01T16:45:25+08:00] PRE  | Read | {"file_path":"src/app.ts"}
-[2026-03-01T16:45:25+08:00] POST | Read | Success
-```
+**参考实现**：查看 `.codara/skills/audit-logger/` 目录了解完整实现。
 
 ---
 
-### 示例 3：沙箱技能
+### 更多示例
 
-**需求**：将所有文件写入操作重定向到沙箱目录，保护生产文件。
+项目中还包含其他 Skills 示例，可以在 `.codara/skills/` 目录中查看：
 
-```
-.codara/skills/sandbox/
-├── SKILL.md
-└── scripts/
-    └── redirect-to-sandbox.sh
-```
+- **security-check**：安全检查，阻止危险命令
+- **audit-logger**：审计日志，记录所有工具调用
 
-**SKILL.md：**
-
-```markdown
----
-name: sandbox
-description: 启用沙箱模式，所有写入操作重定向到 /tmp/codara-sandbox
-user-invocable: true
-disable-model-invocation: true
-hooks:
-  PreToolUse:
-    - matcher: "Write"
-      hooks:
-        - type: command
-          command: "bash ${CODARA_SKILL_ROOT}/scripts/redirect-to-sandbox.sh"
-    - matcher: "Edit"
-      hooks:
-        - type: command
-          command: "bash ${CODARA_SKILL_ROOT}/scripts/redirect-to-sandbox.sh"
----
-
-沙箱模式已启用。所有 Write/Edit 操作将重定向到：
-`/tmp/codara-sandbox/`
-
-调用方式：`/sandbox`
-```
-
-**scripts/redirect-to-sandbox.sh：**
-
-```bash
-#!/bin/bash
-CONTEXT=$(cat)
-FILE_PATH=$(echo "$CONTEXT" | jq -r '.input.file_path // ""')
-
-if [[ -z "$FILE_PATH" ]]; then
-  exit 0  # 无文件路径，放行
-fi
-
-# 重定向到沙箱
-SANDBOX_DIR="/tmp/codara-sandbox"
-SANDBOX_PATH="$SANDBOX_DIR$FILE_PATH"
-
-mkdir -p "$(dirname "$SANDBOX_PATH")"
-
-# 修改输入，替换文件路径
-MODIFIED_INPUT=$(echo "$CONTEXT" | jq ".input.file_path = \"$SANDBOX_PATH\"")
-
-echo "{\"action\": \"modify\", \"modifiedInput\": $(echo "$MODIFIED_INPUT" | jq '.input')}"
-exit 0
-```
-
-**效果：**
-
-```bash
-# 代理尝试写入 /etc/config.json
-Write: /etc/config.json
-
-# 实际写入到 /tmp/codara-sandbox/etc/config.json
-```
-
----
-
-### 示例 4：代码审查技能（组合 Hooks + Permissions）
-
-**需求**：审查代码时只允许读取操作，并在读取后自动触发质量检查。
-
-```
-.codara/skills/code-review/
-├── SKILL.md
-├── scripts/
-│   └── quality-check.sh
-└── agents/
-    └── reviewer.md
-```
-
-**SKILL.md：**
-
-```markdown
----
-name: code-review
-description: 代码审查模式，只读访问 + 自动质量检查
-allowed-tools: "Read(*),Grep(*),Glob(*)"
-user-invocable: true
-hooks:
-  PostToolUse:
-    - matcher: "Read"
-      hooks:
-        - type: command
-          command: "bash ${CODARA_SKILL_ROOT}/scripts/quality-check.sh"
----
-
-Review the code in the current directory.
-
-Focus on:
-1. Security vulnerabilities
-2. Performance issues
-3. Code style consistency
-4. Potential bugs
-
-Use the reviewer agent for detailed analysis.
-```
-
-**scripts/quality-check.sh：**
-
-```bash
-#!/bin/bash
-FILE_PATH=$(echo "$TOOL_INPUT" | jq -r '.file_path // ""')
-
-# 检查文件扩展名
-if [[ "$FILE_PATH" =~ \.(ts|js|py)$ ]]; then
-  echo "📊 质量检查：$FILE_PATH" >&2
-
-  # 运行 linter（示例）
-  if command -v eslint &> /dev/null && [[ "$FILE_PATH" =~ \.(ts|js)$ ]]; then
-    eslint "$FILE_PATH" 2>&1 | head -5 >&2
-  fi
-fi
-
-exit 0
-```
-
-**优势：**
-- ✅ 权限控制：`allowed-tools` 限制只能读取，不能修改
-- ✅ 自动检查：读取文件后自动运行质量检查
-- ✅ 可扩展：可以添加更多检查工具（prettier、pylint 等）
-
----
-
-### 示例 5：Git 工作流技能
-
-**需求**：强制执行 Git 工作流规范（必须在 feature 分支、commit 前必须有测试）。
-
-```
-.codara/skills/git-workflow/
-├── SKILL.md
-└── scripts/
-    ├── check-branch.sh
-    └── check-tests.sh
-```
-
-**SKILL.md：**
-
-```markdown
----
-name: git-workflow
-description: 强制执行 Git 工作流规范
-user-invocable: true
-disable-model-invocation: true
-allowed-tools: "Bash(git *)"
-hooks:
-  PreToolUse:
-    - matcher: "Bash"
-      hooks:
-        - type: command
-          command: "bash ${CODARA_SKILL_ROOT}/scripts/check-branch.sh"
-        - type: command
-          command: "bash ${CODARA_SKILL_ROOT}/scripts/check-tests.sh"
----
-
-Git 工作流规范已启用：
-1. 禁止在 main/master 分支直接提交
-2. commit 前必须运行测试
-3. 禁止 force push 到 main/master
-
-调用方式：`/git-workflow`
-```
-
-**scripts/check-branch.sh：**
-
-```bash
-#!/bin/bash
-COMMAND=$(echo "$TOOL_INPUT" | jq -r '.command // ""')
-
-# 检查是否是 commit 命令
-if [[ "$COMMAND" =~ ^git\ commit ]]; then
-  BRANCH=$(git branch --show-current)
-
-  if [[ "$BRANCH" == "main" || "$BRANCH" == "master" ]]; then
-    echo "❌ 禁止在 $BRANCH 分支直接提交" >&2
-    echo "请切换到 feature 分支：git checkout -b feature/your-feature" >&2
-    exit 2
-  fi
-fi
-
-# 检查是否是 force push 到 main/master
-if [[ "$COMMAND" =~ ^git\ push.*--force ]]; then
-  if [[ "$COMMAND" =~ (main|master) ]]; then
-    echo "❌ 禁止 force push 到 main/master 分支" >&2
-    exit 2
-  fi
-fi
-
-exit 0
-```
-
-**scripts/check-tests.sh：**
-
-```bash
-#!/bin/bash
-COMMAND=$(echo "$TOOL_INPUT" | jq -r '.command // ""')
-
-# 检查是否是 commit 命令
-if [[ "$COMMAND" =~ ^git\ commit ]]; then
-  # 检查是否有测试文件被修改
-  if git diff --cached --name-only | grep -qE '\.(test|spec)\.(ts|js|py)$'; then
-    echo "✅ 检测到测试文件修改" >&2
-  else
-    echo "⚠️  警告：未检测到测试文件修改" >&2
-    echo "建议：为你的更改添加测试" >&2
-    # 不阻止，只是警告
-  fi
-fi
-
-exit 0
-```
+每个 skill 目录都包含完整的实现和文档，可以直接参考和复用。
 
 ---
 
@@ -1098,216 +741,23 @@ exit 0
 |------|----------------------|-----------------|
 | 安全检查 | 全局生效，无法关闭 | 按需启用，作用域清晰 |
 | 审计日志 | 配置分散，难以管理 | 自包含，易于维护 |
-| 沙箱模式 | 需要手动编写复杂 JSON | 提供模板，开箱即用 |
 | 代码审查 | 无法组合 hooks + permissions | 自然组合，功能完整 |
-| Git 工作流 | 难以复用和分享 | 可以打包分发 |
 
 **结论：通过 Skills 封装 Hooks 和 Permissions，是扩展 Codara 的最佳实践。**
-
----
-## Skills 生态与分发
-
-Skills 不仅是 Codara 内部的扩展机制，也是构建外部生态的基础。
-
-### 内部 vs 外部扩展
-
-| 类型 | 位置 | 用途 | 示例 |
-|------|------|------|------|
-| **内部扩展** | Codara 代码库内置 | 核心工作流 | commit, code-review, init |
-| **项目级扩展** | `.codara/skills/` | 项目特定工作流 | deploy, test, build |
-| **用户级扩展** | `~/.codara/skills/` | 个人工作流 | my-workflow, custom-check |
-| **社区扩展** | 第三方仓库 | 可复用的通用工作流 | security-scanner, doc-generator |
-
-### Skills 分发模式
-
-#### 1. 直接复制
-
-最简单的分发方式：
-
-```bash
-# 分享者
-cd .codara/skills/my-skill
-tar -czf my-skill.tar.gz .
-
-# 使用者
-mkdir -p ~/.codara/skills/my-skill
-cd ~/.codara/skills/my-skill
-tar -xzf my-skill.tar.gz
-```
-
-#### 2. Git 子模块
-
-适合团队协作：
-
-```bash
-# 项目中添加 skill 子模块
-git submodule add https://github.com/org/codara-skill-deploy .codara/skills/deploy
-
-# 其他成员克隆时
-git clone --recursive <repo-url>
-```
-
-#### 3. npm 包（推荐）
-
-适合社区分发：
-
-```bash
-# 发布 skill 为 npm 包
-npm publish codara-skill-security-check
-
-# 用户安装
-npm install -g codara-skill-security-check
-# 自动链接到 ~/.codara/skills/security-check
-```
-
-#### 4. Skill Registry（未来）
-
-类似 VSCode 插件市场：
-
-```bash
-# 搜索 skills
-codara skill search security
-
-# 安装 skill
-codara skill install security-check
-
-# 列出已安装 skills
-codara skill list
-```
-
-### Skill 打包规范
-
-一个可分发的 Skill 应该包含：
-
-```
-my-skill/
-├── SKILL.md              # 必需：技能定义
-├── README.md             # 推荐：使用说明
-├── LICENSE               # 推荐：开源协议
-├── package.json          # 可选：npm 包元数据
-├── scripts/              # 可选：可执行脚本
-├── hooks/                # 可选：钩子配置
-├── agents/               # 可选：自定义代理
-└── tests/                # 推荐：测试用例
-```
-
-**package.json 示例：**
-
-```json
-{
-  "name": "codara-skill-security-check",
-  "version": "1.0.0",
-  "description": "Security check skill for Codara",
-  "keywords": ["codara", "skill", "security"],
-  "author": "Your Name",
-  "license": "MIT",
-  "codara": {
-    "skillName": "security-check",
-    "installPath": "~/.codara/skills/security-check"
-  }
-}
-```
-
-### 社区贡献指南
-
-#### 创建一个 Skill
-
-1. **规划功能**：明确 skill 的单一职责
-2. **创建目录**：`mkdir -p ~/.codara/skills/my-skill`
-3. **编写 SKILL.md**：定义 frontmatter 和提示模板
-4. **添加资源**：scripts、hooks、agents（按需）
-5. **测试**：在本地项目中调用 `/my-skill` 测试
-6. **文档化**：编写 README.md，说明用途和用法
-
-#### 分享 Skill
-
-1. **开源**：发布到 GitHub
-2. **打标签**：使用 `codara-skill-*` 命名规范
-3. **添加 README**：包含安装和使用说明
-4. **提交到 Awesome List**：（未来）提交到 `awesome-codara-skills`
-
-#### Skill 质量标准
-
-优秀的 Skill 应该：
-- ✅ 单一职责，功能清晰
-- ✅ 自包含，无外部依赖（或明确声明依赖）
-- ✅ 提供清晰的文档和示例
-- ✅ 包含测试用例
-- ✅ 遵循安全最佳实践（不泄露敏感信息）
-- ✅ 优雅降级（脚本失败不应阻止整个流程）
-
-### Skills 生态愿景
-
-**Codara 的目标是构建一个繁荣的 Skills 生态：**
-
-```
-┌─────────────────────────────────────────────────────────┐
-│                    Codara 核心                           │
-│  (通用的 Agent Loop + Tools + Middleware)                │
-└─────────────────────────────────────────────────────────┘
-                          ↑
-                          │
-┌─────────────────────────────────────────────────────────┐
-│                  Skills 生态层                           │
-│                                                          │
-│  内置 Skills     项目 Skills     用户 Skills             │
-│  ├─ commit       ├─ deploy       ├─ my-workflow         │
-│  ├─ review       ├─ test         └─ custom-check        │
-│  └─ init         └─ build                               │
-│                                                          │
-│  社区 Skills（第三方）                                   │
-│  ├─ security-scanner (GitHub)                           │
-│  ├─ doc-generator (npm)                                 │
-│  ├─ api-tester (Git submodule)                          │
-│  └─ ... (更多社区贡献)                                   │
-└─────────────────────────────────────────────────────────┘
-```
-
-**核心保持通用和稳定，生态通过 Skills 不断扩展。**
-
-### 示例：社区 Skill
-
-**codara-skill-api-tester**（假设的社区 skill）
-
-```markdown
----
-name: api-test
-description: Test REST APIs with automatic request generation
-allowed-tools: "Bash(curl *),Read(*),Write(*.json)"
----
-
-Test the API endpoints defined in $ARGUMENTS.
-
-Steps:
-1. Read API spec from $ARGUMENTS (OpenAPI/Swagger)
-2. Generate test requests
-3. Execute requests with curl
-4. Validate responses
-5. Generate test report
-```
-
-用户安装后：
-
-```bash
-# 安装
-npm install -g codara-skill-api-tester
-
-# 使用
-/api-test openapi.yaml
-```
 
 ---
 
 ## 总结
 
-**Skills 是 Codara 扩展的唯一入口，也是生态建设的基础。**
+**Skills 是 Codara 扩展的唯一入口。**
 
-- **内部扩展**：Codara 核心功能通过 Skills 实现
-- **外部扩展**：用户、社区、第三方通过 Skills 扩展
+- **核心通用**：Agent Loop + Tools + Middleware 保持通用和稳定
+- **领域扩展**：所有领域功能通过 Skills 实现
 - **统一接口**：所有扩展遵循相同的 Skill 规范
-- **可复用**：Skills 可以打包、分发、分享
-- **生态驱动**：社区贡献推动 Codara 功能丰富
+- **可复用**：Skills 可以在项目间共享和分发
 
 **通过 Skills，Codara 从一个工具变成一个平台。**
 
 ---
+
+> [← 上一篇: 生命周期钩子](./04-hooks.md) | [目录](./README.md) | [下一篇: 代理协作 →](./06-agent-collaboration.md)

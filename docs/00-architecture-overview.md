@@ -1,6 +1,6 @@
 # Codara 架构概览
 
-> [目录](./README.md) | [下一篇: 代理循环 →](./02-agent-loop.md)
+> [目录](./README.md) | [下一篇: 模型路由 →](./01-model-routing.md)
 
 Codara 是一个基于终端的 AI 编程助手，设计理念类似 Claude Code。它以 CLI 应用的形式运行，连接到 LLM 提供商（Anthropic、OpenAI 或任何 OpenAI 兼容 API），并为模型提供文件系统工具、Shell 执行和代码搜索功能——全部在交互式终端 UI 中完成。
 
@@ -8,12 +8,14 @@ Codara 是一个基于终端的 AI 编程助手，设计理念类似 Claude Code
 
 ## 文档主线
 
-当前文档体系按“机制优先、策略后置”组织：
+当前文档体系按”机制优先、策略后置”组织：
 
-1. `02-agent-loop`：执行引擎（核心运行时）
-2. `04-hooks`：生命周期扩展原语（核心扩展面）
-3. `06-skills`：策略编排（能力扩展入口）
-4. `07-agent-collaboration`：多代理协作机制与策略编排
+1. `01-model-routing`：模型路由（方便调试和模型管理）
+2. `02-agent-loop`：执行引擎（核心运行时）
+3. `03-tools`：工具系统（能力原语）
+4. `04-hooks`：生命周期扩展原语（核心扩展面）
+5. `05-skills`：策略编排（能力扩展入口）
+6. `06-agent-collaboration`：多代理协作机制与策略编排
 
 权限规则细节收敛到附录：`docs/appendix/permissions.md`。
 
@@ -59,7 +61,7 @@ Codara 是一个基于终端的 AI 编程助手，设计理念类似 Claude Code
 - ✅ 更好的扩展（统一接口、可复用）
 - ✅ 生态建设（可分享、可分发、社区驱动）
 
-详见 [06-技能系统](./06-skills.md) 了解如何通过 Skills 扩展 Codara。
+详见 [05-技能系统](./05-skills.md) 了解如何通过 Skills 扩展 Codara。
 
 ### 核心与 Skills 的职责边界
 
