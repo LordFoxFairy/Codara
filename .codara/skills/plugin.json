@@ -37,6 +37,13 @@
       "category": "development"
     },
     {
+      "name": "skill-dev",
+      "description": "Design, create, or refactor Codara skills with maintainable structure and consistent schema. Comprehensive toolkit for skill development",
+      "version": "1.0.0",
+      "source": "./skill-dev",
+      "category": "development"
+    },
+    {
       "name": "mcp",
       "description": "Guide for integrating Model Context Protocol (MCP) servers. Connect external services and tools to Codara",
       "version": "1.0.0",
