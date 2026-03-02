@@ -1,30 +1,55 @@
 ---
 name: hooks
-command-name: hooks
-description: Configure lifecycle hooks and scaffold hook-based skills. Use when users ask about hooks, PreToolUse/PostToolUse, SessionStart, or want to create custom hook-driven workflows.
+description: Lifecycle hooks toolkit - configure hooks, use ready-made templates (security-check, audit-logger, sandbox), or scaffold custom hook-based skills
 user-invocable: true
 ---
 
-# Lifecycle Hooks
+# Lifecycle Hooks Toolkit
 
-Configure hooks with Codara's canonical schema or scaffold new hook-based skills.
+Complete toolkit for working with Codara's lifecycle hooks system.
 
-## Current Hook Configuration
+## Current Configuration
 
 !`bash ${CODARA_SKILL_ROOT}/scripts/show-config.sh`
 
-## Two Modes
+---
 
-### Mode 1: Configure Hooks (Quick Setup)
+## Three Ways to Use This Skill
 
-For users who want to add hooks to their project:
+### 1. Quick Setup: Use Ready-Made Templates
 
-1. Clarify the target behavior (security, audit, sandbox redirect, validation).
-2. Choose the correct hook event.
-3. Return complete JSON using the event-keyed format below (for `settings.json` or `settings.local.json` at project root).
-4. Verify with the user after configuration is applied.
+Apply pre-built hook configurations instantly:
 
-**Canonical Hook Schema:**
+**Security Check** - Block dangerous commands:
+```bash
+# View template
+cat ${CODARA_SKILL_ROOT}/templates/security-check.json
+
+# Apply to settings.json
+jq -s '.[0] * .[1]' settings.json ${CODARA_SKILL_ROOT}/templates/security-check.json > settings.tmp.json && mv settings.tmp.json settings.json
+```
+
+**Audit Logger** - Log all tool calls:
+```bash
+# View template
+cat ${CODARA_SKILL_ROOT}/templates/audit-logger.json
+
+# Apply to settings.json
+jq -s '.[0] * .[1]' settings.json ${CODARA_SKILL_ROOT}/templates/audit-logger.json > settings.tmp.json && mv settings.tmp.json settings.json
+```
+
+**Sandbox Mode** - Redirect writes to sandbox:
+```bash
+# View template
+cat ${CODARA_SKILL_ROOT}/templates/sandbox-redirect.json
+
+# Apply to settings.json
+jq -s '.[0] * .[1]' settings.json ${CODARA_SKILL_ROOT}/templates/sandbox-redirect.json > settings.tmp.json && mv settings.tmp.json settings.json
+```
+
+### 2. Custom Configuration: Build Your Own
+
+Use the canonical hooks schema to create custom configurations:
 
 ```json
 {
@@ -33,48 +58,112 @@ For users who want to add hooks to their project:
       {
         "matcher": "Bash",
         "hooks": [
-          { "type": "command", "command": "bash ./scripts/check.sh" }
+          {
+            "type": "command",
+            "command": "bash /absolute/path/to/your-script.sh"
+          }
         ]
       }
     ],
-    "PostToolUse": []
+    "PostToolUse": [
+      {
+        "matcher": "*",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "echo 'Tool executed: $TOOL_NAME' >> /tmp/log.txt"
+          }
+        ]
+      }
+    ]
   }
 }
 ```
 
-**Ready-to-Use Templates:**
-- `assets/block-dangerous-commands.json`
-- `assets/audit-all-tools.json`
-- `assets/sandbox-redirect.json`
+**Available Hook Events:**
+- `PreToolUse` - Before tool execution (can deny with exit 2)
+- `PostToolUse` - After successful tool execution
+- `PostToolUseFailure` - After failed tool execution
+- `SessionStart` - When session starts
+- `SessionStop` - When session ends
 
-### Mode 2: Scaffold Hook Skill (Advanced)
+**Script Environment Variables:**
+- `$TOOL_NAME` - Tool being called
+- `$TOOL_INPUT` - Tool input as JSON
+- `$TOOL_OUTPUT` - Tool output (PostToolUse only)
 
-For developers who want to create reusable hook-based skills:
+**Exit Codes:**
+- `0` - Allow/continue
+- `2` - Deny/block (PreToolUse only)
+- Other - Allow but log error
 
-**Quick Scaffold:**
+### 3. Advanced: Scaffold New Hook-Based Skills
+
+Create reusable hook-based skills:
 
 ```bash
-bash ${CODARA_SKILL_ROOT}/scripts/init-hook-skill.sh my-hook-skill
+bash ${CODARA_SKILL_ROOT}/scripts/init-hook-skill.sh my-custom-skill
 ```
 
 This creates:
-- `.codara/skills/my-hook-skill/SKILL.md`
-- `.codara/skills/my-hook-skill/scripts/main.sh`
+- `.codara/skills/my-custom-skill/SKILL.md`
+- `.codara/skills/my-custom-skill/scripts/main.sh`
 
-**Design Principles:**
-1. Keep core runtime generic (`agent loop + hooks engine + permissions engine`).
-2. Put strategy/workflow logic in skills.
-3. Use project-root config files when needed: `settings.json`, `settings.local.json`
+---
 
-**Workflow:**
-1. Define trigger and behavior in one sentence.
-2. Choose hook event (`PreToolUse`, `PostToolUse`, `SessionStart`, etc.).
-3. Implement deterministic logic in `scripts/*.sh`.
-4. Wire logic via skill hooks (inline `hooks:` or `hooks/hooks.json`).
-5. Validate with `bun run validate:skills`.
+## Reusable Scripts
+
+All scripts in `${CODARA_SKILL_ROOT}/scripts/` can be used in your hooks:
+
+**block-dangerous-command.sh** - Security guard:
+```json
+{
+  "type": "command",
+  "command": "bash ${CODARA_SKILL_ROOT}/scripts/block-dangerous-command.sh"
+}
+```
+
+**log-tool-call.sh** - Audit logger:
+```json
+{
+  "type": "command",
+  "command": "bash ${CODARA_SKILL_ROOT}/scripts/log-tool-call.sh"
+}
+```
+
+**redirect-to-sandbox.sh** - Sandbox redirector:
+```json
+{
+  "type": "command",
+  "command": "bash ${CODARA_SKILL_ROOT}/scripts/redirect-to-sandbox.sh"
+}
+```
+
+---
+
+## Templates Reference
+
+| Template | Purpose | Hook Event | Exit Behavior |
+|----------|---------|------------|---------------|
+| `security-check.json` | Block dangerous commands | PreToolUse | Deny on match |
+| `audit-logger.json` | Log all tool calls | PostToolUse | Always allow |
+| `sandbox-redirect.json` | Redirect writes to sandbox | PreToolUse | Modify input |
+
+---
+
+## Best Practices
+
+1. **Use absolute paths** in hook commands (or `${CODARA_SKILL_ROOT}`)
+2. **Test scripts standalone** before adding to hooks
+3. **Keep hooks fast** - they run on every tool call
+4. **Use PreToolUse for validation** - can deny with exit 2
+5. **Use PostToolUse for logging** - cannot deny
+6. **Combine templates** - security + audit works great together
+
+---
 
 ## References
 
-- `references/example-index.md` - Hook examples
-- `references/hooks-complete.md` - Complete hook documentation
-- `references/playbook.md` - Hook skill development playbook
+- `references/hooks-complete.md` - Complete hooks documentation
+- `references/example-index.md` - More examples
+- `references/playbook.md` - Hook skill development guide

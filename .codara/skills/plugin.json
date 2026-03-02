@@ -2,64 +2,50 @@
   "$schema": "https://codara.dev/skills/schema.json",
   "name": "codara-skills",
   "version": "1.0.0",
-  "description": "Bundled skills for Codara including security controls, audit logging, hooks configuration, and workflow automation",
+  "description": "Bundled skills for Codara including hooks toolkit, permissions management, MCP integration, and workflow automation",
   "owner": {
     "name": "Codara",
     "email": "support@codara.dev"
   },
   "skills": [
     {
-      "name": "security-check",
-      "description": "Block dangerous shell commands (rm -rf, sudo, chmod 777, etc.) via deny rules and PreToolUse hook guard",
-      "version": "1.0.0",
-      "source": "./security-check",
-      "category": "security"
-    },
-    {
-      "name": "audit-logger",
-      "description": "Structured audit logging for all tool calls using PostToolUse hooks. Records time, tool, input, and sessionId to .codara/audit.log",
-      "version": "1.0.0",
-      "source": "./audit-logger",
-      "category": "security"
-    },
-    {
-      "name": "permissions",
-      "description": "Configure Codara permissions safely using defaultMode plus allow/deny/ask rules. Manage tool access policies",
-      "version": "1.0.0",
-      "source": "./permissions",
-      "category": "productivity"
-    },
-    {
       "name": "hooks",
-      "description": "Configure lifecycle hooks (PreToolUse/PostToolUse/SessionStart) and scaffold new hook-based skills. Includes templates and development toolkit",
+      "description": "Complete lifecycle hooks toolkit - ready-made templates (security-check, audit-logger, sandbox), custom configuration, and skill scaffolding",
       "version": "1.0.0",
       "source": "./hooks",
       "category": "development"
     },
     {
+      "name": "permissions",
+      "description": "Permissions configuration toolkit - view current state, understand modes, configure allow/deny/ask rules with templates",
+      "version": "1.0.0",
+      "source": "./permissions",
+      "category": "productivity"
+    },
+    {
       "name": "skill-dev",
-      "description": "Design, create, or refactor Codara skills with maintainable structure and consistent schema. Comprehensive toolkit for skill development",
+      "description": "Comprehensive skill development guide - structure, frontmatter, validation, and best practices for building Codara skills",
       "version": "1.0.0",
       "source": "./skill-dev",
       "category": "development"
     },
     {
       "name": "mcp",
-      "description": "Guide for integrating Model Context Protocol (MCP) servers. Connect external services and tools to Codara",
+      "description": "Model Context Protocol (MCP) integration guide - connect external services and tools to Codara",
       "version": "1.0.0",
       "source": "./mcp",
       "category": "development"
     },
     {
       "name": "commit",
-      "description": "Intelligent git commit creation with automatic change analysis. Analyzes staged changes and generates meaningful commit messages",
+      "description": "Intelligent git commit creation with automatic change analysis and meaningful commit messages",
       "version": "1.0.0",
       "source": "./commit",
       "category": "productivity"
     },
     {
       "name": "code-review",
-      "description": "Multi-agent PR code review with parallel analysis. Checks for bugs, security issues, and CLAUDE.md compliance (requires gh CLI)",
+      "description": "Multi-agent PR code review with parallel analysis for bugs, security, and CLAUDE.md compliance (requires gh CLI)",
       "version": "1.0.0",
       "source": "./code-review",
       "category": "productivity"

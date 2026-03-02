@@ -11,5 +11,16 @@
         ]
       }
     ]
+  },
+  "permissions": {
+    "deny": [
+      "Bash(rm -rf *)",
+      "Bash(sudo *)",
+      "Bash(chmod 777*)",
+      "Bash(chmod -R 777*)",
+      "Bash(dd if=*)",
+      "Bash(mkfs*)",
+      "Bash(*production*)"
+    ]
   }
 }
