@@ -5,6 +5,7 @@
 ## 目录
 
 ### 宏观视角
+0. [运行时一图流（唯一入口）](#0-运行时一图流唯一入口)
 1. [启动流程](#1-启动流程)
 2. [初始化阶段](#2-初始化阶段)
 3. [执行阶段](#3-执行阶段)
@@ -20,6 +21,51 @@
 ---
 
 # 宏观视角
+
+## 0. 运行时一图流（唯一入口）
+
+```mermaid
+sequenceDiagram
+  participant U as User
+  participant C as CLI
+  participant A as AgentLoop
+  participant S as Skill Layer
+  participant H as Hook Engine
+  participant P as Permission Engine
+  participant T as Tool
+
+  U->>C: 启动 codara / 输入 prompt
+  C->>A: 加载配置并 init()
+  A->>A: 加载 CODARA + MEMORY + Skills + Hooks + Permissions
+  A->>A: 组装 System Prompt + 绑定工具
+  U->>A: 输入消息（可能是 /skill ...）
+  A->>S: 解析并展开技能（如命中）
+  S-->>A: 展开提示 + 临时 allowed-tools
+  A->>A: 调用模型并检查 tool_calls
+
+  alt 有 tool_calls
+    A->>H: PreToolUse（可 deny / modify）
+    H-->>A: 结果
+    A->>P: Permission 检查（deny / ask / allow）
+    alt ask
+      A-->>U: permission_request
+      U-->>A: 用户决策
+    end
+    A->>T: 执行工具
+    T-->>A: 工具结果
+    A->>H: PostToolUse / PostToolUseFailure
+    A->>A: 写入 ToolMessage，继续下一轮
+  else 无 tool_calls
+    A-->>U: 最终响应并 done
+  end
+```
+
+**统一口径：**
+- 主路径判断信号是 `tool_calls`；`stop_reason` 只做边缘状态处理。
+- 工具调用关键顺序是 `PreToolUse -> Permissions -> Tool -> PostToolUse`。
+- Skill Hooks 在初始化阶段加载并在会话内生效；`/skill-name` 主要影响提示注入与临时 `allowed-tools`。
+
+---
 
 ## 1. 启动流程
 
@@ -109,14 +155,14 @@ while (true) {
   3. 调用 LLM (streaming)
      └─ 收集 chunks
 
-  4. 检查 stop_reason
-     ├─ "end_turn" → 结束
-     ├─ "tool_use" → 执行工具 (见下文)
-     ├─ "max_tokens" → 继续
-     └─ "refusal" → 结束
+  4. 检查 tool_calls（主路径）
+     ├─ 非空 → 执行工具流程（见下文）
+     └─ 为空 → 进入结束路径
 
-  5. 工具执行流程 (如果 stop_reason == "tool_use")
-     └─ 见下文 "工具执行流程"
+  5. 检查 stop_reason（辅助）
+     ├─ "max_tokens" / "pause_turn" → 继续
+     ├─ "refusal" → 结束
+     └─ "context_exceeded" → 触发压缩后继续
 }
 ```
 
@@ -156,7 +202,7 @@ while (true) {
 | 时间点 | 发生的事情 | 涉及组件 |
 |--------|-----------|---------|
 | **启动时** | 加载配置、创建 Agent | CLI, Config |
-| **初始化时** | 加载 CODARA.md + MEMORY.md，发现 Skills | MemoryLoader, SkillLoader |
+| **初始化时** | 加载 CODARA.md + MEMORY.md，发现 Skills 并注册 Skill Hooks | MemoryLoader, SkillLoader, HookEngine |
 | **首次调用 LLM** | 系统提示词已包含 CODARA + MEMORY | SystemPrompt |
 | **调用 /skill-name** | Skill 内容注入到当前消息 | SkillExecutor |
 | **工具调用前** | PreToolUse 钩子 + Permissions 检查 | HookEngine, PermissionManager |
@@ -353,26 +399,24 @@ allowed-tools:
 ### 6.3 Skill Hooks
 
 **加载时机：**
-- Skill 被调用时
+- Agent 初始化时（技能发现阶段）
 
 **如何加载：**
 ```typescript
-// src/skills/executor.ts
-function loadSkillHooks(skillPath: string) {
-  const hooksDir = `${skillPath}/hooks/`;
-  const hookFiles = readDirectory(hooksDir);
-
-  for (const file of hookFiles) {
-    const config = JSON.parse(readFile(file));
-    // 临时注册到 HookEngine
-    hookEngine.registerTemporary(config);
+// src/hooks/engine.ts (conceptual)
+function loadSkillHooksAtInit(discoveredSkills: SkillDefinition[]) {
+  for (const skill of discoveredSkills) {
+    const fromHooksDir = readHooksJson(`${skill.basePath}/hooks/hooks.json`);
+    const fromFrontmatter = skill.frontmatter.hooks;
+    registerMergedHooks(fromHooksDir, fromFrontmatter, skill.basePath);
   }
 }
 ```
 
 **生命周期：**
-- Skill 调用时注册
-- Skill 执行完成后移除
+- 会话启动时注册
+- 会话结束时随 HookEngine 销毁
+- `/skill-name` 调用本身只影响提示注入与临时 `allowed-tools`，不动态挂载/移除钩子
 
 ---
 
@@ -702,7 +746,6 @@ function matchesRule(tool: string, input: any, rule: string): boolean {
   │  └─ PostToolUse Hook
   ├─ Skill 调用 (/skill-name)
   │  ├─ 注入 Skill 内容
-  │  ├─ 加载 Skill Hooks
   │  └─ 应用 Skill Permissions
   └─ Subagent 调用 (Task 工具)
      ├─ 创建隔离 Agent

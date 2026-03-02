@@ -460,6 +460,12 @@ ShellHookMiddleware 在启动时扫描所有技能目录，加载技能钩子配
 
 技能钩子格式与 `settings.json` 中的 hooks 相同。所有钩子按优先级合并，同一事件的钩子按顺序执行。
 
+### 技能钩子生命周期
+
+- 技能钩子在 Agent 初始化阶段被发现并注册到会话内 HookEngine。
+- 运行 `/skill-name` 会注入技能提示和临时权限规则（`allowed-tools`），但不会在运行时临时挂载或卸载钩子。
+- 结束当前会话后，钩子状态随会话销毁；新会话重新按配置加载。
+
 ### ${CODARA_SKILL_ROOT} 变量
 
 技能钩子中的命令可以使用 `${CODARA_SKILL_ROOT}` 变量引用技能根目录：
@@ -513,7 +519,7 @@ ShellHookMiddleware 在启动时扫描所有技能目录，加载技能钩子配
     │
     ▼
 ┌─────────────────────────────────────────────────────────┐
-│ 1. PreToolUse Hooks (ShellHookMiddleware, priority: 55) │
+│ 1. PreToolUse Hooks (ShellHookMiddleware)                │
 │    - Shell 命令执行，可返回 deny/modify                   │
 │    - 退出码 2 = 拒绝（短路，不继续）                       │
 │    - 退出码 0 + JSON = 可修改 toolInput                   │
@@ -521,7 +527,7 @@ ShellHookMiddleware 在启动时扫描所有技能目录，加载技能钩子配
     │
     ▼
 ┌─────────────────────────────────────────────────────────┐
-│ 2. PermissionMiddleware (priority: 50)                  │
+│ 2. PermissionMiddleware                                  │
 │    - 按 9 步求值链检查权限                                │
 │    - deny 规则 → 拒绝                                    │
 │    - ask 规则 → 询问用户                                 │
@@ -536,18 +542,18 @@ ShellHookMiddleware 在启动时扫描所有技能目录，加载技能钩子配
     │
     ▼
 ┌─────────────────────────────────────────────────────────┐
-│ 4. PostToolUse Hooks (ShellHookMiddleware, priority: 55)│
+│ 4. PostToolUse Hooks (ShellHookMiddleware)               │
 │    - 审计日志、通知等                                     │
 └─────────────────────────────────────────────────────────┘
 ```
 
-### 三者优先级
+### 三者执行关系
 
-| 检查点 | 优先级 | 能力 | 典型用途 |
-|--------|--------|------|----------|
-| **PreToolUse Hooks** | 最高（先执行） | 拒绝、修改输入 | 策略强制、输入验证、危险命令拦截 |
-| **PermissionMiddleware** | 中（Hooks 之后） | 拒绝、询问、允许 | 用户授权、安全边界、规则求值 |
-| **Skills allowed-tools** | 低（作为 allow 规则） | 临时授予权限 | 减少技能执行期间的提示 |
+| 检查点 | 在链路中的位置 | 能力 | 典型用途 |
+|--------|----------------|------|----------|
+| **PreToolUse Hooks** | 最先执行 | 拒绝、修改输入 | 策略强制、输入验证、危险命令拦截 |
+| **PermissionMiddleware** | PreToolUse 之后 | 拒绝、询问、允许 | 用户授权、安全边界、规则求值 |
+| **Skills allowed-tools** | Permission 的 allow 子集 | 临时授予权限 | 减少技能执行期间的提示 |
 
 ### 设计建议
 

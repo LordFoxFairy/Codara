@@ -12,13 +12,23 @@
 
 ---
 
+## 运行时主线（唯一入口）
+
+| 文档 | 说明 |
+|------|------|
+| **[架构运行流程](./architecture-runtime.md)** | **⭐ 从启动到结束的一图流主线：context 构建、skills 注入、hooks/permissions/tool 执行顺序的统一口径** |
+
+如果只读一篇来理解“系统到底怎么跑”，优先读这篇。
+
+---
+
 ## 核心架构
 
 | # | 文档 | 说明 |
 |---|------|------|
 | 00 | [架构概览](./00-architecture-overview.md) | 项目整体架构与模块关系，入门必读 |
 | 01 | [模型路由](./01-model-routing.md) | 模型别名解析、提供商选择与 LangChain 实例构建 |
-| 02 | [代理循环](./02-agent-loop.md) | 基于 stop-reason 驱动的核心执行引擎 |
+| 02 | [代理循环](./02-agent-loop.md) | 基于 `tool_calls` 主路径 + `stop_reason` 辅助的核心执行引擎 |
 
 ## 工具与扩展
 

@@ -33,7 +33,7 @@ Codara 是一个基于终端的 AI 编程助手，设计理念类似 Claude Code
 ```
 ┌─────────────────────────────────────────────────────────┐
 │                    核心系统（通用）                      │
-│  - Agent Loop: 基于 stop_reason 的执行引擎              │
+│  - Agent Loop: 基于 tool_calls 主路径的执行引擎         │
 │  - Tools: 9 个基础工具（Bash, Read, Write, Edit...）    │
 │  - Middleware: Hooks + Permissions 底层机制              │
 │  - TUI: 终端界面                                         │
@@ -110,7 +110,7 @@ src/
 ├── config.ts              配置加载与合并
 │
 ├── agent/                 核心 Agent 循环与模型管理
-│   ├── loop.ts            AgentLoop — 基于 stop_reason 驱动的核心循环
+│   ├── loop.ts            AgentLoop — 基于 tool_calls 主路径的核心循环
 │   ├── model.ts           提供商路由 + 模型创建
 │   ├── subagent.ts        子 Agent 生成、自定义 Agent 定义
 │   ├── manager.ts         AgentManager — 子 Agent 生命周期注册表
@@ -248,9 +248,9 @@ src/
                          └───────┘  └───────┘  └────────┘
 ```
 
-### 核心循环（基于 stop_reason 驱动）
+### 核心循环（tool_calls 主路径 + stop_reason 辅助）
 
-`agent/loop.ts` 中的 Agent 循环采用 `while(true)` 模式，由 LLM 的 `stop_reason` 驱动：
+`agent/loop.ts` 中的 Agent 循环采用 `while(true)` 模式，主判断信号是 `tool_calls` 是否为空，`stop_reason` 用于处理边缘状态：
 
 ```
 while (true) {
@@ -258,13 +258,13 @@ while (true) {
     2. 如果达到 95% 容量则进行上下文压缩
     3. 流式接收 LLM 响应（收集分块）
     4. 追踪 Token 使用量
-    5. 检查 stop_reason：
-       ├── "end_turn"     → 触发 Stop 钩子 → yield done → 返回
-       ├── "tool_use"     → 执行工具调用（见下文）→ 继续
-       ├── "max_tokens"   → 继续（让 LLM 完成输出）
-       ├── "pause_turn"   → 继续
-       ├── "refusal"      → yield done(refusal) → 返回
-       └── "context_exceeded" → 压缩 → 继续
+    5. 检查响应：
+       ├── tool_calls 非空 → 执行工具调用（见下文）→ 继续
+       ├── tool_calls 为空 → 触发 Stop 钩子 → yield done → 返回
+       └── stop_reason 用于边缘处理：
+           - "max_tokens" / "pause_turn" → 继续
+           - "refusal" → yield done(refusal) → 返回
+           - "context_exceeded" → 压缩 → 继续
 
     每次工具调用的执行流程：
        a. PreToolUse 钩子（可拒绝或修改输入）
@@ -345,12 +345,12 @@ AppConfig {
 
 ## 关键设计原则
 
-### 1. 基于 stop_reason 驱动的循环
+### 1. 基于 tool_calls 主路径的循环
 
-Agent 循环不使用固定的迭代次数。相反，它运行 `while(true)` 并在每次响应后检查 LLM 的 `stop_reason` 来决定下一步操作。这与 Claude Code 的工作方式一致：
+Agent 循环不使用固定的迭代次数。相反，它运行 `while(true)` 并在每次响应后优先检查 `tool_calls` 来决定下一步操作；`stop_reason` 仅用于辅助边缘状态处理。这与 Claude Code 的工作方式一致：
 
-- `"tool_use"` 表示模型想调用工具——执行工具并继续循环。
-- `"end_turn"` 表示模型已完成——输出最终响应。
+- `tool_calls` 非空表示模型想调用工具——执行工具并继续循环。
+- `tool_calls` 为空表示模型已完成——输出最终响应。
 - `"max_tokens"` 表示输出被截断——继续让其完成。
 - 其他原因（`refusal`、`context_exceeded`）有专门的处理逻辑。
 
@@ -478,7 +478,7 @@ default 模式？ → 询问用户
 |---------------------------------|-------|--------------------------------------------|
 | `src/index.tsx`                 | ~165  | CLI 入口、启动流程、模式路由     |
 | `src/config.ts`                 | ~165  | 设置加载、配置合并           |
-| `src/agent/loop.ts`            | ~800  | 核心 Agent 循环（stop_reason + 工具执行）  |
+| `src/agent/loop.ts`            | ~800  | 核心 Agent 循环（tool_calls 主路径 + 工具执行）  |
 | `src/agent/model.ts`           | ~163  | 提供商路由 + 模型创建          |
 | `src/agent/subagent.ts`        | ~355  | 子 Agent 生成 + 自定义 Agent          |
 | `src/agent/manager.ts`         | ~120  | 后台 Agent 生命周期注册表        |

@@ -89,33 +89,26 @@ LLM 响应中的 `stop_reason` 作为辅助信号处理边缘情况：
 const result = await pipeline.wrapToolCall(toolCtx, () => tool.execute(call.args));
 ```
 
-洋葱链内部：
+执行顺序（关键检查点）：
 
 ```
 tool_call 请求
     │
     ▼
-┌─ PermissionMiddleware ─────────────────────────────────────┐
-│  权限规则求值（deny/ask/allow）                              │
-│  ask → ctx.emit("permission_request") → await resolve      │
-│  ┌─ ShellHookMiddleware ─────────────────────────────────┐  │
-│  │  pre: PreToolUse shell 命令                            │  │
-│  │  ┌─ GuardrailMiddleware ────────────────────────────┐  │  │
-│  │  │  输入安全校验                                     │  │  │
-│  │  │  ┌─ CheckpointMiddleware ──────────────────────┐  │  │  │
-│  │  │  │  文件快照（仅 Write/Edit）                   │  │  │  │
-│  │  │  │  ┌─ SubagentMiddleware ───────────────────┐  │  │  │  │
-│  │  │  │  │  从代理工具过滤                         │  │  │  │  │
-│  │  │  │  │  ┌────────────────────┐                │  │  │  │  │
-│  │  │  │  │  │   tool.execute()   │                │  │  │  │  │
-│  │  │  │  │  └────────────────────┘                │  │  │  │  │
-│  │  │  │  └────────────────────────────────────────┘  │  │  │  │
-│  │  │  └──────────────────────────────────────────────┘  │  │  │
-│  │  └────────────────────────────────────────────────────┘  │  │
-│  │  post: PostToolUse / error: PostToolUseFailure           │  │
-│  └──────────────────────────────────────────────────────────┘  │
-│  post: AuditMiddleware 审计日志                                │
-└────────────────────────────────────────────────────────────────┘
+1) ShellHookMiddleware.pre
+   └─ PreToolUse（可 deny / modify）
+2) PermissionMiddleware
+   └─ deny / ask / allow（ask → permission_request）
+3) GuardrailMiddleware
+   └─ 输入安全校验
+4) CheckpointMiddleware
+   └─ Write/Edit 前文件快照
+5) SubagentMiddleware + tool.execute()
+   └─ 从代理工具过滤 + 实际执行
+6) ShellHookMiddleware.post
+   └─ PostToolUse / PostToolUseFailure
+7) AuditMiddleware
+   └─ 审计日志
 ```
 
 每层 `wrapToolCall(ctx, next)` 通过 `try/catch/finally` 统一 pre/post/error 三阶段。完整中间件架构详见 [05-中间件与钩子](./04-hooks.md)。
