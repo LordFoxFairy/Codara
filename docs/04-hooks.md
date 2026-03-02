@@ -8,70 +8,30 @@
 
 使用钩子来执行项目策略、转换工具输入、记录活动、触发外部工作流或阻止不安全操作 —— 所有这些都无需修改代理核心代码。
 
-## 本章怎么读（教程模式）
-
-### 你会学到什么
-
-- Hook 的事件模型、执行模型和退出码语义。
-- 为什么 `PreToolUse` 是策略硬约束的首选位置。
-- hooks 与 permissions、skills 的责任边界。
-
-### 建议阅读方式
-
-1. 先读「Hook 与 Permission 一体化策略」建立顺序认知。
-2. 再读「钩子事件 + 配置 + 执行模型」掌握原语。
-3. 最后读「实践示例」验证 deny/modify/log 三类典型模式。
-
-### 完成标志
-
-- 你能独立写出一个可拒绝、可改写输入的 `PreToolUse` hook。
-- 你能说明何时该用 hook，何时该用 permission 规则。
-
-### 最小实操
-
-1. 配置一个 `PreToolUse` 的 Bash matcher，在命中危险命令时 `exit 2`。
-2. 再配置一个返回 `{"action":"modify"}` 的钩子，验证输入改写是否生效。
-3. 最后补一个 `PostToolUse` 日志钩子，观察完整 pre/post 链路。
-
-### 常见误区
-
-- 在钩子里承载“用户授权”逻辑，导致职责混乱。
-- 忽略退出码语义，导致预期拒绝却被当作普通错误继续执行。
-
-### 排错清单（症状 -> 排查顺序）
-
-| 症状 | 排查顺序 |
-|------|----------|
-| 钩子脚本执行了但未阻断 | 检查退出码是否为 `2` -> 检查 stderr/JSON deny 格式 |
-| 输入改写不生效 | 检查 stdout JSON 是否合法 -> 检查 `modifiedInput` 字段名 |
-| 多个钩子执行顺序异常 | 检查 matcher 命中范围 -> 检查配置合并顺序 -> 检查首拒绝短路 |
-
 ## 主轴定位（Agent Loop + Hooks）
 
 在 Codara 的文档主线上，`hooks` 是 `agent loop` 之后的第一扩展面。  
 `permissions`、`security-check`、`audit-logger`、协作策略等能力，推荐都通过 skills 在 hooks 之上编排，而不是继续扩展核心硬编码分支。
+
+## Hooks 层契约
+
+| 项 | 契约定义 |
+|---|---|
+| 输入 | 生命周期事件上下文（工具信息、会话信息、运行状态） |
+| 输出 | 批准/拒绝/修改动作，以及可选的附加上下文 |
+| 主路径 | 事件触发 -> 匹配器筛选 -> 执行钩子 -> 汇总动作 |
+| 失败路径 | 超时、命令异常、退出码拒绝、JSON 动作解析失败 |
+
+实现约束：
+- Hooks 负责“拦截与变换”，不负责业务流程编排。
+- 同一事件支持多钩子串联，但首个拒绝必须短路。
+- 钩子失败必须可观测（日志/事件/错误反馈），禁止静默吞错。
 
 ## 本文与 06/05 的关系
 
 - 本文（04）定义 **Hooks 原语**：事件、动作类型、执行模型、退出码。
 - [06-skills](./06-skills.md) 定义 **能力编排**：如何用 skill 组合 hooks + permissions。
 - [appendix/permissions](./appendix/permissions.md) 是附录速查：仅保留权限策略细节，不作为独立主线。
-
-建议阅读顺序：`02-agent-loop → 04-hooks → 05-memory-system → 06-skills`（需要规则细节时再查附录）。
-
-> **💡 使用建议**
->
-> 本文档是钩子机制的**参考手册**，描述底层工作原理。
->
-> **推荐做法**：不要直接在 `settings.json` 中配置 hooks，而是通过 **[Skills](./06-skills.md)** 封装钩子逻辑。
->
-> Skills 提供：
-> - ✅ 自包含的目录结构（脚本、配置集中管理）
-> - ✅ 场景化启用（通过 skill 组织策略，避免全局散落配置）
-> - ✅ 可复用和分享（打包整个 skill 目录）
-> - ✅ 清晰的文档和示例
->
-> 参见 [06-技能系统](./06-skills.md) 的「实战：如何构造 Skills」章节，了解如何通过 Skills 使用 Hooks。
 
 ## Hook 与 Permission 一体化策略
 
@@ -490,7 +450,7 @@ fi
       {
         "matcher": "",
         "hooks": [
-          { "type": "command", "command": "osascript -e 'display notification \"Codara session started\" with title \"Codara\"'" }
+          { "type": "command", "command": "curl -sS -X POST http://localhost:9000/hooks/session-start -H 'content-type: application/json' -d '{\"event\":\"SessionStart\"}' >/dev/null" }
         ]
       }
     ]

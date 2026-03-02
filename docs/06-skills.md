@@ -4,47 +4,19 @@
 
 技能（Skills）是 Codara 的**统一扩展单元**，允许用户和项目定义可复用的 AI 驱动工作流。每个技能是一个目录，包含 SKILL.md 定义文件以及可选的 agents、hooks、scripts 等资源。用户通过在输入区域输入 `/<name>` 来调用技能。
 
-## 本章怎么读（教程模式）
-
-### 你会学到什么
-
-- 一个 skill 从“定义”到“执行”再到“权限/钩子生效”的完整闭环。
-- `allowed-tools`、skills hooks、settings hooks 三者如何协同。
-- 为什么 skills 是策略扩展的唯一入口。
-
-### 建议阅读方式
-
-1. 先读「设计理念」和「技能发现」掌握技能模型。
-2. 再读「SKILL.md 格式 + 模板展开 + 与 AgentLoop 集成」掌握执行路径。
-3. 最后重点读「技能权限 + 技能钩子 + 工具调用完整流程」进行实战落地。
-
-### 完成标志
-
-- 你能独立设计一个最小可用 skill（含提示模板 + 最小权限）。
-- 你能解释某个策略为何应放在 skill hooks，而不是写死在核心。
-
-### 最小实操
-
-1. 新建 `.codara/skills/demo-skill/SKILL.md`，只定义 `name/description` 和简短模板。
-2. 为该 skill 增加最小 `allowed-tools`，验证仅在技能执行窗口内生效。
-3. 为该 skill 增加一个 `PreToolUse` 钩子，验证和全局 hooks 的合并顺序。
-
-### 常见误区
-
-- 把 skill 做成“大而全”，缺乏单一职责。
-- 过宽的 `allowed-tools` 导致安全边界退化。
-
-### 排错清单（症状 -> 排查顺序）
-
-| 症状 | 排查顺序 |
-|------|----------|
-| `/skill-name` 无法命中 | 检查技能目录和 `SKILL.md` 命名 -> 检查 `user-invocable` 设置 |
-| 技能权限未按预期放行 | 检查 `allowed-tools` 语法 -> 检查 deny 规则是否覆盖 -> 检查模式是否限制 |
-| 技能钩子未执行 | 检查 hooks 文件/frontmatter 配置 -> 检查 matcher -> 检查初始化加载顺序 |
-
 ## 设计理念
 
 **Skills 是扩展 Codara 的唯一入口。**
+
+### 架构扩展优先级（开发约束）
+
+后续开发默认遵循以下优先级：
+
+1. 先用 skill 组合现有机制（hooks + permissions + agents + scripts）。
+2. 只有当多个 skill 都受限于同一基础能力缺口时，才考虑扩展核心。
+3. 核心扩展完成后，仍应通过 skill 暴露为可复用策略，而不是直接写死业务流程。
+
+这能保证核心长期稳定，同时让团队策略保持可迁移、可版本化。
 
 ```
 ┌─────────────────────────────────────────────────────────┐
@@ -99,29 +71,16 @@ SkillLoader 扫描两个目录树来查找技能定义：
 
 每个技能位于 `skills/` 文件夹下的独立目录中。该目录必须包含一个 `SKILL.md` 文件。如果项目级技能与用户级技能同名，项目级技能优先。
 
-### 技能目录结构
+### 技能组成模块
 
-```
-.codara/skills/{name}/
-├── SKILL.md         # 必需：技能定义（YAML frontmatter + 提示模板）
-├── agents/          # 可选：该技能相关的自定义代理定义
-│   └── reviewer.md
-├── scripts/         # 可选：可执行脚本
-│   └── run.sh
-├── hooks/           # 可选：该技能的钩子配置
-│   └── hooks.json
-├── references/      # 可选：参考文档
-│   └── guide.md
-└── assets/          # 可选：模板、资源文件
-```
-
-| 目录 | 用途 | 访问方式 |
-|------|------|---------|
-| `agents/` | 存放技能相关的自定义代理 | 通过 Task 工具调用，代理类型解析时发现 |
-| `scripts/` | 存放技能相关的可执行脚本 | 通过 `` !`./scripts/run.sh` `` 动态注入 |
-| `hooks/` | 存放技能的钩子配置 | 启动时加载，与 settings.json hooks 合并 |
-| `references/` | 存放技能引用的文档 | 通过 Markdown 相对路径链接将文件内容内联 |
-| `assets/` | 存放模板和资源文件 | 技能提示中引用，代理按需读取 |
+| 组成模块 | 是否必需 | 用途 | 访问方式 |
+|------|------|------|---------|
+| `SKILL.md` | 必需 | 技能定义（frontmatter + 提示模板） | 调用技能时直接解析 |
+| `agents` 能力包 | 可选 | 技能相关的自定义代理定义 | 通过任务委派能力解析 |
+| `scripts` 能力包 | 可选 | 技能相关的可执行脚本 | 通过动态命令注入调用 |
+| `hooks` 能力包 | 可选 | 技能专属钩子配置 | 启动时加载并与全局钩子合并 |
+| `references` 能力包 | 可选 | 规范文档、检查清单等引用材料 | 通过相对链接解析并内联 |
+| `assets` 能力包 | 可选 | 模板、资源文件 | 技能提示中引用，按需读取 |
 
 ### 缓存
 
@@ -223,8 +182,8 @@ Recent commits:
 展开后，命令标记被替换为实际命令输出：
 ```markdown
 Current git status:
-M  src/app.ts
-A  src/utils.ts
+M  docs/architecture-runtime.md
+A  docs/notes/design-decisions.md
 
 Recent commits:
 ebc9d8f fix: model resolution
@@ -267,9 +226,9 @@ Follow these guidelines:
 
 ---
 
-## 与 AgentLoop 的集成
+## 与代理循环的集成
 
-`src/agent/loop.ts` 中的代理循环在两个点集成技能：初始化和输入处理。
+代理循环在两个点集成技能：初始化和输入处理。
 
 ### 系统提示注册
 
@@ -392,7 +351,7 @@ Analyze staged changes and create a commit.
 |------|------|
 | `Bash(git *)` | 所有 git 命令 |
 | `Read(*)` | 读取任意文件 |
-| `Edit(src/**)` | 编辑 src/ 下的文件 |
+| `Edit(project/**)` | 编辑项目目录下的文件 |
 | `Bash(npm run *)` | npm run 命令 |
 
 ### 临时权限生命周期
@@ -425,14 +384,9 @@ Analyze staged changes and create a commit.
 
 技能可以定义自己的钩子配置，在技能执行期间响应生命周期事件。钩子可以通过两种方式定义：独立的 `hooks/hooks.json` 文件，或 SKILL.md 的 frontmatter 中的 `hooks` 字段。
 
-### 技能钩子目录结构
+### 技能钩子组织方式
 
-```
-.codara/skills/{name}/
-├── SKILL.md
-└── hooks/
-    └── hooks.json    # 技能钩子配置
-```
+技能钩子可以作为技能能力包的一部分进行组织，并与技能定义一起分发。
 
 **hooks.json 格式：**
 
@@ -491,10 +445,7 @@ Deploy the application to production.
 
 ShellHookMiddleware 在启动时扫描所有技能目录，加载技能钩子配置：
 
-```
-.codara/skills/{skill-name}/hooks/hooks.json
-~/.codara/skills/{skill-name}/hooks/hooks.json
-```
+支持从项目级与用户级技能来源加载钩子配置，统一合并后进入同一执行链。
 
 技能钩子格式与 `settings.json` 中的 hooks 相同。所有钩子按优先级合并，同一事件的钩子按顺序执行。
 
@@ -620,14 +571,14 @@ ShellHookMiddleware 在启动时扫描所有技能目录，加载技能钩子配
 
 **需求**：阻止所有危险的 `rm -rf` 命令，并提供友好的错误提示。
 
-**实现位置**：`.codara/skills/security-check/`
+**实现位置**：`security-check` 技能能力包
 
 **核心机制**：
 - 使用 PreToolUse Hook 拦截 Bash 命令
 - 通过脚本检查危险命令模式
 - 退出码 2 拒绝执行
 
-**参考实现**：查看 `.codara/skills/security-check/` 目录了解完整实现。
+**参考实现**：查看 `security-check` 技能定义与脚本能力包。
 
 ---
 
@@ -635,20 +586,20 @@ ShellHookMiddleware 在启动时扫描所有技能目录，加载技能钩子配
 
 **需求**：记录所有工具调用到日志文件，用于审计和调试。
 
-**实现位置**：`.codara/skills/audit-logger/`
+**实现位置**：`audit-logger` 技能能力包
 
 **核心机制**：
 - 使用 PreToolUse 和 PostToolUse Hook 记录工具调用
 - 日志记录到 `~/.codara/logs/audit-$(date +%Y%m%d).log`
 - 不阻塞工具执行（退出码 0）
 
-**参考实现**：查看 `.codara/skills/audit-logger/` 目录了解完整实现。
+**参考实现**：查看 `audit-logger` 技能定义与钩子能力包。
 
 ---
 
 ### 更多示例
 
-项目中还包含其他 Skills 示例，可以在 `.codara/skills/` 目录中查看：
+项目中还包含其他 Skills 示例，可以在技能能力包集合中查看：
 
 - **security-check**：安全检查，阻止危险命令
 - **audit-logger**：审计日志，记录所有工具调用

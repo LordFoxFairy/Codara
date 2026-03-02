@@ -2,46 +2,6 @@
 
 > 本文档详细说明 Codara 从启动到执行的完整运行流程，以及各个组件如何协同工作。
 
-## 本文怎么读（教程模式）
-
-### 你会学到什么
-
-- 从启动、初始化、执行到结束的完整运行时链路。
-- context 构建、skills 注入、hooks/permissions/tool 的关键执行顺序。
-- 哪些机制是初始化一次，哪些机制是每轮动态生效。
-
-### 建议阅读方式
-
-1. 先读「0. 运行时一图流（唯一入口）」建立全局时序。
-2. 再读「1~4 宏观视角」明确关键时间点。
-3. 最后按需下钻「5~9 微观视角」定位具体机制实现。
-
-### 完成标志
-
-- 你能从任意一个运行时问题快速回溯到对应阶段和子系统。
-- 你能解释 `/skill`、PreToolUse、Permissions 在工具调用前后的边界关系。
-
-### 最小实操（10 分钟）
-
-1. 先画出一次请求的路径：`User -> AgentLoop -> model -> tool -> hook -> permission -> tool result`。
-2. 对照本文「3.2 工具执行流程」核对是否满足 `PreToolUse -> Permissions -> Tool -> PostToolUse`。
-3. 再对照本文「6.3 Skill Hooks」确认 skill 的影响范围是“提示注入 + 临时权限”，不是运行时动态加卸钩子。
-
-### 常见误区
-
-- 把 `stop_reason` 当主判断信号：主路径应以 `tool_calls` 为准。
-- 把 Skills 当核心机制替代：skills 编排策略，不替代运行时基座。
-- 把权限和钩子混用：硬约束/改写在 hooks，授权决策在 permissions。
-
-### 排错清单（症状 -> 排查顺序）
-
-| 症状 | 排查顺序 |
-|------|----------|
-| 工具没有执行但对话结束了 | `3.1 Agent Loop` -> 检查 `tool_calls` 是否为空 -> 检查 `stop_reason` |
-| 工具调用被拒绝 | `3.2 工具执行流程` -> `8 Hooks` -> `9 Permissions` |
-| `/skill` 看似生效但策略未触发 | `6.2 Skill 调用` -> `6.3 Skill Hooks` -> `4 关键时间点` |
-| 会话越跑越慢或输出异常截断 | `3.1 上下文容量检查` -> `5 上下文注入机制` -> `05-memory-system` |
-
 ## 目录
 
 ### 宏观视角
@@ -105,6 +65,19 @@ sequenceDiagram
 - 工具调用关键顺序是 `PreToolUse -> Permissions -> Tool -> PostToolUse`。
 - Skill Hooks 在初始化阶段加载并在会话内生效；`/skill-name` 主要影响提示注入与临时 `allowed-tools`。
 
+### 按运行时阶段的开发切入点
+
+| 阶段 | 常见改动 | 首选代码层 |
+|------|----------|------------|
+| 启动/初始化 | 配置加载、系统提示组装、技能发现 | `config` / `memory` / `skills loader` |
+| 循环执行 | 回合控制、事件流、done 原因处理 | `agent loop` + middleware hooks |
+| 工具调用 | 拦截、授权、审计、回滚 | `hooks` + `permissions` + `checkpoint` |
+| 扩展编排 | 场景流程、项目策略、团队规范 | `skills`（优先） |
+
+开发约束：
+- 优先在不破坏主链路的前提下扩展（新增中间件或 skill），避免改动循环骨架。
+- 涉及安全边界的改动必须同时检查 hooks 和 permissions 两层行为。
+
 ---
 
 ## 1. 启动流程
@@ -112,7 +85,7 @@ sequenceDiagram
 ```
 用户执行: codara
 
-1. CLI 入口 (src/index.tsx)
+1. CLI 入口（启动编排层）
    ├─ 解析命令行参数 (commander)
    ├─ 加载配置文件
    │  ├─ settings.json (项目共享)
@@ -264,7 +237,7 @@ while (true) {
 
 **如何读取：**
 ```typescript
-// src/memory/loader.ts
+// 记忆加载层（概念示例）
 function loadMemory(cwd: string): MemoryLayer[] {
   const layers: MemoryLayer[] = [];
 
@@ -288,7 +261,7 @@ function loadMemory(cwd: string): MemoryLayer[] {
 
 **如何注入：**
 ```typescript
-// src/agent/system-prompt.ts
+// 系统提示词组装层（概念示例）
 function assembleSystemPrompt(layers: MemoryLayer[]): string {
   let prompt = BASE_PROMPT; // 基础提示词
 
@@ -314,7 +287,7 @@ function assembleSystemPrompt(layers: MemoryLayer[]): string {
 
 **如何读取：**
 ```typescript
-// src/memory/loader.ts
+// 记忆加载层（概念示例）
 function loadAutoMemory(gitRoot: string): string {
   const hash = md5(gitRoot).substring(0, 12);
   const memoryPath = `~/.codara/projects/${hash}/memory/MEMORY.md`;
@@ -347,7 +320,7 @@ function loadAutoMemory(gitRoot: string): string {
 
 **如何发现：**
 ```typescript
-// src/skills/loader.ts
+// 技能发现层（概念示例）
 function discoverSkills(): Map<string, Skill> {
   const skills = new Map();
 
@@ -366,17 +339,14 @@ function discoverSkills(): Map<string, Skill> {
 }
 ```
 
-**Skill 结构：**
-```
-.codara/skills/commit/
-├── SKILL.md          # Skill 定义（frontmatter + 内容）
-├── agents/           # 自定义 agent 定义
-│   └── reviewer.md
-├── hooks/            # Skill 专属钩子配置
-│   └── pre-commit.json
-└── scripts/          # 辅助脚本
-    └── validate.sh
-```
+**Skill 组成模块：**
+
+| 模块 | 用途 |
+|---|---|
+| Skill 定义文档 | frontmatter 元数据 + 提示模板 |
+| agents 能力包 | 自定义代理类型定义 |
+| hooks 能力包 | Skill 专属钩子配置 |
+| scripts 能力包 | 运行时辅助脚本 |
 
 ---
 
@@ -387,7 +357,7 @@ function discoverSkills(): Map<string, Skill> {
 
 **执行流程：**
 ```typescript
-// src/skills/executor.ts
+// 技能执行层（概念示例）
 async function executeSkill(name: string, args: string[]) {
   // 1. 查找 skill
   const skill = skillRegistry.get(name);
@@ -443,7 +413,7 @@ allowed-tools:
 
 **如何加载：**
 ```typescript
-// src/hooks/engine.ts (conceptual)
+// 钩子引擎层（概念示例）
 function loadSkillHooksAtInit(discoveredSkills: SkillDefinition[]) {
   for (const skill of discoveredSkills) {
     const fromHooksDir = readHooksJson(`${skill.basePath}/hooks/hooks.json`);
@@ -469,7 +439,7 @@ function loadSkillHooksAtInit(discoveredSkills: SkillDefinition[]) {
 
 **创建流程：**
 ```typescript
-// src/agent/subagent.ts
+// 子代理编排层（概念示例）
 async function createSubagent(params: {
   subagent_type: string,  // 'Explore' | 'Plan' | 'general-purpose'
   prompt: string,
@@ -567,7 +537,7 @@ async function createSubagent(params: {
 
 **如何加载：**
 ```typescript
-// src/hooks/engine.ts
+// 钩子引擎层（概念示例）
 function loadHooks(settings: Settings): HookConfig {
   const hooks: HookConfig = {};
 
@@ -591,7 +561,7 @@ function loadHooks(settings: Settings): HookConfig {
 
 **PreToolUse 示例：**
 ```typescript
-// src/agent/loop.ts
+// 代理循环层（概念示例）
 async function executeToolCall(toolCall: ToolCall) {
   // 1. 触发 PreToolUse 钩子
   const hookResult = await hookEngine.trigger('PreToolUse', {
@@ -616,7 +586,7 @@ async function executeToolCall(toolCall: ToolCall) {
 
 **Hook 执行：**
 ```typescript
-// src/hooks/engine.ts
+// 钩子引擎层（概念示例）
 async function executeHook(hook: Hook, context: HookContext): Promise<HookResult> {
   if (hook.type === 'command') {
     // 1. 设置环境变量
@@ -669,7 +639,7 @@ async function executeHook(hook: Hook, context: HookContext): Promise<HookResult
 
 **如何加载：**
 ```typescript
-// src/permissions/manager.ts
+// 权限管理层（概念示例）
 function loadPermissions(settings: Settings): PermissionRules {
   return {
     mode: settings.permissions?.defaultMode || 'default',
@@ -685,7 +655,7 @@ function loadPermissions(settings: Settings): PermissionRules {
 ### 9.2 求值流程
 
 ```typescript
-// src/permissions/manager.ts
+// 权限管理层（概念示例）
 async function checkPermission(tool: string, input: any): Promise<PermissionResult> {
   // 1. bypassPermissions 模式
   if (mode === 'bypassPermissions') {

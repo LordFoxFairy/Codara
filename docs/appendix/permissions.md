@@ -27,7 +27,7 @@ PreToolUse Hooks → Permission 求值 → Tool 执行 → PostToolUse Hooks
 ### 规则
 
 - 语法：`ToolName(pattern)`
-- 示例：`Bash(git *)`、`Edit(src/**)`、`Write(docs/*.md)`
+- 示例：`Bash(git *)`、`Edit(project/**)`、`Write(docs/*.md)`
 - 优先级：`deny > ask > allow`
 
 ### 与 skills 的关系

@@ -6,44 +6,6 @@
 
 本文档介绍 Codara 如何解析模型别名、选择提供商以及构建 LangChain 模型实例。路由器是将用户可见的模型名称映射到实际 API 端点的唯一事实来源。
 
-## 本章怎么读（教程模式）
-
-### 你会学到什么
-
-- `config.json` 的 providers/router 如何共同决定最终模型。
-- 别名解析、provider 选择、模型实例化的完整链路。
-- 子代理模型“继承/覆盖”与主代理模型如何保持一致。
-
-### 建议阅读方式
-
-1. 先读「配置」和示例，确保能写出可用 `config.json`。
-2. 再读「解析流程」理解别名如何落到 `provider:model`。
-3. 最后读「子代理模型继承」验证多代理场景下的行为。
-
-### 完成标志
-
-- 你能在不改代码的情况下，通过配置切换模型提供商。
-- 你能解释为什么代码里不应硬编码模型 ID。
-
-### 最小实操
-
-1. 在 `.codara/config.json` 为 `router.default` 指向一个明确的 `provider:model`。
-2. 用同一套代码分别以 `--model default` 和 `--model sonnet` 启动，观察解析结果是否符合预期。
-3. 在子代理场景中验证 `inherit` 是否正确回退到主代理模型。
-
-### 常见误区
-
-- 在代码里直接写模型 ID，绕过路由层。
-- 仅配置 `providers` 不配置 `router`，导致别名无法解析。
-
-### 排错清单（症状 -> 排查顺序）
-
-| 症状 | 排查顺序 |
-|------|----------|
-| `--model sonnet` 无法解析 | 检查 `router.sonnet` 是否存在 -> 检查 `provider:model` 拼写 |
-| 指定模型后仍走默认模型 | 检查 CLI 参数覆盖逻辑 -> 检查 router 中 `default` 回退 |
-| 子代理模型与预期不一致 | 检查 Task `model` 参数 -> 检查 agent frontmatter `model` -> 检查 `inherit` 回退 |
-
 ## 在主线中的定位
 
 模型路由属于核心运行时基础设施：
@@ -57,12 +19,13 @@
 ## 目录
 
 1. [设计原则](#1-设计原则)
-2. [配置 (config.json)](#2-配置)
-3. [解析流程](#3-解析流程)
-4. [模型构建](#4-模型构建)
-5. [工具绑定](#5-工具绑定)
-6. [子代理模型继承](#6-子代理模型继承)
-7. [常见配置](#7-常见配置)
+2. [路由层契约](#2-路由层契约)
+3. [配置 (config.json)](#3-配置)
+4. [解析流程](#4-解析流程)
+5. [模型构建](#5-模型构建)
+6. [工具绑定](#6-工具绑定)
+7. [子代理模型继承](#7-子代理模型继承)
+8. [常见配置](#8-常见配置)
 
 ---
 
@@ -78,7 +41,23 @@
 
 ---
 
-## 2. 配置
+## 2. 路由层契约
+
+| 项 | 契约定义 |
+|---|---|
+| 输入 | 模型别名字符串 + 路由配置（providers/router） |
+| 输出 | 可调用模型实例（含提供商、模型 ID、认证与工具绑定能力） |
+| 主路径 | 别名解析 -> 提供商选择 -> 模型构建 -> 工具绑定 |
+| 失败路径 | 配置缺失、别名无效、提供商不存在、密钥不可用、模型不支持工具绑定 |
+
+实现约束：
+- 路由层只处理“模型解析与创建”，不承载权限/审计/业务策略。
+- 所有模型选择必须走统一解析路径，禁止在其他层硬编码模型 ID。
+- 错误要返回可操作信息（缺哪个配置、缺哪个环境变量、哪个别名非法）。
+
+---
+
+## 3. 配置
 
 模型路由在 `.codara/config.json` 中配置。系统按以下顺序检查两个位置：
 
@@ -145,7 +124,7 @@
 
 ---
 
-## 3. 解析流程
+## 4. 解析流程
 
 `resolveModel(input, router)` 接收模型别名字符串，返回包含提供商名称、模型 ID、显示名称、基础 URL 和 API 密钥的解析结果。
 
@@ -213,7 +192,7 @@
 
 ---
 
-## 4. 模型构建
+## 5. 模型构建
 
 `createModel(config, tools)` 调用 `resolveModel()`，然后根据解析后的提供商构建相应的 LangChain 模型实例。
 
@@ -245,7 +224,7 @@
 
 ---
 
-## 5. 工具绑定
+## 6. 工具绑定
 
 模型构建完成后，通过 `model.bindTools(tools)` 绑定工具。工具是从 Codara 工具定义转换的 LangChain `StructuredTool` 实例。`bindTools()` 将函数调用模式附加到模型上，使 LLM 能够在响应中调用工具。
 
@@ -253,7 +232,7 @@
 
 ---
 
-## 6. 子代理模型继承
+## 7. 子代理模型继承
 
 子代理通过优先级链确定其模型：
 
@@ -274,7 +253,7 @@ options.model → customDef.model → builtin.model → parentConfig.model
 
 ---
 
-## 7. 常见配置
+## 8. 常见配置
 
 ### OpenRouter 代理（推荐用于多模型访问）
 
@@ -314,17 +293,17 @@ options.model → customDef.model → builtin.model → parentConfig.model
       "name": "anthropic",
       "apiKey": "$ANTHROPIC_API_KEY",
       "models": [
-        "claude-opus-4-20250514",
-        "claude-sonnet-4-20250514",
-        "claude-haiku-3-5-20241022"
+        "claude-opus-4",
+        "claude-sonnet-4",
+        "claude-haiku-3-5"
       ]
     }
   ],
   "router": {
-    "opus": "anthropic:claude-opus-4-20250514",
-    "sonnet": "anthropic:claude-sonnet-4-20250514",
-    "haiku": "anthropic:claude-haiku-3-5-20241022",
-    "default": "anthropic:claude-sonnet-4-20250514"
+    "opus": "anthropic:claude-opus-4",
+    "sonnet": "anthropic:claude-sonnet-4",
+    "haiku": "anthropic:claude-haiku-3-5",
+    "default": "anthropic:claude-sonnet-4"
   }
 }
 ```
@@ -361,7 +340,7 @@ options.model → customDef.model → builtin.model → parentConfig.model
     {
       "name": "anthropic",
       "apiKey": "$ANTHROPIC_API_KEY",
-      "models": ["claude-opus-4-20250514", "claude-sonnet-4-20250514"]
+      "models": ["claude-opus-4", "claude-sonnet-4"]
     },
     {
       "name": "ollama",
@@ -371,10 +350,10 @@ options.model → customDef.model → builtin.model → parentConfig.model
     }
   ],
   "router": {
-    "opus": "anthropic:claude-opus-4-20250514",
-    "sonnet": "anthropic:claude-sonnet-4-20250514",
+    "opus": "anthropic:claude-opus-4",
+    "sonnet": "anthropic:claude-sonnet-4",
     "local": "ollama:llama3.1:70b",
-    "default": "anthropic:claude-sonnet-4-20250514"
+    "default": "anthropic:claude-sonnet-4"
   }
 }
 ```
