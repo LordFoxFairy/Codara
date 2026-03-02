@@ -67,6 +67,9 @@ Codara 采用“核心机制 + 策略扩展”双层设计。
 | `skill_invocation_id` | 技能调用级 | 命中 `/skill` 时 | 关联技能注入、临时权限与工具行为 |
 | `agent_id` | 代理级 | 代理实例创建时 | 区分主代理与子代理行为 |
 | `parent_agent_id` | 代理级 | 子代理创建时 | 追踪委派链与故障传播边界 |
+| `team_id` | Team 级 | Team 实例创建时（启用 Team 模式） | 区分 Leader/SubTeam 来源 |
+| `process_id` | 进程级 | Team 进程启动后（启用 Team 模式） | 进程隔离与故障回收定位 |
+| `delegation_id` | 委派级 | Leader 派发任务时（启用 Team 模式） | 关联跨 Team 的任务与消息链路 |
 
 传递约束：
 
@@ -74,6 +77,7 @@ Codara 采用“核心机制 + 策略扩展”双层设计。
 2. 子代理上报事件必须同时包含 `agent_id` 与 `parent_agent_id`。
 3. 技能触发的工具调用必须携带 `skill_invocation_id`；非技能调用可留空。
 4. UI 层只消费这些标识，不重新生成业务级标识。
+5. 启用 Team 模式时，跨 Team 事件必须同时携带 `team_id + process_id + delegation_id`。
 
 ---
 
@@ -451,7 +455,10 @@ sequenceDiagram
 8. `reason`：可解释原因。
 9. `skill_invocation_id`：如由技能触发则必须填写。
 10. `agent_id`：触发该行为的代理实例。
-11. `timestamp`：时间戳。
+11. `team_id`：启用 Team 模式时的 Team 实例标识。
+12. `process_id`：启用 Team 模式时的进程标识。
+13. `delegation_id`：启用 Team 模式时的委派链路标识。
+14. `timestamp`：时间戳。
 
 ---
 
