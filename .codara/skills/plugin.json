@@ -1,0 +1,103 @@
+{
+  "version": "1.0.0",
+  "skills": {
+    "core": [
+      {
+        "name": "security-check",
+        "category": "security",
+        "description": "阻止危险的 shell 命令（rm -rf, sudo, chmod 777 等）",
+        "status": "stable",
+        "hasScripts": true,
+        "hasHooks": true
+      },
+      {
+        "name": "audit-logger",
+        "category": "security",
+        "description": "记录所有工具调用到审计日志",
+        "status": "stable",
+        "hasScripts": true,
+        "hasHooks": true
+      },
+      {
+        "name": "permissions",
+        "category": "config",
+        "description": "配置 Codara 权限策略（allow/deny/ask 规则）",
+        "status": "stable",
+        "hasScripts": false,
+        "hasHooks": false
+      },
+      {
+        "name": "hooks",
+        "category": "config",
+        "description": "配置生命周期钩子（PreToolUse/PostToolUse 等）",
+        "status": "stable",
+        "hasScripts": true,
+        "hasHooks": false
+      }
+    ],
+    "development": [
+      {
+        "name": "hook-skill-dev",
+        "category": "dev-tools",
+        "description": "脚手架工具：快速创建基于 hooks 的 skill",
+        "status": "stable",
+        "hasScripts": true,
+        "hasHooks": false
+      },
+      {
+        "name": "skill-dev",
+        "category": "dev-tools",
+        "description": "设计和重构 Codara skills",
+        "status": "stable",
+        "hasScripts": false,
+        "hasHooks": false
+      }
+    ],
+    "integration": [
+      {
+        "name": "mcp",
+        "category": "integration",
+        "description": "集成 Model Context Protocol (MCP) 服务器",
+        "status": "stable",
+        "hasScripts": false,
+        "hasHooks": false
+      }
+    ],
+    "workflow": [
+      {
+        "name": "commit",
+        "category": "git",
+        "description": "智能创建 git commit（自动分析变更）",
+        "status": "stable",
+        "hasScripts": false,
+        "hasHooks": false
+      },
+      {
+        "name": "code-review",
+        "category": "code-quality",
+        "description": "多代理 PR 代码审查（需要 gh CLI）",
+        "status": "stable",
+        "hasScripts": false,
+        "hasHooks": false
+      }
+    ]
+  },
+  "recommendations": {
+    "keep": [
+      "security-check",
+      "audit-logger",
+      "permissions",
+      "hooks",
+      "hook-skill-dev",
+      "mcp",
+      "commit",
+      "code-review"
+    ]
+  },
+  "notes": {
+    "core": "核心 skills，提供安全、审计、配置等基础能力",
+    "development": "开发工具 skills，帮助创建和维护其他 skills",
+    "integration": "集成外部服务的 skills",
+    "workflow": "工作流 skills，提供 git 和代码审查能力"
+  }
+}
