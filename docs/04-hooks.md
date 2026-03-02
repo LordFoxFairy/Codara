@@ -27,6 +27,21 @@
 - 同一事件支持多钩子串联，但首个拒绝必须短路。
 - 钩子失败必须可观测（日志/事件/错误反馈），禁止静默吞错。
 
+### HookMiddleware 与 HookEngine 的分工
+
+建议把 hooks 实现拆成两层：
+
+| 层 | 职责 | 典型接口 |
+|---|---|---|
+| `HookMiddleware` | 接入生命周期、构造上下文、执行短路与回写 | `wrapToolCall(ctx, next)` |
+| `HookEngine` | 匹配规则、执行 handler、合并动作 | `evaluate(event, ctx) -> HookDecision` |
+
+约束：
+
+1. `HookEngine` 不直接调用 `next()`，只返回决策结果。
+2. `HookMiddleware` 负责把 Engine 决策映射为真正的 `deny/modify/allow` 行为。
+3. Skills hooks、settings hooks 都先进入同一个 HookEngine，再由 Middleware 统一执行语义。
+
 ## 本文与 06/05 的关系
 
 - 本文（04）定义 **Hooks 原语**：事件、动作类型、执行模型、退出码。
@@ -151,6 +166,42 @@ Hook 的输出不应直接跳过权限层，而应归一化为裁决输入，再
 ## 钩子事件
 
 Codara 支持 16 个生命周期事件。每个事件在代理执行的特定时刻触发，并接收与该时刻相关的上下文数据。
+
+### 事件模型：Core Events 与 Extension Events
+
+为保证兼容性与扩展性并存，事件分两层：
+
+1. **Core Events（固定集）**：本文定义的 16 个生命周期事件，长期稳定、优先兼容。
+2. **Extension Events（扩展集）**：由运行时模块或插件在启动时注册的新事件。
+
+设计约束：
+
+1. Core Events 不允许被 skills 直接改语义或删除。
+2. Extension Events 必须先注册后使用，禁止“未注册字符串事件”被静默接受。
+3. 未识别事件在 Hook 配置校验阶段直接报错（fail-fast）。
+4. 扩展事件不改变主循环分支语义，只增加可观测点或策略触发点。
+
+### 扩展事件注册契约（建议实现）
+
+建议每个扩展事件都提供如下元信息：
+
+```json
+{
+  "name": "ext.team.task_claimed",
+  "version": "1.0.0",
+  "phase": "team",
+  "stability": "experimental|stable",
+  "payload_schema": "json-schema-id",
+  "owner": "team-runtime"
+}
+```
+
+注册与兼容规则：
+
+1. `name` 采用命名空间（如 `ext.<domain>.<event>`），避免与 Core Events 冲突。
+2. `version` 变更遵循向后兼容策略；破坏性变更必须升主版本。
+3. `payload_schema` 必须可校验，Hook 执行前先做结构校验。
+4. 运行时启动时构建事件注册表，HookEngine 只消费注册表中的事件。
 
 ### 会话生命周期
 

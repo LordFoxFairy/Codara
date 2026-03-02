@@ -43,6 +43,12 @@
 
 `TeamRuntime = AgentLoop + MiddlewarePipeline + ContextState + ToolRegistry + EventStream + UIBinding`
 
+在 Team 运行时中，`TeamEngine` 也应挂在 Middleware 之后工作，而不是直接驱动 Loop：
+
+1. `TeamMiddleware` 处理 Team 级动作入口（create/switch/message/close）。
+2. `TeamEngine` 负责 Team 策略决策（路由、幂等、锁、恢复）。
+3. `TeamMiddleware` 根据 TeamEngine 决策执行副作用与事件回写。
+
 说明：
 
 1. Leader Team 绑定当前窗口，是该窗口唯一主循环。
@@ -354,6 +360,8 @@ Team 模式下建议所有关键事件至少包含：
 6. `team_completed`
 7. `team_failed`
 8. `team_closed`
+
+这些 Team 事件建议作为 `Extension Events` 注册到 HookEngine（命名空间示例：`ext.team.*`），再由 skills hooks 订阅处理，避免把 Team 策略硬编码进主循环。
 
 ### 事件 Schema 示例（建议落地）
 

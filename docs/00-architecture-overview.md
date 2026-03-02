@@ -36,6 +36,22 @@ Codara 采用“核心机制 + 策略扩展”双层设计。
 | Context/Memory 层 | 项目指令、记忆快照、会话历史 | 模型可消费上下文 | 上下文组装、压缩、持久化 | 工具授权 |
 | Skills 层 | 用户意图、技能定义、技能参数 | 提示注入、临时权限、技能钩子配置 | 场景化能力封装与复用 | 修改核心循环语义 |
 
+## Middleware 与 Engine 分层（必须遵守）
+
+Engine 必须建立在 Middleware 执行点之上，不得绕过 `Agent Loop -> MiddlewarePipeline` 主路径。
+
+| 组件 | 角色 | 边界 |
+|---|---|---|
+| Middleware | 生命周期拦截器（pre/post/error） | 决定何时调用、何时短路、何时回写事件 |
+| Engine | 规则求值与动作合成器 | 只给出决策，不直接推进循环 |
+
+实现约束：
+
+1. Engine 不直接调用工具执行，不直接终止回合。
+2. Engine 输出必须回到对应 Middleware，再由 Middleware 产生最终行为（allow/deny/ask/modify）。
+3. 新能力优先新增 Engine，再挂到既有 Middleware；不要把业务逻辑塞进 Loop 本体。
+4. 所有 Engine 决策必须可观测（request_id/source/reason）。
+
 ## 机制与策略的落点规则
 
 1. 多个团队都复用且语义稳定的能力，进入核心机制层。

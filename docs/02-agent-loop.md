@@ -169,6 +169,22 @@ tool_call 请求
 
 每层 `wrapToolCall(ctx, next)` 通过 `try/catch/finally` 统一 pre/post/error 三阶段。完整中间件架构详见 [04-hooks](./04-hooks.md)。
 
+### Engine 挂载原则（关键）
+
+`HookEngine`、`PermissionEngine`、`GuardrailEngine` 等都应作为对应 Middleware 的后端，不应直接连到 Agent Loop。
+
+推荐结构：
+
+1. `ShellHookMiddleware` 调用 `HookEngine.evaluate(event, ctx)`
+2. `PermissionMiddleware` 调用 `PermissionEngine.decide(ctx)`
+3. `GuardrailMiddleware` 调用 `GuardrailEngine.check(ctx)`
+
+统一约束：
+
+1. Loop 只面向 `pipeline.wrapToolCall()`，不感知具体 Engine 细节。
+2. Engine 仅返回“决策对象”，最终短路/放行由 Middleware 执行。
+3. Engine 失败按 Middleware 策略处理（fail-open 或 fail-closed），不得直接破坏循环状态机。
+
 ### 统一裁决输出（建议实现）
 
 为避免多层冲突覆盖，建议工具调用先收敛为单一裁决对象：
