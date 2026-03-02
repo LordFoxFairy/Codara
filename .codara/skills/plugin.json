@@ -29,30 +29,14 @@
       {
         "name": "hooks",
         "category": "config",
-        "description": "配置生命周期钩子（PreToolUse/PostToolUse 等）",
+        "description": "配置生命周期钩子 + 脚手架工具（创建 hook-based skills）",
         "status": "stable",
         "hasScripts": true,
-        "hasHooks": false
+        "hasHooks": false,
+        "note": "整合了配置和开发两种模式"
       }
     ],
-    "development": [
-      {
-        "name": "hook-skill-dev",
-        "category": "dev-tools",
-        "description": "脚手架工具：快速创建基于 hooks 的 skill",
-        "status": "stable",
-        "hasScripts": true,
-        "hasHooks": false
-      },
-      {
-        "name": "skill-dev",
-        "category": "dev-tools",
-        "description": "设计和重构 Codara skills",
-        "status": "stable",
-        "hasScripts": false,
-        "hasHooks": false
-      }
-    ],
+    "development": [],
     "integration": [
       {
         "name": "mcp",
@@ -88,7 +72,6 @@
       "audit-logger",
       "permissions",
       "hooks",
-      "hook-skill-dev",
       "mcp",
       "commit",
       "code-review"
