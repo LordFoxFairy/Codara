@@ -4,6 +4,44 @@
 
 技能（Skills）是 Codara 的**统一扩展单元**，允许用户和项目定义可复用的 AI 驱动工作流。每个技能是一个目录，包含 SKILL.md 定义文件以及可选的 agents、hooks、scripts 等资源。用户通过在输入区域输入 `/<name>` 来调用技能。
 
+## 本章怎么读（教程模式）
+
+### 你会学到什么
+
+- 一个 skill 从“定义”到“执行”再到“权限/钩子生效”的完整闭环。
+- `allowed-tools`、skills hooks、settings hooks 三者如何协同。
+- 为什么 skills 是策略扩展的唯一入口。
+
+### 建议阅读方式
+
+1. 先读「设计理念」和「技能发现」掌握技能模型。
+2. 再读「SKILL.md 格式 + 模板展开 + 与 AgentLoop 集成」掌握执行路径。
+3. 最后重点读「技能权限 + 技能钩子 + 工具调用完整流程」进行实战落地。
+
+### 完成标志
+
+- 你能独立设计一个最小可用 skill（含提示模板 + 最小权限）。
+- 你能解释某个策略为何应放在 skill hooks，而不是写死在核心。
+
+### 最小实操
+
+1. 新建 `.codara/skills/demo-skill/SKILL.md`，只定义 `name/description` 和简短模板。
+2. 为该 skill 增加最小 `allowed-tools`，验证仅在技能执行窗口内生效。
+3. 为该 skill 增加一个 `PreToolUse` 钩子，验证和全局 hooks 的合并顺序。
+
+### 常见误区
+
+- 把 skill 做成“大而全”，缺乏单一职责。
+- 过宽的 `allowed-tools` 导致安全边界退化。
+
+### 排错清单（症状 -> 排查顺序）
+
+| 症状 | 排查顺序 |
+|------|----------|
+| `/skill-name` 无法命中 | 检查技能目录和 `SKILL.md` 命名 -> 检查 `user-invocable` 设置 |
+| 技能权限未按预期放行 | 检查 `allowed-tools` 语法 -> 检查 deny 规则是否覆盖 -> 检查模式是否限制 |
+| 技能钩子未执行 | 检查 hooks 文件/frontmatter 配置 -> 检查 matcher -> 检查初始化加载顺序 |
+
 ## 设计理念
 
 **Skills 是扩展 Codara 的唯一入口。**
