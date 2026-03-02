@@ -1,6 +1,6 @@
 # 生命周期钩子
 
-> [← 上一篇: 工具](./03-tools.md) | [目录](./README.md) | [下一篇: 技能系统 →](./05-skills.md)
+> [← 上一篇: 工具](./03-tools.md) | [目录](./README.md) | [下一篇: 记忆与上下文 →](./05-memory-system.md)
 
 ## 概述
 
@@ -16,16 +16,16 @@
 ## 本文与 06/05 的关系
 
 - 本文（04）定义 **Hooks 原语**：事件、动作类型、执行模型、退出码。
-- [05-skills](./05-skills.md) 定义 **能力编排**：如何用 skill 组合 hooks + permissions。
+- [06-skills](./06-skills.md) 定义 **能力编排**：如何用 skill 组合 hooks + permissions。
 - [appendix/permissions](./appendix/permissions.md) 是附录速查：仅保留权限策略细节，不作为独立主线。
 
-建议阅读顺序：`02-agent-loop → 04-hooks → 05-skills`（需要规则细节时再查附录）。
+建议阅读顺序：`02-agent-loop → 04-hooks → 05-memory-system → 06-skills`（需要规则细节时再查附录）。
 
 > **💡 使用建议**
 >
 > 本文档是钩子机制的**参考手册**，描述底层工作原理。
 >
-> **推荐做法**：不要直接在 `settings.json` 中配置 hooks，而是通过 **[Skills](./05-skills.md)** 封装钩子逻辑。
+> **推荐做法**：不要直接在 `settings.json` 中配置 hooks，而是通过 **[Skills](./06-skills.md)** 封装钩子逻辑。
 >
 > Skills 提供：
 > - ✅ 自包含的目录结构（脚本、配置集中管理）
@@ -33,7 +33,7 @@
 > - ✅ 可复用和分享（打包整个 skill 目录）
 > - ✅ 清晰的文档和示例
 >
-> 参见 [05-技能系统](./05-skills.md) 的「实战：如何构造 Skills」章节，了解如何通过 Skills 使用 Hooks。
+> 参见 [06-技能系统](./06-skills.md) 的「实战：如何构造 Skills」章节，了解如何通过 Skills 使用 Hooks。
 
 ## Hook 与 Permission 一体化策略
 
@@ -467,6 +467,8 @@ fi
 1. 项目共享配置（`settings.json`）
 2. 项目本地配置（`settings.local.json`）— 被 gitignore，用于个人覆盖
 
-**技能钩子**：技能可以定义自己的钩子配置，由 Skills 系统管理。详见 [05-技能系统](./05-skills.md) 的「技能钩子」章节。
+**技能钩子**：技能可以定义自己的钩子配置，由 Skills 系统管理。详见 [06-技能系统](./06-skills.md) 的「技能钩子」章节。
 
 ---
+
+> [← 上一篇: 工具](./03-tools.md) | [目录](./README.md) | [下一篇: 记忆与上下文 →](./05-memory-system.md)

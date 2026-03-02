@@ -1,6 +1,6 @@
 # 技能系统
 
-> [← 上一篇: 生命周期钩子](./04-hooks.md) | [目录](./README.md) | [下一篇: 代理协作 →](./06-agent-collaboration.md)
+> [← 上一篇: 记忆与上下文](./05-memory-system.md) | [目录](./README.md) | [下一篇: 代理协作 →](./07-agent-collaboration.md)
 
 技能（Skills）是 Codara 的**统一扩展单元**，允许用户和项目定义可复用的 AI 驱动工作流。每个技能是一个目录，包含 SKILL.md 定义文件以及可选的 agents、hooks、scripts 等资源。用户通过在输入区域输入 `/<name>` 来调用技能。
 
@@ -648,4 +648,4 @@ ShellHookMiddleware 在启动时扫描所有技能目录，加载技能钩子配
 
 ---
 
-> [← 上一篇: 生命周期钩子](./04-hooks.md) | [目录](./README.md) | [下一篇: 代理协作 →](./06-agent-collaboration.md)
+> [← 上一篇: 记忆与上下文](./05-memory-system.md) | [目录](./README.md) | [下一篇: 代理协作 →](./07-agent-collaboration.md)

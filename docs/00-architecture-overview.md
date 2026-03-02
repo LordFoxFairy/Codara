@@ -14,8 +14,9 @@ Codara 是一个基于终端的 AI 编程助手，设计理念类似 Claude Code
 2. `02-agent-loop`：执行引擎（核心运行时）
 3. `03-tools`：工具系统（能力原语）
 4. `04-hooks`：生命周期扩展原语（核心扩展面）
-5. `05-skills`：策略编排（能力扩展入口）
-6. `06-agent-collaboration`：多代理协作机制与策略编排
+5. `05-memory-system`：运行时记忆管理（auto-memory、session、checkpoints、compression）
+6. `06-skills`：策略编排（能力扩展入口）
+7. `07-agent-collaboration`：多代理协作机制与策略编排
 
 权限规则细节收敛到附录：`docs/appendix/permissions.md`。
 
@@ -61,7 +62,7 @@ Codara 是一个基于终端的 AI 编程助手，设计理念类似 Claude Code
 - ✅ 更好的扩展（统一接口、可复用）
 - ✅ 生态建设（可分享、可分发、社区驱动）
 
-详见 [05-技能系统](./05-skills.md) 了解如何通过 Skills 扩展 Codara。
+详见 [06-技能系统](./06-skills.md) 了解如何通过 Skills 扩展 Codara。
 
 ### 核心与 Skills 的职责边界
 
@@ -493,3 +494,7 @@ default 模式？ → 询问用户
 | `src/hooks/types.ts`           | ~67   | 16 种钩子事件类型                        |
 | `src/skills/loader.ts`         | ~116  | 技能发现                            |
 | `src/skills/executor.ts`       | ~103  | 技能展开 + 上下文注入        |
+
+---
+
+> [目录](./README.md) | [下一篇: 模型路由 →](./01-model-routing.md)
