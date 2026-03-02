@@ -218,6 +218,7 @@ while (true) {
 | **初始化时** | 加载 CODARA.md + MEMORY.md，发现 Skills 并注册 Skill Hooks | MemoryLoader, SkillLoader, HookEngine |
 | **首次调用 LLM** | 系统提示词已包含 CODARA + MEMORY | SystemPrompt |
 | **调用 /skill-name** | Skill 内容注入到当前消息 | SkillExecutor |
+| **skill 执行结束** | 回收 `allowed-tools` 临时权限 | PermissionManager |
 | **工具调用前** | PreToolUse 钩子 + Permissions 检查 | HookEngine, PermissionManager |
 | **工具调用后** | PostToolUse 钩子 | HookEngine |
 | **文件修改前** | 创建 Checkpoint | CheckpointSystem |
