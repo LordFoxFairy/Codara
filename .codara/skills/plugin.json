@@ -1,86 +1,61 @@
 {
+  "$schema": "https://codara.dev/skills/schema.json",
+  "name": "codara-skills",
   "version": "1.0.0",
-  "skills": {
-    "core": [
-      {
-        "name": "security-check",
-        "category": "security",
-        "description": "阻止危险的 shell 命令（rm -rf, sudo, chmod 777 等）",
-        "status": "stable",
-        "hasScripts": true,
-        "hasHooks": true
-      },
-      {
-        "name": "audit-logger",
-        "category": "security",
-        "description": "记录所有工具调用到审计日志",
-        "status": "stable",
-        "hasScripts": true,
-        "hasHooks": true
-      },
-      {
-        "name": "permissions",
-        "category": "config",
-        "description": "配置 Codara 权限策略（allow/deny/ask 规则）",
-        "status": "stable",
-        "hasScripts": false,
-        "hasHooks": false
-      },
-      {
-        "name": "hooks",
-        "category": "config",
-        "description": "配置生命周期钩子 + 脚手架工具（创建 hook-based skills）",
-        "status": "stable",
-        "hasScripts": true,
-        "hasHooks": false,
-        "note": "整合了配置和开发两种模式"
-      }
-    ],
-    "development": [],
-    "integration": [
-      {
-        "name": "mcp",
-        "category": "integration",
-        "description": "集成 Model Context Protocol (MCP) 服务器",
-        "status": "stable",
-        "hasScripts": false,
-        "hasHooks": false
-      }
-    ],
-    "workflow": [
-      {
-        "name": "commit",
-        "category": "git",
-        "description": "智能创建 git commit（自动分析变更）",
-        "status": "stable",
-        "hasScripts": false,
-        "hasHooks": false
-      },
-      {
-        "name": "code-review",
-        "category": "code-quality",
-        "description": "多代理 PR 代码审查（需要 gh CLI）",
-        "status": "stable",
-        "hasScripts": false,
-        "hasHooks": false
-      }
-    ]
+  "description": "Bundled skills for Codara including security controls, audit logging, hooks configuration, and workflow automation",
+  "owner": {
+    "name": "Codara",
+    "email": "support@codara.dev"
   },
-  "recommendations": {
-    "keep": [
-      "security-check",
-      "audit-logger",
-      "permissions",
-      "hooks",
-      "mcp",
-      "commit",
-      "code-review"
-    ]
-  },
-  "notes": {
-    "core": "核心 skills，提供安全、审计、配置等基础能力",
-    "development": "开发工具 skills，帮助创建和维护其他 skills",
-    "integration": "集成外部服务的 skills",
-    "workflow": "工作流 skills，提供 git 和代码审查能力"
-  }
+  "skills": [
+    {
+      "name": "security-check",
+      "description": "Block dangerous shell commands (rm -rf, sudo, chmod 777, etc.) via deny rules and PreToolUse hook guard",
+      "version": "1.0.0",
+      "source": "./security-check",
+      "category": "security"
+    },
+    {
+      "name": "audit-logger",
+      "description": "Structured audit logging for all tool calls using PostToolUse hooks. Records time, tool, input, and sessionId to .codara/audit.log",
+      "version": "1.0.0",
+      "source": "./audit-logger",
+      "category": "security"
+    },
+    {
+      "name": "permissions",
+      "description": "Configure Codara permissions safely using defaultMode plus allow/deny/ask rules. Manage tool access policies",
+      "version": "1.0.0",
+      "source": "./permissions",
+      "category": "productivity"
+    },
+    {
+      "name": "hooks",
+      "description": "Configure lifecycle hooks (PreToolUse/PostToolUse/SessionStart) and scaffold new hook-based skills. Includes templates and development toolkit",
+      "version": "1.0.0",
+      "source": "./hooks",
+      "category": "development"
+    },
+    {
+      "name": "mcp",
+      "description": "Guide for integrating Model Context Protocol (MCP) servers. Connect external services and tools to Codara",
+      "version": "1.0.0",
+      "source": "./mcp",
+      "category": "development"
+    },
+    {
+      "name": "commit",
+      "description": "Intelligent git commit creation with automatic change analysis. Analyzes staged changes and generates meaningful commit messages",
+      "version": "1.0.0",
+      "source": "./commit",
+      "category": "productivity"
+    },
+    {
+      "name": "code-review",
+      "description": "Multi-agent PR code review with parallel analysis. Checks for bugs, security issues, and CLAUDE.md compliance (requires gh CLI)",
+      "version": "1.0.0",
+      "source": "./code-review",
+      "category": "productivity"
+    }
+  ]
 }
