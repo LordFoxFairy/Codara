@@ -55,7 +55,8 @@ PreToolUse Hooks → Permission 求值 → Tool 执行 → PostToolUse Hooks
   "action": "allow | deny | modify",
   "source": "hook",
   "reason": "string",
-  "modifiedInput": {}
+  "modifiedInput": {},
+  "request_id": "string"
 }
 ```
 
@@ -65,13 +66,26 @@ PreToolUse Hooks → Permission 求值 → Tool 执行 → PostToolUse Hooks
 2. 多个 `modify` 按执行顺序叠加，并产出最终输入快照。
 3. 非法 JSON 或未知 `action` 视为执行失败并记录告警。
 
+### Hook 输出如何进入统一裁决
+
+Hook 的输出不应直接跳过权限层，而应归一化为裁决输入，再进入 Permission 求值：
+
+`HookResult -> DecisionDraft -> PermissionDecision -> FinalDecision`
+
+边界约束：
+
+1. `PreToolUse` 的 `modify` 只改输入，不直接给出最终 `allow`。
+2. `PreToolUse` 的 `deny` 可直接形成最终 `FinalDecision=deny`。
+3. 未拒绝时，最终放行与否由 Permission 链给出。
+4. `FinalDecision` 必须带 `request_id` 与 `source`，用于日志和 UI 解释。
+
 ## 钩子周期设计（时序）
 
 ### 单次工具调用周期
 
 | 周期阶段 | 输入上下文 | 可执行动作 | 短路/终止条件 | 输出结果 |
 |---|---|---|---|---|
-| `PreToolUse` 链 | 工具名 + toolInput + 会话上下文 | deny / modify / log | 首个拒绝立即短路 | 修改后的输入或拒绝原因 |
+| `PreToolUse` 链 | 工具名 + toolInput + `session_id/turn_id/request_id` | deny / modify / log | 首个拒绝立即短路 | 修改后的输入或拒绝原因 |
 | Permission 求值 | 工具标识 + 最终输入 + 规则集 | allow / ask / deny | deny 直接终止；ask 等待用户决策 | 授权决策 |
 | 工具执行 | 已授权工具调用 | 实际执行 | 执行异常进入失败路径 | 工具输出或错误 |
 | `PostToolUse`/`PostToolUseFailure` 链 | 工具输出或错误 + 上下文 | log / notify / side effect | 通常不阻断主路径 | 审计与后处理结果 |

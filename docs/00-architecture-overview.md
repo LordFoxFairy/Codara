@@ -54,6 +54,27 @@ Codara 采用“核心机制 + 策略扩展”双层设计。
 | 会话级钩子视图 | 初始化阶段合并后的 Hook 配置，贯穿整个会话 |
 | done reason | 会话终止原因，必须可观测且可追踪 |
 
+## 跨层统一标识（实现必须一致）
+
+为确保 hooks、permissions、skills、subagent、UI 与日志可以稳定关联，运行时应统一以下标识字段：
+
+| 字段 | 作用域 | 生成时机 | 用途 |
+|---|---|---|---|
+| `session_id` | 会话级 | 会话启动 | 跨回合关联全链路 |
+| `turn_id` | 回合级 | 每轮开始 | 关联同轮模型调用与工具调用 |
+| `request_id` | 工具调用级 | 每次工具调用前 | 关联 `PreToolUse -> Permission -> Tool -> PostToolUse` |
+| `event_id` | 事件级 | 事件发射时 | 去重、重放保护、日志关联 |
+| `skill_invocation_id` | 技能调用级 | 命中 `/skill` 时 | 关联技能注入、临时权限与工具行为 |
+| `agent_id` | 代理级 | 代理实例创建时 | 区分主代理与子代理行为 |
+| `parent_agent_id` | 代理级 | 子代理创建时 | 追踪委派链与故障传播边界 |
+
+传递约束：
+
+1. `request_id` 必须透传到 Hook、Permission、Tool、PostHook 及审计日志。
+2. 子代理上报事件必须同时包含 `agent_id` 与 `parent_agent_id`。
+3. 技能触发的工具调用必须携带 `skill_invocation_id`；非技能调用可留空。
+4. UI 层只消费这些标识，不重新生成业务级标识。
+
 ---
 
 <a id="runtime-mainline"></a>
@@ -422,11 +443,15 @@ sequenceDiagram
 
 1. `session_id`：会话标识。
 2. `turn_id`：回合标识。
-3. `tool_name`：工具名称。
-4. `decision`：`deny / ask / allow`。
-5. `source`：来源（hook / permission / guardrail / user）。
-6. `reason`：可解释原因。
-7. `timestamp`：时间戳。
+3. `request_id`：工具调用标识。
+4. `event_id`：事件标识。
+5. `tool_name`：工具名称。
+6. `decision`：`deny / ask / allow`。
+7. `source`：来源（hook / permission / guardrail / user）。
+8. `reason`：可解释原因。
+9. `skill_invocation_id`：如由技能触发则必须填写。
+10. `agent_id`：触发该行为的代理实例。
+11. `timestamp`：时间戳。
 
 ---
 

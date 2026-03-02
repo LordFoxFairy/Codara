@@ -26,8 +26,9 @@
                           ↓
 ┌─────────────────────────────────────────────────────────┐
 │                  通过 Skills 封装                        │
-│  .codara/skills/security-check/                         │
-│  .codara/skills/audit-logger/                           │
+│  .codara/skills/hooks/                                  │
+│  .codara/skills/permissions/                            │
+│  .codara/skills/code-review/                            │
 └─────────────────────────────────────────────────────────┘
                           ↓
 ┌─────────────────────────────────────────────────────────┐
@@ -325,19 +326,13 @@ Follow these guidelines:
 
 ### 系统提示注册
 
-在 `AgentLoop.init()` 期间，所有发现的技能被加载，用户可调用的技能列在系统提示中：
+会话初始化时，运行时会完成三件事：
 
-```typescript
-const skills = await this.skillLoader.discover();
+1. 发现并去重可用技能（项目级优先于用户级）。
+2. 生成“可调用技能清单”并注入系统提示。
+3. 预加载技能钩子配置到会话级 HookEngine。
 
-// 添加到系统提示：
-// # Available Skills
-// - /commit: Auto-generate a commit message and create a git commit
-// - /init: Generate a CODARA.md configuration file
-// - /review-pr: Review a pull request or current branch changes
-```
-
-这让 LLM 知道哪些技能存在，并在适当时建议使用它们。
+这让模型在同一回合中同时感知：可用技能、可用策略、可用安全边界。
 
 ### 输入拦截
 
@@ -350,10 +345,10 @@ const skills = await this.skillLoader.discover();
          skillName   skillArgs
             |
             v
-  skillLoader.resolve("commit")
+  resolve(skillName)
             |
             v
-  skillExecutor.expand(skill, "fix auth bug")
+  expand(skill, skillArgs)
             |
             v
   SkillInvocation {
@@ -377,6 +372,21 @@ allowed-tools: "Bash(git *),Read(*),Grep(*)"
 ```
 
 这授予 LLM 使用匹配工具的权限而无需用户确认，作用域限定在技能调用期间。
+
+### 技能调用链路标识（建议实现）
+
+每次 `/skill` 调用建议生成 `skill_invocation_id`，并贯穿以下环节：
+
+1. 提示展开产物
+2. 临时权限注入与回收
+3. 技能触发的每一次 `request_id`
+4. 审计日志与 UI 展示
+
+约束：
+
+1. `skill_invocation_id` 仅在本次技能窗口内有效，不跨调用复用。
+2. 非技能调用的 `skill_invocation_id` 必须为空，避免误判来源。
+3. 异常退出时仍需以该标识完成权限回收与日志收尾。
 
 ---
 
@@ -492,7 +502,7 @@ Analyze staged changes and create a commit.
         "hooks": [
           {
             "type": "command",
-            "command": "bash ${CODARA_SKILL_ROOT}/scripts/validate.sh"
+            "command": "bash ${CODARA_SKILL_ROOT}/scripts/block-dangerous-command.sh"
           }
         ]
       }
@@ -526,7 +536,7 @@ hooks:
     - matcher: "Bash"
       hooks:
         - type: command
-          command: "bash ${CODARA_SKILL_ROOT}/scripts/security-check.sh"
+          command: "bash ${CODARA_SKILL_ROOT}/scripts/block-dangerous-command.sh"
 ---
 
 Deploy the application to production.
@@ -566,7 +576,7 @@ ShellHookMiddleware 在启动时扫描所有技能目录，加载技能钩子配
         "hooks": [
           {
             "type": "command",
-            "command": "bash ${CODARA_SKILL_ROOT}/scripts/validate.sh $TOOL_INPUT"
+            "command": "bash ${CODARA_SKILL_ROOT}/scripts/block-dangerous-command.sh"
           }
         ]
       }
@@ -678,14 +688,14 @@ ShellHookMiddleware 在启动时扫描所有技能目录，加载技能钩子配
 
 **需求**：阻止所有危险的 `rm -rf` 命令，并提供友好的错误提示。
 
-**实现位置**：`security-check` 技能能力包
+**实现方式**：基于 `hooks` 技能模板生成项目级技能（`security-check` 模板）
 
 **核心机制**：
 - 使用 PreToolUse Hook 拦截 Bash 命令
 - 通过脚本检查危险命令模式
 - 退出码 2 拒绝执行
 
-**参考实现**：查看 `security-check` 技能定义与脚本能力包。
+**参考资源**：`.codara/skills/hooks/templates/security-check.json` 与 `.codara/skills/hooks/scripts/block-dangerous-command.sh`
 
 ---
 
@@ -693,14 +703,14 @@ ShellHookMiddleware 在启动时扫描所有技能目录，加载技能钩子配
 
 **需求**：记录所有工具调用到日志文件，用于审计和调试。
 
-**实现位置**：`audit-logger` 技能能力包
+**实现方式**：基于 `hooks` 技能模板生成项目级技能（`audit-logger` 模板）
 
 **核心机制**：
 - 使用 PreToolUse 和 PostToolUse Hook 记录工具调用
 - 日志记录到 `~/.codara/logs/audit-$(date +%Y%m%d).log`
 - 不阻塞工具执行（退出码 0）
 
-**参考实现**：查看 `audit-logger` 技能定义与钩子能力包。
+**参考资源**：`.codara/skills/hooks/templates/audit-logger.json` 与 `.codara/skills/hooks/scripts/log-tool-call.sh`
 
 ---
 
@@ -708,8 +718,10 @@ ShellHookMiddleware 在启动时扫描所有技能目录，加载技能钩子配
 
 项目中还包含其他 Skills 示例，可以在技能能力包集合中查看：
 
-- **security-check**：安全检查，阻止危险命令
-- **audit-logger**：审计日志，记录所有工具调用
+- **commit**：围绕版本控制提交流程的策略化技能
+- **code-review**：代码审查导向的策略技能
+- **permissions**：权限模板初始化与切换
+- **builtin-agents**：内置代理定义能力包（非用户直接调用）
 
 每个 skill 目录都包含完整的实现和文档，可以直接参考和复用。
 
