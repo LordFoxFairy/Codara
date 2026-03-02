@@ -58,6 +58,21 @@
 
 **核心理念：核心通用（middleware + tools + TUI），领域扩展全靠 Skill**。
 
+## 技能生命周期设计
+
+| 生命周期阶段 | 触发时机 | 关键行为 | 输出/状态变化 |
+|---|---|---|---|
+| 发现（discover） | 会话初始化 | 扫描项目级/用户级技能并去重 | 可用技能集合 |
+| 注册（register） | 系统提示组装 | 注册可调用技能清单、加载技能钩子 | 会话级技能上下文 |
+| 调用（invoke） | 用户输入 `/skill` | 解析技能名与参数，定位技能定义 | SkillInvocation 请求 |
+| 展开（expand） | 调用解析后 | 参数替换、动态命令注入、引用内容内联 | expandedPrompt |
+| 授权激活（activate） | 进入技能执行前 | 注入临时 `allowed-tools` 规则 | 临时权限生效 |
+| 执行（run） | 进入代理循环 | 按 `PreToolUse -> Permission -> Tool -> PostToolUse` 执行 | 工具结果/模型输出 |
+| 权限回收（revoke） | 技能调用结束 | 清理临时 `allowed-tools` | 权限恢复为调用前状态 |
+| 会话销毁（teardown） | 会话结束 | 释放技能钩子与缓存上下文 | 会话级状态清空 |
+
+这套模型确保：技能是“按调用激活的策略单元”，而不是“永久改写核心行为”。
+
 ---
 
 ## 技能发现
@@ -382,7 +397,7 @@ Analyze staged changes and create a commit.
 
 ## 技能钩子
 
-技能可以定义自己的钩子配置，在技能执行期间响应生命周期事件。钩子可以通过两种方式定义：独立的 `hooks/hooks.json` 文件，或 SKILL.md 的 frontmatter 中的 `hooks` 字段。
+技能可以定义自己的钩子配置，在会话内响应生命周期事件。钩子可以通过两种方式定义：独立的 `hooks/hooks.json` 文件，或 SKILL.md 的 frontmatter 中的 `hooks` 字段。
 
 ### 技能钩子组织方式
 
@@ -441,6 +456,11 @@ Deploy the application to production.
 
 **Frontmatter 钩子与文件级钩子合并**，优先级低于 `settings.json` 中的同名钩子。
 
+合并细则（单个技能内）：
+1. 先读取 `hooks/hooks.json`
+2. 再合并 frontmatter `hooks`
+3. 同一事件内按声明顺序执行
+
 ### 技能钩子发现和加载
 
 ShellHookMiddleware 在启动时扫描所有技能目录，加载技能钩子配置：
@@ -484,10 +504,19 @@ ShellHookMiddleware 在启动时扫描所有技能目录，加载技能钩子配
 钩子按以下顺序合并和执行：
 
 1. 项目配置中的 hooks（`settings.json` + `settings.local.json`）
-2. 项目技能钩子（`.codara/skills/*/hooks/hooks.json`）
-3. 用户技能钩子（`~/.codara/skills/*/hooks/hooks.json`）
+2. 项目技能钩子（含 `hooks/hooks.json` + frontmatter `hooks`）
+3. 用户技能钩子（含 `hooks/hooks.json` + frontmatter `hooks`）
 
 同一事件的多个钩子按注册顺序依次执行。
+
+### Hooks 与 Skills 的耦合点
+
+技能生命周期与 hooks 周期的关系如下：
+
+1. **初始化耦合**：技能发现阶段注册技能钩子，形成会话级 hooks 视图。
+2. **调用耦合**：`/skill` 调用仅激活提示注入和临时权限，不动态重载 hooks。
+3. **工具耦合**：技能触发的工具调用与普通调用走同一 hooks 链，保证行为一致。
+4. **收尾耦合**：技能调用结束仅回收临时权限；hooks 随会话生命周期释放。
 
 ### 钩子事件和配置详解
 

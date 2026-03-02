@@ -46,6 +46,33 @@ PreToolUse Hooks → Permission 求值 → Tool 执行 → PostToolUse Hooks
 - **Permissions**：用户授权与规则求值（交互策略）。
 - **Skills**：把 hooks + permissions 组合成可复用能力（业务策略）。
 
+## 钩子周期设计（时序）
+
+### 单次工具调用周期
+
+| 周期阶段 | 输入上下文 | 可执行动作 | 短路/终止条件 | 输出结果 |
+|---|---|---|---|---|
+| `PreToolUse` 链 | 工具名 + toolInput + 会话上下文 | deny / modify / log | 首个拒绝立即短路 | 修改后的输入或拒绝原因 |
+| Permission 求值 | 工具标识 + 最终输入 + 规则集 | allow / ask / deny | deny 直接终止；ask 等待用户决策 | 授权决策 |
+| 工具执行 | 已授权工具调用 | 实际执行 | 执行异常进入失败路径 | 工具输出或错误 |
+| `PostToolUse`/`PostToolUseFailure` 链 | 工具输出或错误 + 上下文 | log / notify / side effect | 通常不阻断主路径 | 审计与后处理结果 |
+
+关键约束：
+- `PreToolUse` 只负责“前置拦截与变换”，不应承担最终授权决策。
+- `Permission` 只负责授权，不做输入改写。
+- `PostToolUse*` 主要用于日志、通知、审计，不回写工具输入。
+- 钩子链与权限链共同形成“拦截 -> 校验 -> 执行 -> 记录”的闭环。
+
+### 会话级钩子周期
+
+除了工具调用周期，钩子还覆盖会话周期：
+
+1. `SessionStart`：会话初始化完成后触发（可做审计登记、环境检查）。
+2. `UserPromptSubmit`：每次用户提交输入后触发（可做输入策略检查）。
+3. `Stop` / `SessionEnd`：会话结束前后触发（可做收尾校验、归档日志）。
+
+这保证 hooks 不仅能拦截工具，还能覆盖“启动 -> 执行 -> 结束”的全过程。
+
 ### 权限模式（作为 Hook 链中的策略步骤）
 
 | 模式 | 行为 |
