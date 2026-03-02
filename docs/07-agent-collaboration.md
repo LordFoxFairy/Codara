@@ -556,12 +556,9 @@ memory: user,project
 
 ## 扩展：Team 级别协作
 
-当前文档主要覆盖 subagent 级别的主从委派关系。业界已出现 Team 级别的多代理对等协作模式：
+当前文档主要覆盖 Subagent 主从委派机制。Team 级别协作的完整契约（Leader/SubTeam 边界、切换交互、权限转发、日志字段）已单独整理为：
 
-- **Claude Code Agent Teams**：通过 `TeamCreate` 创建团队，多个代理通过共享任务列表和消息系统协作，代理间可直接通信（`SendMessage`），支持广播、关闭请求等协议
-- **协作模式**：团队有 leader 和 teammates 角色，leader 分派任务，teammates 认领并执行，通过 idle/message 机制协调
-
-Codara 的 Middleware 架构为 Team 级别协作预留了扩展空间：Task* 工具的磁盘持久化天然支持多代理并发访问，SubagentMiddleware 的生命周期管理可扩展为对等代理管理。未来可实现 `TeamMiddleware`，提供代理发现、消息路由和团队生命周期管理。
+- [Team 协作架构设计](./team.md)
 
 ---
 
