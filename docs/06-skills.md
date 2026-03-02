@@ -1,6 +1,6 @@
 # 技能系统
 
-> [← 上一篇: 记忆与上下文](./05-memory-system.md) | [目录](./README.md) | [下一篇: 代理协作 →](./07-agent-collaboration.md)
+> [← 上一篇: 记忆系统](./05-memory-system.md) | [目录](./README.md) | [下一篇: 代理协作 →](./07-agent-collaboration.md)
 
 技能（Skills）是 Codara 的**统一扩展单元**，允许用户和项目定义可复用的 AI 驱动工作流。每个技能是一个目录，包含 SKILL.md 定义文件以及可选的 agents、hooks、scripts 等资源。用户通过在输入区域输入 `/<name>` 来调用技能。
 
@@ -41,8 +41,8 @@
 
 ### 核心原则
 
-1. **不要直接配置 settings.json 中的 hooks** — 通过 Skills 封装钩子逻辑
-2. **不要直接配置全局 permissions** — 通过 Skills 的 allowed-tools 临时授权
+1. **默认优先通过 Skills 管理 hooks** — 将场景逻辑封装在技能目录中
+2. **默认优先通过 Skills 管理授权** — 通过 `allowed-tools` 提供会话级临时授权
 3. **Skills 是自包含的** — 一个 skill 目录包含所有需要的资源（hooks、scripts、agents）
 4. **Skills 是可复用的** — 项目级和用户级技能可以共享和分发
 
@@ -57,6 +57,28 @@
 | 需要手动编写 JSON | 可以使用模板变量和动态注入 |
 
 **核心理念：核心通用（middleware + tools + TUI），领域扩展全靠 Skill**。
+
+## 技能层契约
+
+| 项 | 契约定义 |
+|---|---|
+| 输入 | 用户技能调用（`/skill`）、技能定义、技能参数 |
+| 输出 | 展开的提示内容、临时权限规则、会话级钩子配置 |
+| 主路径 | 发现 -> 注册 -> 调用 -> 展开 -> 激活 -> 执行 -> 回收 |
+| 失败路径 | 技能不存在、模板展开失败、命令注入失败、权限激活失败 |
+
+实现约束：
+- 技能层负责“策略编排”，不重写核心循环语义。
+- 技能副作用必须可回收（尤其是临时权限）。
+- 技能调用失败应给出可操作原因，避免静默失败。
+
+## 技能不变量
+
+1. `/skill` 调用只改变本次执行策略，不改变核心主路径。
+2. 临时 `allowed-tools` 只在技能执行窗口内生效。
+3. 技能钩子在会话初始化时注册，不在运行时热插拔。
+4. 用户 `deny` 规则始终高于技能临时 `allow`。
+5. 技能内容展开必须可追踪来源（模板、动态命令、引用文件）。
 
 ## 技能生命周期设计
 
@@ -197,7 +219,7 @@ Recent commits:
 展开后，命令标记被替换为实际命令输出：
 ```markdown
 Current git status:
-M  docs/architecture-runtime.md
+M  docs/00-architecture-overview.md
 A  docs/notes/design-decisions.md
 
 Recent commits:
@@ -672,4 +694,4 @@ ShellHookMiddleware 在启动时扫描所有技能目录，加载技能钩子配
 
 ---
 
-> [← 上一篇: 记忆与上下文](./05-memory-system.md) | [目录](./README.md) | [下一篇: 代理协作 →](./07-agent-collaboration.md)
+> [← 上一篇: 记忆系统](./05-memory-system.md) | [目录](./README.md) | [下一篇: 代理协作 →](./07-agent-collaboration.md)

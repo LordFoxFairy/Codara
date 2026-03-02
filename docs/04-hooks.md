@@ -1,6 +1,6 @@
 # 生命周期钩子
 
-> [← 上一篇: 工具](./03-tools.md) | [目录](./README.md) | [下一篇: 记忆与上下文 →](./05-memory-system.md)
+> [← 上一篇: 工具](./03-tools.md) | [目录](./README.md) | [下一篇: 记忆系统 →](./05-memory-system.md)
 
 ## 概述
 
@@ -72,6 +72,12 @@ PreToolUse Hooks → Permission 求值 → Tool 执行 → PostToolUse Hooks
 3. `Stop` / `SessionEnd`：会话结束前后触发（可做收尾校验、归档日志）。
 
 这保证 hooks 不仅能拦截工具，还能覆盖“启动 -> 执行 -> 结束”的全过程。
+
+### 与 `/skill` 激活的边界
+
+1. 技能钩子在会话初始化时加载并进入会话级钩子视图。
+2. `/skill` 调用只激活提示与临时权限，不动态挂载/卸载钩子。
+3. 技能结束后回收的是临时权限；钩子随会话生命周期统一释放。
 
 ### 权限模式（作为 Hook 链中的策略步骤）
 
@@ -502,4 +508,4 @@ fi
 
 ---
 
-> [← 上一篇: 工具](./03-tools.md) | [目录](./README.md) | [下一篇: 记忆与上下文 →](./05-memory-system.md)
+> [← 上一篇: 工具](./03-tools.md) | [目录](./README.md) | [下一篇: 记忆系统 →](./05-memory-system.md)
