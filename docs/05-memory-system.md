@@ -10,9 +10,9 @@
 - AI 自己维护的长期记忆（MEMORY.md）
 - 会话的持久化和恢复
 - 文件修改的快照和回退
+- 上下文压缩相关的记忆裁剪与摘要（容量保护）
 
 **不包括**：
-- ❌ 上下文压缩（由 SummaryMiddleware 处理）
 - ❌ Token 追踪（由 TokenTracker 处理，不是记忆管理）
 - ❌ 静态配置（CODARA.md、rules 等在初始化时加载）
 
