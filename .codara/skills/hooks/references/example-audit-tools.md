@@ -15,7 +15,7 @@ Logs each tool call to `.codara/audit.log`.
         "hooks": [
           {
             "type": "command",
-            "command": "jq -c '{time: now, tool: .tool, input: .input, sessionId: .sessionId}' >> .codara/audit.log"
+            "command": "bash .codara/skills/hooks/scripts/log-tool-call.sh"
           }
         ]
       }
@@ -27,3 +27,8 @@ Logs each tool call to `.codara/audit.log`.
 ## Notes
 
 Use JSONL logs for easy grep/jq analysis.
+Apply quickly with:
+
+```bash
+bash .codara/skills/hooks/scripts/apply-template.sh audit-logger settings.local.json
+```

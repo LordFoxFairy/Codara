@@ -44,8 +44,17 @@
 > **高级特性**（按需）:
 > `07-agent-collaboration → 08-terminal-ui`
 >
+> **深入理解**（推荐）:
+> - [architecture-runtime](./architecture-runtime.md) - **完整运行流程，理解各组件如何协同工作**
+>
 > **附录**（需要规则细节时查阅）:
 > - [appendix/permissions](./appendix/permissions.md) - 权限策略速查
+
+## 深入理解
+
+| 文档 | 说明 |
+|------|------|
+| [架构运行流程](./architecture-runtime.md) | **⭐ 完整运行流程：从启动到执行，各组件如何协同工作** |
 
 ## 附录
 

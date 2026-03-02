@@ -2,16 +2,7 @@
   "hooks": {
     "PreToolUse": [
       {
-        "matcher": "Write",
-        "hooks": [
-          {
-            "type": "command",
-            "command": "bash .codara/skills/hooks/scripts/redirect-to-sandbox.sh"
-          }
-        ]
-      },
-      {
-        "matcher": "Edit",
+        "matcher": "Bash",
         "hooks": [
           {
             "type": "command",
@@ -19,6 +10,11 @@
           }
         ]
       }
+    ]
+  },
+  "permissions": {
+    "allow": [
+      "Bash(docker exec sandbox *)"
     ]
   }
 }
