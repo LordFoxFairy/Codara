@@ -69,6 +69,32 @@ describe("parseModelRoutingConfig", () => {
         };
         expect(() => parseModelRoutingConfig(raw)).toThrow('router["alias1"] 必须是 "provider:model" 格式');
     });
+
+    it("router 规则应自动 trim provider 和 model", () => {
+        const raw = {
+            providers: [{name: "openai", models: ["gpt-4o"]}],
+            router: {
+                default: "  openai : gpt-4o  ",
+            },
+        };
+
+        const config = parseModelRoutingConfig(raw);
+        expect(config.routerRules[0].provider).toBe("openai");
+        expect(config.routerRules[0].model).toBe("gpt-4o");
+    });
+
+    it("router model 允许包含附加冒号", () => {
+        const raw = {
+            providers: [{name: "openrouter", models: ["anthropic/claude-sonnet-4:beta"]}],
+            router: {
+                sonnet: "openrouter:anthropic/claude-sonnet-4:beta",
+            },
+        };
+
+        const config = parseModelRoutingConfig(raw);
+        expect(config.routerRules[0].provider).toBe("openrouter");
+        expect(config.routerRules[0].model).toBe("anthropic/claude-sonnet-4:beta");
+    });
 });
 
 describe("loadModelRoutingConfig", () => {

@@ -11,9 +11,16 @@ export class ModelResolver {
 
     constructor(config: ModelRoutingConfig) {
         const providerMap = new Map(config.providers.map((p) => [p.name, p]));
+        const aliasSet = new Set<string>();
 
         // 解析所有路由规则，配置错误直接 fail-fast
-        this.models = config.routerRules.map((rule) => this.resolveRule(rule, providerMap));
+        this.models = config.routerRules.map((rule) => {
+            if (aliasSet.has(rule.alias)) {
+                throw new Error(`路由规则 "${rule.alias}" 重复定义`);
+            }
+            aliasSet.add(rule.alias);
+            return this.resolveRule(rule, providerMap);
+        });
 
         // 构建别名索引
         this.modelMap = new Map(this.models.map((m) => [m.displayName, m]));

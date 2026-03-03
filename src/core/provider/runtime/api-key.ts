@@ -13,9 +13,17 @@ export const resolveApiKey = (apiKey?: string): string | undefined => {
 
     const envName = apiKey.slice(1).trim();
     if (!envName) {
-        return undefined;
+        throw new Error("apiKey 环境变量名不能为空");
     }
 
     const envValue = process.env[envName];
-    return envValue || undefined;
+    if (envValue === undefined) {
+        return undefined;
+    }
+
+    if (!envValue.trim()) {
+        throw new Error(`环境变量 "${envName}" 不能为空字符串`);
+    }
+
+    return envValue;
 };

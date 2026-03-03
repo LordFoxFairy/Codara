@@ -26,6 +26,15 @@ describe("resolveApiKey", () => {
     expect(resolveApiKey("$MISSING_VAR")).toBeUndefined();
   });
 
+  it("环境变量为空字符串时应抛出错误", () => {
+    process.env.EMPTY_API_KEY = "   ";
+    expect(() => resolveApiKey("$EMPTY_API_KEY")).toThrow('环境变量 "EMPTY_API_KEY" 不能为空字符串');
+  });
+
+  it("环境变量名为空时应抛出错误", () => {
+    expect(() => resolveApiKey("$   ")).toThrow("apiKey 环境变量名不能为空");
+  });
+
   it("空字符串应返回 undefined", () => {
     expect(resolveApiKey("")).toBeUndefined();
   });
@@ -166,6 +175,33 @@ describe("ModelResolver", () => {
     };
 
     expect(() => new ModelResolver(invalidConfig)).toThrow("不在 Provider \"openrouter\" 的白名单中");
+  });
+
+  it("重复 alias 时应 fail-fast", () => {
+    const invalidConfig: ModelRoutingConfig = {
+      providers: [
+        {
+          name: "openrouter",
+          models: ["anthropic/claude-sonnet-4", "openai/gpt-4o"],
+        },
+      ],
+      routerRules: [
+        {
+          alias: "default",
+          provider: "openrouter",
+          model: "anthropic/claude-sonnet-4",
+          target: "openrouter:anthropic/claude-sonnet-4",
+        },
+        {
+          alias: "default",
+          provider: "openrouter",
+          model: "openai/gpt-4o",
+          target: "openrouter:openai/gpt-4o",
+        },
+      ],
+    };
+
+    expect(() => new ModelResolver(invalidConfig)).toThrow('路由规则 "default" 重复定义');
   });
 
 });

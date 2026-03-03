@@ -1,3 +1,5 @@
+import {homedir} from "os";
+
 /**
  * 移除路径末尾的斜杠
  */
@@ -18,7 +20,10 @@ export const resolveCodaraPath = (): string => {
         return trimTrailingSlash(customPath);
     }
 
-    const home = process.env.HOME?.trim();
+    const home =
+        process.env.HOME?.trim() ||
+        process.env.USERPROFILE?.trim() ||
+        homedir().trim();
     if (!home) {
         throw new Error("无法获取用户主目录");
     }
