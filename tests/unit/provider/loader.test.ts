@@ -1,8 +1,8 @@
 import {describe, expect, it, beforeEach, afterEach} from "bun:test";
-import {loadModelRoutingConfig, parseModelRoutingConfig} from "../../../src/core/provider/loader";
-import {writeFileSync, unlinkSync, mkdirSync} from "fs";
+import {loadModelRoutingConfig, parseModelRoutingConfig} from "@core/provider";
+import {writeFileSync, mkdirSync, mkdtempSync, rmSync} from "fs";
 import {join} from "path";
-import {homedir} from "os";
+import {tmpdir} from "os";
 
 describe("parseModelRoutingConfig", () => {
     it("应正确解析有效配置", () => {
@@ -31,9 +31,9 @@ describe("parseModelRoutingConfig", () => {
     });
 
     it("配置不是对象时应抛出错误", () => {
-        expect(() => parseModelRoutingConfig(null)).toThrow("config 必须是对象");
-        expect(() => parseModelRoutingConfig("string")).toThrow("config 必须是对象");
-        expect(() => parseModelRoutingConfig([])).toThrow("config 必须是对象");
+        expect(() => parseModelRoutingConfig(null)).toThrow("expected object");
+        expect(() => parseModelRoutingConfig("string")).toThrow("expected object");
+        expect(() => parseModelRoutingConfig([])).toThrow("expected object");
     });
 
     it("providers 为空数组时应抛出错误", () => {
@@ -41,7 +41,7 @@ describe("parseModelRoutingConfig", () => {
             providers: [],
             router: {},
         };
-        expect(() => parseModelRoutingConfig(raw)).toThrow("providers 必须是非空数组");
+        expect(() => parseModelRoutingConfig(raw)).toThrow("expected array to have >=1 items");
     });
 
     it("provider.name 为空时应抛出错误", () => {
@@ -49,7 +49,7 @@ describe("parseModelRoutingConfig", () => {
             providers: [{name: "", models: ["model1"]}],
             router: {},
         };
-        expect(() => parseModelRoutingConfig(raw)).toThrow("providers[0].name 必须是非空字符串");
+        expect(() => parseModelRoutingConfig(raw)).toThrow("expected string to have >=1 characters");
     });
 
     it("provider.models 为空数组时应抛出错误", () => {
@@ -57,7 +57,7 @@ describe("parseModelRoutingConfig", () => {
             providers: [{name: "test", models: []}],
             router: {},
         };
-        expect(() => parseModelRoutingConfig(raw)).toThrow("providers[0].models 必须是非空数组");
+        expect(() => parseModelRoutingConfig(raw)).toThrow("expected array to have >=1 items");
     });
 
     it("router 格式错误时应抛出错误", () => {
@@ -72,7 +72,11 @@ describe("parseModelRoutingConfig", () => {
 });
 
 describe("loadModelRoutingConfig", () => {
-    const testConfigPath = join(homedir(), ".codara", "config.json");
+    let originalHome: string | undefined;
+    let originalCodaraPath: string | undefined;
+    let testHome: string;
+    let testConfigPath: string;
+
     const testConfig = {
         providers: [
             {
@@ -86,19 +90,23 @@ describe("loadModelRoutingConfig", () => {
     };
 
     beforeEach(() => {
+        originalHome = process.env.HOME;
+        originalCodaraPath = process.env.CODARA_PATH;
+        testHome = mkdtempSync(join(tmpdir(), "codara-home-"));
+        process.env.HOME = testHome;
+        delete process.env.CODARA_PATH;
+        testConfigPath = join(testHome, ".codara", "config.json");
+
         // 确保目录存在
-        mkdirSync(join(homedir(), ".codara"), {recursive: true});
+        mkdirSync(join(testHome, ".codara"), {recursive: true});
         // 写入测试配置
         writeFileSync(testConfigPath, JSON.stringify(testConfig, null, 2));
     });
 
     afterEach(() => {
-        // 清理测试文件
-        try {
-            unlinkSync(testConfigPath);
-        } catch {
-            // 忽略错误
-        }
+        process.env.HOME = originalHome;
+        process.env.CODARA_PATH = originalCodaraPath;
+        rmSync(testHome, {recursive: true, force: true});
     });
 
     it("应成功加载配置文件", async () => {
@@ -109,12 +117,12 @@ describe("loadModelRoutingConfig", () => {
     });
 
     it("配置文件不存在时应抛出错误", async () => {
-        unlinkSync(testConfigPath);
-        await expect(loadModelRoutingConfig()).rejects.toThrow("读取配置失败");
+        rmSync(testConfigPath, {force: true});
+        await expect(loadModelRoutingConfig()).rejects.toThrow("加载配置失败");
     });
 
     it("配置文件 JSON 格式错误时应抛出错误", async () => {
         writeFileSync(testConfigPath, "invalid json");
-        await expect(loadModelRoutingConfig()).rejects.toThrow("配置 JSON 非法");
+        await expect(loadModelRoutingConfig()).rejects.toThrow("加载配置失败");
     });
 });

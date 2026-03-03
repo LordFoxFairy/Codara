@@ -1,0 +1,6 @@
+/**
+ * Core 模块
+ * 提供核心功能和配置管理
+ */
+
+export * from "@core/provider";

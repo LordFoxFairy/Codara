@@ -1,7 +1,6 @@
 import {describe, expect, it, beforeEach, afterEach} from "bun:test";
-import {inferProvider, ModelResolver} from "../../../src/core/provider/resolver";
-import {resolveApiKey} from "../../../src/core/provider/utils";
-import type {ModelRoutingConfig} from "../../../src/core/provider/model";
+import {ModelResolver, resolveApiKey} from "@core/provider";
+import type {ModelRoutingConfig} from "@core/provider";
 
 describe("resolveApiKey", () => {
   const originalEnv = process.env;
@@ -33,18 +32,6 @@ describe("resolveApiKey", () => {
 
   it("undefined 应返回 undefined", () => {
     expect(resolveApiKey(undefined)).toBeUndefined();
-  });
-});
-
-describe("inferProvider", () => {
-  it("应从 xxx/xxx 格式中提取 provider", () => {
-    expect(inferProvider("openai/gpt-4o")).toBe("openai");
-    expect(inferProvider("anthropic/claude-sonnet-4")).toBe("anthropic");
-  });
-
-  it("不包含斜杠时应返回第一个部分", () => {
-    expect(inferProvider("deepseek")).toBe("openai");
-    expect(inferProvider("unknown")).toBe("openai");
   });
 });
 
@@ -137,6 +124,48 @@ describe("ModelResolver", () => {
     const resolver = new ModelResolver(mockConfig);
     const aliases = resolver.getAliases();
     expect(aliases).toEqual(["sonnet", "opus"]);
+  });
+
+  it("provider 不存在时应 fail-fast", () => {
+    const invalidConfig: ModelRoutingConfig = {
+      providers: [
+        {
+          name: "openrouter",
+          models: ["anthropic/claude-sonnet-4"],
+        },
+      ],
+      routerRules: [
+        {
+          alias: "sonnet",
+          provider: "missing-provider",
+          model: "anthropic/claude-sonnet-4",
+          target: "missing-provider:anthropic/claude-sonnet-4",
+        },
+      ],
+    };
+
+    expect(() => new ModelResolver(invalidConfig)).toThrow("Provider \"missing-provider\" 未定义");
+  });
+
+  it("模型不在 provider 白名单时应 fail-fast", () => {
+    const invalidConfig: ModelRoutingConfig = {
+      providers: [
+        {
+          name: "openrouter",
+          models: ["anthropic/claude-sonnet-4"],
+        },
+      ],
+      routerRules: [
+        {
+          alias: "opus",
+          provider: "openrouter",
+          model: "anthropic/claude-opus-4",
+          target: "openrouter:anthropic/claude-opus-4",
+        },
+      ],
+    };
+
+    expect(() => new ModelResolver(invalidConfig)).toThrow("不在 Provider \"openrouter\" 的白名单中");
   });
 
 });
