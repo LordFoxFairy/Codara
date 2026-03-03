@@ -4,3 +4,4 @@
  */
 
 export * from "@core/provider";
+export * from "@core/agents";
