@@ -27,3 +27,6 @@ export const expandApiKey = (apiKey?: string): string | undefined => {
 
     return envValue;
 };
+
+// Backward-compatible export for existing public API/tests.
+export const resolveApiKey = expandApiKey;
