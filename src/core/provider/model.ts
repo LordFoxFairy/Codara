@@ -43,7 +43,7 @@ export interface ModelInfo {
     provider: string;
     /** 模型 ID */
     model: string;
-    /** 模型类型（用于选择初始化方法） */
+    /** 模型协议类型（用于初始化与参数映射） */
     type: "openai" | "anthropic";
     /** 显示名称（用户使用的别名，如 "sonnet"） */
     displayName: string;

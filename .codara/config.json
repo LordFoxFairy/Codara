@@ -9,12 +9,22 @@
         "anthropic/claude-sonnet-4",
         "anthropic/claude-3.5-haiku"
       ]
+    },
+    {
+      "name": "deepseek",
+      "baseUrl": "https://api.deepseek.com/v1",
+      "apiKey": "$DEEPSEEK_API_KEY",
+      "models": [
+        "deepseek-chat",
+        "deepseek-reasoner"
+      ]
     }
   ],
   "router": {
     "opus": "openrouter:anthropic/claude-opus-4",
     "sonnet": "openrouter:anthropic/claude-sonnet-4",
     "haiku": "openrouter:anthropic/claude-3.5-haiku",
+    "deepseek": "deepseek:deepseek-chat",
     "default": "openrouter:anthropic/claude-sonnet-4"
   }
 }
