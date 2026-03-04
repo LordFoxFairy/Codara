@@ -21,7 +21,7 @@ const grepInputSchema = z.object({
     context: z.number().int().min(0).max(100).optional().describe('Number of context lines to show before AND after each match'),
     '-A': z.number().int().min(0).max(100).optional().describe('Number of lines to show AFTER each match'),
     '-B': z.number().int().min(0).max(100).optional().describe('Number of lines to show BEFORE each match'),
-    '-i': z.boolean().default(false).describe('Case insensitive search'),
+    '-i': z.boolean().optional().describe('Case insensitive search (overrides case_sensitive when true)'),
     case_sensitive: z.boolean().default(false).describe('Case sensitive search (default: false)'),
     head_limit: z.number().int().min(0).default(MAX_OUTPUT_LINES).describe('Limit output to first N lines/entries. Default: 500'),
     offset: z.number().int().min(0).default(0).describe('Skip first N lines/entries before applying head_limit'),
@@ -148,7 +148,7 @@ Returns: matching lines with line numbers (content mode) or file paths (files mo
 
     async _call(input: GrepInput): Promise<string> {
         const target = path.resolve(input.path ?? this.defaultCwd);
-        const caseSensitive = input['-i'] !== undefined ? !input['-i'] : (input.case_sensitive ?? false);
+        const caseSensitive = input['-i'] === true ? false : (input.case_sensitive ?? false);
         const outputMode = input.output_mode ?? 'files_with_matches';
         const timeout = DEFAULT_TIMEOUT;
 
