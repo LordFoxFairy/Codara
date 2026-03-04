@@ -7,52 +7,46 @@ afterEach(() => {
   globalThis.fetch = originalFetch;
 });
 
-describe('FetchTool', () => {
+describe('FetchTool - Generic HTTP Client', () => {
   it('should reject non-http protocols', async () => {
     const tool = createFetchTool();
     const result = await tool.invoke({url: 'file:///etc/passwd'});
 
-    expect(String(result)).toContain('Invalid URL protocol');
+    expect(String(result)).toContain('Unsupported protocol');
+    expect(String(result)).toContain('file:');
   });
 
-  it('should reject localhost and private hosts', async () => {
-    const tool = createFetchTool();
-
-    const localhost = await tool.invoke({url: 'http://localhost:3000'});
-    expect(String(localhost)).toContain('Host not allowed');
-
-    const privateIp = await tool.invoke({url: 'http://192.168.1.10/docs'});
-    expect(String(privateIp)).toContain('Host not allowed');
-
-    const privateIpv6 = await tool.invoke({url: 'http://[fd00::1]/docs'});
-    expect(String(privateIpv6)).toContain('Host not allowed');
-  });
-
-  it('should parse html content and strip scripts/styles', async () => {
+  it('should support GET requests and return JSON', async () => {
     globalThis.fetch = async () => {
-      return new Response(
-        `<!doctype html><html><head><title>Demo Page</title><style>.x{display:none}</style></head><body><script>malicious()</script><h1>Hello</h1><p>World &amp; Everyone</p></body></html>`,
-        {
-          status: 200,
-          statusText: 'OK',
-          headers: {'content-type': 'text/html; charset=utf-8'},
-        }
-      );
+      return new Response('Hello World', {
+        status: 200,
+        statusText: 'OK',
+        headers: {'content-type': 'text/plain'},
+      });
     };
 
     const tool = createFetchTool();
-    const result = await tool.invoke({url: 'https://example.com/docs', prompt: 'Summarize key points'});
+    const result = await tool.invoke({url: 'https://example.com'});
+    const parsed = JSON.parse(result);
 
-    expect(String(result)).toContain('Title: Demo Page');
-    expect(String(result)).toContain('Prompt: Summarize key points');
-    expect(String(result)).toContain('Hello');
-    expect(String(result)).toContain('World & Everyone');
-    expect(String(result)).not.toContain('malicious');
+    expect(parsed.url).toBe('https://example.com/');
+    expect(parsed.status).toBe(200);
+    expect(parsed.statusText).toBe('OK');
+    expect(parsed.headers['content-type']).toBe('text/plain');
+    expect(parsed.body).toBe('Hello World');
   });
 
-  it('should format json responses', async () => {
-    globalThis.fetch = async () => {
-      return new Response('{"ok":true,"items":[1,2]}', {
+  it('should support POST with body and headers', async () => {
+    let capturedRequest: {method: string; headers: Record<string, string>; body: string} | null = null;
+
+    globalThis.fetch = async (url, options) => {
+      capturedRequest = {
+        method: options?.method || 'GET',
+        headers: options?.headers as Record<string, string> || {},
+        body: options?.body as string || '',
+      };
+
+      return new Response('{"success":true}', {
         status: 200,
         statusText: 'OK',
         headers: {'content-type': 'application/json'},
@@ -60,13 +54,45 @@ describe('FetchTool', () => {
     };
 
     const tool = createFetchTool();
-    const result = await tool.invoke({url: 'https://example.com/api'});
+    const result = await tool.invoke({
+      url: 'https://api.example.com/data',
+      method: 'POST',
+      headers: {'Content-Type': 'application/json', 'Authorization': 'Bearer token'},
+      body: '{"key":"value"}',
+    });
 
-    expect(String(result)).toContain('"ok": true');
-    expect(String(result)).toContain('"items": [');
+    expect(capturedRequest).not.toBeNull();
+    expect(capturedRequest?.method).toBe('POST');
+    expect(capturedRequest?.headers['Content-Type']).toBe('application/json');
+    expect(capturedRequest?.headers['Authorization']).toBe('Bearer token');
+    expect(capturedRequest?.body).toBe('{"key":"value"}');
+
+    const parsed = JSON.parse(result);
+    expect(parsed.status).toBe(200);
+    expect(parsed.body).toBe('{"success":true}');
   });
 
-  it('should truncate oversized content', async () => {
+  it('should return raw HTML without processing', async () => {
+    const html = '<!doctype html><html><head><title>Demo</title></head><body><h1>Hello</h1></body></html>';
+    globalThis.fetch = async () => {
+      return new Response(html, {
+        status: 200,
+        statusText: 'OK',
+        headers: {'content-type': 'text/html; charset=utf-8'},
+      });
+    };
+
+    const tool = createFetchTool();
+    const result = await tool.invoke({url: 'https://example.com/page'});
+    const parsed = JSON.parse(result);
+
+    // Should return raw HTML, not processed text
+    expect(parsed.body).toBe(html);
+    expect(parsed.body).toContain('<title>Demo</title>');
+    expect(parsed.body).toContain('<h1>Hello</h1>');
+  });
+
+  it('should enforce response size limit', async () => {
     globalThis.fetch = async () => {
       return new Response('A'.repeat(2000), {
         status: 200,
@@ -76,12 +102,44 @@ describe('FetchTool', () => {
     };
 
     const tool = createFetchTool();
-    const result = await tool.invoke({url: 'https://example.com/long', max_chars: 100});
+    const result = await tool.invoke({
+      url: 'https://example.com/large',
+      max_response_size: 100,
+    });
 
-    expect(String(result)).toContain('[truncated');
+    expect(String(result)).toContain('Response too large');
+    expect(String(result)).toContain('2000 bytes');
+    expect(String(result)).toContain('exceeds limit of 100 bytes');
   });
 
-  it('should return readable http error messages', async () => {
+  it('should handle timeout', async () => {
+    globalThis.fetch = async (url, options) => {
+      // Wait for abort signal
+      return new Promise((resolve, reject) => {
+        const timer = setTimeout(() => {
+          resolve(new Response('Too slow', {status: 200}));
+        }, 1000);
+
+        options?.signal?.addEventListener('abort', () => {
+          clearTimeout(timer);
+          const error = new Error('The operation was aborted');
+          error.name = 'AbortError';
+          reject(error);
+        });
+      });
+    };
+
+    const tool = createFetchTool();
+    const result = await tool.invoke({
+      url: 'https://example.com/slow',
+      timeout_ms: 50,
+    });
+
+    expect(String(result)).toContain('Request timeout');
+    expect(String(result)).toContain('50ms');
+  });
+
+  it('should return all HTTP status codes (including errors)', async () => {
     globalThis.fetch = async () => {
       return new Response('Not Found', {
         status: 404,
@@ -92,8 +150,67 @@ describe('FetchTool', () => {
 
     const tool = createFetchTool();
     const result = await tool.invoke({url: 'https://example.com/missing'});
+    const parsed = JSON.parse(result);
 
-    expect(String(result)).toContain('Fetch failed');
-    expect(String(result)).toContain('HTTP 404 Not Found');
+    // Should return the response, not an error
+    expect(parsed.status).toBe(404);
+    expect(parsed.statusText).toBe('Not Found');
+    expect(parsed.body).toBe('Not Found');
+  });
+
+  it('should handle network errors', async () => {
+    globalThis.fetch = async () => {
+      throw new Error('Network error: Connection refused');
+    };
+
+    const tool = createFetchTool();
+    const result = await tool.invoke({url: 'https://example.com/error'});
+
+    expect(String(result)).toContain('Request failed');
+    expect(String(result)).toContain('Network error');
+  });
+
+  it('should validate URL format', async () => {
+    const tool = createFetchTool();
+    const result = await tool.invoke({url: 'not-a-valid-url'});
+
+    expect(String(result)).toContain('Invalid URL');
+  });
+
+  it('should allow localhost (no security blocking)', async () => {
+    globalThis.fetch = async () => {
+      return new Response('Local server', {
+        status: 200,
+        statusText: 'OK',
+        headers: {'content-type': 'text/plain'},
+      });
+    };
+
+    const tool = createFetchTool();
+    const result = await tool.invoke({url: 'http://localhost:3000'});
+    const parsed = JSON.parse(result);
+
+    // Should NOT block localhost
+    expect(parsed.status).toBe(200);
+    expect(parsed.body).toBe('Local server');
+  });
+
+  it('should allow private IP addresses (no security blocking)', async () => {
+    globalThis.fetch = async () => {
+      return new Response('Private network', {
+        status: 200,
+        statusText: 'OK',
+        headers: {'content-type': 'text/plain'},
+      });
+    };
+
+    const tool = createFetchTool();
+    const result = await tool.invoke({url: 'http://192.168.1.10'});
+    const parsed = JSON.parse(result);
+
+    // Should NOT block private IPs
+    expect(parsed.status).toBe(200);
+    expect(parsed.body).toBe('Private network');
   });
 });
+

@@ -24,7 +24,7 @@ describe('Basic Integration: Model + Agent + Tools', () => {
       cwd: process.cwd(),
     });
 
-    expect(tools.length).toBe(7);
+    expect(tools.length).toBe(8);
     expect(tools.map((t) => t.name)).toEqual([
       'bash',
       'read_file',
@@ -33,6 +33,7 @@ describe('Basic Integration: Model + Agent + Tools', () => {
       'glob',
       'grep',
       'fetch_url',
+      'web_search',
     ]);
 
     const agent = createAgentRunner({

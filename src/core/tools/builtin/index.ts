@@ -6,6 +6,7 @@ import {createEditTool, EditTool} from '@core/tools/builtin/edit';
 import {createGlobTool, GlobTool} from '@core/tools/builtin/glob';
 import {createGrepTool, GrepTool} from '@core/tools/builtin/grep';
 import {createFetchTool, FetchTool} from '@core/tools/builtin/fetch';
+import {createSearchTool, SearchTool} from '@core/tools/builtin/search';
 
 export {BashTool, createBashTool};
 export {ReadTool, createReadTool};
@@ -14,6 +15,7 @@ export {EditTool, createEditTool};
 export {GlobTool, createGlobTool};
 export {GrepTool, createGrepTool};
 export {FetchTool, createFetchTool};
+export {SearchTool, createSearchTool};
 
 /**
  * 内置工具配置选项。
@@ -46,5 +48,6 @@ export function createBuiltinTools(options: BuiltinToolOptions = {}): Structured
     createGlobTool(cwd),
     createGrepTool(cwd),
     createFetchTool(),
+    createSearchTool(),
   ];
 }

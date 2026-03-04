@@ -4,165 +4,30 @@ import {formatError, getErrorMessage} from '@core/tools/utils';
 
 const DEFAULT_TIMEOUT_MS = 15_000;
 const MAX_TIMEOUT_MS = 120_000;
-const DEFAULT_MAX_CHARS = 120_000;
-const MAX_MAX_CHARS = 500_000;
+const DEFAULT_MAX_RESPONSE_SIZE = 1_048_576; // 1MB
+const MAX_MAX_RESPONSE_SIZE = 10_485_760; // 10MB
 
 const fetchInputSchema = z.object({
   url: z.string().min(1).describe('HTTP/HTTPS URL to fetch. Must be a valid absolute URL.'),
-  prompt: z.string().optional().describe('Optional focus instruction for the fetched content'),
+  method: z.enum(['GET', 'POST', 'PUT', 'DELETE', 'PATCH', 'HEAD', 'OPTIONS']).default('GET')
+    .describe('HTTP method to use. Default: GET'),
+  headers: z.record(z.string(), z.string()).optional()
+    .describe('Optional HTTP headers as key-value pairs'),
+  body: z.string().optional()
+    .describe('Optional request body (for POST/PUT/PATCH)'),
   timeout_ms: z.number().int().positive().max(MAX_TIMEOUT_MS).default(DEFAULT_TIMEOUT_MS)
     .describe('Request timeout in milliseconds. Default: 15000 (15s), Max: 120000 (2min)'),
-  max_chars: z.number().int().positive().max(MAX_MAX_CHARS).default(DEFAULT_MAX_CHARS)
-    .describe('Max response content characters to return. Default: 120000, Max: 500000'),
+  max_response_size: z.number().int().positive().max(MAX_MAX_RESPONSE_SIZE).default(DEFAULT_MAX_RESPONSE_SIZE)
+    .describe('Maximum response size in bytes. Default: 1048576 (1MB), Max: 10485760 (10MB)'),
 });
 
 type FetchInput = z.infer<typeof fetchInputSchema>;
 
 /**
- * HTML 实体解码。
+ * 验证 URL 格式。
  *
- * @param raw - 原始 HTML 文本
- * @returns 解码后的文本
- */
-function decodeHtmlEntities(raw: string): string {
-  return raw
-    .replace(/&nbsp;/g, ' ')
-    .replace(/&amp;/g, '&')
-    .replace(/&lt;/g, '<')
-    .replace(/&gt;/g, '>')
-    .replace(/&quot;/g, '"')
-    .replace(/&#39;/g, "'")
-    .replace(/&#x([0-9a-fA-F]+);/g, (_, hex) => {
-      const code = Number.parseInt(hex, 16);
-      return Number.isFinite(code) ? String.fromCodePoint(code) : '';
-    })
-    .replace(/&#(\d+);/g, (_, dec) => {
-      const code = Number.parseInt(dec, 10);
-      return Number.isFinite(code) ? String.fromCodePoint(code) : '';
-    });
-}
-
-/**
- * 规范化文本格式。
- *
- * @param raw - 原始文本
- * @returns 规范化后的文本
- */
-function normalizeText(raw: string): string {
-  return raw
-    .replace(/\r/g, '')
-    .replace(/[ \t]+\n/g, '\n')
-    .replace(/\n{3,}/g, '\n\n')
-    .trim();
-}
-
-/**
- * 从 HTML 中提取标题。
- *
- * @param html - HTML 文本
- * @returns 标题文本，如果未找到则返回 undefined
- */
-function extractHtmlTitle(html: string): string | undefined {
-  const match = html.match(/<title[^>]*>([\s\S]*?)<\/title>/i);
-  if (!match?.[1]) {
-    return undefined;
-  }
-
-  const title = normalizeText(decodeHtmlEntities(match[1]));
-  return title || undefined;
-}
-
-/**
- * 将 HTML 转换为纯文本。
- *
- * @param html - HTML 文本
- * @returns 纯文本
- */
-function htmlToText(html: string): string {
-  const withoutScript = html
-    .replace(/<script[\s\S]*?<\/script>/gi, ' ')
-    .replace(/<style[\s\S]*?<\/style>/gi, ' ')
-    .replace(/<noscript[\s\S]*?<\/noscript>/gi, ' ');
-
-  const withLines = withoutScript
-    .replace(/<(br|hr)\s*\/?>/gi, '\n')
-    .replace(/<\/(p|div|section|article|header|footer|main|aside|li|ul|ol|h[1-6]|tr|td|th)>/gi, '\n')
-    .replace(/<(p|div|section|article|header|footer|main|aside|li|ul|ol|h[1-6]|tr|td|th)[^>]*>/gi, '\n');
-
-  const withoutTags = withLines.replace(/<[^>]+>/g, ' ');
-  return normalizeText(decodeHtmlEntities(withoutTags));
-}
-
-/**
- * 检查是否为私有 IPv4 地址。
- *
- * @param host - 主机名或 IP 地址
- * @returns 是否为私有地址
- */
-function isPrivateIpv4(host: string): boolean {
-  if (!/^\d{1,3}(\.\d{1,3}){3}$/.test(host)) {
-    return false;
-  }
-
-  const parts = host.split('.').map(Number);
-  if (parts.some((part) => Number.isNaN(part) || part < 0 || part > 255)) {
-    return true;
-  }
-
-  if (parts[0] === 10 || parts[0] === 127 || parts[0] === 0) {
-    return true;
-  }
-  if (parts[0] === 169 && parts[1] === 254) {
-    return true;
-  }
-  if (parts[0] === 192 && parts[1] === 168) {
-    return true;
-  }
-  if (parts[0] === 172 && parts[1] >= 16 && parts[1] <= 31) {
-    return true;
-  }
-
-  return false;
-}
-
-/**
- * 检查是否为私有/本地主机。
- *
- * @param host - 主机名或 IP 地址
- * @returns 是否为私有主机
- */
-function isPrivateHost(host: string): boolean {
-  const normalized = host.toLowerCase().trim();
-  const unwrapped = normalized.startsWith('[') && normalized.endsWith(']')
-    ? normalized.slice(1, -1)
-    : normalized;
-  const canonicalHost = unwrapped.endsWith('.') ? unwrapped.slice(0, -1) : unwrapped;
-
-  if (
-    canonicalHost === 'localhost'
-    || canonicalHost === '::1'
-    || canonicalHost === '0:0:0:0:0:0:0:1'
-    || canonicalHost.endsWith('.local')
-  ) {
-    return true;
-  }
-
-  if (/^(fc|fd)[0-9a-f]{0,2}:/i.test(canonicalHost) || /^fe80:/i.test(canonicalHost)) {
-    return true;
-  }
-
-  if (canonicalHost.startsWith('::ffff:')) {
-    const mappedIpv4 = canonicalHost.slice('::ffff:'.length);
-    if (isPrivateIpv4(mappedIpv4)) {
-      return true;
-    }
-  }
-
-  return isPrivateIpv4(canonicalHost);
-}
-
-/**
- * 验证 URL 的安全性。
+ * 仅执行基本的 URL 格式验证，不做安全策略检查。
+ * 安全策略应该由外层的 Agent 或权限系统管理。
  *
  * @param rawUrl - 原始 URL 字符串
  * @returns 验证结果，包含解析后的 URL 或错误消息
@@ -175,67 +40,22 @@ function validateUrl(rawUrl: string): {url?: URL; error?: string} {
     return {error: formatError('Invalid URL', rawUrl)};
   }
 
+  // 仅检查协议支持（技术限制，不是安全策略）
   if (parsed.protocol !== 'http:' && parsed.protocol !== 'https:') {
-    return {error: formatError('Invalid URL protocol', 'Only HTTP/HTTPS are allowed', rawUrl)};
-  }
-
-  if (isPrivateHost(parsed.hostname)) {
-    return {error: formatError('Host not allowed', parsed.hostname, 'private/local address blocked')};
+    return {error: formatError('Unsupported protocol', parsed.protocol, 'only HTTP/HTTPS supported')};
   }
 
   return {url: parsed};
 }
 
 /**
- * 格式化 fetch 结果。
+ * 通用的 HTTP 请求工具。
  *
- * @param args - 结果参数
- * @returns 格式化的结果字符串
- */
-function formatFetchResult(args: {
-  url: URL;
-  status: number;
-  statusText: string;
-  contentType: string;
-  title?: string;
-  prompt?: string;
-  content: string;
-  truncated: boolean;
-  removedChars: number;
-}): string {
-  const lines: string[] = [
-    `URL: ${args.url.toString()}`,
-    `Status: ${args.status} ${args.statusText}`,
-    `Content-Type: ${args.contentType || 'unknown'}`,
-  ];
-
-  if (args.title) {
-    lines.push(`Title: ${args.title}`);
-  }
-
-  if (args.prompt) {
-    lines.push(`Prompt: ${args.prompt}`);
-  }
-
-  lines.push('');
-  lines.push(args.content || '(empty response body)');
-
-  if (args.truncated) {
-    lines.push('');
-    lines.push(`[truncated ${args.removedChars} characters]`);
-  }
-
-  return lines.join('\n');
-}
-
-/**
- * 通过 HTTP/HTTPS 获取 URL 内容。
- *
- * 自动处理 HTML 转文本、JSON 格式化、内容截断等。
- * 阻止访问私有/本地网络地址以确保安全。
+ * 不包含任何安全策略或内容处理逻辑。
+ * 安全控制应该由 Agent 或权限系统管理。
  *
  * @example
- * ```typescript
+ * ```TypeScript
  * const tool = createFetchTool();
  *
  * // 获取网页内容
@@ -243,91 +63,82 @@ function formatFetchResult(args: {
  *     url: 'https://example.com'
  * });
  *
- * // 带超时和字符限制
- * const limited = await tool.invoke({
- *     url: 'https://example.com',
+ * // 带自定义 headers 和超时
+ * const custom = await tool.invoke({
+ *     url: 'https://api.example.com/data',
+ *     method: 'POST',
+ *     headers: {'Content-Type': 'application/json'},
+ *     body: JSON.stringify({key: 'value'}),
  *     timeout_ms: 10000,
- *     max_chars: 50000
+ *     max_response_size: 5242880
  * });
  * ```
  */
 export class FetchTool extends StructuredTool<typeof fetchInputSchema> {
   name = 'fetch_url';
-  description = `Fetches URL content over HTTP/HTTPS with safety checks and text extraction.
-Use when: reading documentation pages, blog posts, API references, public web content.
-Don't use when: accessing local/private network addresses, fetching binary files for download.
-Returns: normalized text with URL metadata, optional title, and truncation marker.`;
+  description = `Fetches URL content over HTTP/HTTPS.
+Use when: need to retrieve web content, API responses, or remote resources.
+Don't use when: need to download large binary files (use specialized download tools).
+Returns: JSON with response metadata (status, headers) and body content.`;
   schema = fetchInputSchema;
 
   async _call(input: FetchInput): Promise<string> {
+    // 1. 基本的 URL 格式验证（不包含安全策略）
     const validation = validateUrl(input.url);
     if (!validation.url) {
       return validation.error || formatError('Invalid URL', input.url);
     }
 
-    const timeoutMs = input.timeout_ms;
-    const maxChars = input.max_chars;
+    // 2. 执行请求
     const controller = new AbortController();
-    const timer = setTimeout(() => controller.abort(), timeoutMs);
+    const timer = setTimeout(() => controller.abort(), input.timeout_ms);
 
     try {
       const response = await fetch(validation.url.toString(), {
-        method: 'GET',
+        method: input.method,
+        headers: input.headers as HeadersInit,
+        body: input.body,
         redirect: 'follow',
         signal: controller.signal,
-        headers: {
-          'User-Agent': 'Codara-FetchTool/1.0',
-          Accept: 'text/html,text/plain,application/json;q=0.9,*/*;q=0.8',
-        },
       });
 
-      if (!response.ok) {
-        return formatError('Fetch failed', `HTTP ${response.status} ${response.statusText}`, validation.url.toString());
-      }
-
-      const contentType = response.headers.get('content-type')?.toLowerCase() || '';
-      const raw = await response.text();
-      let title: string | undefined;
-      let content = raw;
-
-      if (contentType.includes('text/html')) {
-        title = extractHtmlTitle(raw);
-        content = htmlToText(raw);
-      } else if (contentType.includes('application/json')) {
-        try {
-          const parsed = JSON.parse(raw) as unknown;
-          content = JSON.stringify(parsed, null, 2);
-        } catch {
-          content = raw;
+      // 3. 检查响应大小（基于 Content-Length header）
+      const contentLength = response.headers.get('content-length');
+      if (contentLength) {
+        const size = Number.parseInt(contentLength, 10);
+        if (!Number.isNaN(size) && size > input.max_response_size) {
+          return formatError(
+            'Response too large',
+            `${size} bytes`,
+            `exceeds limit of ${input.max_response_size} bytes`
+          );
         }
-      } else {
-        content = normalizeText(raw);
       }
 
-      let truncated = false;
-      let removedChars = 0;
-      if (content.length > maxChars) {
-        truncated = true;
-        removedChars = content.length - maxChars;
-        content = content.slice(0, maxChars);
+      // 4. 读取响应（带大小限制）
+      const text = await response.text();
+      if (text.length > input.max_response_size) {
+        return formatError(
+          'Response too large',
+          `${text.length} bytes`,
+          `exceeds limit of ${input.max_response_size} bytes`
+        );
       }
 
-      return formatFetchResult({
-        url: validation.url,
+      // 5. 返回结构化的 JSON 响应（不做内容处理）
+      return JSON.stringify({
+        url: validation.url.toString(),
         status: response.status,
         statusText: response.statusText,
-        contentType,
-        title,
-        prompt: input.prompt,
-        content,
-        truncated,
-        removedChars,
-      });
+        headers: Object.fromEntries(response.headers.entries()),
+        body: text,
+      }, null, 2);
+
     } catch (error: unknown) {
       if (error instanceof Error && error.name === 'AbortError') {
-        return formatError('Fetch timeout', `${timeoutMs}ms`, validation.url.toString());
+        return formatError('Request timeout', `${input.timeout_ms}ms`, validation.url.toString());
       }
-      return formatError('Fetch failed', getErrorMessage(error), validation.url.toString());
+      return formatError('Request failed', getErrorMessage(error), validation.url.toString());
     } finally {
       clearTimeout(timer);
     }
@@ -342,3 +153,4 @@ Returns: normalized text with URL metadata, optional title, and truncation marke
 export function createFetchTool(): FetchTool {
   return new FetchTool();
 }
+
