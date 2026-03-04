@@ -23,6 +23,9 @@ describe('FetchTool', () => {
 
     const privateIp = await tool.invoke({url: 'http://192.168.1.10/docs'});
     expect(String(privateIp)).toContain('Host not allowed');
+
+    const privateIpv6 = await tool.invoke({url: 'http://[fd00::1]/docs'});
+    expect(String(privateIpv6)).toContain('Host not allowed');
   });
 
   it('should parse html content and strip scripts/styles', async () => {

@@ -1,6 +1,6 @@
 import {describe, expect, it} from 'bun:test';
 import path from 'node:path';
-import {mkdtemp, mkdir, readFile, writeFile} from 'node:fs/promises';
+import {chmod, mkdtemp, mkdir, readFile, writeFile} from 'node:fs/promises';
 import {tmpdir} from 'node:os';
 import {
   BashTool,
@@ -120,11 +120,12 @@ describe('builtin tools', () => {
   it('grep should find matches and return no-match message', async () => {
     const root = await mkdtemp(path.join(tmpdir(), 'codara-grep-'));
     const target = path.join(root, 'grep.txt');
-    await writeFile(target, 'alpha\nbeta\ngamma\nAlpha', 'utf8');
+    await writeFile(target, 'Alpha\nBeta\nGamma', 'utf8');
 
     const grep = createGrepTool(root);
 
     const found = await grep.invoke({pattern: 'alpha', path: target, output_mode: 'content'});
+    expect(String(found)).not.toContain('No results:');
     expect(String(found).toLowerCase()).toContain('alpha');
 
     const notFound = await grep.invoke({
@@ -133,6 +134,22 @@ describe('builtin tools', () => {
       output_mode: 'content',
     });
     expect(String(notFound)).toContain('No results: No matches found');
+  });
+
+  it('edit should return formatted error when write fails', async () => {
+    const root = await mkdtemp(path.join(tmpdir(), 'codara-edit-perm-'));
+    const target = path.join(root, 'readonly.txt');
+    await writeFile(target, 'hello', 'utf8');
+    await chmod(target, 0o444);
+
+    const edit = createEditTool();
+    const result = await edit.invoke({
+      file_path: target,
+      old_string: 'hello',
+      new_string: 'world',
+    });
+
+    expect(String(result)).toContain('Error: Permission denied');
   });
 
   it('bash should execute commands and preserve cwd', async () => {

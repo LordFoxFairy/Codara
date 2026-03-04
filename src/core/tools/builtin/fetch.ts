@@ -132,22 +132,33 @@ function isPrivateIpv4(host: string): boolean {
  * @returns 是否为私有主机
  */
 function isPrivateHost(host: string): boolean {
-  const normalized = host.toLowerCase();
+  const normalized = host.toLowerCase().trim();
+  const unwrapped = normalized.startsWith('[') && normalized.endsWith(']')
+    ? normalized.slice(1, -1)
+    : normalized;
+  const canonicalHost = unwrapped.endsWith('.') ? unwrapped.slice(0, -1) : unwrapped;
 
   if (
-    normalized === 'localhost'
-    || normalized === '::1'
-    || normalized === '[::1]'
-    || normalized.endsWith('.local')
+    canonicalHost === 'localhost'
+    || canonicalHost === '::1'
+    || canonicalHost === '0:0:0:0:0:0:0:1'
+    || canonicalHost.endsWith('.local')
   ) {
     return true;
   }
 
-  if (/^(fc|fd|fe80)/i.test(normalized)) {
+  if (/^(fc|fd)[0-9a-f]{0,2}:/i.test(canonicalHost) || /^fe80:/i.test(canonicalHost)) {
     return true;
   }
 
-  return isPrivateIpv4(normalized);
+  if (canonicalHost.startsWith('::ffff:')) {
+    const mappedIpv4 = canonicalHost.slice('::ffff:'.length);
+    if (isPrivateIpv4(mappedIpv4)) {
+      return true;
+    }
+  }
+
+  return isPrivateIpv4(canonicalHost);
 }
 
 /**

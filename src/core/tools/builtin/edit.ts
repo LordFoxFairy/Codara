@@ -90,7 +90,21 @@ Returns: edit summary with line count changes (-X +Y lines), or error if file no
             replacements = 1;
         }
 
-        await writeFile(filePath, next, 'utf8');
+        try {
+            await writeFile(filePath, next, 'utf8');
+        } catch (error: unknown) {
+            const code = getErrorCode(error);
+            if (code === 'EACCES') {
+                return formatError('Permission denied', filePath);
+            }
+            if (code === 'ENOSPC') {
+                return formatError('No space left on device', filePath);
+            }
+            if (code === 'EROFS') {
+                return formatError('Read-only file system', filePath);
+            }
+            return formatError('Write failed', getErrorMessage(error));
+        }
 
         const oldLines = countLines(input.old_string);
         const newLines = countLines(input.new_string);
