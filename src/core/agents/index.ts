@@ -1,2 +1,2 @@
-export * from "@core/agents/model";
+export * from "@core/agents/types";
 export * from "@core/agents/runner";
