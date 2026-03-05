@@ -71,9 +71,12 @@ describe('FetchTool - Generic HTTP Client', () => {
     if (!capturedRequest) {
       throw new Error('capturedRequest should not be null');
     }
+    const normalizedHeaders = Object.fromEntries(
+      Object.entries(capturedRequest.headers).map(([key, value]) => [key.toLowerCase(), value])
+    );
     expect(capturedRequest.method).toBe('POST');
-    expect(capturedRequest.headers['Content-Type']).toBe('application/json');
-    expect(capturedRequest.headers['Authorization']).toBe('Bearer token');
+    expect(normalizedHeaders['content-type']).toBe('application/json');
+    expect(normalizedHeaders['authorization']).toBe('Bearer token');
     expect(capturedRequest.body).toBe('{"key":"value"}');
 
     const parsed = JSON.parse(result);
