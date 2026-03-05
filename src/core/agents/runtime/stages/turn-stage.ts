@@ -1,5 +1,5 @@
-import type {ToolCall} from '@langchain/core/messages';
-import type {AgentRunSummary, BaseExecutionContext} from '@core/middleware';
+import {SystemMessage, type BaseMessage, type ToolCall} from '@langchain/core/messages';
+import type {AgentRunSummary, BaseExecutionContext, ModelCallContext, ToolCallContext} from '@core/middleware';
 import {resolveToolCallId, toError} from '@core/agents/runtime/shared/common';
 import type {AgentLoopRuntime, LoopExecutionDeps} from '@core/agents/runtime/shared/contracts';
 import {createTurnContext} from '@core/agents/runtime/context/runtime-context';
@@ -27,7 +27,12 @@ export async function runTurn(
     await pipeline.beforeModel(context);
 
     // 3) wrapModelCall
-    const invokeModel = () => deps.model.invoke(runtime.state.messages);
+    const invokeModel = (request?: ModelCallContext) => {
+      const nextRequest = request ?? context;
+      const systemMessages = nextRequest.systemMessage.map((content) => new SystemMessage(content));
+      const modelMessages: BaseMessage[] = [...systemMessages, ...nextRequest.messages];
+      return deps.model.invoke(modelMessages);
+    };
     const modelMessage = await pipeline.wrapModelCall(context, invokeModel);
     runtime.state.messages.push(modelMessage);
 
@@ -67,16 +72,21 @@ async function wrapToolCalls(
     const toolCallId = resolveToolCallId(toolCall, toolIndex);
     const tool = deps.tools.get(toolCall.name);
 
-    const toolMessage = await pipeline.wrapToolCall(
-      {
-        ...context,
-        requestId: `${context.requestId}:tool:${toolCallId}`,
-        toolCall,
-        toolIndex,
-        tool
-      },
-      () => invokeTool(toolCall, toolCallId, tool, deps.handleToolErrors)
-    );
+    const toolContext: ToolCallContext = {
+      ...context,
+      requestId: `${context.requestId}:tool:${toolCallId}`,
+      toolCall,
+      toolIndex,
+      tool
+    };
+
+    const toolMessage = await pipeline.wrapToolCall(toolContext, (request?: ToolCallContext) => {
+      const nextCall = request?.toolCall ?? toolCall;
+      const nextIndex = request?.toolIndex ?? toolIndex;
+      const nextTool = request?.tool ?? deps.tools.get(nextCall.name);
+      const nextToolCallId = resolveToolCallId(nextCall, nextIndex);
+      return invokeTool(nextCall, nextToolCallId, nextTool, deps.handleToolErrors);
+    });
 
     runtime.state.messages.push(toolMessage);
   }

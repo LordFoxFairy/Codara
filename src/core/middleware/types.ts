@@ -22,11 +22,23 @@
 
 import type {AIMessage, BaseMessage, ToolCall, ToolMessage} from '@langchain/core/messages';
 import type {StructuredToolInterface} from '@langchain/core/tools';
+import type {ZodTypeAny} from 'zod';
+import type {AgentRuntimeContext} from '@core/agents/types';
+
+export interface MiddlewareRuntimeContext {
+  context: AgentRuntimeContext;
+}
 
 export interface BaseExecutionContext {
   state: {
     messages: BaseMessage[];
   };
+  /** LangChain 风格快捷访问：等价于 state.messages */
+  messages: BaseMessage[];
+  /** LangChain 风格 runtime 上下文 */
+  runtime: MiddlewareRuntimeContext;
+  /** 可在 wrapModelCall 中追加系统消息 */
+  systemMessage: string[];
   runId: string;
   turn: number;
   maxTurns: number;
@@ -57,11 +69,13 @@ export interface AfterAgentContext extends BaseExecutionContext {
   result: AgentRunSummary;
 }
 
-export type ModelCallHandler = () => Promise<AIMessage>;
-export type ToolCallHandler = () => Promise<ToolMessage>;
+export type ModelCallHandler = (request?: ModelCallContext) => Promise<AIMessage>;
+export type ToolCallHandler = (request?: ToolCallContext) => Promise<ToolMessage>;
 
 export interface BaseMiddleware {
   name: string;
+  /** 可选 context 校验器（例如 zod schema） */
+  contextSchema?: ZodTypeAny;
   /** Required middleware cannot be removed from pipeline */
   required?: boolean;
   beforeAgent?: (context: BeforeAgentContext) => Promise<void> | void;

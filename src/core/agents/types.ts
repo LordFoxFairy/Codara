@@ -3,6 +3,8 @@ import type {BaseChatModel} from '@langchain/core/language_models/chat_models';
 import type {StructuredToolInterface} from '@langchain/core/tools';
 import type {BaseMiddleware} from '@core/middleware';
 
+export type AgentRuntimeContext = Record<string, unknown>;
+
 /** Agent 运行时状态（最小合同） */
 export interface AgentState {
   messages: BaseMessage[];
@@ -53,6 +55,8 @@ export interface AgentRunnerParams {
 export interface AgentInvokeConfig {
   /** 最大循环轮次，默认 25 */
   recursionLimit?: number;
+  /** 运行时上下文，可在 middleware 中通过 request.runtime.context 读取 */
+  context?: AgentRuntimeContext;
   /** invoke 前置 hook（不属于 middleware） */
   beforeRun?: AgentHooks['beforeRun'];
   /** invoke 后置 hook（不属于 middleware） */
