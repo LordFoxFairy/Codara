@@ -22,7 +22,7 @@
 
 import type {AIMessage, BaseMessage, ToolCall, ToolMessage} from '@langchain/core/messages';
 import type {StructuredToolInterface} from '@langchain/core/tools';
-import type {ZodTypeAny} from 'zod';
+import type {ZodType} from 'zod';
 import type {AgentRuntimeContext} from '@core/agents/types';
 
 export interface MiddlewareRuntimeContext {
@@ -75,7 +75,7 @@ export type ToolCallHandler = (request?: ToolCallContext) => Promise<ToolMessage
 export interface BaseMiddleware {
   name: string;
   /** 可选 context 校验器（例如 zod schema） */
-  contextSchema?: ZodTypeAny;
+  contextSchema?: ZodType<unknown>;
   /** Required middleware cannot be removed from pipeline */
   required?: boolean;
   beforeAgent?: (context: BeforeAgentContext) => Promise<void> | void;
