@@ -15,6 +15,9 @@ export function createAgentHookContext(runtime: AgentLoopRuntime): AgentHookCont
 export function createTurnContext(runtime: AgentLoopRuntime, turn: number): BaseExecutionContext {
   return {
     state: runtime.state,
+    messages: runtime.state.messages,
+    runtime: {context: runtime.context},
+    systemMessage: [],
     runId: runtime.runId,
     turn,
     maxTurns: runtime.maxTurns,

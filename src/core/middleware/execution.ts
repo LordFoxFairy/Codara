@@ -61,11 +61,19 @@ export function assertNoDuplicateNames(middlewares: BaseMiddleware[]): void {
   }
 }
 
+type SimpleStageHook<TContext> = (context: TContext) => Promise<void> | void;
+type WrappedStageHook<TContext, TResult> = (
+  context: TContext,
+  handler: (request?: TContext) => Promise<TResult>
+) => Promise<TResult>;
+
 export async function runSimpleStage<TContext>(
   middlewares: BaseMiddleware[],
   stage: MiddlewareStageName,
   context: TContext,
-  pickHook: (middleware: BaseMiddleware) => ((context: TContext) => Promise<void> | void) | undefined
+  pickHook: (
+    middleware: BaseMiddleware
+  ) => SimpleStageHook<TContext> | undefined
 ): Promise<void> {
   for (const middleware of middlewares) {
     const hook = pickHook(middleware);
@@ -85,14 +93,14 @@ export async function runWrappedStage<TContext, TResult>(
   middlewares: BaseMiddleware[],
   stage: MiddlewareStageName,
   context: TContext,
-  baseHandler: () => Promise<TResult>,
+  baseHandler: (request?: TContext) => Promise<TResult>,
   pickHook: (
     middleware: BaseMiddleware
-  ) => ((context: TContext, handler: () => Promise<TResult>) => Promise<TResult>) | undefined
+  ) => WrappedStageHook<TContext, TResult> | undefined
 ): Promise<TResult> {
   const wrappers: Array<{
     middleware: BaseMiddleware;
-    hook: (context: TContext, handler: () => Promise<TResult>) => Promise<TResult>;
+    hook: WrappedStageHook<TContext, TResult>;
   }> = [];
 
   for (const middleware of middlewares) {
@@ -102,26 +110,29 @@ export async function runWrappedStage<TContext, TResult>(
     }
   }
 
-  let cursor = -1;
-
-  const dispatch = async (index: number): Promise<TResult> => {
-    if (index <= cursor) {
-      const previous = wrappers[index - 1]?.middleware.name ?? `middleware[${index - 1}]`;
-      throw new Error(`Pipeline violation: next() called multiple times in ${previous}`);
-    }
-    cursor = index;
-
+  const dispatch = async (index: number, request?: TContext): Promise<TResult> => {
     const current = wrappers[index];
     if (!current) {
-      return baseHandler();
+      return baseHandler(request ?? context);
     }
 
     try {
-      return await current.hook(context, () => dispatch(index + 1));
+      let nextRunning = false;
+      return await current.hook(request ?? context, async (nextRequest?: TContext) => {
+        if (nextRunning) {
+          throw new Error(`Pipeline violation: next() called concurrently in ${current.middleware.name}`);
+        }
+        nextRunning = true;
+        try {
+          return await dispatch(index + 1, nextRequest ?? request);
+        } finally {
+          nextRunning = false;
+        }
+      });
     } catch (error) {
       throw createStageError(current.middleware.name, stage, error);
     }
   };
 
-  return dispatch(0);
+  return dispatch(0, context);
 }

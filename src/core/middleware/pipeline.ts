@@ -26,6 +26,7 @@
  */
 
 import type {AIMessage, ToolMessage} from '@langchain/core/messages';
+import type {AgentRuntimeContext} from '@core/agents/types';
 import {
   type AfterAgentContext,
   type AfterModelContext,
@@ -69,7 +70,7 @@ export class MiddlewarePipeline {
    * @returns 中间件列表的只读副本
    */
   list(): ReadonlyArray<Readonly<BaseMiddleware>> {
-    return this.middlewares as ReadonlyArray<Readonly<BaseMiddleware>>;
+    return Object.freeze([...this.middlewares]) as ReadonlyArray<Readonly<BaseMiddleware>>;
   }
 
   /**
@@ -110,6 +111,20 @@ export class MiddlewarePipeline {
 
     this.middlewares.splice(index, 1);
     return true;
+  }
+
+  validateContext(context: AgentRuntimeContext): void {
+    for (const middleware of this.middlewares) {
+      const schema = middleware.contextSchema;
+      if (!schema) {
+        continue;
+      }
+
+      const parsed = schema.safeParse(context);
+      if (!parsed.success) {
+        throw new Error(`Middleware "${middleware.name}" context validation failed: ${parsed.error.message}`);
+      }
+    }
   }
 
   async beforeAgent(context: BeforeAgentContext): Promise<void> {
