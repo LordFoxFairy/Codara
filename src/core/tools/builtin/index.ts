@@ -21,22 +21,11 @@ export {SearchTool, createSearchTool};
  * 内置工具配置选项。
  */
 export interface BuiltinToolOptions {
-  /** 默认工作目录，用于 Bash、Glob、Grep 工具 */
+  /** 默认工作目录，用于 Bash、Glob、Grep。 */
   cwd?: string;
 }
 
-/**
- * 创建所有内置工具的数组。
- *
- * @param options - 配置选项
- * @returns 内置工具数组
- *
- * @example
- * ```typescript
- * const tools = createBuiltinTools({ cwd: '/project/root' });
- * const agent = createReactAgent({ llm: model, tools });
- * ```
- */
+/** 创建内置工具列表。 */
 export function createBuiltinTools(options: BuiltinToolOptions = {}): StructuredToolInterface[] {
   const cwd = options.cwd ?? process.cwd();
 

@@ -24,28 +24,7 @@ function isBinary(buffer: Buffer): boolean {
     return probe.includes(0);
 }
 
-/**
- * 读取文件内容并返回带行号的文本。
- *
- * 支持范围读取、二进制检测和行长度截断。
- *
- * @example
- * ```typescript
- * const tool = createReadTool();
- *
- * // 读取整个文件
- * const result = await tool.invoke({
- *     file_path: '/path/to/file.ts'
- * });
- *
- * // 读取指定范围
- * const partial = await tool.invoke({
- *     file_path: '/path/to/file.ts',
- *     offset: 10,
- *     limit: 50
- * });
- * ```
- */
+/** 文件读取工具。 */
 export class ReadTool extends StructuredTool<typeof readInputSchema> {
     name = 'read_file';
     description = `Reads file content with line numbers in format "lineNum→content".
@@ -61,7 +40,6 @@ Returns: formatted text with line numbers, or error message if file not found/no
             return pathError;
         }
 
-        // 检查文件大小和类型
         let fileSize: number;
         try {
             const stats = await stat(filePath);
@@ -120,11 +98,7 @@ Returns: formatted text with line numbers, or error message if file not found/no
     }
 }
 
-/**
- * 创建 ReadTool 实例。
- *
- * @returns 新的 ReadTool 实例
- */
+/** 创建 ReadTool。 */
 export function createReadTool(): ReadTool {
     return new ReadTool();
 }

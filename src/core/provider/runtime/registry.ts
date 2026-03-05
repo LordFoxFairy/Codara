@@ -1,10 +1,7 @@
 import type {ModelInfo, ModelRoutingConfig, ProviderConfig, RouterRule} from "@core/provider/model";
 import {expandApiKey} from "@core/provider/runtime/api-key";
 
-/**
- * 模型注册表
- * 负责解析配置并提供模型查询接口
- */
+/** 模型注册表与别名索引。 */
 export class ModelRegistry {
     private readonly models: ModelInfo[];
     private readonly modelMap: Map<string, ModelInfo>;
@@ -13,7 +10,6 @@ export class ModelRegistry {
         const providerMap = new Map(config.providers.map((p) => [p.name, p]));
         const aliasSet = new Set<string>();
 
-        // 解析所有路由规则，配置错误直接 fail-fast
         this.models = config.routerRules.map((rule) => {
             if (aliasSet.has(rule.alias)) {
                 throw new Error(`路由规则 "${rule.alias}" 重复定义`);
@@ -22,7 +18,6 @@ export class ModelRegistry {
             return this.validateAndBuildModel(rule, providerMap);
         });
 
-        // 构建别名索引
         this.modelMap = new Map(this.models.map((m) => [m.alias, m]));
     }
 
@@ -50,12 +45,7 @@ export class ModelRegistry {
         return Array.from(this.modelMap.keys());
     }
 
-    /**
-     * 验证并构建模型信息
-     * @param rule 路由规则
-     * @param providerMap Provider 映射表
-     * @returns 模型信息
-     */
+    /** 校验路由规则并构造模型信息。 */
     private validateAndBuildModel(
         rule: RouterRule,
         providerMap: Map<string, ProviderConfig>
@@ -76,11 +66,7 @@ export class ModelRegistry {
         return this.buildModelInfo(rule, provider);
     }
 
-    /**
-     * 构建模型信息对象
-     * @param rule 路由规则
-     * @param provider Provider 配置
-     */
+    /** 由路由规则和 provider 构造 ModelInfo。 */
     private buildModelInfo(rule: RouterRule, provider: ProviderConfig): ModelInfo {
         return {
             provider: provider.name,

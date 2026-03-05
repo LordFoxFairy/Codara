@@ -98,38 +98,7 @@ async function runCommand(
     });
 }
 
-/**
- * 使用正则表达式搜索文件内容。
- *
- * 优先使用 ripgrep (rg)，不可用时回退到 grep。
- * 支持多种输出模式、上下文行、多行匹配等高级功能。
- *
- * @example
- * ```typescript
- * const tool = createGrepTool('/project/root');
- *
- * // 搜索并显示匹配内容
- * const content = await tool.invoke({
- *     pattern: 'function.*test',
- *     output_mode: 'content'
- * });
- *
- * // 仅列出包含匹配的文件
- * const files = await tool.invoke({
- *     pattern: 'TODO',
- *     output_mode: 'files_with_matches',
- *     glob: '*.ts'
- * });
- *
- * // 显示上下文行
- * const withContext = await tool.invoke({
- *     pattern: 'error',
- *     output_mode: 'content',
- *     '-A': 3,
- *     '-B': 2
- * });
- * ```
- */
+/** 文件内容搜索工具（优先 `rg`，回退 `grep`）。 */
 export class GrepTool extends StructuredTool<typeof grepInputSchema> {
     name = 'grep';
     description = `Searches file contents using regex patterns with ripgrep (rg) or grep fallback.
@@ -157,7 +126,6 @@ Returns: matching lines with line numbers (content mode) or file paths (files mo
         let command = 'rg';
 
         if (useRg) {
-            // Output mode flags
             if (outputMode === 'files_with_matches') {
                 args.push('--files-with-matches');
             } else if (outputMode === 'count') {
@@ -166,17 +134,14 @@ Returns: matching lines with line numbers (content mode) or file paths (files mo
                 args.push('--line-number', '--color', 'never');
             }
 
-            // Case sensitivity
             if (!caseSensitive) {
                 args.push('-i');
             }
 
-            // Multiline mode
             if (input.multiline) {
                 args.push('-U', '--multiline-dotall');
             }
 
-            // Context lines
             if (input['-A'] !== undefined) {
                 args.push('-A', String(input['-A']));
             }
@@ -187,7 +152,6 @@ Returns: matching lines with line numbers (content mode) or file paths (files mo
                 args.push('-C', String(input.context));
             }
 
-            // Glob filter
             if (input.glob) {
                 args.push('-g', input.glob);
             }
@@ -197,7 +161,6 @@ Returns: matching lines with line numbers (content mode) or file paths (files mo
             command = 'grep';
             args.push('-R', '-E');
 
-            // Output mode flags
             if (outputMode === 'files_with_matches') {
                 args.push('-l');
             } else if (outputMode === 'count') {
@@ -206,12 +169,10 @@ Returns: matching lines with line numbers (content mode) or file paths (files mo
                 args.push('-n');
             }
 
-            // Case sensitivity
             if (!caseSensitive) {
                 args.push('-i');
             }
 
-            // Context lines
             if (input['-A'] !== undefined) {
                 args.push('-A', String(input['-A']));
             }
@@ -222,7 +183,6 @@ Returns: matching lines with line numbers (content mode) or file paths (files mo
                 args.push('-C', String(input.context));
             }
 
-            // Glob filter
             if (input.glob) {
                 args.push(`--include=${input.glob}`);
             }
@@ -254,7 +214,6 @@ Returns: matching lines with line numbers (content mode) or file paths (files mo
             return formatNoResults('No matches found');
         }
 
-        // Apply offset and head_limit
         const offset = input.offset ?? 0;
         const headLimit = input.head_limit ?? MAX_OUTPUT_LINES;
         const selected = lines.slice(offset, offset + headLimit);
@@ -282,7 +241,6 @@ Returns: matching lines with line numbers (content mode) or file paths (files mo
         }
 
         try {
-            // 跨平台检查：直接尝试执行 rg --version
             await execFileAsync('rg', ['--version'], {timeout: 5000});
             this.rgAvailable = true;
         } catch {
@@ -293,12 +251,7 @@ Returns: matching lines with line numbers (content mode) or file paths (files mo
     }
 }
 
-/**
- * 创建 GrepTool 实例。
- *
- * @param defaultCwd - 默认工作目录，默认为 process.cwd()
- * @returns 新的 GrepTool 实例
- */
+/** 创建 GrepTool。 */
 export function createGrepTool(defaultCwd = process.cwd()): GrepTool {
     return new GrepTool(defaultCwd);
 }

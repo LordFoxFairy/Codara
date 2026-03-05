@@ -1,6 +1,5 @@
 /**
- * 展开 API Key 中的环境变量引用。
- * 支持字面量或环境变量引用（格式：$ENV_NAME）。
+ * 展开 apiKey 的环境变量引用（`$ENV_NAME`）。
  */
 export const expandApiKey = (apiKey?: string): string | undefined => {
     if (!apiKey) {

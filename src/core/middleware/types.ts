@@ -1,28 +1,15 @@
 /**
- * Middleware Type Definitions - 中间件类型定义
+ * Middleware 类型定义。
  *
- * 核心概念：
- * - BaseMiddleware: 中间件接口，定义 6 个生命周期 hooks
- * - Context Types: 各阶段的上下文类型（包含 state/runId/turn 等）
- * - Handler Types: wrap hooks 的处理器类型
- *
- * 生命周期 Hooks：
- * 1. beforeAgent: 每轮开始前执行
- * 2. beforeModel: 模型调用前执行
- * 3. wrapModelCall: 包裹模型调用（洋葱模型）
- * 4. afterModel: 模型调用后执行
- * 5. wrapToolCall: 包裹工具调用（洋葱模型）
- * 6. afterAgent: 每轮结束后执行（无论成功/失败）
- *
- * 设计特性：
- * - 与 LangChain 生命周期对齐
- * - 支持 required 标记防止误删
- * - 工厂函数统一验证和规范化
+ * 该文件只负责类型边界与最小工厂校验：
+ * - BaseMiddleware: 定义 6 个 hook 的可选签名
+ * - *Context: 定义每个阶段可读取的数据
+ * - createMiddleware: 仅校验 name 非空、且至少声明一个 hook
  */
 
 import type {AIMessage, BaseMessage, ToolCall, ToolMessage} from '@langchain/core/messages';
 import type {StructuredToolInterface} from '@langchain/core/tools';
-import type {ZodTypeAny} from 'zod';
+import type {ZodType} from 'zod';
 import type {AgentRuntimeContext} from '@core/agents/types';
 
 export interface MiddlewareRuntimeContext {
@@ -33,11 +20,11 @@ export interface BaseExecutionContext {
   state: {
     messages: BaseMessage[];
   };
-  /** LangChain 风格快捷访问：等价于 state.messages */
+  /** `state.messages` 的快捷访问。 */
   messages: BaseMessage[];
-  /** LangChain 风格 runtime 上下文 */
+  /** 运行时上下文。 */
   runtime: MiddlewareRuntimeContext;
-  /** 可在 wrapModelCall 中追加系统消息 */
+  /** 在 wrapModelCall 中可追加系统消息。 */
   systemMessage: string[];
   runId: string;
   turn: number;
@@ -74,9 +61,9 @@ export type ToolCallHandler = (request?: ToolCallContext) => Promise<ToolMessage
 
 export interface BaseMiddleware {
   name: string;
-  /** 可选 context 校验器（例如 zod schema） */
-  contextSchema?: ZodTypeAny;
-  /** Required middleware cannot be removed from pipeline */
+  /** 可选 context 校验器（例如 zod schema）。 */
+  contextSchema?: ZodType<unknown>;
+  /** 标记后不可通过 pipeline.remove 删除。 */
   required?: boolean;
   beforeAgent?: (context: BeforeAgentContext) => Promise<void> | void;
   beforeModel?: (context: BeforeModelContext) => Promise<void> | void;

@@ -1,28 +1,10 @@
 /**
- * Middleware Pipeline - 中间件管道系统
+ * 中间件管道。
  *
- * 设计模式：
- * 1. 责任链模式（Chain of Responsibility）
- *    - before/after hooks 按注册顺序依次执行
- *    - 每个中间件处理请求的一部分，然后传递给下一个
- *
- * 2. 洋葱模型（Onion Model）
- *    - wrap hooks 采用嵌套调用模式
- *    - 外层中间件包裹内层，形成 outer -> inner -> handler -> inner -> outer 的执行流
- *    - 支持短路：中间件可以不调用 next() 直接返回结果
- *
- * 3. 工厂模式（Factory Pattern）
- *    - createMiddleware 工厂函数规范化中间件定义
- *    - 统一验证和初始化逻辑
- *
- * 生命周期顺序（与 LangChain 对齐）：
- * beforeAgent -> beforeModel -> wrapModelCall -> afterModel -> wrapToolCall -> afterAgent
- *
- * 特性：
- * - 中间件名称唯一性保证
- * - required 标记防止误删关键中间件
- * - 阶段错误包装（包含 cause 链）
- * - 防止 next() 多次调用的保护机制
+ * 职责：
+ * - 管理中间件注册表（use/list/has/get/remove）
+ * - 调度 6 个中间件阶段
+ * - 执行 contextSchema 校验
  */
 
 import type {AIMessage, ToolMessage} from '@langchain/core/messages';
@@ -41,14 +23,6 @@ import {
 } from '@core/middleware/types';
 import {assertNoDuplicateNames, runSimpleStage, runWrappedStage} from '@core/middleware/execution';
 
-/**
- * MiddlewarePipeline 管理和执行中间件链
- *
- * 职责：
- * - 中间件注册和管理（use/remove/list）
- * - 生命周期 hooks 调度
- * - 错误传播和包装
- */
 export class MiddlewarePipeline {
   private readonly middlewares: BaseMiddleware[];
 
@@ -65,39 +39,20 @@ export class MiddlewarePipeline {
     this.middlewares.push(normalized);
   }
 
-  /**
-   * 获取所有中间件列表（只读）
-   * @returns 中间件列表的只读副本
-   */
   list(): ReadonlyArray<Readonly<BaseMiddleware>> {
     return Object.freeze([...this.middlewares]) as ReadonlyArray<Readonly<BaseMiddleware>>;
   }
 
-  /**
-   * 检查是否存在指定名称的中间件
-   * @param name 中间件名称
-   * @returns 是否存在
-   */
   has(name: string): boolean {
     return this.middlewares.some((middleware) => middleware.name === name);
   }
 
-  /**
-   * 获取指定名称的中间件
-   * @param name 中间件名称
-   * @returns 中间件实例，不存在则返回 undefined
-   */
   get(name: string): Readonly<BaseMiddleware> | undefined {
     const middleware = this.middlewares.find((middleware) => middleware.name === name);
     return middleware as Readonly<BaseMiddleware> | undefined;
   }
 
-  /**
-   * 移除指定名称的中间件
-   * @param name 中间件名称
-   * @returns 是否成功移除（false 表示中间件不存在）
-   * @throws {Error} 如果尝试移除 required 中间件
-   */
+  /** 删除中间件；若 middleware 标记为 required 则抛错。 */
   remove(name: string): boolean {
     const index = this.middlewares.findIndex((middleware) => middleware.name === name);
     if (index < 0) {

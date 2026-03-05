@@ -1,15 +1,7 @@
 /**
- * Middleware Execution Engine - 中间件执行引擎
- *
- * 职责：
- * - 实现责任链模式的顺序执行算法（runSimpleStage）
- * - 实现洋葱模型的嵌套执行算法（runWrappedStage）
- * - 统一错误处理和包装
- *
- * 设计原则：
- * - 执行算法与业务逻辑分离
- * - 错误包装保留原始 cause 链
- * - 防止 next() 重入调用
+ * 中间件执行算法。
+ * - runSimpleStage: 顺序执行 before/after 类 hook
+ * - runWrappedStage: 递归执行 wrap 类 hook
  */
 
 import type {BaseMiddleware} from '@core/middleware/types';
@@ -22,10 +14,7 @@ export type MiddlewareStageName =
   | 'wrapToolCall'
   | 'afterAgent';
 
-/**
- * 中间件执行错误
- * 包含中间件名称、阶段和原始错误信息
- */
+/** 中间件阶段执行错误。 */
 export class MiddlewareError extends Error {
   constructor(
     public readonly middlewareName: string,
@@ -35,7 +24,6 @@ export class MiddlewareError extends Error {
     super(`Middleware "${middlewareName}" failed in ${stage}: ${cause.message}`);
     this.name = 'MiddlewareError';
 
-    // 保留原始堆栈跟踪
     if (Error.captureStackTrace) {
       Error.captureStackTrace(this, MiddlewareError);
     }

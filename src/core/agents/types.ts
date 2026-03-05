@@ -21,23 +21,23 @@ export interface AgentResult {
   error?: Error;
 }
 
-/** 工具错误处理器（对齐 LangChain ToolNode 的可插拔思路） */
+/** 工具错误处理策略。 */
 export type ToolErrorHandler =
   | boolean
   | ((error: unknown, toolCall: ToolCall) => ToolMessage | void | Promise<ToolMessage | void>);
 
-/** Agent 外层 hook 上下文（不属于 middleware） */
+/** invoke 级 hook 上下文。 */
 export interface AgentHookContext {
   state: AgentState;
   runId: string;
   maxTurns: number;
 }
 
-/** Agent 外层 hooks（在 loop 外部执行） */
+/** invoke 级 hooks（loop 外执行）。 */
 export interface AgentHooks {
-  /** invoke 前置 */
+  /** invoke 前置。 */
   beforeRun?: (context: AgentHookContext) => Promise<void> | void;
-  /** invoke 后置 */
+  /** invoke 后置。 */
   afterRun?: (context: AgentHookContext & {result: AgentResult}) => Promise<void> | void;
 }
 
@@ -45,20 +45,20 @@ export interface AgentHooks {
 export interface AgentRunnerParams {
   model: BaseChatModel;
   tools?: StructuredToolInterface[];
-  /** 工具执行失败处理：true=返回 ToolMessage，false=抛错，function=自定义处理 */
+  /** 工具执行失败处理：true=返回 ToolMessage，false=抛错，function=自定义。 */
   handleToolErrors?: ToolErrorHandler;
-  /** turn 中间件（按注册顺序执行） */
+  /** turn 中间件（按注册顺序）。 */
   middlewares?: BaseMiddleware[];
 }
 
 /** Agent 调用配置 */
 export interface AgentInvokeConfig {
-  /** 最大循环轮次，默认 25 */
+  /** 最大循环轮次，默认 25。 */
   recursionLimit?: number;
-  /** 运行时上下文，可在 middleware 中通过 request.runtime.context 读取 */
+  /** 运行时上下文。 */
   context?: AgentRuntimeContext;
-  /** invoke 前置 hook（不属于 middleware） */
+  /** invoke 前置 hook。 */
   beforeRun?: AgentHooks['beforeRun'];
-  /** invoke 后置 hook（不属于 middleware） */
+  /** invoke 后置 hook。 */
   afterRun?: AgentHooks['afterRun'];
 }
