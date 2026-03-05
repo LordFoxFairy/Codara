@@ -70,7 +70,7 @@ export class MiddlewarePipeline {
    * @returns 中间件列表的只读副本
    */
   list(): ReadonlyArray<Readonly<BaseMiddleware>> {
-    return this.middlewares as ReadonlyArray<Readonly<BaseMiddleware>>;
+    return Object.freeze([...this.middlewares]) as ReadonlyArray<Readonly<BaseMiddleware>>;
   }
 
   /**
