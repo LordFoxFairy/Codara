@@ -1,130 +1,112 @@
-import {SystemMessage, ToolMessage, type AIMessage, type ToolCall} from "@langchain/core/messages";
-import type {StructuredToolInterface} from "@langchain/core/tools";
-import type {Runnable} from "@langchain/core/runnables";
-import type {
-    AgentState, AgentResult, AgentRunnerParams, AgentInvokeConfig,
-} from "@core/agents/types";
-
-/** 默认最大循环轮次 */
-const DEFAULT_RECURSION_LIMIT = 25;
+import {AIMessage} from '@langchain/core/messages';
+import type {StructuredToolInterface} from '@langchain/core/tools';
+import type {AgentInvokeConfig, AgentResult, AgentRunnerParams, AgentState} from '@core/agents/types';
+import {
+  afterRun,
+  beforeRun,
+  createAgentRuntime,
+  runAgentLoop,
+  type AgentModel,
+  type LoopExecutionDeps
+} from '@core/agents/runtime';
+import {MiddlewarePipeline} from '@core/middleware';
 
 /**
- * ReAct 模式的 Agent 循环执行器。
+ * AgentRunner（门面层）
+ * 责任：
+ * 1. 依赖装配（model/tools/middleware）
+ * 2. 外层 hooks 编排（beforeRun -> loop -> afterRun）
+ * 3. 对外暴露单一 invoke 入口
  *
- * @example
- * ```typescript
- * const runner = createAgentRunner({
- *     model,
- *     tools: [searchTool],
- *     systemPrompt: "你是一个助手",
- * });
- *
- * const result = await runner.invoke({messages: [new HumanMessage("hello")]});
- * ```
+ * 非责任：
+ * - 不承载 loop 内每轮细节（见 runtime/stages/turn-stage.ts）
+ * - 不承载外层 hook 细节（见 runtime/hooks/agent-hooks.ts）
  */
 export class AgentRunner {
-    private readonly boundModel: Runnable;
-    private readonly toolMap: Map<string, StructuredToolInterface>;
-    private readonly systemMessage?: SystemMessage;
-    private readonly handleToolErrors: boolean;
+  private readonly loopDeps: LoopExecutionDeps;
 
-    constructor(params: AgentRunnerParams) {
-        const {model, tools = [], systemPrompt, handleToolErrors = true} = params;
+  constructor(params: AgentRunnerParams) {
+    this.loopDeps = createLoopExecutionDeps(params);
+  }
 
-        if (!model.bindTools) {
-            throw new Error("Model does not support tool calling");
-        }
+  /**
+   * 调用链路：
+   * 1) 创建运行时上下文
+   * 2) 执行 invoke 外 beforeRun hook
+   * 3) 执行 loop 主流程（每轮 middleware）
+   * 4) 执行 invoke 外 afterRun hook
+   */
+  async invoke(state: AgentState, config?: AgentInvokeConfig): Promise<AgentResult> {
+    const runtime = createAgentRuntime(state, config);
 
-        this.boundModel = model.bindTools(tools);
-        this.toolMap = new Map(tools.map(t => [t.name, t]));
-        this.systemMessage = typeof systemPrompt === "string"
-            ? new SystemMessage(systemPrompt)
-            : systemPrompt;
-        this.handleToolErrors = handleToolErrors;
+    const beforeRunResult = await beforeRun(runtime, config);
+    if (beforeRunResult) {
+      return beforeRunResult;
     }
 
-    async invoke(state: AgentState, config?: AgentInvokeConfig): Promise<AgentResult> {
-        const maxTurns = config?.recursionLimit ?? DEFAULT_RECURSION_LIMIT;
-        const signal = config?.signal;
-
-        if (maxTurns < 1) {
-            throw new Error("recursionLimit must be at least 1");
-        }
-
-        if (this.systemMessage) {
-            state.messages.unshift(this.systemMessage);
-        }
-
-        let turns = 0;
-
-        try {
-            while (turns < maxTurns) {
-                if (signal?.aborted) {
-                    return {reason: "error", state, turns, error: new Error("Aborted")};
-                }
-
-                turns++;
-
-                const response = await this.invokeModel(state);
-                state.messages.push(response);
-
-                if (!response.tool_calls?.length) {
-                    return {reason: "complete", state, turns};
-                }
-
-                const toolMessages = await Promise.all(
-                    response.tool_calls.map(tc => this.invokeTool(tc))
-                );
-                state.messages.push(...toolMessages);
-            }
-
-            return {reason: "max_turns", state, turns};
-        } catch (error) {
-            return {
-                reason: "error",
-                state,
-                turns,
-                error: error instanceof Error ? error : new Error(String(error)),
-            };
-        }
-    }
-
-    /** 调用模型，后续 wrapModelCall middleware 可包装此方法 */
-    private async invokeModel(state: AgentState): Promise<AIMessage> {
-        return await this.boundModel.invoke(state.messages) as AIMessage;
-    }
-
-    /** 调用工具，后续 wrapToolCall middleware 可包装此方法 */
-    private async invokeTool(toolCall: ToolCall): Promise<ToolMessage> {
-        const tool = this.toolMap.get(toolCall.name);
-
-        if (!tool) {
-            return new ToolMessage({
-                content: `Tool "${toolCall.name}" not found`,
-                tool_call_id: toolCall.id!,
-                status: "error",
-            });
-        }
-
-        try {
-            const content = String(await tool.invoke(toolCall.args));
-            return new ToolMessage({content, tool_call_id: toolCall.id!});
-        } catch (error) {
-            const errorMessage = error instanceof Error ? error.message : String(error);
-
-            if (!this.handleToolErrors) {
-                throw new Error(`Tool "${toolCall.name}" execution failed: ${errorMessage}`);
-            }
-
-            return new ToolMessage({
-                content: `Tool execution failed: ${errorMessage}`,
-                tool_call_id: toolCall.id!,
-                status: "error",
-            });
-        }
-    }
+    const loopResult = await runAgentLoop(runtime, this.loopDeps);
+    return afterRun(runtime, loopResult, config);
+  }
 }
 
 export function createAgentRunner(params: AgentRunnerParams): AgentRunner {
-    return new AgentRunner(params);
+  return new AgentRunner(params);
+}
+
+/** 装配 loop 运行依赖（模型、工具表、中间件管道） */
+function createLoopExecutionDeps(params: AgentRunnerParams): LoopExecutionDeps {
+  const {model, tools = [], handleToolErrors = true, middlewares = []} = params;
+
+  const boundModel = createAgentModel(model, tools);
+  const toolRegistry = createToolRegistry(tools);
+
+  return {
+    model: boundModel,
+    tools: toolRegistry,
+    pipeline: new MiddlewarePipeline(middlewares),
+    handleToolErrors
+  };
+}
+
+function createToolRegistry(tools: StructuredToolInterface[]): Map<string, StructuredToolInterface> {
+  const toolRegistry = new Map<string, StructuredToolInterface>();
+  for (const tool of tools) {
+    if (toolRegistry.has(tool.name)) {
+      throw new Error(`Duplicate tool name: ${tool.name}`);
+    }
+    toolRegistry.set(tool.name, tool);
+  }
+  return toolRegistry;
+}
+
+function createAgentModel(model: AgentRunnerParams['model'], tools: StructuredToolInterface[]): AgentModel {
+  const runnable = tools.length === 0 ? model : bindModelWithTools(model, tools);
+
+  return {
+    async invoke(messages: AgentState['messages']) {
+      const message = await runnable.invoke(messages);
+      if (!AIMessage.isInstance(message)) {
+        throw new Error(`Model must return AIMessage, received: ${readMessageType(message)}`);
+      }
+      return message;
+    }
+  };
+}
+
+function bindModelWithTools(
+  model: AgentRunnerParams['model'],
+  tools: StructuredToolInterface[]
+): {invoke: (messages: AgentState['messages']) => Promise<unknown>} {
+  if (!('bindTools' in model) || typeof model.bindTools !== 'function') {
+    throw new Error('Model does not support bindTools; cannot attach tools.');
+  }
+
+  return model.bindTools(tools);
+}
+
+function readMessageType(message: unknown): string {
+  if (message && typeof message === 'object' && '_getType' in message && typeof message._getType === 'function') {
+    return String(message._getType());
+  }
+  return typeof message;
 }

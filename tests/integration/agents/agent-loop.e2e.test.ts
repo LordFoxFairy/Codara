@@ -25,8 +25,7 @@ describe('Agent Loop End-to-End', () => {
 
     const runner = createAgentRunner({
       model,
-      tools: [echoTool],
-      systemPrompt: '你必须严格执行用户对工具调用的要求。',
+      tools: [echoTool]
     });
 
     const result = await runner.invoke(

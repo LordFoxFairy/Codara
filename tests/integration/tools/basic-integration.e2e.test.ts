@@ -38,11 +38,7 @@ describe('Basic Integration: Model + Agent + Tools', () => {
 
     const agent = createAgentRunner({
       model,
-      tools,
-      systemPrompt: `你是一个文件操作助手。
-
-工具会自动提供给你，包含详细的描述和参数说明。
-请根据用户需求选择合适的工具。`,
+      tools
     });
 
     const result = await agent.invoke(
