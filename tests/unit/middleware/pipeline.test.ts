@@ -1,10 +1,15 @@
 import {describe, expect, it} from 'bun:test';
 import {AIMessage, HumanMessage, ToolMessage, type BaseMessage, type ToolCall} from '@langchain/core/messages';
 import {MiddlewarePipeline, type BaseMiddleware} from '@core/middleware';
+import {z} from 'zod';
 
 function createBaseContext() {
+  const messages = [new HumanMessage('hello')] as BaseMessage[];
   return {
-    state: {messages: [new HumanMessage('hello')] as BaseMessage[]},
+    state: {messages},
+    messages,
+    runtime: {context: {}},
+    systemMessage: [],
     runId: 'run_1',
     turn: 1,
     maxTurns: 3,
@@ -134,20 +139,63 @@ describe('MiddlewarePipeline', () => {
     expect(events).toEqual(['short:echo']);
   });
 
-  it('should throw when next() is called multiple times in wrap hooks', async () => {
+  it('should allow retry-style sequential next() calls in wrap hooks', async () => {
+    const events: string[] = [];
     const pipeline = new MiddlewarePipeline([
       {
-        name: 'invalid',
+        name: 'retry_like',
         wrapModelCall: async (_context, next) => {
-          await next();
+          events.push('attempt:1');
+          try {
+            await next();
+          } catch {
+            events.push('retry');
+          }
+          events.push('attempt:2');
           return await next();
         },
       },
     ]);
 
+    let attempts = 0;
+    const response = await pipeline.wrapModelCall(createBaseContext(), async () => {
+      attempts += 1;
+      if (attempts === 1) {
+        throw new Error('transient');
+      }
+      return new AIMessage('ok');
+    });
+
+    expect(String(response.content)).toBe('ok');
+    expect(attempts).toBe(2);
+    expect(events).toEqual(['attempt:1', 'retry', 'attempt:2']);
+  });
+
+  it('should throw when next() is called concurrently in wrap hooks', async () => {
+    const pipeline = new MiddlewarePipeline([
+      {
+        name: 'invalid_concurrent',
+        wrapModelCall: async (_context, next) => {
+          const results = await Promise.allSettled([next(), next()]);
+          const rejected = results.find((result) => result.status === 'rejected');
+          if (rejected && rejected.status === 'rejected') {
+            throw rejected.reason;
+          }
+          const first = results[0];
+          if (first?.status === 'fulfilled') {
+            return first.value;
+          }
+          throw new Error('Expected first result to be fulfilled');
+        },
+      },
+    ]);
+
     await expect(async () => {
-      await pipeline.wrapModelCall(createBaseContext(), async () => new AIMessage('ok'));
-    }).toThrow('next() called multiple times');
+      await pipeline.wrapModelCall(createBaseContext(), async () => {
+        await new Promise((resolve) => setTimeout(resolve, 10));
+        return new AIMessage('ok');
+      });
+    }).toThrow('next() called concurrently');
   });
 
   it('should include middleware name and stage when before hook throws', async () => {
@@ -220,5 +268,26 @@ describe('MiddlewarePipeline', () => {
     expect(() => new MiddlewarePipeline([
       {name: 'empty'},
     ])).toThrow('must define at least one lifecycle hook');
+  });
+
+  it('should validate invoke context with middleware contextSchema', () => {
+    const pipeline = new MiddlewarePipeline([
+      {
+        name: 'ctx_guard',
+        contextSchema: z.object({
+          userId: z.string(),
+          tenantId: z.string()
+        }),
+        beforeModel: () => undefined
+      }
+    ]);
+
+    expect(() => {
+      pipeline.validateContext({userId: 'user-1'});
+    }).toThrow('context validation failed');
+
+    expect(() => {
+      pipeline.validateContext({userId: 'user-1', tenantId: 'tenant-1'});
+    }).not.toThrow();
   });
 });

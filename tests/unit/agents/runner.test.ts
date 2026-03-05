@@ -1,9 +1,17 @@
 import {describe, expect, it} from 'bun:test';
-import {AIMessage, HumanMessage, ToolMessage, type BaseMessage, type ToolCall} from '@langchain/core/messages';
+import {
+  AIMessage,
+  HumanMessage,
+  SystemMessage,
+  ToolMessage,
+  type BaseMessage,
+  type ToolCall
+} from '@langchain/core/messages';
 import type {BaseChatModel} from '@langchain/core/language_models/chat_models';
 import type {StructuredToolInterface} from '@langchain/core/tools';
 import {createAgentRunner} from '@core/agents';
-import type {BaseMiddleware} from '@core/middleware';
+import {createMiddleware, type BaseMiddleware} from '@core/middleware';
+import {z} from 'zod';
 
 class FakeModel {
   private index = 0;
@@ -377,5 +385,87 @@ describe('AgentRunner', () => {
     expect(result.error?.message).toContain('afterModel boom');
     const hasToolMessage = result.state.messages.some((message) => message instanceof ToolMessage);
     expect(hasToolMessage).toBe(false);
+  });
+
+  it('应支持在 wrapModelCall 中通过 runtime.context 注入 systemMessage', async () => {
+    const capturedInvocations: BaseMessage[][] = [];
+    const model = {
+      invoke: async (messages: BaseMessage[]) => {
+        capturedInvocations.push(messages);
+        return new AIMessage('done');
+      },
+      bindTools: () => ({
+        invoke: async (messages: BaseMessage[]) => {
+          capturedInvocations.push(messages);
+          return new AIMessage('done');
+        }
+      })
+    } as unknown as BaseChatModel;
+
+    const userContextMiddleware = createMiddleware({
+      name: 'UserContextMiddleware',
+      contextSchema: z.object({
+        userId: z.string(),
+        tenantId: z.string()
+      }),
+      wrapModelCall: (request, handler) => {
+        const userId = String(request.runtime.context.userId);
+        const tenantId = String(request.runtime.context.tenantId);
+        const contextText = `User ID: ${userId}, Tenant: ${tenantId}`;
+        return handler({
+          ...request,
+          systemMessage: request.systemMessage.concat(contextText)
+        });
+      }
+    });
+
+    const runner = createAgentRunner({
+      model,
+      middlewares: [userContextMiddleware]
+    });
+
+    const result = await runner.invoke(
+      {messages: [new HumanMessage('hello')]},
+      {
+        context: {
+          userId: 'user-123',
+          tenantId: 'acme-corp'
+        }
+      }
+    );
+
+    expect(result.reason).toBe('complete');
+    const firstInvoke = capturedInvocations[0] ?? [];
+    expect(firstInvoke[0]).toBeInstanceOf(SystemMessage);
+    expect(String((firstInvoke[0] as SystemMessage).content)).toContain('User ID: user-123, Tenant: acme-corp');
+  });
+
+  it('context 不满足 middleware.contextSchema 时应返回 error', async () => {
+    const model = new FakeModel([new AIMessage('done')]) as unknown as BaseChatModel;
+    const userContextMiddleware = createMiddleware({
+      name: 'UserContextMiddleware',
+      contextSchema: z.object({
+        userId: z.string(),
+        tenantId: z.string()
+      }),
+      beforeModel: () => undefined
+    });
+
+    const runner = createAgentRunner({
+      model,
+      middlewares: [userContextMiddleware]
+    });
+
+    const result = await runner.invoke(
+      {messages: [new HumanMessage('hello')]},
+      {
+        context: {
+          userId: 'user-123'
+        }
+      }
+    );
+
+    expect(result.reason).toBe('error');
+    expect(result.error?.message).toContain('context validation failed');
   });
 });
