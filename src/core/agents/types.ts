@@ -57,6 +57,4 @@ export interface AgentInvokeConfig {
   beforeRun?: AgentHooks['beforeRun'];
   /** invoke 后置 hook（不属于 middleware） */
   afterRun?: AgentHooks['afterRun'];
-  /** 中止信号 */
-  signal?: AbortSignal;
 }
