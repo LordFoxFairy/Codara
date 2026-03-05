@@ -2,391 +2,191 @@
 
 ## 概述
 
-Middleware 模块提供了一个灵活的中间件管道系统，用于在 Agent 执行过程中注入横切关注点（如日志、监控、权限检查等）。
+`@core/middleware` 提供与 Agent loop 对齐的 6 个 hooks，用于注入日志、重试、上下文注入、工具拦截等横切逻辑。
 
-## 设计模式
+生命周期顺序固定为：
 
-### 1. 责任链模式（Chain of Responsibility）
+`beforeAgent -> beforeModel -> wrapModelCall -> afterModel -> wrapToolCall -> afterAgent`
 
-`before*` 和 `after*` hooks 按注册顺序依次执行，每个中间件处理请求的一部分：
-
-```typescript
-// 执行顺序：middleware1 -> middleware2 -> middleware3
-pipeline.use(middleware1);
-pipeline.use(middleware2);
-pipeline.use(middleware3);
-```
-
-### 2. 洋葱模型（Onion Model）
-
-`wrap*` hooks 采用嵌套调用模式，外层中间件包裹内层：
-
-```
-outer:start -> inner:start -> handler -> inner:end -> outer:end
-```
-
-支持短路：中间件可以不调用 `next()` 直接返回结果。
-
-### 3. 工厂模式（Factory Pattern）
-
-`createMiddleware` 工厂函数统一验证和规范化中间件定义。
-
-## 生命周期
-
-中间件提供 6 个生命周期 hooks（与 LangChain 对齐）：
-
-```
-beforeAgent → beforeModel → wrapModelCall → afterModel → wrapToolCall → afterAgent
-```
-
-### Hook 说明
-
-| Hook | 类型 | 执行时机 | 用途示例 |
-|------|------|----------|----------|
-| `beforeAgent` | 简单 | 每轮开始前 | 初始化、权限检查 |
-| `beforeModel` | 简单 | 模型调用前 | 请求预处理、日志 |
-| `wrapModelCall` | 包裹 | 包裹模型调用 | 重试、缓存、监控 |
-| `afterModel` | 简单 | 模型调用后 | 响应后处理、审计 |
-| `wrapToolCall` | 包裹 | 包裹工具调用 | 工具拦截、模拟 |
-| `afterAgent` | 简单 | 每轮结束后 | 清理、统计（总是执行） |
-
-## 使用示例
-
-### 基础用法
+## 快速开始
 
 ```typescript
-import {MiddlewarePipeline, createMiddleware} from '@core/middleware';
+import {createAgentRunner} from '@core/agents';
+import {createMiddleware} from '@core/middleware';
 
-// 创建管道
-const pipeline = new MiddlewarePipeline();
-
-// 注册中间件
-pipeline.use({
-  name: 'logger',
-  beforeAgent: (context) => {
-    console.log(`Turn ${context.turn} started`);
-  },
-  afterAgent: (context) => {
-    console.log(`Turn ${context.turn} ended: ${context.result.reason}`);
-  }
-});
-```
-
-### 日志中间件
-
-```typescript
 const loggingMiddleware = createMiddleware({
-  name: 'logging',
-
-  beforeModel: (context) => {
-    console.log('[Model] Calling with messages:', context.state.messages.length);
+  name: 'LoggingMiddleware',
+  beforeModel: (state) => {
+    console.log(`About to call model with ${state.messages.length} messages`);
   },
-
-  afterModel: (context) => {
-    console.log('[Model] Response:', context.response.content);
+  afterModel: (state) => {
+    const lastMessage = state.messages[state.messages.length - 1];
+    console.log(`Model returned: ${String(lastMessage?.content ?? '')}`);
   }
 });
 
-pipeline.use(loggingMiddleware);
+const runner = createAgentRunner({
+  model,
+  tools: [],
+  middlewares: [loggingMiddleware]
+});
 ```
 
-### 重试中间件（洋葱模型）
+说明：
+
+- 推荐通过 `createMiddleware(...)` 声明中间件常量。
+- 推荐通过 `middlewares: [middleware1, middleware2]` 注入到 runner。
+
+## LangChain 风格能力
+
+当前实现支持接近 LangChain 示例的写法：
+
+- `wrapModelCall(request, handler)`
+- `handler(request)` 传递改写后的请求
+- `request.runtime.context` 读取 invoke 上下文
+- `request.systemMessage` 注入系统消息
+- `contextSchema` 做上下文校验
+
+### 示例：User Context Middleware
 
 ```typescript
-const retryMiddleware = createMiddleware({
-  name: 'retry',
+import {createMiddleware} from '@core/middleware';
+import {z} from 'zod';
 
-  wrapModelCall: async (context, next) => {
-    const maxRetries = 3;
-    let lastError: Error | undefined;
-
-    for (let i = 0; i < maxRetries; i++) {
-      try {
-        return await next();
-      } catch (error) {
-        lastError = error as Error;
-        console.log(`Retry ${i + 1}/${maxRetries}`);
-        await new Promise(resolve => setTimeout(resolve, 1000 * (i + 1)));
-      }
-    }
-
-    throw lastError;
-  }
+const contextSchema = z.object({
+  userId: z.string(),
+  tenantId: z.string(),
+  apiKey: z.string().optional()
 });
 
-pipeline.use(retryMiddleware);
-```
+const userContextMiddleware = createMiddleware({
+  name: 'UserContextMiddleware',
+  contextSchema,
+  wrapModelCall: (request, handler) => {
+    const {userId, tenantId} = request.runtime.context as {userId: string; tenantId: string};
+    const contextText = `User ID: ${userId}, Tenant: ${tenantId}`;
 
-### 缓存中间件（短路）
-
-```typescript
-const cacheMiddleware = createMiddleware({
-  name: 'cache',
-
-  wrapModelCall: async (context, next) => {
-    const cacheKey = JSON.stringify(context.state.messages);
-    const cached = cache.get(cacheKey);
-
-    if (cached) {
-      console.log('Cache hit');
-      return cached; // 短路，不调用 next()
-    }
-
-    const result = await next();
-    cache.set(cacheKey, result);
-    return result;
-  }
-});
-
-pipeline.use(cacheMiddleware);
-```
-
-### 工具拦截中间件
-
-```typescript
-const toolInterceptor = createMiddleware({
-  name: 'tool-interceptor',
-
-  wrapToolCall: async (context, next) => {
-    console.log(`[Tool] Calling ${context.toolCall.name}`);
-
-    // 可以修改参数
-    if (context.toolCall.name === 'dangerous_tool') {
-      return new ToolMessage({
-        content: 'Tool blocked by policy',
-        tool_call_id: context.toolCall.id
-      });
-    }
-
-    const result = await next();
-    console.log(`[Tool] Result:`, result.content);
-    return result;
-  }
-});
-
-pipeline.use(toolInterceptor);
-```
-
-### 监控中间件
-
-```typescript
-const monitoringMiddleware = createMiddleware({
-  name: 'monitoring',
-
-  beforeAgent: (context) => {
-    context.state.startTime = Date.now();
-  },
-
-  afterAgent: (context) => {
-    const duration = Date.now() - context.state.startTime;
-    metrics.record('agent.turn.duration', duration, {
-      turn: context.turn,
-      reason: context.result.reason
+    return handler({
+      ...request,
+      systemMessage: request.systemMessage.concat(contextText)
     });
   }
 });
 
-pipeline.use(monitoringMiddleware);
-```
-
-### 必需中间件
-
-```typescript
-const securityMiddleware = createMiddleware({
-  name: 'security',
-  required: true, // 防止被移除
-
-  beforeAgent: (context) => {
-    if (!hasPermission(context)) {
-      throw new Error('Permission denied');
+const result = await runner.invoke(
+  {messages: [new HumanMessage('Hello')]},
+  {
+    context: {
+      userId: 'user-123',
+      tenantId: 'acme-corp'
     }
   }
-});
-
-pipeline.use(securityMiddleware);
-
-// 尝试移除会抛出错误
-pipeline.remove('security'); // Error: Cannot remove required middleware
+);
 ```
 
-## 管道管理
+## Hook 上下文字段
 
-### 注册中间件
+公共字段（多数 hooks 都可用）：
+
+- `state.messages` / `messages`：当前消息列表
+- `runtime.context`：invoke 传入的业务上下文
+- `systemMessage`：可在 `wrapModelCall` 中追加系统消息
+- `runId`、`turn`、`maxTurns`、`requestId`
+
+特有字段：
+
+- `afterModel`：`response`
+- `wrapToolCall`：`toolCall`、`toolIndex`、`tool`
+- `afterAgent`：`result`
+
+## 典型模式
+
+### 重试（Retry）
+
+```typescript
+const retryMiddleware = createMiddleware({
+  name: 'RetryMiddleware',
+  wrapModelCall: async (request, handler) => {
+    const maxRetries = 3;
+
+    for (let attempt = 0; attempt < maxRetries; attempt += 1) {
+      try {
+        return await handler(request);
+      } catch (error) {
+        if (attempt === maxRetries - 1) {
+          throw error;
+        }
+        console.log(`Retry ${attempt + 1}/${maxRetries} after error: ${String(error)}`);
+      }
+    }
+
+    throw new Error('Unreachable');
+  }
+});
+```
+
+### 工具拦截（Tool Interceptor）
+
+```typescript
+const toolInterceptor = createMiddleware({
+  name: 'ToolInterceptor',
+  wrapToolCall: async (request, handler) => {
+    if (request.toolCall.name === 'dangerous_tool') {
+      return new ToolMessage({
+        content: 'Tool blocked by policy',
+        tool_call_id: request.toolCall.id ?? 'blocked'
+      });
+    }
+
+    return handler(request);
+  }
+});
+```
+
+## 执行语义（重要）
+
+- `before* / after*`：按注册顺序执行。
+- `wrap*`：洋葱模型，外层包裹内层。
+- 允许“顺序重试”式多次 `handler(request)` 调用。
+- 禁止“并发重入”调用 `handler`，并发会抛错。
+
+## Context 校验
+
+如果 middleware 配置了 `contextSchema`，runner 会在 invoke 开始前统一校验。
+
+- 校验通过：进入正常执行链路
+- 校验失败：返回 `reason = error`
+
+## Pipeline 管理 API
 
 ```typescript
 pipeline.use(middleware);
-```
-
-### 移除中间件
-
-```typescript
-pipeline.remove('middleware-name');
-```
-
-### 列出中间件
-
-```typescript
-const middlewares = pipeline.list();
-console.log(middlewares.map(m => m.name));
+pipeline.has('LoggingMiddleware');
+pipeline.get('LoggingMiddleware');
+pipeline.list(); // 只读副本
+pipeline.remove('LoggingMiddleware');
+pipeline.validateContext(context); // 可选手动校验
 ```
 
 ## 错误处理
 
-### 错误包装
+中间件错误会自动包装为阶段错误，包含 middleware 名称和阶段信息，便于定位。
 
-中间件抛出的错误会被自动包装，包含中间件名称和阶段信息：
+例如：
 
-```typescript
-// 原始错误：Error: Database connection failed
-// 包装后：Error: Middleware "logger" failed in beforeAgent: Database connection failed
-```
-
-错误对象包含 `cause` 属性，保留原始错误链：
-
-```typescript
-try {
-  await pipeline.beforeAgent(context);
-} catch (error) {
-  console.log(error.message); // Middleware "logger" failed in beforeAgent: ...
-  console.log(error.cause);   // 原始错误对象
-}
-```
-
-### 防止重入
-
-洋葱模型中，`next()` 只能调用一次：
-
-```typescript
-const invalidMiddleware = createMiddleware({
-  name: 'invalid',
-  wrapModelCall: async (context, next) => {
-    await next();
-    await next(); // Error: next() called multiple times
-  }
-});
-```
-
-## 最佳实践
-
-### 1. 命名规范
-
-使用清晰的中间件名称，避免重复：
-
-```typescript
-// 好
-{ name: 'logging' }
-{ name: 'retry-with-backoff' }
-{ name: 'cache-redis' }
-
-// 不好
-{ name: 'mw1' }
-{ name: 'middleware' }
-```
-
-### 2. 单一职责
-
-每个中间件只做一件事：
-
-```typescript
-// 好：分离关注点
-const loggingMiddleware = { name: 'logging', ... };
-const retryMiddleware = { name: 'retry', ... };
-
-// 不好：混合职责
-const everythingMiddleware = {
-  name: 'everything',
-  beforeAgent: () => { /* logging + retry + cache */ }
-};
-```
-
-### 3. 注册顺序
-
-考虑中间件的执行顺序：
-
-```typescript
-// 日志应该在最外层，捕获所有操作
-pipeline.use(loggingMiddleware);
-
-// 重试在缓存之前，避免缓存失败的结果
-pipeline.use(retryMiddleware);
-pipeline.use(cacheMiddleware);
-```
-
-### 4. 错误处理
-
-在中间件中妥善处理错误：
-
-```typescript
-const safeMiddleware = createMiddleware({
-  name: 'safe',
-
-  afterAgent: (context) => {
-    try {
-      // 可能失败的操作
-      sendMetrics(context);
-    } catch (error) {
-      // 记录但不抛出，避免影响主流程
-      console.error('Failed to send metrics:', error);
-    }
-  }
-});
-```
-
-### 5. 性能考虑
-
-避免在 hooks 中执行耗时操作：
-
-```typescript
-// 好：异步但不阻塞
-const asyncMiddleware = createMiddleware({
-  name: 'async',
-
-  afterAgent: (context) => {
-    // 不等待，立即返回
-    sendMetricsAsync(context).catch(console.error);
-  }
-});
-
-// 不好：阻塞执行
-const blockingMiddleware = createMiddleware({
-  name: 'blocking',
-
-  afterAgent: async (context) => {
-    // 等待 5 秒
-    await new Promise(resolve => setTimeout(resolve, 5000));
-  }
-});
-```
-
-## 架构决策
-
-### 为什么选择这些设计模式？
-
-1. **责任链模式**：允许多个中间件按顺序处理请求，易于扩展和组合
-2. **洋葱模型**：提供强大的包裹能力，支持前后处理和短路
-3. **工厂模式**：统一验证和规范化，减少错误
-
-### 与 LangChain 的对齐
-
-生命周期 hooks 与 LangChain 的 Runnable 接口对齐，便于迁移和集成。
-
-### 为什么不使用 AOP？
-
-AOP（面向切面编程）过于复杂，中间件模式更简单直观，足以满足需求。
+`Middleware "RetryMiddleware" failed in wrapModelCall: ...`
 
 ## 文件结构
 
 ```
 src/core/middleware/
-├── index.ts          # 导出入口
-├── types.ts          # 类型定义和工厂函数
-├── pipeline.ts       # 管道类（门面）
-├── execution.ts      # 执行算法（责任链 + 洋葱模型）
-└── README.md         # 本文档
+├── index.ts
+├── types.ts
+├── pipeline.ts
+├── execution.ts
+└── README.md
 ```
 
 ## 相关文档
 
-- [Agent Runtime 架构](../agents/runtime/README.md)
-- [Events 事件系统](../agents/events/README.md)
-- [LangChain Runnable 接口](https://js.langchain.com/docs/expression_language/)
+- [hooks 规范](../../../docs/04-hooks.md)
