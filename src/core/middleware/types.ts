@@ -20,11 +20,11 @@ export interface BaseExecutionContext {
   state: {
     messages: BaseMessage[];
   };
-  /** LangChain 风格快捷访问：等价于 state.messages */
+  /** `state.messages` 的快捷访问。 */
   messages: BaseMessage[];
-  /** LangChain 风格 runtime 上下文 */
+  /** 运行时上下文。 */
   runtime: MiddlewareRuntimeContext;
-  /** 可在 wrapModelCall 中追加系统消息 */
+  /** 在 wrapModelCall 中可追加系统消息。 */
   systemMessage: string[];
   runId: string;
   turn: number;
@@ -61,9 +61,9 @@ export type ToolCallHandler = (request?: ToolCallContext) => Promise<ToolMessage
 
 export interface BaseMiddleware {
   name: string;
-  /** 可选 context 校验器（例如 zod schema） */
+  /** 可选 context 校验器（例如 zod schema）。 */
   contextSchema?: ZodType<unknown>;
-  /** Required middleware cannot be removed from pipeline */
+  /** 标记后不可通过 pipeline.remove 删除。 */
   required?: boolean;
   beforeAgent?: (context: BeforeAgentContext) => Promise<void> | void;
   beforeModel?: (context: BeforeModelContext) => Promise<void> | void;

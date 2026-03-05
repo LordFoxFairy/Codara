@@ -13,15 +13,9 @@ import {createAgentResult, toError} from '@core/agents/runtime/shared/common';
 import {MiddlewarePipeline} from '@core/middleware';
 
 /**
- * AgentRunner（门面层）
- * 责任：
- * 1. 依赖装配（model/tools/middleware）
- * 2. 外层 hooks 编排（beforeRun -> loop -> afterRun）
- * 3. 对外暴露单一 invoke 入口
- *
- * 非责任：
- * - 不承载 loop 内每轮细节（见 runtime/stages/turn-stage.ts）
- * - 不承载外层 hook 细节（见 runtime/hooks/agent-hooks.ts）
+ * Agent 调度入口。
+ * - 装配 model/tools/middleware
+ * - 编排 beforeRun -> loop -> afterRun
  */
 export class AgentRunner {
   private readonly loopDeps: LoopExecutionDeps;
@@ -30,13 +24,6 @@ export class AgentRunner {
     this.loopDeps = createLoopExecutionDeps(params);
   }
 
-  /**
-   * 调用链路：
-   * 1) 创建运行时上下文
-   * 2) 执行 invoke 外 beforeRun hook
-   * 3) 执行 loop 主流程（每轮 middleware）
-   * 4) 执行 invoke 外 afterRun hook
-   */
   async invoke(state: AgentState, config?: AgentInvokeConfig): Promise<AgentResult> {
     const runtime = createAgentRuntime(state, config);
 
@@ -60,7 +47,7 @@ export function createAgentRunner(params: AgentRunnerParams): AgentRunner {
   return new AgentRunner(params);
 }
 
-/** 装配 loop 运行依赖（模型、工具表、中间件管道） */
+/** 构造 loop 依赖（model/tools/pipeline）。 */
 function createLoopExecutionDeps(params: AgentRunnerParams): LoopExecutionDeps {
   const {model, tools = [], handleToolErrors = true, middlewares = []} = params;
 
