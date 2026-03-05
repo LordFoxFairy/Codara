@@ -12,31 +12,7 @@ const editInputSchema = z.object({
 
 type EditInput = z.infer<typeof editInputSchema>;
 
-/**
- * 通过精确字符串替换编辑文件。
- *
- * 支持单次替换和全部替换，防止误操作。
- *
- * @example
- * ```typescript
- * const tool = createEditTool();
- *
- * // 单次替换
- * const result = await tool.invoke({
- *     file_path: '/path/to/file.ts',
- *     old_string: 'const foo = "bar"',
- *     new_string: 'const foo = "baz"'
- * });
- *
- * // 全部替换
- * const replaceAll = await tool.invoke({
- *     file_path: '/path/to/file.ts',
- *     old_string: 'oldName',
- *     new_string: 'newName',
- *     replace_all: true
- * });
- * ```
- */
+/** 文件精确替换工具。 */
 export class EditTool extends StructuredTool<typeof editInputSchema> {
     name = 'edit_file';
     description = `Edits file by replacing exact text snippets with new content.
@@ -114,11 +90,7 @@ Returns: edit summary with line count changes (-X +Y lines), or error if file no
     }
 }
 
-/**
- * 创建 EditTool 实例。
- *
- * @returns 新的 EditTool 实例
- */
+/** 创建 EditTool。 */
 export function createEditTool(): EditTool {
     return new EditTool();
 }

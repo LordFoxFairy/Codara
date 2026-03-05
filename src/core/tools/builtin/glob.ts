@@ -29,27 +29,7 @@ function hasDotPath(filePath: string): boolean {
         .some((segment) => segment.startsWith('.') && segment.length > 1);
 }
 
-/**
- * 通过 glob 模式查找文件，按修改时间排序。
- *
- * 自动排除 node_modules、.git、dist 等目录。
- *
- * @example
- * ```typescript
- * const tool = createGlobTool('/project/root');
- *
- * // 查找所有 TypeScript 文件
- * const tsFiles = await tool.invoke({
- *     pattern: '**\/*.ts'
- * });
- *
- * // 在特定目录查找
- * const srcFiles = await tool.invoke({
- *     pattern: '*.ts',
- *     path: '/project/root/src'
- * });
- * ```
- */
+/** 文件 glob 查询工具。 */
 export class GlobTool extends StructuredTool<typeof globInputSchema> {
     name = 'glob';
     description = `Finds files matching glob patterns, sorted by modification time (newest first).
@@ -114,12 +94,7 @@ Returns: list of matching absolute paths (max 200 results), automatically exclud
     }
 }
 
-/**
- * 创建 GlobTool 实例。
- *
- * @param defaultCwd - 默认工作目录，默认为 process.cwd()
- * @returns 新的 GlobTool 实例
- */
+/** 创建 GlobTool。 */
 export function createGlobTool(defaultCwd = process.cwd()): GlobTool {
     return new GlobTool(defaultCwd);
 }

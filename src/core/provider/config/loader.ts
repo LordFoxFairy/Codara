@@ -6,11 +6,7 @@ import type {ModelRoutingConfig, RouterRule} from "@core/provider/model";
 const toErrorMessage = (error: unknown): string =>
     error instanceof Error ? error.message : "未知错误";
 
-/**
- * 解析单个路由规则
- * @param alias 别名
- * @param target 目标字符串（格式：provider:model）
- */
+/** 解析单个路由规则（`provider:model`）。 */
 function parseRouterRule(alias: string, target: string): RouterRule {
     const splitIndex = target.indexOf(":");
     if (splitIndex <= 0 || splitIndex === target.length - 1) {
@@ -26,11 +22,7 @@ function parseRouterRule(alias: string, target: string): RouterRule {
     return {alias, provider, model, target};
 }
 
-/**
- * 解析模型路由配置
- * @param raw 原始配置对象
- * @returns 解析后的配置
- */
+/** 解析模型路由配置对象。 */
 export function parseModelRoutingConfig(raw: unknown): ModelRoutingConfig {
     const result = ConfigSchema.safeParse(raw);
     if (!result.success) {
@@ -46,10 +38,7 @@ export function parseModelRoutingConfig(raw: unknown): ModelRoutingConfig {
     return {providers, routerRules};
 }
 
-/**
- * 加载模型路由配置文件
- * @returns 解析后的配置
- */
+/** 加载并解析配置文件。 */
 export async function loadModelRoutingConfig(): Promise<ModelRoutingConfig> {
     const configPath = resolveModelRoutingConfigPath();
 

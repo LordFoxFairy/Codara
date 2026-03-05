@@ -3,8 +3,7 @@ import type {BaseChatModel} from "@langchain/core/language_models/chat_models";
 import {ModelRegistry} from "@core/provider/runtime/registry";
 
 /**
- * 初始化参数（可选）。
- * 未提供的字段由 LangChain 使用其内置默认值。
+ * initChatModel 的可选初始化参数。
  */
 export interface ChatModelInitOptions {
     temperature?: number;
@@ -20,16 +19,11 @@ export interface ChatModelInitOptions {
     [key: string]: unknown;
 }
 
-/**
- * 聊天模型工厂
- * 职责：根据别名创建 LangChain 模型实例
- */
+/** 按别名创建聊天模型。 */
 export class ChatModelFactory {
     constructor(private readonly registry: ModelRegistry) {}
 
-    /**
-     * 创建模型实例（alias 必须已存在）。
-     */
+    /** 创建模型实例；alias 不存在时抛错。 */
     create(alias: string): Promise<BaseChatModel> {
         const modelInfo = this.registry.getByAlias(alias);
         const initOptions = this.buildInitOptions(modelInfo);
@@ -47,8 +41,7 @@ export class ChatModelFactory {
             initOptions.apiKey = modelInfo.apiKey;
         }
 
-        // LangChain ChatOpenAI 读取 configuration.baseURL，而不是顶层 baseUrl。
-        // 这一步是 OpenAI 兼容提供方（如 DeepSeek/OpenRouter）生效的关键。
+        // ChatOpenAI 使用 configuration.baseURL。
         if (modelInfo.type === "openai" && modelInfo.baseUrl) {
             const currentConfig =
                 typeof initOptions.configuration === "object" && initOptions.configuration

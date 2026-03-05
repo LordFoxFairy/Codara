@@ -6,7 +6,7 @@ const DEFAULT_MAX_RESULTS = 10;
 const MAX_MAX_RESULTS = 20;
 const DEFAULT_TIMEOUT_MS = 15_000;
 
-// SearXNG 公共实例列表（按可靠性排序）
+// SearXNG 公共实例，按优先顺序尝试。
 const SEARXNG_INSTANCES = [
   'https://searx.be',
   'https://search.sapti.me',
@@ -22,9 +22,7 @@ const searchInputSchema = z.object({
 
 type SearchInput = z.infer<typeof searchInputSchema>;
 
-/**
- * 搜索结果项。
- */
+/** 搜索结果项。 */
 interface SearchResult {
   /** 结果标题 */
   title: string;
@@ -34,13 +32,7 @@ interface SearchResult {
   snippet: string;
 }
 
-/**
- * 使用 SearXNG 执行搜索。
- *
- * @param query - 搜索关键词
- * @param maxResults - 最大结果数
- * @returns 搜索结果
- */
+/** 使用 SearXNG 执行搜索。 */
 async function searchWithSearXNG(
   query: string,
   maxResults: number
@@ -49,7 +41,6 @@ async function searchWithSearXNG(
   const timer = setTimeout(() => controller.abort(), DEFAULT_TIMEOUT_MS);
 
   try {
-    // 尝试多个实例，直到成功
     for (const instance of SEARXNG_INSTANCES) {
       try {
         const params = new URLSearchParams({
@@ -70,16 +61,15 @@ async function searchWithSearXNG(
         });
 
         if (!response.ok) {
-          continue; // 尝试下一个实例
+          continue;
         }
 
         const data = await response.json() as {results?: Array<{title?: string; url?: string; content?: string}>};
 
         if (!data.results || data.results.length === 0) {
-          continue; // 尝试下一个实例
+          continue;
         }
 
-        // 转换为我们的格式
         const results: SearchResult[] = data.results
           .slice(0, maxResults)
           .filter((r) => r.title && r.url)
@@ -93,40 +83,17 @@ async function searchWithSearXNG(
           return results;
         }
       } catch {
-        // 忽略单个实例的错误，继续尝试下一个
         continue;
       }
     }
 
-    // 所有实例都失败了
     return [];
   } finally {
     clearTimeout(timer);
   }
 }
 
-/**
- * 网络搜索工具。
- *
- * 使用 SearXNG 元搜索引擎执行免费的网络搜索，无需 API key。
- * 返回结构化的搜索结果（标题、URL、摘要）。
- *
- * @example
- * ```typescript
- * const tool = createSearchTool();
- *
- * // 搜索信息
- * const result = await tool.invoke({
- *     query: 'React 19 新特性'
- * });
- *
- * // 限制结果数量
- * const limited = await tool.invoke({
- *     query: 'TypeScript 5.0',
- *     max_results: 5
- * });
- * ```
- */
+/** 网络搜索工具。 */
 export class SearchTool extends StructuredTool<typeof searchInputSchema> {
   name = 'web_search';
   description = `Searches the web using SearXNG metasearch engine and returns structured results.
@@ -161,11 +128,7 @@ Returns: JSON with search results including title, URL, and snippet for each res
   }
 }
 
-/**
- * 创建 SearchTool 实例。
- *
- * @returns 新的 SearchTool 实例
- */
+/** 创建 SearchTool。 */
 export function createSearchTool(): SearchTool {
   return new SearchTool();
 }

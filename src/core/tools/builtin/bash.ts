@@ -24,32 +24,7 @@ const bashInputSchema = z.object({
 
 type BashInput = z.infer<typeof bashInputSchema>;
 
-/**
- * 执行 shell 命令的工具。
- *
- * **注意**: 此工具维护持久化的工作目录状态。
- * 执行 `cd` 命令会影响后续命令的工作目录。
- *
- * @example
- * ```typescript
- * const bash = createBashTool('/home/user');
- *
- * // 执行命令
- * const result = await bash.invoke({
- *     command: 'ls -la'
- * });
- *
- * // cd 会持久化
- * await bash.invoke({command: 'cd subdir'});
- * await bash.invoke({command: 'pwd'}); // 输出: /home/user/subdir
- *
- * // 设置超时
- * await bash.invoke({
- *     command: 'long-running-task',
- *     timeout: 300000 // 5 分钟
- * });
- * ```
- */
+/** Shell 命令执行工具（维护持久化 cwd）。 */
 export class BashTool extends StructuredTool<typeof bashInputSchema> {
     name = 'bash';
     description = `Executes shell commands in bash/zsh with persistent working directory and timeout control.
@@ -58,7 +33,7 @@ Don't use when: long-running processes (servers/watchers), interactive commands,
 Returns: command stdout/stderr with exit code, or timeout/truncation notice if limits exceeded (stdout 200KB, stderr 100KB, output 100KB).`;
     schema = bashInputSchema;
 
-    /** 当前工作目录（持久化状态） */
+    /** 当前工作目录。 */
     private currentCwd: string;
 
     constructor(defaultCwd = process.cwd()) {
@@ -67,14 +42,7 @@ Returns: command stdout/stderr with exit code, or timeout/truncation notice if l
     }
 
     async _call(input: BashInput): Promise<string> {
-        // TODO: Implement background execution
-        // Requirements:
-        // 1. Create TaskManager to track background processes
-        // 2. Return task ID instead of output
-        // 3. Provide API to query task status (getTask, listTasks, stopTask)
-        // 4. Handle process cleanup on completion
-        // 5. Store output/error for later retrieval
-        // See: https://github.com/anthropics/claude-code for reference implementation
+        // 后台执行尚未实现。
         if (input.run_in_background) {
             return 'Error: Background execution is not yet implemented. This feature requires a task manager to track background processes.';
         }
@@ -174,12 +142,7 @@ Returns: command stdout/stderr with exit code, or timeout/truncation notice if l
     }
 }
 
-/**
- * 创建 BashTool 实例。
- *
- * @param defaultCwd - 默认工作目录，默认为 process.cwd()
- * @returns 新的 BashTool 实例
- */
+/** 创建 BashTool。 */
 export function createBashTool(defaultCwd = process.cwd()): BashTool {
     return new BashTool(defaultCwd);
 }

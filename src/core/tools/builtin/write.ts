@@ -13,21 +13,7 @@ const writeInputSchema = z.object({
 
 type WriteInput = z.infer<typeof writeInputSchema>;
 
-/**
- * 创建或覆盖文件，写入 UTF-8 内容。
- *
- * 自动创建父目录，处理常见文件系统错误。
- *
- * @example
- * ```typescript
- * const tool = createWriteTool();
- *
- * const result = await tool.invoke({
- *     file_path: '/path/to/new/file.ts',
- *     content: 'export const foo = "bar";'
- * });
- * ```
- */
+/** 文件写入工具（创建或覆盖）。 */
 export class WriteTool extends StructuredTool<typeof writeInputSchema> {
     name = 'write_file';
     description = `Creates or overwrites a file with UTF-8 text content.
@@ -65,11 +51,7 @@ Returns: success message with line count, or error if permission denied/no space
     }
 }
 
-/**
- * 创建 WriteTool 实例。
- *
- * @returns 新的 WriteTool 实例
- */
+/** 创建 WriteTool。 */
 export function createWriteTool(): WriteTool {
     return new WriteTool();
 }

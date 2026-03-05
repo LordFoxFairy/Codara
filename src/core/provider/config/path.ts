@@ -1,18 +1,14 @@
 import {homedir} from "os";
 
-/**
- * 移除路径末尾的斜杠
- */
+/** 移除路径末尾斜杠。 */
 const trimTrailingSlash = (path: string): string => path.replace(/\/+$/, "");
 
-/**
- * 可选环境变量：自定义 Codara 配置目录
- */
+/** 自定义配置目录环境变量。 */
 const CODARA_PATH_ENV = "CODARA_PATH";
 
 /**
- * Codara 配置根目录
- * 默认是 `~/.codara`，可通过 `CODARA_PATH` 覆盖
+ * 解析配置根目录。
+ * 默认 `~/.codara`，可由 `CODARA_PATH` 覆盖。
  */
 export const resolveCodaraPath = (): string => {
     const customPath = process.env[CODARA_PATH_ENV]?.trim();
@@ -30,9 +26,6 @@ export const resolveCodaraPath = (): string => {
     return `${trimTrailingSlash(home)}/.codara`;
 };
 
-/**
- * 解析模型路由配置文件路径
- * @returns ~/.codara/config.json
- */
+/** 解析模型路由配置文件路径。 */
 export const resolveModelRoutingConfigPath = (): string =>
     `${resolveCodaraPath()}/config.json`;
