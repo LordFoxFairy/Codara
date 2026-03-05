@@ -11,7 +11,8 @@ export function createAgentRuntime(state: AgentState, config?: AgentInvokeConfig
   return {
     state,
     runId: randomUUID(),
-    maxTurns: normalizeMaxTurns(config?.recursionLimit)
+    maxTurns: normalizeMaxTurns(config?.recursionLimit),
+    context: config?.context ?? {}
   };
 }
 

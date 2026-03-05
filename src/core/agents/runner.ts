@@ -9,6 +9,7 @@ import {
   type AgentModel,
   type LoopExecutionDeps
 } from '@core/agents/runtime';
+import {createAgentResult, toError} from '@core/agents/runtime/shared/common';
 import {MiddlewarePipeline} from '@core/middleware';
 
 /**
@@ -38,6 +39,12 @@ export class AgentRunner {
    */
   async invoke(state: AgentState, config?: AgentInvokeConfig): Promise<AgentResult> {
     const runtime = createAgentRuntime(state, config);
+
+    try {
+      this.loopDeps.pipeline.validateContext(runtime.context);
+    } catch (error) {
+      return createAgentResult(state, 0, 'error', new Error(`context validation failed: ${toError(error).message}`));
+    }
 
     const beforeRunResult = await beforeRun(runtime, config);
     if (beforeRunResult) {
