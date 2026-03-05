@@ -2,6 +2,11 @@ import {afterEach, describe, expect, it} from 'bun:test';
 import {createFetchTool} from '@core/tools';
 
 const originalFetch = globalThis.fetch;
+type FetchImpl = (url: URL | RequestInfo, options?: RequestInit | BunFetchRequestInit) => Promise<Response>;
+
+function mockFetch(impl: FetchImpl): void {
+  globalThis.fetch = impl as unknown as typeof fetch;
+}
 
 afterEach(() => {
   globalThis.fetch = originalFetch;
@@ -17,13 +22,13 @@ describe('FetchTool - Generic HTTP Client', () => {
   });
 
   it('should support GET requests and return JSON', async () => {
-    globalThis.fetch = async () => {
+    mockFetch(async () => {
       return new Response('Hello World', {
         status: 200,
         statusText: 'OK',
         headers: {'content-type': 'text/plain'},
       });
-    };
+    });
 
     const tool = createFetchTool();
     const result = await tool.invoke({url: 'https://example.com'});
@@ -37,21 +42,22 @@ describe('FetchTool - Generic HTTP Client', () => {
   });
 
   it('should support POST with body and headers', async () => {
-    let capturedRequest: {method: string; headers: Record<string, string>; body: string} | null = null;
+    const capturedRequests: Array<{method: string; headers: Record<string, string>; body: string}> = [];
 
-    globalThis.fetch = async (url, options) => {
-      capturedRequest = {
-        method: options?.method || 'GET',
-        headers: options?.headers as Record<string, string> || {},
-        body: options?.body as string || '',
-      };
+    mockFetch(async (_url, options) => {
+      const headers = new Headers(options?.headers);
+      capturedRequests.push({
+        method: options?.method ?? 'GET',
+        headers: Object.fromEntries(headers.entries()),
+        body: typeof options?.body === 'string' ? options.body : '',
+      });
 
       return new Response('{"success":true}', {
         status: 200,
         statusText: 'OK',
         headers: {'content-type': 'application/json'},
       });
-    };
+    });
 
     const tool = createFetchTool();
     const result = await tool.invoke({
@@ -61,11 +67,14 @@ describe('FetchTool - Generic HTTP Client', () => {
       body: '{"key":"value"}',
     });
 
-    expect(capturedRequest).not.toBeNull();
-    expect(capturedRequest?.method).toBe('POST');
-    expect(capturedRequest?.headers['Content-Type']).toBe('application/json');
-    expect(capturedRequest?.headers['Authorization']).toBe('Bearer token');
-    expect(capturedRequest?.body).toBe('{"key":"value"}');
+    const capturedRequest = capturedRequests[0];
+    if (!capturedRequest) {
+      throw new Error('capturedRequest should not be null');
+    }
+    expect(capturedRequest.method).toBe('POST');
+    expect(capturedRequest.headers['Content-Type']).toBe('application/json');
+    expect(capturedRequest.headers['Authorization']).toBe('Bearer token');
+    expect(capturedRequest.body).toBe('{"key":"value"}');
 
     const parsed = JSON.parse(result);
     expect(parsed.status).toBe(200);
@@ -74,13 +83,13 @@ describe('FetchTool - Generic HTTP Client', () => {
 
   it('should return raw HTML without processing', async () => {
     const html = '<!doctype html><html><head><title>Demo</title></head><body><h1>Hello</h1></body></html>';
-    globalThis.fetch = async () => {
+    mockFetch(async () => {
       return new Response(html, {
         status: 200,
         statusText: 'OK',
         headers: {'content-type': 'text/html; charset=utf-8'},
       });
-    };
+    });
 
     const tool = createFetchTool();
     const result = await tool.invoke({url: 'https://example.com/page'});
@@ -93,13 +102,13 @@ describe('FetchTool - Generic HTTP Client', () => {
   });
 
   it('should enforce response size limit', async () => {
-    globalThis.fetch = async () => {
+    mockFetch(async () => {
       return new Response('A'.repeat(2000), {
         status: 200,
         statusText: 'OK',
         headers: {'content-type': 'text/plain'},
       });
-    };
+    });
 
     const tool = createFetchTool();
     const result = await tool.invoke({
@@ -113,7 +122,7 @@ describe('FetchTool - Generic HTTP Client', () => {
   });
 
   it('should handle timeout', async () => {
-    globalThis.fetch = async (url, options) => {
+    mockFetch(async (_url, options) => {
       // Wait for abort signal
       return new Promise((resolve, reject) => {
         const timer = setTimeout(() => {
@@ -127,7 +136,7 @@ describe('FetchTool - Generic HTTP Client', () => {
           reject(error);
         });
       });
-    };
+    });
 
     const tool = createFetchTool();
     const result = await tool.invoke({
@@ -140,13 +149,13 @@ describe('FetchTool - Generic HTTP Client', () => {
   });
 
   it('should return all HTTP status codes (including errors)', async () => {
-    globalThis.fetch = async () => {
+    mockFetch(async () => {
       return new Response('Not Found', {
         status: 404,
         statusText: 'Not Found',
         headers: {'content-type': 'text/plain'},
       });
-    };
+    });
 
     const tool = createFetchTool();
     const result = await tool.invoke({url: 'https://example.com/missing'});
@@ -159,9 +168,9 @@ describe('FetchTool - Generic HTTP Client', () => {
   });
 
   it('should handle network errors', async () => {
-    globalThis.fetch = async () => {
+    mockFetch(async () => {
       throw new Error('Network error: Connection refused');
-    };
+    });
 
     const tool = createFetchTool();
     const result = await tool.invoke({url: 'https://example.com/error'});
@@ -178,13 +187,13 @@ describe('FetchTool - Generic HTTP Client', () => {
   });
 
   it('should allow localhost (no security blocking)', async () => {
-    globalThis.fetch = async () => {
+    mockFetch(async () => {
       return new Response('Local server', {
         status: 200,
         statusText: 'OK',
         headers: {'content-type': 'text/plain'},
       });
-    };
+    });
 
     const tool = createFetchTool();
     const result = await tool.invoke({url: 'http://localhost:3000'});
@@ -196,13 +205,13 @@ describe('FetchTool - Generic HTTP Client', () => {
   });
 
   it('should allow private IP addresses (no security blocking)', async () => {
-    globalThis.fetch = async () => {
+    mockFetch(async () => {
       return new Response('Private network', {
         status: 200,
         statusText: 'OK',
         headers: {'content-type': 'text/plain'},
       });
-    };
+    });
 
     const tool = createFetchTool();
     const result = await tool.invoke({url: 'http://192.168.1.10'});
@@ -213,4 +222,3 @@ describe('FetchTool - Generic HTTP Client', () => {
     expect(parsed.body).toBe('Private network');
   });
 });
-

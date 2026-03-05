@@ -9,7 +9,6 @@ import {
   GlobTool,
   GrepTool,
   ReadTool,
-  SearchTool,
   WriteTool,
   createBashTool,
   createBuiltinTools,
@@ -18,7 +17,6 @@ import {
   createGlobTool,
   createGrepTool,
   createReadTool,
-  createSearchTool,
   createWriteTool,
 } from '@core/tools';
 
