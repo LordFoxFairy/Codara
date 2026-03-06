@@ -1,98 +1,50 @@
-# Agent Delivery Skill (Codara)
+## Workflow Orchestration
 
-This file defines a reusable delivery workflow for coding agents in this repo.
-Use it for feature work, bug fixes, refactors, and PR review/fix loops.
+### 1. Plan Node Default
+- Enter plan mode for ANY non-trivial task (3+ steps or architectural decisions)
+- If something goes sideways, STOP and re-plan immediately - don't keep pushing
+- Use plan mode for verification steps, not just building
+- Write detailed specs upfront to reduce ambiguity
 
-## 1. Core Execution Rules
+### 2. Subagent Strategy
+- Use subagents liberally to keep main context window clean
+- Offload research, exploration, and parallel analysis to subagents
+- For complex problems, throw more compute at it via subagents
+- One tack per subagent for focused execution
 
-1. Plan before code for any non-trivial change (3+ steps or architecture impact).
-2. Re-plan immediately when assumptions break or validation fails.
-3. Keep changes minimal and focused on root cause.
-4. Do not mark work done without executable proof (lint/build/tests/logs).
-5. After any correction from user or review, write one new rule in `tasks/lessons.md`.
+### 3. Self-Improvement Loop
+- After ANY correction from the user: update `tasks/lessons.md` with the pattern
+- Write rules for yourself that prevent the same mistake
+- Ruthlessly iterate on these lessons until mistake rate drops
+- Review lessons at session start for relevant project
 
-## 2. Task Orchestration Contract
+### 4. Verification Before Done
+- Never mark a task complete without proving it works
+- Diff behavior between main and your changes when relevant
+- Ask yourself: "Would a staff engineer approve this?"
+- Run tests, check logs, demonstrate correctness
 
-1. Open `tasks/todo.md` and create:
-- Goal
-- Checklist (checkable items)
-- Acceptance Criteria
-2. Execute checklist items one by one and mark status continuously.
-3. Add a Review section in `tasks/todo.md` with:
-- What changed
-- Why
-- Verification commands and outcomes
+### 5. Demand Elegance (Balanced)
+- For non-trivial changes: pause and ask "is there a more elegant way?"
+- If a fix feels hacky: "Knowing everything I know now, implement the elegant solution"
+- Skip this for simple, obvious fixes - don't over-engineer
+- Challenge your own work before presenting it
 
-## 3. Implementation Loop
+### 6. Autonomous Bug Fixing
+- When given a bug report: just fix it. Don't ask for hand-holding
+- Point at logs, errors, failing tests - then resolve them
+- Zero context switching required from the user
+- Go fix failing CI tests without being told how
 
-1. Confirm scope and non-goals first.
-2. Implement the smallest complete fix/feature.
-3. Run verification in this order:
-- `bun run lint`
-- `bun run build`
-- `bun test` (or targeted test files when appropriate)
-4. If failure happens, fix immediately and re-run verification.
+## Task Management
+1. **Plan First**: Write plan to `tasks/todo.md` with checkable items
+2. **Verify Plan**: Check in before starting implementation
+3. **Track Progress**: Mark items complete as you go
+4. **Explain Changes**: High-level summary at each step
+5. **Document Results**: Add review section to `tasks/todo.md`
+6. **Capture Lessons**: Update `tasks/lessons.md` after corrections
 
-## 4. PR Publishing Workflow
-
-1. Create branch:
-```bash
-git checkout -b feat/<topic>
-```
-2. Commit with clear scope:
-```bash
-git add <files>
-git commit -m "feat(scope): short summary"
-```
-3. Push branch:
-```bash
-git push -u origin <branch>
-```
-4. Create PR (preferred via `gh`):
-```bash
-gh pr create --title "<type(scope): summary>" --body "<what/why/how tested>"
-```
-
-## 5. PR Review Workflow (Pull and Review Locally)
-
-1. Fetch PR branch into local review branch:
-```bash
-git fetch origin pull/<PR_NUMBER>/head:review/pr-<PR_NUMBER>
-git checkout review/pr-<PR_NUMBER>
-```
-2. Review with code-first checks:
-- correctness and regressions
-- edge cases and error paths
-- test coverage gaps
-- API/behavior compatibility
-3. Validate with commands used by the PR author.
-4. Record findings by severity with file/line references.
-
-## 6. Fix-and-Resubmit Loop
-
-1. Convert review comments into checklist items in `tasks/todo.md`.
-2. Fix highest-severity issues first.
-3. Re-run lint/build/tests and update review notes.
-4. Commit follow-up:
-```bash
-git add <files>
-git commit -m "fix(scope): address PR review comments"
-git push
-```
-5. Repeat until review is green.
-
-## 7. Experience and Lessons Loop
-
-1. Every rejected assumption or repeated mistake becomes a rule in `tasks/lessons.md`.
-2. New tasks must scan `tasks/lessons.md` before implementation.
-3. Prefer preventing classes of mistakes over one-off patching.
-
-## 8. Definition of Done
-
-All items below must be true:
-
-1. Checklist in `tasks/todo.md` is fully checked.
-2. Acceptance criteria are satisfied.
-3. Verification commands are recorded with outcomes.
-4. PR comments are resolved or explicitly documented with rationale.
-5. New lessons (if any) are written in `tasks/lessons.md`.
+## Core Principles
+- **Simplicity First**: Make every change as simple as possible. Impact minimal code.
+- **No Laziness**: Find root causes. No temporary fixes. Senior developer standards.
+- **Minimal Impact**: Changes should only touch what's necessary. Avoid introducing bugs.
