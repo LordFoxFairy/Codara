@@ -115,6 +115,77 @@ const loggingMiddleware = createLoggingMiddleware({
 });
 ```
 
+### 内置 HIL Middleware（Human-in-the-Loop）
+
+`createHILMiddleware(options)` 提供通用“暂停-恢复”拦截能力（不内置审批决策语义）：
+
+- `interruptOn[toolName] = true`：命中后进入 pause，返回结构化 `hil_pause` 消息
+- `interruptOn[toolName] = false` 或未配置：自动放行
+- `interruptOn[toolName] = {description, channel, ui, metadata}`：附加交互元信息
+- `resolveDecision`：外部可返回 `allow | ask | deny`，将策略层与协议层彻底解耦
+- `resolveResume` / `handleResume`：由外部实现审批、编辑、拒绝、多页/tab 流程
+
+推荐的 `ui.actions` 结构：
+- `id`：动作标识，由上层交互模板定义
+- `label`：前端显示文案
+- `kind`：`primary | secondary | danger`
+- `requiresConfirmation` / `requiresToolEdit`：声明交互要求
+
+推荐的 resume payload 协议：
+- `action`：选中的动作 id
+- `scope`：可选范围信息，由 skills / policy 层解释
+- `comment`：审批备注
+- `editedToolName` / `editedToolArgs`：编辑后继续执行
+
+边界建议：
+- 权限模板、按钮文案、持久化范围等业务语义优先放在 skills 或外部审批服务中维护。
+- HIL middleware 只负责 pause/resume 协议，不内置权限动作集合或 scope 语义。
+
+```typescript
+import {createHILMiddleware} from '@core/middleware';
+import {ToolMessage} from '@langchain/core/messages';
+
+const approvalUiTemplate = {
+  tab: 'security',
+  actions: [
+    {id: 'primary', label: 'Primary action', kind: 'primary'},
+    {id: 'edit', label: 'Edit and continue', requiresToolEdit: true},
+    {id: 'reject', label: 'Reject', kind: 'danger', requiresConfirmation: true}
+  ]
+};
+
+const hilMiddleware = createHILMiddleware({
+  // 也可只配置 interruptOn；这里演示外部决策模式
+  resolveDecision: async ({context}) => {
+    if (context.toolCall.name === 'write_file') {
+      return {
+        decision: 'ask',
+        config: {
+          description: '写文件前需要人工介入',
+          channel: 'ops-review',
+          ui: approvalUiTemplate
+        }
+      };
+    }
+    return {decision: 'allow'};
+  },
+  // 由外部注入恢复数据（可来自 skills、审批服务、UI 状态机）
+  resolveResume: (pauseRequest, ctx) => {
+    return (ctx.runtime.context as any).hil?.resumes?.[pauseRequest.id];
+  },
+  // 外部决定如何处理恢复结果；默认实现是“有 resume 就继续执行原始工具”
+  handleResume: async (pauseRequest, resumePayload, ctx, next) => {
+    if ((resumePayload as any)?.action === 'reject') {
+      return new ToolMessage({
+        content: 'Denied by external policy',
+        tool_call_id: pauseRequest.action.toolCallId
+      });
+    }
+    return next(ctx);
+  }
+});
+```
+
 ### 重试（Retry）
 
 ```typescript
@@ -198,7 +269,9 @@ src/core/middleware/
 ├── types.ts
 ├── pipeline.ts
 ├── execution.ts
+├── skills.ts
 ├── logging.ts
+├── hil.ts
 └── README.md
 ```
 
