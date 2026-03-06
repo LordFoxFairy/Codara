@@ -12,17 +12,14 @@
 
 ```typescript
 import {createAgentRunner} from '@core/agents';
-import {createMiddleware} from '@core/middleware';
+import {createLoggingMiddleware} from '@core/middleware';
 
-const loggingMiddleware = createMiddleware({
-  name: 'LoggingMiddleware',
-  beforeModel: (state) => {
-    console.log(`About to call model with ${state.messages.length} messages`);
+const loggingMiddleware = createLoggingMiddleware({
+  level: 'info',
+  logger: (record) => {
+    // structured JSON log
+    console.log(JSON.stringify(record));
   },
-  afterModel: (state) => {
-    const lastMessage = state.messages[state.messages.length - 1];
-    console.log(`Model returned: ${String(lastMessage?.content ?? '')}`);
-  }
 });
 
 const runner = createAgentRunner({
@@ -100,6 +97,23 @@ const result = await runner.invoke(
 - `afterAgent`：`result`
 
 ## 典型模式
+
+### 内置 LoggingMiddleware
+
+`createLoggingMiddleware(options)` 提供结构化日志能力：
+
+- 覆盖 6 个 hooks
+- `wrapModelCall` / `wrapToolCall` 输出 start/end/error 与耗时
+- 统一字段：`runId`、`turn`、`requestId`、`stage`、`event`
+- 支持开关与级别过滤：`enabled`、`level`
+
+```typescript
+const loggingMiddleware = createLoggingMiddleware({
+  enabled: true,
+  level: 'debug',
+  logger: (record) => console.log(JSON.stringify(record))
+});
+```
 
 ### 重试（Retry）
 
@@ -184,6 +198,7 @@ src/core/middleware/
 ├── types.ts
 ├── pipeline.ts
 ├── execution.ts
+├── logging.ts
 └── README.md
 ```
 
