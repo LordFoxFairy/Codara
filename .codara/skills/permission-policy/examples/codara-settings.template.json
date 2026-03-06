@@ -1,0 +1,22 @@
+{
+  "permissions": {
+    "defaultDecision": "ask",
+    "rules": {
+      "deny": [
+        "Bash(rm -rf *)",
+        "Read(./.env)",
+        "Read(./.env.*)"
+      ],
+      "ask": [
+        "Bash(*)",
+        "Write(/src/**)",
+        "Edit(/src/**)"
+      ],
+      "allow": [
+        "Read(*)",
+        "Bash(git status)",
+        "Bash(git diff *)"
+      ]
+    }
+  }
+}
