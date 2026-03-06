@@ -7,3 +7,4 @@ export * from '@core/provider';
 export * from '@core/agents';
 export * from '@core/tools';
 export * from '@core/middleware';
+export * from '@core/skills';
