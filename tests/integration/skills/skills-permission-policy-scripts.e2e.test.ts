@@ -21,9 +21,11 @@ describe('permission-policy skill scripts', () => {
     const skillRoot = path.dirname(skill?.path ?? '')
     const scriptPath = path.join(skillRoot, 'scripts', 'evaluate-permission.sh')
     const validatePath = path.join(skillRoot, 'scripts', 'validate-settings.sh')
+    const upsertPath = path.join(skillRoot, 'scripts', 'upsert-permission-rule.sh')
 
     expect(await Bun.file(scriptPath).exists()).toBe(true)
     expect(await Bun.file(validatePath).exists()).toBe(true)
+    expect(await Bun.file(upsertPath).exists()).toBe(true)
   })
 
   it('should evaluate allow/deny/ask decisions from codara settings files', async () => {
@@ -112,5 +114,47 @@ describe('permission-policy skill scripts', () => {
     }
     expect(askPayload.decision).toBe('ask')
     expect(askPayload.matched).toBeNull()
+  })
+
+  it('should upsert an allow rule into settings.local.json', async () => {
+    const root = await mkdtemp(path.join(tmpdir(), 'codara-permission-upsert-'))
+    const skillRoot = path.join(process.cwd(), '.codara', 'skills', 'permission-policy')
+    const upsertScript = path.join(skillRoot, 'scripts', 'upsert-permission-rule.sh')
+    const settingsFile = path.join(root, '.codara', 'settings.local.json')
+
+    const firstWrite = Bun.spawnSync({
+      cmd: ['bash', upsertScript, 'Bash(git status)', '--project-root', root],
+      stdout: 'pipe',
+      stderr: 'pipe'
+    })
+
+    expect(firstWrite.exitCode).toBe(0)
+    const firstPayload = JSON.parse(decode(firstWrite.stdout)) as {
+      created: boolean;
+      alreadyPresent: boolean;
+      settingsFile: string;
+    }
+    expect(firstPayload.created).toBe(true)
+    expect(firstPayload.alreadyPresent).toBe(false)
+    expect(firstPayload.settingsFile).toBe(settingsFile)
+
+    const secondWrite = Bun.spawnSync({
+      cmd: ['bash', upsertScript, 'Bash(git status)', '--project-root', root],
+      stdout: 'pipe',
+      stderr: 'pipe'
+    })
+
+    expect(secondWrite.exitCode).toBe(0)
+    const secondPayload = JSON.parse(decode(secondWrite.stdout)) as {
+      created: boolean;
+      alreadyPresent: boolean;
+    }
+    expect(secondPayload.created).toBe(false)
+    expect(secondPayload.alreadyPresent).toBe(true)
+
+    const fileContent = await Bun.file(settingsFile).json() as {
+      permissions?: {rules?: {allow?: string[]}};
+    }
+    expect(fileContent.permissions?.rules?.allow).toEqual(['Bash(git status)'])
   })
 })

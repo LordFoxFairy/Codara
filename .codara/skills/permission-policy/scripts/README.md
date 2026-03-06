@@ -29,3 +29,17 @@ Supported formats:
 - Codara generic override: `defaultDecision` + `rules.{allow,ask,deny}`
 - Claude compatibility: `permissions.{allow,ask,deny,defaultMode}`
 - Root fallback: `{allow,ask,deny}`
+
+## upsert-permission-rule.sh
+Persist one permission rule into `.codara/settings.local.json`.
+
+```bash
+./scripts/upsert-permission-rule.sh "Bash(git status)"
+./scripts/upsert-permission-rule.sh "Bash(git push)" --bucket ask
+```
+
+Behavior:
+- creates `.codara/settings.local.json` when missing
+- writes into `permissions.rules.<bucket>`
+- preserves unrelated settings keys
+- deduplicates identical rules

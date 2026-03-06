@@ -75,6 +75,8 @@ Map `permissions.defaultMode` to normalized fallback decision:
   - supports `--profile codara|claude|auto` and `--policy-file` overrides
 - `scripts/validate-settings.sh`
   - validates policy/settings files for both generic and Claude-compatible formats
+- `scripts/upsert-permission-rule.sh`
+  - persists one normalized rule into the current project's `.codara/settings.local.json`
 
 ## Decision handoff contract
 Permission decision output is transport-agnostic.
@@ -91,6 +93,8 @@ Suggested terminal interaction template for code terminals:
 - `{id: 'always', label: 'Always allow', kind: 'secondary'}`
 - `{id: 'edit', label: 'Edit command', kind: 'secondary', requiresToolEdit: true}`
 - `{id: 'deny', label: 'Deny', kind: 'danger', requiresConfirmation: true}`
+
+When the user chooses `always`, persist the approval by updating the current project's `.codara/settings.local.json` instead of storing it in HIL state.
 
 Recommended resume payload fields:
 - `action`
