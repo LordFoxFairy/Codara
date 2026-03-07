@@ -126,6 +126,24 @@ describe('Codara core facade', () => {
     ]);
   });
 
+  it('should accept the middleware alias on the Codara facade', () => {
+    const custom = createMiddleware({
+      name: 'AliasMiddleware',
+      beforeModel: () => undefined,
+    });
+
+    const middlewares = createCodaraMiddlewares({
+      skills: {store: new EmptySkillStore()},
+      middleware: [custom],
+    });
+
+    expect(middlewares.map((middleware) => middleware.name)).toEqual([
+      'SkillsMiddleware',
+      'AliasMiddleware',
+      'HumanInTheLoopMiddleware',
+    ]);
+  });
+
   it('should let caller tool middleware short-circuit before default HIL', async () => {
     const toolCall: ToolCall = {id: 'call_1', name: 'echo', args: {text: 'ping'}};
     const model = new FakeModel([
@@ -272,8 +290,9 @@ describe('Codara core facade', () => {
       threadId: 'brand-new-thread',
     });
 
-    expect(session.getThreadId()).toBe('brand-new-thread');
-    expect(session.getState().messages).toHaveLength(0);
+    const state = session.getState();
+    expect(state.threadId).toBe('brand-new-thread');
+    expect(state.messages).toHaveLength(0);
   });
 
   it('should allow a modelResolver override without changing the main createCodaraAgent API', async () => {

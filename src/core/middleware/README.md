@@ -34,7 +34,7 @@ const runner = createAgentRunner({
 - 推荐通过 `createMiddleware(...)` 声明中间件常量。
 - 推荐通过 `middlewares: [middleware1, middleware2]` 注入到 runner。
 
-## LangChain 风格能力
+## 中间件能力
 
 当前实现支持接近 LangChain 示例的写法：
 
