@@ -2,6 +2,7 @@ import {randomUUID} from 'node:crypto';
 import {HumanMessage, ToolMessage, type BaseMessage} from '@langchain/core/messages';
 import {createAgentRunner, type AgentRunner} from '@core/agents/runner';
 import type {AgentInvokeConfig, AgentResult, AgentRunnerParams, AgentRuntimeContext} from '@core/agents/types';
+import type {AgentStreamConfig, AgentStreamOutput} from '@core/agents/stream';
 import {
   AgentCheckpoint,
   AgentCheckpointer,
@@ -38,6 +39,11 @@ export interface AgentRunConfig extends Omit<AgentInvokeConfig, 'context'> {
 }
 
 export interface AgentResumeConfig extends Omit<AgentRunConfig, 'context'> {
+  input?: AgentInput;
+  context?: AgentRuntimeContext;
+}
+
+export interface AgentResumeStreamConfig extends Omit<AgentStreamConfig, 'context'> {
   input?: AgentInput;
   context?: AgentRuntimeContext;
 }
@@ -120,11 +126,29 @@ export class Agent {
     return this.run(input, config, 'invoke');
   }
 
+  async *stream(
+    input?: AgentInput,
+    config: AgentStreamConfig = {}
+  ): AsyncGenerator<AgentStreamOutput, AgentResult, void> {
+    this.assertReadyForInvoke();
+    return yield* this.runStream(input, config, 'invoke');
+  }
+
   async resume(resumePayload: HILResumePayload, config: AgentResumeConfig = {}): Promise<AgentResult> {
     this.assertReadyForResume();
     const pause = this.state.pendingPause as HILPauseRequest;
     const context = injectResumePayload(config.context, pause, resumePayload);
     return this.run(config.input, {...config, context}, 'resume');
+  }
+
+  async *resumeStream(
+    resumePayload: HILResumePayload,
+    config: AgentResumeStreamConfig = {}
+  ): AsyncGenerator<AgentStreamOutput, AgentResult, void> {
+    this.assertReadyForResume();
+    const pause = this.state.pendingPause as HILPauseRequest;
+    const context = injectResumePayload(config.context, pause, resumePayload);
+    return yield* this.runStream(config.input, {...config, context}, 'resume');
   }
 
   async saveCheckpoint(): Promise<AgentCheckpoint> {
@@ -180,16 +204,44 @@ export class Agent {
         context: mergeContext(this.state.context, config.context),
       }
     );
+    await this.applyRunResult(result, runStartIndex, source, config.checkpoint ?? true);
+    return result;
+  }
 
-    this.state.lastResult = summarizeResult(result);
-    this.state.pendingPause = readLatestPause(this.state.messages.slice(runStartIndex));
-    this.state.status = this.state.pendingPause ? 'paused' : 'idle';
-    this.touch();
+  private async *runStream(
+    input: AgentInput | undefined,
+    config: AgentStreamConfig,
+    source: 'invoke' | 'resume'
+  ): AsyncGenerator<AgentStreamOutput, AgentResult, void> {
+    const appendedInput = normalizeAgentInput(input);
 
-    if (config.checkpoint ?? true) {
-      await this.persistCheckpoint(source, result);
+    if (appendedInput.length > 0) {
+      this.state.messages.push(...appendedInput);
     }
 
+    const runStartIndex = this.state.messages.length;
+    this.state.status = 'running';
+    this.touch();
+
+    const stream = this.runner.stream(
+      {messages: this.state.messages},
+      {
+        ...config,
+        context: mergeContext(this.state.context, config.context),
+      }
+    );
+
+    let result: AgentResult | undefined;
+    while (true) {
+      const next = await stream.next();
+      if (next.done) {
+        result = next.value;
+        break;
+      }
+      yield next.value;
+    }
+
+    await this.applyRunResult(result, runStartIndex, source, config.checkpoint ?? true);
     return result;
   }
 
@@ -224,6 +276,22 @@ export class Agent {
 
   private touch(): void {
     this.state.updatedAt = new Date().toISOString();
+  }
+
+  private async applyRunResult(
+    result: AgentResult,
+    runStartIndex: number,
+    source: 'invoke' | 'resume',
+    checkpoint: boolean
+  ): Promise<void> {
+    this.state.lastResult = summarizeResult(result);
+    this.state.pendingPause = readLatestPause(this.state.messages.slice(runStartIndex));
+    this.state.status = this.state.pendingPause ? 'paused' : 'idle';
+    this.touch();
+
+    if (checkpoint) {
+      await this.persistCheckpoint(source, result);
+    }
   }
 
   private assertReadyForInvoke(): void {
