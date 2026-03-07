@@ -3,24 +3,25 @@ import {
   mapStoredMessagesToChatMessages,
   type BaseMessage,
 } from '@langchain/core/messages';
-import type {AgentFinishReason, AgentRuntimeContext} from '@core/agents/types';
 import {FileCheckpointer} from '@core/checkpoint/file';
 import {MemoryCheckpointer} from '@core/checkpoint/memory';
 import type {CheckpointRecord, Checkpointer} from '@core/checkpoint/types';
 import type {HILPauseRequest} from '@core/middleware/hil';
 
 export type AgentCheckpointStatus = 'idle' | 'paused' | 'closed' | 'error';
+export type AgentCheckpointReason = 'complete' | 'error' | 'max_turns';
+export type AgentCheckpointContext = Record<string, unknown>;
 
 export interface AgentCheckpointState {
   messages: BaseMessage[];
-  context: AgentRuntimeContext;
+  context: AgentCheckpointContext;
   pendingPause?: HILPauseRequest;
 }
 
 export interface AgentCheckpointInfo {
   source: 'invoke' | 'resume' | 'reset' | 'dispose' | 'manual';
   status: AgentCheckpointStatus;
-  reason?: AgentFinishReason;
+  reason?: AgentCheckpointReason;
   turns?: number;
   errorMessage?: string;
   step: number;
@@ -31,7 +32,7 @@ export type AgentCheckpoint = CheckpointRecord<AgentCheckpointState, AgentCheckp
 export type AgentCheckpointer = Checkpointer<AgentCheckpointState, AgentCheckpointInfo>;
 
 export interface AgentResultSummary {
-  reason: AgentFinishReason;
+  reason: AgentCheckpointReason;
   turns: number;
   errorMessage?: string;
 }
@@ -40,7 +41,7 @@ export interface AgentInstanceState {
   threadId: string;
   checkpointId?: string;
   messages: BaseMessage[];
-  context: AgentRuntimeContext;
+  context: AgentCheckpointContext;
   status: 'idle' | 'running' | 'paused' | 'closed';
   pendingPause?: HILPauseRequest;
   lastResult?: AgentResultSummary;
@@ -51,7 +52,7 @@ export interface AgentInstanceState {
 
 interface PersistedAgentCheckpointState {
   messages: ReturnType<typeof mapChatMessagesToStoredMessages>;
-  context: AgentRuntimeContext;
+  context: AgentCheckpointContext;
   pendingPause?: HILPauseRequest;
 }
 
@@ -94,7 +95,7 @@ function deserializeAgentCheckpointState(raw: unknown): AgentCheckpointState {
 
   return {
     messages: messages as BaseMessage[],
-    context: cloneContext(asRuntimeContext(record.context)),
+    context: cloneContext(asCheckpointContext(record.context)),
     ...(isPlainRecord(record.pendingPause)
       ? {pendingPause: cloneStructured(record.pendingPause) as unknown as HILPauseRequest}
       : {}),
@@ -143,11 +144,11 @@ function parseStatus(value: unknown): AgentCheckpointInfo['status'] {
   }
 }
 
-function asRuntimeContext(value: unknown): AgentRuntimeContext {
-  return isPlainRecord(value) ? (cloneStructured(value) as AgentRuntimeContext) : {};
+function asCheckpointContext(value: unknown): AgentCheckpointContext {
+  return isPlainRecord(value) ? (cloneStructured(value) as AgentCheckpointContext) : {};
 }
 
-function cloneContext(context: AgentRuntimeContext): AgentRuntimeContext {
+function cloneContext(context: AgentCheckpointContext): AgentCheckpointContext {
   return cloneStructured(context);
 }
 
