@@ -1,9 +1,9 @@
 import {describe, expect, it} from 'bun:test';
-import {AIMessage, HumanMessage, type BaseMessage, type ToolCall} from '@langchain/core/messages';
+import {AIMessage, HumanMessage, ToolMessage, type BaseMessage, type ToolCall} from '@langchain/core/messages';
 import type {BaseChatModel} from '@langchain/core/language_models/chat_models';
 import type {StructuredToolInterface} from '@langchain/core/tools';
 import {createAgentRunner} from '@core/agents';
-import {createLoggingMiddleware, type MiddlewareLogRecord} from '@core/middleware';
+import {createHILMiddleware, createLoggingMiddleware, MiddlewarePipeline, type MiddlewareLogRecord, type ToolCallContext} from '@core/middleware';
 
 class FakeModel {
   private index = 0;
@@ -31,6 +31,22 @@ class FakeModel {
     void tools;
     return this;
   }
+}
+
+function createToolContext(toolCall: ToolCall, runtimeContext: Record<string, unknown> = {}): ToolCallContext {
+  const messages = [new HumanMessage('run')] as BaseMessage[];
+  return {
+    state: {messages},
+    messages,
+    runtime: {context: runtimeContext},
+    systemMessage: [],
+    runId: 'run_log_1',
+    turn: 1,
+    maxTurns: 3,
+    requestId: 'req_log_1',
+    toolCall,
+    toolIndex: 0,
+  };
 }
 
 describe('createLoggingMiddleware', () => {
@@ -128,5 +144,54 @@ describe('createLoggingMiddleware', () => {
     expect(errorLog).toBeDefined();
     expect(errorLog?.level).toBe('error');
     expect(errorLog?.errorMessage).toContain('model boom');
+  });
+
+  it('should capture HIL interaction details in tool logs', async () => {
+    const logs: MiddlewareLogRecord[] = [];
+    const loggingMiddleware = createLoggingMiddleware({
+      level: 'debug',
+      logger: (record) => logs.push(record),
+    });
+
+    const hilMiddleware = createHILMiddleware({
+      interruptOn: {
+        bash: {
+          description: 'Permission review required',
+          channel: 'permission-center',
+          ui: {
+            actions: [
+              {id: 'allow_once', label: 'Allow once'},
+              {id: 'always', label: 'Always allow'},
+              {id: 'deny', label: 'Deny'},
+            ],
+          },
+          metadata: {skill: 'permission-policy'},
+        },
+      },
+    });
+
+    const pipeline = new MiddlewarePipeline([loggingMiddleware, hilMiddleware]);
+    const toolCall: ToolCall = {id: 'call_hil_log_1', name: 'bash', args: {command: 'git status'}};
+
+    const paused = await pipeline.wrapToolCall(
+      createToolContext(toolCall),
+      async () => new ToolMessage({content: 'executed', tool_call_id: 'call_hil_log_1'})
+    );
+
+    expect(JSON.parse(String(paused.content))).toMatchObject({type: 'hil_pause'});
+
+    const pauseLog = logs.find((record) => {
+      return record.stage === 'wrapToolCall'
+        && record.event === 'stage_end'
+        && record.toolMetadata?.toolResultType === 'hil_pause';
+    });
+    expect(pauseLog).toBeDefined();
+    expect(pauseLog?.toolMetadata).toMatchObject({
+      toolResultType: 'hil_pause',
+      interactionDecision: 'ask',
+      interactionChannel: 'permission-center',
+      interactionSkill: 'permission-policy',
+      interactionActionIds: ['allow_once', 'always', 'deny'],
+    });
   });
 });

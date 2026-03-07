@@ -105,7 +105,9 @@ const result = await runner.invoke(
 - 覆盖 6 个 hooks
 - `wrapModelCall` / `wrapToolCall` 输出 start/end/error 与耗时
 - 统一字段：`runId`、`turn`、`requestId`、`stage`、`event`
+- `wrapToolCall` 可额外记录协议型 middleware 提供的 `toolMetadata`
 - 支持开关与级别过滤：`enabled`、`level`
+- 若要记录下游中间件返回的结构化 `ToolMessage`（例如 `hil_pause`），请将 logging 放在对应中间件之前。
 
 ```typescript
 const loggingMiddleware = createLoggingMiddleware({
