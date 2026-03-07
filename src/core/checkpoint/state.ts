@@ -31,23 +31,10 @@ export interface AgentCheckpointInfo {
 export type AgentCheckpoint = CheckpointRecord<AgentCheckpointState, AgentCheckpointInfo>;
 export type AgentCheckpointer = Checkpointer<AgentCheckpointState, AgentCheckpointInfo>;
 
-export interface AgentResultSummary {
+export interface AgentCheckpointSummary {
   reason: AgentCheckpointReason;
   turns: number;
   errorMessage?: string;
-}
-
-export interface AgentInstanceState {
-  threadId: string;
-  checkpointId?: string;
-  messages: BaseMessage[];
-  context: AgentCheckpointContext;
-  status: 'idle' | 'running' | 'paused' | 'closed';
-  pendingPause?: HILPauseRequest;
-  lastResult?: AgentResultSummary;
-  step: number;
-  createdAt: string;
-  updatedAt: string;
 }
 
 interface PersistedAgentCheckpointState {
