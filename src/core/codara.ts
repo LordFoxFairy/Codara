@@ -100,6 +100,10 @@ export type CodaraModelResolver = (options: CodaraModelSelectionOptions) => Prom
 export class CodaraSession {
   constructor(private readonly agent: Agent) {}
 
+  getThreadId(): string {
+    return this.agent.getState().threadId;
+  }
+
   query(input?: AgentInput, config?: AgentRunConfig) {
     return this.agent.invoke(input, config);
   }
@@ -150,7 +154,7 @@ export class Codara {
 
   session(): Promise<CodaraSession> {
     if (!this.defaultSessionPromise) {
-      this.defaultSessionPromise = this.createSession({
+      this.defaultSessionPromise = this.openSession({
         ...(this.options.threadId ? {threadId: this.options.threadId} : {}),
         ...(this.options.messages ? {messages: this.options.messages} : {}),
         ...(this.options.context ? {context: this.options.context} : {}),
@@ -186,6 +190,28 @@ export class Codara {
     return yield* session.resumeStream(payload, config);
   }
 
+  /**
+   * 按 thread 语义打开 session。
+   * - 有现成 checkpoint 时优先恢复
+   * - 不存在时回退为新建
+   */
+  async openSession(options: CreateCodaraSessionOptions = {}): Promise<CodaraSession> {
+    if (options.threadId) {
+      const restored = await loadCodaraAgent({
+        ...this.options,
+        ...options,
+        threadId: options.threadId,
+        checkpointer: options.checkpointer ?? this.checkpointer,
+      });
+
+      if (restored) {
+        return new CodaraSession(restored);
+      }
+    }
+
+    return this.createSession(options);
+  }
+
   async createSession(options: CreateCodaraSessionOptions = {}): Promise<CodaraSession> {
     const agent = await createCodaraAgent({
       ...this.options,
@@ -217,6 +243,7 @@ export class Codara {
   async dispose(): Promise<void> {
     const session = await this.session();
     await session.dispose();
+    this.defaultSessionPromise = undefined;
   }
 }
 

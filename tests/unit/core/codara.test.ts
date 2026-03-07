@@ -235,6 +235,47 @@ describe('Codara core facade', () => {
     expect(String(restored?.getState().messages[1]?.content)).toBe('seen_humans:1');
   });
 
+  it('should open an existing session when thread checkpoints already exist', async () => {
+    const checkpointer = createAgentMemoryCheckpointer();
+    const firstCodara = createCodara({
+      model: new EchoModel() as unknown as BaseChatModel,
+      checkpointer,
+      threadId: 'codara-open-thread',
+      skills: false,
+      builtinTools: false,
+    });
+
+    await firstCodara.query('hello');
+
+    const secondCodara = createCodara({
+      model: new EchoModel() as unknown as BaseChatModel,
+      checkpointer,
+      threadId: 'codara-open-thread',
+      skills: false,
+      builtinTools: false,
+    });
+
+    const restoredState = await secondCodara.getState();
+    expect(restoredState.messages).toHaveLength(2);
+    expect(String(restoredState.messages[1]?.content)).toBe('seen_humans:1');
+  });
+
+  it('should open a new session when the target thread does not exist yet', async () => {
+    const codara = createCodara({
+      model: new EchoModel() as unknown as BaseChatModel,
+      checkpointer: createAgentMemoryCheckpointer(),
+      skills: false,
+      builtinTools: false,
+    });
+
+    const session = await codara.openSession({
+      threadId: 'brand-new-thread',
+    });
+
+    expect(session.getThreadId()).toBe('brand-new-thread');
+    expect(session.getState().messages).toHaveLength(0);
+  });
+
   it('should allow a modelResolver override without changing the main createCodaraAgent API', async () => {
     const model = new EchoModel();
     const agent = await createCodaraAgent({
@@ -248,21 +289,41 @@ describe('Codara core facade', () => {
     expect(String(result.state.messages[result.state.messages.length - 1]?.content)).toBe('seen_humans:1');
   });
 
+  it('should recreate the default session after dispose', async () => {
+    const codara = createCodara({
+      model: new EchoModel() as unknown as BaseChatModel,
+      skills: false,
+      builtinTools: false,
+    });
+
+    await codara.query('hello');
+    await codara.dispose();
+
+    const result = await codara.query('again');
+    expect(result.reason).toBe('complete');
+
+    const state = await codara.getState();
+    expect(state.messages).toHaveLength(2);
+    expect(String(state.messages[1]?.content)).toBe('seen_humans:1');
+  });
+
   it('should stream through the top-level Codara facade for CLI consumers', async () => {
     const model = new StreamingEchoModel();
-    const agent = await createCodaraAgent({
+    const codara = createCodara({
       model: model as unknown as BaseChatModel,
       skills: false,
+      builtinTools: false,
     });
 
     const chunks: string[] = [];
-    for await (const chunk of agent.stream('hello', {streamMode: 'messages'})) {
+    for await (const chunk of codara.stream('hello', {streamMode: 'messages'})) {
       const [messageChunk] = chunk as AgentStreamMessagesChunk;
       chunks.push(String(messageChunk.content));
     }
 
     expect(chunks).toEqual(['seen_humans:1']);
-    expect(agent.getState().messages).toHaveLength(2);
-    expect(String(agent.getState().messages[1]?.content)).toBe('seen_humans:1');
+    const state = await codara.getState();
+    expect(state.messages).toHaveLength(2);
+    expect(String(state.messages[1]?.content)).toBe('seen_humans:1');
   });
 });

@@ -4,8 +4,9 @@
 
 - `createCodara(...)`
   - 完整的 Codara 对外入口。
-  - 持有默认 session，并暴露 `query(...)`、`stream(...)`、`createSession(...)`、`loadSession(...)`。
+  - 持有默认 session，并暴露 `query(...)`、`stream(...)`、`openSession(...)`、`createSession(...)`、`loadSession(...)`。
   - 默认装配模型 alias、内置工具和 middleware 栈，调用方只在需要时覆盖。
+  - 如果只是做 provider smoke 或最小宿主接入，可以显式关闭 `builtinTools`、`skills`、`hil`，把入口收成纯模型 facade。
 
 - `createCodaraModelRuntime(...)`
   - 基于 provider 配置、registry 和 factory 的模型运行时。
@@ -45,6 +46,9 @@ const codara = createCodara({
 const result = await codara.query('hello');
 ```
 
+如果传了固定 `threadId`，`codara.query(...)` / `codara.stream(...)` 默认会优先恢复已有 checkpoint，
+不存在时再创建新 session。
+
 如果 CLI 需要流式输出：
 
 ```ts
@@ -63,9 +67,9 @@ for await (const chunk of codara.stream('hello', {streamMode: 'messages'})) {
 
 Codara 默认 middleware 顺序：
 
-1. `LoggingMiddleware` when enabled
+1. 开启时的 `LoggingMiddleware`
 2. `SkillsMiddleware`
-3. caller-supplied middlewares
+3. 调用方自定义 middlewares
 4. `HumanInTheLoopMiddleware`
 
 这样可以保证：
@@ -88,6 +92,14 @@ const codara = createCodara({
 });
 
 const session = await codara.createSession({
+  threadId: 'terminal-thread',
+});
+```
+
+如果宿主希望按 thread 语义“有则恢复、无则创建”，应使用：
+
+```ts
+const session = await codara.openSession({
   threadId: 'terminal-thread',
 });
 ```
