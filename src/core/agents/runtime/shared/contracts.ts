@@ -1,4 +1,4 @@
-import type {AIMessage} from '@langchain/core/messages';
+import type {AIMessage, AIMessageChunk} from '@langchain/core/messages';
 import type {StructuredToolInterface} from '@langchain/core/tools';
 import type {AgentRuntimeContext, AgentState, ToolErrorHandler} from '@core/agents/types';
 import type {MiddlewarePipeline} from '@core/middleware';
@@ -14,6 +14,7 @@ export interface AgentLoopRuntime {
 /** Loop 使用的模型最小契约。 */
 export interface AgentModel {
   invoke(messages: AgentState['messages']): Promise<AIMessage>;
+  stream(messages: AgentState['messages']): AsyncGenerator<AIMessageChunk>;
 }
 
 /** Loop 执行依赖（由 runner 门面装配） */
