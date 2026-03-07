@@ -4,7 +4,7 @@ import path from 'node:path'
 import {AIMessage, HumanMessage, type BaseMessage} from '@langchain/core/messages'
 import type {BaseChatModel} from '@langchain/core/language_models/chat_models'
 import type {StructuredToolInterface} from '@langchain/core/tools'
-import {createAgentRunner} from '@core/agents'
+import {createAgent} from '@core/agents'
 import {createMiddleware} from '@core/middleware'
 import {createSkillsMiddleware, FileSystemSkillStore} from '@core/skills'
 
@@ -59,7 +59,7 @@ describe('Project skills standard flow', () => {
       }
     })
 
-    const runner = createAgentRunner({
+    const runner = createAgent({
       model: scriptedModel as unknown as BaseChatModel,
       tools: [],
       middlewares: [createSkillsMiddleware({store}), probeMiddleware]

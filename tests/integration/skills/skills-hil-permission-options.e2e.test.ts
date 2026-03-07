@@ -4,7 +4,7 @@ import type {BaseChatModel} from '@langchain/core/language_models/chat_models';
 import type {StructuredToolInterface} from '@langchain/core/tools';
 import {tool} from '@langchain/core/tools';
 import {z} from 'zod';
-import {createAgentRunner} from '@core/agents';
+import {createAgent} from '@core/agents';
 import {
   applyHILResumeToolEdits,
   createHILMiddleware,
@@ -113,7 +113,7 @@ describe('HIL permission choice contract', () => {
       },
     });
 
-    const runner = createAgentRunner({
+    const runner = createAgent({
       model: model as unknown as BaseChatModel,
       tools: [bashTool],
       middlewares: [hilMiddleware],
@@ -138,20 +138,14 @@ describe('HIL permission choice contract', () => {
       'edit',
     ]);
 
-    const secondResult = await runner.invoke(
+    const secondResult = await runner.resume(
       {
-        messages: [...firstResult.state.messages, new HumanMessage('Edit the command and continue.')],
+        action: 'edit',
+        editedToolArgs: {command: 'git diff --stat'},
       },
       {
+        input: new HumanMessage('Edit the command and continue.'),
         recursionLimit: 4,
-        context: {
-          hil: {
-            resume: {
-              action: 'edit',
-              editedToolArgs: {command: 'git diff --stat'},
-            },
-          },
-        },
       }
     );
 
