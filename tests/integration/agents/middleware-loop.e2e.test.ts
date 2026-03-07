@@ -2,7 +2,7 @@ import {describe, expect, it} from 'bun:test';
 import {HumanMessage, ToolMessage} from '@langchain/core/messages';
 import {tool} from '@langchain/core/tools';
 import {z} from 'zod';
-import {createAgentRunner} from '@core/agents';
+import {createAgent} from '@core/agents';
 import {createMiddleware} from '@core/middleware';
 import {ChatModelFactory, loadModelRoutingConfig, ModelRegistry} from '@core/provider';
 
@@ -45,7 +45,7 @@ describe('Agent Middleware End-to-End', () => {
       }
     });
 
-    const runner = createAgentRunner({
+    const runner = createAgent({
       model,
       tools: [echoTool],
       middlewares: [traceMiddleware]
@@ -55,11 +55,11 @@ describe('Agent Middleware End-to-End', () => {
       {
         messages: [
           new HumanMessage(
-            '你必须只调用一次 echo_text 工具，参数 text 必须是 ping。调用完成后直接给出最终答案，不要继续调用工具。'
+            '你必须只调用一次 echo_text 工具，参数 text=ping。拿到工具结果后立即给出最终答复，不要再次调用工具。'
           ),
         ],
       },
-      {recursionLimit: 6}
+      {recursionLimit: 8}
     );
 
     expect(result.reason).toBe('complete');

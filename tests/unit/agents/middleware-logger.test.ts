@@ -2,7 +2,7 @@ import {describe, expect, it} from 'bun:test';
 import {AIMessage, HumanMessage, type BaseMessage, type ToolCall} from '@langchain/core/messages';
 import type {BaseChatModel} from '@langchain/core/language_models/chat_models';
 import type {StructuredToolInterface} from '@langchain/core/tools';
-import {createAgentRunner} from '@core/agents';
+import {createAgent} from '@core/agents';
 import {createMiddleware} from '@core/middleware';
 
 class FakeModel {
@@ -71,7 +71,7 @@ describe('Agent Middleware Logger', () => {
         logs.push(`afterAgent:${context.turn}:${context.result.reason}`);
       }
     });
-    const runner = createAgentRunner({
+    const runner = createAgent({
       model,
       tools: [tool],
       middlewares: [loggingMiddleware]

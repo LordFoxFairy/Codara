@@ -7,7 +7,7 @@ import type {BaseChatModel} from '@langchain/core/language_models/chat_models';
 import type {StructuredToolInterface} from '@langchain/core/tools';
 import {tool} from '@langchain/core/tools';
 import {z} from 'zod';
-import {createAgentRunner} from '@core/agents';
+import {createAgent} from '@core/agents';
 import {createHILMiddleware, parseHILResumeActionPayload, type HILDecision} from '@core/middleware';
 
 class PermissionPersistenceModel {
@@ -161,7 +161,7 @@ describe('HIL permission persistence flow', () => {
       },
     });
 
-    const firstRunner = createAgentRunner({
+    const firstRunner = createAgent({
       model: new PermissionPersistenceModel() as unknown as BaseChatModel,
       tools: [bashTool],
       middlewares: [persistenceMiddleware],
@@ -179,19 +179,11 @@ describe('HIL permission persistence flow', () => {
     expect(bashInvokeCount).toBe(0);
     expect(firstPauseIds).toHaveLength(1);
 
-    const secondResult = await firstRunner.invoke(
+    const secondResult = await firstRunner.resume(
+      {action: 'always'},
       {
-        messages: [...firstResult.state.messages, new HumanMessage('Always allow this command.')],
-      },
-      {
+        input: new HumanMessage('Always allow this command.'),
         recursionLimit: 4,
-        context: {
-          hil: {
-            resume: {
-              action: 'always',
-            },
-          },
-        },
       }
     );
 
@@ -208,7 +200,7 @@ describe('HIL permission persistence flow', () => {
     expect(settings.permissions?.rules?.allow).toEqual(['Bash(git status)']);
 
     const secondPauseIds: string[] = [];
-    const secondRunner = createAgentRunner({
+    const secondRunner = createAgent({
       model: new PermissionPersistenceModel() as unknown as BaseChatModel,
       tools: [bashTool],
       middlewares: [
