@@ -12,6 +12,7 @@ export interface HILPauseRequest {
   id: string;
   description: string;
   action: HILActionDescriptor;
+  review: HILReviewRequest;
   runtime: {
     runId: string;
     turn: number;
@@ -44,6 +45,18 @@ export interface HILUIConfig {
   [key: string]: unknown;
 }
 
+export type HILReviewDecision = 'approve' | 'edit' | 'reject';
+
+/**
+ * LangChain/LangGraph-style review contract carried alongside the UI payload.
+ * `allowedDecisions` is protocol-level guidance for approval handlers, while
+ * `ui.actions` remains an optional presentation concern for terminals/UIs.
+ */
+export interface HILReviewRequest {
+  actionName: string;
+  allowedDecisions: HILReviewDecision[];
+}
+
 export type HILDescriptionFactory = (
   toolCall: ToolCall,
   state: ToolCallContext['state'],
@@ -55,6 +68,7 @@ export interface HILInterruptConfig {
   channel?: string;
   ui?: HILUIConfig;
   metadata?: Record<string, unknown>;
+  allowedDecisions?: HILReviewDecision[];
 }
 
 export type HILInterruptOn = Record<string, boolean | HILInterruptConfig>;
@@ -72,6 +86,7 @@ export type HILResumePayload = unknown;
  * in project policy or other external stores.
  */
 export interface HILResumeActionPayload {
+  decision?: HILReviewDecision;
   action?: string;
   scope?: string;
   comment?: string;
@@ -138,13 +153,28 @@ export type HILPauseMessageFactory = (request: HILPauseRequest, context: ToolCal
 
 export type HILDenyMessageFactory = (decision: HILDenyDecision, context: ToolCallContext) => ToolMessage;
 
-export interface HILObservabilityMetadata extends Record<string, unknown> {
+interface HILObservabilityMetadata extends Record<string, unknown> {
   toolResultType: 'hil_pause' | 'hil_deny';
   interactionDecision: 'ask' | 'deny';
   interactionChannel?: string;
   interactionSkill?: string;
   interactionActionIds?: string[];
 }
+
+export type HILToolMessagePayload =
+  | {
+      type: 'hil_pause';
+      request: HILPauseRequest;
+    }
+  | {
+      type: 'hil_deny';
+      reason: string;
+      metadata: Record<string, unknown>;
+      action: {
+        toolCallId: string;
+        toolName: string;
+      };
+    };
 
 export interface HILMiddlewareOptions extends HILContextConfig {
   enabled?: boolean;
@@ -160,6 +190,7 @@ export interface HILMiddlewareOptions extends HILContextConfig {
 
 const DEFAULT_NAME = 'HumanInTheLoopMiddleware';
 const DEFAULT_DESCRIPTION_PREFIX = 'Tool execution paused for human interaction';
+const DEFAULT_ALLOWED_DECISIONS: HILReviewDecision[] = ['approve', 'edit', 'reject'];
 
 const contextSchema = z.looseObject({
   interruptOn: z.record(z.string(), z.any()).optional(),
@@ -183,9 +214,9 @@ export function createHILMiddleware(options: HILMiddlewareOptions = {}) {
   const buildPauseRequest = options.buildPauseRequest ?? defaultPauseRequestFactory;
   const onPause = options.onPause ?? noopPauseNotifier;
   const resolveResume = options.resolveResume ?? defaultResumeResolver;
-  const handleResume = options.handleResume ?? defaultResumeHandler;
   const createPauseMessage = options.createPauseMessage ?? defaultPauseMessageFactory;
   const createDenyMessage = options.createDenyMessage ?? defaultDenyMessageFactory;
+  const handleResume = options.handleResume ?? createDefaultResumeHandler(createDenyMessage);
 
   return createMiddleware({
     name,
@@ -299,11 +330,17 @@ function resolveInterruptConfig(toolName: string, interruptOn: HILInterruptOn | 
     throw new Error(`interruptOn.${toolName}.metadata must be an object`);
   }
 
+  const allowedDecisions = raw.allowedDecisions;
+  if (allowedDecisions !== undefined && !isHILReviewDecisions(allowedDecisions)) {
+    throw new Error(`interruptOn.${toolName}.allowedDecisions must be an array of approve/edit/reject`);
+  }
+
   return {
     ...(description !== undefined ? {description: description as string | HILDescriptionFactory} : {}),
     ...(channel !== undefined ? {channel} : {}),
     ...(ui !== undefined ? {ui} : {}),
     ...(metadata !== undefined ? {metadata: metadata as Record<string, unknown>} : {}),
+    ...(allowedDecisions !== undefined ? {allowedDecisions: [...allowedDecisions]} : {}),
   };
 }
 
@@ -377,6 +414,7 @@ function resolveAskConfig(decision: HILAskDecision, baseConfig: HILInterruptConf
   return {
     ...base,
     ...next,
+    allowedDecisions: next.allowedDecisions ?? base.allowedDecisions ?? DEFAULT_ALLOWED_DECISIONS,
     ...(Object.keys(mergedMetadata).length > 0 ? {metadata: mergedMetadata} : {}),
   };
 }
@@ -411,6 +449,10 @@ async function defaultPauseRequestFactory(
       toolName,
       toolArgs,
     },
+    review: {
+      actionName: toolName,
+      allowedDecisions: normalizeAllowedDecisions(config.allowedDecisions),
+    },
     runtime: {
       runId: context.runId,
       turn: context.turn,
@@ -427,22 +469,33 @@ function noopPauseNotifier(): void {
   return;
 }
 
-async function defaultResumeHandler(
-  _request: HILPauseRequest,
-  _resumePayload: HILResumePayload,
-  context: ToolCallContext,
-  handler: (request?: ToolCallContext) => Promise<ToolMessage>
-): Promise<ToolMessage> {
-  // Generic default: any non-undefined resume payload means continue execution.
-  return handler(context);
+function createDefaultResumeHandler(createDenyMessage: HILDenyMessageFactory): HILResumeHandler {
+  return async (_request, resumePayload, context, handler) => {
+    const payload = parseHILResumeActionPayload(resumePayload);
+    if (payload.decision === 'reject') {
+      return createDenyMessage(
+        {
+          decision: 'deny',
+          reason: payload.comment,
+          ...(payload.metadata ? {metadata: payload.metadata} : {}),
+        },
+        context
+      );
+    }
+
+    const nextContext = applyHILResumeToolEdits(context, payload);
+    return handler(nextContext);
+  };
 }
 
 function defaultPauseMessageFactory(request: HILPauseRequest): ToolMessage {
+  const payload: HILToolMessagePayload = {
+    type: 'hil_pause',
+    request,
+  };
+
   return new ToolMessage({
-    content: JSON.stringify({
-      type: 'hil_pause',
-      request,
-    }),
+    content: JSON.stringify(payload),
     response_metadata: buildPauseObservabilityMetadata(request),
     tool_call_id: request.action.toolCallId,
     name: request.action.toolName,
@@ -452,17 +505,18 @@ function defaultPauseMessageFactory(request: HILPauseRequest): ToolMessage {
 function defaultDenyMessageFactory(decision: HILDenyDecision, context: ToolCallContext): ToolMessage {
   const toolCallId = resolveToolCallId(context.toolCall, context.toolIndex);
   const reason = decision.reason?.trim() || 'Tool execution denied by external policy';
+  const payload: HILToolMessagePayload = {
+    type: 'hil_deny',
+    reason,
+    metadata: decision.metadata ?? {},
+    action: {
+      toolCallId,
+      toolName: context.toolCall.name,
+    },
+  };
 
   return new ToolMessage({
-    content: JSON.stringify({
-      type: 'hil_deny',
-      reason,
-      metadata: decision.metadata ?? {},
-      action: {
-        toolCallId,
-        toolName: context.toolCall.name,
-      },
-    }),
+    content: JSON.stringify(payload),
     response_metadata: buildDenyObservabilityMetadata(decision),
     tool_call_id: toolCallId,
     name: context.toolCall.name,
@@ -480,17 +534,17 @@ function defaultResumeResolver(request: HILPauseRequest, context: ToolCallContex
 
   // 1) exact map by pause id
   const resumes = hil.resumes;
-  if (isRecord(resumes) && request.id in resumes) {
+  if (hasOwnRecordKey(resumes, request.id)) {
     return resumes[request.id];
   }
 
   // 2) map by tool call id
-  if (isRecord(resumes) && request.action.toolCallId in resumes) {
+  if (hasOwnRecordKey(resumes, request.action.toolCallId)) {
     return resumes[request.action.toolCallId];
   }
 
   // 3) single resume payload
-  if ('resume' in hil) {
+  if (hasOwnRecordKey(hil, 'resume')) {
     return hil.resume;
   }
 
@@ -510,10 +564,11 @@ export function parseHILResumeActionPayload(payload: HILResumePayload): HILResum
   const metadata = isRecord(payload.metadata) ? payload.metadata : undefined;
 
   return {
-    action: typeof payload.action === 'string' ? payload.action : undefined,
-    scope: typeof payload.scope === 'string' ? payload.scope : undefined,
-    comment: typeof payload.comment === 'string' ? payload.comment : undefined,
-    editedToolName: typeof payload.editedToolName === 'string' ? payload.editedToolName : undefined,
+    decision: isHILReviewDecision(payload.decision) ? payload.decision : undefined,
+    action: parseOptionalNonEmptyString(payload.action),
+    scope: parseOptionalNonEmptyString(payload.scope),
+    comment: parseOptionalNonEmptyString(payload.comment),
+    editedToolName: parseOptionalNonEmptyString(payload.editedToolName),
     ...(editedToolArgs ? {editedToolArgs} : {}),
     ...(metadata ? {metadata} : {}),
   };
@@ -545,6 +600,29 @@ export function applyHILResumeToolEdits(
         : context.toolCall.args,
     },
   };
+}
+
+/**
+ * Parse the structured HIL tool payload emitted by the default pause/deny
+ * factories. Consumers such as terminals or approval services can reuse this
+ * helper instead of duplicating ad-hoc JSON parsing.
+ */
+export function parseHILToolMessagePayload(content: unknown): HILToolMessagePayload | undefined {
+  const raw = typeof content === 'string' ? content : String(content ?? '');
+  if (!raw.trim()) {
+    return undefined;
+  }
+
+  try {
+    const parsed = JSON.parse(raw) as unknown;
+    if (!isHILToolMessagePayload(parsed)) {
+      return undefined;
+    }
+
+    return parsed;
+  } catch {
+    return undefined;
+  }
 }
 
 async function resolveDescription(
@@ -607,8 +685,68 @@ function extractActionIds(ui: HILUIConfig | undefined): string[] {
     .filter((id): id is string => typeof id === 'string' && id.trim().length > 0);
 }
 
+function normalizeAllowedDecisions(allowedDecisions: HILReviewDecision[] | undefined): HILReviewDecision[] {
+  if (!allowedDecisions || allowedDecisions.length === 0) {
+    return [...DEFAULT_ALLOWED_DECISIONS];
+  }
+
+  const unique: HILReviewDecision[] = [];
+  const seen = new Set<HILReviewDecision>();
+  for (const decision of allowedDecisions) {
+    if (seen.has(decision)) {
+      continue;
+    }
+    seen.add(decision);
+    unique.push(decision);
+  }
+
+  return unique;
+}
+
+function parseOptionalNonEmptyString(value: unknown): string | undefined {
+  if (typeof value !== 'string') {
+    return undefined;
+  }
+
+  const normalized = value.trim();
+  return normalized.length > 0 ? normalized : undefined;
+}
+
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === 'object' && value !== null;
+}
+
+function hasOwnRecordKey(record: unknown, key: string): record is Record<string, unknown> {
+  return isRecord(record) && Object.prototype.hasOwnProperty.call(record, key);
+}
+
+function isHILReviewDecision(value: unknown): value is HILReviewDecision {
+  return value === 'approve' || value === 'edit' || value === 'reject';
+}
+
+function isHILReviewDecisions(value: unknown): value is HILReviewDecision[] {
+  return Array.isArray(value) && value.every((item) => isHILReviewDecision(item));
+}
+
+function isHILPauseMessagePayload(value: unknown): value is Extract<HILToolMessagePayload, {type: 'hil_pause'}> {
+  return isRecord(value)
+    && value.type === 'hil_pause'
+    && isRecord(value.request)
+    && typeof value.request.id === 'string';
+}
+
+function isHILDenyMessagePayload(value: unknown): value is Extract<HILToolMessagePayload, {type: 'hil_deny'}> {
+  return isRecord(value)
+    && value.type === 'hil_deny'
+    && typeof value.reason === 'string'
+    && isRecord(value.metadata)
+    && isRecord(value.action)
+    && typeof value.action.toolCallId === 'string'
+    && typeof value.action.toolName === 'string';
+}
+
+function isHILToolMessagePayload(value: unknown): value is HILToolMessagePayload {
+  return isHILPauseMessagePayload(value) || isHILDenyMessagePayload(value);
 }
 
 function isHILUIActionOption(value: unknown): value is HILUIActionOption {

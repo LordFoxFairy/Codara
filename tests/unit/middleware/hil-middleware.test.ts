@@ -4,6 +4,7 @@ import {
   applyHILResumeToolEdits,
   createHILMiddleware,
   humanInTheLoopMiddleware,
+  parseHILToolMessagePayload,
   parseHILResumeActionPayload,
   type ToolCallContext,
 } from '@core/middleware';
@@ -118,6 +119,31 @@ describe('createHILMiddleware', () => {
     expect(String(result?.content)).toBe('continued');
   });
 
+  it('should deny by default when resume payload carries reject decision', async () => {
+    const middleware = createHILMiddleware({
+      interruptOn: {write_file: true},
+    });
+
+    const toolCall: ToolCall = {id: 'call_resume_reject_1', name: 'write_file', args: {path: 'c.txt'}};
+    const result = await middleware.wrapToolCall?.(
+      createToolContext(toolCall, {
+        hil: {
+          resume: {
+            decision: 'reject',
+            comment: 'Rejected in review',
+            metadata: {skill: 'permission-policy'},
+          },
+        },
+      }),
+      async () => new ToolMessage({content: 'should-not-run', tool_call_id: 'call_resume_reject_1'})
+    );
+
+    const payload = parseHILToolMessagePayload(result?.content);
+    expect(payload?.type).toBe('hil_deny');
+    expect(result?.status).toBe('error');
+    expect(payload?.type === 'hil_deny' ? payload.reason : '').toBe('Rejected in review');
+  });
+
   it('should allow custom handleResume to apply interaction result', async () => {
     const middleware = createHILMiddleware({
       interruptOn: {write_file: true},
@@ -175,6 +201,7 @@ describe('createHILMiddleware', () => {
 
   it('should expose helpers for action-based resume payloads', () => {
     const payload = parseHILResumeActionPayload({
+      decision: 'edit',
       action: 'edit',
       scope: 'project',
       editedToolName: 'bash',
@@ -182,11 +209,28 @@ describe('createHILMiddleware', () => {
       metadata: {source: 'permission-center'},
     });
 
+    expect(payload.decision).toBe('edit');
     expect(payload.action).toBe('edit');
     expect(payload.scope).toBe('project');
     expect(payload.editedToolName).toBe('bash');
     expect(payload.editedToolArgs).toEqual({command: 'git diff --stat'});
     expect(payload.metadata).toEqual({source: 'permission-center'});
+  });
+
+  it('should normalize empty resume strings to undefined', () => {
+    const payload = parseHILResumeActionPayload({
+      action: '   ',
+      scope: '',
+      comment: '  ',
+      editedToolName: '\n',
+      editedToolArgs: {command: 'git diff --stat'},
+    });
+
+    expect(payload.action).toBeUndefined();
+    expect(payload.scope).toBeUndefined();
+    expect(payload.comment).toBeUndefined();
+    expect(payload.editedToolName).toBeUndefined();
+    expect(payload.editedToolArgs).toEqual({command: 'git diff --stat'});
   });
 
   it('should apply generic tool edits from resume payload', () => {
@@ -198,5 +242,44 @@ describe('createHILMiddleware', () => {
 
     expect((edited.toolCall.args as {command: string}).command).toBe('git diff --stat');
     expect(edited.toolCall.name).toBe('bash');
+  });
+
+  it('should parse structured pause tool payloads via helper', async () => {
+    const middleware = createHILMiddleware({
+      interruptOn: {bash: true},
+    });
+
+    const toolCall: ToolCall = {id: 'call_parse_1', name: 'bash', args: {command: 'git status'}};
+    const result = await middleware.wrapToolCall?.(createToolContext(toolCall), async () => {
+      return new ToolMessage({content: 'should-not-run', tool_call_id: 'call_parse_1'});
+    });
+
+    const payload = parseHILToolMessagePayload(result?.content);
+    expect(payload?.type).toBe('hil_pause');
+    expect(payload?.type === 'hil_pause' ? payload.request.action.toolName : '').toBe('bash');
+  });
+
+  it('should apply generic resume edits by default handler', async () => {
+    const middleware = createHILMiddleware({
+      interruptOn: {bash: true},
+    });
+
+    const toolCall: ToolCall = {id: 'call_resume_edit_1', name: 'bash', args: {command: 'git status'}};
+    const result = await middleware.wrapToolCall?.(
+      createToolContext(toolCall, {
+        hil: {
+          resume: {
+            decision: 'edit',
+            editedToolArgs: {command: 'git diff --stat'},
+          },
+        },
+      }),
+      async (request) => {
+        const command = (request?.toolCall.args as {command: string}).command;
+        return new ToolMessage({content: command, tool_call_id: 'call_resume_edit_1'});
+      }
+    );
+
+    expect(String(result?.content)).toBe('git diff --stat');
   });
 });
