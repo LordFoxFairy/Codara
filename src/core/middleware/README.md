@@ -123,9 +123,14 @@ const loggingMiddleware = createLoggingMiddleware({
 
 - `interruptOn[toolName] = true`：命中后进入 pause，返回结构化 `hil_pause` 消息
 - `interruptOn[toolName] = false` 或未配置：自动放行
-- `interruptOn[toolName] = {description, channel, ui, metadata}`：附加交互元信息
+- `interruptOn[toolName] = {description, channel, ui, metadata, allowedDecisions}`：附加交互与 review 元信息
 - `resolveDecision`：外部可返回 `allow | ask | deny`，将策略层与协议层彻底解耦
 - `resolveResume` / `handleResume`：由外部实现审批、编辑、拒绝、多页/tab 流程
+
+LangChain/LangGraph 对齐点：
+- pause request 内置 `review.actionName` 与 `review.allowedDecisions`
+- `allowedDecisions` 默认是 `approve | edit | reject`
+- `ui.actions` 仍是可选的展示层，不替代 review contract
 
 推荐的 `ui.actions` 结构：
 - `id`：动作标识，由上层交互模板定义
@@ -133,11 +138,39 @@ const loggingMiddleware = createLoggingMiddleware({
 - `kind`：`primary | secondary | danger`
 - `requiresConfirmation` / `requiresToolEdit`：声明交互要求
 
+推荐的 review contract：
+- `review.actionName`：当前待审核工具名
+- `review.allowedDecisions`：允许的标准决策集合，推荐使用 `approve | edit | reject`
+
+默认 `hil_pause` / `hil_deny` 消息是结构化 JSON；终端或宿主层可复用
+- `parseHILToolMessagePayload(...)`
+来解析默认协议，而不是各处手写 `JSON.parse`
+
+默认 tool payload contract：
+
+```typescript
+type HILToolMessagePayload =
+  | {type: 'hil_pause'; request: HILPauseRequest}
+  | {
+      type: 'hil_deny';
+      reason: string;
+      metadata: Record<string, unknown>;
+      action: {toolCallId: string; toolName: string};
+    };
+```
+
 推荐的 resume payload 协议：
+- `decision`：可选标准 review 决策，推荐使用 `approve | edit | reject`
 - `action`：选中的动作 id
 - `scope`：可选范围信息，由 skills / policy 层解释
 - `comment`：审批备注
 - `editedToolName` / `editedToolArgs`：编辑后继续执行
+
+默认恢复行为：
+- `decision = reject`：返回结构化 `hil_deny`
+- `editedToolName` / `editedToolArgs`：自动按通用 edit 语义继续执行
+- 若只提供自定义 `action`，则由上层 `handleResume` 解释
+- `resumes` 只解析显式自有键；不会读取原型链上的 payload
 
 边界建议：
 - 权限模板、按钮文案、持久化范围等业务语义优先放在 skills 或外部审批服务中维护。
@@ -175,15 +208,16 @@ const hilMiddleware = createHILMiddleware({
   resolveResume: (pauseRequest, ctx) => {
     return (ctx.runtime.context as any).hil?.resumes?.[pauseRequest.id];
   },
-  // 外部决定如何处理恢复结果；默认实现是“有 resume 就继续执行原始工具”
+  // 外部可覆盖默认恢复行为；默认实现已支持 reject 和通用 edit 语义
   handleResume: async (pauseRequest, resumePayload, ctx, next) => {
-    if ((resumePayload as any)?.action === 'reject') {
+    const payload = parseHILResumeActionPayload(resumePayload);
+    if (payload.decision === 'reject') {
       return new ToolMessage({
         content: 'Denied by external policy',
         tool_call_id: pauseRequest.action.toolCallId
       });
     }
-    return next(ctx);
+    return next(applyHILResumeToolEdits(ctx, payload));
   }
 });
 ```
