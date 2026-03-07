@@ -2,6 +2,7 @@ import {AIMessage, AIMessageChunk} from '@langchain/core/messages';
 import type {StructuredToolInterface} from '@langchain/core/tools';
 import type {AgentInvokeConfig, AgentResult, AgentRunnerParams, AgentState} from '@core/agents/types';
 import type {AgentStreamConfig, AgentStreamOutput} from '@core/agents/stream';
+import type {BaseMiddleware} from '@core/middleware';
 import {
   afterRun,
   beforeRun,
@@ -94,7 +95,8 @@ export function createAgentRunner(params: AgentRunnerParams): AgentRunner {
 
 /** 构造 loop 依赖（model/tools/pipeline）。 */
 function createLoopExecutionDeps(params: AgentRunnerParams): LoopExecutionDeps {
-  const {model, tools = [], handleToolErrors = true, middlewares = []} = params;
+  const {model, tools = [], handleToolErrors = true} = params;
+  const middlewares = resolveMiddlewares(params);
 
   const boundModel = createAgentModel(model, tools);
   const toolRegistry = createToolRegistry(tools);
@@ -105,6 +107,18 @@ function createLoopExecutionDeps(params: AgentRunnerParams): LoopExecutionDeps {
     pipeline: new MiddlewarePipeline(middlewares),
     handleToolErrors
   };
+}
+
+function resolveMiddlewares(params: AgentRunnerParams): BaseMiddleware[] {
+  if (params.middlewares?.length) {
+    return [...params.middlewares];
+  }
+
+  if (params.middleware?.length) {
+    return [...params.middleware];
+  }
+
+  return [];
 }
 
 function createToolRegistry(tools: StructuredToolInterface[]): Map<string, StructuredToolInterface> {
