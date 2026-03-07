@@ -47,6 +47,8 @@ export interface AgentRunnerParams {
   tools?: StructuredToolInterface[];
   /** 工具执行失败处理：true=返回 ToolMessage，false=抛错，function=自定义。 */
   handleToolErrors?: ToolErrorHandler;
+  /** 中间件数组的单数入口别名。 */
+  middleware?: BaseMiddleware[];
   /** turn 中间件（按注册顺序）。 */
   middlewares?: BaseMiddleware[];
 }

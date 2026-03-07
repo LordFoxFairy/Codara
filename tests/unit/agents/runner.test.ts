@@ -380,6 +380,27 @@ describe('AgentRunner', () => {
     ]);
   });
 
+  it('应支持 middleware 单数入参别名', async () => {
+    const order: string[] = [];
+    const model = new FakeModel([new AIMessage('done')]) as unknown as BaseChatModel;
+    const aliasMiddleware = createMiddleware({
+      name: 'AliasMiddleware',
+      beforeModel: () => {
+        order.push('beforeModel');
+      },
+    });
+
+    const runner = createAgentRunner({
+      model,
+      middleware: [aliasMiddleware],
+    });
+
+    const result = await runner.invoke({messages: [new HumanMessage('hello')]});
+
+    expect(result.reason).toBe('complete');
+    expect(order).toEqual(['beforeModel']);
+  });
+
   it('afterModel 抛错时应在该轮返回 error 且不执行工具', async () => {
     const toolCall: ToolCall = {id: 'call_err_stage', name: 'echo', args: {}};
     const model = new FakeModel([new AIMessage({content: '', tool_calls: [toolCall]})]) as unknown as BaseChatModel;
