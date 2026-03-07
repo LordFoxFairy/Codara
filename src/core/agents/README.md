@@ -1,27 +1,31 @@
 # Agents
 
-## Layers
+## 分层
 
 - `AgentRunner`
-  - Low-level execution kernel.
-  - Caller provides `state.messages` explicitly on every `invoke(...)`.
-  - Owns loop execution, middleware dispatch, tools, and HIL protocol handling.
+  - 低层执行内核。
+  - 调用方每次显式传入 `state.messages`。
+  - 负责 loop、middleware 分发、tools 与 HIL 协议处理。
 
 - `createAgent(...)`
-  - Stateful host around `AgentRunner` for terminal-style usage.
-  - Owns conversation messages, runtime context, pending HIL pause state, and checkpoint boundaries.
-  - Uses `threadId` + `checkpointer` instead of ad-hoc snapshots.
-  - Defaults to an in-memory checkpointer when `checkpointer` is omitted.
-  - Exposes `invoke(...)`, `stream(...)`, `resume(...)`, `resumeStream(...)`, `reset()`, `dispose()`, and checkpoint helpers.
+  - 围绕 `AgentRunner` 的状态化宿主。
+  - 负责：
+    - 对话消息
+    - runtime context
+    - pending HIL pause
+    - checkpoint 边界
+    - `invoke/stream/resume`
+  - 默认使用 memory checkpointer。
+  - 对外心智尽量贴近 LangChain：`createAgent({ model, tools, middleware })`。
 
-## Usage
+## 用法
 
-### Default memory-backed agent
+### 默认 memory-backed agent
 
 ```ts
 import {createAgent} from '@core/agents';
 
-const agent = createAgent({model, tools, middlewares});
+const agent = createAgent({model, tools, middleware});
 
 await agent.invoke('hello');
 await agent.resume({action: 'allow'});
@@ -29,12 +33,12 @@ await agent.resume({action: 'allow'});
 const checkpoint = await agent.saveCheckpoint();
 ```
 
-### Stream current agent execution
+### 流式执行
 
 ```ts
 import {createAgent} from '@core/agents';
 
-const agent = createAgent({model, tools, middlewares});
+const agent = createAgent({model, tools, middleware});
 
 for await (const chunk of agent.stream('hello', {streamMode: 'messages'})) {
   const [messageChunk] = chunk;
@@ -42,20 +46,20 @@ for await (const chunk of agent.stream('hello', {streamMode: 'messages'})) {
 }
 ```
 
-Supported `streamMode` values:
+支持的 `streamMode`：
 
 - `values`
-  - Emits the current agent message state snapshot.
+  - 输出当前完整消息快照
 - `updates`
-  - Emits LangChain-style step updates:
+  - 输出步骤更新：
     - `{model: {messages: [AIMessage]}}`
     - `{tools: {messages: [ToolMessage]}}`
 - `messages`
-  - Emits tuples of `[AIMessageChunk, {runId, turn}]`
+  - 输出 `[AIMessageChunk, {runId, turn}]`
 - `custom`
-  - Emits protocol-aware custom events such as parsed HIL pause payloads
+  - 输出协议型自定义事件，例如 HIL pause payload
 
-### File-backed restoreable agent
+### 文件持久化恢复
 
 ```ts
 import {createAgent, loadAgent} from '@core/agents';
@@ -68,7 +72,7 @@ const checkpointer = createAgentFileCheckpointer({
 const agent = createAgent({
   model,
   tools,
-  middlewares,
+  middleware,
   threadId: 'terminal-thread',
   checkpointer,
 });
@@ -78,23 +82,23 @@ await agent.invoke('hello');
 const restored = await loadAgent({
   model,
   tools,
-  middlewares,
+  middleware,
   threadId: 'terminal-thread',
   checkpointer,
 });
 ```
 
-## Checkpoint vs Memory
+## Checkpoint 与 Memory
 
 - Checkpoint
-  - Captures stable agent boundaries as `threadId/checkpointId/state/info`.
-  - Default mode is in-memory; file persistence is available through `FileCheckpointer`.
-  - Agent-specific persisted state lives in `src/core/checkpoint/state.ts`, not under `agents/`.
-  - File persistence stores a single `latest.json` head pointer plus immutable `checkpoints/*.json` records.
-  - Used for restore/recovery, not for long-term semantic memory.
-  - `stream(...)` and `resumeStream(...)` update the same state/checkpoint boundaries as `invoke(...)` and `resume(...)`.
+  - 用 `threadId/checkpointId/state/info` 描述稳定边界
+  - 默认是 memory 模式，可切文件模式
+  - agent 专属持久化模型位于 `src/core/checkpoint/state.ts`
+  - 文件模式落盘为 `latest.json + checkpoints/*.json`
+  - 用于恢复/回放，不等于长期语义 memory
+  - `stream(...)` 与 `resumeStream(...)` 使用同一套 checkpoint 边界
 
 - Memory
-  - Not implemented in this layer.
-  - Short-term memory is already covered by `messages` and agent runtime context.
-  - Long-term/project memory should stay as a separate concern from checkpoints.
+  - 不在这一层实现
+  - 短期上下文已由 `messages + runtime context` 覆盖
+  - 长期/project memory 应保持为独立关注点
