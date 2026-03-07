@@ -4,6 +4,8 @@
  */
 
 export * from '@core/provider';
+export * from '@core/model';
+export * from '@core/codara';
 export * from '@core/checkpoint';
 export * from '@core/agents';
 export * from '@core/tools';
