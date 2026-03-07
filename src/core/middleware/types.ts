@@ -10,7 +10,7 @@
 import type {AIMessage, BaseMessage, ToolCall, ToolMessage} from '@langchain/core/messages';
 import type {StructuredToolInterface} from '@langchain/core/tools';
 import type {ZodType} from 'zod';
-import type {AgentRuntimeContext} from '@core/agents/types';
+import type {AgentRuntimeContext} from '@core/agents';
 
 export interface MiddlewareRuntimeContext {
   context: AgentRuntimeContext;
