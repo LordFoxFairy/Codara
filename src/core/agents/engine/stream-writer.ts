@@ -1,12 +1,12 @@
 import type {AIMessage, AIMessageChunk, BaseMessage, ToolMessage} from '@langchain/core/messages';
-import type {AgentResult} from '@core/agents/types';
+import type {AgentResult} from '../contract/agent';
 import type {
   AgentStreamConfig,
   AgentStreamEnvelope,
   AgentStreamMode,
   AgentStreamOutput,
   AgentStreamValuesChunk,
-} from '@core/agents/stream';
+} from '../contract/stream';
 import type {HILToolMessagePayload} from '@core/middleware/hil';
 
 interface QueueItem<T, TReturn> {
@@ -109,7 +109,8 @@ class AsyncResultQueue<T, TReturn> implements AsyncGenerator<T, TReturn, void> {
   }
 }
 
-export interface AgentStreamController {
+/** Agent 流式输出写出器。 */
+export interface AgentStreamWriter {
   stream: AsyncGenerator<AgentStreamOutput, AgentResult, void>;
   emitMessages(input: {runId: string; turn: number; chunk: AIMessageChunk}): Promise<void>;
   emitModelUpdate(message: AIMessage): Promise<void>;
@@ -120,13 +121,11 @@ export interface AgentStreamController {
   fail(error: unknown): void;
 }
 
-export function createStreamController(config: AgentStreamConfig | undefined): AgentStreamController {
+export function createStreamWriter(config: AgentStreamConfig | undefined): AgentStreamWriter {
   const modes = normalizeModes(config?.streamMode);
   const queue = new AsyncResultQueue<AgentStreamOutput, AgentResult>();
 
-  const pushEnvelope = <TMode extends AgentStreamMode>(
-    envelope: AgentStreamEnvelope<TMode>
-  ) => {
+  const pushEnvelope = <TMode extends AgentStreamMode>(envelope: AgentStreamEnvelope<TMode>) => {
     if (modes.length <= 1) {
       queue.push(envelope.chunk);
       return;
@@ -154,11 +153,7 @@ export function createStreamController(config: AgentStreamConfig | undefined): A
 
       pushEnvelope({
         mode: 'updates',
-        chunk: {
-          model: {
-            messages: [message],
-          },
-        },
+        chunk: {model: {messages: [message]}},
       });
     },
     async emitToolUpdate(message) {
@@ -168,11 +163,7 @@ export function createStreamController(config: AgentStreamConfig | undefined): A
 
       pushEnvelope({
         mode: 'updates',
-        chunk: {
-          tools: {
-            messages: [message],
-          },
-        },
+        chunk: {tools: {messages: [message]}},
       });
     },
     async emitValues(messages) {
@@ -180,14 +171,8 @@ export function createStreamController(config: AgentStreamConfig | undefined): A
         return;
       }
 
-      const chunk: AgentStreamValuesChunk = {
-        messages: [...messages],
-      };
-
-      pushEnvelope({
-        mode: 'values',
-        chunk,
-      });
+      const chunk: AgentStreamValuesChunk = {messages: [...messages]};
+      pushEnvelope({mode: 'values', chunk});
     },
     async emitCustom(input) {
       if (!modes.includes('custom')) {
@@ -213,7 +198,7 @@ export function createStreamController(config: AgentStreamConfig | undefined): A
   };
 }
 
-export function normalizeModes(streamMode: AgentStreamConfig['streamMode']): AgentStreamMode[] {
+function normalizeModes(streamMode: AgentStreamConfig['streamMode']): AgentStreamMode[] {
   const normalized: AgentStreamMode[] =
     streamMode === undefined ? ['updates'] : Array.isArray(streamMode) ? streamMode : [streamMode];
   return Array.from(new Set(normalized));
