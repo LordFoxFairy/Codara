@@ -138,6 +138,14 @@ export type HILPauseMessageFactory = (request: HILPauseRequest, context: ToolCal
 
 export type HILDenyMessageFactory = (decision: HILDenyDecision, context: ToolCallContext) => ToolMessage;
 
+export interface HILObservabilityMetadata extends Record<string, unknown> {
+  toolResultType: 'hil_pause' | 'hil_deny';
+  interactionDecision: 'ask' | 'deny';
+  interactionChannel?: string;
+  interactionSkill?: string;
+  interactionActionIds?: string[];
+}
+
 export interface HILMiddlewareOptions extends HILContextConfig {
   enabled?: boolean;
   name?: string;
@@ -435,6 +443,7 @@ function defaultPauseMessageFactory(request: HILPauseRequest): ToolMessage {
       type: 'hil_pause',
       request,
     }),
+    response_metadata: buildPauseObservabilityMetadata(request),
     tool_call_id: request.action.toolCallId,
     name: request.action.toolName,
   });
@@ -454,6 +463,7 @@ function defaultDenyMessageFactory(decision: HILDenyDecision, context: ToolCallC
         toolName: context.toolCall.name,
       },
     }),
+    response_metadata: buildDenyObservabilityMetadata(decision),
     tool_call_id: toolCallId,
     name: context.toolCall.name,
     status: 'error',
@@ -565,6 +575,38 @@ function normalizeArgs(args: unknown): Record<string, unknown> {
   return isRecord(args) ? args : {};
 }
 
+function buildPauseObservabilityMetadata(request: HILPauseRequest): HILObservabilityMetadata {
+  return {
+    toolResultType: 'hil_pause',
+    interactionDecision: 'ask',
+    ...(typeof request.channel === 'string' ? {interactionChannel: request.channel} : {}),
+    ...(extractSkillFromMetadata(request.metadata) ? {interactionSkill: extractSkillFromMetadata(request.metadata)} : {}),
+    ...(extractActionIds(request.ui).length > 0 ? {interactionActionIds: extractActionIds(request.ui)} : {}),
+  };
+}
+
+function buildDenyObservabilityMetadata(decision: HILDenyDecision): HILObservabilityMetadata {
+  return {
+    toolResultType: 'hil_deny',
+    interactionDecision: 'deny',
+    ...(extractSkillFromMetadata(decision.metadata) ? {interactionSkill: extractSkillFromMetadata(decision.metadata)} : {}),
+  };
+}
+
+function extractSkillFromMetadata(metadata: Record<string, unknown> | undefined): string | undefined {
+  return typeof metadata?.skill === 'string' ? metadata.skill : undefined;
+}
+
+function extractActionIds(ui: HILUIConfig | undefined): string[] {
+  if (!Array.isArray(ui?.actions)) {
+    return [];
+  }
+
+  return ui.actions
+    .map((action) => action.id)
+    .filter((id): id is string => typeof id === 'string' && id.trim().length > 0);
+}
+
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === 'object' && value !== null;
 }
@@ -590,11 +632,9 @@ function isHILUIActionOption(value: unknown): value is HILUIActionOption {
     return false;
   }
 
-  if (value.requiresToolEdit !== undefined && typeof value.requiresToolEdit !== 'boolean') {
-    return false;
-  }
+  return !(value.requiresToolEdit !== undefined && typeof value.requiresToolEdit !== 'boolean');
 
-  return true;
+
 }
 
 function isHILUIConfig(value: unknown): value is HILUIConfig {
