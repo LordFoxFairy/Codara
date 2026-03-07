@@ -25,6 +25,6 @@
     "sonnet": "openrouter:anthropic/claude-sonnet-4",
     "haiku": "openrouter:anthropic/claude-3.5-haiku",
     "deepseek": "deepseek:deepseek-chat",
-    "default": "openrouter:anthropic/claude-sonnet-4"
+    "default": "deepseek:deepseek-chat"
   }
 }
