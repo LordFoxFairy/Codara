@@ -2,6 +2,21 @@
 
 ## 分层
 
+```text
+createCodara(...)
+  -> sessions/manager.ts
+    -> sessions/session.ts
+      -> agents/codara.ts
+        -> createAgent(...)
+          -> createAgentRunner(...)
+          -> checkpoint/*
+          -> middleware/*
+```
+
+- 依赖方向固定为：`codara -> sessions -> agents -> checkpoint`
+- `checkpoint` 不再反向依赖 `agents` 的核心类型
+- `middleware` 与 `checkpoint` 都由 `agents` 消费，不直接反咬 `sessions`
+
 - `createCodara(...)`
   - 完整的 Codara 对外入口。
   - 持有默认 session，并暴露 `query(...)`、`stream(...)`、`openSession(...)`、`createSession(...)`、`loadSession(...)`。
@@ -23,10 +38,12 @@
 - `createAgent(...)`
   - 带状态的 agent 宿主。
   - 负责 messages、runtime context、HIL pause 状态、checkpoint 边界与 stream 输出。
+  - 对外统一使用 `createAgent({ model, tools, middleware }) + invoke/stream` 这一组接口心智。
+  - 当前同时接受 `middleware` 与既有 `middlewares`。
 
 - `createCodaraAgent(...)`
   - 面向 CLI / code terminal 的高级 agent 入口。
-  - 支持直接传 `model`，也支持只传 `alias` / runtime 配置。
+  - 支持直接传 `model`，也支持只传 `alias` / model 配置。
   - 默认集成：
     - 默认启用 `SkillsMiddleware`
     - 默认启用 `HumanInTheLoopMiddleware`
@@ -69,7 +86,7 @@ Codara 默认 middleware 顺序：
 
 1. 开启时的 `LoggingMiddleware`
 2. `SkillsMiddleware`
-3. 调用方自定义 middlewares
+3. 调用方自定义 middleware
 4. `HumanInTheLoopMiddleware`
 
 这样可以保证：

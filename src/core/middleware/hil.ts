@@ -48,9 +48,9 @@ export interface HILUIConfig {
 export type HILReviewDecision = 'approve' | 'edit' | 'reject';
 
 /**
- * LangChain/LangGraph-style review contract carried alongside the UI payload.
- * `allowedDecisions` is protocol-level guidance for approval handlers, while
- * `ui.actions` remains an optional presentation concern for terminals/UIs.
+ * Review 合同与 UI 载荷并行存在。
+ * `allowedDecisions` 约束审批处理器可接受的决策集合，
+ * `ui.actions` 仍然只是终端或界面的展示层选择。
  */
 export interface HILReviewRequest {
   actionName: string;
@@ -259,7 +259,7 @@ export function createHILMiddleware(options: HILMiddlewareOptions = {}) {
   });
 }
 
-/** Alias for naming parity with LangChain. */
+/** `createHILMiddleware` 的语义化别名。 */
 export const humanInTheLoopMiddleware = createHILMiddleware;
 
 function resolveEffectiveConfig(options: HILMiddlewareOptions, runtimeContext: unknown): HILEffectiveConfig {
