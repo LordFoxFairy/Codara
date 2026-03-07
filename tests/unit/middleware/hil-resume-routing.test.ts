@@ -105,4 +105,26 @@ describe('HIL resume routing', () => {
 
     expect(String(result?.content)).toContain('"type":"hil_pause"');
   });
+
+  it('should ignore inherited resume keys and only use own properties', async () => {
+    const middleware = createHILMiddleware({
+      interruptOn: {bash: true},
+    });
+
+    const toolCall: ToolCall = {id: 'call_route_4', name: 'bash', args: {command: 'git status'}};
+    const inheritedResumes = Object.create({
+      call_route_4: {decision: 'reject', comment: 'should-not-be-used'},
+    }) as Record<string, unknown>;
+
+    const result = await middleware.wrapToolCall?.(
+      createToolContext(toolCall, {
+        hil: {
+          resumes: inheritedResumes,
+        },
+      }),
+      async () => new ToolMessage({content: 'should-not-run', tool_call_id: 'call_route_4'})
+    );
+
+    expect(String(result?.content)).toContain('"type":"hil_pause"');
+  });
 });
