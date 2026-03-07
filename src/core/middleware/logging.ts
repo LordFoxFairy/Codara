@@ -1,3 +1,4 @@
+import type {ToolMessage} from '@langchain/core/messages';
 import {createMiddleware, type BaseExecutionContext, type ToolCallContext} from '@core/middleware/types';
 
 export type MiddlewareLogLevel = 'debug' | 'info' | 'warn' | 'error';
@@ -16,6 +17,8 @@ export interface MiddlewareLogRecord {
   toolName?: string;
   toolCallId?: string;
   toolIndex?: number;
+  toolStatus?: 'success' | 'error';
+  toolMetadata?: Record<string, unknown>;
   resultReason?: 'continue' | 'complete' | 'error';
   errorName?: string;
   errorMessage?: string;
@@ -104,11 +107,14 @@ export function createLoggingMiddleware(options: LoggingMiddlewareOptions = {}) 
         const toolMessage = await handler(context);
         emit(buildBaseRecord('info', 'wrapToolCall', 'stage_end', context, {
           ...toolDetails(context),
+          ...toolOutcomeDetails(toolMessage),
           durationMs: Date.now() - startedAt,
         }));
         return toolMessage;
       } catch (error) {
-        emit(buildErrorRecord('wrapToolCall', context, error, startedAt, toolDetails(context)));
+        emit(buildErrorRecord('wrapToolCall', context, error, startedAt, {
+          ...toolDetails(context),
+        }));
         throw error;
       }
     },
@@ -180,6 +186,30 @@ function normalizeToolCallId(context: ToolCallContext): string {
 function normalizeName(name: string | undefined): string {
   const normalized = name?.trim();
   return normalized || 'LoggingMiddleware';
+}
+
+/**
+ * Protocol-aware middleware can expose stable observability fields through
+ * `response_metadata`. Logging stores those metadata verbatim for downstream
+ * consumers instead of re-shaping protocol fields.
+ */
+function toolOutcomeDetails(message: ToolMessage): Pick<MiddlewareLogRecord, 'toolStatus' | 'toolMetadata'> {
+  const details: Pick<MiddlewareLogRecord, 'toolStatus' | 'toolMetadata'> = {
+    toolStatus: message.status === 'error' ? 'error' : 'success',
+  };
+
+  const metadata = isRecord(message.response_metadata) ? message.response_metadata : undefined;
+  if (!metadata) {
+    return details;
+  }
+
+  details.toolMetadata = metadata;
+
+  return details;
+}
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return value !== null && typeof value === 'object' && !Array.isArray(value);
 }
 
 function toErrorName(error: unknown): string {
