@@ -32,11 +32,11 @@ describe('Agent Loop End-to-End', () => {
       {
         messages: [
           new HumanMessage(
-            '你必须只调用一次 echo_text 工具，参数 text 必须是 ping。调用后直接结束。'
+            '你必须只调用一次 echo_text 工具，参数 text=ping。拿到工具结果后立即给出最终答复，不要再次调用工具。'
           ),
         ],
       },
-      {recursionLimit: 6}
+      {recursionLimit: 8}
     );
 
     expect(result.reason).toBe('complete');

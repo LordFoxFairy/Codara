@@ -12,7 +12,7 @@
   - Owns conversation messages, runtime context, pending HIL pause state, and checkpoint boundaries.
   - Uses `threadId` + `checkpointer` instead of ad-hoc snapshots.
   - Defaults to an in-memory checkpointer when `checkpointer` is omitted.
-  - Exposes `invoke(...)`, `resume(...)`, `reset()`, `dispose()`, and checkpoint helpers.
+  - Exposes `invoke(...)`, `stream(...)`, `resume(...)`, `resumeStream(...)`, `reset()`, `dispose()`, and checkpoint helpers.
 
 ## Usage
 
@@ -28,6 +28,32 @@ await agent.resume({action: 'allow'});
 
 const checkpoint = await agent.saveCheckpoint();
 ```
+
+### Stream current agent execution
+
+```ts
+import {createAgent} from '@core/agents';
+
+const agent = createAgent({model, tools, middlewares});
+
+for await (const chunk of agent.stream('hello', {streamMode: 'messages'})) {
+  const [messageChunk] = chunk;
+  process.stdout.write(String(messageChunk.content));
+}
+```
+
+Supported `streamMode` values:
+
+- `values`
+  - Emits the current agent message state snapshot.
+- `updates`
+  - Emits LangChain-style step updates:
+    - `{model: {messages: [AIMessage]}}`
+    - `{tools: {messages: [ToolMessage]}}`
+- `messages`
+  - Emits tuples of `[AIMessageChunk, {runId, turn}]`
+- `custom`
+  - Emits protocol-aware custom events such as parsed HIL pause payloads
 
 ### File-backed restoreable agent
 
@@ -66,6 +92,7 @@ const restored = await loadAgent({
   - Agent-specific persisted state lives in `src/core/checkpoint/state.ts`, not under `agents/`.
   - File persistence stores a single `latest.json` head pointer plus immutable `checkpoints/*.json` records.
   - Used for restore/recovery, not for long-term semantic memory.
+  - `stream(...)` and `resumeStream(...)` update the same state/checkpoint boundaries as `invoke(...)` and `resume(...)`.
 
 - Memory
   - Not implemented in this layer.

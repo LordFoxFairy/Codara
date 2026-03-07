@@ -1,9 +1,11 @@
-import {SystemMessage, type BaseMessage, type ToolCall} from '@langchain/core/messages';
+import {AIMessage, AIMessageChunk, SystemMessage, type BaseMessage, type ToolCall, ToolMessage} from '@langchain/core/messages';
 import type {AgentRunSummary, BaseExecutionContext, ModelCallContext, ToolCallContext} from '@core/middleware';
 import {resolveToolCallId, toError} from '@core/agents/runtime/shared/common';
 import type {AgentLoopRuntime, LoopExecutionDeps} from '@core/agents/runtime/shared/contracts';
 import {createTurnContext} from '@core/agents/runtime/context/runtime-context';
 import {invokeTool} from '@core/agents/runtime/stages/tool-stage';
+import {type AgentStreamController} from '@core/agents/runtime/stream';
+import {parseHILToolMessagePayload} from '@core/middleware/hil';
 
 export type TurnOutcome = 'continue' | 'complete';
 
@@ -59,6 +61,45 @@ export async function runTurn(
   return turnResult.reason === 'complete' ? 'complete' : 'continue';
 }
 
+export async function runTurnStream(
+  runtime: AgentLoopRuntime,
+  deps: LoopExecutionDeps,
+  turn: number,
+  stream: AgentStreamController
+): Promise<TurnOutcome> {
+  const context = createTurnContext(runtime, turn);
+  const pipeline = deps.pipeline;
+  let turnResult: AgentRunSummary = {reason: 'continue', turns: turn};
+
+  try {
+    await pipeline.beforeAgent(context);
+    await pipeline.beforeModel(context);
+
+    const modelMessage = await streamModelMessage(runtime, deps, context, stream);
+    runtime.state.messages.push(modelMessage);
+    await stream.emitModelUpdate(modelMessage);
+    await stream.emitValues(runtime.state.messages);
+
+    await pipeline.afterModel({...context, response: modelMessage});
+
+    if (!modelMessage.tool_calls?.length) {
+      turnResult = {reason: 'complete', turns: turn};
+    } else {
+      await wrapToolCallsStream(runtime, deps, context, modelMessage.tool_calls, stream);
+    }
+  } catch (error) {
+    turnResult = {reason: 'error', turns: turn, error: toError(error)};
+  }
+
+  await afterAgent(pipeline, context, turnResult);
+
+  if (turnResult.error) {
+    throw turnResult.error;
+  }
+
+  return turnResult.reason === 'complete' ? 'complete' : 'continue';
+}
+
 async function wrapToolCalls(
   runtime: AgentLoopRuntime,
   deps: LoopExecutionDeps,
@@ -92,6 +133,44 @@ async function wrapToolCalls(
   }
 }
 
+async function wrapToolCallsStream(
+  runtime: AgentLoopRuntime,
+  deps: LoopExecutionDeps,
+  context: BaseExecutionContext,
+  toolCalls: ToolCall[],
+  stream: AgentStreamController
+): Promise<void> {
+  const pipeline = deps.pipeline;
+
+  for (let toolIndex = 0; toolIndex < toolCalls.length; toolIndex += 1) {
+    const toolCall = toolCalls[toolIndex];
+    const toolCallId = resolveToolCallId(toolCall, toolIndex);
+    const tool = deps.tools.get(toolCall.name);
+
+    const toolContext: ToolCallContext = {
+      ...context,
+      requestId: `${context.requestId}:tool:${toolCallId}`,
+      toolCall,
+      toolIndex,
+      tool
+    };
+
+    const toolMessage = await pipeline.wrapToolCall(toolContext, (request?: ToolCallContext) => {
+      const nextCall = request?.toolCall ?? toolCall;
+      const nextIndex = request?.toolIndex ?? toolIndex;
+      const nextTool = request?.tool ?? deps.tools.get(nextCall.name);
+      const nextToolCallId = resolveToolCallId(nextCall, nextIndex);
+      return invokeTool(nextCall, nextToolCallId, nextTool, deps.handleToolErrors);
+    });
+
+    runtime.state.messages.push(toolMessage);
+    await stream.emitToolUpdate(toolMessage);
+    await stream.emitValues(runtime.state.messages);
+
+    await emitCustomToolMessage(context.runId, context.turn, toolMessage, stream);
+  }
+}
+
 async function afterAgent(
   pipeline: LoopExecutionDeps['pipeline'],
   context: BaseExecutionContext,
@@ -104,4 +183,80 @@ async function afterAgent(
       throw toError(error);
     }
   }
+}
+
+async function streamModelMessage(
+  runtime: AgentLoopRuntime,
+  deps: LoopExecutionDeps,
+  context: ModelCallContext,
+  stream: AgentStreamController
+): Promise<AIMessage> {
+  const invokeModel = async (request?: ModelCallContext) => {
+    const nextRequest = request ?? context;
+    const systemMessages = nextRequest.systemMessage.map((content) => new SystemMessage(content));
+    const modelMessages: BaseMessage[] = [...systemMessages, ...nextRequest.messages];
+    let aggregate: AIMessageChunk | undefined;
+
+    for await (const chunk of deps.model.stream(modelMessages)) {
+      const normalized = normalizeModelChunk(chunk);
+      aggregate = aggregate ? aggregate.concat(normalized) : normalized;
+      await stream.emitMessages({
+        runId: runtime.runId,
+        turn: context.turn,
+        chunk: normalized,
+      });
+    }
+
+    return aggregate ? chunkToMessage(aggregate) : new AIMessage('');
+  };
+
+  return deps.pipeline.wrapModelCall(context, invokeModel);
+}
+
+function normalizeModelChunk(message: AIMessageChunk | AIMessage): AIMessageChunk {
+  if (AIMessageChunk.isInstance(message)) {
+    return message;
+  }
+
+  return new AIMessageChunk({
+    content: message.content,
+    ...(message.id ? {id: message.id} : {}),
+    ...(message.name ? {name: message.name} : {}),
+    ...(message.tool_calls ? {tool_calls: message.tool_calls} : {}),
+    ...(message.invalid_tool_calls ? {invalid_tool_calls: message.invalid_tool_calls} : {}),
+    ...(message.usage_metadata ? {usage_metadata: message.usage_metadata} : {}),
+    ...(message.additional_kwargs ? {additional_kwargs: message.additional_kwargs} : {}),
+    ...(message.response_metadata ? {response_metadata: message.response_metadata} : {}),
+  });
+}
+
+function chunkToMessage(chunk: AIMessageChunk): AIMessage {
+  return new AIMessage({
+    content: chunk.content,
+    ...(chunk.id ? {id: chunk.id} : {}),
+    ...(chunk.name ? {name: chunk.name} : {}),
+    ...(chunk.tool_calls ? {tool_calls: chunk.tool_calls} : {}),
+    ...(chunk.invalid_tool_calls ? {invalid_tool_calls: chunk.invalid_tool_calls} : {}),
+    ...(chunk.usage_metadata ? {usage_metadata: chunk.usage_metadata} : {}),
+    ...(chunk.additional_kwargs ? {additional_kwargs: chunk.additional_kwargs} : {}),
+    ...(chunk.response_metadata ? {response_metadata: chunk.response_metadata} : {}),
+  });
+}
+
+async function emitCustomToolMessage(
+  runId: string,
+  turn: number,
+  message: ToolMessage,
+  stream: AgentStreamController
+): Promise<void> {
+  const payload = parseHILToolMessagePayload(message.content);
+  if (!payload) {
+    return;
+  }
+
+  await stream.emitCustom({
+    runId,
+    turn,
+    payload,
+  });
 }
