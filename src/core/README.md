@@ -128,4 +128,11 @@ const content = await codara.memory().read('project');
 
 默认工具集中还包含 `remember_memory`，供 agent 将长期稳定事实、偏好或经验写入 `MEMORY.md`。
 
+`memory` 相关能力在当前架构中分为三层：
+- `middleware/memory.ts`：将 `MEMORY.md` 注入模型上下文
+- `tools/builtin/memory.ts`：提供 `remember_memory` 工具，供 agent 主动写回长期记忆
+- `memory/*`：提供正式的记忆读写与受控编辑接口
+
+三者分别负责“看到什么”“如何写入”“如何存储”，不会混在同一层里。
+
 传入固定 `threadId` 后，`session(...)` / `invoke(...)` / `stream(...)` 会优先恢复该 thread 的最新 checkpoint；不存在时再创建新实例。
