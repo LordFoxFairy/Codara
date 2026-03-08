@@ -3,14 +3,18 @@ import type {AgentCheckpointer} from '@core/checkpoint/state';
 import type {CreateCodaraChatModelOptions} from '@core/codara/models';
 import {createCodaraChatModel} from '@core/codara/models';
 import {createCodaraMiddlewares} from '@core/codara/middleware';
-import type {CodaraSourceStack} from '@core/codara/sources';
 import {createCodaraTools} from '@core/codara/tools';
 import type {CodaraAgentOptions} from '@core/codara/types';
+
+interface CodaraSourceProjection {
+  guidelines?: string;
+  memory?: string;
+}
 
 /** 创建带 Codara 默认装配的 agent。 */
 export async function createCodaraAgent(
   options: CodaraAgentOptions = {},
-  loadedSources: CodaraSourceStack = {}
+  loadedSources: CodaraSourceProjection = {}
 ): Promise<Agent> {
   const model = await resolveCodaraModel(options);
   const state = buildCodaraAgentState(options);
