@@ -1,10 +1,8 @@
 import {mkdir, readFile, rm, stat, writeFile} from 'node:fs/promises';
 import path from 'node:path';
 import {homedir} from 'node:os';
-import type {MemorySourceOptions} from '@core/memory/types';
+import type {MemoryScope, MemorySourceOptions} from '@core/memory/types';
 import {resolveWorkspaceRoot} from '@core/workspace';
-
-export type MemoryScope = 'global' | 'project';
 
 export interface MemoryStore {
   resolve(scope: MemoryScope): string;
