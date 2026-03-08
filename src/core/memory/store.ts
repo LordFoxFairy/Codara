@@ -22,7 +22,8 @@ export function createMemoryStore(options: MemorySourceOptions = {}): MemoryStor
       return path.join(userHome, '.codara', 'MEMORY.md');
     }
 
-    return path.join(projectRoot, 'MEMORY.md');
+    // 项目 Memory 放在 .codara/ 子目录下
+    return path.join(projectRoot, '.codara', 'MEMORY.md');
   }
 
   return {
