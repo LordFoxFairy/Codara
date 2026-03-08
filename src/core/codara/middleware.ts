@@ -3,6 +3,7 @@ import {createSkillsMiddleware, FileSystemSkillStore} from '@core/middleware/ski
 import {createAgentsGuidelinesMiddleware} from '@core/guidelines';
 import {createMemoryMiddleware} from '@core/memory';
 import type {CreateCodaraMiddlewareOptions} from '@core/codara/types';
+import {resolveWorkspaceRoot} from '@core/workspace';
 
 /** 构建 Codara 默认中间件链。 */
 export function createCodaraMiddlewares(options: CreateCodaraMiddlewareOptions = {}): BaseMiddleware[] {
@@ -21,7 +22,7 @@ export function createCodaraMiddlewares(options: CreateCodaraMiddlewareOptions =
   }
 
   if (options.skills !== false) {
-    middlewares.push(createSkillsMiddleware(resolveSkillsOptions(options.skills)));
+    middlewares.push(createSkillsMiddleware(resolveSkillsOptions(options)));
   }
 
   middlewares.push(...(options.middleware ?? options.middlewares ?? []));
@@ -39,6 +40,7 @@ function resolveAgentsGuidelinesOptions(options: CreateCodaraMiddlewareOptions) 
   }
 
   return {
+    ...(options.agentsGuidelines?.cwd ?? options.cwd ? {cwd: options.agentsGuidelines?.cwd ?? options.cwd} : {}),
     ...(options.agentsGuidelines?.userHome ? {userHome: options.agentsGuidelines.userHome} : {}),
     ...(options.agentsGuidelines?.projectRoot ? {projectRoot: options.agentsGuidelines.projectRoot} : {}),
   };
@@ -50,27 +52,36 @@ function resolveMemoryOptions(options: CreateCodaraMiddlewareOptions) {
   }
 
   return {
+    ...(options.memory?.cwd ?? options.cwd ? {cwd: options.memory?.cwd ?? options.cwd} : {}),
     ...(options.memory?.userHome ? {userHome: options.memory.userHome} : {}),
     ...(options.memory?.projectRoot ? {projectRoot: options.memory.projectRoot} : {}),
     ...(typeof options.memory?.maxChars === 'number' ? {maxChars: options.memory.maxChars} : {}),
   };
 }
 
-function resolveSkillsOptions(options: CreateCodaraMiddlewareOptions['skills']) {
-  if (options === false) {
+function resolveSkillsOptions(options: CreateCodaraMiddlewareOptions) {
+  if (options.skills === false) {
     return {store: new FileSystemSkillStore({sources: []})};
   }
 
-  if (options?.store) {
-    return {store: options.store};
+  if (options.skills?.store) {
+    return {store: options.skills.store};
   }
 
   return {
     store: new FileSystemSkillStore({
-      ...(options?.sources ? {sources: options.sources} : {}),
-      ...(options?.projectRoot ? {projectRoot: options.projectRoot} : {}),
-      ...(options?.userHome ? {userHome: options.userHome} : {}),
-      ...(typeof options?.cacheTtlMs === 'number' ? {cacheTtlMs: options.cacheTtlMs} : {}),
+      ...(options.skills?.sources ? {sources: options.skills.sources} : {}),
+      ...((options.skills?.projectRoot || options.skills?.cwd || options.cwd)
+        ? {
+            projectRoot: resolveWorkspaceRoot({
+              projectRoot: options.skills?.projectRoot,
+              cwd: options.skills?.cwd ?? options.cwd,
+            }),
+          }
+        : {}),
+      ...((options.skills?.cwd || options.cwd) ? {cwd: options.skills?.cwd ?? options.cwd} : {}),
+      ...(options.skills?.userHome ? {userHome: options.skills.userHome} : {}),
+      ...(typeof options.skills?.cacheTtlMs === 'number' ? {cacheTtlMs: options.skills.cacheTtlMs} : {}),
     }),
   };
 }

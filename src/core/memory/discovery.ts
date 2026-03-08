@@ -1,13 +1,14 @@
 import {homedir} from 'node:os';
 import path from 'node:path';
-import type {MemoryFile, MemoryOptions} from '@core/memory/types';
+import type {MemoryFile, MemorySourceOptions} from '@core/memory/types';
+import {resolveWorkspaceRoot} from '@core/workspace';
 
 const MEMORY_FILE_NAME = 'MEMORY.md';
 
 /** 发现当前环境中可用的 MEMORY.md 文件。 */
-export function discoverMemoryFiles(options: MemoryOptions = {}): MemoryFile[] {
+export function discoverMemoryFiles(options: MemorySourceOptions = {}): MemoryFile[] {
   const userHome = options.userHome ?? homedir();
-  const projectRoot = path.resolve(options.projectRoot ?? process.cwd());
+  const projectRoot = resolveWorkspaceRoot(options);
 
   return [
     {
