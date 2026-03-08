@@ -18,11 +18,12 @@ import type {HILResumePayload} from '@core/middleware';
 import type {SkillStore} from '@core/middleware/skills';
 import type {CodaraModelCatalog, CreateCodaraModelCatalogOptions} from '@core/codara/models';
 import type {AgentsGuidelinesOptions} from '@core/guidelines';
-import type {MemoryOptions} from '@core/memory';
+import type {MemoryLoadOptions} from '@core/memory';
 
 export interface CodaraSkillOptions {
   store?: SkillStore;
   sources?: string[];
+  cwd?: string;
   projectRoot?: string;
   userHome?: string;
   cacheTtlMs?: number;
@@ -35,10 +36,11 @@ export interface CreateCodaraToolsOptions {
 }
 
 export interface CreateCodaraMiddlewareOptions {
+  cwd?: string;
   middleware?: BaseMiddleware[];
   middlewares?: BaseMiddleware[];
   agentsGuidelines?: false | AgentsGuidelinesOptions;
-  memory?: false | MemoryOptions;
+  memory?: false | MemoryLoadOptions;
   skills?: false | CodaraSkillOptions;
   hil?: false | HILMiddlewareOptions;
   logging?: false | LoggingMiddlewareOptions;

@@ -28,17 +28,22 @@ src/core/memory/
 
 2. 只加载两层
 - 全局：`~/.codara/MEMORY.md`
-- 项目：`<projectRoot>/MEMORY.md`
+- 项目：`<workspaceRoot>/MEMORY.md`
 
-3. 不做缓存
+3. 工作区根解析
+- 显式传入 `projectRoot` 时直接使用
+- 否则从 `cwd` 向上查找 `.codara`、`.git`、`package.json`
+- 都不存在时回退到当前 `cwd`
+
+4. 不做缓存
 - 每次模型调用重新读取
 - 优先保证修改后立即生效
 
-4. 默认限制注入长度
+5. 默认限制注入长度
 - 单个 `MEMORY.md` 默认最多注入 `12_000` 个字符
 - 超出部分会被截断并标记为 `[truncated]`
 
-5. 注入顺序固定
+6. 注入顺序固定
 - `LoggingMiddleware`
 - `AgentsGuidelinesMiddleware`
 - `MemoryMiddleware`
@@ -70,7 +75,7 @@ src/core/memory/
 ```ts
 import {createMemoryStore} from '@core/memory';
 
-const memory = createMemoryStore({projectRoot: process.cwd()});
+const memory = createMemoryStore({cwd: process.cwd()});
 
 await memory.write('project', '# Stable project memory');
 const content = await memory.read('project');
@@ -79,3 +84,7 @@ const content = await memory.read('project');
 当前只支持两个 scope：
 - `global`
 - `project`
+
+类型边界分为两层：
+- `MemorySourceOptions`：只负责定位文件
+- `MemoryLoadOptions`：在定位基础上追加注入控制（如 `maxChars`）

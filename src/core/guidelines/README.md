@@ -26,13 +26,18 @@ src/core/guidelines/
 
 2. 只加载两层
 - 全局：`~/.codara/AGENTS.md`
-- 项目：`<projectRoot>/AGENTS.md`
+- 项目：`<workspaceRoot>/AGENTS.md`
 
-3. 不做缓存
+3. 工作区根解析
+- 显式传入 `projectRoot` 时直接使用
+- 否则从 `cwd` 向上查找 `.codara`、`.git`、`package.json`
+- 都不存在时回退到当前 `cwd`
+
+4. 不做缓存
 - 每次模型调用重新读取
 - 优先保证修改后立即生效
 
-4. 注入顺序固定
+5. 注入顺序固定
 - `LoggingMiddleware`
 - `AgentsGuidelinesMiddleware`
 - `SkillsMiddleware`

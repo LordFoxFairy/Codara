@@ -1,9 +1,9 @@
 import {createMiddleware} from '@core/middleware';
 import {loadMemory} from '@core/memory/loader';
-import type {MemoryOptions} from '@core/memory/types';
+import type {MemoryLoadOptions} from '@core/memory/types';
 
 /** 将 MEMORY.md 记忆注入模型调用系统消息。 */
-export function createMemoryMiddleware(options: MemoryOptions = {}) {
+export function createMemoryMiddleware(options: MemoryLoadOptions = {}) {
   return createMiddleware({
     name: 'MemoryMiddleware',
 
