@@ -115,4 +115,13 @@ const agent = session.agent();
 
 更完整的 CLI 用法见 `docs/codara-cli-runtime.md`。
 
+如果需要直接读写长期记忆：
+
+```ts
+await codara.memory().remember('project', {
+  kind: 'lesson',
+  content: 'Run lint before opening a PR.',
+});
+```
+
 传入固定 `threadId` 后，`session(...)` / `invoke(...)` / `stream(...)` 会优先恢复该 thread 的最新 checkpoint；不存在时再创建新实例。
