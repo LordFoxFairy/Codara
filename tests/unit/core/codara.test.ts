@@ -15,7 +15,6 @@ import {
   createCodaraMiddlewares,
   createCodaraTools,
   loadCodaraAgent,
-  type AgentStreamMessagesChunk,
 } from '@core';
 import type {SkillMetadata, SkillStore} from '@core/skills/types';
 
@@ -498,7 +497,7 @@ describe('Codara core facade', () => {
 
     const chunks: string[] = [];
     for await (const chunk of codara.stream('hello', {streamMode: 'messages'})) {
-      const [messageChunk] = chunk as AgentStreamMessagesChunk;
+      const messageChunk = chunk as AIMessageChunk;
       chunks.push(String(messageChunk.content));
     }
 

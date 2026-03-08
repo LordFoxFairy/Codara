@@ -3,11 +3,11 @@ import {createSkillsMiddleware, FileSystemSkillStore} from '@core/middleware/ski
 import {createGuidelinesMiddleware} from '@core/middleware/guidelines';
 import {createMemoryMiddleware} from '@core/middleware/memory';
 import {createSummaryMiddleware} from '@core/middleware/summary';
-import type {CreateCodaraMiddlewareOptions} from '@core/codara/types';
+import type {CodaraMiddlewareOptions} from '@core/codara/types';
 import {resolveWorkspaceRoot} from '@core/workspace';
 
 /** 构建 Codara 默认中间件链。 */
-export function createCodaraMiddlewares(options: CreateCodaraMiddlewareOptions = {}): BaseMiddleware[] {
+export function createCodaraMiddlewares(options: CodaraMiddlewareOptions = {}): BaseMiddleware[] {
   const middlewares: BaseMiddleware[] = [];
 
   if (options.logging && options.logging.enabled !== false) {
@@ -39,7 +39,7 @@ export function createCodaraMiddlewares(options: CreateCodaraMiddlewareOptions =
   return middlewares;
 }
 
-function resolveSkillsOptions(options: CreateCodaraMiddlewareOptions) {
+function resolveSkillsOptions(options: CodaraMiddlewareOptions) {
   if (options.skills === false) {
     return {store: new FileSystemSkillStore({sources: []})};
   }

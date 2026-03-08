@@ -534,7 +534,7 @@ describe('Agent', () => {
     const runner = createAgent({model});
 
     const stream = runner.stream({messages: [new HumanMessage('hello')]}, {streamMode: 'messages'});
-    const chunks: Array<[AIMessageChunk, {runId: string; turn: number}]> = [];
+    const chunks: AIMessageChunk[] = [];
     let result: Awaited<ReturnType<typeof runner.invoke>> | undefined;
 
     while (true) {
@@ -543,13 +543,13 @@ describe('Agent', () => {
         result = next.value;
         break;
       }
-      chunks.push(next.value as [AIMessageChunk, {runId: string; turn: number}]);
+      chunks.push(next.value as AIMessageChunk);
     }
 
     expect(chunks).toHaveLength(2);
-    expect(String(chunks[0]?.[0].content)).toBe('he');
-    expect(String(chunks[1]?.[0].content)).toBe('llo');
-    expect(chunks[0]?.[1].turn).toBe(1);
+    expect(String(chunks[0]?.content)).toBe('he');
+    expect(String(chunks[1]?.content)).toBe('llo');
+    expect(chunks[0]?.response_metadata.turn).toBe(1);
     expect(result?.reason).toBe('complete');
     expect(String(result?.state.messages[result.state.messages.length - 1]?.content)).toBe('hello');
   });
@@ -579,6 +579,7 @@ describe('Agent', () => {
     expect(updates[0]?.model?.messages[0]).toBeInstanceOf(AIMessage);
     expect(updates[1]?.tools?.messages[0]).toBeInstanceOf(ToolMessage);
     expect(String(updates[1]?.tools?.messages[0]?.content)).toBe('pong');
+    expect((updates[1]?.tools?.messages[0] as ToolMessage)?.artifact).toBe('pong');
     expect(String(updates[2]?.model?.messages[0]?.content)).toBe('done');
   });
 

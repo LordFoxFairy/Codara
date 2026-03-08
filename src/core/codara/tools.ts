@@ -1,9 +1,9 @@
 import type {StructuredToolInterface} from '@langchain/core/tools';
 import {createBuiltinTools, createRememberMemoryTool} from '@core/tools';
-import type {CreateCodaraToolsOptions} from '@core/codara/types';
+import type {CodaraToolsOptions} from '@core/codara/types';
 
 /** 构建 Codara 默认工具集合。 */
-export function createCodaraTools(options: CreateCodaraToolsOptions = {}): StructuredToolInterface[] {
+export function createCodaraTools(options: CodaraToolsOptions = {}): StructuredToolInterface[] {
   const extraTools = options.tools ?? [];
   if (options.builtinTools === false) {
     return [...extraTools];
@@ -25,7 +25,7 @@ export function createCodaraTools(options: CreateCodaraToolsOptions = {}): Struc
 
 function withCodaraBuiltinTools(
   builtinTools: StructuredToolInterface[],
-  options: Pick<CreateCodaraToolsOptions, 'cwd' | 'memory'>
+  options: Pick<CodaraToolsOptions, 'cwd' | 'memory'>
 ): StructuredToolInterface[] {
   const memoryTool = createRememberMemoryTool(resolveMemoryToolOptions(options));
   const editIndex = builtinTools.findIndex((tool) => tool.name === 'edit_file');
@@ -41,7 +41,7 @@ function withCodaraBuiltinTools(
   ];
 }
 
-function resolveMemoryToolOptions(options: Pick<CreateCodaraToolsOptions, 'cwd' | 'memory'>) {
+function resolveMemoryToolOptions(options: Pick<CodaraToolsOptions, 'cwd' | 'memory'>) {
   if (options.memory === false) {
     return {
       ...(options.cwd ? {cwd: options.cwd} : {}),

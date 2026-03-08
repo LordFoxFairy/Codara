@@ -5,22 +5,22 @@ import {
   type MemorySourceOptions,
   type MemoryStore,
 } from '@core/memory';
-import type {CreateCodaraAgentOptions} from '@core/codara/types';
+import type {CodaraAgentOptions} from '@core/codara/types';
 
 export interface CodaraMemory extends MemoryStore, MemoryEditor {}
 
 /** 创建绑定 Codara 工作区作用域的 memory store。 */
-export function createCodaraMemoryStore(options: Pick<CreateCodaraAgentOptions, 'cwd' | 'memory'> = {}): MemoryStore {
+export function createCodaraMemoryStore(options: Pick<CodaraAgentOptions, 'cwd' | 'memory'> = {}): MemoryStore {
   return createMemoryStore(resolveCodaraMemorySourceOptions(options));
 }
 
 /** 创建绑定 Codara 工作区作用域的 memory editor。 */
-export function createCodaraMemoryEditor(options: Pick<CreateCodaraAgentOptions, 'cwd' | 'memory'> = {}): MemoryEditor {
+export function createCodaraMemoryEditor(options: Pick<CodaraAgentOptions, 'cwd' | 'memory'> = {}): MemoryEditor {
   return createMemoryEditor(resolveCodaraMemorySourceOptions(options));
 }
 
 /** 创建绑定 Codara 工作区作用域的完整 memory 访问对象。 */
-export function createCodaraMemory(options: Pick<CreateCodaraAgentOptions, 'cwd' | 'memory'> = {}): CodaraMemory {
+export function createCodaraMemory(options: Pick<CodaraAgentOptions, 'cwd' | 'memory'> = {}): CodaraMemory {
   const sourceOptions = resolveCodaraMemorySourceOptions(options);
   const store = createMemoryStore(sourceOptions);
   const editor = createMemoryEditor(sourceOptions);
@@ -38,7 +38,7 @@ export function createCodaraMemory(options: Pick<CreateCodaraAgentOptions, 'cwd'
 }
 
 function resolveCodaraMemorySourceOptions(
-  options: Pick<CreateCodaraAgentOptions, 'cwd' | 'memory'>
+  options: Pick<CodaraAgentOptions, 'cwd' | 'memory'>
 ): MemorySourceOptions {
   if (options.memory === false) {
     return {
