@@ -6,6 +6,7 @@
 createCodara(...)
   -> createSession(...)
     -> createAgent(...)
+      -> guidelines/*
       -> checkpoint/*
       -> middleware/*
 ```
@@ -14,6 +15,20 @@ createCodara(...)
 - `createAgent(...)` 是唯一通用 agent 入口
 - `createSession(...)` 是实例宿主，只暴露 session 状态与 `agent()` 入口
 - `createCodara(...)` 是产品级 facade，负责默认模型、工具和 middleware 装配
+
+## AGENTS.md 规范
+
+- `AGENTS.md` 通过 `guidelines/*` 模块接入
+- 当前只支持两层：
+  - `~/.codara/AGENTS.md`
+  - `<projectRoot>/AGENTS.md`
+- 每次模型调用都会重新读取，不做缓存
+- 默认注入顺序早于 `SkillsMiddleware`
+
+`AGENTS.md` 在当前架构中属于项目规范源，不属于：
+- `skills`
+- `memory`
+- `checkpoint`
 
 ## 入口
 
