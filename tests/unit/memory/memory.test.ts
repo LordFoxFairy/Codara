@@ -211,8 +211,8 @@ describe('MEMORY module', () => {
       content: 'Run lint before opening a PR.',
     });
 
-    expect(first.added).toBe(true);
-    expect(second.added).toBe(false);
+    expect(first.changed).toBe(true);
+    expect(second.changed).toBe(false);
 
     const store = createMemoryStore({projectRoot});
     const content = await store.read('project');
@@ -293,5 +293,6 @@ describe('MEMORY module', () => {
     expect(content).toContain('# Notes');
     expect(content).toContain('Manual paragraph.');
     expect(content).not.toContain('- Run lint before opening a PR.');
+    expect(content).not.toContain('## Codara Memory');
   });
 });

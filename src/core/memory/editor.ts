@@ -81,7 +81,7 @@ function updateManagedMemory(
     return {
       scope,
       path: store.resolve(scope),
-      added: mode === 'remember' ? !hasEntry : false,
+      changed: mode === 'remember' ? !hasEntry : hasEntry,
       content: nextContent,
       entries: cloneMemoryEntries(state.entries),
     };
