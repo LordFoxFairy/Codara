@@ -1,8 +1,8 @@
 import {AIMessage, SystemMessage, type BaseMessage} from '@langchain/core/messages';
 import type {ModelCallContext} from '@core/middleware';
-import type {AgentStreamWriter} from '../engine/stream-writer';
-import {chunkToMessage, toMessageChunk} from '../engine/model';
-import type {AgentRuntime, AgentRunContext} from './run';
+import type {AgentStreamWriter} from '@core/agents/engine/stream-writer';
+import {chunkToMessage, toMessageChunk} from '@core/agents/engine/model';
+import type {AgentRuntime, AgentRunContext} from '@core/agents/loop/run';
 
 export async function runModelStep(
   runtime: AgentRuntime,

@@ -1,7 +1,7 @@
 import {type ToolCall, ToolMessage} from '@langchain/core/messages';
 import {ToolInputParsingException, type StructuredToolInterface} from '@langchain/core/tools';
 import {ToolInvocationError} from 'langchain';
-import type {ToolErrorHandler} from '../contract/agent';
+import type {ToolErrorHandler} from '@core/agents/contract/agent';
 
 export function resolveToolCallId(toolCall: ToolCall, toolIndex: number): string {
   const existingId = typeof toolCall.id === 'string' ? toolCall.id.trim() : '';
@@ -13,7 +13,7 @@ export function resolveToolCallId(toolCall: ToolCall, toolIndex: number): string
   return `${safeToolName}_${toolIndex}`;
 }
 
-/** Execute a single tool call outside middleware wrapping. */
+/** 在中间件包装之外执行一次工具调用。 */
 export async function executeToolCall(
   toolCall: ToolCall,
   toolCallId: string,

@@ -1,6 +1,6 @@
 import {AIMessage, AIMessageChunk} from '@langchain/core/messages';
 import type {StructuredToolInterface} from '@langchain/core/tools';
-import type {AgentState, CreateAgentOptions} from '../contract/agent';
+import type {AgentState, CreateAgentOptions} from '@core/agents/contract/agent';
 
 /** Agent 运行时消费的最小模型契约。 */
 export interface AgentModel {

@@ -103,22 +103,23 @@ allowed-tools:
       logging: {
         enabled: true,
         level: 'debug',
-        logger: (record) => {
+        logger: (record: MiddlewareLogRecord) => {
           logs.push(record);
         },
       },
     });
-    const agent = await codara.createSession({
+    const session = await codara.session({
       threadId: 'codara-e2e-thread',
     });
 
     const customEvents: AgentStreamCustomChunk[] = [];
-    for await (const chunk of agent.stream('run git status', {streamMode: 'custom'})) {
+    for await (const chunk of session.agent().stream('run git status', {streamMode: 'custom'})) {
       customEvents.push(chunk as AgentStreamCustomChunk);
     }
 
-    expect(agent.getState().status).toBe('paused');
-    expect(agent.getState().pendingPause?.action.toolName).toBe('bash');
+    expect(session.getState().sessionStatus).toBe('ready');
+    expect(session.agent().getState().status).toBe('paused');
+    expect(session.agent().getState().pendingPause?.action.toolName).toBe('bash');
     expect(bashInvokeCount).toBe(0);
     expect(customEvents).toHaveLength(1);
     expect(customEvents[0]?.type).toBe('hil_event');
@@ -142,7 +143,7 @@ allowed-tools:
     expect(pauseLog).toBeDefined();
 
     const restoredModel = new CodaraFacadeModel();
-    const restored = await codara.loadSession({
+    const restored = await codara.session({
       model: restoredModel as unknown as BaseChatModel,
       tools: [bashTool],
       threadId: 'codara-e2e-thread',
@@ -159,17 +160,18 @@ allowed-tools:
       logging: {
         enabled: true,
         level: 'debug',
-        logger: (record) => {
+        logger: (record: MiddlewareLogRecord) => {
           logs.push(record);
         },
       },
     });
 
     expect(restored).toBeDefined();
-    expect(restored?.getState().status).toBe('paused');
+    expect(restored?.getState().sessionStatus).toBe('ready');
+    expect(restored?.agent().getState().status).toBe('paused');
 
     const streamedText: string[] = [];
-    for await (const chunk of restored!.resumeStream(
+    for await (const chunk of restored!.agent().resumeStream(
       {decision: 'approve'},
       {
         input: new HumanMessage('approved and continue'),
@@ -181,8 +183,9 @@ allowed-tools:
     }
 
     expect(streamedText.join('')).toBe('CODARA_STREAM_DONE');
-    expect(restored?.getState().status).toBe('idle');
-    expect(restored?.getState().pendingPause).toBeUndefined();
+    expect(restored?.getState().sessionStatus).toBe('ready');
+    expect(restored?.agent().getState().status).toBe('idle');
+    expect(restored?.agent().getState().pendingPause).toBeUndefined();
     expect(bashInvokeCount).toBe(1);
 
     const finalLog = logs.find(
