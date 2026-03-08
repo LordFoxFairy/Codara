@@ -23,6 +23,7 @@ export interface WorkspaceScopedFile {
 
 export interface LoadedWorkspaceFile extends WorkspaceScopedFile {
   content: string;
+  truncated?: boolean;
 }
 
 export interface LoadWorkspaceFilesOptions {
@@ -30,6 +31,8 @@ export interface LoadWorkspaceFilesOptions {
   maxFileSize?: number;
   /** 警告文件大小（字节），默认 1MB */
   warnFileSize?: number;
+  /** 最多加载的行数，超出时截断。 */
+  maxLines?: number;
 }
 
 /** 解析当前工作区根目录，优先使用显式 projectRoot，其次从 cwd 向上查找标记文件。 */
@@ -83,6 +86,7 @@ export async function loadWorkspaceFiles(
 ): Promise<LoadedWorkspaceFile[]> {
   const maxFileSize = options.maxFileSize ?? MAX_FILE_SIZE;
   const warnFileSize = options.warnFileSize ?? WARN_FILE_SIZE;
+  const maxLines = options.maxLines;
   const loaded: LoadedWorkspaceFile[] = [];
 
   for (const file of files) {
@@ -114,7 +118,7 @@ export async function loadWorkspaceFiles(
       );
     }
 
-    const content = (await readFile(file.path, 'utf8')).trim();
+    const content = truncateByLines((await readFile(file.path, 'utf8')).trim(), maxLines);
     if (!content) {
       continue;
     }
@@ -122,7 +126,8 @@ export async function loadWorkspaceFiles(
     loaded.push({
       scope: file.scope,
       path: file.path,
-      content,
+      content: content.value,
+      truncated: content.truncated,
     });
   }
 
@@ -136,4 +141,20 @@ async function isReadableFile(filePath: string): Promise<boolean> {
   } catch {
     return false;
   }
+}
+
+function truncateByLines(content: string, maxLines?: number): {value: string; truncated: boolean} {
+  if (!maxLines || maxLines <= 0) {
+    return {value: content, truncated: false};
+  }
+
+  const lines = content.split('\n');
+  if (lines.length <= maxLines) {
+    return {value: content, truncated: false};
+  }
+
+  return {
+    value: lines.slice(0, maxLines).join('\n'),
+    truncated: true,
+  };
 }
