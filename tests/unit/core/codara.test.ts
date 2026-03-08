@@ -442,17 +442,18 @@ describe('Codara core facade', () => {
       memory: false,
     });
 
-    expect(codara.memory().resolve('project')).toBe(path.join(projectRoot, 'MEMORY.md'));
-    expect(await codara.memory().exists('project')).toBe(false);
+    const memory = codara.memory();
+    expect(memory.resolve('project')).toBe(path.join(projectRoot, '.codara', 'MEMORY.md'));
+    expect(await memory.exists('project')).toBe(false);
 
-    await codara.memory().remember('project', {
+    await memory.remember('project', {
       kind: 'lesson',
       content: 'Prefer small PRs.',
     });
 
-    expect(await codara.memory().read('project')).toContain('Prefer small PRs.');
+    expect(await memory.read('project')).toContain('Prefer small PRs.');
 
-    const snapshot = await codara.memory().snapshot('project');
+    const snapshot = await memory.snapshot('project');
     expect(snapshot.lesson).toEqual(['Prefer small PRs.']);
   });
 
@@ -478,7 +479,8 @@ describe('Codara core facade', () => {
       cwd: nestedCwd,
       memory: false,
     });
-    const snapshot = await codara.memory().snapshot('project');
+    const memory = codara.memory();
+    const snapshot = await memory.snapshot('project');
     expect(snapshot.lesson).toContain('Keep memory entries stable and reusable.');
   });
 

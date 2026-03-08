@@ -10,6 +10,7 @@ import {
   loadMemory,
 } from '@core/memory';
 import {createMemoryMiddleware} from '@core/middleware/memory';
+import {createCodaraMemory} from '@core/codara/memory';
 import type {ModelCallContext} from '@core/middleware';
 
 describe('MEMORY module', () => {
@@ -91,11 +92,12 @@ describe('MEMORY module', () => {
     await writeFile(path.join(userHome, '.codara', 'MEMORY.md'), 'global memory', 'utf8');
     await writeFile(path.join(projectRoot, 'MEMORY.md'), 'project memory', 'utf8');
 
-    const middleware = createMemoryMiddleware({userHome, projectRoot});
+    const memoryStore = createCodaraMemory({memory: {userHome, projectRoot}});
+    const middleware = createMemoryMiddleware();
     const context: ModelCallContext = {
       state: {messages: []},
       messages: [],
-      runtime: {context: {}, agentContext: {}},
+      runtime: {context: {__codaraMemory: memoryStore}, agentContext: {}},
       systemMessage: ['base system'],
       runId: 'run_1',
       turn: 1,

@@ -45,7 +45,11 @@ export function resolveWorkspaceRoot(options: WorkspaceRootOptions = {}): string
 }
 
 /** 发现全局和项目作用域下的标准文件。 */
-export function discoverWorkspaceFiles(fileName: string, options: WorkspaceFileOptions = {}): WorkspaceScopedFile[] {
+export function discoverWorkspaceFiles(
+  fileName: string,
+  options: WorkspaceFileOptions = {},
+  projectSubdir?: string
+): WorkspaceScopedFile[] {
   const userHome = options.userHome ?? homedir();
   const projectRoot = resolveWorkspaceRoot(options);
 
@@ -56,7 +60,9 @@ export function discoverWorkspaceFiles(fileName: string, options: WorkspaceFileO
     },
     {
       scope: 'project',
-      path: path.join(projectRoot, fileName),
+      path: projectSubdir
+        ? path.join(projectRoot, projectSubdir, fileName)
+        : path.join(projectRoot, fileName),
     },
   ];
 }
