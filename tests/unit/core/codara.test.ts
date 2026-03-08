@@ -75,6 +75,7 @@ describe('Codara core facade', () => {
       'read_file',
       'write_file',
       'edit_file',
+      'remember_memory',
       'glob',
       'grep',
       'fetch_url',
@@ -453,6 +454,32 @@ describe('Codara core facade', () => {
 
     const snapshot = await codara.memory().snapshot('project');
     expect(snapshot.lesson).toEqual(['Prefer small PRs.']);
+  });
+
+  it('should include a builtin memory tool that writes durable memory entries', async () => {
+    const root = await mkdtemp(path.join(tmpdir(), 'codara-memory-tool-'));
+    const projectRoot = path.join(root, 'project');
+    const nestedCwd = path.join(projectRoot, 'packages', 'app');
+    await mkdir(path.join(projectRoot, '.codara'), {recursive: true});
+    await mkdir(nestedCwd, {recursive: true});
+
+    const tool = createCodaraTools({cwd: nestedCwd}).find((item) => item.name === 'remember_memory');
+    expect(tool).toBeDefined();
+
+    const result = await tool!.invoke({
+      kind: 'lesson',
+      scope: 'project',
+      content: 'Keep memory entries stable and reusable.',
+    });
+
+    expect(result).toContain('Memory updated');
+
+    const codara = createCodara({
+      cwd: nestedCwd,
+      memory: false,
+    });
+    const snapshot = await codara.memory().snapshot('project');
+    expect(snapshot.lesson).toContain('Keep memory entries stable and reusable.');
   });
 
   it('should stream through the top-level Codara facade for CLI consumers', async () => {

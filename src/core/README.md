@@ -126,4 +126,6 @@ await codara.memory().remember('project', {
 const content = await codara.memory().read('project');
 ```
 
+默认工具集中还包含 `remember_memory`，供 agent 将长期稳定事实、偏好或经验写入 `MEMORY.md`。
+
 传入固定 `threadId` 后，`session(...)` / `invoke(...)` / `stream(...)` 会优先恢复该 thread 的最新 checkpoint；不存在时再创建新实例。
