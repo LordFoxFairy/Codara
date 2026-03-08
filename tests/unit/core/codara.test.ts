@@ -431,7 +431,7 @@ describe('Codara core facade', () => {
     expect(String(agentState.messages[1]?.content)).toBe('seen_humans:1');
   });
 
-  it('should expose a product-level memory editor through createCodara()', async () => {
+  it('should expose product-level memory access through createCodara()', async () => {
     const root = await mkdtemp(path.join(tmpdir(), 'codara-core-'));
     const projectRoot = path.join(root, 'project');
     await mkdir(path.join(projectRoot, '.codara'), {recursive: true});
@@ -441,10 +441,15 @@ describe('Codara core facade', () => {
       memory: false,
     });
 
+    expect(codara.memory().resolve('project')).toBe(path.join(projectRoot, 'MEMORY.md'));
+    expect(await codara.memory().exists('project')).toBe(false);
+
     await codara.memory().remember('project', {
       kind: 'lesson',
       content: 'Prefer small PRs.',
     });
+
+    expect(await codara.memory().read('project')).toContain('Prefer small PRs.');
 
     const snapshot = await codara.memory().snapshot('project');
     expect(snapshot.lesson).toEqual(['Prefer small PRs.']);
