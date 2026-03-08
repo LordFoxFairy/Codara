@@ -18,6 +18,7 @@ import type {HILResumePayload} from '@core/middleware';
 import type {SkillStore} from '@core/middleware/skills';
 import type {CodaraModelCatalog, CreateCodaraModelCatalogOptions} from '@core/codara/models';
 import type {AgentsGuidelinesOptions} from '@core/guidelines';
+import type {MemoryOptions} from '@core/memory';
 
 export interface CodaraSkillOptions {
   store?: SkillStore;
@@ -37,6 +38,7 @@ export interface CreateCodaraMiddlewareOptions {
   middleware?: BaseMiddleware[];
   middlewares?: BaseMiddleware[];
   agentsGuidelines?: false | AgentsGuidelinesOptions;
+  memory?: false | MemoryOptions;
   skills?: false | CodaraSkillOptions;
   hil?: false | HILMiddlewareOptions;
   logging?: false | LoggingMiddlewareOptions;
