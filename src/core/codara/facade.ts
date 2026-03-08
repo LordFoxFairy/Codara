@@ -4,8 +4,8 @@ import type {Codara, CreateCodaraOptions} from '@core/codara/types';
 
 /** 创建面向 CLI 和产品层的 Codara 入口。 */
 export function createCodara(options: CreateCodaraOptions = {}): Codara {
-  const memory = createCodaraMemory(options);
   const sessionHost = createCodaraSessionHost(options);
+  const memory = createCodaraMemory(options);
 
   return {
     session: sessionHost.session,
