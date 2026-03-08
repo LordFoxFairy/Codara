@@ -2,7 +2,7 @@ import {describe, expect, it} from 'bun:test';
 import {
   createCodaraAgent,
   createCodaraChatModel,
-  createCodaraModelRuntime,
+  createCodaraModelCatalog,
   createAgentMemoryCheckpointer,
   loadCodaraAgent,
   type ModelRoutingConfig,
@@ -46,13 +46,13 @@ const baseConfig: ModelRoutingConfig = {
 };
 
 describe('Codara model facade', () => {
-  it('should create runtime aliases around the configured default model', async () => {
-    const runtime = await createCodaraModelRuntime({config: baseConfig});
+  it('should expose model aliases from the configured default catalog', async () => {
+    const catalog = await createCodaraModelCatalog({config: baseConfig});
 
-    expect(runtime.getAliases()).toEqual(['default', 'sonnet', 'deepseek']);
-    expect(runtime.hasAlias('default')).toBe(true);
-    expect(runtime.getInfo().alias).toBe('default');
-    expect(runtime.getInfo('deepseek').provider).toBe('deepseek');
+    expect(catalog.getAliases()).toEqual(['default', 'sonnet', 'deepseek']);
+    expect(catalog.hasAlias('default')).toBe(true);
+    expect(catalog.getInfo().alias).toBe('default');
+    expect(catalog.getInfo('deepseek').provider).toBe('deepseek');
   });
 
   it('should create a chat model through the default alias when alias is omitted', async () => {

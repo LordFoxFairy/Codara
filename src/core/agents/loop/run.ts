@@ -6,10 +6,10 @@ import type {
   AgentRuntimeContext,
   AgentState,
   ToolErrorHandler,
-} from '../contract/agent';
-import type {AgentModel} from '../engine/model';
-import type {AgentStreamWriter} from '../engine/stream-writer';
-import {runTurn, runTurnStream} from './turn';
+} from '@core/agents/contract/agent';
+import type {AgentModel} from '@core/agents/engine/model';
+import type {AgentStreamWriter} from '@core/agents/engine/stream-writer';
+import {runTurn, runTurnStream} from '@core/agents/loop/turn';
 import type {MiddlewarePipeline} from '@core/middleware';
 
 const DEFAULT_RECURSION_LIMIT = 25;
@@ -43,7 +43,7 @@ export function createRunContext(
   };
 }
 
-/** Run the pre-invoke hook outside the loop. */
+/** 在主循环之外执行 beforeRun 钩子。 */
 export async function runBeforeHook(
   run: AgentRunContext,
   config?: {beforeRun?: AgentInvokeConfig['beforeRun']}

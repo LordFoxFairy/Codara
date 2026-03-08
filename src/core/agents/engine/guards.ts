@@ -1,4 +1,4 @@
-import type {AgentStateSnapshot} from '../contract/agent';
+import type {AgentStateSnapshot} from '@core/agents/contract/agent';
 
 export function assertReadyForInvoke(state: AgentStateSnapshot): void {
   assertNotClosed(state);

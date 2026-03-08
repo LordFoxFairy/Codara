@@ -1,6 +1,6 @@
 import type {AgentCheckpoint, AgentCheckpointInfo, AgentCheckpointer} from '@core/checkpoint/state';
-import type {AgentResult, AgentStateSnapshot} from '../contract/agent';
-import {cloneContext, cloneOptionalPause, toCheckpointStatus} from './state';
+import type {AgentResult, AgentStateSnapshot} from '@core/agents/contract/agent';
+import {cloneContext, cloneOptionalPause, toCheckpointStatus} from '@core/agents/engine/state';
 
 export function createAgentSnapshot(
   threadId: string,
