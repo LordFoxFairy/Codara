@@ -6,7 +6,6 @@ import {AIMessage, AIMessageChunk, HumanMessage, ToolMessage, type BaseMessage, 
 import type {BaseChatModel} from '@langchain/core/language_models/chat_models';
 import type {StructuredToolInterface} from '@langchain/core/tools';
 import {createMiddleware, MiddlewarePipeline, type ModelCallContext} from '@core/middleware';
-import {createGuidelinesStore} from '@core/middleware/guidelines';
 import {
   createAgentMemoryCheckpointer,
   createCodara,
@@ -219,12 +218,11 @@ describe('Codara core facade', () => {
       })
     );
     const memory = createCodaraMemory({cwd: nestedCwd, memory: {userHome}});
-    const guidelines = createGuidelinesStore({cwd: nestedCwd, userHome});
 
     const context: ModelCallContext = {
       state: {messages: []},
       messages: [],
-      runtime: {context: {__codaraMemory: memory, __codaraGuidelines: guidelines}, agentContext: {}},
+      runtime: {context: {__codaraMemory: memory}, agentContext: {}},
       systemMessage: ['base system'],
       runId: 'run_1',
       turn: 1,

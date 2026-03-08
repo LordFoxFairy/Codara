@@ -1,20 +1,21 @@
 import {createMiddleware, type ModelCallContext} from '@core/middleware';
-import type {GuidelinesStore} from '@core/middleware/guidelines/store';
+import {loadGuidelines, type GuidelinesOptions} from '@core/middleware/guidelines';
 
-/** 将 AGENTS.md 规范注入模型调用系统消息。 */
-export function createGuidelinesMiddleware() {
+/**
+ * Guidelines 中间件
+ *
+ * 对齐 Claude Code 策略：
+ * - 加载内容到 system message
+ * - 默认 500 行截断保护（可配置）
+ * - 超大文件时提示可以查看完整内容
+ */
+export function createGuidelinesMiddleware(options: GuidelinesOptions = {}) {
   return createMiddleware({
     name: 'GuidelinesMiddleware',
 
     async wrapModelCall(context: ModelCallContext, handler) {
-      // 从 AgentRuntimeContext 读取 Guidelines Store 实例
-      const guidelinesStore = context.runtime.context.__codaraGuidelines as GuidelinesStore | undefined;
+      const guidelines = await loadGuidelines(options);
 
-      if (!guidelinesStore) {
-        return handler(context);
-      }
-
-      const guidelines = await guidelinesStore.load();
       if (!guidelines) {
         return handler(context);
       }
