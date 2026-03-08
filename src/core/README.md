@@ -6,8 +6,8 @@
 createCodara(...)
   -> createSession(...)
     -> createAgent(...)
-      -> guidelines/*
-      -> memory/*
+      -> middleware/guidelines.ts
+      -> middleware/memory.ts
       -> checkpoint/*
       -> middleware/*
 ```
@@ -19,12 +19,13 @@ createCodara(...)
 
 ## AGENTS.md 规范
 
-- `AGENTS.md` 通过 `guidelines/*` 模块接入
+- `AGENTS.md` 通过 `middleware/guidelines.ts` 接入
 - 当前只支持两层：
   - `~/.codara/AGENTS.md`
   - `<workspaceRoot>/AGENTS.md`
 - 工作区根优先从 `cwd` 向上查找 `.codara`、`.git`、`package.json`
-- 每次模型调用都会重新读取，不做缓存
+- 在 session 创建阶段生成内容投影
+- 后续模型调用复用同一份内容
 - 默认注入顺序早于 `SkillsMiddleware`
 
 `AGENTS.md` 在当前架构中属于项目规范源，不属于：
@@ -34,13 +35,13 @@ createCodara(...)
 
 ## MEMORY.md 记忆
 
-- `MEMORY.md` 通过 `memory/*` 模块接入
+- `MEMORY.md` 通过 `middleware/memory.ts` 接入
 - 当前只支持两层：
   - `~/.codara/MEMORY.md`
-  - `<workspaceRoot>/MEMORY.md`
+  - `<workspaceRoot>/.codara/MEMORY.md`
 - 工作区根优先从 `cwd` 向上查找 `.codara`、`.git`、`package.json`
-- 每次模型调用都会重新读取，不做缓存
-- `memory/*` 同时提供 `MEMORY.md` 的正式编辑接口，用于沉淀长期稳定记忆
+- 在 session 创建阶段生成内容投影
+- `middleware/memory.ts` 只负责 `MEMORY.md` 的加载与截断，用于投影长期稳定记忆
 - 默认注入顺序位于 `AGENTS.md` 之后、`SkillsMiddleware` 之前
 
 `MEMORY.md` 在当前架构中属于长期记忆源，不属于：
@@ -51,7 +52,7 @@ createCodara(...)
 
 ## Summary 中间件
 
-- `summary/*` 提供可选的上下文压缩 middleware
+- `middleware/summary.ts` 提供可选的上下文压缩 middleware
 - 它会在消息历史过长时：
   - 压缩较早消息
   - 将摘要写回 agent 持久上下文
@@ -115,24 +116,7 @@ const agent = session.agent();
 
 更完整的 CLI 用法见 `docs/codara-cli-runtime.md`。
 
-如果需要直接读写长期记忆：
-
-```ts
-await codara.memory().remember('project', {
-  kind: 'lesson',
-  content: 'Run lint before opening a PR.',
-});
-
-const content = await codara.memory().read('project');
-```
-
-默认工具集中还包含 `remember_memory`，供 agent 将长期稳定事实、偏好或经验写入 `MEMORY.md`。
-
-`memory` 相关能力在当前架构中分为三层：
-- `middleware/memory.ts`：将 `MEMORY.md` 注入模型上下文
-- `tools/builtin/memory.ts`：提供 `remember_memory` 工具，供 agent 主动写回长期记忆
-- `memory/*`：提供正式的记忆读写与受控编辑接口
-
-三者分别负责“看到什么”“如何写入”“如何存储”，不会混在同一层里。
+`memory` 当前只通过 `middleware/memory.ts` 将初始化阶段生成的 `MEMORY.md` 摘要注入模型上下文。
+如需查看更多细节，agent 应通过现有文件工具按路径读取真实文件。
 
 传入固定 `threadId` 后，`session(...)` / `invoke(...)` / `stream(...)` 会优先恢复该 thread 的最新 checkpoint；不存在时再创建新实例。
