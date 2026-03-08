@@ -5,6 +5,7 @@ import {tmpdir} from 'node:os';
 import {AIMessage} from '@langchain/core/messages';
 import {
   createGuidelinesMiddleware,
+  createGuidelinesStore,
   discoverGuidelineFiles,
   loadGuidelines,
 } from '@core/middleware/guidelines';
@@ -89,11 +90,12 @@ describe('AGENTS guidelines', () => {
     await writeFile(path.join(userHome, '.codara', 'AGENTS.md'), 'global rule', 'utf8');
     await writeFile(path.join(projectRoot, 'AGENTS.md'), 'project rule', 'utf8');
 
-    const middleware = createGuidelinesMiddleware({userHome, projectRoot});
+    const guidelinesStore = createGuidelinesStore({userHome, projectRoot});
+    const middleware = createGuidelinesMiddleware();
     const context: ModelCallContext = {
       state: {messages: []},
       messages: [],
-      runtime: {context: {}, agentContext: {}},
+      runtime: {context: {__codaraGuidelines: guidelinesStore}, agentContext: {}},
       systemMessage: ['base system'],
       runId: 'run_1',
       turn: 1,
