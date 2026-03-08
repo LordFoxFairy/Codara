@@ -5,13 +5,12 @@ import {tmpdir} from 'node:os';
 import {AIMessage, ToolMessage, type ToolCall} from '@langchain/core/messages';
 import type {BaseChatModel} from '@langchain/core/language_models/chat_models';
 import type {StructuredToolInterface} from '@langchain/core/tools';
-import {createMiddleware, MiddlewarePipeline, type ModelCallContext} from '@core/middleware';
-import {createCodaraAgent, createCodaraMiddlewares} from '@core';
-import {loadCodaraSourceStack} from '@core/codara/sources';
-import {FakeModel} from './codara-fixtures';
+import {createMiddleware} from '@core/middleware';
+import {createCodara, createCodaraAgent} from '@core';
+import {FakeModel, SystemEchoModel} from './codara-fixtures';
 
 describe('Codara middleware source integration', () => {
-  it('should resolve AGENTS.md and MEMORY.md from the workspace root derived from cwd', async () => {
+  it('should inject session-loaded AGENTS.md and MEMORY.md into model calls', async () => {
     const root = await mkdtemp(path.join(tmpdir(), 'codara-workspace-'));
     const userHome = path.join(root, 'home');
     const projectRoot = path.join(root, 'project');
@@ -22,46 +21,22 @@ describe('Codara middleware source integration', () => {
     await writeFile(path.join(projectRoot, 'AGENTS.md'), 'project rule', 'utf8');
     await writeFile(path.join(projectRoot, '.codara', 'MEMORY.md'), 'project memory', 'utf8');
 
-    const loadedSources = await loadCodaraSourceStack({
+    const codara = createCodara({
+      model: new SystemEchoModel() as unknown as BaseChatModel,
       cwd: nestedCwd,
       guidelines: {userHome},
       memory: {userHome},
       skills: false,
+      builtinTools: false,
       hil: false,
     });
-    const pipeline = new MiddlewarePipeline(
-      createCodaraMiddlewares(
-        {
-          cwd: nestedCwd,
-          guidelines: {userHome},
-          memory: {userHome},
-          skills: false,
-          hil: false,
-        },
-        loadedSources,
-      ),
-    );
-    const context: ModelCallContext = {
-      state: {messages: []},
-      messages: [],
-      runtime: {context: {}, agentContext: {}},
-      systemMessage: ['base system'],
-      runId: 'run_1',
-      turn: 1,
-      maxTurns: 8,
-      requestId: 'req_1',
-    };
+    const result = await codara.invoke('hello');
+    const text = String(result.state.messages[result.state.messages.length - 1]?.content);
 
-    const response = await pipeline.wrapModelCall(context, async (request) => {
-      expect(request?.systemMessage).toHaveLength(3);
-      expect(request?.systemMessage[1]).toContain('AGENTS Guidelines');
-      expect(request?.systemMessage[1]).toContain('project rule');
-      expect(request?.systemMessage[2]).toContain('Project Memory');
-      expect(request?.systemMessage[2]).toContain('project memory');
-      return new AIMessage('ok');
-    });
-
-    expect(response.content).toBe('ok');
+    expect(text).toContain('AGENTS Guidelines');
+    expect(text).toContain('project rule');
+    expect(text).toContain('Project Memory');
+    expect(text).toContain('project memory');
   });
 
   it('should let caller tool middleware short-circuit before default HIL', async () => {
