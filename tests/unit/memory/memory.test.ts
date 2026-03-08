@@ -3,7 +3,13 @@ import {mkdir, mkdtemp, writeFile} from 'node:fs/promises';
 import path from 'node:path';
 import {tmpdir} from 'node:os';
 import {AIMessage} from '@langchain/core/messages';
-import {createMemoryMiddleware, createMemoryStore, discoverMemoryFiles, loadMemory} from '@core/memory';
+import {
+  createMemoryMiddleware,
+  createMemoryStore,
+  createMemoryWriter,
+  discoverMemoryFiles,
+  loadMemory,
+} from '@core/memory';
 import type {ModelCallContext} from '@core/middleware';
 
 describe('MEMORY module', () => {
@@ -164,5 +170,78 @@ describe('MEMORY module', () => {
 
     expect(store.resolve('project')).toBe(path.join(projectRoot, 'MEMORY.md'));
     expect(await store.read('project')).toBe('workspace memory');
+  });
+
+  it('should append managed memory sections without overwriting manual content', async () => {
+    const root = await mkdtemp(path.join(tmpdir(), 'codara-memory-'));
+    const projectRoot = path.join(root, 'project');
+    await mkdir(projectRoot, {recursive: true});
+    await writeFile(path.join(projectRoot, 'MEMORY.md'), '# Team Notes\n\nKeep this file tidy.', 'utf8');
+
+    const writer = createMemoryWriter({projectRoot});
+
+    await writer.remember('project', {
+      kind: 'fact',
+      content: 'The API uses cursor pagination.',
+    });
+
+    const store = createMemoryStore({projectRoot});
+    const content = await store.read('project');
+
+    expect(content).toContain('# Team Notes');
+    expect(content).toContain('Keep this file tidy.');
+    expect(content).toContain('## Codara Memory');
+    expect(content).toContain('### Facts');
+    expect(content).toContain('- The API uses cursor pagination.');
+  });
+
+  it('should deduplicate memory entries within the same section', async () => {
+    const root = await mkdtemp(path.join(tmpdir(), 'codara-memory-'));
+    const projectRoot = path.join(root, 'project');
+    await mkdir(projectRoot, {recursive: true});
+
+    const writer = createMemoryWriter({projectRoot});
+
+    const first = await writer.remember('project', {
+      kind: 'lesson',
+      content: 'Run lint before opening a PR.',
+    });
+    const second = await writer.remember('project', {
+      kind: 'lesson',
+      content: 'Run lint before opening a PR.',
+    });
+
+    expect(first.added).toBe(true);
+    expect(second.added).toBe(false);
+
+    const store = createMemoryStore({projectRoot});
+    const content = await store.read('project');
+    expect(content).toContain('### Lessons');
+    expect(content?.match(/- Run lint before opening a PR\./g)?.length).toBe(1);
+  });
+
+  it('should keep separate sections for different memory kinds', async () => {
+    const root = await mkdtemp(path.join(tmpdir(), 'codara-memory-'));
+    const userHome = path.join(root, 'home');
+    await mkdir(path.join(userHome, '.codara'), {recursive: true});
+
+    const writer = createMemoryWriter({userHome});
+
+    await writer.remember('global', {
+      kind: 'preference',
+      content: 'Prefer concise changelog entries.',
+    });
+    await writer.remember('global', {
+      kind: 'fact',
+      content: 'The production cluster runs in ap-southeast-1.',
+    });
+
+    const store = createMemoryStore({userHome});
+    const content = await store.read('global');
+
+    expect(content).toContain('### Preferences');
+    expect(content).toContain('- Prefer concise changelog entries.');
+    expect(content).toContain('### Facts');
+    expect(content).toContain('- The production cluster runs in ap-southeast-1.');
   });
 });

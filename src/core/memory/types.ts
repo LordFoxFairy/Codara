@@ -4,6 +4,8 @@ export interface MemoryFile {
   path: string;
 }
 
+export type MemoryScope = 'global' | 'project';
+
 /** 已加载的 MEMORY.md 结果。 */
 export interface LoadedMemory {
   files: MemoryFile[];
@@ -20,4 +22,20 @@ export interface MemorySourceOptions {
 /** MEMORY.md 加载与注入选项。 */
 export interface MemoryLoadOptions extends MemorySourceOptions {
   maxChars?: number;
+}
+
+export type MemoryEntryKind = 'preference' | 'fact' | 'lesson';
+
+/** 可写入 MEMORY.md 的长期记忆条目。 */
+export interface MemoryWriteEntry {
+  kind: MemoryEntryKind;
+  content: string;
+}
+
+/** MEMORY.md 写回结果。 */
+export interface MemoryWriteResult {
+  scope: MemoryScope;
+  path: string;
+  added: boolean;
+  content: string;
 }
