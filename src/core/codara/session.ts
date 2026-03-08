@@ -2,6 +2,8 @@ import {createAgentMemoryCheckpointer} from '@core/checkpoint/state';
 import type {AgentCheckpointer} from '@core/checkpoint/state';
 import {createSession, type Session} from '@core/sessions';
 import {createCodaraAgent} from '@core/codara/agent';
+import {createCodaraMemory} from '@core/codara/memory';
+import {createGuidelinesStore} from '@core/middleware/guidelines/store';
 import type {CreateCodaraAgentOptions, CreateCodaraSessionOptions} from '@core/codara/types';
 import type {
   AgentInput,
@@ -9,11 +11,13 @@ import type {
   AgentResumeConfig,
   AgentResumeStreamConfig,
   AgentResult,
+  AgentRuntimeContext,
   AgentStreamConfig,
   AgentStreamOutput,
 } from '@core/agents';
 import type {HILResumePayload} from '@core/middleware';
 import type {SessionState} from '@core/sessions';
+import type {GuidelinesOptions} from '@core/middleware/guidelines';
 
 interface CodaraSessionHost {
   session(options?: CreateCodaraSessionOptions): Promise<Session>;
@@ -39,19 +43,35 @@ export function createCodaraSessionHost(options: CreateCodaraAgentOptions = {}):
 
   async function buildSession(optionsOverride: CreateCodaraSessionOptions = {}): Promise<Session> {
     const merged = mergeCodaraAgentOptions(options, optionsOverride, checkpointer);
+
+    // 创建 Memory 和 Guidelines 实例
+    const memory = createCodaraMemory(merged);
+    const guidelines = createGuidelinesStore(resolveGuidelinesOptions(merged));
+
+    // 构建包含实例的 context
+    const sessionContext: AgentRuntimeContext = {
+      ...(merged.context ?? {}),
+      __codaraMemory: memory,
+      __codaraGuidelines: guidelines,
+    };
+
     const checkpoint = await resolveCheckpoint({
       restore: optionsOverride.restore ?? 'latest',
       threadId: merged.threadId,
       checkpointer: merged.checkpointer,
     });
+
     const agent = await createCodaraAgent({
       ...merged,
+      context: sessionContext,
       ...(checkpoint ? {checkpoint} : {}),
     });
 
     return createSession({
       ...(optionsOverride.sessionId ? {sessionId: optionsOverride.sessionId} : {}),
       agent,
+      memory,
+      guidelines,
     });
   }
 
@@ -145,6 +165,20 @@ async function resolveCheckpoint(options: {
   }
 
   return options.checkpointer.getLatest(options.threadId);
+}
+
+function resolveGuidelinesOptions(options: CreateCodaraAgentOptions): GuidelinesOptions {
+  if (options.guidelines === false) {
+    return {
+      ...(options.cwd ? {cwd: options.cwd} : {}),
+    };
+  }
+
+  return {
+    ...(options.guidelines?.cwd ?? options.cwd ? {cwd: options.guidelines?.cwd ?? options.cwd} : {}),
+    ...(options.guidelines?.userHome ? {userHome: options.guidelines.userHome} : {}),
+    ...(options.guidelines?.projectRoot ? {projectRoot: options.guidelines.projectRoot} : {}),
+  };
 }
 
 function mergeSkillsOptions(
