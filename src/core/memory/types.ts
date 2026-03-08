@@ -33,7 +33,7 @@ export interface MemoryEntry {
 export interface MemoryEditResult {
   scope: MemoryScope;
   path: string;
-  added: boolean;
+  changed: boolean;
   content: string;
   entries: MemoryEntries;
 }
