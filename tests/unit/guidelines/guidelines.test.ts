@@ -93,7 +93,7 @@ describe('AGENTS guidelines', () => {
     const context: ModelCallContext = {
       state: {messages: []},
       messages: [],
-      runtime: {context: {}},
+      runtime: {context: {}, agentContext: {}},
       systemMessage: ['base system'],
       runId: 'run_1',
       turn: 1,

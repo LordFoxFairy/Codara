@@ -15,7 +15,7 @@ function createBaseContext(runId: string) {
   return {
     state: {messages},
     messages,
-    runtime: {context: {}},
+    runtime: {context: {}, agentContext: {}},
     systemMessage: ['base-system'],
     runId,
     turn: 1,

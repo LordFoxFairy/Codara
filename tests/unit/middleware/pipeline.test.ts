@@ -8,7 +8,7 @@ function createBaseContext() {
   return {
     state: {messages},
     messages,
-    runtime: {context: {}},
+    runtime: {context: {}, agentContext: {}},
     systemMessage: [],
     runId: 'run_1',
     turn: 1,
