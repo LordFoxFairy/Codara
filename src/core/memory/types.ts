@@ -1,8 +1,7 @@
+import type {WorkspaceFileOptions, WorkspaceScopedFile} from '@core/workspace';
+
 /** MEMORY.md 的来源文件。 */
-export interface MemoryFile {
-  scope: 'global' | 'project';
-  path: string;
-}
+export type MemoryFile = WorkspaceScopedFile;
 
 export type MemoryScope = 'global' | 'project';
 
@@ -13,11 +12,7 @@ export interface LoadedMemory {
 }
 
 /** MEMORY.md 来源定位选项。 */
-export interface MemorySourceOptions {
-  cwd?: string;
-  userHome?: string;
-  projectRoot?: string;
-}
+export type MemorySourceOptions = WorkspaceFileOptions;
 
 /** MEMORY.md 加载与注入选项。 */
 export interface MemoryLoadOptions extends MemorySourceOptions {
