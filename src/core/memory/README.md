@@ -109,6 +109,7 @@ await writer.remember('project', {
 - 只写长期稳定内容
 - 不写 checkpoint、pending pause、临时任务状态
 - 将 Codara 管理的条目写入 `## Codara Memory` 块
+- `## Codara Memory` 视为 Codara 管理的受控区块
 - 对同一 section 做精确去重
 
 当前支持三类条目：
