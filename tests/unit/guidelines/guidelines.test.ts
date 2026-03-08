@@ -5,7 +5,6 @@ import {tmpdir} from 'node:os';
 import {AIMessage} from '@langchain/core/messages';
 import {
   createGuidelinesMiddleware,
-  createGuidelinesStore,
   discoverGuidelineFiles,
   loadGuidelines,
 } from '@core/middleware/guidelines';
@@ -71,9 +70,10 @@ describe('AGENTS guidelines', () => {
     const loaded = await loadGuidelines({userHome, projectRoot});
     expect(loaded).toBeDefined();
     expect(loaded?.files.map((file) => file.scope)).toEqual(['global', 'project']);
-    expect(loaded?.content).toContain('## Global AGENTS.md');
+    expect(loaded?.content).toContain('Contents of');
+    expect(loaded?.content).toContain('user instructions');
     expect(loaded?.content).toContain('global rule');
-    expect(loaded?.content).toContain('## Project AGENTS.md');
+    expect(loaded?.content).toContain('project instructions');
     expect(loaded?.content).toContain('project rule');
 
     await writeFile(projectFile, 'project rule updated', 'utf8');
@@ -81,7 +81,7 @@ describe('AGENTS guidelines', () => {
     expect(reloaded?.content).toContain('project rule updated');
   });
 
-  it('should inject AGENTS.md content into system messages', async () => {
+  it('should load and inject AGENTS.md content (aligned with Claude Code)', async () => {
     const root = await mkdtemp(path.join(tmpdir(), 'codara-guidelines-'));
     const userHome = path.join(root, 'home');
     const projectRoot = path.join(root, 'project');
@@ -90,12 +90,11 @@ describe('AGENTS guidelines', () => {
     await writeFile(path.join(userHome, '.codara', 'AGENTS.md'), 'global rule', 'utf8');
     await writeFile(path.join(projectRoot, 'AGENTS.md'), 'project rule', 'utf8');
 
-    const guidelinesStore = createGuidelinesStore({userHome, projectRoot});
-    const middleware = createGuidelinesMiddleware();
+    const middleware = createGuidelinesMiddleware({userHome, projectRoot});
     const context: ModelCallContext = {
       state: {messages: []},
       messages: [],
-      runtime: {context: {__codaraGuidelines: guidelinesStore}, agentContext: {}},
+      runtime: {context: {}, agentContext: {}},
       systemMessage: ['base system'],
       runId: 'run_1',
       turn: 1,
@@ -106,8 +105,15 @@ describe('AGENTS guidelines', () => {
     const response = await middleware.wrapModelCall?.(context, async (request) => {
       expect(request?.systemMessage).toHaveLength(2);
       expect(request?.systemMessage[0]).toBe('base system');
-      expect(request?.systemMessage[1]).toContain('global rule');
-      expect(request?.systemMessage[1]).toContain('project rule');
+
+      // 对齐 Claude Code：加载内容（有截断保护）
+      const content = request?.systemMessage[1];
+      expect(content).toContain('Contents of');
+      expect(content).toContain('user instructions');
+      expect(content).toContain('global rule');
+      expect(content).toContain('project instructions');
+      expect(content).toContain('project rule');
+
       return new AIMessage('ok');
     });
 
