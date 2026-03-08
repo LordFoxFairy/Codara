@@ -3,7 +3,6 @@ import type {AgentCheckpointer} from '@core/checkpoint/state';
 import type {CreateCodaraChatModelOptions} from '@core/codara/models';
 import {createCodaraChatModel} from '@core/codara/models';
 import {createCodaraMiddlewares} from '@core/codara/middleware';
-import {buildCodaraAgentState} from '@core/codara/options';
 import {createCodaraTools} from '@core/codara/tools';
 import type {CreateCodaraAgentOptions} from '@core/codara/types';
 
@@ -51,4 +50,17 @@ async function resolveCodaraModel(options: CreateCodaraAgentOptions) {
     ...(options.config ? {config: options.config} : {}),
   };
   return createCodaraChatModel(modelOptions);
+}
+
+/** 构建传给 createAgent(...) 的初始运行状态。 */
+function buildCodaraAgentState(options: CreateCodaraAgentOptions) {
+  if (!options.state && !options.messages && !options.context) {
+    return undefined;
+  }
+
+  return {
+    ...(options.state ?? {}),
+    ...(options.messages ? {messages: options.messages} : {}),
+    ...(options.context ? {context: options.context} : {}),
+  };
 }
