@@ -1,4 +1,5 @@
 import type {AIMessage, AIMessageChunk, BaseMessage, ToolMessage} from '@langchain/core/messages';
+import {AIMessageChunk as AIMessageChunkClass} from '@langchain/core/messages';
 import type {AgentResult} from '@core/agents/contract/agent';
 import type {
   AgentStreamConfig,
@@ -141,9 +142,26 @@ export function createStreamWriter(config: AgentStreamConfig | undefined): Agent
         return;
       }
 
+      // 创建新的 chunk，将 metadata 注入到 response_metadata 中（对齐 LangChain 标准）
+      // 避免直接修改原对象
+      const enrichedChunk = new AIMessageChunkClass({
+        content: input.chunk.content,
+        ...(input.chunk.id ? {id: input.chunk.id} : {}),
+        ...(input.chunk.name ? {name: input.chunk.name} : {}),
+        ...(input.chunk.tool_calls ? {tool_calls: input.chunk.tool_calls} : {}),
+        ...(input.chunk.invalid_tool_calls ? {invalid_tool_calls: input.chunk.invalid_tool_calls} : {}),
+        ...(input.chunk.usage_metadata ? {usage_metadata: input.chunk.usage_metadata} : {}),
+        ...(input.chunk.additional_kwargs ? {additional_kwargs: input.chunk.additional_kwargs} : {}),
+        response_metadata: {
+          ...(input.chunk.response_metadata ?? {}),
+          runId: input.runId,
+          turn: input.turn,
+        },
+      });
+
       pushEnvelope({
         mode: 'messages',
-        chunk: [input.chunk, {runId: input.runId, turn: input.turn}],
+        chunk: enrichedChunk,
       });
     },
     async emitModelUpdate(message) {
