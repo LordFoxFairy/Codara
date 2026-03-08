@@ -8,7 +8,7 @@ import type {StructuredToolInterface} from '@langchain/core/tools';
 import {createMiddleware, MiddlewarePipeline, type ModelCallContext} from '@core/middleware';
 import {createCodaraAgent, createCodaraMiddlewares} from '@core';
 import {loadCodaraSourceStack} from '@core/codara/sources';
-import {EmptySkillStore, FakeModel} from './codara-fixtures';
+import {FakeModel} from './codara-fixtures';
 
 describe('Codara middleware source integration', () => {
   it('should resolve AGENTS.md and MEMORY.md from the workspace root derived from cwd', async () => {

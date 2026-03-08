@@ -10,25 +10,31 @@ import {
 import type {ModelCallContext} from '@core/middleware';
 
 describe('AGENTS guidelines', () => {
-  it('should resolve global and project AGENTS.md locations from the workspace root derived from cwd', async () => {
+  it('should resolve global and project AGENTS.md locations from cwd up to the workspace root', async () => {
     const root = await mkdtemp(path.join(tmpdir(), 'codara-guidelines-'));
     const userHome = path.join(root, 'home');
     const projectRoot = path.join(root, 'project');
     const nestedCwd = path.join(projectRoot, 'packages', 'app');
     const globalFile = path.join(userHome, '.codara', 'AGENTS.md');
     const projectFile = path.join(projectRoot, 'AGENTS.md');
+    const packageFile = path.join(projectRoot, 'packages', 'AGENTS.md');
+    const appFile = path.join(nestedCwd, 'AGENTS.md');
 
     await mkdir(path.join(userHome, '.codara'), {recursive: true});
     await mkdir(path.join(projectRoot, '.codara'), {recursive: true});
     await mkdir(nestedCwd, {recursive: true});
     await writeFile(globalFile, '# Global Rules\n\nKeep commits small.\n', 'utf8');
     await writeFile(projectFile, '# Project Rules\n\nRun tests before merge.\n', 'utf8');
+    await writeFile(packageFile, '# Package Rules\n\nUse package lint first.\n', 'utf8');
+    await writeFile(appFile, '# App Rules\n\nPrefer feature flags.\n', 'utf8');
 
     const loaded = await loadGuidelines({userHome, cwd: nestedCwd});
 
     expect(loaded?.files).toEqual([
       {scope: 'global', path: globalFile},
       {scope: 'project', path: projectFile},
+      {scope: 'project', path: packageFile},
+      {scope: 'project', path: appFile},
     ]);
   });
 
@@ -75,5 +81,34 @@ describe('AGENTS guidelines', () => {
       return new AIMessage('ok');
     });
     expect(first?.content).toBe('ok');
+  });
+
+  it('should preserve root-to-cwd guideline order in loaded files', async () => {
+    const root = await mkdtemp(path.join(tmpdir(), 'codara-guidelines-'));
+    const userHome = path.join(root, 'home');
+    const projectRoot = path.join(root, 'project');
+    const nestedCwd = path.join(projectRoot, 'packages', 'app');
+    const globalFile = path.join(userHome, '.codara', 'AGENTS.md');
+    const projectFile = path.join(projectRoot, 'AGENTS.md');
+    const packageFile = path.join(projectRoot, 'packages', 'AGENTS.md');
+    const appFile = path.join(nestedCwd, 'AGENTS.md');
+
+    await mkdir(path.dirname(globalFile), {recursive: true});
+    await mkdir(path.join(projectRoot, '.git'), {recursive: true});
+    await mkdir(nestedCwd, {recursive: true});
+    await writeFile(globalFile, '# Global Rules\n', 'utf8');
+    await writeFile(projectFile, '# Project Rules\n', 'utf8');
+    await writeFile(packageFile, '# Package Rules\n', 'utf8');
+    await writeFile(appFile, '# App Rules\n', 'utf8');
+
+    const loaded = await loadGuidelines({userHome, cwd: nestedCwd});
+    expect(loaded).toBeDefined();
+
+    expect(loaded?.files).toEqual([
+      {scope: 'global', path: globalFile},
+      {scope: 'project', path: projectFile},
+      {scope: 'project', path: packageFile},
+      {scope: 'project', path: appFile},
+    ]);
   });
 });

@@ -29,15 +29,12 @@ export interface GuidelinesOptions extends WorkspaceFileOptions {
 export async function loadGuidelines(options: GuidelinesOptions = {}): Promise<LoadedGuidelines | undefined> {
   const maxLines = options.maxLines ?? DEFAULT_LINES;
   const userHome = options.userHome ?? homedir();
-  const projectRoot = resolveWorkspaceRoot({
-    projectRoot: options.projectRoot,
-    cwd: options.cwd,
-  });
   const loadedFiles = await loadWorkspaceFiles(
-    [
-      {scope: 'global', path: path.join(userHome, '.codara', 'AGENTS.md')},
-      {scope: 'project', path: path.join(projectRoot, 'AGENTS.md')},
-    ],
+    discoverGuidelineFiles({
+      cwd: options.cwd,
+      projectRoot: options.projectRoot,
+      userHome,
+    }),
     {maxLines},
   );
 
@@ -67,6 +64,38 @@ export async function loadGuidelines(options: GuidelinesOptions = {}): Promise<L
       }),
     ].join('\n'),
   };
+}
+
+function discoverGuidelineFiles(options: WorkspaceFileOptions & {userHome: string}): WorkspaceScopedFile[] {
+  const projectRoot = resolveWorkspaceRoot({
+    projectRoot: options.projectRoot,
+    cwd: options.cwd,
+  });
+  const cwd = path.resolve(options.cwd ?? projectRoot);
+  const projectFiles: WorkspaceScopedFile[] = [];
+  let current = cwd;
+
+  while (true) {
+    projectFiles.push({
+      scope: 'project',
+      path: path.join(current, 'AGENTS.md'),
+    });
+
+    if (current === projectRoot) {
+      break;
+    }
+
+    const parent = path.dirname(current);
+    if (parent === current) {
+      break;
+    }
+    current = parent;
+  }
+
+  return [
+    {scope: 'global', path: path.join(options.userHome, '.codara', 'AGENTS.md')},
+    ...projectFiles.reverse(),
+  ];
 }
 
 /** 注入预加载的 AGENTS.md 内容。 */
