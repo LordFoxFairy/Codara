@@ -1,15 +1,9 @@
-export interface GuidelineFile {
-  scope: 'global' | 'project';
-  path: string;
-}
+import type {WorkspaceFileOptions, WorkspaceScopedFile} from '@core/workspace';
 
 export interface LoadedGuidelines {
   files: GuidelineFile[];
   content: string;
 }
 
-export interface GuidelinesOptions {
-  cwd?: string;
-  userHome?: string;
-  projectRoot?: string;
-}
+export type GuidelineFile = WorkspaceScopedFile;
+export type GuidelinesOptions = WorkspaceFileOptions;
