@@ -30,8 +30,16 @@ export async function executeToolCall(
   }
 
   try {
-    const content = String(await tool.invoke(toolCall.args));
-    return new ToolMessage({content, tool_call_id: toolCallId});
+    const result = await tool.invoke(toolCall.args);
+    const content = String(result);
+
+    // 使用 artifact 存储原始结果（对齐 LangChain 标准）
+    // content 是字符串化的结果，artifact 保留原始结构
+    return new ToolMessage({
+      content,
+      tool_call_id: toolCallId,
+      artifact: result,
+    });
   } catch (error) {
     return handleToolError(error, toolCall, toolCallId, handleToolErrors);
   }
