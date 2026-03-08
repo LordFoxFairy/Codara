@@ -7,7 +7,7 @@ import {
   createGuidelinesMiddleware,
   discoverGuidelineFiles,
   loadGuidelines,
-} from '@core/guidelines';
+} from '@core/middleware/guidelines';
 import type {ModelCallContext} from '@core/middleware';
 
 describe('AGENTS guidelines', () => {

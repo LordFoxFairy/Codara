@@ -18,9 +18,9 @@ import type {HILResumePayload} from '@core/middleware';
 import type {SkillStore} from '@core/middleware/skills';
 import type {CodaraMemory} from '@core/codara/memory';
 import type {CodaraModelCatalog, CreateCodaraModelCatalogOptions} from '@core/codara/models';
-import type {GuidelinesOptions} from '@core/guidelines';
+import type {GuidelinesOptions} from '@core/middleware/guidelines';
 import type {MemoryLoadOptions} from '@core/memory';
-import type {SummaryOptions} from '@core/summary';
+import type {SummaryOptions} from '@core/middleware/summary';
 
 export interface CodaraSkillOptions {
   store?: SkillStore;

@@ -3,7 +3,7 @@
 ## 目录结构
 
 ```text
-src/core/guidelines/
+src/core/middleware/guidelines/
 ├── types.ts        # AGENTS.md 规范源的最小类型边界
 ├── discovery.ts    # 发现全局与项目 AGENTS.md
 ├── loader.ts       # 读取并组合 AGENTS.md 内容

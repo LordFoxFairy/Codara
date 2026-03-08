@@ -1,4 +1,4 @@
-import type {SummaryRecord} from '@core/summary/types';
+import type {SummaryRecord} from '@core/middleware/summary/types';
 
 /** 将摘要格式化为系统消息片段。 */
 export function formatSummaryRecord(record: SummaryRecord, maxChars = 6_000): string {
