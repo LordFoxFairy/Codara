@@ -1,5 +1,6 @@
 import {createHILMiddleware, createLoggingMiddleware, type BaseMiddleware} from '@core/middleware';
 import {createSkillsMiddleware, FileSystemSkillStore} from '@core/middleware/skills';
+import {createAgentsGuidelinesMiddleware} from '@core/guidelines';
 import type {CreateCodaraMiddlewareOptions} from '@core/codara/types';
 
 /** 构建 Codara 默认中间件链。 */
@@ -8,6 +9,10 @@ export function createCodaraMiddlewares(options: CreateCodaraMiddlewareOptions =
 
   if (options.logging && options.logging.enabled !== false) {
     middlewares.push(createLoggingMiddleware(options.logging));
+  }
+
+  if (options.agentsGuidelines !== false) {
+    middlewares.push(createAgentsGuidelinesMiddleware(resolveAgentsGuidelinesOptions(options)));
   }
 
   if (options.skills !== false) {
@@ -21,6 +26,17 @@ export function createCodaraMiddlewares(options: CreateCodaraMiddlewareOptions =
   }
 
   return middlewares;
+}
+
+function resolveAgentsGuidelinesOptions(options: CreateCodaraMiddlewareOptions) {
+  if (options.agentsGuidelines === false) {
+    return {};
+  }
+
+  return {
+    ...(options.agentsGuidelines?.userHome ? {userHome: options.agentsGuidelines.userHome} : {}),
+    ...(options.agentsGuidelines?.projectRoot ? {projectRoot: options.agentsGuidelines.projectRoot} : {}),
+  };
 }
 
 function resolveSkillsOptions(options: CreateCodaraMiddlewareOptions['skills']) {
