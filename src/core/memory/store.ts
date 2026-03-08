@@ -4,10 +4,19 @@ import {homedir} from 'node:os';
 import type {MemoryScope, MemorySourceOptions} from '@core/memory/types';
 import {resolveWorkspaceRoot} from '@core/workspace';
 
+const MAX_MEMORY_FILE_SIZE = 5 * 1024 * 1024; // 5MB - memory files should be concise
+
+export interface MemoryReadOptions {
+  /** 最大行数限制，默认 200（对齐 Claude Code） */
+  maxLines?: number;
+  /** 截断提示消息 */
+  truncateMessage?: string;
+}
+
 export interface MemoryStore {
   resolve(scope: MemoryScope): string;
   exists(scope: MemoryScope): Promise<boolean>;
-  read(scope: MemoryScope): Promise<string | undefined>;
+  read(scope: MemoryScope, options?: MemoryReadOptions): Promise<string | undefined>;
   write(scope: MemoryScope, content: string): Promise<void>;
   delete(scope: MemoryScope): Promise<void>;
 }
@@ -38,10 +47,34 @@ export function createMemoryStore(options: MemorySourceOptions = {}): MemoryStor
       }
     },
 
-    async read(scope) {
+    async read(scope, readOptions) {
       const filePath = resolve(scope);
       try {
-        return await readFile(filePath, 'utf8');
+        // Check file size before loading
+        const stats = await stat(filePath);
+        if (stats.size > MAX_MEMORY_FILE_SIZE) {
+          console.warn(
+            `[Memory] File ${filePath} size ${(stats.size / 1024 / 1024).toFixed(2)}MB exceeds ${MAX_MEMORY_FILE_SIZE / 1024 / 1024}MB limit, skipping`
+          );
+          return undefined;
+        }
+
+        const content = await readFile(filePath, 'utf8');
+
+        // 对齐 Claude Code: 默认截断到 200 行
+        const maxLines = readOptions?.maxLines ?? 200;
+        const lines = content.split('\n');
+
+        if (lines.length > maxLines) {
+          const truncated = lines.slice(0, maxLines).join('\n');
+          const truncatedCount = lines.length - maxLines;
+          const message = readOptions?.truncateMessage
+            ?? `\n\n[... ${truncatedCount} lines truncated. MEMORY.md is limited to ${maxLines} lines to keep context concise.]`;
+
+          return truncated + message;
+        }
+
+        return content;
       } catch {
         return undefined;
       }
