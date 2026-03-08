@@ -122,6 +122,8 @@ await codara.memory().remember('project', {
   kind: 'lesson',
   content: 'Run lint before opening a PR.',
 });
+
+const content = await codara.memory().read('project');
 ```
 
 传入固定 `threadId` 后，`session(...)` / `invoke(...)` / `stream(...)` 会优先恢复该 thread 的最新 checkpoint；不存在时再创建新实例。
