@@ -6,10 +6,12 @@ import {AIMessage, AIMessageChunk, HumanMessage, ToolMessage, type BaseMessage, 
 import type {BaseChatModel} from '@langchain/core/language_models/chat_models';
 import type {StructuredToolInterface} from '@langchain/core/tools';
 import {createMiddleware, MiddlewarePipeline, type ModelCallContext} from '@core/middleware';
+import {createGuidelinesStore} from '@core/middleware/guidelines';
 import {
   createAgentMemoryCheckpointer,
   createCodara,
   createCodaraAgent,
+  createCodaraMemory,
   createCodaraMiddlewares,
   createCodaraTools,
   loadCodaraAgent,
@@ -206,7 +208,7 @@ describe('Codara core facade', () => {
     await mkdir(path.join(projectRoot, '.codara'), {recursive: true});
     await mkdir(nestedCwd, {recursive: true});
     await writeFile(path.join(projectRoot, 'AGENTS.md'), 'project rule', 'utf8');
-    await writeFile(path.join(projectRoot, 'MEMORY.md'), 'project memory', 'utf8');
+    await writeFile(path.join(projectRoot, '.codara', 'MEMORY.md'), 'project memory', 'utf8');
 
     const pipeline = new MiddlewarePipeline(
       createCodaraMiddlewares({
@@ -217,11 +219,13 @@ describe('Codara core facade', () => {
         hil: false,
       })
     );
+    const memory = createCodaraMemory({cwd: nestedCwd, memory: {userHome}});
+    const guidelines = createGuidelinesStore({cwd: nestedCwd, userHome});
 
     const context: ModelCallContext = {
       state: {messages: []},
       messages: [],
-      runtime: {context: {}, agentContext: {}},
+      runtime: {context: {__codaraMemory: memory, __codaraGuidelines: guidelines}, agentContext: {}},
       systemMessage: ['base system'],
       runId: 'run_1',
       turn: 1,
@@ -442,17 +446,18 @@ describe('Codara core facade', () => {
       memory: false,
     });
 
-    expect(codara.memory().resolve('project')).toBe(path.join(projectRoot, 'MEMORY.md'));
-    expect(await codara.memory().exists('project')).toBe(false);
+    const memory = codara.memory();
+    expect(memory.resolve('project')).toBe(path.join(projectRoot, '.codara', 'MEMORY.md'));
+    expect(await memory.exists('project')).toBe(false);
 
-    await codara.memory().remember('project', {
+    await memory.remember('project', {
       kind: 'lesson',
       content: 'Prefer small PRs.',
     });
 
-    expect(await codara.memory().read('project')).toContain('Prefer small PRs.');
+    expect(await memory.read('project')).toContain('Prefer small PRs.');
 
-    const snapshot = await codara.memory().snapshot('project');
+    const snapshot = await memory.snapshot('project');
     expect(snapshot.lesson).toEqual(['Prefer small PRs.']);
   });
 
@@ -478,7 +483,8 @@ describe('Codara core facade', () => {
       cwd: nestedCwd,
       memory: false,
     });
-    const snapshot = await codara.memory().snapshot('project');
+    const memory = codara.memory();
+    const snapshot = await memory.snapshot('project');
     expect(snapshot.lesson).toContain('Keep memory entries stable and reusable.');
   });
 

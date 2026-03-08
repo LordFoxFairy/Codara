@@ -4,7 +4,7 @@ import {
   type BaseMessage,
 } from '@langchain/core/messages';
 import {FileCheckpointer} from '@core/checkpoint/file';
-import {MemoryCheckpointer} from '@core/checkpoint/memory';
+import {InMemoryCheckpointer} from '@core/checkpoint/in-memory';
 import type {CheckpointRecord, Checkpointer} from '@core/checkpoint/types';
 import type {HILPauseRequest} from '@core/middleware/hil';
 
@@ -48,7 +48,7 @@ export interface AgentFileCheckpointerOptions {
 }
 
 export function createAgentMemoryCheckpointer(): AgentCheckpointer {
-  return new MemoryCheckpointer<AgentCheckpointState, AgentCheckpointInfo>();
+  return new InMemoryCheckpointer<AgentCheckpointState, AgentCheckpointInfo>();
 }
 
 export function createAgentFileCheckpointer(options: AgentFileCheckpointerOptions): AgentCheckpointer {

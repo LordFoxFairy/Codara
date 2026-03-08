@@ -15,11 +15,11 @@ export function createCodaraMiddlewares(options: CreateCodaraMiddlewareOptions =
   }
 
   if (options.guidelines !== false) {
-    middlewares.push(createGuidelinesMiddleware(resolveGuidelinesOptions(options)));
+    middlewares.push(createGuidelinesMiddleware());
   }
 
   if (options.memory !== false) {
-    middlewares.push(createMemoryMiddleware(resolveMemoryOptions(options)));
+    middlewares.push(createMemoryMiddleware());
   }
 
   if (options.summary) {
@@ -37,31 +37,6 @@ export function createCodaraMiddlewares(options: CreateCodaraMiddlewareOptions =
   }
 
   return middlewares;
-}
-
-function resolveGuidelinesOptions(options: CreateCodaraMiddlewareOptions) {
-  if (options.guidelines === false) {
-    return {};
-  }
-
-  return {
-    ...(options.guidelines?.cwd ?? options.cwd ? {cwd: options.guidelines?.cwd ?? options.cwd} : {}),
-    ...(options.guidelines?.userHome ? {userHome: options.guidelines.userHome} : {}),
-    ...(options.guidelines?.projectRoot ? {projectRoot: options.guidelines.projectRoot} : {}),
-  };
-}
-
-function resolveMemoryOptions(options: CreateCodaraMiddlewareOptions) {
-  if (options.memory === false) {
-    return {};
-  }
-
-  return {
-    ...(options.memory?.cwd ?? options.cwd ? {cwd: options.memory?.cwd ?? options.cwd} : {}),
-    ...(options.memory?.userHome ? {userHome: options.memory.userHome} : {}),
-    ...(options.memory?.projectRoot ? {projectRoot: options.memory.projectRoot} : {}),
-    ...(typeof options.memory?.maxChars === 'number' ? {maxChars: options.memory.maxChars} : {}),
-  };
 }
 
 function resolveSkillsOptions(options: CreateCodaraMiddlewareOptions) {

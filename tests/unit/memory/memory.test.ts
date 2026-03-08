@@ -10,6 +10,7 @@ import {
   loadMemory,
 } from '@core/memory';
 import {createMemoryMiddleware} from '@core/middleware/memory';
+import {createCodaraMemory} from '@core/codara/memory';
 import type {ModelCallContext} from '@core/middleware';
 
 describe('MEMORY module', () => {
@@ -18,7 +19,7 @@ describe('MEMORY module', () => {
     const userHome = path.join(root, 'home');
     const projectRoot = path.join(root, 'project');
     await mkdir(path.join(userHome, '.codara'), {recursive: true});
-    await mkdir(projectRoot, {recursive: true});
+    await mkdir(path.join(projectRoot, '.codara'), {recursive: true});
 
     const files = discoverMemoryFiles({userHome, projectRoot});
 
@@ -29,7 +30,7 @@ describe('MEMORY module', () => {
       },
       {
         scope: 'project',
-        path: path.join(projectRoot, 'MEMORY.md'),
+        path: path.join(projectRoot, '.codara', 'MEMORY.md'),
       },
     ]);
   });
@@ -52,7 +53,7 @@ describe('MEMORY module', () => {
       },
       {
         scope: 'project',
-        path: path.join(projectRoot, 'MEMORY.md'),
+        path: path.join(projectRoot, '.codara', 'MEMORY.md'),
       },
     ]);
   });
@@ -62,10 +63,10 @@ describe('MEMORY module', () => {
     const userHome = path.join(root, 'home');
     const projectRoot = path.join(root, 'project');
     const globalFile = path.join(userHome, '.codara', 'MEMORY.md');
-    const projectFile = path.join(projectRoot, 'MEMORY.md');
+    const projectFile = path.join(projectRoot, '.codara', 'MEMORY.md');
 
     await mkdir(path.dirname(globalFile), {recursive: true});
-    await mkdir(projectRoot, {recursive: true});
+    await mkdir(path.join(projectRoot, '.codara'), {recursive: true});
     await writeFile(globalFile, 'global memory', 'utf8');
     await writeFile(projectFile, 'project memory', 'utf8');
 
@@ -87,15 +88,16 @@ describe('MEMORY module', () => {
     const userHome = path.join(root, 'home');
     const projectRoot = path.join(root, 'project');
     await mkdir(path.join(userHome, '.codara'), {recursive: true});
-    await mkdir(projectRoot, {recursive: true});
+    await mkdir(path.join(projectRoot, '.codara'), {recursive: true});
     await writeFile(path.join(userHome, '.codara', 'MEMORY.md'), 'global memory', 'utf8');
-    await writeFile(path.join(projectRoot, 'MEMORY.md'), 'project memory', 'utf8');
+    await writeFile(path.join(projectRoot, '.codara', 'MEMORY.md'), 'project memory', 'utf8');
 
-    const middleware = createMemoryMiddleware({userHome, projectRoot});
+    const memoryStore = createCodaraMemory({memory: {userHome, projectRoot}});
+    const middleware = createMemoryMiddleware();
     const context: ModelCallContext = {
       state: {messages: []},
       messages: [],
-      runtime: {context: {}, agentContext: {}},
+      runtime: {context: {__codaraMemory: memoryStore}, agentContext: {}},
       systemMessage: ['base system'],
       runId: 'run_1',
       turn: 1,
@@ -117,8 +119,8 @@ describe('MEMORY module', () => {
   it('should truncate oversized memory content by default', async () => {
     const root = await mkdtemp(path.join(tmpdir(), 'codara-memory-'));
     const projectRoot = path.join(root, 'project');
-    await mkdir(projectRoot, {recursive: true});
-    await writeFile(path.join(projectRoot, 'MEMORY.md'), 'a'.repeat(12_500), 'utf8');
+    await mkdir(path.join(projectRoot, '.codara'), {recursive: true});
+    await writeFile(path.join(projectRoot, '.codara', 'MEMORY.md'), 'a'.repeat(12_500), 'utf8');
 
     const loaded = await loadMemory({projectRoot});
     expect(loaded).toBeDefined();
@@ -128,8 +130,8 @@ describe('MEMORY module', () => {
   it('should respect a custom maxChars limit', async () => {
     const root = await mkdtemp(path.join(tmpdir(), 'codara-memory-'));
     const projectRoot = path.join(root, 'project');
-    await mkdir(projectRoot, {recursive: true});
-    await writeFile(path.join(projectRoot, 'MEMORY.md'), 'abcdefghijklmno', 'utf8');
+    await mkdir(path.join(projectRoot, '.codara'), {recursive: true});
+    await writeFile(path.join(projectRoot, '.codara', 'MEMORY.md'), 'abcdefghijklmno', 'utf8');
 
     const loaded = await loadMemory({projectRoot, maxChars: 5});
     expect(loaded).toBeDefined();
@@ -147,7 +149,7 @@ describe('MEMORY module', () => {
     await store.write('project', 'project memory body');
 
     expect(store.resolve('global')).toBe(path.join(userHome, '.codara', 'MEMORY.md'));
-    expect(store.resolve('project')).toBe(path.join(projectRoot, 'MEMORY.md'));
+    expect(store.resolve('project')).toBe(path.join(projectRoot, '.codara', 'MEMORY.md'));
     expect(await store.exists('global')).toBe(true);
     expect(await store.exists('project')).toBe(true);
     expect(await store.read('global')).toBe('global memory body');
@@ -168,15 +170,15 @@ describe('MEMORY module', () => {
 
     await store.write('project', 'workspace memory');
 
-    expect(store.resolve('project')).toBe(path.join(projectRoot, 'MEMORY.md'));
+    expect(store.resolve('project')).toBe(path.join(projectRoot, '.codara', 'MEMORY.md'));
     expect(await store.read('project')).toBe('workspace memory');
   });
 
   it('should append managed memory sections without overwriting manual content', async () => {
     const root = await mkdtemp(path.join(tmpdir(), 'codara-memory-'));
     const projectRoot = path.join(root, 'project');
-    await mkdir(projectRoot, {recursive: true});
-    await writeFile(path.join(projectRoot, 'MEMORY.md'), '# Team Notes\n\nKeep this file tidy.', 'utf8');
+    await mkdir(path.join(projectRoot, '.codara'), {recursive: true});
+    await writeFile(path.join(projectRoot, '.codara', 'MEMORY.md'), '# Team Notes\n\nKeep this file tidy.', 'utf8');
 
     const editor = createMemoryEditor({projectRoot});
 
@@ -198,7 +200,7 @@ describe('MEMORY module', () => {
   it('should deduplicate memory entries within the same section', async () => {
     const root = await mkdtemp(path.join(tmpdir(), 'codara-memory-'));
     const projectRoot = path.join(root, 'project');
-    await mkdir(projectRoot, {recursive: true});
+    await mkdir(path.join(projectRoot, '.codara'), {recursive: true});
 
     const editor = createMemoryEditor({projectRoot});
 
@@ -248,7 +250,7 @@ describe('MEMORY module', () => {
   it('should expose a structured snapshot of managed memory entries', async () => {
     const root = await mkdtemp(path.join(tmpdir(), 'codara-memory-'));
     const projectRoot = path.join(root, 'project');
-    await mkdir(projectRoot, {recursive: true});
+    await mkdir(path.join(projectRoot, '.codara'), {recursive: true});
     const editor = createMemoryEditor({projectRoot});
 
     await editor.remember('project', {
@@ -272,8 +274,8 @@ describe('MEMORY module', () => {
   it('should remove a managed memory entry without touching manual content', async () => {
     const root = await mkdtemp(path.join(tmpdir(), 'codara-memory-'));
     const projectRoot = path.join(root, 'project');
-    await mkdir(projectRoot, {recursive: true});
-    await writeFile(path.join(projectRoot, 'MEMORY.md'), '# Notes\n\nManual paragraph.', 'utf8');
+    await mkdir(path.join(projectRoot, '.codara'), {recursive: true});
+    await writeFile(path.join(projectRoot, '.codara', 'MEMORY.md'), '# Notes\n\nManual paragraph.', 'utf8');
 
     const editor = createMemoryEditor({projectRoot});
     await editor.remember('project', {
