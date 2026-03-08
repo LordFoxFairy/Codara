@@ -2,7 +2,7 @@ import {createAgentMemoryCheckpointer} from '@core/checkpoint/state';
 import type {AgentCheckpointer} from '@core/checkpoint/state';
 import {createSession, type Session} from '@core/sessions';
 import {createCodaraAgent} from '@core/codara/agent';
-import {createCodaraMemory} from '@core/codara/memory';
+import {loadCodaraSources} from '@core/codara/middleware';
 import type {CodaraAgentOptions, CodaraSessionOptions} from '@core/codara/types';
 import type {
   AgentInput,
@@ -10,7 +10,6 @@ import type {
   AgentResumeConfig,
   AgentResumeStreamConfig,
   AgentResult,
-  AgentRuntimeContext,
   AgentStreamConfig,
   AgentStreamOutput,
 } from '@core/agents';
@@ -41,15 +40,7 @@ export function createCodaraSessionHost(options: CodaraAgentOptions = {}): Codar
 
   async function buildSession(optionsOverride: CodaraSessionOptions = {}): Promise<Session> {
     const merged = mergeCodaraAgentOptions(options, optionsOverride, checkpointer);
-
-    // 创建 Memory 实例
-    const memory = createCodaraMemory(merged);
-
-    // 构建包含实例的 context
-    const sessionContext: AgentRuntimeContext = {
-      ...(merged.context ?? {}),
-      __codaraMemory: memory,
-    };
+    const loadedSources = await loadCodaraSources(merged);
 
     const checkpoint = await resolveCheckpoint({
       restore: optionsOverride.restore ?? 'latest',
@@ -59,14 +50,12 @@ export function createCodaraSessionHost(options: CodaraAgentOptions = {}): Codar
 
     const agent = await createCodaraAgent({
       ...merged,
-      context: sessionContext,
       ...(checkpoint ? {checkpoint} : {}),
-    });
+    }, loadedSources);
 
     return createSession({
       ...(optionsOverride.sessionId ? {sessionId: optionsOverride.sessionId} : {}),
       agent,
-      memory,
     });
   }
 
