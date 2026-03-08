@@ -16,7 +16,6 @@ export type {
   CodaraOptions,
   CodaraAgentOptions,
   CodaraSessionOptions,
-  CodaraMemory,
 } from '@core/codara';
 
 /** Agent 相关类型 */
@@ -44,10 +43,6 @@ export {createCodaraAgent, loadCodaraAgent} from '@core/codara';
 
 /** Session 管理 */
 export {createSession} from '@core/sessions';
-
-/** Memory 管理 */
-export {createMemoryStore, createMemoryEditor} from '@core/memory';
-export {createCodaraMemory} from '@core/codara';
 
 /** Checkpoint 管理 */
 export {
@@ -89,6 +84,6 @@ export type {
 
 export type {AgentCheckpoint, AgentCheckpointer} from '@core/checkpoint';
 
-export type {MemoryScope, MemoryEntry} from '@core/memory';
+export type {MemoryFile, LoadedMemory, MemoryOptions} from '@core/middleware/memory';
 
 export type {CodaraModelCatalog} from '@core/codara';
