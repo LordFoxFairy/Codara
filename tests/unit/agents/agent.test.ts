@@ -1,23 +1,33 @@
 import {describe, expect, it} from 'bun:test';
-import {AIMessage, AIMessageChunk, HumanMessage, ToolMessage, type BaseMessage, type ToolCall} from '@langchain/core/messages';
+import {
+  AIMessage,
+  AIMessageChunk,
+  HumanMessage,
+  SystemMessage,
+  ToolMessage,
+  type BaseMessage,
+  type ToolCall
+} from '@langchain/core/messages';
 import type {BaseChatModel} from '@langchain/core/language_models/chat_models';
 import type {StructuredToolInterface} from '@langchain/core/tools';
-import {tool} from '@langchain/core/tools';
-import {mkdtemp} from 'node:fs/promises';
-import os from 'node:os';
-import path from 'node:path';
+import {createAgent} from '@core/agents';
+import {createMiddleware, type BaseMiddleware} from '@core/middleware';
 import {z} from 'zod';
-import {createAgent, loadAgent, restoreAgent} from '@core/agents';
-import {createAgentFileCheckpointer, createAgentMemoryCheckpointer} from '@core/checkpoint';
-import {createHILMiddleware} from '@core/middleware';
 
-class CountingModel {
-  readonly invocations: BaseMessage[][] = [];
+class FakeModel {
+  private index = 0;
+
+  constructor(private readonly responses: AIMessage[]) {}
 
   async invoke(messages: BaseMessage[]): Promise<AIMessage> {
-    this.invocations.push(messages);
-    const humanCount = messages.filter((message) => HumanMessage.isInstance(message)).length;
-    return new AIMessage(`seen_humans:${humanCount}`);
+    void messages;
+    const current = this.responses[this.index];
+    if (!current) {
+      throw new Error(`No fake response at index ${this.index}`);
+    }
+
+    this.index += 1;
+    return current;
   }
 
   bindTools(tools: StructuredToolInterface[]): this {
@@ -26,394 +36,613 @@ class CountingModel {
   }
 }
 
-class StreamingCountingModel extends CountingModel {
+class StreamingModel extends FakeModel {
+  constructor(
+    responses: AIMessage[],
+    private readonly streamedChunks: AIMessageChunk[][]
+  ) {
+    super(responses);
+  }
+
   async stream(messages: BaseMessage[]): Promise<AsyncGenerator<AIMessageChunk>> {
-    this.invocations.push(messages);
-    const humanCount = messages.filter((message) => HumanMessage.isInstance(message)).length;
-    const content = `seen_humans:${humanCount}`;
-    const midpoint = Math.max(1, Math.floor(content.length / 2));
-    const parts = [content.slice(0, midpoint), content.slice(midpoint)];
+    void messages;
+    const chunks = this.streamedChunks.shift();
+    if (!chunks) {
+      throw new Error('No fake stream response available');
+    }
 
     return (async function* () {
-      for (const part of parts) {
-        yield new AIMessageChunk({content: part});
+      for (const chunk of chunks) {
+        yield chunk;
       }
     })();
   }
 }
 
-class ConfirmationModel {
-  async invoke(messages: BaseMessage[]): Promise<AIMessage> {
-    const text = messages.map((message) => stringifyContent(message.content)).join('\n');
-
-    if (text.includes('executed:git status')) {
-      return new AIMessage('CONFIRMED_DONE');
-    }
-
-    const hasApprovalPrompt = text.includes('approved and continue');
-    const hasPause = text.includes('"type":"hil_pause"');
-
-    if (hasPause && !hasApprovalPrompt) {
-      return new AIMessage('WAITING_USER_CONFIRMATION');
-    }
-
-    return new AIMessage({
-      content: '',
-      tool_calls: [{id: 'call_confirm', name: 'bash', args: {command: 'git status'}} as ToolCall],
-    });
-  }
-
-  bindTools(tools: StructuredToolInterface[]): this {
-    void tools;
-    return this;
-  }
-}
-
-function stringifyContent(content: unknown): string {
-  if (typeof content === 'string') {
-    return content;
-  }
-  if (Array.isArray(content)) {
-    return content.map((item) => JSON.stringify(item)).join('\n');
-  }
-  return JSON.stringify(content);
-}
-
 describe('Agent', () => {
-  it('should preserve message state across invokes', async () => {
-    const model = new CountingModel();
-    const agent = createAgent({model: model as unknown as BaseChatModel});
+  it('支持直接以字符串作为输入', async () => {
+    const model = new FakeModel([new AIMessage('done')]) as unknown as BaseChatModel;
+    const agent = createAgent({model});
 
-    const first = await agent.invoke('hello');
-    expect(first.reason).toBe('complete');
-    expect(String(first.state.messages[first.state.messages.length - 1]?.content)).toBe('seen_humans:1');
+    const result = await agent.invoke('hello');
 
-    const second = await agent.invoke('world');
-    expect(second.reason).toBe('complete');
-    expect(String(second.state.messages[second.state.messages.length - 1]?.content)).toBe('seen_humans:2');
-
-    const state = agent.getState();
-    expect(state.status).toBe('idle');
-    expect(state.messages).toHaveLength(4);
-    expect(state.checkpointId).toBeTruthy();
-    expect(model.invocations).toHaveLength(2);
+    expect(result.reason).toBe('complete');
+    expect(result.state.messages).toHaveLength(2);
+    expect(result.state.messages[0]).toBeInstanceOf(HumanMessage);
+    expect(String(result.state.messages[0]?.content)).toBe('hello');
   });
 
-  it('should default to memory-backed checkpoints', async () => {
-    const model = new CountingModel();
-    const agent = createAgent({model: model as unknown as BaseChatModel});
+  it('无 tool_calls 时应直接 complete', async () => {
+    const model = new FakeModel([new AIMessage('done')]) as unknown as BaseChatModel;
+    const agent = createAgent({model});
 
-    await agent.invoke('hello');
-    const checkpoint = await agent.saveCheckpoint();
+    const result = await agent.invoke({messages: [new HumanMessage('hello')]});
 
-    expect(checkpoint.ref.threadId).toBe(agent.getState().threadId);
-    expect(checkpoint.info.source).toBe('manual');
-    expect(checkpoint.state.messages).toHaveLength(2);
-
-    const restored = restoreAgent({
-      model: model as unknown as BaseChatModel,
-      checkpoint,
-    });
-
-    expect(restored.getState().messages).toHaveLength(2);
-    expect(restored.getState().checkpointId).toBe(checkpoint.ref.checkpointId);
+    expect(result.reason).toBe('complete');
+    expect(result.turns).toBe(1);
+    expect(result.state.messages.length).toBe(2);
+    expect(result.state.messages[0]).toBeInstanceOf(HumanMessage);
+    expect(result.state.messages[1]).toBeInstanceOf(AIMessage);
   });
 
-  it('should restore paused HIL state from checkpoint and resume through createAgent state', async () => {
-    const model = new ConfirmationModel();
-    const checkpointer = createAgentMemoryCheckpointer();
+  it('有 tool_calls 时应执行工具并回写 ToolMessage', async () => {
+    const toolCall: ToolCall = {id: 'call_1', name: 'echo', args: {text: 'ping'}};
+    const tool = {
+      name: 'echo',
+      description: 'Echo tool',
+      schema: {} as never,
+      invoke: async () => 'pong'
+    } as unknown as StructuredToolInterface;
 
-    let bashInvokeCount = 0;
-    const bashTool = tool(
-      async ({command}: {command: string}) => {
-        bashInvokeCount += 1;
-        return `executed:${command}`;
-      },
-      {
-        name: 'bash',
-        description: 'Execute shell command',
-        schema: z.object({command: z.string()}),
+    const responses: AIMessage[] = [
+      new AIMessage({content: '', tool_calls: [toolCall]}),
+      new AIMessage('final')
+    ];
+
+    const model = new FakeModel(responses) as unknown as BaseChatModel;
+    const agent = createAgent({model, tools: [tool]});
+    const result = await agent.invoke({messages: [new HumanMessage('start')]});
+
+    expect(result.reason).toBe('complete');
+    expect(result.turns).toBe(2);
+
+    const toolMessage = result.state.messages.find((m) => m instanceof ToolMessage) as ToolMessage;
+    expect(toolMessage.tool_call_id).toBe('call_1');
+    expect(toolMessage.content).toBe('pong');
+  });
+
+  it('工具不存在时应返回错误 ToolMessage 而不是崩溃', async () => {
+    const toolCall: ToolCall = {id: 'call_404', name: 'missing_tool', args: {}};
+    const responses: AIMessage[] = [
+      new AIMessage({content: '', tool_calls: [toolCall]}),
+      new AIMessage('done')
+    ];
+
+    const model = new FakeModel(responses) as unknown as BaseChatModel;
+    const agent = createAgent({model});
+    const result = await agent.invoke({messages: [new HumanMessage('start')]});
+
+    expect(result.reason).toBe('complete');
+    const toolMessage = result.state.messages.find((m) => m instanceof ToolMessage) as ToolMessage;
+    expect(toolMessage.content).toContain('Tool "missing_tool" not found');
+    expect(toolMessage.status).toBe('error');
+  });
+
+  it('工具执行失败时应返回错误 ToolMessage 让模型可继续', async () => {
+    const toolCall: ToolCall = {id: 'call_err', name: 'echo', args: {text: 'ping'}};
+    const tool = {
+      name: 'echo',
+      description: 'Echo tool',
+      schema: {} as never,
+      invoke: async () => {
+        throw new Error('tool boom');
       }
-    );
+    } as unknown as StructuredToolInterface;
 
-    const hilMiddleware = createHILMiddleware({
-      interruptOn: {bash: true},
-      handleResume: async (_request, resumePayload, context, handler) => {
-        const payload = resumePayload as {action?: string};
-        if (payload.action === 'allow') {
-          return handler(context);
+    const responses: AIMessage[] = [
+      new AIMessage({content: '', tool_calls: [toolCall]}),
+      new AIMessage('done')
+    ];
+
+    const model = new FakeModel(responses) as unknown as BaseChatModel;
+    const runner = createAgent({model, tools: [tool]});
+    const result = await runner.invoke({messages: [new HumanMessage('start')]});
+
+    expect(result.reason).toBe('complete');
+    const toolMessage = result.state.messages.find((m) => m instanceof ToolMessage) as ToolMessage;
+    expect(toolMessage.content).toContain('Tool execution failed: tool boom');
+    expect(toolMessage.status).toBe('error');
+  });
+
+  it('tool_call 缺少 id 时应使用稳定 fallback id', async () => {
+    const toolCall = {name: 'echo', args: {text: 'ping'}} as ToolCall;
+    const tool = {
+      name: 'echo',
+      description: 'Echo tool',
+      schema: {} as never,
+      invoke: async () => 'pong'
+    } as unknown as StructuredToolInterface;
+
+    const responses: AIMessage[] = [
+      new AIMessage({content: '', tool_calls: [toolCall]}),
+      new AIMessage('done')
+    ];
+
+    const model = new FakeModel(responses) as unknown as BaseChatModel;
+    const runner = createAgent({model, tools: [tool]});
+    const result = await runner.invoke({messages: [new HumanMessage('start')]});
+
+    expect(result.reason).toBe('complete');
+    const toolMessage = result.state.messages.find((m) => m instanceof ToolMessage) as ToolMessage;
+    expect(toolMessage.tool_call_id).toBe('echo_0');
+    expect(toolMessage.content).toBe('pong');
+  });
+
+  it('模型调用失败时应返回 error', async () => {
+    const model = {
+      invoke: async () => {
+        throw new Error('model boom');
+      },
+      bindTools: () => ({
+        invoke: async () => {
+          throw new Error('model boom');
         }
-        return new ToolMessage({
-          content: 'Blocked by user decision',
-          tool_call_id: context.toolCall.id ?? 'blocked',
-          status: 'error',
-        });
-      },
-    });
+      })
+    } as unknown as BaseChatModel;
 
-    const agent = createAgent({
-      model: model as unknown as BaseChatModel,
-      tools: [bashTool],
-      middlewares: [hilMiddleware],
-      threadId: 'thread-memory-hil',
-      checkpointer,
-    });
+    const runner = createAgent({model});
+    const result = await runner.invoke({messages: [new HumanMessage('start')]});
 
-    const first = await agent.invoke('run git status');
-    expect(first.reason).toBe('complete');
-    expect(String(first.state.messages[first.state.messages.length - 1]?.content)).toContain(
-      'WAITING_USER_CONFIRMATION'
-    );
-    expect(bashInvokeCount).toBe(0);
-
-    const pausedState = agent.getState();
-    expect(pausedState.status).toBe('paused');
-    expect(pausedState.pendingPause?.action.toolName).toBe('bash');
-
-    const restored = await loadAgent({
-      model: model as unknown as BaseChatModel,
-      tools: [bashTool],
-      middlewares: [hilMiddleware],
-      checkpointer,
-      threadId: pausedState.threadId,
-    });
-
-    expect(restored).toBeDefined();
-    expect(restored?.getState().status).toBe('paused');
-
-    const second = await restored?.resume(
-      {action: 'allow'},
-      {
-        input: 'approved and continue',
-        recursionLimit: 4,
-      }
-    );
-
-    expect(second?.reason).toBe('complete');
-    expect(String(second?.state.messages[second?.state.messages.length - 1]?.content)).toContain('CONFIRMED_DONE');
-    expect(restored?.getState().status).toBe('idle');
-    expect(restored?.getState().pendingPause).toBeUndefined();
-    expect(bashInvokeCount).toBe(1);
+    expect(result.reason).toBe('error');
+    expect(result.error?.message).toBe('model boom');
   });
 
-  it('should persist and restore checkpoints through file storage', async () => {
-    const model = new CountingModel();
-    const rootDir = await mkdtemp(path.join(os.tmpdir(), 'codara-agent-checkpoint-'));
-    const checkpointer = createAgentFileCheckpointer({rootDir});
+  it('达到 recursionLimit 时应返回 max_turns', async () => {
+    const toolCall: ToolCall = {id: 'call_loop', name: 'echo', args: {}};
+    const tool = {
+      name: 'echo',
+      description: 'Echo tool',
+      schema: {} as never,
+      invoke: async () => 'pong'
+    } as unknown as StructuredToolInterface;
 
-    const agent = createAgent({
-      model: model as unknown as BaseChatModel,
-      threadId: 'thread-file-basic',
-      checkpointer,
-    });
+    const model = new FakeModel(
+      Array.from({length: 20}, () => new AIMessage({content: '', tool_calls: [toolCall]}))
+    ) as unknown as BaseChatModel;
 
-    const first = await agent.invoke('hello');
-    expect(first.reason).toBe('complete');
-    expect(agent.getState().checkpointId).toBeTruthy();
+    const runner = createAgent({model, tools: [tool]});
+    const result = await runner.invoke({messages: [new HumanMessage('start')]}, {recursionLimit: 3});
 
-    const restored = await loadAgent({
-      model: model as unknown as BaseChatModel,
-      threadId: 'thread-file-basic',
-      checkpointer,
-    });
-
-    expect(restored).toBeDefined();
-    expect(restored?.getState().messages).toHaveLength(2);
-
-    const second = await restored?.invoke('again');
-    expect(second?.reason).toBe('complete');
-    expect(String(second?.state.messages[second?.state.messages.length - 1]?.content)).toBe('seen_humans:2');
+    expect(result.reason).toBe('max_turns');
+    expect(result.turns).toBe(3);
   });
 
-  it('should restore a paused HIL checkpoint from file storage and resume', async () => {
-    const model = new ConfirmationModel();
-    const rootDir = await mkdtemp(path.join(os.tmpdir(), 'codara-agent-hil-checkpoint-'));
-    const checkpointer = createAgentFileCheckpointer({rootDir});
+  it('应支持 beforeRun/afterRun 两个 invoke 外钩子', async () => {
+    const events: string[] = [];
+    let preRunId = '';
 
-    let bashInvokeCount = 0;
-    const bashTool = tool(
-      async ({command}: {command: string}) => {
-        bashInvokeCount += 1;
-        return `executed:${command}`;
-      },
+    const model = new FakeModel([new AIMessage('done')]) as unknown as BaseChatModel;
+    const runner = createAgent({model});
+
+    const result = await runner.invoke(
+      {messages: [new HumanMessage('start')]},
       {
-        name: 'bash',
-        description: 'Execute shell command',
-        schema: z.object({command: z.string()}),
-      }
-    );
-
-    const hilMiddleware = createHILMiddleware({
-      interruptOn: {bash: true},
-      handleResume: async (_request, resumePayload, context, handler) => {
-        const payload = resumePayload as {action?: string};
-        if (payload.action === 'allow') {
-          return handler(context);
+        recursionLimit: 3,
+        beforeRun: (context) => {
+          preRunId = context.runId;
+          events.push(`pre:${context.maxTurns}`);
+        },
+        afterRun: (context) => {
+          expect(context.runId).toBe(preRunId);
+          events.push(`post:${context.result.reason}:${context.result.turns}`);
         }
-        return new ToolMessage({
-          content: 'Blocked by user decision',
-          tool_call_id: context.toolCall.id ?? 'blocked',
-          status: 'error',
-        });
-      },
-    });
-
-    const agent = createAgent({
-      model: model as unknown as BaseChatModel,
-      tools: [bashTool],
-      middlewares: [hilMiddleware],
-      threadId: 'thread-file-hil',
-      checkpointer,
-    });
-
-    const first = await agent.invoke('run git status');
-    expect(first.reason).toBe('complete');
-    expect(agent.getState().status).toBe('paused');
-
-    const restored = await loadAgent({
-      model: model as unknown as BaseChatModel,
-      tools: [bashTool],
-      middlewares: [hilMiddleware],
-      threadId: 'thread-file-hil',
-      checkpointer,
-    });
-
-    expect(restored?.getState().status).toBe('paused');
-    expect(restored?.getState().pendingPause?.action.toolName).toBe('bash');
-
-    const second = await restored?.resume(
-      {action: 'allow'},
-      {
-        input: 'approved and continue',
-        recursionLimit: 4,
       }
     );
 
-    expect(second?.reason).toBe('complete');
-    expect(String(second?.state.messages[second?.state.messages.length - 1]?.content)).toContain('CONFIRMED_DONE');
-    expect(restored?.getState().status).toBe('idle');
-    expect(restored?.getState().pendingPause).toBeUndefined();
-    expect(bashInvokeCount).toBe(1);
+    expect(result.reason).toBe('complete');
+    expect(events).toEqual(['pre:3', 'post:complete:1']);
   });
 
-  it('should return undefined when loading a missing thread', async () => {
-    const model = new CountingModel();
-    const checkpointer = createAgentMemoryCheckpointer();
+  it('beforeRun 抛错时应直接返回 error', async () => {
+    const model = new FakeModel([new AIMessage('done')]) as unknown as BaseChatModel;
+    const runner = createAgent({model});
 
-    const restored = await loadAgent({
-      model: model as unknown as BaseChatModel,
-      threadId: 'missing-thread',
-      checkpointer,
+    const result = await runner.invoke(
+      {messages: [new HumanMessage('start')]},
+      {
+        beforeRun: () => {
+          throw new Error('pre boom');
+        }
+      }
+    );
+
+    expect(result.reason).toBe('error');
+    expect(result.turns).toBe(0);
+    expect(result.error?.message).toContain('beforeRun failed: pre boom');
+  });
+
+  it('afterRun 抛错时应将非 error 结果转为 error', async () => {
+    const model = new FakeModel([new AIMessage('done')]) as unknown as BaseChatModel;
+    const runner = createAgent({model});
+
+    const result = await runner.invoke(
+      {messages: [new HumanMessage('start')]},
+      {
+        afterRun: () => {
+          throw new Error('post boom');
+        }
+      }
+    );
+
+    expect(result.reason).toBe('error');
+    expect(result.error?.message).toContain('afterRun failed: post boom');
+  });
+
+  it('当结果已是 error 时，afterRun 抛错不应覆盖原错误', async () => {
+    const model = {
+      invoke: async () => {
+        throw new Error('model boom');
+      },
+      bindTools: () => ({
+        invoke: async () => {
+          throw new Error('model boom');
+        }
+      })
+    } as unknown as BaseChatModel;
+
+    const runner = createAgent({model});
+    const result = await runner.invoke(
+      {messages: [new HumanMessage('start')]},
+      {
+        afterRun: () => {
+          throw new Error('post boom');
+        }
+      }
+    );
+
+    expect(result.reason).toBe('error');
+    expect(result.error?.message).toBe('model boom');
+  });
+
+  it('handleToolErrors=false 时工具失败应向上抛出异常并收敛为 error', async () => {
+    const toolCall: ToolCall = {id: 'call_err', name: 'echo', args: {}};
+    const tool = {
+      name: 'echo',
+      description: 'Echo tool',
+      schema: {} as never,
+      invoke: async () => {
+        throw new Error('tool boom');
+      }
+    } as unknown as StructuredToolInterface;
+
+    const responses: AIMessage[] = [new AIMessage({content: '', tool_calls: [toolCall]})];
+    const model = new FakeModel(responses) as unknown as BaseChatModel;
+    const runner = createAgent({model, tools: [tool], handleToolErrors: false});
+
+    const result = await runner.invoke({messages: [new HumanMessage('start')]});
+    expect(result.reason).toBe('error');
+    expect(result.error?.message).toContain('Tool "echo" execution failed');
+  });
+
+  it('应支持 6 hooks middleware 编排', async () => {
+    const events: string[] = [];
+    const toolCall: ToolCall = {id: 'call_mw', name: 'echo', args: {}};
+    const responses: AIMessage[] = [
+      new AIMessage({content: '', tool_calls: [toolCall]}),
+      new AIMessage('done')
+    ];
+    const model = new FakeModel(responses) as unknown as BaseChatModel;
+
+    const tool = {
+      name: 'echo',
+      description: 'Echo tool',
+      schema: {} as never,
+      invoke: async () => 'pong'
+    } as unknown as StructuredToolInterface;
+
+    const middlewares: BaseMiddleware[] = [
+      {
+        name: 'trace',
+        beforeAgent: (context) => {
+          events.push(`beforeAgent:${context.turn}`);
+        },
+        beforeModel: (context) => {
+          events.push(`beforeModel:${context.turn}`);
+        },
+        wrapModelCall: async (context, next) => {
+          events.push(`wrapModel:start:${context.turn}`);
+          const response = await next();
+          events.push(`wrapModel:end:${context.turn}`);
+          return response;
+        },
+        afterModel: (context) => {
+          events.push(`afterModel:${context.turn}`);
+        },
+        wrapToolCall: async (context, next) => {
+          events.push(`wrapTool:start:${context.turn}:${context.toolCall.name}`);
+          const response = await next();
+          events.push(`wrapTool:end:${context.turn}:${context.toolCall.name}`);
+          return response;
+        },
+        afterAgent: (context) => {
+          events.push(`afterAgent:${context.result.reason}`);
+        }
+      }
+    ];
+
+    const runner = createAgent({model, tools: [tool], middlewares});
+    const result = await runner.invoke({messages: [new HumanMessage('start')]});
+
+    expect(result.reason).toBe('complete');
+    expect(events).toEqual([
+      'beforeAgent:1',
+      'beforeModel:1',
+      'wrapModel:start:1',
+      'wrapModel:end:1',
+      'afterModel:1',
+      'wrapTool:start:1:echo',
+      'wrapTool:end:1:echo',
+      'afterAgent:continue',
+      'beforeAgent:2',
+      'beforeModel:2',
+      'wrapModel:start:2',
+      'wrapModel:end:2',
+      'afterModel:2',
+      'afterAgent:complete'
+    ]);
+  });
+
+  it('应支持 middleware 单数入参别名', async () => {
+    const order: string[] = [];
+    const model = new FakeModel([new AIMessage('done')]) as unknown as BaseChatModel;
+    const aliasMiddleware = createMiddleware({
+      name: 'AliasMiddleware',
+      beforeModel: () => {
+        order.push('beforeModel');
+      },
     });
 
-    expect(restored).toBeUndefined();
+    const runner = createAgent({
+      model,
+      middleware: [aliasMiddleware],
+    });
+
+    const result = await runner.invoke({messages: [new HumanMessage('hello')]});
+
+    expect(result.reason).toBe('complete');
+    expect(order).toEqual(['beforeModel']);
   });
 
-  it('should stream messages and persist final state through createAgent', async () => {
-    const model = new StreamingCountingModel();
-    const agent = createAgent({model: model as unknown as BaseChatModel});
+  it('afterModel 抛错时应在该轮返回 error 且不执行工具', async () => {
+    const toolCall: ToolCall = {id: 'call_err_stage', name: 'echo', args: {}};
+    const model = new FakeModel([new AIMessage({content: '', tool_calls: [toolCall]})]) as unknown as BaseChatModel;
 
+    const tool = {
+      name: 'echo',
+      description: 'Echo tool',
+      schema: {} as never,
+      invoke: async () => 'pong'
+    } as unknown as StructuredToolInterface;
+
+    const runner = createAgent({
+      model,
+      tools: [tool],
+      middlewares: [
+        {
+          name: 'fail_after_model',
+          afterModel: () => {
+            throw new Error('afterModel boom');
+          }
+        }
+      ]
+    });
+
+    const result = await runner.invoke({messages: [new HumanMessage('start')]});
+    expect(result.reason).toBe('error');
+    expect(result.error?.message).toContain('afterModel boom');
+    const hasToolMessage = result.state.messages.some((message) => message instanceof ToolMessage);
+    expect(hasToolMessage).toBe(false);
+  });
+
+  it('应支持在 wrapModelCall 中通过 runtime.context 注入 systemMessage', async () => {
+    const capturedInvocations: BaseMessage[][] = [];
+    const model = {
+      invoke: async (messages: BaseMessage[]) => {
+        capturedInvocations.push(messages);
+        return new AIMessage('done');
+      },
+      bindTools: () => ({
+        invoke: async (messages: BaseMessage[]) => {
+          capturedInvocations.push(messages);
+          return new AIMessage('done');
+        }
+      })
+    } as unknown as BaseChatModel;
+
+    const userContextMiddleware = createMiddleware({
+      name: 'UserContextMiddleware',
+      contextSchema: z.object({
+        userId: z.string(),
+        tenantId: z.string()
+      }),
+      wrapModelCall: (request, handler) => {
+        const userId = String(request.runtime.context.userId);
+        const tenantId = String(request.runtime.context.tenantId);
+        const contextText = `User ID: ${userId}, Tenant: ${tenantId}`;
+        return handler({
+          ...request,
+          systemMessage: request.systemMessage.concat(contextText)
+        });
+      }
+    });
+
+    const runner = createAgent({
+      model,
+      middlewares: [userContextMiddleware]
+    });
+
+    const result = await runner.invoke(
+      {messages: [new HumanMessage('hello')]},
+      {
+        context: {
+          userId: 'user-123',
+          tenantId: 'acme-corp'
+        }
+      }
+    );
+
+    expect(result.reason).toBe('complete');
+    const firstInvoke = capturedInvocations[0] ?? [];
+    expect(firstInvoke[0]).toBeInstanceOf(SystemMessage);
+    expect(String((firstInvoke[0] as SystemMessage).content)).toContain('User ID: user-123, Tenant: acme-corp');
+  });
+
+  it('context 不满足 middleware.contextSchema 时应返回 error', async () => {
+    const model = new FakeModel([new AIMessage('done')]) as unknown as BaseChatModel;
+    const userContextMiddleware = createMiddleware({
+      name: 'UserContextMiddleware',
+      contextSchema: z.object({
+        userId: z.string(),
+        tenantId: z.string()
+      }),
+      beforeModel: () => undefined
+    });
+
+    const runner = createAgent({
+      model,
+      middlewares: [userContextMiddleware]
+    });
+
+    const result = await runner.invoke(
+      {messages: [new HumanMessage('hello')]},
+      {
+        context: {
+          userId: 'user-123'
+        }
+      }
+    );
+
+    expect(result.reason).toBe('error');
+    expect(result.error?.message).toContain('context validation failed');
+  });
+
+  it('stream(messages) 应输出模型 chunks 并返回最终结果', async () => {
+    const model = new StreamingModel(
+      [new AIMessage('hello')],
+      [[new AIMessageChunk({content: 'he'}), new AIMessageChunk({content: 'llo'})]]
+    ) as unknown as BaseChatModel;
+    const runner = createAgent({model});
+
+    const stream = runner.stream({messages: [new HumanMessage('hello')]}, {streamMode: 'messages'});
     const chunks: Array<[AIMessageChunk, {runId: string; turn: number}]> = [];
-    for await (const chunk of agent.stream('hello', {streamMode: 'messages'})) {
-      chunks.push(chunk as [AIMessageChunk, {runId: string; turn: number}]);
+    let result: Awaited<ReturnType<typeof runner.invoke>> | undefined;
+
+    while (true) {
+      const next = await stream.next();
+      if (next.done) {
+        result = next.value;
+        break;
+      }
+      chunks.push(next.value as [AIMessageChunk, {runId: string; turn: number}]);
     }
 
     expect(chunks).toHaveLength(2);
-    expect(String(chunks[0]?.[0].content)).not.toBe('');
-
-    const state = agent.getState();
-    expect(state.status).toBe('idle');
-    expect(state.checkpointId).toBeTruthy();
-    expect(String(state.messages[state.messages.length - 1]?.content)).toBe('seen_humans:1');
+    expect(String(chunks[0]?.[0].content)).toBe('he');
+    expect(String(chunks[1]?.[0].content)).toBe('llo');
+    expect(chunks[0]?.[1].turn).toBe(1);
+    expect(result?.reason).toBe('complete');
+    expect(String(result?.state.messages[result.state.messages.length - 1]?.content)).toBe('hello');
   });
 
-  it('should stream custom HIL events while preserving paused state', async () => {
-    const model = new ConfirmationModel();
-    const checkpointer = createAgentMemoryCheckpointer();
+  it('stream(updates) 应输出 model/tool 步骤更新', async () => {
+    const toolCall: ToolCall = {id: 'call_stream', name: 'echo', args: {text: 'ping'}};
+    const tool = {
+      name: 'echo',
+      description: 'Echo tool',
+      schema: {} as never,
+      invoke: async () => 'pong',
+    } as unknown as StructuredToolInterface;
 
-    const bashTool = tool(
-      async ({command}: {command: string}) => `executed:${command}`,
-      {
-        name: 'bash',
-        description: 'Execute shell command',
-        schema: z.object({command: z.string()}),
-      }
-    );
+    const model = new FakeModel([
+      new AIMessage({content: '', tool_calls: [toolCall]}),
+      new AIMessage('done'),
+    ]) as unknown as BaseChatModel;
 
-    const hilMiddleware = createHILMiddleware({
-      interruptOn: {bash: true},
-    });
+    const runner = createAgent({model, tools: [tool]});
+    const updates: Array<{model?: {messages: [AIMessage]}; tools?: {messages: [ToolMessage]}}> = [];
 
-    const agent = createAgent({
-      model: model as unknown as BaseChatModel,
-      tools: [bashTool],
-      middlewares: [hilMiddleware],
-      threadId: 'thread-stream-hil',
-      checkpointer,
-    });
-
-    const customEvents: Array<{type: string; payload: {type: string}}> = [];
-    for await (const chunk of agent.stream('run git status', {streamMode: 'custom'})) {
-      customEvents.push(chunk as {type: string; payload: {type: string}});
+    for await (const chunk of runner.stream({messages: [new HumanMessage('start')]}, {streamMode: 'updates'})) {
+      updates.push(chunk as {model?: {messages: [AIMessage]}; tools?: {messages: [ToolMessage]}});
     }
 
-    expect(customEvents).toHaveLength(1);
-    expect(customEvents[0]?.type).toBe('hil_event');
-    expect(customEvents[0]?.payload.type).toBe('hil_pause');
-    expect(agent.getState().status).toBe('paused');
-    expect(agent.getState().pendingPause?.action.toolName).toBe('bash');
+    expect(updates).toHaveLength(3);
+    expect(updates[0]?.model?.messages[0]).toBeInstanceOf(AIMessage);
+    expect(updates[1]?.tools?.messages[0]).toBeInstanceOf(ToolMessage);
+    expect(String(updates[1]?.tools?.messages[0]?.content)).toBe('pong');
+    expect(String(updates[2]?.model?.messages[0]?.content)).toBe('done');
   });
 
-  it('should resume stream with additional user input after a paused HIL checkpoint', async () => {
-    const model = new ConfirmationModel();
-    const checkpointer = createAgentMemoryCheckpointer();
+  it('stream(values) 应输出完整 messages 快照', async () => {
+    const model = new FakeModel([new AIMessage('done')]) as unknown as BaseChatModel;
+    const runner = createAgent({model});
+    const values: Array<{messages: BaseMessage[]}> = [];
 
-    let bashInvokeCount = 0;
-    const bashTool = tool(
-      async ({command}: {command: string}) => {
-        bashInvokeCount += 1;
-        return `executed:${command}`;
+    for await (const chunk of runner.stream({messages: [new HumanMessage('hello')]}, {streamMode: 'values'})) {
+      values.push(chunk as {messages: BaseMessage[]});
+    }
+
+    expect(values).toHaveLength(2);
+    expect(values[0]?.messages).toHaveLength(1);
+    expect(values[1]?.messages).toHaveLength(2);
+    expect(String(values[1]?.messages[1]?.content)).toBe('done');
+  });
+
+  it('stream(custom) 应输出 HIL 自定义事件', async () => {
+    const toolCall: ToolCall = {id: 'call_pause', name: 'bash', args: {command: 'git status'}};
+    const bashTool = {
+      name: 'bash',
+      description: 'bash',
+      schema: {} as never,
+      invoke: async () => 'executed',
+    } as unknown as StructuredToolInterface;
+
+    const model = new FakeModel([
+      new AIMessage({content: '', tool_calls: [toolCall]}),
+      new AIMessage('done'),
+    ]) as unknown as BaseChatModel;
+
+    const hil = createMiddleware({
+      name: 'hil-test-wrapper',
+      wrapToolCall: async (context) => {
+        return new ToolMessage({
+          content: JSON.stringify({
+            type: 'hil_pause',
+            request: {
+              id: 'pause_1',
+              description: 'Confirm bash command',
+              action: {
+                toolName: 'bash',
+                toolCallId: context.toolCall.id ?? 'call_pause',
+                toolArgs: context.toolCall.args,
+              },
+              review: {decision: 'ask', allowedDecisions: ['approve', 'reject']},
+              runtime: {runId: context.runId, requestId: context.requestId, turn: context.turn},
+            },
+          }),
+          tool_call_id: context.toolCall.id ?? 'call_pause',
+        });
       },
-      {
-        name: 'bash',
-        description: 'Execute shell command',
-        schema: z.object({command: z.string()}),
-      }
-    );
-
-    const hilMiddleware = createHILMiddleware({
-      interruptOn: {bash: true},
     });
 
-    const agent = createAgent({
-      model: model as unknown as BaseChatModel,
-      tools: [bashTool],
-      middlewares: [hilMiddleware],
-      threadId: 'thread-resume-stream-hil',
-      checkpointer,
-    });
+    const runner = createAgent({model, tools: [bashTool], middlewares: [hil]});
+    const events: Array<{type: string; payload: {type: string}}> = [];
 
-    for await (const _chunk of agent.stream('run git status', {streamMode: 'custom'})) {
-      void _chunk;
+    for await (const chunk of runner.stream({messages: [new HumanMessage('run git status')]}, {streamMode: 'custom'})) {
+      events.push(chunk as {type: string; payload: {type: string}});
     }
 
-    expect(agent.getState().status).toBe('paused');
-
-    const streamedChunks: string[] = [];
-    for await (const chunk of agent.resumeStream(
-      {decision: 'approve'},
-      {
-        input: 'approved and continue',
-        streamMode: 'messages',
-      }
-    )) {
-      const [messageChunk] = chunk as [AIMessageChunk, {runId: string; turn: number}];
-      streamedChunks.push(String(messageChunk.content));
-    }
-
-    expect(streamedChunks.join('')).toContain('CONFIRMED_DONE');
-    expect(agent.getState().status).toBe('idle');
-    expect(agent.getState().pendingPause).toBeUndefined();
-    expect(bashInvokeCount).toBe(1);
+    expect(events).toHaveLength(1);
+    expect(events[0]?.type).toBe('hil_event');
+    expect(events[0]?.payload.type).toBe('hil_pause');
   });
 });

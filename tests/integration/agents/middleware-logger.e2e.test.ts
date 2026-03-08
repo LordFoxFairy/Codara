@@ -2,7 +2,7 @@ import {describe, expect, it} from 'bun:test';
 import {HumanMessage, ToolMessage} from '@langchain/core/messages';
 import {tool} from '@langchain/core/tools';
 import {z} from 'zod';
-import {createAgentRunner} from '@core/agents';
+import {createAgent} from '@core/agents';
 import {createMiddleware} from '@core/middleware';
 import {ChatModelFactory, loadModelRoutingConfig, ModelRegistry} from '@core/provider';
 
@@ -31,7 +31,7 @@ describe('Agent Middleware Logger End-to-End', () => {
         logs.push(`beforeAgent:${state.turn}`);
       },
       beforeModel: (state) => {
-        logs.push(`About to call model with ${state.messages.length} messages`);
+        logs.push(`beforeModel:${state.turn}:${state.messages.length}`);
       },
       wrapModelCall: async (request, handler) => {
         logs.push(`wrapModelCall:start:${request.turn}`);
@@ -41,7 +41,7 @@ describe('Agent Middleware Logger End-to-End', () => {
       },
       afterModel: (state) => {
         const lastMessage = state.messages[state.messages.length - 1];
-        logs.push(`Model returned: ${String(lastMessage?.content ?? '')}`);
+        logs.push(`afterModel:${state.turn}:${String(lastMessage?.content ?? '')}`);
       },
       wrapToolCall: async (request, handler) => {
         logs.push(`wrapToolCall:${request.turn}:${request.toolCall.name}`);
@@ -67,7 +67,7 @@ describe('Agent Middleware Logger End-to-End', () => {
         throw new Error('Unreachable');
       }
     });
-    const runner = createAgentRunner({
+    const runner = createAgent({
       model,
       tools: [echoTool],
       middlewares: [retryMiddleware, loggingMiddleware]

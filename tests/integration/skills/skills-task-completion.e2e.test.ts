@@ -6,7 +6,7 @@ import type {BaseChatModel} from '@langchain/core/language_models/chat_models'
 import type {StructuredToolInterface} from '@langchain/core/tools'
 import {tool} from '@langchain/core/tools'
 import {z} from 'zod'
-import {createAgentRunner} from '@core/agents'
+import {createAgent} from '@core/agents'
 import {createMiddleware} from '@core/middleware'
 import {createSkillsMiddleware, FileSystemSkillStore} from '@core/skills'
 
@@ -119,7 +119,7 @@ describe('Skills task completion flow', () => {
       }
     })
 
-    const runner = createAgentRunner({
+    const runner = createAgent({
       model: model as unknown as BaseChatModel,
       tools: [readFileTool],
       middlewares: [createSkillsMiddleware({store}), probeMiddleware]

@@ -1,8 +1,3 @@
-export type {
-  CreateCodaraOptions,
-  CreateCodaraSessionOptions,
-  LoadCodaraSessionOptions,
-} from '@core/sessions/types';
-export type {CodaraSession} from '@core/sessions/session';
-export {createCodara} from '@core/sessions/manager';
-export type {Codara} from '@core/sessions/manager';
+export type {CreateSessionOptions, LoadSessionOptions, SessionState} from '@core/sessions/types';
+export type {Session} from '@core/sessions/session';
+export {createSession, loadSession} from '@core/sessions/session';

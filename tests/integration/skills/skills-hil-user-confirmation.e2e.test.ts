@@ -4,7 +4,7 @@ import type {BaseChatModel} from '@langchain/core/language_models/chat_models';
 import type {StructuredToolInterface} from '@langchain/core/tools';
 import {tool} from '@langchain/core/tools';
 import {z} from 'zod';
-import {createAgentRunner} from '@core/agents';
+import {createAgent} from '@core/agents';
 import {createHILMiddleware} from '@core/middleware';
 
 class ConfirmationModel {
@@ -80,7 +80,7 @@ describe('HIL user confirmation flow', () => {
       },
     });
 
-    const runner = createAgentRunner({
+    const runner = createAgent({
       model: model as unknown as BaseChatModel,
       tools: [bashTool],
       middlewares: [hilMiddleware],
@@ -97,18 +97,13 @@ describe('HIL user confirmation flow', () => {
     );
     expect(bashInvokeCount).toBe(0);
 
-    const secondState = {
-      messages: [...firstResult.state.messages, new HumanMessage('approved and continue')],
-    };
-
-    const secondResult = await runner.invoke(secondState, {
-      recursionLimit: 4,
-      context: {
-        hil: {
-          resume: {action: 'allow'},
-        },
-      },
-    });
+    const secondResult = await runner.resume(
+      {action: 'allow'},
+      {
+        input: new HumanMessage('approved and continue'),
+        recursionLimit: 4,
+      }
+    );
 
     expect(secondResult.reason).toBe('complete');
     expect(String(secondResult.state.messages[secondResult.state.messages.length - 1]?.content)).toContain(
