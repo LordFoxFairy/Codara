@@ -1,14 +1,14 @@
 import {createAgentMemoryCheckpointer} from '@core/checkpoint/state';
 import {createSession, type Session, type SessionState} from '@core/sessions';
 import {createCodaraAgent} from '@core/codara/agent';
-import {createCodaraMemoryEditor} from '@core/codara/memory';
+import {createCodaraMemory} from '@core/codara/memory';
 import {mergeCodaraOptions, resolveCodaraCheckpoint} from '@core/codara/options';
 import type {Codara, CreateCodaraOptions, CreateCodaraSessionOptions} from '@core/codara/types';
 
 /** 创建面向 CLI 和产品层的 Codara 入口。 */
 export function createCodara(options: CreateCodaraOptions = {}): Codara {
   const checkpointer = options.checkpointer ?? createAgentMemoryCheckpointer();
-  const memory = createCodaraMemoryEditor(options);
+  const memory = createCodaraMemory(options);
   let defaultSessionPromise: Promise<Session> | undefined;
 
   async function buildSession(optionsOverride: CreateCodaraSessionOptions = {}): Promise<Session> {
