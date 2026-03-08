@@ -1,4 +1,4 @@
-import {readdir, readFile} from 'node:fs/promises'
+import {readdir, readFile, stat} from 'node:fs/promises'
 import {homedir} from 'node:os'
 import path from 'node:path'
 import {parseSkillMetadataFromContent} from '@core/skills/loading'
@@ -8,6 +8,7 @@ import {resolveWorkspaceRoot} from '@core/workspace'
 
 const DEFAULT_CACHE_TTL_MS = 5_000
 const SKILL_FILE_NAME = 'SKILL.md'
+const MAX_SKILL_FILE_SIZE = 1024 * 1024 // 1MB - skill files should be concise
 
 interface SkillCacheEntry {
   expiresAt: number
@@ -48,6 +49,15 @@ export class FileSystemSkillStore implements SkillStore {
       for (const dirName of skillDirs) {
         const skillPath = path.join(root, dirName, SKILL_FILE_NAME)
         try {
+          // Check file size before loading
+          const stats = await stat(skillPath)
+          if (stats.size > MAX_SKILL_FILE_SIZE) {
+            console.warn(
+              `[Skills] Skipping ${skillPath}: file size ${(stats.size / 1024).toFixed(1)}KB exceeds ${MAX_SKILL_FILE_SIZE / 1024}KB limit`
+            )
+            continue
+          }
+
           const content = await readFile(skillPath, 'utf8')
           const metadata = parseSkillMetadataFromContent(content, skillPath, dirName)
           if (!metadata) {
