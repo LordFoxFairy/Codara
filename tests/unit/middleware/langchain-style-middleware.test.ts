@@ -7,7 +7,7 @@ function createContext() {
   return {
     state: {messages},
     messages,
-    runtime: {context: {}},
+    runtime: {context: {}, agentContext: {}},
     systemMessage: [],
     runId: 'run_style',
     turn: 1,

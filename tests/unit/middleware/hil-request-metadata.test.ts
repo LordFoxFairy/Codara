@@ -7,7 +7,7 @@ function createToolContext(toolCall: ToolCall): ToolCallContext {
   return {
     state: {messages},
     messages,
-    runtime: {context: {}},
+    runtime: {context: {}, agentContext: {}},
     systemMessage: [],
     runId: 'run_hil_meta_1',
     turn: 1,
