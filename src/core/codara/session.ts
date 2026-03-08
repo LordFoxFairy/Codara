@@ -3,32 +3,33 @@ import type {AgentCheckpointer} from '@core/checkpoint/state';
 import {createSession, type Session} from '@core/sessions';
 import {createCodaraAgent} from '@core/codara/agent';
 import type {CreateCodaraAgentOptions, CreateCodaraSessionOptions} from '@core/codara/types';
+import type {
+  AgentInput,
+  AgentInvokeConfig,
+  AgentResumeConfig,
+  AgentResumeStreamConfig,
+  AgentResult,
+  AgentStreamConfig,
+  AgentStreamOutput,
+} from '@core/agents';
+import type {HILResumePayload} from '@core/middleware';
+import type {SessionState} from '@core/sessions';
 
 interface CodaraSessionHost {
   session(options?: CreateCodaraSessionOptions): Promise<Session>;
-  getState(): Promise<import('@core/sessions').SessionState>;
+  getState(): Promise<SessionState>;
   reset(): Promise<void>;
   dispose(): Promise<void>;
-  invoke: Session['agent'] extends () => infer T
-    ? T extends {invoke: infer F}
-      ? F
-      : never
-    : never;
-  stream: Session['agent'] extends () => infer T
-    ? T extends {stream: infer F}
-      ? F
-      : never
-    : never;
-  resume: Session['agent'] extends () => infer T
-    ? T extends {resume: infer F}
-      ? F
-      : never
-    : never;
-  resumeStream: Session['agent'] extends () => infer T
-    ? T extends {resumeStream: infer F}
-      ? F
-      : never
-    : never;
+  invoke(input?: AgentInput, config?: AgentInvokeConfig): Promise<AgentResult>;
+  stream(
+    input?: AgentInput,
+    config?: AgentStreamConfig
+  ): AsyncGenerator<AgentStreamOutput, AgentResult, void>;
+  resume(payload: HILResumePayload, config?: AgentResumeConfig): Promise<AgentResult>;
+  resumeStream(
+    payload: HILResumePayload,
+    config?: AgentResumeStreamConfig
+  ): AsyncGenerator<AgentStreamOutput, AgentResult, void>;
 }
 
 /** 创建 Codara 默认 session 宿主。 */
@@ -65,6 +66,10 @@ export function createCodaraSessionHost(options: CreateCodaraAgentOptions = {}):
     return defaultSessionPromise;
   }
 
+  async function getDefaultAgent() {
+    return (await getDefaultSession()).agent();
+  }
+
   return {
     session(optionsOverride) {
       return optionsOverride ? buildSession(optionsOverride) : getDefaultSession();
@@ -83,16 +88,16 @@ export function createCodaraSessionHost(options: CreateCodaraAgentOptions = {}):
       defaultSessionPromise = undefined;
     },
     async invoke(input, config) {
-      return (await getDefaultSession()).agent().invoke(input, config);
+      return (await getDefaultAgent()).invoke(input, config);
     },
     async *stream(input, config) {
-      return yield* (await getDefaultSession()).agent().stream(input, config);
+      return yield* (await getDefaultAgent()).stream(input, config);
     },
     async resume(payload, config) {
-      return (await getDefaultSession()).agent().resume(payload, config);
+      return (await getDefaultAgent()).resume(payload, config);
     },
     async *resumeStream(payload, config) {
-      return yield* (await getDefaultSession()).agent().resumeStream(payload, config);
+      return yield* (await getDefaultAgent()).resumeStream(payload, config);
     },
   };
 }
