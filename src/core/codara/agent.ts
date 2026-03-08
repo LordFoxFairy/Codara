@@ -4,10 +4,10 @@ import type {CreateCodaraChatModelOptions} from '@core/codara/models';
 import {createCodaraChatModel} from '@core/codara/models';
 import {createCodaraMiddlewares} from '@core/codara/middleware';
 import {createCodaraTools} from '@core/codara/tools';
-import type {CreateCodaraAgentOptions} from '@core/codara/types';
+import type {CodaraAgentOptions} from '@core/codara/types';
 
 /** 创建带 Codara 默认装配的 agent。 */
-export async function createCodaraAgent(options: CreateCodaraAgentOptions = {}): Promise<Agent> {
+export async function createCodaraAgent(options: CodaraAgentOptions = {}): Promise<Agent> {
   const model = await resolveCodaraModel(options);
   const state = buildCodaraAgentState(options);
 
@@ -25,7 +25,7 @@ export async function createCodaraAgent(options: CreateCodaraAgentOptions = {}):
 
 /** 按 thread 恢复最新的 Codara agent。 */
 export async function loadCodaraAgent(
-  options: CreateCodaraAgentOptions & {threadId: string; checkpointer: AgentCheckpointer}
+  options: CodaraAgentOptions & {threadId: string; checkpointer: AgentCheckpointer}
 ): Promise<Agent | undefined> {
   const checkpoint = await options.checkpointer.getLatest(options.threadId);
   if (!checkpoint) {
@@ -35,7 +35,7 @@ export async function loadCodaraAgent(
   return createCodaraAgent({...options, checkpoint});
 }
 
-async function resolveCodaraModel(options: CreateCodaraAgentOptions) {
+async function resolveCodaraModel(options: CodaraAgentOptions) {
   if (options.model) {
     return options.model;
   }
@@ -53,7 +53,7 @@ async function resolveCodaraModel(options: CreateCodaraAgentOptions) {
 }
 
 /** 构建传给 createAgent(...) 的初始运行状态。 */
-function buildCodaraAgentState(options: CreateCodaraAgentOptions) {
+function buildCodaraAgentState(options: CodaraAgentOptions) {
   if (!options.state && !options.messages && !options.context) {
     return undefined;
   }
