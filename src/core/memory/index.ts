@@ -4,4 +4,3 @@ export * from '@core/memory/editor';
 export * from '@core/memory/discovery';
 export * from '@core/memory/loader';
 export * from '@core/memory/format';
-export * from '@core/memory/middleware';

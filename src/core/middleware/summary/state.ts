@@ -1,6 +1,6 @@
 import type {BaseMessage} from '@langchain/core/messages';
 import type {AgentRuntimeContext} from '@core/agents';
-import type {SummaryRecord} from '@core/summary/types';
+import type {SummaryRecord} from '@core/middleware/summary/types';
 
 const CODARA_KEY = 'codara';
 const SUMMARY_KEY = 'summary';
