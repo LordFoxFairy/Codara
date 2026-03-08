@@ -1,6 +1,7 @@
 import {createHILMiddleware, createLoggingMiddleware, type BaseMiddleware} from '@core/middleware';
 import {createSkillsMiddleware, FileSystemSkillStore} from '@core/middleware/skills';
 import {createAgentsGuidelinesMiddleware} from '@core/guidelines';
+import {createMemoryMiddleware} from '@core/memory';
 import type {CreateCodaraMiddlewareOptions} from '@core/codara/types';
 
 /** 构建 Codara 默认中间件链。 */
@@ -13,6 +14,10 @@ export function createCodaraMiddlewares(options: CreateCodaraMiddlewareOptions =
 
   if (options.agentsGuidelines !== false) {
     middlewares.push(createAgentsGuidelinesMiddleware(resolveAgentsGuidelinesOptions(options)));
+  }
+
+  if (options.memory !== false) {
+    middlewares.push(createMemoryMiddleware(resolveMemoryOptions(options)));
   }
 
   if (options.skills !== false) {
@@ -36,6 +41,18 @@ function resolveAgentsGuidelinesOptions(options: CreateCodaraMiddlewareOptions) 
   return {
     ...(options.agentsGuidelines?.userHome ? {userHome: options.agentsGuidelines.userHome} : {}),
     ...(options.agentsGuidelines?.projectRoot ? {projectRoot: options.agentsGuidelines.projectRoot} : {}),
+  };
+}
+
+function resolveMemoryOptions(options: CreateCodaraMiddlewareOptions) {
+  if (options.memory === false) {
+    return {};
+  }
+
+  return {
+    ...(options.memory?.userHome ? {userHome: options.memory.userHome} : {}),
+    ...(options.memory?.projectRoot ? {projectRoot: options.memory.projectRoot} : {}),
+    ...(typeof options.memory?.maxChars === 'number' ? {maxChars: options.memory.maxChars} : {}),
   };
 }
 
