@@ -2,7 +2,7 @@ import {createAgentMemoryCheckpointer} from '@core/checkpoint/state';
 import type {AgentCheckpointer} from '@core/checkpoint/state';
 import {createSession, type Session} from '@core/sessions';
 import {createCodaraAgent} from '@core/codara/agent';
-import {loadCodaraSources} from '@core/codara/middleware';
+import {loadCodaraSourceStack} from '@core/codara/sources';
 import type {CodaraAgentOptions, CodaraSessionOptions} from '@core/codara/types';
 import type {
   AgentInput,
@@ -40,7 +40,7 @@ export function createCodaraSessionHost(options: CodaraAgentOptions = {}): Codar
 
   async function buildSession(optionsOverride: CodaraSessionOptions = {}): Promise<Session> {
     const merged = mergeCodaraAgentOptions(options, optionsOverride, checkpointer);
-    const loadedSources = await loadCodaraSources(merged);
+    const loadedSources = await loadCodaraSourceStack(merged);
 
     const checkpoint = await resolveCheckpoint({
       restore: optionsOverride.restore ?? 'latest',
@@ -48,10 +48,13 @@ export function createCodaraSessionHost(options: CodaraAgentOptions = {}): Codar
       checkpointer: merged.checkpointer,
     });
 
-    const agent = await createCodaraAgent({
-      ...merged,
-      ...(checkpoint ? {checkpoint} : {}),
-    }, loadedSources);
+    const agent = await createCodaraAgent(
+      {
+        ...merged,
+        ...(checkpoint ? {checkpoint} : {}),
+      },
+      loadedSources
+    );
 
     return createSession({
       ...(optionsOverride.sessionId ? {sessionId: optionsOverride.sessionId} : {}),
