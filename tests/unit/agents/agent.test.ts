@@ -579,6 +579,7 @@ describe('Agent', () => {
     expect(updates[0]?.model?.messages[0]).toBeInstanceOf(AIMessage);
     expect(updates[1]?.tools?.messages[0]).toBeInstanceOf(ToolMessage);
     expect(String(updates[1]?.tools?.messages[0]?.content)).toBe('pong');
+    expect((updates[1]?.tools?.messages[0] as ToolMessage)?.artifact).toBe('pong');
     expect(String(updates[2]?.model?.messages[0]?.content)).toBe('done');
   });
 
