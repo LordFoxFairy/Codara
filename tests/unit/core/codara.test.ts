@@ -10,9 +10,9 @@ import {
   createAgentMemoryCheckpointer,
   createCodara,
   createCodaraAgent,
-  createCodaraMemory,
   createCodaraMiddlewares,
   createCodaraTools,
+  loadCodaraSources,
   loadCodaraAgent,
 } from '@core';
 import type {SkillMetadata, SkillStore} from '@core/skills/types';
@@ -75,7 +75,6 @@ describe('Codara core facade', () => {
       'read_file',
       'write_file',
       'edit_file',
-      'remember_memory',
       'glob',
       'grep',
       'fetch_url',
@@ -208,21 +207,29 @@ describe('Codara core facade', () => {
     await writeFile(path.join(projectRoot, 'AGENTS.md'), 'project rule', 'utf8');
     await writeFile(path.join(projectRoot, '.codara', 'MEMORY.md'), 'project memory', 'utf8');
 
+    const loadedSources = await loadCodaraSources({
+      cwd: nestedCwd,
+      guidelines: {userHome},
+      memory: {userHome},
+      skills: false,
+      hil: false,
+    });
     const pipeline = new MiddlewarePipeline(
-      createCodaraMiddlewares({
-        cwd: nestedCwd,
-        guidelines: {userHome},
-        memory: {userHome},
-        skills: false,
-        hil: false,
-      })
+      createCodaraMiddlewares(
+        {
+          cwd: nestedCwd,
+          guidelines: {userHome},
+          memory: {userHome},
+          skills: false,
+          hil: false,
+        },
+        loadedSources
+      )
     );
-    const memory = createCodaraMemory({cwd: nestedCwd, memory: {userHome}});
-
     const context: ModelCallContext = {
       state: {messages: []},
       messages: [],
-      runtime: {context: {__codaraMemory: memory}, agentContext: {}},
+      runtime: {context: {}, agentContext: {}},
       systemMessage: ['base system'],
       runId: 'run_1',
       turn: 1,
@@ -232,7 +239,9 @@ describe('Codara core facade', () => {
 
     const response = await pipeline.wrapModelCall(context, async (request) => {
       expect(request?.systemMessage).toHaveLength(3);
+      expect(request?.systemMessage[1]).toContain('AGENTS Guidelines');
       expect(request?.systemMessage[1]).toContain('project rule');
+      expect(request?.systemMessage[2]).toContain('Project Memory');
       expect(request?.systemMessage[2]).toContain('project memory');
       return new AIMessage('ok');
     });
@@ -431,58 +440,6 @@ describe('Codara core facade', () => {
     const agentState = (await codara.session()).agent().getState();
     expect(agentState.messages).toHaveLength(2);
     expect(String(agentState.messages[1]?.content)).toBe('seen_humans:1');
-  });
-
-  it('should expose product-level memory access through createCodara()', async () => {
-    const root = await mkdtemp(path.join(tmpdir(), 'codara-core-'));
-    const projectRoot = path.join(root, 'project');
-    await mkdir(path.join(projectRoot, '.codara'), {recursive: true});
-
-    const codara = createCodara({
-      cwd: path.join(projectRoot, 'packages', 'app'),
-      memory: false,
-    });
-
-    const memory = codara.memory();
-    expect(memory.resolve('project')).toBe(path.join(projectRoot, '.codara', 'MEMORY.md'));
-    expect(await memory.exists('project')).toBe(false);
-
-    await memory.remember('project', {
-      kind: 'lesson',
-      content: 'Prefer small PRs.',
-    });
-
-    expect(await memory.read('project')).toContain('Prefer small PRs.');
-
-    const snapshot = await memory.snapshot('project');
-    expect(snapshot.lesson).toEqual(['Prefer small PRs.']);
-  });
-
-  it('should include a builtin memory tool that writes durable memory entries', async () => {
-    const root = await mkdtemp(path.join(tmpdir(), 'codara-memory-tool-'));
-    const projectRoot = path.join(root, 'project');
-    const nestedCwd = path.join(projectRoot, 'packages', 'app');
-    await mkdir(path.join(projectRoot, '.codara'), {recursive: true});
-    await mkdir(nestedCwd, {recursive: true});
-
-    const tool = createCodaraTools({cwd: nestedCwd}).find((item) => item.name === 'remember_memory');
-    expect(tool).toBeDefined();
-
-    const result = await tool!.invoke({
-      kind: 'lesson',
-      scope: 'project',
-      content: 'Keep memory entries stable and reusable.',
-    });
-
-    expect(result).toContain('Memory updated');
-
-    const codara = createCodara({
-      cwd: nestedCwd,
-      memory: false,
-    });
-    const memory = codara.memory();
-    const snapshot = await memory.snapshot('project');
-    expect(snapshot.lesson).toContain('Keep memory entries stable and reusable.');
   });
 
   it('should stream through the top-level Codara facade for CLI consumers', async () => {

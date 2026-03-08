@@ -16,11 +16,10 @@ import type {BaseMiddleware, HILMiddlewareOptions, LoggingMiddlewareOptions} fro
 import type {AgentCheckpoint} from '@core/checkpoint/state';
 import type {HILResumePayload} from '@core/middleware';
 import type {SkillStore} from '@core/middleware/skills';
-import type {CodaraMemory} from '@core/codara/memory';
 import type {Session, SessionState} from '@core/sessions';
 import type {CodaraModelCatalog, CreateCodaraModelCatalogOptions} from '@core/codara/models';
 import type {GuidelinesOptions} from '@core/middleware/guidelines';
-import type {MemoryLoadOptions} from '@core/memory';
+import type {MemoryOptions} from '@core/middleware/memory';
 import type {SummaryOptions} from '@core/middleware/summary';
 
 export interface CodaraSkillOptions {
@@ -36,7 +35,7 @@ export interface CodaraToolsOptions {
   tools?: StructuredToolInterface[];
   builtinTools?: boolean;
   cwd?: string;
-  memory?: false | MemoryLoadOptions;
+  memory?: false | MemoryOptions;
 }
 
 export interface CodaraMiddlewareOptions {
@@ -44,7 +43,7 @@ export interface CodaraMiddlewareOptions {
   middleware?: BaseMiddleware[];
   middlewares?: BaseMiddleware[];
   guidelines?: false | GuidelinesOptions;
-  memory?: false | MemoryLoadOptions;
+  memory?: false | MemoryOptions;
   skills?: false | CodaraSkillOptions;
   summary?: false | SummaryOptions;
   hil?: false | HILMiddlewareOptions;
@@ -74,7 +73,6 @@ export type CodaraOptions = CodaraAgentOptions;
 
 export interface Codara {
   session(options?: CodaraSessionOptions): Promise<Session>;
-  memory(): CodaraMemory;
   invoke(input?: AgentInput, config?: AgentInvokeConfig): Promise<AgentResult>;
   stream(
     input?: AgentInput,

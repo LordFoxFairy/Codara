@@ -6,7 +6,6 @@ import {createEditTool, EditTool} from '@core/tools/builtin/edit';
 import {createGlobTool, GlobTool} from '@core/tools/builtin/glob';
 import {createGrepTool, GrepTool} from '@core/tools/builtin/grep';
 import {createFetchTool, FetchTool} from '@core/tools/builtin/fetch';
-import {createRememberMemoryTool, RememberMemoryTool} from '@core/tools/builtin/memory';
 import {createSearchTool, SearchTool} from '@core/tools/builtin/search';
 
 export {BashTool, createBashTool};
@@ -16,7 +15,6 @@ export {EditTool, createEditTool};
 export {GlobTool, createGlobTool};
 export {GrepTool, createGrepTool};
 export {FetchTool, createFetchTool};
-export {RememberMemoryTool, createRememberMemoryTool};
 export {SearchTool, createSearchTool};
 
 /**

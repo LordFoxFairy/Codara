@@ -5,57 +5,34 @@ import {tmpdir} from 'node:os';
 import {AIMessage} from '@langchain/core/messages';
 import {
   createGuidelinesMiddleware,
-  discoverGuidelineFiles,
   loadGuidelines,
 } from '@core/middleware/guidelines';
 import type {ModelCallContext} from '@core/middleware';
 
 describe('AGENTS guidelines', () => {
-  it('should discover global and project AGENTS.md locations in order', async () => {
-    const root = await mkdtemp(path.join(tmpdir(), 'codara-guidelines-'));
-    const userHome = path.join(root, 'home');
-    const projectRoot = path.join(root, 'project');
-    await mkdir(path.join(userHome, '.codara'), {recursive: true});
-    await mkdir(projectRoot, {recursive: true});
-
-    const files = discoverGuidelineFiles({userHome, projectRoot});
-
-    expect(files).toEqual([
-      {
-        scope: 'global',
-        path: path.join(userHome, '.codara', 'AGENTS.md'),
-      },
-      {
-        scope: 'project',
-        path: path.join(projectRoot, 'AGENTS.md'),
-      },
-    ]);
-  });
-
-  it('should resolve the nearest workspace root from cwd', async () => {
+  it('should resolve global and project AGENTS.md locations from the workspace root derived from cwd', async () => {
     const root = await mkdtemp(path.join(tmpdir(), 'codara-guidelines-'));
     const userHome = path.join(root, 'home');
     const projectRoot = path.join(root, 'project');
     const nestedCwd = path.join(projectRoot, 'packages', 'app');
+    const globalFile = path.join(userHome, '.codara', 'AGENTS.md');
+    const projectFile = path.join(projectRoot, 'AGENTS.md');
+
     await mkdir(path.join(userHome, '.codara'), {recursive: true});
     await mkdir(path.join(projectRoot, '.codara'), {recursive: true});
     await mkdir(nestedCwd, {recursive: true});
+    await writeFile(globalFile, '# Global Rules\n\nKeep commits small.\n', 'utf8');
+    await writeFile(projectFile, '# Project Rules\n\nRun tests before merge.\n', 'utf8');
 
-    const files = discoverGuidelineFiles({userHome, cwd: nestedCwd});
+    const loaded = await loadGuidelines({userHome, cwd: nestedCwd});
 
-    expect(files).toEqual([
-      {
-        scope: 'global',
-        path: path.join(userHome, '.codara', 'AGENTS.md'),
-      },
-      {
-        scope: 'project',
-        path: path.join(projectRoot, 'AGENTS.md'),
-      },
+    expect(loaded?.files).toEqual([
+      {scope: 'global', path: globalFile},
+      {scope: 'project', path: projectFile},
     ]);
   });
 
-  it('should load global and project AGENTS.md without caching', async () => {
+  it('should load guidelines as a compact snapshot instead of the full file body', async () => {
     const root = await mkdtemp(path.join(tmpdir(), 'codara-guidelines-'));
     const userHome = path.join(root, 'home');
     const projectRoot = path.join(root, 'project');
@@ -64,33 +41,24 @@ describe('AGENTS guidelines', () => {
 
     await mkdir(path.dirname(globalFile), {recursive: true});
     await mkdir(projectRoot, {recursive: true});
-    await writeFile(globalFile, 'global rule', 'utf8');
-    await writeFile(projectFile, 'project rule', 'utf8');
+    await writeFile(globalFile, '# Global Rules\n\nKeep commits small.\nUse Chinese comments when helpful.\n', 'utf8');
+    await writeFile(projectFile, '# Project Rules\n\nUse pnpm only.\nRun tests before merge.\n', 'utf8');
 
     const loaded = await loadGuidelines({userHome, projectRoot});
     expect(loaded).toBeDefined();
     expect(loaded?.files.map((file) => file.scope)).toEqual(['global', 'project']);
-    expect(loaded?.content).toContain('Contents of');
-    expect(loaded?.content).toContain('user instructions');
-    expect(loaded?.content).toContain('global rule');
-    expect(loaded?.content).toContain('project instructions');
-    expect(loaded?.content).toContain('project rule');
-
-    await writeFile(projectFile, 'project rule updated', 'utf8');
-    const reloaded = await loadGuidelines({userHome, projectRoot});
-    expect(reloaded?.content).toContain('project rule updated');
+    expect(loaded?.content).toContain('# AGENTS Guidelines');
+    expect(loaded?.content).toContain(`Path: ${globalFile}`);
+    expect(loaded?.content).toContain(`Path: ${projectFile}`);
+    expect(loaded?.content).toContain('# Global Rules');
+    expect(loaded?.content).toContain('# Project Rules');
+    expect(loaded?.content).toContain('Keep commits small.');
+    expect(loaded?.content).toContain('Run tests before merge.');
+    expect(loaded?.content).toContain('Read the source files directly if more detail is required.');
   });
 
-  it('should load and inject AGENTS.md content (aligned with Claude Code)', async () => {
-    const root = await mkdtemp(path.join(tmpdir(), 'codara-guidelines-'));
-    const userHome = path.join(root, 'home');
-    const projectRoot = path.join(root, 'project');
-    await mkdir(path.join(userHome, '.codara'), {recursive: true});
-    await mkdir(projectRoot, {recursive: true});
-    await writeFile(path.join(userHome, '.codara', 'AGENTS.md'), 'global rule', 'utf8');
-    await writeFile(path.join(projectRoot, 'AGENTS.md'), 'project rule', 'utf8');
-
-    const middleware = createGuidelinesMiddleware({userHome, projectRoot});
+  it('should inject preloaded guideline content', async () => {
+    const middleware = createGuidelinesMiddleware('# AGENTS Guidelines\n\nOriginal rule.\n');
     const context: ModelCallContext = {
       state: {messages: []},
       messages: [],
@@ -102,21 +70,10 @@ describe('AGENTS guidelines', () => {
       requestId: 'req_1',
     };
 
-    const response = await middleware.wrapModelCall?.(context, async (request) => {
-      expect(request?.systemMessage).toHaveLength(2);
-      expect(request?.systemMessage[0]).toBe('base system');
-
-      // 对齐 Claude Code：加载内容（有截断保护）
-      const content = request?.systemMessage[1];
-      expect(content).toContain('Contents of');
-      expect(content).toContain('user instructions');
-      expect(content).toContain('global rule');
-      expect(content).toContain('project instructions');
-      expect(content).toContain('project rule');
-
+    const first = await middleware.wrapModelCall?.(context, async (request) => {
+      expect(request?.systemMessage[1]).toContain('Original rule.');
       return new AIMessage('ok');
     });
-
-    expect(response?.content).toBe('ok');
+    expect(first?.content).toBe('ok');
   });
 });
