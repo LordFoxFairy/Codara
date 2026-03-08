@@ -47,7 +47,7 @@ src/core/memory/
 
 6. 注入顺序固定
 - `LoggingMiddleware`
-- `AgentsGuidelinesMiddleware`
+- `GuidelinesMiddleware`
 - `MemoryMiddleware`
 - `SkillsMiddleware`
 - caller middlewares

@@ -39,7 +39,7 @@ src/core/guidelines/
 
 5. 注入顺序固定
 - `LoggingMiddleware`
-- `AgentsGuidelinesMiddleware`
+- `GuidelinesMiddleware`
 - `SkillsMiddleware`
 - caller middlewares
 - `HumanInTheLoopMiddleware`
