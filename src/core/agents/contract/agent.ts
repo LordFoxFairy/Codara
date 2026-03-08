@@ -4,7 +4,7 @@ import type {StructuredToolInterface} from '@langchain/core/tools';
 import type {BaseMiddleware} from '@core/middleware';
 import type {HILPauseRequest, HILResumePayload} from '@core/middleware/hil';
 import type {AgentCheckpoint, AgentCheckpointer, AgentCheckpointSummary} from '@core/checkpoint/state';
-import type {AgentStreamConfig, AgentStreamOutput} from './stream';
+import type {AgentStreamConfig, AgentStreamOutput} from '@core/agents/contract/stream';
 
 export type AgentRuntimeContext = Record<string, unknown>;
 

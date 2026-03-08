@@ -6,7 +6,7 @@ import type {
   AgentStateSnapshot,
   AgentInput,
   AgentStateSeed,
-} from '../contract/agent';
+} from '@core/agents/contract/agent';
 import type {
   AgentCheckpoint,
   AgentCheckpointInfo,

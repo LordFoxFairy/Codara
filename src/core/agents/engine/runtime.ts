@@ -1,9 +1,9 @@
 import type {StructuredToolInterface} from '@langchain/core/tools';
 import type {BaseMiddleware} from '@core/middleware';
 import {MiddlewarePipeline} from '@core/middleware';
-import type {CreateAgentOptions} from '../contract/agent';
-import type {AgentRuntime} from '../loop/run';
-import {buildAgentModel} from './model';
+import type {CreateAgentOptions} from '@core/agents/contract/agent';
+import type {AgentRuntime} from '@core/agents/loop/run';
+import {buildAgentModel} from '@core/agents/engine/model';
 
 /** 组装 agent 运行时依赖。 */
 export function buildAgentRuntime(options: CreateAgentOptions): AgentRuntime {

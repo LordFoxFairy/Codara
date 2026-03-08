@@ -1,9 +1,9 @@
 import type {ToolCall} from '@langchain/core/messages';
 import type {AgentRunSummary, BaseExecutionContext, ToolCallContext} from '@core/middleware';
 import {parseHILToolMessagePayload} from '@core/middleware/hil';
-import type {AgentStreamWriter} from '../engine/stream-writer';
-import {executeToolCall, resolveToolCallId} from '../engine/tools';
-import type {AgentRuntime, AgentRunContext} from './run';
+import type {AgentStreamWriter} from '@core/agents/engine/stream-writer';
+import {executeToolCall, resolveToolCallId} from '@core/agents/engine/tools';
+import type {AgentRuntime, AgentRunContext} from '@core/agents/loop/run';
 
 export async function runToolStep(
   run: AgentRunContext,

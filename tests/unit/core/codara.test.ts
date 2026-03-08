@@ -212,22 +212,26 @@ describe('Codara core facade', () => {
     });
 
     expect(restored).toBeDefined();
+    expect(restored?.getState().status).toBe('idle');
     expect(restored?.getState().messages).toHaveLength(2);
   });
 
-  it('should expose a high-level query API through createCodara()', async () => {
+  it('should expose a high-level invoke API through createCodara()', async () => {
     const codara = createCodara({
       model: new EchoModel() as unknown as BaseChatModel,
       skills: false,
       builtinTools: false,
     });
 
-    const result = await codara.query('hello');
+    const result = await codara.invoke('hello');
     expect(result.reason).toBe('complete');
 
     const state = await codara.getState();
-    expect(state.messages).toHaveLength(2);
-    expect(String(state.messages[1]?.content)).toBe('seen_humans:1');
+    expect(state.sessionStatus).toBe('ready');
+
+    const agentState = (await codara.session()).agent().getState();
+    expect(agentState.messages).toHaveLength(2);
+    expect(String(agentState.messages[1]?.content)).toBe('seen_humans:1');
   });
 
   it('should create and reload sessions through the high-level Codara facade', async () => {
@@ -239,18 +243,19 @@ describe('Codara core facade', () => {
       builtinTools: false,
     });
 
-    const session = await codara.createSession({
+    const session = await codara.session({
       threadId: 'codara-session-thread',
     });
-    await session.query('hello');
+    await session.agent().invoke('hello');
 
-    const restored = await codara.loadSession({
+    const restored = await codara.session({
       threadId: 'codara-session-thread',
     });
 
     expect(restored).toBeDefined();
-    expect(restored?.getState().messages).toHaveLength(2);
-    expect(String(restored?.getState().messages[1]?.content)).toBe('seen_humans:1');
+    const restoredAgentState = restored?.agent().getState();
+    expect(restoredAgentState?.messages).toHaveLength(2);
+    expect(String(restoredAgentState?.messages[1]?.content)).toBe('seen_humans:1');
   });
 
   it('should open an existing session when thread checkpoints already exist', async () => {
@@ -263,7 +268,7 @@ describe('Codara core facade', () => {
       builtinTools: false,
     });
 
-    await firstCodara.query('hello');
+    await firstCodara.invoke('hello');
 
     const secondCodara = createCodara({
       model: new EchoModel() as unknown as BaseChatModel,
@@ -274,8 +279,11 @@ describe('Codara core facade', () => {
     });
 
     const restoredState = await secondCodara.getState();
-    expect(restoredState.messages).toHaveLength(2);
-    expect(String(restoredState.messages[1]?.content)).toBe('seen_humans:1');
+    expect(restoredState.sessionStatus).toBe('ready');
+
+    const restoredAgentState = (await secondCodara.session()).agent().getState();
+    expect(restoredAgentState.messages).toHaveLength(2);
+    expect(String(restoredAgentState.messages[1]?.content)).toBe('seen_humans:1');
   });
 
   it('should open a new session when the target thread does not exist yet', async () => {
@@ -286,13 +294,13 @@ describe('Codara core facade', () => {
       builtinTools: false,
     });
 
-    const session = await codara.openSession({
+    const session = await codara.session({
       threadId: 'brand-new-thread',
     });
 
     const state = session.getState();
     expect(state.threadId).toBe('brand-new-thread');
-    expect(state.messages).toHaveLength(0);
+    expect(session.agent().getState().messages).toHaveLength(0);
   });
 
   it('should allow a modelResolver override without changing the main createCodaraAgent API', async () => {
@@ -315,15 +323,18 @@ describe('Codara core facade', () => {
       builtinTools: false,
     });
 
-    await codara.query('hello');
+    await codara.invoke('hello');
     await codara.dispose();
 
-    const result = await codara.query('again');
+    const result = await codara.invoke('again');
     expect(result.reason).toBe('complete');
 
     const state = await codara.getState();
-    expect(state.messages).toHaveLength(2);
-    expect(String(state.messages[1]?.content)).toBe('seen_humans:1');
+    expect(state.sessionStatus).toBe('ready');
+
+    const agentState = (await codara.session()).agent().getState();
+    expect(agentState.messages).toHaveLength(2);
+    expect(String(agentState.messages[1]?.content)).toBe('seen_humans:1');
   });
 
   it('should stream through the top-level Codara facade for CLI consumers', async () => {
@@ -342,7 +353,10 @@ describe('Codara core facade', () => {
 
     expect(chunks).toEqual(['seen_humans:1']);
     const state = await codara.getState();
-    expect(state.messages).toHaveLength(2);
-    expect(String(state.messages[1]?.content)).toBe('seen_humans:1');
+    expect(state.sessionStatus).toBe('ready');
+
+    const agentState = (await codara.session()).agent().getState();
+    expect(agentState.messages).toHaveLength(2);
+    expect(String(agentState.messages[1]?.content)).toBe('seen_humans:1');
   });
 });

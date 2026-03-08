@@ -4,51 +4,30 @@
 
 ```text
 createCodara(...)
-  -> sessions/manager.ts
-    -> sessions/session.ts
-      -> agents/codara.ts
-        -> createAgent(...)
-          -> createAgentRunner(...)
-          -> checkpoint/*
-          -> middleware/*
+  -> createSession(...)
+    -> createAgent(...)
+      -> checkpoint/*
+      -> middleware/*
 ```
 
 - 依赖方向固定为：`codara -> sessions -> agents -> checkpoint`
-- `checkpoint` 不再反向依赖 `agents` 的核心类型
-- `middleware` 与 `checkpoint` 都由 `agents` 消费，不直接反咬 `sessions`
+- `createAgent(...)` 是唯一通用 agent 入口
+- `createSession(...)` 是实例宿主，只暴露 session 状态与 `agent()` 入口
+- `createCodara(...)` 是产品级 facade，负责默认模型、工具和 middleware 装配
+
+## 入口
 
 - `createCodara(...)`
-  - 完整的 Codara 对外入口。
-  - 持有默认 session，并暴露 `query(...)`、`stream(...)`、`openSession(...)`、`createSession(...)`、`loadSession(...)`。
-  - 默认装配模型 alias、内置工具和 middleware 栈，调用方只在需要时覆盖。
-  - 如果只是做 provider smoke 或最小宿主接入，可以显式关闭 `builtinTools`、`skills`、`hil`，把入口收成纯模型 facade。
-
-- `createCodaraModelRuntime(...)`
-  - 基于 provider 配置、registry 和 factory 的模型运行时。
-  - 支持按 `default`、`sonnet`、`deepseek` 这类别名取模型。
-
+  - 产品级入口
+  - 持有默认 session，并暴露 `session(...)`、`invoke(...)`、`stream(...)`、`resume(...)`
+- `createCodaraModelCatalog(...)`
+  - 基于 provider 配置、registry 和 factory 的模型目录
 - `createCodaraChatModel(...)`
-  - 直接按路由别名创建聊天模型。
-  - 默认使用 `default`。
-
-- `createAgentRunner(...)`
-  - 低层 agent 执行内核。
-  - 最接近 LangChain `createAgent` 的内部执行形态。
-
+  - 按 alias 直接创建聊天模型
 - `createAgent(...)`
-  - 带状态的 agent 宿主。
-  - 负责 messages、runtime context、HIL pause 状态、checkpoint 边界与 stream 输出。
-  - 对外统一使用 `createAgent({ model, tools, middleware }) + invoke/stream` 这一组接口心智。
-  - 当前同时接受 `middleware` 与既有 `middlewares`。
-
+  - 通用 agent，负责 `invoke/stream/resume` 与 checkpoint 边界
 - `createCodaraAgent(...)`
-  - 面向 CLI / code terminal 的高级 agent 入口。
-  - 支持直接传 `model`，也支持只传 `alias` / model 配置。
-  - 默认集成：
-    - 默认启用 `SkillsMiddleware`
-    - 默认启用 `HumanInTheLoopMiddleware`
-    - `LoggingMiddleware` 按需开启
-    - 调用方 middleware 插在 HIL 之前
+  - Codara 默认装配后的高级 agent 入口
 
 ## CLI 用法
 
@@ -60,66 +39,30 @@ const codara = createCodara({
   threadId: 'terminal-thread',
 });
 
-const result = await codara.query('hello');
+const result = await codara.invoke('hello');
 ```
 
-如果传了固定 `threadId`，`codara.query(...)` / `codara.stream(...)` 默认会优先恢复已有 checkpoint，
-不存在时再创建新 session。
-
-如果 CLI 需要流式输出：
+如果需要流式输出：
 
 ```ts
-import {createCodara} from '@core';
-
-const codara = createCodara({
-  tools,
-  threadId: 'terminal-thread',
-});
-
 for await (const chunk of codara.stream('hello', {streamMode: 'messages'})) {
   const [messageChunk] = chunk;
   process.stdout.write(String(messageChunk.content));
 }
 ```
 
-Codara 默认 middleware 顺序：
-
-1. 开启时的 `LoggingMiddleware`
-2. `SkillsMiddleware`
-3. 调用方自定义 middleware
-4. `HumanInTheLoopMiddleware`
-
-这样可以保证：
-- logging 在最外层观测下游结果
-- 调用方工具 middleware 能先于 HIL 短路
-- HIL 仍然是最终交互闸门
-
-如果 CLI 需要持久化：
+如果需要显式拿到一个 session：
 
 ```ts
-import {createAgentFileCheckpointer, createCodara} from '@core';
-
-const checkpointer = createAgentFileCheckpointer({
-  rootDir: '.codara/state/threads',
-});
-
-const codara = createCodara({
-  tools,
-  checkpointer,
-});
-
-const session = await codara.createSession({
+const session = await codara.session({
   threadId: 'terminal-thread',
 });
+
+const agent = session.agent();
 ```
 
-如果宿主希望按 thread 语义“有则恢复、无则创建”，应使用：
+`SessionState` 只表达宿主信息；执行态仍通过 `agent.getState()` 读取。
 
-```ts
-const session = await codara.openSession({
-  threadId: 'terminal-thread',
-});
-```
+更完整的 CLI 用法见 `docs/codara-cli-runtime.md`。
 
-当宿主需要直接拿到底层 checkpoint-backed `Agent` 时，
-仍然可以使用 `createCodaraAgent(...)`。
+传入固定 `threadId` 后，`session(...)` / `invoke(...)` / `stream(...)` 会优先恢复该 thread 的最新 checkpoint；不存在时再创建新实例。
