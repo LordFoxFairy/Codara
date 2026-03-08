@@ -4,7 +4,7 @@ import {createSession, type Session} from '@core/sessions';
 import {createCodaraAgent} from '@core/codara/agent';
 import {createCodaraMemory} from '@core/codara/memory';
 import {createGuidelinesStore} from '@core/middleware/guidelines/store';
-import type {CreateCodaraAgentOptions, CreateCodaraSessionOptions} from '@core/codara/types';
+import type {CodaraAgentOptions, CodaraSessionOptions} from '@core/codara/types';
 import type {
   AgentInput,
   AgentInvokeConfig,
@@ -20,7 +20,7 @@ import type {SessionState} from '@core/sessions';
 import type {GuidelinesOptions} from '@core/middleware/guidelines';
 
 interface CodaraSessionHost {
-  session(options?: CreateCodaraSessionOptions): Promise<Session>;
+  session(options?: CodaraSessionOptions): Promise<Session>;
   getState(): Promise<SessionState>;
   reset(): Promise<void>;
   dispose(): Promise<void>;
@@ -37,11 +37,11 @@ interface CodaraSessionHost {
 }
 
 /** 创建 Codara 默认 session 宿主。 */
-export function createCodaraSessionHost(options: CreateCodaraAgentOptions = {}): CodaraSessionHost {
+export function createCodaraSessionHost(options: CodaraAgentOptions = {}): CodaraSessionHost {
   const checkpointer = options.checkpointer ?? createAgentMemoryCheckpointer();
   let defaultSessionPromise: Promise<Session> | undefined;
 
-  async function buildSession(optionsOverride: CreateCodaraSessionOptions = {}): Promise<Session> {
+  async function buildSession(optionsOverride: CodaraSessionOptions = {}): Promise<Session> {
     const merged = mergeCodaraAgentOptions(options, optionsOverride, checkpointer);
 
     // 创建 Memory 和 Guidelines 实例
@@ -123,10 +123,10 @@ export function createCodaraSessionHost(options: CreateCodaraAgentOptions = {}):
 }
 
 function mergeCodaraAgentOptions(
-  base: CreateCodaraAgentOptions,
-  override: CreateCodaraAgentOptions,
+  base: CodaraAgentOptions,
+  override: CodaraAgentOptions,
   checkpointer: AgentCheckpointer
-): CreateCodaraAgentOptions {
+): CodaraAgentOptions {
   return {
     ...base,
     ...override,
@@ -167,7 +167,7 @@ async function resolveCheckpoint(options: {
   return options.checkpointer.getLatest(options.threadId);
 }
 
-function resolveGuidelinesOptions(options: CreateCodaraAgentOptions): GuidelinesOptions {
+function resolveGuidelinesOptions(options: CodaraAgentOptions): GuidelinesOptions {
   if (options.guidelines === false) {
     return {
       ...(options.cwd ? {cwd: options.cwd} : {}),
@@ -182,9 +182,9 @@ function resolveGuidelinesOptions(options: CreateCodaraAgentOptions): Guidelines
 }
 
 function mergeSkillsOptions(
-  base: CreateCodaraAgentOptions['skills'],
-  override: CreateCodaraAgentOptions['skills']
-): CreateCodaraAgentOptions['skills'] {
+  base: CodaraAgentOptions['skills'],
+  override: CodaraAgentOptions['skills']
+): CodaraAgentOptions['skills'] {
   if (override === false) {
     return false;
   }

@@ -17,6 +17,7 @@ import type {AgentCheckpoint} from '@core/checkpoint/state';
 import type {HILResumePayload} from '@core/middleware';
 import type {SkillStore} from '@core/middleware/skills';
 import type {CodaraMemory} from '@core/codara/memory';
+import type {Session, SessionState} from '@core/sessions';
 import type {CodaraModelCatalog, CreateCodaraModelCatalogOptions} from '@core/codara/models';
 import type {GuidelinesOptions} from '@core/middleware/guidelines';
 import type {MemoryLoadOptions} from '@core/memory';
@@ -31,14 +32,14 @@ export interface CodaraSkillOptions {
   cacheTtlMs?: number;
 }
 
-export interface CreateCodaraToolsOptions {
+export interface CodaraToolsOptions {
   tools?: StructuredToolInterface[];
   builtinTools?: boolean;
   cwd?: string;
   memory?: false | MemoryLoadOptions;
 }
 
-export interface CreateCodaraMiddlewareOptions {
+export interface CodaraMiddlewareOptions {
   cwd?: string;
   middleware?: BaseMiddleware[];
   middlewares?: BaseMiddleware[];
@@ -50,11 +51,11 @@ export interface CreateCodaraMiddlewareOptions {
   logging?: false | LoggingMiddlewareOptions;
 }
 
-export interface CreateCodaraAgentOptions
+export interface CodaraAgentOptions
   extends Omit<CreateAgentOptions, 'model' | 'tools' | 'middleware' | 'middlewares' | 'checkpoint'>,
     CreateCodaraModelCatalogOptions,
-    CreateCodaraToolsOptions,
-    CreateCodaraMiddlewareOptions {
+    CodaraToolsOptions,
+    CodaraMiddlewareOptions {
   model?: BaseChatModel;
   alias?: string;
   catalog?: CodaraModelCatalog;
@@ -64,15 +65,15 @@ export interface CreateCodaraAgentOptions
   checkpoint?: AgentCheckpoint;
 }
 
-export interface CreateCodaraSessionOptions extends CreateCodaraAgentOptions {
+export interface CodaraSessionOptions extends CodaraAgentOptions {
   sessionId?: string;
   restore?: 'latest' | 'never';
 }
 
-export type CreateCodaraOptions = CreateCodaraAgentOptions;
+export type CodaraOptions = CodaraAgentOptions;
 
 export interface Codara {
-  session(options?: CreateCodaraSessionOptions): Promise<import('@core/sessions').Session>;
+  session(options?: CodaraSessionOptions): Promise<Session>;
   memory(): CodaraMemory;
   invoke(input?: AgentInput, config?: AgentInvokeConfig): Promise<AgentResult>;
   stream(
@@ -84,7 +85,7 @@ export interface Codara {
     payload: HILResumePayload,
     config?: AgentResumeStreamConfig
   ): AsyncGenerator<AgentStreamOutput, AgentResult, void>;
-  getState(): Promise<import('@core/sessions').SessionState>;
+  getState(): Promise<SessionState>;
   reset(): Promise<void>;
   dispose(): Promise<void>;
 }
