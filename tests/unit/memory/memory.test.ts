@@ -1,0 +1,130 @@
+import {describe, expect, it} from 'bun:test';
+import {mkdir, mkdtemp, writeFile} from 'node:fs/promises';
+import path from 'node:path';
+import {tmpdir} from 'node:os';
+import {AIMessage} from '@langchain/core/messages';
+import {createMemoryMiddleware, createMemoryStore, discoverMemoryFiles, loadMemory} from '@core/memory';
+import type {ModelCallContext} from '@core/middleware';
+
+describe('MEMORY module', () => {
+  it('should discover global and project MEMORY.md locations in order', async () => {
+    const root = await mkdtemp(path.join(tmpdir(), 'codara-memory-'));
+    const userHome = path.join(root, 'home');
+    const projectRoot = path.join(root, 'project');
+    await mkdir(path.join(userHome, '.codara'), {recursive: true});
+    await mkdir(projectRoot, {recursive: true});
+
+    const files = discoverMemoryFiles({userHome, projectRoot});
+
+    expect(files).toEqual([
+      {
+        scope: 'global',
+        path: path.join(userHome, '.codara', 'MEMORY.md'),
+      },
+      {
+        scope: 'project',
+        path: path.join(projectRoot, 'MEMORY.md'),
+      },
+    ]);
+  });
+
+  it('should load global and project MEMORY.md without caching', async () => {
+    const root = await mkdtemp(path.join(tmpdir(), 'codara-memory-'));
+    const userHome = path.join(root, 'home');
+    const projectRoot = path.join(root, 'project');
+    const globalFile = path.join(userHome, '.codara', 'MEMORY.md');
+    const projectFile = path.join(projectRoot, 'MEMORY.md');
+
+    await mkdir(path.dirname(globalFile), {recursive: true});
+    await mkdir(projectRoot, {recursive: true});
+    await writeFile(globalFile, 'global memory', 'utf8');
+    await writeFile(projectFile, 'project memory', 'utf8');
+
+    const loaded = await loadMemory({userHome, projectRoot});
+    expect(loaded).toBeDefined();
+    expect(loaded?.files.map((file) => file.scope)).toEqual(['global', 'project']);
+    expect(loaded?.content).toContain('## Global MEMORY.md');
+    expect(loaded?.content).toContain('global memory');
+    expect(loaded?.content).toContain('## Project MEMORY.md');
+    expect(loaded?.content).toContain('project memory');
+
+    await writeFile(projectFile, 'project memory updated', 'utf8');
+    const reloaded = await loadMemory({userHome, projectRoot});
+    expect(reloaded?.content).toContain('project memory updated');
+  });
+
+  it('should inject MEMORY.md content into system messages', async () => {
+    const root = await mkdtemp(path.join(tmpdir(), 'codara-memory-'));
+    const userHome = path.join(root, 'home');
+    const projectRoot = path.join(root, 'project');
+    await mkdir(path.join(userHome, '.codara'), {recursive: true});
+    await mkdir(projectRoot, {recursive: true});
+    await writeFile(path.join(userHome, '.codara', 'MEMORY.md'), 'global memory', 'utf8');
+    await writeFile(path.join(projectRoot, 'MEMORY.md'), 'project memory', 'utf8');
+
+    const middleware = createMemoryMiddleware({userHome, projectRoot});
+    const context: ModelCallContext = {
+      state: {messages: []},
+      messages: [],
+      runtime: {context: {}},
+      systemMessage: ['base system'],
+      runId: 'run_1',
+      turn: 1,
+      maxTurns: 8,
+      requestId: 'req_1',
+    };
+
+    const response = await middleware.wrapModelCall?.(context, async (request) => {
+      expect(request?.systemMessage).toHaveLength(2);
+      expect(request?.systemMessage[0]).toBe('base system');
+      expect(request?.systemMessage[1]).toContain('global memory');
+      expect(request?.systemMessage[1]).toContain('project memory');
+      return new AIMessage('ok');
+    });
+
+    expect(response?.content).toBe('ok');
+  });
+
+  it('should truncate oversized memory content by default', async () => {
+    const root = await mkdtemp(path.join(tmpdir(), 'codara-memory-'));
+    const projectRoot = path.join(root, 'project');
+    await mkdir(projectRoot, {recursive: true});
+    await writeFile(path.join(projectRoot, 'MEMORY.md'), 'a'.repeat(12_500), 'utf8');
+
+    const loaded = await loadMemory({projectRoot});
+    expect(loaded).toBeDefined();
+    expect(loaded?.content).toContain('[truncated]');
+  });
+
+  it('should respect a custom maxChars limit', async () => {
+    const root = await mkdtemp(path.join(tmpdir(), 'codara-memory-'));
+    const projectRoot = path.join(root, 'project');
+    await mkdir(projectRoot, {recursive: true});
+    await writeFile(path.join(projectRoot, 'MEMORY.md'), 'abcdefghijklmno', 'utf8');
+
+    const loaded = await loadMemory({projectRoot, maxChars: 5});
+    expect(loaded).toBeDefined();
+    expect(loaded?.content).toContain('abcde');
+    expect(loaded?.content).toContain('[truncated]');
+  });
+
+  it('should provide a minimal read write store for global and project memory', async () => {
+    const root = await mkdtemp(path.join(tmpdir(), 'codara-memory-'));
+    const userHome = path.join(root, 'home');
+    const projectRoot = path.join(root, 'project');
+    const store = createMemoryStore({userHome, projectRoot});
+
+    await store.write('global', 'global memory body');
+    await store.write('project', 'project memory body');
+
+    expect(store.resolve('global')).toBe(path.join(userHome, '.codara', 'MEMORY.md'));
+    expect(store.resolve('project')).toBe(path.join(projectRoot, 'MEMORY.md'));
+    expect(await store.exists('global')).toBe(true);
+    expect(await store.exists('project')).toBe(true);
+    expect(await store.read('global')).toBe('global memory body');
+    expect(await store.read('project')).toBe('project memory body');
+
+    await store.delete('project');
+    expect(await store.exists('project')).toBe(false);
+  });
+});

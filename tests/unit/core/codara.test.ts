@@ -102,6 +102,7 @@ describe('Codara core facade', () => {
 
     expect(middlewares.map((middleware) => middleware.name)).toEqual([
       'AgentsGuidelinesMiddleware',
+      'MemoryMiddleware',
       'SkillsMiddleware',
       'HumanInTheLoopMiddleware',
     ]);
@@ -122,6 +123,7 @@ describe('Codara core facade', () => {
     expect(middlewares.map((middleware) => middleware.name)).toEqual([
       'LoggingMiddleware',
       'AgentsGuidelinesMiddleware',
+      'MemoryMiddleware',
       'SkillsMiddleware',
       'CustomMiddleware',
       'HumanInTheLoopMiddleware',
@@ -141,8 +143,22 @@ describe('Codara core facade', () => {
 
     expect(middlewares.map((middleware) => middleware.name)).toEqual([
       'AgentsGuidelinesMiddleware',
+      'MemoryMiddleware',
       'SkillsMiddleware',
       'AliasMiddleware',
+      'HumanInTheLoopMiddleware',
+    ]);
+  });
+
+  it('should allow memory middleware to be disabled explicitly', () => {
+    const middlewares = createCodaraMiddlewares({
+      skills: {store: new EmptySkillStore()},
+      memory: false,
+    });
+
+    expect(middlewares.map((middleware) => middleware.name)).toEqual([
+      'AgentsGuidelinesMiddleware',
+      'SkillsMiddleware',
       'HumanInTheLoopMiddleware',
     ]);
   });
