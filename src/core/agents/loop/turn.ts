@@ -1,12 +1,12 @@
 import type {AgentRunSummary, BaseExecutionContext} from '@core/middleware';
-import type {AgentRunContext, AgentRuntime} from './run';
-import type {AgentStreamWriter} from '../engine/stream-writer';
-import {runModelStep, runModelStepStream} from './model-step';
-import {runAfterAgentStep, runToolStep, runToolStepStream} from './tool-step';
+import type {AgentRunContext, AgentRuntime} from '@core/agents/loop/run';
+import type {AgentStreamWriter} from '@core/agents/engine/stream-writer';
+import {runModelStep, runModelStepStream} from '@core/agents/loop/model-step';
+import {runAfterAgentStep, runToolStep, runToolStepStream} from '@core/agents/loop/tool-step';
 
 export type AgentTurnOutcome = 'continue' | 'complete';
 
-/** Execute one non-streaming turn. */
+/** 执行一轮非流式 turn。 */
 export async function runTurn(
   run: AgentRunContext,
   runtime: AgentRuntime,
@@ -20,16 +20,16 @@ export async function runTurn(
     await pipeline.beforeAgent(context);
     await pipeline.beforeModel(context);
 
-      const modelMessage = await runModelStep(runtime, context);
-      run.state.messages.push(modelMessage);
+    const modelMessage = await runModelStep(runtime, context);
+    run.state.messages.push(modelMessage);
 
     await pipeline.afterModel({...context, response: modelMessage});
 
     if (!modelMessage.tool_calls?.length) {
       turnResult = {reason: 'complete', turns: turn};
     } else {
-        await runToolStep(run, runtime, context, modelMessage.tool_calls);
-      }
+      await runToolStep(run, runtime, context, modelMessage.tool_calls);
+    }
   } catch (error) {
     turnResult = {reason: 'error', turns: turn, error: toError(error)};
   }
@@ -43,7 +43,7 @@ export async function runTurn(
   return turnResult.reason === 'complete' ? 'complete' : 'continue';
 }
 
-/** Execute one streaming turn. */
+/** 执行一轮流式 turn。 */
 export async function runTurnStream(
   run: AgentRunContext,
   runtime: AgentRuntime,
@@ -58,18 +58,18 @@ export async function runTurnStream(
     await pipeline.beforeAgent(context);
     await pipeline.beforeModel(context);
 
-      const modelMessage = await runModelStepStream(runtime, run, context, stream);
-      run.state.messages.push(modelMessage);
-      await stream.emitModelUpdate(modelMessage);
-      await stream.emitValues(run.state.messages);
+    const modelMessage = await runModelStepStream(runtime, run, context, stream);
+    run.state.messages.push(modelMessage);
+    await stream.emitModelUpdate(modelMessage);
+    await stream.emitValues(run.state.messages);
 
     await pipeline.afterModel({...context, response: modelMessage});
 
     if (!modelMessage.tool_calls?.length) {
       turnResult = {reason: 'complete', turns: turn};
     } else {
-        await runToolStepStream(run, runtime, context, modelMessage.tool_calls, stream);
-      }
+      await runToolStepStream(run, runtime, context, modelMessage.tool_calls, stream);
+    }
   } catch (error) {
     turnResult = {reason: 'error', turns: turn, error: toError(error)};
   }

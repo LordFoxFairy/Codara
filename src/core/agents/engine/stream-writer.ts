@@ -1,12 +1,12 @@
 import type {AIMessage, AIMessageChunk, BaseMessage, ToolMessage} from '@langchain/core/messages';
-import type {AgentResult} from '../contract/agent';
+import type {AgentResult} from '@core/agents/contract/agent';
 import type {
   AgentStreamConfig,
   AgentStreamEnvelope,
   AgentStreamMode,
   AgentStreamOutput,
   AgentStreamValuesChunk,
-} from '../contract/stream';
+} from '@core/agents/contract/stream';
 import type {HILToolMessagePayload} from '@core/middleware/hil';
 
 interface QueueItem<T, TReturn> {

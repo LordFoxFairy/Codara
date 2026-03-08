@@ -1,29 +1,27 @@
-import type {
-  AgentInput,
-  AgentInvokeConfig,
-  AgentResumeConfig,
-  AgentResumeStreamConfig,
-  AgentRuntimeContext,
-  AgentStateSnapshot,
-  CreateAgentOptions,
-} from '@core/agents';
-import type {AgentCheckpointer} from '@core/checkpoint/state';
-import type {BaseMessage} from '@langchain/core/messages';
+import type {Agent} from '@core/agents';
 
-export type SessionQueryInput = AgentInput;
-export type SessionQueryConfig = AgentInvokeConfig;
-export type SessionResumeConfig = AgentResumeConfig;
-export type SessionResumeStreamConfig = AgentResumeStreamConfig;
-export type SessionState = AgentStateSnapshot;
+/** Session 自身的生命周期状态。 */
+export type SessionStatus = 'ready' | 'closed';
 
-/** Session 创建参数只负责实例种子，不承载 checkpoint 记录本身。 */
-export interface CreateSessionOptions extends Omit<CreateAgentOptions, 'checkpoint'> {
-  messages?: BaseMessage[];
-  context?: AgentRuntimeContext;
+/** Session 对外暴露的宿主状态。 */
+export interface SessionState {
+  sessionId: string;
+  threadId: string;
+  sessionStatus: SessionStatus;
+  createdAt: string;
+  updatedAt: string;
 }
 
-/** Session 恢复依赖显式 threadId 与 checkpointer。 */
-export interface LoadSessionOptions extends Omit<CreateAgentOptions, 'checkpoint' | 'state'> {
-  threadId: string;
-  checkpointer: AgentCheckpointer;
+/** Session 构造参数。 */
+export interface CreateSessionOptions {
+  sessionId?: string;
+  agent: Agent;
+}
+
+/** Session 对外契约。 */
+export interface Session {
+  getState(): SessionState;
+  agent(): Agent;
+  reset(): Promise<void>;
+  dispose(): Promise<void>;
 }

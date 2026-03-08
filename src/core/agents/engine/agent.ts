@@ -7,13 +7,13 @@ import {
   readLatestPause,
   summarizeResult,
   type MutableAgentState,
-} from './state';
+} from '@core/agents/engine/state';
 import {
   createAgentSnapshot,
   persistAgentCheckpoint,
   updateStateFromCheckpointRecord,
-} from './checkpoint';
-import {assertNotRunning, assertReadyForInvoke, assertReadyForResume} from './guards';
+} from '@core/agents/engine/checkpoint';
+import {assertNotRunning, assertReadyForInvoke, assertReadyForResume} from '@core/agents/engine/guards';
 import {
   createRunContext,
   runAfterHook,
@@ -21,9 +21,9 @@ import {
   runLoop,
   streamLoop,
   type AgentRuntime,
-} from '../loop/run';
-import {buildAgentRuntime} from './runtime';
-import {createStreamWriter} from './stream-writer';
+} from '@core/agents/loop/run';
+import {buildAgentRuntime} from '@core/agents/engine/runtime';
+import {createStreamWriter} from '@core/agents/engine/stream-writer';
 import type {
   Agent,
   AgentInput,
@@ -34,8 +34,8 @@ import type {
   AgentState,
   AgentStateSnapshot,
   CreateAgentOptions,
-} from '../contract/agent';
-import type {AgentStreamConfig, AgentStreamOutput} from '../contract/stream';
+} from '@core/agents/contract/agent';
+import type {AgentStreamConfig, AgentStreamOutput} from '@core/agents/contract/stream';
 import {
   createAgentMemoryCheckpointer,
   type AgentCheckpoint,
@@ -44,7 +44,7 @@ import {
 } from '@core/checkpoint/state';
 import type {HILPauseRequest, HILResumePayload} from '@core/middleware/hil';
 
-/** Default implementation returned by createAgent(...). */
+/** `createAgent(...)` 返回的默认实现。 */
 class AgentInstance implements Agent {
   private readonly runtime: AgentRuntime;
   private readonly threadId: string;

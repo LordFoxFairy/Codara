@@ -11,7 +11,7 @@
 ## 快速开始
 
 ```typescript
-import {createAgentRunner} from '@core/agents';
+import {createAgent} from '@core/agents';
 import {createLoggingMiddleware} from '@core/middleware';
 
 const loggingMiddleware = createLoggingMiddleware({
@@ -22,7 +22,7 @@ const loggingMiddleware = createLoggingMiddleware({
   },
 });
 
-const runner = createAgentRunner({
+const agent = createAgent({
   model,
   tools: [],
   middlewares: [loggingMiddleware]
@@ -70,7 +70,7 @@ const userContextMiddleware = createMiddleware({
   }
 });
 
-const result = await runner.invoke(
+const result = await agent.invoke(
   {messages: [new HumanMessage('Hello')]},
   {
     context: {
