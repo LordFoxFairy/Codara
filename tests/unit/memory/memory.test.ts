@@ -5,11 +5,11 @@ import {tmpdir} from 'node:os';
 import {AIMessage} from '@langchain/core/messages';
 import {
   createMemoryEditor,
-  createMemoryMiddleware,
   createMemoryStore,
   discoverMemoryFiles,
   loadMemory,
 } from '@core/memory';
+import {createMemoryMiddleware} from '@core/middleware/memory';
 import type {ModelCallContext} from '@core/middleware';
 
 describe('MEMORY module', () => {

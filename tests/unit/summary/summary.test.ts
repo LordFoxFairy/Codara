@@ -4,7 +4,7 @@ import type {BaseChatModel} from '@langchain/core/language_models/chat_models';
 import {createAgent} from '@core/agents';
 import {createAgentMemoryCheckpointer} from '@core/checkpoint';
 import {MiddlewarePipeline, type ModelCallContext} from '@core/middleware';
-import {createSummaryMiddleware, readSummaryRecord} from '@core/summary';
+import {createSummaryMiddleware, readSummaryRecord} from '@core/middleware/summary';
 
 class FakeModel {
   constructor(private readonly responses: AIMessage[]) {}

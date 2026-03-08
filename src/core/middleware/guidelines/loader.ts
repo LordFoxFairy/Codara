@@ -1,6 +1,6 @@
-import {discoverGuidelineFiles} from '@core/guidelines/discovery';
-import {formatGuidelines} from '@core/guidelines/format';
-import type {GuidelinesOptions, LoadedGuidelines} from '@core/guidelines/types';
+import {discoverGuidelineFiles} from '@core/middleware/guidelines/discovery';
+import {formatGuidelines} from '@core/middleware/guidelines/format';
+import type {GuidelinesOptions, LoadedGuidelines} from '@core/middleware/guidelines/types';
 import {loadWorkspaceFiles} from '@core/workspace';
 
 /** 加载并拼接当前环境中的 AGENTS.md 规范。 */

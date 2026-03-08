@@ -1,8 +1,8 @@
 import {createHILMiddleware, createLoggingMiddleware, type BaseMiddleware} from '@core/middleware';
 import {createSkillsMiddleware, FileSystemSkillStore} from '@core/middleware/skills';
-import {createGuidelinesMiddleware} from '@core/guidelines';
-import {createMemoryMiddleware} from '@core/memory';
-import {createSummaryMiddleware} from '@core/summary';
+import {createGuidelinesMiddleware} from '@core/middleware/guidelines';
+import {createMemoryMiddleware} from '@core/middleware/memory';
+import {createSummaryMiddleware} from '@core/middleware/summary';
 import type {CreateCodaraMiddlewareOptions} from '@core/codara/types';
 import {resolveWorkspaceRoot} from '@core/workspace';
 

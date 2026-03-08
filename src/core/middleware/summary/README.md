@@ -3,7 +3,7 @@
 ## 目录结构
 
 ```text
-src/core/summary/
+src/core/middleware/summary/
 ├── types.ts        # 摘要输入、记录与配置合同
 ├── state.ts        # 摘要在 agent context 中的读写与消息裁剪
 ├── format.ts       # 将摘要格式化为系统消息片段

@@ -1,4 +1,4 @@
-import type {GuidelineFile, GuidelinesOptions} from '@core/guidelines/types';
+import type {GuidelineFile, GuidelinesOptions} from '@core/middleware/guidelines/types';
 import {discoverWorkspaceFiles} from '@core/workspace';
 
 const AGENTS_FILE_NAME = 'AGENTS.md';
