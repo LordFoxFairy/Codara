@@ -19,6 +19,7 @@ import type {SkillStore} from '@core/middleware/skills';
 import type {CodaraModelCatalog, CreateCodaraModelCatalogOptions} from '@core/codara/models';
 import type {AgentsGuidelinesOptions} from '@core/guidelines';
 import type {MemoryLoadOptions} from '@core/memory';
+import type {SummaryOptions} from '@core/summary';
 
 export interface CodaraSkillOptions {
   store?: SkillStore;
@@ -42,6 +43,7 @@ export interface CreateCodaraMiddlewareOptions {
   agentsGuidelines?: false | AgentsGuidelinesOptions;
   memory?: false | MemoryLoadOptions;
   skills?: false | CodaraSkillOptions;
+  summary?: false | SummaryOptions;
   hil?: false | HILMiddlewareOptions;
   logging?: false | LoggingMiddlewareOptions;
 }

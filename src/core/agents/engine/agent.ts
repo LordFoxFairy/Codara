@@ -121,7 +121,7 @@ class AgentInstance implements Agent {
   ): Promise<AgentResult> {
     const loopState = this.prepareLoop(input);
     const startIndex = this.state.messages.length;
-    const run = createRunContext(loopState, {
+    const run = createRunContext(loopState, this.state.context, {
       ...config,
       context: mergeContext(this.state.context, config.context),
     });
@@ -151,7 +151,7 @@ class AgentInstance implements Agent {
   ): AsyncGenerator<AgentStreamOutput, AgentResult, void> {
     const loopState = this.prepareLoop(input);
     const startIndex = this.state.messages.length;
-    const run = createRunContext(loopState, {
+    const run = createRunContext(loopState, this.state.context, {
       ...config,
       context: mergeContext(this.state.context, config.context),
     });

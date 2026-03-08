@@ -13,7 +13,10 @@ import type {ZodType} from 'zod';
 import type {AgentRuntimeContext} from '@core/agents';
 
 export interface MiddlewareRuntimeContext {
+  /** 本次运行的有效上下文（持久上下文 + 调用时临时覆盖）。 */
   context: AgentRuntimeContext;
+  /** 会随 agent checkpoint 一起持久化的上下文。 */
+  agentContext?: AgentRuntimeContext;
 }
 
 export interface BaseExecutionContext {

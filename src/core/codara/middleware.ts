@@ -2,6 +2,7 @@ import {createHILMiddleware, createLoggingMiddleware, type BaseMiddleware} from 
 import {createSkillsMiddleware, FileSystemSkillStore} from '@core/middleware/skills';
 import {createAgentsGuidelinesMiddleware} from '@core/guidelines';
 import {createMemoryMiddleware} from '@core/memory';
+import {createSummaryMiddleware} from '@core/summary';
 import type {CreateCodaraMiddlewareOptions} from '@core/codara/types';
 import {resolveWorkspaceRoot} from '@core/workspace';
 
@@ -19,6 +20,10 @@ export function createCodaraMiddlewares(options: CreateCodaraMiddlewareOptions =
 
   if (options.memory !== false) {
     middlewares.push(createMemoryMiddleware(resolveMemoryOptions(options)));
+  }
+
+  if (options.summary) {
+    middlewares.push(createSummaryMiddleware(options.summary));
   }
 
   if (options.skills !== false) {

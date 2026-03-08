@@ -153,6 +153,36 @@ describe('Codara core facade', () => {
     ]);
   });
 
+  it('should keep summary middleware disabled by default', () => {
+    const middlewares = createCodaraMiddlewares({
+      skills: {store: new EmptySkillStore()},
+    });
+
+    expect(middlewares.map((middleware) => middleware.name)).toEqual([
+      'AgentsGuidelinesMiddleware',
+      'MemoryMiddleware',
+      'SkillsMiddleware',
+      'HumanInTheLoopMiddleware',
+    ]);
+  });
+
+  it('should place summary middleware between memory and skills when enabled', () => {
+    const middlewares = createCodaraMiddlewares({
+      skills: {store: new EmptySkillStore()},
+      summary: {
+        summarize: () => 'summary',
+      },
+    });
+
+    expect(middlewares.map((middleware) => middleware.name)).toEqual([
+      'AgentsGuidelinesMiddleware',
+      'MemoryMiddleware',
+      'SummaryMiddleware',
+      'SkillsMiddleware',
+      'HumanInTheLoopMiddleware',
+    ]);
+  });
+
   it('should allow memory middleware to be disabled explicitly', () => {
     const middlewares = createCodaraMiddlewares({
       skills: {store: new EmptySkillStore()},
@@ -190,7 +220,7 @@ describe('Codara core facade', () => {
     const context: ModelCallContext = {
       state: {messages: []},
       messages: [],
-      runtime: {context: {}},
+      runtime: {context: {}, agentContext: {}},
       systemMessage: ['base system'],
       runId: 'run_1',
       turn: 1,
