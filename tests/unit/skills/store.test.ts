@@ -7,6 +7,7 @@ import {FileSystemSkillStore, getDefaultSkillSources} from '@core/skills'
 interface FileSystemSkillStoreOptions {
   sources?: string[]
   userHome?: string
+  cwd?: string
   projectRoot?: string
   cacheTtlMs?: number
 }
@@ -51,6 +52,24 @@ describe('FileSystemSkillStore', () => {
     expect(sources).toEqual([
       path.join('/tmp/codara-home', '.codara', 'skills'),
       path.join('/tmp/codara-project', '.codara', 'skills')
+    ])
+  })
+
+  it('should resolve default project sources from the nearest workspace root', async () => {
+    const root = await mkdtemp(path.join(tmpdir(), 'codara-skills-store-root-'))
+    const projectRoot = path.join(root, 'project')
+    const nestedCwd = path.join(projectRoot, 'packages', 'app')
+    await mkdir(path.join(projectRoot, '.codara'), {recursive: true})
+    await mkdir(nestedCwd, {recursive: true})
+
+    const sources = getDefaultSkillSources({
+      userHome: '/tmp/codara-home',
+      cwd: nestedCwd,
+    })
+
+    expect(sources).toEqual([
+      path.join('/tmp/codara-home', '.codara', 'skills'),
+      path.join(projectRoot, '.codara', 'skills')
     ])
   })
 

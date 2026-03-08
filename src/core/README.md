@@ -22,7 +22,8 @@ createCodara(...)
 - `AGENTS.md` 通过 `guidelines/*` 模块接入
 - 当前只支持两层：
   - `~/.codara/AGENTS.md`
-  - `<projectRoot>/AGENTS.md`
+  - `<workspaceRoot>/AGENTS.md`
+- 工作区根优先从 `cwd` 向上查找 `.codara`、`.git`、`package.json`
 - 每次模型调用都会重新读取，不做缓存
 - 默认注入顺序早于 `SkillsMiddleware`
 
@@ -36,7 +37,8 @@ createCodara(...)
 - `MEMORY.md` 通过 `memory/*` 模块接入
 - 当前只支持两层：
   - `~/.codara/MEMORY.md`
-  - `<projectRoot>/MEMORY.md`
+  - `<workspaceRoot>/MEMORY.md`
+- 工作区根优先从 `cwd` 向上查找 `.codara`、`.git`、`package.json`
 - 每次模型调用都会重新读取，不做缓存
 - 默认注入顺序位于 `AGENTS.md` 之后、`SkillsMiddleware` 之前
 

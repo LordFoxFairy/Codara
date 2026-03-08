@@ -1,7 +1,8 @@
 import {mkdir, readFile, rm, stat, writeFile} from 'node:fs/promises';
 import path from 'node:path';
 import {homedir} from 'node:os';
-import type {MemoryOptions} from '@core/memory/types';
+import type {MemorySourceOptions} from '@core/memory/types';
+import {resolveWorkspaceRoot} from '@core/workspace';
 
 export type MemoryScope = 'global' | 'project';
 
@@ -14,9 +15,9 @@ export interface MemoryStore {
 }
 
 /** 创建最小 MEMORY.md 读写接口。 */
-export function createMemoryStore(options: MemoryOptions = {}): MemoryStore {
+export function createMemoryStore(options: MemorySourceOptions = {}): MemoryStore {
   const userHome = options.userHome ?? homedir();
-  const projectRoot = path.resolve(options.projectRoot ?? process.cwd());
+  const projectRoot = resolveWorkspaceRoot(options);
 
   function resolve(scope: MemoryScope): string {
     if (scope === 'global') {

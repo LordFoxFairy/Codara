@@ -1,11 +1,11 @@
-import type {MemoryOptions} from '@core/memory/types';
+import type {MemoryLoadOptions} from '@core/memory/types';
 
 const DEFAULT_MAX_MEMORY_CHARS = 12_000;
 
 /** 将多个 MEMORY.md 记忆源格式化为统一的系统消息片段。 */
 export function formatMemory(
   memories: Array<{scope: 'global' | 'project'; path: string; content: string}>,
-  options: Pick<MemoryOptions, 'maxChars'> = {}
+  options: Pick<MemoryLoadOptions, 'maxChars'> = {}
 ): string {
   const maxChars = options.maxChars ?? DEFAULT_MAX_MEMORY_CHARS;
   const lines = [

@@ -2,10 +2,10 @@ import {access, readFile} from 'node:fs/promises';
 import {constants as fsConstants} from 'node:fs';
 import {discoverMemoryFiles} from '@core/memory/discovery';
 import {formatMemory} from '@core/memory/format';
-import type {LoadedMemory, MemoryOptions} from '@core/memory/types';
+import type {LoadedMemory, MemoryLoadOptions} from '@core/memory/types';
 
 /** 加载并拼接当前环境中的 MEMORY.md 内容。 */
-export async function loadMemory(options: MemoryOptions = {}): Promise<LoadedMemory | undefined> {
+export async function loadMemory(options: MemoryLoadOptions = {}): Promise<LoadedMemory | undefined> {
   const discoveredFiles = discoverMemoryFiles(options);
   const files = [];
 

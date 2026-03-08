@@ -4,6 +4,7 @@ import path from 'node:path'
 import {parseSkillMetadataFromContent} from '@core/skills/loading'
 import {skillsMetadataReducer} from '@core/skills/metadata'
 import type {SkillMetadata, SkillStore} from '@core/skills/types'
+import {resolveWorkspaceRoot} from '@core/workspace'
 
 const DEFAULT_CACHE_TTL_MS = 5_000
 const SKILL_FILE_NAME = 'SKILL.md'
@@ -74,9 +75,12 @@ export class FileSystemSkillStore implements SkillStore {
   }
 }
 
-export function getDefaultSkillSources(params: {userHome?: string; projectRoot?: string} = {}): string[] {
+export function getDefaultSkillSources(params: {userHome?: string; projectRoot?: string; cwd?: string} = {}): string[] {
   const userHome = params.userHome ?? homedir()
-  const projectRoot = params.projectRoot ?? process.cwd()
+  const projectRoot = resolveWorkspaceRoot({
+    projectRoot: params.projectRoot,
+    cwd: params.cwd,
+  })
   return [
     path.join(userHome, '.codara', 'skills'),
     path.join(projectRoot, '.codara', 'skills')
