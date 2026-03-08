@@ -26,16 +26,19 @@ export interface MemoryLoadOptions extends MemorySourceOptions {
 
 export type MemoryEntryKind = 'preference' | 'fact' | 'lesson';
 
+export type MemoryEntries = Record<MemoryEntryKind, string[]>;
+
 /** 可写入 MEMORY.md 的长期记忆条目。 */
-export interface MemoryWriteEntry {
+export interface MemoryEntry {
   kind: MemoryEntryKind;
   content: string;
 }
 
-/** MEMORY.md 写回结果。 */
-export interface MemoryWriteResult {
+/** MEMORY.md 编辑结果。 */
+export interface MemoryEditResult {
   scope: MemoryScope;
   path: string;
   added: boolean;
   content: string;
+  entries: MemoryEntries;
 }
