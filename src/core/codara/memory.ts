@@ -1,40 +1,23 @@
 import {
-  createMemoryEditor,
   createMemoryStore,
-  type MemoryEditor,
   type MemorySourceOptions,
   type MemoryStore,
 } from '@core/memory';
 import type {CodaraAgentOptions} from '@core/codara/types';
 
-export interface CodaraMemory extends MemoryStore, MemoryEditor {}
+/**
+ * CodaraMemory 就是 MemoryStore
+ *
+ * 对齐 Claude Code 设计：
+ * - 只提供文件读写能力
+ * - Agent 用 edit_file 直接编辑 MEMORY.md
+ * - 不需要 remember/forget/snapshot 等高层 API
+ */
+export type CodaraMemory = MemoryStore;
 
 /** 创建绑定 Codara 工作区作用域的 memory store。 */
-export function createCodaraMemoryStore(options: Pick<CodaraAgentOptions, 'cwd' | 'memory'> = {}): MemoryStore {
-  return createMemoryStore(resolveCodaraMemorySourceOptions(options));
-}
-
-/** 创建绑定 Codara 工作区作用域的 memory editor。 */
-export function createCodaraMemoryEditor(options: Pick<CodaraAgentOptions, 'cwd' | 'memory'> = {}): MemoryEditor {
-  return createMemoryEditor(resolveCodaraMemorySourceOptions(options));
-}
-
-/** 创建绑定 Codara 工作区作用域的完整 memory 访问对象。 */
 export function createCodaraMemory(options: Pick<CodaraAgentOptions, 'cwd' | 'memory'> = {}): CodaraMemory {
-  const sourceOptions = resolveCodaraMemorySourceOptions(options);
-  const store = createMemoryStore(sourceOptions);
-  const editor = createMemoryEditor(sourceOptions);
-
-  return {
-    resolve: store.resolve,
-    exists: store.exists,
-    read: store.read,
-    write: store.write,
-    delete: store.delete,
-    snapshot: editor.snapshot,
-    remember: editor.remember,
-    forget: editor.forget,
-  };
+  return createMemoryStore(resolveCodaraMemorySourceOptions(options));
 }
 
 function resolveCodaraMemorySourceOptions(

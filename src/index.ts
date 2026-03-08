@@ -46,7 +46,7 @@ export {createCodaraAgent, loadCodaraAgent} from '@core/codara';
 export {createSession} from '@core/sessions';
 
 /** Memory 管理 */
-export {createMemoryStore, createMemoryEditor} from '@core/memory';
+export {createMemoryStore} from '@core/memory';
 export {createCodaraMemory} from '@core/codara';
 
 /** Checkpoint 管理 */
