@@ -1,5 +1,4 @@
 import type {Agent} from '@core/agents';
-import type {CodaraMemory} from '@core/codara/memory';
 
 /** Session 自身的生命周期状态。 */
 export type SessionStatus = 'ready' | 'closed';
@@ -17,7 +16,6 @@ export interface SessionState {
 export interface CreateSessionOptions {
   sessionId?: string;
   agent: Agent;
-  memory?: CodaraMemory;
 }
 
 /** Session 对外契约。 */
