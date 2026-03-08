@@ -101,6 +101,7 @@ describe('Codara core facade', () => {
     });
 
     expect(middlewares.map((middleware) => middleware.name)).toEqual([
+      'AgentsGuidelinesMiddleware',
       'SkillsMiddleware',
       'HumanInTheLoopMiddleware',
     ]);
@@ -120,6 +121,7 @@ describe('Codara core facade', () => {
 
     expect(middlewares.map((middleware) => middleware.name)).toEqual([
       'LoggingMiddleware',
+      'AgentsGuidelinesMiddleware',
       'SkillsMiddleware',
       'CustomMiddleware',
       'HumanInTheLoopMiddleware',
@@ -138,6 +140,7 @@ describe('Codara core facade', () => {
     });
 
     expect(middlewares.map((middleware) => middleware.name)).toEqual([
+      'AgentsGuidelinesMiddleware',
       'SkillsMiddleware',
       'AliasMiddleware',
       'HumanInTheLoopMiddleware',
