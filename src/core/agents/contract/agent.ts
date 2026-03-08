@@ -8,7 +8,21 @@ import type {AgentStreamConfig, AgentStreamOutput} from '@core/agents/contract/s
 
 export type AgentRuntimeContext = Record<string, unknown>;
 
-/** 单次运行期间持续演化的最小状态。 */
+/**
+ * Agent 运行时状态（对齐 LangChain/LangGraph 标准）
+ *
+ * messages 数组包含完整的对话历史，使用 LangChain 的 BaseMessage 类型：
+ * - HumanMessage: 用户输入
+ * - AIMessage: 模型响应（包含 tool_calls, usage_metadata, response_metadata）
+ * - ToolMessage: 工具执行结果（包含 tool_call_id, artifact）
+ * - SystemMessage: 系统提示
+ *
+ * 所有 LangChain 标准字段都会被保留和传递：
+ * - content: string | Array<ContentBlock> （支持多模态）
+ * - usage_metadata: token 使用统计
+ * - response_metadata: 模型响应元数据
+ * - additional_kwargs: 提供商特定信息
+ */
 export interface AgentState {
   messages: BaseMessage[];
 }
