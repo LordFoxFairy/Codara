@@ -1,5 +1,5 @@
 import type {AIMessage, AIMessageChunk, BaseMessage, ToolMessage} from '@langchain/core/messages';
-import type {AgentInvokeConfig, AgentRuntimeContext} from '@core/agents/types';
+import type {AgentInvokeConfig, AgentRuntimeContext} from './agent';
 import type {HILToolMessagePayload} from '@core/middleware/hil';
 
 export type AgentStreamMode = 'values' | 'updates' | 'messages' | 'custom';

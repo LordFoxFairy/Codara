@@ -2,11 +2,11 @@ import {describe, expect, it} from 'bun:test';
 import {HumanMessage, ToolMessage} from '@langchain/core/messages';
 import {tool} from '@langchain/core/tools';
 import {z} from 'zod';
-import {createAgentRunner} from '@core/agents';
+import {createAgent} from '@core/agents';
 import {ChatModelFactory, loadModelRoutingConfig, ModelRegistry} from '@core/provider';
 
 describe('Agent Loop End-to-End', () => {
-  it('应通过 bindTools + AgentRunner 完成一轮真实工具调用', async () => {
+  it('应通过 bindTools + createAgent 完成一轮真实工具调用', async () => {
     const deepseekKey = process.env.DEEPSEEK_API_KEY?.trim();
     expect(Boolean(deepseekKey && !deepseekKey.startsWith('your-'))).toBe(true);
 
@@ -23,7 +23,7 @@ describe('Agent Loop End-to-End', () => {
       }),
     });
 
-    const runner = createAgentRunner({
+    const runner = createAgent({
       model,
       tools: [echoTool]
     });

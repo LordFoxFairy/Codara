@@ -7,7 +7,7 @@
 import {describe, expect, it} from 'bun:test';
 import {HumanMessage} from '@langchain/core/messages';
 import {ChatModelFactory, loadModelRoutingConfig, ModelRegistry} from '@core/provider';
-import {createAgentRunner} from '@core/agents';
+import {createAgent} from '@core/agents';
 import {createBuiltinTools} from '@core/tools';
 
 describe('Basic Integration: Model + Agent + Tools', () => {
@@ -36,7 +36,7 @@ describe('Basic Integration: Model + Agent + Tools', () => {
       'web_search',
     ]);
 
-    const agent = createAgentRunner({
+    const agent = createAgent({
       model,
       tools
     });

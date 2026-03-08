@@ -8,7 +8,7 @@
  */
 
 import type {AIMessage, ToolMessage} from '@langchain/core/messages';
-import type {AgentRuntimeContext} from '@core/agents/types';
+import type {AgentRuntimeContext} from '@core/agents';
 import {
   type AfterAgentContext,
   type AfterModelContext,

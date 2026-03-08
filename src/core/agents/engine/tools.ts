@@ -1,14 +1,20 @@
 import {type ToolCall, ToolMessage} from '@langchain/core/messages';
 import {ToolInputParsingException, type StructuredToolInterface} from '@langchain/core/tools';
 import {ToolInvocationError} from 'langchain';
-import {toError} from '@core/agents/runtime/shared/common';
-import type {ToolErrorHandler} from '@core/agents/types';
+import type {ToolErrorHandler} from '../contract/agent';
 
-/**
- * 工具核心执行器（不含 middleware）。
- * middleware 包裹在 turn-stage 的 wrapToolCall 中，便于主链路阅读。
- */
-export async function invokeTool(
+export function resolveToolCallId(toolCall: ToolCall, toolIndex: number): string {
+  const existingId = typeof toolCall.id === 'string' ? toolCall.id.trim() : '';
+  if (existingId) {
+    return existingId;
+  }
+
+  const safeToolName = toolCall.name?.trim() || 'tool';
+  return `${safeToolName}_${toolIndex}`;
+}
+
+/** Execute a single tool call outside middleware wrapping. */
+export async function executeToolCall(
   toolCall: ToolCall,
   toolCallId: string,
   tool: StructuredToolInterface | undefined,
@@ -70,4 +76,8 @@ function createToolError(toolCallId: string, content: string): ToolMessage {
     tool_call_id: toolCallId,
     status: 'error'
   });
+}
+
+function toError(error: unknown): Error {
+  return error instanceof Error ? error : new Error(String(error));
 }
