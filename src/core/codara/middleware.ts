@@ -1,6 +1,6 @@
 import {createHILMiddleware, createLoggingMiddleware, type BaseMiddleware} from '@core/middleware';
 import {createSkillsMiddleware, FileSystemSkillStore} from '@core/middleware/skills';
-import {createAgentsGuidelinesMiddleware} from '@core/guidelines';
+import {createGuidelinesMiddleware} from '@core/guidelines';
 import {createMemoryMiddleware} from '@core/memory';
 import {createSummaryMiddleware} from '@core/summary';
 import type {CreateCodaraMiddlewareOptions} from '@core/codara/types';
@@ -14,8 +14,8 @@ export function createCodaraMiddlewares(options: CreateCodaraMiddlewareOptions =
     middlewares.push(createLoggingMiddleware(options.logging));
   }
 
-  if (options.agentsGuidelines !== false) {
-    middlewares.push(createAgentsGuidelinesMiddleware(resolveAgentsGuidelinesOptions(options)));
+  if (options.guidelines !== false) {
+    middlewares.push(createGuidelinesMiddleware(resolveGuidelinesOptions(options)));
   }
 
   if (options.memory !== false) {
@@ -39,15 +39,15 @@ export function createCodaraMiddlewares(options: CreateCodaraMiddlewareOptions =
   return middlewares;
 }
 
-function resolveAgentsGuidelinesOptions(options: CreateCodaraMiddlewareOptions) {
-  if (options.agentsGuidelines === false) {
+function resolveGuidelinesOptions(options: CreateCodaraMiddlewareOptions) {
+  if (options.guidelines === false) {
     return {};
   }
 
   return {
-    ...(options.agentsGuidelines?.cwd ?? options.cwd ? {cwd: options.agentsGuidelines?.cwd ?? options.cwd} : {}),
-    ...(options.agentsGuidelines?.userHome ? {userHome: options.agentsGuidelines.userHome} : {}),
-    ...(options.agentsGuidelines?.projectRoot ? {projectRoot: options.agentsGuidelines.projectRoot} : {}),
+    ...(options.guidelines?.cwd ?? options.cwd ? {cwd: options.guidelines?.cwd ?? options.cwd} : {}),
+    ...(options.guidelines?.userHome ? {userHome: options.guidelines.userHome} : {}),
+    ...(options.guidelines?.projectRoot ? {projectRoot: options.guidelines.projectRoot} : {}),
   };
 }
 

@@ -104,7 +104,7 @@ describe('Codara core facade', () => {
     });
 
     expect(middlewares.map((middleware) => middleware.name)).toEqual([
-      'AgentsGuidelinesMiddleware',
+      'GuidelinesMiddleware',
       'MemoryMiddleware',
       'SkillsMiddleware',
       'HumanInTheLoopMiddleware',
@@ -125,7 +125,7 @@ describe('Codara core facade', () => {
 
     expect(middlewares.map((middleware) => middleware.name)).toEqual([
       'LoggingMiddleware',
-      'AgentsGuidelinesMiddleware',
+      'GuidelinesMiddleware',
       'MemoryMiddleware',
       'SkillsMiddleware',
       'CustomMiddleware',
@@ -145,7 +145,7 @@ describe('Codara core facade', () => {
     });
 
     expect(middlewares.map((middleware) => middleware.name)).toEqual([
-      'AgentsGuidelinesMiddleware',
+      'GuidelinesMiddleware',
       'MemoryMiddleware',
       'SkillsMiddleware',
       'AliasMiddleware',
@@ -159,7 +159,7 @@ describe('Codara core facade', () => {
     });
 
     expect(middlewares.map((middleware) => middleware.name)).toEqual([
-      'AgentsGuidelinesMiddleware',
+      'GuidelinesMiddleware',
       'MemoryMiddleware',
       'SkillsMiddleware',
       'HumanInTheLoopMiddleware',
@@ -175,7 +175,7 @@ describe('Codara core facade', () => {
     });
 
     expect(middlewares.map((middleware) => middleware.name)).toEqual([
-      'AgentsGuidelinesMiddleware',
+      'GuidelinesMiddleware',
       'MemoryMiddleware',
       'SummaryMiddleware',
       'SkillsMiddleware',
@@ -190,7 +190,7 @@ describe('Codara core facade', () => {
     });
 
     expect(middlewares.map((middleware) => middleware.name)).toEqual([
-      'AgentsGuidelinesMiddleware',
+      'GuidelinesMiddleware',
       'SkillsMiddleware',
       'HumanInTheLoopMiddleware',
     ]);
@@ -210,7 +210,7 @@ describe('Codara core facade', () => {
     const pipeline = new MiddlewarePipeline(
       createCodaraMiddlewares({
         cwd: nestedCwd,
-        agentsGuidelines: {userHome},
+        guidelines: {userHome},
         memory: {userHome},
         skills: false,
         hil: false,
