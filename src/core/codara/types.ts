@@ -17,7 +17,7 @@ import type {AgentCheckpoint} from '@core/checkpoint/state';
 import type {HILResumePayload} from '@core/middleware';
 import type {SkillStore} from '@core/middleware/skills';
 import type {CodaraModelCatalog, CreateCodaraModelCatalogOptions} from '@core/codara/models';
-import type {AgentsGuidelinesOptions} from '@core/guidelines';
+import type {GuidelinesOptions} from '@core/guidelines';
 import type {MemoryLoadOptions} from '@core/memory';
 import type {SummaryOptions} from '@core/summary';
 
@@ -40,7 +40,7 @@ export interface CreateCodaraMiddlewareOptions {
   cwd?: string;
   middleware?: BaseMiddleware[];
   middlewares?: BaseMiddleware[];
-  agentsGuidelines?: false | AgentsGuidelinesOptions;
+  guidelines?: false | GuidelinesOptions;
   memory?: false | MemoryLoadOptions;
   skills?: false | CodaraSkillOptions;
   summary?: false | SummaryOptions;

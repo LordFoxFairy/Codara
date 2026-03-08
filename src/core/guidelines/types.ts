@@ -1,14 +1,14 @@
-export interface AgentsGuidelineFile {
+export interface GuidelineFile {
   scope: 'global' | 'project';
   path: string;
 }
 
-export interface AgentsGuidelines {
-  files: AgentsGuidelineFile[];
+export interface LoadedGuidelines {
+  files: GuidelineFile[];
   content: string;
 }
 
-export interface AgentsGuidelinesOptions {
+export interface GuidelinesOptions {
   cwd?: string;
   userHome?: string;
   projectRoot?: string;

@@ -1,12 +1,12 @@
 import {access, readFile} from 'node:fs/promises';
 import {constants as fsConstants} from 'node:fs';
-import {discoverAgentsGuidelineFiles} from '@core/guidelines/discovery';
-import {formatAgentsGuidelines} from '@core/guidelines/format';
-import type {AgentsGuidelines, AgentsGuidelinesOptions} from '@core/guidelines/types';
+import {discoverGuidelineFiles} from '@core/guidelines/discovery';
+import {formatGuidelines} from '@core/guidelines/format';
+import type {GuidelinesOptions, LoadedGuidelines} from '@core/guidelines/types';
 
 /** 加载并拼接当前环境中的 AGENTS.md 规范。 */
-export async function loadAgentsGuidelines(options: AgentsGuidelinesOptions = {}): Promise<AgentsGuidelines | undefined> {
-  const discoveredFiles = discoverAgentsGuidelineFiles(options);
+export async function loadGuidelines(options: GuidelinesOptions = {}): Promise<LoadedGuidelines | undefined> {
+  const discoveredFiles = discoverGuidelineFiles(options);
   const files = [];
 
   for (const file of discoveredFiles) {
@@ -40,7 +40,7 @@ export async function loadAgentsGuidelines(options: AgentsGuidelinesOptions = {}
 
   return {
     files,
-    content: formatAgentsGuidelines(parts),
+    content: formatGuidelines(parts),
   };
 }
 
