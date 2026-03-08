@@ -2,10 +2,10 @@ import type {BaseMessage} from '@langchain/core/messages';
 import {HumanMessage, ToolMessage} from '@langchain/core/messages';
 import type {
   AgentResult,
+  AgentStatus,
   AgentRuntimeContext,
-  AgentStateSnapshot,
   AgentInput,
-  AgentStateSeed,
+  AgentMessagesInput,
 } from '@core/agents/contract/agent';
 import type {
   AgentCheckpoint,
@@ -15,28 +15,48 @@ import type {
 } from '@core/checkpoint/state';
 import {parseHILToolMessagePayload, type HILPauseRequest, type HILResumePayload} from '@core/middleware/hil';
 
-export type MutableAgentState = AgentStateSnapshot;
+/** Agent 内部运行态。 */
+export interface AgentRuntimeState {
+  threadId: string;
+  checkpointId?: string;
+  messages: BaseMessage[];
+  context: AgentRuntimeContext;
+  status: AgentStatus;
+  pendingPause?: HILPauseRequest;
+  lastResult?: AgentCheckpointSummary;
+  step: number;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export type MutableAgentState = AgentRuntimeState;
+
+interface AgentInitialInput {
+  messages?: BaseMessage[];
+  context?: AgentRuntimeContext;
+}
 
 export function createInitialAgentState(
   threadId: string,
-  state: AgentStateSeed | undefined,
+  input: AgentInitialInput | undefined,
   checkpoint?: AgentCheckpoint
 ): MutableAgentState {
   const now = new Date().toISOString();
   const restoredState = checkpoint?.state;
   const restoredInfo = checkpoint?.info;
+  const pendingPause = restoredState?.pendingPause;
 
   return {
     threadId: checkpoint?.ref.threadId ?? threadId,
-    checkpointId: checkpoint?.ref.checkpointId ?? state?.checkpointId,
-    messages: [...(restoredState?.messages ?? state?.messages ?? [])],
-    context: cloneContext(restoredState?.context ?? state?.context ?? {}),
-    status: state?.status ?? deriveRuntimeStatus(restoredState?.pendingPause ?? state?.pendingPause, restoredInfo?.status),
-    pendingPause: cloneOptionalPause(restoredState?.pendingPause ?? state?.pendingPause),
-    lastResult: state?.lastResult ?? (restoredInfo ? summarizeCheckpointInfo(restoredInfo) : undefined),
-    step: restoredInfo?.step ?? state?.step ?? 0,
-    createdAt: state?.createdAt ?? now,
-    updatedAt: state?.updatedAt ?? restoredInfo?.createdAt ?? now,
+    checkpointId: checkpoint?.ref.checkpointId,
+    messages: [...(restoredState?.messages ?? input?.messages ?? [])],
+    context: cloneContext(restoredState?.context ?? input?.context ?? {}),
+    status: deriveRuntimeStatus(pendingPause, restoredInfo?.status),
+    pendingPause: cloneOptionalPause(pendingPause),
+    lastResult: restoredInfo ? summarizeCheckpointInfo(restoredInfo) : undefined,
+    step: restoredInfo?.step ?? 0,
+    createdAt: now,
+    updatedAt: restoredInfo?.createdAt ?? now,
   };
 }
 
@@ -57,7 +77,7 @@ export function normalizeAgentInput(input: AgentInput): BaseMessage[] {
   return Array.isArray(input) ? [...input] : [input];
 }
 
-export function isAgentMessagesState(input: AgentInput): input is {messages: BaseMessage[]} {
+export function isAgentMessagesState(input: AgentInput): input is AgentMessagesInput {
   return typeof input === 'object' && input !== null && 'messages' in input && Array.isArray((input as {messages?: unknown}).messages);
 }
 
@@ -139,7 +159,7 @@ export function mergeContext(base: AgentRuntimeContext, overrides: AgentRuntimeC
 export function deriveRuntimeStatus(
   pendingPause: HILPauseRequest | undefined,
   checkpointStatus: AgentCheckpointStatus | undefined
-): AgentStateSnapshot['status'] {
+): AgentStatus {
   if (checkpointStatus === 'closed') {
     return 'closed';
   }
@@ -150,7 +170,7 @@ export function deriveRuntimeStatus(
 }
 
 export function toCheckpointStatus(
-  runtimeStatus: AgentStateSnapshot['status'],
+  runtimeStatus: AgentStatus,
   result: AgentResult | undefined
 ): AgentCheckpointStatus {
   if (runtimeStatus === 'paused') {

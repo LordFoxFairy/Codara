@@ -9,7 +9,7 @@ import {
   type MutableAgentState,
 } from '@core/agents/engine/state';
 import {
-  createAgentSnapshot,
+  createAgentState,
   persistAgentCheckpoint,
   updateStateFromCheckpointRecord,
 } from '@core/agents/engine/checkpoint';
@@ -32,7 +32,6 @@ import type {
   AgentResumeConfig,
   AgentResumeStreamConfig,
   AgentState,
-  AgentStateSnapshot,
   CreateAgentOptions,
 } from '@core/agents/contract/agent';
 import type {AgentStreamConfig, AgentStreamOutput} from '@core/agents/contract/stream';
@@ -56,11 +55,18 @@ class AgentInstance implements Agent {
     const checkpoint = options.checkpoint;
     this.threadId = checkpoint?.ref.threadId ?? options.threadId ?? randomUUID();
     this.checkpointer = options.checkpointer ?? createAgentMemoryCheckpointer();
-    this.state = createInitialAgentState(this.threadId, options.state, checkpoint);
+    this.state = createInitialAgentState(
+      this.threadId,
+      {
+        ...(options.messages ? {messages: options.messages} : {}),
+        ...(options.context ? {context: options.context} : {}),
+      },
+      checkpoint
+    );
   }
 
-  getState(): AgentStateSnapshot {
-    return createAgentSnapshot(this.threadId, this.state);
+  getState(): AgentState {
+    return createAgentState(this.threadId, this.state);
   }
 
   async invoke(input?: AgentInput, config: AgentInvokeConfig = {}): Promise<AgentResult> {
@@ -203,7 +209,7 @@ class AgentInstance implements Agent {
     this.state.status = 'running';
     this.touch();
 
-    return {messages: [...this.state.messages]};
+    return createAgentState(this.threadId, this.state);
   }
 
   private async applyRunResult(

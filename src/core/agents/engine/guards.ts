@@ -1,6 +1,6 @@
-import type {AgentStateSnapshot} from '@core/agents/contract/agent';
+import type {AgentRuntimeState} from '@core/agents/engine/state';
 
-export function assertReadyForInvoke(state: AgentStateSnapshot): void {
+export function assertReadyForInvoke(state: AgentRuntimeState): void {
   assertNotClosed(state);
   assertNotRunning(state);
 
@@ -9,7 +9,7 @@ export function assertReadyForInvoke(state: AgentStateSnapshot): void {
   }
 }
 
-export function assertReadyForResume(state: AgentStateSnapshot): void {
+export function assertReadyForResume(state: AgentRuntimeState): void {
   assertNotClosed(state);
   assertNotRunning(state);
 
@@ -18,13 +18,13 @@ export function assertReadyForResume(state: AgentStateSnapshot): void {
   }
 }
 
-export function assertNotRunning(state: AgentStateSnapshot): void {
+export function assertNotRunning(state: AgentRuntimeState): void {
   if (state.status === 'running') {
     throw new Error('Agent is currently running.');
   }
 }
 
-function assertNotClosed(state: AgentStateSnapshot): void {
+function assertNotClosed(state: AgentRuntimeState): void {
   if (state.status === 'closed') {
     throw new Error('Agent is closed.');
   }
