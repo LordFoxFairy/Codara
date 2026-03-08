@@ -2,23 +2,23 @@ import {createAgent, type Agent} from '@core/agents';
 import type {AgentCheckpointer} from '@core/checkpoint/state';
 import type {CreateCodaraChatModelOptions} from '@core/codara/models';
 import {createCodaraChatModel} from '@core/codara/models';
-import {createCodaraMiddlewares, loadCodaraSources, type CodaraLoadedSources} from '@core/codara/middleware';
+import {createCodaraMiddlewares} from '@core/codara/middleware';
+import type {CodaraSourceStack} from '@core/codara/sources';
 import {createCodaraTools} from '@core/codara/tools';
 import type {CodaraAgentOptions} from '@core/codara/types';
 
 /** 创建带 Codara 默认装配的 agent。 */
 export async function createCodaraAgent(
   options: CodaraAgentOptions = {},
-  loadedSources?: CodaraLoadedSources
+  loadedSources: CodaraSourceStack = {}
 ): Promise<Agent> {
   const model = await resolveCodaraModel(options);
-  const sources = loadedSources ?? (await loadCodaraSources(options));
   const state = buildCodaraAgentState(options);
 
   return createAgent({
     model,
     tools: createCodaraTools(options),
-    middleware: createCodaraMiddlewares(options, sources),
+    middleware: createCodaraMiddlewares(options, loadedSources),
     handleToolErrors: options.handleToolErrors,
     threadId: options.threadId,
     checkpointer: options.checkpointer,
