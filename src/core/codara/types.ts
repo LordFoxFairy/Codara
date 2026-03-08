@@ -35,6 +35,7 @@ export interface CreateCodaraToolsOptions {
   tools?: StructuredToolInterface[];
   builtinTools?: boolean;
   cwd?: string;
+  memory?: false | MemoryLoadOptions;
 }
 
 export interface CreateCodaraMiddlewareOptions {
