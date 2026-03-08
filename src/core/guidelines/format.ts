@@ -1,5 +1,5 @@
 /** 将多个 AGENTS.md 规范源格式化为统一的系统消息片段。 */
-export function formatAgentsGuidelines(
+export function formatGuidelines(
   guidelines: Array<{scope: 'global' | 'project'; path: string; content: string}>
 ): string {
   const lines = [

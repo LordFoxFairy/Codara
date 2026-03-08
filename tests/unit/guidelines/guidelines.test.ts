@@ -4,9 +4,9 @@ import path from 'node:path';
 import {tmpdir} from 'node:os';
 import {AIMessage} from '@langchain/core/messages';
 import {
-  createAgentsGuidelinesMiddleware,
-  discoverAgentsGuidelineFiles,
-  loadAgentsGuidelines,
+  createGuidelinesMiddleware,
+  discoverGuidelineFiles,
+  loadGuidelines,
 } from '@core/guidelines';
 import type {ModelCallContext} from '@core/middleware';
 
@@ -18,7 +18,7 @@ describe('AGENTS guidelines', () => {
     await mkdir(path.join(userHome, '.codara'), {recursive: true});
     await mkdir(projectRoot, {recursive: true});
 
-    const files = discoverAgentsGuidelineFiles({userHome, projectRoot});
+    const files = discoverGuidelineFiles({userHome, projectRoot});
 
     expect(files).toEqual([
       {
@@ -41,7 +41,7 @@ describe('AGENTS guidelines', () => {
     await mkdir(path.join(projectRoot, '.codara'), {recursive: true});
     await mkdir(nestedCwd, {recursive: true});
 
-    const files = discoverAgentsGuidelineFiles({userHome, cwd: nestedCwd});
+    const files = discoverGuidelineFiles({userHome, cwd: nestedCwd});
 
     expect(files).toEqual([
       {
@@ -67,7 +67,7 @@ describe('AGENTS guidelines', () => {
     await writeFile(globalFile, 'global rule', 'utf8');
     await writeFile(projectFile, 'project rule', 'utf8');
 
-    const loaded = await loadAgentsGuidelines({userHome, projectRoot});
+    const loaded = await loadGuidelines({userHome, projectRoot});
     expect(loaded).toBeDefined();
     expect(loaded?.files.map((file) => file.scope)).toEqual(['global', 'project']);
     expect(loaded?.content).toContain('## Global AGENTS.md');
@@ -76,7 +76,7 @@ describe('AGENTS guidelines', () => {
     expect(loaded?.content).toContain('project rule');
 
     await writeFile(projectFile, 'project rule updated', 'utf8');
-    const reloaded = await loadAgentsGuidelines({userHome, projectRoot});
+    const reloaded = await loadGuidelines({userHome, projectRoot});
     expect(reloaded?.content).toContain('project rule updated');
   });
 
@@ -89,7 +89,7 @@ describe('AGENTS guidelines', () => {
     await writeFile(path.join(userHome, '.codara', 'AGENTS.md'), 'global rule', 'utf8');
     await writeFile(path.join(projectRoot, 'AGENTS.md'), 'project rule', 'utf8');
 
-    const middleware = createAgentsGuidelinesMiddleware({userHome, projectRoot});
+    const middleware = createGuidelinesMiddleware({userHome, projectRoot});
     const context: ModelCallContext = {
       state: {messages: []},
       messages: [],

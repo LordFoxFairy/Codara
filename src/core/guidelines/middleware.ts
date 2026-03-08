@@ -1,14 +1,14 @@
 import {createMiddleware, type ModelCallContext} from '@core/middleware';
-import {loadAgentsGuidelines} from '@core/guidelines/loader';
-import type {AgentsGuidelinesOptions} from '@core/guidelines/types';
+import {loadGuidelines} from '@core/guidelines/loader';
+import type {GuidelinesOptions} from '@core/guidelines/types';
 
 /** 将 AGENTS.md 规范注入模型调用系统消息。 */
-export function createAgentsGuidelinesMiddleware(options: AgentsGuidelinesOptions = {}) {
+export function createGuidelinesMiddleware(options: GuidelinesOptions = {}) {
   return createMiddleware({
-    name: 'AgentsGuidelinesMiddleware',
+    name: 'GuidelinesMiddleware',
 
     async wrapModelCall(context: ModelCallContext, handler) {
-      const guidelines = await loadAgentsGuidelines(options);
+      const guidelines = await loadGuidelines(options);
       if (!guidelines) {
         return handler(context);
       }
