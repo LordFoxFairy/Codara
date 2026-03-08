@@ -14,7 +14,7 @@ function createToolContext(toolCall: ToolCall, runtimeContext: Record<string, un
   return {
     state: {messages},
     messages,
-    runtime: {context: runtimeContext},
+    runtime: {context: runtimeContext, agentContext: runtimeContext},
     systemMessage: [],
     runId: 'run_hil_1',
     turn: 1,

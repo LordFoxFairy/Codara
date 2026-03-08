@@ -87,7 +87,7 @@ function createTurnContext(run: AgentRunContext, turn: number): BaseExecutionCon
   return {
     state: run.state,
     messages: run.state.messages,
-    runtime: {context: run.context},
+    runtime: {context: run.context, agentContext: run.agentContext},
     systemMessage: [],
     runId: run.runId,
     turn,

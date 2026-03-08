@@ -20,6 +20,7 @@ export interface AgentRunContext {
   runId: string;
   maxTurns: number;
   context: AgentRuntimeContext;
+  agentContext: AgentRuntimeContext;
 }
 
 /** Agent 运行依赖。 */
@@ -33,6 +34,7 @@ export interface AgentRuntime {
 /** 为 invoke/stream 创建运行上下文。 */
 export function createRunContext(
   state: AgentState,
+  agentContext: AgentRuntimeContext,
   config: Pick<AgentInvokeConfig, 'recursionLimit' | 'context'> = {}
 ): AgentRunContext {
   return {
@@ -40,6 +42,7 @@ export function createRunContext(
     runId: randomUUID(),
     maxTurns: normalizeMaxTurns(config.recursionLimit),
     context: config.context ?? {},
+    agentContext,
   };
 }
 
