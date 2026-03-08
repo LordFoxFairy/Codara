@@ -3,14 +3,18 @@ import {createGuidelinesMiddleware} from '@core/middleware/guidelines';
 import {createMemoryMiddleware} from '@core/middleware/memory';
 import {createSkillsMiddleware, FileSystemSkillStore} from '@core/middleware/skills';
 import {createSummaryMiddleware} from '@core/middleware/summary';
-import type {CodaraSourceStack} from '@core/codara/sources';
 import type {CodaraMiddlewareOptions} from '@core/codara/types';
 import {resolveWorkspaceRoot} from '@core/workspace';
+
+interface CodaraSourceProjection {
+  guidelines?: string;
+  memory?: string;
+}
 
 /** 构建 Codara 默认中间件链。 */
 export function createCodaraMiddlewares(
   options: CodaraMiddlewareOptions = {},
-  loadedSources: CodaraSourceStack = {}
+  loadedSources: CodaraSourceProjection = {}
 ): BaseMiddleware[] {
   const middlewares: BaseMiddleware[] = [];
 
