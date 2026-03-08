@@ -1,7 +1,9 @@
-import {readFile, writeFile} from 'node:fs/promises';
+import {readFile, writeFile, stat} from 'node:fs/promises';
 import {StructuredTool} from '@langchain/core/tools';
 import {z} from 'zod';
 import {validatePath, formatError, countLines, countOccurrences, getErrorCode, getErrorMessage} from '@core/tools/utils';
+
+const MAX_FILE_SIZE = 10 * 1024 * 1024; // 10MB - consistent with read tool
 
 const editInputSchema = z.object({
     file_path: z.string().min(1).describe('Absolute path to the file. Must exist and be writable.'),
@@ -30,6 +32,29 @@ Returns: edit summary with line count changes (-X +Y lines), or error if file no
 
         if (input.old_string === input.new_string) {
             return 'Warning: old_string and new_string are identical; no changes applied.';
+        }
+
+        // Check file size before loading
+        let fileSize: number;
+        try {
+            const stats = await stat(filePath);
+            if (stats.isDirectory()) {
+                return formatError('Path is a directory', filePath);
+            }
+            fileSize = stats.size;
+        } catch (error: unknown) {
+            const code = getErrorCode(error);
+            if (code === 'ENOENT') {
+                return formatError('File not found', filePath);
+            }
+            return formatError('Stat failed', getErrorMessage(error));
+        }
+
+        if (fileSize > MAX_FILE_SIZE) {
+            return formatError(
+                'File too large',
+                `${(fileSize / 1024 / 1024).toFixed(2)}MB exceeds ${MAX_FILE_SIZE / 1024 / 1024}MB limit`
+            );
         }
 
         let source: string;
