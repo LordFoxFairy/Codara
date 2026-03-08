@@ -1,10 +1,11 @@
 import {createMemoryStore} from '@core/memory/store';
 import type {
+  MemoryEntries,
+  MemoryEntry,
   MemoryEntryKind,
+  MemoryEditResult,
   MemoryScope,
   MemorySourceOptions,
-  MemoryWriteEntry,
-  MemoryWriteResult,
 } from '@core/memory/types';
 
 const MANAGED_HEADING = '## Codara Memory';
@@ -14,62 +15,77 @@ const SECTION_HEADINGS: Record<MemoryEntryKind, string> = {
   lesson: '### Lessons',
 };
 
-export interface MemoryWriter {
-  remember(scope: MemoryScope, entry: MemoryWriteEntry): Promise<MemoryWriteResult>;
+const EMPTY_MEMORY_ENTRIES: MemoryEntries = {
+  preference: [],
+  fact: [],
+  lesson: [],
+};
+
+export interface MemoryEditor {
+  snapshot(scope: MemoryScope): Promise<MemoryEntries>;
+  remember(scope: MemoryScope, entry: MemoryEntry): Promise<MemoryEditResult>;
+  forget(scope: MemoryScope, entry: MemoryEntry): Promise<MemoryEditResult>;
 }
 
-/** 创建 MEMORY.md 的最小写回接口。 */
-export function createMemoryWriter(options: MemorySourceOptions = {}): MemoryWriter {
+/** 创建 MEMORY.md 的受控编辑接口。 */
+export function createMemoryEditor(options: MemorySourceOptions = {}): MemoryEditor {
   const store = createMemoryStore(options);
 
   return {
-    async remember(scope, entry) {
-      const content = normalizeEntryContent(entry.content);
+    async snapshot(scope) {
       const current = (await store.read(scope)) ?? '';
-      const next = applyMemoryEntry(current, {
-        kind: entry.kind,
-        content,
-      });
+      return parseManagedMemory(current).entries;
+    },
 
-      await store.write(scope, next.content);
+    async remember(scope, entry) {
+      return updateManagedMemory(store, scope, entry, 'remember');
+    },
 
-      return {
-        scope,
-        path: store.resolve(scope),
-        added: next.added,
-        content: next.content,
-      };
+    async forget(scope, entry) {
+      return updateManagedMemory(store, scope, entry, 'forget');
     },
   };
 }
 
+type MemoryEditMode = 'remember' | 'forget';
+
 interface ManagedMemoryState {
   prefix: string;
-  entries: Record<MemoryEntryKind, string[]>;
+  entries: MemoryEntries;
 }
 
-interface AppliedMemoryEntry {
-  added: boolean;
-  content: string;
-}
+function updateManagedMemory(
+  store: ReturnType<typeof createMemoryStore>,
+  scope: MemoryScope,
+  entry: MemoryEntry,
+  mode: MemoryEditMode
+): Promise<MemoryEditResult> {
+  return (async () => {
+    const content = normalizeEntryContent(entry.content);
+    const current = (await store.read(scope)) ?? '';
+    const state = parseManagedMemory(current);
+    const section = state.entries[entry.kind];
+    const hasEntry = section.includes(content);
 
-function applyMemoryEntry(current: string, entry: MemoryWriteEntry): AppliedMemoryEntry {
-  const state = parseManagedMemory(current);
-  const section = state.entries[entry.kind];
+    if (mode === 'remember' && !hasEntry) {
+      section.push(content);
+    }
 
-  if (section.includes(entry.content)) {
+    if (mode === 'forget' && hasEntry) {
+      state.entries[entry.kind] = section.filter((item) => item !== content);
+    }
+
+    const nextContent = renderManagedMemory(state);
+    await store.write(scope, nextContent);
+
     return {
-      added: false,
-      content: renderManagedMemory(state),
+      scope,
+      path: store.resolve(scope),
+      added: mode === 'remember' ? !hasEntry : false,
+      content: nextContent,
+      entries: cloneMemoryEntries(state.entries),
     };
-  }
-
-  section.push(entry.content);
-
-  return {
-    added: true,
-    content: renderManagedMemory(state),
-  };
+  })();
 }
 
 function parseManagedMemory(current: string): ManagedMemoryState {
@@ -148,3 +164,13 @@ function normalizeEntryContent(content: string): string {
 
   return normalized.replace(/\s+/g, ' ');
 }
+
+function cloneMemoryEntries(entries: MemoryEntries): MemoryEntries {
+  return {
+    preference: [...entries.preference],
+    fact: [...entries.fact],
+    lesson: [...entries.lesson],
+  };
+}
+
+export const EMPTY_MANAGED_MEMORY: MemoryEntries = cloneMemoryEntries(EMPTY_MEMORY_ENTRIES);
