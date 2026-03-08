@@ -9,6 +9,7 @@ export interface AgentsGuidelines {
 }
 
 export interface AgentsGuidelinesOptions {
+  cwd?: string;
   userHome?: string;
   projectRoot?: string;
 }

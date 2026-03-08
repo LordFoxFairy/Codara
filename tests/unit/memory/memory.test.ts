@@ -28,6 +28,29 @@ describe('MEMORY module', () => {
     ]);
   });
 
+  it('should resolve the nearest workspace root from cwd', async () => {
+    const root = await mkdtemp(path.join(tmpdir(), 'codara-memory-'));
+    const userHome = path.join(root, 'home');
+    const projectRoot = path.join(root, 'project');
+    const nestedCwd = path.join(projectRoot, 'packages', 'app');
+    await mkdir(path.join(userHome, '.codara'), {recursive: true});
+    await mkdir(path.join(projectRoot, '.codara'), {recursive: true});
+    await mkdir(nestedCwd, {recursive: true});
+
+    const files = discoverMemoryFiles({userHome, cwd: nestedCwd});
+
+    expect(files).toEqual([
+      {
+        scope: 'global',
+        path: path.join(userHome, '.codara', 'MEMORY.md'),
+      },
+      {
+        scope: 'project',
+        path: path.join(projectRoot, 'MEMORY.md'),
+      },
+    ]);
+  });
+
   it('should load global and project MEMORY.md without caching', async () => {
     const root = await mkdtemp(path.join(tmpdir(), 'codara-memory-'));
     const userHome = path.join(root, 'home');
@@ -126,5 +149,20 @@ describe('MEMORY module', () => {
 
     await store.delete('project');
     expect(await store.exists('project')).toBe(false);
+  });
+
+  it('should let the store resolve project memory against the workspace root from cwd', async () => {
+    const root = await mkdtemp(path.join(tmpdir(), 'codara-memory-'));
+    const projectRoot = path.join(root, 'project');
+    const nestedCwd = path.join(projectRoot, 'packages', 'app');
+    await mkdir(path.join(projectRoot, '.codara'), {recursive: true});
+    await mkdir(nestedCwd, {recursive: true});
+
+    const store = createMemoryStore({cwd: nestedCwd});
+
+    await store.write('project', 'workspace memory');
+
+    expect(store.resolve('project')).toBe(path.join(projectRoot, 'MEMORY.md'));
+    expect(await store.read('project')).toBe('workspace memory');
   });
 });

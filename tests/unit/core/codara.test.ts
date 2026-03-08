@@ -1,8 +1,11 @@
 import {describe, expect, it} from 'bun:test';
+import {mkdir, mkdtemp, writeFile} from 'node:fs/promises';
+import path from 'node:path';
+import {tmpdir} from 'node:os';
 import {AIMessage, AIMessageChunk, HumanMessage, ToolMessage, type BaseMessage, type ToolCall} from '@langchain/core/messages';
 import type {BaseChatModel} from '@langchain/core/language_models/chat_models';
 import type {StructuredToolInterface} from '@langchain/core/tools';
-import {createMiddleware} from '@core/middleware';
+import {createMiddleware, MiddlewarePipeline, type ModelCallContext} from '@core/middleware';
 import {
   createAgentMemoryCheckpointer,
   createCodara,
@@ -161,6 +164,48 @@ describe('Codara core facade', () => {
       'SkillsMiddleware',
       'HumanInTheLoopMiddleware',
     ]);
+  });
+
+  it('should resolve AGENTS.md and MEMORY.md from the workspace root derived from cwd', async () => {
+    const root = await mkdtemp(path.join(tmpdir(), 'codara-workspace-'));
+    const userHome = path.join(root, 'home');
+    const projectRoot = path.join(root, 'project');
+    const nestedCwd = path.join(projectRoot, 'packages', 'app');
+    await mkdir(path.join(userHome, '.codara'), {recursive: true});
+    await mkdir(path.join(projectRoot, '.codara'), {recursive: true});
+    await mkdir(nestedCwd, {recursive: true});
+    await writeFile(path.join(projectRoot, 'AGENTS.md'), 'project rule', 'utf8');
+    await writeFile(path.join(projectRoot, 'MEMORY.md'), 'project memory', 'utf8');
+
+    const pipeline = new MiddlewarePipeline(
+      createCodaraMiddlewares({
+        cwd: nestedCwd,
+        agentsGuidelines: {userHome},
+        memory: {userHome},
+        skills: false,
+        hil: false,
+      })
+    );
+
+    const context: ModelCallContext = {
+      state: {messages: []},
+      messages: [],
+      runtime: {context: {}},
+      systemMessage: ['base system'],
+      runId: 'run_1',
+      turn: 1,
+      maxTurns: 8,
+      requestId: 'req_1',
+    };
+
+    const response = await pipeline.wrapModelCall(context, async (request) => {
+      expect(request?.systemMessage).toHaveLength(3);
+      expect(request?.systemMessage[1]).toContain('project rule');
+      expect(request?.systemMessage[2]).toContain('project memory');
+      return new AIMessage('ok');
+    });
+
+    expect(response.content).toBe('ok');
   });
 
   it('should let caller tool middleware short-circuit before default HIL', async () => {

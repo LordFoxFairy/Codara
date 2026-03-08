@@ -10,9 +10,14 @@ export interface LoadedMemory {
   content: string;
 }
 
-/** MEMORY.md 加载选项。 */
-export interface MemoryOptions {
+/** MEMORY.md 来源定位选项。 */
+export interface MemorySourceOptions {
+  cwd?: string;
   userHome?: string;
   projectRoot?: string;
+}
+
+/** MEMORY.md 加载与注入选项。 */
+export interface MemoryLoadOptions extends MemorySourceOptions {
   maxChars?: number;
 }

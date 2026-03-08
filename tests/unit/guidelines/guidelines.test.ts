@@ -32,6 +32,29 @@ describe('AGENTS guidelines', () => {
     ]);
   });
 
+  it('should resolve the nearest workspace root from cwd', async () => {
+    const root = await mkdtemp(path.join(tmpdir(), 'codara-guidelines-'));
+    const userHome = path.join(root, 'home');
+    const projectRoot = path.join(root, 'project');
+    const nestedCwd = path.join(projectRoot, 'packages', 'app');
+    await mkdir(path.join(userHome, '.codara'), {recursive: true});
+    await mkdir(path.join(projectRoot, '.codara'), {recursive: true});
+    await mkdir(nestedCwd, {recursive: true});
+
+    const files = discoverAgentsGuidelineFiles({userHome, cwd: nestedCwd});
+
+    expect(files).toEqual([
+      {
+        scope: 'global',
+        path: path.join(userHome, '.codara', 'AGENTS.md'),
+      },
+      {
+        scope: 'project',
+        path: path.join(projectRoot, 'AGENTS.md'),
+      },
+    ]);
+  });
+
   it('should load global and project AGENTS.md without caching', async () => {
     const root = await mkdtemp(path.join(tmpdir(), 'codara-guidelines-'));
     const userHome = path.join(root, 'home');
