@@ -1,7 +1,7 @@
 import {createMiddleware, type BaseMiddleware, type BeforeModelContext} from '@core/middleware';
-import {formatSummaryRecord} from '@core/summary/format';
-import {readSummaryRecord, resolveSummaryContext, splitMessagesForSummary, trimMessagesInPlace, writeSummaryRecord} from '@core/summary/state';
-import type {SummaryInput, SummaryOptions} from '@core/summary/types';
+import {formatSummaryRecord} from '@core/middleware/summary/format';
+import {readSummaryRecord, resolveSummaryContext, splitMessagesForSummary, trimMessagesInPlace, writeSummaryRecord} from '@core/middleware/summary/state';
+import type {SummaryInput, SummaryOptions} from '@core/middleware/summary/types';
 
 const DEFAULT_MAX_MESSAGES = 30;
 const DEFAULT_KEEP_LAST_MESSAGES = 12;
