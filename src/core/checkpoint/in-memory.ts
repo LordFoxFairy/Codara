@@ -8,11 +8,11 @@ interface ThreadState<TState, TInfo> {
 }
 
 /**
- * Default zero-config checkpointer.
- * It keeps checkpoint history in process memory and is suitable for tests and
- * local single-process runs.
+ * In-memory checkpointer for development and testing.
+ * Keeps checkpoint history in process memory and is suitable for tests and
+ * local single-process runs. Data is lost when the process exits.
  */
-export class MemoryCheckpointer<TState = unknown, TInfo = unknown>
+export class InMemoryCheckpointer<TState = unknown, TInfo = unknown>
   implements Checkpointer<TState, TInfo>
 {
   private readonly threads = new Map<string, ThreadState<TState, TInfo>>();
