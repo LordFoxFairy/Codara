@@ -40,7 +40,7 @@ createCodara(...)
   - `<workspaceRoot>/MEMORY.md`
 - 工作区根优先从 `cwd` 向上查找 `.codara`、`.git`、`package.json`
 - 每次模型调用都会重新读取，不做缓存
-- `memory/*` 同时提供 `MEMORY.md` 的正式写回接口，用于沉淀长期稳定记忆
+- `memory/*` 同时提供 `MEMORY.md` 的正式编辑接口，用于沉淀长期稳定记忆
 - 默认注入顺序位于 `AGENTS.md` 之后、`SkillsMiddleware` 之前
 
 `MEMORY.md` 在当前架构中属于长期记忆源，不属于：

@@ -6,7 +6,7 @@
 src/core/memory/
 ├── types.ts        # MEMORY.md 记忆源的最小类型边界
 ├── store.ts        # MEMORY.md 的最小读写接口
-├── writer.ts       # MEMORY.md 的受控写回接口
+├── editor.ts       # MEMORY.md 的受控编辑接口
 ├── discovery.ts    # 发现全局与项目 MEMORY.md
 ├── loader.ts       # 读取并组合 MEMORY.md 内容
 ├── format.ts       # 将记忆源格式化为系统消息片段
@@ -18,7 +18,7 @@ src/core/memory/
 
 - 发现并加载 `MEMORY.md`
 - 提供最小读写接口，供 CLI / tool / 上层服务使用
-- 提供受控写回接口，供长期记忆沉淀使用
+- 提供受控编辑接口，供长期记忆沉淀使用
 - 将 `MEMORY.md` 长期记忆注入模型系统消息
 - 为 `createCodaraMiddlewares(...)` 提供默认长期记忆能力
 
@@ -92,25 +92,30 @@ const content = await memory.read('project');
 - `MemorySourceOptions`：只负责定位文件
 - `MemoryLoadOptions`：在定位基础上追加注入控制（如 `maxChars`）
 
-## 最小写回接口
+## 最小编辑接口
 
 ```ts
-import {createMemoryWriter} from '@core/memory';
+import {createMemoryEditor} from '@core/memory';
 
-const writer = createMemoryWriter({cwd: process.cwd()});
+const editor = createMemoryEditor({cwd: process.cwd()});
 
-await writer.remember('project', {
+await editor.remember('project', {
   kind: 'lesson',
   content: 'Run lint before opening a PR.',
 });
 ```
 
-当前写回遵循这些规则：
+当前编辑接口遵循这些规则：
 - 只写长期稳定内容
 - 不写 checkpoint、pending pause、临时任务状态
 - 将 Codara 管理的条目写入 `## Codara Memory` 块
 - `## Codara Memory` 视为 Codara 管理的受控区块
 - 对同一 section 做精确去重
+
+当前提供三个动作：
+- `snapshot`
+- `remember`
+- `forget`
 
 当前支持三类条目：
 - `preference`
