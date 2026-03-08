@@ -2,7 +2,7 @@ import {describe, expect, it} from 'bun:test';
 import {access, mkdtemp} from 'node:fs/promises';
 import os from 'node:os';
 import path from 'node:path';
-import {FileCheckpointer, MemoryCheckpointer} from '@core/checkpoint';
+import {FileCheckpointer, InMemoryCheckpointer} from '@core/checkpoint';
 
 interface TestState {
   counter: number;
@@ -31,7 +31,7 @@ function createRecord(
 
 describe('Checkpointer', () => {
   it('should store history in memory by thread', async () => {
-    const checkpointer = new MemoryCheckpointer<TestState, TestInfo>();
+    const checkpointer = new InMemoryCheckpointer<TestState, TestInfo>();
 
     const first = await checkpointer.put({
       threadId: 'thread-a',
@@ -82,7 +82,7 @@ describe('Checkpointer', () => {
   });
 
   it('should delete a thread and clear all persisted checkpoints', async () => {
-    const memory = new MemoryCheckpointer<TestState, TestInfo>();
+    const memory = new InMemoryCheckpointer<TestState, TestInfo>();
     const rootDir = await mkdtemp(path.join(os.tmpdir(), 'codara-checkpointer-delete-'));
     const file = new FileCheckpointer<TestState, TestInfo>({
       rootDir,

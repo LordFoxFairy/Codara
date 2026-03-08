@@ -1,21 +1,30 @@
 import {createMiddleware} from '@core/middleware';
-import {loadMemory} from '@core/memory/loader';
-import type {MemoryLoadOptions} from '@core/memory/types';
+import type {CodaraMemory} from '@core/codara/memory';
 
 /** 将 MEMORY.md 记忆注入模型调用系统消息。 */
-export function createMemoryMiddleware(options: MemoryLoadOptions = {}) {
+export function createMemoryMiddleware() {
   return createMiddleware({
     name: 'MemoryMiddleware',
 
     async wrapModelCall(context, handler) {
-      const memory = await loadMemory(options);
-      if (!memory) {
+      // 从 AgentRuntimeContext 读取 Memory Store 实例
+      const memoryStore = context.runtime.context.__codaraMemory as CodaraMemory | undefined;
+
+      if (!memoryStore) {
+        return handler(context);
+      }
+
+      const globalContent = await memoryStore.read('global');
+      const projectContent = await memoryStore.read('project');
+      const content = [globalContent, projectContent].filter(Boolean).join('\n\n');
+
+      if (!content) {
         return handler(context);
       }
 
       return handler({
         ...context,
-        systemMessage: context.systemMessage.concat(memory.content),
+        systemMessage: context.systemMessage.concat(content),
       });
     },
   });

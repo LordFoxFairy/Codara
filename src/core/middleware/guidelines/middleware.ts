@@ -1,14 +1,20 @@
 import {createMiddleware, type ModelCallContext} from '@core/middleware';
-import {loadGuidelines} from '@core/middleware/guidelines/loader';
-import type {GuidelinesOptions} from '@core/middleware/guidelines/types';
+import type {GuidelinesStore} from '@core/middleware/guidelines/store';
 
 /** 将 AGENTS.md 规范注入模型调用系统消息。 */
-export function createGuidelinesMiddleware(options: GuidelinesOptions = {}) {
+export function createGuidelinesMiddleware() {
   return createMiddleware({
     name: 'GuidelinesMiddleware',
 
     async wrapModelCall(context: ModelCallContext, handler) {
-      const guidelines = await loadGuidelines(options);
+      // 从 AgentRuntimeContext 读取 Guidelines Store 实例
+      const guidelinesStore = context.runtime.context.__codaraGuidelines as GuidelinesStore | undefined;
+
+      if (!guidelinesStore) {
+        return handler(context);
+      }
+
+      const guidelines = await guidelinesStore.load();
       if (!guidelines) {
         return handler(context);
       }
