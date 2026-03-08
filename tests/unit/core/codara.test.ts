@@ -431,6 +431,25 @@ describe('Codara core facade', () => {
     expect(String(agentState.messages[1]?.content)).toBe('seen_humans:1');
   });
 
+  it('should expose a product-level memory editor through createCodara()', async () => {
+    const root = await mkdtemp(path.join(tmpdir(), 'codara-core-'));
+    const projectRoot = path.join(root, 'project');
+    await mkdir(path.join(projectRoot, '.codara'), {recursive: true});
+
+    const codara = createCodara({
+      cwd: path.join(projectRoot, 'packages', 'app'),
+      memory: false,
+    });
+
+    await codara.memory().remember('project', {
+      kind: 'lesson',
+      content: 'Prefer small PRs.',
+    });
+
+    const snapshot = await codara.memory().snapshot('project');
+    expect(snapshot.lesson).toEqual(['Prefer small PRs.']);
+  });
+
   it('should stream through the top-level Codara facade for CLI consumers', async () => {
     const model = new StreamingEchoModel();
     const codara = createCodara({

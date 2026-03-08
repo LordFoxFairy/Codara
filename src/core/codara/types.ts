@@ -18,7 +18,7 @@ import type {HILResumePayload} from '@core/middleware';
 import type {SkillStore} from '@core/middleware/skills';
 import type {CodaraModelCatalog, CreateCodaraModelCatalogOptions} from '@core/codara/models';
 import type {GuidelinesOptions} from '@core/guidelines';
-import type {MemoryLoadOptions} from '@core/memory';
+import type {MemoryEditor, MemoryLoadOptions} from '@core/memory';
 import type {SummaryOptions} from '@core/summary';
 
 export interface CodaraSkillOptions {
@@ -71,6 +71,7 @@ export type CreateCodaraOptions = CreateCodaraAgentOptions;
 
 export interface Codara {
   session(options?: CreateCodaraSessionOptions): Promise<import('@core/sessions').Session>;
+  memory(): MemoryEditor;
   invoke(input?: AgentInput, config?: AgentInvokeConfig): Promise<AgentResult>;
   stream(
     input?: AgentInput,
