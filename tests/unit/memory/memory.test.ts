@@ -4,9 +4,9 @@ import path from 'node:path';
 import {tmpdir} from 'node:os';
 import {AIMessage} from '@langchain/core/messages';
 import {
+  createMemoryEditor,
   createMemoryMiddleware,
   createMemoryStore,
-  createMemoryWriter,
   discoverMemoryFiles,
   loadMemory,
 } from '@core/memory';
@@ -178,9 +178,9 @@ describe('MEMORY module', () => {
     await mkdir(projectRoot, {recursive: true});
     await writeFile(path.join(projectRoot, 'MEMORY.md'), '# Team Notes\n\nKeep this file tidy.', 'utf8');
 
-    const writer = createMemoryWriter({projectRoot});
+    const editor = createMemoryEditor({projectRoot});
 
-    await writer.remember('project', {
+    await editor.remember('project', {
       kind: 'fact',
       content: 'The API uses cursor pagination.',
     });
@@ -200,13 +200,13 @@ describe('MEMORY module', () => {
     const projectRoot = path.join(root, 'project');
     await mkdir(projectRoot, {recursive: true});
 
-    const writer = createMemoryWriter({projectRoot});
+    const editor = createMemoryEditor({projectRoot});
 
-    const first = await writer.remember('project', {
+    const first = await editor.remember('project', {
       kind: 'lesson',
       content: 'Run lint before opening a PR.',
     });
-    const second = await writer.remember('project', {
+    const second = await editor.remember('project', {
       kind: 'lesson',
       content: 'Run lint before opening a PR.',
     });
@@ -225,13 +225,13 @@ describe('MEMORY module', () => {
     const userHome = path.join(root, 'home');
     await mkdir(path.join(userHome, '.codara'), {recursive: true});
 
-    const writer = createMemoryWriter({userHome});
+    const editor = createMemoryEditor({userHome});
 
-    await writer.remember('global', {
+    await editor.remember('global', {
       kind: 'preference',
       content: 'Prefer concise changelog entries.',
     });
-    await writer.remember('global', {
+    await editor.remember('global', {
       kind: 'fact',
       content: 'The production cluster runs in ap-southeast-1.',
     });
@@ -243,5 +243,55 @@ describe('MEMORY module', () => {
     expect(content).toContain('- Prefer concise changelog entries.');
     expect(content).toContain('### Facts');
     expect(content).toContain('- The production cluster runs in ap-southeast-1.');
+  });
+
+  it('should expose a structured snapshot of managed memory entries', async () => {
+    const root = await mkdtemp(path.join(tmpdir(), 'codara-memory-'));
+    const projectRoot = path.join(root, 'project');
+    await mkdir(projectRoot, {recursive: true});
+    const editor = createMemoryEditor({projectRoot});
+
+    await editor.remember('project', {
+      kind: 'preference',
+      content: 'Prefer small PRs.',
+    });
+    await editor.remember('project', {
+      kind: 'fact',
+      content: 'The service uses UTC timestamps.',
+    });
+
+    const snapshot = await editor.snapshot('project');
+
+    expect(snapshot).toEqual({
+      preference: ['Prefer small PRs.'],
+      fact: ['The service uses UTC timestamps.'],
+      lesson: [],
+    });
+  });
+
+  it('should remove a managed memory entry without touching manual content', async () => {
+    const root = await mkdtemp(path.join(tmpdir(), 'codara-memory-'));
+    const projectRoot = path.join(root, 'project');
+    await mkdir(projectRoot, {recursive: true});
+    await writeFile(path.join(projectRoot, 'MEMORY.md'), '# Notes\n\nManual paragraph.', 'utf8');
+
+    const editor = createMemoryEditor({projectRoot});
+    await editor.remember('project', {
+      kind: 'lesson',
+      content: 'Run lint before opening a PR.',
+    });
+
+    const removed = await editor.forget('project', {
+      kind: 'lesson',
+      content: 'Run lint before opening a PR.',
+    });
+
+    expect(removed.entries.lesson).toEqual([]);
+
+    const store = createMemoryStore({projectRoot});
+    const content = await store.read('project');
+    expect(content).toContain('# Notes');
+    expect(content).toContain('Manual paragraph.');
+    expect(content).not.toContain('- Run lint before opening a PR.');
   });
 });
