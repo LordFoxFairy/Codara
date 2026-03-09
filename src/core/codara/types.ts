@@ -1,26 +1,17 @@
 import type {BaseChatModel} from '@langchain/core/language_models/chat_models';
-import type {BaseMessage} from '@langchain/core/messages';
 import type {StructuredToolInterface} from '@langchain/core/tools';
 import type {
+  AgentInputBudget,
   AgentInput,
-  AgentInvokeConfig,
-  AgentResumeConfig,
-  AgentResumeStreamConfig,
-  AgentResult,
-  AgentRuntimeContext,
-  AgentStreamConfig,
-  AgentStreamOutput,
-  CreateAgentOptions,
 } from '@core/agents';
 import type {BaseMiddleware, HILMiddlewareOptions, LoggingMiddlewareOptions} from '@core/middleware';
-import type {AgentCheckpoint} from '@core/checkpoint/state';
-import type {HILResumePayload} from '@core/middleware';
 import type {SkillStore} from '@core/skills';
-import type {Session, SessionState} from '@core/sessions';
+import type {Session} from '@core/sessions';
 import type {CodaraModelCatalog, CreateCodaraModelCatalogOptions} from '@core/codara/models';
 import type {GuidelinesOptions} from '@core/middleware/guidelines';
 import type {MemoryOptions} from '@core/middleware/memory';
 import type {SummaryOptions} from '@core/middleware/summary';
+import type {AgentCheckpointer} from '@core/checkpoint/state';
 
 export interface CodaraSkillOptions {
   store?: SkillStore;
@@ -36,56 +27,49 @@ export interface CodaraToolsOptions {
   tools?: StructuredToolInterface[];
   builtinTools?: boolean;
   cwd?: string;
-  memory?: false | MemoryOptions;
 }
 
 export interface CodaraMiddlewareOptions {
   cwd?: string;
+  projectRoot?: string;
+  userHome?: string;
   middleware?: BaseMiddleware[];
   middlewares?: BaseMiddleware[];
-  guidelines?: false | GuidelinesOptions;
-  memory?: false | MemoryOptions;
+  guidelines?: boolean | GuidelinesOptions;
+  memory?: boolean | MemoryOptions;
   skills?: false | CodaraSkillOptions;
   summary?: false | SummaryOptions;
   hil?: false | HILMiddlewareOptions;
   logging?: false | LoggingMiddlewareOptions;
 }
 
-export interface CodaraAgentOptions
-  extends Omit<CreateAgentOptions, 'model' | 'tools' | 'middleware' | 'middlewares' | 'checkpoint'>,
-    CreateCodaraModelCatalogOptions,
+/**
+ * Codara 配置选项。
+ * 对外 API 使用 alias 而不是暴露 provider:model 格式。
+ */
+export interface CodaraOptions
+  extends CreateCodaraModelCatalogOptions,
     CodaraToolsOptions,
     CodaraMiddlewareOptions {
-  model?: BaseChatModel;
-  alias?: string;
-  catalog?: CodaraModelCatalog;
+  // Model 选择（产品化 API）
+  alias?: string;  // 'default' / 'sonnet' / 'fast' / 'opus'
+  model?: BaseChatModel;  // 高级用法：直接传 model 实例
+  catalog?: CodaraModelCatalog | Promise<CodaraModelCatalog>;
   modelResolver?: () => Promise<BaseChatModel> | BaseChatModel;
-  messages?: BaseMessage[];
-  context?: AgentRuntimeContext;
-  checkpoint?: AgentCheckpoint;
-}
 
-export interface CodaraSessionOptions extends CodaraAgentOptions {
+  // Session 配置
   sessionId?: string;
+  threadId?: string;
   restore?: 'latest' | 'never';
+  checkpointer?: AgentCheckpointer;
+  handleToolErrors?: boolean;
+  inputBudget?: AgentInputBudget;
+
+  // 初始状态
+  messages?: AgentInput;
+  context?: Record<string, unknown>;
+  values?: Record<string, unknown>;
 }
 
-export type CodaraOptions = CodaraAgentOptions;
-
-export interface Codara {
-  session(options?: CodaraSessionOptions): Promise<Session>;
-  reloadSources(): Promise<void>;
-  invoke(input?: AgentInput, config?: AgentInvokeConfig): Promise<AgentResult>;
-  stream(
-    input?: AgentInput,
-    config?: AgentStreamConfig
-  ): AsyncGenerator<AgentStreamOutput, AgentResult, void>;
-  resume(payload: HILResumePayload, config?: AgentResumeConfig): Promise<AgentResult>;
-  resumeStream(
-    payload: HILResumePayload,
-    config?: AgentResumeStreamConfig
-  ): AsyncGenerator<AgentStreamOutput, AgentResult, void>;
-  getState(): Promise<SessionState>;
-  reset(): Promise<void>;
-  dispose(): Promise<void>;
-}
+/** Codara 对外接口。当前直接复用 session 契约。 */
+export type Codara = Session;

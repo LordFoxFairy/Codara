@@ -14,15 +14,17 @@ describe('Codara session source lifecycle', () => {
     const nestedCwd = path.join(projectRoot, 'packages', 'app');
     await mkdir(path.join(userHome, '.codara'), {recursive: true});
     await mkdir(path.join(projectRoot, '.codara'), {recursive: true});
+    await mkdir(path.join(projectRoot, '.git'), {recursive: true});
     await mkdir(nestedCwd, {recursive: true});
-    await writeFile(path.join(projectRoot, 'AGENTS.md'), 'project rule v1', 'utf8');
+    await writeFile(path.join(nestedCwd, 'AGENTS.md'), 'project rule v1', 'utf8');
     await writeFile(path.join(projectRoot, '.codara', 'MEMORY.md'), 'project memory v1', 'utf8');
 
     const codara = createCodara({
       model: new SystemEchoModel() as unknown as BaseChatModel,
       cwd: nestedCwd,
-      guidelines: {userHome},
-      memory: {userHome},
+      userHome,
+      guidelines: true,
+      memory: true,
       skills: false,
       builtinTools: false,
     });
@@ -32,7 +34,7 @@ describe('Codara session source lifecycle', () => {
     expect(firstText).toContain('project rule v1');
     expect(firstText).toContain('project memory v1');
 
-    await writeFile(path.join(projectRoot, 'AGENTS.md'), 'project rule v2', 'utf8');
+    await writeFile(path.join(nestedCwd, 'AGENTS.md'), 'project rule v2', 'utf8');
     await writeFile(path.join(projectRoot, '.codara', 'MEMORY.md'), 'project memory v2', 'utf8');
 
     const second = await codara.invoke('again');
@@ -50,28 +52,31 @@ describe('Codara session source lifecycle', () => {
     const nestedCwd = path.join(projectRoot, 'packages', 'app');
     await mkdir(path.join(userHome, '.codara'), {recursive: true});
     await mkdir(path.join(projectRoot, '.codara'), {recursive: true});
+    await mkdir(path.join(projectRoot, '.git'), {recursive: true});
     await mkdir(nestedCwd, {recursive: true});
-    await writeFile(path.join(projectRoot, 'AGENTS.md'), 'project rule v1', 'utf8');
+    await writeFile(path.join(nestedCwd, 'AGENTS.md'), 'project rule v1', 'utf8');
     await writeFile(path.join(projectRoot, '.codara', 'MEMORY.md'), 'project memory v1', 'utf8');
 
     const firstCodara = createCodara({
       model: new SystemEchoModel() as unknown as BaseChatModel,
       cwd: nestedCwd,
-      guidelines: {userHome},
-      memory: {userHome},
+      userHome,
+      guidelines: true,
+      memory: true,
       skills: false,
       builtinTools: false,
     });
     await firstCodara.invoke('hello');
 
-    await writeFile(path.join(projectRoot, 'AGENTS.md'), 'project rule v2', 'utf8');
+    await writeFile(path.join(nestedCwd, 'AGENTS.md'), 'project rule v2', 'utf8');
     await writeFile(path.join(projectRoot, '.codara', 'MEMORY.md'), 'project memory v2', 'utf8');
 
     const secondCodara = createCodara({
       model: new SystemEchoModel() as unknown as BaseChatModel,
       cwd: nestedCwd,
-      guidelines: {userHome},
-      memory: {userHome},
+      userHome,
+      guidelines: true,
+      memory: true,
       skills: false,
       builtinTools: false,
     });
@@ -91,16 +96,18 @@ describe('Codara session source lifecycle', () => {
     const nestedCwd = path.join(projectRoot, 'packages', 'app');
     await mkdir(path.join(userHome, '.codara'), {recursive: true});
     await mkdir(path.join(projectRoot, '.codara'), {recursive: true});
+    await mkdir(path.join(projectRoot, '.git'), {recursive: true});
     await mkdir(nestedCwd, {recursive: true});
-    await writeFile(path.join(projectRoot, 'AGENTS.md'), 'project rule v1', 'utf8');
+    await writeFile(path.join(nestedCwd, 'AGENTS.md'), 'project rule v1', 'utf8');
     await writeFile(path.join(projectRoot, '.codara', 'MEMORY.md'), 'project memory v1', 'utf8');
 
     const codara = createCodara({
       model: new SystemEchoModel() as unknown as BaseChatModel,
       cwd: nestedCwd,
       threadId: 'reload-sources-thread',
-      guidelines: {userHome},
-      memory: {userHome},
+      userHome,
+      guidelines: true,
+      memory: true,
       skills: false,
       builtinTools: false,
     });
@@ -110,7 +117,7 @@ describe('Codara session source lifecycle', () => {
     expect(firstText).toContain('project rule v1');
     expect(firstText).toContain('project memory v1');
 
-    await writeFile(path.join(projectRoot, 'AGENTS.md'), 'project rule v2', 'utf8');
+    await writeFile(path.join(nestedCwd, 'AGENTS.md'), 'project rule v2', 'utf8');
     await writeFile(path.join(projectRoot, '.codara', 'MEMORY.md'), 'project memory v2', 'utf8');
 
     await codara.reloadSources();

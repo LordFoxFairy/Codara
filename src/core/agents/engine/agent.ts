@@ -30,6 +30,7 @@ import {createStreamWriter} from '@core/agents/engine/stream-writer';
 import type {
   Agent,
   AgentInput,
+  AgentInputBudget,
   AgentInvokeConfig,
   AgentResult,
   AgentResumeConfig,
@@ -51,6 +52,7 @@ class AgentInstance implements Agent {
   private readonly runtime: AgentRuntime;
   private readonly threadId: string;
   private readonly checkpointer: AgentCheckpointer;
+  private readonly inputBudget: AgentInputBudget | undefined;
   private readonly state: MutableAgentState;
 
   constructor(options: CreateAgentOptions) {
@@ -58,6 +60,7 @@ class AgentInstance implements Agent {
     const checkpoint = options.checkpoint;
     this.threadId = checkpoint?.ref.threadId ?? options.threadId ?? randomUUID();
     this.checkpointer = options.checkpointer ?? createAgentMemoryCheckpointer();
+    this.inputBudget = options.inputBudget;
     const initialValues = this.runtime.pipeline.createInitialValues(checkpoint?.state.values ?? options.values ?? {});
     this.state = createInitialAgentState(
       this.threadId,
@@ -137,6 +140,7 @@ class AgentInstance implements Agent {
     const run = createRunContext(loopState, this.state.context, this.state.values, {
       ...config,
       context: mergeContext(this.state.context, config.context),
+      inputBudget: config.inputBudget ?? this.inputBudget,
     });
 
     try {
@@ -167,6 +171,7 @@ class AgentInstance implements Agent {
     const run = createRunContext(loopState, this.state.context, this.state.values, {
       ...config,
       context: mergeContext(this.state.context, config.context),
+      inputBudget: config.inputBudget ?? this.inputBudget,
     });
 
     try {
