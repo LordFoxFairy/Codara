@@ -189,7 +189,7 @@ export function CodaraCliApp(): React.JSX.Element {
         <Box marginTop={1}>
           <Text color="greenBright">{'>'} </Text>
           <Text>{draft}</Text>
-          <Text inverseColor> </Text>
+          <Text color="greenBright">|</Text>
         </Box>
       </Box>
     </Box>
