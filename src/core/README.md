@@ -101,8 +101,8 @@ src/index.ts
   - 对话历史
   - `summary` 在这一层做压缩并通过 checkpoint 持久化
 - `context`
-  - 运行期上下文
-  - 承载 source projection 与 `context.skills`
+  - 持久 agent context + 本轮 invoke context + transient runtime data 的有效合成视图
+  - `skills` 这类可重建派生数据只存在于运行期，不进入 checkpoint
   - 不承载 `todo` 这类 agent-owned 状态
 - `values`
   - agent 内部轻量状态

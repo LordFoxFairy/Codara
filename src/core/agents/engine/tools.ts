@@ -21,6 +21,7 @@ export async function executeToolCall(
   tool: StructuredToolInterface | undefined,
   handleToolErrors: ToolErrorHandler,
   state: Pick<AgentState, 'agentType' | 'messages' | 'context' | 'values'>,
+  runtimeContext?: AgentState['context'],
   normalizeValues?: (values: AgentState['values']) => AgentState['values']
 ): Promise<ToolMessage> {
   if (!tool) {
@@ -38,6 +39,7 @@ export async function executeToolCall(
       configurable: {
         agentType: state.agentType,
         agentContext: state.context,
+        runtimeContext: runtimeContext ?? state.context,
       },
       metadata: {
         agentType: state.agentType,

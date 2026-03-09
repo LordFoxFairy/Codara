@@ -57,7 +57,7 @@ describe('createSkillsMiddleware', () => {
     expect(combined).toContain('Allowed tools: read_file')
   })
 
-  it('should populate shared skills runtime data into agent context', async () => {
+  it('should populate shared skills runtime data into runtime context only', async () => {
     const root = await mkdtemp(path.join(tmpdir(), 'codara-skills-runtime-'))
     const skillDir = path.join(root, 'demo-skill')
     const agentsDir = path.join(skillDir, 'agents')
@@ -90,8 +90,9 @@ You are a Reviewer subagent.
     const context = createBaseContext('run_shared_runtime')
 
     const update = await middleware.beforeAgent?.(context)
-    const runtime = (update?.context as {skills?: {agentDefinitions?: Record<string, {name: string}>}} | undefined)?.skills
+    const runtime = (update?.runtimeContext as {skills?: {agentDefinitions?: Record<string, {name: string}>}} | undefined)?.skills
     expect(runtime?.agentDefinitions?.Reviewer?.name).toBe('Reviewer')
+    expect(update?.context).toBeUndefined()
   })
 
   it('should work with real FileSystemSkillStore', async () => {
