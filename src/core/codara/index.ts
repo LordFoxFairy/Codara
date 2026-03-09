@@ -1,5 +1,6 @@
 export * from '@core/codara/types';
 export * from '@core/codara/tools';
+export * from '@core/codara/task-tool';
 export * from '@core/codara/middleware';
 export * from '@core/codara/models';
 export * from '@core/codara/session';

@@ -80,3 +80,56 @@ for await (const chunk of agent.stream('hello', {streamMode: 'messages'})) {
 - `updates`
 - `messages`
 - `custom`
+
+## Subagent MVP
+
+`subagent` 的最小实现不是新 runtime，而是对 `createAgent(...)` 的一次受约束复用。
+
+```ts
+import {createAgent, createSubagentTool} from '@core/agents';
+
+const delegateToSubagent = createSubagentTool({
+  model,
+  tools: [readTool, grepTool],
+  systemPrompt: 'You are a focused research subagent.',
+});
+
+const agent = createAgent({
+  model,
+  tools: [delegateToSubagent],
+});
+```
+
+当前 MVP 约束：
+- 子代理独立上下文，不继承父代理历史消息
+- 默认排除同名 subagent tool，禁止嵌套委派
+- 只把执行摘要回传给父代理，不回传完整子代理历史
+
+## Task Delegation Tool
+
+正式的委派入口是 `Task` 工具，它是 `subagent` 原语的高层包装，不是另一套执行系统。
+
+```ts
+import {createAgent, createTaskTool} from '@core/agents';
+
+const taskTool = createTaskTool({
+  model,
+  tools: [readTool, grepTool],
+});
+
+const agent = createAgent({
+  model,
+  tools: [taskTool],
+});
+```
+
+当前 `Task` tool 的 MVP 边界：
+- 内部仍复用 `createAgent(...)`
+- 子代理定义来自真实 agent files，而不是代码硬编码
+- 默认会从 `.codara/skills/*/agents/*.md` 发现 agent definitions
+- 也支持通过显式 `agents/` roots 提供定义，例如插件目录下的 `agents/*.md`
+- 不负责共享 task 协调；共享协调由 `TaskCreate/TaskUpdate/TaskList` 负责
+
+公开心智保持克制：
+- `@core/agents` 只暴露主入口与常量，例如 `createAgent(...)`、`createSubagentTool(...)`、`createTaskTool(...)`
+- `Task` 的高级 runtime 扩展钩子只服务内部装配；默认使用时不需要了解它们

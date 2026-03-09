@@ -25,6 +25,7 @@ import type {SummaryOptions} from '@core/middleware/summary';
 export interface CodaraSkillOptions {
   store?: SkillStore;
   sources?: string[];
+  agentRoots?: string[];
   cwd?: string;
   projectRoot?: string;
   userHome?: string;

@@ -66,6 +66,37 @@ createCodara(...)
 - `session`
 - `checkpoint`
 
+## Todo / Subagent / Task
+
+- `todo`
+  - agent 内部轻量执行状态
+  - 当前存放在 `state.values`
+  - 随 checkpoint 恢复
+- `subagent`
+  - 对 `createAgent(...)` 的受约束复用
+  - 子代理独立上下文、独立 checkpoint 边界
+  - 当前通过 `createSubagentTool(...)` 或正式的 `Task` tool 委派
+- `task`
+  - 共享协调层，不属于单个 agent 的内部状态
+  - 通过独立 `TaskStore` 与 `TaskCreate/TaskUpdate/TaskList` tools 暴露
+  - 可被主代理与子代理共同访问
+
+三者分工不同，不应混用：
+- `todo` 负责单 agent 内部进度
+- `subagent` 负责委派执行
+- `task` 负责跨 agent 协调
+
+正式命名上：
+- `Task` = 委派型工具，生成/运行子代理
+- `TaskCreate/TaskUpdate/TaskList` = 共享协调工具
+
+更完整的 `subagent/task` 结构、流程图、测试地图与当前不足，见 `docs/subagent-task-architecture.md`。
+
+子代理类型本身不在 core 里硬编码。
+它们应来自真实 agent definition 文件，例如：
+- `.codara/skills/*/agents/*.md`
+- 显式传入的 `agents/` roots（例如插件目录）
+
 ## 入口
 
 - `createCodara(...)`

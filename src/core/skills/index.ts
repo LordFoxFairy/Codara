@@ -1,5 +1,6 @@
 export * from '@core/skills/types'
 export * from '@core/skills/metadata'
+export * from '@core/skills/agents'
 export * from '@core/skills/loading'
 export * from '@core/skills/store'
 export * from '@core/skills/middleware'

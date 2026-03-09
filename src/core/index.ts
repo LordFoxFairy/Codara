@@ -5,6 +5,7 @@ export * from '@core/codara';
 export * from '@core/checkpoint';
 export * from '@core/agents';
 export * from '@core/tools';
+export * from '@core/tasks';
 export * from '@core/middleware';
 export * from '@core/skills';
 export * from '@core/sessions';

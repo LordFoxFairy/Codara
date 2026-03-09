@@ -60,6 +60,7 @@ class AgentInstance implements Agent {
     this.state = createInitialAgentState(
       this.threadId,
       {
+        agentType: options.agentType,
         ...(options.messages ? {messages: options.messages} : {}),
         ...(options.context ? {context: options.context} : {}),
         values: initialValues,
