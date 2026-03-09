@@ -1,5 +1,4 @@
 import {createAgent, createTaskTool} from '@core/agents';
-import type {CreateTaskToolOptions} from '@core/agents/task-tool';
 import {resolveCodaraAgentOptions} from '@core/codara/assembly';
 import type {CodaraAgentOptions} from '@core/codara/types';
 
@@ -22,8 +21,10 @@ export async function createCodaraTaskTool(
     ...(base.checkpointer ? {checkpointer: base.checkpointer} : {}),
     ...(base.context ? {context: base.context} : {}),
     ...(base.values ? {values: base.values} : {}),
-    createChildAgent: async (childOptions) => {
-      return createAgent(await resolveCodaraAgentOptions(options, loadedSources, childOptions));
+    runtimeHooks: {
+      createChildAgent: async (childOptions) => {
+        return createAgent(await resolveCodaraAgentOptions(options, loadedSources, childOptions));
+      },
     },
-  } satisfies CreateTaskToolOptions);
+  });
 }

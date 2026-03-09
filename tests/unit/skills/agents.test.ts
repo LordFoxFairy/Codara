@@ -61,7 +61,7 @@ You are a Reviewer subagent loaded from a standalone agents root.
       expect(reviewer.name).toBe('Reviewer');
       expect(reviewer.description).toBe('direct agent root reviewer');
       expect(reviewer.tools).toEqual(['read']);
-      expect(reviewer.permissionMode).toBe('plan');
+      expect(reviewer.hints?.permissionMode).toBe('plan');
       expect(reviewer.systemPrompt).toContain('standalone agents root');
     } finally {
       await rm(root, {recursive: true, force: true});
@@ -118,9 +118,9 @@ You are a Researcher subagent.
 
       expect(researcher.name).toBe('Researcher');
       expect(researcher.tools).toEqual(['read', 'search']);
-      expect(researcher.model).toBe('reviewer');
-      expect(researcher.middlewareNames).toEqual(['profile-tag']);
-      expect(researcher.permissionMode).toBe('plan');
+      expect(researcher.hints?.model).toBe('reviewer');
+      expect(researcher.hints?.middlewareNames).toEqual(['profile-tag']);
+      expect(researcher.hints?.permissionMode).toBe('plan');
       expect(researcher.systemPrompt).toContain('Researcher subagent');
     } finally {
       await rm(root, {recursive: true, force: true});
