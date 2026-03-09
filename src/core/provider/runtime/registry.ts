@@ -57,9 +57,7 @@ export class ModelRegistry {
             );
         }
 
-        const providerModel = provider.models
-            .map(normalizeProviderModel)
-            .find((model) => model.id === rule.model);
+        const providerModel = provider.models.find((model) => model.id === rule.model);
         if (!providerModel) {
             throw new Error(
                 `路由规则 "${rule.alias}" 无效：模型 "${rule.model}" 不在 Provider "${provider.name}" 的白名单中`
@@ -73,7 +71,7 @@ export class ModelRegistry {
     private buildModelInfo(
         rule: RouterRule,
         provider: ProviderConfig,
-        providerModel: ReturnType<typeof normalizeProviderModel>
+        providerModel: ProviderConfig["models"][number]
     ): ModelInfo {
         return {
             provider: provider.name,
@@ -86,8 +84,4 @@ export class ModelRegistry {
             ...(typeof providerModel.maxOutputTokens === "number" ? {maxOutputTokens: providerModel.maxOutputTokens} : {}),
         };
     }
-}
-
-function normalizeProviderModel(model: ProviderConfig["models"][number]) {
-    return typeof model === "string" ? {id: model} : model;
 }

@@ -16,7 +16,7 @@ const baseConfig: ModelRoutingConfig = {
       apiKey: 'sk-test-openrouter',
       models: [
         {id: 'anthropic/claude-sonnet-4', contextWindow: 200_000, maxOutputTokens: 8_192},
-        'anthropic/claude-opus-4',
+        {id: 'anthropic/claude-opus-4'},
       ],
     },
     {
