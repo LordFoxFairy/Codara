@@ -1,6 +1,7 @@
 import {randomUUID} from 'node:crypto';
 import {
   createInitialAgentState,
+  cloneValues,
   injectResumePayload,
   mergeContext,
   normalizeAgentInput,
@@ -55,11 +56,13 @@ class AgentInstance implements Agent {
     const checkpoint = options.checkpoint;
     this.threadId = checkpoint?.ref.threadId ?? options.threadId ?? randomUUID();
     this.checkpointer = options.checkpointer ?? createAgentMemoryCheckpointer();
+    const initialValues = this.runtime.pipeline.createInitialValues(checkpoint?.state.values ?? options.values ?? {});
     this.state = createInitialAgentState(
       this.threadId,
       {
         ...(options.messages ? {messages: options.messages} : {}),
         ...(options.context ? {context: options.context} : {}),
+        values: initialValues,
       },
       checkpoint
     );
@@ -84,6 +87,7 @@ class AgentInstance implements Agent {
   async reset(): Promise<void> {
     assertNotRunning(this.state);
     this.state.messages = [];
+    this.state.values = this.runtime.pipeline.createInitialValues();
     this.state.pendingPause = undefined;
     this.state.lastResult = undefined;
     this.state.status = 'idle';
@@ -127,7 +131,7 @@ class AgentInstance implements Agent {
   ): Promise<AgentResult> {
     const loopState = this.prepareLoop(input);
     const startIndex = this.state.messages.length;
-    const run = createRunContext(loopState, this.state.context, {
+    const run = createRunContext(loopState, this.state.context, this.state.values, {
       ...config,
       context: mergeContext(this.state.context, config.context),
     });
@@ -157,7 +161,7 @@ class AgentInstance implements Agent {
   ): AsyncGenerator<AgentStreamOutput, AgentResult, void> {
     const loopState = this.prepareLoop(input);
     const startIndex = this.state.messages.length;
-    const run = createRunContext(loopState, this.state.context, {
+    const run = createRunContext(loopState, this.state.context, this.state.values, {
       ...config,
       context: mergeContext(this.state.context, config.context),
     });
@@ -219,6 +223,8 @@ class AgentInstance implements Agent {
     checkpoint: boolean
   ): Promise<void> {
     this.state.lastResult = summarizeResult(result);
+    this.state.context = mergeContext({}, result.state.context);
+    this.state.values = cloneValues(result.state.values);
     this.state.pendingPause = readLatestPause(this.state.messages.slice(startIndex));
     this.state.status = this.state.pendingPause ? 'paused' : 'idle';
     this.touch();

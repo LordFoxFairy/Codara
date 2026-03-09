@@ -1,6 +1,6 @@
 import type {AgentCheckpoint, AgentCheckpointInfo, AgentCheckpointer} from '@core/checkpoint/state';
 import type {AgentResult, AgentState} from '@core/agents/contract/agent';
-import {cloneContext, cloneOptionalPause, toCheckpointStatus, type AgentRuntimeState} from '@core/agents/engine/state';
+import {cloneContext, cloneOptionalPause, cloneValues, toCheckpointStatus, type AgentRuntimeState} from '@core/agents/engine/state';
 
 export function createAgentState(
   threadId: string,
@@ -9,6 +9,8 @@ export function createAgentState(
   return {
     threadId,
     messages: [...state.messages],
+    context: cloneContext(state.context),
+    values: cloneValues(state.values),
     status: state.status,
     ...(state.pendingPause ? {pendingPause: cloneOptionalPause(state.pendingPause)} : {}),
   };
@@ -27,6 +29,7 @@ export async function persistAgentCheckpoint(
     state: {
       messages: [...state.messages],
       context: cloneContext(state.context),
+      values: cloneValues(state.values),
       ...(state.pendingPause ? {pendingPause: cloneOptionalPause(state.pendingPause)} : {}),
     },
     info: {

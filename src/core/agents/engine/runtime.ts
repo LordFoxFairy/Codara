@@ -7,13 +7,15 @@ import {buildAgentModel} from '@core/agents/engine/model';
 
 /** 组装 agent 运行时依赖。 */
 export function buildAgentRuntime(options: CreateAgentOptions): AgentRuntime {
-  const {model, tools = [], handleToolErrors = true} = options;
+  const {model, handleToolErrors = true} = options;
   const middleware = resolveMiddleware(options);
+  const pipeline = new MiddlewarePipeline(middleware);
+  const tools = resolveTools(options.tools ?? [], pipeline);
 
   return {
     model: buildAgentModel(model, tools),
     tools: buildToolRegistry(tools),
-    pipeline: new MiddlewarePipeline(middleware),
+    pipeline,
     handleToolErrors,
   };
 }
@@ -41,4 +43,21 @@ function buildToolRegistry(tools: StructuredToolInterface[]): Map<string, Struct
   }
 
   return registry;
+}
+
+function resolveTools(
+  baseTools: StructuredToolInterface[],
+  pipeline: MiddlewarePipeline
+): StructuredToolInterface[] {
+  const allTools = [...baseTools, ...pipeline.getTools()];
+  const seen = new Set<string>();
+
+  for (const tool of allTools) {
+    if (seen.has(tool.name)) {
+      throw new Error(`Duplicate tool name: ${tool.name}`);
+    }
+    seen.add(tool.name);
+  }
+
+  return allTools;
 }
