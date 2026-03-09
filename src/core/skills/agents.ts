@@ -10,9 +10,14 @@ export interface SubagentDefinition {
   description: string;
   systemPrompt: string;
   tools?: string[];
-  middlewareNames?: string[];
-  model?: string;
   maxTurns?: number;
+  /** Non-authoritative metadata from agent markdown. These do not auto-mutate child runtime. */
+  hints?: SubagentDefinitionHints;
+}
+
+export interface SubagentDefinitionHints {
+  model?: string;
+  middlewareNames?: string[];
   permissionMode?: string;
 }
 
@@ -144,16 +149,19 @@ async function parseDefinitionFile(filePath: string): Promise<SubagentDefinition
   const model = readOptionalString(document.frontmatter.model);
   const permissionMode = readOptionalString(document.frontmatter.permissionMode ?? document.frontmatter.permission_mode);
   const maxTurns = readOptionalNumber(document.frontmatter.maxTurns ?? document.frontmatter.max_turns);
+  const hints = {
+    ...(middlewareNames.length > 0 ? {middlewareNames} : {}),
+    ...(model ? {model} : {}),
+    ...(permissionMode ? {permissionMode} : {}),
+  };
 
   return {
     name,
     description,
     systemPrompt: document.body.trim(),
     ...(tools.length > 0 ? {tools} : {}),
-    ...(middlewareNames.length > 0 ? {middlewareNames} : {}),
-    ...(model ? {model} : {}),
     ...(typeof maxTurns === 'number' ? {maxTurns} : {}),
-    ...(permissionMode ? {permissionMode} : {}),
+    ...(Object.keys(hints).length > 0 ? {hints} : {}),
   };
 }
 
