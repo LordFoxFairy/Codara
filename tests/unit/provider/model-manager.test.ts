@@ -8,7 +8,7 @@ const baseConfig: ModelRoutingConfig = {
             name: "openrouter",
             baseUrl: "https://openrouter.ai/api/v1",
             apiKey: "sk-test-openrouter",
-            models: ["anthropic/claude-sonnet-4", "anthropic/claude-opus-4"],
+            models: [{id: "anthropic/claude-sonnet-4"}, {id: "anthropic/claude-opus-4"}],
         },
     ],
     routerRules: [

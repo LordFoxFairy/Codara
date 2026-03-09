@@ -9,7 +9,7 @@ describe("parseModelRoutingConfig", () => {
                     name: "openai",
                     baseUrl: "https://api.openai.com/v1",
                     apiKey: "$OPENAI_API_KEY",
-                    models: ["gpt-4o", "gpt-3.5-turbo"],
+                    models: [{id: "gpt-4o"}, {id: "gpt-3.5-turbo"}],
                 },
             ],
             router: {
@@ -43,7 +43,7 @@ describe("parseModelRoutingConfig", () => {
 
     it("provider.name 为空时应抛出错误", () => {
         const raw = {
-            providers: [{name: "", models: ["model1"]}],
+            providers: [{name: "", models: [{id: "model1"}]}],
             router: {},
         };
         expect(() => parseModelRoutingConfig(raw)).toThrow("expected string to have >=1 characters");
@@ -59,7 +59,7 @@ describe("parseModelRoutingConfig", () => {
 
     it("router 格式错误时应抛出错误", () => {
         const raw = {
-            providers: [{name: "test", models: ["model1"]}],
+            providers: [{name: "test", models: [{id: "model1"}]}],
             router: {
                 alias1: "invalid-format",
             },
@@ -69,7 +69,7 @@ describe("parseModelRoutingConfig", () => {
 
     it("router 规则应自动 trim provider 和 model", () => {
         const raw = {
-            providers: [{name: "openai", models: ["gpt-4o"]}],
+            providers: [{name: "openai", models: [{id: "gpt-4o"}]}],
             router: {
                 default: "  openai : gpt-4o  ",
             },
@@ -82,7 +82,7 @@ describe("parseModelRoutingConfig", () => {
 
     it("router model 允许包含附加冒号", () => {
         const raw = {
-            providers: [{name: "openrouter", models: ["anthropic/claude-sonnet-4:beta"]}],
+            providers: [{name: "openrouter", models: [{id: "anthropic/claude-sonnet-4:beta"}]}],
             router: {
                 sonnet: "openrouter:anthropic/claude-sonnet-4:beta",
             },
@@ -93,4 +93,3 @@ describe("parseModelRoutingConfig", () => {
         expect(config.routerRules[0].model).toBe("anthropic/claude-sonnet-4:beta");
     });
 });
-
