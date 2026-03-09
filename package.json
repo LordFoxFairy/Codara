@@ -35,7 +35,7 @@
   "description": "",
   "private": true,
   "scripts": {
-    "dev": "bun run --watch src/index.ts",
+    "dev": "bun --watch src/cli/main.tsx",
     "build": "rm -rf dist && tsc -p tsconfig.json && tsc-alias -p tsconfig.json --resolve-full-paths --resolve-full-extension .js",
     "lint": "eslint src/ tests/",
     "lint:fix": "eslint src/ tests/ --fix",
