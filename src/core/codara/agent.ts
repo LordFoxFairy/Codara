@@ -17,7 +17,6 @@ export async function createCodaraAgent(
   loadedSources: CodaraSourceProjection = {}
 ): Promise<Agent> {
   const model = await resolveCodaraModel(options);
-  const state = buildCodaraAgentState(options);
 
   return createAgent({
     model,
@@ -27,7 +26,8 @@ export async function createCodaraAgent(
     threadId: options.threadId,
     checkpointer: options.checkpointer,
     ...(options.checkpoint ? {checkpoint: options.checkpoint} : {}),
-    ...(state ? {state} : {}),
+    ...(options.messages ? {messages: options.messages} : {}),
+    ...(options.context ? {context: options.context} : {}),
   });
 }
 
@@ -58,17 +58,4 @@ async function resolveCodaraModel(options: CodaraAgentOptions) {
     ...(options.config ? {config: options.config} : {}),
   };
   return createCodaraChatModel(modelOptions);
-}
-
-/** 构建传给 createAgent(...) 的初始运行状态。 */
-function buildCodaraAgentState(options: CodaraAgentOptions) {
-  if (!options.state && !options.messages && !options.context) {
-    return undefined;
-  }
-
-  return {
-    ...(options.state ?? {}),
-    ...(options.messages ? {messages: options.messages} : {}),
-    ...(options.context ? {context: options.context} : {}),
-  };
 }

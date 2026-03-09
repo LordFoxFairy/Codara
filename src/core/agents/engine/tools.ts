@@ -1,7 +1,8 @@
-import {type ToolCall, ToolMessage} from '@langchain/core/messages';
+import {type BaseMessage, type ToolCall, ToolMessage} from '@langchain/core/messages';
 import {ToolInputParsingException, type StructuredToolInterface} from '@langchain/core/tools';
 import {ToolInvocationError} from 'langchain';
-import type {ToolErrorHandler} from '@core/agents/contract/agent';
+import {Command, isCommand, applyAgentStateUpdate} from '@core/agents/command';
+import type {AgentState, ToolErrorHandler} from '@core/agents/contract/agent';
 
 export function resolveToolCallId(toolCall: ToolCall, toolIndex: number): string {
   const existingId = typeof toolCall.id === 'string' ? toolCall.id.trim() : '';
@@ -18,7 +19,8 @@ export async function executeToolCall(
   toolCall: ToolCall,
   toolCallId: string,
   tool: StructuredToolInterface | undefined,
-  handleToolErrors: ToolErrorHandler
+  handleToolErrors: ToolErrorHandler,
+  state: Pick<AgentState, 'messages' | 'context' | 'values'>
 ): Promise<ToolMessage> {
   if (!tool) {
     return handleToolError(
@@ -31,6 +33,9 @@ export async function executeToolCall(
 
   try {
     const result = await tool.invoke(toolCall.args);
+    if (isCommand(result)) {
+      return applyToolCommand(result, toolCallId, state);
+    }
     const content = String(result);
 
     // 使用 artifact 存储原始结果（对齐 LangChain 标准）
@@ -84,6 +89,51 @@ function createToolError(toolCallId: string, content: string): ToolMessage {
     tool_call_id: toolCallId,
     status: 'error'
   });
+}
+
+function applyToolCommand(
+  command: Command,
+  toolCallId: string,
+  state: Pick<AgentState, 'messages' | 'context' | 'values'>
+): ToolMessage {
+  const commandMessages = normalizeCommandMessages(command.update.messages, toolCallId);
+  const toolMessage = findCommandToolMessage(commandMessages, toolCallId);
+  const extraMessages = toolMessage ? commandMessages.filter((message) => message !== toolMessage) : commandMessages;
+
+  applyAgentStateUpdate(state, {
+    ...command.update,
+    messages: extraMessages,
+  });
+
+  return toolMessage ?? new ToolMessage({
+    content: 'Command applied.',
+    tool_call_id: toolCallId,
+  });
+}
+
+function normalizeCommandMessages(messages: BaseMessage[] | undefined, toolCallId: string): BaseMessage[] {
+  if (!Array.isArray(messages)) {
+    return [];
+  }
+
+  return messages.map((message) => {
+    if (!ToolMessage.isInstance(message) || message.tool_call_id) {
+      return message;
+    }
+
+    return new ToolMessage({
+      content: message.content,
+      artifact: message.artifact,
+      status: message.status,
+      tool_call_id: toolCallId,
+    });
+  });
+}
+
+function findCommandToolMessage(messages: BaseMessage[], toolCallId: string): ToolMessage | undefined {
+  return messages.find((message) => (
+    ToolMessage.isInstance(message) && message.tool_call_id === toolCallId
+  )) as ToolMessage | undefined;
 }
 
 function toError(error: unknown): Error {

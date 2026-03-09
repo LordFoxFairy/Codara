@@ -149,7 +149,6 @@ function mergeCodaraAgentOptions(
     middleware: override.middleware ?? override.middlewares ?? base.middleware ?? base.middlewares,
     messages: override.messages ?? base.messages,
     context: override.context ?? base.context,
-    state: override.state ?? base.state,
     handleToolErrors: override.handleToolErrors ?? base.handleToolErrors,
     skills: mergeSkillsOptions(base.skills, override.skills),
     guidelines: override.guidelines ?? base.guidelines,

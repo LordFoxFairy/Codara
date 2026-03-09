@@ -11,10 +11,12 @@ import type {HILPauseRequest} from '@core/middleware/hil';
 export type AgentCheckpointStatus = 'idle' | 'paused' | 'closed' | 'error';
 export type AgentCheckpointReason = 'complete' | 'error' | 'max_turns';
 export type AgentCheckpointContext = Record<string, unknown>;
+export type AgentCheckpointValues = Record<string, unknown>;
 
 export interface AgentCheckpointState {
   messages: BaseMessage[];
   context: AgentCheckpointContext;
+  values: AgentCheckpointValues;
   pendingPause?: HILPauseRequest;
 }
 
@@ -40,6 +42,7 @@ export interface AgentCheckpointSummary {
 interface PersistedAgentCheckpointState {
   messages: ReturnType<typeof mapChatMessagesToStoredMessages>;
   context: AgentCheckpointContext;
+  values: AgentCheckpointValues;
   pendingPause?: HILPauseRequest;
 }
 
@@ -69,6 +72,7 @@ function serializeAgentCheckpointState(state: AgentCheckpointState): PersistedAg
   return {
     messages: mapChatMessagesToStoredMessages(state.messages),
     context: cloneContext(state.context),
+    values: cloneValues(state.values),
     ...(state.pendingPause ? {pendingPause: cloneStructured(state.pendingPause)} : {}),
   };
 }
@@ -83,6 +87,7 @@ function deserializeAgentCheckpointState(raw: unknown): AgentCheckpointState {
   return {
     messages: messages as BaseMessage[],
     context: cloneContext(asCheckpointContext(record.context)),
+    values: cloneValues(asCheckpointValues(record.values)),
     ...(isPlainRecord(record.pendingPause)
       ? {pendingPause: cloneStructured(record.pendingPause) as unknown as HILPauseRequest}
       : {}),
@@ -137,6 +142,14 @@ function asCheckpointContext(value: unknown): AgentCheckpointContext {
 
 function cloneContext(context: AgentCheckpointContext): AgentCheckpointContext {
   return cloneStructured(context);
+}
+
+function asCheckpointValues(value: unknown): AgentCheckpointValues {
+  return isPlainRecord(value) ? (cloneStructured(value) as AgentCheckpointValues) : {};
+}
+
+function cloneValues(values: AgentCheckpointValues): AgentCheckpointValues {
+  return cloneStructured(values);
 }
 
 function ensureRecord(value: unknown): Record<string, unknown> {

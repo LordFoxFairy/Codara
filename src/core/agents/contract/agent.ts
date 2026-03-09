@@ -3,13 +3,15 @@ import type {BaseChatModel} from '@langchain/core/language_models/chat_models';
 import type {StructuredToolInterface} from '@langchain/core/tools';
 import type {BaseMiddleware} from '@core/middleware';
 import type {HILPauseRequest, HILResumePayload} from '@core/middleware/hil';
-import type {AgentCheckpoint, AgentCheckpointer, AgentCheckpointSummary} from '@core/checkpoint/state';
+import type {AgentCheckpoint, AgentCheckpointer} from '@core/checkpoint/state';
 import type {AgentStreamConfig, AgentStreamOutput} from '@core/agents/contract/stream';
 
 export type AgentRuntimeContext = Record<string, unknown>;
+export type AgentRuntimeValues = Record<string, unknown>;
+export type AgentStatus = 'idle' | 'running' | 'paused' | 'closed';
 
 /**
- * Agent 运行时状态（对齐 LangChain/LangGraph 标准）
+ * Agent 对外状态。
  *
  * messages 数组包含完整的对话历史，使用 LangChain 的 BaseMessage 类型：
  * - HumanMessage: 用户输入
@@ -17,13 +19,23 @@ export type AgentRuntimeContext = Record<string, unknown>;
  * - ToolMessage: 工具执行结果（包含 tool_call_id, artifact）
  * - SystemMessage: 系统提示
  *
- * 所有 LangChain 标准字段都会被保留和传递：
- * - content: string | Array<ContentBlock> （支持多模态）
- * - usage_metadata: token 使用统计
- * - response_metadata: 模型响应元数据
- * - additional_kwargs: 提供商特定信息
+ * 对外只暴露调用方真正需要的状态：
+ * - threadId: 当前运行链标识
+ * - messages: 当前对话历史
+ * - status: 当前执行状态
+ * - pendingPause: 当前未恢复的 HIL 暂停
  */
 export interface AgentState {
+  threadId: string;
+  messages: BaseMessage[];
+  context: AgentRuntimeContext;
+  values: AgentRuntimeValues;
+  status: AgentStatus;
+  pendingPause?: HILPauseRequest;
+}
+
+/** invoke/stream 支持的最小消息输入。 */
+export interface AgentMessagesInput {
   messages: BaseMessage[];
 }
 
@@ -38,33 +50,6 @@ export interface AgentResult {
   error?: Error;
 }
 
-/** 用于恢复和 checkpoint 落盘的持久化快照。 */
-export interface AgentStateSnapshot {
-  threadId: string;
-  checkpointId?: string;
-  messages: BaseMessage[];
-  context: AgentRuntimeContext;
-  status: 'idle' | 'running' | 'paused' | 'closed';
-  pendingPause?: HILPauseRequest;
-  lastResult?: AgentCheckpointSummary;
-  step: number;
-  createdAt: string;
-  updatedAt: string;
-}
-
-/** createAgent(...) 时注入的初始运行态。 */
-export interface AgentStateSeed {
-  messages?: BaseMessage[];
-  context?: AgentRuntimeContext;
-  pendingPause?: HILPauseRequest;
-  checkpointId?: string;
-  step?: number;
-  createdAt?: string;
-  updatedAt?: string;
-  lastResult?: AgentCheckpointSummary;
-  status?: AgentStateSnapshot['status'];
-}
-
 /** 工具异常处理策略。 */
 export type ToolErrorHandler =
   | boolean
@@ -72,7 +57,7 @@ export type ToolErrorHandler =
 
 /** 通用 agent 契约。 */
 export interface Agent {
-  getState(): AgentStateSnapshot;
+  getState(): AgentState;
   invoke(input?: AgentInput, config?: AgentInvokeConfig): Promise<AgentResult>;
   resume(payload: HILResumePayload, config?: AgentResumeConfig): Promise<AgentResult>;
   reset(): Promise<void>;
@@ -100,8 +85,12 @@ export interface CreateAgentOptions {
   checkpointer?: AgentCheckpointer;
   /** 用于恢复运行态的已有 checkpoint。 */
   checkpoint?: AgentCheckpoint;
-  /** 可选初始运行态。 */
-  state?: AgentStateSeed;
+  /** 初始对话历史。 */
+  messages?: BaseMessage[];
+  /** 初始运行上下文。 */
+  context?: AgentRuntimeContext;
+  /** 初始持久状态值（供 middleware state 使用）。 */
+  values?: AgentRuntimeValues;
 }
 
 /** invoke(...) 调用配置。 */
@@ -133,4 +122,4 @@ export interface AgentResumeStreamConfig extends Omit<AgentStreamConfig, 'contex
   context?: AgentRuntimeContext;
 }
 
-export type AgentInput = AgentState | string | BaseMessage | BaseMessage[] | undefined;
+export type AgentInput = AgentMessagesInput | string | BaseMessage | BaseMessage[] | undefined;
