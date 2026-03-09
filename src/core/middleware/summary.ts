@@ -5,12 +5,16 @@ import {createMiddleware, type BaseMiddleware, type BeforeModelContext} from '@c
 const DEFAULT_MAX_MESSAGES = 30;
 const DEFAULT_KEEP_LAST_MESSAGES = 12;
 const DEFAULT_MAX_CHARS = 6_000;
+const CODARA_KEY = 'codara';
+const SUMMARY_KEY = 'summary';
 const SUMMARY_HEADER = '# Conversation Summary';
 const SUMMARY_INTRO = 'The following summary captures earlier conversation context that has been compacted.';
 
 /** 摘要记录。 */
 export interface SummaryRecord {
   content: string;
+  updatedAt: string;
+  summarizedMessages: number;
 }
 
 /** 传给摘要器的输入。 */
@@ -45,15 +49,49 @@ export function createSummaryMiddleware(options: SummaryOptions): BaseMiddleware
   });
 }
 
-/** 从当前消息状态中读取已持久化的摘要。 */
-export function readSummaryRecord(messages: BaseMessage[]): SummaryRecord | undefined {
+/** 从当前消息状态或旧 context 结构中读取摘要记录。 */
+export function readSummaryRecord(messages: BaseMessage[]): SummaryRecord | undefined;
+export function readSummaryRecord(context: AgentRuntimeContext): SummaryRecord | undefined;
+export function readSummaryRecord(input: BaseMessage[] | AgentRuntimeContext): SummaryRecord | undefined {
+  return Array.isArray(input) ? readSummaryRecordFromMessages(input) : readSummaryRecordFromContext(input);
+}
+
+function readSummaryRecordFromMessages(messages: BaseMessage[]): SummaryRecord | undefined {
   const summaryMessage = readSummaryMessage(messages);
   if (!summaryMessage) {
     return undefined;
   }
 
-  const content = parseSummaryContent(summaryMessage.content);
-  return content ? {content} : undefined;
+  const metadata = readSummaryMetadata(summaryMessage);
+  if (metadata) {
+    return metadata;
+  }
+
+  const content = parseSummaryVisibleContent(summaryMessage.content);
+  if (!content) {
+    return undefined;
+  }
+
+  return {
+    content,
+    updatedAt: new Date().toISOString(),
+    summarizedMessages: 0,
+  };
+}
+
+function readSummaryRecordFromContext(context: AgentRuntimeContext): SummaryRecord | undefined {
+  const codara = asRecord(context[CODARA_KEY]);
+  const summary = asRecord(codara[SUMMARY_KEY]);
+  const content = typeof summary.content === 'string' ? summary.content.trim() : '';
+  if (!content) {
+    return undefined;
+  }
+
+  return {
+    content,
+    updatedAt: typeof summary.updatedAt === 'string' ? summary.updatedAt : new Date().toISOString(),
+    summarizedMessages: typeof summary.summarizedMessages === 'number' ? summary.summarizedMessages : 0,
+  };
 }
 
 async function maybeCompactHistory(context: BeforeModelContext, options: Required<SummaryOptions>): Promise<void> {
@@ -80,7 +118,11 @@ async function maybeCompactHistory(context: BeforeModelContext, options: Require
     turn: context.turn,
   });
 
-  const summaryMessage = createSummaryMessage(nextSummary, options.maxChars);
+  const summaryMessage = createSummaryMessage({
+    content: nextSummary,
+    updatedAt: new Date().toISOString(),
+    summarizedMessages: (summaryState.summary?.summarizedMessages ?? 0) + olderMessages.length,
+  }, options.maxChars);
   if (!summaryMessage) {
     return;
   }
@@ -112,9 +154,9 @@ function splitSummaryState(messages: BaseMessage[]): {
   const preservedSystemMessages: SystemMessage[] = [];
 
   for (const message of leadingSystemMessages) {
-    const content = parseSummaryContent(message.content);
-    if (!summary && content) {
-      summary = {content};
+    const record = readSummaryRecordFromMessages([message]);
+    if (!summary && record) {
+      summary = record;
       continue;
     }
     preservedSystemMessages.push(message);
@@ -143,7 +185,7 @@ function readSummaryMessage(messages: BaseMessage[]): SystemMessage | undefined 
       break;
     }
 
-    if (parseSummaryContent(message.content)) {
+    if (parseSummaryVisibleContent(message.content) || readSummaryMetadata(message)) {
       return message as SystemMessage;
     }
   }
@@ -151,8 +193,8 @@ function readSummaryMessage(messages: BaseMessage[]): SystemMessage | undefined 
   return undefined;
 }
 
-function createSummaryMessage(content: string, maxChars: number): SystemMessage | undefined {
-  const trimmed = content.trim();
+function createSummaryMessage(record: SummaryRecord, maxChars: number): SystemMessage | undefined {
+  const trimmed = record.content.trim();
   if (!trimmed) {
     return undefined;
   }
@@ -160,16 +202,27 @@ function createSummaryMessage(content: string, maxChars: number): SystemMessage 
   const truncated = trimmed.length > maxChars;
   const visibleContent = truncated ? `${trimmed.slice(0, maxChars)}\n\n[truncated]` : trimmed;
 
-  return new SystemMessage([
-    SUMMARY_HEADER,
-    '',
-    SUMMARY_INTRO,
-    '',
-    visibleContent,
-  ].join('\n'));
+  return new SystemMessage({
+    content: [
+      SUMMARY_HEADER,
+      '',
+      SUMMARY_INTRO,
+      '',
+      visibleContent,
+    ].join('\n'),
+    additional_kwargs: {
+      [CODARA_KEY]: {
+        [SUMMARY_KEY]: {
+          content: trimmed,
+          updatedAt: record.updatedAt,
+          summarizedMessages: record.summarizedMessages,
+        },
+      },
+    },
+  });
 }
 
-function parseSummaryContent(content: unknown): string | undefined {
+function parseSummaryVisibleContent(content: unknown): string | undefined {
   if (typeof content !== 'string') {
     return undefined;
   }
@@ -181,6 +234,24 @@ function parseSummaryContent(content: unknown): string | undefined {
 
   const summary = content.slice(prefix.length).trim();
   return summary || undefined;
+}
+
+function readSummaryMetadata(message: BaseMessage): SummaryRecord | undefined {
+  const additional = 'additional_kwargs' in message
+    ? asRecord((message as {additional_kwargs?: unknown}).additional_kwargs)
+    : {};
+  const codara = asRecord(additional[CODARA_KEY]);
+  const summary = asRecord(codara[SUMMARY_KEY]);
+  const content = typeof summary.content === 'string' ? summary.content.trim() : '';
+  if (!content) {
+    return undefined;
+  }
+
+  return {
+    content,
+    updatedAt: typeof summary.updatedAt === 'string' ? summary.updatedAt : new Date().toISOString(),
+    summarizedMessages: typeof summary.summarizedMessages === 'number' ? summary.summarizedMessages : 0,
+  };
 }
 
 function isMessageType(message: BaseMessage | undefined, type: string): boolean {
@@ -228,4 +299,8 @@ function normalizeOptions(options: SummaryOptions): Required<SummaryOptions> {
 function readThreadId(context: Record<string, unknown>): string | undefined {
   const value = context.threadId;
   return typeof value === 'string' && value.trim() ? value : undefined;
+}
+
+function asRecord(value: unknown): Record<string, unknown> {
+  return value && typeof value === 'object' && !Array.isArray(value) ? {...(value as Record<string, unknown>)} : {};
 }

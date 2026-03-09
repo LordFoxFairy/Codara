@@ -100,6 +100,7 @@ describe('summary middleware', () => {
 
     expect(called).toBe(false);
     expect(readSummaryRecord(context.state.messages)?.content).toBe('existing summary');
+    expect(readSummaryRecord(context.state.messages)?.summarizedMessages).toBe(0);
     expect(context.systemMessage).toEqual([]);
   });
 
@@ -139,6 +140,73 @@ describe('summary middleware', () => {
     expect(readSummaryRecord(context.state.messages)?.content).toBe('older conversation summary');
   });
 
+  it('should preserve the full summary across later compactions even when model-visible content is truncated', async () => {
+    const seenPreviousSummaries: Array<string | undefined> = [];
+    const middleware = createSummaryMiddleware({
+      maxMessages: 4,
+      keepLastMessages: 2,
+      maxChars: 12,
+      summarize: ({previousSummary}) => {
+        seenPreviousSummaries.push(previousSummary);
+        return previousSummary
+          ? `${previousSummary} + second full summary block`
+          : 'first full summary block';
+      },
+    });
+
+    const pipeline = new MiddlewarePipeline([middleware]);
+    const messages = [
+      new HumanMessage('one'),
+      new AIMessage('two'),
+      new HumanMessage('three'),
+      new AIMessage('four'),
+      new HumanMessage('five'),
+    ];
+
+    const context: ModelCallContext = {
+      state: {messages},
+      messages,
+      runtime: {context: {}},
+      systemMessage: [],
+      runId: 'run-1',
+      turn: 1,
+      maxTurns: 8,
+      requestId: 'req-1',
+    };
+
+    await pipeline.beforeModel(context);
+    context.state.messages.push(new AIMessage('six'), new HumanMessage('seven'), new AIMessage('eight'));
+    context.messages.length = 0;
+    context.messages.push(...context.state.messages);
+
+    await pipeline.beforeModel({
+      ...context,
+      turn: 2,
+    });
+
+    expect(seenPreviousSummaries).toEqual([undefined, 'first full summary block']);
+    expect(readSummaryRecord(context.state.messages)?.content).toContain('first full summary block + second full summary block');
+    expect(String(context.state.messages[0]?.content)).toContain('[truncated]');
+  });
+
+  it('should continue reading legacy summary records from context for compatibility', () => {
+    const legacy = readSummaryRecord({
+      codara: {
+        summary: {
+          content: 'legacy summary',
+          updatedAt: '2026-03-09T00:00:00.000Z',
+          summarizedMessages: 5,
+        },
+      },
+    });
+
+    expect(legacy).toEqual({
+      content: 'legacy summary',
+      updatedAt: '2026-03-09T00:00:00.000Z',
+      summarizedMessages: 5,
+    });
+  });
+
   it('should persist summary through checkpoint restore', async () => {
     const checkpointer = createAgentMemoryCheckpointer();
     const model = new FakeModel([new AIMessage('done')]) as unknown as BaseChatModel;
@@ -168,6 +236,7 @@ describe('summary middleware', () => {
     expect(result.reason).toBe('complete');
     expect(agent.getState().messages).toHaveLength(4);
     expect(readSummaryRecord(agent.getState().messages)?.content).toBe('persisted summary');
+    expect(readSummaryRecord(agent.getState().messages)?.summarizedMessages).toBe(3);
 
     const restoredCheckpoint = await checkpointer.getLatest('summary-thread');
     expect(restoredCheckpoint).toBeDefined();
