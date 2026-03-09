@@ -8,7 +8,7 @@ import {z} from 'zod';
 import type {BaseChatModel} from '@langchain/core/language_models/chat_models';
 import {createMiddleware} from '@core/middleware';
 import {
-  createCodaraAgent,
+  createCodara,
   createCodaraTaskTool,
   TASK_TOOL_NAME,
 } from '@core';
@@ -71,7 +71,7 @@ You are a Reviewer subagent.
         },
       });
 
-      const parent = await createCodaraAgent({
+      const parent = createCodara({
         model: new FakeModel([
           new AIMessage({
             content: '',
@@ -101,7 +101,7 @@ You are a Reviewer subagent.
       });
 
       const result = await parent.invoke('delegate this');
-      const toolMessage = result.state.messages.find((message) => ToolMessage.isInstance(message)) as ToolMessage;
+      const toolMessage = result.state.messages.find((message: unknown) => ToolMessage.isInstance(message)) as ToolMessage;
 
       expect(result.reason).toBe('complete');
       expect(String(toolMessage.content)).toContain('Skills System');
@@ -153,7 +153,7 @@ You are a Reviewer subagent.
         },
       });
 
-      const parent = await createCodaraAgent({
+      const parent = createCodara({
         model: new FakeModel([
           new AIMessage({
             content: '',
@@ -183,7 +183,7 @@ You are a Reviewer subagent.
       });
 
       const result = await parent.invoke('delegate this');
-      const toolMessage = result.state.messages.find((message) => ToolMessage.isInstance(message)) as ToolMessage;
+      const toolMessage = result.state.messages.find((message: unknown) => ToolMessage.isInstance(message)) as ToolMessage;
 
       expect(result.reason).toBe('complete');
       expect(String(toolMessage.content)).toContain('Skills System');
@@ -236,7 +236,7 @@ You are a Reviewer subagent.
         },
       });
 
-      const parent = await createCodaraAgent({
+      const parent = createCodara({
         model: new FakeModel([
           new AIMessage({
             content: '',
@@ -266,7 +266,7 @@ You are a Reviewer subagent.
       });
 
       const result = await parent.invoke('delegate this');
-      const toolMessage = result.state.messages.find((message) => ToolMessage.isInstance(message)) as ToolMessage;
+      const toolMessage = result.state.messages.find((message: unknown) => ToolMessage.isInstance(message)) as ToolMessage;
 
       expect(result.reason).toBe('complete');
       expect(toolMessage.status).toBe('success');

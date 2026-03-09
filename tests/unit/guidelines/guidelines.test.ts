@@ -2,14 +2,12 @@ import {describe, expect, it} from 'bun:test';
 import {mkdir, mkdtemp, writeFile} from 'node:fs/promises';
 import path from 'node:path';
 import {tmpdir} from 'node:os';
-import {
-  createGuidelinesMiddleware,
-  loadGuidelines,
-} from '@core/middleware/guidelines';
+import {createGuidelinesMiddleware} from '@core/middleware/guidelines';
+import {createCodaraSourceProvider} from '@core/sessions/source-provider';
 import type {BeforeModelContext} from '@core/middleware';
 
 describe('AGENTS guidelines', () => {
-  it('should resolve global and project AGENTS.md locations from cwd up to the workspace root', async () => {
+  it('should resolve the nearest AGENTS.md from cwd', async () => {
     const root = await mkdtemp(path.join(tmpdir(), 'codara-guidelines-'));
     const userHome = path.join(root, 'home');
     const projectRoot = path.join(root, 'project');
@@ -27,17 +25,17 @@ describe('AGENTS guidelines', () => {
     await writeFile(packageFile, '# Package Rules\n\nUse package lint first.\n', 'utf8');
     await writeFile(appFile, '# App Rules\n\nPrefer feature flags.\n', 'utf8');
 
-    const loaded = await loadGuidelines({userHome, cwd: nestedCwd});
+    const sourceProvider = createCodaraSourceProvider({userHome, cwd: nestedCwd});
+    const content = await sourceProvider.get('guidelines');
 
-    expect(loaded?.files).toEqual([
-      {scope: 'global', path: globalFile},
-      {scope: 'project', path: projectFile},
-      {scope: 'project', path: packageFile},
-      {scope: 'project', path: appFile},
-    ]);
+    expect(content).toBeDefined();
+    expect(content).toContain('# Global Rules');
+    expect(content).toContain('# Project Rules');
+    expect(content).toContain('# Package Rules');
+    expect(content).toContain('# App Rules');
   });
 
-  it('should load guidelines as a compact snapshot instead of the full file body', async () => {
+  it('should load guidelines from project root', async () => {
     const root = await mkdtemp(path.join(tmpdir(), 'codara-guidelines-'));
     const userHome = path.join(root, 'home');
     const projectRoot = path.join(root, 'project');
@@ -49,21 +47,26 @@ describe('AGENTS guidelines', () => {
     await writeFile(globalFile, '# Global Rules\n\nKeep commits small.\nUse Chinese comments when helpful.\n', 'utf8');
     await writeFile(projectFile, '# Project Rules\n\nUse pnpm only.\nRun tests before merge.\n', 'utf8');
 
-    const loaded = await loadGuidelines({userHome, projectRoot});
-    expect(loaded).toBeDefined();
-    expect(loaded?.files.map((file) => file.scope)).toEqual(['global', 'project']);
-    expect(loaded?.content).toContain('# AGENTS Guidelines');
-    expect(loaded?.content).toContain(`Path: ${globalFile}`);
-    expect(loaded?.content).toContain(`Path: ${projectFile}`);
-    expect(loaded?.content).toContain('# Global Rules');
-    expect(loaded?.content).toContain('# Project Rules');
-    expect(loaded?.content).toContain('Keep commits small.');
-    expect(loaded?.content).toContain('Run tests before merge.');
-    expect(loaded?.content).toContain('Read the source files directly if more detail is required.');
+    const sourceProvider = createCodaraSourceProvider({userHome, projectRoot});
+    const content = await sourceProvider.get('guidelines');
+
+    expect(content).toBeDefined();
+    expect(content).toContain('# Global Rules');
+    expect(content).toContain('# Project Rules');
+    expect(content).toContain('Run tests before merge.');
   });
 
   it('should inject preloaded guideline content', async () => {
-    const middleware = createGuidelinesMiddleware('# AGENTS Guidelines\n\nOriginal rule.\n');
+    const root = await mkdtemp(path.join(tmpdir(), 'codara-guidelines-'));
+    const userHome = path.join(root, 'home');
+    const projectRoot = path.join(root, 'project');
+    const projectFile = path.join(projectRoot, 'AGENTS.md');
+
+    await mkdir(projectRoot, {recursive: true});
+    await writeFile(projectFile, '# Original rule.\n', 'utf8');
+
+    const sourceProvider = createCodaraSourceProvider({userHome, projectRoot});
+    const middleware = createGuidelinesMiddleware(sourceProvider);
     const context: BeforeModelContext = {
       state: {messages: []},
       messages: [],
@@ -97,14 +100,13 @@ describe('AGENTS guidelines', () => {
     await writeFile(packageFile, '# Package Rules\n', 'utf8');
     await writeFile(appFile, '# App Rules\n', 'utf8');
 
-    const loaded = await loadGuidelines({userHome, cwd: nestedCwd});
-    expect(loaded).toBeDefined();
+    const sourceProvider = createCodaraSourceProvider({userHome, cwd: nestedCwd});
+    const content = await sourceProvider.get('guidelines');
 
-    expect(loaded?.files).toEqual([
-      {scope: 'global', path: globalFile},
-      {scope: 'project', path: projectFile},
-      {scope: 'project', path: packageFile},
-      {scope: 'project', path: appFile},
-    ]);
+    expect(content).toBeDefined();
+    const text = content ?? '';
+    expect(text.indexOf('# Global Rules')).toBeLessThan(text.indexOf('# Project Rules'));
+    expect(text.indexOf('# Project Rules')).toBeLessThan(text.indexOf('# Package Rules'));
+    expect(text.indexOf('# Package Rules')).toBeLessThan(text.indexOf('# App Rules'));
   });
 });

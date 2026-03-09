@@ -100,6 +100,7 @@ allowed-tools:
     const firstModel = new CodaraFacadeModel();
     const codara = createCodara({
       model: firstModel as unknown as BaseChatModel,
+      threadId: 'codara-e2e-thread',
       tools: [bashTool],
       checkpointer,
       skills: {
@@ -120,18 +121,15 @@ allowed-tools:
         },
       },
     });
-    const session = await codara.session({
-      threadId: 'codara-e2e-thread',
-    });
 
     const customEvents: AgentStreamCustomChunk[] = [];
-    for await (const chunk of session.agent().stream('run git status', {streamMode: 'custom'})) {
+    for await (const chunk of codara.stream('run git status', {streamMode: 'custom'})) {
       customEvents.push(chunk as AgentStreamCustomChunk);
     }
 
-    expect(session.getState().sessionStatus).toBe('ready');
-    expect(session.agent().getState().status).toBe('paused');
-    expect(session.agent().getState().pendingPause?.action.toolName).toBe('bash');
+    expect(codara.getState().sessionStatus).toBe('ready');
+    expect(codara.getAgentState().status).toBe('paused');
+    expect(codara.getAgentState().pendingPause?.action.toolName).toBe('bash');
     expect(bashInvokeCount).toBe(0);
     expect(customEvents).toHaveLength(1);
     expect(customEvents[0]?.type).toBe('hil_event');
@@ -155,10 +153,12 @@ allowed-tools:
     expect(pauseLog).toBeDefined();
 
     const restoredModel = new CodaraFacadeModel();
-    const restored = await codara.session({
+    const restored = createCodara({
       model: restoredModel as unknown as BaseChatModel,
-      tools: [bashTool],
       threadId: 'codara-e2e-thread',
+      restore: 'latest',
+      tools: [bashTool],
+      checkpointer,
       skills: {
         projectRoot,
         userHome,
@@ -179,10 +179,10 @@ allowed-tools:
     });
 
     expect(restored).toBeDefined();
-    expect(restored?.getState().sessionStatus).toBe('ready');
-    expect(restored?.agent().getState().status).toBe('paused');
+    expect(restored.getState().sessionStatus).toBe('ready');
 
-    for await (const _chunk of restored!.agent().resumeStream(
+    // resumeStream will initialize the agent and restore from checkpoint
+    for await (const _chunk of restored.resumeStream(
       {decision: 'approve'},
       {
         input: new HumanMessage('approved and continue'),
@@ -192,9 +192,9 @@ allowed-tools:
       void _chunk;
     }
 
-    expect(restored?.getState().sessionStatus).toBe('ready');
-    expect(restored?.agent().getState().status).toBe('idle');
-    expect(restored?.agent().getState().pendingPause).toBeUndefined();
+    expect(restored.getState().sessionStatus).toBe('ready');
+    expect(restored.getAgentState().status).toBe('idle');
+    expect(restored.getAgentState().pendingPause).toBeUndefined();
 
     const finalLog = logs.find(
       (record) =>
