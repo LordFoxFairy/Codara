@@ -43,15 +43,15 @@ export function createSkillsMiddleware(options: SkillsMiddlewareOptions) {
       }
     },
 
-    async wrapModelCall(context: ModelCallContext, handler) {
+    async beforeModel(context: ModelCallContext) {
       const runtime = readSkillsRuntimeData(context.state.context) ?? await loadSkillsRuntimeData(store, options.agentRoots ?? [])
       const skills = runtime.discovered
       const sources = runtime.sources
       const skillsSection = SKILLS_SYSTEM_PROMPT
         .replace('{skills_locations}', formatSkillsLocations(sources))
         .replace('{skills_list}', formatSkillsList(skills, sources))
-      const nextSystemMessage = context.systemMessage.concat(skillsSection)
-      return handler({...context, systemMessage: nextSystemMessage})
+      context.systemMessage.push(skillsSection)
+      return undefined
     },
   })
 }

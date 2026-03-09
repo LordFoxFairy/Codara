@@ -93,6 +93,7 @@ function createTurnContext(run: AgentRunContext, turn: number): BaseExecutionCon
     turn,
     maxTurns: run.maxTurns,
     requestId: `${run.runId}:turn:${turn}`,
+    inputBudget: run.inputBudget,
   };
 }
 
