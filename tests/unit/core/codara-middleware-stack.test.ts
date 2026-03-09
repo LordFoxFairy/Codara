@@ -12,6 +12,7 @@ describe('Codara middleware stack', () => {
     expect(middlewares.map((middleware) => middleware.name)).toEqual([
       'GuidelinesMiddleware',
       'MemoryMiddleware',
+      'todoListMiddleware',
       'SkillsMiddleware',
       'HumanInTheLoopMiddleware',
     ]);
@@ -33,6 +34,7 @@ describe('Codara middleware stack', () => {
       'LoggingMiddleware',
       'GuidelinesMiddleware',
       'MemoryMiddleware',
+      'todoListMiddleware',
       'SkillsMiddleware',
       'CustomMiddleware',
       'HumanInTheLoopMiddleware',
@@ -53,13 +55,14 @@ describe('Codara middleware stack', () => {
     expect(middlewares.map((middleware) => middleware.name)).toEqual([
       'GuidelinesMiddleware',
       'MemoryMiddleware',
+      'todoListMiddleware',
       'SkillsMiddleware',
       'AliasMiddleware',
       'HumanInTheLoopMiddleware',
     ]);
   });
 
-  it('should keep summary middleware disabled by default', () => {
+  it('should enable todo middleware by default and keep summary disabled by default', () => {
     const middlewares = createCodaraMiddlewares({
       skills: {store: new EmptySkillStore()},
     });
@@ -67,6 +70,7 @@ describe('Codara middleware stack', () => {
     expect(middlewares.map((middleware) => middleware.name)).toEqual([
       'GuidelinesMiddleware',
       'MemoryMiddleware',
+      'todoListMiddleware',
       'SkillsMiddleware',
       'HumanInTheLoopMiddleware',
     ]);
@@ -84,6 +88,7 @@ describe('Codara middleware stack', () => {
       'GuidelinesMiddleware',
       'MemoryMiddleware',
       'SummaryMiddleware',
+      'todoListMiddleware',
       'SkillsMiddleware',
       'HumanInTheLoopMiddleware',
     ]);
@@ -97,6 +102,21 @@ describe('Codara middleware stack', () => {
 
     expect(middlewares.map((middleware) => middleware.name)).toEqual([
       'GuidelinesMiddleware',
+      'todoListMiddleware',
+      'SkillsMiddleware',
+      'HumanInTheLoopMiddleware',
+    ]);
+  });
+
+  it('should allow todo middleware to be disabled explicitly', () => {
+    const middlewares = createCodaraMiddlewares({
+      skills: {store: new EmptySkillStore()},
+      todo: false,
+    });
+
+    expect(middlewares.map((middleware) => middleware.name)).toEqual([
+      'GuidelinesMiddleware',
+      'MemoryMiddleware',
       'SkillsMiddleware',
       'HumanInTheLoopMiddleware',
     ]);
