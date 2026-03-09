@@ -7,6 +7,7 @@ export function createCodara(options: CodaraOptions = {}): Codara {
 
   return {
     session: sessionHost.session,
+    reloadSources: sessionHost.reloadSources,
     invoke: sessionHost.invoke,
     stream: sessionHost.stream,
     resume: sessionHost.resume,
