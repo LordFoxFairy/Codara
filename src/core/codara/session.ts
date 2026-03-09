@@ -2,6 +2,7 @@ import {createAgentMemoryCheckpointer} from '@core/checkpoint/state';
 import type {AgentCheckpointer} from '@core/checkpoint/state';
 import {createSession, type Session} from '@core/sessions';
 import {createCodaraAgent} from '@core/codara/agent';
+import {loadCodaraSourceProjection} from '@core/codara/source-stack';
 import type {CodaraAgentOptions, CodaraSessionOptions} from '@core/codara/types';
 import type {
   AgentInput,
@@ -12,15 +13,8 @@ import type {
   AgentStreamConfig,
   AgentStreamOutput,
 } from '@core/agents';
-import {loadGuidelines} from '@core/middleware/guidelines';
-import {loadMemory} from '@core/middleware/memory';
 import type {HILResumePayload} from '@core/middleware';
 import type {SessionState} from '@core/sessions';
-
-interface CodaraSourceProjection {
-  guidelines?: string;
-  memory?: string;
-}
 
 interface CodaraSessionHost {
   session(options?: CodaraSessionOptions): Promise<Session>;
@@ -46,7 +40,7 @@ export function createCodaraSessionHost(options: CodaraAgentOptions = {}): Codar
 
   async function buildSession(optionsOverride: CodaraSessionOptions = {}): Promise<Session> {
     const merged = mergeCodaraAgentOptions(options, optionsOverride, checkpointer);
-    const loadedSources = await loadSessionSources(merged);
+    const loadedSources = await loadCodaraSourceProjection(merged);
 
     const checkpoint = await resolveCheckpoint({
       restore: optionsOverride.restore ?? 'latest',
@@ -115,18 +109,6 @@ export function createCodaraSessionHost(options: CodaraAgentOptions = {}): Codar
   };
 }
 
-async function loadSessionSources(options: CodaraAgentOptions): Promise<CodaraSourceProjection> {
-  const [guidelines, memory] = await Promise.all([
-    options.guidelines === false ? Promise.resolve(undefined) : loadGuidelines(resolveGuidelinesOptions(options)),
-    options.memory === false ? Promise.resolve(undefined) : loadMemory(resolveMemoryOptions(options)),
-  ]);
-
-  return {
-    guidelines: guidelines?.content,
-    memory: memory?.content,
-  };
-}
-
 function mergeCodaraAgentOptions(
   base: CodaraAgentOptions,
   override: CodaraAgentOptions,
@@ -188,33 +170,4 @@ function mergeSkillsOptions(
     };
   }
   return base;
-}
-
-function resolveGuidelinesOptions(options: CodaraAgentOptions) {
-  if (options.guidelines === false) {
-    return {
-      ...(options.cwd ? {cwd: options.cwd} : {}),
-    };
-  }
-
-  return {
-    ...(options.guidelines?.cwd ?? options.cwd ? {cwd: options.guidelines?.cwd ?? options.cwd} : {}),
-    ...(options.guidelines?.userHome ? {userHome: options.guidelines.userHome} : {}),
-    ...(options.guidelines?.projectRoot ? {projectRoot: options.guidelines.projectRoot} : {}),
-  };
-}
-
-function resolveMemoryOptions(options: CodaraAgentOptions) {
-  if (options.memory === false) {
-    return {
-      ...(options.cwd ? {cwd: options.cwd} : {}),
-    };
-  }
-
-  return {
-    ...(options.memory?.cwd ?? options.cwd ? {cwd: options.memory?.cwd ?? options.cwd} : {}),
-    ...(options.memory?.userHome ? {userHome: options.memory.userHome} : {}),
-    ...(options.memory?.projectRoot ? {projectRoot: options.memory.projectRoot} : {}),
-    ...(typeof options.memory?.maxLines === 'number' ? {maxLines: options.memory.maxLines} : {}),
-  };
 }

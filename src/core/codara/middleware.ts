@@ -1,9 +1,9 @@
 import {createHILMiddleware, createLoggingMiddleware, type BaseMiddleware} from '@core/middleware';
 import {createGuidelinesMiddleware} from '@core/middleware/guidelines';
 import {createMemoryMiddleware} from '@core/middleware/memory';
-import {createSkillsMiddleware, FileSystemSkillStore} from '@core/middleware/skills';
 import {createSummaryMiddleware} from '@core/middleware/summary';
 import type {CodaraMiddlewareOptions} from '@core/codara/types';
+import {createSkillsMiddleware, FileSystemSkillStore} from '@core/skills';
 import {resolveWorkspaceRoot} from '@core/workspace';
 
 interface CodaraSourceProjection {

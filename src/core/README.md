@@ -17,6 +17,58 @@ createCodara(...)
 - `createSession(...)` 是实例宿主，只暴露 session 状态与 `agent()` 入口
 - `createCodara(...)` 是产品级 facade，负责默认模型、工具和 middleware 装配
 
+## 当前审计
+
+本轮按入口自上而下审计后，当前主线可以收敛成：
+
+```text
+src/index.ts
+  -> core/index.ts
+    -> codara/*
+      -> sessions/*
+        -> agents/*
+          -> middleware/* / skills/* / tools/* / tasks/*
+```
+
+运行主链是：
+
+```text
+createCodara(...)
+  -> createSession(...)
+    -> createCodaraAgent(...)
+      -> codara/source-stack.ts
+      -> resolveCodaraAgentOptions(...)
+        -> createCodaraTools(...)
+        -> createCodaraMiddlewares(...)
+          -> SkillsMiddleware
+            -> context.skills
+      -> createAgent(...)
+        -> runtime / loop / checkpoint
+        -> Task
+          -> resolve definition from context.skills
+          -> spawn child agent with the same Codara assembly path
+```
+
+当前合理性：
+
+- `codara` 负责产品 facade 与默认装配，没有侵入执行内核。
+- `session` 负责实例宿主与 source projection，没有承接 agent 工作流状态。
+- `codara/source-stack.ts` 负责 session 创建前的 source projection 读取，避免把 `AGENTS.md` / `MEMORY.md` 加载逻辑揉进 session host。
+- `agent` 仍然是唯一执行原语，`subagent`/`Task` 是组合，不是第二套 runtime。
+- `SkillsMiddleware -> context.skills -> Task` 已经形成单一数据流，没有再开旁路 discovery。
+
+当前仍应持续打磨的点：
+
+- 低层 barrel 导出仍偏宽，后续应逐步收紧公开 API 面。
+- `engine/state.ts` 职责偏密，下一轮真实 feature 进入时要警惕继续膨胀。
+- subagent definition 已区分“当前真的生效”的字段与 `hints` 元数据；后续仍应继续克制，不把 hints 重新做成自动 runtime 覆盖。
+- shared task tools 当前返回文本结果，后续只有在出现真实消费者时再升级成结构化 payload。
+
+已经确认的边界修正：
+
+- `guards.ts` 这类生命周期前置检查更适合放在 `engine/lifecycle.ts`，因为它们表达的是 agent 生命周期约束，不是泛化的 guards。
+- skills 能力属于 `skills/*` 域；如果 `@core/middleware` 需要便捷导出，应直接在 barrel 转发，而不是创建 `middleware/skills.ts` 这种错层 shim。
+
 ## AGENTS.md 规范
 
 - `AGENTS.md` 通过 `middleware/guidelines.ts` 接入
