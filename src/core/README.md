@@ -161,6 +161,7 @@ checkpoint 边界：
 - 工作区根优先从 `cwd` 向上查找 `.codara`、`.git`、`package.json`
 - 在 session 创建阶段生成内容投影
 - 后续模型调用复用同一份内容
+- 同一个 `Codara` host 可通过 `reloadSources()` 显式刷新 source snapshot
 - 默认注入顺序早于 `SkillsMiddleware`
 
 `AGENTS.md` 在当前架构中属于项目规范源，不属于：
@@ -177,6 +178,7 @@ checkpoint 边界：
 - 工作区根优先从 `cwd` 向上查找 `.codara`、`.git`、`package.json`
 - 在 session 创建阶段生成内容投影
 - `middleware/memory.ts` 只负责 `MEMORY.md` 的加载与截断，用于投影长期稳定记忆
+- 同一个 `Codara` host 可通过 `reloadSources()` 显式刷新 source snapshot
 - 默认注入顺序位于 `AGENTS.md` 之后、`SkillsMiddleware` 之前
 
 `MEMORY.md` 在当前架构中属于长期记忆源，不属于：

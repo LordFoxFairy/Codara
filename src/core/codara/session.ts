@@ -20,6 +20,7 @@ import type {SessionState} from '@core/sessions';
 interface CodaraSessionHost {
   session(options?: CodaraSessionOptions): Promise<Session>;
   getState(): Promise<SessionState>;
+  reloadSources(): Promise<void>;
   reset(): Promise<void>;
   dispose(): Promise<void>;
   invoke(input?: AgentInput, config?: AgentInvokeConfig): Promise<AgentResult>;
@@ -84,6 +85,13 @@ export function createCodaraSessionHost(options: CodaraAgentOptions = {}): Codar
     },
     async getState() {
       return (await getDefaultSession()).getState();
+    },
+    async reloadSources() {
+      if (!defaultSessionPromise) {
+        return;
+      }
+
+      defaultSessionPromise = undefined;
     },
     async reset() {
       await (await getDefaultSession()).reset();
