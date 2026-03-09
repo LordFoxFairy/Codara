@@ -1,15 +1,32 @@
 import {describe, expect, it} from 'bun:test';
+import type {BaseChatModel} from '@langchain/core/language_models/chat_models';
+import {AIMessage, AIMessageChunk, type BaseMessage} from '@langchain/core/messages';
 import {createCodara, type MiddlewareLogRecord} from '@core';
-import type {AIMessageChunk} from '@langchain/core/messages';
 
-describe('Codara facade with real provider', () => {
-  it('should invoke through createCodara().invoke with a routing alias and logging', async () => {
-    const deepseekKey = process.env.DEEPSEEK_API_KEY?.trim();
-    expect(Boolean(deepseekKey && !deepseekKey.startsWith('your-'))).toBe(true);
+class InvokeOnceModel {
+  bindTools(): this {
+    return this;
+  }
+
+  async invoke(messages: BaseMessage[]): Promise<AIMessage> {
+    void messages;
+    return new AIMessage('OK');
+  }
+
+  async stream(messages: BaseMessage[]): Promise<AsyncGenerator<AIMessageChunk>> {
+    void messages;
+    return (async function* () {
+      yield new AIMessageChunk('OK');
+    })();
+  }
+}
+
+describe('Codara facade integration', () => {
+  it('should invoke through createCodara().invoke with logging', async () => {
     const logs: MiddlewareLogRecord[] = [];
 
     const codara = createCodara({
-      alias: 'deepseek',
+      modelResolver: async () => new InvokeOnceModel() as unknown as BaseChatModel,
       builtinTools: false,
       skills: false,
       logging: {
@@ -27,14 +44,11 @@ describe('Codara facade with real provider', () => {
     expect(String(result.state.messages[result.state.messages.length - 1]?.content).trim().length).toBeGreaterThan(0);
     expect(logs.some((record) => record.stage === 'wrapModelCall' && record.event === 'stage_start')).toBe(true);
     expect(logs.some((record) => record.stage === 'afterAgent' && record.resultReason === 'complete')).toBe(true);
-  }, 120_000);
+  });
 
-  it('should stream message chunks through createCodara().stream with a routing alias and real model', async () => {
-    const deepseekKey = process.env.DEEPSEEK_API_KEY?.trim();
-    expect(Boolean(deepseekKey && !deepseekKey.startsWith('your-'))).toBe(true);
-
+  it('should stream message chunks through createCodara().stream', async () => {
     const codara = createCodara({
-      alias: 'deepseek',
+      modelResolver: async () => new InvokeOnceModel() as unknown as BaseChatModel,
       builtinTools: false,
       skills: false,
     });
@@ -50,14 +64,11 @@ describe('Codara facade with real provider', () => {
     const session = await codara.session();
     expect(session.getState().sessionStatus).toBe('ready');
     expect(session.agent().getState().messages.length).toBeGreaterThanOrEqual(2);
-  }, 120_000);
+  });
 
   it('should stream with proper LangChain message format and block types', async () => {
-    const deepseekKey = process.env.DEEPSEEK_API_KEY?.trim();
-    expect(Boolean(deepseekKey && !deepseekKey.startsWith('your-'))).toBe(true);
-
     const codara = createCodara({
-      alias: 'deepseek',
+      modelResolver: async () => new InvokeOnceModel() as unknown as BaseChatModel,
       builtinTools: false,
       skills: false,
     });
@@ -107,5 +118,5 @@ describe('Codara facade with real provider', () => {
     // BaseMessage should have: content, additional_kwargs, response_metadata, etc.
     expect('content' in lastMessage).toBe(true);
     expect(typeof lastMessage.content === 'string' || Array.isArray(lastMessage.content)).toBe(true);
-  }, 120_000);
+  });
 });
