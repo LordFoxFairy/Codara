@@ -1,29 +1,25 @@
 import type {AgentCheckpoint, AgentCheckpointInfo, AgentCheckpointer} from '@core/checkpoint/state';
-import type {AgentResult, AgentStateSnapshot} from '@core/agents/contract/agent';
-import {cloneContext, cloneOptionalPause, toCheckpointStatus} from '@core/agents/engine/state';
+import type {AgentResult, AgentState} from '@core/agents/contract/agent';
+import {cloneContext, cloneOptionalPause, cloneValues, toCheckpointStatus, type AgentRuntimeState} from '@core/agents/engine/state';
 
-export function createAgentSnapshot(
+export function createAgentState(
   threadId: string,
-  state: AgentStateSnapshot
-): AgentStateSnapshot {
+  state: AgentRuntimeState
+): AgentState {
   return {
     threadId,
-    checkpointId: state.checkpointId,
     messages: [...state.messages],
     context: cloneContext(state.context),
+    values: cloneValues(state.values),
     status: state.status,
     ...(state.pendingPause ? {pendingPause: cloneOptionalPause(state.pendingPause)} : {}),
-    ...(state.lastResult ? {lastResult: {...state.lastResult}} : {}),
-    step: state.step,
-    createdAt: state.createdAt,
-    updatedAt: state.updatedAt,
   };
 }
 
 export async function persistAgentCheckpoint(
   checkpointer: AgentCheckpointer,
   threadId: string,
-  state: AgentStateSnapshot,
+  state: AgentRuntimeState,
   source: AgentCheckpointInfo['source'],
   result?: AgentResult
 ): Promise<AgentCheckpoint> {
@@ -33,6 +29,7 @@ export async function persistAgentCheckpoint(
     state: {
       messages: [...state.messages],
       context: cloneContext(state.context),
+      values: cloneValues(state.values),
       ...(state.pendingPause ? {pendingPause: cloneOptionalPause(state.pendingPause)} : {}),
     },
     info: {
@@ -48,7 +45,7 @@ export async function persistAgentCheckpoint(
 }
 
 export function updateStateFromCheckpointRecord(
-  state: AgentStateSnapshot,
+  state: AgentRuntimeState,
   record: AgentCheckpoint
 ): void {
   state.checkpointId = record.ref.checkpointId;
@@ -57,7 +54,7 @@ export function updateStateFromCheckpointRecord(
   state.lastResult = summarizeResultFromCheckpoint(record.info);
 }
 
-function summarizeResultFromCheckpoint(info: AgentCheckpointInfo): AgentStateSnapshot['lastResult'] {
+function summarizeResultFromCheckpoint(info: AgentCheckpointInfo): AgentRuntimeState['lastResult'] {
   return info.reason || info.turns !== undefined || info.errorMessage
     ? {
         reason: info.reason ?? 'complete',

@@ -49,19 +49,20 @@ export function assertNoDuplicateNames(middlewares: BaseMiddleware[]): void {
   }
 }
 
-type SimpleStageHook<TContext> = (context: TContext) => Promise<void> | void;
+type SimpleStageHook<TContext, TUpdate> = (context: TContext) => Promise<TUpdate | void> | TUpdate | void;
 type WrappedStageHook<TContext, TResult> = (
   context: TContext,
   handler: (request?: TContext) => Promise<TResult>
 ) => Promise<TResult>;
 
-export async function runSimpleStage<TContext>(
+export async function runSimpleStage<TContext, TUpdate>(
   middlewares: BaseMiddleware[],
   stage: MiddlewareStageName,
   context: TContext,
   pickHook: (
     middleware: BaseMiddleware
-  ) => SimpleStageHook<TContext> | undefined
+  ) => SimpleStageHook<TContext, TUpdate> | undefined,
+  applyUpdate?: (context: TContext, update: TUpdate) => void
 ): Promise<void> {
   for (const middleware of middlewares) {
     const hook = pickHook(middleware);
@@ -70,7 +71,10 @@ export async function runSimpleStage<TContext>(
     }
 
     try {
-      await hook(context);
+      const update = await hook(context);
+      if (update !== undefined && applyUpdate) {
+        applyUpdate(context, update);
+      }
     } catch (error) {
       throw createStageError(middleware.name, stage, error);
     }
