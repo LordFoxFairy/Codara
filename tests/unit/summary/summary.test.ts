@@ -1,5 +1,5 @@
 import {describe, expect, it} from 'bun:test';
-import {AIMessage, HumanMessage, type BaseMessage} from '@langchain/core/messages';
+import {AIMessage, HumanMessage, SystemMessage, type BaseMessage} from '@langchain/core/messages';
 import type {BaseChatModel} from '@langchain/core/language_models/chat_models';
 import {createAgent} from '@core/agents';
 import {createAgentMemoryCheckpointer} from '@core/checkpoint';
@@ -24,7 +24,7 @@ class FakeModel {
 }
 
 describe('summary middleware', () => {
-  it('should summarize older messages, trim history, and inject the summary', async () => {
+  it('should summarize older messages and replace them inside state.messages', async () => {
     const middleware = createSummaryMiddleware({
       maxMessages: 4,
       keepLastMessages: 2,
@@ -57,15 +57,15 @@ describe('summary middleware', () => {
 
     await pipeline.beforeModel(context);
 
-    expect(context.state.messages).toHaveLength(2);
-    expect(String(context.state.messages[0]?.content)).toBe('four');
-    expect(String(context.state.messages[1]?.content)).toBe('five');
-    expect(readSummaryRecord(context.runtime.agentContext ?? {})?.content).toBe('older conversation summary');
-    expect(context.systemMessage[0]).toContain('Conversation Summary');
-    expect(context.systemMessage[0]).toContain('older conversation summary');
+    expect(context.state.messages).toHaveLength(3);
+    expect(context.state.messages[0]).toBeInstanceOf(SystemMessage);
+    expect(readSummaryRecord(context.state.messages)?.content).toBe('older conversation summary');
+    expect(String(context.state.messages[1]?.content)).toBe('four');
+    expect(String(context.state.messages[2]?.content)).toBe('five');
+    expect(context.systemMessage).toEqual([]);
   });
 
-  it('should inject an existing summary without recomputing it', async () => {
+  it('should keep an existing summary message without recomputing it', async () => {
     let called = false;
     const middleware = createSummaryMiddleware({
       summarize: () => {
@@ -75,21 +75,20 @@ describe('summary middleware', () => {
     });
 
     const pipeline = new MiddlewarePipeline([middleware]);
-    const messages = [new HumanMessage('recent')];
+    const messages = [
+      new SystemMessage([
+        '# Conversation Summary',
+        '',
+        'The following summary captures earlier conversation context that has been compacted.',
+        '',
+        'existing summary',
+      ].join('\n')),
+      new HumanMessage('recent'),
+    ];
     const context: ModelCallContext = {
       state: {messages},
       messages,
-      runtime: {
-        context: {
-          codara: {
-            summary: {
-              content: 'existing summary',
-              updatedAt: '2026-03-08T00:00:00.000Z',
-              summarizedMessages: 4,
-            },
-          },
-        },
-      },
+      runtime: {context: {}},
       systemMessage: [],
       runId: 'run-1',
       turn: 1,
@@ -100,7 +99,44 @@ describe('summary middleware', () => {
     await pipeline.beforeModel(context);
 
     expect(called).toBe(false);
-    expect(context.systemMessage[0]).toContain('existing summary');
+    expect(readSummaryRecord(context.state.messages)?.content).toBe('existing summary');
+    expect(context.systemMessage).toEqual([]);
+  });
+
+  it('should preserve caller system messages ahead of the compacted summary', async () => {
+    const middleware = createSummaryMiddleware({
+      maxMessages: 4,
+      keepLastMessages: 2,
+      summarize: () => 'older conversation summary',
+    });
+
+    const pipeline = new MiddlewarePipeline([middleware]);
+    const messages = [
+      new SystemMessage('caller instructions'),
+      new HumanMessage('one'),
+      new AIMessage('two'),
+      new HumanMessage('three'),
+      new AIMessage('four'),
+      new HumanMessage('five'),
+    ];
+
+    const context: ModelCallContext = {
+      state: {messages},
+      messages,
+      runtime: {context: {}},
+      systemMessage: [],
+      runId: 'run-1',
+      turn: 2,
+      maxTurns: 8,
+      requestId: 'req-1',
+    };
+
+    await pipeline.beforeModel(context);
+
+    expect(context.state.messages).toHaveLength(4);
+    expect(String(context.state.messages[0]?.content)).toBe('caller instructions');
+    expect(context.state.messages[1]).toBeInstanceOf(SystemMessage);
+    expect(readSummaryRecord(context.state.messages)?.content).toBe('older conversation summary');
   });
 
   it('should persist summary through checkpoint restore', async () => {
@@ -130,8 +166,8 @@ describe('summary middleware', () => {
     });
 
     expect(result.reason).toBe('complete');
-    expect(agent.getState().messages).toHaveLength(3);
-    expect(readSummaryRecord(agent.getState().context)?.content).toBe('persisted summary');
+    expect(agent.getState().messages).toHaveLength(4);
+    expect(readSummaryRecord(agent.getState().messages)?.content).toBe('persisted summary');
 
     const restoredCheckpoint = await checkpointer.getLatest('summary-thread');
     expect(restoredCheckpoint).toBeDefined();
@@ -144,7 +180,7 @@ describe('summary middleware', () => {
       middleware: [summary],
     });
 
-    expect(readSummaryRecord(restored.getState().context)?.content).toBe('persisted summary');
-    expect(restored.getState().messages).toHaveLength(3);
+    expect(readSummaryRecord(restored.getState().messages)?.content).toBe('persisted summary');
+    expect(restored.getState().messages).toHaveLength(4);
   });
 });
