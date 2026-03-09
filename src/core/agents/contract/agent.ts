@@ -147,4 +147,4 @@ export interface AgentResumeStreamConfig extends Omit<AgentStreamConfig, 'contex
   context?: AgentRuntimeContext;
 }
 
-export type AgentInput = AgentState | string | BaseMessage | BaseMessage[] | undefined;
+export type AgentInput = AgentState | AgentMessagesInput | string | BaseMessage | BaseMessage[] | undefined;
