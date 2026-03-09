@@ -20,7 +20,8 @@ export async function executeToolCall(
   toolCallId: string,
   tool: StructuredToolInterface | undefined,
   handleToolErrors: ToolErrorHandler,
-  state: Pick<AgentState, 'messages' | 'context' | 'values'>
+  state: Pick<AgentState, 'messages' | 'context' | 'values'>,
+  normalizeValues?: (values: AgentState['values']) => AgentState['values']
 ): Promise<ToolMessage> {
   if (!tool) {
     return handleToolError(
@@ -34,7 +35,7 @@ export async function executeToolCall(
   try {
     const result = await tool.invoke(toolCall.args);
     if (isCommand(result)) {
-      return applyToolCommand(result, toolCallId, state);
+      return applyToolCommand(result, toolCallId, state, normalizeValues);
     }
     const content = String(result);
 
@@ -94,7 +95,8 @@ function createToolError(toolCallId: string, content: string): ToolMessage {
 function applyToolCommand(
   command: Command,
   toolCallId: string,
-  state: Pick<AgentState, 'messages' | 'context' | 'values'>
+  state: Pick<AgentState, 'messages' | 'context' | 'values'>,
+  normalizeValues?: (values: AgentState['values']) => AgentState['values']
 ): ToolMessage {
   const commandMessages = normalizeCommandMessages(command.update.messages, toolCallId);
   const toolMessage = findCommandToolMessage(commandMessages, toolCallId);
@@ -104,6 +106,10 @@ function applyToolCommand(
     ...command.update,
     messages: extraMessages,
   });
+
+  if (command.update.values && normalizeValues) {
+    state.values = normalizeValues(state.values ?? {});
+  }
 
   return toolMessage ?? new ToolMessage({
     content: 'Command applied.',

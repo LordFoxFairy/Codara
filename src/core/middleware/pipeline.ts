@@ -104,15 +104,46 @@ export class MiddlewarePipeline {
       return {...values, ...parsed.data};
     }, {});
 
-    return {...defaults, ...cloneRecord(seed)};
+    return this.normalizeValues({...defaults, ...cloneRecord(seed)});
+  }
+
+  normalizeValues(values: Record<string, unknown> = {}): Record<string, unknown> {
+    let normalized = cloneRecord(values);
+
+    for (const middleware of this.middlewares) {
+      const schema = middleware.stateSchema;
+      if (!schema) {
+        continue;
+      }
+
+      const parsed = schema.safeParse(normalized);
+      if (!parsed.success) {
+        throw new Error(`Middleware "${middleware.name}" state validation failed: ${parsed.error.message}`);
+      }
+
+      if (!isPlainRecord(parsed.data)) {
+        continue;
+      }
+
+      normalized = {
+        ...normalized,
+        ...parsed.data,
+      };
+    }
+
+    return normalized;
   }
 
   async beforeAgent(context: BeforeAgentContext): Promise<void> {
-    await runSimpleStage(this.middlewares, 'beforeAgent', context, (middleware) => middleware.beforeAgent, applyUpdate);
+    await runSimpleStage(this.middlewares, 'beforeAgent', context, (middleware) => middleware.beforeAgent, (stageContext, update) =>
+      this.applyUpdate(stageContext, update)
+    );
   }
 
   async beforeModel(context: BeforeModelContext): Promise<void> {
-    await runSimpleStage(this.middlewares, 'beforeModel', context, (middleware) => middleware.beforeModel, applyUpdate);
+    await runSimpleStage(this.middlewares, 'beforeModel', context, (middleware) => middleware.beforeModel, (stageContext, update) =>
+      this.applyUpdate(stageContext, update)
+    );
   }
 
   wrapModelCall(context: ModelCallContext, handler: ModelCallHandler): Promise<AIMessage> {
@@ -126,7 +157,9 @@ export class MiddlewarePipeline {
   }
 
   async afterModel(context: AfterModelContext): Promise<void> {
-    await runSimpleStage(this.middlewares, 'afterModel', context, (middleware) => middleware.afterModel, applyUpdate);
+    await runSimpleStage(this.middlewares, 'afterModel', context, (middleware) => middleware.afterModel, (stageContext, update) =>
+      this.applyUpdate(stageContext, update)
+    );
   }
 
   wrapToolCall(context: ToolCallContext, handler: ToolCallHandler): Promise<ToolMessage> {
@@ -140,12 +173,21 @@ export class MiddlewarePipeline {
   }
 
   async afterAgent(context: AfterAgentContext): Promise<void> {
-    await runSimpleStage(this.middlewares, 'afterAgent', context, (middleware) => middleware.afterAgent, applyUpdate);
+    await runSimpleStage(this.middlewares, 'afterAgent', context, (middleware) => middleware.afterAgent, (stageContext, update) =>
+      this.applyUpdate(stageContext, update)
+    );
   }
-}
 
-function applyUpdate(context: BaseExecutionContext, update: Parameters<typeof applyAgentStateUpdate>[1]): void {
-  applyAgentStateUpdate(context.state, update);
+  private applyUpdate(
+    context: BaseExecutionContext,
+    update: Parameters<typeof applyAgentStateUpdate>[1]
+  ): void {
+    applyAgentStateUpdate(context.state, update);
+
+    if (update?.values) {
+      context.state.values = this.normalizeValues(context.state.values ?? {});
+    }
+  }
 }
 
 function isPlainRecord(value: unknown): value is Record<string, unknown> {
