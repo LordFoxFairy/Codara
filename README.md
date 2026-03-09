@@ -1,235 +1,207 @@
 # Codara
 
-> AI 驱动的终端代码编辑器
+AI 驱动的终端代码代理运行时与产品 facade。
 
-Codara 是一个现代化的 AI 辅助开发工具，支持多模型路由、灵活配置，让 AI 编程更高效。
+## 当前状态
 
-## ✨ 特性
+- 默认基线已干净：
+  - `bun run typecheck`
+  - `bun run lint`
+  - `bun test`
+- 当前默认测试结果：`249 pass / 0 fail / 0 skip`
+- 主心智已经收敛：一切围绕 `createAgent(...)`，`codara` 只是 facade，`session` 只是宿主。
 
-- 🤖 **多模型支持** - 支持 OpenAI、Anthropic、DeepSeek 等多种 AI 模型
-- 🔀 **智能路由** - 灵活的模型路由配置，按需切换不同模型
-- 🔐 **安全管理** - 环境变量管理 API Key，支持多 Provider 配置
-- ⚡ **高性能** - 基于 Bun 运行时，启动快速、执行高效
-- 🎯 **类型安全** - 完整的 TypeScript 类型定义
-- 🧪 **测试完备** - 单元测试 + 集成测试，覆盖核心功能
+## 核心能力
 
-## 📦 技术栈
+- 多 provider / 多模型路由
+- `createAgent(...)` 统一执行内核
+- `createCodara(...)` / `createCodaraAgent(...)` 高层产品入口
+- checkpoint 恢复与 session source stack
+- `AGENTS.md` / `MEMORY.md` 投影注入
+- summary + context budget 上下文管理
+- `todo` agent 内部状态
+- `Task` / subagent 委派
+- `TaskCreate` / `TaskUpdate` / `TaskList` 共享协调层
+- HIL pause / resume
 
-- **运行时**: [Bun](https://bun.sh/) - 快速的 JavaScript 运行时
-- **语言**: [TypeScript](https://www.typescriptlang.org/) - 类型安全的 JavaScript
-- **UI**: [React](https://react.dev/) - 用户界面库
-- **AI**: [LangChain](https://js.langchain.com/) - AI 应用开发框架
-- **验证**: [Zod](https://zod.dev/) - TypeScript 优先的模式验证
+## 架构主线
 
-## 🚀 快速开始
-
-### 安装依赖
-
-```bash
-bun install
+```text
+src/index.ts
+  -> core/codara facade
+  -> session host
+  -> createCodaraAgent(...)
+  -> createAgent(...)
+  -> middleware pipeline
+  -> model / tool loop
+  -> checkpoint
 ```
 
-### 配置模型路由
+当前边界：
 
-创建配置文件 `~/.codara/config.json`：
+- `agent`: 执行内核，负责 invoke、stream、resume、tool loop、checkpoint restore
+- `codara`: 默认装配和对外入口
+- `session`: 宿主与 source stack
+- `checkpoint`: 只负责恢复运行态
+- `memory`: 只读 `MEMORY.md` 投影，不是 checkpoint
+- `summary`: `messages` 压缩，不是 memory
+
+## 状态模型
+
+- `messages`: 对话历史与 summary message
+- `context`: agent 持久上下文
+- `values`: agent 内部轻量状态，如 `todo`
+- `runtime.context`: 本轮临时运行数据，如 `skills` runtime、budget snapshot
+
+## Source Stack
+
+- `AGENTS.md` = guidelines
+- `MEMORY.md` = 长期记忆投影
+- source stack 属于 session，不属于 agent
+- 同一个 Codara host 支持 `reloadSources()`
+
+## Todo / Task / Subagent
+
+- `todo`
+  - 属于单 agent 内部状态
+  - 存在 `state.values`
+  - 随 checkpoint 恢复
+- `Task`
+  - 正式委派入口
+  - 本质是 spawn subagent
+- `TaskCreate / TaskUpdate / TaskList`
+  - 共享协调层
+  - 走 `TaskStore`
+- `subagent`
+  - 与 main agent 是同一种 agent 系统
+  - 仅身份、上下文、definition 有差异
+  - 默认禁止继续派发 subagent
+
+## Skills 数据流
+
+```text
+agents/*.md
+  -> SkillsMiddleware
+  -> runtime.context.skills
+  -> Task
+  -> createCodaraAgent / createAgent
+```
+
+约束：
+
+- `Task` 不直接读 store，不绕过 middleware
+- agent definitions 来自 `.codara/skills/*/agents/*.md` 或显式 `agents/` roots
+- definition 当前不自动切 model / middleware，只描述差异与 hints
+
+## Middleware 顺序
+
+默认顺序：
+
+```text
+logging
+-> guidelines
+-> memory
+-> skills
+-> context-budget
+-> summary
+-> caller middlewares
+-> hil
+```
+
+说明：
+
+- `logging` 只做观测
+- `context-budget` 统一估算完整输入预算
+- `summary` 按完整输入预算压缩，不再只看消息条数
+- `hil` 只做 pause / resume 协议
+
+## 配置
+
+模型路由配置位于 `~/.codara/config.json` 或项目内 `.codara/config.json`。
+
+当前正式格式：
 
 ```json
 {
   "providers": [
     {
-      "name": "openai",
-      "models": ["gpt-4o", "gpt-3.5-turbo"],
-      "apiKey": "$OPENAI_API_KEY"
+      "name": "openrouter",
+      "baseUrl": "https://openrouter.ai/api/v1",
+      "apiKey": "$OPENROUTER_API_KEY",
+      "models": [
+        {"id": "anthropic/claude-sonnet-4"},
+        {"id": "anthropic/claude-opus-4"}
+      ]
     },
     {
       "name": "deepseek",
-      "baseUrl": "https://api.deepseek.com",
-      "models": ["deepseek-chat"],
-      "apiKey": "$DEEPSEEK_API_KEY"
+      "baseUrl": "https://api.deepseek.com/v1",
+      "apiKey": "$DEEPSEEK_API_KEY",
+      "models": [
+        {"id": "deepseek-chat", "contextWindow": 64000, "maxOutputTokens": 8000}
+      ]
     }
   ],
   "router": {
-    "default": "openai:gpt-4o",
-    "fast": "openai:gpt-3.5-turbo",
-    "deepseek": "deepseek:deepseek-chat"
+    "default": "deepseek:deepseek-chat",
+    "sonnet": "openrouter:anthropic/claude-sonnet-4"
   }
 }
 ```
 
-### 配置环境变量
+## 快速开始
 
-创建 `.env` 文件：
+安装依赖：
 
 ```bash
-OPENAI_API_KEY=sk-xxx
-DEEPSEEK_API_KEY=sk-xxx
+bun install
 ```
 
-### 运行
+运行 CLI：
 
 ```bash
 bun run dev
 ```
 
-## 🏗️ 项目结构
-
-```
-src/
-├── core/
-│   └── provider/              # 模型 Provider 核心模块
-│       ├── config/            # 配置层
-│       │   ├── path.ts        # 配置文件路径解析
-│       │   ├── schema.ts      # Zod 验证模式
-│       │   └── loader.ts      # 配置加载与解析
-│       ├── runtime/           # 运行时层
-│       │   ├── api-key.ts     # API Key 环境变量展开
-│       │   ├── registry.ts    # 模型注册表
-│       │   └── factory.ts     # 模型工厂
-│       ├── model.ts           # 类型定义
-│       └── index.ts           # 统一导出
-└── ...
-
-tests/
-├── unit/                      # 单元测试
-│   └── provider/
-│       ├── api-key.test.ts
-│       ├── loader.test.ts
-│       ├── registry.test.ts
-│       └── factory.test.ts
-└── integration/               # 集成测试
-    └── provider/
-        └── deepseek-hello.e2e.test.ts
-```
-
-## 🧪 测试
-
-### 运行所有测试
+质量检查：
 
 ```bash
+bun run typecheck
+bun run lint
 bun test
 ```
 
-### 运行单元测试
+## 测试策略
 
-```bash
-bun test tests/unit/provider
+- 默认 `bun test` 无外部网络依赖
+- provider stack integration 使用本地 mock OpenAI server
+- 单个能力尽量单独测试，一个主题一个 `.test.ts`
+- 若需要真实 provider smoke，可单独加专项测试，不污染默认基线
+
+## 关键目录
+
+```text
+src/core/agents        # createAgent 内核、loop、checkpoint runtime glue
+src/core/codara        # facade、session、source stack、装配
+src/core/middleware    # logging/guidelines/memory/summary/todo/hil/context-budget
+src/core/skills        # skills store、runtime、agent definitions
+src/core/tasks         # TaskStore 与共享 task tools
+src/core/provider      # model routing、registry、factory
+tests/unit             # 单元测试
+tests/integration      # integration 与本地 mock provider stack
 ```
 
-### 运行集成测试
+## 建议阅读顺序
 
-```bash
-# 需要配置真实的 API Key
-bun test tests/integration/provider/deepseek-hello.e2e.test.ts
-```
+1. `src/core/README.md`
+2. `src/core/agents/README.md`
+3. `src/core/codara/assembly.ts`
+4. `src/core/agents/engine/agent.ts`
+5. `src/core/middleware/context-budget.ts`
 
-### 测试覆盖
+## 当前共识
 
-Provider 模块采用一对一测试映射：
-
-| 源文件 | 测试文件 |
-|--------|---------|
-| `config/loader.ts` | `tests/unit/provider/loader.test.ts` |
-| `runtime/api-key.ts` | `tests/unit/provider/api-key.test.ts` |
-| `runtime/registry.ts` | `tests/unit/provider/registry.test.ts` |
-| `runtime/factory.ts` | `tests/unit/provider/factory.test.ts` |
-
-**注意事项**：
-- 测试使用 `bun:test`，请使用 `bun test` 执行
-- 集成测试会发起真实网络请求，需要配置有效的 API Key
-- 单元测试使用 mock 数据，无需网络请求
-
-## 🛠️ 开发
-
-### 代码检查
-
-```bash
-bun run lint
-```
-
-### 代码格式化
-
-```bash
-bun run format
-```
-
-### 构建
-
-```bash
-bun run build
-```
-
-## 📖 核心概念
-
-### Provider
-
-Provider 是 AI 模型的提供方，例如 OpenAI、Anthropic、DeepSeek 等。每个 Provider 包含：
-
-- `name`: Provider 唯一标识
-- `baseUrl`: API 端点（可选，用于兼容 OpenAI 协议的服务）
-- `apiKey`: API 密钥（支持环境变量引用，格式：`$ENV_NAME`）
-- `models`: 该 Provider 支持的模型白名单
-
-### Router
-
-Router 定义了模型别名到具体模型的映射关系，格式为 `provider:model`。
-
-例如：
-- `"default": "openai:gpt-4o"` - 将 `default` 别名映射到 OpenAI 的 gpt-4o 模型
-- `"fast": "openai:gpt-3.5-turbo"` - 将 `fast` 别名映射到更快的模型
-
-### 使用示例
-
-```typescript
-import {loadModelRoutingConfig, ModelRegistry, ChatModelFactory} from "@core/provider";
-
-// 1. 加载配置
-const config = await loadModelRoutingConfig();
-
-// 2. 创建注册表
-const registry = new ModelRegistry(config);
-
-// 3. 创建工厂
-const factory = new ChatModelFactory(registry);
-
-// 4. 创建模型实例
-const model = await factory.create("default");
-
-// 5. 调用模型
-const response = await model.invoke("Hello, AI!");
-console.log(response.content);
-```
-
-## 🤝 贡献
-
-欢迎提交 Issue 和 Pull Request！
-
-### 开发规范
-
-- 遵循 TypeScript 最佳实践
-- 保持测试覆盖率
-- 使用语义化的 commit message（参考 [Conventional Commits](https://www.conventionalcommits.org/)）
-
-### Commit 规范
-
-```
-<type>(<scope>): <subject>
-
-type: feat | fix | refactor | test | docs | chore
-scope: 影响范围，如 core/provider
-subject: 简短描述
-```
-
-示例：
-```
-feat(core/provider): 增加模型路由配置功能
-fix(core/provider): 修复环境变量解析错误
-refactor(core/provider): 优化命名并合并配置解析逻辑
-```
-
-## 📄 License
-
-MIT © [LordFoxFairy](https://github.com/thefoxfairy)
-
----
-
-**Made with ❤️ by LordFoxFairy**
+- 不再引入第二套 agent runtime
+- 不做 profile 驱动的自动 model / middleware 切换
+- `team` 暂不进入当前主线
+- 继续以 `createAgent(...)` 为中心做后续重构与优化
