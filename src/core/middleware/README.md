@@ -2,7 +2,7 @@
 
 ## 概述
 
-`@core/middleware` 提供与 Agent loop 对齐的 6 个 hooks，用于注入日志、重试、上下文注入、工具拦截等横切逻辑。
+`@core/middleware` 提供与 Agent loop 对齐的 6 个 hooks，用于注入日志、上下文 source、输入预算、上下文压缩、工具拦截等横切逻辑。
 
 生命周期顺序固定为：
 
@@ -86,9 +86,12 @@ const result = await agent.invoke(
 公共字段（多数 hooks 都可用）：
 
 - `state.messages` / `messages`：当前消息列表
-- `runtime.context`：invoke 传入的业务上下文
-- `systemMessage`：可在 `wrapModelCall` 中追加系统消息
+- `runtime.context`：本轮有效运行上下文，包含 invoke context 与 transient runtime data
+- `runtime.agentContext`：会随 checkpoint 持久化的 agent context
+- `systemMessage`：可在 `beforeModel` 或 `wrapModelCall` 中追加系统消息
 - `runId`、`turn`、`maxTurns`、`requestId`
+- `inputBudget`：本轮调用的输入预算配置
+- `budget`：当前 turn 的输入预算快照（由 `ContextBudgetMiddleware` 计算）
 
 特有字段：
 

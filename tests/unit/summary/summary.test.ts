@@ -3,6 +3,7 @@ import {AIMessage, HumanMessage, SystemMessage, type BaseMessage} from '@langcha
 import type {BaseChatModel} from '@langchain/core/language_models/chat_models';
 import {createAgent} from '@core/agents';
 import {createAgentMemoryCheckpointer} from '@core/checkpoint';
+import {estimateModelInputTokens} from '@core/middleware/context-budget';
 import {MiddlewarePipeline, type ModelCallContext} from '@core/middleware';
 import {createSummaryMiddleware, readSummaryRecord} from '@core/middleware/summary';
 
@@ -138,6 +139,43 @@ describe('summary middleware', () => {
     expect(String(context.state.messages[0]?.content)).toBe('caller instructions');
     expect(context.state.messages[1]).toBeInstanceOf(SystemMessage);
     expect(readSummaryRecord(context.state.messages)?.content).toBe('older conversation summary');
+  });
+
+  it('should compact against the full model input budget, including injected system messages', async () => {
+    const middleware = createSummaryMiddleware({
+      maxMessages: 10,
+      keepLastMessages: 2,
+      estimateTokens: ({systemMessage, messages}) =>
+        estimateModelInputTokens({systemMessage, messages}),
+      summarize: () => 'budget summary',
+    });
+
+    const pipeline = new MiddlewarePipeline([middleware]);
+    const messages = [
+      new HumanMessage('one'),
+      new AIMessage('two'),
+      new HumanMessage('three'),
+      new AIMessage('four'),
+      new HumanMessage('five'),
+    ];
+
+    const context: ModelCallContext = {
+      state: {messages},
+      messages,
+      runtime: {context: {}},
+      systemMessage: ['x'.repeat(120)],
+      runId: 'run-budget',
+      turn: 1,
+      maxTurns: 8,
+      requestId: 'req-budget',
+      inputBudget: {maxInputTokens: 40},
+    };
+
+    await pipeline.beforeModel(context);
+
+    expect(readSummaryRecord(context.state.messages)?.content).toBe('budget summary');
+    expect(context.state.messages[0]).toBeInstanceOf(SystemMessage);
+    expect(context.state.messages).toHaveLength(3);
   });
 
   it('should preserve the full summary across later compactions even when model-visible content is truncated', async () => {

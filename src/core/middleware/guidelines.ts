@@ -102,15 +102,13 @@ function discoverGuidelineFiles(options: WorkspaceFileOptions & {userHome: strin
 export function createGuidelinesMiddleware(content?: string) {
   return createMiddleware({
     name: 'GuidelinesMiddleware',
-    async wrapModelCall(context, handler) {
+    async beforeModel(context) {
       if (!content) {
-        return handler(context);
+        return undefined;
       }
 
-      return handler({
-        ...context,
-        systemMessage: context.systemMessage.concat(content),
-      });
+      context.systemMessage.push(content);
+      return undefined;
     },
   });
 }

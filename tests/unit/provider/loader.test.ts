@@ -14,7 +14,7 @@ describe("loadModelRoutingConfig", () => {
         providers: [
             {
                 name: "openai",
-                models: ["gpt-4o"],
+                models: [{id: "gpt-4o"}],
             },
         ],
         router: {

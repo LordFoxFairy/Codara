@@ -1,6 +1,7 @@
 import type {BaseMessage} from '@langchain/core/messages';
 import type {
   AgentResult,
+  AgentState,
   AgentStatus,
   AgentType,
   AgentRuntimeContext,
@@ -8,6 +9,7 @@ import type {
 } from '@core/agents/contract/agent';
 import type {
   AgentCheckpoint,
+  AgentCheckpointState,
   AgentCheckpointInfo,
   AgentCheckpointStatus,
   AgentCheckpointSummary,
@@ -83,6 +85,55 @@ export function summarizeCheckpointInfo(info: AgentCheckpointInfo): AgentCheckpo
     turns: info.turns ?? 0,
     ...(info.errorMessage ? {errorMessage: info.errorMessage} : {}),
   };
+}
+
+export function toAgentState(threadId: string, state: AgentRuntimeState): AgentState {
+  return {
+    threadId,
+    agentType: state.agentType,
+    messages: [...state.messages],
+    context: cloneContext(state.context),
+    values: cloneValues(state.values),
+    status: state.status,
+    ...(state.pendingPause ? {pendingPause: cloneOptionalPause(state.pendingPause)} : {}),
+  };
+}
+
+export function toCheckpointState(state: AgentRuntimeState): AgentCheckpointState {
+  return {
+    agentType: state.agentType,
+    messages: [...state.messages],
+    context: cloneContext(state.context),
+    values: cloneValues(state.values),
+    ...(state.pendingPause ? {pendingPause: cloneOptionalPause(state.pendingPause)} : {}),
+  };
+}
+
+export function toCheckpointInfo(
+  state: AgentRuntimeState,
+  source: AgentCheckpointInfo['source'],
+  result?: AgentResult
+): AgentCheckpointInfo {
+  return {
+    source,
+    status: toCheckpointStatus(state.status, result),
+    ...(result?.reason ? {reason: result.reason} : {}),
+    ...(result ? {turns: result.turns} : {}),
+    ...(result?.error ? {errorMessage: result.error.message} : {}),
+    step: state.step + 1,
+    createdAt: new Date().toISOString(),
+  };
+}
+
+export function restoreCheckpointMetadata(
+  state: MutableAgentState,
+  record: AgentCheckpoint
+): void {
+  state.agentType = record.state.agentType;
+  state.checkpointId = record.ref.checkpointId;
+  state.step = record.info.step;
+  state.updatedAt = record.info.createdAt;
+  state.lastResult = summarizeCheckpointInfo(record.info);
 }
 
 export function deriveRuntimeStatus(

@@ -2,12 +2,11 @@ import {describe, expect, it} from 'bun:test';
 import {mkdir, mkdtemp, writeFile} from 'node:fs/promises';
 import path from 'node:path';
 import {tmpdir} from 'node:os';
-import {AIMessage} from '@langchain/core/messages';
 import {
   createGuidelinesMiddleware,
   loadGuidelines,
 } from '@core/middleware/guidelines';
-import type {ModelCallContext} from '@core/middleware';
+import type {BeforeModelContext} from '@core/middleware';
 
 describe('AGENTS guidelines', () => {
   it('should resolve global and project AGENTS.md locations from cwd up to the workspace root', async () => {
@@ -65,7 +64,7 @@ describe('AGENTS guidelines', () => {
 
   it('should inject preloaded guideline content', async () => {
     const middleware = createGuidelinesMiddleware('# AGENTS Guidelines\n\nOriginal rule.\n');
-    const context: ModelCallContext = {
+    const context: BeforeModelContext = {
       state: {messages: []},
       messages: [],
       runtime: {context: {}, agentContext: {}},
@@ -76,11 +75,8 @@ describe('AGENTS guidelines', () => {
       requestId: 'req_1',
     };
 
-    const first = await middleware.wrapModelCall?.(context, async (request) => {
-      expect(request?.systemMessage[1]).toContain('Original rule.');
-      return new AIMessage('ok');
-    });
-    expect(first?.content).toBe('ok');
+    await middleware.beforeModel?.(context);
+    expect(context.systemMessage[1]).toContain('Original rule.');
   });
 
   it('should preserve root-to-cwd guideline order in loaded files', async () => {

@@ -57,7 +57,7 @@ export function createTaskTool(options: CreateTaskToolOptions): StructuredToolIn
   return tool(
     async ({prompt, subagent_type, max_turns}: TaskToolInput, config) => {
       const profile = resolveSubagentDefinition(
-        readAgentSkillsRuntime(config?.configurable?.agentContext),
+        readAgentSkillsRuntime(config?.configurable?.runtimeContext ?? config?.configurable?.agentContext),
         subagent_type,
       );
       const resolvedRuntime = await resolveDefinitionRuntime(options, profile);

@@ -1,19 +1,39 @@
-import {describe, expect, it} from 'bun:test';
+import {afterEach, describe, expect, it} from 'bun:test';
 import {HumanMessage, ToolMessage} from '@langchain/core/messages';
 import {tool} from '@langchain/core/tools';
 import {z} from 'zod';
 import {createAgent} from '@core/agents';
-import {ChatModelFactory, loadModelRoutingConfig, ModelRegistry} from '@core/provider';
+import {ChatModelFactory, ModelRegistry, parseModelRoutingConfig} from '@core/provider';
+import {createMockRoutingConfig, startMockOpenAIServer} from '../provider/mock-openai-server';
 
 describe('Agent Loop End-to-End', () => {
-  it('应通过 bindTools + createAgent 完成一轮真实工具调用', async () => {
-    const deepseekKey = process.env.DEEPSEEK_API_KEY?.trim();
-    expect(Boolean(deepseekKey && !deepseekKey.startsWith('your-'))).toBe(true);
+  const cleanups: Array<() => void> = [];
 
-    const config = await loadModelRoutingConfig();
+  afterEach(() => {
+    while (cleanups.length > 0) {
+      cleanups.pop()?.();
+    }
+  });
+
+  it('应通过 provider stack + createAgent 完成一轮真实工具调用', async () => {
+    const server = startMockOpenAIServer([
+      {
+        toolCalls: [
+          {
+            id: 'echo_call',
+            name: 'echo_text',
+            arguments: {text: 'ping'},
+          },
+        ],
+      },
+      {content: 'done'},
+    ]);
+    cleanups.push(() => server.stop());
+
+    const config = parseModelRoutingConfig(createMockRoutingConfig(server.baseUrl));
     const registry = new ModelRegistry(config);
     const factory = new ChatModelFactory(registry);
-    const model = await factory.create('deepseek');
+    const model = await factory.create('mock');
 
     const echoTool = tool(async ({text}: {text: string}) => `ECHO:${text}`, {
       name: 'echo_text',
@@ -44,5 +64,6 @@ describe('Agent Loop End-to-End', () => {
     const toolMessage = result.state.messages.find((m) => m instanceof ToolMessage) as ToolMessage;
     expect(toolMessage).toBeDefined();
     expect(String(toolMessage.content)).toContain('ECHO:ping');
-  }, 120_000);
+    expect(server.requests).toHaveLength(2);
+  });
 });

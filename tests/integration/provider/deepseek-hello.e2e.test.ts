@@ -1,7 +1,16 @@
-import {describe, expect, it} from "bun:test";
-import {ChatModelFactory, loadModelRoutingConfig, ModelRegistry} from "@core/provider";
+import {afterEach, describe, expect, it} from "bun:test";
+import {ChatModelFactory, loadModelRoutingConfig, ModelRegistry, parseModelRoutingConfig} from "@core/provider";
+import {createMockRoutingConfig, startMockOpenAIServer} from "./mock-openai-server";
 
 describe("DeepSeek End-to-End", () => {
+    const cleanups: Array<() => void> = [];
+
+    afterEach(() => {
+        while (cleanups.length > 0) {
+            cleanups.pop()?.();
+        }
+    });
+
     it("应正常加载配置并解析 deepseek 路由", async () => {
         const config = await loadModelRoutingConfig();
         const registry = new ModelRegistry(config);
@@ -19,20 +28,19 @@ describe("DeepSeek End-to-End", () => {
         expect(typeof model.invoke).toBe("function");
     });
 
-    it("应能真实调用 hello", async () => {
-        const deepseekKey = process.env.DEEPSEEK_API_KEY?.trim();
-        expect(Boolean(deepseekKey && !deepseekKey.startsWith("your-"))).toBe(true);
+    it("应能通过本地 openai 兼容 provider 完成一次真实 invoke", async () => {
+        const server = startMockOpenAIServer([{content: "hello from mock provider"}]);
+        cleanups.push(() => server.stop());
 
-        const config = await loadModelRoutingConfig();
+        const config = parseModelRoutingConfig(createMockRoutingConfig(server.baseUrl));
         const registry = new ModelRegistry(config);
         const factory = new ChatModelFactory(registry);
-        const model = await factory.create("deepseek");
+        const model = await factory.create("mock");
         const response = await model.invoke("hello");
-        const text = typeof response.text === "string"
-            ? response.text.trim()
-            : String(response.content ?? "").trim();
 
-        console.log("deepseek hello text:", text);
+        const text = String(response.content ?? "").trim();
         expect(text.length).toBeGreaterThan(0);
-    }, 120_000);
+        expect(text).toContain("hello from mock provider");
+        expect(server.requests).toHaveLength(1);
+    });
 });

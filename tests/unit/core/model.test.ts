@@ -14,13 +14,16 @@ const baseConfig: ModelRoutingConfig = {
       name: 'openrouter',
       baseUrl: 'https://openrouter.ai/api/v1',
       apiKey: 'sk-test-openrouter',
-      models: ['anthropic/claude-sonnet-4', 'anthropic/claude-opus-4'],
+      models: [
+        {id: 'anthropic/claude-sonnet-4', contextWindow: 200_000, maxOutputTokens: 8_192},
+        {id: 'anthropic/claude-opus-4'},
+      ],
     },
     {
       name: 'deepseek',
       baseUrl: 'https://api.deepseek.com/v1',
       apiKey: 'sk-test-deepseek',
-      models: ['deepseek-chat'],
+      models: [{id: 'deepseek-chat', contextWindow: 64_000, maxOutputTokens: 8_000}],
     },
   ],
   routerRules: [
@@ -53,6 +56,8 @@ describe('Codara model facade', () => {
     expect(catalog.hasAlias('default')).toBe(true);
     expect(catalog.getInfo().alias).toBe('default');
     expect(catalog.getInfo('deepseek').provider).toBe('deepseek');
+    expect(catalog.getInfo('sonnet').contextWindow).toBe(200_000);
+    expect(catalog.getInfo('deepseek').maxOutputTokens).toBe(8_000);
   });
 
   it('should create a chat model through the default alias when alias is omitted', async () => {

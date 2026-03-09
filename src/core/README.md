@@ -64,6 +64,89 @@ createCodara(...)
 - subagent definition 已区分“当前真的生效”的字段与 `hints` 元数据；后续仍应继续克制，不把 hints 重新做成自动 runtime 覆盖。
 - shared task tools 当前返回文本结果，后续只有在出现真实消费者时再升级成结构化 payload。
 
+## Runtime 结构
+
+入口链继续收敛后，当前可以稳定理解成：
+
+```text
+src/index.ts
+  -> @core facade exports
+    -> createCodara(...)
+      -> createCodaraSessionHost(...)
+        -> mergeCodaraAgentOptions(...)
+        -> loadCodaraSourceProjection(...)
+        -> restore latest checkpoint
+        -> createCodaraAgent(...)
+          -> resolveCodaraAgentOptions(...)
+            -> createCodaraTools(...)
+            -> createCodaraMiddlewares(...)
+          -> createAgent(...)
+            -> runtime loop / checkpoint / Task / subagent
+```
+
+默认 middleware 顺序：
+
+1. `logging`
+2. `guidelines`
+3. `memory`
+4. `skills`
+5. `context-budget`
+6. `summary`
+7. caller middleware
+8. `hil`
+
+状态边界：
+
+- `messages`
+  - 对话历史
+  - `summary` 在这一层做压缩并通过 checkpoint 持久化
+- `context`
+  - 持久 agent context + 本轮 invoke context + transient runtime data 的有效合成视图
+  - `skills` 这类可重建派生数据只存在于运行期，不进入 checkpoint
+  - 不承载 `todo` 这类 agent-owned 状态
+- `values`
+  - agent 内部轻量状态
+  - `todo` 在这里并随 checkpoint 恢复
+
+checkpoint 边界：
+
+- `agents/engine/state.ts`
+  - runtime-facing projection
+  - `runtime -> public AgentState`
+  - `runtime -> checkpoint state/info`
+  - `checkpoint record -> runtime metadata restore`
+- `checkpoint/state.ts`
+  - 存储层序列化 / 反序列化
+
+能力地图：
+
+- `guidelines`
+  - source: `AGENTS.md`
+  - scope: 项目规范
+- `memory`
+  - source: `MEMORY.md`
+  - scope: 长期稳定记忆
+- `summary`
+  - scope: 对话压缩
+  - layer: middleware + `messages`
+  - trigger: 统一输入预算或消息数量阈值
+- `context-budget`
+  - scope: 输入预算估算与超限判定
+  - layer: middleware runtime snapshot
+  - output: 当前 turn 的 budget snapshot
+- `todo`
+  - scope: 单 agent 内部进度
+  - layer: `values`
+- `subagent`
+  - scope: 委派执行
+  - layer: 同一 agent runtime，`agentType = subagent`
+- `Task`
+  - scope: 正式委派工具
+  - data source: `context.skills`
+- `TaskCreate/TaskUpdate/TaskList`
+  - scope: 共享协调层
+  - layer: `TaskStore`
+
 已经确认的边界修正：
 
 - `guards.ts` 这类生命周期前置检查更适合放在 `engine/lifecycle.ts`，因为它们表达的是 agent 生命周期约束，不是泛化的 guards。
@@ -78,6 +161,7 @@ createCodara(...)
 - 工作区根优先从 `cwd` 向上查找 `.codara`、`.git`、`package.json`
 - 在 session 创建阶段生成内容投影
 - 后续模型调用复用同一份内容
+- 同一个 `Codara` host 可通过 `reloadSources()` 显式刷新 source snapshot
 - 默认注入顺序早于 `SkillsMiddleware`
 
 `AGENTS.md` 在当前架构中属于项目规范源，不属于：
@@ -94,6 +178,7 @@ createCodara(...)
 - 工作区根优先从 `cwd` 向上查找 `.codara`、`.git`、`package.json`
 - 在 session 创建阶段生成内容投影
 - `middleware/memory.ts` 只负责 `MEMORY.md` 的加载与截断，用于投影长期稳定记忆
+- 同一个 `Codara` host 可通过 `reloadSources()` 显式刷新 source snapshot
 - 默认注入顺序位于 `AGENTS.md` 之后、`SkillsMiddleware` 之前
 
 `MEMORY.md` 在当前架构中属于长期记忆源，不属于：
@@ -109,6 +194,7 @@ createCodara(...)
   - 压缩较早消息
   - 将较早消息替换为持久化的 summary message
   - 保留最近消息继续参与后续模型调用
+- 它现在会优先基于完整模型输入预算判断是否压缩，预算包含已注入的 `guidelines` / `memory` / `skills` system sections
 - 默认关闭，只有显式传入 `summary` 配置时才启用
 - `summary` 不写入 `MEMORY.md`，仍只通过 checkpoint 持久化 agent 运行态
 

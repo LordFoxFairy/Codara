@@ -2,6 +2,7 @@ import {createAgentMemoryCheckpointer} from '@core/checkpoint/state';
 import type {AgentCheckpointer} from '@core/checkpoint/state';
 import {createSession, type Session} from '@core/sessions';
 import {createCodaraAgent} from '@core/codara/agent';
+import {mergeCodaraAgentOptions} from '@core/codara/options';
 import {loadCodaraSourceProjection} from '@core/codara/source-stack';
 import type {CodaraAgentOptions, CodaraSessionOptions} from '@core/codara/types';
 import type {
@@ -19,6 +20,7 @@ import type {SessionState} from '@core/sessions';
 interface CodaraSessionHost {
   session(options?: CodaraSessionOptions): Promise<Session>;
   getState(): Promise<SessionState>;
+  reloadSources(): Promise<void>;
   reset(): Promise<void>;
   dispose(): Promise<void>;
   invoke(input?: AgentInput, config?: AgentInvokeConfig): Promise<AgentResult>;
@@ -84,6 +86,13 @@ export function createCodaraSessionHost(options: CodaraAgentOptions = {}): Codar
     async getState() {
       return (await getDefaultSession()).getState();
     },
+    async reloadSources() {
+      if (!defaultSessionPromise) {
+        return;
+      }
+
+      defaultSessionPromise = undefined;
+    },
     async reset() {
       await (await getDefaultSession()).reset();
     },
@@ -109,38 +118,6 @@ export function createCodaraSessionHost(options: CodaraAgentOptions = {}): Codar
   };
 }
 
-function mergeCodaraAgentOptions(
-  base: CodaraAgentOptions,
-  override: CodaraAgentOptions,
-  checkpointer: AgentCheckpointer
-): CodaraAgentOptions {
-  return {
-    ...base,
-    ...override,
-    tools: override.tools ?? base.tools,
-    builtinTools: override.builtinTools ?? base.builtinTools,
-    cwd: override.cwd ?? base.cwd,
-    model: override.model ?? base.model,
-    alias: override.alias ?? base.alias,
-    catalog: override.catalog ?? base.catalog,
-    modelResolver: override.modelResolver ?? base.modelResolver,
-    config: override.config ?? base.config,
-    threadId: override.threadId ?? base.threadId,
-    checkpointer: override.checkpointer ?? base.checkpointer ?? checkpointer,
-    checkpoint: override.checkpoint ?? base.checkpoint,
-    middleware: override.middleware ?? override.middlewares ?? base.middleware ?? base.middlewares,
-    messages: override.messages ?? base.messages,
-    context: override.context ?? base.context,
-    handleToolErrors: override.handleToolErrors ?? base.handleToolErrors,
-    skills: mergeSkillsOptions(base.skills, override.skills),
-    guidelines: override.guidelines ?? base.guidelines,
-    memory: override.memory ?? base.memory,
-    summary: override.summary ?? base.summary,
-    hil: override.hil ?? base.hil,
-    logging: override.logging ?? base.logging,
-  };
-}
-
 async function resolveCheckpoint(options: {
   restore?: 'latest' | 'never';
   threadId?: string;
@@ -151,23 +128,4 @@ async function resolveCheckpoint(options: {
   }
 
   return options.checkpointer.getLatest(options.threadId);
-}
-
-function mergeSkillsOptions(
-  base: CodaraAgentOptions['skills'],
-  override: CodaraAgentOptions['skills']
-): CodaraAgentOptions['skills'] {
-  if (override === false) {
-    return false;
-  }
-  if (override !== undefined) {
-    if (base === false) {
-      return override;
-    }
-    return {
-      ...(base ?? {}),
-      ...override,
-    };
-  }
-  return base;
 }

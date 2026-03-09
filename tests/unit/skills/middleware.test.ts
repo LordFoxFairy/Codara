@@ -2,7 +2,7 @@ import {describe, expect, it} from 'bun:test'
 import {mkdir, mkdtemp, writeFile} from 'node:fs/promises'
 import {tmpdir} from 'node:os'
 import path from 'node:path'
-import {AIMessage, HumanMessage, type BaseMessage} from '@langchain/core/messages'
+import {HumanMessage, type BaseMessage} from '@langchain/core/messages'
 import {
   createSkillsMiddleware,
   FileSystemSkillStore,
@@ -48,20 +48,16 @@ describe('createSkillsMiddleware', () => {
     const middleware = createSkillsMiddleware({store})
     const context = createBaseContext('run_prompt')
 
-    let capturedSystemMessage: string[] = []
-    await middleware.wrapModelCall?.(context, async (request = context) => {
-      capturedSystemMessage = request.systemMessage
-      return new AIMessage('ok')
-    })
+    await middleware.beforeModel?.(context)
 
-    const combined = capturedSystemMessage.join('\n')
+    const combined = context.systemMessage.join('\n')
     expect(combined).toContain('Skills System')
     expect(combined).toContain('demo-skill')
     expect(combined).toContain('/tmp/project/.codara/skills/demo-skill/SKILL.md')
     expect(combined).toContain('Allowed tools: read_file')
   })
 
-  it('should populate shared skills runtime data into agent context', async () => {
+  it('should populate shared skills runtime data into runtime context only', async () => {
     const root = await mkdtemp(path.join(tmpdir(), 'codara-skills-runtime-'))
     const skillDir = path.join(root, 'demo-skill')
     const agentsDir = path.join(skillDir, 'agents')
@@ -94,8 +90,9 @@ You are a Reviewer subagent.
     const context = createBaseContext('run_shared_runtime')
 
     const update = await middleware.beforeAgent?.(context)
-    const runtime = (update?.context as {skills?: {agentDefinitions?: Record<string, {name: string}>}} | undefined)?.skills
+    const runtime = (update?.runtimeContext as {skills?: {agentDefinitions?: Record<string, {name: string}>}} | undefined)?.skills
     expect(runtime?.agentDefinitions?.Reviewer?.name).toBe('Reviewer')
+    expect(update?.context).toBeUndefined()
   })
 
   it('should work with real FileSystemSkillStore', async () => {
@@ -123,13 +120,9 @@ custom-threshold: 0.8
     const middleware = createSkillsMiddleware({store})
     const context = createBaseContext('run_real_store')
 
-    let capturedSystemMessage: string[] = []
-    await middleware.wrapModelCall?.(context, async (request = context) => {
-      capturedSystemMessage = request.systemMessage
-      return new AIMessage('ok')
-    })
+    await middleware.beforeModel?.(context)
 
-    expect(capturedSystemMessage.join('\n')).toContain('real store skill')
+    expect(context.systemMessage.join('\n')).toContain('real store skill')
   })
 
   it('should delegate caching strategy to store and call discover per model call', async () => {
@@ -154,8 +147,8 @@ custom-threshold: 0.8
     const runId = 'run_store_cache'
     const context = createBaseContext(runId)
 
-    await middleware.wrapModelCall?.(context, async () => new AIMessage('ok'))
-    await middleware.wrapModelCall?.({...context, turn: 2, requestId: `${runId}-req-2`}, async () => new AIMessage('ok'))
+    await middleware.beforeModel?.(context)
+    await middleware.beforeModel?.({...context, turn: 2, requestId: `${runId}-req-2`})
 
     expect(discoverCalls).toBe(2)
   })
