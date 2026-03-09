@@ -21,7 +21,9 @@ export async function executeToolCall(
   tool: StructuredToolInterface | undefined,
   handleToolErrors: ToolErrorHandler,
   state: Pick<AgentState, 'agentType' | 'messages' | 'context' | 'values'>,
-  runtimeContext?: AgentState['context'],
+  runtime?: {
+    context: AgentState['context'];
+  },
   normalizeValues?: (values: AgentState['values']) => AgentState['values']
 ): Promise<ToolMessage> {
   if (!tool) {
@@ -39,22 +41,29 @@ export async function executeToolCall(
       configurable: {
         agentType: state.agentType,
         agentContext: state.context,
-        runtimeContext: runtimeContext ?? state.context,
+        runtimeContext: runtime?.context ?? state.context,
       },
       metadata: {
         agentType: state.agentType,
       },
     });
     if (ToolMessage.isInstance(result)) {
-      return result.tool_call_id ? result : new ToolMessage({
+      const toolMessage = result.tool_call_id ? result : new ToolMessage({
         content: result.content,
         artifact: result.artifact,
         status: result.status,
         tool_call_id: toolCallId,
       });
+
+      const artifactCommand = readCommandArtifact(toolMessage.artifact);
+      if (artifactCommand) {
+        return applyToolCommand(artifactCommand, toolCallId, state, runtime, normalizeValues, toolMessage);
+      }
+
+      return toolMessage;
     }
     if (isCommand(result)) {
-      return applyToolCommand(result, toolCallId, state, normalizeValues);
+      return applyToolCommand(result, toolCallId, state, runtime, normalizeValues);
     }
     const content = String(result);
 
@@ -115,7 +124,11 @@ function applyToolCommand(
   command: Command,
   toolCallId: string,
   state: Pick<AgentState, 'agentType' | 'messages' | 'context' | 'values'>,
-  normalizeValues?: (values: AgentState['values']) => AgentState['values']
+  runtime?: {
+    context: AgentState['context'];
+  },
+  normalizeValues?: (values: AgentState['values']) => AgentState['values'],
+  fallbackToolMessage?: ToolMessage
 ): ToolMessage {
   const commandMessages = normalizeCommandMessages(command.update.messages, toolCallId);
   const toolMessage = findCommandToolMessage(commandMessages, toolCallId);
@@ -124,16 +137,20 @@ function applyToolCommand(
   applyAgentStateUpdate(state, {
     ...command.update,
     messages: extraMessages,
-  });
+  }, runtime);
 
   if (command.update.values && normalizeValues) {
     state.values = normalizeValues(state.values ?? {});
   }
 
-  return toolMessage ?? new ToolMessage({
+  return toolMessage ?? fallbackToolMessage ?? new ToolMessage({
     content: 'Command applied.',
     tool_call_id: toolCallId,
   });
+}
+
+function readCommandArtifact(value: unknown): Command | undefined {
+  return isCommand(value) ? value : undefined;
 }
 
 function normalizeCommandMessages(messages: BaseMessage[] | undefined, toolCallId: string): BaseMessage[] {
