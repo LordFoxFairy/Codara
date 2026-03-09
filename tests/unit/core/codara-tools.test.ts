@@ -20,7 +20,7 @@ describe('Codara tools', () => {
 
   it('should let caller tools override builtin tools with the same name', () => {
     const overrideRead = {
-      name: 'read',
+      name: 'read_file',
       description: 'Custom read',
       schema: {} as never,
       invoke: async () => 'override',
@@ -31,6 +31,6 @@ describe('Codara tools', () => {
     });
 
     expect(tools.some((tool) => tool === overrideRead)).toBe(true);
-    expect(tools.filter((tool) => tool.name === 'read')).toHaveLength(1);
+    expect(tools.filter((tool) => tool.name === 'read_file')).toHaveLength(1);
   });
 });
