@@ -1,6 +1,14 @@
 export * from '@core/middleware/types';
 export * from '@core/middleware/pipeline';
-export * from '@core/middleware/skills';
+export {
+  createSkillsMiddleware,
+  FileSystemSkillStore,
+  getDefaultSkillSources,
+} from '@core/skills';
+export type {
+  SkillMetadata,
+  SkillStore,
+} from '@core/skills';
 export * from '@core/middleware/logging';
 export * from '@core/middleware/hil';
 export * from '@core/middleware/memory';
