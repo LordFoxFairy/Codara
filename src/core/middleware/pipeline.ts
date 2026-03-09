@@ -182,7 +182,7 @@ export class MiddlewarePipeline {
     context: BaseExecutionContext,
     update: Parameters<typeof applyAgentStateUpdate>[1]
   ): void {
-    applyAgentStateUpdate(context.state, update);
+    applyAgentStateUpdate(context.state, update, context.runtime);
 
     if (update?.values) {
       context.state.values = this.normalizeValues(context.state.values ?? {});

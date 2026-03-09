@@ -10,6 +10,10 @@ export type AgentRuntimeContext = Record<string, unknown>;
 export type AgentRuntimeValues = Record<string, unknown>;
 export type AgentStatus = 'idle' | 'running' | 'paused' | 'closed';
 export type AgentType = 'main' | 'subagent';
+export interface AgentInputBudget {
+  maxInputTokens?: number;
+  reservedTokens?: number;
+}
 
 /**
  * Agent 对外状态。
@@ -95,6 +99,8 @@ export interface CreateAgentOptions {
   context?: AgentRuntimeContext;
   /** 初始持久状态值（供 middleware state 使用）。 */
   values?: AgentRuntimeValues;
+  /** 模型输入预算，用于 context compaction 等能力。 */
+  inputBudget?: AgentInputBudget;
 }
 
 /** invoke(...) 调用配置。 */
@@ -103,6 +109,8 @@ export interface AgentInvokeConfig {
   recursionLimit?: number;
   /** 中间件可见的运行时上下文。 */
   context?: AgentRuntimeContext;
+  /** 可选的本次调用输入预算覆盖。 */
+  inputBudget?: AgentInputBudget;
   /** 是否在稳定边界持久化 checkpoint，默认 true。 */
   checkpoint?: boolean;
   /** 可选 beforeRun hook。 */

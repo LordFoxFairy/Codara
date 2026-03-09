@@ -1,6 +1,12 @@
 import {SystemMessage, type BaseMessage} from '@langchain/core/messages';
 import type {AgentRuntimeContext} from '@core/agents';
 import {createMiddleware, type BaseMiddleware, type BeforeModelContext} from '@core/middleware';
+import {
+  estimateModelInputTokens,
+  refreshContextBudget,
+  type ContextBudgetEstimator,
+  type ContextBudgetEstimateInput,
+} from '@core/middleware/context-budget';
 
 const DEFAULT_MAX_MESSAGES = 30;
 const DEFAULT_KEEP_LAST_MESSAGES = 12;
@@ -35,6 +41,8 @@ export interface SummaryOptions {
   maxMessages?: number;
   keepLastMessages?: number;
   maxChars?: number;
+  maxInputTokens?: number;
+  estimateTokens?: ContextBudgetEstimator;
 }
 
 /** 创建对话摘要中间件。 */
@@ -74,46 +82,41 @@ export function readSummaryRecord(messages: BaseMessage[]): SummaryRecord | unde
 }
 
 async function maybeCompactHistory(context: BeforeModelContext, options: Required<SummaryOptions>): Promise<void> {
-  const summaryState = splitSummaryState(context.state.messages);
+  while (shouldCompactHistory(context, options)) {
+    const summaryState = splitSummaryState(context.state.messages);
+    const recentStart = resolveRecentStart(summaryState.conversationMessages, options.keepLastMessages);
+    const olderMessages = summaryState.conversationMessages.slice(0, recentStart);
+    if (olderMessages.length === 0) {
+      return;
+    }
 
-  if (summaryState.conversationMessages.length <= options.maxMessages) {
-    return;
+    const nextSummary = await options.summarize({
+      previousSummary: summaryState.summary?.content,
+      messages: olderMessages,
+      context: context.runtime.context,
+      threadId: readThreadId(context.runtime.context),
+      turn: context.turn,
+    });
+
+    const summaryMessage = createSummaryMessage({
+      content: nextSummary,
+      updatedAt: new Date().toISOString(),
+      summarizedMessages: (summaryState.summary?.summarizedMessages ?? 0) + olderMessages.length,
+    }, options.maxChars);
+    if (!summaryMessage) {
+      return;
+    }
+
+    const recentMessages = summaryState.conversationMessages.slice(recentStart);
+    context.state.messages = [
+      ...summaryState.leadingSystemMessages,
+      summaryMessage,
+      ...recentMessages,
+    ];
+    context.messages.length = 0;
+    context.messages.push(...context.state.messages);
+    refreshContextBudget(context, options.estimateTokens);
   }
-
-  const recentStart = resolveRecentStart(
-    summaryState.conversationMessages,
-    options.keepLastMessages
-  );
-  const olderMessages = summaryState.conversationMessages.slice(0, recentStart);
-  if (olderMessages.length === 0) {
-    return;
-  }
-
-  const nextSummary = await options.summarize({
-    previousSummary: summaryState.summary?.content,
-    messages: olderMessages,
-    context: context.runtime.context,
-    threadId: readThreadId(context.runtime.context),
-    turn: context.turn,
-  });
-
-  const summaryMessage = createSummaryMessage({
-    content: nextSummary,
-    updatedAt: new Date().toISOString(),
-    summarizedMessages: (summaryState.summary?.summarizedMessages ?? 0) + olderMessages.length,
-  }, options.maxChars);
-  if (!summaryMessage) {
-    return;
-  }
-
-  const recentMessages = summaryState.conversationMessages.slice(recentStart);
-  context.state.messages = [
-    ...summaryState.leadingSystemMessages,
-    summaryMessage,
-    ...recentMessages,
-  ];
-  context.messages.length = 0;
-  context.messages.push(...context.state.messages);
 }
 
 function splitSummaryState(messages: BaseMessage[]): {
@@ -253,6 +256,8 @@ function normalizeOptions(options: SummaryOptions): Required<SummaryOptions> {
   const maxMessages = options.maxMessages ?? DEFAULT_MAX_MESSAGES;
   const keepLastMessages = options.keepLastMessages ?? DEFAULT_KEEP_LAST_MESSAGES;
   const maxChars = options.maxChars ?? DEFAULT_MAX_CHARS;
+  const maxInputTokens = options.maxInputTokens ?? 0;
+  const estimateTokens = options.estimateTokens ?? estimateModelInputTokens;
 
   if (maxMessages < 2) {
     throw new Error('SummaryMiddleware maxMessages must be at least 2');
@@ -266,13 +271,42 @@ function normalizeOptions(options: SummaryOptions): Required<SummaryOptions> {
   if (maxChars < 1) {
     throw new Error('SummaryMiddleware maxChars must be positive');
   }
+  if (maxInputTokens < 0) {
+    throw new Error('SummaryMiddleware maxInputTokens must be zero or positive');
+  }
 
   return {
     summarize: options.summarize,
     maxMessages,
     keepLastMessages,
     maxChars,
+    maxInputTokens,
+    estimateTokens,
   };
+}
+
+function shouldCompactHistory(context: BeforeModelContext, options: Required<SummaryOptions>): boolean {
+  const summaryState = splitSummaryState(context.state.messages);
+  if (summaryState.conversationMessages.length > options.maxMessages) {
+    return true;
+  }
+
+  const maxInputTokens = options.maxInputTokens > 0
+    ? options.maxInputTokens
+    : (context.inputBudget?.maxInputTokens ?? 0);
+
+  if (maxInputTokens < 1) {
+    return false;
+  }
+
+  const estimate = context.budget?.estimatedInputTokens ?? options.estimateTokens({
+    systemMessage: context.systemMessage,
+    messages: context.state.messages,
+  } as ContextBudgetEstimateInput);
+  const availableInputTokens = context.budget?.availableInputTokens
+    ?? Math.max(0, maxInputTokens - (context.inputBudget?.reservedTokens ?? 0));
+
+  return estimate > availableInputTokens;
 }
 
 function readThreadId(context: Record<string, unknown>): string | undefined {

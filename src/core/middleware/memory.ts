@@ -60,15 +60,13 @@ export async function loadMemory(options: MemoryOptions = {}): Promise<LoadedMem
 export function createMemoryMiddleware(content?: string) {
   return createMiddleware({
     name: 'MemoryMiddleware',
-    async wrapModelCall(context, handler) {
+    async beforeModel(context) {
       if (!content) {
-        return handler(context);
+        return undefined;
       }
 
-      return handler({
-        ...context,
-        systemMessage: context.systemMessage.concat(content),
-      });
+      context.systemMessage.push(content);
+      return undefined;
     },
   });
 }

@@ -9,12 +9,12 @@ describe("ModelRegistry", () => {
         name: "openrouter",
         baseUrl: "https://openrouter.ai/api/v1",
         apiKey: "$OPENROUTER_API_KEY",
-        models: ["anthropic/claude-sonnet-4", "openai/gpt-4o"],
+        models: [{id: "anthropic/claude-sonnet-4"}, {id: "openai/gpt-4o"}],
       },
       {
         name: "anthropic",
         apiKey: "$ANTHROPIC_API_KEY",
-        models: ["claude-opus-4"],
+        models: [{id: "claude-opus-4"}],
       },
     ],
     routerRules: [
@@ -97,7 +97,7 @@ describe("ModelRegistry", () => {
       providers: [
         {
           name: "openrouter",
-          models: ["anthropic/claude-sonnet-4"],
+          models: [{id: "anthropic/claude-sonnet-4"}],
         },
       ],
       routerRules: [
@@ -118,7 +118,7 @@ describe("ModelRegistry", () => {
       providers: [
         {
           name: "openrouter",
-          models: ["anthropic/claude-sonnet-4"],
+          models: [{id: "anthropic/claude-sonnet-4"}],
         },
       ],
       routerRules: [
@@ -139,7 +139,7 @@ describe("ModelRegistry", () => {
       providers: [
         {
           name: "openrouter",
-          models: ["anthropic/claude-sonnet-4", "openai/gpt-4o"],
+          models: [{id: "anthropic/claude-sonnet-4"}, {id: "openai/gpt-4o"}],
         },
       ],
       routerRules: [

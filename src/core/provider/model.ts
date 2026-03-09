@@ -1,3 +1,9 @@
+export interface ProviderModelConfig {
+    id: string;
+    contextWindow?: number;
+    maxOutputTokens?: number;
+}
+
 /**
  * 配置中的单个 Provider 定义。
  */
@@ -9,7 +15,7 @@ export interface ProviderConfig {
     /** 字面量密钥或环境变量引用，例如 "$OPENROUTER_API_KEY"。 */
     apiKey?: string;
     /** Provider 允许的模型 ID 列表。 */
-    models: string[];
+    models: ProviderModelConfig[];
 }
 
 /**
@@ -51,4 +57,8 @@ export interface ModelInfo {
     baseUrl?: string;
     /** API 密钥。 */
     apiKey?: string;
+    /** 可选上下文窗口。 */
+    contextWindow?: number;
+    /** 可选最大输出 token。 */
+    maxOutputTokens?: number;
 }

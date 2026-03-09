@@ -213,6 +213,31 @@ describe('MiddlewarePipeline', () => {
     }).toThrow('Middleware "guard" failed in beforeModel: blocked');
   });
 
+  it('should apply runtime-only context updates without persisting them into state.context', async () => {
+    const pipeline = new MiddlewarePipeline([
+      {
+        name: 'runtime_data',
+        beforeAgent: () => ({
+          runtimeContext: {
+            skills: {
+              loaded: true,
+            },
+          },
+        }),
+      },
+    ]);
+
+    const context = createBaseContext();
+    await pipeline.beforeAgent(context);
+
+    expect(context.runtime.context).toEqual({
+      skills: {
+        loaded: true,
+      },
+    });
+    expect(context.state.context).toEqual({});
+  });
+
   it('should include middleware name and stage when wrap hook throws', async () => {
     const toolCall: ToolCall = {
       id: 'call_wrap_error',

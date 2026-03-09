@@ -74,6 +74,7 @@ export type CodaraOptions = CodaraAgentOptions;
 
 export interface Codara {
   session(options?: CodaraSessionOptions): Promise<Session>;
+  reloadSources(): Promise<void>;
   invoke(input?: AgentInput, config?: AgentInvokeConfig): Promise<AgentResult>;
   stream(
     input?: AgentInput,

@@ -94,22 +94,20 @@ export function readTodoState(values: AgentRuntimeValues | undefined): TodoMiddl
 
 export function createWriteTodosTool(options?: Pick<TodoListMiddlewareOptions, 'toolDescription'>) {
   return tool(
-    ({todos}, config) => {
-      return new Command({
-        update: {
-          values: {todos},
-          messages: [
-            new ToolMessage({
-              content: `Updated todo list to ${JSON.stringify(todos)}`,
-              tool_call_id: config.toolCall?.id as string,
-            }),
-          ],
-        },
-      });
+    ({todos}) => {
+      return [
+        `Updated todo list to ${JSON.stringify(todos)}`,
+        new Command({
+          update: {
+            values: {todos},
+          },
+        }),
+      ] as const;
     },
     {
       name: TODO_TOOL_NAME,
       description: options?.toolDescription ?? WRITE_TODOS_DESCRIPTION,
+      responseFormat: 'content_and_artifact',
       schema: z.object({
         todos: z.array(TodoSchema).describe('List of todo items to update'),
       }),

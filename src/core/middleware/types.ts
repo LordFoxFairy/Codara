@@ -10,8 +10,9 @@
 import type {AIMessage, BaseMessage, ToolCall, ToolMessage} from '@langchain/core/messages';
 import type {StructuredToolInterface} from '@langchain/core/tools';
 import {z} from 'zod';
-import type {AgentRuntimeContext, AgentRuntimeValues} from '@core/agents/contract/agent';
+import type {AgentInputBudget, AgentRuntimeContext, AgentRuntimeValues} from '@core/agents/contract/agent';
 import type {AgentStateUpdate} from '@core/agents/command';
+import type {ContextBudgetSnapshot} from '@core/middleware/context-budget';
 
 export interface MiddlewareRuntimeContext {
   /** 本次运行的有效上下文（持久上下文 + 调用时临时覆盖）。 */
@@ -36,6 +37,8 @@ export interface BaseExecutionContext {
   turn: number;
   maxTurns: number;
   requestId: string;
+  inputBudget?: AgentInputBudget;
+  budget?: ContextBudgetSnapshot;
 }
 
 export type BeforeAgentContext = BaseExecutionContext;
