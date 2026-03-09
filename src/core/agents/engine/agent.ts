@@ -224,7 +224,7 @@ class AgentInstance implements Agent {
   ): Promise<void> {
     this.state.lastResult = summarizeResult(result);
     this.state.context = mergeContext({}, result.state.context);
-    this.state.values = cloneValues(result.state.values);
+    this.state.values = this.runtime.pipeline.normalizeValues(cloneValues(result.state.values));
     this.state.pendingPause = readLatestPause(this.state.messages.slice(startIndex));
     this.state.status = this.state.pendingPause ? 'paused' : 'idle';
     this.touch();

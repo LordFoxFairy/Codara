@@ -80,8 +80,6 @@ export const TodoStateSchema = z.object({
   todos: z.array(TodoSchema).default([]),
 });
 
-export type TodoStatus = z.infer<typeof TodoStatusSchema>;
-export type Todo = z.infer<typeof TodoSchema>;
 export type TodoMiddlewareState = z.infer<typeof TodoStateSchema>;
 
 export interface TodoListMiddlewareOptions {
@@ -126,21 +124,18 @@ export function todoListMiddleware(options?: TodoListMiddlewareOptions): BaseMid
     name: 'todoListMiddleware',
     stateSchema: TodoStateSchema,
     tools: [writeTodos],
-    wrapModelCall: (request, handler) =>
-      handler({
+    wrapModelCall: (request, handler) => {
+      const todoState = readTodoState(request.state.values);
+      const nextSystemMessages = request.systemMessage.concat(options?.systemPrompt ?? TODO_LIST_MIDDLEWARE_SYSTEM_PROMPT);
+      const todoSnapshot = formatTodoSnapshot(todoState);
+
+      return handler({
         ...request,
-        systemMessage: request.systemMessage.concat(`\n\n${options?.systemPrompt ?? TODO_LIST_MIDDLEWARE_SYSTEM_PROMPT}`),
-      }),
+        systemMessage: todoSnapshot ? nextSystemMessages.concat(todoSnapshot) : nextSystemMessages,
+      });
+    },
     afterModel: (context) => rejectParallelWriteTodos(context),
   });
-}
-
-export function createTodoListMiddleware(options?: TodoListMiddlewareOptions): BaseMiddleware {
-  return todoListMiddleware(options);
-}
-
-export function createTodoMiddleware(options?: TodoListMiddlewareOptions): BaseMiddleware {
-  return todoListMiddleware(options);
 }
 
 function rejectParallelWriteTodos(context: AfterModelContext): {messages: ToolMessage[]} | undefined {
@@ -163,4 +158,16 @@ function rejectParallelWriteTodos(context: AfterModelContext): {messages: ToolMe
       status: 'error',
     })),
   };
+}
+
+function formatTodoSnapshot(state: TodoMiddlewareState): string | undefined {
+  if (state.todos.length === 0) {
+    return undefined;
+  }
+
+  return [
+    '## Current To-Do List',
+    '',
+    ...state.todos.map((todo, index) => `${index + 1}. [${todo.status}] ${todo.content}`),
+  ].join('\n');
 }

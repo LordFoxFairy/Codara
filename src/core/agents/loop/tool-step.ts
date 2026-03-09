@@ -24,7 +24,14 @@ export async function runToolStep(
       const nextIndex = request?.toolIndex ?? toolIndex;
       const nextTool = request?.tool ?? runtime.tools.get(nextCall.name);
       const nextToolCallId = resolveToolCallId(nextCall, nextIndex);
-      return executeToolCall(nextCall, nextToolCallId, nextTool, runtime.handleToolErrors, run.state);
+      return executeToolCall(
+        nextCall,
+        nextToolCallId,
+        nextTool,
+        runtime.handleToolErrors,
+        run.state,
+        (values) => runtime.pipeline.normalizeValues(values ?? {})
+      );
     });
 
     run.state.messages.push(toolMessage);
@@ -51,7 +58,14 @@ export async function runToolStepStream(
       const nextIndex = request?.toolIndex ?? toolIndex;
       const nextTool = request?.tool ?? runtime.tools.get(nextCall.name);
       const nextToolCallId = resolveToolCallId(nextCall, nextIndex);
-      return executeToolCall(nextCall, nextToolCallId, nextTool, runtime.handleToolErrors, run.state);
+      return executeToolCall(
+        nextCall,
+        nextToolCallId,
+        nextTool,
+        runtime.handleToolErrors,
+        run.state,
+        (values) => runtime.pipeline.normalizeValues(values ?? {})
+      );
     });
 
     run.state.messages.push(toolMessage);
