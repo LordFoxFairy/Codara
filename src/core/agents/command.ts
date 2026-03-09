@@ -1,6 +1,8 @@
 import type {BaseMessage} from '@langchain/core/messages';
 import type {AgentRuntimeContext, AgentRuntimeValues} from '@core/agents/contract/agent';
 
+const RESERVED_AGENT_CONTEXT_KEYS = new Set(['todos', 'summary']);
+
 export interface AgentStateUpdate {
   messages?: BaseMessage[];
   context?: AgentRuntimeContext;
@@ -36,11 +38,20 @@ export function applyAgentStateUpdate(
   }
 
   if (update.context) {
+    assertNoReservedAgentStateInContext(update.context);
     state.context = mergeRecords(state.context, update.context);
   }
 
   if (update.values) {
     state.values = mergeRecords(state.values, update.values);
+  }
+}
+
+function assertNoReservedAgentStateInContext(context: AgentRuntimeContext): void {
+  for (const key of Object.keys(context)) {
+    if (RESERVED_AGENT_CONTEXT_KEYS.has(key)) {
+      throw new Error(`"${key}" is reserved for agent state and cannot be written through context updates`);
+    }
   }
 }
 

@@ -95,6 +95,43 @@ describe('todoListMiddleware', () => {
     expect(toolMessages.every((message) => message.status === 'error')).toBe(true);
   });
 
+  it('should inject the current todo snapshot into model system messages', async () => {
+    const seenSystemMessages: string[][] = [];
+    const pipeline = new MiddlewarePipeline([todoListMiddleware()]);
+    const messages = [new HumanMessage('Continue the task')] as BaseMessage[];
+
+    await pipeline.wrapModelCall(
+      {
+        state: {
+          messages,
+          context: {},
+          values: {
+            todos: [
+              {content: 'Inspect codebase', status: 'completed'},
+              {content: 'Implement todo middleware', status: 'in_progress'},
+            ],
+          },
+        },
+        messages,
+        runtime: {context: {}, agentContext: {}},
+        systemMessage: [],
+        runId: 'run_todo_snapshot',
+        turn: 2,
+        maxTurns: 3,
+        requestId: 'req_todo_snapshot',
+      },
+      async (request) => {
+        seenSystemMessages.push([...(request?.systemMessage ?? [])]);
+        return new AIMessage('done');
+      }
+    );
+
+    expect(seenSystemMessages).toHaveLength(1);
+    expect(seenSystemMessages[0]?.some((message) => message.includes('## Current To-Do List'))).toBe(true);
+    expect(seenSystemMessages[0]?.some((message) => message.includes('[completed] Inspect codebase'))).toBe(true);
+    expect(seenSystemMessages[0]?.some((message) => message.includes('[in_progress] Implement todo middleware'))).toBe(true);
+  });
+
   it('should persist todos through checkpoint restore', async () => {
     const checkpointer = createAgentMemoryCheckpointer();
     const agent = createAgent({
@@ -214,6 +251,16 @@ describe('todoListMiddleware', () => {
       {content: 'First agent task', status: 'in_progress'},
     ]);
     expect(readTodoState(secondAgent.getState().values).todos).toEqual([]);
+  });
+
+  it('should reject invalid seeded todo state', () => {
+    expect(() => createAgent({
+      model: createTodoModel([new AIMessage('done')]),
+      middlewares: [todoListMiddleware()],
+      values: {
+        todos: 'invalid',
+      } as unknown as Record<string, unknown>,
+    })).toThrow('Middleware "todoListMiddleware" state validation failed');
   });
 });
 
