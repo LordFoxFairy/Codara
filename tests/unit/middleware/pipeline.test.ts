@@ -6,7 +6,7 @@ import {z} from 'zod';
 function createBaseContext() {
   const messages = [new HumanMessage('hello')] as BaseMessage[];
   return {
-    state: {messages},
+    state: {messages, context: {}, values: {}},
     messages,
     runtime: {context: {}, agentContext: {}},
     systemMessage: [],
@@ -289,5 +289,67 @@ describe('MiddlewarePipeline', () => {
     expect(() => {
       pipeline.validateContext({userId: 'user-1', tenantId: 'tenant-1'});
     }).not.toThrow();
+  });
+
+  it('should normalize middleware state updates through stateSchema defaults', async () => {
+    const pipeline = new MiddlewarePipeline([
+      {
+        name: 'state_guard',
+        stateSchema: z.object({
+          todos: z.array(z.string()).default([]),
+          active: z.boolean().default(false),
+        }),
+        beforeModel: () => ({
+          values: {
+            active: true,
+          },
+        }),
+      },
+    ]);
+
+    const context = createBaseContext();
+    await pipeline.beforeModel(context);
+
+    expect(context.state.values).toEqual({
+      todos: [],
+      active: true,
+    });
+  });
+
+  it('should reject invalid middleware state updates', async () => {
+    const pipeline = new MiddlewarePipeline([
+      {
+        name: 'state_guard',
+        stateSchema: z.object({
+          todos: z.array(z.string()).default([]),
+        }),
+        beforeModel: () => ({
+          values: {
+            todos: 'invalid',
+          },
+        }),
+      },
+    ]);
+
+    await expect(async () => {
+      await pipeline.beforeModel(createBaseContext());
+    }).toThrow('Middleware "state_guard" failed in beforeModel: Middleware "state_guard" state validation failed');
+  });
+
+  it('should reject reserved agent state keys written through context updates', async () => {
+    const pipeline = new MiddlewarePipeline([
+      {
+        name: 'bad_context',
+        beforeModel: () => ({
+          context: {
+            todos: [{content: 'wrong place'}],
+          },
+        }),
+      },
+    ]);
+
+    await expect(async () => {
+      await pipeline.beforeModel(createBaseContext());
+    }).toThrow('Middleware "bad_context" failed in beforeModel: "todos" is reserved for agent state');
   });
 });
