@@ -5,21 +5,33 @@
  */
 
 import {describe, expect, it} from 'bun:test';
-import {HumanMessage} from '@langchain/core/messages';
-import {ChatModelFactory, loadModelRoutingConfig, ModelRegistry} from '@core/provider';
+import {AIMessage, HumanMessage, ToolMessage, type BaseMessage} from '@langchain/core/messages';
+import type {BaseChatModel} from '@langchain/core/language_models/chat_models';
 import {createAgent} from '@core/agents';
 import {createBuiltinTools} from '@core/tools';
 
+class ScriptedModel {
+  private index = 0;
+
+  constructor(private readonly responses: AIMessage[]) {}
+
+  bindTools(): this {
+    return this;
+  }
+
+  async invoke(messages: BaseMessage[]): Promise<AIMessage> {
+    void messages;
+    const response = this.responses[this.index];
+    if (!response) {
+      throw new Error(`No scripted response at index ${this.index}`);
+    }
+    this.index += 1;
+    return response;
+  }
+}
+
 describe('Basic Integration: Model + Agent + Tools', () => {
   it('应该能够使用内置工具完成文件操作任务', async () => {
-    const apiKey = process.env.DEEPSEEK_API_KEY?.trim();
-    expect(Boolean(apiKey && !apiKey.startsWith('your-'))).toBe(true);
-
-    const config = await loadModelRoutingConfig();
-    const registry = new ModelRegistry(config);
-    const factory = new ChatModelFactory(registry);
-    const model = await factory.create('deepseek');
-
     const tools = createBuiltinTools({
       cwd: process.cwd(),
     });
@@ -36,9 +48,30 @@ describe('Basic Integration: Model + Agent + Tools', () => {
       'web_search',
     ]);
 
+    const globTool = tools.find((tool) => tool.name === 'glob');
+    expect(globTool).toBeDefined();
+
+    const model = new ScriptedModel([
+      new AIMessage({
+        content: '',
+        tool_calls: [
+          {
+            id: 'call_glob_1',
+            name: 'glob',
+            args: {
+              pattern: '**/*.ts',
+              path: 'src/core/tools',
+            },
+            type: 'tool_call',
+          },
+        ],
+      }),
+      new AIMessage('done'),
+    ]) as unknown as BaseChatModel;
+
     const agent = createAgent({
       model,
-      tools
+      tools: globTool ? [globTool] : [],
     });
 
     const result = await agent.invoke(
@@ -51,10 +84,10 @@ describe('Basic Integration: Model + Agent + Tools', () => {
     );
 
     expect(result.reason).toBe('complete');
-    expect(result.turns).toBeGreaterThan(0);
-    expect(result.turns).toBeLessThanOrEqual(10);
+    expect(result.turns).toBe(2);
 
-    const hasToolCall = result.state.messages.some((m) => m._getType() === 'tool');
-    expect(hasToolCall).toBe(true);
-  }, 60_000);
+    const toolMessage = result.state.messages.find((message) => message instanceof ToolMessage) as ToolMessage | undefined;
+    expect(toolMessage).toBeDefined();
+    expect(String(toolMessage?.content ?? '')).toContain('/src/core/tools/');
+  });
 });

@@ -1,7 +1,28 @@
-import {describe, expect, it} from 'bun:test';
+import {afterEach, beforeEach, describe, expect, it, mock} from 'bun:test';
 import {createSearchTool} from '@core/tools';
 
 describe('SearchTool', () => {
+  const originalFetch = globalThis.fetch;
+
+  beforeEach(() => {
+    globalThis.fetch = mock(async () => new Response(JSON.stringify({
+      results: [
+        {title: 'Result 1', url: 'https://example.com/1', content: 'Snippet 1'},
+        {title: 'Result 2', url: 'https://example.com/2', content: 'Snippet 2'},
+        {title: 'Result 3', url: 'https://example.com/3', content: 'Snippet 3'},
+        {title: 'Result 4', url: 'https://example.com/4', content: 'Snippet 4'},
+        {title: 'Result 5', url: 'https://example.com/5', content: 'Snippet 5'},
+      ],
+    }), {
+      status: 200,
+      headers: {'content-type': 'application/json'},
+    })) as unknown as typeof fetch;
+  });
+
+  afterEach(() => {
+    globalThis.fetch = originalFetch;
+  });
+
   it('should have correct name and schema', () => {
     const tool = createSearchTool();
 

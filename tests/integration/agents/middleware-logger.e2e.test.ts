@@ -1,21 +1,33 @@
 import {describe, expect, it} from 'bun:test';
-import {HumanMessage, ToolMessage} from '@langchain/core/messages';
+import {AIMessage, HumanMessage, ToolMessage, type BaseMessage} from '@langchain/core/messages';
+import type {BaseChatModel} from '@langchain/core/language_models/chat_models';
 import {tool} from '@langchain/core/tools';
 import {z} from 'zod';
 import {createAgent} from '@core/agents';
 import {createMiddleware} from '@core/middleware';
-import {ChatModelFactory, loadModelRoutingConfig, ModelRegistry} from '@core/provider';
+
+class ScriptedModel {
+  private index = 0;
+
+  constructor(private readonly responses: AIMessage[]) {}
+
+  bindTools(): this {
+    return this;
+  }
+
+  async invoke(messages: BaseMessage[]): Promise<AIMessage> {
+    void messages;
+    const response = this.responses[this.index];
+    if (!response) {
+      throw new Error(`No scripted response at index ${this.index}`);
+    }
+    this.index += 1;
+    return response;
+  }
+}
 
 describe('Agent Middleware Logger End-to-End', () => {
   it('应在真实链路中记录 middleware 各阶段日志', async () => {
-    const deepseekKey = process.env.DEEPSEEK_API_KEY?.trim();
-    expect(Boolean(deepseekKey && !deepseekKey.startsWith('your-'))).toBe(true);
-
-    const config = await loadModelRoutingConfig();
-    const registry = new ModelRegistry(config);
-    const factory = new ChatModelFactory(registry);
-    const model = await factory.create('deepseek');
-
     const echoTool = tool(async ({text}: {text: string}) => `ECHO:${text}`, {
       name: 'echo_text',
       description: 'Echo text back',
@@ -67,6 +79,22 @@ describe('Agent Middleware Logger End-to-End', () => {
         throw new Error('Unreachable');
       }
     });
+
+    const model = new ScriptedModel([
+      new AIMessage({
+        content: '',
+        tool_calls: [
+          {
+            id: 'echo_call',
+            name: 'echo_text',
+            args: {text: 'ping'},
+            type: 'tool_call',
+          },
+        ],
+      }),
+      new AIMessage('done'),
+    ]) as unknown as BaseChatModel;
+
     const runner = createAgent({
       model,
       tools: [echoTool],
@@ -99,5 +127,5 @@ describe('Agent Middleware Logger End-to-End', () => {
     expect(logs.some((line) => line.startsWith('afterModel:'))).toBe(true);
     expect(logs.some((line) => line.startsWith('wrapToolCall:'))).toBe(true);
     expect(logs.some((line) => line.startsWith('afterAgent:'))).toBe(true);
-  }, 120_000);
+  });
 });

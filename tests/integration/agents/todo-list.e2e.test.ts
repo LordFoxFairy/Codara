@@ -4,8 +4,10 @@ import {createAgent} from '@core/agents';
 import {readTodoState, todoListMiddleware} from '@core/middleware/todo';
 import {ChatModelFactory, loadModelRoutingConfig, ModelRegistry} from '@core/provider';
 
+const liveIt = process.env.RUN_LIVE_PROVIDER_TESTS === '1' ? it : it.skip;
+
 describe('Todo List Middleware End-to-End', () => {
-  it('应在真实 agent 循环中调用 write_todos 并把 todos 持久化到 state.values', async () => {
+  liveIt('应在真实 agent 循环中调用 write_todos 并把 todos 持久化到 state.values', async () => {
     const deepseekKey = process.env.DEEPSEEK_API_KEY?.trim();
     expect(Boolean(deepseekKey && !deepseekKey.startsWith('your-'))).toBe(true);
 

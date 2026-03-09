@@ -5,8 +5,10 @@ import {z} from 'zod';
 import {createAgent} from '@core/agents';
 import {ChatModelFactory, loadModelRoutingConfig, ModelRegistry} from '@core/provider';
 
+const liveIt = process.env.RUN_LIVE_PROVIDER_TESTS === '1' ? it : it.skip;
+
 describe('Agent Loop End-to-End', () => {
-  it('应通过 bindTools + createAgent 完成一轮真实工具调用', async () => {
+  liveIt('应通过 bindTools + createAgent 完成一轮真实工具调用', async () => {
     const deepseekKey = process.env.DEEPSEEK_API_KEY?.trim();
     expect(Boolean(deepseekKey && !deepseekKey.startsWith('your-'))).toBe(true);
 

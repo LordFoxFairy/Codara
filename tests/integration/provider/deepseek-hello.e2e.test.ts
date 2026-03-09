@@ -1,6 +1,8 @@
 import {describe, expect, it} from "bun:test";
 import {ChatModelFactory, loadModelRoutingConfig, ModelRegistry} from "@core/provider";
 
+const liveIt = process.env.RUN_LIVE_PROVIDER_TESTS === "1" ? it : it.skip;
+
 describe("DeepSeek End-to-End", () => {
     it("应正常加载配置并解析 deepseek 路由", async () => {
         const config = await loadModelRoutingConfig();
@@ -19,7 +21,7 @@ describe("DeepSeek End-to-End", () => {
         expect(typeof model.invoke).toBe("function");
     });
 
-    it("应能真实调用 hello", async () => {
+    liveIt("应能真实调用 hello", async () => {
         const deepseekKey = process.env.DEEPSEEK_API_KEY?.trim();
         expect(Boolean(deepseekKey && !deepseekKey.startsWith("your-"))).toBe(true);
 
