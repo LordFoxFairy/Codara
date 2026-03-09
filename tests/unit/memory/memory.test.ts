@@ -2,10 +2,9 @@ import {describe, expect, it} from 'bun:test';
 import {mkdir, mkdtemp, writeFile} from 'node:fs/promises';
 import path from 'node:path';
 import {tmpdir} from 'node:os';
-import {AIMessage} from '@langchain/core/messages';
 import {loadMemory} from '@core/middleware/memory';
 import {createMemoryMiddleware} from '@core/middleware/memory';
-import type {ModelCallContext} from '@core/middleware';
+import type {BeforeModelContext} from '@core/middleware';
 
 describe('MEMORY module', () => {
   it('should load memory as a compact snapshot instead of the full file body', async () => {
@@ -57,7 +56,7 @@ describe('MEMORY module', () => {
 
   it('should inject preloaded memory content', async () => {
     const middleware = createMemoryMiddleware('# Project Memory\n\nOriginal memory.\n');
-    const context: ModelCallContext = {
+    const context: BeforeModelContext = {
       state: {messages: []},
       messages: [],
       runtime: {context: {}, agentContext: {}},
@@ -68,10 +67,7 @@ describe('MEMORY module', () => {
       requestId: 'req_1',
     };
 
-    const first = await middleware.wrapModelCall?.(context, async (request) => {
-      expect(request?.systemMessage[1]).toContain('Original memory.');
-      return new AIMessage('ok');
-    });
-    expect(first?.content).toBe('ok');
+    await middleware.beforeModel?.(context);
+    expect(context.systemMessage[1]).toContain('Original memory.');
   });
 });

@@ -13,6 +13,7 @@ describe('Codara middleware stack', () => {
       'GuidelinesMiddleware',
       'MemoryMiddleware',
       'SkillsMiddleware',
+      'ContextBudgetMiddleware',
       'HumanInTheLoopMiddleware',
     ]);
   });
@@ -34,6 +35,7 @@ describe('Codara middleware stack', () => {
       'GuidelinesMiddleware',
       'MemoryMiddleware',
       'SkillsMiddleware',
+      'ContextBudgetMiddleware',
       'CustomMiddleware',
       'HumanInTheLoopMiddleware',
     ]);
@@ -54,6 +56,7 @@ describe('Codara middleware stack', () => {
       'GuidelinesMiddleware',
       'MemoryMiddleware',
       'SkillsMiddleware',
+      'ContextBudgetMiddleware',
       'AliasMiddleware',
       'HumanInTheLoopMiddleware',
     ]);
@@ -68,11 +71,12 @@ describe('Codara middleware stack', () => {
       'GuidelinesMiddleware',
       'MemoryMiddleware',
       'SkillsMiddleware',
+      'ContextBudgetMiddleware',
       'HumanInTheLoopMiddleware',
     ]);
   });
 
-  it('should place summary middleware between memory and skills when enabled', () => {
+  it('should place summary middleware after skills so it can compact against the full prompt input', () => {
     const middlewares = createCodaraMiddlewares({
       skills: {store: new EmptySkillStore()},
       summary: {
@@ -83,8 +87,9 @@ describe('Codara middleware stack', () => {
     expect(middlewares.map((middleware) => middleware.name)).toEqual([
       'GuidelinesMiddleware',
       'MemoryMiddleware',
-      'SummaryMiddleware',
       'SkillsMiddleware',
+      'ContextBudgetMiddleware',
+      'SummaryMiddleware',
       'HumanInTheLoopMiddleware',
     ]);
   });
@@ -98,6 +103,7 @@ describe('Codara middleware stack', () => {
     expect(middlewares.map((middleware) => middleware.name)).toEqual([
       'GuidelinesMiddleware',
       'SkillsMiddleware',
+      'ContextBudgetMiddleware',
       'HumanInTheLoopMiddleware',
     ]);
   });

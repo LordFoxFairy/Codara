@@ -1,5 +1,6 @@
 import {createHILMiddleware, createLoggingMiddleware, type BaseMiddleware} from '@core/middleware';
 import {createGuidelinesMiddleware} from '@core/middleware/guidelines';
+import {createContextBudgetMiddleware} from '@core/middleware/context-budget';
 import {createMemoryMiddleware} from '@core/middleware/memory';
 import {createSummaryMiddleware} from '@core/middleware/summary';
 import type {CodaraMiddlewareOptions} from '@core/codara/types';
@@ -30,12 +31,14 @@ export function createCodaraMiddlewares(
     middlewares.push(createMemoryMiddleware(loadedSources.memory));
   }
 
-  if (options.summary) {
-    middlewares.push(createSummaryMiddleware(options.summary));
-  }
-
   if (options.skills !== false) {
     middlewares.push(createSkillsMiddleware(resolveSkillsOptions(options)));
+  }
+
+  middlewares.push(createContextBudgetMiddleware());
+
+  if (options.summary) {
+    middlewares.push(createSummaryMiddleware(options.summary));
   }
 
   middlewares.push(...(options.middleware ?? options.middlewares ?? []));

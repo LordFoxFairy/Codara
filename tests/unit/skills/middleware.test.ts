@@ -2,7 +2,7 @@ import {describe, expect, it} from 'bun:test'
 import {mkdir, mkdtemp, writeFile} from 'node:fs/promises'
 import {tmpdir} from 'node:os'
 import path from 'node:path'
-import {AIMessage, HumanMessage, type BaseMessage} from '@langchain/core/messages'
+import {HumanMessage, type BaseMessage} from '@langchain/core/messages'
 import {
   createSkillsMiddleware,
   FileSystemSkillStore,
@@ -48,13 +48,9 @@ describe('createSkillsMiddleware', () => {
     const middleware = createSkillsMiddleware({store})
     const context = createBaseContext('run_prompt')
 
-    let capturedSystemMessage: string[] = []
-    await middleware.wrapModelCall?.(context, async (request = context) => {
-      capturedSystemMessage = request.systemMessage
-      return new AIMessage('ok')
-    })
+    await middleware.beforeModel?.(context)
 
-    const combined = capturedSystemMessage.join('\n')
+    const combined = context.systemMessage.join('\n')
     expect(combined).toContain('Skills System')
     expect(combined).toContain('demo-skill')
     expect(combined).toContain('/tmp/project/.codara/skills/demo-skill/SKILL.md')
@@ -123,13 +119,9 @@ custom-threshold: 0.8
     const middleware = createSkillsMiddleware({store})
     const context = createBaseContext('run_real_store')
 
-    let capturedSystemMessage: string[] = []
-    await middleware.wrapModelCall?.(context, async (request = context) => {
-      capturedSystemMessage = request.systemMessage
-      return new AIMessage('ok')
-    })
+    await middleware.beforeModel?.(context)
 
-    expect(capturedSystemMessage.join('\n')).toContain('real store skill')
+    expect(context.systemMessage.join('\n')).toContain('real store skill')
   })
 
   it('should delegate caching strategy to store and call discover per model call', async () => {
@@ -154,8 +146,8 @@ custom-threshold: 0.8
     const runId = 'run_store_cache'
     const context = createBaseContext(runId)
 
-    await middleware.wrapModelCall?.(context, async () => new AIMessage('ok'))
-    await middleware.wrapModelCall?.({...context, turn: 2, requestId: `${runId}-req-2`}, async () => new AIMessage('ok'))
+    await middleware.beforeModel?.(context)
+    await middleware.beforeModel?.({...context, turn: 2, requestId: `${runId}-req-2`})
 
     expect(discoverCalls).toBe(2)
   })

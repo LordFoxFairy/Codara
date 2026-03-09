@@ -1,6 +1,7 @@
 import {randomUUID} from 'node:crypto';
 import type {StructuredToolInterface} from '@langchain/core/tools';
 import type {
+  AgentInputBudget,
   AgentInvokeConfig,
   AgentResult,
   AgentRuntimeContext,
@@ -22,6 +23,7 @@ export interface AgentRunContext {
   maxTurns: number;
   context: AgentRuntimeContext;
   agentContext: AgentRuntimeContext;
+  inputBudget?: AgentInputBudget;
 }
 
 /** Agent 运行依赖。 */
@@ -37,7 +39,7 @@ export function createRunContext(
   state: AgentState,
   agentContext: AgentRuntimeContext,
   agentValues: AgentRuntimeValues,
-  config: Pick<AgentInvokeConfig, 'recursionLimit' | 'context'> = {}
+  config: Pick<AgentInvokeConfig, 'recursionLimit' | 'context' | 'inputBudget'> = {}
 ): AgentRunContext {
   state.context = agentContext;
   state.values = agentValues;
@@ -47,6 +49,7 @@ export function createRunContext(
     maxTurns: normalizeMaxTurns(config.recursionLimit),
     context: config.context ?? {},
     agentContext,
+    inputBudget: config.inputBudget,
   };
 }
 
