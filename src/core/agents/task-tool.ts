@@ -36,10 +36,9 @@ export interface ResolvedSubagentRuntime {
   context?: AgentRuntimeContext;
 }
 
-export interface CreateTaskToolOptions extends Omit<CreateSubagentToolOptions, 'name' | 'description'> {
-  description?: string;
+export interface TaskToolRuntimeHooks {
   createChildAgent?: (options: CreateAgentOptions) => Agent | Promise<Agent>;
-  resolveProfileRuntime?: (
+  resolveDefinitionRuntime?: (
     profile: SubagentDefinition,
     fallback: {
       model: BaseChatModel;
@@ -49,6 +48,11 @@ export interface CreateTaskToolOptions extends Omit<CreateSubagentToolOptions, '
   ) => Promise<ResolvedSubagentRuntime | void> | ResolvedSubagentRuntime | void;
 }
 
+export interface CreateTaskToolOptions extends Omit<CreateSubagentToolOptions, 'name' | 'description'> {
+  description?: string;
+  runtimeHooks?: TaskToolRuntimeHooks;
+}
+
 export function createTaskTool(options: CreateTaskToolOptions): StructuredToolInterface {
   return tool(
     async ({prompt, subagent_type, max_turns}: TaskToolInput, config) => {
@@ -56,7 +60,7 @@ export function createTaskTool(options: CreateTaskToolOptions): StructuredToolIn
         readAgentSkillsRuntime(config?.configurable?.agentContext),
         subagent_type,
       );
-      const resolvedRuntime = await resolveProfileRuntime(options, profile);
+      const resolvedRuntime = await resolveDefinitionRuntime(options, profile);
       return runDelegatedAgent(options, {
         prompt,
         maxTurns: max_turns ?? profile.maxTurns,
@@ -67,7 +71,7 @@ export function createTaskTool(options: CreateTaskToolOptions): StructuredToolIn
         profileContext: resolvedRuntime?.context,
         profileTools: resolveDefinitionTools(options.tools ?? [], profile),
         profileSystemPrompt: profile.systemPrompt,
-      }, options.createChildAgent);
+      }, options.runtimeHooks?.createChildAgent);
     },
     {
       name: TASK_TOOL_NAME,
@@ -81,11 +85,11 @@ function readAgentType(value: unknown): AgentType {
   return value === 'subagent' ? 'subagent' : 'main';
 }
 
-async function resolveProfileRuntime(
+async function resolveDefinitionRuntime(
   options: CreateTaskToolOptions,
   profile: SubagentDefinition
 ): Promise<ResolvedSubagentRuntime | undefined> {
-  const resolver = options.resolveProfileRuntime;
+  const resolver = options.runtimeHooks?.resolveDefinitionRuntime;
 
   if (!resolver) {
     return undefined;

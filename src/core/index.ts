@@ -1,11 +1,105 @@
 /** Core 模块对外导出。 */
 
-export * from '@core/provider';
-export * from '@core/codara';
-export * from '@core/checkpoint';
-export * from '@core/agents';
-export * from '@core/tools';
-export * from '@core/tasks';
-export * from '@core/middleware';
-export * from '@core/skills';
-export * from '@core/sessions';
+export {
+  createCodara,
+  createCodaraAgent,
+  createCodaraChatModel,
+  createCodaraMiddlewares,
+  createCodaraModelCatalog,
+  createCodaraSessionHost,
+  createCodaraTaskTool,
+  createCodaraTools,
+  loadCodaraAgent,
+  type Codara,
+  type CodaraAgentOptions,
+  type CodaraOptions,
+  type CodaraSessionOptions,
+  type CreateCodaraChatModelOptions,
+  type CreateCodaraModelCatalogOptions,
+  type CodaraModelCatalog,
+} from '@core/codara';
+export {
+  createAgent,
+  createSubagentTool,
+  createTaskTool,
+  DEFAULT_SUBAGENT_TOOL_DESCRIPTION,
+  DEFAULT_SUBAGENT_TOOL_NAME,
+  TASK_TOOL_DESCRIPTION,
+  TASK_TOOL_NAME,
+  type Agent,
+  type AgentInput,
+  type AgentInvokeConfig,
+  type AgentResult,
+  type AgentResumeConfig,
+  type AgentResumeStreamConfig,
+  type AgentRuntimeContext,
+  type AgentRuntimeValues,
+  type AgentState,
+  type AgentStreamConfig,
+  type AgentStreamCustomChunk,
+  type AgentStreamOutput,
+  type AgentType,
+  type CreateAgentOptions,
+} from '@core/agents';
+export {
+  FileCheckpointer,
+  InMemoryCheckpointer,
+  createAgentFileCheckpointer,
+  createAgentMemoryCheckpointer,
+  type AgentCheckpoint,
+  type AgentCheckpointer,
+} from '@core/checkpoint';
+export {
+  createBuiltinTools,
+  createFetchTool,
+  createSearchTool,
+  filterToolsByReferences,
+  normalizeToolReferenceName,
+  type BuiltinToolOptions,
+} from '@core/tools';
+export {
+  createTaskCreateTool,
+  createTaskFileStore,
+  createTaskListTool,
+  createTaskMemoryStore,
+  createTaskTools,
+  createTaskUpdateTool,
+  type CreateTaskInput,
+  type TaskRecord,
+  type TaskStatus,
+  type TaskStore,
+  type UpdateTaskInput,
+} from '@core/tasks';
+export {
+  createGuidelinesMiddleware,
+  createHILMiddleware,
+  createLoggingMiddleware,
+  createMemoryMiddleware,
+  createMiddleware,
+  createSkillsMiddleware,
+  createSummaryMiddleware,
+  FileSystemSkillStore,
+  getDefaultSkillSources,
+  MiddlewarePipeline,
+  type BaseMiddleware,
+  type HILMiddlewareOptions,
+  type HILResumePayload,
+  type LoggingMiddlewareOptions,
+  type MiddlewareLogRecord,
+} from '@core/middleware';
+export {
+  loadSkillsRuntimeData,
+  resolveSubagentDefinition,
+  type SkillMetadata,
+  type SkillStore,
+  type SkillsRuntimeData,
+  type SubagentDefinition,
+} from '@core/skills';
+export {createSession, type Session, type SessionState, type SessionStatus} from '@core/sessions';
+export {
+  ChatModelFactory,
+  loadModelRoutingConfig,
+  ModelRegistry,
+  type ModelInfo,
+  type ModelRoutingConfig,
+} from '@core/provider';

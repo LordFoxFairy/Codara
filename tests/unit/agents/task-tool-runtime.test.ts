@@ -11,8 +11,8 @@ import {createMiddleware} from '@core/middleware';
 import {FileSystemSkillStore} from '@core/skills';
 import {createAgentSkillsMiddleware, ChildSummaryModel, ScriptedModel, SystemEchoModel} from './task-tool.fixtures';
 
-describe('createTaskTool runtime overrides', () => {
-  it('应通过 profile runtime resolver 应用 model、middleware 和 permissionMode', async () => {
+describe('createTaskTool runtime hints', () => {
+  it('应通过 profile runtime resolver 消费 definition hints', async () => {
     const root = await mkdtemp(path.join(os.tmpdir(), 'codara-task-tool-runtime-'));
 
     try {
@@ -62,22 +62,24 @@ You are a Reviewer subagent.
               tool(async () => 'ok', {name: 'read_file', description: 'read', schema: z.object({})}),
               tool(async () => 'ok', {name: 'grep', description: 'grep', schema: z.object({})}),
             ],
-            resolveProfileRuntime: (profile) => ({
-              model: childModel as unknown as BaseChatModel,
-              middleware: [
-                createMiddleware({
-                  name: 'profile-tag',
-                  wrapModelCall: (context, handler) => handler({
-                    ...context,
-                    systemMessage: context.systemMessage.concat(
-                      `permissionMode:${profile.permissionMode ?? 'none'}`,
-                      `middleware:${profile.middlewareNames?.join(',') ?? '(none)'}`,
-                      `profileModel:${profile.model ?? 'inherit'}`,
-                    ),
+            runtimeHooks: {
+              resolveDefinitionRuntime: (profile) => ({
+                model: childModel as unknown as BaseChatModel,
+                middleware: [
+                  createMiddleware({
+                    name: 'profile-tag',
+                    wrapModelCall: (context, handler) => handler({
+                      ...context,
+                      systemMessage: context.systemMessage.concat(
+                        `middleware:${profile.hints?.middlewareNames?.join(',') ?? '(none)'}`,
+                        `profileModel:${profile.hints?.model ?? 'inherit'}`,
+                        `permissionMode:${profile.hints?.permissionMode ?? 'none'}`,
+                      ),
+                    }),
                   }),
-                }),
-              ],
-            }),
+                ],
+              }),
+            },
           }),
         ],
       });

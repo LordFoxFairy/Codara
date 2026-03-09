@@ -2,19 +2,21 @@ import {randomUUID} from 'node:crypto';
 import {
   createInitialAgentState,
   cloneValues,
+  summarizeResult,
+  type MutableAgentState,
+} from '@core/agents/engine/state';
+import {
   injectResumePayload,
   mergeContext,
   normalizeAgentInput,
   readLatestPause,
-  summarizeResult,
-  type MutableAgentState,
-} from '@core/agents/engine/state';
+} from '@core/agents/engine/runtime-input';
 import {
   createAgentState,
   persistAgentCheckpoint,
   updateStateFromCheckpointRecord,
 } from '@core/agents/engine/checkpoint';
-import {assertNotRunning, assertReadyForInvoke, assertReadyForResume} from '@core/agents/engine/guards';
+import {assertNotRunning, assertReadyForInvoke, assertReadyForResume} from '@core/agents/engine/lifecycle';
 import {
   createRunContext,
   runAfterHook,

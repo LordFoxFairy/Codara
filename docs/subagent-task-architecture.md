@@ -126,7 +126,7 @@ sequenceDiagram
 ### P0
 
 - `createTaskTool(...)` 在 core 通用层仍保留少量高级扩展钩子，public 心智还可以继续压薄。
-- `skills/agents.ts` 仍然解析了 `model/middleware/permissionMode` 等字段，但当前主线已不自动应用这些字段；定义结构与当前运行语义还可以继续收口。
+- `skills/agents.ts` 现在会把 `model/middleware/permissionMode` 解析为 `definition.hints`，明确它们是提示性元数据，而不是自动 runtime 覆盖；后续仍应继续克制，不把 hints 重新做成隐式装配入口。
 
 ### P1
 
@@ -164,5 +164,5 @@ sequenceDiagram
 ## Suggested Next Improvements
 
 1. 继续压薄 `createTaskTool(...)` 的 public surface，只保留正常使用真正需要的参数。
-2. 收紧 `SubagentDefinition` 字段集，让 definition 与当前真实运行语义完全一致。
+2. 继续收紧 `SubagentDefinition` 的有效字段与 hints 边界，避免未来再把 hints 做成隐式 runtime 覆盖。
 3. 单独补一份 middleware/tool capability matrix 文档，避免后续重复讨论边界。

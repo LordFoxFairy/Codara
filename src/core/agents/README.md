@@ -42,8 +42,9 @@ agents/
   engine/
     agent.ts
     checkpoint.ts
-    guards.ts
+    lifecycle.ts
     model.ts
+    runtime-input.ts
     runtime.ts
     state.ts
     stream-writer.ts
@@ -132,4 +133,4 @@ const agent = createAgent({
 
 公开心智保持克制：
 - `@core/agents` 只暴露主入口与常量，例如 `createAgent(...)`、`createSubagentTool(...)`、`createTaskTool(...)`
-- `Task` 的高级 runtime 扩展钩子只服务内部装配；默认使用时不需要了解它们
+- `Task` 的高级 runtime 扩展钩子统一收在 `runtimeHooks` 下，只服务宿主装配；默认使用时不需要了解它们
