@@ -1,18 +1,16 @@
-import type {BaseMessage} from '@langchain/core/messages';
+import {SystemMessage, type BaseMessage} from '@langchain/core/messages';
 import type {AgentRuntimeContext} from '@core/agents';
 import {createMiddleware, type BaseMiddleware, type BeforeModelContext} from '@core/middleware';
 
 const DEFAULT_MAX_MESSAGES = 30;
 const DEFAULT_KEEP_LAST_MESSAGES = 12;
 const DEFAULT_MAX_CHARS = 6_000;
-const CODARA_KEY = 'codara';
-const SUMMARY_KEY = 'summary';
+const SUMMARY_HEADER = '# Conversation Summary';
+const SUMMARY_INTRO = 'The following summary captures earlier conversation context that has been compacted.';
 
 /** 摘要记录。 */
 export interface SummaryRecord {
   content: string;
-  updatedAt: string;
-  summarizedMessages: number;
 }
 
 /** 传给摘要器的输入。 */
@@ -43,123 +41,158 @@ export function createSummaryMiddleware(options: SummaryOptions): BaseMiddleware
     name: 'SummaryMiddleware',
     beforeModel: async (context) => {
       await maybeCompactHistory(context, normalized);
-      injectSummary(context, normalized.maxChars);
     },
   });
 }
 
-/** 读取当前运行时中的摘要记录。 */
-export function readSummaryRecord(context: AgentRuntimeContext): SummaryRecord | undefined {
-  const codara = asRecord(context[CODARA_KEY]);
-  const summary = asRecord(codara[SUMMARY_KEY]);
-  const content = typeof summary.content === 'string' ? summary.content.trim() : '';
-  if (!content) {
+/** 从当前消息状态中读取已持久化的摘要。 */
+export function readSummaryRecord(messages: BaseMessage[]): SummaryRecord | undefined {
+  const summaryMessage = readSummaryMessage(messages);
+  if (!summaryMessage) {
     return undefined;
   }
 
-  return {
-    content,
-    updatedAt: typeof summary.updatedAt === 'string' ? summary.updatedAt : new Date().toISOString(),
-    summarizedMessages: typeof summary.summarizedMessages === 'number' ? summary.summarizedMessages : 0,
-  };
-}
-
-/** 将摘要记录写回运行时上下文。 */
-export function writeSummaryRecord(context: AgentRuntimeContext, record: SummaryRecord): void {
-  const codara = asRecord(context[CODARA_KEY]);
-  context[CODARA_KEY] = {
-    ...codara,
-    [SUMMARY_KEY]: {
-      content: record.content,
-      updatedAt: record.updatedAt,
-      summarizedMessages: record.summarizedMessages,
-    },
-  };
-}
-
-function splitMessagesForSummary(messages: BaseMessage[], keepLastMessages: number): BaseMessage[] {
-  if (messages.length <= keepLastMessages) {
-    return [];
-  }
-  return messages.slice(0, Math.max(0, messages.length - keepLastMessages));
-}
-
-function trimMessagesInPlace(messages: BaseMessage[], keepLastMessages: number): void {
-  if (messages.length <= keepLastMessages) {
-    return;
-  }
-  const removeCount = Math.max(0, messages.length - keepLastMessages);
-  messages.splice(0, removeCount);
-}
-
-function resolveSummaryContext(
-  agentContext: AgentRuntimeContext | undefined,
-  runtimeContext: AgentRuntimeContext,
-): AgentRuntimeContext {
-  return agentContext ?? runtimeContext;
+  const content = parseSummaryContent(summaryMessage.content);
+  return content ? {content} : undefined;
 }
 
 async function maybeCompactHistory(context: BeforeModelContext, options: Required<SummaryOptions>): Promise<void> {
-  if (context.state.messages.length <= options.maxMessages) {
+  const summaryState = splitSummaryState(context.state.messages);
+
+  if (summaryState.conversationMessages.length <= options.maxMessages) {
     return;
   }
 
-  const olderMessages = splitMessagesForSummary(context.state.messages, options.keepLastMessages);
+  const recentStart = resolveRecentStart(
+    summaryState.conversationMessages,
+    options.keepLastMessages
+  );
+  const olderMessages = summaryState.conversationMessages.slice(0, recentStart);
   if (olderMessages.length === 0) {
     return;
   }
 
-  const summaryContext = resolveSummaryContext(context.runtime.agentContext, context.runtime.context);
-  const previous = readSummaryRecord(summaryContext);
   const nextSummary = await options.summarize({
-    previousSummary: previous?.content,
+    previousSummary: summaryState.summary?.content,
     messages: olderMessages,
     context: context.runtime.context,
     threadId: readThreadId(context.runtime.context),
     turn: context.turn,
   });
 
-  const content = nextSummary.trim();
-  if (!content) {
+  const summaryMessage = createSummaryMessage(nextSummary, options.maxChars);
+  if (!summaryMessage) {
     return;
   }
 
-  writeSummaryRecord(summaryContext, {
-    content,
-    updatedAt: new Date().toISOString(),
-    summarizedMessages: olderMessages.length,
-  });
-  trimMessagesInPlace(context.state.messages, options.keepLastMessages);
+  const recentMessages = summaryState.conversationMessages.slice(recentStart);
+  context.state.messages = [
+    ...summaryState.leadingSystemMessages,
+    summaryMessage,
+    ...recentMessages,
+  ];
+  context.messages.length = 0;
+  context.messages.push(...context.state.messages);
 }
 
-function injectSummary(context: BeforeModelContext, maxChars: number): void {
-  const summary = readSummaryRecord(resolveSummaryContext(context.runtime.agentContext, context.runtime.context));
-  if (!summary) {
-    return;
+function splitSummaryState(messages: BaseMessage[]): {
+  leadingSystemMessages: SystemMessage[];
+  summary?: SummaryRecord;
+  conversationMessages: BaseMessage[];
+} {
+  const leadingSystemMessages: SystemMessage[] = [];
+  let index = 0;
+
+  while (index < messages.length && isMessageType(messages[index], 'system')) {
+    leadingSystemMessages.push(messages[index] as SystemMessage);
+    index += 1;
   }
 
-  const formatted = formatSummaryRecord(summary, maxChars);
-  if (formatted) {
-    context.systemMessage.push(formatted);
+  let summary: SummaryRecord | undefined;
+  const preservedSystemMessages: SystemMessage[] = [];
+
+  for (const message of leadingSystemMessages) {
+    const content = parseSummaryContent(message.content);
+    if (!summary && content) {
+      summary = {content};
+      continue;
+    }
+    preservedSystemMessages.push(message);
   }
+
+  return {
+    leadingSystemMessages: preservedSystemMessages,
+    summary,
+    conversationMessages: messages.slice(index),
+  };
 }
 
-function formatSummaryRecord(record: SummaryRecord, maxChars: number): string {
-  const trimmed = record.content.trim();
+function resolveRecentStart(messages: BaseMessage[], keepLastMessages: number): number {
+  let start = Math.max(0, messages.length - keepLastMessages);
+
+  while (start > 0 && isMessageType(messages[start], 'tool')) {
+    start -= 1;
+  }
+
+  return start;
+}
+
+function readSummaryMessage(messages: BaseMessage[]): SystemMessage | undefined {
+  for (const message of messages) {
+    if (!isMessageType(message, 'system')) {
+      break;
+    }
+
+    if (parseSummaryContent(message.content)) {
+      return message as SystemMessage;
+    }
+  }
+
+  return undefined;
+}
+
+function createSummaryMessage(content: string, maxChars: number): SystemMessage | undefined {
+  const trimmed = content.trim();
   if (!trimmed) {
-    return '';
+    return undefined;
   }
 
   const truncated = trimmed.length > maxChars;
-  const content = truncated ? `${trimmed.slice(0, maxChars)}\n\n[truncated]` : trimmed;
+  const visibleContent = truncated ? `${trimmed.slice(0, maxChars)}\n\n[truncated]` : trimmed;
 
-  return [
-    '# Conversation Summary',
+  return new SystemMessage([
+    SUMMARY_HEADER,
     '',
-    'The following summary captures earlier conversation context that has been compacted.',
+    SUMMARY_INTRO,
     '',
-    content,
-  ].join('\n');
+    visibleContent,
+  ].join('\n'));
+}
+
+function parseSummaryContent(content: unknown): string | undefined {
+  if (typeof content !== 'string') {
+    return undefined;
+  }
+
+  const prefix = `${SUMMARY_HEADER}\n\n${SUMMARY_INTRO}\n\n`;
+  if (!content.startsWith(prefix)) {
+    return undefined;
+  }
+
+  const summary = content.slice(prefix.length).trim();
+  return summary || undefined;
+}
+
+function isMessageType(message: BaseMessage | undefined, type: string): boolean {
+  if (!message || typeof message !== 'object') {
+    return false;
+  }
+
+  if ('type' in message && typeof (message as {type?: unknown}).type === 'string') {
+    return (message as {type: string}).type === type;
+  }
+
+  return type === 'system' ? SystemMessage.isInstance(message) : false;
 }
 
 function normalizeOptions(options: SummaryOptions): Required<SummaryOptions> {
@@ -195,8 +228,4 @@ function normalizeOptions(options: SummaryOptions): Required<SummaryOptions> {
 function readThreadId(context: Record<string, unknown>): string | undefined {
   const value = context.threadId;
   return typeof value === 'string' && value.trim() ? value : undefined;
-}
-
-function asRecord(value: unknown): Record<string, unknown> {
-  return value && typeof value === 'object' && !Array.isArray(value) ? {...(value as Record<string, unknown>)} : {};
 }

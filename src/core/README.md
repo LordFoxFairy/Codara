@@ -55,10 +55,10 @@ createCodara(...)
 - `middleware/summary.ts` 提供可选的上下文压缩 middleware
 - 它会在消息历史过长时：
   - 压缩较早消息
-  - 将摘要写回 agent 持久上下文
-  - 在后续模型调用前注入摘要系统消息
+  - 将较早消息替换为持久化的 summary message
+  - 保留最近消息继续参与后续模型调用
 - 默认关闭，只有显式传入 `summary` 配置时才启用
-- `summary` 不写入 `MEMORY.md`，也不改变 checkpoint 结构
+- `summary` 不写入 `MEMORY.md`，仍只通过 checkpoint 持久化 agent 运行态
 
 `summary` 在当前架构中属于上下文压缩能力，不属于：
 - `memory`
