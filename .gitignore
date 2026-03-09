@@ -33,7 +33,7 @@ tmp/
 # Docs
 docs/
 
-tasks
+/tasks/
 
 # pnp
 .pnp
@@ -45,4 +45,4 @@ coverage/
 # Lock files (uncomment the ones you don't use)
 # package-lock.json
 # yarn.lock
-# pnpm-lock.yamltasks/
+# pnpm-lock.yaml

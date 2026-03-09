@@ -3,6 +3,7 @@ import {HumanMessage, ToolMessage} from '@langchain/core/messages';
 import type {
   AgentResult,
   AgentStatus,
+  AgentType,
   AgentRuntimeContext,
   AgentRuntimeValues,
   AgentInput,
@@ -19,6 +20,7 @@ import {parseHILToolMessagePayload, type HILPauseRequest, type HILResumePayload}
 /** Agent 内部运行态。 */
 export interface AgentRuntimeState {
   threadId: string;
+  agentType: AgentType;
   checkpointId?: string;
   messages: BaseMessage[];
   context: AgentRuntimeContext;
@@ -34,6 +36,7 @@ export interface AgentRuntimeState {
 export type MutableAgentState = AgentRuntimeState;
 
 interface AgentInitialInput {
+  agentType?: AgentType;
   messages?: BaseMessage[];
   context?: AgentRuntimeContext;
   values?: AgentRuntimeValues;
@@ -51,6 +54,7 @@ export function createInitialAgentState(
 
   return {
     threadId: checkpoint?.ref.threadId ?? threadId,
+    agentType: restoredState?.agentType ?? input?.agentType ?? 'main',
     checkpointId: checkpoint?.ref.checkpointId,
     messages: [...(restoredState?.messages ?? input?.messages ?? [])],
     context: cloneContext(restoredState?.context ?? input?.context ?? {}),

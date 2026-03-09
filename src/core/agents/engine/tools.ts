@@ -20,7 +20,7 @@ export async function executeToolCall(
   toolCallId: string,
   tool: StructuredToolInterface | undefined,
   handleToolErrors: ToolErrorHandler,
-  state: Pick<AgentState, 'messages' | 'context' | 'values'>,
+  state: Pick<AgentState, 'agentType' | 'messages' | 'context' | 'values'>,
   normalizeValues?: (values: AgentState['values']) => AgentState['values']
 ): Promise<ToolMessage> {
   if (!tool) {
@@ -33,7 +33,24 @@ export async function executeToolCall(
   }
 
   try {
-    const result = await tool.invoke(toolCall.args);
+    const result = await tool.invoke(toolCall.args, {
+      toolCall,
+      configurable: {
+        agentType: state.agentType,
+        agentContext: state.context,
+      },
+      metadata: {
+        agentType: state.agentType,
+      },
+    });
+    if (ToolMessage.isInstance(result)) {
+      return result.tool_call_id ? result : new ToolMessage({
+        content: result.content,
+        artifact: result.artifact,
+        status: result.status,
+        tool_call_id: toolCallId,
+      });
+    }
     if (isCommand(result)) {
       return applyToolCommand(result, toolCallId, state, normalizeValues);
     }
@@ -95,7 +112,7 @@ function createToolError(toolCallId: string, content: string): ToolMessage {
 function applyToolCommand(
   command: Command,
   toolCallId: string,
-  state: Pick<AgentState, 'messages' | 'context' | 'values'>,
+  state: Pick<AgentState, 'agentType' | 'messages' | 'context' | 'values'>,
   normalizeValues?: (values: AgentState['values']) => AgentState['values']
 ): ToolMessage {
   const commandMessages = normalizeCommandMessages(command.update.messages, toolCallId);

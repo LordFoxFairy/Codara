@@ -49,11 +49,14 @@ export function createCodaraMiddlewares(
 
 function resolveSkillsOptions(options: CodaraMiddlewareOptions) {
   if (options.skills === false) {
-    return {store: new FileSystemSkillStore({sources: []})};
+    return {store: new FileSystemSkillStore({sources: []}), agentRoots: []};
   }
 
   if (options.skills?.store) {
-    return {store: options.skills.store};
+    return {
+      store: options.skills.store,
+      ...(options.skills.agentRoots ? {agentRoots: options.skills.agentRoots} : {}),
+    };
   }
 
   return {
@@ -71,5 +74,6 @@ function resolveSkillsOptions(options: CodaraMiddlewareOptions) {
       ...(options.skills?.userHome ? {userHome: options.skills.userHome} : {}),
       ...(typeof options.skills?.cacheTtlMs === 'number' ? {cacheTtlMs: options.skills.cacheTtlMs} : {}),
     }),
+    ...(options.skills?.agentRoots ? {agentRoots: options.skills.agentRoots} : {}),
   };
 }

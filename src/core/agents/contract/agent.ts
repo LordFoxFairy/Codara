@@ -9,6 +9,7 @@ import type {AgentStreamConfig, AgentStreamOutput} from '@core/agents/contract/s
 export type AgentRuntimeContext = Record<string, unknown>;
 export type AgentRuntimeValues = Record<string, unknown>;
 export type AgentStatus = 'idle' | 'running' | 'paused' | 'closed';
+export type AgentType = 'main' | 'subagent';
 
 /**
  * Agent 对外状态。
@@ -27,6 +28,7 @@ export type AgentStatus = 'idle' | 'running' | 'paused' | 'closed';
  */
 export interface AgentState {
   threadId: string;
+  agentType: AgentType;
   messages: BaseMessage[];
   context: AgentRuntimeContext;
   values: AgentRuntimeValues;
@@ -72,6 +74,8 @@ export interface Agent {
 /** createAgent(...) 支持的构造参数。 */
 export interface CreateAgentOptions {
   model: BaseChatModel;
+  /** 当前 agent 的运行角色，默认 `main`。 */
+  agentType?: AgentType;
   tools?: StructuredToolInterface[];
   /** 工具异常处理：true=转成 ToolMessage，false=直接抛错，函数=自定义处理。 */
   handleToolErrors?: ToolErrorHandler;

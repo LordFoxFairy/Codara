@@ -8,6 +8,7 @@ export function createAgentState(
 ): AgentState {
   return {
     threadId,
+    agentType: state.agentType,
     messages: [...state.messages],
     context: cloneContext(state.context),
     values: cloneValues(state.values),
@@ -27,6 +28,7 @@ export async function persistAgentCheckpoint(
     threadId,
     ...(state.checkpointId ? {parentCheckpointId: state.checkpointId} : {}),
     state: {
+      agentType: state.agentType,
       messages: [...state.messages],
       context: cloneContext(state.context),
       values: cloneValues(state.values),
@@ -48,6 +50,7 @@ export function updateStateFromCheckpointRecord(
   state: AgentRuntimeState,
   record: AgentCheckpoint
 ): void {
+  state.agentType = record.state.agentType;
   state.checkpointId = record.ref.checkpointId;
   state.step = record.info.step;
   state.updatedAt = record.info.createdAt;

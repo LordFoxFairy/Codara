@@ -7,6 +7,7 @@ import {FileCheckpointer} from '@core/checkpoint/file';
 import {InMemoryCheckpointer} from '@core/checkpoint/in-memory';
 import type {CheckpointRecord, Checkpointer} from '@core/checkpoint/types';
 import type {HILPauseRequest} from '@core/middleware/hil';
+import type {AgentType} from '@core/agents/contract/agent';
 
 export type AgentCheckpointStatus = 'idle' | 'paused' | 'closed' | 'error';
 export type AgentCheckpointReason = 'complete' | 'error' | 'max_turns';
@@ -14,6 +15,7 @@ export type AgentCheckpointContext = Record<string, unknown>;
 export type AgentCheckpointValues = Record<string, unknown>;
 
 export interface AgentCheckpointState {
+  agentType: AgentType;
   messages: BaseMessage[];
   context: AgentCheckpointContext;
   values: AgentCheckpointValues;
@@ -40,6 +42,7 @@ export interface AgentCheckpointSummary {
 }
 
 interface PersistedAgentCheckpointState {
+  agentType: AgentType;
   messages: ReturnType<typeof mapChatMessagesToStoredMessages>;
   context: AgentCheckpointContext;
   values: AgentCheckpointValues;
@@ -70,6 +73,7 @@ export function createAgentFileCheckpointer(options: AgentFileCheckpointerOption
 
 function serializeAgentCheckpointState(state: AgentCheckpointState): PersistedAgentCheckpointState {
   return {
+    agentType: state.agentType,
     messages: mapChatMessagesToStoredMessages(state.messages),
     context: cloneContext(state.context),
     values: cloneValues(state.values),
@@ -85,6 +89,7 @@ function deserializeAgentCheckpointState(raw: unknown): AgentCheckpointState {
   );
 
   return {
+    agentType: parseAgentType(record.agentType),
     messages: messages as BaseMessage[],
     context: cloneContext(asCheckpointContext(record.context)),
     values: cloneValues(asCheckpointValues(record.values)),
@@ -134,6 +139,10 @@ function parseStatus(value: unknown): AgentCheckpointInfo['status'] {
     default:
       return 'idle';
   }
+}
+
+function parseAgentType(value: unknown): AgentType {
+  return value === 'subagent' ? 'subagent' : 'main';
 }
 
 function asCheckpointContext(value: unknown): AgentCheckpointContext {

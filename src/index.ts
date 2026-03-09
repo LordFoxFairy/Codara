@@ -29,6 +29,7 @@ export type {
   AgentResumeConfig,
   AgentResumeStreamConfig,
 } from '@core/agents';
+export type {TaskRecord, TaskStore, TaskStatus, CreateTaskInput, UpdateTaskInput} from '@core/tasks';
 
 /** Session 相关类型 */
 export type {Session, SessionState, SessionStatus} from '@core/sessions';
@@ -38,8 +39,16 @@ export type {Session, SessionState, SessionStatus} from '@core/sessions';
 // ============================================
 
 /** Agent 构建 */
-export {createAgent} from '@core/agents';
-export {createCodaraAgent, loadCodaraAgent} from '@core/codara';
+export {createAgent, createSubagentTool, createTaskTool} from '@core/agents';
+export {createCodaraAgent, loadCodaraAgent, createCodaraTaskTool} from '@core/codara';
+export {
+  createTaskMemoryStore,
+  createTaskFileStore,
+  createTaskTools,
+  createTaskCreateTool,
+  createTaskUpdateTool,
+  createTaskListTool,
+} from '@core/tasks';
 
 /** Session 管理 */
 export {createSession} from '@core/sessions';

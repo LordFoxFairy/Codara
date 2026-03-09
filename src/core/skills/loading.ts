@@ -16,6 +16,11 @@ const KNOWN_FRONTMATTER_KEYS = new Set([
   'allowedTools'
 ])
 
+export interface MarkdownFrontmatterDocument {
+  frontmatter: Record<string, unknown>
+  body: string
+}
+
 /**
  * Same name/contract as docs/deepagents/skills.ts.
  */
@@ -83,12 +88,12 @@ export function parseSkillMetadataFromContent(
     return null
   }
 
-  const frontmatterData = parseFrontmatter(content, skillPath)
-  if (!frontmatterData) {
+  const document = parseMarkdownFrontmatterDocument(content, skillPath)
+  if (!document) {
     return null
   }
 
-  const frontmatter = normalizeFrontmatter(frontmatterData)
+  const frontmatter = normalizeFrontmatter(document.frontmatter)
   const name = parseOptionalString(readFrontmatter(frontmatter, ['name']))
   const description = parseOptionalString(readFrontmatter(frontmatter, ['description']))
   if (!name || !description) {
@@ -170,11 +175,11 @@ function parseExtensions(frontmatterData: Record<string, unknown>): Record<strin
   return extensions
 }
 
-function parseFrontmatter(
+export function parseMarkdownFrontmatterDocument(
   content: string,
   skillPath: string
-): Record<string, unknown> | null {
-  const match = content.match(/^---\s*\n([\s\S]*?)\n---(?:\s*\n|$)/)
+): MarkdownFrontmatterDocument | null {
+  const match = content.match(/^---\s*\n([\s\S]*?)\n---(?:\s*\n|$)([\s\S]*)$/)
   if (!match) {
     console.warn(`Skipping ${skillPath}: no valid YAML frontmatter found`)
     return null
@@ -183,13 +188,19 @@ function parseFrontmatter(
   try {
     const parsed = yaml.parse(match[1])
     if (!parsed) {
-      return {}
+      return {
+        frontmatter: {},
+        body: match[2] ?? ''
+      }
     }
     if (typeof parsed !== 'object' || Array.isArray(parsed)) {
       console.warn(`Skipping ${skillPath}: frontmatter is not a mapping`)
       return null
     }
-    return parsed as Record<string, unknown>
+    return {
+      frontmatter: parsed as Record<string, unknown>,
+      body: match[2] ?? ''
+    }
   } catch (error) {
     console.warn(`Invalid YAML in ${skillPath}:`, error)
     return null
