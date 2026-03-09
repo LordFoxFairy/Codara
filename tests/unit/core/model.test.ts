@@ -1,12 +1,15 @@
 import {describe, expect, it} from 'bun:test';
 import {
-  createCodaraAgent,
+  createCodara,
+  createMiddleware,
   createCodaraChatModel,
   createCodaraModelCatalog,
   createAgentMemoryCheckpointer,
-  loadCodaraAgent,
   type ModelRoutingConfig,
 } from '@core';
+import type {BaseChatModel} from '@langchain/core/language_models/chat_models';
+import type {BeforeModelContext} from '@core/middleware';
+import {EchoModel} from './codara-fixtures';
 
 const baseConfig: ModelRoutingConfig = {
   providers: [
@@ -72,25 +75,128 @@ describe('Codara model facade', () => {
   });
 
   it('should create an alias-backed Codara agent without manual provider wiring', async () => {
-    const agent = await createCodaraAgent({
+    const codara = createCodara({
       config: baseConfig,
       alias: 'deepseek',
       skills: false,
     });
 
-    expect(agent.getState().messages).toHaveLength(0);
-    expect(agent.getState().threadId.length).toBeGreaterThan(0);
+    // Trigger agent initialization
+    await codara.invoke('test');
+
+    expect(codara.getAgentState().messages.length).toBeGreaterThan(0);
+    expect(codara.getState().threadId.length).toBeGreaterThan(0);
   });
 
   it('should load an alias-backed Codara agent from checkpoints', async () => {
     const checkpointer = createAgentMemoryCheckpointer();
-    const restored = await loadCodaraAgent({
+    const codara = createCodara({
       config: baseConfig,
       threadId: 'missing-thread',
       checkpointer,
+      restore: 'latest',
       skills: false,
     });
 
-    expect(restored).toBeUndefined();
+    // When no checkpoint exists, session should still be created
+    const state = codara.getState();
+    expect(state.threadId).toBe('missing-thread');
+    expect(state.sessionStatus).toBe('ready');
+  });
+
+  it('should derive input budget from catalog model metadata for Codara sessions', async () => {
+    let seenBudget: BeforeModelContext['inputBudget'];
+    const budgetProbe = createMiddleware({
+      name: 'budget-probe',
+      beforeModel(context) {
+        seenBudget = context.inputBudget;
+      },
+    });
+
+    const catalog = {
+      async create() {
+        return new EchoModel() as unknown as BaseChatModel;
+      },
+      getInfo() {
+        return {
+          alias: 'default',
+          provider: 'test',
+          model: 'echo',
+          target: 'test:echo',
+          contextWindow: 12_000,
+          maxOutputTokens: 1_024,
+        };
+      },
+      hasAlias() {
+        return true;
+      },
+      getAliases() {
+        return ['default'];
+      },
+    };
+
+    const codara = createCodara({
+      catalog: catalog as never,
+      skills: false,
+      builtinTools: false,
+      middleware: [budgetProbe],
+    });
+
+    await codara.invoke('hello');
+
+    expect(seenBudget).toEqual({
+      maxInputTokens: 12_000,
+      reservedTokens: 1_024,
+    });
+  });
+
+  it('should respect explicit input budget overrides over catalog model metadata', async () => {
+    let seenBudget: BeforeModelContext['inputBudget'];
+    const budgetProbe = createMiddleware({
+      name: 'budget-probe',
+      beforeModel(context) {
+        seenBudget = context.inputBudget;
+      },
+    });
+
+    const catalog = {
+      async create() {
+        return new EchoModel() as unknown as BaseChatModel;
+      },
+      getInfo() {
+        return {
+          alias: 'default',
+          provider: 'test',
+          model: 'echo',
+          target: 'test:echo',
+          contextWindow: 12_000,
+          maxOutputTokens: 1_024,
+        };
+      },
+      hasAlias() {
+        return true;
+      },
+      getAliases() {
+        return ['default'];
+      },
+    };
+
+    const codara = createCodara({
+      catalog: catalog as never,
+      skills: false,
+      builtinTools: false,
+      middleware: [budgetProbe],
+      inputBudget: {
+        maxInputTokens: 4_096,
+        reservedTokens: 512,
+      },
+    });
+
+    await codara.invoke('hello');
+
+    expect(seenBudget).toEqual({
+      maxInputTokens: 4_096,
+      reservedTokens: 512,
+    });
   });
 });

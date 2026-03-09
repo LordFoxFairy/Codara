@@ -2,12 +2,12 @@ import {describe, expect, it} from 'bun:test';
 import {mkdir, mkdtemp, writeFile} from 'node:fs/promises';
 import path from 'node:path';
 import {tmpdir} from 'node:os';
-import {loadMemory} from '@core/middleware/memory';
 import {createMemoryMiddleware} from '@core/middleware/memory';
+import {createCodaraSourceProvider} from '@core/sessions/source-provider';
 import type {BeforeModelContext} from '@core/middleware';
 
 describe('MEMORY module', () => {
-  it('should load memory as a compact snapshot instead of the full file body', async () => {
+  it('should load project memory when it exists', async () => {
     const root = await mkdtemp(path.join(tmpdir(), 'codara-memory-'));
     const userHome = path.join(root, 'home');
     const projectRoot = path.join(root, 'project');
@@ -19,20 +19,17 @@ describe('MEMORY module', () => {
     await writeFile(globalFile, '# Team Preferences\n\nPrefer concise PR descriptions.\n', 'utf8');
     await writeFile(projectFile, '# Project Facts\n\nThe API uses cursor pagination.\nPrefer UTC timestamps.\n', 'utf8');
 
-    const loaded = await loadMemory({userHome, projectRoot});
-    expect(loaded).toBeDefined();
-    expect(loaded?.files.map((file) => file.scope)).toEqual(['global', 'project']);
-    expect(loaded?.content).toContain('# Project Memory');
-    expect(loaded?.content).toContain(`Path: ${globalFile}`);
-    expect(loaded?.content).toContain(`Path: ${projectFile}`);
-    expect(loaded?.content).toContain('# Team Preferences');
-    expect(loaded?.content).toContain('# Project Facts');
-    expect(loaded?.content).toContain('Prefer concise PR descriptions.');
-    expect(loaded?.content).toContain('The API uses cursor pagination.');
-    expect(loaded?.content).toContain('Read the source files directly if more detail is required.');
+    const sourceProvider = createCodaraSourceProvider({userHome, projectRoot});
+    const content = await sourceProvider.get('memory');
+
+    expect(content).toBeDefined();
+    // Should load project memory (priority over global)
+    expect(content).toContain('# Project Facts');
+    expect(content).toContain('The API uses cursor pagination.');
+    expect(content).toContain('# Team Preferences');
   });
 
-  it('should resolve global and project memory from the workspace root derived from cwd', async () => {
+  it('should resolve project memory from the workspace root derived from cwd', async () => {
     const root = await mkdtemp(path.join(tmpdir(), 'codara-memory-'));
     const userHome = path.join(root, 'home');
     const projectRoot = path.join(root, 'project');
@@ -46,16 +43,43 @@ describe('MEMORY module', () => {
     await writeFile(globalFile, '# Global Memory\n\nUse UTC timestamps.\n', 'utf8');
     await writeFile(projectFile, '# Project Memory\n\nAPI uses cursor pagination.\n', 'utf8');
 
-    const loaded = await loadMemory({userHome, cwd: nestedCwd});
+    const sourceProvider = createCodaraSourceProvider({userHome, cwd: nestedCwd});
+    const content = await sourceProvider.get('memory');
 
-    expect(loaded?.files).toEqual([
-      {scope: 'global', path: globalFile},
-      {scope: 'project', path: projectFile},
-    ]);
+    expect(content).toBeDefined();
+    expect(content).toContain('# Global Memory');
+    expect(content).toContain('# Project Memory');
+  });
+
+  it('should fall back to global memory when project memory does not exist', async () => {
+    const root = await mkdtemp(path.join(tmpdir(), 'codara-memory-'));
+    const userHome = path.join(root, 'home');
+    const projectRoot = path.join(root, 'project');
+    const globalFile = path.join(userHome, '.codara', 'MEMORY.md');
+
+    await mkdir(path.dirname(globalFile), {recursive: true});
+    await mkdir(projectRoot, {recursive: true});
+    await writeFile(globalFile, '# Global Memory\n\nUse UTC timestamps.\n', 'utf8');
+
+    const sourceProvider = createCodaraSourceProvider({userHome, projectRoot});
+    const content = await sourceProvider.get('memory');
+
+    expect(content).toBeDefined();
+    expect(content).toContain('# Global Memory');
+    expect(content).not.toContain('## Project MEMORY.md');
   });
 
   it('should inject preloaded memory content', async () => {
-    const middleware = createMemoryMiddleware('# Project Memory\n\nOriginal memory.\n');
+    const root = await mkdtemp(path.join(tmpdir(), 'codara-memory-'));
+    const userHome = path.join(root, 'home');
+    const projectRoot = path.join(root, 'project');
+    const projectFile = path.join(projectRoot, '.codara', 'MEMORY.md');
+
+    await mkdir(path.dirname(projectFile), {recursive: true});
+    await writeFile(projectFile, '# Original memory.\n', 'utf8');
+
+    const sourceProvider = createCodaraSourceProvider({userHome, projectRoot});
+    const middleware = createMemoryMiddleware(sourceProvider);
     const context: BeforeModelContext = {
       state: {messages: []},
       messages: [],
