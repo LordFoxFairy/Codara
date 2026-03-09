@@ -5,9 +5,15 @@
       "baseUrl": "https://openrouter.ai/api/v1",
       "apiKey": "$OPENROUTER_API_KEY",
       "models": [
-        "anthropic/claude-opus-4",
-        "anthropic/claude-sonnet-4",
-        "anthropic/claude-3.5-haiku"
+        {
+          "id": "anthropic/claude-opus-4"
+        },
+        {
+          "id": "anthropic/claude-sonnet-4"
+        },
+        {
+          "id": "anthropic/claude-3.5-haiku"
+        }
       ]
     },
     {
@@ -15,8 +21,12 @@
       "baseUrl": "https://api.deepseek.com/v1",
       "apiKey": "$DEEPSEEK_API_KEY",
       "models": [
-        "deepseek-chat",
-        "deepseek-reasoner"
+        {
+          "id": "deepseek-chat"
+        },
+        {
+          "id": "deepseek-reasoner"
+        }
       ]
     }
   ],
