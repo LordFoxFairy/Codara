@@ -45,6 +45,10 @@ describe('Todo List Middleware End-to-End', () => {
     const toolMessage = result.state.messages.find((message) => message instanceof ToolMessage) as ToolMessage;
     expect(toolMessage).toBeDefined();
     expect(String(toolMessage.content)).toContain('Updated todo list');
+    expect(String(toolMessage.content)).toContain('Inspect current todo middleware flow');
+    expect(String(toolMessage.content)).toContain('completed');
+    expect(String(toolMessage.content)).toContain('Report final todo status to user');
+    expect(String(toolMessage.content)).toContain('in_progress');
 
     expect(readTodoState(result.state.values).todos).toEqual([
       {content: 'Inspect current todo middleware flow', status: 'completed'},
