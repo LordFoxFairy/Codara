@@ -30,6 +30,7 @@ export async function runToolStep(
         nextTool,
         runtime.handleToolErrors,
         run.state,
+        request?.runtime.context ?? context.runtime.context,
         (values) => runtime.pipeline.normalizeValues(values ?? {})
       );
     });
@@ -64,6 +65,7 @@ export async function runToolStepStream(
         nextTool,
         runtime.handleToolErrors,
         run.state,
+        request?.runtime.context ?? context.runtime.context,
         (values) => runtime.pipeline.normalizeValues(values ?? {})
       );
     });

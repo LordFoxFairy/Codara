@@ -6,6 +6,7 @@ const RESERVED_AGENT_CONTEXT_KEYS = new Set(['todos', 'summary']);
 export interface AgentStateUpdate {
   messages?: BaseMessage[];
   context?: AgentRuntimeContext;
+  runtimeContext?: AgentRuntimeContext;
   values?: AgentRuntimeValues;
 }
 
@@ -27,7 +28,10 @@ export function applyAgentStateUpdate(
     context?: AgentRuntimeContext;
     values?: AgentRuntimeValues;
   },
-  update: AgentStateUpdate | undefined
+  update: AgentStateUpdate | undefined,
+  runtime?: {
+    context: AgentRuntimeContext;
+  }
 ): void {
   if (!update) {
     return;
@@ -40,6 +44,10 @@ export function applyAgentStateUpdate(
   if (update.context) {
     assertNoReservedAgentStateInContext(update.context);
     state.context = mergeRecords(state.context, update.context);
+  }
+
+  if (update.runtimeContext && runtime) {
+    runtime.context = mergeRecords(runtime.context, update.runtimeContext) ?? {};
   }
 
   if (update.values) {
