@@ -6,12 +6,13 @@ import {
   SKILLS_SYSTEM_PROMPT,
   formatSkillsList,
   formatSkillsLocations,
-  normalizeDiscoveredSkills
 } from '@core/skills/metadata'
-import type {SkillMetadata, SkillStore} from '@core/skills/types'
+import {loadSkillsRuntimeData, readSkillsRuntimeData} from '@core/skills/agents'
+import type {SkillStore} from '@core/skills/types'
 
 export interface SkillsMiddlewareOptions {
   store: SkillStore
+  agentRoots?: string[]
 }
 
 /**
@@ -29,9 +30,23 @@ export function createSkillsMiddleware(options: SkillsMiddlewareOptions) {
   return createMiddleware({
     name: 'SkillsMiddleware',
 
+    async beforeAgent() {
+      try {
+        const runtime = await loadSkillsRuntimeData(store, options.agentRoots ?? [])
+        return {
+          context: {
+            skills: runtime
+          }
+        }
+      } catch {
+        return undefined
+      }
+    },
+
     async wrapModelCall(context: ModelCallContext, handler) {
-      const skills = await discoverSkills(store)
-      const sources = store.listSources?.() ?? []
+      const runtime = readSkillsRuntimeData(context.state.context) ?? await loadSkillsRuntimeData(store, options.agentRoots ?? [])
+      const skills = runtime.discovered
+      const sources = runtime.sources
       const skillsSection = SKILLS_SYSTEM_PROMPT
         .replace('{skills_locations}', formatSkillsLocations(sources))
         .replace('{skills_list}', formatSkillsList(skills, sources))
@@ -39,12 +54,4 @@ export function createSkillsMiddleware(options: SkillsMiddlewareOptions) {
       return handler({...context, systemMessage: nextSystemMessage})
     },
   })
-}
-
-async function discoverSkills(store: SkillStore): Promise<SkillMetadata[]> {
-  try {
-    return normalizeDiscoveredSkills(await store.discover())
-  } catch {
-    return []
-  }
 }
