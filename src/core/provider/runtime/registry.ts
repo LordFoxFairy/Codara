@@ -57,17 +57,24 @@ export class ModelRegistry {
             );
         }
 
-        if (!provider.models.includes(rule.model)) {
+        const providerModel = provider.models
+            .map(normalizeProviderModel)
+            .find((model) => model.id === rule.model);
+        if (!providerModel) {
             throw new Error(
                 `路由规则 "${rule.alias}" 无效：模型 "${rule.model}" 不在 Provider "${provider.name}" 的白名单中`
             );
         }
 
-        return this.buildModelInfo(rule, provider);
+        return this.buildModelInfo(rule, provider, providerModel);
     }
 
     /** 由路由规则和 provider 构造 ModelInfo。 */
-    private buildModelInfo(rule: RouterRule, provider: ProviderConfig): ModelInfo {
+    private buildModelInfo(
+        rule: RouterRule,
+        provider: ProviderConfig,
+        providerModel: ReturnType<typeof normalizeProviderModel>
+    ): ModelInfo {
         return {
             provider: provider.name,
             model: rule.model,
@@ -75,6 +82,12 @@ export class ModelRegistry {
             alias: rule.alias,
             baseUrl: provider.baseUrl,
             apiKey: expandApiKey(provider.apiKey),
+            ...(typeof providerModel.contextWindow === "number" ? {contextWindow: providerModel.contextWindow} : {}),
+            ...(typeof providerModel.maxOutputTokens === "number" ? {maxOutputTokens: providerModel.maxOutputTokens} : {}),
         };
     }
+}
+
+function normalizeProviderModel(model: ProviderConfig["models"][number]) {
+    return typeof model === "string" ? {id: model} : model;
 }
