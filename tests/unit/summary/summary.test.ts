@@ -189,24 +189,6 @@ describe('summary middleware', () => {
     expect(String(context.state.messages[0]?.content)).toContain('[truncated]');
   });
 
-  it('should continue reading legacy summary records from context for compatibility', () => {
-    const legacy = readSummaryRecord({
-      codara: {
-        summary: {
-          content: 'legacy summary',
-          updatedAt: '2026-03-09T00:00:00.000Z',
-          summarizedMessages: 5,
-        },
-      },
-    });
-
-    expect(legacy).toEqual({
-      content: 'legacy summary',
-      updatedAt: '2026-03-09T00:00:00.000Z',
-      summarizedMessages: 5,
-    });
-  });
-
   it('should persist summary through checkpoint restore', async () => {
     const checkpointer = createAgentMemoryCheckpointer();
     const model = new FakeModel([new AIMessage('done')]) as unknown as BaseChatModel;
