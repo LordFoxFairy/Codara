@@ -5,6 +5,7 @@ import {z} from 'zod';
 import {createAgent} from '@core/agents/engine/agent';
 import type {
   Agent,
+  AgentInputBudget,
   AgentType,
   AgentRuntimeContext,
   AgentRuntimeValues,
@@ -37,6 +38,7 @@ export interface CreateSubagentToolOptions {
   middlewares?: BaseMiddleware[];
   handleToolErrors?: ToolErrorHandler;
   checkpointer?: AgentCheckpointer;
+  inputBudget?: AgentInputBudget;
   context?: AgentRuntimeContext;
   values?: AgentRuntimeValues;
   systemPrompt?: string;
@@ -95,6 +97,7 @@ export async function runDelegatedAgent(
     middleware: input.profileMiddleware ?? resolveSubagentMiddleware(options),
     handleToolErrors: options.handleToolErrors,
     checkpointer: options.checkpointer,
+    inputBudget: options.inputBudget,
     ...(mergeRuntimeContext(options.context, input.profileContext)
       ? {context: mergeRuntimeContext(options.context, input.profileContext)}
       : {}),

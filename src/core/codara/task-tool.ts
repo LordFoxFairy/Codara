@@ -1,30 +1,59 @@
 import {createAgent, createTaskTool} from '@core/agents';
-import {resolveCodaraAgentOptions} from '@core/codara/assembly';
-import type {CodaraAgentOptions} from '@core/codara/types';
+import type {CodaraOptions} from '@core/codara/types';
+import {createCodaraModelCatalog, DEFAULT_CODARA_MODEL_ALIAS} from '@core/codara/models';
+import {createCodaraTools} from '@core/codara/tools';
+import {createCodaraMiddlewares} from '@core/codara/middleware';
+import {createCodaraSourceProvider} from '@core/sessions/source-provider';
 
-interface CodaraSourceProjection {
-  guidelines?: string;
-  memory?: string;
-}
+/**
+ * 创建 Codara Task Tool。
+ * 用于在 Codara agent 中委派子任务。
+ */
+export async function createCodaraTaskTool(options: CodaraOptions = {}) {
+  const sourceProvider = createCodaraSourceProvider({
+    cwd: options.cwd,
+    projectRoot: options.projectRoot,
+    userHome: options.userHome,
+    guidelines: options.guidelines,
+    memory: options.memory,
+  });
 
-export async function createCodaraTaskTool(
-  options: CodaraAgentOptions = {},
-  loadedSources: CodaraSourceProjection = {}
-) {
-  const base = await resolveCodaraAgentOptions(options, loadedSources);
+  const modelCatalog = await Promise.resolve(options.catalog ?? createCodaraModelCatalog({
+    config: options.config,
+  }));
+
+  const alias = options.alias?.trim() || DEFAULT_CODARA_MODEL_ALIAS;
+  const model = options.model ?? await Promise.resolve(options.modelResolver ? options.modelResolver() : modelCatalog.create(alias));
+  const tools = createCodaraTools(options);
+  const middleware = createCodaraMiddlewares(options, sourceProvider);
+  const inputBudget = options.inputBudget ?? (
+    options.model || options.modelResolver
+      ? undefined
+      : deriveInputBudget(modelCatalog.getInfo(alias))
+  );
 
   return createTaskTool({
-    model: base.model,
-    ...(base.tools ? {tools: base.tools} : {}),
-    ...(base.middleware ? {middleware: base.middleware} : {}),
-    ...(base.handleToolErrors !== undefined ? {handleToolErrors: base.handleToolErrors} : {}),
-    ...(base.checkpointer ? {checkpointer: base.checkpointer} : {}),
-    ...(base.context ? {context: base.context} : {}),
-    ...(base.values ? {values: base.values} : {}),
+    model,
+    tools,
+    middleware,
+    handleToolErrors: options.handleToolErrors,
+    checkpointer: options.checkpointer,
+    inputBudget,
+    context: options.context,
+    values: options.values,
     runtimeHooks: {
-      createChildAgent: async (childOptions) => {
-        return createAgent(await resolveCodaraAgentOptions(options, loadedSources, childOptions));
-      },
+      createChildAgent: (childOptions) => createAgent(childOptions),
     },
   });
+}
+
+function deriveInputBudget(modelInfo: {contextWindow?: number; maxOutputTokens?: number} | undefined) {
+  if (!modelInfo?.contextWindow) {
+    return undefined;
+  }
+
+  return {
+    maxInputTokens: modelInfo.contextWindow,
+    ...(typeof modelInfo.maxOutputTokens === 'number' ? {reservedTokens: modelInfo.maxOutputTokens} : {}),
+  };
 }

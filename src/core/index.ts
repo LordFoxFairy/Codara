@@ -2,18 +2,13 @@
 
 export {
   createCodara,
-  createCodaraAgent,
   createCodaraChatModel,
   createCodaraMiddlewares,
   createCodaraModelCatalog,
-  createCodaraSessionHost,
   createCodaraTaskTool,
   createCodaraTools,
-  loadCodaraAgent,
   type Codara,
-  type CodaraAgentOptions,
   type CodaraOptions,
-  type CodaraSessionOptions,
   type CreateCodaraChatModelOptions,
   type CreateCodaraModelCatalogOptions,
   type CodaraModelCatalog,
@@ -95,7 +90,15 @@ export {
   type SkillsRuntimeData,
   type SubagentDefinition,
 } from '@core/skills';
-export {createSession, type Session, type SessionState, type SessionStatus} from '@core/sessions';
+export {
+  createSession,
+  createCodaraSourceProvider,
+  FileSourceProvider,
+  type Session,
+  type SessionState,
+  type SessionStatus,
+  type SourceProvider,
+} from '@core/sessions';
 export {
   ChatModelFactory,
   loadModelRoutingConfig,

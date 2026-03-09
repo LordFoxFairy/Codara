@@ -1,9 +1,7 @@
 export type {
   Codara,
-  CodaraAgentOptions,
   CodaraMiddlewareOptions,
   CodaraOptions,
-  CodaraSessionOptions,
   CodaraSkillOptions,
   CodaraToolsOptions,
 } from '@core/codara/types';
@@ -18,6 +16,4 @@ export {
   type CreateCodaraChatModelOptions,
   type CreateCodaraModelCatalogOptions,
 } from '@core/codara/models';
-export {createCodaraSessionHost} from '@core/codara/session';
-export {createCodaraAgent, loadCodaraAgent} from '@core/codara/agent';
 export {createCodara} from '@core/codara/facade';
