@@ -15,7 +15,7 @@ import type {
 import type {BaseMiddleware, HILMiddlewareOptions, LoggingMiddlewareOptions} from '@core/middleware';
 import type {AgentCheckpoint} from '@core/checkpoint/state';
 import type {HILResumePayload} from '@core/middleware';
-import type {SkillStore} from '@core/middleware/skills';
+import type {SkillStore} from '@core/skills';
 import type {Session, SessionState} from '@core/sessions';
 import type {CodaraModelCatalog, CreateCodaraModelCatalogOptions} from '@core/codara/models';
 import type {GuidelinesOptions} from '@core/middleware/guidelines';
