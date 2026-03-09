@@ -4,6 +4,7 @@ import type {
   AgentInvokeConfig,
   AgentResult,
   AgentRuntimeContext,
+  AgentRuntimeValues,
   AgentState,
   ToolErrorHandler,
 } from '@core/agents/contract/agent';
@@ -35,8 +36,11 @@ export interface AgentRuntime {
 export function createRunContext(
   state: AgentState,
   agentContext: AgentRuntimeContext,
+  agentValues: AgentRuntimeValues,
   config: Pick<AgentInvokeConfig, 'recursionLimit' | 'context'> = {}
 ): AgentRunContext {
+  state.context = agentContext;
+  state.values = agentValues;
   return {
     state,
     runId: randomUUID(),

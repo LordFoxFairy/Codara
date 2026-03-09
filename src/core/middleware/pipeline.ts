@@ -8,10 +8,13 @@
  */
 
 import type {AIMessage, ToolMessage} from '@langchain/core/messages';
-import type {AgentRuntimeContext} from '@core/agents';
+import type {StructuredToolInterface} from '@langchain/core/tools';
+import type {AgentRuntimeContext} from '@core/agents/contract/agent';
+import {applyAgentStateUpdate} from '@core/agents/command';
 import {
   type AfterAgentContext,
   type AfterModelContext,
+  type BaseExecutionContext,
   type BaseMiddleware,
   type BeforeAgentContext,
   type BeforeModelContext,
@@ -82,12 +85,34 @@ export class MiddlewarePipeline {
     }
   }
 
+  getTools(): ReadonlyArray<StructuredToolInterface> {
+    return this.middlewares.flatMap((middleware) => middleware.tools ?? []);
+  }
+
+  createInitialValues(seed: Record<string, unknown> = {}): Record<string, unknown> {
+    const defaults = this.middlewares.reduce<Record<string, unknown>>((values, middleware) => {
+      const schema = middleware.stateSchema;
+      if (!schema) {
+        return values;
+      }
+
+      const parsed = schema.safeParse({});
+      if (!parsed.success || !isPlainRecord(parsed.data)) {
+        return values;
+      }
+
+      return {...values, ...parsed.data};
+    }, {});
+
+    return {...defaults, ...cloneRecord(seed)};
+  }
+
   async beforeAgent(context: BeforeAgentContext): Promise<void> {
-    await runSimpleStage(this.middlewares, 'beforeAgent', context, (middleware) => middleware.beforeAgent);
+    await runSimpleStage(this.middlewares, 'beforeAgent', context, (middleware) => middleware.beforeAgent, applyUpdate);
   }
 
   async beforeModel(context: BeforeModelContext): Promise<void> {
-    await runSimpleStage(this.middlewares, 'beforeModel', context, (middleware) => middleware.beforeModel);
+    await runSimpleStage(this.middlewares, 'beforeModel', context, (middleware) => middleware.beforeModel, applyUpdate);
   }
 
   wrapModelCall(context: ModelCallContext, handler: ModelCallHandler): Promise<AIMessage> {
@@ -101,7 +126,7 @@ export class MiddlewarePipeline {
   }
 
   async afterModel(context: AfterModelContext): Promise<void> {
-    await runSimpleStage(this.middlewares, 'afterModel', context, (middleware) => middleware.afterModel);
+    await runSimpleStage(this.middlewares, 'afterModel', context, (middleware) => middleware.afterModel, applyUpdate);
   }
 
   wrapToolCall(context: ToolCallContext, handler: ToolCallHandler): Promise<ToolMessage> {
@@ -115,6 +140,22 @@ export class MiddlewarePipeline {
   }
 
   async afterAgent(context: AfterAgentContext): Promise<void> {
-    await runSimpleStage(this.middlewares, 'afterAgent', context, (middleware) => middleware.afterAgent);
+    await runSimpleStage(this.middlewares, 'afterAgent', context, (middleware) => middleware.afterAgent, applyUpdate);
+  }
+}
+
+function applyUpdate(context: BaseExecutionContext, update: Parameters<typeof applyAgentStateUpdate>[1]): void {
+  applyAgentStateUpdate(context.state, update);
+}
+
+function isPlainRecord(value: unknown): value is Record<string, unknown> {
+  return Boolean(value) && typeof value === 'object' && !Array.isArray(value);
+}
+
+function cloneRecord<T extends Record<string, unknown>>(value: T): T {
+  try {
+    return structuredClone(value);
+  } catch {
+    return {...value};
   }
 }

@@ -1,6 +1,7 @@
 import {randomUUID} from 'node:crypto';
 import {
   createInitialAgentState,
+  cloneValues,
   injectResumePayload,
   mergeContext,
   normalizeAgentInput,
@@ -56,7 +57,15 @@ class AgentInstance implements Agent {
     const checkpoint = options.checkpoint;
     this.threadId = checkpoint?.ref.threadId ?? options.threadId ?? randomUUID();
     this.checkpointer = options.checkpointer ?? createAgentMemoryCheckpointer();
-    this.state = createInitialAgentState(this.threadId, options.state, checkpoint);
+    const initialValues = this.runtime.pipeline.createInitialValues(checkpoint?.state.values ?? options.state?.values ?? {});
+    this.state = createInitialAgentState(
+      this.threadId,
+      {
+        ...(options.state ?? {}),
+        values: initialValues,
+      },
+      checkpoint
+    );
   }
 
   getState(): AgentStateSnapshot {
@@ -78,6 +87,7 @@ class AgentInstance implements Agent {
   async reset(): Promise<void> {
     assertNotRunning(this.state);
     this.state.messages = [];
+    this.state.values = this.runtime.pipeline.createInitialValues();
     this.state.pendingPause = undefined;
     this.state.lastResult = undefined;
     this.state.status = 'idle';
@@ -121,7 +131,7 @@ class AgentInstance implements Agent {
   ): Promise<AgentResult> {
     const loopState = this.prepareLoop(input);
     const startIndex = this.state.messages.length;
-    const run = createRunContext(loopState, this.state.context, {
+    const run = createRunContext(loopState, this.state.context, this.state.values, {
       ...config,
       context: mergeContext(this.state.context, config.context),
     });
@@ -151,7 +161,7 @@ class AgentInstance implements Agent {
   ): AsyncGenerator<AgentStreamOutput, AgentResult, void> {
     const loopState = this.prepareLoop(input);
     const startIndex = this.state.messages.length;
-    const run = createRunContext(loopState, this.state.context, {
+    const run = createRunContext(loopState, this.state.context, this.state.values, {
       ...config,
       context: mergeContext(this.state.context, config.context),
     });
@@ -203,7 +213,14 @@ class AgentInstance implements Agent {
     this.state.status = 'running';
     this.touch();
 
-    return {messages: [...this.state.messages]};
+    return {
+      threadId: this.threadId,
+      messages: [...this.state.messages],
+      context: mergeContext({}, this.state.context),
+      values: cloneValues(this.state.values),
+      status: this.state.status,
+      ...(this.state.pendingPause ? {pendingPause: this.state.pendingPause} : {}),
+    };
   }
 
   private async applyRunResult(
@@ -213,8 +230,19 @@ class AgentInstance implements Agent {
     checkpoint: boolean
   ): Promise<void> {
     this.state.lastResult = summarizeResult(result);
+    this.state.context = mergeContext({}, result.state.context);
+    this.state.values = cloneValues(result.state.values);
     this.state.pendingPause = readLatestPause(this.state.messages.slice(startIndex));
     this.state.status = this.state.pendingPause ? 'paused' : 'idle';
+    result.state.threadId = this.threadId;
+    result.state.context = mergeContext({}, this.state.context);
+    result.state.values = cloneValues(this.state.values);
+    result.state.status = this.state.status;
+    if (this.state.pendingPause) {
+      result.state.pendingPause = this.state.pendingPause;
+    } else {
+      delete result.state.pendingPause;
+    }
     this.touch();
 
     if (checkpoint) {

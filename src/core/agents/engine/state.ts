@@ -3,9 +3,10 @@ import {HumanMessage, ToolMessage} from '@langchain/core/messages';
 import type {
   AgentResult,
   AgentRuntimeContext,
-  AgentStateSnapshot,
+  AgentRuntimeValues,
   AgentInput,
   AgentStateSeed,
+  AgentStateSnapshot,
 } from '@core/agents/contract/agent';
 import type {
   AgentCheckpoint,
@@ -25,14 +26,16 @@ export function createInitialAgentState(
   const now = new Date().toISOString();
   const restoredState = checkpoint?.state;
   const restoredInfo = checkpoint?.info;
+  const pendingPause = restoredState?.pendingPause ?? state?.pendingPause;
 
   return {
     threadId: checkpoint?.ref.threadId ?? threadId,
     checkpointId: checkpoint?.ref.checkpointId ?? state?.checkpointId,
     messages: [...(restoredState?.messages ?? state?.messages ?? [])],
     context: cloneContext(restoredState?.context ?? state?.context ?? {}),
-    status: state?.status ?? deriveRuntimeStatus(restoredState?.pendingPause ?? state?.pendingPause, restoredInfo?.status),
-    pendingPause: cloneOptionalPause(restoredState?.pendingPause ?? state?.pendingPause),
+    values: cloneValues(restoredState?.values ?? state?.values ?? {}),
+    status: state?.status ?? deriveRuntimeStatus(pendingPause, restoredInfo?.status),
+    pendingPause: cloneOptionalPause(pendingPause),
     lastResult: state?.lastResult ?? (restoredInfo ? summarizeCheckpointInfo(restoredInfo) : undefined),
     step: restoredInfo?.step ?? state?.step ?? 0,
     createdAt: state?.createdAt ?? now,
@@ -170,6 +173,14 @@ export function cloneContext(context: AgentRuntimeContext): AgentRuntimeContext 
     return structuredClone(context);
   } catch {
     return {...context};
+  }
+}
+
+export function cloneValues(values: AgentRuntimeValues): AgentRuntimeValues {
+  try {
+    return structuredClone(values);
+  } catch {
+    return {...values};
   }
 }
 

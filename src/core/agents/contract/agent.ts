@@ -7,6 +7,8 @@ import type {AgentCheckpoint, AgentCheckpointer, AgentCheckpointSummary} from '@
 import type {AgentStreamConfig, AgentStreamOutput} from '@core/agents/contract/stream';
 
 export type AgentRuntimeContext = Record<string, unknown>;
+export type AgentRuntimeValues = Record<string, unknown>;
+export type AgentStatus = 'idle' | 'running' | 'paused' | 'closed';
 
 /**
  * Agent 运行时状态（对齐 LangChain/LangGraph 标准）
@@ -24,6 +26,16 @@ export type AgentRuntimeContext = Record<string, unknown>;
  * - additional_kwargs: 提供商特定信息
  */
 export interface AgentState {
+  threadId: string;
+  messages: BaseMessage[];
+  context: AgentRuntimeContext;
+  values: AgentRuntimeValues;
+  status: AgentStatus;
+  pendingPause?: HILPauseRequest;
+}
+
+/** invoke/stream 支持的最小消息输入。 */
+export interface AgentMessagesInput {
   messages: BaseMessage[];
 }
 
@@ -44,6 +56,7 @@ export interface AgentStateSnapshot {
   checkpointId?: string;
   messages: BaseMessage[];
   context: AgentRuntimeContext;
+  values: AgentRuntimeValues;
   status: 'idle' | 'running' | 'paused' | 'closed';
   pendingPause?: HILPauseRequest;
   lastResult?: AgentCheckpointSummary;
@@ -56,6 +69,7 @@ export interface AgentStateSnapshot {
 export interface AgentStateSeed {
   messages?: BaseMessage[];
   context?: AgentRuntimeContext;
+  values?: AgentRuntimeValues;
   pendingPause?: HILPauseRequest;
   checkpointId?: string;
   step?: number;
