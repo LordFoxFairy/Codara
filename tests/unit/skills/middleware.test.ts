@@ -61,6 +61,43 @@ describe('createSkillsMiddleware', () => {
     expect(combined).toContain('Allowed tools: read_file')
   })
 
+  it('should populate shared skills runtime data into agent context', async () => {
+    const root = await mkdtemp(path.join(tmpdir(), 'codara-skills-runtime-'))
+    const skillDir = path.join(root, 'demo-skill')
+    const agentsDir = path.join(skillDir, 'agents')
+    await mkdir(agentsDir, {recursive: true})
+    await writeFile(
+      path.join(skillDir, 'SKILL.md'),
+      `---
+name: demo-skill
+description: runtime skill
+---
+# Demo
+`,
+      'utf8'
+    )
+    await writeFile(
+      path.join(agentsDir, 'Reviewer.md'),
+      `---
+name: Reviewer
+description: review agent
+tools:
+  - read
+---
+You are a Reviewer subagent.
+`,
+      'utf8'
+    )
+
+    const store = new FileSystemSkillStore({sources: [root], cacheTtlMs: 0})
+    const middleware = createSkillsMiddleware({store})
+    const context = createBaseContext('run_shared_runtime')
+
+    const update = await middleware.beforeAgent?.(context)
+    const runtime = (update?.context as {skills?: {agentDefinitions?: Record<string, {name: string}>}} | undefined)?.skills
+    expect(runtime?.agentDefinitions?.Reviewer?.name).toBe('Reviewer')
+  })
+
   it('should work with real FileSystemSkillStore', async () => {
     const root = await mkdtemp(path.join(tmpdir(), 'codara-skills-mw-'))
     const skillDir = path.join(root, 'demo-skill')
