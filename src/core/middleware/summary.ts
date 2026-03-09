@@ -49,14 +49,8 @@ export function createSummaryMiddleware(options: SummaryOptions): BaseMiddleware
   });
 }
 
-/** 从当前消息状态或旧 context 结构中读取摘要记录。 */
-export function readSummaryRecord(messages: BaseMessage[]): SummaryRecord | undefined;
-export function readSummaryRecord(context: AgentRuntimeContext): SummaryRecord | undefined;
-export function readSummaryRecord(input: BaseMessage[] | AgentRuntimeContext): SummaryRecord | undefined {
-  return Array.isArray(input) ? readSummaryRecordFromMessages(input) : readSummaryRecordFromContext(input);
-}
-
-function readSummaryRecordFromMessages(messages: BaseMessage[]): SummaryRecord | undefined {
+/** 从当前消息状态中读取已持久化的摘要记录。 */
+export function readSummaryRecord(messages: BaseMessage[]): SummaryRecord | undefined {
   const summaryMessage = readSummaryMessage(messages);
   if (!summaryMessage) {
     return undefined;
@@ -76,21 +70,6 @@ function readSummaryRecordFromMessages(messages: BaseMessage[]): SummaryRecord |
     content,
     updatedAt: new Date().toISOString(),
     summarizedMessages: 0,
-  };
-}
-
-function readSummaryRecordFromContext(context: AgentRuntimeContext): SummaryRecord | undefined {
-  const codara = asRecord(context[CODARA_KEY]);
-  const summary = asRecord(codara[SUMMARY_KEY]);
-  const content = typeof summary.content === 'string' ? summary.content.trim() : '';
-  if (!content) {
-    return undefined;
-  }
-
-  return {
-    content,
-    updatedAt: typeof summary.updatedAt === 'string' ? summary.updatedAt : new Date().toISOString(),
-    summarizedMessages: typeof summary.summarizedMessages === 'number' ? summary.summarizedMessages : 0,
   };
 }
 
@@ -154,7 +133,7 @@ function splitSummaryState(messages: BaseMessage[]): {
   const preservedSystemMessages: SystemMessage[] = [];
 
   for (const message of leadingSystemMessages) {
-    const record = readSummaryRecordFromMessages([message]);
+    const record = readSummaryRecord([message]);
     if (!summary && record) {
       summary = record;
       continue;
