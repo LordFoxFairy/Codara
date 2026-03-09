@@ -26,7 +26,7 @@ describe('Codara facade integration', () => {
     const logs: MiddlewareLogRecord[] = [];
 
     const codara = createCodara({
-      modelResolver: async () => new InvokeOnceModel() as unknown as BaseChatModel,
+      model: new InvokeOnceModel() as unknown as BaseChatModel,
       builtinTools: false,
       skills: false,
       logging: {
@@ -48,7 +48,7 @@ describe('Codara facade integration', () => {
 
   it('should stream message chunks through createCodara().stream', async () => {
     const codara = createCodara({
-      modelResolver: async () => new InvokeOnceModel() as unknown as BaseChatModel,
+      model: new InvokeOnceModel() as unknown as BaseChatModel,
       builtinTools: false,
       skills: false,
     });
@@ -61,14 +61,13 @@ describe('Codara facade integration', () => {
     }
 
     expect(chunks.join('').trim().length).toBeGreaterThan(0);
-    const session = await codara.session();
-    expect(session.getState().sessionStatus).toBe('ready');
-    expect(session.agent().getState().messages.length).toBeGreaterThanOrEqual(2);
+    expect(codara.getState().sessionStatus).toBe('ready');
+    expect(codara.getAgentState().messages.length).toBeGreaterThanOrEqual(2);
   });
 
   it('should stream with proper LangChain message format and block types', async () => {
     const codara = createCodara({
-      modelResolver: async () => new InvokeOnceModel() as unknown as BaseChatModel,
+      model: new InvokeOnceModel() as unknown as BaseChatModel,
       builtinTools: false,
       skills: false,
     });
@@ -103,8 +102,7 @@ describe('Codara facade integration', () => {
     expect(fullContent.length).toBeGreaterThan(0);
 
     // Verify final state
-    const session = await codara.session();
-    const state = session.agent().getState();
+    const state = codara.getAgentState();
 
     // Verify messages array follows LangChain BaseMessage format
     expect(state.messages.length).toBeGreaterThanOrEqual(2);

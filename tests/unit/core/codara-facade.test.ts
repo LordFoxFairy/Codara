@@ -1,35 +1,27 @@
 import {describe, expect, it} from 'bun:test';
-import {createAgentMemoryCheckpointer, createCodara, createCodaraAgent, loadCodaraAgent} from '@core';
+import {createAgentMemoryCheckpointer, createCodara} from '@core';
 import type {BaseChatModel} from '@langchain/core/language_models/chat_models';
 import {AIMessageChunk} from '@langchain/core/messages';
 import {EchoModel, StreamingEchoModel} from './codara-fixtures';
 
 describe('Codara facade runtime', () => {
-  it('should create and reload a Codara agent through the facade', async () => {
+  it('should create a Codara session through the facade', async () => {
     const checkpointer = createAgentMemoryCheckpointer();
     const model = new EchoModel();
 
-    const agent = await createCodaraAgent({
+    const codara = createCodara({
       model: model as unknown as BaseChatModel,
       threadId: 'core-facade-thread',
       checkpointer,
       skills: false,
     });
 
-    const first = await agent.invoke('hello');
+    const first = await codara.invoke('hello');
     expect(first.reason).toBe('complete');
     expect(String(first.state.messages[first.state.messages.length - 1]?.content)).toBe('seen_humans:1');
 
-    const restored = await loadCodaraAgent({
-      model: model as unknown as BaseChatModel,
-      threadId: 'core-facade-thread',
-      checkpointer,
-      skills: false,
-    });
-
-    expect(restored).toBeDefined();
-    expect(restored?.getState().status).toBe('idle');
-    expect(restored?.getState().messages).toHaveLength(2);
+    const state = codara.getState();
+    expect(state.sessionStatus).toBe('ready');
   });
 
   it('should expose a high-level invoke API through createCodara()', async () => {
@@ -42,28 +34,28 @@ describe('Codara facade runtime', () => {
     const result = await codara.invoke('hello');
     expect(result.reason).toBe('complete');
 
-    const state = await codara.getState();
+    const state = codara.getState();
     expect(state.sessionStatus).toBe('ready');
 
-    const agentState = (await codara.session()).agent().getState();
+    const agentState = codara.getAgentState();
     expect(agentState.messages).toHaveLength(2);
     expect(String(agentState.messages[1]?.content)).toBe('seen_humans:1');
   });
 
-  it('should allow a modelResolver override without changing the main createCodaraAgent API', async () => {
+  it('should allow a modelResolver override without changing the main createCodara API', async () => {
     const model = new EchoModel();
-    const agent = await createCodaraAgent({
+    const codara = createCodara({
       modelResolver: async () => model as unknown as BaseChatModel,
       skills: false,
       builtinTools: false,
     });
 
-    const result = await agent.invoke('hello');
+    const result = await codara.invoke('hello');
     expect(result.reason).toBe('complete');
     expect(String(result.state.messages[result.state.messages.length - 1]?.content)).toBe('seen_humans:1');
   });
 
-  it('should recreate the default session after dispose', async () => {
+  it('should recreate the agent after reset', async () => {
     const codara = createCodara({
       model: new EchoModel() as unknown as BaseChatModel,
       skills: false,
@@ -71,15 +63,15 @@ describe('Codara facade runtime', () => {
     });
 
     await codara.invoke('hello');
-    await codara.dispose();
+    await codara.reset();
 
     const result = await codara.invoke('again');
     expect(result.reason).toBe('complete');
 
-    const state = await codara.getState();
+    const state = codara.getState();
     expect(state.sessionStatus).toBe('ready');
 
-    const agentState = (await codara.session()).agent().getState();
+    const agentState = codara.getAgentState();
     expect(agentState.messages).toHaveLength(2);
     expect(String(agentState.messages[1]?.content)).toBe('seen_humans:1');
   });
@@ -99,10 +91,10 @@ describe('Codara facade runtime', () => {
     }
 
     expect(chunks).toEqual(['seen_humans:1']);
-    const state = await codara.getState();
+    const state = codara.getState();
     expect(state.sessionStatus).toBe('ready');
 
-    const agentState = (await codara.session()).agent().getState();
+    const agentState = codara.getAgentState();
     expect(agentState.messages).toHaveLength(2);
     expect(String(agentState.messages[1]?.content)).toBe('seen_humans:1');
   });
