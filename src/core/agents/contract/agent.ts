@@ -7,6 +7,7 @@ import type {AgentCheckpoint, AgentCheckpointer} from '@core/checkpoint/state';
 import type {AgentStreamConfig, AgentStreamOutput} from '@core/agents/contract/stream';
 
 export type AgentRuntimeContext = Record<string, unknown>;
+export type AgentRuntimeValues = Record<string, unknown>;
 export type AgentStatus = 'idle' | 'running' | 'paused' | 'closed';
 
 /**
@@ -27,6 +28,8 @@ export type AgentStatus = 'idle' | 'running' | 'paused' | 'closed';
 export interface AgentState {
   threadId: string;
   messages: BaseMessage[];
+  context: AgentRuntimeContext;
+  values: AgentRuntimeValues;
   status: AgentStatus;
   pendingPause?: HILPauseRequest;
 }
@@ -86,6 +89,8 @@ export interface CreateAgentOptions {
   messages?: BaseMessage[];
   /** 初始运行上下文。 */
   context?: AgentRuntimeContext;
+  /** 初始持久状态值（供 middleware state 使用）。 */
+  values?: AgentRuntimeValues;
 }
 
 /** invoke(...) 调用配置。 */

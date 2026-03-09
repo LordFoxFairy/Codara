@@ -10,7 +10,8 @@
 import type {AIMessage, BaseMessage, ToolCall, ToolMessage} from '@langchain/core/messages';
 import type {StructuredToolInterface} from '@langchain/core/tools';
 import {z} from 'zod';
-import type {AgentRuntimeContext} from '@core/agents';
+import type {AgentRuntimeContext, AgentRuntimeValues} from '@core/agents/contract/agent';
+import type {AgentStateUpdate} from '@core/agents/command';
 
 export interface MiddlewareRuntimeContext {
   /** 本次运行的有效上下文（持久上下文 + 调用时临时覆盖）。 */
@@ -22,6 +23,8 @@ export interface MiddlewareRuntimeContext {
 export interface BaseExecutionContext {
   state: {
     messages: BaseMessage[];
+    context?: AgentRuntimeContext;
+    values?: AgentRuntimeValues;
   };
   /** `state.messages` 的快捷访问。 */
   messages: BaseMessage[];
@@ -64,16 +67,20 @@ export type ToolCallHandler = (request?: ToolCallContext) => Promise<ToolMessage
 
 export interface BaseMiddleware {
   name: string;
+  /** 可选持久 state schema（用于 middleware state 默认值和校验）。 */
+  stateSchema?: z.ZodTypeAny;
   /** 可选 context 校验器（例如 zod schema）。 */
   contextSchema?: z.ZodTypeAny;
+  /** middleware 注册的附加 tools。 */
+  tools?: StructuredToolInterface[];
   /** 标记后不可通过 pipeline.remove 删除。 */
   required?: boolean;
-  beforeAgent?: (context: BeforeAgentContext) => Promise<void> | void;
-  beforeModel?: (context: BeforeModelContext) => Promise<void> | void;
+  beforeAgent?: (context: BeforeAgentContext) => Promise<AgentStateUpdate | void> | AgentStateUpdate | void;
+  beforeModel?: (context: BeforeModelContext) => Promise<AgentStateUpdate | void> | AgentStateUpdate | void;
   wrapModelCall?: (context: ModelCallContext, handler: ModelCallHandler) => Promise<AIMessage>;
-  afterModel?: (context: AfterModelContext) => Promise<void> | void;
+  afterModel?: (context: AfterModelContext) => Promise<AgentStateUpdate | void> | AgentStateUpdate | void;
   wrapToolCall?: (context: ToolCallContext, handler: ToolCallHandler) => Promise<ToolMessage>;
-  afterAgent?: (context: AfterAgentContext) => Promise<void> | void;
+  afterAgent?: (context: AfterAgentContext) => Promise<AgentStateUpdate | void> | AgentStateUpdate | void;
 }
 
 export function createMiddleware(config: BaseMiddleware): BaseMiddleware {
@@ -83,6 +90,8 @@ export function createMiddleware(config: BaseMiddleware): BaseMiddleware {
   }
 
   const hasAnyHook = Boolean(
+    config.tools?.length ||
+    config.stateSchema ||
     config.beforeAgent ||
     config.beforeModel ||
     config.wrapModelCall ||

@@ -4,6 +4,7 @@ import type {
   AgentResult,
   AgentStatus,
   AgentRuntimeContext,
+  AgentRuntimeValues,
   AgentInput,
   AgentMessagesInput,
 } from '@core/agents/contract/agent';
@@ -21,6 +22,7 @@ export interface AgentRuntimeState {
   checkpointId?: string;
   messages: BaseMessage[];
   context: AgentRuntimeContext;
+  values: AgentRuntimeValues;
   status: AgentStatus;
   pendingPause?: HILPauseRequest;
   lastResult?: AgentCheckpointSummary;
@@ -34,6 +36,7 @@ export type MutableAgentState = AgentRuntimeState;
 interface AgentInitialInput {
   messages?: BaseMessage[];
   context?: AgentRuntimeContext;
+  values?: AgentRuntimeValues;
 }
 
 export function createInitialAgentState(
@@ -51,6 +54,7 @@ export function createInitialAgentState(
     checkpointId: checkpoint?.ref.checkpointId,
     messages: [...(restoredState?.messages ?? input?.messages ?? [])],
     context: cloneContext(restoredState?.context ?? input?.context ?? {}),
+    values: cloneValues(input?.values ?? restoredState?.values ?? {}),
     status: deriveRuntimeStatus(pendingPause, restoredInfo?.status),
     pendingPause: cloneOptionalPause(pendingPause),
     lastResult: restoredInfo ? summarizeCheckpointInfo(restoredInfo) : undefined,
@@ -190,6 +194,14 @@ export function cloneContext(context: AgentRuntimeContext): AgentRuntimeContext 
     return structuredClone(context);
   } catch {
     return {...context};
+  }
+}
+
+export function cloneValues(values: AgentRuntimeValues): AgentRuntimeValues {
+  try {
+    return structuredClone(values);
+  } catch {
+    return {...values};
   }
 }
 
