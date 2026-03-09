@@ -1,9 +1,6 @@
 import {createAgent, type Agent} from '@core/agents';
 import type {AgentCheckpointer} from '@core/checkpoint/state';
-import type {CreateCodaraChatModelOptions} from '@core/codara/models';
-import {createCodaraChatModel} from '@core/codara/models';
-import {createCodaraMiddlewares} from '@core/codara/middleware';
-import {createCodaraTools} from '@core/codara/tools';
+import {resolveCodaraAgentOptions} from '@core/codara/assembly';
 import type {CodaraAgentOptions} from '@core/codara/types';
 
 interface CodaraSourceProjection {
@@ -16,19 +13,7 @@ export async function createCodaraAgent(
   options: CodaraAgentOptions = {},
   loadedSources: CodaraSourceProjection = {}
 ): Promise<Agent> {
-  const model = await resolveCodaraModel(options);
-
-  return createAgent({
-    model,
-    tools: createCodaraTools(options),
-    middleware: createCodaraMiddlewares(options, loadedSources),
-    handleToolErrors: options.handleToolErrors,
-    threadId: options.threadId,
-    checkpointer: options.checkpointer,
-    ...(options.checkpoint ? {checkpoint: options.checkpoint} : {}),
-    ...(options.messages ? {messages: options.messages} : {}),
-    ...(options.context ? {context: options.context} : {}),
-  });
+  return createAgent(await resolveCodaraAgentOptions(options, loadedSources));
 }
 
 /** 按 thread 恢复最新的 Codara agent。 */
@@ -41,21 +26,4 @@ export async function loadCodaraAgent(
   }
 
   return createCodaraAgent({...options, checkpoint});
-}
-
-async function resolveCodaraModel(options: CodaraAgentOptions) {
-  if (options.model) {
-    return options.model;
-  }
-
-  if (options.modelResolver) {
-    return options.modelResolver();
-  }
-
-  const modelOptions: CreateCodaraChatModelOptions = {
-    ...(options.alias ? {alias: options.alias} : {}),
-    ...(options.catalog ? {catalog: options.catalog} : {}),
-    ...(options.config ? {config: options.config} : {}),
-  };
-  return createCodaraChatModel(modelOptions);
 }
