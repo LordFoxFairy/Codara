@@ -80,8 +80,6 @@ export const TodoStateSchema = z.object({
   todos: z.array(TodoSchema).default([]),
 });
 
-export type TodoStatus = z.infer<typeof TodoStatusSchema>;
-export type Todo = z.infer<typeof TodoSchema>;
 export type TodoMiddlewareState = z.infer<typeof TodoStateSchema>;
 
 export interface TodoListMiddlewareOptions {
@@ -133,14 +131,6 @@ export function todoListMiddleware(options?: TodoListMiddlewareOptions): BaseMid
       }),
     afterModel: (context) => rejectParallelWriteTodos(context),
   });
-}
-
-export function createTodoListMiddleware(options?: TodoListMiddlewareOptions): BaseMiddleware {
-  return todoListMiddleware(options);
-}
-
-export function createTodoMiddleware(options?: TodoListMiddlewareOptions): BaseMiddleware {
-  return todoListMiddleware(options);
 }
 
 function rejectParallelWriteTodos(context: AfterModelContext): {messages: ToolMessage[]} | undefined {
