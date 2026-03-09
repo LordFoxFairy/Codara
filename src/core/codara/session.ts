@@ -154,6 +154,7 @@ function mergeCodaraAgentOptions(
     skills: mergeSkillsOptions(base.skills, override.skills),
     guidelines: override.guidelines ?? base.guidelines,
     memory: override.memory ?? base.memory,
+    todo: override.todo ?? base.todo,
     summary: override.summary ?? base.summary,
     hil: override.hil ?? base.hil,
     logging: override.logging ?? base.logging,

@@ -21,6 +21,7 @@ import type {CodaraModelCatalog, CreateCodaraModelCatalogOptions} from '@core/co
 import type {GuidelinesOptions} from '@core/middleware/guidelines';
 import type {MemoryOptions} from '@core/middleware/memory';
 import type {SummaryOptions} from '@core/middleware/summary';
+import type {TodoListMiddlewareOptions} from '@core/middleware/todo';
 
 export interface CodaraSkillOptions {
   store?: SkillStore;
@@ -44,6 +45,7 @@ export interface CodaraMiddlewareOptions {
   middlewares?: BaseMiddleware[];
   guidelines?: false | GuidelinesOptions;
   memory?: false | MemoryOptions;
+  todo?: false | TodoListMiddlewareOptions;
   skills?: false | CodaraSkillOptions;
   summary?: false | SummaryOptions;
   hil?: false | HILMiddlewareOptions;

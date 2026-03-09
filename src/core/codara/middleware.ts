@@ -3,6 +3,7 @@ import {createGuidelinesMiddleware} from '@core/middleware/guidelines';
 import {createMemoryMiddleware} from '@core/middleware/memory';
 import {createSkillsMiddleware, FileSystemSkillStore} from '@core/middleware/skills';
 import {createSummaryMiddleware} from '@core/middleware/summary';
+import {todoListMiddleware} from '@core/middleware/todo';
 import type {CodaraMiddlewareOptions} from '@core/codara/types';
 import {resolveWorkspaceRoot} from '@core/workspace';
 
@@ -32,6 +33,10 @@ export function createCodaraMiddlewares(
 
   if (options.summary) {
     middlewares.push(createSummaryMiddleware(options.summary));
+  }
+
+  if (options.todo !== false) {
+    middlewares.push(todoListMiddleware(options.todo));
   }
 
   if (options.skills !== false) {
