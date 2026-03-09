@@ -1,20 +1,43 @@
-import {describe, expect, it} from 'bun:test';
+import {afterEach, describe, expect, it} from 'bun:test';
 import {HumanMessage, ToolMessage} from '@langchain/core/messages';
 import {createAgent} from '@core/agents';
 import {readTodoState, todoListMiddleware} from '@core/middleware/todo';
-import {ChatModelFactory, loadModelRoutingConfig, ModelRegistry} from '@core/provider';
-
-const liveIt = process.env.RUN_LIVE_PROVIDER_TESTS === '1' ? it : it.skip;
+import {ChatModelFactory, ModelRegistry, parseModelRoutingConfig} from '@core/provider';
+import {createMockRoutingConfig, startMockOpenAIServer} from '../provider/mock-openai-server';
 
 describe('Todo List Middleware End-to-End', () => {
-  liveIt('应在真实 agent 循环中调用 write_todos 并把 todos 持久化到 state.values', async () => {
-    const deepseekKey = process.env.DEEPSEEK_API_KEY?.trim();
-    expect(Boolean(deepseekKey && !deepseekKey.startsWith('your-'))).toBe(true);
+  const cleanups: Array<() => void> = [];
 
-    const config = await loadModelRoutingConfig();
+  afterEach(() => {
+    while (cleanups.length > 0) {
+      cleanups.pop()?.();
+    }
+  });
+
+  it('应在 provider stack 驱动的 agent 循环中调用 write_todos 并把 todos 持久化到 state.values', async () => {
+    const server = startMockOpenAIServer([
+      {
+        toolCalls: [
+          {
+            id: 'call_todos_1',
+            name: 'write_todos',
+            arguments: {
+              todos: [
+                {content: 'Inspect current todo middleware flow', status: 'completed'},
+                {content: 'Report final todo status to user', status: 'in_progress'},
+              ],
+            },
+          },
+        ],
+      },
+      {content: 'done'},
+    ]);
+    cleanups.push(() => server.stop());
+
+    const config = parseModelRoutingConfig(createMockRoutingConfig(server.baseUrl));
     const registry = new ModelRegistry(config);
     const factory = new ChatModelFactory(registry);
-    const model = await factory.create('deepseek');
+    const model = await factory.create('mock');
 
     const runner = createAgent({
       model,
@@ -56,5 +79,6 @@ describe('Todo List Middleware End-to-End', () => {
       {content: 'Inspect current todo middleware flow', status: 'completed'},
       {content: 'Report final todo status to user', status: 'in_progress'},
     ]);
-  }, 120_000);
+    expect(server.requests).toHaveLength(2);
+  });
 });
