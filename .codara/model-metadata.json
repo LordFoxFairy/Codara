@@ -1,0 +1,14 @@
+{
+  "anthropic/claude-opus-4": {
+    "contextWindow": 200000,
+    "maxOutputTokens": 8192
+  },
+  "anthropic/claude-sonnet-4": {
+    "contextWindow": 200000,
+    "maxOutputTokens": 8192
+  },
+  "anthropic/claude-3.5-haiku": {
+    "contextWindow": 200000,
+    "maxOutputTokens": 8192
+  }
+}

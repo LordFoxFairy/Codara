@@ -1,4 +1,4 @@
-import type {ModelInfo, ModelRoutingConfig, ProviderConfig, RouterRule} from "@core/provider/model";
+import type {ModelInfo, ModelMetadataConfig, ModelRoutingConfig, ProviderConfig, RouterRule} from "@core/provider/model";
 import {expandApiKey} from "@core/provider/runtime/api-key";
 
 /** 模型注册表与别名索引。 */
@@ -15,7 +15,7 @@ export class ModelRegistry {
                 throw new Error(`路由规则 "${rule.alias}" 重复定义`);
             }
             aliasSet.add(rule.alias);
-            return this.validateAndBuildModel(rule, providerMap);
+            return this.validateAndBuildModel(rule, providerMap, config.modelMetadata);
         });
 
         this.modelMap = new Map(this.models.map((m) => [m.alias, m]));
@@ -48,7 +48,8 @@ export class ModelRegistry {
     /** 校验路由规则并构造模型信息。 */
     private validateAndBuildModel(
         rule: RouterRule,
-        providerMap: Map<string, ProviderConfig>
+        providerMap: Map<string, ProviderConfig>,
+        modelMetadata: Record<string, ModelMetadataConfig>
     ): ModelInfo {
         const provider = providerMap.get(rule.provider);
         if (!provider) {
@@ -57,21 +58,20 @@ export class ModelRegistry {
             );
         }
 
-        const providerModel = provider.models.find((model) => model.id === rule.model);
-        if (!providerModel) {
+        if (!provider.models.includes(rule.model)) {
             throw new Error(
                 `路由规则 "${rule.alias}" 无效：模型 "${rule.model}" 不在 Provider "${provider.name}" 的白名单中`
             );
         }
 
-        return this.buildModelInfo(rule, provider, providerModel);
+        return this.buildModelInfo(rule, provider, modelMetadata[rule.model]);
     }
 
     /** 由路由规则和 provider 构造 ModelInfo。 */
     private buildModelInfo(
         rule: RouterRule,
         provider: ProviderConfig,
-        providerModel: ProviderConfig["models"][number]
+        modelMetadata?: ModelMetadataConfig
     ): ModelInfo {
         return {
             provider: provider.name,
@@ -80,8 +80,8 @@ export class ModelRegistry {
             alias: rule.alias,
             baseUrl: provider.baseUrl,
             apiKey: expandApiKey(provider.apiKey),
-            ...(typeof providerModel.contextWindow === "number" ? {contextWindow: providerModel.contextWindow} : {}),
-            ...(typeof providerModel.maxOutputTokens === "number" ? {maxOutputTokens: providerModel.maxOutputTokens} : {}),
+            ...(typeof modelMetadata?.contextWindow === "number" ? {contextWindow: modelMetadata.contextWindow} : {}),
+            ...(typeof modelMetadata?.maxOutputTokens === "number" ? {maxOutputTokens: modelMetadata.maxOutputTokens} : {}),
         };
     }
 }
