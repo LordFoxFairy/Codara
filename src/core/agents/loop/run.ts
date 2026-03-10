@@ -12,7 +12,7 @@ import type {
 import type {AgentModel} from '@core/agents/engine/model';
 import type {AgentStreamWriter} from '@core/agents/engine/stream-writer';
 import {runTurn, runTurnStream} from '@core/agents/loop/turn';
-import type {MiddlewarePipeline} from '@core/middleware';
+import type {MiddlewarePipeline, MiddlewareRuntimeShared} from '@core/middleware';
 
 const DEFAULT_RECURSION_LIMIT = 25;
 
@@ -22,6 +22,7 @@ export interface AgentRunContext {
   runId: string;
   maxTurns: number;
   context: AgentRuntimeContext;
+  shared: MiddlewareRuntimeShared;
   agentContext: AgentRuntimeContext;
   inputBudget?: AgentInputBudget;
 }
@@ -48,6 +49,7 @@ export function createRunContext(
     runId: randomUUID(),
     maxTurns: normalizeMaxTurns(config.recursionLimit),
     context: config.context ?? {},
+    shared: {},
     agentContext,
     inputBudget: config.inputBudget,
   };

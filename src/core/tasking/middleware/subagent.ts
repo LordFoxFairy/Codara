@@ -4,7 +4,7 @@ import {
   DEFAULT_SUBAGENT_TOOL_DESCRIPTION,
   DEFAULT_SUBAGENT_TOOL_NAME,
   type CreateSubagentToolOptions,
-} from '@core/agents/subagent';
+} from '@core/tasking/subagent';
 
 export {
   DEFAULT_SUBAGENT_TOOL_DESCRIPTION,

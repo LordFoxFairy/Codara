@@ -1,5 +1,20 @@
-export * from '@core/middleware/types';
-export * from '@core/middleware/pipeline';
+export {
+  createMiddleware,
+  type AfterAgentContext,
+  type AfterModelContext,
+  type AgentRunSummary,
+  type BaseExecutionContext,
+  type BaseMiddleware,
+  type BeforeAgentContext,
+  type BeforeModelContext,
+  type MiddlewareRuntimeContext,
+  type MiddlewareRuntimeShared,
+  type ModelCallContext,
+  type ModelCallHandler,
+  type ToolCallContext,
+  type ToolCallHandler,
+} from '@core/middleware/types';
+export {MiddlewarePipeline} from '@core/middleware/pipeline';
 export {
   createSkillsMiddleware,
   FileSystemSkillStore,
@@ -9,11 +24,102 @@ export type {
   SkillMetadata,
   SkillStore,
 } from '@core/skills';
-export * from '@core/middleware/logging';
-export * from '@core/middleware/hil';
-export * from '@core/middleware/conversation-input';
-export * from '@core/middleware/context-budget';
-export * from '@core/middleware/guidelines';
-export * from '@core/middleware/summary';
-export * from '@core/middleware/todo';
-export * from '@core/middleware/tasking';
+export {
+  createLoggingMiddleware,
+  type LoggingMiddlewareOptions,
+  type MiddlewareLogEvent,
+  type MiddlewareLogLevel,
+  type MiddlewareLogRecord,
+  type MiddlewareLogSink,
+} from '@core/middleware/logging';
+export {
+  applyHILResumeToolEdits,
+  createHILMiddleware,
+  humanInTheLoopMiddleware,
+  parseHILResumeActionPayload,
+  parseHILToolMessagePayload,
+  type HILActionDescriptor,
+  type HILAskDecision,
+  type HILContextConfig,
+  type HILDecision,
+  type HILDecisionContext,
+  type HILDecisionResolver,
+  type HILDenyDecision,
+  type HILDenyMessageFactory,
+  type HILEffectiveConfig,
+  type HILInterruptConfig,
+  type HILInterruptOn,
+  type HILMiddlewareOptions,
+  type HILPauseNotifier,
+  type HILPauseRequest,
+  type HILPauseRequestFactory,
+  type HILResumeActionPayload,
+  type HILResumeHandler,
+  type HILResumePayload,
+  type HILResumeResolver,
+  type HILReviewDecision,
+  type HILReviewRequest,
+  type HILToolMessagePayload,
+  type HILUIActionOption,
+  type HILUIConfig,
+} from '@core/middleware/hil';
+export {
+  buildConversationMessages,
+  type BuiltConversationMessages,
+  type ConversationModelInput,
+} from '@core/middleware/conversation-input';
+export {
+  createContextBudgetMiddleware,
+  createContextBudgetSnapshot,
+  estimateModelInputTokens,
+  refreshContextBudget,
+  type ContextBudgetEstimateInput,
+  type ContextBudgetEstimator,
+  type ContextBudgetMiddlewareOptions,
+  type ContextBudgetSnapshot,
+} from '@core/middleware/context-budget';
+export {
+  createGuidelinesMiddleware,
+  loadGuidelines,
+  type GuidelineFile,
+  type GuidelinesOptions,
+  type LoadedGuidelines,
+} from '@core/middleware/guidelines';
+export {
+  compactSummaryIfNeeded,
+  createSummaryMiddleware,
+  normalizeSummaryOptions,
+  readSummaryRecord,
+  type SummaryGenerator,
+  type SummaryInput,
+  type SummaryOptions,
+  type SummaryRecord,
+} from '@core/middleware/summary';
+export {
+  createWriteTodosTool,
+  readTodoState,
+  TODO_LIST_MIDDLEWARE_SYSTEM_PROMPT,
+  TODO_TOOL_NAME,
+  TodoSchema,
+  TodoStateSchema,
+  TodoStatusSchema,
+  todoListMiddleware,
+  WRITE_TODOS_DESCRIPTION,
+  type TodoListMiddlewareOptions,
+  type TodoMiddlewareState,
+} from '@core/middleware/todo';
+export {
+  createSharedTaskMiddleware,
+  createSubagentMiddleware,
+  createTaskMiddleware,
+  DEFAULT_SUBAGENT_TOOL_DESCRIPTION,
+  DEFAULT_SUBAGENT_TOOL_NAME,
+  TASK_CREATE_TOOL_NAME,
+  TASK_LIST_TOOL_NAME,
+  TASK_TOOL_DESCRIPTION,
+  TASK_TOOL_NAME,
+  TASK_UPDATE_TOOL_NAME,
+  type CreateSharedTaskMiddlewareOptions,
+  type CreateSubagentMiddlewareOptions,
+  type CreateTaskMiddlewareOptions,
+} from '@core/tasking/middleware';

@@ -1,7 +1,7 @@
 import {randomUUID} from 'node:crypto';
 import {mkdir, readdir, readFile, rename, writeFile} from 'node:fs/promises';
 import path from 'node:path';
-import type {CreateTaskInput, TaskRecord, TaskStore, TaskStatus, UpdateTaskInput} from '@core/tasks/types';
+import type {CreateTaskInput, TaskRecord, TaskStore, TaskStatus, UpdateTaskInput} from '@core/tasking/types';
 
 export interface TaskFileStoreOptions {
   rootDir: string;

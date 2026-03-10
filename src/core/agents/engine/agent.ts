@@ -99,7 +99,7 @@ class AgentInstance implements Agent {
     const context = {
       state: run.state,
       messages: run.state.messages,
-      runtime: {context: run.context, agentContext: run.agentContext},
+      runtime: {context: run.context, shared: run.shared, agentContext: run.agentContext},
       systemMessage: [],
       runId: run.runId,
       turn: 1,

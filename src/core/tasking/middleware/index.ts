@@ -3,17 +3,17 @@ export {
   TASK_TOOL_DESCRIPTION,
   TASK_TOOL_NAME,
   type CreateTaskMiddlewareOptions,
-} from '@core/middleware/tasking/task';
+} from '@core/tasking/middleware/task';
 export {
   createSubagentMiddleware,
   DEFAULT_SUBAGENT_TOOL_DESCRIPTION,
   DEFAULT_SUBAGENT_TOOL_NAME,
   type CreateSubagentMiddlewareOptions,
-} from '@core/middleware/tasking/subagent';
+} from '@core/tasking/middleware/subagent';
 export {
   createSharedTaskMiddleware,
   TASK_CREATE_TOOL_NAME,
   TASK_LIST_TOOL_NAME,
   TASK_UPDATE_TOOL_NAME,
   type CreateSharedTaskMiddlewareOptions,
-} from '@core/middleware/tasking/shared-tasks';
+} from '@core/tasking/middleware/shared-tasks';

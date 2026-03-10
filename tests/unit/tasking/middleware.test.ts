@@ -12,7 +12,7 @@ import {
   TASK_LIST_TOOL_NAME,
   TASK_TOOL_NAME,
 } from '@core/middleware';
-import {createTaskMemoryStore} from '@core/tasks';
+import {createTaskMemoryStore} from '@core/tasking';
 import {createAgentSkillsMiddleware, createBuiltinAgentStore} from '../agents/task-tool.fixtures';
 
 class ScriptedModel {

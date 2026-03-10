@@ -5,7 +5,7 @@ import {
   TASK_LIST_TOOL_NAME,
   TASK_UPDATE_TOOL_NAME,
   type TaskToolOptions,
-} from '@core/tasks/tools';
+} from '@core/tasking/shared-tools';
 
 export {
   TASK_CREATE_TOOL_NAME,
