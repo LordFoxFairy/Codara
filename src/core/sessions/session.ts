@@ -178,6 +178,14 @@ export function createSession(options: CreateSessionOptions): Session {
       return state;
     },
 
+    async compactConversation(): Promise<AgentState> {
+      requireReady();
+      const agent = await getAgent();
+      const state = await agent.compactConversation();
+      await syncSessionFromState(state);
+      return state;
+    },
+
     async invoke(input?: AgentInput, config?: AgentInvokeConfig): Promise<AgentResult> {
       requireReady();
       const agent = await getAgent();
