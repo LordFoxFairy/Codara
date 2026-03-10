@@ -49,7 +49,7 @@ The key rule is:
 
 ```mermaid
 flowchart LR
-  AG["AGENTS.md files"] --> SP["SourceProvider"]
+  AG["AGENTS.md files"] --> SP["AgentsSource"]
   SP --> GM["GuidelinesMiddleware"]
   GM --> CC["ConversationContextMiddleware"]
   CC --> RT["Agent runtime model input"]
@@ -69,6 +69,7 @@ Current `/memory` behavior:
   - ensures the global target exists and returns an `open_file` host action
 - `/reload`
   - invalidates the session source cache so the next turn re-reads `AGENTS.md`
+  - refreshes the skills discovery cache so skill-derived slash commands stay in sync
 
 This keeps `AGENTS.md` as the only long-lived source and avoids resurrecting
 the old `MEMORY.md` split.
@@ -147,7 +148,7 @@ They are related, but not interchangeable.
 ```mermaid
 flowchart TD
   I["createCodara(...)"] --> S["createSession(...)"]
-  S --> SP["SourceProvider(AGENTS only)"]
+  S --> SP["AgentsSource(AGENTS only)"]
   S --> A["createAgent(...)"]
   A --> G["GuidelinesMiddleware"]
   G --> SK["SkillsMiddleware"]

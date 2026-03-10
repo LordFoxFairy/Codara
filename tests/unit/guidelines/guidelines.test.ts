@@ -3,7 +3,7 @@ import {mkdir, mkdtemp, writeFile} from 'node:fs/promises';
 import path from 'node:path';
 import {tmpdir} from 'node:os';
 import {createGuidelinesMiddleware} from '@core/middleware/guidelines';
-import {createCodaraSourceProvider} from '@core/sessions/source-provider';
+import {createCodaraAgentsSource} from '@core/sessions/agents';
 import type {BeforeModelContext} from '@core/middleware';
 
 describe('AGENTS guidelines', () => {
@@ -25,8 +25,8 @@ describe('AGENTS guidelines', () => {
     await writeFile(packageFile, '# Package Rules\n\nUse package lint first.\n', 'utf8');
     await writeFile(appFile, '# App Rules\n\nPrefer feature flags.\n', 'utf8');
 
-    const sourceProvider = createCodaraSourceProvider({userHome, cwd: nestedCwd});
-    const content = await sourceProvider.get('guidelines');
+    const agentsSource = createCodaraAgentsSource({userHome, cwd: nestedCwd});
+    const content = await agentsSource?.getContent();
 
     expect(content).toBeDefined();
     expect(content).toContain('# Global Rules');
@@ -47,8 +47,8 @@ describe('AGENTS guidelines', () => {
     await writeFile(globalFile, '# Global Rules\n\nKeep commits small.\nUse Chinese comments when helpful.\n', 'utf8');
     await writeFile(projectFile, '# Project Rules\n\nUse pnpm only.\nRun tests before merge.\n', 'utf8');
 
-    const sourceProvider = createCodaraSourceProvider({userHome, projectRoot});
-    const content = await sourceProvider.get('guidelines');
+    const agentsSource = createCodaraAgentsSource({userHome, projectRoot});
+    const content = await agentsSource?.getContent();
 
     expect(content).toBeDefined();
     expect(content).toContain('# Global Rules');
@@ -65,8 +65,8 @@ describe('AGENTS guidelines', () => {
     await mkdir(projectRoot, {recursive: true});
     await writeFile(projectFile, '# Original rule.\n', 'utf8');
 
-    const sourceProvider = createCodaraSourceProvider({userHome, projectRoot});
-    const middleware = createGuidelinesMiddleware(sourceProvider);
+    const agentsSource = createCodaraAgentsSource({userHome, projectRoot});
+    const middleware = createGuidelinesMiddleware(agentsSource);
     const context: BeforeModelContext = {
       state: {messages: []},
       messages: [],
@@ -100,8 +100,8 @@ describe('AGENTS guidelines', () => {
     await writeFile(packageFile, '# Package Rules\n', 'utf8');
     await writeFile(appFile, '# App Rules\n', 'utf8');
 
-    const sourceProvider = createCodaraSourceProvider({userHome, cwd: nestedCwd});
-    const content = await sourceProvider.get('guidelines');
+    const agentsSource = createCodaraAgentsSource({userHome, cwd: nestedCwd});
+    const content = await agentsSource?.getContent();
 
     expect(content).toBeDefined();
     const text = content ?? '';
@@ -121,8 +121,8 @@ describe('AGENTS guidelines', () => {
     await writeFile(importedFile, '# Shared Rules\n\nPrefer narrow commits.\n', 'utf8');
     await writeFile(projectFile, '# Project Rules\n\n@./shared-guidelines.md\n\nRun tests before merge.\n', 'utf8');
 
-    const sourceProvider = createCodaraSourceProvider({userHome, projectRoot});
-    const content = await sourceProvider.get('guidelines');
+    const agentsSource = createCodaraAgentsSource({userHome, projectRoot});
+    const content = await agentsSource?.getContent();
 
     expect(content).toBeDefined();
     expect(content).toContain('# Project Rules');

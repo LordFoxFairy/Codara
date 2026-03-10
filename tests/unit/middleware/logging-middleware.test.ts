@@ -73,7 +73,7 @@ describe('createLoggingMiddleware', () => {
     const runner = createAgent({
       model,
       tools: [tool],
-      middlewares: [loggingMiddleware],
+      middleware: [loggingMiddleware],
     });
 
     const result = await runner.invoke(
@@ -112,7 +112,7 @@ describe('createLoggingMiddleware', () => {
     const runner = createAgent({
       model,
       tools: [],
-      middlewares: [loggingMiddleware],
+      middleware: [loggingMiddleware],
     });
 
     const result = await runner.invoke({messages: [new HumanMessage('start')]}, {recursionLimit: 2});
@@ -134,7 +134,7 @@ describe('createLoggingMiddleware', () => {
     const runner = createAgent({
       model,
       tools: [],
-      middlewares: [loggingMiddleware],
+      middleware: [loggingMiddleware],
     });
 
     const result = await runner.invoke({messages: [new HumanMessage('start')]}, {recursionLimit: 1});

@@ -6,6 +6,7 @@ export function createCompactCommand(): CodaraCommandDefinition {
     name: 'compact',
     usage: '/compact [instructions] | /compact checkpoints [keepLast]',
     description: 'Compact the current conversation context, or prune stored checkpoint history.',
+    source: {type: 'builtin'},
     async execute({command, host}) {
       const target = command.args[0]?.toLowerCase();
       if (target === 'checkpoints') {

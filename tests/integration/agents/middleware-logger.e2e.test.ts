@@ -98,7 +98,7 @@ describe('Agent Middleware Logger End-to-End', () => {
     const runner = createAgent({
       model,
       tools: [echoTool],
-      middlewares: [retryMiddleware, loggingMiddleware]
+      middleware: [retryMiddleware, loggingMiddleware]
     });
 
     const result = await runner.invoke(

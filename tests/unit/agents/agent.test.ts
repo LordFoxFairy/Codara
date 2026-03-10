@@ -370,7 +370,7 @@ describe('Agent', () => {
       }
     ];
 
-    const runner = createAgent({model, tools: [tool], middlewares});
+    const runner = createAgent({model, tools: [tool], middleware: middlewares});
     const result = await runner.invoke({messages: [new HumanMessage('start')]});
 
     expect(result.reason).toBe('complete');
@@ -427,7 +427,7 @@ describe('Agent', () => {
     const runner = createAgent({
       model,
       tools: [tool],
-      middlewares: [
+      middleware: [
         {
           name: 'fail_after_model',
           afterModel: () => {
@@ -478,7 +478,7 @@ describe('Agent', () => {
 
     const runner = createAgent({
       model,
-      middlewares: [userContextMiddleware]
+      middleware: [userContextMiddleware]
     });
 
     const result = await runner.invoke(
@@ -510,7 +510,7 @@ describe('Agent', () => {
 
     const runner = createAgent({
       model,
-      middlewares: [userContextMiddleware]
+      middleware: [userContextMiddleware]
     });
 
     const result = await runner.invoke(
@@ -635,7 +635,7 @@ describe('Agent', () => {
       },
     });
 
-    const runner = createAgent({model, tools: [bashTool], middlewares: [hil]});
+    const runner = createAgent({model, tools: [bashTool], middleware: [hil]});
     const events: Array<{type: string; payload: {type: string}}> = [];
 
     for await (const chunk of runner.stream({messages: [new HumanMessage('run git status')]}, {streamMode: 'custom'})) {

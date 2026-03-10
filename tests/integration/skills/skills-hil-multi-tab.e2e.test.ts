@@ -85,7 +85,7 @@ describe('HIL multi-tab pause metadata', () => {
     const runner = createAgent({
       model: model as unknown as BaseChatModel,
       tools: [writeTool, emailTool],
-      middlewares: [hilMiddleware],
+      middleware: [hilMiddleware],
     });
 
     const result = await runner.invoke(

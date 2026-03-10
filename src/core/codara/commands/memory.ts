@@ -5,11 +5,12 @@ export function createMemoryCommand(): CodaraCommandDefinition {
     name: 'memory',
     usage: '/memory [show|project|global]',
     description: 'Inspect or prepare the session AGENTS.md memory files for manual editing.',
+    source: {type: 'builtin'},
     async execute({command, host}) {
       const subcommand = (command.args[0] ?? 'show').toLowerCase();
 
       if (subcommand === 'show') {
-        const overview = await host.inspectMemory();
+        const overview = await host.inspectAgentsFiles();
         return {
           ok: true,
           command: command.name,
@@ -25,7 +26,7 @@ export function createMemoryCommand(): CodaraCommandDefinition {
       }
 
       if (subcommand === 'project' || subcommand === 'global') {
-        const filePath = await host.ensureMemoryTarget(subcommand);
+        const filePath = await host.ensureAgentsFileTarget(subcommand);
         return {
           ok: true,
           command: command.name,

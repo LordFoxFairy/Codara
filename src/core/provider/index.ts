@@ -1,7 +1,22 @@
-export * from "@core/provider/model";
-export * from "@core/provider/config/path";
-export * from "@core/provider/config/schema";
-export * from "@core/provider/config/loader";
-export * from "@core/provider/runtime/api-key";
-export * from "@core/provider/runtime/factory";
-export * from "@core/provider/runtime/registry";
+export type {
+  ModelInfo,
+  ModelMetadataConfig,
+  ModelRoutingConfig,
+  ProviderConfig,
+  RouterRule,
+} from '@core/provider/model';
+export {
+  resolveCodaraPath,
+  resolveModelMetadataConfigPath,
+  resolveModelRoutingConfigPath,
+} from '@core/provider/config/path';
+export {
+  ConfigSchema,
+  ModelMetadataConfigSchema,
+  ProviderSchema,
+  RouterSchema,
+} from '@core/provider/config/schema';
+export {loadModelRoutingConfig, parseModelRoutingConfig} from '@core/provider/config/loader';
+export {expandApiKey} from '@core/provider/runtime/api-key';
+export {ChatModelFactory, type ChatModelInitOptions} from '@core/provider/runtime/factory';
+export {ModelRegistry} from '@core/provider/runtime/registry';

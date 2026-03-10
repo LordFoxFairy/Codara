@@ -1,7 +1,8 @@
 import {describe, expect, it} from 'bun:test';
 import {AIMessage, ToolMessage, type ToolCall} from '@langchain/core/messages';
 import type {BaseChatModel} from '@langchain/core/language_models/chat_models';
-import {createAgent, createTaskTool, TASK_TOOL_NAME} from '@core/agents';
+import {createAgent} from '@core/agents';
+import {createTaskTool, TASK_TOOL_NAME} from '@core/tasking';
 import {ChildSummaryModel, ScriptedModel} from './task-tool.fixtures';
 
 describe('createTaskTool errors', () => {

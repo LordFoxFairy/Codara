@@ -34,7 +34,7 @@ export function createSkillsMiddleware(options: SkillsMiddlewareOptions) {
       try {
         const runtime = await loadSkillsRuntimeData(store, options.agentRoots ?? [])
         return {
-          runtimeContext: {
+          runtimeShared: {
             skills: runtime
           }
         }
@@ -44,7 +44,7 @@ export function createSkillsMiddleware(options: SkillsMiddlewareOptions) {
     },
 
     async beforeModel(context: ModelCallContext) {
-      const runtime = readSkillsRuntimeData(context.runtime.context) ?? await loadSkillsRuntimeData(store, options.agentRoots ?? [])
+      const runtime = readSkillsRuntimeData(context.runtime.shared) ?? await loadSkillsRuntimeData(store, options.agentRoots ?? [])
       const skills = runtime.discovered
       const sources = runtime.sources
       const skillsSection = SKILLS_SYSTEM_PROMPT

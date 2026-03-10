@@ -1,6 +1,7 @@
 import {tool, type StructuredToolInterface} from '@langchain/core/tools';
 import {z} from 'zod';
-import type {TaskRecord, TaskStore, TaskStatus} from '@core/tasks/types';
+import {createMiddleware, type BaseMiddleware} from '@core/middleware';
+import type {TaskRecord, TaskStore, TaskStatus} from '@core/tasking/types';
 
 export const TASK_CREATE_TOOL_NAME = 'TaskCreate';
 export const TASK_UPDATE_TOOL_NAME = 'TaskUpdate';
@@ -10,6 +11,10 @@ const TaskStatusSchema = z.enum(['pending', 'in_progress', 'completed', 'deleted
 
 export interface TaskToolOptions {
   store: TaskStore;
+}
+
+export interface CreateSharedTaskMiddlewareOptions extends TaskToolOptions {
+  name?: string;
 }
 
 export function createTaskTools(options: TaskToolOptions): StructuredToolInterface[] {
@@ -73,6 +78,13 @@ export function createTaskListTool(options: TaskToolOptions): StructuredToolInte
       schema: z.object({}),
     },
   );
+}
+
+export function createSharedTaskMiddleware(options: CreateSharedTaskMiddlewareOptions): BaseMiddleware {
+  return createMiddleware({
+    name: options.name?.trim() || 'SharedTaskMiddleware',
+    tools: createTaskTools(options),
+  });
 }
 
 function formatSingleTaskResult(prefix: string, record: TaskRecord): string {

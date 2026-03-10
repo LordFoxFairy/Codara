@@ -6,6 +6,7 @@ export function createResumeCommand(): CodaraCommandDefinition {
     usage: '/resume [approve|reject] [feedback]',
     description: 'Resume the current paused HIL action in the active conversation.',
     aliases: ['continue'],
+    source: {type: 'builtin'},
     async execute({command, host}) {
       const state = host.getAgentState();
       if (state.status !== 'paused' || !state.pendingPause) {

@@ -41,7 +41,7 @@ describe('Todo List Middleware End-to-End', () => {
 
     const runner = createAgent({
       model,
-      middlewares: [todoListMiddleware()],
+      middleware: [todoListMiddleware()],
     });
 
     const result = await runner.invoke(

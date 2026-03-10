@@ -9,21 +9,10 @@
 
 /** 创建或打开 Codara 会话（推荐入口） */
 export {createCodara, openCodaraSession, openLatestCodaraSession} from '@core/codara';
-export {
-  createBuiltInCodaraCommands,
-  createCodaraCommandRunner,
-  ensureCodaraMemoryTarget,
-  inspectCodaraMemory,
-  parseCodaraCommand,
-} from '@core/codara';
 
 /** Codara 相关类型 */
 export type {
   Codara,
-  CodaraCommandResult,
-  CodaraCommandSpec,
-  CodaraMemoryOverview,
-  CodaraMemoryScope,
   CodaraOptions,
 } from '@core/codara';
 
@@ -38,7 +27,7 @@ export type {
   AgentResumeConfig,
   AgentResumeStreamConfig,
 } from '@core/agents';
-export type {TaskRecord, TaskStore, TaskStatus, CreateTaskInput, UpdateTaskInput} from '@core/tasks';
+export type {TaskRecord, TaskStore, TaskStatus, CreateTaskInput, UpdateTaskInput} from '@core/tasking';
 
 /** Session 相关类型 */
 export type {Session, SessionState, SessionStatus, SessionStore} from '@core/sessions';
@@ -48,8 +37,14 @@ export type {Session, SessionState, SessionStatus, SessionStore} from '@core/ses
 // ============================================
 
 /** Agent 构建 */
-export {createAgent, createSubagentTool, createTaskTool} from '@core/agents';
-export {createCodaraTaskTool} from '@core/codara';
+export {createAgent} from '@core/agents';
+export {createSubagentTool, createTaskTool} from '@core/tasking';
+export {
+  createCodaraSubagentMiddleware,
+  createCodaraSubagentTool,
+  createCodaraTaskMiddleware,
+  createCodaraTaskTool,
+} from '@core/codara';
 export {
   createTaskMemoryStore,
   createTaskFileStore,
@@ -57,7 +52,7 @@ export {
   createTaskCreateTool,
   createTaskUpdateTool,
   createTaskListTool,
-} from '@core/tasks';
+} from '@core/tasking';
 
 /** Session 管理 */
 export {createSession, FileSessionStore} from '@core/sessions';
@@ -73,11 +68,14 @@ export {
 /** Middleware */
 export {
   createMiddleware,
+  createSharedTaskMiddleware,
   createGuidelinesMiddleware,
   createSummaryMiddleware,
   createSkillsMiddleware,
   createHILMiddleware,
   createLoggingMiddleware,
+  createSubagentMiddleware,
+  createTaskMiddleware,
 } from '@core/middleware';
 
 /** Tools */
@@ -101,4 +99,3 @@ export type {
 export type {AgentCheckpoint, AgentCheckpointer} from '@core/checkpoint';
 
 export type {CodaraModelCatalog} from '@core/codara';
-export type {SourceProvider} from '@core/sessions';

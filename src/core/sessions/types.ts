@@ -15,9 +15,10 @@ import type {AgentCheckpointer} from '@core/checkpoint/state';
 import type {CompactOptions} from '@core/checkpoint/types';
 import type {BaseMiddleware} from '@core/middleware';
 import type {HILResumePayload} from '@core/middleware/hil';
-import type {SourceProvider} from '@core/sessions/source-provider';
+import type {AgentsFileOverview, AgentsFileScope, AgentsSource} from '@core/sessions/agents';
 import type {SessionStore} from '@core/sessions/store';
-import type {CodaraModelCatalog} from '@core/codara/models';
+import type {ModelInfo} from '@core/provider';
+import type {SkillStore} from '@core/skills';
 
 /** Session 自身的生命周期状态。 */
 export type SessionStatus = 'ready' | 'closed';
@@ -72,6 +73,11 @@ export interface SessionState {
 }
 
 /** Session 构造参数。 */
+export interface SessionModelCatalog {
+  create(modelRef?: string): Promise<BaseChatModel>;
+  getInfo(modelRef?: string): ModelInfo;
+}
+
 export interface CreateSessionOptions {
   /** 恢复或重新打开已存在 session 时可传入已持久化的宿主状态。 */
   state?: SessionState;
@@ -79,14 +85,15 @@ export interface CreateSessionOptions {
   threadId?: string;
 
   // Model 选择（二选一）
-  alias?: string;  // 产品化的 alias（'default' / 'sonnet' / 'fast'）
+  modelRef?: string;
   model?: BaseChatModel | Promise<BaseChatModel>;  // 直接传 model 实例
 
-  // Model catalog（用于解析 alias）
-  modelCatalog?: CodaraModelCatalog | Promise<CodaraModelCatalog>;
+  // Model catalog（用于解析 modelRef）
+  modelCatalog?: SessionModelCatalog | Promise<SessionModelCatalog>;
 
-  // Source provider
-  sourceProvider?: SourceProvider;
+  // AGENTS source lifecycle
+  agentsSource?: AgentsSource;
+  skillsStore?: SkillStore;
 
   // Session store
   store?: SessionStore;
@@ -132,7 +139,9 @@ export interface Session {
     config?: AgentResumeStreamConfig
   ): AsyncGenerator<AgentStreamOutput, AgentResult, void>;
 
-  reloadSources(): void;
+  reloadSources(): Promise<void>;
+  inspectAgentsFiles(): Promise<AgentsFileOverview>;
+  ensureAgentsFileTarget(scope: AgentsFileScope): Promise<string>;
   compactCheckpoints(options?: CompactOptions): Promise<void>;
   reset(): Promise<void>;
   dispose(): Promise<void>;

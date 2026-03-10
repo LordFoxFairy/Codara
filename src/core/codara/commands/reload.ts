@@ -5,8 +5,9 @@ export function createReloadCommand(): CodaraCommandDefinition {
     name: 'reload',
     usage: '/reload',
     description: 'Invalidate session-scoped AGENTS.md caches and reload sources on the next model call.',
+    source: {type: 'builtin'},
     async execute({command, host}) {
-      host.reloadSources();
+      await host.reloadSources();
       return {
         ok: true,
         command: command.name,

@@ -19,14 +19,13 @@
 ```mermaid
 flowchart TD
   A[createCodara] --> B[createSession]
-  B --> C[createCodaraAgent]
-  C --> D[createAgent]
-  D --> E[middleware pipeline]
-  D --> F[checkpoint]
+  B --> C[createAgent]
+  C --> D[middleware pipeline]
+  C --> F[checkpoint]
 
-  G[SkillsMiddleware] --> H[context.skills]
+  G[SkillsMiddleware] --> H[runtime.shared.skills]
   H --> I[Task tool]
-  I --> C2[createCodaraTaskTool]
+  I --> C2[createCodaraTaskMiddleware]
   C2 --> D2[child createAgent]
 
   J[TaskStore] --> K[TaskCreate/TaskUpdate/TaskList]
@@ -45,9 +44,9 @@ sequenceDiagram
   participant C as Child Agent
 
   U->>M: prompt
-  S->>M: inject skills + load context.skills
+  S->>M: inject skills + load runtime.shared.skills
   M->>T: tool call (subagent_type, prompt)
-  T->>T: resolve definition from context.skills
+  T->>T: resolve definition from runtime.shared.skills
   T->>C: spawn child via same agent assembly
   C->>C: run in isolated messages/context
   C-->>T: concise summary
@@ -61,16 +60,15 @@ sequenceDiagram
 
 1. `logging`
 2. `guidelines`
-3. `memory`
-4. `summary`
-5. `skills`
-6. caller middlewares
-7. `hil`
+3. `skills`
+4. caller middlewares
+5. `summary`
+6. `hil`
 
 这条顺序的意义：
 
-- `guidelines/memory/summary/skills` 都服务 agent
-- `skills` 在模型调用前把 `agents/*.md` 解析结果放入 `context.skills`
+- `guidelines/summary/skills` 都服务 agent
+- `skills` 在模型调用前把 `agents/*.md` 解析结果放入 `runtime.shared.skills`
 - `Task` 只消费这份 runtime data，不再自己查 store
 
 ## Tools Map

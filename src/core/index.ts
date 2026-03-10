@@ -2,23 +2,17 @@
 
 export {
   createCodara,
-  createBuiltInCodaraCommands,
-  createCodaraCommandRunner,
-  ensureCodaraMemoryTarget,
   createCodaraChatModel,
   createCodaraMiddlewares,
   createCodaraModelCatalog,
-  inspectCodaraMemory,
   openCodaraSession,
   openLatestCodaraSession,
-  parseCodaraCommand,
+  createCodaraSubagentMiddleware,
+  createCodaraSubagentTool,
+  createCodaraTaskMiddleware,
   createCodaraTaskTool,
   createCodaraTools,
   type Codara,
-  type CodaraCommandResult,
-  type CodaraCommandSpec,
-  type CodaraMemoryOverview,
-  type CodaraMemoryScope,
   type CodaraOptions,
   type CreateCodaraChatModelOptions,
   type CreateCodaraModelCatalogOptions,
@@ -26,12 +20,6 @@ export {
 } from '@core/codara';
 export {
   createAgent,
-  createSubagentTool,
-  createTaskTool,
-  DEFAULT_SUBAGENT_TOOL_DESCRIPTION,
-  DEFAULT_SUBAGENT_TOOL_NAME,
-  TASK_TOOL_DESCRIPTION,
-  TASK_TOOL_NAME,
   type Agent,
   type AgentInput,
   type AgentInvokeConfig,
@@ -47,6 +35,14 @@ export {
   type AgentType,
   type CreateAgentOptions,
 } from '@core/agents';
+export {
+  DEFAULT_SUBAGENT_TOOL_DESCRIPTION,
+  DEFAULT_SUBAGENT_TOOL_NAME,
+  TASK_TOOL_DESCRIPTION,
+  TASK_TOOL_NAME,
+  createSubagentTool,
+  createTaskTool,
+} from '@core/tasking';
 export {
   FileCheckpointer,
   InMemoryCheckpointer,
@@ -75,16 +71,17 @@ export {
   type TaskStatus,
   type TaskStore,
   type UpdateTaskInput,
-} from '@core/tasks';
+} from '@core/tasking';
 export {
   createGuidelinesMiddleware,
   createHILMiddleware,
   createLoggingMiddleware,
   createMiddleware,
+  createSharedTaskMiddleware,
   createSkillsMiddleware,
+  createSubagentMiddleware,
   createSummaryMiddleware,
-  FileSystemSkillStore,
-  getDefaultSkillSources,
+  createTaskMiddleware,
   MiddlewarePipeline,
   type BaseMiddleware,
   type HILMiddlewareOptions,
@@ -92,24 +89,26 @@ export {
   type LoggingMiddlewareOptions,
   type MiddlewareLogRecord,
 } from '@core/middleware';
+export type {
+  CreateSharedTaskMiddlewareOptions,
+  CreateSubagentMiddlewareOptions,
+  CreateTaskMiddlewareOptions,
+} from '@core/tasking';
 export {
+  FileSystemSkillStore,
+  getDefaultSkillSources,
   loadSkillsRuntimeData,
-  resolveSubagentDefinition,
   type SkillMetadata,
   type SkillStore,
   type SkillsRuntimeData,
-  type SubagentDefinition,
 } from '@core/skills';
 export {
   createSession,
-  createCodaraSourceProvider,
-  FileSourceProvider,
   FileSessionStore,
   type Session,
   type SessionStore,
   type SessionState,
   type SessionStatus,
-  type SourceProvider,
 } from '@core/sessions';
 export {
   ChatModelFactory,
@@ -118,3 +117,7 @@ export {
   type ModelInfo,
   type ModelRoutingConfig,
 } from '@core/provider';
+export {
+  type CreateSubagentToolOptions,
+  type CreateTaskToolOptions,
+} from '@core/tasking';

@@ -26,7 +26,7 @@ describe('Codara middleware stack', () => {
     const middlewares = createCodaraMiddlewares({
       logging: {enabled: true},
       skills: {store: new EmptySkillStore()},
-      middlewares: [custom],
+      middleware: [custom],
     });
 
     expect(middlewares.map((middleware) => middleware.name)).toEqual([
@@ -102,7 +102,7 @@ describe('Codara middleware stack', () => {
       summary: {
         summarize: () => 'summary',
       },
-      middlewares: [custom],
+      middleware: [custom],
     });
 
     expect(middlewares.map((middleware) => middleware.name)).toEqual([
