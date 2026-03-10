@@ -7,6 +7,7 @@ import {createGlobTool, GlobTool} from '@core/tools/builtin/glob';
 import {createGrepTool, GrepTool} from '@core/tools/builtin/grep';
 import {createFetchTool, FetchTool} from '@core/tools/builtin/fetch';
 import {createSearchTool, SearchTool} from '@core/tools/builtin/search';
+import {withToolExecutionPolicy} from '@core/tools/execution-policy';
 
 export {BashTool, createBashTool};
 export {ReadTool, createReadTool};
@@ -30,13 +31,13 @@ export function createBuiltinTools(options: BuiltinToolOptions = {}): Structured
   const cwd = options.cwd ?? process.cwd();
 
   return [
-    createBashTool(cwd),
-    createReadTool(),
-    createWriteTool(),
-    createEditTool(),
-    createGlobTool(cwd),
-    createGrepTool(cwd),
-    createFetchTool(),
-    createSearchTool(),
+    withToolExecutionPolicy(createBashTool(cwd), 'serial'),
+    withToolExecutionPolicy(createReadTool(), 'parallel_safe'),
+    withToolExecutionPolicy(createWriteTool(), 'serial'),
+    withToolExecutionPolicy(createEditTool(), 'serial'),
+    withToolExecutionPolicy(createGlobTool(cwd), 'parallel_safe'),
+    withToolExecutionPolicy(createGrepTool(cwd), 'parallel_safe'),
+    withToolExecutionPolicy(createFetchTool(), 'parallel_safe'),
+    withToolExecutionPolicy(createSearchTool(), 'parallel_safe'),
   ];
 }
