@@ -15,6 +15,7 @@
 - 如果项目已经把 `AGENTS.md` 作为长期 source，就不要再把旧 `MEMORY.md` 机制硬塞回来；优先在同一条 source 链上补闭环能力。
 - `/memory` 这类手动命令不要偷偷默认写到某个 target；优先先展示可选 scope，再让用户显式选择 `project/global`。
 - 产品默认（如 `default` alias、默认 budget）要走稳定 alias + 模型元数据，不要让底层 provider 偶然变成默认产品心智。
+- provider 白名单和模型窗口元数据要分开管理：`config.json` 只保留 provider/model 路由关系，`model-metadata.json` 单独承载 `contextWindow/maxOutputTokens`。
 
 ## 设计原则
 

@@ -145,7 +145,8 @@ logging
 
 ## 配置
 
-模型路由配置位于 `~/.codara/config.json` 或项目内 `.codara/config.json`。
+模型路由配置位于 `~/.codara/config.json` 或项目内 `.codara/config.json`。  
+模型窗口与输出 token 元数据单独放在 `model-metadata.json`。
 
 当前正式格式：
 
@@ -157,23 +158,34 @@ logging
       "baseUrl": "https://openrouter.ai/api/v1",
       "apiKey": "$OPENROUTER_API_KEY",
       "models": [
-        {"id": "anthropic/claude-sonnet-4", "contextWindow": 200000, "maxOutputTokens": 8192},
-        {"id": "anthropic/claude-opus-4", "contextWindow": 200000, "maxOutputTokens": 8192}
+        "anthropic/claude-sonnet-4",
+        "anthropic/claude-opus-4"
       ]
     },
     {
       "name": "deepseek",
       "baseUrl": "https://api.deepseek.com/v1",
       "apiKey": "$DEEPSEEK_API_KEY",
-      "models": [
-        {"id": "deepseek-chat", "contextWindow": 64000, "maxOutputTokens": 8000}
-      ]
+      "models": ["deepseek-chat"]
     }
   ],
   "router": {
     "default": "openrouter:anthropic/claude-sonnet-4",
     "sonnet": "openrouter:anthropic/claude-sonnet-4",
     "fast": "openrouter:anthropic/claude-3.5-haiku"
+  }
+}
+```
+
+```json
+{
+  "anthropic/claude-sonnet-4": {
+    "contextWindow": 200000,
+    "maxOutputTokens": 8192
+  },
+  "anthropic/claude-opus-4": {
+    "contextWindow": 200000,
+    "maxOutputTokens": 8192
   }
 }
 ```
