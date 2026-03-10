@@ -3,6 +3,7 @@ import {createCodaraSourceProvider} from '@core/sessions/source-provider';
 import {createCodaraModelCatalog} from '@core/codara/models';
 import {createCodaraTools} from '@core/codara/tools';
 import {createCodaraMiddlewares} from '@core/codara/middleware';
+import {createCodaraCommandRunner} from '@core/codara/commands';
 import type {Codara, CodaraOptions} from '@core/codara/types';
 import type {SessionState, SessionStore} from '@core/sessions';
 
@@ -43,7 +44,7 @@ export function createCodara(options: CodaraOptions = {}): Codara {
   const tools = createCodaraTools(options);
   const middleware = createCodaraMiddlewares(options, sourceProvider);
 
-  return createSession({
+  const session = createSession({
     sessionId: options.sessionId,
     threadId: options.threadId,
     alias: options.alias ?? 'default',
@@ -59,7 +60,24 @@ export function createCodara(options: CodaraOptions = {}): Codara {
     messages: options.messages,
     context: options.context,
     values: options.values,
-  }) as Codara;
+  });
+  const commands = createCodaraCommandRunner({
+    compactConversation: () => session.compactConversation(),
+    getAgentState: () => session.getAgentState(),
+    reloadSources: () => session.reloadSources(),
+    async resumePause(payload) {
+      await session.resumePause(payload, {
+        ...(payload.feedback ? {input: payload.feedback} : {}),
+      });
+      return session.getAgentState();
+    },
+  });
+
+  return {
+    ...session,
+    listCommands: commands.listCommands,
+    executeCommand: commands.executeCommand,
+  };
 }
 
 export async function openCodaraSession(

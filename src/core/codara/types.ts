@@ -11,6 +11,7 @@ import type {CodaraModelCatalog, CreateCodaraModelCatalogOptions} from '@core/co
 import type {GuidelinesOptions} from '@core/middleware/guidelines';
 import type {SummaryOptions} from '@core/middleware/summary';
 import type {AgentCheckpointer} from '@core/checkpoint/state';
+import type {CodaraCommandResult, CodaraCommandSpec} from '@core/codara/commands/types';
 
 export interface CodaraSkillOptions {
   store?: SkillStore;
@@ -70,5 +71,10 @@ export interface CodaraOptions
   values?: Record<string, unknown>;
 }
 
-/** Codara 对外接口。当前直接复用 session 契约。 */
-export type Codara = Session;
+export interface CodaraCommandSurface {
+  listCommands(): readonly CodaraCommandSpec[];
+  executeCommand(input: string): Promise<CodaraCommandResult>;
+}
+
+/** Codara 对外接口。 */
+export type Codara = Session & CodaraCommandSurface;

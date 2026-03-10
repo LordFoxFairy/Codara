@@ -1,0 +1,42 @@
+import type {AgentState} from '@core/agents';
+
+export interface ParsedCodaraCommand {
+  raw: string;
+  name: string;
+  args: string[];
+  argsText: string;
+}
+
+export interface CodaraCommandSpec {
+  name: string;
+  description: string;
+  usage: string;
+  aliases?: string[];
+}
+
+export interface CodaraCommandResult {
+  ok: boolean;
+  command: string;
+  output: string;
+  state?: AgentState;
+}
+
+export interface CodaraCommandHost {
+  compactConversation(): Promise<AgentState>;
+  getAgentState(): AgentState;
+  reloadSources(): void;
+  resumePause(payload: {
+    decision: 'approve' | 'reject';
+    feedback?: string;
+  }): Promise<AgentState>;
+}
+
+export interface CodaraCommandContext {
+  command: ParsedCodaraCommand;
+  registry: readonly CodaraCommandDefinition[];
+  host: CodaraCommandHost;
+}
+
+export interface CodaraCommandDefinition extends CodaraCommandSpec {
+  execute(context: CodaraCommandContext): Promise<CodaraCommandResult> | CodaraCommandResult;
+}
