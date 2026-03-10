@@ -18,6 +18,7 @@
 - provider 白名单和模型窗口元数据要分开管理：`config.json` 只保留 provider/model 路由关系，`model-metadata.json` 单独承载 `contextWindow/maxOutputTokens`。
 - `/compact` 这类 host command 如果有手动 instructions，就要把它收进正式 runtime contract，不要只停在命令层字符串解析。
 - 对齐 Claude Code 的自动 compact 时，优先对齐生命周期心智和默认阈值（接近 95%），不要让本地临时默认值长期漂移。
+- `Task/subagent` 这类“工具 + 运行语义”组合能力，优先收成 middleware 域，让工具注册和能力边界在同一层；低层 tool factory 只保留为 primitive。
 
 ## 设计原则
 

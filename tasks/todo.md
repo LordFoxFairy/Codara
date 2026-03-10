@@ -1,14 +1,15 @@
 # TODO
 
-- [x] 为 session metadata 补 usage/context window telemetry
-- [x] 让 reopen session 保留既有 metadata，而不是重新丢失宿主态信息
-- [x] 修正 telemetry 聚合为“本次新增 AI 响应总和”，而不是只吃最后一轮 model call
-- [x] 更新文档并跑完 `typecheck`、`lint`、`test`
+- [x] 将 `task/subagent` 收成统一的 middleware 域，而不是散落的 tool factory + codara wrapper
+- [x] 保留 `createAgent(...)` 为唯一执行内核，复用共享 delegated runner，不引入第二套 runtime
+- [x] 将 `Task`、`delegate_to_subagent`、`TaskCreate/TaskUpdate/TaskList` 分成职责清晰的 middleware
+- [x] 更新 codara 装配、导出和测试结构
+- [x] 跑完 `typecheck`、`lint`、`test`
 
 ## Review
 
-- session metadata 现在会累计 token usage，并记录最近一次 context window 占用百分比
-- telemetry 归属在 `Session metadata`，不进 checkpoint，不污染 agent runtime state
-- reopen session 现在会把持久化 session state 带回 host，保留既有 metadata
-- multi-turn agent run 的 telemetry 已按本次新增 AI 响应聚合，避免只统计最后一轮模型调用
+- `Task/subagent` 现在优先通过 middleware 暴露，工具注册和能力归属回到了同一层
+- `createTaskMiddleware(...)`、`createSubagentMiddleware(...)`、`createSharedTaskMiddleware(...)` 分别承载委派、原始子代理和共享任务协调
+- Codara 层新增 `createCodaraTaskMiddleware(...)` / `createCodaraSubagentMiddleware(...)`，不再只剩一个 `task-tool` wrapper
+- 低层 `createTaskTool(...)` / `createSubagentTool(...)` 仍保留为 runtime primitive，但不再是推荐的主心智
 - 已验证：`bun run typecheck`、`bun run lint`、`bun test`
