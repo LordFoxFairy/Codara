@@ -1,5 +1,5 @@
 import {describe, expect, it} from 'bun:test';
-import {AIMessage, HumanMessage, ToolMessage, type BaseMessage, type ToolCall} from '@langchain/core/messages';
+import {AIMessage, HumanMessage, SystemMessage, ToolMessage, type BaseMessage, type ToolCall} from '@langchain/core/messages';
 import type {BaseChatModel} from '@langchain/core/language_models/chat_models';
 import type {StructuredToolInterface} from '@langchain/core/tools';
 import {createAgent} from '@core/agents';
@@ -47,6 +47,21 @@ class ChildSummaryModel {
   }
 }
 
+class SystemEchoModel {
+  async invoke(messages: BaseMessage[]): Promise<AIMessage> {
+    const content = messages
+      .filter((message) => SystemMessage.isInstance(message))
+      .map((message) => String(message.content))
+      .join('\n---\n');
+    return new AIMessage(content);
+  }
+
+  bindTools(tools: StructuredToolInterface[]): this {
+    void tools;
+    return this;
+  }
+}
+
 describe('tasking middlewares', () => {
   it('should register the delegated Task tool through middleware', async () => {
     const store = createBuiltinAgentStore();
@@ -78,6 +93,26 @@ describe('tasking middlewares', () => {
     expect(taskMiddleware.tools?.map((tool) => tool.name)).toEqual([TASK_TOOL_NAME]);
     expect(result.reason).toBe('complete');
     expect(String(toolMessage.content)).toContain('child middleware summary');
+  });
+
+  it('should inject available subagent definitions from skills runtime before model calls', async () => {
+    const store = createBuiltinAgentStore();
+    const taskMiddleware = createTaskMiddleware({
+      model: new ChildSummaryModel() as unknown as BaseChatModel,
+    });
+
+    const agent = createAgent({
+      model: new SystemEchoModel() as unknown as BaseChatModel,
+      middlewares: [createAgentSkillsMiddleware(store), taskMiddleware],
+    });
+
+    const result = await agent.invoke([new HumanMessage('show tasking prompt')]);
+    const lastAi = result.state.messages[result.state.messages.length - 1] as AIMessage;
+
+    expect(String(lastAi.content)).toContain('Task Delegation');
+    expect(String(lastAi.content)).toContain('Available Subagents');
+    expect(String(lastAi.content)).toContain('general-purpose');
+    expect(String(lastAi.content)).toContain('Explore');
   });
 
   it('should register the primitive subagent tool through middleware', async () => {
