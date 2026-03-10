@@ -108,19 +108,20 @@ const agent = createAgent({
 
 ## Task Delegation Tool
 
-正式的委派入口是 `Task` 工具，它是 `subagent` 原语的高层包装，不是另一套执行系统。
+正式的委派入口现在优先以 `TaskMiddleware` 暴露，它在内部注册 `Task` 工具；底层仍复用 `subagent` 原语，不是另一套执行系统。
 
 ```ts
-import {createAgent, createTaskTool} from '@core/agents';
+import {createAgent} from '@core/agents';
+import {createTaskMiddleware} from '@core/middleware';
 
-const taskTool = createTaskTool({
+const taskMiddleware = createTaskMiddleware({
   model,
   tools: [readTool, grepTool],
 });
 
 const agent = createAgent({
   model,
-  tools: [taskTool],
+  middleware: [taskMiddleware],
 });
 ```
 
@@ -132,5 +133,6 @@ const agent = createAgent({
 - 不负责共享 task 协调；共享协调由 `TaskCreate/TaskUpdate/TaskList` 负责
 
 公开心智保持克制：
-- `@core/agents` 只暴露主入口与常量，例如 `createAgent(...)`、`createSubagentTool(...)`、`createTaskTool(...)`
+- `@core/middleware` 暴露 `createTaskMiddleware(...)`、`createSubagentMiddleware(...)`、`createSharedTaskMiddleware(...)`
+- `@core/agents` 仍保留低层 `createSubagentTool(...)`、`createTaskTool(...)`，作为 runtime primitive
 - `Task` 的高级 runtime 扩展钩子统一收在 `runtimeHooks` 下，只服务宿主装配；默认使用时不需要了解它们

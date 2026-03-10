@@ -129,11 +129,12 @@ checkpoint 边界：
   - scope: 委派执行
   - layer: 同一 agent runtime，`agentType = subagent`
 - `Task`
-  - scope: 正式委派工具
+  - scope: 正式委派能力
+  - layer: `TaskMiddleware`
   - data source: `context.skills`
 - `TaskCreate/TaskUpdate/TaskList`
   - scope: 共享协调层
-  - layer: `TaskStore`
+  - layer: `SharedTaskMiddleware` + `TaskStore`
 
 已经确认的边界修正：
 
@@ -189,10 +190,10 @@ checkpoint 边界：
 - `subagent`
   - 对 `createAgent(...)` 的受约束复用
   - 子代理独立上下文、独立 checkpoint 边界
-  - 当前通过 `createSubagentTool(...)` 或正式的 `Task` tool 委派
+  - 当前优先通过 `SubagentMiddleware` 或正式的 `TaskMiddleware` 委派
 - `task`
   - 共享协调层，不属于单个 agent 的内部状态
-  - 通过独立 `TaskStore` 与 `TaskCreate/TaskUpdate/TaskList` tools 暴露
+  - 通过独立 `TaskStore` 与 `SharedTaskMiddleware` 暴露
   - 可被主代理与子代理共同访问
 
 三者分工不同，不应混用：
@@ -201,8 +202,9 @@ checkpoint 边界：
 - `task` 负责跨 agent 协调
 
 正式命名上：
-- `Task` = 委派型工具，生成/运行子代理
-- `TaskCreate/TaskUpdate/TaskList` = 共享协调工具
+- `TaskMiddleware` = 注册正式 `Task` 委派工具
+- `SubagentMiddleware` = 注册原始 `delegate_to_subagent` 工具
+- `SharedTaskMiddleware` = 注册 `TaskCreate/TaskUpdate/TaskList`
 
 更完整的 `subagent/task` 结构、流程图、测试地图与当前不足，见 `docs/subagent-task-architecture.md`。
 
