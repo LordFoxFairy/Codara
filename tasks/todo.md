@@ -1,13 +1,14 @@
 # TODO
 
-- [x] 将 `/compact [instructions]` 收成正式 runtime contract
-- [x] 将默认自动 compact 阈值收正到更接近 Claude Code 的 95%
-- [x] 更新 summary / session / command / 文档 / 测试
-- [x] 跑完 `typecheck`、`lint`、`test` 并确认 compact lifecycle 稳定
+- [x] 为 session metadata 补 usage/context window telemetry
+- [x] 让 reopen session 保留既有 metadata，而不是重新丢失宿主态信息
+- [x] 修正 telemetry 聚合为“本次新增 AI 响应总和”，而不是只吃最后一轮 model call
+- [x] 更新文档并跑完 `typecheck`、`lint`、`test`
 
 ## Review
 
-- `/compact [instructions]` 现在会把手动 compact 指令带进 summary generator，而不是停在命令层
-- 默认自动 compact 阈值从 80% 收到了 95%，更接近 Claude Code 的默认心智
-- session / agent / command 三层对 compact 的职责已经打通：host 触发，runtime 执行，summary 生成结果
+- session metadata 现在会累计 token usage，并记录最近一次 context window 占用百分比
+- telemetry 归属在 `Session metadata`，不进 checkpoint，不污染 agent runtime state
+- reopen session 现在会把持久化 session state 带回 host，保留既有 metadata
+- multi-turn agent run 的 telemetry 已按本次新增 AI 响应聚合，避免只统计最后一轮模型调用
 - 已验证：`bun run typecheck`、`bun run lint`、`bun test`

@@ -52,6 +52,7 @@
 - `hil` 只做 pause/resume，不承载权限业务策略。
 - 派生 runtime 数据应放 runtime context，不要混进持久 `state.context`。
 - context budget 应作为独立 runtime 关注点，不埋在 summary 私逻辑里。
+- session 级 telemetry 要放 `Session metadata`，不要塞进 checkpoint；聚合时按“本次新增 AI 响应”统计，不能只读最后一轮 model call。
 
 ## 测试规则
 
