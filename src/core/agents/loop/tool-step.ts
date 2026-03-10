@@ -5,6 +5,7 @@ import type {AgentStreamWriter} from '@core/agents/engine/stream-writer';
 import {executeToolCall, resolveToolCallId} from '@core/agents/engine/tools';
 import type {AgentRuntime, AgentRunContext} from '@core/agents/loop/run';
 import {readToolExecutionPolicy} from '@core/tools';
+import {toError} from '@core/shared/errors';
 
 export async function runToolStep(
   run: AgentRunContext,
@@ -139,8 +140,4 @@ function createToolExecutionBatches(
 
   flushParallel();
   return batches;
-}
-
-function toError(error: unknown): Error {
-  return error instanceof Error ? error : new Error(String(error));
 }

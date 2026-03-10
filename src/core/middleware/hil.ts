@@ -1,61 +1,38 @@
 import {ToolMessage, type ToolCall} from '@langchain/core/messages';
 import {z} from 'zod';
 import {createMiddleware, type ToolCallContext} from '@core/middleware/types';
+import type {
+  PauseActionDescriptor,
+  PauseRequest,
+  PauseReviewDecision,
+  PauseReviewRequest,
+  PauseUIActionOption,
+  PauseUIConfig,
+  ResumePayload,
+} from '@core/agents/contract/pause';
 
-export interface HILActionDescriptor {
-  toolCallId: string;
-  toolName: string;
-  toolArgs: Record<string, unknown>;
-}
+export type HILActionDescriptor = PauseActionDescriptor;
+export type HILPauseRequest = PauseRequest;
+export type HILReviewDecision = PauseReviewDecision;
+export type HILReviewRequest = PauseReviewRequest;
+export type HILUIActionOption = PauseUIActionOption;
+export type HILUIConfig = PauseUIConfig;
+export type HILResumePayload = ResumePayload;
 
-export interface HILPauseRequest {
-  id: string;
-  description: string;
-  action: HILActionDescriptor;
-  review: HILReviewRequest;
-  runtime: {
-    runId: string;
-    turn: number;
-    requestId: string;
-    toolIndex: number;
-  };
-  channel?: string;
-  ui?: HILUIConfig;
-  metadata?: Record<string, unknown>;
-}
-
-/**
- * Opaque interaction action descriptor carried by HIL.
- * Action ids and their business meaning are defined by the caller
- * (for example a skill template or approval service), not by HIL itself.
- */
-export interface HILUIActionOption {
-  id: string;
-  label: string;
-  kind?: 'primary' | 'secondary' | 'danger';
-  description?: string;
-  requiresConfirmation?: boolean;
-  requiresToolEdit?: boolean;
-}
-
-export interface HILUIConfig {
-  tab?: string;
-  modal?: string;
-  actions?: HILUIActionOption[];
-  [key: string]: unknown;
-}
-
-export type HILReviewDecision = 'approve' | 'edit' | 'reject';
-
-/**
- * Review 合同与 UI 载荷并行存在。
- * `allowedDecisions` 约束审批处理器可接受的决策集合，
- * `ui.actions` 仍然只是终端或界面的展示层选择。
- */
-export interface HILReviewRequest {
-  actionName: string;
-  allowedDecisions: HILReviewDecision[];
-}
+export type HILToolMessagePayload =
+  | {
+      type: 'hil_pause';
+      request: PauseRequest;
+    }
+  | {
+      type: 'hil_deny';
+      reason: string;
+      metadata: Record<string, unknown>;
+      action: {
+        toolCallId: string;
+        toolName: string;
+      };
+    };
 
 export type HILDescriptionFactory = (
   toolCall: ToolCall,
@@ -66,9 +43,9 @@ export type HILDescriptionFactory = (
 export interface HILInterruptConfig {
   description?: string | HILDescriptionFactory;
   channel?: string;
-  ui?: HILUIConfig;
+  ui?: PauseUIConfig;
   metadata?: Record<string, unknown>;
-  allowedDecisions?: HILReviewDecision[];
+  allowedDecisions?: PauseReviewDecision[];
 }
 
 export type HILInterruptOn = Record<string, boolean | HILInterruptConfig>;
@@ -78,15 +55,13 @@ export interface HILContextConfig {
   descriptionPrefix?: string;
 }
 
-export type HILResumePayload = unknown;
-
 /**
  * Generic resume payload shape used by higher-level interaction layers.
  * `scope` is intentionally opaque to HIL so approval persistence can stay
  * in project policy or other external stores.
  */
 export interface HILResumeActionPayload {
-  decision?: HILReviewDecision;
+  decision?: PauseReviewDecision;
   action?: string;
   scope?: string;
   comment?: string;
@@ -133,23 +108,23 @@ export type HILPauseRequestFactory = (
   context: ToolCallContext,
   config: HILInterruptConfig,
   descriptionPrefix: string
-) => Promise<HILPauseRequest> | HILPauseRequest;
+) => Promise<PauseRequest> | PauseRequest;
 
-export type HILPauseNotifier = (request: HILPauseRequest, context: ToolCallContext) => Promise<void> | void;
+export type HILPauseNotifier = (request: PauseRequest, context: ToolCallContext) => Promise<void> | void;
 
 export type HILResumeResolver = (
-  request: HILPauseRequest,
+  request: PauseRequest,
   context: ToolCallContext
-) => Promise<HILResumePayload | undefined> | HILResumePayload | undefined;
+) => Promise<ResumePayload | undefined> | ResumePayload | undefined;
 
 export type HILResumeHandler = (
-  request: HILPauseRequest,
-  resumePayload: HILResumePayload,
+  request: PauseRequest,
+  resumePayload: ResumePayload,
   context: ToolCallContext,
   handler: (request?: ToolCallContext) => Promise<ToolMessage>
 ) => Promise<ToolMessage>;
 
-export type HILPauseMessageFactory = (request: HILPauseRequest, context: ToolCallContext) => ToolMessage;
+export type HILPauseMessageFactory = (request: PauseRequest, context: ToolCallContext) => ToolMessage;
 
 export type HILDenyMessageFactory = (decision: HILDenyDecision, context: ToolCallContext) => ToolMessage;
 
@@ -160,21 +135,6 @@ interface HILObservabilityMetadata extends Record<string, unknown> {
   interactionSkill?: string;
   interactionActionIds?: string[];
 }
-
-export type HILToolMessagePayload =
-  | {
-      type: 'hil_pause';
-      request: HILPauseRequest;
-    }
-  | {
-      type: 'hil_deny';
-      reason: string;
-      metadata: Record<string, unknown>;
-      action: {
-        toolCallId: string;
-        toolName: string;
-      };
-    };
 
 export interface HILMiddlewareOptions extends HILContextConfig {
   enabled?: boolean;
@@ -190,7 +150,7 @@ export interface HILMiddlewareOptions extends HILContextConfig {
 
 const DEFAULT_NAME = 'HumanInTheLoopMiddleware';
 const DEFAULT_DESCRIPTION_PREFIX = 'Tool execution paused for human interaction';
-const DEFAULT_ALLOWED_DECISIONS: HILReviewDecision[] = ['approve', 'edit', 'reject'];
+const DEFAULT_ALLOWED_DECISIONS: PauseReviewDecision[] = ['approve', 'edit', 'reject'];
 
 const contextSchema = z.looseObject({
   interruptOn: z.record(z.string(), z.any()).optional(),
@@ -434,7 +394,7 @@ async function defaultPauseRequestFactory(
   context: ToolCallContext,
   config: HILInterruptConfig,
   descriptionPrefix: string
-): Promise<HILPauseRequest> {
+): Promise<PauseRequest> {
   const toolCallId = resolveToolCallId(context.toolCall, context.toolIndex);
   const toolName = context.toolCall.name;
   const toolArgs = normalizeArgs(context.toolCall.args);
@@ -488,7 +448,7 @@ function createDefaultResumeHandler(createDenyMessage: HILDenyMessageFactory): H
   };
 }
 
-function defaultPauseMessageFactory(request: HILPauseRequest): ToolMessage {
+function defaultPauseMessageFactory(request: PauseRequest): ToolMessage {
   const payload: HILToolMessagePayload = {
     type: 'hil_pause',
     request,
@@ -524,7 +484,7 @@ function defaultDenyMessageFactory(decision: HILDenyDecision, context: ToolCallC
   });
 }
 
-function defaultResumeResolver(request: HILPauseRequest, context: ToolCallContext): HILResumePayload | undefined {
+function defaultResumeResolver(request: PauseRequest, context: ToolCallContext): ResumePayload | undefined {
   const root = context.runtime.context;
   if (!isRecord(root)) {
     return undefined;
@@ -555,7 +515,7 @@ function defaultResumeResolver(request: HILPauseRequest, context: ToolCallContex
  * Normalize the external resume payload into a predictable action shape.
  * This keeps UI-specific transport formats out of middleware handlers.
  */
-export function parseHILResumeActionPayload(payload: HILResumePayload): HILResumeActionPayload {
+export function parseHILResumeActionPayload(payload: ResumePayload): HILResumeActionPayload {
   if (!isRecord(payload)) {
     return {};
   }
@@ -653,7 +613,7 @@ function normalizeArgs(args: unknown): Record<string, unknown> {
   return isRecord(args) ? args : {};
 }
 
-function buildPauseObservabilityMetadata(request: HILPauseRequest): HILObservabilityMetadata {
+function buildPauseObservabilityMetadata(request: PauseRequest): HILObservabilityMetadata {
   return {
     toolResultType: 'hil_pause',
     interactionDecision: 'ask',
@@ -675,7 +635,7 @@ function extractSkillFromMetadata(metadata: Record<string, unknown> | undefined)
   return typeof metadata?.skill === 'string' ? metadata.skill : undefined;
 }
 
-function extractActionIds(ui: HILUIConfig | undefined): string[] {
+function extractActionIds(ui: PauseUIConfig | undefined): string[] {
   if (!Array.isArray(ui?.actions)) {
     return [];
   }
@@ -685,13 +645,13 @@ function extractActionIds(ui: HILUIConfig | undefined): string[] {
     .filter((id): id is string => typeof id === 'string' && id.trim().length > 0);
 }
 
-function normalizeAllowedDecisions(allowedDecisions: HILReviewDecision[] | undefined): HILReviewDecision[] {
+function normalizeAllowedDecisions(allowedDecisions: PauseReviewDecision[] | undefined): PauseReviewDecision[] {
   if (!allowedDecisions || allowedDecisions.length === 0) {
     return [...DEFAULT_ALLOWED_DECISIONS];
   }
 
-  const unique: HILReviewDecision[] = [];
-  const seen = new Set<HILReviewDecision>();
+  const unique: PauseReviewDecision[] = [];
+  const seen = new Set<PauseReviewDecision>();
   for (const decision of allowedDecisions) {
     if (seen.has(decision)) {
       continue;
@@ -720,11 +680,11 @@ function hasOwnRecordKey(record: unknown, key: string): record is Record<string,
   return isRecord(record) && Object.prototype.hasOwnProperty.call(record, key);
 }
 
-function isHILReviewDecision(value: unknown): value is HILReviewDecision {
+function isHILReviewDecision(value: unknown): value is PauseReviewDecision {
   return value === 'approve' || value === 'edit' || value === 'reject';
 }
 
-function isHILReviewDecisions(value: unknown): value is HILReviewDecision[] {
+function isHILReviewDecisions(value: unknown): value is PauseReviewDecision[] {
   return Array.isArray(value) && value.every((item) => isHILReviewDecision(item));
 }
 
@@ -749,7 +709,7 @@ function isHILToolMessagePayload(value: unknown): value is HILToolMessagePayload
   return isHILPauseMessagePayload(value) || isHILDenyMessagePayload(value);
 }
 
-function isHILUIActionOption(value: unknown): value is HILUIActionOption {
+function isHILUIActionOption(value: unknown): value is PauseUIActionOption {
   if (!isRecord(value)) {
     return false;
   }
@@ -775,7 +735,7 @@ function isHILUIActionOption(value: unknown): value is HILUIActionOption {
 
 }
 
-function isHILUIConfig(value: unknown): value is HILUIConfig {
+function isHILUIConfig(value: unknown): value is PauseUIConfig {
   if (!isRecord(value)) {
     return false;
   }

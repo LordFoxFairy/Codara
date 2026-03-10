@@ -10,15 +10,14 @@ import type {
   AgentStreamConfig,
   AgentStreamOutput,
 } from '@core/agents';
-import {createAgent} from '@core/agents';
+import {createAgent, normalizeAgentInput} from '@core/agents';
 import {deriveAgentInputBudget} from '@core/agents/input-budget';
-import {cloneContext, cloneValues} from '@core/agents/engine/state';
-import {normalizeAgentInput} from '@core/agents/engine/runtime-input';
+import {deepClone} from '@core/shared/clone';
 import {mapChatMessagesToStoredMessages, mapStoredMessagesToChatMessages} from '@langchain/core/messages';
 import type {BaseChatModel} from '@langchain/core/language_models/chat_models';
 import type {ModelInfo} from '@core/provider';
 import type {CreateSessionOptions} from '@core/sessions/types';
-import type {HILResumePayload} from '@core/middleware';
+import type {ResumePayload} from '@core/agents/contract/pause';
 
 export interface SessionAgentHostSyncOptions {
   touchActivity?: boolean;
@@ -41,9 +40,9 @@ export interface SessionAgentHost {
     input?: AgentInput,
     config?: AgentStreamConfig,
   ): AsyncGenerator<AgentStreamOutput, AgentResult, void>;
-  resumePause(payload: HILResumePayload, config?: AgentResumeConfig): Promise<AgentResult>;
+  resumePause(payload: ResumePayload, config?: AgentResumeConfig): Promise<AgentResult>;
   resumePauseStream(
-    payload: HILResumePayload,
+    payload: ResumePayload,
     config?: AgentResumeStreamConfig,
   ): AsyncGenerator<AgentStreamOutput, AgentResult, void>;
   reset(): Promise<AgentState | undefined>;
@@ -169,8 +168,8 @@ export function createSessionAgentHost(
         store: forkOptions.store ?? options.sessionOptions.store,
         restore: 'never',
         messages: cloneAgentMessages(baseState.messages),
-        context: cloneContext(baseState.context),
-        values: cloneValues(baseState.values),
+        context: deepClone(baseState.context),
+        values: deepClone(baseState.values),
         metadata: {
           ...options.cloneMetadata(),
           forkedFromSessionId: options.sessionId,
@@ -192,12 +191,12 @@ export function createSessionAgentHost(
       return runAgentStreamResult((agent) => agent.stream(input, config));
     },
 
-    resumePause(payload: HILResumePayload, config?: AgentResumeConfig): Promise<AgentResult> {
+    resumePause(payload: ResumePayload, config?: AgentResumeConfig): Promise<AgentResult> {
       return runAgentResult((agent) => agent.resume(payload, config));
     },
 
     resumePauseStream(
-      payload: HILResumePayload,
+      payload: ResumePayload,
       config?: AgentResumeStreamConfig,
     ): AsyncGenerator<AgentStreamOutput, AgentResult, void> {
       return runAgentStreamResult((agent) => agent.resumeStream(payload, config));

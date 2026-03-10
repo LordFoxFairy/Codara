@@ -2,7 +2,7 @@ import type {BaseMessage, ToolCall, ToolMessage} from '@langchain/core/messages'
 import type {BaseChatModel} from '@langchain/core/language_models/chat_models';
 import type {StructuredToolInterface} from '@langchain/core/tools';
 import type {BaseMiddleware} from '@core/middleware';
-import type {HILPauseRequest, HILResumePayload} from '@core/middleware/hil';
+import type {PauseRequest, ResumePayload} from '@core/agents/contract/pause';
 import type {AgentCheckpoint, AgentCheckpointer} from '@core/checkpoint/state';
 import type {AgentStreamConfig, AgentStreamOutput} from '@core/agents/contract/stream';
 
@@ -37,7 +37,7 @@ export interface AgentState {
   context: AgentRuntimeContext;
   values: AgentRuntimeValues;
   status: AgentStatus;
-  pendingPause?: HILPauseRequest;
+  pendingPause?: PauseRequest;
 }
 
 /** invoke/stream 支持的最小消息输入。 */
@@ -68,12 +68,12 @@ export interface Agent {
     instructions?: string;
   }): Promise<AgentState>;
   invoke(input?: AgentInput, config?: AgentInvokeConfig): Promise<AgentResult>;
-  resume(payload: HILResumePayload, config?: AgentResumeConfig): Promise<AgentResult>;
+  resume(payload: ResumePayload, config?: AgentResumeConfig): Promise<AgentResult>;
   reset(): Promise<void>;
   dispose(): Promise<void>;
   stream(input?: AgentInput, config?: AgentStreamConfig): AsyncGenerator<AgentStreamOutput, AgentResult, void>;
   resumeStream(
-    payload: HILResumePayload,
+    payload: ResumePayload,
     config?: AgentResumeStreamConfig
   ): AsyncGenerator<AgentStreamOutput, AgentResult, void>;
 }
