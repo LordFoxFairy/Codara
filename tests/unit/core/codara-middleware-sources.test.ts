@@ -10,25 +10,22 @@ import {createCodara} from '@core';
 import {FakeModel, SystemEchoModel} from './codara-fixtures';
 
 describe('Codara middleware source integration', () => {
-  it('should inject session-loaded AGENTS.md and MEMORY.md into model calls', async () => {
+  it('should inject session-loaded AGENTS.md into model calls', async () => {
     const root = await mkdtemp(path.join(tmpdir(), 'codara-workspace-'));
     const userHome = path.join(root, 'home');
     const projectRoot = path.join(root, 'project');
     const nestedCwd = path.join(projectRoot, 'packages', 'app');
     await mkdir(path.join(userHome, '.codara'), {recursive: true});
-    await mkdir(path.join(projectRoot, '.codara'), {recursive: true});
     await mkdir(path.join(projectRoot, '.git'), {recursive: true});  // Mark as git root
     await mkdir(nestedCwd, {recursive: true});
     // Create AGENTS.md at the cwd level (nearest to where we're running)
     await writeFile(path.join(nestedCwd, 'AGENTS.md'), 'project rule', 'utf8');
-    await writeFile(path.join(projectRoot, '.codara', 'MEMORY.md'), 'project memory', 'utf8');
 
     const codara = createCodara({
       model: new SystemEchoModel() as unknown as BaseChatModel,
       cwd: nestedCwd,
       userHome,
       guidelines: true,
-      memory: true,
       skills: false,
       builtinTools: false,
       hil: false,
@@ -38,8 +35,6 @@ describe('Codara middleware source integration', () => {
 
     expect(text).toContain('AGENTS Guidelines');
     expect(text).toContain('project rule');
-    expect(text).toContain('Project Memory');
-    expect(text).toContain('project memory');
   });
 
   it('should let caller tool middleware short-circuit before default HIL', async () => {

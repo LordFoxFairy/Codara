@@ -17,7 +17,7 @@ describe('agent runtime input helpers', () => {
 
   it('should merge runtime context records without mutating inputs', () => {
     const base = {
-      codara: {memory: 'v1'},
+      codara: {guidelines: 'v1'},
       request: {id: 'r1'},
     };
     const overrides = {
@@ -29,12 +29,12 @@ describe('agent runtime input helpers', () => {
     const merged = mergeContext(base, overrides);
 
     expect(merged).toEqual({
-      codara: {memory: 'v1', summary: 'compact'},
+      codara: {guidelines: 'v1', summary: 'compact'},
       request: {id: 'r1', trace: 't1'},
       custom: true,
     });
     expect(base).toEqual({
-      codara: {memory: 'v1'},
+      codara: {guidelines: 'v1'},
       request: {id: 'r1'},
     });
   });
