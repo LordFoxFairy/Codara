@@ -29,3 +29,7 @@ export const resolveCodaraPath = (): string => {
 /** 解析模型路由配置文件路径。 */
 export const resolveModelRoutingConfigPath = (): string =>
     `${resolveCodaraPath()}/config.json`;
+
+/** 解析模型元数据配置文件路径。 */
+export const resolveModelMetadataConfigPath = (): string =>
+    `${resolveCodaraPath()}/model-metadata.json`;

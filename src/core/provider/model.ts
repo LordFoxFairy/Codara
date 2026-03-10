@@ -1,5 +1,4 @@
-export interface ProviderModelConfig {
-    id: string;
+export interface ModelMetadataConfig {
     contextWindow?: number;
     maxOutputTokens?: number;
 }
@@ -15,7 +14,7 @@ export interface ProviderConfig {
     /** 字面量密钥或环境变量引用，例如 "$OPENROUTER_API_KEY"。 */
     apiKey?: string;
     /** Provider 允许的模型 ID 列表。 */
-    models: ProviderModelConfig[];
+    models: string[];
 }
 
 /**
@@ -39,6 +38,8 @@ export interface ModelRoutingConfig {
     providers: ProviderConfig[];
     /** router 解析后的规则列表。 */
     routerRules: RouterRule[];
+    /** 按模型 ID 聚合的可选元数据。 */
+    modelMetadata: Record<string, ModelMetadataConfig>;
 }
 
 /**
