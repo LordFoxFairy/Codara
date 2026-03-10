@@ -19,7 +19,7 @@ AI 驱动的终端代码代理运行时与产品 facade。
 - 显式 session 打开与 checkpoint compact 宿主接口
 - `AGENTS.md` 投影注入
 - summary + context budget 上下文管理
-- 宿主级 slash commands（`/help`、`/resume`、`/compact`、`/reload`）
+- 宿主级 slash commands（`/help`、`/memory`、`/resume`、`/compact`、`/reload`）
 - `todo` agent 内部状态
 - `Task` / subagent 委派
 - `TaskCreate` / `TaskUpdate` / `TaskList` 共享协调层
@@ -65,6 +65,9 @@ src/index.ts
 
 - `/help`
   - 列出当前内建命令
+- `/memory`
+  - 查看当前 `AGENTS.md` memory stack
+  - 准备 project/global `AGENTS.md` 文件，供手动编辑
 - `/resume`
   - 恢复当前已暂停的 HIL 动作
 - `/compact`
