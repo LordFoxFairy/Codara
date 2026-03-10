@@ -84,8 +84,11 @@ export function readSummaryRecord(messages: BaseMessage[]): SummaryRecord | unde
 export async function compactSummaryIfNeeded(
   context: BeforeModelContext,
   options: Required<SummaryOptions>,
+  execution: {
+    force?: boolean;
+  } = {},
 ): Promise<void> {
-  while (shouldCompactHistory(context, options)) {
+  while (shouldCompactHistory(context, options, execution.force === true)) {
     const summaryState = splitSummaryState(context.state.messages);
     const recentStart = resolveRecentStart(summaryState.conversationMessages, options.keepLastMessages);
     const olderMessages = summaryState.conversationMessages.slice(0, recentStart);
@@ -292,8 +295,16 @@ function normalizeOptions(options: SummaryOptions): Required<SummaryOptions> {
   };
 }
 
-function shouldCompactHistory(context: BeforeModelContext, options: Required<SummaryOptions>): boolean {
+function shouldCompactHistory(
+  context: BeforeModelContext,
+  options: Required<SummaryOptions>,
+  force = false,
+): boolean {
   const summaryState = splitSummaryState(context.state.messages);
+  if (force) {
+    return summaryState.conversationMessages.length > options.keepLastMessages;
+  }
+
   if (summaryState.conversationMessages.length > options.maxMessages) {
     return true;
   }

@@ -216,6 +216,7 @@ checkpoint 边界：
 - `createCodara(...)`
   - 产品级入口
   - 持有默认 session，并暴露 `invoke(...)`、`stream(...)`、`resumePause(...)`、`compactCheckpoints(...)`
+  - 同时暴露宿主级命令面：`listCommands()`、`executeCommand(...)`
 - `openCodaraSession(...)` / `openLatestCodaraSession(...)`
   - 显式打开历史 session
   - 返回前会 hydrate 已恢复的 runtime state
@@ -226,6 +227,17 @@ checkpoint 边界：
   - 按 alias 直接创建聊天模型
 - `createAgent(...)`
   - 通用 agent，负责 `invoke/stream/resume` 与 checkpoint 边界
+
+## Slash Commands
+
+- slash commands 归属 `src/core/codara/commands/`
+- 当前内建命令：
+  - `/help`
+  - `/resume`
+  - `/compact`
+  - `/reload`
+- 这些命令属于 host surface，不属于 `createAgent(...)` 内核
+- `/compact` 通过 `Agent.compactConversation()` 复用现有 `beforeAgent + beforeModel + conversation-context` 路径
 
 ## CLI 用法
 

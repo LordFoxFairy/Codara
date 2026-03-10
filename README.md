@@ -19,6 +19,7 @@ AI 驱动的终端代码代理运行时与产品 facade。
 - 显式 session 打开与 checkpoint compact 宿主接口
 - `AGENTS.md` 投影注入
 - summary + context budget 上下文管理
+- 宿主级 slash commands（`/help`、`/resume`、`/compact`、`/reload`）
 - `todo` agent 内部状态
 - `Task` / subagent 委派
 - `TaskCreate` / `TaskUpdate` / `TaskList` 共享协调层
@@ -58,6 +59,21 @@ src/index.ts
 - source stack 属于 session，不属于 agent
 - 同一个 Codara host 支持 `reloadSources()`
 - 历史 checkpoint 可通过 `compactCheckpoints()` 手动整理
+- slash commands 也属于 host surface，不进入 `createAgent(...)` 内核
+
+## Slash Commands
+
+- `/help`
+  - 列出当前内建命令
+- `/resume`
+  - 恢复当前已暂停的 HIL 动作
+- `/compact`
+  - 手动触发当前 conversation context 压缩
+  - 复用已有 `conversation-context -> summary` 路径，不重写第二套逻辑
+- `/reload`
+  - 清空当前 session 的 `AGENTS.md` source cache
+
+这些命令当前由 `src/core/codara/commands/` 管理，并通过 `createCodara()` 返回的 host surface 暴露。
 
 ## Todo / Task / Subagent
 

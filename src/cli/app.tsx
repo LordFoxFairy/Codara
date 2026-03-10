@@ -29,7 +29,7 @@ export function CodaraCliApp(): React.JSX.Element {
     {
       id: createId('system'),
       role: 'system',
-      content: 'Interactive Codara CLI. Type a prompt and press Enter. Press Ctrl+C or Esc to exit.',
+      content: 'Interactive Codara CLI. Type a prompt or slash command and press Enter. Press Ctrl+C or Esc to exit.',
     },
   ]);
   const [state, setState] = useState<CliRunState>({status: 'idle'});
@@ -45,15 +45,32 @@ export function CodaraCliApp(): React.JSX.Element {
     setState({status: 'running'});
 
     const userId = createId('user');
-    const assistantId = createId('assistant');
+    const assistantId = createId(prompt.startsWith('/') ? 'system' : 'assistant');
 
     setMessages(current => [
       ...current,
       {id: userId, role: 'user', content: prompt},
-      {id: assistantId, role: 'assistant', content: ''},
+      {id: assistantId, role: prompt.startsWith('/') ? 'system' : 'assistant', content: ''},
     ]);
 
     try {
+      if (prompt.startsWith('/')) {
+        const result = await codara.executeCommand(prompt);
+        setMessages(current =>
+          current.map(message =>
+            message.id === assistantId
+              ? {
+                  ...message,
+                  role: result.ok ? 'system' : 'error',
+                  content: result.output || '(no output)',
+                }
+              : message
+          )
+        );
+        setState(result.ok ? {status: 'done'} : {status: 'error', error: result.output});
+        return;
+      }
+
       let sawText = false;
 
       for await (const chunk of codara.stream(prompt, {streamMode: 'messages'})) {
