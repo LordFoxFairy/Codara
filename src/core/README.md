@@ -26,7 +26,7 @@ src/index.ts
     -> codara/*
       -> sessions/*
         -> agents/*
-          -> middleware/* / skills/* / tools/* / tasks/*
+          -> middleware/* / skills/* / tools/* / tasking/*
 ```
 
 运行主链是：
@@ -38,20 +38,20 @@ createCodara(...)
       -> createCodaraTools(...)
       -> createCodaraMiddlewares(...)
         -> SkillsMiddleware
-          -> context.skills
+          -> runtime.shared.skills
       -> runtime / loop / checkpoint
       -> Task
-        -> resolve definition from context.skills
+        -> resolve definition from runtime.shared.skills
         -> spawn child agent with the same Codara assembly path
 ```
 
 当前合理性：
 
 - `codara` 负责产品 facade 与默认装配，没有侵入执行内核。
-- `session` 负责实例宿主与 source provider 持有，没有承接 agent 工作流状态。
-- `sourceProvider` 负责 source projection 缓存与失效，避免把 `AGENTS.md` 加载逻辑揉进 agent 内核。
+- `session` 负责实例宿主与 AGENTS source 生命周期持有，没有承接 agent 工作流状态。
+- `agentsSource` 负责 AGENTS projection 缓存与失效，避免把 `AGENTS.md` 加载逻辑揉进 agent 内核。
 - `agent` 仍然是唯一执行原语，`subagent`/`Task` 是组合，不是第二套 runtime。
-- `SkillsMiddleware -> context.skills -> Task` 已经形成单一数据流，没有再开旁路 discovery。
+- `SkillsMiddleware -> runtime.shared.skills -> Task` 已经形成单一数据流，没有再开旁路 discovery。
 
 当前仍应持续打磨的点：
 
@@ -92,6 +92,10 @@ src/index.ts
   - 持久 agent context + 本轮 invoke context + transient runtime data 的有效合成视图
   - `skills` 这类可重建派生数据只存在于运行期，不进入 checkpoint
   - 不承载 `todo` 这类 agent-owned 状态
+- `runtime.shared`
+  - middleware 生成、同一次运行内共享的派生数据
+  - `skills` runtime 现在在这一层
+  - 不进入 checkpoint，也不属于用户 invoke context
 - `values`
   - agent 内部轻量状态
   - `todo` 在这里并随 checkpoint 恢复
@@ -125,16 +129,19 @@ checkpoint 边界：
 - `todo`
   - scope: 单 agent 内部进度
   - layer: `values`
+- `tasking`
+  - scope: 委派执行与共享任务协调的统一能力域
+  - includes: `subagent` primitive、`Task`、`TaskStore`、tasking middlewares
 - `subagent`
   - scope: 委派执行
   - layer: 同一 agent runtime，`agentType = subagent`
 - `Task`
   - scope: 正式委派能力
   - layer: `TaskMiddleware`
-  - data source: `context.skills`
+  - data source: `runtime.shared.skills`
 - `TaskCreate/TaskUpdate/TaskList`
   - scope: 共享协调层
-  - layer: `SharedTaskMiddleware` + `TaskStore`
+  - layer: `SharedTaskMiddleware` + `tasking/store.ts`
 
 已经确认的边界修正：
 
@@ -193,7 +200,7 @@ checkpoint 边界：
   - 当前优先通过 `SubagentMiddleware` 或正式的 `TaskMiddleware` 委派
 - `task`
   - 共享协调层，不属于单个 agent 的内部状态
-  - 通过独立 `TaskStore` 与 `SharedTaskMiddleware` 暴露
+  - 通过 `tasking/*` 域中的 `TaskStore` 与 `SharedTaskMiddleware` 暴露
   - 可被主代理与子代理共同访问
 
 三者分工不同，不应混用：

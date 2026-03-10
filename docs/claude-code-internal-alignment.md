@@ -19,7 +19,7 @@ It explicitly does not cover CLI slash commands or manual UX entrypoints.
 ```text
 createCodara(...)
   -> createSession(...)
-    -> sourceProvider(AGENTS.md only)
+    -> agentsSource(AGENTS.md only)
     -> createAgent(...)
       -> middleware pipeline
          -> guidelines
@@ -111,7 +111,7 @@ Current `AGENTS.md` behavior is already close to Claude Code's memory/source lay
 Relevant files:
 
 - [src/core/workspace.ts](/Users/nako/WebstormProjects/github/thefoxfairy/Codara/src/core/workspace.ts)
-- [src/core/sessions/source-provider.ts](/Users/nako/WebstormProjects/github/thefoxfairy/Codara/src/core/sessions/source-provider.ts)
+- [src/core/sessions/agents-source.ts](/Users/nako/WebstormProjects/github/thefoxfairy/Codara/src/core/sessions/agents-source.ts)
 - [src/core/middleware/guidelines.ts](/Users/nako/WebstormProjects/github/thefoxfairy/Codara/src/core/middleware/guidelines.ts)
 
 ### 3. Resume semantics are cleaner than before

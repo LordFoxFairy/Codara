@@ -49,7 +49,7 @@ The key rule is:
 
 ```mermaid
 flowchart LR
-  AG["AGENTS.md files"] --> SP["SourceProvider"]
+  AG["AGENTS.md files"] --> SP["AgentsSource"]
   SP --> GM["GuidelinesMiddleware"]
   GM --> CC["ConversationContextMiddleware"]
   CC --> RT["Agent runtime model input"]
@@ -147,7 +147,7 @@ They are related, but not interchangeable.
 ```mermaid
 flowchart TD
   I["createCodara(...)"] --> S["createSession(...)"]
-  S --> SP["SourceProvider(AGENTS only)"]
+  S --> SP["AgentsSource(AGENTS only)"]
   S --> A["createAgent(...)"]
   A --> G["GuidelinesMiddleware"]
   G --> SK["SkillsMiddleware"]

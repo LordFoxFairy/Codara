@@ -1,5 +1,6 @@
 import type {BaseMessage} from '@langchain/core/messages';
 import type {AgentRuntimeContext, AgentRuntimeValues} from '@core/agents/contract/agent';
+import type {MiddlewareRuntimeShared} from '@core/middleware/types';
 
 const RESERVED_AGENT_CONTEXT_KEYS = new Set(['todos', 'summary']);
 
@@ -7,6 +8,7 @@ export interface AgentStateUpdate {
   messages?: BaseMessage[];
   context?: AgentRuntimeContext;
   runtimeContext?: AgentRuntimeContext;
+  runtimeShared?: MiddlewareRuntimeShared;
   values?: AgentRuntimeValues;
 }
 
@@ -31,6 +33,7 @@ export function applyAgentStateUpdate(
   update: AgentStateUpdate | undefined,
   runtime?: {
     context: AgentRuntimeContext;
+    shared?: MiddlewareRuntimeShared;
   }
 ): void {
   if (!update) {
@@ -48,6 +51,10 @@ export function applyAgentStateUpdate(
 
   if (update.runtimeContext && runtime) {
     runtime.context = mergeRecords(runtime.context, update.runtimeContext) ?? {};
+  }
+
+  if (update.runtimeShared && runtime) {
+    runtime.shared = mergeRecords(runtime.shared, update.runtimeShared) ?? {};
   }
 
   if (update.values) {

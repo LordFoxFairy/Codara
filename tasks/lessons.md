@@ -19,6 +19,10 @@
 - `/compact` 这类 host command 如果有手动 instructions，就要把它收进正式 runtime contract，不要只停在命令层字符串解析。
 - 对齐 Claude Code 的自动 compact 时，优先对齐生命周期心智和默认阈值（接近 95%），不要让本地临时默认值长期漂移。
 - `Task/subagent` 这类“工具 + 运行语义”组合能力，优先收成 middleware 域，让工具注册和能力边界在同一层；低层 tool factory 只保留为 primitive。
+- 一个能力域如果同时跨 `agents/ + middleware/ + tasks/` 三处，通常说明目录归属还没成型；优先收成独立顶层域，而不是继续靠跨目录拼心智。
+- 用户明确要求“全面、逐层、全局思考”时，必须先完成一轮 top-down 审计：入口、宿主、执行内核、state、middleware、source、checkpoint、skills、tasking、commands 全部过一遍；不要再按局部症状做点状修补。
+- 如果系统只剩一个长期 source（当前是 `AGENTS.md`），不要再发明泛化 `SourceProvider` 一类 key-value 抽象；保留 source lifecycle，收窄抽象面。
+- 域级和顶层 barrel 不要长期 `export *`；运行主线稳定后要收成显式导出，避免内部层次不断泄漏回上层 API。
 
 ## 设计原则
 
@@ -52,8 +56,10 @@
 - `logging` 只做观测，不解析其他 middleware 私有协议。
 - `hil` 只做 pause/resume，不承载权限业务策略。
 - 派生 runtime 数据应放 runtime context，不要混进持久 `state.context`。
+- middleware 生成、同轮共享、可重建的数据不要伪装成 `context.*`；优先放进独立的 `runtime.shared.*` 命名空间。
 - context budget 应作为独立 runtime 关注点，不埋在 summary 私逻辑里。
 - session 级 telemetry 要放 `Session metadata`，不要塞进 checkpoint；聚合时按“本次新增 AI 响应”统计，不能只读最后一轮 model call。
+- `AGENTS.md` 文件动作与 `/memory` 产品语义要分开：对外可以继续叫 `/memory`，内部实现应直接表达 `AGENTS files/source`，不要再挂一个假“memory subsystem”。
 
 ## 测试规则
 

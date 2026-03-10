@@ -84,10 +84,11 @@ for await (const chunk of agent.stream('hello', {streamMode: 'messages'})) {
 
 ## Subagent MVP
 
-`subagent` 的最小实现不是新 runtime，而是对 `createAgent(...)` 的一次受约束复用。
+`subagent` 的最小实现不是新 runtime，而是对 `createAgent(...)` 的一次受约束复用；实现现在归属 `tasking/*` 域，而不是 agent 内核本身。
 
 ```ts
-import {createAgent, createSubagentTool} from '@core/agents';
+import {createAgent} from '@core/agents';
+import {createSubagentTool} from '@core/tasking';
 
 const delegateToSubagent = createSubagentTool({
   model,
@@ -134,5 +135,6 @@ const agent = createAgent({
 
 公开心智保持克制：
 - `@core/middleware` 暴露 `createTaskMiddleware(...)`、`createSubagentMiddleware(...)`、`createSharedTaskMiddleware(...)`
-- `@core/agents` 仍保留低层 `createSubagentTool(...)`、`createTaskTool(...)`，作为 runtime primitive
+- `@core/tasking` 暴露低层 `createSubagentTool(...)`、`createTaskTool(...)`，作为 runtime primitive
+- `agents/*` 回到纯执行内核，不再承载 task/subagent 领域文件
 - `Task` 的高级 runtime 扩展钩子统一收在 `runtimeHooks` 下，只服务宿主装配；默认使用时不需要了解它们
