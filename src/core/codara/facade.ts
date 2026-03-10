@@ -1,5 +1,6 @@
 import {createSession} from '@core/sessions';
 import {createCodaraCommandRunner} from '@core/codara/commands';
+import {createSkillCodaraCommands} from '@core/codara/commands/skills';
 import {ensureAgentsFileTarget, inspectAgentsFiles} from '@core/sessions/agents-files';
 import type {Codara, CodaraOptions} from '@core/codara/types';
 import type {SessionState, SessionStore} from '@core/sessions';
@@ -37,7 +38,7 @@ function createCodaraInstance(
     ...(restoredState ? {state: restoredState} : {}),
     sessionId: options.sessionId,
     threadId: options.threadId,
-    alias: runtime.alias,
+    modelRef: runtime.alias,
     model: runtime.model,
     modelCatalog: runtime.modelCatalog,
     agentsSource: runtime.agentsSource,
@@ -51,7 +52,15 @@ function createCodaraInstance(
     context: options.context,
     values: options.values,
   });
+  const reloadRuntimeSources = async (): Promise<void> => {
+    await session.reloadSources();
+    await runtime.skills?.store.refresh?.();
+  };
   const commands = createCodaraCommandRunner({
+    getDynamicCommands: runtime.skills
+      ? () => createSkillCodaraCommands(runtime.skills!.store)
+      : undefined,
+    host: {
     compactConversation: (compactOptions) => session.compactConversation(compactOptions),
     compactCheckpoints: (keepLast) => session.compactCheckpoints(
       typeof keepLast === 'number' ? {keepLast} : undefined
@@ -69,17 +78,20 @@ function createCodaraInstance(
       userHome: options.userHome,
       guidelines: options.guidelines,
     }, scope),
-    reloadSources: () => session.reloadSources(),
+    invokePrompt: (input) => session.invoke(input),
+    reloadSources: reloadRuntimeSources,
     async resumePause(payload) {
       await session.resumePause(payload, {
         ...(payload.feedback ? {input: payload.feedback} : {}),
       });
       return session.getAgentState();
     },
+    },
   });
 
   return {
     ...session,
+    reloadSources: reloadRuntimeSources,
     listCommands: commands.listCommands,
     executeCommand: commands.executeCommand,
   };

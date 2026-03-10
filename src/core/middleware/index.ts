@@ -80,10 +80,6 @@ export {
 } from '@core/middleware/context-budget';
 export {
   createGuidelinesMiddleware,
-  loadGuidelines,
-  type GuidelineFile,
-  type GuidelinesOptions,
-  type LoadedGuidelines,
 } from '@core/middleware/guidelines';
 export {
   compactSummaryIfNeeded,
