@@ -6,6 +6,7 @@
 src/core/skills/
 ├── types.ts         # 核心类型边界（SkillMetadata / SkillStore）
 ├── loading.ts       # SKILL.md frontmatter 解析与校验（deepagents + Agent Skills 对齐）
+├── commands.ts      # 纯 command metadata 发现，不绑定宿主执行
 ├── store.ts         # 文件系统技能发现（source layering + cache）
 ├── metadata.ts      # skills 元数据 schema/reducer + prompt 模板与格式化
 ├── middleware.ts    # deepagents 风格单文件编排（发现 + prompt 注入）

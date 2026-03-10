@@ -21,7 +21,7 @@ export {
   createTaskUpdateTool,
   type CreateSharedTaskMiddlewareOptions,
   type TaskToolOptions,
-} from '@core/tasking/shared-tools';
+} from '@core/tasking/shared-tasks';
 export {
   DEFAULT_SUBAGENT_TOOL_DESCRIPTION,
   DEFAULT_SUBAGENT_TOOL_NAME,
@@ -38,4 +38,4 @@ export {
   createTaskTool,
   type CreateTaskMiddlewareOptions,
   type CreateTaskToolOptions,
-} from '@core/tasking/task-tool';
+} from '@core/tasking/task';

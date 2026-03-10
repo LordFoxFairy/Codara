@@ -5,14 +5,17 @@ export type {
   CodaraSkillOptions,
   CodaraToolsOptions,
 } from '@core/codara/types';
-export {createCodaraTools} from '@core/codara/tools';
+export {
+  createCodaraMiddlewares,
+  resolveCodaraSkills,
+  type CodaraResolvedSkills,
+} from '@core/codara/middleware';
 export {
   createCodaraTaskMiddleware,
   createCodaraTaskTool,
   createCodaraSubagentMiddleware,
   createCodaraSubagentTool,
 } from '@core/codara/tasking';
-export {createCodaraMiddlewares} from '@core/codara/middleware';
 export {
   createCodaraCommandRunner,
   type CodaraCommandResult,
@@ -27,6 +30,7 @@ export {
   type CreateCodaraModelCatalogOptions,
 } from '@core/codara/models';
 export {
+  createCodaraTools,
   createCodaraRuntimePlan,
   resolveCodaraRuntime,
   type CodaraRuntimePlan,

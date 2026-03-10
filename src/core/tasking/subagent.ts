@@ -5,7 +5,6 @@ import {z} from 'zod';
 import {createAgent} from '@core/agents/engine/agent';
 import {createMiddleware, type BaseMiddleware} from '@core/middleware';
 import type {
-  Agent,
   AgentInputBudget,
   AgentType,
   AgentRuntimeContext,
@@ -89,8 +88,7 @@ export async function runDelegatedAgent(
     profileContext?: AgentRuntimeContext;
     profileTools?: StructuredToolInterface[];
     profileSystemPrompt?: string;
-  },
-  createChildAgent?: (options: CreateAgentOptions) => Agent | Promise<Agent>
+  }
 ): Promise<string> {
   if (input.parentAgentType === 'subagent') {
     throw new Error('Subagents cannot delegate to other subagents');
@@ -113,7 +111,7 @@ export async function runDelegatedAgent(
       : {}),
     ...(options.values ? {values: cloneStructured(options.values)} : {}),
   };
-  const child = await createDelegatedAgent(childOptions, createChildAgent);
+  const child = createAgent(childOptions);
 
   const messages = createSubagentInput(
     input.prompt,
@@ -124,17 +122,6 @@ export async function runDelegatedAgent(
     {...(input.maxTurns ? {recursionLimit: input.maxTurns} : {})}
   );
   return formatSubagentResult(result.state.threadId, result.turns, result.reason, result.error, result.state.messages);
-}
-
-async function createDelegatedAgent(
-  childOptions: CreateAgentOptions,
-  createChildAgent: ((options: CreateAgentOptions) => Agent | Promise<Agent>) | undefined
-): Promise<Agent> {
-  if (!createChildAgent) {
-    return createAgent(childOptions);
-  }
-
-  return createChildAgent(childOptions);
 }
 
 function mergeSystemPrompt(profileSystemPrompt: string | undefined, toolSystemPrompt: string | undefined): string | undefined {

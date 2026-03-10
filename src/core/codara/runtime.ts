@@ -5,11 +5,14 @@ import type {BaseMiddleware} from '@core/middleware';
 import type {AgentsSource} from '@core/sessions/agents';
 import {createCodaraAgentsSource} from '@core/sessions/agents';
 import {createCodaraModelCatalog, DEFAULT_CODARA_MODEL_ALIAS, type CodaraModelCatalog} from '@core/codara/models';
-import {createCodaraTools} from '@core/codara/tools';
-import {createCodaraMiddlewares} from '@core/codara/middleware';
-import type {CodaraOptions} from '@core/codara/types';
+import {
+  createCodaraMiddlewares,
+  resolveCodaraSkills,
+  type CodaraResolvedSkills,
+} from '@core/codara/middleware';
+import type {CodaraOptions, CodaraToolsOptions} from '@core/codara/types';
 import {deriveAgentInputBudget} from '@core/agents/input-budget';
-import {resolveCodaraSkills, type CodaraResolvedSkills} from '@core/codara/skills';
+import {createBuiltinTools} from '@core/tools';
 
 export interface ResolvedCodaraRuntime {
   alias: string;
@@ -87,4 +90,24 @@ export function createCodaraRuntimePlan(options: CodaraOptions = {}): CodaraRunt
     tools,
     middleware,
   };
+}
+
+export function createCodaraTools(options: CodaraToolsOptions = {}): StructuredToolInterface[] {
+  const extraTools = options.tools ?? [];
+  if (options.builtinTools === false) {
+    return [...extraTools];
+  }
+
+  const builtinTools = createBuiltinTools({cwd: options.cwd});
+  const byName = new Map<string, StructuredToolInterface>();
+
+  for (const tool of builtinTools) {
+    byName.set(tool.name, tool);
+  }
+
+  for (const tool of extraTools) {
+    byName.set(tool.name, tool);
+  }
+
+  return Array.from(byName.values());
 }
