@@ -1,7 +1,8 @@
 import type {BaseMessage} from '@langchain/core/messages';
 import type {AgentRuntimeContext, AgentRuntimeValues} from '@core/agents/contract/agent';
-import {RESERVED_AGENT_CONTEXT_KEYS} from '@core/shared/constants';
 import {deepClone} from '@core/shared/clone';
+
+const RESERVED_AGENT_CONTEXT_KEYS = new Set(['todos', 'summary']);
 
 export interface AgentStateUpdate {
   messages?: BaseMessage[];

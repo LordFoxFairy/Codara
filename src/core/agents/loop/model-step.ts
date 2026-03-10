@@ -4,7 +4,9 @@ import type {AgentStreamWriter} from '@core/agents/engine/stream-writer';
 import {chunkToMessage, toMessageChunk} from '@core/agents/engine/model';
 import type {AgentRuntime, AgentRunContext} from '@core/agents/loop/run';
 import {buildConversationMessages} from '@core/middleware/conversation-input';
-import {CODARA_KEY, CONTEXT_BUDGET_KEY} from '@core/shared/constants';
+
+const CODARA_KEY = 'codara';
+const CONTEXT_BUDGET_KEY = 'contextBudget';
 
 export async function runModelStep(
   runtime: AgentRuntime,

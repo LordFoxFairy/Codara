@@ -3,7 +3,7 @@ import type {AgentRunContext, AgentRuntime} from '@core/agents/loop/run';
 import type {AgentStreamWriter} from '@core/agents/engine/stream-writer';
 import {runModelStep, runModelStepStream} from '@core/agents/loop/model-step';
 import {runAfterAgentStep, runToolStep, runToolStepStream} from '@core/agents/loop/tool-step';
-import {toError} from '@core/shared/utils';
+import {toError} from '@core/shared/errors';
 import {mergeContext} from '@core/agents/engine/runtime-input';
 import type {AIMessage, ToolCall} from '@langchain/core/messages';
 

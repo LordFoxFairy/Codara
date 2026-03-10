@@ -13,8 +13,9 @@ import type {AgentModel} from '@core/agents/engine/model';
 import type {AgentStreamWriter} from '@core/agents/engine/stream-writer';
 import {runTurn, runTurnStream, type AgentTurnOutcome} from '@core/agents/loop/turn';
 import type {MiddlewarePipeline, MiddlewareRuntimeShared} from '@core/middleware';
-import {DEFAULT_RECURSION_LIMIT} from '@core/shared/constants';
-import {toError, formatErrorMessage} from '@core/shared/utils';
+import {toError, formatErrorMessage} from '@core/shared/errors';
+
+const DEFAULT_RECURSION_LIMIT = 25;
 
 /** 单次运行期间共享的上下文。 */
 export interface AgentRunContext {

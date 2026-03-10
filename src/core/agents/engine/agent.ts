@@ -46,7 +46,7 @@ import {
   type AgentCheckpointer,
 } from '@core/checkpoint/state';
 import type {PauseRequest, ResumePayload} from '@core/agents/contract/pause';
-import {formatErrorMessage} from '@core/shared/utils';
+import {formatErrorMessage} from '@core/shared/errors';
 
 /** `createAgent(...)` 返回的默认实现。 */
 class AgentInstance implements Agent {

@@ -19,16 +19,6 @@ export type HILUIActionOption = PauseUIActionOption;
 export type HILUIConfig = PauseUIConfig;
 export type HILResumePayload = ResumePayload;
 
-export type {
-  PauseActionDescriptor,
-  PauseRequest,
-  PauseReviewDecision,
-  PauseReviewRequest,
-  PauseUIActionOption,
-  PauseUIConfig,
-  ResumePayload,
-} from '@core/agents/contract/pause';
-
 export type HILToolMessagePayload =
   | {
       type: 'hil_pause';
