@@ -1,6 +1,5 @@
 import {AIMessage, type BaseMessage} from '@langchain/core/messages';
 import type {AgentState} from '@core/agents';
-import type {ContextBudgetSnapshot} from '@core/middleware/context-budget';
 import type {SessionMetadata} from '@core/sessions/types';
 
 const CODARA_KEY = 'codara';
@@ -21,6 +20,13 @@ export interface SessionContextWindowTelemetry {
   availableInputTokens: number;
   estimatedInputTokens: number;
   usagePercent: number;
+  overBudget: boolean;
+}
+
+interface ContextBudgetTelemetrySnapshot {
+  maxInputTokens: number;
+  availableInputTokens: number;
+  estimatedInputTokens: number;
   overBudget: boolean;
 }
 
@@ -66,7 +72,7 @@ export function mergeSessionTelemetry(
 
 export function attachContextBudgetMetadata(
   message: AIMessage,
-  budget: ContextBudgetSnapshot | undefined,
+  budget: ContextBudgetTelemetrySnapshot | undefined,
 ): AIMessage {
   if (!budget) {
     return message;

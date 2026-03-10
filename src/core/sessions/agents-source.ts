@@ -1,5 +1,5 @@
 import type {WorkspaceFileOptions} from '@core/workspace';
-import {loadGuidelines, type GuidelinesOptions} from '@core/middleware/guidelines';
+import {loadGuidelines, type GuidelinesOptions} from '@core/sessions/agents-content';
 
 /**
  * AGENTS source 生命周期接口。

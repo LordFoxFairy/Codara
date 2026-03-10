@@ -1,7 +1,7 @@
 import {mkdir, writeFile} from 'node:fs/promises';
 import path from 'node:path';
 import {homedir} from 'node:os';
-import {loadGuidelines, type GuidelinesOptions} from '@core/middleware/guidelines';
+import {loadGuidelines, type GuidelinesOptions} from '@core/sessions/agents-content';
 import {discoverHierarchicalWorkspaceFiles, resolveWorkspaceRoot, type WorkspaceFileOptions} from '@core/workspace';
 
 export type AgentsFileScope = 'global' | 'project';

@@ -8,7 +8,7 @@ import type {BaseMiddleware, HILMiddlewareOptions, LoggingMiddlewareOptions} fro
 import type {SkillStore} from '@core/skills';
 import type {Session, SessionStore} from '@core/sessions';
 import type {CodaraModelCatalog, CreateCodaraModelCatalogOptions} from '@core/codara/models';
-import type {GuidelinesOptions} from '@core/middleware/guidelines';
+import type {GuidelinesOptions} from '@core/sessions/agents-content';
 import type {SummaryOptions} from '@core/middleware/summary';
 import type {AgentCheckpointer} from '@core/checkpoint/state';
 import type {CodaraCommandResult, CodaraCommandSpec} from '@core/codara/commands/types';
@@ -72,7 +72,7 @@ export interface CodaraOptions
 }
 
 export interface CodaraCommandSurface {
-  listCommands(): readonly CodaraCommandSpec[];
+  listCommands(): Promise<readonly CodaraCommandSpec[]>;
   executeCommand(input: string): Promise<CodaraCommandResult>;
 }
 

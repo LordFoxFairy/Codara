@@ -9,7 +9,7 @@ export async function resolveSessionModelSelection(options: CreateSessionOptions
 }> {
   if (options.model) {
     return {
-      model: await Promise.resolve(options.model),
+      model: await options.model,
     };
   }
 
@@ -17,11 +17,11 @@ export async function resolveSessionModelSelection(options: CreateSessionOptions
     throw new Error('Either model or modelCatalog must be provided');
   }
 
-  const catalog = await Promise.resolve(options.modelCatalog);
-  const alias = options.alias ?? 'default';
+  const catalog = await options.modelCatalog;
+  const modelRef = options.modelRef ?? 'default';
   return {
-    model: await catalog.create(alias),
-    modelInfo: catalog.getInfo(alias),
+    model: await catalog.create(modelRef),
+    modelInfo: catalog.getInfo(modelRef),
   };
 }
 
