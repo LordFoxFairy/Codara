@@ -1,7 +1,7 @@
 import {randomUUID} from 'node:crypto';
-import {mkdir, readFile, rm, writeFile} from 'node:fs/promises';
+import {mkdir, readFile, readdir, rm, writeFile} from 'node:fs/promises';
 import path from 'node:path';
-import type {CheckpointRecord, Checkpointer, PutCheckpointInput} from '@core/checkpoint/types';
+import type {CheckpointRecord, Checkpointer, CompactOptions, PutCheckpointInput} from '@core/checkpoint/types';
 
 interface JsonCodec<T> {
   serialize(value: T): unknown;
@@ -111,6 +111,44 @@ export class FileCheckpointer<TState = unknown, TInfo = unknown>
 
   async deleteThread(threadId: string): Promise<void> {
     await rm(this.threadDir(threadId), {recursive: true, force: true});
+  }
+
+  async compact(threadId: string, options?: CompactOptions): Promise<void> {
+    const keepLast = options?.keepLast ?? 10;
+    const allRecords = await this.list(threadId);
+
+    if (allRecords.length <= keepLast) {
+      return;
+    }
+
+    const keptRecords = allRecords.slice(-keepLast);
+    const toKeep = new Set(keptRecords.map((record) => record.ref.checkpointId));
+
+    const checkpointsDir = this.checkpointsDir(threadId);
+    const files = await readdir(checkpointsDir).catch(() => []);
+
+    for (const file of files) {
+      if (!file.endsWith('.json')) {
+        continue;
+      }
+
+      const checkpointId = file.replace('.json', '');
+      if (!toKeep.has(checkpointId)) {
+        await rm(path.join(checkpointsDir, file), {force: true});
+      }
+    }
+
+    const oldestKept = keptRecords[0];
+    if (oldestKept?.ref.parentCheckpointId) {
+      const rewritten: CheckpointRecord<TState, TInfo> = {
+        ...oldestKept,
+        ref: {
+          ...oldestKept.ref,
+          parentCheckpointId: undefined,
+        },
+      };
+      await writeJsonFile(this.checkpointPath(threadId, oldestKept.ref.checkpointId), this.encodeRecord(rewritten));
+    }
   }
 
   private threadDir(threadId: string): string {

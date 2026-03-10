@@ -7,8 +7,8 @@
 // 核心 API（CLI 和基础使用）
 // ============================================
 
-/** 创建 Codara 实例（推荐入口） */
-export {createCodara} from '@core/codara';
+/** 创建或打开 Codara 会话（推荐入口） */
+export {createCodara, openCodaraSession, openLatestCodaraSession} from '@core/codara';
 
 /** Codara 相关类型 */
 export type {
@@ -30,7 +30,7 @@ export type {
 export type {TaskRecord, TaskStore, TaskStatus, CreateTaskInput, UpdateTaskInput} from '@core/tasks';
 
 /** Session 相关类型 */
-export type {Session, SessionState, SessionStatus} from '@core/sessions';
+export type {Session, SessionState, SessionStatus, SessionStore} from '@core/sessions';
 
 // ============================================
 // 高级 API（Library 使用）
@@ -49,7 +49,7 @@ export {
 } from '@core/tasks';
 
 /** Session 管理 */
-export {createSession} from '@core/sessions';
+export {createSession, FileSessionStore} from '@core/sessions';
 
 /** Checkpoint 管理 */
 export {
@@ -62,7 +62,6 @@ export {
 /** Middleware */
 export {
   createMiddleware,
-  createMemoryMiddleware,
   createGuidelinesMiddleware,
   createSummaryMiddleware,
   createSkillsMiddleware,

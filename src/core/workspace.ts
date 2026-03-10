@@ -79,6 +79,46 @@ export function discoverWorkspaceFiles(
   ];
 }
 
+/** 发现全局和从 projectRoot 到 cwd 的层级文件。 */
+export function discoverHierarchicalWorkspaceFiles(
+  fileName: string,
+  options: WorkspaceFileOptions = {},
+  projectSubdir?: string
+): WorkspaceScopedFile[] {
+  const userHome = options.userHome ?? homedir();
+  const projectRoot = resolveWorkspaceRoot(options);
+  const cwd = path.resolve(options.cwd ?? projectRoot);
+  const projectFiles: WorkspaceScopedFile[] = [];
+  let current = cwd;
+
+  while (true) {
+    projectFiles.push({
+      scope: 'project',
+      path: projectSubdir
+        ? path.join(current, projectSubdir, fileName)
+        : path.join(current, fileName),
+    });
+
+    if (current === projectRoot) {
+      break;
+    }
+
+    const parent = path.dirname(current);
+    if (parent === current) {
+      break;
+    }
+    current = parent;
+  }
+
+  return [
+    {
+      scope: 'global',
+      path: path.join(userHome, '.codara', fileName),
+    },
+    ...projectFiles.reverse(),
+  ];
+}
+
 /** 加载可读且非空的作用域文件内容。 */
 export async function loadWorkspaceFiles(
   files: WorkspaceScopedFile[],
@@ -134,6 +174,30 @@ export async function loadWorkspaceFiles(
   return loaded;
 }
 
+/** 加载支持简单 @import 的 instruction 文件。 */
+export async function loadInstructionFiles(
+  files: WorkspaceScopedFile[],
+  options: LoadWorkspaceFilesOptions = {}
+): Promise<LoadedWorkspaceFile[]> {
+  const loaded: LoadedWorkspaceFile[] = [];
+
+  for (const file of files) {
+    const content = await readWorkspaceInstructionFile(file.path, options, new Set<string>());
+    if (!content) {
+      continue;
+    }
+
+    loaded.push({
+      scope: file.scope,
+      path: file.path,
+      content: content.value,
+      truncated: content.truncated,
+    });
+  }
+
+  return loaded;
+}
+
 async function isReadableFile(filePath: string): Promise<boolean> {
   try {
     await access(filePath, fsConstants.R_OK);
@@ -157,4 +221,86 @@ function truncateByLines(content: string, maxLines?: number): {value: string; tr
     value: lines.slice(0, maxLines).join('\n'),
     truncated: true,
   };
+}
+
+async function readWorkspaceInstructionFile(
+  filePath: string,
+  options: LoadWorkspaceFilesOptions,
+  visited: Set<string>,
+): Promise<{value: string; truncated: boolean} | undefined> {
+  const resolvedPath = path.resolve(filePath);
+  if (visited.has(resolvedPath) || !(await isReadableFile(resolvedPath))) {
+    return undefined;
+  }
+
+  visited.add(resolvedPath);
+
+  const maxFileSize = options.maxFileSize ?? MAX_FILE_SIZE;
+  const warnFileSize = options.warnFileSize ?? WARN_FILE_SIZE;
+
+  let fileSize: number;
+  try {
+    const stats = await stat(resolvedPath);
+    fileSize = stats.size;
+  } catch {
+    return undefined;
+  }
+
+  if (fileSize > maxFileSize) {
+    console.warn(
+      `[Codara] Skipping ${resolvedPath}: file size ${(fileSize / 1024 / 1024).toFixed(2)}MB exceeds limit ${(maxFileSize / 1024 / 1024).toFixed(2)}MB`
+    );
+    return undefined;
+  }
+
+  if (fileSize > warnFileSize) {
+    console.warn(
+      `[Codara] Large file detected: ${resolvedPath} (${(fileSize / 1024 / 1024).toFixed(2)}MB). Consider splitting into smaller files.`
+    );
+  }
+
+  const raw = (await readFile(resolvedPath, 'utf8')).trim();
+  if (!raw) {
+    return undefined;
+  }
+
+  const expanded = await expandInstructionImports(raw, path.dirname(resolvedPath), options, visited);
+  return truncateByLines(expanded.trim(), options.maxLines);
+}
+
+async function expandInstructionImports(
+  content: string,
+  baseDir: string,
+  options: LoadWorkspaceFilesOptions,
+  visited: Set<string>,
+): Promise<string> {
+  const lines = content.split('\n');
+  const expanded: string[] = [];
+  let inFence = false;
+
+  for (const line of lines) {
+    const trimmed = line.trim();
+    if (trimmed.startsWith('```')) {
+      inFence = !inFence;
+      expanded.push(line);
+      continue;
+    }
+
+    if (!inFence && trimmed.startsWith('@') && trimmed.length > 1) {
+      const importTarget = trimmed.slice(1).trim();
+      const imported = await readWorkspaceInstructionFile(
+        path.isAbsolute(importTarget) ? importTarget : path.resolve(baseDir, importTarget),
+        options,
+        visited,
+      );
+      if (imported?.value) {
+        expanded.push(imported.value);
+        continue;
+      }
+    }
+
+    expanded.push(line);
+  }
+
+  return expanded.join('\n');
 }
