@@ -4,6 +4,7 @@ import {createCodaraModelCatalog} from '@core/codara/models';
 import {createCodaraTools} from '@core/codara/tools';
 import {createCodaraMiddlewares} from '@core/codara/middleware';
 import {createCodaraCommandRunner} from '@core/codara/commands';
+import {ensureCodaraMemoryTarget, inspectCodaraMemory} from '@core/codara/memory';
 import type {Codara, CodaraOptions} from '@core/codara/types';
 import type {SessionState, SessionStore} from '@core/sessions';
 
@@ -27,6 +28,13 @@ import type {SessionState, SessionStore} from '@core/sessions';
  * ```
  */
 export function createCodara(options: CodaraOptions = {}): Codara {
+  return createCodaraInstance(options);
+}
+
+function createCodaraInstance(
+  options: CodaraOptions,
+  restoredState?: SessionState,
+): Codara {
   const sourceProvider = createCodaraSourceProvider({
     cwd: options.cwd,
     projectRoot: options.projectRoot,
@@ -45,6 +53,7 @@ export function createCodara(options: CodaraOptions = {}): Codara {
   const middleware = createCodaraMiddlewares(options, sourceProvider);
 
   const session = createSession({
+    ...(restoredState ? {state: restoredState} : {}),
     sessionId: options.sessionId,
     threadId: options.threadId,
     alias: options.alias ?? 'default',
@@ -62,8 +71,23 @@ export function createCodara(options: CodaraOptions = {}): Codara {
     values: options.values,
   });
   const commands = createCodaraCommandRunner({
-    compactConversation: () => session.compactConversation(),
+    compactConversation: (compactOptions) => session.compactConversation(compactOptions),
+    compactCheckpoints: (keepLast) => session.compactCheckpoints(
+      typeof keepLast === 'number' ? {keepLast} : undefined
+    ),
     getAgentState: () => session.getAgentState(),
+    inspectMemory: () => inspectCodaraMemory({
+      cwd: options.cwd,
+      projectRoot: options.projectRoot,
+      userHome: options.userHome,
+      guidelines: options.guidelines,
+    }),
+    ensureMemoryTarget: (scope) => ensureCodaraMemoryTarget({
+      cwd: options.cwd,
+      projectRoot: options.projectRoot,
+      userHome: options.userHome,
+      guidelines: options.guidelines,
+    }, scope),
     reloadSources: () => session.reloadSources(),
     async resumePause(payload) {
       await session.resumePause(payload, {
@@ -91,12 +115,12 @@ export async function openCodaraSession(
     throw new Error(`Session not found: ${options.sessionId}`);
   }
 
-  const codara = createCodara({
+  const codara = createCodaraInstance({
     ...options,
     sessionId: sessionState.sessionId,
     threadId: sessionState.threadId,
     restore: 'latest',
-  });
+  }, sessionState);
 
   await codara.hydrate();
   return codara;
@@ -112,12 +136,12 @@ export async function openLatestCodaraSession(
     throw new Error('No sessions found');
   }
 
-  const codara = createCodara({
+  const codara = createCodaraInstance({
     ...options,
     sessionId: latest.sessionId,
     threadId: latest.threadId,
     restore: 'latest',
-  });
+  }, latest);
 
   await codara.hydrate();
   return codara;

@@ -9,12 +9,12 @@ describe("ModelRegistry", () => {
         name: "openrouter",
         baseUrl: "https://openrouter.ai/api/v1",
         apiKey: "$OPENROUTER_API_KEY",
-        models: [{id: "anthropic/claude-sonnet-4"}, {id: "openai/gpt-4o"}],
+        models: ["anthropic/claude-sonnet-4", "openai/gpt-4o"],
       },
       {
         name: "anthropic",
         apiKey: "$ANTHROPIC_API_KEY",
-        models: [{id: "claude-opus-4"}],
+        models: ["claude-opus-4"],
       },
     ],
     routerRules: [
@@ -31,6 +31,7 @@ describe("ModelRegistry", () => {
         target: "anthropic:claude-opus-4",
       },
     ],
+    modelMetadata: {},
   };
 
   const originalEnv = process.env;
@@ -97,7 +98,7 @@ describe("ModelRegistry", () => {
       providers: [
         {
           name: "openrouter",
-          models: [{id: "anthropic/claude-sonnet-4"}],
+          models: ["anthropic/claude-sonnet-4"],
         },
       ],
       routerRules: [
@@ -108,6 +109,7 @@ describe("ModelRegistry", () => {
           target: "missing-provider:anthropic/claude-sonnet-4",
         },
       ],
+      modelMetadata: {},
     };
 
     expect(() => new ModelRegistry(invalidConfig)).toThrow("Provider \"missing-provider\" 未定义");
@@ -118,7 +120,7 @@ describe("ModelRegistry", () => {
       providers: [
         {
           name: "openrouter",
-          models: [{id: "anthropic/claude-sonnet-4"}],
+          models: ["anthropic/claude-sonnet-4"],
         },
       ],
       routerRules: [
@@ -129,6 +131,7 @@ describe("ModelRegistry", () => {
           target: "openrouter:anthropic/claude-opus-4",
         },
       ],
+      modelMetadata: {},
     };
 
     expect(() => new ModelRegistry(invalidConfig)).toThrow("不在 Provider \"openrouter\" 的白名单中");
@@ -139,7 +142,7 @@ describe("ModelRegistry", () => {
       providers: [
         {
           name: "openrouter",
-          models: [{id: "anthropic/claude-sonnet-4"}, {id: "openai/gpt-4o"}],
+          models: ["anthropic/claude-sonnet-4", "openai/gpt-4o"],
         },
       ],
       routerRules: [
@@ -156,6 +159,7 @@ describe("ModelRegistry", () => {
           target: "openrouter:openai/gpt-4o",
         },
       ],
+      modelMetadata: {},
     };
 
     expect(() => new ModelRegistry(invalidConfig)).toThrow('路由规则 "default" 重复定义');

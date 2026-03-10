@@ -16,6 +16,12 @@ export {
   type CodaraCommandSpec,
 } from '@core/codara/commands';
 export {
+  ensureCodaraMemoryTarget,
+  inspectCodaraMemory,
+  type CodaraMemoryOverview,
+  type CodaraMemoryScope,
+} from '@core/codara/memory';
+export {
   CodaraModelCatalog,
   createCodaraChatModel,
   createCodaraModelCatalog,

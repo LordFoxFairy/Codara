@@ -64,7 +64,9 @@ export type ToolErrorHandler =
 /** 通用 agent 契约。 */
 export interface Agent {
   getState(): AgentState;
-  compactConversation(config?: Pick<AgentInvokeConfig, 'context' | 'inputBudget'>): Promise<AgentState>;
+  compactConversation(config?: Pick<AgentInvokeConfig, 'context' | 'inputBudget'> & {
+    instructions?: string;
+  }): Promise<AgentState>;
   invoke(input?: AgentInput, config?: AgentInvokeConfig): Promise<AgentResult>;
   resume(payload: HILResumePayload, config?: AgentResumeConfig): Promise<AgentResult>;
   reset(): Promise<void>;

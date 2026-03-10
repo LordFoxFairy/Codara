@@ -9,13 +9,21 @@
 
 /** 创建或打开 Codara 会话（推荐入口） */
 export {createCodara, openCodaraSession, openLatestCodaraSession} from '@core/codara';
-export {createBuiltInCodaraCommands, createCodaraCommandRunner, parseCodaraCommand} from '@core/codara';
+export {
+  createBuiltInCodaraCommands,
+  createCodaraCommandRunner,
+  ensureCodaraMemoryTarget,
+  inspectCodaraMemory,
+  parseCodaraCommand,
+} from '@core/codara';
 
 /** Codara 相关类型 */
 export type {
   Codara,
   CodaraCommandResult,
   CodaraCommandSpec,
+  CodaraMemoryOverview,
+  CodaraMemoryScope,
   CodaraOptions,
 } from '@core/codara';
 

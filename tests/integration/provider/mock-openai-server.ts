@@ -61,7 +61,7 @@ export function createMockRoutingConfig(baseUrl: string) {
         name: 'mock-openai',
         baseUrl,
         apiKey: 'test-key',
-        models: [{id: 'mock-chat'}],
+        models: ['mock-chat'],
       },
     ],
     router: {
