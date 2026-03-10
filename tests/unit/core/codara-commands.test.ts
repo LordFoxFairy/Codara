@@ -37,7 +37,7 @@ describe('Codara slash commands', () => {
     expect(result.output).toContain('/help [command]');
     expect(result.output).toContain('/memory [show|project|global]');
     expect(result.output).toContain('/resume [approve|reject] [feedback]');
-    expect(result.output).toContain('/compact');
+    expect(result.output).toContain('/compact [checkpoints] [keepLast]');
     expect(result.output).toContain('/reload');
     expect(codara.listCommands().map((command) => command.name)).toEqual(['help', 'memory', 'resume', 'compact', 'reload']);
   });
@@ -76,6 +76,19 @@ describe('Codara slash commands', () => {
     expect(result.output).toContain('Conversation compacted');
     expect(String(result.state?.messages[0]?.content)).toContain('# Conversation Summary');
     expect(result.state?.messages.some((message) => message instanceof AIMessage)).toBe(true);
+  });
+
+  it('should compact checkpoint history through the slash command host surface', async () => {
+    const codara = createCodara({
+      model: new EchoModel() as unknown as BaseChatModel,
+      skills: false,
+      builtinTools: false,
+    });
+
+    const result = await codara.executeCommand('/compact checkpoints 5');
+
+    expect(result.ok).toBe(true);
+    expect(result.output).toContain('latest 5 snapshots');
   });
 
   it('should return a clear error for unknown slash commands', async () => {
