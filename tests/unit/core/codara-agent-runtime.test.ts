@@ -181,8 +181,8 @@ allowed-tools:
     expect(restored).toBeDefined();
     expect(restored.getState().sessionStatus).toBe('ready');
 
-    // resumeStream will initialize the agent and restore from checkpoint
-    for await (const _chunk of restored.resumeStream(
+    // resumePauseStream will initialize the agent and restore from checkpoint
+    for await (const _chunk of restored.resumePauseStream(
       {decision: 'approve'},
       {
         input: new HumanMessage('approved and continue'),

@@ -1,6 +1,7 @@
 import type {BaseMessage} from '@langchain/core/messages';
 import type {AgentInputBudget} from '@core/agents';
 import {createMiddleware, type BeforeModelContext, type BaseMiddleware} from '@core/middleware/types';
+import type {ConversationModelInput} from '@core/middleware/conversation-input';
 
 export interface ContextBudgetSnapshot {
   maxInputTokens: number;
@@ -10,10 +11,7 @@ export interface ContextBudgetSnapshot {
   overBudget: boolean;
 }
 
-export interface ContextBudgetEstimateInput {
-  systemMessage: string[];
-  messages: BaseMessage[];
-}
+export type ContextBudgetEstimateInput = ConversationModelInput;
 
 export type ContextBudgetEstimator = (input: ContextBudgetEstimateInput) => number;
 

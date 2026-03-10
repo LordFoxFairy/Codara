@@ -7,14 +7,13 @@ createCodara(...)
   -> createSession(...)
     -> createAgent(...)
       -> middleware/guidelines.ts
-      -> middleware/memory.ts
       -> checkpoint/*
       -> middleware/*
 ```
 
 - 依赖方向固定为：`codara -> sessions -> agents -> checkpoint`
 - `createAgent(...)` 是唯一通用 agent 入口
-- `createSession(...)` 是实例宿主，只暴露 session 状态与 `agent()` 入口
+- `createSession(...)` 是实例宿主，负责 source reload、checkpoint compact 和 HIL pause 恢复
 - `createCodara(...)` 是产品级 facade，负责默认模型、工具和 middleware 装配
 
 ## 当前审计
@@ -35,25 +34,22 @@ src/index.ts
 ```text
 createCodara(...)
   -> createSession(...)
-    -> createCodaraAgent(...)
-      -> codara/source-stack.ts
-      -> resolveCodaraAgentOptions(...)
-        -> createCodaraTools(...)
-        -> createCodaraMiddlewares(...)
-          -> SkillsMiddleware
-            -> context.skills
-      -> createAgent(...)
-        -> runtime / loop / checkpoint
-        -> Task
-          -> resolve definition from context.skills
-          -> spawn child agent with the same Codara assembly path
+    -> createAgent(...)
+      -> createCodaraTools(...)
+      -> createCodaraMiddlewares(...)
+        -> SkillsMiddleware
+          -> context.skills
+      -> runtime / loop / checkpoint
+      -> Task
+        -> resolve definition from context.skills
+        -> spawn child agent with the same Codara assembly path
 ```
 
 当前合理性：
 
 - `codara` 负责产品 facade 与默认装配，没有侵入执行内核。
-- `session` 负责实例宿主与 source projection，没有承接 agent 工作流状态。
-- `codara/source-stack.ts` 负责 session 创建前的 source projection 读取，避免把 `AGENTS.md` / `MEMORY.md` 加载逻辑揉进 session host。
+- `session` 负责实例宿主与 source provider 持有，没有承接 agent 工作流状态。
+- `sourceProvider` 负责 source projection 缓存与失效，避免把 `AGENTS.md` 加载逻辑揉进 agent 内核。
 - `agent` 仍然是唯一执行原语，`subagent`/`Task` 是组合，不是第二套 runtime。
 - `SkillsMiddleware -> context.skills -> Task` 已经形成单一数据流，没有再开旁路 discovery。
 
@@ -72,28 +68,20 @@ createCodara(...)
 src/index.ts
   -> @core facade exports
     -> createCodara(...)
-      -> createCodaraSessionHost(...)
-        -> mergeCodaraAgentOptions(...)
-        -> loadCodaraSourceProjection(...)
-        -> restore latest checkpoint
-        -> createCodaraAgent(...)
-          -> resolveCodaraAgentOptions(...)
-            -> createCodaraTools(...)
-            -> createCodaraMiddlewares(...)
-          -> createAgent(...)
-            -> runtime loop / checkpoint / Task / subagent
+      -> createSession(...)
+        -> restore latest checkpoint when threadId is reused
+        -> createAgent(...)
+          -> runtime loop / checkpoint / Task / subagent
 ```
 
 默认 middleware 顺序：
 
 1. `logging`
 2. `guidelines`
-3. `memory`
-4. `skills`
-5. `context-budget`
-6. `summary`
-7. caller middleware
-8. `hil`
+3. `skills`
+4. caller middleware
+5. `conversation-context`
+6. `hil`
 
 状态边界：
 
@@ -123,17 +111,17 @@ checkpoint 边界：
 - `guidelines`
   - source: `AGENTS.md`
   - scope: 项目规范
-- `memory`
-  - source: `MEMORY.md`
-  - scope: 长期稳定记忆
 - `summary`
   - scope: 对话压缩
-  - layer: middleware + `messages`
+  - layer: conversation context stage + `messages`
   - trigger: 统一输入预算或消息数量阈值
 - `context-budget`
   - scope: 输入预算估算与超限判定
-  - layer: middleware runtime snapshot
+  - layer: conversation context stage runtime snapshot
   - output: 当前 turn 的 budget snapshot
+- `session`
+  - scope: 宿主生命周期
+  - layer: source reload / checkpoint compact / HIL pause 恢复
 - `todo`
   - scope: 单 agent 内部进度
   - layer: `values`
@@ -166,25 +154,7 @@ checkpoint 边界：
 
 `AGENTS.md` 在当前架构中属于项目规范源，不属于：
 - `skills`
-- `memory`
 - `checkpoint`
-
-## MEMORY.md 记忆
-
-- `MEMORY.md` 通过 `middleware/memory.ts` 接入
-- 当前只支持两层：
-  - `~/.codara/MEMORY.md`
-  - `<workspaceRoot>/.codara/MEMORY.md`
-- 工作区根优先从 `cwd` 向上查找 `.codara`、`.git`、`package.json`
-- 在 session 创建阶段生成内容投影
-- `middleware/memory.ts` 只负责 `MEMORY.md` 的加载与截断，用于投影长期稳定记忆
-- 同一个 `Codara` host 可通过 `reloadSources()` 显式刷新 source snapshot
-- 默认注入顺序位于 `AGENTS.md` 之后、`SkillsMiddleware` 之前
-
-`MEMORY.md` 在当前架构中属于长期记忆源，不属于：
-- `guidelines`
-- `checkpoint`
-- `session`
 
 
 ## Summary 中间件
@@ -194,15 +164,21 @@ checkpoint 边界：
   - 压缩较早消息
   - 将较早消息替换为持久化的 summary message
   - 保留最近消息继续参与后续模型调用
-- 它现在会优先基于完整模型输入预算判断是否压缩，预算包含已注入的 `guidelines` / `memory` / `skills` system sections
+- 它现在会优先基于完整模型输入预算判断是否压缩，预算包含已注入的 `guidelines` / `skills` system sections
 - 默认关闭，只有显式传入 `summary` 配置时才启用
-- `summary` 不写入 `MEMORY.md`，仍只通过 checkpoint 持久化 agent 运行态
 
 `summary` 在当前架构中属于上下文压缩能力，不属于：
-- `memory`
 - `guidelines`
 - `session`
 - `checkpoint`
+
+## Conversation Context
+
+- Codara 默认装配使用 `middleware/conversation-context.ts` 统一处理：
+  - 完整输入预算估算
+  - 可选的 summary compact
+- 这样默认 runtime 不再依赖 `context-budget` 与 `summary` 两个独立 middleware 的隐式排序。
+- `createContextBudgetMiddleware(...)` 与 `createSummaryMiddleware(...)` 仍保留为底层原语，但 Codara 主路径使用组合后的 conversation context stage。
 
 ## Todo / Subagent / Task
 
@@ -239,15 +215,17 @@ checkpoint 边界：
 
 - `createCodara(...)`
   - 产品级入口
-  - 持有默认 session，并暴露 `session(...)`、`invoke(...)`、`stream(...)`、`resume(...)`
+  - 持有默认 session，并暴露 `invoke(...)`、`stream(...)`、`resumePause(...)`、`compactCheckpoints(...)`
+- `openCodaraSession(...)` / `openLatestCodaraSession(...)`
+  - 显式打开历史 session
+  - 返回前会 hydrate 已恢复的 runtime state
+  - 不与 HIL pause 恢复混用
 - `createCodaraModelCatalog(...)`
   - 基于 provider 配置、registry 和 factory 的模型目录
 - `createCodaraChatModel(...)`
   - 按 alias 直接创建聊天模型
 - `createAgent(...)`
   - 通用 agent，负责 `invoke/stream/resume` 与 checkpoint 边界
-- `createCodaraAgent(...)`
-  - Codara 默认装配后的高级 agent 入口
 
 ## CLI 用法
 
@@ -271,21 +249,4 @@ for await (const chunk of codara.stream('hello', {streamMode: 'messages'})) {
 }
 ```
 
-如果需要显式拿到一个 session：
-
-```ts
-const session = await codara.session({
-  threadId: 'terminal-thread',
-});
-
-const agent = session.agent();
-```
-
-`SessionState` 只表达宿主信息；执行态仍通过 `agent.getState()` 读取。
-
-更完整的 CLI 用法见 `docs/codara-cli-runtime.md`。
-
-`memory` 当前只通过 `middleware/memory.ts` 将初始化阶段生成的 `MEMORY.md` 摘要注入模型上下文。
-如需查看更多细节，agent 应通过现有文件工具按路径读取真实文件。
-
-传入固定 `threadId` 后，`session(...)` / `invoke(...)` / `stream(...)` 会优先恢复该 thread 的最新 checkpoint；不存在时再创建新实例。
+传入固定 `threadId` 后，`invoke(...)` / `stream(...)` 会优先恢复该 thread 的最新 checkpoint；不存在时再创建新实例。

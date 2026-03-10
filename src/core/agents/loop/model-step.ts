@@ -1,8 +1,9 @@
-import {AIMessage, SystemMessage, type BaseMessage} from '@langchain/core/messages';
+import {AIMessage} from '@langchain/core/messages';
 import type {ModelCallContext} from '@core/middleware';
 import type {AgentStreamWriter} from '@core/agents/engine/stream-writer';
 import {chunkToMessage, toMessageChunk} from '@core/agents/engine/model';
 import type {AgentRuntime, AgentRunContext} from '@core/agents/loop/run';
+import {buildConversationMessages} from '@core/middleware/conversation-input';
 
 export async function runModelStep(
   runtime: AgentRuntime,
@@ -21,8 +22,7 @@ export async function runModelStepStream(
 ): Promise<AIMessage> {
   const invoke = async (request?: ModelCallContext) => {
     const nextRequest = request ?? context;
-    const systemMessages = nextRequest.systemMessage.map((content) => new SystemMessage(content));
-    const modelMessages: BaseMessage[] = [...systemMessages, ...nextRequest.messages];
+    const {modelMessages} = buildConversationMessages(nextRequest);
     let aggregate;
 
     for await (const chunk of runtime.model.stream(modelMessages)) {
@@ -43,7 +43,6 @@ async function invokeModel(
   request?: ModelCallContext
 ): Promise<AIMessage> {
   const nextRequest = request ?? context;
-  const systemMessages = nextRequest.systemMessage.map((content) => new SystemMessage(content));
-  const modelMessages: BaseMessage[] = [...systemMessages, ...nextRequest.messages];
+  const {modelMessages} = buildConversationMessages(nextRequest);
   return runtime.model.invoke(modelMessages);
 }

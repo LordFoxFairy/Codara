@@ -17,10 +17,15 @@ export interface PutCheckpointInput<TState = unknown, TInfo = unknown> {
   info: TInfo;
 }
 
+export interface CompactOptions {
+  keepLast?: number;
+}
+
 export interface Checkpointer<TState = unknown, TInfo = unknown> {
   getLatest(threadId: string): Promise<CheckpointRecord<TState, TInfo> | undefined>;
   get(ref: {threadId: string; checkpointId: string}): Promise<CheckpointRecord<TState, TInfo> | undefined>;
   put(input: PutCheckpointInput<TState, TInfo>): Promise<CheckpointRecord<TState, TInfo>>;
   list(threadId: string): Promise<Array<CheckpointRecord<TState, TInfo>>>;
   deleteThread(threadId: string): Promise<void>;
+  compact?(threadId: string, options?: CompactOptions): Promise<void>;
 }

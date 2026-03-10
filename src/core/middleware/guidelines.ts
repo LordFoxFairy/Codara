@@ -1,9 +1,8 @@
 import {homedir} from 'node:os';
-import path from 'node:path';
 import {createMiddleware} from '@core/middleware';
 import type {SourceProvider} from '@core/sessions/source-provider';
 import type {WorkspaceFileOptions, WorkspaceScopedFile} from '@core/workspace';
-import {loadWorkspaceFiles, resolveWorkspaceRoot} from '@core/workspace';
+import {discoverHierarchicalWorkspaceFiles, loadInstructionFiles} from '@core/workspace';
 
 const DEFAULT_LINES = 500;
 
@@ -27,8 +26,8 @@ export interface GuidelinesOptions extends WorkspaceFileOptions {
 export async function loadGuidelines(options: GuidelinesOptions = {}): Promise<LoadedGuidelines | undefined> {
   const maxLines = options.maxLines ?? DEFAULT_LINES;
   const userHome = options.userHome ?? homedir();
-  const loadedFiles = await loadWorkspaceFiles(
-    discoverGuidelineFiles({
+  const loadedFiles = await loadInstructionFiles(
+    discoverHierarchicalWorkspaceFiles('AGENTS.md', {
       cwd: options.cwd,
       projectRoot: options.projectRoot,
       userHome,
@@ -62,38 +61,6 @@ export async function loadGuidelines(options: GuidelinesOptions = {}): Promise<L
       }),
     ].join('\n'),
   };
-}
-
-function discoverGuidelineFiles(options: WorkspaceFileOptions & {userHome: string}): WorkspaceScopedFile[] {
-  const projectRoot = resolveWorkspaceRoot({
-    projectRoot: options.projectRoot,
-    cwd: options.cwd,
-  });
-  const cwd = path.resolve(options.cwd ?? projectRoot);
-  const projectFiles: WorkspaceScopedFile[] = [];
-  let current = cwd;
-
-  while (true) {
-    projectFiles.push({
-      scope: 'project',
-      path: path.join(current, 'AGENTS.md'),
-    });
-
-    if (current === projectRoot) {
-      break;
-    }
-
-    const parent = path.dirname(current);
-    if (parent === current) {
-      break;
-    }
-    current = parent;
-  }
-
-  return [
-    {scope: 'global', path: path.join(options.userHome, '.codara', 'AGENTS.md')},
-    ...projectFiles.reverse(),
-  ];
 }
 
 /** 注入由 source provider 提供的 AGENTS.md 投影。 */
