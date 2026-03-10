@@ -4,6 +4,7 @@ import {createCodaraModelCatalog} from '@core/codara/models';
 import {createCodaraTools} from '@core/codara/tools';
 import {createCodaraMiddlewares} from '@core/codara/middleware';
 import type {Codara, CodaraOptions} from '@core/codara/types';
+import type {SessionState, SessionStore} from '@core/sessions';
 
 /**
  * 创建 Codara 实例。
@@ -30,7 +31,6 @@ export function createCodara(options: CodaraOptions = {}): Codara {
     projectRoot: options.projectRoot,
     userHome: options.userHome,
     guidelines: options.guidelines,
-    memory: options.memory,
   });
 
   const modelCatalog = options.catalog ?? createCodaraModelCatalog({
@@ -50,6 +50,7 @@ export function createCodara(options: CodaraOptions = {}): Codara {
     model,
     modelCatalog,
     sourceProvider,
+    store: options.store,
     tools,
     middleware,
     checkpointer: options.checkpointer,
@@ -59,4 +60,57 @@ export function createCodara(options: CodaraOptions = {}): Codara {
     context: options.context,
     values: options.values,
   }) as Codara;
+}
+
+export async function openCodaraSession(
+  options: CodaraOptions & {
+    sessionId: string;
+    store: SessionStore;
+  }
+): Promise<Codara> {
+  const sessionState = await options.store.get(options.sessionId);
+  if (!sessionState) {
+    throw new Error(`Session not found: ${options.sessionId}`);
+  }
+
+  const codara = createCodara({
+    ...options,
+    sessionId: sessionState.sessionId,
+    threadId: sessionState.threadId,
+    restore: 'latest',
+  });
+
+  await codara.hydrate();
+  return codara;
+}
+
+export async function openLatestCodaraSession(
+  options: CodaraOptions & {
+    store: SessionStore;
+  }
+): Promise<Codara> {
+  const latest = await resolveLatestSession(options.store);
+  if (!latest) {
+    throw new Error('No sessions found');
+  }
+
+  const codara = createCodara({
+    ...options,
+    sessionId: latest.sessionId,
+    threadId: latest.threadId,
+    restore: 'latest',
+  });
+
+  await codara.hydrate();
+  return codara;
+}
+
+async function resolveLatestSession(store: SessionStore): Promise<SessionState | undefined> {
+  const sessions = await store.list({
+    includeArchived: true,
+    sortBy: 'updatedAt',
+    sortOrder: 'desc',
+    limit: 1,
+  });
+  return sessions[0];
 }

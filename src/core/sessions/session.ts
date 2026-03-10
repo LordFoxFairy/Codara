@@ -14,9 +14,10 @@ import type {
 } from '@core/agents';
 import {createAgent} from '@core/agents';
 import {createAgentMemoryCheckpointer} from '@core/checkpoint/state';
+import type {CompactOptions} from '@core/checkpoint/types';
 import {normalizeAgentInput} from '@core/agents/engine/runtime-input';
 import type {HILResumePayload} from '@core/middleware';
-import type {CreateSessionOptions, Session, SessionState, SessionStatus} from '@core/sessions/types';
+import type {CreateSessionOptions, Session, SessionState, SessionStatus, SessionMetadata} from '@core/sessions/types';
 import type {ModelInfo} from '@core/provider';
 
 /**
@@ -29,13 +30,67 @@ import type {ModelInfo} from '@core/provider';
 export function createSession(options: CreateSessionOptions): Session {
   const sessionId = options.sessionId ?? randomUUID();
   const threadId = options.threadId ?? randomUUID();
+  const isRestoringThread = options.threadId !== undefined;
   const createdAt = new Date().toISOString();
   let updatedAt = createdAt;
   let sessionStatus: SessionStatus = 'ready';
   let agentInstance: Agent | undefined;
+  let agentBootstrap: Promise<Agent> | undefined;
+  const metadata: SessionMetadata = {
+    messageCount: 0,
+    lastActivity: createdAt,
+  };
+  const store = options.store;
+  const checkpointer = options.checkpointer ?? createAgentMemoryCheckpointer();
 
   function touch(): void {
     updatedAt = new Date().toISOString();
+    metadata.lastActivity = updatedAt;
+  }
+
+  async function saveSession(): Promise<void> {
+    if (store) {
+      await store.save(sessionId, {
+        sessionId,
+        threadId,
+        sessionStatus,
+        createdAt,
+        updatedAt,
+        metadata,
+      });
+    }
+  }
+
+  function updateMetadataFromState(agentState: AgentState): void {
+    metadata.messageCount = agentState.messages.length;
+
+    const lastMessage = agentState.messages[agentState.messages.length - 1];
+    const lastText = readMessageText(lastMessage?.content);
+    if (lastText) {
+      metadata.lastMessage = lastText.slice(0, 200);
+    }
+
+    if (!metadata.title) {
+      const firstHuman = agentState.messages.find((message) => isMessageType(message, 'human'));
+      const title = readMessageText(firstHuman?.content);
+      if (title) {
+        metadata.title = title.slice(0, 80);
+      }
+    }
+  }
+
+  async function syncSessionFromState(
+    agentState: AgentState,
+    options: {
+      touchActivity?: boolean;
+    } = {},
+  ): Promise<void> {
+    if (options.touchActivity !== false) {
+      touch();
+    }
+
+    updateMetadataFromState(agentState);
+    await saveSession();
   }
 
   async function getAgent(): Promise<Agent> {
@@ -43,32 +98,51 @@ export function createSession(options: CreateSessionOptions): Session {
       return agentInstance;
     }
 
-    // Lazy creation
-    const selection = await resolveModelSelection(options);
-    const checkpointer = options.checkpointer ?? createAgentMemoryCheckpointer();
+    if (agentBootstrap) {
+      return agentBootstrap;
+    }
 
-    // 尝试恢复 checkpoint
-    const checkpoint = options.restore === 'latest'
-      ? await checkpointer.getLatest(threadId)
-      : undefined;
+    agentBootstrap = (async () => {
+      // Lazy creation
+      const selection = await resolveModelSelection(options);
 
-    // Normalize messages input
-    const messages = options.messages ? normalizeAgentInput(options.messages) : undefined;
+      // Auto-restore: threadId provided = restore latest checkpoint
+      // Explicit restore option overrides this behavior
+      const shouldRestore = options.restore === 'latest'
+        || (options.restore !== 'never' && isRestoringThread);
 
-    agentInstance = createAgent({
-      model: selection.model,
-      tools: options.tools,
-      middleware: options.middleware,
-      checkpointer,
-      threadId,
-      inputBudget: options.inputBudget ?? deriveInputBudget(selection.modelInfo),
-      ...(checkpoint ? {checkpoint} : {}),
-      ...(messages ? {messages} : {}),
-      ...(options.context ? {context: options.context} : {}),
-      ...(options.values ? {values: options.values} : {}),
-    });
+      const checkpoint = shouldRestore
+        ? await checkpointer.getLatest(threadId)
+        : undefined;
 
-    return agentInstance;
+      // Normalize messages input
+      const messages = options.messages ? normalizeAgentInput(options.messages) : undefined;
+
+      agentInstance = createAgent({
+        model: selection.model,
+        tools: options.tools,
+        middleware: options.middleware,
+        checkpointer,
+        threadId,
+        inputBudget: options.inputBudget ?? deriveInputBudget(selection.modelInfo),
+        ...(checkpoint ? {checkpoint} : {}),
+        ...(messages ? {messages} : {}),
+        ...(options.context ? {context: options.context} : {}),
+        ...(options.values ? {values: options.values} : {}),
+      });
+
+      return agentInstance;
+    })();
+
+    try {
+      return await agentBootstrap;
+    } finally {
+      if (agentInstance) {
+        agentBootstrap = Promise.resolve(agentInstance);
+      } else {
+        agentBootstrap = undefined;
+      }
+    }
   }
 
   function requireReady(): void {
@@ -85,6 +159,7 @@ export function createSession(options: CreateSessionOptions): Session {
         sessionStatus,
         createdAt,
         updatedAt,
+        metadata,
       };
     },
 
@@ -95,11 +170,20 @@ export function createSession(options: CreateSessionOptions): Session {
       return agentInstance.getState();
     },
 
+    async hydrate(): Promise<AgentState> {
+      requireReady();
+      const agent = await getAgent();
+      const state = agent.getState();
+      await syncSessionFromState(state);
+      return state;
+    },
+
     async invoke(input?: AgentInput, config?: AgentInvokeConfig): Promise<AgentResult> {
       requireReady();
-      touch();
       const agent = await getAgent();
-      return agent.invoke(input, config);
+      const result = await agent.invoke(input, config);
+      await syncSessionFromState(result.state);
+      return result;
     },
 
     async *stream(
@@ -107,26 +191,29 @@ export function createSession(options: CreateSessionOptions): Session {
       config?: AgentStreamConfig
     ): AsyncGenerator<AgentStreamOutput, AgentResult, void> {
       requireReady();
-      touch();
       const agent = await getAgent();
-      return yield* agent.stream(input, config);
+      const result = yield* agent.stream(input, config);
+      await syncSessionFromState(result.state);
+      return result;
     },
 
-    async resume(payload: HILResumePayload, config?: AgentResumeConfig): Promise<AgentResult> {
+    async resumePause(payload: HILResumePayload, config?: AgentResumeConfig): Promise<AgentResult> {
       requireReady();
-      touch();
       const agent = await getAgent();
-      return agent.resume(payload, config);
+      const result = await agent.resume(payload, config);
+      await syncSessionFromState(result.state);
+      return result;
     },
 
-    async *resumeStream(
+    async *resumePauseStream(
       payload: HILResumePayload,
       config?: AgentResumeStreamConfig
     ): AsyncGenerator<AgentStreamOutput, AgentResult, void> {
       requireReady();
-      touch();
       const agent = await getAgent();
-      return yield* agent.resumeStream(payload, config);
+      const result = yield* agent.resumeStream(payload, config);
+      await syncSessionFromState(result.state);
+      return result;
     },
 
     reloadSources(): void {
@@ -137,12 +224,24 @@ export function createSession(options: CreateSessionOptions): Session {
       }
     },
 
+    async compactCheckpoints(options?: CompactOptions): Promise<void> {
+      requireReady();
+      if (!checkpointer.compact) {
+        return;
+      }
+
+      await checkpointer.compact(threadId, options);
+    },
+
     async reset(): Promise<void> {
       requireReady();
-      touch();
       if (agentInstance) {
         await agentInstance.reset();
+        await syncSessionFromState(agentInstance.getState());
+        return;
       }
+      touch();
+      await saveSession();
     },
 
     async dispose(): Promise<void> {
@@ -154,8 +253,50 @@ export function createSession(options: CreateSessionOptions): Session {
       }
       sessionStatus = 'closed';
       touch();
+      await saveSession();
     },
   };
+}
+
+function readMessageText(content: unknown): string | undefined {
+  if (typeof content === 'string') {
+    return content;
+  }
+
+  if (!Array.isArray(content)) {
+    return undefined;
+  }
+
+  return content
+    .flatMap((part) => {
+      if (!part || typeof part !== 'object') {
+        return [];
+      }
+
+      if ('type' in part && part.type === 'text' && 'text' in part && typeof part.text === 'string') {
+        return [part.text];
+      }
+
+      return [];
+    })
+    .join('\n')
+    .trim() || undefined;
+}
+
+function isMessageType(message: unknown, expected: string): boolean {
+  if (!message || typeof message !== 'object') {
+    return false;
+  }
+
+  if ('_getType' in message && typeof message._getType === 'function') {
+    return message._getType() === expected;
+  }
+
+  if ('type' in message && typeof message.type === 'string') {
+    return message.type === expected;
+  }
+
+  return false;
 }
 
 async function resolveModelSelection(options: CreateSessionOptions): Promise<{

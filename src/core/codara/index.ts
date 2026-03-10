@@ -16,4 +16,4 @@ export {
   type CreateCodaraChatModelOptions,
   type CreateCodaraModelCatalogOptions,
 } from '@core/codara/models';
-export {createCodara} from '@core/codara/facade';
+export {createCodara, openCodaraSession, openLatestCodaraSession} from '@core/codara/facade';

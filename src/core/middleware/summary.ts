@@ -52,7 +52,7 @@ export function createSummaryMiddleware(options: SummaryOptions): BaseMiddleware
   return createMiddleware({
     name: 'SummaryMiddleware',
     beforeModel: async (context) => {
-      await maybeCompactHistory(context, normalized);
+      await compactSummaryIfNeeded(context, normalized);
     },
   });
 }
@@ -81,7 +81,10 @@ export function readSummaryRecord(messages: BaseMessage[]): SummaryRecord | unde
   };
 }
 
-async function maybeCompactHistory(context: BeforeModelContext, options: Required<SummaryOptions>): Promise<void> {
+export async function compactSummaryIfNeeded(
+  context: BeforeModelContext,
+  options: Required<SummaryOptions>,
+): Promise<void> {
   while (shouldCompactHistory(context, options)) {
     const summaryState = splitSummaryState(context.state.messages);
     const recentStart = resolveRecentStart(summaryState.conversationMessages, options.keepLastMessages);
@@ -117,6 +120,10 @@ async function maybeCompactHistory(context: BeforeModelContext, options: Require
     context.messages.push(...context.state.messages);
     refreshContextBudget(context, options.estimateTokens);
   }
+}
+
+export function normalizeSummaryOptions(options: SummaryOptions): Required<SummaryOptions> {
+  return normalizeOptions(options);
 }
 
 function splitSummaryState(messages: BaseMessage[]): {

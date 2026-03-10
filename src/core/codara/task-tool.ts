@@ -15,7 +15,6 @@ export async function createCodaraTaskTool(options: CodaraOptions = {}) {
     projectRoot: options.projectRoot,
     userHome: options.userHome,
     guidelines: options.guidelines,
-    memory: options.memory,
   });
 
   const modelCatalog = await Promise.resolve(options.catalog ?? createCodaraModelCatalog({
