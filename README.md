@@ -66,17 +66,24 @@ src/index.ts
 - `/help`
   - 列出当前内建命令
 - `/memory`
-  - 查看当前 `AGENTS.md` memory stack
-  - 准备 project/global `AGENTS.md` 文件，供手动编辑
+  - 默认指向 project `AGENTS.md`
+  - 支持 `show / project / global`
+  - 编辑后配合 `/reload` 生效
 - `/resume`
   - 恢复当前已暂停的 HIL 动作
 - `/compact`
   - 手动触发当前 conversation context 压缩
   - 复用已有 `conversation-context -> summary` 路径，不重写第二套逻辑
+  - `/compact checkpoints [keepLast]` 可手动整理 checkpoint 历史
 - `/reload`
   - 清空当前 session 的 `AGENTS.md` source cache
 
 这些命令当前由 `src/core/codara/commands/` 管理，并通过 `createCodara()` 返回的 host surface 暴露。
+
+默认 conversation lifecycle 会在接近输入窗口上限时自动 compact：
+- 优先使用模型 metadata 推导的 `contextWindow`
+- 默认在可用输入预算的 80% 附近触发压缩
+- 手动 `/compact` 仍可强制立即压缩
 
 ## Todo / Task / Subagent
 

@@ -13,6 +13,7 @@
 - 手动 commands 子系统要按“一命令一文件”组织，避免 registry/builtins 文件持续膨胀。
 - 目录分层不能为了“看起来模块化”多套一层同名目录；像 `commands/commands/*` 这种重复层级要直接压平。
 - 如果项目已经把 `AGENTS.md` 作为长期 source，就不要再把旧 `MEMORY.md` 机制硬塞回来；优先在同一条 source 链上补闭环能力。
+- `/memory` 这类手动命令不要偷偷默认写到某个 target；优先先展示可选 scope，再让用户显式选择 `project/global`。
 
 ## 设计原则
 

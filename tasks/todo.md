@@ -1,11 +1,16 @@
 # TODO
 
-- [x] 基于 `AGENTS.md` 增加 `/memory` 宿主命令，不恢复旧 `MEMORY.md`
-- [x] 让 `/memory` 能展示当前 memory stack，并定位/创建可编辑的 `AGENTS.md`
-- [x] 保持 `createAgent(...)`、`Session`、`SourceProvider` 主线不变
-- [x] 更新测试和文档，并重新验证 `typecheck`、`lint`、`test`
+- [x] 审计 Claude Code 的 `memory / compact / resume` 内部语义，并与当前 Codara 对比
+- [x] 统一 `AGENTS.md + context budget + summary + checkpoint + session reopen` 的 conversation lifecycle
+- [x] 为自动 compact 增加明确阈值策略，并保留手动 `/compact`
+- [x] 让 `/memory` 围绕全局/项目 `AGENTS.md` 形成更完整闭环
+- [x] 明确 checkpoint compact 与 conversation compact 的边界，不混语义
+- [x] 更新测试与文档，并重新验证 `typecheck`、`lint`、`test`
 
 ## Review
 
-- 当前目标：把 `AGENTS.md` 作为唯一长期 memory source，并通过 `/memory` 命令形成 host-level 手动编辑闭环
-- 当前结果：`/memory` 已接进 `codara/commands/`，默认 `show` 当前 AGENTS stack，支持 `project/global` 两个目标文件准备；命令复用现有 `guidelines/sourceProvider/reloadSources()` 链，没有复活旧 `MEMORY.md`
+- `AGENTS.md` 现在是唯一长期 source，`/memory` 默认展示 scope 并要求显式选择 `project/global`
+- `ConversationContextMiddleware` 负责默认 budget + summary compact 生命周期，自动 compact 阈值为可用输入预算的 80%
+- `/compact` 只处理 conversation context，`/compact checkpoints [keepLast]` 只处理 checkpoint 存储历史
+- `SessionStore` 保持会话目录索引，`checkpoint` 保持运行态历史，二者边界没有再混
+- 已验证：`bun run typecheck`、`bun run lint`、`bun test`
