@@ -36,6 +36,10 @@ export interface SessionMetadata {
   archived?: boolean;
   /** 最后活动时间 */
   lastActivity: string;
+  /** fork 来源的 sessionId */
+  forkedFromSessionId?: string;
+  /** fork 来源的 threadId */
+  forkedFromThreadId?: string;
 }
 
 /** Session 对外暴露的宿主状态。 */
@@ -80,6 +84,7 @@ export interface CreateSessionOptions {
   messages?: AgentInput;
   context?: Record<string, unknown>;
   values?: Record<string, unknown>;
+  metadata?: Partial<SessionMetadata>;
 }
 
 /** Session 对外契约。 */
@@ -88,6 +93,11 @@ export interface Session {
   getAgentState(): AgentState;
   hydrate(): Promise<AgentState>;
   compactConversation(): Promise<AgentState>;
+  fork(options?: {
+    sessionId?: string;
+    threadId?: string;
+    store?: SessionStore;
+  }): Promise<Session>;
 
   invoke(input?: AgentInput, config?: AgentInvokeConfig): Promise<AgentResult>;
   stream(
