@@ -6,7 +6,12 @@ export type {
   CodaraToolsOptions,
 } from '@core/codara/types';
 export {createCodaraTools} from '@core/codara/tools';
-export {createCodaraTaskTool} from '@core/codara/task-tool';
+export {
+  createCodaraTaskMiddleware,
+  createCodaraTaskTool,
+  createCodaraSubagentMiddleware,
+  createCodaraSubagentTool,
+} from '@core/codara/tasking';
 export {createCodaraMiddlewares} from '@core/codara/middleware';
 export {
   createBuiltInCodaraCommands,

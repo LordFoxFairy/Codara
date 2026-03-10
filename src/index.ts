@@ -49,7 +49,12 @@ export type {Session, SessionState, SessionStatus, SessionStore} from '@core/ses
 
 /** Agent 构建 */
 export {createAgent, createSubagentTool, createTaskTool} from '@core/agents';
-export {createCodaraTaskTool} from '@core/codara';
+export {
+  createCodaraSubagentMiddleware,
+  createCodaraSubagentTool,
+  createCodaraTaskMiddleware,
+  createCodaraTaskTool,
+} from '@core/codara';
 export {
   createTaskMemoryStore,
   createTaskFileStore,
@@ -73,11 +78,14 @@ export {
 /** Middleware */
 export {
   createMiddleware,
+  createSharedTaskMiddleware,
   createGuidelinesMiddleware,
   createSummaryMiddleware,
   createSkillsMiddleware,
   createHILMiddleware,
   createLoggingMiddleware,
+  createSubagentMiddleware,
+  createTaskMiddleware,
 } from '@core/middleware';
 
 /** Tools */
