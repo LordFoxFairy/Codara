@@ -137,4 +137,4 @@ const agent = createAgent({
 - `@core/middleware` 暴露 `createTaskMiddleware(...)`、`createSubagentMiddleware(...)`、`createSharedTaskMiddleware(...)`
 - `@core/tasking` 暴露低层 `createSubagentTool(...)`、`createTaskTool(...)`，作为 runtime primitive
 - `agents/*` 回到纯执行内核，不再承载 task/subagent 领域文件
-- `Task` 的高级 runtime 扩展钩子统一收在 `runtimeHooks` 下，只服务宿主装配；默认使用时不需要了解它们
+- `Task` 的公共选项保持中性；宿主侧的 child-agent/runtime 绑定通过 tasking host adapter 接入，不继续暴露在主 API 选项里

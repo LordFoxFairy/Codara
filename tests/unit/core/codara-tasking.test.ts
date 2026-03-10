@@ -3,11 +3,10 @@ import {tool} from '@langchain/core/tools';
 import {z} from 'zod';
 import type {BaseChatModel} from '@langchain/core/language_models/chat_models';
 import {
-  createCodaraSubagentMiddleware,
-  createCodaraTaskMiddleware,
   DEFAULT_SUBAGENT_TOOL_NAME,
   TASK_TOOL_NAME,
 } from '@core';
+import {createCodaraSubagentMiddleware, createCodaraTaskMiddleware} from '@core/codara';
 import {SystemEchoModel} from './codara-fixtures';
 
 describe('Codara tasking middleware wrappers', () => {
