@@ -1,4 +1,4 @@
-import {createBuiltInCodaraCommands} from '@core/codara/commands/builtins';
+import {createBuiltInCodaraCommands} from '@core/codara/commands/registry';
 import {parseCodaraCommand} from '@core/codara/commands/parser';
 import type {
   CodaraCommandDefinition,
