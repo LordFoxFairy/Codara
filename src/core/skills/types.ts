@@ -16,6 +16,7 @@ export interface SkillMetadata {
   compatibility?: string | null
   metadata?: Record<string, string>
   allowedTools?: string[]
+  command?: SkillCommandMetadata
 
   /**
    * Full parsed YAML frontmatter for generic/forward-compatible consumption.
@@ -27,7 +28,15 @@ export interface SkillMetadata {
   extensions?: Record<string, unknown>
 }
 
+export interface SkillCommandMetadata {
+  name: string
+  description?: string
+  usage?: string
+  aliases?: string[]
+}
+
 export interface SkillStore {
   discover(): Promise<SkillMetadata[]>
   listSources?(): string[]
+  refresh?(): Promise<void> | void
 }

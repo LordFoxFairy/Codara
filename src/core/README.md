@@ -157,7 +157,7 @@ checkpoint 边界：
 - 工作区根优先从 `cwd` 向上查找 `.codara`、`.git`、`package.json`
 - 在 session 创建阶段生成内容投影
 - 后续模型调用复用同一份内容
-- 同一个 `Codara` host 可通过 `reloadSources()` 显式刷新 source snapshot
+- 同一个 `Codara` host 可通过 `reloadSources()` 显式刷新 `AGENTS.md` source 与 skills discovery cache
 - 默认注入顺序早于 `SkillsMiddleware`
 
 `AGENTS.md` 在当前架构中属于项目规范源，不属于：
@@ -225,7 +225,7 @@ checkpoint 边界：
 - `createCodara(...)`
   - 产品级入口
   - 持有默认 session，并暴露 `invoke(...)`、`stream(...)`、`resumePause(...)`、`compactCheckpoints(...)`
-  - 同时暴露宿主级命令面：`listCommands()`、`executeCommand(...)`
+  - 同时暴露宿主级命令面：`await listCommands()`、`executeCommand(...)`
 - `openCodaraSession(...)` / `openLatestCodaraSession(...)`
   - 显式打开历史 session
   - 返回前会 hydrate 已恢复的 runtime state
@@ -245,7 +245,12 @@ checkpoint 边界：
   - `/memory`
   - `/resume`
   - `/compact`
-  - `/reload`
+- `/reload`
+  - 刷新 `AGENTS.md` source 与 skills discovery cache
+- skills 还可以通过 `command-name` 显式声明动态 slash commands
+- 命令来源会被正式区分为：
+  - `builtin`：宿主内建命令
+  - `skill`：由 skills discovery 暴露的命令入口
 - 这些命令属于 host surface，不属于 `createAgent(...)` 内核
 - `/memory` 直接围绕 `AGENTS.md` 工作，不恢复旧 `MEMORY.md` 机制
 - `/memory` 默认展示可选 scope，显式使用 `show / project / global`

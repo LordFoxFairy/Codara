@@ -69,6 +69,7 @@ Current `/memory` behavior:
   - ensures the global target exists and returns an `open_file` host action
 - `/reload`
   - invalidates the session source cache so the next turn re-reads `AGENTS.md`
+  - refreshes the skills discovery cache so skill-derived slash commands stay in sync
 
 This keeps `AGENTS.md` as the only long-lived source and avoids resurrecting
 the old `MEMORY.md` split.

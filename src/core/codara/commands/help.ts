@@ -4,7 +4,8 @@ export function createHelpCommand(): CodaraCommandDefinition {
   return {
     name: 'help',
     usage: '/help [command]',
-    description: 'Show built-in Codara slash commands.',
+    description: 'Show available Codara slash commands.',
+    source: {type: 'builtin'},
     async execute({command, registry}) {
       const targetName = command.args[0]?.toLowerCase();
       if (targetName) {
@@ -20,17 +21,28 @@ export function createHelpCommand(): CodaraCommandDefinition {
             `/${target.name}`,
             target.description,
             `Usage: ${target.usage}`,
+            `Source: ${formatCommandSource(target)}`,
             ...(target.aliases?.length ? [`Aliases: ${target.aliases.map((alias) => `/${alias}`).join(', ')}`] : []),
           ].join('\n'),
         };
       }
+
+      const builtin = registry.filter((item) => item.source.type === 'builtin');
+      const skillCommands = registry.filter((item) => item.source.type === 'skill');
 
       return {
         ok: true,
         command: command.name,
         output: [
           'Available commands:',
-          ...registry.map(formatCommandSummary),
+          ...builtin.map(formatCommandSummary),
+          ...(skillCommands.length > 0
+            ? [
+                '',
+                'Skill commands:',
+                ...skillCommands.map(formatCommandSummary),
+              ]
+            : []),
         ].join('\n'),
       };
     },
@@ -48,7 +60,16 @@ function findCommand(
 }
 
 function formatCommandSummary(command: CodaraCommandSpec): string {
-  return `- ${command.usage} : ${command.description}`;
+  const suffix = command.source.type === 'skill' ? ` [skill: ${command.source.skillName}]` : '';
+  return `- ${command.usage} : ${command.description}${suffix}`;
+}
+
+function formatCommandSource(command: CodaraCommandSpec): string {
+  if (command.source.type === 'builtin') {
+    return 'built-in host command';
+  }
+
+  return `skill "${command.source.skillName}" (${command.source.skillPath})`;
 }
 
 function errorResult(command: string, output: string): CodaraCommandResult {
