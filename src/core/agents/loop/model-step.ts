@@ -4,6 +4,7 @@ import type {AgentStreamWriter} from '@core/agents/engine/stream-writer';
 import {chunkToMessage, toMessageChunk} from '@core/agents/engine/model';
 import type {AgentRuntime, AgentRunContext} from '@core/agents/loop/run';
 import {buildConversationMessages} from '@core/middleware/conversation-input';
+import {attachContextBudgetMetadata} from '@core/sessions/telemetry';
 
 export async function runModelStep(
   runtime: AgentRuntime,
@@ -31,7 +32,8 @@ export async function runModelStepStream(
       await stream.emitMessages({runId: run.runId, turn: context.turn, chunk: normalized});
     }
 
-    return aggregate ? chunkToMessage(aggregate) : new AIMessage('');
+    const message = aggregate ? chunkToMessage(aggregate) : new AIMessage('');
+    return attachContextBudgetMetadata(message, nextRequest.budget);
   };
 
   return runtime.pipeline.wrapModelCall(context, invoke);
@@ -44,5 +46,6 @@ async function invokeModel(
 ): Promise<AIMessage> {
   const nextRequest = request ?? context;
   const {modelMessages} = buildConversationMessages(nextRequest);
-  return runtime.model.invoke(modelMessages);
+  const response = await runtime.model.invoke(modelMessages);
+  return attachContextBudgetMetadata(response, nextRequest.budget);
 }

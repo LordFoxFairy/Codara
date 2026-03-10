@@ -178,6 +178,121 @@ describe('summary middleware', () => {
     expect(context.state.messages).toHaveLength(3);
   });
 
+  it('should compact before the prompt is completely full when the budget threshold is reached', async () => {
+    const middleware = createSummaryMiddleware({
+      maxMessages: 10,
+      keepLastMessages: 2,
+      compactThresholdRatio: 0.8,
+      estimateTokens: ({systemMessage, messages}) =>
+        estimateModelInputTokens({systemMessage, messages}),
+      summarize: () => 'threshold summary',
+    });
+
+    const pipeline = new MiddlewarePipeline([middleware]);
+    const messages = [
+      new HumanMessage('one'),
+      new AIMessage('two'),
+      new HumanMessage('three'),
+      new AIMessage('four'),
+      new HumanMessage('five'),
+    ];
+
+    const context: ModelCallContext = {
+      state: {messages},
+      messages,
+      runtime: {context: {}},
+      systemMessage: ['x'.repeat(80)],
+      runId: 'run-threshold',
+      turn: 1,
+      maxTurns: 8,
+      requestId: 'req-threshold',
+      inputBudget: {maxInputTokens: 60},
+    };
+
+    await pipeline.beforeModel(context);
+
+    expect(readSummaryRecord(context.state.messages)?.content).toBe('threshold summary');
+  });
+
+  it('should default to compacting near the end of the context window', async () => {
+    const middleware = createSummaryMiddleware({
+      maxMessages: 10,
+      keepLastMessages: 2,
+      estimateTokens: () => 96,
+      summarize: () => 'near-limit summary',
+    });
+
+    const pipeline = new MiddlewarePipeline([middleware]);
+    const messages = [
+      new HumanMessage('one'),
+      new AIMessage('two'),
+      new HumanMessage('three'),
+      new AIMessage('four'),
+      new HumanMessage('five'),
+    ];
+
+    const context: ModelCallContext = {
+      state: {messages},
+      messages,
+      runtime: {context: {}},
+      systemMessage: [],
+      runId: 'run-near-limit',
+      turn: 1,
+      maxTurns: 8,
+      requestId: 'req-near-limit',
+      inputBudget: {maxInputTokens: 100},
+    };
+
+    await pipeline.beforeModel(context);
+
+    expect(readSummaryRecord(context.state.messages)?.content).toBe('near-limit summary');
+  });
+
+  it('should forward manual compact instructions to the summary generator', async () => {
+    let seenInstructions: string | undefined;
+    const middleware = createSummaryMiddleware({
+      maxMessages: 4,
+      keepLastMessages: 2,
+      summarize: ({instructions}) => {
+        seenInstructions = instructions;
+        return 'instruction-aware summary';
+      },
+    });
+
+    const pipeline = new MiddlewarePipeline([middleware]);
+    const messages = [
+      new HumanMessage('one'),
+      new AIMessage('two'),
+      new HumanMessage('three'),
+      new AIMessage('four'),
+      new HumanMessage('five'),
+    ];
+
+    const context: ModelCallContext = {
+      state: {messages},
+      messages,
+      runtime: {
+        context: {
+          codara: {
+            forceCompactConversation: true,
+            compactInstructions: 'focus on decisions only',
+          },
+        },
+        agentContext: {},
+      },
+      systemMessage: [],
+      runId: 'run-instructions',
+      turn: 1,
+      maxTurns: 8,
+      requestId: 'req-instructions',
+    };
+
+    await pipeline.beforeModel(context);
+
+    expect(seenInstructions).toBe('focus on decisions only');
+    expect(readSummaryRecord(context.state.messages)?.content).toBe('instruction-aware summary');
+  });
+
   it('should preserve the full summary across later compactions even when model-visible content is truncated', async () => {
     const seenPreviousSummaries: Array<string | undefined> = [];
     const middleware = createSummaryMiddleware({

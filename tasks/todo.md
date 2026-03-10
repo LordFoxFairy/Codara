@@ -1,13 +1,14 @@
 # TODO
 
-- [x] 新建单独的 `codara/commands` 目录，承载手动 slash commands
-- [x] 为 host surface 增加 `/help`、`/resume`、`/compact`、`/reload` 四个内建命令
-- [x] 让 `/compact` 复用现有 conversation lifecycle，而不是重写一套压缩逻辑
-- [x] 将命令层接入 CLI 输入路径，但不污染 `createAgent(...)` 内核
-- [x] 更新命令层测试、文档，并重新验证全量基线
+- [x] 为 session metadata 补 usage/context window telemetry
+- [x] 让 reopen session 保留既有 metadata，而不是重新丢失宿主态信息
+- [x] 修正 telemetry 聚合为“本次新增 AI 响应总和”，而不是只吃最后一轮 model call
+- [x] 更新文档并跑完 `typecheck`、`lint`、`test`
 
 ## Review
 
-- 当前目标：把宿主级 slash commands 正式接进 Codara，对齐 `/help`、`/resume`、`/compact`、`/reload` 这类手动控制面，同时保持 `createAgent(...)` 继续只负责执行
-- 当前结果：slash commands 已集中落在 `src/core/codara/commands/`；`createCodara()` 返回的 host surface 现在暴露 `listCommands()` / `executeCommand(...)`
-- 本轮补充：`/compact` 通过 `Agent.compactConversation()` 强制复用已有 `beforeAgent + beforeModel + conversation-context` 路径；`/resume` 复用现有 HIL `resumePause(...)`，没有发明第二套恢复协议
+- session metadata 现在会累计 token usage，并记录最近一次 context window 占用百分比
+- telemetry 归属在 `Session metadata`，不进 checkpoint，不污染 agent runtime state
+- reopen session 现在会把持久化 session state 带回 host，保留既有 metadata
+- multi-turn agent run 的 telemetry 已按本次新增 AI 响应聚合，避免只统计最后一轮模型调用
+- 已验证：`bun run typecheck`、`bun run lint`、`bun test`

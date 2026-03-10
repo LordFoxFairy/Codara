@@ -10,6 +10,14 @@
 - 进入明显重构前，先告诉用户要改什么、为什么改。
 - PR review 通过且用户同意后，默认继续 merge，不停在中间状态。
 - 新一轮重构分支命名要带日期或版本后缀，例如 `topic-20260310` 或 `topic-v2`，方便后续管理。
+- 手动 commands 子系统要按“一命令一文件”组织，避免 registry/builtins 文件持续膨胀。
+- 目录分层不能为了“看起来模块化”多套一层同名目录；像 `commands/commands/*` 这种重复层级要直接压平。
+- 如果项目已经把 `AGENTS.md` 作为长期 source，就不要再把旧 `MEMORY.md` 机制硬塞回来；优先在同一条 source 链上补闭环能力。
+- `/memory` 这类手动命令不要偷偷默认写到某个 target；优先先展示可选 scope，再让用户显式选择 `project/global`。
+- 产品默认（如 `default` alias、默认 budget）要走稳定 alias + 模型元数据，不要让底层 provider 偶然变成默认产品心智。
+- provider 白名单和模型窗口元数据要分开管理：`config.json` 只保留 provider/model 路由关系，`model-metadata.json` 单独承载 `contextWindow/maxOutputTokens`。
+- `/compact` 这类 host command 如果有手动 instructions，就要把它收进正式 runtime contract，不要只停在命令层字符串解析。
+- 对齐 Claude Code 的自动 compact 时，优先对齐生命周期心智和默认阈值（接近 95%），不要让本地临时默认值长期漂移。
 
 ## 设计原则
 
@@ -44,6 +52,7 @@
 - `hil` 只做 pause/resume，不承载权限业务策略。
 - 派生 runtime 数据应放 runtime context，不要混进持久 `state.context`。
 - context budget 应作为独立 runtime 关注点，不埋在 summary 私逻辑里。
+- session 级 telemetry 要放 `Session metadata`，不要塞进 checkpoint；聚合时按“本次新增 AI 响应”统计，不能只读最后一轮 model call。
 
 ## 测试规则
 

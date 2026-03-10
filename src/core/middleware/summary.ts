@@ -11,6 +11,7 @@ import {
 const DEFAULT_MAX_MESSAGES = 30;
 const DEFAULT_KEEP_LAST_MESSAGES = 12;
 const DEFAULT_MAX_CHARS = 6_000;
+const DEFAULT_COMPACT_THRESHOLD_RATIO = 0.95;
 const CODARA_KEY = 'codara';
 const SUMMARY_KEY = 'summary';
 const SUMMARY_HEADER = '# Conversation Summary';
@@ -28,6 +29,7 @@ export interface SummaryInput {
   previousSummary?: string;
   messages: BaseMessage[];
   context: AgentRuntimeContext;
+  instructions?: string;
   threadId?: string;
   turn: number;
 }
@@ -42,6 +44,7 @@ export interface SummaryOptions {
   keepLastMessages?: number;
   maxChars?: number;
   maxInputTokens?: number;
+  compactThresholdRatio?: number;
   estimateTokens?: ContextBudgetEstimator;
 }
 
@@ -100,6 +103,7 @@ export async function compactSummaryIfNeeded(
       previousSummary: summaryState.summary?.content,
       messages: olderMessages,
       context: context.runtime.context,
+      instructions: readCompactInstructions(context.runtime.context),
       threadId: readThreadId(context.runtime.context),
       turn: context.turn,
     });
@@ -267,6 +271,7 @@ function normalizeOptions(options: SummaryOptions): Required<SummaryOptions> {
   const keepLastMessages = options.keepLastMessages ?? DEFAULT_KEEP_LAST_MESSAGES;
   const maxChars = options.maxChars ?? DEFAULT_MAX_CHARS;
   const maxInputTokens = options.maxInputTokens ?? 0;
+  const compactThresholdRatio = options.compactThresholdRatio ?? DEFAULT_COMPACT_THRESHOLD_RATIO;
   const estimateTokens = options.estimateTokens ?? estimateModelInputTokens;
 
   if (maxMessages < 2) {
@@ -284,6 +289,9 @@ function normalizeOptions(options: SummaryOptions): Required<SummaryOptions> {
   if (maxInputTokens < 0) {
     throw new Error('SummaryMiddleware maxInputTokens must be zero or positive');
   }
+  if (compactThresholdRatio <= 0 || compactThresholdRatio > 1) {
+    throw new Error('SummaryMiddleware compactThresholdRatio must be between 0 and 1');
+  }
 
   return {
     summarize: options.summarize,
@@ -291,6 +299,7 @@ function normalizeOptions(options: SummaryOptions): Required<SummaryOptions> {
     keepLastMessages,
     maxChars,
     maxInputTokens,
+    compactThresholdRatio,
     estimateTokens,
   };
 }
@@ -323,13 +332,22 @@ function shouldCompactHistory(
   } as ContextBudgetEstimateInput);
   const availableInputTokens = context.budget?.availableInputTokens
     ?? Math.max(0, maxInputTokens - (context.inputBudget?.reservedTokens ?? 0));
+  const compactTriggerTokens = Math.max(1, Math.floor(availableInputTokens * options.compactThresholdRatio));
 
-  return estimate > availableInputTokens;
+  return estimate >= compactTriggerTokens;
 }
 
 function readThreadId(context: Record<string, unknown>): string | undefined {
   const value = context.threadId;
   return typeof value === 'string' && value.trim() ? value : undefined;
+}
+
+function readCompactInstructions(context: Record<string, unknown>): string | undefined {
+  const codara = asRecord(context[CODARA_KEY]);
+  const instructions = codara.compactInstructions;
+  return typeof instructions === 'string' && instructions.trim()
+    ? instructions.trim()
+    : undefined;
 }
 
 function asRecord(value: unknown): Record<string, unknown> {
