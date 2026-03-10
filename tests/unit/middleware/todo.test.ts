@@ -53,7 +53,7 @@ describe('todoListMiddleware', () => {
 
     const agent = createAgent({
       model,
-      middlewares: [todoListMiddleware()],
+      middleware: [todoListMiddleware()],
     });
 
     const result = await agent.invoke({messages: [new HumanMessage('Implement todos')]});
@@ -156,7 +156,7 @@ describe('todoListMiddleware', () => {
       ]),
       checkpointer,
       threadId: 'todo-thread',
-      middlewares: [todoListMiddleware()],
+      middleware: [todoListMiddleware()],
     });
 
     const result = await agent.invoke({messages: [new HumanMessage('Implement todos')]});
@@ -175,7 +175,7 @@ describe('todoListMiddleware', () => {
       checkpointer,
       threadId: 'todo-thread',
       checkpoint: restoredCheckpoint,
-      middlewares: [todoListMiddleware()],
+      middleware: [todoListMiddleware()],
     });
 
     expect(readTodoState(restored.getState().values).todos).toEqual([
@@ -205,7 +205,7 @@ describe('todoListMiddleware', () => {
         }),
         new AIMessage('done'),
       ]),
-      middlewares: [todoListMiddleware()],
+      middleware: [todoListMiddleware()],
     });
 
     await agent.invoke({messages: [new HumanMessage('Implement todos')]});
@@ -237,12 +237,12 @@ describe('todoListMiddleware', () => {
         }),
         new AIMessage('done'),
       ]),
-      middlewares: [todoListMiddleware()],
+      middleware: [todoListMiddleware()],
     });
 
     const secondAgent = createAgent({
       model: createTodoModel([new AIMessage('done')]),
-      middlewares: [todoListMiddleware()],
+      middleware: [todoListMiddleware()],
     });
 
     await firstAgent.invoke({messages: [new HumanMessage('Implement todos')]});
@@ -256,7 +256,7 @@ describe('todoListMiddleware', () => {
   it('should reject invalid seeded todo state', () => {
     expect(() => createAgent({
       model: createTodoModel([new AIMessage('done')]),
-      middlewares: [todoListMiddleware()],
+      middleware: [todoListMiddleware()],
       values: {
         todos: 'invalid',
       } as unknown as Record<string, unknown>,

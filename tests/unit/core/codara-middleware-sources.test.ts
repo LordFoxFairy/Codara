@@ -70,7 +70,7 @@ describe('Codara middleware source integration', () => {
           echo: true,
         },
       },
-      middlewares: [blocker],
+      middleware: [blocker],
     });
 
     const result = await agent.invoke('start');

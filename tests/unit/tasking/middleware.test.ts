@@ -84,7 +84,7 @@ describe('tasking middlewares', () => {
 
     const agent = createAgent({
       model,
-      middlewares: [createAgentSkillsMiddleware(store), taskMiddleware],
+      middleware: [createAgentSkillsMiddleware(store), taskMiddleware],
     });
 
     const result = await agent.invoke([new HumanMessage('start')]);
@@ -103,7 +103,7 @@ describe('tasking middlewares', () => {
 
     const agent = createAgent({
       model: new SystemEchoModel() as unknown as BaseChatModel,
-      middlewares: [createAgentSkillsMiddleware(store), taskMiddleware],
+      middleware: [createAgentSkillsMiddleware(store), taskMiddleware],
     });
 
     const result = await agent.invoke([new HumanMessage('show tasking prompt')]);
@@ -135,7 +135,7 @@ describe('tasking middlewares', () => {
 
     const agent = createAgent({
       model,
-      middlewares: [subagentMiddleware],
+      middleware: [subagentMiddleware],
     });
 
     const result = await agent.invoke([new HumanMessage('start')]);
@@ -174,7 +174,7 @@ describe('tasking middlewares', () => {
 
     const agent = createAgent({
       model,
-      middlewares: [sharedTaskMiddleware],
+      middleware: [sharedTaskMiddleware],
     });
 
     const result = await agent.invoke([new HumanMessage('start')], {recursionLimit: 3});

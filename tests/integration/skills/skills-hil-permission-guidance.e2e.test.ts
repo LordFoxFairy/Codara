@@ -96,7 +96,7 @@ describe('Skills + HIL permission guidance', () => {
     const runner = createAgent({
       model: model as unknown as BaseChatModel,
       tools: [bashTool],
-      middlewares: [createSkillsMiddleware({store}), hilMiddleware, probeMiddleware]
+      middleware: [createSkillsMiddleware({store}), hilMiddleware, probeMiddleware]
     })
 
     const result = await runner.invoke({

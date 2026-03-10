@@ -75,7 +75,7 @@ Use references before final answer.
     const runner = createAgent({
       model: scriptedModel as unknown as BaseChatModel,
       tools: [],
-      middlewares: [createSkillsMiddleware({store}), probeMiddleware]
+      middleware: [createSkillsMiddleware({store}), probeMiddleware]
     })
 
     const result = await runner.invoke({

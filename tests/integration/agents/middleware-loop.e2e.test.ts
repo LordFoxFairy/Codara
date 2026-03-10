@@ -75,7 +75,7 @@ describe('Agent Middleware End-to-End', () => {
     const runner = createAgent({
       model,
       tools: [echoTool],
-      middlewares: [traceMiddleware]
+      middleware: [traceMiddleware]
     });
 
     const result = await runner.invoke(

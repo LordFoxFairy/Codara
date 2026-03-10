@@ -25,14 +25,14 @@ const loggingMiddleware = createLoggingMiddleware({
 const agent = createAgent({
   model,
   tools: [],
-  middlewares: [loggingMiddleware]
+  middleware: [loggingMiddleware]
 });
 ```
 
 说明：
 
 - 推荐通过 `createMiddleware(...)` 声明中间件常量。
-- 推荐通过 `middlewares: [middleware1, middleware2]` 注入到 runner。
+- 推荐通过 `middleware: [middleware1, middleware2]` 注入到 runner。
 
 ## 中间件能力
 

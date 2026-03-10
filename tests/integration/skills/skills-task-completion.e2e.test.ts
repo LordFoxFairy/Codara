@@ -122,7 +122,7 @@ describe('Skills task completion flow', () => {
     const runner = createAgent({
       model: model as unknown as BaseChatModel,
       tools: [readFileTool],
-      middlewares: [createSkillsMiddleware({store}), probeMiddleware]
+      middleware: [createSkillsMiddleware({store}), probeMiddleware]
     })
 
     const result = await runner.invoke({

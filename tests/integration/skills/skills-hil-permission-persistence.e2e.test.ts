@@ -164,7 +164,7 @@ describe('HIL permission persistence flow', () => {
     const firstRunner = createAgent({
       model: new PermissionPersistenceModel() as unknown as BaseChatModel,
       tools: [bashTool],
-      middlewares: [persistenceMiddleware],
+      middleware: [persistenceMiddleware],
     });
 
     const firstResult = await firstRunner.invoke(
@@ -203,7 +203,7 @@ describe('HIL permission persistence flow', () => {
     const secondRunner = createAgent({
       model: new PermissionPersistenceModel() as unknown as BaseChatModel,
       tools: [bashTool],
-      middlewares: [
+      middleware: [
         createHILMiddleware({
           resolveDecision: async ({context}) => evaluatePermissionDecision(evaluateScript, root, context.toolCall),
           onPause: (request) => {
