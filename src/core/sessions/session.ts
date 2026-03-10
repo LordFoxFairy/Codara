@@ -1,30 +1,17 @@
 import {randomUUID} from 'node:crypto';
-import type {
-  Agent,
-  AgentInput,
-  AgentInvokeConfig,
-  AgentResumeConfig,
-  AgentResumeStreamConfig,
-  AgentResult,
-  AgentState,
-  AgentStreamConfig,
-  AgentStreamOutput,
-} from '@core/agents';
-import {createAgent} from '@core/agents';
-import {cloneContext, cloneValues} from '@core/agents/engine/state';
+import type {AgentState} from '@core/agents';
 import {createAgentMemoryCheckpointer} from '@core/checkpoint/state';
 import type {CompactOptions} from '@core/checkpoint/types';
-import {normalizeAgentInput} from '@core/agents/engine/runtime-input';
-import type {HILResumePayload} from '@core/middleware';
 import type {CreateSessionOptions, Session, SessionState, SessionStatus, SessionMetadata} from '@core/sessions/types';
-import {buildSessionTelemetryPatch, mergeSessionTelemetry} from '@core/sessions/telemetry';
+import {createSessionAgentHost} from '@core/sessions/agent-host';
 import {
-  cloneAgentMessages,
+  buildSessionTelemetryPatch,
+  cloneSessionMetadata,
   createSessionMetadata,
+  mergeSessionTelemetry,
   touchSessionMetadata,
   updateSessionMetadataFromAgentState,
 } from '@core/sessions/metadata';
-import {resolveSessionInputBudget, resolveSessionModelSelection} from '@core/sessions/model-selection';
 
 /**
  * 创建 session 实例。
@@ -41,8 +28,6 @@ export function createSession(options: CreateSessionOptions): Session {
   const createdAt = restoredState?.createdAt ?? new Date().toISOString();
   let updatedAt = restoredState?.updatedAt ?? createdAt;
   let sessionStatus: SessionStatus = restoredState?.sessionStatus ?? 'ready';
-  let agentInstance: Agent | undefined;
-  let agentBootstrap: Promise<Agent> | undefined;
   const metadata: SessionMetadata = createSessionMetadata(
     createdAt,
     restoredState?.metadata,
@@ -92,58 +77,6 @@ export function createSession(options: CreateSessionOptions): Session {
     await saveSession();
   }
 
-  async function getAgent(): Promise<Agent> {
-    if (agentInstance) {
-      return agentInstance;
-    }
-
-    if (agentBootstrap) {
-      return agentBootstrap;
-    }
-
-    agentBootstrap = (async () => {
-      // Lazy creation
-      const selection = await resolveSessionModelSelection(options);
-
-      // Auto-restore: threadId provided = restore latest checkpoint
-      // Explicit restore option overrides this behavior
-      const shouldRestore = options.restore === 'latest'
-        || (options.restore !== 'never' && isRestoringThread);
-
-      const checkpoint = shouldRestore
-        ? await checkpointer.getLatest(threadId)
-        : undefined;
-
-      // Normalize messages input
-      const messages = options.messages ? normalizeAgentInput(options.messages) : undefined;
-
-      agentInstance = createAgent({
-        model: selection.model,
-        tools: options.tools,
-        middleware: options.middleware,
-        checkpointer,
-        threadId,
-        inputBudget: resolveSessionInputBudget(options, selection.modelInfo),
-        ...(checkpoint ? {checkpoint} : {}),
-        ...(messages ? {messages} : {}),
-        ...(options.context ? {context: options.context} : {}),
-        ...(options.values ? {values: options.values} : {}),
-      });
-
-      return agentInstance;
-    })();
-
-    try {
-      return await agentBootstrap;
-    } finally {
-      if (agentInstance) {
-        agentBootstrap = Promise.resolve(agentInstance);
-      } else {
-        agentBootstrap = undefined;
-      }
-    }
-  }
-
   function requireReady(): void {
     if (sessionStatus === 'closed') {
       throw new Error('Session is closed.');
@@ -161,34 +94,16 @@ export function createSession(options: CreateSessionOptions): Session {
     };
   }
 
-  function requireInitializedAgent(): Agent {
-    if (!agentInstance) {
-      throw new Error('Agent not initialized. Call invoke/stream first.');
-    }
-    return agentInstance;
-  }
-
-  async function runAgentResult(
-    operation: (agent: Agent) => Promise<AgentResult>,
-  ): Promise<AgentResult> {
-    requireReady();
-    const agent = await getAgent();
-    const previousState = agent.getState();
-    const result = await operation(agent);
-    await syncSessionFromState(result.state, {applyTelemetry: true, previousState});
-    return result;
-  }
-
-  async function* runAgentStreamResult(
-    operation: (agent: Agent) => AsyncGenerator<AgentStreamOutput, AgentResult, void>,
-  ): AsyncGenerator<AgentStreamOutput, AgentResult, void> {
-    requireReady();
-    const agent = await getAgent();
-    const previousState = agent.getState();
-    const result = yield* operation(agent);
-    await syncSessionFromState(result.state, {applyTelemetry: true, previousState});
-    return result;
-  }
+  const agentHost = createSessionAgentHost({
+    sessionOptions: options,
+    threadId,
+    isRestoringThread,
+    checkpointer,
+    sessionId,
+    createSession,
+    syncSessionFromState,
+    cloneMetadata: () => cloneSessionMetadata(metadata),
+  });
 
   return {
     getState(): SessionState {
@@ -196,69 +111,45 @@ export function createSession(options: CreateSessionOptions): Session {
     },
 
     getAgentState(): AgentState {
-      return requireInitializedAgent().getState();
+      return agentHost.requireInitializedAgent().getState();
     },
 
     async hydrate(): Promise<AgentState> {
       requireReady();
-      const agent = await getAgent();
-      const state = agent.getState();
-      await syncSessionFromState(state);
-      return state;
+      return agentHost.hydrate();
     },
 
     async compactConversation(compactOptions = {}): Promise<AgentState> {
       requireReady();
-      const agent = await getAgent();
-      const state = await agent.compactConversation(compactOptions);
-      await syncSessionFromState(state);
-      return state;
+      return agentHost.compactConversation(compactOptions);
     },
 
     async fork(forkOptions = {}): Promise<Session> {
       requireReady();
-      const agent = await getAgent();
-      const baseState = agent.getState();
-      const child = createSession({
-        ...options,
-        sessionId: forkOptions.sessionId,
-        threadId: forkOptions.threadId,
-        store: forkOptions.store ?? options.store,
-        restore: 'never',
-        messages: cloneAgentMessages(baseState.messages),
-        context: cloneContext(baseState.context),
-        values: cloneValues(baseState.values),
-        metadata: {
-          title: metadata.title,
-          tags: metadata.tags ? [...metadata.tags] : undefined,
-          forkedFromSessionId: sessionId,
-          forkedFromThreadId: threadId,
-        },
-      });
-      await child.hydrate();
-      return child;
+      return agentHost.fork(forkOptions);
     },
 
-    async invoke(input?: AgentInput, config?: AgentInvokeConfig): Promise<AgentResult> {
-      return runAgentResult((agent) => agent.invoke(input, config));
+    async invoke(input, config) {
+      requireReady();
+      return agentHost.invoke(input, config);
     },
 
     async *stream(
-      input?: AgentInput,
-      config?: AgentStreamConfig
-    ): AsyncGenerator<AgentStreamOutput, AgentResult, void> {
-      return yield* runAgentStreamResult((agent) => agent.stream(input, config));
+      input,
+      config,
+    ) {
+      requireReady();
+      return yield* agentHost.stream(input, config);
     },
 
-    async resumePause(payload: HILResumePayload, config?: AgentResumeConfig): Promise<AgentResult> {
-      return runAgentResult((agent) => agent.resume(payload, config));
+    async resumePause(payload, config) {
+      requireReady();
+      return agentHost.resumePause(payload, config);
     },
 
-    async *resumePauseStream(
-      payload: HILResumePayload,
-      config?: AgentResumeStreamConfig
-    ): AsyncGenerator<AgentStreamOutput, AgentResult, void> {
-      return yield* runAgentStreamResult((agent) => agent.resumeStream(payload, config));
+    async *resumePauseStream(payload, config) {
+      requireReady();
+      return yield* agentHost.resumePauseStream(payload, config);
     },
 
     async reloadSources(): Promise<void> {
@@ -298,9 +189,8 @@ export function createSession(options: CreateSessionOptions): Session {
 
     async reset(): Promise<void> {
       requireReady();
-      if (agentInstance) {
-        await agentInstance.reset();
-        await syncSessionFromState(agentInstance.getState());
+      const nextState = await agentHost.reset();
+      if (nextState) {
         return;
       }
       touch();
@@ -311,9 +201,7 @@ export function createSession(options: CreateSessionOptions): Session {
       if (sessionStatus === 'closed') {
         return;
       }
-      if (agentInstance) {
-        await agentInstance.dispose();
-      }
+      await agentHost.dispose();
       sessionStatus = 'closed';
       touch();
       await saveSession();

@@ -1,4 +1,3 @@
-export {parseCodaraCommand} from '@core/codara/commands/parser';
 export {createCodaraCommandRunner} from '@core/codara/commands/runner';
 export type {
   CodaraCommandContext,

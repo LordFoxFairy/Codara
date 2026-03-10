@@ -1,7 +1,6 @@
-import type {BaseChatModel} from '@langchain/core/language_models/chat_models';
 import {tool, type StructuredToolInterface} from '@langchain/core/tools';
 import {z} from 'zod';
-import type {Agent, AgentRuntimeContext, AgentType, CreateAgentOptions} from '@core/agents/contract/agent';
+import type {AgentType} from '@core/agents/contract/agent';
 import {createMiddleware, type BaseMiddleware} from '@core/middleware';
 import {
   type CreateSubagentToolOptions,
@@ -32,27 +31,8 @@ const TaskToolInputSchema = z.object({
 
 type TaskToolInput = z.infer<typeof TaskToolInputSchema>;
 
-export interface ResolvedSubagentRuntime {
-  model?: BaseChatModel;
-  middleware?: BaseMiddleware[];
-  context?: AgentRuntimeContext;
-}
-
-export interface TaskToolRuntimeHooks {
-  createChildAgent?: (options: CreateAgentOptions) => Agent | Promise<Agent>;
-  resolveDefinitionRuntime?: (
-    profile: SubagentDefinition,
-    fallback: {
-      model: BaseChatModel;
-      middleware?: BaseMiddleware[];
-      context?: AgentRuntimeContext;
-    }
-  ) => Promise<ResolvedSubagentRuntime | void> | ResolvedSubagentRuntime | void;
-}
-
 export interface CreateTaskToolOptions extends Omit<CreateSubagentToolOptions, 'name' | 'description'> {
   description?: string;
-  runtimeHooks?: TaskToolRuntimeHooks;
 }
 
 export interface CreateTaskMiddlewareOptions extends CreateTaskToolOptions {
@@ -66,18 +46,14 @@ export function createTaskTool(options: CreateTaskToolOptions): StructuredToolIn
         readAgentSkillsRuntime(config?.configurable?.runtimeShared),
         subagent_type,
       );
-      const resolvedRuntime = await resolveDefinitionRuntime(options, profile);
       return runDelegatedAgent(options, {
         prompt,
         maxTurns: max_turns ?? profile.maxTurns,
         toolName: TASK_TOOL_NAME,
         parentAgentType: readAgentType(config?.configurable?.agentType),
-        profileModel: resolvedRuntime?.model,
-        profileMiddleware: resolvedRuntime?.middleware,
-        profileContext: resolvedRuntime?.context,
         profileTools: resolveDefinitionTools(options.tools ?? [], profile),
         profileSystemPrompt: profile.systemPrompt,
-      }, options.runtimeHooks?.createChildAgent);
+      });
     },
     {
       name: TASK_TOOL_NAME,
@@ -116,25 +92,6 @@ export function createTaskMiddleware(options: CreateTaskMiddlewareOptions): Base
 
 function readAgentType(value: unknown): AgentType {
   return value === 'subagent' ? 'subagent' : 'main';
-}
-
-async function resolveDefinitionRuntime(
-  options: CreateTaskToolOptions,
-  profile: SubagentDefinition
-): Promise<ResolvedSubagentRuntime | undefined> {
-  const resolver = options.runtimeHooks?.resolveDefinitionRuntime;
-
-  if (!resolver) {
-    return undefined;
-  }
-
-  const resolved = await resolver(profile, {
-    model: options.model,
-    ...(options.middleware?.length ? {middleware: [...options.middleware]} : {}),
-    ...(options.context ? {context: options.context} : {}),
-  });
-
-  return resolved ?? undefined;
 }
 
 function resolveDefinitionTools(

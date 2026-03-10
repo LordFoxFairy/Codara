@@ -1,4 +1,3 @@
-import {createAgent} from '@core/agents';
 import type {CodaraOptions} from '@core/codara/types';
 import {
   createSubagentTool,
@@ -12,23 +11,12 @@ import {resolveCodaraRuntime} from '@core/codara/runtime';
 
 export async function createCodaraTaskTool(options: CodaraOptions = {}) {
   const defaults = await resolveCodaraTaskingDefaults(options);
-  return createTaskTool({
-    ...defaults,
-    runtimeHooks: {
-      createChildAgent: (childOptions) => createAgent(childOptions),
-    },
-  });
+  return createTaskTool(defaults);
 }
 
 export async function createCodaraTaskMiddleware(options: CodaraOptions = {}) {
   const defaults = await resolveCodaraTaskingDefaults(options);
-
-  return createTaskMiddleware({
-    ...defaults,
-    runtimeHooks: {
-      createChildAgent: (childOptions) => createAgent(childOptions),
-    },
-  });
+  return createTaskMiddleware(defaults);
 }
 
 export async function createCodaraSubagentTool(options: CodaraOptions = {}) {
