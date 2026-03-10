@@ -14,9 +14,13 @@ import type {AgentInputBudget, AgentRuntimeContext, AgentRuntimeValues} from '@c
 import type {AgentStateUpdate} from '@core/agents/command';
 import type {ContextBudgetSnapshot} from '@core/middleware/context-budget';
 
+export type MiddlewareRuntimeShared = Record<string, unknown>;
+
 export interface MiddlewareRuntimeContext {
   /** 本次运行的有效上下文（持久上下文 + 调用时临时覆盖）。 */
   context: AgentRuntimeContext;
+  /** 同一次运行内由 middleware 生成、供其他 middleware/tools 复用的共享派生数据。 */
+  shared?: MiddlewareRuntimeShared;
   /** 会随 agent checkpoint 一起持久化的上下文。 */
   agentContext?: AgentRuntimeContext;
 }

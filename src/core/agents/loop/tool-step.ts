@@ -4,6 +4,7 @@ import {parseHILToolMessagePayload} from '@core/middleware/hil';
 import type {AgentStreamWriter} from '@core/agents/engine/stream-writer';
 import {executeToolCall, resolveToolCallId} from '@core/agents/engine/tools';
 import type {AgentRuntime, AgentRunContext} from '@core/agents/loop/run';
+import {readToolExecutionPolicy} from '@core/tools';
 
 export async function runToolStep(
   run: AgentRunContext,
@@ -11,31 +12,11 @@ export async function runToolStep(
   context: BaseExecutionContext,
   toolCalls: ToolCall[]
 ): Promise<void> {
-  const pipeline = runtime.pipeline;
-
-  for (let toolIndex = 0; toolIndex < toolCalls.length; toolIndex += 1) {
-    const toolCall = toolCalls[toolIndex];
-    const toolCallId = resolveToolCallId(toolCall, toolIndex);
-    const tool = runtime.tools.get(toolCall.name);
-    const toolContext = createToolContext(context, toolCall, toolIndex, toolCallId, tool);
-
-    const toolMessage = await pipeline.wrapToolCall(toolContext, (request?: ToolCallContext) => {
-      const nextCall = request?.toolCall ?? toolCall;
-      const nextIndex = request?.toolIndex ?? toolIndex;
-      const nextTool = request?.tool ?? runtime.tools.get(nextCall.name);
-      const nextToolCallId = resolveToolCallId(nextCall, nextIndex);
-      return executeToolCall(
-        nextCall,
-        nextToolCallId,
-        nextTool,
-        runtime.handleToolErrors,
-        run.state,
-        request?.runtime ?? context.runtime,
-        (values) => runtime.pipeline.normalizeValues(values ?? {})
-      );
-    });
-
-    run.state.messages.push(toolMessage);
+  for (const batch of createToolExecutionBatches(runtime, toolCalls)) {
+    const results = await Promise.all(batch.map((entry) => executeWrappedToolCall(run, runtime, context, entry)));
+    for (const {toolMessage} of results) {
+      run.state.messages.push(toolMessage);
+    }
   }
 }
 
@@ -46,37 +27,17 @@ export async function runToolStepStream(
   toolCalls: ToolCall[],
   stream: AgentStreamWriter
 ): Promise<void> {
-  const pipeline = runtime.pipeline;
+  for (const batch of createToolExecutionBatches(runtime, toolCalls)) {
+    const results = await Promise.all(batch.map((entry) => executeWrappedToolCall(run, runtime, context, entry)));
+    for (const {toolMessage} of results) {
+      run.state.messages.push(toolMessage);
+      await stream.emitToolUpdate(toolMessage);
+      await stream.emitValues(run.state.messages);
 
-  for (let toolIndex = 0; toolIndex < toolCalls.length; toolIndex += 1) {
-    const toolCall = toolCalls[toolIndex];
-    const toolCallId = resolveToolCallId(toolCall, toolIndex);
-    const tool = runtime.tools.get(toolCall.name);
-    const toolContext = createToolContext(context, toolCall, toolIndex, toolCallId, tool);
-
-    const toolMessage = await pipeline.wrapToolCall(toolContext, (request?: ToolCallContext) => {
-      const nextCall = request?.toolCall ?? toolCall;
-      const nextIndex = request?.toolIndex ?? toolIndex;
-      const nextTool = request?.tool ?? runtime.tools.get(nextCall.name);
-      const nextToolCallId = resolveToolCallId(nextCall, nextIndex);
-      return executeToolCall(
-        nextCall,
-        nextToolCallId,
-        nextTool,
-        runtime.handleToolErrors,
-        run.state,
-        request?.runtime ?? context.runtime,
-        (values) => runtime.pipeline.normalizeValues(values ?? {})
-      );
-    });
-
-    run.state.messages.push(toolMessage);
-    await stream.emitToolUpdate(toolMessage);
-    await stream.emitValues(run.state.messages);
-
-    const payload = parseHILToolMessagePayload(toolMessage.content);
-    if (payload) {
-      await stream.emitCustom({runId: context.runId, turn: context.turn, payload});
+      const payload = parseHILToolMessagePayload(toolMessage.content);
+      if (payload) {
+        await stream.emitCustom({runId: context.runId, turn: context.turn, payload});
+      }
     }
   }
 }
@@ -109,6 +70,75 @@ function createToolContext(
     toolIndex,
     tool,
   };
+}
+
+interface ToolExecutionEntry {
+  toolCall: ToolCall;
+  toolIndex: number;
+}
+
+async function executeWrappedToolCall(
+  run: AgentRunContext,
+  runtime: AgentRuntime,
+  context: BaseExecutionContext,
+  entry: ToolExecutionEntry,
+): Promise<{toolMessage: Awaited<ReturnType<typeof executeToolCall>>}> {
+  const {toolCall, toolIndex} = entry;
+  const pipeline = runtime.pipeline;
+  const toolCallId = resolveToolCallId(toolCall, toolIndex);
+  const tool = runtime.tools.get(toolCall.name);
+  const toolContext = createToolContext(context, toolCall, toolIndex, toolCallId, tool);
+
+  const toolMessage = await pipeline.wrapToolCall(toolContext, (request?: ToolCallContext) => {
+    const nextCall = request?.toolCall ?? toolCall;
+    const nextIndex = request?.toolIndex ?? toolIndex;
+    const nextTool = request?.tool ?? runtime.tools.get(nextCall.name);
+    const nextToolCallId = resolveToolCallId(nextCall, nextIndex);
+    return executeToolCall(
+      nextCall,
+      nextToolCallId,
+      nextTool,
+      runtime.handleToolErrors,
+      run.state,
+      request?.runtime ?? context.runtime,
+      (values) => runtime.pipeline.normalizeValues(values ?? {})
+    );
+  });
+
+  return {toolMessage};
+}
+
+function createToolExecutionBatches(
+  runtime: AgentRuntime,
+  toolCalls: ToolCall[],
+): ToolExecutionEntry[][] {
+  const batches: ToolExecutionEntry[][] = [];
+  let pendingParallel: ToolExecutionEntry[] = [];
+
+  const flushParallel = () => {
+    if (pendingParallel.length > 0) {
+      batches.push(pendingParallel);
+      pendingParallel = [];
+    }
+  };
+
+  for (let toolIndex = 0; toolIndex < toolCalls.length; toolIndex += 1) {
+    const toolCall = toolCalls[toolIndex];
+    const tool = runtime.tools.get(toolCall.name);
+    const policy = readToolExecutionPolicy(tool);
+    const entry = {toolCall, toolIndex};
+
+    if (policy === 'parallel_safe') {
+      pendingParallel.push(entry);
+      continue;
+    }
+
+    flushParallel();
+    batches.push([entry]);
+  }
+
+  flushParallel();
+  return batches;
 }
 
 function toError(error: unknown): Error {

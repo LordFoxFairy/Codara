@@ -83,7 +83,7 @@ describe('HIL user confirmation flow', () => {
     const runner = createAgent({
       model: model as unknown as BaseChatModel,
       tools: [bashTool],
-      middlewares: [hilMiddleware],
+      middleware: [hilMiddleware],
     });
 
     const firstResult = await runner.invoke(

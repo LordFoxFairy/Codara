@@ -2,16 +2,18 @@ import type {BaseChatModel} from '@langchain/core/language_models/chat_models';
 import {tool, type StructuredToolInterface} from '@langchain/core/tools';
 import {z} from 'zod';
 import type {Agent, AgentRuntimeContext, AgentType, CreateAgentOptions} from '@core/agents/contract/agent';
+import {createMiddleware, type BaseMiddleware} from '@core/middleware';
 import {
   type CreateSubagentToolOptions,
   runDelegatedAgent,
-} from '@core/agents/subagent';
+} from '@core/tasking/subagent';
 import {
   readSkillsRuntimeData,
   resolveSubagentDefinition,
+  type SkillsRuntimeData,
   type SubagentDefinition,
 } from '@core/skills/agents';
-import type {BaseMiddleware} from '@core/middleware';
+import type {MiddlewareRuntimeShared} from '@core/middleware';
 import {filterToolsByReferences} from '@core/tools';
 
 export const TASK_TOOL_NAME = 'Task';
@@ -53,11 +55,15 @@ export interface CreateTaskToolOptions extends Omit<CreateSubagentToolOptions, '
   runtimeHooks?: TaskToolRuntimeHooks;
 }
 
+export interface CreateTaskMiddlewareOptions extends CreateTaskToolOptions {
+  name?: string;
+}
+
 export function createTaskTool(options: CreateTaskToolOptions): StructuredToolInterface {
   return tool(
     async ({prompt, subagent_type, max_turns}: TaskToolInput, config) => {
       const profile = resolveSubagentDefinition(
-        readAgentSkillsRuntime(config?.configurable?.runtimeContext ?? config?.configurable?.agentContext),
+        readAgentSkillsRuntime(config?.configurable?.runtimeShared),
         subagent_type,
       );
       const resolvedRuntime = await resolveDefinitionRuntime(options, profile);
@@ -81,6 +87,33 @@ export function createTaskTool(options: CreateTaskToolOptions): StructuredToolIn
   );
 }
 
+export const TASK_MIDDLEWARE_SYSTEM_PROMPT = `## Task Delegation
+
+You can delegate focused work to a dedicated subagent with the \`Task\` tool.
+Use it when a sub-problem deserves a fresh context window and a concise summary back to the current agent.
+
+When using \`Task\`:
+- choose the best available \`subagent_type\` when one fits
+- omit \`subagent_type\` to use the default general-purpose delegate
+- use \`TaskCreate\` / \`TaskUpdate\` / \`TaskList\` for shared coordination, not \`Task\`
+`;
+
+export function createTaskMiddleware(options: CreateTaskMiddlewareOptions): BaseMiddleware {
+  return createMiddleware({
+    name: options.name?.trim() || 'TaskMiddleware',
+    tools: [createTaskTool(options)],
+    beforeModel(context) {
+      context.systemMessage.push(TASK_MIDDLEWARE_SYSTEM_PROMPT);
+      const runtime = readSkillsRuntimeData(context.runtime.shared);
+      const definitions = formatAvailableSubagents(runtime);
+      if (definitions) {
+        context.systemMessage.push(definitions);
+      }
+      return undefined;
+    },
+  });
+}
+
 function readAgentType(value: unknown): AgentType {
   return value === 'subagent' ? 'subagent' : 'main';
 }
@@ -98,7 +131,6 @@ async function resolveDefinitionRuntime(
   const resolved = await resolver(profile, {
     model: options.model,
     ...(options.middleware?.length ? {middleware: [...options.middleware]} : {}),
-    ...(options.middlewares?.length ? {middleware: [...options.middlewares]} : {}),
     ...(options.context ? {context: options.context} : {}),
   });
 
@@ -121,5 +153,21 @@ function readAgentSkillsRuntime(value: unknown) {
     return undefined;
   }
 
-  return readSkillsRuntimeData(value as AgentRuntimeContext);
+  return readSkillsRuntimeData(value as MiddlewareRuntimeShared);
+}
+
+function formatAvailableSubagents(runtime: SkillsRuntimeData | undefined): string | undefined {
+  const definitions = Object.values(runtime?.agentDefinitions ?? {});
+  if (definitions.length === 0) {
+    return undefined;
+  }
+
+  return [
+    '### Available Subagents',
+    ...definitions.map((definition) => {
+      const toolRefs = definition.tools?.length ? ` | tools: ${definition.tools.join(', ')}` : '';
+      const maxTurns = typeof definition.maxTurns === 'number' ? ` | max_turns: ${definition.maxTurns}` : '';
+      return `- ${definition.name}: ${definition.description}${toolRefs}${maxTurns}`;
+    }),
+  ].join('\n');
 }

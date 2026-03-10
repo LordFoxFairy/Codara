@@ -1,14 +1,36 @@
-export * from '@core/agents/contract/agent';
-export * from '@core/agents/contract/stream';
-export * from '@core/agents/command';
+export type {
+  Agent,
+  AgentFinishReason,
+  AgentInput,
+  AgentInputBudget,
+  AgentInvokeConfig,
+  AgentMessagesInput,
+  AgentResult,
+  AgentResumeConfig,
+  AgentResumeStreamConfig,
+  AgentRuntimeContext,
+  AgentRuntimeValues,
+  AgentState,
+  AgentStatus,
+  AgentType,
+  CreateAgentOptions,
+  ToolErrorHandler,
+} from '@core/agents/contract/agent';
+export type {
+  AgentStreamChunkMap,
+  AgentStreamConfig,
+  AgentStreamCustomChunk,
+  AgentStreamEnvelope,
+  AgentStreamMessagesChunk,
+  AgentStreamMode,
+  AgentStreamOutput,
+  AgentStreamUpdatesChunk,
+  AgentStreamValuesChunk,
+} from '@core/agents/contract/stream';
+export {
+  Command,
+  applyAgentStateUpdate,
+  isCommand,
+  type AgentStateUpdate,
+} from '@core/agents/command';
 export {createAgent} from '@core/agents/engine/agent';
-export {
-  DEFAULT_SUBAGENT_TOOL_NAME,
-  DEFAULT_SUBAGENT_TOOL_DESCRIPTION,
-  createSubagentTool,
-} from '@core/agents/subagent';
-export {
-  TASK_TOOL_NAME,
-  TASK_TOOL_DESCRIPTION,
-  createTaskTool,
-} from '@core/agents/task-tool';

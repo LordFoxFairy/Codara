@@ -3,6 +3,7 @@ import type {BaseChatModel} from '@langchain/core/language_models/chat_models';
 import {tool, type StructuredToolInterface} from '@langchain/core/tools';
 import {z} from 'zod';
 import {createAgent} from '@core/agents/engine/agent';
+import {createMiddleware, type BaseMiddleware} from '@core/middleware';
 import type {
   Agent,
   AgentInputBudget,
@@ -13,7 +14,6 @@ import type {
   ToolErrorHandler,
 } from '@core/agents/contract/agent';
 import type {AgentCheckpointer} from '@core/checkpoint/state';
-import type {BaseMiddleware} from '@core/middleware';
 
 export const DEFAULT_SUBAGENT_TOOL_NAME = 'delegate_to_subagent';
 
@@ -35,7 +35,6 @@ export interface CreateSubagentToolOptions {
   model: BaseChatModel;
   tools?: StructuredToolInterface[];
   middleware?: BaseMiddleware[];
-  middlewares?: BaseMiddleware[];
   handleToolErrors?: ToolErrorHandler;
   checkpointer?: AgentCheckpointer;
   inputBudget?: AgentInputBudget;
@@ -45,6 +44,10 @@ export interface CreateSubagentToolOptions {
   name?: string;
   description?: string;
   blockedToolNames?: string[];
+}
+
+export interface CreateSubagentMiddlewareOptions extends CreateSubagentToolOptions {
+  name?: string;
 }
 
 export function createSubagentTool(options: CreateSubagentToolOptions): StructuredToolInterface {
@@ -65,6 +68,13 @@ export function createSubagentTool(options: CreateSubagentToolOptions): Structur
       schema: SubagentToolInputSchema,
     },
   );
+}
+
+export function createSubagentMiddleware(options: CreateSubagentMiddlewareOptions): BaseMiddleware {
+  return createMiddleware({
+    name: options.name?.trim() || 'SubagentMiddleware',
+    tools: [createSubagentTool(options)],
+  });
 }
 
 export async function runDelegatedAgent(
@@ -159,11 +169,6 @@ function resolveSubagentMiddleware(options: CreateSubagentToolOptions): BaseMidd
   if (options.middleware?.length) {
     return [...options.middleware];
   }
-
-  if (options.middlewares?.length) {
-    return [...options.middlewares];
-  }
-
   return undefined;
 }
 

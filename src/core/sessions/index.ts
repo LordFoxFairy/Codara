@@ -1,6 +1,12 @@
-export type {CreateSessionOptions, Session, SessionState, SessionStatus, SessionMetadata} from '@core/sessions/types';
+export type {
+  CreateSessionOptions,
+  Session,
+  SessionMetadata,
+  SessionModelCatalog,
+  SessionState,
+  SessionStatus,
+} from '@core/sessions/types';
 export {createSession} from '@core/sessions/session';
-export type {SourceProvider, FileSourceProviderOptions} from '@core/sessions/source-provider';
-export {FileSourceProvider, createCodaraSourceProvider} from '@core/sessions/source-provider';
+export type {AgentsFileOverview, AgentsFileScope, AgentsSource} from '@core/sessions/agents';
 export type {SessionStore, SessionListOptions} from '@core/sessions/store';
 export {FileSessionStore} from '@core/sessions/store';

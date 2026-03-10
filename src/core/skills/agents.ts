@@ -1,6 +1,6 @@
 import {readdir, readFile, stat} from 'node:fs/promises';
 import path from 'node:path';
-import type {AgentRuntimeContext} from '@core/agents/contract/agent';
+import type {MiddlewareRuntimeShared} from '@core/middleware';
 import {parseMarkdownFrontmatterDocument} from '@core/skills/loading';
 import {normalizeDiscoveredSkills} from '@core/skills/metadata';
 import type {SkillMetadata, SkillStore} from '@core/skills/types';
@@ -42,8 +42,8 @@ export async function loadSkillsRuntimeData(
   };
 }
 
-export function readSkillsRuntimeData(context: AgentRuntimeContext | undefined): SkillsRuntimeData | undefined {
-  const record = context?.skills;
+export function readSkillsRuntimeData(shared: MiddlewareRuntimeShared | undefined): SkillsRuntimeData | undefined {
+  const record = shared?.skills;
   if (!isRecord(record)) {
     return undefined;
   }

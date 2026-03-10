@@ -84,10 +84,11 @@ for await (const chunk of agent.stream('hello', {streamMode: 'messages'})) {
 
 ## Subagent MVP
 
-`subagent` 的最小实现不是新 runtime，而是对 `createAgent(...)` 的一次受约束复用。
+`subagent` 的最小实现不是新 runtime，而是对 `createAgent(...)` 的一次受约束复用；实现现在归属 `tasking/*` 域，而不是 agent 内核本身。
 
 ```ts
-import {createAgent, createSubagentTool} from '@core/agents';
+import {createAgent} from '@core/agents';
+import {createSubagentTool} from '@core/tasking';
 
 const delegateToSubagent = createSubagentTool({
   model,
@@ -108,19 +109,20 @@ const agent = createAgent({
 
 ## Task Delegation Tool
 
-正式的委派入口是 `Task` 工具，它是 `subagent` 原语的高层包装，不是另一套执行系统。
+正式的委派入口现在优先以 `TaskMiddleware` 暴露，它在内部注册 `Task` 工具；底层仍复用 `subagent` 原语，不是另一套执行系统。
 
 ```ts
-import {createAgent, createTaskTool} from '@core/agents';
+import {createAgent} from '@core/agents';
+import {createTaskMiddleware} from '@core/middleware';
 
-const taskTool = createTaskTool({
+const taskMiddleware = createTaskMiddleware({
   model,
   tools: [readTool, grepTool],
 });
 
 const agent = createAgent({
   model,
-  tools: [taskTool],
+  middleware: [taskMiddleware],
 });
 ```
 
@@ -132,5 +134,7 @@ const agent = createAgent({
 - 不负责共享 task 协调；共享协调由 `TaskCreate/TaskUpdate/TaskList` 负责
 
 公开心智保持克制：
-- `@core/agents` 只暴露主入口与常量，例如 `createAgent(...)`、`createSubagentTool(...)`、`createTaskTool(...)`
+- `@core/middleware` 暴露 `createTaskMiddleware(...)`、`createSubagentMiddleware(...)`、`createSharedTaskMiddleware(...)`
+- `@core/tasking` 暴露低层 `createSubagentTool(...)`、`createTaskTool(...)`，作为 runtime primitive
+- `agents/*` 回到纯执行内核，不再承载 task/subagent 领域文件
 - `Task` 的高级 runtime 扩展钩子统一收在 `runtimeHooks` 下，只服务宿主装配；默认使用时不需要了解它们

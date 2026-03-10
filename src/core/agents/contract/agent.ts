@@ -88,8 +88,6 @@ export interface CreateAgentOptions {
   handleToolErrors?: ToolErrorHandler;
   /** 中间件数组。 */
   middleware?: BaseMiddleware[];
-  /** `middleware` 的复数别名。 */
-  middlewares?: BaseMiddleware[];
   /** 可恢复运行使用的稳定 thread 标识。 */
   threadId?: string;
   /** 可选 checkpoint 存储。 */

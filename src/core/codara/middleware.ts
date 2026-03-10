@@ -2,9 +2,9 @@ import {createHILMiddleware, createLoggingMiddleware, type BaseMiddleware} from 
 import {createGuidelinesMiddleware} from '@core/middleware/guidelines';
 import {createConversationContextMiddleware} from '@core/middleware/conversation-context';
 import type {CodaraMiddlewareOptions} from '@core/codara/types';
-import {createSkillsMiddleware, FileSystemSkillStore} from '@core/skills';
-import {resolveWorkspaceRoot} from '@core/workspace';
-import type {SourceProvider} from '@core/sessions/source-provider';
+import {createSkillsMiddleware} from '@core/skills';
+import {resolveCodaraSkills} from '@core/codara/skills';
+import type {AgentsSource} from '@core/sessions/agents';
 
 /**
  * 构建 Codara 默认中间件链。
@@ -19,7 +19,8 @@ import type {SourceProvider} from '@core/sessions/source-provider';
  */
 export function createCodaraMiddlewares(
   options: CodaraMiddlewareOptions = {},
-  sourceProvider?: SourceProvider
+  agentsSource?: AgentsSource,
+  resolvedSkills = resolveCodaraSkills(options),
 ): BaseMiddleware[] {
   const middlewares: BaseMiddleware[] = [];
 
@@ -30,16 +31,16 @@ export function createCodaraMiddlewares(
 
   // 2. Guidelines（默认启用）
   if (options.guidelines !== false) {
-    middlewares.push(createGuidelinesMiddleware(sourceProvider));
+    middlewares.push(createGuidelinesMiddleware(agentsSource));
   }
 
   // 3. Skills（默认启用）
-  if (options.skills !== false) {
-    middlewares.push(createSkillsMiddleware(resolveSkillsOptions(options)));
+  if (resolvedSkills) {
+    middlewares.push(createSkillsMiddleware(resolvedSkills));
   }
 
   // 4. Caller middlewares（让追加的 systemMessage 也能进入 budget / summary）
-  middlewares.push(...(options.middleware ?? options.middlewares ?? []));
+  middlewares.push(...(options.middleware ?? []));
 
   // 5. Conversation Context（统一 budget + summary）
   middlewares.push(createConversationContextMiddleware({
@@ -52,35 +53,4 @@ export function createCodaraMiddlewares(
   }
 
   return middlewares;
-}
-
-function resolveSkillsOptions(options: CodaraMiddlewareOptions) {
-  if (options.skills === false) {
-    return {store: new FileSystemSkillStore({sources: []}), agentRoots: []};
-  }
-
-  if (options.skills?.store) {
-    return {
-      store: options.skills.store,
-      ...(options.skills.agentRoots ? {agentRoots: options.skills.agentRoots} : {}),
-    };
-  }
-
-  return {
-    store: new FileSystemSkillStore({
-      ...(options.skills?.sources ? {sources: options.skills.sources} : {}),
-      ...((options.skills?.projectRoot || options.skills?.cwd || options.cwd)
-        ? {
-            projectRoot: resolveWorkspaceRoot({
-              projectRoot: options.skills?.projectRoot,
-              cwd: options.skills?.cwd ?? options.cwd,
-            }),
-          }
-        : {}),
-      ...((options.skills?.cwd || options.cwd) ? {cwd: options.skills?.cwd ?? options.cwd} : {}),
-      ...(options.skills?.userHome ? {userHome: options.skills.userHome} : {}),
-      ...(typeof options.skills?.cacheTtlMs === 'number' ? {cacheTtlMs: options.skills.cacheTtlMs} : {}),
-    }),
-    ...(options.skills?.agentRoots ? {agentRoots: options.skills.agentRoots} : {}),
-  };
 }

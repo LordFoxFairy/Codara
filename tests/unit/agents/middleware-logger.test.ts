@@ -74,7 +74,7 @@ describe('Agent Middleware Logger', () => {
     const runner = createAgent({
       model,
       tools: [tool],
-      middlewares: [loggingMiddleware]
+      middleware: [loggingMiddleware]
     });
 
     const result = await runner.invoke(

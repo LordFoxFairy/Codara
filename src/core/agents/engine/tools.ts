@@ -23,6 +23,7 @@ export async function executeToolCall(
   state: Pick<AgentState, 'agentType' | 'messages' | 'context' | 'values'>,
   runtime?: {
     context: AgentState['context'];
+    shared?: Record<string, unknown>;
   },
   normalizeValues?: (values: AgentState['values']) => AgentState['values']
 ): Promise<ToolMessage> {
@@ -42,6 +43,7 @@ export async function executeToolCall(
         agentType: state.agentType,
         agentContext: state.context,
         runtimeContext: runtime?.context ?? state.context,
+        runtimeShared: runtime?.shared ?? {},
       },
       metadata: {
         agentType: state.agentType,
@@ -126,6 +128,7 @@ function applyToolCommand(
   state: Pick<AgentState, 'agentType' | 'messages' | 'context' | 'values'>,
   runtime?: {
     context: AgentState['context'];
+    shared?: Record<string, unknown>;
   },
   normalizeValues?: (values: AgentState['values']) => AgentState['values'],
   fallbackToolMessage?: ToolMessage

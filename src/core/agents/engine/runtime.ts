@@ -24,11 +24,6 @@ function resolveMiddleware(options: CreateAgentOptions): BaseMiddleware[] {
   if (options.middleware?.length) {
     return [...options.middleware];
   }
-
-  if (options.middlewares?.length) {
-    return [...options.middlewares];
-  }
-
   return [];
 }
 

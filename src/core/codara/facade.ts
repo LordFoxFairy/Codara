@@ -1,12 +1,10 @@
 import {createSession} from '@core/sessions';
-import {createCodaraSourceProvider} from '@core/sessions/source-provider';
-import {createCodaraModelCatalog} from '@core/codara/models';
-import {createCodaraTools} from '@core/codara/tools';
-import {createCodaraMiddlewares} from '@core/codara/middleware';
 import {createCodaraCommandRunner} from '@core/codara/commands';
-import {ensureCodaraMemoryTarget, inspectCodaraMemory} from '@core/codara/memory';
+import {createSkillCodaraCommands} from '@core/codara/commands/skills';
 import type {Codara, CodaraOptions} from '@core/codara/types';
-import type {SessionState, SessionStore} from '@core/sessions';
+import type {Session, SessionState, SessionStore} from '@core/sessions';
+import type {CodaraCommandHost} from '@core/codara/commands';
+import {createCodaraRuntimePlan} from '@core/codara/runtime';
 
 /**
  * 创建 Codara 实例。
@@ -35,34 +33,19 @@ function createCodaraInstance(
   options: CodaraOptions,
   restoredState?: SessionState,
 ): Codara {
-  const sourceProvider = createCodaraSourceProvider({
-    cwd: options.cwd,
-    projectRoot: options.projectRoot,
-    userHome: options.userHome,
-    guidelines: options.guidelines,
-  });
-
-  const modelCatalog = options.catalog ?? createCodaraModelCatalog({
-    config: options.config,
-  });
-
-  // 支持 modelResolver 作为 model 的替代
-  const model = options.model ?? (options.modelResolver ? options.modelResolver() : undefined);
-
-  const tools = createCodaraTools(options);
-  const middleware = createCodaraMiddlewares(options, sourceProvider);
-
+  const runtime = createCodaraRuntimePlan(options);
   const session = createSession({
     ...(restoredState ? {state: restoredState} : {}),
     sessionId: options.sessionId,
     threadId: options.threadId,
-    alias: options.alias ?? 'default',
-    model,
-    modelCatalog,
-    sourceProvider,
+    modelRef: runtime.alias,
+    model: runtime.model,
+    modelCatalog: runtime.modelCatalog,
+    agentsSource: runtime.agentsSource,
+    skillsStore: runtime.skills?.store,
     store: options.store,
-    tools,
-    middleware,
+    tools: runtime.tools,
+    middleware: runtime.middleware,
     checkpointer: options.checkpointer,
     restore: options.restore,
     inputBudget: options.inputBudget,
@@ -71,30 +54,10 @@ function createCodaraInstance(
     values: options.values,
   });
   const commands = createCodaraCommandRunner({
-    compactConversation: (compactOptions) => session.compactConversation(compactOptions),
-    compactCheckpoints: (keepLast) => session.compactCheckpoints(
-      typeof keepLast === 'number' ? {keepLast} : undefined
-    ),
-    getAgentState: () => session.getAgentState(),
-    inspectMemory: () => inspectCodaraMemory({
-      cwd: options.cwd,
-      projectRoot: options.projectRoot,
-      userHome: options.userHome,
-      guidelines: options.guidelines,
-    }),
-    ensureMemoryTarget: (scope) => ensureCodaraMemoryTarget({
-      cwd: options.cwd,
-      projectRoot: options.projectRoot,
-      userHome: options.userHome,
-      guidelines: options.guidelines,
-    }, scope),
-    reloadSources: () => session.reloadSources(),
-    async resumePause(payload) {
-      await session.resumePause(payload, {
-        ...(payload.feedback ? {input: payload.feedback} : {}),
-      });
-      return session.getAgentState();
-    },
+    getDynamicCommands: runtime.skills
+      ? () => createSkillCodaraCommands(runtime.skills!.store)
+      : undefined,
+    host: createCodaraCommandHost(session),
   });
 
   return {
@@ -115,15 +78,7 @@ export async function openCodaraSession(
     throw new Error(`Session not found: ${options.sessionId}`);
   }
 
-  const codara = createCodaraInstance({
-    ...options,
-    sessionId: sessionState.sessionId,
-    threadId: sessionState.threadId,
-    restore: 'latest',
-  }, sessionState);
-
-  await codara.hydrate();
-  return codara;
+  return openStoredCodaraSession(options, sessionState);
 }
 
 export async function openLatestCodaraSession(
@@ -136,12 +91,44 @@ export async function openLatestCodaraSession(
     throw new Error('No sessions found');
   }
 
+  return openStoredCodaraSession(options, latest);
+}
+
+function createCodaraCommandHost(
+  session: Session,
+): CodaraCommandHost {
+  return {
+    compactConversation: (compactOptions: {instructions?: string} | undefined) => session.compactConversation(compactOptions),
+    compactCheckpoints: (keepLast: number | undefined) => session.compactCheckpoints(
+      typeof keepLast === 'number' ? {keepLast} : undefined
+    ),
+    getAgentState: () => session.getAgentState(),
+    inspectAgentsFiles: () => session.inspectAgentsFiles(),
+    ensureAgentsFileTarget: (scope: 'global' | 'project') => session.ensureAgentsFileTarget(scope),
+    invokePrompt: (input: string) => session.invoke(input),
+    reloadSources: () => session.reloadSources(),
+    async resumePause(payload: {
+      decision: 'approve' | 'reject';
+      feedback?: string;
+    }) {
+      await session.resumePause(payload, {
+        ...(payload.feedback ? {input: payload.feedback} : {}),
+      });
+      return session.getAgentState();
+    },
+  };
+}
+
+async function openStoredCodaraSession(
+  options: CodaraOptions,
+  sessionState: SessionState,
+): Promise<Codara> {
   const codara = createCodaraInstance({
     ...options,
-    sessionId: latest.sessionId,
-    threadId: latest.threadId,
+    sessionId: sessionState.sessionId,
+    threadId: sessionState.threadId,
     restore: 'latest',
-  }, latest);
+  }, sessionState);
 
   await codara.hydrate();
   return codara;

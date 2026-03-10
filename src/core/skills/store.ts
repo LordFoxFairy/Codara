@@ -83,6 +83,10 @@ export class FileSystemSkillStore implements SkillStore {
   listSources(): string[] {
     return [...this.sources]
   }
+
+  refresh(): void {
+    this.cache = null
+  }
 }
 
 export function getDefaultSkillSources(params: {userHome?: string; projectRoot?: string; cwd?: string} = {}): string[] {

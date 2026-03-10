@@ -9,6 +9,12 @@ export const SkillMetadataEntrySchema = z.object({
   compatibility: z.string().nullable().optional(),
   metadata: z.record(z.string(), z.string()).optional(),
   allowedTools: z.array(z.string()).optional(),
+  command: z.object({
+    name: z.string(),
+    description: z.string().optional(),
+    usage: z.string().optional(),
+    aliases: z.array(z.string()).optional(),
+  }).optional(),
   frontmatter: z.record(z.string(), z.unknown()).optional(),
   extensions: z.record(z.string(), z.unknown()).optional()
 })
@@ -147,6 +153,12 @@ export function formatSkillsList(skills: SkillMetadata[], sources: string[]): st
 
     if (skill.allowedTools && skill.allowedTools.length > 0) {
       lines.push(`  -> Allowed tools: ${skill.allowedTools.join(', ')}`)
+    }
+    if (skill.command) {
+      const aliases = skill.command.aliases?.length
+        ? ` (aliases: ${skill.command.aliases.map((alias) => `/${alias}`).join(', ')})`
+        : ''
+      lines.push(`  -> Command: /${skill.command.name}${aliases}`)
     }
     lines.push(`  -> Read \`${skill.path}\` for full instructions`)
   }

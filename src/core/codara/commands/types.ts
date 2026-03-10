@@ -1,4 +1,5 @@
-import type {AgentState} from '@core/agents';
+import type {AgentResult, AgentState} from '@core/agents';
+import type {AgentsFileOverview, AgentsFileScope} from '@core/sessions';
 
 export interface ParsedCodaraCommand {
   raw: string;
@@ -12,7 +13,18 @@ export interface CodaraCommandSpec {
   description: string;
   usage: string;
   aliases?: string[];
+  source: CodaraCommandSource;
 }
+
+export type CodaraCommandSource =
+  | {
+      type: 'builtin';
+    }
+  | {
+      type: 'skill';
+      skillName: string;
+      skillPath: string;
+    };
 
 export interface CodaraCommandResult {
   ok: boolean;
@@ -31,13 +43,10 @@ export interface CodaraCommandHost {
   }): Promise<AgentState>;
   compactCheckpoints(keepLast?: number): Promise<void>;
   getAgentState(): AgentState;
-  inspectMemory(): Promise<{
-    globalPath: string;
-    projectPath: string;
-    loadedPaths: string[];
-  }>;
-  ensureMemoryTarget(scope: 'global' | 'project'): Promise<string>;
-  reloadSources(): void;
+  inspectAgentsFiles(): Promise<AgentsFileOverview>;
+  ensureAgentsFileTarget(scope: AgentsFileScope): Promise<string>;
+  invokePrompt(input: string): Promise<AgentResult>;
+  reloadSources(): Promise<void>;
   resumePause(payload: {
     decision: 'approve' | 'reject';
     feedback?: string;
