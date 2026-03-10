@@ -92,7 +92,9 @@ export interface Session {
   getState(): SessionState;
   getAgentState(): AgentState;
   hydrate(): Promise<AgentState>;
-  compactConversation(): Promise<AgentState>;
+  compactConversation(options?: {
+    instructions?: string;
+  }): Promise<AgentState>;
   fork(options?: {
     sessionId?: string;
     threadId?: string;
