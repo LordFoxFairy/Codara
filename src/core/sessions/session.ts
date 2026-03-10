@@ -150,23 +150,53 @@ export function createSession(options: CreateSessionOptions): Session {
     }
   }
 
+  function buildSessionState(): SessionState {
+    return {
+      sessionId,
+      threadId,
+      sessionStatus,
+      createdAt,
+      updatedAt,
+      metadata,
+    };
+  }
+
+  function requireInitializedAgent(): Agent {
+    if (!agentInstance) {
+      throw new Error('Agent not initialized. Call invoke/stream first.');
+    }
+    return agentInstance;
+  }
+
+  async function runAgentResult(
+    operation: (agent: Agent) => Promise<AgentResult>,
+  ): Promise<AgentResult> {
+    requireReady();
+    const agent = await getAgent();
+    const previousState = agent.getState();
+    const result = await operation(agent);
+    await syncSessionFromState(result.state, {applyTelemetry: true, previousState});
+    return result;
+  }
+
+  async function* runAgentStreamResult(
+    operation: (agent: Agent) => AsyncGenerator<AgentStreamOutput, AgentResult, void>,
+  ): AsyncGenerator<AgentStreamOutput, AgentResult, void> {
+    requireReady();
+    const agent = await getAgent();
+    const previousState = agent.getState();
+    const result = yield* operation(agent);
+    await syncSessionFromState(result.state, {applyTelemetry: true, previousState});
+    return result;
+  }
+
   return {
     getState(): SessionState {
-      return {
-        sessionId,
-        threadId,
-        sessionStatus,
-        createdAt,
-        updatedAt,
-        metadata,
-      };
+      return buildSessionState();
     },
 
     getAgentState(): AgentState {
-      if (!agentInstance) {
-        throw new Error('Agent not initialized. Call invoke/stream first.');
-      }
-      return agentInstance.getState();
+      return requireInitializedAgent().getState();
     },
 
     async hydrate(): Promise<AgentState> {
@@ -210,45 +240,25 @@ export function createSession(options: CreateSessionOptions): Session {
     },
 
     async invoke(input?: AgentInput, config?: AgentInvokeConfig): Promise<AgentResult> {
-      requireReady();
-      const agent = await getAgent();
-      const previousState = agent.getState();
-      const result = await agent.invoke(input, config);
-      await syncSessionFromState(result.state, {applyTelemetry: true, previousState});
-      return result;
+      return runAgentResult((agent) => agent.invoke(input, config));
     },
 
     async *stream(
       input?: AgentInput,
       config?: AgentStreamConfig
     ): AsyncGenerator<AgentStreamOutput, AgentResult, void> {
-      requireReady();
-      const agent = await getAgent();
-      const previousState = agent.getState();
-      const result = yield* agent.stream(input, config);
-      await syncSessionFromState(result.state, {applyTelemetry: true, previousState});
-      return result;
+      return yield* runAgentStreamResult((agent) => agent.stream(input, config));
     },
 
     async resumePause(payload: HILResumePayload, config?: AgentResumeConfig): Promise<AgentResult> {
-      requireReady();
-      const agent = await getAgent();
-      const previousState = agent.getState();
-      const result = await agent.resume(payload, config);
-      await syncSessionFromState(result.state, {applyTelemetry: true, previousState});
-      return result;
+      return runAgentResult((agent) => agent.resume(payload, config));
     },
 
     async *resumePauseStream(
       payload: HILResumePayload,
       config?: AgentResumeStreamConfig
     ): AsyncGenerator<AgentStreamOutput, AgentResult, void> {
-      requireReady();
-      const agent = await getAgent();
-      const previousState = agent.getState();
-      const result = yield* agent.resumeStream(payload, config);
-      await syncSessionFromState(result.state, {applyTelemetry: true, previousState});
-      return result;
+      return yield* runAgentStreamResult((agent) => agent.resumeStream(payload, config));
     },
 
     async reloadSources(): Promise<void> {
@@ -257,7 +267,22 @@ export function createSession(options: CreateSessionOptions): Session {
       if (options.agentsSource) {
         options.agentsSource.reload();
       }
+      await options.skillsStore?.refresh?.();
       await saveSession();
+    },
+
+    async inspectAgentsFiles() {
+      if (!options.agentsSource?.inspectFiles) {
+        throw new Error('AGENTS file actions are not available for this session.');
+      }
+      return options.agentsSource.inspectFiles();
+    },
+
+    async ensureAgentsFileTarget(scope) {
+      if (!options.agentsSource?.ensureFileTarget) {
+        throw new Error('AGENTS file actions are not available for this session.');
+      }
+      return options.agentsSource.ensureFileTarget(scope);
     },
 
     async compactCheckpoints(options?: CompactOptions): Promise<void> {

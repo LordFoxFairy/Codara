@@ -9,21 +9,10 @@
 
 /** 创建或打开 Codara 会话（推荐入口） */
 export {createCodara, openCodaraSession, openLatestCodaraSession} from '@core/codara';
-export {
-  createBuiltInCodaraCommands,
-  createCodaraCommandRunner,
-  ensureAgentsFileTarget,
-  inspectAgentsFiles,
-  parseCodaraCommand,
-} from '@core/codara';
 
 /** Codara 相关类型 */
 export type {
   Codara,
-  CodaraCommandResult,
-  CodaraCommandSpec,
-  AgentsFileOverview,
-  AgentsFileScope,
   CodaraOptions,
 } from '@core/codara';
 
@@ -110,4 +99,3 @@ export type {
 export type {AgentCheckpoint, AgentCheckpointer} from '@core/checkpoint';
 
 export type {CodaraModelCatalog} from '@core/codara';
-export type {AgentsSource} from '@core/sessions';

@@ -15,9 +15,10 @@ import type {AgentCheckpointer} from '@core/checkpoint/state';
 import type {CompactOptions} from '@core/checkpoint/types';
 import type {BaseMiddleware} from '@core/middleware';
 import type {HILResumePayload} from '@core/middleware/hil';
-import type {AgentsSource} from '@core/sessions/agents-source';
+import type {AgentsFileOverview, AgentsFileScope, AgentsSource} from '@core/sessions/agents';
 import type {SessionStore} from '@core/sessions/store';
 import type {ModelInfo} from '@core/provider';
+import type {SkillStore} from '@core/skills';
 
 /** Session 自身的生命周期状态。 */
 export type SessionStatus = 'ready' | 'closed';
@@ -92,6 +93,7 @@ export interface CreateSessionOptions {
 
   // AGENTS source lifecycle
   agentsSource?: AgentsSource;
+  skillsStore?: SkillStore;
 
   // Session store
   store?: SessionStore;
@@ -138,6 +140,8 @@ export interface Session {
   ): AsyncGenerator<AgentStreamOutput, AgentResult, void>;
 
   reloadSources(): Promise<void>;
+  inspectAgentsFiles(): Promise<AgentsFileOverview>;
+  ensureAgentsFileTarget(scope: AgentsFileScope): Promise<string>;
   compactCheckpoints(options?: CompactOptions): Promise<void>;
   reset(): Promise<void>;
   dispose(): Promise<void>;

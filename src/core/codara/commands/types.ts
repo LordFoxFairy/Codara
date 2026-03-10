@@ -1,4 +1,5 @@
 import type {AgentResult, AgentState} from '@core/agents';
+import type {AgentsFileOverview, AgentsFileScope} from '@core/sessions';
 
 export interface ParsedCodaraCommand {
   raw: string;
@@ -42,12 +43,8 @@ export interface CodaraCommandHost {
   }): Promise<AgentState>;
   compactCheckpoints(keepLast?: number): Promise<void>;
   getAgentState(): AgentState;
-  inspectAgentsFiles(): Promise<{
-    globalPath: string;
-    projectPath: string;
-    loadedPaths: string[];
-  }>;
-  ensureAgentsFileTarget(scope: 'global' | 'project'): Promise<string>;
+  inspectAgentsFiles(): Promise<AgentsFileOverview>;
+  ensureAgentsFileTarget(scope: AgentsFileScope): Promise<string>;
   invokePrompt(input: string): Promise<AgentResult>;
   reloadSources(): Promise<void>;
   resumePause(payload: {

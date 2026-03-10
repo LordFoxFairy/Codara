@@ -14,18 +14,10 @@ export {
 } from '@core/codara/tasking';
 export {createCodaraMiddlewares} from '@core/codara/middleware';
 export {
-  createBuiltInCodaraCommands,
   createCodaraCommandRunner,
-  parseCodaraCommand,
   type CodaraCommandResult,
   type CodaraCommandSpec,
 } from '@core/codara/commands';
-export {
-  ensureAgentsFileTarget,
-  inspectAgentsFiles,
-  type AgentsFileOverview,
-  type AgentsFileScope,
-} from '@core/sessions/agents-files';
 export {
   CodaraModelCatalog,
   createCodaraChatModel,

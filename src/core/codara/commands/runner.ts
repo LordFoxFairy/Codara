@@ -1,5 +1,9 @@
-import {createBuiltInCodaraCommands} from '@core/codara/commands/registry';
+import {createCompactCommand} from '@core/codara/commands/compact';
+import {createHelpCommand} from '@core/codara/commands/help';
+import {createMemoryCommand} from '@core/codara/commands/memory';
 import {parseCodaraCommand} from '@core/codara/commands/parser';
+import {createReloadCommand} from '@core/codara/commands/reload';
+import {createResumeCommand} from '@core/codara/commands/resume';
 import type {
   CodaraCommandDefinition,
   CodaraCommandHost,
@@ -53,6 +57,16 @@ export function createCodaraCommandRunner(options: CreateCodaraCommandRunnerOpti
       });
     },
   };
+}
+
+function createBuiltInCodaraCommands(): CodaraCommandDefinition[] {
+  return [
+    createHelpCommand(),
+    createMemoryCommand(),
+    createResumeCommand(),
+    createCompactCommand(),
+    createReloadCommand(),
+  ];
 }
 
 async function loadRegistry(
