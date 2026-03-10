@@ -121,7 +121,7 @@ checkpoint 边界：
   - output: 当前 turn 的 budget snapshot
 - `session`
   - scope: 宿主生命周期
-  - layer: source reload / checkpoint compact / HIL pause 恢复
+  - layer: source reload / checkpoint compact / HIL pause 恢复 / usage telemetry 聚合
 - `todo`
   - scope: 单 agent 内部进度
   - layer: `values`

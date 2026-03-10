@@ -21,6 +21,7 @@ import {normalizeAgentInput} from '@core/agents/engine/runtime-input';
 import type {HILResumePayload} from '@core/middleware';
 import type {CreateSessionOptions, Session, SessionState, SessionStatus, SessionMetadata} from '@core/sessions/types';
 import type {ModelInfo} from '@core/provider';
+import {buildSessionTelemetryPatch, mergeSessionTelemetry} from '@core/sessions/telemetry';
 
 /**
  * 创建 session 实例。
@@ -30,17 +31,19 @@ import type {ModelInfo} from '@core/provider';
  * - 对外暴露 invoke/stream/resume 等方法
  */
 export function createSession(options: CreateSessionOptions): Session {
-  const sessionId = options.sessionId ?? randomUUID();
-  const threadId = options.threadId ?? randomUUID();
+  const restoredState = options.state;
+  const sessionId = restoredState?.sessionId ?? options.sessionId ?? randomUUID();
+  const threadId = restoredState?.threadId ?? options.threadId ?? randomUUID();
   const isRestoringThread = options.threadId !== undefined;
-  const createdAt = new Date().toISOString();
-  let updatedAt = createdAt;
-  let sessionStatus: SessionStatus = 'ready';
+  const createdAt = restoredState?.createdAt ?? new Date().toISOString();
+  let updatedAt = restoredState?.updatedAt ?? createdAt;
+  let sessionStatus: SessionStatus = restoredState?.sessionStatus ?? 'ready';
   let agentInstance: Agent | undefined;
   let agentBootstrap: Promise<Agent> | undefined;
   const metadata: SessionMetadata = {
     messageCount: 0,
     lastActivity: createdAt,
+    ...(restoredState?.metadata ? cloneMetadata(restoredState.metadata) : {}),
     ...cloneMetadata(options.metadata),
   };
   const store = options.store;
@@ -86,6 +89,8 @@ export function createSession(options: CreateSessionOptions): Session {
     agentState: AgentState,
     options: {
       touchActivity?: boolean;
+      applyTelemetry?: boolean;
+      previousState?: Pick<AgentState, 'messages'>;
     } = {},
   ): Promise<void> {
     if (options.touchActivity !== false) {
@@ -93,6 +98,9 @@ export function createSession(options: CreateSessionOptions): Session {
     }
 
     updateMetadataFromState(agentState);
+    if (options.applyTelemetry) {
+      mergeSessionTelemetry(metadata, buildSessionTelemetryPatch(agentState, options.previousState));
+    }
     await saveSession();
   }
 
@@ -216,8 +224,9 @@ export function createSession(options: CreateSessionOptions): Session {
     async invoke(input?: AgentInput, config?: AgentInvokeConfig): Promise<AgentResult> {
       requireReady();
       const agent = await getAgent();
+      const previousState = agent.getState();
       const result = await agent.invoke(input, config);
-      await syncSessionFromState(result.state);
+      await syncSessionFromState(result.state, {applyTelemetry: true, previousState});
       return result;
     },
 
@@ -227,16 +236,18 @@ export function createSession(options: CreateSessionOptions): Session {
     ): AsyncGenerator<AgentStreamOutput, AgentResult, void> {
       requireReady();
       const agent = await getAgent();
+      const previousState = agent.getState();
       const result = yield* agent.stream(input, config);
-      await syncSessionFromState(result.state);
+      await syncSessionFromState(result.state, {applyTelemetry: true, previousState});
       return result;
     },
 
     async resumePause(payload: HILResumePayload, config?: AgentResumeConfig): Promise<AgentResult> {
       requireReady();
       const agent = await getAgent();
+      const previousState = agent.getState();
       const result = await agent.resume(payload, config);
-      await syncSessionFromState(result.state);
+      await syncSessionFromState(result.state, {applyTelemetry: true, previousState});
       return result;
     },
 
@@ -246,8 +257,9 @@ export function createSession(options: CreateSessionOptions): Session {
     ): AsyncGenerator<AgentStreamOutput, AgentResult, void> {
       requireReady();
       const agent = await getAgent();
+      const previousState = agent.getState();
       const result = yield* agent.resumeStream(payload, config);
-      await syncSessionFromState(result.state);
+      await syncSessionFromState(result.state, {applyTelemetry: true, previousState});
       return result;
     },
 
@@ -381,5 +393,7 @@ function cloneMetadata(metadata: Partial<SessionMetadata> | undefined): Partial<
   return {
     ...metadata,
     ...(metadata.tags ? {tags: [...metadata.tags]} : {}),
+    ...(metadata.usage ? {usage: {...metadata.usage}} : {}),
+    ...(metadata.contextWindow ? {contextWindow: {...metadata.contextWindow}} : {}),
   };
 }

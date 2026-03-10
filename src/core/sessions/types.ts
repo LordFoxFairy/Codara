@@ -36,6 +36,24 @@ export interface SessionMetadata {
   archived?: boolean;
   /** 最后活动时间 */
   lastActivity: string;
+  /** 聚合后的模型用量统计 */
+  usage?: {
+    modelCalls: number;
+    promptTokens: number;
+    completionTokens: number;
+    totalTokens: number;
+    lastPromptTokens?: number;
+    lastCompletionTokens?: number;
+    lastTotalTokens?: number;
+  };
+  /** 最近一次可见对话上下文占用 */
+  contextWindow?: {
+    maxInputTokens: number;
+    availableInputTokens: number;
+    estimatedInputTokens: number;
+    usagePercent: number;
+    overBudget: boolean;
+  };
   /** fork 来源的 sessionId */
   forkedFromSessionId?: string;
   /** fork 来源的 threadId */
@@ -55,6 +73,8 @@ export interface SessionState {
 
 /** Session 构造参数。 */
 export interface CreateSessionOptions {
+  /** 恢复或重新打开已存在 session 时可传入已持久化的宿主状态。 */
+  state?: SessionState;
   sessionId?: string;
   threadId?: string;
 

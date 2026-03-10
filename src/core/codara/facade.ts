@@ -28,6 +28,13 @@ import type {SessionState, SessionStore} from '@core/sessions';
  * ```
  */
 export function createCodara(options: CodaraOptions = {}): Codara {
+  return createCodaraInstance(options);
+}
+
+function createCodaraInstance(
+  options: CodaraOptions,
+  restoredState?: SessionState,
+): Codara {
   const sourceProvider = createCodaraSourceProvider({
     cwd: options.cwd,
     projectRoot: options.projectRoot,
@@ -46,6 +53,7 @@ export function createCodara(options: CodaraOptions = {}): Codara {
   const middleware = createCodaraMiddlewares(options, sourceProvider);
 
   const session = createSession({
+    ...(restoredState ? {state: restoredState} : {}),
     sessionId: options.sessionId,
     threadId: options.threadId,
     alias: options.alias ?? 'default',
@@ -107,12 +115,12 @@ export async function openCodaraSession(
     throw new Error(`Session not found: ${options.sessionId}`);
   }
 
-  const codara = createCodara({
+  const codara = createCodaraInstance({
     ...options,
     sessionId: sessionState.sessionId,
     threadId: sessionState.threadId,
     restore: 'latest',
-  });
+  }, sessionState);
 
   await codara.hydrate();
   return codara;
@@ -128,12 +136,12 @@ export async function openLatestCodaraSession(
     throw new Error('No sessions found');
   }
 
-  const codara = createCodara({
+  const codara = createCodaraInstance({
     ...options,
     sessionId: latest.sessionId,
     threadId: latest.threadId,
     restore: 'latest',
-  });
+  }, latest);
 
   await codara.hydrate();
   return codara;

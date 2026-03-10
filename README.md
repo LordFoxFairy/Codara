@@ -45,6 +45,7 @@ src/index.ts
 - `session`: 宿主与 source stack
 - `checkpoint`: 只负责恢复运行态
 - `summary`: `messages` 压缩，不是 checkpoint
+- `session metadata`: 会话级目录信息 + 累计 token usage + 最近一次 context window 占用
 
 ## 状态模型
 
@@ -52,6 +53,8 @@ src/index.ts
 - `context`: agent 持久上下文
 - `values`: agent 内部轻量状态，如 `todo`
 - `runtime.context`: 本轮临时运行数据，如 `skills` runtime、budget snapshot
+- `session metadata.usage`: 会话累计/最近一次模型 token usage
+- `session metadata.contextWindow`: 最近一次可见上下文占用与百分比
 
 ## Source Stack
 
