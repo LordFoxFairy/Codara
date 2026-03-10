@@ -1,6 +1,6 @@
 import {describe, expect, it, beforeEach, afterEach} from "bun:test";
 import {loadModelRoutingConfig} from "@core/provider";
-import {writeFileSync, mkdirSync, mkdtempSync, rmSync} from "fs";
+import {readFileSync, writeFileSync, mkdirSync, mkdtempSync, rmSync} from "fs";
 import {join} from "path";
 import {tmpdir} from "os";
 
@@ -57,5 +57,24 @@ describe("loadModelRoutingConfig", () => {
     it("配置文件 JSON 格式错误时应抛出错误", async () => {
         writeFileSync(testConfigPath, "invalid json");
         await expect(loadModelRoutingConfig()).rejects.toThrow("加载配置失败");
+    });
+
+    it("仓库默认配置应将 default alias 指向 sonnet 并提供上下文窗口元数据", () => {
+        const repoConfig = JSON.parse(
+            readFileSync(join(process.cwd(), ".codara", "config.json"), "utf8")
+        ) as {
+            providers: Array<{name: string; models: Array<{id: string; contextWindow?: number; maxOutputTokens?: number}>}>;
+            router: Record<string, string>;
+        };
+
+        expect(repoConfig.router.default).toBe("openrouter:anthropic/claude-sonnet-4");
+        expect(repoConfig.router.fast).toBe("openrouter:anthropic/claude-3.5-haiku");
+
+        const sonnet = repoConfig.providers
+            .flatMap((provider) => provider.models)
+            .find((model) => model.id === "anthropic/claude-sonnet-4");
+
+        expect(sonnet?.contextWindow).toBe(200000);
+        expect(sonnet?.maxOutputTokens).toBe(8192);
     });
 });

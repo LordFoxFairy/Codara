@@ -56,7 +56,10 @@ describe('Codara memory command', () => {
     const result = await codara.executeCommand('/memory project');
 
     expect(result.ok).toBe(true);
-    expect(result.filePath).toBe(projectFile);
+    expect(result.action).toEqual({
+      type: 'open_file',
+      path: projectFile,
+    });
     expect(result.output).toContain(projectFile);
     expect(result.output).toContain('/memory global');
     await access(projectFile);
@@ -82,7 +85,10 @@ describe('Codara memory command', () => {
     const result = await codara.executeCommand('/memory global');
 
     expect(result.ok).toBe(true);
-    expect(result.filePath).toBe(globalFile);
+    expect(result.action).toEqual({
+      type: 'open_file',
+      path: globalFile,
+    });
     expect(result.output).toContain(globalFile);
     expect(result.output).toContain('/memory project');
     await access(globalFile);
@@ -112,7 +118,7 @@ describe('Codara memory command', () => {
     const result = await codara.executeCommand('/memory');
 
     expect(result.ok).toBe(true);
-    expect(result.filePath).toBeUndefined();
+    expect(result.action).toBeUndefined();
     expect(result.output).toContain(globalFile);
     expect(result.output).toContain(projectFile);
     expect(result.output).toContain('/memory project');

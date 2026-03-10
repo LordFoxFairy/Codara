@@ -64,9 +64,9 @@ Current `/memory` behavior:
   - shows the current global/project `AGENTS.md` targets
   - shows which paths are currently loaded
 - `/memory project`
-  - ensures the project target exists and returns its path
+  - ensures the project target exists and returns an `open_file` host action
 - `/memory global`
-  - ensures the global target exists and returns its path
+  - ensures the global target exists and returns an `open_file` host action
 - `/reload`
   - invalidates the session source cache so the next turn re-reads `AGENTS.md`
 
@@ -160,11 +160,38 @@ flowchart TD
 
 Current defaults:
 
+- default model alias resolves to `sonnet`
+- default input budget derives from model metadata (`contextWindow`, `maxOutputTokens`)
 - `AGENTS.md` is cached per session and reloaded on `/reload`
 - conversation compaction auto-triggers when estimated usage reaches roughly
   `80%` of the usable input budget
 - `/compact` can still force compaction immediately
 - `/compact checkpoints` is storage-only
+
+## Fork / Branching
+
+Multiple windows should not silently compete for the same latest checkpoint if
+they are meant to diverge.
+
+Codara now exposes an explicit `fork()` path on `Session` / `Codara`.
+
+```mermaid
+flowchart LR
+  S["Current session"] --> F["fork()"]
+  F --> NS["New sessionId"]
+  F --> NT["New threadId"]
+  F --> ST["Copied visible conversation state"]
+```
+
+Forking creates a new branch by:
+
+- cloning the current visible conversation state
+- assigning a new `sessionId`
+- assigning a new `threadId`
+- recording the source branch in session metadata
+
+This keeps branching explicit instead of letting two windows race on one shared
+latest checkpoint pointer.
 
 ## Design Guardrails
 

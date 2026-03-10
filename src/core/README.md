@@ -239,7 +239,8 @@ checkpoint 边界：
   - `/reload`
 - 这些命令属于 host surface，不属于 `createAgent(...)` 内核
 - `/memory` 直接围绕 `AGENTS.md` 工作，不恢复旧 `MEMORY.md` 机制
-- `/memory` 默认指向 project `AGENTS.md`，`show/global` 作为显式子命令
+- `/memory` 默认展示可选 scope，显式使用 `show / project / global`
+- `/memory project|global` 返回宿主 `open_file` 动作，供 UI/CLI 打开目标 `AGENTS.md`
 - `/compact` 通过 `Agent.compactConversation()` 复用现有 `beforeAgent + beforeModel + conversation-context` 路径
 - `/compact checkpoints [keepLast]` 只整理 checkpoint store，不混入 conversation summary 语义
 
@@ -249,9 +250,11 @@ checkpoint 边界：
 - `checkpoint compact` 负责历史存储裁剪
 - 两者是不同层次，不能混用
 - 默认 compact 触发：
+  - 默认 alias 为 `sonnet`
   - 优先使用 model metadata 的 `contextWindow`
   - 默认阈值为可用输入预算的 80%
   - 手动 `/compact` 可强制触发
+  - 多窗口若要分支，优先调用 `fork()`，不要共享同一条 `threadId`
 
 ## CLI 用法
 
