@@ -35,10 +35,11 @@ describe('Codara slash commands', () => {
     const result = await codara.executeCommand('/help');
     expect(result.ok).toBe(true);
     expect(result.output).toContain('/help [command]');
+    expect(result.output).toContain('/memory [show|project|global]');
     expect(result.output).toContain('/resume [approve|reject] [feedback]');
     expect(result.output).toContain('/compact');
     expect(result.output).toContain('/reload');
-    expect(codara.listCommands().map((command) => command.name)).toEqual(['help', 'resume', 'compact', 'reload']);
+    expect(codara.listCommands().map((command) => command.name)).toEqual(['help', 'memory', 'resume', 'compact', 'reload']);
   });
 
   it('should reload host sources through slash commands without touching createAgent', async () => {
