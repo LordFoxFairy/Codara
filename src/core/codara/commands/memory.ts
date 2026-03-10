@@ -18,7 +18,7 @@ export function createMemoryCommand(): CodaraCommandDefinition {
             `- global: ${formatLoadedState(overview.globalPath, overview.loadedPaths)}`,
             `- project: ${formatLoadedState(overview.projectPath, overview.loadedPaths)}`,
             '',
-            'Use /memory project or /memory global to prepare a file for manual editing.',
+            'Choose a target with /memory project or /memory global.',
             'After saving changes, run /reload so the current session picks them up.',
           ].join('\n'),
         };
@@ -34,6 +34,9 @@ export function createMemoryCommand(): CodaraCommandDefinition {
             filePath,
             '',
             'After saving changes, run /reload so the current session picks them up.',
+            ...(subcommand === 'project'
+              ? ['Use /memory global if you want to edit the global AGENTS.md instead.']
+              : ['Use /memory project if you want to edit the project AGENTS.md instead.']),
           ].join('\n'),
           filePath,
         };

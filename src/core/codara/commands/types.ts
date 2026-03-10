@@ -24,6 +24,7 @@ export interface CodaraCommandResult {
 
 export interface CodaraCommandHost {
   compactConversation(): Promise<AgentState>;
+  compactCheckpoints(keepLast?: number): Promise<void>;
   getAgentState(): AgentState;
   inspectMemory(): Promise<{
     globalPath: string;

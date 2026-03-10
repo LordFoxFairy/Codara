@@ -42,6 +42,7 @@ export interface SummaryOptions {
   keepLastMessages?: number;
   maxChars?: number;
   maxInputTokens?: number;
+  compactThresholdRatio?: number;
   estimateTokens?: ContextBudgetEstimator;
 }
 
@@ -267,6 +268,7 @@ function normalizeOptions(options: SummaryOptions): Required<SummaryOptions> {
   const keepLastMessages = options.keepLastMessages ?? DEFAULT_KEEP_LAST_MESSAGES;
   const maxChars = options.maxChars ?? DEFAULT_MAX_CHARS;
   const maxInputTokens = options.maxInputTokens ?? 0;
+  const compactThresholdRatio = options.compactThresholdRatio ?? 0.8;
   const estimateTokens = options.estimateTokens ?? estimateModelInputTokens;
 
   if (maxMessages < 2) {
@@ -284,6 +286,9 @@ function normalizeOptions(options: SummaryOptions): Required<SummaryOptions> {
   if (maxInputTokens < 0) {
     throw new Error('SummaryMiddleware maxInputTokens must be zero or positive');
   }
+  if (compactThresholdRatio <= 0 || compactThresholdRatio > 1) {
+    throw new Error('SummaryMiddleware compactThresholdRatio must be between 0 and 1');
+  }
 
   return {
     summarize: options.summarize,
@@ -291,6 +296,7 @@ function normalizeOptions(options: SummaryOptions): Required<SummaryOptions> {
     keepLastMessages,
     maxChars,
     maxInputTokens,
+    compactThresholdRatio,
     estimateTokens,
   };
 }
@@ -323,8 +329,9 @@ function shouldCompactHistory(
   } as ContextBudgetEstimateInput);
   const availableInputTokens = context.budget?.availableInputTokens
     ?? Math.max(0, maxInputTokens - (context.inputBudget?.reservedTokens ?? 0));
+  const compactTriggerTokens = Math.max(1, Math.floor(availableInputTokens * options.compactThresholdRatio));
 
-  return estimate > availableInputTokens;
+  return estimate >= compactTriggerTokens;
 }
 
 function readThreadId(context: Record<string, unknown>): string | undefined {

@@ -64,6 +64,9 @@ export function createCodara(options: CodaraOptions = {}): Codara {
   });
   const commands = createCodaraCommandRunner({
     compactConversation: () => session.compactConversation(),
+    compactCheckpoints: (keepLast) => session.compactCheckpoints(
+      typeof keepLast === 'number' ? {keepLast} : undefined
+    ),
     getAgentState: () => session.getAgentState(),
     inspectMemory: () => inspectCodaraMemory({
       cwd: options.cwd,
