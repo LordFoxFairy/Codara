@@ -1,13 +1,11 @@
 # TODO
 
-- [x] 新建单独的 `codara/commands` 目录，承载手动 slash commands
-- [x] 为 host surface 增加 `/help`、`/resume`、`/compact`、`/reload` 四个内建命令
-- [x] 让 `/compact` 复用现有 conversation lifecycle，而不是重写一套压缩逻辑
-- [x] 将命令层接入 CLI 输入路径，但不污染 `createAgent(...)` 内核
-- [x] 更新命令层测试、文档，并重新验证全量基线
+- [x] 将 `commands` 拆成“一命令一文件”，避免 `builtins.ts` 继续膨胀
+- [x] 保持现有 host command API 和 CLI 行为不变
+- [x] 重新验证 `typecheck`、`lint`、`test`
+- [x] 压平 `commands/commands/*` 的重复目录层级
 
 ## Review
 
-- 当前目标：把宿主级 slash commands 正式接进 Codara，对齐 `/help`、`/resume`、`/compact`、`/reload` 这类手动控制面，同时保持 `createAgent(...)` 继续只负责执行
-- 当前结果：slash commands 已集中落在 `src/core/codara/commands/`；`createCodara()` 返回的 host surface 现在暴露 `listCommands()` / `executeCommand(...)`
-- 本轮补充：`/compact` 通过 `Agent.compactConversation()` 强制复用已有 `beforeAgent + beforeModel + conversation-context` 路径；`/resume` 复用现有 HIL `resumePause(...)`，没有发明第二套恢复协议
+- 当前目标：把宿主级 slash commands 进一步收成“每个命令一个文件”的可维护结构，同时保持它们继续属于 host surface，而不是 agent 内核
+- 当前结果：`src/core/codara/commands/` 现已压平成 `registry.ts + help.ts + resume.ts + compact.ts + reload.ts + parser.ts + runner.ts + types.ts`；`/help`、`/resume`、`/compact`、`/reload` 各自独立，runner 和 facade 对外 API 未变
