@@ -233,10 +233,12 @@ checkpoint 边界：
 - slash commands 归属 `src/core/codara/commands/`
 - 当前内建命令：
   - `/help`
+  - `/memory`
   - `/resume`
   - `/compact`
   - `/reload`
 - 这些命令属于 host surface，不属于 `createAgent(...)` 内核
+- `/memory` 直接围绕 `AGENTS.md` 工作，不恢复旧 `MEMORY.md` 机制
 - `/compact` 通过 `Agent.compactConversation()` 复用现有 `beforeAgent + beforeModel + conversation-context` 路径
 
 ## CLI 用法

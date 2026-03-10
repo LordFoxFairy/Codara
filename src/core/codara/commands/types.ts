@@ -19,11 +19,18 @@ export interface CodaraCommandResult {
   command: string;
   output: string;
   state?: AgentState;
+  filePath?: string;
 }
 
 export interface CodaraCommandHost {
   compactConversation(): Promise<AgentState>;
   getAgentState(): AgentState;
+  inspectMemory(): Promise<{
+    globalPath: string;
+    projectPath: string;
+    loadedPaths: string[];
+  }>;
+  ensureMemoryTarget(scope: 'global' | 'project'): Promise<string>;
   reloadSources(): void;
   resumePause(payload: {
     decision: 'approve' | 'reject';

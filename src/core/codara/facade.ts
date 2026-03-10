@@ -4,6 +4,7 @@ import {createCodaraModelCatalog} from '@core/codara/models';
 import {createCodaraTools} from '@core/codara/tools';
 import {createCodaraMiddlewares} from '@core/codara/middleware';
 import {createCodaraCommandRunner} from '@core/codara/commands';
+import {ensureCodaraMemoryTarget, inspectCodaraMemory} from '@core/codara/memory';
 import type {Codara, CodaraOptions} from '@core/codara/types';
 import type {SessionState, SessionStore} from '@core/sessions';
 
@@ -64,6 +65,18 @@ export function createCodara(options: CodaraOptions = {}): Codara {
   const commands = createCodaraCommandRunner({
     compactConversation: () => session.compactConversation(),
     getAgentState: () => session.getAgentState(),
+    inspectMemory: () => inspectCodaraMemory({
+      cwd: options.cwd,
+      projectRoot: options.projectRoot,
+      userHome: options.userHome,
+      guidelines: options.guidelines,
+    }),
+    ensureMemoryTarget: (scope) => ensureCodaraMemoryTarget({
+      cwd: options.cwd,
+      projectRoot: options.projectRoot,
+      userHome: options.userHome,
+      guidelines: options.guidelines,
+    }, scope),
     reloadSources: () => session.reloadSources(),
     async resumePause(payload) {
       await session.resumePause(payload, {
