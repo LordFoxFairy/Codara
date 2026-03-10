@@ -4,8 +4,8 @@ import type {CodaraCommandDefinition} from '@core/codara/commands/types';
 export function createCompactCommand(): CodaraCommandDefinition {
   return {
     name: 'compact',
-    usage: '/compact [checkpoints] [keepLast]',
-    description: 'Compact the current conversation context or prune stored checkpoint history.',
+    usage: '/compact [instructions] | /compact checkpoints [keepLast]',
+    description: 'Compact the current conversation context, or prune stored checkpoint history.',
     async execute({command, host}) {
       const target = command.args[0]?.toLowerCase();
       if (target === 'checkpoints') {
@@ -20,14 +20,19 @@ export function createCompactCommand(): CodaraCommandDefinition {
         };
       }
 
-      const nextState = await host.compactConversation();
+      const instructions = command.argsText.trim();
+      const nextState = await host.compactConversation({
+        ...(instructions ? {instructions} : {}),
+      });
       const summary = readSummaryRecord(nextState.messages);
 
       if (!summary) {
         return {
           ok: true,
           command: command.name,
-          output: 'No summary compaction was applied to the current conversation.',
+          output: instructions
+            ? `No summary compaction was applied to the current conversation. Instructions were: ${instructions}`
+            : 'No summary compaction was applied to the current conversation.',
           state: nextState,
         };
       }
@@ -35,7 +40,9 @@ export function createCompactCommand(): CodaraCommandDefinition {
       return {
         ok: true,
         command: command.name,
-        output: `Conversation compacted. Summary now covers ${summary.summarizedMessages} earlier messages.`,
+        output: instructions
+          ? `Conversation compacted with custom instructions. Summary now covers ${summary.summarizedMessages} earlier messages.`
+          : `Conversation compacted. Summary now covers ${summary.summarizedMessages} earlier messages.`,
         state: nextState,
       };
     },

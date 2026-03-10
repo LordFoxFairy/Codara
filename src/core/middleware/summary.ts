@@ -11,6 +11,7 @@ import {
 const DEFAULT_MAX_MESSAGES = 30;
 const DEFAULT_KEEP_LAST_MESSAGES = 12;
 const DEFAULT_MAX_CHARS = 6_000;
+const DEFAULT_COMPACT_THRESHOLD_RATIO = 0.95;
 const CODARA_KEY = 'codara';
 const SUMMARY_KEY = 'summary';
 const SUMMARY_HEADER = '# Conversation Summary';
@@ -28,6 +29,7 @@ export interface SummaryInput {
   previousSummary?: string;
   messages: BaseMessage[];
   context: AgentRuntimeContext;
+  instructions?: string;
   threadId?: string;
   turn: number;
 }
@@ -101,6 +103,7 @@ export async function compactSummaryIfNeeded(
       previousSummary: summaryState.summary?.content,
       messages: olderMessages,
       context: context.runtime.context,
+      instructions: readCompactInstructions(context.runtime.context),
       threadId: readThreadId(context.runtime.context),
       turn: context.turn,
     });
@@ -268,7 +271,7 @@ function normalizeOptions(options: SummaryOptions): Required<SummaryOptions> {
   const keepLastMessages = options.keepLastMessages ?? DEFAULT_KEEP_LAST_MESSAGES;
   const maxChars = options.maxChars ?? DEFAULT_MAX_CHARS;
   const maxInputTokens = options.maxInputTokens ?? 0;
-  const compactThresholdRatio = options.compactThresholdRatio ?? 0.8;
+  const compactThresholdRatio = options.compactThresholdRatio ?? DEFAULT_COMPACT_THRESHOLD_RATIO;
   const estimateTokens = options.estimateTokens ?? estimateModelInputTokens;
 
   if (maxMessages < 2) {
@@ -337,6 +340,14 @@ function shouldCompactHistory(
 function readThreadId(context: Record<string, unknown>): string | undefined {
   const value = context.threadId;
   return typeof value === 'string' && value.trim() ? value : undefined;
+}
+
+function readCompactInstructions(context: Record<string, unknown>): string | undefined {
+  const codara = asRecord(context[CODARA_KEY]);
+  const instructions = codara.compactInstructions;
+  return typeof instructions === 'string' && instructions.trim()
+    ? instructions.trim()
+    : undefined;
 }
 
 function asRecord(value: unknown): Record<string, unknown> {

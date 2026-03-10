@@ -79,12 +79,15 @@ class AgentInstance implements Agent {
   }
 
   async compactConversation(
-    config: Pick<AgentInvokeConfig, 'context' | 'inputBudget'> = {}
+    config: Pick<AgentInvokeConfig, 'context' | 'inputBudget'> & {
+      instructions?: string;
+    } = {}
   ): Promise<AgentState> {
     assertNotRunning(this.state);
     const manualCompactContext = mergeContext(config.context ?? {}, {
       codara: {
         forceCompactConversation: true,
+        ...(config.instructions ? {compactInstructions: config.instructions} : {}),
       },
     });
     const state = createAgentState(this.threadId, this.state);

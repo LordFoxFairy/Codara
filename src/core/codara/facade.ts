@@ -63,7 +63,7 @@ export function createCodara(options: CodaraOptions = {}): Codara {
     values: options.values,
   });
   const commands = createCodaraCommandRunner({
-    compactConversation: () => session.compactConversation(),
+    compactConversation: (compactOptions) => session.compactConversation(compactOptions),
     compactCheckpoints: (keepLast) => session.compactCheckpoints(
       typeof keepLast === 'number' ? {keepLast} : undefined
     ),

@@ -181,10 +181,10 @@ export function createSession(options: CreateSessionOptions): Session {
       return state;
     },
 
-    async compactConversation(): Promise<AgentState> {
+    async compactConversation(compactOptions = {}): Promise<AgentState> {
       requireReady();
       const agent = await getAgent();
-      const state = await agent.compactConversation();
+      const state = await agent.compactConversation(compactOptions);
       await syncSessionFromState(state);
       return state;
     },
