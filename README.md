@@ -14,7 +14,7 @@ AI 驱动的终端代码代理运行时与产品 facade。
 
 - 多 provider / 多模型路由
 - `createAgent(...)` 统一执行内核
-- `createCodara(...)` / `createCodaraAgent(...)` 高层产品入口
+- `createCodara(...)` / `openCodaraSession(...)` / `openLatestCodaraSession(...)` 高层产品入口
 - checkpoint 恢复与 session source stack
 - 显式 session 打开与 checkpoint compact 宿主接口
 - `AGENTS.md` 投影注入
@@ -113,9 +113,9 @@ src/index.ts
 ```text
 agents/*.md
   -> SkillsMiddleware
-  -> runtime.context.skills
+  -> runtime.shared.skills
   -> Task
-  -> createCodaraAgent / createAgent
+  -> createCodara / createAgent
 ```
 
 约束：
@@ -229,7 +229,7 @@ src/core/agents        # createAgent 内核、loop、checkpoint runtime glue
 src/core/codara        # facade、session、source stack、装配
 src/core/middleware    # logging/guidelines/summary/todo/hil/context-budget
 src/core/skills        # skills store、runtime、agent definitions
-src/core/tasks         # TaskStore 与共享 task tools
+src/core/tasking       # subagent / Task / shared task store 统一域
 src/core/provider      # model routing、registry、factory
 tests/unit             # 单元测试
 tests/integration      # integration 与本地 mock provider stack
