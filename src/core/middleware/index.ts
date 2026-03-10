@@ -17,12 +17,6 @@ export {
 export {MiddlewarePipeline} from '@core/middleware/pipeline';
 export {
   createSkillsMiddleware,
-  FileSystemSkillStore,
-  getDefaultSkillSources,
-} from '@core/skills';
-export type {
-  SkillMetadata,
-  SkillStore,
 } from '@core/skills';
 export {
   createLoggingMiddleware,
@@ -118,4 +112,4 @@ export {
   type CreateSharedTaskMiddlewareOptions,
   type CreateSubagentMiddlewareOptions,
   type CreateTaskMiddlewareOptions,
-} from '@core/tasking/middleware';
+} from '@core/tasking';

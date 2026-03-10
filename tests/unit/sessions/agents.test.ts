@@ -1,5 +1,5 @@
 import {describe, expect, it} from 'bun:test';
-import {FileAgentsSource} from '@core/sessions/agents-source';
+import {FileAgentsSource} from '@core/sessions/agents';
 
 describe('FileAgentsSource', () => {
   it('should keep AGENTS content stable until it is explicitly reloaded', async () => {
