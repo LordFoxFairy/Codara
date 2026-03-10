@@ -1,15 +1,53 @@
-import {createAgent, createTaskTool} from '@core/agents';
+import {createAgent} from '@core/agents';
 import type {CodaraOptions} from '@core/codara/types';
 import {createCodaraModelCatalog, DEFAULT_CODARA_MODEL_ALIAS} from '@core/codara/models';
 import {createCodaraTools} from '@core/codara/tools';
 import {createCodaraMiddlewares} from '@core/codara/middleware';
+import {
+  createSubagentMiddleware,
+  createTaskMiddleware,
+  type CreateSubagentMiddlewareOptions,
+  type CreateTaskMiddlewareOptions,
+} from '@core/middleware/tasking';
 import {createCodaraSourceProvider} from '@core/sessions/source-provider';
 
-/**
- * 创建 Codara Task Tool。
- * 用于在 Codara agent 中委派子任务。
- */
 export async function createCodaraTaskTool(options: CodaraOptions = {}) {
+  const middleware = await createCodaraTaskMiddleware(options);
+  const [taskTool] = middleware.tools ?? [];
+  if (!taskTool) {
+    throw new Error('Task middleware did not register a Task tool');
+  }
+  return taskTool;
+}
+
+export async function createCodaraTaskMiddleware(options: CodaraOptions = {}) {
+  const defaults = await resolveCodaraTaskingDefaults(options);
+
+  return createTaskMiddleware({
+    ...defaults,
+    runtimeHooks: {
+      createChildAgent: (childOptions) => createAgent(childOptions),
+    },
+  });
+}
+
+export async function createCodaraSubagentTool(options: CodaraOptions = {}) {
+  const middleware = await createCodaraSubagentMiddleware(options);
+  const [subagentTool] = middleware.tools ?? [];
+  if (!subagentTool) {
+    throw new Error('Subagent middleware did not register a delegation tool');
+  }
+  return subagentTool;
+}
+
+export async function createCodaraSubagentMiddleware(options: CodaraOptions = {}) {
+  const defaults = await resolveCodaraTaskingDefaults(options);
+  return createSubagentMiddleware(defaults);
+}
+
+async function resolveCodaraTaskingDefaults(
+  options: CodaraOptions,
+): Promise<CreateTaskMiddlewareOptions & CreateSubagentMiddlewareOptions> {
   const sourceProvider = createCodaraSourceProvider({
     cwd: options.cwd,
     projectRoot: options.projectRoot,
@@ -22,7 +60,9 @@ export async function createCodaraTaskTool(options: CodaraOptions = {}) {
   }));
 
   const alias = options.alias?.trim() || DEFAULT_CODARA_MODEL_ALIAS;
-  const model = options.model ?? await Promise.resolve(options.modelResolver ? options.modelResolver() : modelCatalog.create(alias));
+  const model = options.model ?? await Promise.resolve(
+    options.modelResolver ? options.modelResolver() : modelCatalog.create(alias),
+  );
   const tools = createCodaraTools(options);
   const middleware = createCodaraMiddlewares(options, sourceProvider);
   const inputBudget = options.inputBudget ?? (
@@ -31,7 +71,7 @@ export async function createCodaraTaskTool(options: CodaraOptions = {}) {
       : deriveInputBudget(modelCatalog.getInfo(alias))
   );
 
-  return createTaskTool({
+  return {
     model,
     tools,
     middleware,
@@ -40,10 +80,7 @@ export async function createCodaraTaskTool(options: CodaraOptions = {}) {
     inputBudget,
     context: options.context,
     values: options.values,
-    runtimeHooks: {
-      createChildAgent: (childOptions) => createAgent(childOptions),
-    },
-  });
+  };
 }
 
 function deriveInputBudget(modelInfo: {contextWindow?: number; maxOutputTokens?: number} | undefined) {
