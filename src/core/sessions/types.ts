@@ -87,6 +87,7 @@ export interface Session {
   getState(): SessionState;
   getAgentState(): AgentState;
   hydrate(): Promise<AgentState>;
+  compactConversation(): Promise<AgentState>;
 
   invoke(input?: AgentInput, config?: AgentInvokeConfig): Promise<AgentResult>;
   stream(

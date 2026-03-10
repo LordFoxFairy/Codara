@@ -78,6 +78,48 @@ class AgentInstance implements Agent {
     return createAgentState(this.threadId, this.state);
   }
 
+  async compactConversation(
+    config: Pick<AgentInvokeConfig, 'context' | 'inputBudget'> = {}
+  ): Promise<AgentState> {
+    assertNotRunning(this.state);
+    const manualCompactContext = mergeContext(config.context ?? {}, {
+      codara: {
+        forceCompactConversation: true,
+      },
+    });
+    const state = createAgentState(this.threadId, this.state);
+    const run = createRunContext(state, this.state.context, this.state.values, {
+      context: mergeContext(this.state.context, manualCompactContext),
+      inputBudget: config.inputBudget ?? this.inputBudget,
+      recursionLimit: 1,
+    });
+    const context = {
+      state: run.state,
+      messages: run.state.messages,
+      runtime: {context: run.context, agentContext: run.agentContext},
+      systemMessage: [],
+      runId: run.runId,
+      turn: 1,
+      maxTurns: 1,
+      requestId: `${run.runId}:compact`,
+      inputBudget: run.inputBudget,
+    };
+
+    this.runtime.pipeline.validateContext(run.context);
+    await this.runtime.pipeline.beforeAgent(context);
+    await this.runtime.pipeline.beforeModel(context);
+
+    this.state.messages = [...context.state.messages];
+    this.state.context = mergeContext({}, context.state.context);
+    this.state.values = this.runtime.pipeline.normalizeValues(cloneValues(context.state.values));
+    this.state.pendingPause = context.state.pendingPause;
+    this.state.status = this.state.pendingPause ? 'paused' : 'idle';
+    this.touch();
+    await this.persistCheckpoint('manual');
+
+    return createAgentState(this.threadId, this.state);
+  }
+
   async invoke(input?: AgentInput, config: AgentInvokeConfig = {}): Promise<AgentResult> {
     assertReadyForInvoke(this.state);
     return this.execute(input, config, 'invoke');

@@ -6,6 +6,9 @@ import {
   type SummaryOptions,
 } from '@core/middleware/summary';
 
+const CODARA_KEY = 'codara';
+const FORCE_COMPACT_KEY = 'forceCompactConversation';
+
 export interface ConversationContextMiddlewareOptions {
   summary?: false | SummaryOptions;
   estimateTokens?: ContextBudgetEstimator;
@@ -30,10 +33,21 @@ export function createConversationContextMiddleware(
       refreshContextBudget(context, estimateTokens);
 
       if (summary) {
-        await compactSummaryIfNeeded(context, summary);
+        await compactSummaryIfNeeded(context, summary, {
+          force: readForceCompactFlag(context.runtime.context),
+        });
       }
 
       return undefined;
     },
   });
+}
+
+function readForceCompactFlag(context: Record<string, unknown>): boolean {
+  const codara = context[CODARA_KEY];
+  if (!codara || typeof codara !== 'object' || Array.isArray(codara)) {
+    return false;
+  }
+
+  return (codara as Record<string, unknown>)[FORCE_COMPACT_KEY] === true;
 }

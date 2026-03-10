@@ -9,6 +9,13 @@ export {createCodaraTools} from '@core/codara/tools';
 export {createCodaraTaskTool} from '@core/codara/task-tool';
 export {createCodaraMiddlewares} from '@core/codara/middleware';
 export {
+  createBuiltInCodaraCommands,
+  createCodaraCommandRunner,
+  parseCodaraCommand,
+  type CodaraCommandResult,
+  type CodaraCommandSpec,
+} from '@core/codara/commands';
+export {
   CodaraModelCatalog,
   createCodaraChatModel,
   createCodaraModelCatalog,

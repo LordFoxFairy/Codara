@@ -68,4 +68,47 @@ describe('conversation context middleware', () => {
     expect(context.budget).toBeDefined();
     expect(readSummaryRecord(context.state.messages)).toBeUndefined();
   });
+
+  it('should force summary compaction when runtime requests manual compact', async () => {
+    const middleware = createConversationContextMiddleware({
+      summary: {
+        maxMessages: 99,
+        keepLastMessages: 2,
+        summarize: () => 'manual summary block',
+      },
+    });
+
+    const pipeline = new MiddlewarePipeline([middleware]);
+    const messages: BaseMessage[] = [
+      new HumanMessage('one'),
+      new AIMessage('two'),
+      new HumanMessage('three'),
+      new AIMessage('four'),
+      new HumanMessage('five'),
+    ];
+
+    const context: ModelCallContext = {
+      state: {messages},
+      messages,
+      runtime: {
+        context: {
+          codara: {
+            forceCompactConversation: true,
+          },
+        },
+      },
+      systemMessage: ['caller prompt'],
+      runId: 'run-3',
+      turn: 1,
+      maxTurns: 8,
+      requestId: 'req-3',
+      inputBudget: {
+        maxInputTokens: 400,
+      },
+    };
+
+    await pipeline.beforeModel(context);
+
+    expect(readSummaryRecord(context.state.messages)?.content).toBe('manual summary block');
+  });
 });
