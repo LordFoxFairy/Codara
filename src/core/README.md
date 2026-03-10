@@ -252,7 +252,7 @@ checkpoint 边界：
 - 默认 compact 触发：
   - 默认 alias 为 `sonnet`
   - 优先使用 model metadata 的 `contextWindow`
-  - 默认阈值为可用输入预算的 80%
+  - 默认阈值为可用输入预算的 95%
   - 手动 `/compact` 可强制触发
   - 多窗口若要分支，优先调用 `fork()`，不要共享同一条 `threadId`
 
