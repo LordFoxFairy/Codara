@@ -1,6 +1,6 @@
 import {describe, expect, it} from 'bun:test';
 import {createMiddleware} from '@core/middleware';
-import {createCodaraMiddlewares} from '@core';
+import {createCodaraMiddlewares} from '@core/codara';
 import {EmptySkillStore} from './codara-fixtures';
 
 describe('Codara middleware stack', () => {

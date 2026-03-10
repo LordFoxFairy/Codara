@@ -2,11 +2,10 @@ import {describe, expect, it} from 'bun:test';
 import {
   createCodara,
   createMiddleware,
-  createCodaraChatModel,
-  createCodaraModelCatalog,
   createAgentMemoryCheckpointer,
   type ModelRoutingConfig,
 } from '@core';
+import {createCodaraChatModel, createCodaraModelCatalog} from '@core/codara';
 import type {BaseChatModel} from '@langchain/core/language_models/chat_models';
 import type {BeforeModelContext} from '@core/middleware';
 import {EchoModel} from './codara-fixtures';

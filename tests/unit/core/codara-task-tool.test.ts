@@ -9,9 +9,9 @@ import type {BaseChatModel} from '@langchain/core/language_models/chat_models';
 import {createMiddleware} from '@core/middleware';
 import {
   createCodara,
-  createCodaraTaskTool,
   TASK_TOOL_NAME,
 } from '@core';
+import {createCodaraTaskTool} from '@core/codara';
 import {FakeModel, SystemEchoModel} from './codara-fixtures';
 
 describe('Codara task profile runtime', () => {
