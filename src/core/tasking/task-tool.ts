@@ -5,13 +5,14 @@ import type {Agent, AgentRuntimeContext, AgentType, CreateAgentOptions} from '@c
 import {
   type CreateSubagentToolOptions,
   runDelegatedAgent,
-} from '@core/agents/subagent';
+} from '@core/tasking/subagent';
 import {
   readSkillsRuntimeData,
   resolveSubagentDefinition,
   type SubagentDefinition,
 } from '@core/skills/agents';
 import type {BaseMiddleware} from '@core/middleware';
+import type {MiddlewareRuntimeShared} from '@core/middleware';
 import {filterToolsByReferences} from '@core/tools';
 
 export const TASK_TOOL_NAME = 'Task';
@@ -57,7 +58,7 @@ export function createTaskTool(options: CreateTaskToolOptions): StructuredToolIn
   return tool(
     async ({prompt, subagent_type, max_turns}: TaskToolInput, config) => {
       const profile = resolveSubagentDefinition(
-        readAgentSkillsRuntime(config?.configurable?.runtimeContext ?? config?.configurable?.agentContext),
+        readAgentSkillsRuntime(config?.configurable?.runtimeShared),
         subagent_type,
       );
       const resolvedRuntime = await resolveDefinitionRuntime(options, profile);
@@ -121,5 +122,5 @@ function readAgentSkillsRuntime(value: unknown) {
     return undefined;
   }
 
-  return readSkillsRuntimeData(value as AgentRuntimeContext);
+  return readSkillsRuntimeData(value as MiddlewareRuntimeShared);
 }

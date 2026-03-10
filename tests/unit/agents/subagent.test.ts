@@ -3,7 +3,8 @@ import {AIMessage, HumanMessage, ToolMessage, type BaseMessage, type ToolCall} f
 import type {BaseChatModel} from '@langchain/core/language_models/chat_models';
 import {tool, type StructuredToolInterface} from '@langchain/core/tools';
 import {z} from 'zod';
-import {createAgent, createSubagentTool, DEFAULT_SUBAGENT_TOOL_NAME} from '@core/agents';
+import {createAgent} from '@core/agents';
+import {createSubagentTool, DEFAULT_SUBAGENT_TOOL_NAME} from '@core/tasking';
 import {createAgentMemoryCheckpointer} from '@core/checkpoint';
 
 class ScriptedModel {

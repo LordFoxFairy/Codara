@@ -21,11 +21,11 @@ export {
   type CodaraCommandSpec,
 } from '@core/codara/commands';
 export {
-  ensureCodaraMemoryTarget,
-  inspectCodaraMemory,
-  type CodaraMemoryOverview,
-  type CodaraMemoryScope,
-} from '@core/codara/memory';
+  ensureAgentsFileTarget,
+  inspectAgentsFiles,
+  type AgentsFileOverview,
+  type AgentsFileScope,
+} from '@core/sessions/agents-files';
 export {
   CodaraModelCatalog,
   createCodaraChatModel,
@@ -34,4 +34,10 @@ export {
   type CreateCodaraChatModelOptions,
   type CreateCodaraModelCatalogOptions,
 } from '@core/codara/models';
+export {
+  createCodaraRuntimePlan,
+  resolveCodaraRuntime,
+  type CodaraRuntimePlan,
+  type ResolvedCodaraRuntime,
+} from '@core/codara/runtime';
 export {createCodara, openCodaraSession, openLatestCodaraSession} from '@core/codara/facade';

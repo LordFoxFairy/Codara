@@ -4,11 +4,11 @@ export {
   createCodara,
   createBuiltInCodaraCommands,
   createCodaraCommandRunner,
-  ensureCodaraMemoryTarget,
+  ensureAgentsFileTarget,
   createCodaraChatModel,
   createCodaraMiddlewares,
   createCodaraModelCatalog,
-  inspectCodaraMemory,
+  inspectAgentsFiles,
   openCodaraSession,
   openLatestCodaraSession,
   parseCodaraCommand,
@@ -20,8 +20,8 @@ export {
   type Codara,
   type CodaraCommandResult,
   type CodaraCommandSpec,
-  type CodaraMemoryOverview,
-  type CodaraMemoryScope,
+  type AgentsFileOverview,
+  type AgentsFileScope,
   type CodaraOptions,
   type CreateCodaraChatModelOptions,
   type CreateCodaraModelCatalogOptions,
@@ -29,12 +29,6 @@ export {
 } from '@core/codara';
 export {
   createAgent,
-  createSubagentTool,
-  createTaskTool,
-  DEFAULT_SUBAGENT_TOOL_DESCRIPTION,
-  DEFAULT_SUBAGENT_TOOL_NAME,
-  TASK_TOOL_DESCRIPTION,
-  TASK_TOOL_NAME,
   type Agent,
   type AgentInput,
   type AgentInvokeConfig,
@@ -50,6 +44,14 @@ export {
   type AgentType,
   type CreateAgentOptions,
 } from '@core/agents';
+export {
+  DEFAULT_SUBAGENT_TOOL_DESCRIPTION,
+  DEFAULT_SUBAGENT_TOOL_NAME,
+  TASK_TOOL_DESCRIPTION,
+  TASK_TOOL_NAME,
+  createSubagentTool,
+  createTaskTool,
+} from '@core/tasking';
 export {
   FileCheckpointer,
   InMemoryCheckpointer,
@@ -78,7 +80,7 @@ export {
   type TaskStatus,
   type TaskStore,
   type UpdateTaskInput,
-} from '@core/tasks';
+} from '@core/tasking';
 export {
   createGuidelinesMiddleware,
   createHILMiddleware,
@@ -98,6 +100,11 @@ export {
   type LoggingMiddlewareOptions,
   type MiddlewareLogRecord,
 } from '@core/middleware';
+export type {
+  CreateSharedTaskMiddlewareOptions,
+  CreateSubagentMiddlewareOptions,
+  CreateTaskMiddlewareOptions,
+} from '@core/tasking';
 export {
   loadSkillsRuntimeData,
   resolveSubagentDefinition,
@@ -108,14 +115,14 @@ export {
 } from '@core/skills';
 export {
   createSession,
-  createCodaraSourceProvider,
-  FileSourceProvider,
+  createCodaraAgentsSource,
+  FileAgentsSource,
   FileSessionStore,
   type Session,
   type SessionStore,
   type SessionState,
   type SessionStatus,
-  type SourceProvider,
+  type AgentsSource,
 } from '@core/sessions';
 export {
   ChatModelFactory,
@@ -124,3 +131,9 @@ export {
   type ModelInfo,
   type ModelRoutingConfig,
 } from '@core/provider';
+export {
+  runDelegatedAgent,
+  type CreateSubagentToolOptions,
+  type CreateTaskToolOptions,
+  type TaskToolRuntimeHooks,
+} from '@core/tasking';

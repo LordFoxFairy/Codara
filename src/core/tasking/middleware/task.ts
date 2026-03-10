@@ -4,7 +4,7 @@ import {
   TASK_TOOL_DESCRIPTION,
   TASK_TOOL_NAME,
   type CreateTaskToolOptions,
-} from '@core/agents/task-tool';
+} from '@core/tasking/task-tool';
 import {readSkillsRuntimeData, type SkillsRuntimeData} from '@core/skills';
 
 export {
@@ -33,7 +33,7 @@ export function createTaskMiddleware(options: CreateTaskMiddlewareOptions): Base
     tools: [createTaskTool(options)],
     beforeModel(context) {
       context.systemMessage.push(TASK_MIDDLEWARE_SYSTEM_PROMPT);
-      const runtime = readSkillsRuntimeData(context.runtime.context);
+      const runtime = readSkillsRuntimeData(context.runtime.shared);
       const definitions = formatAvailableSubagents(runtime);
       if (definitions) {
         context.systemMessage.push(definitions);
