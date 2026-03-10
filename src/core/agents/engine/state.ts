@@ -14,7 +14,8 @@ import type {
   AgentCheckpointStatus,
   AgentCheckpointSummary,
 } from '@core/checkpoint/state';
-import type {HILPauseRequest} from '@core/middleware/hil';
+import type {PauseRequest} from '@core/agents/contract/pause';
+import {deepClone} from '@core/shared/clone';
 
 /** Agent 内部运行态。 */
 export interface AgentRuntimeState {
@@ -25,7 +26,7 @@ export interface AgentRuntimeState {
   context: AgentRuntimeContext;
   values: AgentRuntimeValues;
   status: AgentStatus;
-  pendingPause?: HILPauseRequest;
+  pendingPause?: PauseRequest;
   lastResult?: AgentCheckpointSummary;
   step: number;
   createdAt: string;
@@ -56,10 +57,10 @@ export function createInitialAgentState(
     agentType: restoredState?.agentType ?? input?.agentType ?? 'main',
     checkpointId: checkpoint?.ref.checkpointId,
     messages: [...(restoredState?.messages ?? input?.messages ?? [])],
-    context: cloneContext(restoredState?.context ?? input?.context ?? {}),
-    values: cloneValues(input?.values ?? restoredState?.values ?? {}),
+    context: deepClone(restoredState?.context ?? input?.context ?? {}),
+    values: deepClone(input?.values ?? restoredState?.values ?? {}),
     status: deriveRuntimeStatus(pendingPause, restoredInfo?.status),
-    pendingPause: cloneOptionalPause(pendingPause),
+    pendingPause: pendingPause ? deepClone(pendingPause) : undefined,
     lastResult: restoredInfo ? summarizeCheckpointInfo(restoredInfo) : undefined,
     step: restoredInfo?.step ?? 0,
     createdAt: now,
@@ -92,10 +93,10 @@ export function toAgentState(threadId: string, state: AgentRuntimeState): AgentS
     threadId,
     agentType: state.agentType,
     messages: [...state.messages],
-    context: cloneContext(state.context),
-    values: cloneValues(state.values),
+    context: deepClone(state.context),
+    values: deepClone(state.values),
     status: state.status,
-    ...(state.pendingPause ? {pendingPause: cloneOptionalPause(state.pendingPause)} : {}),
+    ...(state.pendingPause ? {pendingPause: deepClone(state.pendingPause)} : {}),
   };
 }
 
@@ -103,9 +104,9 @@ export function toCheckpointState(state: AgentRuntimeState): AgentCheckpointStat
   return {
     agentType: state.agentType,
     messages: [...state.messages],
-    context: cloneContext(state.context),
-    values: cloneValues(state.values),
-    ...(state.pendingPause ? {pendingPause: cloneOptionalPause(state.pendingPause)} : {}),
+    context: deepClone(state.context),
+    values: deepClone(state.values),
+    ...(state.pendingPause ? {pendingPause: deepClone(state.pendingPause)} : {}),
   };
 }
 
@@ -137,7 +138,7 @@ export function restoreCheckpointMetadata(
 }
 
 export function deriveRuntimeStatus(
-  pendingPause: HILPauseRequest | undefined,
+  pendingPause: PauseRequest | undefined,
   checkpointStatus: AgentCheckpointStatus | undefined
 ): AgentStatus {
   if (checkpointStatus === 'closed') {
@@ -165,26 +166,6 @@ export function toCheckpointStatus(
   return 'idle';
 }
 
-export function cloneContext(context: AgentRuntimeContext): AgentRuntimeContext {
-  try {
-    return structuredClone(context);
-  } catch {
-    return {...context};
-  }
-}
-
 export function cloneValues(values: AgentRuntimeValues): AgentRuntimeValues {
-  try {
-    return structuredClone(values);
-  } catch {
-    return {...values};
-  }
-}
-
-export function clonePause(pause: HILPauseRequest): HILPauseRequest {
-  return structuredClone(pause);
-}
-
-export function cloneOptionalPause(pause: HILPauseRequest | undefined): HILPauseRequest | undefined {
-  return pause ? clonePause(pause) : undefined;
+  return deepClone(values);
 }

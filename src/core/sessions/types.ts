@@ -14,7 +14,7 @@ import type {
 import type {AgentCheckpointer} from '@core/checkpoint/state';
 import type {CompactOptions} from '@core/checkpoint/types';
 import type {BaseMiddleware} from '@core/middleware';
-import type {HILResumePayload} from '@core/middleware/hil';
+import type {ResumePayload} from '@core/agents/contract/pause';
 import type {AgentsFileOverview, AgentsFileScope, AgentsSource} from '@core/sessions/agents';
 import type {SessionStore} from '@core/sessions/store';
 import type {ModelInfo} from '@core/provider';
@@ -133,9 +133,9 @@ export interface Session {
     input?: AgentInput,
     config?: AgentStreamConfig
   ): AsyncGenerator<AgentStreamOutput, AgentResult, void>;
-  resumePause(payload: HILResumePayload, config?: AgentResumeConfig): Promise<AgentResult>;
+  resumePause(payload: ResumePayload, config?: AgentResumeConfig): Promise<AgentResult>;
   resumePauseStream(
-    payload: HILResumePayload,
+    payload: ResumePayload,
     config?: AgentResumeStreamConfig
   ): AsyncGenerator<AgentStreamOutput, AgentResult, void>;
 

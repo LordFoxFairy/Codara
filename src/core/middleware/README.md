@@ -86,9 +86,9 @@ const result = await agent.invoke(
 公共字段（多数 hooks 都可用）：
 
 - `state.messages` / `messages`：当前消息列表
-- `runtime.context`：本轮有效运行上下文，读取 invoke context 与运行期覆盖
+- `runtime.context`：持久化上下文（随 checkpoint 保存，跨 invoke 保留）
+- `runtime.runtimeContext`：临时运行时上下文（仅本次 invoke 有效，不持久化）
 - `runtime.shared`：同一次运行内由 middleware 生成并共享的派生数据，不进入 checkpoint
-- `runtime.agentContext`：会随 checkpoint 持久化的 agent context
 - `systemMessage`：可在 `beforeModel` 或 `wrapModelCall` 中追加系统消息
 - `runId`、`turn`、`maxTurns`、`requestId`
 - `inputBudget`：本轮调用的输入预算配置

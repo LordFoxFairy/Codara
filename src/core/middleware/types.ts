@@ -17,12 +17,12 @@ import type {ContextBudgetSnapshot} from '@core/middleware/context-budget';
 export type MiddlewareRuntimeShared = Record<string, unknown>;
 
 export interface MiddlewareRuntimeContext {
-  /** 本次运行的有效上下文（持久上下文 + 调用时临时覆盖）。 */
+  /** 有效上下文（持久化 + 临时合并后的结果）。Middleware 直接使用即可。 */
   context: AgentRuntimeContext;
+  /** `context` 的语义化别名，表示当前 agent 可见的有效上下文。 */
+  agentContext?: AgentRuntimeContext;
   /** 同一次运行内由 middleware 生成、供其他 middleware/tools 复用的共享派生数据。 */
   shared?: MiddlewareRuntimeShared;
-  /** 会随 agent checkpoint 一起持久化的上下文。 */
-  agentContext?: AgentRuntimeContext;
 }
 
 export interface BaseExecutionContext {

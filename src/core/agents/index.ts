@@ -34,3 +34,13 @@ export {
   type AgentStateUpdate,
 } from '@core/agents/command';
 export {createAgent} from '@core/agents/engine/agent';
+export {normalizeAgentInput} from '@core/agents/engine/runtime-input';
+export type {
+  PauseActionDescriptor,
+  PauseRequest,
+  PauseReviewDecision,
+  PauseReviewRequest,
+  PauseUIActionOption,
+  PauseUIConfig,
+  ResumePayload,
+} from '@core/agents/contract/pause';

@@ -11,19 +11,20 @@ import type {
 } from '@core/agents/contract/agent';
 import type {AgentModel} from '@core/agents/engine/model';
 import type {AgentStreamWriter} from '@core/agents/engine/stream-writer';
-import {runTurn, runTurnStream} from '@core/agents/loop/turn';
+import {runTurn, runTurnStream, type AgentTurnOutcome} from '@core/agents/loop/turn';
 import type {MiddlewarePipeline, MiddlewareRuntimeShared} from '@core/middleware';
-
-const DEFAULT_RECURSION_LIMIT = 25;
+import {DEFAULT_RECURSION_LIMIT} from '@core/shared/constants';
+import {toError, formatErrorMessage} from '@core/shared/utils';
 
 /** 单次运行期间共享的上下文。 */
 export interface AgentRunContext {
   state: AgentState;
   runId: string;
   maxTurns: number;
-  context: AgentRuntimeContext;
+  /** 临时运行时上下文（仅本次 invoke 有效，不持久化） */
+  runtimeContext: AgentRuntimeContext;
+  /** 运行时共享状态（middleware 间共享，不持久化） */
   shared: MiddlewareRuntimeShared;
-  agentContext: AgentRuntimeContext;
   inputBudget?: AgentInputBudget;
 }
 
@@ -38,19 +39,18 @@ export interface AgentRuntime {
 /** 为 invoke/stream 创建运行上下文。 */
 export function createRunContext(
   state: AgentState,
-  agentContext: AgentRuntimeContext,
+  persistedContext: AgentRuntimeContext,
   agentValues: AgentRuntimeValues,
   config: Pick<AgentInvokeConfig, 'recursionLimit' | 'context' | 'inputBudget'> = {}
 ): AgentRunContext {
-  state.context = agentContext;
+  state.context = persistedContext;
   state.values = agentValues;
   return {
     state,
     runId: randomUUID(),
     maxTurns: normalizeMaxTurns(config.recursionLimit),
-    context: config.context ?? {},
+    runtimeContext: config.context ?? {},
     shared: {},
-    agentContext,
     inputBudget: config.inputBudget,
   };
 }
@@ -68,7 +68,7 @@ export async function runBeforeHook(
     await config.beforeRun(toHookContext(run));
     return undefined;
   } catch (error) {
-    return createAgentResult(run.state, 0, 'error', new Error(`beforeRun failed: ${toError(error).message}`));
+    return createAgentResult(run.state, 0, 'error', new Error(formatErrorMessage(error, 'beforeRun failed')));
   }
 }
 
@@ -94,29 +94,14 @@ export async function runAfterHook(
       run.state,
       result.turns,
       'error',
-      new Error(`afterRun failed: ${toError(error).message}`)
+      new Error(formatErrorMessage(error, 'afterRun failed'))
     );
   }
 }
 
 /** 执行非流式主循环。 */
 export async function runLoop(run: AgentRunContext, runtime: AgentRuntime): Promise<AgentResult> {
-  let turns = 0;
-
-  for (let turn = 1; turn <= run.maxTurns; turn += 1) {
-    turns = turn;
-
-    try {
-      const outcome = await runTurn(run, runtime, turn);
-      if (outcome === 'complete') {
-        return createAgentResult(run.state, turns, 'complete');
-      }
-    } catch (error) {
-      return createAgentResult(run.state, turns, 'error', error);
-    }
-  }
-
-  return createAgentResult(run.state, turns, 'max_turns');
+  return runLoopCore(run, runtime, (r, rt, turn) => runTurn(r, rt, turn));
 }
 
 /** 执行流式主循环。 */
@@ -125,13 +110,22 @@ export async function streamLoop(
   runtime: AgentRuntime,
   stream: AgentStreamWriter
 ): Promise<AgentResult> {
+  return runLoopCore(run, runtime, (r, rt, turn) => runTurnStream(r, rt, turn, stream));
+}
+
+/** 核心循环逻辑，由 runLoop 和 streamLoop 共享。 */
+async function runLoopCore(
+  run: AgentRunContext,
+  runtime: AgentRuntime,
+  executeTurn: (run: AgentRunContext, runtime: AgentRuntime, turn: number) => Promise<AgentTurnOutcome>
+): Promise<AgentResult> {
   let turns = 0;
 
   for (let turn = 1; turn <= run.maxTurns; turn += 1) {
     turns = turn;
 
     try {
-      const outcome = await runTurnStream(run, runtime, turn, stream);
+      const outcome = await executeTurn(run, runtime, turn);
       if (outcome === 'complete') {
         return createAgentResult(run.state, turns, 'complete');
       }
@@ -177,8 +171,4 @@ function createAgentResult(
     turns,
     ...(error === undefined ? {} : {error: toError(error)}),
   };
-}
-
-function toError(error: unknown): Error {
-  return error instanceof Error ? error : new Error(String(error));
 }
