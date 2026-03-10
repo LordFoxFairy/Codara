@@ -17,16 +17,13 @@ const baseConfig: ModelRoutingConfig = {
       name: 'openrouter',
       baseUrl: 'https://openrouter.ai/api/v1',
       apiKey: 'sk-test-openrouter',
-      models: [
-        {id: 'anthropic/claude-sonnet-4', contextWindow: 200_000, maxOutputTokens: 8_192},
-        {id: 'anthropic/claude-opus-4'},
-      ],
+      models: ['anthropic/claude-sonnet-4', 'anthropic/claude-opus-4'],
     },
     {
       name: 'deepseek',
       baseUrl: 'https://api.deepseek.com/v1',
       apiKey: 'sk-test-deepseek',
-      models: [{id: 'deepseek-chat', contextWindow: 64_000, maxOutputTokens: 8_000}],
+      models: ['deepseek-chat'],
     },
   ],
   routerRules: [
@@ -49,6 +46,10 @@ const baseConfig: ModelRoutingConfig = {
       target: 'deepseek:deepseek-chat',
     },
   ],
+  modelMetadata: {
+    'anthropic/claude-sonnet-4': {contextWindow: 200_000, maxOutputTokens: 8_192},
+    'deepseek-chat': {contextWindow: 64_000, maxOutputTokens: 8_000},
+  },
 };
 
 describe('Codara model facade', () => {
