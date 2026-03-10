@@ -8,7 +8,6 @@ AI 驱动的终端代码代理运行时与产品 facade。
   - `bun run typecheck`
   - `bun run lint`
   - `bun test`
-- 当前默认测试结果：`249 pass / 0 fail / 0 skip`
 - 主心智已经收敛：一切围绕 `createAgent(...)`，`codara` 只是 facade，`session` 只是宿主。
 
 ## 核心能力
@@ -17,7 +16,8 @@ AI 驱动的终端代码代理运行时与产品 facade。
 - `createAgent(...)` 统一执行内核
 - `createCodara(...)` / `createCodaraAgent(...)` 高层产品入口
 - checkpoint 恢复与 session source stack
-- `AGENTS.md` / `MEMORY.md` 投影注入
+- 显式 session 打开与 checkpoint compact 宿主接口
+- `AGENTS.md` 投影注入
 - summary + context budget 上下文管理
 - `todo` agent 内部状态
 - `Task` / subagent 委派
@@ -30,7 +30,7 @@ AI 驱动的终端代码代理运行时与产品 facade。
 src/index.ts
   -> core/codara facade
   -> session host
-  -> createCodaraAgent(...)
+  -> openCodaraSession(...) / openLatestCodaraSession(...)
   -> createAgent(...)
   -> middleware pipeline
   -> model / tool loop
@@ -43,8 +43,7 @@ src/index.ts
 - `codara`: 默认装配和对外入口
 - `session`: 宿主与 source stack
 - `checkpoint`: 只负责恢复运行态
-- `memory`: 只读 `MEMORY.md` 投影，不是 checkpoint
-- `summary`: `messages` 压缩，不是 memory
+- `summary`: `messages` 压缩，不是 checkpoint
 
 ## 状态模型
 
@@ -56,9 +55,9 @@ src/index.ts
 ## Source Stack
 
 - `AGENTS.md` = guidelines
-- `MEMORY.md` = 长期记忆投影
 - source stack 属于 session，不属于 agent
 - 同一个 Codara host 支持 `reloadSources()`
+- 历史 checkpoint 可通过 `compactCheckpoints()` 手动整理
 
 ## Todo / Task / Subagent
 
@@ -100,20 +99,20 @@ agents/*.md
 ```text
 logging
 -> guidelines
--> memory
 -> skills
--> context-budget
--> summary
 -> caller middlewares
+-> conversation-context
 -> hil
 ```
 
 说明：
 
 - `logging` 只做观测
-- `context-budget` 统一估算完整输入预算
-- `summary` 按完整输入预算压缩，不再只看消息条数
+- `conversation-context` 统一负责完整输入预算估算与摘要压缩
 - `hil` 只做 pause / resume 协议
+- 会话恢复与 HIL 恢复是两种不同能力：
+  - `openCodaraSession(...)` / `openLatestCodaraSession(...)` = 打开历史会话，并在返回前 hydrate 已恢复状态
+  - `resumePause(...)` / `resumePauseStream(...)` = 恢复 HIL 暂停
 
 ## 配置
 
@@ -183,7 +182,7 @@ bun test
 ```text
 src/core/agents        # createAgent 内核、loop、checkpoint runtime glue
 src/core/codara        # facade、session、source stack、装配
-src/core/middleware    # logging/guidelines/memory/summary/todo/hil/context-budget
+src/core/middleware    # logging/guidelines/summary/todo/hil/context-budget
 src/core/skills        # skills store、runtime、agent definitions
 src/core/tasks         # TaskStore 与共享 task tools
 src/core/provider      # model routing、registry、factory
@@ -195,7 +194,7 @@ tests/integration      # integration 与本地 mock provider stack
 
 1. `src/core/README.md`
 2. `src/core/agents/README.md`
-3. `src/core/codara/assembly.ts`
+3. `src/core/sessions/session.ts`
 4. `src/core/agents/engine/agent.ts`
 5. `src/core/middleware/context-budget.ts`
 
