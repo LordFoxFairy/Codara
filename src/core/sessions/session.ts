@@ -1,9 +1,6 @@
 import {randomUUID} from 'node:crypto';
-import {mapChatMessagesToStoredMessages, mapStoredMessagesToChatMessages} from '@langchain/core/messages';
-import type {BaseChatModel} from '@langchain/core/language_models/chat_models';
 import type {
   Agent,
-  AgentInputBudget,
   AgentInput,
   AgentInvokeConfig,
   AgentResumeConfig,
@@ -20,13 +17,19 @@ import type {CompactOptions} from '@core/checkpoint/types';
 import {normalizeAgentInput} from '@core/agents/engine/runtime-input';
 import type {HILResumePayload} from '@core/middleware';
 import type {CreateSessionOptions, Session, SessionState, SessionStatus, SessionMetadata} from '@core/sessions/types';
-import type {ModelInfo} from '@core/provider';
 import {buildSessionTelemetryPatch, mergeSessionTelemetry} from '@core/sessions/telemetry';
+import {
+  cloneAgentMessages,
+  createSessionMetadata,
+  touchSessionMetadata,
+  updateSessionMetadataFromAgentState,
+} from '@core/sessions/metadata';
+import {resolveSessionInputBudget, resolveSessionModelSelection} from '@core/sessions/model-selection';
 
 /**
  * 创建 session 实例。
  * Session 负责：
- * - source 配置持有与缓存管理
+ * - AGENTS source 生命周期持有与刷新
  * - agent 实例管理（lazy creation、checkpoint restore）
  * - 对外暴露 invoke/stream/resume 等方法
  */
@@ -40,18 +43,17 @@ export function createSession(options: CreateSessionOptions): Session {
   let sessionStatus: SessionStatus = restoredState?.sessionStatus ?? 'ready';
   let agentInstance: Agent | undefined;
   let agentBootstrap: Promise<Agent> | undefined;
-  const metadata: SessionMetadata = {
-    messageCount: 0,
-    lastActivity: createdAt,
-    ...(restoredState?.metadata ? cloneMetadata(restoredState.metadata) : {}),
-    ...cloneMetadata(options.metadata),
-  };
+  const metadata: SessionMetadata = createSessionMetadata(
+    createdAt,
+    restoredState?.metadata,
+    options.metadata,
+  );
   const store = options.store;
   const checkpointer = options.checkpointer ?? createAgentMemoryCheckpointer();
 
   function touch(): void {
     updatedAt = new Date().toISOString();
-    metadata.lastActivity = updatedAt;
+    touchSessionMetadata(metadata, updatedAt);
   }
 
   async function saveSession(): Promise<void> {
@@ -68,21 +70,7 @@ export function createSession(options: CreateSessionOptions): Session {
   }
 
   function updateMetadataFromState(agentState: AgentState): void {
-    metadata.messageCount = agentState.messages.length;
-
-    const lastMessage = agentState.messages[agentState.messages.length - 1];
-    const lastText = readMessageText(lastMessage?.content);
-    if (lastText) {
-      metadata.lastMessage = lastText.slice(0, 200);
-    }
-
-    if (!metadata.title) {
-      const firstHuman = agentState.messages.find((message) => isMessageType(message, 'human'));
-      const title = readMessageText(firstHuman?.content);
-      if (title) {
-        metadata.title = title.slice(0, 80);
-      }
-    }
+    updateSessionMetadataFromAgentState(metadata, agentState);
   }
 
   async function syncSessionFromState(
@@ -115,7 +103,7 @@ export function createSession(options: CreateSessionOptions): Session {
 
     agentBootstrap = (async () => {
       // Lazy creation
-      const selection = await resolveModelSelection(options);
+      const selection = await resolveSessionModelSelection(options);
 
       // Auto-restore: threadId provided = restore latest checkpoint
       // Explicit restore option overrides this behavior
@@ -135,7 +123,7 @@ export function createSession(options: CreateSessionOptions): Session {
         middleware: options.middleware,
         checkpointer,
         threadId,
-        inputBudget: options.inputBudget ?? deriveInputBudget(selection.modelInfo),
+        inputBudget: resolveSessionInputBudget(options, selection.modelInfo),
         ...(checkpoint ? {checkpoint} : {}),
         ...(messages ? {messages} : {}),
         ...(options.context ? {context: options.context} : {}),
@@ -207,7 +195,7 @@ export function createSession(options: CreateSessionOptions): Session {
         threadId: forkOptions.threadId,
         store: forkOptions.store ?? options.store,
         restore: 'never',
-        messages: cloneMessages(baseState.messages),
+        messages: cloneAgentMessages(baseState.messages),
         context: cloneContext(baseState.context),
         values: cloneValues(baseState.values),
         metadata: {
@@ -263,12 +251,13 @@ export function createSession(options: CreateSessionOptions): Session {
       return result;
     },
 
-    reloadSources(): void {
+    async reloadSources(): Promise<void> {
       requireReady();
       touch();
-      if (options.sourceProvider) {
-        options.sourceProvider.invalidateAll();
+      if (options.agentsSource) {
+        options.agentsSource.reload();
       }
+      await saveSession();
     },
 
     async compactCheckpoints(options?: CompactOptions): Promise<void> {
@@ -278,6 +267,8 @@ export function createSession(options: CreateSessionOptions): Session {
       }
 
       await checkpointer.compact(threadId, options);
+      touch();
+      await saveSession();
     },
 
     async reset(): Promise<void> {
@@ -302,98 +293,5 @@ export function createSession(options: CreateSessionOptions): Session {
       touch();
       await saveSession();
     },
-  };
-}
-
-function readMessageText(content: unknown): string | undefined {
-  if (typeof content === 'string') {
-    return content;
-  }
-
-  if (!Array.isArray(content)) {
-    return undefined;
-  }
-
-  return content
-    .flatMap((part) => {
-      if (!part || typeof part !== 'object') {
-        return [];
-      }
-
-      if ('type' in part && part.type === 'text' && 'text' in part && typeof part.text === 'string') {
-        return [part.text];
-      }
-
-      return [];
-    })
-    .join('\n')
-    .trim() || undefined;
-}
-
-function isMessageType(message: unknown, expected: string): boolean {
-  if (!message || typeof message !== 'object') {
-    return false;
-  }
-
-  if ('_getType' in message && typeof message._getType === 'function') {
-    return message._getType() === expected;
-  }
-
-  if ('type' in message && typeof message.type === 'string') {
-    return message.type === expected;
-  }
-
-  return false;
-}
-
-async function resolveModelSelection(options: CreateSessionOptions): Promise<{
-  model: BaseChatModel;
-  modelInfo?: ModelInfo;
-}> {
-  if (options.model) {
-    return {
-      model: await Promise.resolve(options.model),
-    };
-  }
-
-  if (!options.modelCatalog) {
-    throw new Error('Either model or modelCatalog must be provided');
-  }
-
-  const catalog = await Promise.resolve(options.modelCatalog);
-  const alias = options.alias ?? 'default';
-  return {
-    model: await catalog.create(alias),
-    modelInfo: catalog.getInfo(alias),
-  };
-}
-
-function deriveInputBudget(modelInfo: Pick<ModelInfo, 'contextWindow' | 'maxOutputTokens'> | undefined): AgentInputBudget | undefined {
-  if (!modelInfo?.contextWindow) {
-    return undefined;
-  }
-
-  return {
-    maxInputTokens: modelInfo.contextWindow,
-    ...(typeof modelInfo.maxOutputTokens === 'number' ? {reservedTokens: modelInfo.maxOutputTokens} : {}),
-  };
-}
-
-function cloneMessages(messages: AgentState['messages']): AgentState['messages'] {
-  return mapStoredMessagesToChatMessages(
-    mapChatMessagesToStoredMessages(messages)
-  ) as AgentState['messages'];
-}
-
-function cloneMetadata(metadata: Partial<SessionMetadata> | undefined): Partial<SessionMetadata> {
-  if (!metadata) {
-    return {};
-  }
-
-  return {
-    ...metadata,
-    ...(metadata.tags ? {tags: [...metadata.tags]} : {}),
-    ...(metadata.usage ? {usage: {...metadata.usage}} : {}),
-    ...(metadata.contextWindow ? {contextWindow: {...metadata.contextWindow}} : {}),
   };
 }

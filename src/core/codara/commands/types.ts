@@ -31,13 +31,13 @@ export interface CodaraCommandHost {
   }): Promise<AgentState>;
   compactCheckpoints(keepLast?: number): Promise<void>;
   getAgentState(): AgentState;
-  inspectMemory(): Promise<{
+  inspectAgentsFiles(): Promise<{
     globalPath: string;
     projectPath: string;
     loadedPaths: string[];
   }>;
-  ensureMemoryTarget(scope: 'global' | 'project'): Promise<string>;
-  reloadSources(): void;
+  ensureAgentsFileTarget(scope: 'global' | 'project'): Promise<string>;
+  reloadSources(): Promise<void>;
   resumePause(payload: {
     decision: 'approve' | 'reject';
     feedback?: string;
