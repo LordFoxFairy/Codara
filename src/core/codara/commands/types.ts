@@ -19,7 +19,10 @@ export interface CodaraCommandResult {
   command: string;
   output: string;
   state?: AgentState;
-  filePath?: string;
+  action?: {
+    type: 'open_file';
+    path: string;
+  };
 }
 
 export interface CodaraCommandHost {

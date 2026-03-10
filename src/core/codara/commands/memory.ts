@@ -38,7 +38,10 @@ export function createMemoryCommand(): CodaraCommandDefinition {
               ? ['Use /memory global if you want to edit the global AGENTS.md instead.']
               : ['Use /memory project if you want to edit the project AGENTS.md instead.']),
           ].join('\n'),
-          filePath,
+          action: {
+            type: 'open_file',
+            path: filePath,
+          },
         };
       }
 

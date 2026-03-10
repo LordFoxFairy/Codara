@@ -1,4 +1,5 @@
 import {randomUUID} from 'node:crypto';
+import {mapChatMessagesToStoredMessages, mapStoredMessagesToChatMessages} from '@langchain/core/messages';
 import type {BaseChatModel} from '@langchain/core/language_models/chat_models';
 import type {
   Agent,
@@ -13,6 +14,7 @@ import type {
   AgentStreamOutput,
 } from '@core/agents';
 import {createAgent} from '@core/agents';
+import {cloneContext, cloneValues} from '@core/agents/engine/state';
 import {createAgentMemoryCheckpointer} from '@core/checkpoint/state';
 import type {CompactOptions} from '@core/checkpoint/types';
 import {normalizeAgentInput} from '@core/agents/engine/runtime-input';
@@ -39,6 +41,7 @@ export function createSession(options: CreateSessionOptions): Session {
   const metadata: SessionMetadata = {
     messageCount: 0,
     lastActivity: createdAt,
+    ...cloneMetadata(options.metadata),
   };
   const store = options.store;
   const checkpointer = options.checkpointer ?? createAgentMemoryCheckpointer();
@@ -184,6 +187,30 @@ export function createSession(options: CreateSessionOptions): Session {
       const state = await agent.compactConversation();
       await syncSessionFromState(state);
       return state;
+    },
+
+    async fork(forkOptions = {}): Promise<Session> {
+      requireReady();
+      const agent = await getAgent();
+      const baseState = agent.getState();
+      const child = createSession({
+        ...options,
+        sessionId: forkOptions.sessionId,
+        threadId: forkOptions.threadId,
+        store: forkOptions.store ?? options.store,
+        restore: 'never',
+        messages: cloneMessages(baseState.messages),
+        context: cloneContext(baseState.context),
+        values: cloneValues(baseState.values),
+        metadata: {
+          title: metadata.title,
+          tags: metadata.tags ? [...metadata.tags] : undefined,
+          forkedFromSessionId: sessionId,
+          forkedFromThreadId: threadId,
+        },
+      });
+      await child.hydrate();
+      return child;
     },
 
     async invoke(input?: AgentInput, config?: AgentInvokeConfig): Promise<AgentResult> {
@@ -337,5 +364,22 @@ function deriveInputBudget(modelInfo: Pick<ModelInfo, 'contextWindow' | 'maxOutp
   return {
     maxInputTokens: modelInfo.contextWindow,
     ...(typeof modelInfo.maxOutputTokens === 'number' ? {reservedTokens: modelInfo.maxOutputTokens} : {}),
+  };
+}
+
+function cloneMessages(messages: AgentState['messages']): AgentState['messages'] {
+  return mapStoredMessagesToChatMessages(
+    mapChatMessagesToStoredMessages(messages)
+  ) as AgentState['messages'];
+}
+
+function cloneMetadata(metadata: Partial<SessionMetadata> | undefined): Partial<SessionMetadata> {
+  if (!metadata) {
+    return {};
+  }
+
+  return {
+    ...metadata,
+    ...(metadata.tags ? {tags: [...metadata.tags]} : {}),
   };
 }
