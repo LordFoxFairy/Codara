@@ -131,7 +131,7 @@ checkpoint 边界：
   - layer: `values`
 - `tasking`
   - scope: 委派执行与共享任务协调的统一能力域
-  - includes: `subagent` primitive、`Task`、`TaskStore`、tasking middlewares
+  - includes: `subagent` primitive、`Task`、`TaskStore`、tasking middleware facades
 - `subagent`
   - scope: 委派执行
   - layer: 同一 agent runtime，`agentType = subagent`

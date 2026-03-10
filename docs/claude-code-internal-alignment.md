@@ -111,7 +111,7 @@ Current `AGENTS.md` behavior is already close to Claude Code's memory/source lay
 Relevant files:
 
 - [src/core/workspace.ts](/Users/nako/WebstormProjects/github/thefoxfairy/Codara/src/core/workspace.ts)
-- [src/core/sessions/agents-source.ts](/Users/nako/WebstormProjects/github/thefoxfairy/Codara/src/core/sessions/agents-source.ts)
+- [src/core/sessions/agents.ts](/Users/nako/WebstormProjects/github/thefoxfairy/Codara/src/core/sessions/agents.ts)
 - [src/core/middleware/guidelines.ts](/Users/nako/WebstormProjects/github/thefoxfairy/Codara/src/core/middleware/guidelines.ts)
 
 ### 3. Resume semantics are cleaner than before

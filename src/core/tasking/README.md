@@ -23,14 +23,10 @@ tasking/
   shared-tools.ts      # TaskCreate/TaskUpdate/TaskList
   store.ts             # TaskStore implementations
   types.ts             # tasking domain types
-  middleware/
-    task.ts
-    subagent.ts
-    shared-tasks.ts
 ```
 
 规则：
 
 - `agents/*` 保持纯执行内核，不再承载 task/subagent 领域文件。
-- `middleware/*` 只保留 lifecycle capability facade；tasking 的 middleware 放在 `tasking/middleware/*`。
+- `middleware/*` 只保留 generic lifecycle domain；tasking 的 middleware facade 与对应 primitive 放在同一 tasking 文件中，避免再拆出一层薄 wrapper 目录。
 - `skills` 只负责发现和解析；`Task` 通过 `runtime.shared.skills` 消费定义，不直接读 store。

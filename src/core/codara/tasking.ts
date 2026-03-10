@@ -1,20 +1,23 @@
 import {createAgent} from '@core/agents';
 import type {CodaraOptions} from '@core/codara/types';
 import {
+  createSubagentTool,
   createSubagentMiddleware,
+  createTaskTool,
   createTaskMiddleware,
   type CreateSubagentMiddlewareOptions,
   type CreateTaskMiddlewareOptions,
-} from '@core/tasking/middleware';
+} from '@core/tasking';
 import {resolveCodaraRuntime} from '@core/codara/runtime';
 
 export async function createCodaraTaskTool(options: CodaraOptions = {}) {
-  const middleware = await createCodaraTaskMiddleware(options);
-  const [taskTool] = middleware.tools ?? [];
-  if (!taskTool) {
-    throw new Error('Task middleware did not register a Task tool');
-  }
-  return taskTool;
+  const defaults = await resolveCodaraTaskingDefaults(options);
+  return createTaskTool({
+    ...defaults,
+    runtimeHooks: {
+      createChildAgent: (childOptions) => createAgent(childOptions),
+    },
+  });
 }
 
 export async function createCodaraTaskMiddleware(options: CodaraOptions = {}) {
@@ -29,12 +32,8 @@ export async function createCodaraTaskMiddleware(options: CodaraOptions = {}) {
 }
 
 export async function createCodaraSubagentTool(options: CodaraOptions = {}) {
-  const middleware = await createCodaraSubagentMiddleware(options);
-  const [subagentTool] = middleware.tools ?? [];
-  if (!subagentTool) {
-    throw new Error('Subagent middleware did not register a delegation tool');
-  }
-  return subagentTool;
+  const defaults = await resolveCodaraTaskingDefaults(options);
+  return createSubagentTool(defaults);
 }
 
 export async function createCodaraSubagentMiddleware(options: CodaraOptions = {}) {

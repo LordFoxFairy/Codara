@@ -4,7 +4,7 @@ import {createConversationContextMiddleware} from '@core/middleware/conversation
 import type {CodaraMiddlewareOptions} from '@core/codara/types';
 import {createSkillsMiddleware} from '@core/skills';
 import {resolveCodaraSkills} from '@core/codara/skills';
-import type {AgentsSource} from '@core/sessions/agents-source';
+import type {AgentsSource} from '@core/sessions/agents';
 
 /**
  * 构建 Codara 默认中间件链。
@@ -40,7 +40,7 @@ export function createCodaraMiddlewares(
   }
 
   // 4. Caller middlewares（让追加的 systemMessage 也能进入 budget / summary）
-  middlewares.push(...(options.middleware ?? options.middlewares ?? []));
+  middlewares.push(...(options.middleware ?? []));
 
   // 5. Conversation Context（统一 budget + summary）
   middlewares.push(createConversationContextMiddleware({

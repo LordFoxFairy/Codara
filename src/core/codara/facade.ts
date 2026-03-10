@@ -1,9 +1,9 @@
 import {createSession} from '@core/sessions';
 import {createCodaraCommandRunner} from '@core/codara/commands';
 import {createSkillCodaraCommands} from '@core/codara/commands/skills';
-import {ensureAgentsFileTarget, inspectAgentsFiles} from '@core/sessions/agents-files';
 import type {Codara, CodaraOptions} from '@core/codara/types';
-import type {SessionState, SessionStore} from '@core/sessions';
+import type {Session, SessionState, SessionStore} from '@core/sessions';
+import type {CodaraCommandHost} from '@core/codara/commands';
 import {createCodaraRuntimePlan} from '@core/codara/runtime';
 
 /**
@@ -42,6 +42,7 @@ function createCodaraInstance(
     model: runtime.model,
     modelCatalog: runtime.modelCatalog,
     agentsSource: runtime.agentsSource,
+    skillsStore: runtime.skills?.store,
     store: options.store,
     tools: runtime.tools,
     middleware: runtime.middleware,
@@ -52,46 +53,15 @@ function createCodaraInstance(
     context: options.context,
     values: options.values,
   });
-  const reloadRuntimeSources = async (): Promise<void> => {
-    await session.reloadSources();
-    await runtime.skills?.store.refresh?.();
-  };
   const commands = createCodaraCommandRunner({
     getDynamicCommands: runtime.skills
       ? () => createSkillCodaraCommands(runtime.skills!.store)
       : undefined,
-    host: {
-    compactConversation: (compactOptions) => session.compactConversation(compactOptions),
-    compactCheckpoints: (keepLast) => session.compactCheckpoints(
-      typeof keepLast === 'number' ? {keepLast} : undefined
-    ),
-    getAgentState: () => session.getAgentState(),
-    inspectAgentsFiles: () => inspectAgentsFiles({
-      cwd: options.cwd,
-      projectRoot: options.projectRoot,
-      userHome: options.userHome,
-      guidelines: options.guidelines,
-    }),
-    ensureAgentsFileTarget: (scope) => ensureAgentsFileTarget({
-      cwd: options.cwd,
-      projectRoot: options.projectRoot,
-      userHome: options.userHome,
-      guidelines: options.guidelines,
-    }, scope),
-    invokePrompt: (input) => session.invoke(input),
-    reloadSources: reloadRuntimeSources,
-    async resumePause(payload) {
-      await session.resumePause(payload, {
-        ...(payload.feedback ? {input: payload.feedback} : {}),
-      });
-      return session.getAgentState();
-    },
-    },
+    host: createCodaraCommandHost(session),
   });
 
   return {
     ...session,
-    reloadSources: reloadRuntimeSources,
     listCommands: commands.listCommands,
     executeCommand: commands.executeCommand,
   };
@@ -108,15 +78,7 @@ export async function openCodaraSession(
     throw new Error(`Session not found: ${options.sessionId}`);
   }
 
-  const codara = createCodaraInstance({
-    ...options,
-    sessionId: sessionState.sessionId,
-    threadId: sessionState.threadId,
-    restore: 'latest',
-  }, sessionState);
-
-  await codara.hydrate();
-  return codara;
+  return openStoredCodaraSession(options, sessionState);
 }
 
 export async function openLatestCodaraSession(
@@ -129,12 +91,44 @@ export async function openLatestCodaraSession(
     throw new Error('No sessions found');
   }
 
+  return openStoredCodaraSession(options, latest);
+}
+
+function createCodaraCommandHost(
+  session: Session,
+): CodaraCommandHost {
+  return {
+    compactConversation: (compactOptions: {instructions?: string} | undefined) => session.compactConversation(compactOptions),
+    compactCheckpoints: (keepLast: number | undefined) => session.compactCheckpoints(
+      typeof keepLast === 'number' ? {keepLast} : undefined
+    ),
+    getAgentState: () => session.getAgentState(),
+    inspectAgentsFiles: () => session.inspectAgentsFiles(),
+    ensureAgentsFileTarget: (scope: 'global' | 'project') => session.ensureAgentsFileTarget(scope),
+    invokePrompt: (input: string) => session.invoke(input),
+    reloadSources: () => session.reloadSources(),
+    async resumePause(payload: {
+      decision: 'approve' | 'reject';
+      feedback?: string;
+    }) {
+      await session.resumePause(payload, {
+        ...(payload.feedback ? {input: payload.feedback} : {}),
+      });
+      return session.getAgentState();
+    },
+  };
+}
+
+async function openStoredCodaraSession(
+  options: CodaraOptions,
+  sessionState: SessionState,
+): Promise<Codara> {
   const codara = createCodaraInstance({
     ...options,
-    sessionId: latest.sessionId,
-    threadId: latest.threadId,
+    sessionId: sessionState.sessionId,
+    threadId: sessionState.threadId,
     restore: 'latest',
-  }, latest);
+  }, sessionState);
 
   await codara.hydrate();
   return codara;

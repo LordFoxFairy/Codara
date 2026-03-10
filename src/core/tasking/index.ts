@@ -14,31 +14,28 @@ export {
   TASK_CREATE_TOOL_NAME,
   TASK_LIST_TOOL_NAME,
   TASK_UPDATE_TOOL_NAME,
+  createSharedTaskMiddleware,
   createTaskCreateTool,
   createTaskListTool,
   createTaskTools,
   createTaskUpdateTool,
+  type CreateSharedTaskMiddlewareOptions,
   type TaskToolOptions,
 } from '@core/tasking/shared-tools';
 export {
   DEFAULT_SUBAGENT_TOOL_DESCRIPTION,
   DEFAULT_SUBAGENT_TOOL_NAME,
+  createSubagentMiddleware,
   createSubagentTool,
-  runDelegatedAgent,
+  type CreateSubagentMiddlewareOptions,
   type CreateSubagentToolOptions,
 } from '@core/tasking/subagent';
 export {
+  TASK_MIDDLEWARE_SYSTEM_PROMPT,
   TASK_TOOL_DESCRIPTION,
   TASK_TOOL_NAME,
-  createTaskTool,
-  type CreateTaskToolOptions,
-  type TaskToolRuntimeHooks,
-} from '@core/tasking/task-tool';
-export {
-  createSharedTaskMiddleware,
-  createSubagentMiddleware,
   createTaskMiddleware,
-  type CreateSharedTaskMiddlewareOptions,
-  type CreateSubagentMiddlewareOptions,
+  createTaskTool,
   type CreateTaskMiddlewareOptions,
-} from '@core/tasking/middleware';
+  type CreateTaskToolOptions,
+} from '@core/tasking/task-tool';
