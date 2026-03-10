@@ -1,4 +1,4 @@
-import type {AgentState} from '@core/agents';
+import type {AgentResult, AgentState} from '@core/agents';
 
 export interface ParsedCodaraCommand {
   raw: string;
@@ -12,7 +12,18 @@ export interface CodaraCommandSpec {
   description: string;
   usage: string;
   aliases?: string[];
+  source: CodaraCommandSource;
 }
+
+export type CodaraCommandSource =
+  | {
+      type: 'builtin';
+    }
+  | {
+      type: 'skill';
+      skillName: string;
+      skillPath: string;
+    };
 
 export interface CodaraCommandResult {
   ok: boolean;
@@ -37,6 +48,7 @@ export interface CodaraCommandHost {
     loadedPaths: string[];
   }>;
   ensureAgentsFileTarget(scope: 'global' | 'project'): Promise<string>;
+  invokePrompt(input: string): Promise<AgentResult>;
   reloadSources(): Promise<void>;
   resumePause(payload: {
     decision: 'approve' | 'reject';

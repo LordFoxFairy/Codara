@@ -39,7 +39,16 @@ describe('Codara slash commands', () => {
     expect(result.output).toContain('/resume [approve|reject] [feedback]');
     expect(result.output).toContain('/compact [instructions] | /compact checkpoints [keepLast]');
     expect(result.output).toContain('/reload');
-    expect(codara.listCommands().map((command) => command.name)).toEqual(['help', 'memory', 'resume', 'compact', 'reload']);
+    expect((await codara.listCommands()).map((command) => ({
+      name: command.name,
+      source: command.source.type,
+    }))).toEqual([
+      {name: 'help', source: 'builtin'},
+      {name: 'memory', source: 'builtin'},
+      {name: 'resume', source: 'builtin'},
+      {name: 'compact', source: 'builtin'},
+      {name: 'reload', source: 'builtin'},
+    ]);
   });
 
   it('should reload host sources through slash commands without touching createAgent', async () => {

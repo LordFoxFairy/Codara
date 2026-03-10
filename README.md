@@ -67,7 +67,7 @@ src/index.ts
 ## Slash Commands
 
 - `/help`
-  - 列出当前内建命令
+  - 列出当前内建命令与由 skills 暴露的动态命令
 - `/memory`
   - 默认展示可选的 `AGENTS.md` scope
   - 支持 `show / project / global`
@@ -81,6 +81,7 @@ src/index.ts
   - `/compact checkpoints [keepLast]` 可手动整理 checkpoint 历史
 - `/reload`
   - 清空当前 session 的 `AGENTS.md` source cache
+  - 同时刷新 skills discovery cache
 
 这些命令当前由 `src/core/codara/commands/` 管理，并通过 `createCodara()` 返回的 host surface 暴露。
 

@@ -15,6 +15,9 @@ interface FileSystemSkillStoreOptions {
 const SKILL_CONTENT = `---
 name: demo-skill
 description: demo skill
+command-name: demo
+command-aliases:
+  - ds
 allowed-tools:
   - read_file
 custom-threshold: 0.8
@@ -38,6 +41,10 @@ describe('FileSystemSkillStore', () => {
     expect(skills).toHaveLength(1)
     expect(skills[0]?.name).toBe('demo-skill')
     expect(skills[0]?.allowedTools).toEqual(['read_file'])
+    expect(skills[0]?.command).toEqual({
+      name: 'demo',
+      aliases: ['ds'],
+    })
     expect(skills[0]?.extensions?.['custom-threshold']).toBe(0.8)
     expect((skills[0]?.extensions?.['custom-config'] as {tier?: string})?.tier).toBe('pro')
   })

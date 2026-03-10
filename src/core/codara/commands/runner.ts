@@ -8,15 +8,21 @@ import type {
 } from '@core/codara/commands/types';
 
 export interface CodaraCommandRunner {
-  listCommands(): readonly CodaraCommandSpec[];
+  listCommands(): Promise<readonly CodaraCommandSpec[]>;
   executeCommand(input: string): Promise<CodaraCommandResult>;
 }
 
-export function createCodaraCommandRunner(host: CodaraCommandHost): CodaraCommandRunner {
-  const registry = createBuiltInCodaraCommands();
+export interface CreateCodaraCommandRunnerOptions {
+  host: CodaraCommandHost;
+  getDynamicCommands?: () => Promise<readonly CodaraCommandDefinition[]>;
+}
+
+export function createCodaraCommandRunner(options: CreateCodaraCommandRunnerOptions): CodaraCommandRunner {
+  const builtIns = createBuiltInCodaraCommands();
 
   return {
-    listCommands() {
+    async listCommands() {
+      const registry = await loadRegistry(builtIns, options.getDynamicCommands);
       return registry.map(toSpec);
     },
 
@@ -30,6 +36,7 @@ export function createCodaraCommandRunner(host: CodaraCommandHost): CodaraComman
         };
       }
 
+      const registry = await loadRegistry(builtIns, options.getDynamicCommands);
       const definition = resolveCommand(registry, command.name);
       if (!definition) {
         return {
@@ -42,10 +49,49 @@ export function createCodaraCommandRunner(host: CodaraCommandHost): CodaraComman
       return definition.execute({
         command,
         registry,
-        host,
+        host: options.host,
       });
     },
   };
+}
+
+async function loadRegistry(
+  builtIns: readonly CodaraCommandDefinition[],
+  getDynamicCommands?: () => Promise<readonly CodaraCommandDefinition[]>,
+): Promise<readonly CodaraCommandDefinition[]> {
+  const dynamicCommands = getDynamicCommands ? await getDynamicCommands() : [];
+  return mergeCommandRegistry(builtIns, dynamicCommands);
+}
+
+function mergeCommandRegistry(
+  builtIns: readonly CodaraCommandDefinition[],
+  dynamicCommands: readonly CodaraCommandDefinition[],
+): readonly CodaraCommandDefinition[] {
+  const merged = [...builtIns];
+  const reserved = new Set<string>();
+
+  for (const command of builtIns) {
+    reserved.add(command.name);
+    for (const alias of command.aliases ?? []) {
+      reserved.add(alias);
+    }
+  }
+
+  for (const command of dynamicCommands) {
+    if (reserved.has(command.name)) {
+      continue;
+    }
+    if ((command.aliases ?? []).some((alias) => reserved.has(alias))) {
+      continue;
+    }
+    merged.push(command);
+    reserved.add(command.name);
+    for (const alias of command.aliases ?? []) {
+      reserved.add(alias);
+    }
+  }
+
+  return merged;
 }
 
 function resolveCommand(
@@ -62,6 +108,7 @@ function toSpec(command: CodaraCommandDefinition): CodaraCommandSpec {
     name: command.name,
     usage: command.usage,
     description: command.description,
+    source: command.source,
     ...(command.aliases?.length ? {aliases: [...command.aliases]} : {}),
   };
 }

@@ -1,5 +1,5 @@
 import yaml from 'yaml'
-import type {SkillMetadata} from '@core/skills/types'
+import type {SkillCommandMetadata, SkillMetadata} from '@core/skills/types'
 
 export const MAX_SKILL_FILE_SIZE = 10 * 1024 * 1024
 export const MAX_SKILL_NAME_LENGTH = 64
@@ -13,7 +13,15 @@ const KNOWN_FRONTMATTER_KEYS = new Set([
   'compatibility',
   'metadata',
   'allowed-tools',
-  'allowedTools'
+  'allowedTools',
+  'command-name',
+  'commandName',
+  'command-description',
+  'commandDescription',
+  'command-usage',
+  'commandUsage',
+  'command-aliases',
+  'commandAliases'
 ])
 
 export interface MarkdownFrontmatterDocument {
@@ -134,8 +142,27 @@ export function parseSkillMetadataFromContent(
     license: parseOptionalString(readFrontmatter(frontmatter, ['license'])),
     compatibility,
     allowedTools: parseAllowedTools(readFrontmatter(frontmatter, ['allowed-tools', 'allowedTools'])),
+    command: parseCommandMetadata(frontmatter),
     frontmatter,
     extensions: parseExtensions(frontmatter)
+  }
+}
+
+function parseCommandMetadata(frontmatter: Record<string, unknown>): SkillCommandMetadata | undefined {
+  const name = normalizeCommandName(parseOptionalString(readFrontmatter(frontmatter, ['command-name', 'commandName'])))
+  if (!name) {
+    return undefined
+  }
+
+  const description = parseOptionalString(readFrontmatter(frontmatter, ['command-description', 'commandDescription'])) ?? undefined
+  const usage = parseOptionalString(readFrontmatter(frontmatter, ['command-usage', 'commandUsage'])) ?? undefined
+  const aliases = parseCommandAliases(readFrontmatter(frontmatter, ['command-aliases', 'commandAliases']))
+
+  return {
+    name,
+    ...(description ? {description} : {}),
+    ...(usage ? {usage} : {}),
+    ...(aliases.length > 0 ? {aliases} : {}),
   }
 }
 
@@ -219,6 +246,41 @@ function parseAllowedTools(rawTools: unknown): string[] {
 
   const tokens = splitAllowedTools(text)
   return dedupe(tokens.map((token) => token.trim()).filter(Boolean))
+}
+
+function parseCommandAliases(rawAliases: unknown): string[] {
+  if (Array.isArray(rawAliases)) {
+    return dedupe(
+      rawAliases
+        .map((item) => normalizeCommandName(String(item)))
+        .filter((item): item is string => Boolean(item))
+    )
+  }
+
+  const text = String(rawAliases ?? '').trim()
+  if (!text) {
+    return []
+  }
+
+  return dedupe(
+    text
+      .split(/[,\s]+/)
+      .map((item) => normalizeCommandName(item))
+      .filter((item): item is string => Boolean(item))
+  )
+}
+
+function normalizeCommandName(value: string | null): string | undefined {
+  const normalized = value?.trim().toLowerCase().replace(/^\//, '')
+  if (!normalized) {
+    return undefined
+  }
+
+  if (!/^[a-z0-9-]+$/.test(normalized)) {
+    return undefined
+  }
+
+  return normalized
 }
 
 function splitAllowedTools(raw: string): string[] {
