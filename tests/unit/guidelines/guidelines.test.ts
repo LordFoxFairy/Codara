@@ -109,4 +109,25 @@ describe('AGENTS guidelines', () => {
     expect(text.indexOf('# Project Rules')).toBeLessThan(text.indexOf('# Package Rules'));
     expect(text.indexOf('# Package Rules')).toBeLessThan(text.indexOf('# App Rules'));
   });
+
+  it('should expand @imports inside guideline files', async () => {
+    const root = await mkdtemp(path.join(tmpdir(), 'codara-guidelines-'));
+    const userHome = path.join(root, 'home');
+    const projectRoot = path.join(root, 'project');
+    const importedFile = path.join(projectRoot, 'shared-guidelines.md');
+    const projectFile = path.join(projectRoot, 'AGENTS.md');
+
+    await mkdir(projectRoot, {recursive: true});
+    await writeFile(importedFile, '# Shared Rules\n\nPrefer narrow commits.\n', 'utf8');
+    await writeFile(projectFile, '# Project Rules\n\n@./shared-guidelines.md\n\nRun tests before merge.\n', 'utf8');
+
+    const sourceProvider = createCodaraSourceProvider({userHome, projectRoot});
+    const content = await sourceProvider.get('guidelines');
+
+    expect(content).toBeDefined();
+    expect(content).toContain('# Project Rules');
+    expect(content).toContain('# Shared Rules');
+    expect(content).toContain('Prefer narrow commits.');
+    expect(content).toContain('Run tests before merge.');
+  });
 });

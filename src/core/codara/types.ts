@@ -6,10 +6,9 @@ import type {
 } from '@core/agents';
 import type {BaseMiddleware, HILMiddlewareOptions, LoggingMiddlewareOptions} from '@core/middleware';
 import type {SkillStore} from '@core/skills';
-import type {Session} from '@core/sessions';
+import type {Session, SessionStore} from '@core/sessions';
 import type {CodaraModelCatalog, CreateCodaraModelCatalogOptions} from '@core/codara/models';
 import type {GuidelinesOptions} from '@core/middleware/guidelines';
-import type {MemoryOptions} from '@core/middleware/memory';
 import type {SummaryOptions} from '@core/middleware/summary';
 import type {AgentCheckpointer} from '@core/checkpoint/state';
 
@@ -36,7 +35,6 @@ export interface CodaraMiddlewareOptions {
   middleware?: BaseMiddleware[];
   middlewares?: BaseMiddleware[];
   guidelines?: boolean | GuidelinesOptions;
-  memory?: boolean | MemoryOptions;
   skills?: false | CodaraSkillOptions;
   summary?: false | SummaryOptions;
   hil?: false | HILMiddlewareOptions;
@@ -61,6 +59,7 @@ export interface CodaraOptions
   sessionId?: string;
   threadId?: string;
   restore?: 'latest' | 'never';
+  store?: SessionStore;
   checkpointer?: AgentCheckpointer;
   handleToolErrors?: boolean;
   inputBudget?: AgentInputBudget;

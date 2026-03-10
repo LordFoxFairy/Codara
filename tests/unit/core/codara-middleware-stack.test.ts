@@ -11,14 +11,13 @@ describe('Codara middleware stack', () => {
 
     expect(middlewares.map((middleware) => middleware.name)).toEqual([
       'GuidelinesMiddleware',
-      'MemoryMiddleware',
       'SkillsMiddleware',
-      'ContextBudgetMiddleware',
+      'ConversationContextMiddleware',
       'HumanInTheLoopMiddleware',
     ]);
   });
 
-  it('should place logging first, caller middlewares before HIL, and keep HIL last', () => {
+  it('should place logging first, caller middlewares before budget/summary, and keep HIL last', () => {
     const custom = createMiddleware({
       name: 'CustomMiddleware',
       beforeModel: () => undefined,
@@ -33,10 +32,9 @@ describe('Codara middleware stack', () => {
     expect(middlewares.map((middleware) => middleware.name)).toEqual([
       'LoggingMiddleware',
       'GuidelinesMiddleware',
-      'MemoryMiddleware',
       'SkillsMiddleware',
-      'ContextBudgetMiddleware',
       'CustomMiddleware',
+      'ConversationContextMiddleware',
       'HumanInTheLoopMiddleware',
     ]);
   });
@@ -54,10 +52,9 @@ describe('Codara middleware stack', () => {
 
     expect(middlewares.map((middleware) => middleware.name)).toEqual([
       'GuidelinesMiddleware',
-      'MemoryMiddleware',
       'SkillsMiddleware',
-      'ContextBudgetMiddleware',
       'AliasMiddleware',
+      'ConversationContextMiddleware',
       'HumanInTheLoopMiddleware',
     ]);
   });
@@ -69,14 +66,13 @@ describe('Codara middleware stack', () => {
 
     expect(middlewares.map((middleware) => middleware.name)).toEqual([
       'GuidelinesMiddleware',
-      'MemoryMiddleware',
       'SkillsMiddleware',
-      'ContextBudgetMiddleware',
+      'ConversationContextMiddleware',
       'HumanInTheLoopMiddleware',
     ]);
   });
 
-  it('should place summary middleware after skills so it can compact against the full prompt input', () => {
+  it('should keep summary inside the conversation context stage so it can compact against the full prompt input', () => {
     const middlewares = createCodaraMiddlewares({
       skills: {store: new EmptySkillStore()},
       summary: {
@@ -86,25 +82,36 @@ describe('Codara middleware stack', () => {
 
     expect(middlewares.map((middleware) => middleware.name)).toEqual([
       'GuidelinesMiddleware',
-      'MemoryMiddleware',
       'SkillsMiddleware',
-      'ContextBudgetMiddleware',
-      'SummaryMiddleware',
+      'ConversationContextMiddleware',
       'HumanInTheLoopMiddleware',
     ]);
   });
 
-  it('should allow memory middleware to be disabled explicitly', () => {
+  it('should let caller middlewares contribute system messages before conversation context runs', () => {
+    const custom = createMiddleware({
+      name: 'CustomPromptMiddleware',
+      beforeModel(context) {
+        context.systemMessage.push('custom');
+        return undefined;
+      },
+    });
+
     const middlewares = createCodaraMiddlewares({
       skills: {store: new EmptySkillStore()},
-      memory: false,
+      summary: {
+        summarize: () => 'summary',
+      },
+      middlewares: [custom],
     });
 
     expect(middlewares.map((middleware) => middleware.name)).toEqual([
       'GuidelinesMiddleware',
       'SkillsMiddleware',
-      'ContextBudgetMiddleware',
+      'CustomPromptMiddleware',
+      'ConversationContextMiddleware',
       'HumanInTheLoopMiddleware',
     ]);
   });
+
 });

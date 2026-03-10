@@ -11,8 +11,8 @@ export type {
 } from '@core/skills';
 export * from '@core/middleware/logging';
 export * from '@core/middleware/hil';
+export * from '@core/middleware/conversation-input';
 export * from '@core/middleware/context-budget';
-export * from '@core/middleware/memory';
 export * from '@core/middleware/guidelines';
 export * from '@core/middleware/summary';
 export * from '@core/middleware/todo';

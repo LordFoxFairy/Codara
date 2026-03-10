@@ -1,5 +1,5 @@
 import {randomUUID} from 'node:crypto';
-import type {CheckpointRecord, Checkpointer, PutCheckpointInput} from '@core/checkpoint/types';
+import type {CheckpointRecord, Checkpointer, CompactOptions, PutCheckpointInput} from '@core/checkpoint/types';
 
 interface ThreadState<TState, TInfo> {
   latestCheckpointId?: string;
@@ -68,6 +68,30 @@ export class InMemoryCheckpointer<TState = unknown, TInfo = unknown>
 
   async deleteThread(threadId: string): Promise<void> {
     this.threads.delete(threadId);
+  }
+
+  async compact(threadId: string, options?: CompactOptions): Promise<void> {
+    const keepLast = options?.keepLast ?? 10;
+    const thread = this.threads.get(threadId);
+    if (!thread || thread.order.length <= keepLast) {
+      return;
+    }
+
+    const keptOrder = thread.order.slice(-keepLast);
+    const removedOrder = thread.order.slice(0, -keepLast);
+
+    for (const checkpointId of removedOrder) {
+      thread.records.delete(checkpointId);
+    }
+
+    thread.order = keptOrder;
+    const oldestKept = keptOrder[0];
+    if (oldestKept) {
+      const oldestRecord = thread.records.get(oldestKept);
+      if (oldestRecord?.ref.parentCheckpointId) {
+        oldestRecord.ref.parentCheckpointId = undefined;
+      }
+    }
   }
 
   private ensureThread(threadId: string): ThreadState<TState, TInfo> {
