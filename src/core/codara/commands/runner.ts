@@ -1,13 +1,13 @@
 import {createCompactCommand} from '@core/codara/commands/compact';
 import {createHelpCommand} from '@core/codara/commands/help';
 import {createMemoryCommand} from '@core/codara/commands/memory';
-import {parseCodaraCommand} from '@core/codara/commands/parser';
 import {createReloadCommand} from '@core/codara/commands/reload';
 import {createResumeCommand} from '@core/codara/commands/resume';
 import type {
   CodaraCommandDefinition,
   CodaraCommandHost,
   CodaraCommandResult,
+  ParsedCodaraCommand,
   CodaraCommandSpec,
 } from '@core/codara/commands/types';
 
@@ -124,5 +124,30 @@ function toSpec(command: CodaraCommandDefinition): CodaraCommandSpec {
     description: command.description,
     source: command.source,
     ...(command.aliases?.length ? {aliases: [...command.aliases]} : {}),
+  };
+}
+
+function parseCodaraCommand(input: string): ParsedCodaraCommand | undefined {
+  const raw = input.trim();
+  if (!raw.startsWith('/')) {
+    return undefined;
+  }
+
+  const body = raw.slice(1).trim();
+  if (!body) {
+    return undefined;
+  }
+
+  const parts = body.split(/\s+/).filter(Boolean);
+  const [name, ...args] = parts;
+  if (!name) {
+    return undefined;
+  }
+
+  return {
+    raw,
+    name: name.toLowerCase(),
+    args,
+    argsText: args.join(' '),
   };
 }

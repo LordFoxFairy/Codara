@@ -1,10 +1,16 @@
 import {createHILMiddleware, createLoggingMiddleware, type BaseMiddleware} from '@core/middleware';
 import {createGuidelinesMiddleware} from '@core/middleware/guidelines';
 import {createConversationContextMiddleware} from '@core/middleware/conversation-context';
-import type {CodaraMiddlewareOptions} from '@core/codara/types';
+import type {CodaraMiddlewareOptions, CodaraSkillOptions} from '@core/codara/types';
 import {createSkillsMiddleware} from '@core/skills';
-import {resolveCodaraSkills} from '@core/codara/skills';
 import type {AgentsSource} from '@core/sessions/agents';
+import {FileSystemSkillStore, type SkillStore} from '@core/skills';
+import {resolveWorkspaceRoot} from '@core/workspace';
+
+export interface CodaraResolvedSkills {
+  store: SkillStore;
+  agentRoots: string[];
+}
 
 /**
  * 构建 Codara 默认中间件链。
@@ -53,4 +59,42 @@ export function createCodaraMiddlewares(
   }
 
   return middlewares;
+}
+
+export function resolveCodaraSkills(
+  options: Pick<CodaraMiddlewareOptions, 'skills' | 'cwd'>,
+): CodaraResolvedSkills | undefined {
+  if (options.skills === false) {
+    return undefined;
+  }
+
+  if (options.skills?.store) {
+    return {
+      store: options.skills.store,
+      agentRoots: options.skills.agentRoots ?? [],
+    };
+  }
+
+  return {
+    store: new FileSystemSkillStore(buildSkillStoreOptions(options.skills, options.cwd)),
+    agentRoots: options.skills?.agentRoots ?? [],
+  };
+}
+
+function buildSkillStoreOptions(skills: CodaraSkillOptions | undefined, cwd: string | undefined) {
+  const skillOptions = skills;
+  return {
+    ...(skillOptions?.sources ? {sources: skillOptions.sources} : {}),
+    ...((skillOptions?.projectRoot || skillOptions?.cwd || cwd)
+      ? {
+          projectRoot: resolveWorkspaceRoot({
+            projectRoot: skillOptions?.projectRoot,
+            cwd: skillOptions?.cwd ?? cwd,
+          }),
+        }
+      : {}),
+    ...((skillOptions?.cwd || cwd) ? {cwd: skillOptions?.cwd ?? cwd} : {}),
+    ...(skillOptions?.userHome ? {userHome: skillOptions.userHome} : {}),
+    ...(typeof skillOptions?.cacheTtlMs === 'number' ? {cacheTtlMs: skillOptions.cacheTtlMs} : {}),
+  };
 }
