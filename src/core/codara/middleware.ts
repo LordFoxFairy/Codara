@@ -4,7 +4,7 @@ import {createConversationContextMiddleware} from '@core/middleware/conversation
 import type {CodaraMiddlewareOptions} from '@core/codara/types';
 import {createSkillsMiddleware, FileSystemSkillStore} from '@core/skills';
 import {resolveWorkspaceRoot} from '@core/workspace';
-import type {SourceProvider} from '@core/sessions/source-provider';
+import type {AgentsSource} from '@core/sessions/agents-source';
 
 /**
  * 构建 Codara 默认中间件链。
@@ -19,7 +19,7 @@ import type {SourceProvider} from '@core/sessions/source-provider';
  */
 export function createCodaraMiddlewares(
   options: CodaraMiddlewareOptions = {},
-  sourceProvider?: SourceProvider
+  agentsSource?: AgentsSource
 ): BaseMiddleware[] {
   const middlewares: BaseMiddleware[] = [];
 
@@ -30,7 +30,7 @@ export function createCodaraMiddlewares(
 
   // 2. Guidelines（默认启用）
   if (options.guidelines !== false) {
-    middlewares.push(createGuidelinesMiddleware(sourceProvider));
+    middlewares.push(createGuidelinesMiddleware(agentsSource));
   }
 
   // 3. Skills（默认启用）

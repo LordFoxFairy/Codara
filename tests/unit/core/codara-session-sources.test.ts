@@ -2,7 +2,7 @@ import {describe, expect, it} from 'bun:test';
 import {mkdir, mkdtemp, writeFile} from 'node:fs/promises';
 import path from 'node:path';
 import {tmpdir} from 'node:os';
-import {createCodara} from '@core';
+import {createCodara, FileSessionStore} from '@core';
 import type {BaseChatModel} from '@langchain/core/language_models/chat_models';
 import {SystemEchoModel} from './codara-fixtures';
 
@@ -107,5 +107,42 @@ describe('Codara session source lifecycle', () => {
 
     expect(secondText).toContain('project rule v2');
     expect(secondText).not.toContain('project rule v1');
+  });
+
+  it('should persist session activity metadata when host sources are reloaded', async () => {
+    const root = await mkdtemp(path.join(tmpdir(), 'codara-session-reload-metadata-'));
+    const userHome = path.join(root, 'home');
+    const projectRoot = path.join(root, 'project');
+    const nestedCwd = path.join(projectRoot, 'packages', 'app');
+    const store = new FileSessionStore({
+      basePath: path.join(root, 'sessions'),
+    });
+    await mkdir(path.join(userHome, '.codara'), {recursive: true});
+    await mkdir(path.join(projectRoot, '.git'), {recursive: true});
+    await mkdir(nestedCwd, {recursive: true});
+    await writeFile(path.join(nestedCwd, 'AGENTS.md'), 'project rule v1', 'utf8');
+
+    const codara = createCodara({
+      model: new SystemEchoModel() as unknown as BaseChatModel,
+      cwd: nestedCwd,
+      userHome,
+      store,
+      guidelines: true,
+      skills: false,
+      builtinTools: false,
+    });
+
+    await codara.invoke('hello');
+    const before = codara.getState();
+
+    await new Promise((resolve) => setTimeout(resolve, 5));
+    await codara.reloadSources();
+
+    const after = codara.getState();
+    expect(after.updatedAt > before.updatedAt).toBe(true);
+
+    const persisted = await store.get(after.sessionId);
+    expect(persisted?.updatedAt).toBe(after.updatedAt);
+    expect(persisted?.metadata?.lastActivity).toBe(after.metadata?.lastActivity);
   });
 });

@@ -15,7 +15,7 @@ import type {AgentCheckpointer} from '@core/checkpoint/state';
 import type {CompactOptions} from '@core/checkpoint/types';
 import type {BaseMiddleware} from '@core/middleware';
 import type {HILResumePayload} from '@core/middleware/hil';
-import type {SourceProvider} from '@core/sessions/source-provider';
+import type {AgentsSource} from '@core/sessions/agents-source';
 import type {SessionStore} from '@core/sessions/store';
 import type {CodaraModelCatalog} from '@core/codara/models';
 
@@ -85,8 +85,8 @@ export interface CreateSessionOptions {
   // Model catalog（用于解析 alias）
   modelCatalog?: CodaraModelCatalog | Promise<CodaraModelCatalog>;
 
-  // Source provider
-  sourceProvider?: SourceProvider;
+  // AGENTS source lifecycle
+  agentsSource?: AgentsSource;
 
   // Session store
   store?: SessionStore;
@@ -132,7 +132,7 @@ export interface Session {
     config?: AgentResumeStreamConfig
   ): AsyncGenerator<AgentStreamOutput, AgentResult, void>;
 
-  reloadSources(): void;
+  reloadSources(): Promise<void>;
   compactCheckpoints(options?: CompactOptions): Promise<void>;
   reset(): Promise<void>;
   dispose(): Promise<void>;

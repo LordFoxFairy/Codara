@@ -4,20 +4,22 @@ import {homedir} from 'node:os';
 import {loadGuidelines, type GuidelinesOptions} from '@core/middleware/guidelines';
 import {discoverHierarchicalWorkspaceFiles, resolveWorkspaceRoot, type WorkspaceFileOptions} from '@core/workspace';
 
-export type CodaraMemoryScope = 'global' | 'project';
+export type AgentsFileScope = 'global' | 'project';
 
-export interface CodaraMemoryOverview {
+export interface AgentsFileOverview {
   globalPath: string;
   projectPath: string;
   loadedPaths: string[];
 }
 
-export interface CodaraMemoryOptions extends WorkspaceFileOptions {
+export interface AgentsFileOptions extends WorkspaceFileOptions {
   guidelines?: boolean | GuidelinesOptions;
 }
 
-export async function inspectCodaraMemory(options: CodaraMemoryOptions = {}): Promise<CodaraMemoryOverview> {
-  const {globalPath, projectPath} = resolveCodaraMemoryTargets(options);
+export async function inspectAgentsFiles(
+  options: AgentsFileOptions = {},
+): Promise<AgentsFileOverview> {
+  const {globalPath, projectPath} = resolveAgentsFileTargets(options);
   const loaded = options.guidelines === false
     ? undefined
     : await loadGuidelines(resolveGuidelinesOptions(options));
@@ -29,11 +31,11 @@ export async function inspectCodaraMemory(options: CodaraMemoryOptions = {}): Pr
   };
 }
 
-export async function ensureCodaraMemoryTarget(
-  options: CodaraMemoryOptions = {},
-  scope: CodaraMemoryScope = 'project',
+export async function ensureAgentsFileTarget(
+  options: AgentsFileOptions = {},
+  scope: AgentsFileScope = 'project',
 ): Promise<string> {
-  const {globalPath, projectPath} = resolveCodaraMemoryTargets(options);
+  const {globalPath, projectPath} = resolveAgentsFileTargets(options);
   const target = scope === 'global' ? globalPath : projectPath;
 
   await mkdir(path.dirname(target), {recursive: true});
@@ -49,7 +51,7 @@ export async function ensureCodaraMemoryTarget(
   return target;
 }
 
-function resolveCodaraMemoryTargets(options: CodaraMemoryOptions): {
+function resolveAgentsFileTargets(options: AgentsFileOptions): {
   globalPath: string;
   projectPath: string;
 } {
@@ -68,7 +70,7 @@ function resolveCodaraMemoryTargets(options: CodaraMemoryOptions): {
   return {globalPath, projectPath};
 }
 
-function resolveGuidelinesOptions(options: CodaraMemoryOptions): GuidelinesOptions {
+function resolveGuidelinesOptions(options: AgentsFileOptions): GuidelinesOptions {
   const guidelines = isGuidelinesOptions(options.guidelines) ? options.guidelines : undefined;
 
   return {

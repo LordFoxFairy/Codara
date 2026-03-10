@@ -1,12 +1,9 @@
 import {createSession} from '@core/sessions';
-import {createCodaraSourceProvider} from '@core/sessions/source-provider';
-import {createCodaraModelCatalog} from '@core/codara/models';
-import {createCodaraTools} from '@core/codara/tools';
-import {createCodaraMiddlewares} from '@core/codara/middleware';
 import {createCodaraCommandRunner} from '@core/codara/commands';
-import {ensureCodaraMemoryTarget, inspectCodaraMemory} from '@core/codara/memory';
+import {ensureAgentsFileTarget, inspectAgentsFiles} from '@core/sessions/agents-files';
 import type {Codara, CodaraOptions} from '@core/codara/types';
 import type {SessionState, SessionStore} from '@core/sessions';
+import {createCodaraRuntimePlan} from '@core/codara/runtime';
 
 /**
  * 创建 Codara 实例。
@@ -35,34 +32,18 @@ function createCodaraInstance(
   options: CodaraOptions,
   restoredState?: SessionState,
 ): Codara {
-  const sourceProvider = createCodaraSourceProvider({
-    cwd: options.cwd,
-    projectRoot: options.projectRoot,
-    userHome: options.userHome,
-    guidelines: options.guidelines,
-  });
-
-  const modelCatalog = options.catalog ?? createCodaraModelCatalog({
-    config: options.config,
-  });
-
-  // 支持 modelResolver 作为 model 的替代
-  const model = options.model ?? (options.modelResolver ? options.modelResolver() : undefined);
-
-  const tools = createCodaraTools(options);
-  const middleware = createCodaraMiddlewares(options, sourceProvider);
-
+  const runtime = createCodaraRuntimePlan(options);
   const session = createSession({
     ...(restoredState ? {state: restoredState} : {}),
     sessionId: options.sessionId,
     threadId: options.threadId,
-    alias: options.alias ?? 'default',
-    model,
-    modelCatalog,
-    sourceProvider,
+    alias: runtime.alias,
+    model: runtime.model,
+    modelCatalog: runtime.modelCatalog,
+    agentsSource: runtime.agentsSource,
     store: options.store,
-    tools,
-    middleware,
+    tools: runtime.tools,
+    middleware: runtime.middleware,
     checkpointer: options.checkpointer,
     restore: options.restore,
     inputBudget: options.inputBudget,
@@ -76,13 +57,13 @@ function createCodaraInstance(
       typeof keepLast === 'number' ? {keepLast} : undefined
     ),
     getAgentState: () => session.getAgentState(),
-    inspectMemory: () => inspectCodaraMemory({
+    inspectAgentsFiles: () => inspectAgentsFiles({
       cwd: options.cwd,
       projectRoot: options.projectRoot,
       userHome: options.userHome,
       guidelines: options.guidelines,
     }),
-    ensureMemoryTarget: (scope) => ensureCodaraMemoryTarget({
+    ensureAgentsFileTarget: (scope) => ensureAgentsFileTarget({
       cwd: options.cwd,
       projectRoot: options.projectRoot,
       userHome: options.userHome,

@@ -1,6 +1,6 @@
 import {homedir} from 'node:os';
 import {createMiddleware} from '@core/middleware';
-import type {SourceProvider} from '@core/sessions/source-provider';
+import type {AgentsSource} from '@core/sessions/agents-source';
 import type {WorkspaceFileOptions, WorkspaceScopedFile} from '@core/workspace';
 import {discoverHierarchicalWorkspaceFiles, loadInstructionFiles} from '@core/workspace';
 
@@ -20,7 +20,7 @@ export interface GuidelinesOptions extends WorkspaceFileOptions {
 /**
  * 加载 AGENTS.md 内容投影。
  *
- * 该投影在 source provider 刷新时重新计算一次。
+ * 该投影在 AGENTS source reload 时重新计算一次。
  * 如需完整内容，应通过现有文件工具按路径读取原文件。
  */
 export async function loadGuidelines(options: GuidelinesOptions = {}): Promise<LoadedGuidelines | undefined> {
@@ -63,16 +63,16 @@ export async function loadGuidelines(options: GuidelinesOptions = {}): Promise<L
   };
 }
 
-/** 注入由 source provider 提供的 AGENTS.md 投影。 */
-export function createGuidelinesMiddleware(sourceProvider?: SourceProvider, key = 'guidelines') {
+/** 注入由 AGENTS source 提供的 AGENTS.md 投影。 */
+export function createGuidelinesMiddleware(agentsSource?: AgentsSource) {
   return createMiddleware({
     name: 'GuidelinesMiddleware',
     async beforeModel(context) {
-      if (!sourceProvider) {
+      if (!agentsSource) {
         return undefined;
       }
 
-      const content = await sourceProvider.get(key);
+      const content = await agentsSource.getContent();
       if (!content) {
         return undefined;
       }

@@ -9,7 +9,7 @@ export function createMemoryCommand(): CodaraCommandDefinition {
       const subcommand = (command.args[0] ?? 'show').toLowerCase();
 
       if (subcommand === 'show') {
-        const overview = await host.inspectMemory();
+        const overview = await host.inspectAgentsFiles();
         return {
           ok: true,
           command: command.name,
@@ -25,7 +25,7 @@ export function createMemoryCommand(): CodaraCommandDefinition {
       }
 
       if (subcommand === 'project' || subcommand === 'global') {
-        const filePath = await host.ensureMemoryTarget(subcommand);
+        const filePath = await host.ensureAgentsFileTarget(subcommand);
         return {
           ok: true,
           command: command.name,
