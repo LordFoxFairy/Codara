@@ -1,6 +1,6 @@
 import type {BaseMessage} from '@langchain/core/messages';
 import type {AgentRuntimeContext, AgentRuntimeValues} from '@core/agents/contract/agent';
-import type {MiddlewareRuntimeShared} from '@core/middleware/types';
+import {deepClone} from '@core/shared/clone';
 
 const RESERVED_AGENT_CONTEXT_KEYS = new Set(['todos', 'summary']);
 
@@ -8,7 +8,7 @@ export interface AgentStateUpdate {
   messages?: BaseMessage[];
   context?: AgentRuntimeContext;
   runtimeContext?: AgentRuntimeContext;
-  runtimeShared?: MiddlewareRuntimeShared;
+  runtimeShared?: Record<string, unknown>;
   values?: AgentRuntimeValues;
 }
 
@@ -33,7 +33,7 @@ export function applyAgentStateUpdate(
   update: AgentStateUpdate | undefined,
   runtime?: {
     context: AgentRuntimeContext;
-    shared?: MiddlewareRuntimeShared;
+    shared?: Record<string, unknown>;
   }
 ): void {
   if (!update) {
@@ -76,14 +76,6 @@ function mergeRecords<T extends Record<string, unknown> | undefined>(
 ): T {
   return {
     ...(base ?? {}),
-    ...cloneRecord(update),
+    ...deepClone(update),
   } as T;
-}
-
-function cloneRecord<T extends Record<string, unknown>>(value: T): T {
-  try {
-    return structuredClone(value);
-  } catch {
-    return {...value};
-  }
 }

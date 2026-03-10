@@ -6,8 +6,9 @@ import {
 import {FileCheckpointer} from '@core/checkpoint/file';
 import {InMemoryCheckpointer} from '@core/checkpoint/in-memory';
 import type {CheckpointRecord, Checkpointer} from '@core/checkpoint/types';
-import type {HILPauseRequest} from '@core/middleware/hil';
+import type {PauseRequest} from '@core/agents/contract/pause';
 import type {AgentType} from '@core/agents/contract/agent';
+import {deepClone} from '@core/shared/clone';
 
 export type AgentCheckpointStatus = 'idle' | 'paused' | 'closed' | 'error';
 export type AgentCheckpointReason = 'complete' | 'error' | 'max_turns';
@@ -19,7 +20,7 @@ export interface AgentCheckpointState {
   messages: BaseMessage[];
   context: AgentCheckpointContext;
   values: AgentCheckpointValues;
-  pendingPause?: HILPauseRequest;
+  pendingPause?: PauseRequest;
 }
 
 export interface AgentCheckpointInfo {
@@ -46,7 +47,7 @@ interface PersistedAgentCheckpointState {
   messages: ReturnType<typeof mapChatMessagesToStoredMessages>;
   context: AgentCheckpointContext;
   values: AgentCheckpointValues;
-  pendingPause?: HILPauseRequest;
+  pendingPause?: PauseRequest;
 }
 
 export interface AgentFileCheckpointerOptions {
@@ -75,9 +76,9 @@ function serializeAgentCheckpointState(state: AgentCheckpointState): PersistedAg
   return {
     agentType: state.agentType,
     messages: mapChatMessagesToStoredMessages(state.messages),
-    context: cloneContext(state.context),
-    values: cloneValues(state.values),
-    ...(state.pendingPause ? {pendingPause: cloneStructured(state.pendingPause)} : {}),
+    context: deepClone(state.context),
+    values: deepClone(state.values),
+    ...(state.pendingPause ? {pendingPause: deepClone(state.pendingPause)} : {}),
   };
 }
 
@@ -91,10 +92,10 @@ function deserializeAgentCheckpointState(raw: unknown): AgentCheckpointState {
   return {
     agentType: parseAgentType(record.agentType),
     messages: messages as BaseMessage[],
-    context: cloneContext(asCheckpointContext(record.context)),
-    values: cloneValues(asCheckpointValues(record.values)),
+    context: deepClone(asCheckpointContext(record.context)),
+    values: deepClone(asCheckpointValues(record.values)),
     ...(isPlainRecord(record.pendingPause)
-      ? {pendingPause: cloneStructured(record.pendingPause) as unknown as HILPauseRequest}
+      ? {pendingPause: deepClone(record.pendingPause) as unknown as PauseRequest}
       : {}),
   };
 }
@@ -146,19 +147,11 @@ function parseAgentType(value: unknown): AgentType {
 }
 
 function asCheckpointContext(value: unknown): AgentCheckpointContext {
-  return isPlainRecord(value) ? (cloneStructured(value) as AgentCheckpointContext) : {};
-}
-
-function cloneContext(context: AgentCheckpointContext): AgentCheckpointContext {
-  return cloneStructured(context);
+  return isPlainRecord(value) ? (deepClone(value) as AgentCheckpointContext) : {};
 }
 
 function asCheckpointValues(value: unknown): AgentCheckpointValues {
-  return isPlainRecord(value) ? (cloneStructured(value) as AgentCheckpointValues) : {};
-}
-
-function cloneValues(values: AgentCheckpointValues): AgentCheckpointValues {
-  return cloneStructured(values);
+  return isPlainRecord(value) ? (deepClone(value) as AgentCheckpointValues) : {};
 }
 
 function ensureRecord(value: unknown): Record<string, unknown> {
@@ -167,20 +160,4 @@ function ensureRecord(value: unknown): Record<string, unknown> {
 
 function isPlainRecord(value: unknown): value is Record<string, unknown> {
   return Boolean(value) && typeof value === 'object' && !Array.isArray(value);
-}
-
-function cloneStructured<T>(value: T): T {
-  try {
-    return structuredClone(value);
-  } catch {
-    if (Array.isArray(value)) {
-      return [...value] as T;
-    }
-
-    if (value && typeof value === 'object') {
-      return {...(value as Record<string, unknown>)} as T;
-    }
-
-    return value;
-  }
 }

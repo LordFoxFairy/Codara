@@ -5,8 +5,9 @@ import type {
   AgentMessagesInput,
   AgentRuntimeContext,
 } from '@core/agents/contract/agent';
-import {parseHILToolMessagePayload, type HILPauseRequest, type HILResumePayload} from '@core/middleware/hil';
-import {cloneContext, clonePause} from '@core/agents/engine/state';
+import {parseHILToolMessagePayload} from '@core/middleware/hil';
+import type {PauseRequest, ResumePayload} from '@core/agents/contract/pause';
+import {deepClone} from '@core/shared/clone';
 
 export function normalizeAgentInput(input: AgentInput): BaseMessage[] {
   if (input === undefined) {
@@ -29,7 +30,7 @@ export function isAgentMessagesState(input: AgentInput): input is AgentMessagesI
   return typeof input === 'object' && input !== null && 'messages' in input && Array.isArray((input as {messages?: unknown}).messages);
 }
 
-export function readLatestPause(messages: BaseMessage[]): HILPauseRequest | undefined {
+export function readLatestPause(messages: BaseMessage[]): PauseRequest | undefined {
   for (let index = messages.length - 1; index >= 0; index -= 1) {
     const message = messages[index];
     if (!ToolMessage.isInstance(message)) {
@@ -38,7 +39,7 @@ export function readLatestPause(messages: BaseMessage[]): HILPauseRequest | unde
 
     const payload = parseHILToolMessagePayload(message.content);
     if (payload?.type === 'hil_pause') {
-      return clonePause(payload.request);
+      return deepClone(payload.request);
     }
   }
 
@@ -47,8 +48,8 @@ export function readLatestPause(messages: BaseMessage[]): HILPauseRequest | unde
 
 export function injectResumePayload(
   context: AgentRuntimeContext | undefined,
-  pause: HILPauseRequest,
-  payload: HILResumePayload
+  pause: PauseRequest,
+  payload: ResumePayload
 ): AgentRuntimeContext {
   const nextContext = mergeContext({}, context);
   const root = ensureRecord(nextContext);
@@ -68,18 +69,18 @@ export function injectResumePayload(
 }
 
 export function mergeContext(base: AgentRuntimeContext, overrides: AgentRuntimeContext | undefined): AgentRuntimeContext {
-  if (!overrides) {
-    return cloneContext(base);
+  if (!overrides || Object.keys(overrides).length === 0) {
+    return base;
   }
 
-  const merged: AgentRuntimeContext = cloneContext(base);
-  for (const [key, value] of Object.entries(cloneContext(overrides))) {
+  const merged: AgentRuntimeContext = {...base};
+  for (const [key, value] of Object.entries(overrides)) {
     const previous = merged[key];
     if (isPlainRecord(previous) && isPlainRecord(value)) {
       merged[key] = {...previous, ...value};
-      continue;
+    } else {
+      merged[key] = value;
     }
-    merged[key] = value;
   }
   return merged;
 }

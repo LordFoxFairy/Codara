@@ -45,7 +45,8 @@ import {
   type AgentCheckpointInfo,
   type AgentCheckpointer,
 } from '@core/checkpoint/state';
-import type {HILPauseRequest, HILResumePayload} from '@core/middleware/hil';
+import type {PauseRequest, ResumePayload} from '@core/agents/contract/pause';
+import {formatErrorMessage} from '@core/shared/errors';
 
 /** `createAgent(...)` 返回的默认实现。 */
 class AgentInstance implements Agent {
@@ -96,10 +97,18 @@ class AgentInstance implements Agent {
       inputBudget: config.inputBudget ?? this.inputBudget,
       recursionLimit: 1,
     });
+
+    // 合并持久化上下文和临时上下文
+    const effectiveContext = mergeContext(run.state.context, run.runtimeContext);
+
     const context = {
       state: run.state,
       messages: run.state.messages,
-      runtime: {context: run.context, shared: run.shared, agentContext: run.agentContext},
+      runtime: {
+        context: effectiveContext,
+        agentContext: effectiveContext,
+        shared: run.shared,
+      },
       systemMessage: [],
       runId: run.runId,
       turn: 1,
@@ -108,7 +117,7 @@ class AgentInstance implements Agent {
       inputBudget: run.inputBudget,
     };
 
-    this.runtime.pipeline.validateContext(run.context);
+    this.runtime.pipeline.validateContext(effectiveContext);
     await this.runtime.pipeline.beforeAgent(context);
     await this.runtime.pipeline.beforeModel(context);
 
@@ -128,9 +137,9 @@ class AgentInstance implements Agent {
     return this.execute(input, config, 'invoke');
   }
 
-  async resume(payload: HILResumePayload, config: AgentResumeConfig = {}): Promise<AgentResult> {
+  async resume(payload: ResumePayload, config: AgentResumeConfig = {}): Promise<AgentResult> {
     assertReadyForResume(this.state);
-    const pause = this.state.pendingPause as HILPauseRequest;
+    const pause = this.state.pendingPause as PauseRequest;
     const context = injectResumePayload(config.context, pause, payload);
     return this.execute(config.input, {...config, context}, 'resume');
   }
@@ -166,11 +175,11 @@ class AgentInstance implements Agent {
   }
 
   async *resumeStream(
-    payload: HILResumePayload,
+    payload: ResumePayload,
     config: AgentResumeStreamConfig = {}
   ): AsyncGenerator<AgentStreamOutput, AgentResult, void> {
     assertReadyForResume(this.state);
-    const pause = this.state.pendingPause as HILPauseRequest;
+    const pause = this.state.pendingPause as PauseRequest;
     const context = injectResumePayload(config.context, pause, payload);
     return yield* this.executeStream(config.input, {...config, context}, 'resume');
   }
@@ -189,9 +198,9 @@ class AgentInstance implements Agent {
     });
 
     try {
-      this.runtime.pipeline.validateContext(run.context);
+      this.runtime.pipeline.validateContext(run.runtimeContext);
     } catch (error) {
-      return createErrorResult(loopState, 0, `context validation failed: ${toError(error).message}`);
+      return createErrorResult(loopState, 0, formatErrorMessage(error, 'context validation failed'));
     }
 
     const beforeRunResult = await runBeforeHook(run, config);
@@ -220,9 +229,9 @@ class AgentInstance implements Agent {
     });
 
     try {
-      this.runtime.pipeline.validateContext(run.context);
+      this.runtime.pipeline.validateContext(run.runtimeContext);
     } catch (error) {
-      return createErrorResult(loopState, 0, `context validation failed: ${toError(error).message}`);
+      return createErrorResult(loopState, 0, formatErrorMessage(error, 'context validation failed'));
     }
 
     const beforeRunResult = await runBeforeHook(run, config);
@@ -309,8 +318,4 @@ function createErrorResult(state: AgentState, turns: number, message: string): A
     turns,
     error: new Error(message),
   };
-}
-
-function toError(error: unknown): Error {
-  return error instanceof Error ? error : new Error(String(error));
 }
