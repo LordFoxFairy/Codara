@@ -37,7 +37,7 @@ describe('Codara slash commands', () => {
     expect(result.output).toContain('/help [command]');
     expect(result.output).toContain('/memory [show|project|global]');
     expect(result.output).toContain('/resume [approve|reject] [feedback]');
-    expect(result.output).toContain('/compact [checkpoints] [keepLast]');
+    expect(result.output).toContain('/compact [instructions] | /compact checkpoints [keepLast]');
     expect(result.output).toContain('/reload');
     expect(codara.listCommands().map((command) => command.name)).toEqual(['help', 'memory', 'resume', 'compact', 'reload']);
   });
@@ -76,6 +76,33 @@ describe('Codara slash commands', () => {
     expect(result.output).toContain('Conversation compacted');
     expect(String(result.state?.messages[0]?.content)).toContain('# Conversation Summary');
     expect(result.state?.messages.some((message) => message instanceof AIMessage)).toBe(true);
+  });
+
+  it('should pass custom compact instructions through the host command surface', async () => {
+    let seenInstructions: string | undefined;
+    const codara = createCodara({
+      model: new SystemEchoModel() as unknown as BaseChatModel,
+      skills: false,
+      builtinTools: false,
+      summary: {
+        maxMessages: 99,
+        keepLastMessages: 2,
+        summarize: ({instructions}) => {
+          seenInstructions = instructions;
+          return 'manual compact summary';
+        },
+      },
+    });
+
+    await codara.invoke('one');
+    await codara.invoke('two');
+    await codara.invoke('three');
+
+    const result = await codara.executeCommand('/compact focus on decisions and pending risks');
+
+    expect(result.ok).toBe(true);
+    expect(result.output).toContain('custom instructions');
+    expect(seenInstructions).toBe('focus on decisions and pending risks');
   });
 
   it('should compact checkpoint history through the slash command host surface', async () => {

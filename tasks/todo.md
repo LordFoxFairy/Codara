@@ -1,13 +1,13 @@
 # TODO
 
-- [x] 将 provider 白名单配置收成纯模型 ID 列表
-- [x] 将 `contextWindow/maxOutputTokens` 拆到独立 `model-metadata.json`
-- [x] 更新 loader / registry / 默认仓库配置 / 文档 / 测试
-- [x] 跑完 `typecheck`、`lint`、`test` 并确认新配置合同稳定
+- [x] 将 `/compact [instructions]` 收成正式 runtime contract
+- [x] 将默认自动 compact 阈值收正到更接近 Claude Code 的 95%
+- [x] 更新 summary / session / command / 文档 / 测试
+- [x] 跑完 `typecheck`、`lint`、`test` 并确认 compact lifecycle 稳定
 
 ## Review
 
-- provider `models` 现在只保留模型 ID，仓库默认配置更轻、更接近产品心智
-- 模型窗口与输出 token 元数据独立到 `.codara/model-metadata.json`
-- runtime registry 现在通过统一 model metadata 构建 budget/窗口信息，不再把元数据绑在 provider 白名单里
+- `/compact [instructions]` 现在会把手动 compact 指令带进 summary generator，而不是停在命令层
+- 默认自动 compact 阈值从 80% 收到了 95%，更接近 Claude Code 的默认心智
+- session / agent / command 三层对 compact 的职责已经打通：host 触发，runtime 执行，summary 生成结果
 - 已验证：`bun run typecheck`、`bun run lint`、`bun test`

@@ -16,6 +16,8 @@
 - `/memory` 这类手动命令不要偷偷默认写到某个 target；优先先展示可选 scope，再让用户显式选择 `project/global`。
 - 产品默认（如 `default` alias、默认 budget）要走稳定 alias + 模型元数据，不要让底层 provider 偶然变成默认产品心智。
 - provider 白名单和模型窗口元数据要分开管理：`config.json` 只保留 provider/model 路由关系，`model-metadata.json` 单独承载 `contextWindow/maxOutputTokens`。
+- `/compact` 这类 host command 如果有手动 instructions，就要把它收进正式 runtime contract，不要只停在命令层字符串解析。
+- 对齐 Claude Code 的自动 compact 时，优先对齐生命周期心智和默认阈值（接近 95%），不要让本地临时默认值长期漂移。
 
 ## 设计原则
 

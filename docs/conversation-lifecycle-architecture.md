@@ -164,7 +164,7 @@ Current defaults:
 - default input budget derives from model metadata (`contextWindow`, `maxOutputTokens`)
 - `AGENTS.md` is cached per session and reloaded on `/reload`
 - conversation compaction auto-triggers when estimated usage reaches roughly
-  `80%` of the usable input budget
+  `95%` of the usable input budget
 - `/compact` can still force compaction immediately
 - `/compact checkpoints` is storage-only
 
