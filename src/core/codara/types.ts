@@ -5,13 +5,13 @@ import type {
   AgentInput,
 } from '@core/agents';
 import type {BaseMiddleware, HILMiddlewareOptions, LoggingMiddlewareOptions} from '@core/middleware';
-import type {SkillStore} from '@core/skills';
+import type {SkillStore} from '@core/knowledge/skills';
 import type {Session, SessionStore} from '@core/sessions';
-import type {CodaraModelCatalog, CreateCodaraModelCatalogOptions} from '@core/product/models';
-import type {GuidelinesOptions} from '@core/sources';
+import type {CodaraModelCatalog, CreateCodaraModelCatalogOptions} from '@core/codara/models';
+import type {GuidelinesOptions} from '@core/knowledge/guidelines';
 import type {SummaryOptions} from '@core/middleware/conversation';
-import type {AgentCheckpointer} from '@core/checkpoint/state';
-import type {CodaraCommandResult, CodaraCommandSpec} from '@core/product/commands/types';
+import type {AgentCheckpointer} from '@core/checkpoint';
+import type {CodaraCommandResult, CodaraCommandSpec} from '@core/commands/types';
 
 export interface CodaraSkillOptions {
   store?: SkillStore;

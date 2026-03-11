@@ -1,4 +1,4 @@
-import type {CodaraCommandDefinition, CodaraCommandResult} from '@core/product/commands/types';
+import type {CodaraCommandDefinition, CodaraCommandResult} from '@core/commands/types';
 
 export function createResumeCommand(): CodaraCommandDefinition {
   return {

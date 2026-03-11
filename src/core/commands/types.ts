@@ -1,5 +1,5 @@
 import type {AgentResult, AgentState} from '@core/agents';
-import type {AgentsFileOverview, AgentsFileScope} from '@core/sources';
+import type {AgentsFileOverview, AgentsFileScope} from '@core/knowledge/guidelines';
 
 export interface ParsedCodaraCommand {
   raw: string;

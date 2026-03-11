@@ -1,6 +1,6 @@
 import {describe, expect, it} from 'bun:test';
 import {createMiddleware} from '@core/middleware';
-import {createCodaraMiddlewares} from '@core/codara';
+import {createCodaraMiddlewares} from '@core/codara/facade';
 
 describe('Codara middleware stack', () => {
   it('should keep the default stack runtime-only', () => {

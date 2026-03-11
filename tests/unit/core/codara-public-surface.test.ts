@@ -13,4 +13,13 @@ describe('Codara public surface', () => {
     expect('createCodaraSubagentTool' in codara).toBe(false);
     expect('createCodaraSubagentMiddleware' in codara).toBe(false);
   });
+
+  it('should keep codara assembly helpers and command runner out of the public codara barrel', () => {
+    expect('createCodaraTools' in codara).toBe(false);
+    expect('createCodaraMiddlewares' in codara).toBe(false);
+    expect('createCodaraCommandRunner' in codara).toBe(false);
+    expect('resolveCodaraSkills' in codara).toBe(false);
+    expect('CodaraCommandResult' in codara).toBe(false);
+    expect('CodaraCommandSpec' in codara).toBe(false);
+  });
 });
