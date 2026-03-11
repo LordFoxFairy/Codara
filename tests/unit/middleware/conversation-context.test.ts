@@ -1,13 +1,14 @@
 import {describe, expect, it} from 'bun:test';
 import {AIMessage, HumanMessage, type BaseMessage} from '@langchain/core/messages';
 import type {ModelCallContext} from '@core/middleware';
+import {createBudgetMiddleware} from '@core/middleware';
 import {MiddlewarePipeline} from '@core/middleware/pipeline';
-import {readSummaryRecord} from '@core/middleware/conversation';
-import {createConversationContextMiddleware} from '@core/middleware/conversation';
+import {readSummaryRecord, createSummaryMiddleware} from '@core/middleware/summary';
 
-describe('conversation context middleware', () => {
+describe('budget and summary middleware', () => {
   it('should refresh budget and compact history in one stage', async () => {
-    const middleware = createConversationContextMiddleware({
+    const budget = createBudgetMiddleware();
+    const summary = createSummaryMiddleware({
       summary: {
         maxMessages: 4,
         keepLastMessages: 2,
@@ -15,7 +16,7 @@ describe('conversation context middleware', () => {
       },
     });
 
-    const pipeline = new MiddlewarePipeline([middleware]);
+    const pipeline = new MiddlewarePipeline([budget, summary!]);
     const messages: BaseMessage[] = [
       new HumanMessage('one'),
       new AIMessage('two'),
@@ -49,8 +50,7 @@ describe('conversation context middleware', () => {
   });
 
   it('should still refresh budget when summary is disabled', async () => {
-    const middleware = createConversationContextMiddleware();
-    const pipeline = new MiddlewarePipeline([middleware]);
+    const pipeline = new MiddlewarePipeline([createBudgetMiddleware()]);
     const messages: BaseMessage[] = [new HumanMessage('hello')];
 
     const context: ModelCallContext = {
@@ -76,23 +76,26 @@ describe('conversation context middleware', () => {
     expect(readSummaryRecord(context.state.messages)).toBeUndefined();
   });
 
-  it('should remain a beforeModel-only request-preparation stage', () => {
-    const middleware = createConversationContextMiddleware({
+  it('should keep both stages as beforeModel-only middleware', () => {
+    const budget = createBudgetMiddleware();
+    const summary = createSummaryMiddleware({
       summary: {
         summarize: () => 'summary block',
       },
     });
 
-    expect(middleware.beforeModel).toEqual(expect.any(Function));
-    expect(middleware.beforeAgent).toBeUndefined();
-    expect(middleware.wrapModelCall).toBeUndefined();
-    expect(middleware.afterModel).toBeUndefined();
-    expect(middleware.wrapToolCall).toBeUndefined();
-    expect(middleware.afterAgent).toBeUndefined();
+    for (const middleware of [budget, summary!]) {
+      expect(middleware.beforeModel).toEqual(expect.any(Function));
+      expect(middleware.beforeAgent).toBeUndefined();
+      expect(middleware.wrapModelCall).toBeUndefined();
+      expect(middleware.afterModel).toBeUndefined();
+      expect(middleware.wrapToolCall).toBeUndefined();
+      expect(middleware.afterAgent).toBeUndefined();
+    }
   });
 
   it('should not force summary compaction when messages are below the automatic threshold', async () => {
-    const middleware = createConversationContextMiddleware({
+    const summary = createSummaryMiddleware({
       summary: {
         maxMessages: 99,
         keepLastMessages: 2,
@@ -100,7 +103,7 @@ describe('conversation context middleware', () => {
       },
     });
 
-    const pipeline = new MiddlewarePipeline([middleware]);
+    const pipeline = new MiddlewarePipeline([createBudgetMiddleware(), summary!]);
     const messages: BaseMessage[] = [
       new HumanMessage('one'),
       new AIMessage('two'),

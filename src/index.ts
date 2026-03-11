@@ -53,8 +53,8 @@ export {
 /** Middleware */
 export {
   createMiddleware,
-  createConversationContextMiddleware,
-  createGuidelinesMiddleware,
+  createBudgetMiddleware,
+  createSummaryMiddleware,
   createSkillsMiddleware,
   createHILMiddleware,
   createLoggingMiddleware,
@@ -76,14 +76,14 @@ export {
 
 export type {
   BaseMiddleware,
-  ConversationContextMiddlewareOptions,
+  BudgetMiddlewareOptions,
   HILMiddlewareOptions,
   LoggingMiddlewareOptions,
   HILResumePayload,
+  SummarySettings,
+  SummaryOptions,
 } from '@core/middleware';
 export type {
-  AgentsFileOverview,
-  AgentsFileScope,
   GuidelinesOptions,
   GuidelinesSource,
 } from '@core/instructions/guidelines';

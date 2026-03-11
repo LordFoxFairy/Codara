@@ -3,7 +3,6 @@ import type {BaseChatModel} from '@langchain/core/language_models/chat_models';
 import type {StructuredToolInterface} from '@langchain/core/tools';
 import type {BaseMiddleware} from '@core/middleware';
 import type {AgentCheckpoint, AgentCheckpointer} from '@core/checkpoint';
-import type {SummaryOptions} from '@core/middleware/conversation';
 import type {HILToolMessagePayload} from '@core/middleware/hil';
 
 export type AgentRuntimeContext = Record<string, unknown>;
@@ -144,9 +143,6 @@ export interface AgentResumeStreamConfig extends Omit<AgentStreamConfig, 'contex
 
 export interface Agent {
   getState(): AgentState;
-  compactConversation(config?: Pick<AgentInvokeConfig, 'context' | 'inputBudget'> & {
-    instructions?: string;
-  }): Promise<AgentState>;
   invoke(input?: AgentInput, config?: AgentInvokeConfig): Promise<AgentResult>;
   resume(payload: ResumePayload, config?: AgentResumeConfig): Promise<AgentResult>;
   reset(): Promise<void>;
@@ -173,6 +169,5 @@ export interface CreateAgentOptions {
   systemMessage?: string[];
   runtimeShared?: Record<string, unknown>;
   inputBudget?: AgentInputBudget;
-  summary?: false | SummaryOptions;
   prepareTurnContext?: AgentTurnContextPreparer;
 }

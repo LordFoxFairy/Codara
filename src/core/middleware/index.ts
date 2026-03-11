@@ -28,6 +28,10 @@ export {
   type MiddlewareLogSink,
 } from '@core/middleware/logging';
 export {
+  createBudgetMiddleware,
+  type BudgetMiddlewareOptions,
+} from '@core/middleware/budget';
+export {
   applyHILResumeToolEdits,
   createHILMiddleware,
   humanInTheLoopMiddleware,
@@ -59,12 +63,11 @@ export {
   type HILUIConfig,
 } from '@core/middleware/hil';
 export {
-  createGuidelinesMiddleware,
-} from '@core/middleware/guidelines';
-export {
-  createConversationContextMiddleware,
-  type ConversationContextMiddlewareOptions,
-} from '@core/middleware/conversation';
+  createSummaryMiddleware,
+  type SummaryMiddlewareOptions,
+  type SummarySettings,
+  type SummaryOptions,
+} from '@core/middleware/summary';
 export {
   createWriteTodosTool,
   readTodoState,

@@ -9,8 +9,29 @@ import {
   openCodaraSession,
   openLatestCodaraSession,
 } from '@core';
+import {readSummaryRecord} from '@core/middleware/summary';
 import type {BaseChatModel} from '@langchain/core/language_models/chat_models';
-import {EchoModel} from './codara-fixtures';
+import {AIMessage, HumanMessage, SystemMessage, type BaseMessage} from '@langchain/core/messages';
+import {EchoModel, SystemEchoModel} from './codara-fixtures';
+
+class SummaryAwareModel {
+  async invoke(messages: BaseMessage[]): Promise<AIMessage> {
+    const isSummaryPass = messages.some((message) =>
+      SystemMessage.isInstance(message) && String(message.content).includes('compress earlier conversation context'),
+    );
+
+    if (isSummaryPass) {
+      return new AIMessage('default model summary');
+    }
+
+    const humanCount = messages.filter((message) => HumanMessage.isInstance(message)).length;
+    return new AIMessage(`seen_humans:${humanCount}`);
+  }
+
+  bindTools(): this {
+    return this;
+  }
+}
 
 describe('Codara session lifecycle', () => {
   it('should reopen a stored session by session id', async () => {
@@ -349,5 +370,52 @@ describe('Codara session lifecycle', () => {
 
     expect(reopened.getState().sessionStatus).toBe('ready');
     expect(reopened.getAgentState().status).toBe('closed');
+  });
+
+  it('should persist a manual checkpoint when session-owned compact rewrites conversation history', async () => {
+    const checkpointer = createAgentMemoryCheckpointer();
+    const codara = createCodara({
+      model: new SystemEchoModel() as unknown as BaseChatModel,
+      threadId: 'codara-session-manual-compact-thread',
+      checkpointer,
+      skills: false,
+      builtinTools: false,
+      summary: {
+        maxMessages: 99,
+        keepLastMessages: 2,
+        summarize: () => 'session compact summary',
+      },
+    });
+
+    await codara.invoke('one');
+    await codara.invoke('two');
+    await codara.invoke('three');
+
+    const compacted = await codara.compactConversation();
+    const latest = await checkpointer.getLatest('codara-session-manual-compact-thread');
+
+    expect(readSummaryRecord(compacted.messages)?.content).toBe('session compact summary');
+    expect(latest?.info.source).toBe('manual');
+  });
+
+  it('should fall back to the session model for summary generation when summarize is omitted', async () => {
+    const codara = createCodara({
+      model: new SummaryAwareModel() as unknown as BaseChatModel,
+      threadId: 'codara-session-default-summary-thread',
+      skills: false,
+      builtinTools: false,
+      summary: {
+        maxMessages: 99,
+        keepLastMessages: 2,
+      },
+    });
+
+    await codara.invoke('one');
+    await codara.invoke('two');
+    await codara.invoke('three');
+
+    const compacted = await codara.compactConversation();
+
+    expect(readSummaryRecord(compacted.messages)?.content).toBe('default model summary');
   });
 });

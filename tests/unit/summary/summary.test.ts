@@ -3,10 +3,10 @@ import {AIMessage, HumanMessage, SystemMessage, type BaseMessage} from '@langcha
 import type {BaseChatModel} from '@langchain/core/language_models/chat_models';
 import {createAgent} from '@core/agents';
 import {createAgentMemoryCheckpointer} from '@core/checkpoint';
-import {estimateModelInputTokens} from '@core/middleware/conversation';
-import {createConversationContextMiddleware, type ModelCallContext} from '@core/middleware';
+import {estimateModelInputTokens} from '@core/middleware/budget';
+import {createBudgetMiddleware, type ModelCallContext} from '@core/middleware';
 import {MiddlewarePipeline} from '@core/middleware/pipeline';
-import {readSummaryRecord} from '@core/middleware/conversation';
+import {createSummaryMiddleware, readSummaryRecord} from '@core/middleware/summary';
 
 class FakeModel {
   constructor(private readonly responses: AIMessage[]) {}
@@ -37,7 +37,7 @@ function createExecution(
 
 describe('summary middleware', () => {
   it('should summarize older messages and replace them inside state.messages', async () => {
-    const middleware = createConversationContextMiddleware({
+    const middleware = createSummaryMiddleware({
       summary: {
         maxMessages: 4,
         keepLastMessages: 2,
@@ -49,7 +49,7 @@ describe('summary middleware', () => {
       },
     });
 
-    const pipeline = new MiddlewarePipeline([middleware]);
+    const pipeline = new MiddlewarePipeline([middleware!]);
     const messages = [
       new HumanMessage('one'),
       new AIMessage('two'),
@@ -84,7 +84,7 @@ describe('summary middleware', () => {
 
   it('should keep an existing summary message without recomputing it', async () => {
     let called = false;
-    const middleware = createConversationContextMiddleware({
+    const middleware = createSummaryMiddleware({
       summary: {
         summarize: () => {
           called = true;
@@ -93,7 +93,7 @@ describe('summary middleware', () => {
       },
     });
 
-    const pipeline = new MiddlewarePipeline([middleware]);
+    const pipeline = new MiddlewarePipeline([middleware!]);
     const messages = [
       new SystemMessage([
         '# Conversation Summary',
@@ -121,7 +121,7 @@ describe('summary middleware', () => {
   });
 
   it('should preserve caller system messages ahead of the compacted summary', async () => {
-    const middleware = createConversationContextMiddleware({
+    const middleware = createSummaryMiddleware({
       summary: {
         maxMessages: 4,
         keepLastMessages: 2,
@@ -129,7 +129,7 @@ describe('summary middleware', () => {
       },
     });
 
-    const pipeline = new MiddlewarePipeline([middleware]);
+    const pipeline = new MiddlewarePipeline([middleware!]);
     const messages = [
       new SystemMessage('caller instructions'),
       new HumanMessage('one'),
@@ -156,7 +156,7 @@ describe('summary middleware', () => {
   });
 
   it('should compact against the full model input budget, including injected system messages', async () => {
-    const middleware = createConversationContextMiddleware({
+    const middleware = createSummaryMiddleware({
       summary: {
         maxMessages: 10,
         keepLastMessages: 2,
@@ -166,7 +166,7 @@ describe('summary middleware', () => {
       },
     });
 
-    const pipeline = new MiddlewarePipeline([middleware]);
+    const pipeline = new MiddlewarePipeline([createBudgetMiddleware({estimateTokens: () => 96}), middleware!]);
     const messages = [
       new HumanMessage('one'),
       new AIMessage('two'),
@@ -192,7 +192,7 @@ describe('summary middleware', () => {
   });
 
   it('should compact before the prompt is completely full when the budget threshold is reached', async () => {
-    const middleware = createConversationContextMiddleware({
+    const middleware = createSummaryMiddleware({
       summary: {
         maxMessages: 10,
         keepLastMessages: 2,
@@ -203,7 +203,7 @@ describe('summary middleware', () => {
       },
     });
 
-    const pipeline = new MiddlewarePipeline([middleware]);
+    const pipeline = new MiddlewarePipeline([createBudgetMiddleware({estimateTokens: () => 96}), middleware!]);
     const messages = [
       new HumanMessage('one'),
       new AIMessage('two'),
@@ -227,8 +227,7 @@ describe('summary middleware', () => {
   });
 
   it('should default to compacting near the end of the context window', async () => {
-    const middleware = createConversationContextMiddleware({
-      estimateTokens: () => 96,
+    const middleware = createSummaryMiddleware({
       summary: {
         maxMessages: 10,
         keepLastMessages: 2,
@@ -237,7 +236,7 @@ describe('summary middleware', () => {
       },
     });
 
-    const pipeline = new MiddlewarePipeline([middleware]);
+    const pipeline = new MiddlewarePipeline([createBudgetMiddleware({estimateTokens: () => 96}), middleware!]);
     const messages = [
       new HumanMessage('one'),
       new AIMessage('two'),
@@ -260,37 +259,9 @@ describe('summary middleware', () => {
     expect(readSummaryRecord(context.state.messages)?.content).toBe('near-limit summary');
   });
 
-  it('should keep manual compact reserved until the algorithm is redesigned', async () => {
-    const agent = createAgent({
-      model: new FakeModel([new AIMessage('done')]) as unknown as BaseChatModel,
-      threadId: 'thread-instructions',
-      summary: {
-        maxMessages: 99,
-        keepLastMessages: 2,
-        summarize: () => 'instruction-aware summary',
-      },
-    });
-
-    await agent.invoke({
-      messages: [
-        new HumanMessage('one'),
-        new AIMessage('two'),
-        new HumanMessage('three'),
-        new AIMessage('four'),
-        new HumanMessage('five'),
-      ],
-    });
-
-    await expect(
-      agent.compactConversation({
-        instructions: 'focus on decisions only',
-      }),
-    ).rejects.toThrow('Conversation compaction is not implemented yet.');
-  });
-
   it('should preserve the full summary across later compactions even when model-visible content is truncated', async () => {
     const seenPreviousSummaries: Array<string | undefined> = [];
-    const middleware = createConversationContextMiddleware({
+    const middleware = createSummaryMiddleware({
       summary: {
         maxMessages: 4,
         keepLastMessages: 2,
@@ -304,7 +275,7 @@ describe('summary middleware', () => {
       },
     });
 
-    const pipeline = new MiddlewarePipeline([middleware]);
+    const pipeline = new MiddlewarePipeline([middleware!]);
     const messages = [
       new HumanMessage('one'),
       new AIMessage('two'),
@@ -339,7 +310,7 @@ describe('summary middleware', () => {
   it('should persist summary through checkpoint restore', async () => {
     const checkpointer = createAgentMemoryCheckpointer();
     const model = new FakeModel([new AIMessage('done')]) as unknown as BaseChatModel;
-    const summary = createConversationContextMiddleware({
+    const summary = createSummaryMiddleware({
       summary: {
         maxMessages: 4,
         keepLastMessages: 2,
@@ -351,7 +322,7 @@ describe('summary middleware', () => {
       model,
       checkpointer,
       threadId: 'summary-thread',
-      middleware: [summary],
+      middleware: [summary!],
     });
 
     const result = await agent.invoke({
@@ -377,7 +348,7 @@ describe('summary middleware', () => {
       checkpointer,
       threadId: 'summary-thread',
       checkpoint: restoredCheckpoint,
-      middleware: [summary],
+      middleware: [summary!],
     });
 
     expect(readSummaryRecord(restored.getState().messages)?.content).toBe('persisted summary');
@@ -390,7 +361,7 @@ describe('summary middleware', () => {
       model: new FakeModel([new AIMessage('done')]) as unknown as BaseChatModel,
       threadId: 'summary-real-thread',
       middleware: [
-        createConversationContextMiddleware({
+        createSummaryMiddleware({
           summary: {
             maxMessages: 4,
             keepLastMessages: 2,
@@ -399,7 +370,7 @@ describe('summary middleware', () => {
               return 'thread-aware summary';
             },
           },
-        }),
+        })!,
       ],
     });
 

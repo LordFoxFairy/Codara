@@ -1,6 +1,12 @@
-import {SystemMessage, ToolMessage, type BaseMessage} from '@langchain/core/messages';
+import type {BaseChatModel} from '@langchain/core/language_models/chat_models';
+import {HumanMessage, SystemMessage, ToolMessage, type BaseMessage} from '@langchain/core/messages';
 import {z} from 'zod';
-import type {AgentInputBudget, AgentRuntimeContext} from '@core/agents';
+import type {AgentRuntimeContext} from '@core/agents';
+import {
+  createContextBudgetSnapshot,
+  estimateModelInputTokens,
+  type ContextBudgetEstimator,
+} from '@core/middleware/budget';
 import {createMiddleware, readExecutionMetadata, type BaseMiddleware, type BeforeModelContext} from '@core/middleware/types';
 
 const DEFAULT_MAX_MESSAGES = 30;
@@ -11,6 +17,7 @@ const CODARA_KEY = 'codara';
 const SUMMARY_KEY = 'summary';
 const SUMMARY_HEADER = '# Conversation Summary';
 const SUMMARY_INTRO = 'The following summary captures earlier conversation context that has been compacted.';
+
 const summaryMetadataSchema = z.object({
   content: z.string().trim().min(1),
   updatedAt: z.string().optional(),
@@ -22,21 +29,6 @@ const additionalSummarySchema = z.object({
     summary: summaryMetadataSchema.optional(),
   }).loose().optional(),
 }).loose();
-
-export interface ContextBudgetSnapshot {
-  maxInputTokens: number;
-  reservedTokens: number;
-  availableInputTokens: number;
-  estimatedInputTokens: number;
-  overBudget: boolean;
-}
-
-export interface ContextBudgetEstimateInput {
-  systemMessage: string[];
-  messages: BaseMessage[];
-}
-
-export type ContextBudgetEstimator = (input: ContextBudgetEstimateInput) => number;
 
 export interface SummaryRecord {
   content: string;
@@ -55,8 +47,8 @@ export interface SummaryInput {
 
 export type SummaryGenerator = (input: SummaryInput) => Promise<string> | string;
 
-export interface SummaryOptions {
-  summarize: SummaryGenerator;
+export interface SummarySettings {
+  summarize?: SummaryGenerator;
   maxMessages?: number;
   keepLastMessages?: number;
   maxChars?: number;
@@ -65,81 +57,34 @@ export interface SummaryOptions {
   estimateTokens?: ContextBudgetEstimator;
 }
 
-export interface ConversationContextMiddlewareOptions {
-  summary?: false | SummaryOptions;
-  estimateTokens?: ContextBudgetEstimator;
+export interface SummaryOptions extends SummarySettings {
+  summarize: SummaryGenerator;
 }
 
-/**
- * Codara pre-model request preparation middleware.
- *
- * It intentionally keeps input-budget refresh and optional summary compaction
- * in one stage so the default runtime no longer relies on two separate
- * middleware entries being ordered correctly.
- */
-export function createConversationContextMiddleware(
-  options: ConversationContextMiddlewareOptions = {},
-): BaseMiddleware {
-  const estimateTokens = options.estimateTokens ?? estimateModelInputTokens;
-  const summary = options.summary ? normalizeSummaryOptions(options.summary) : undefined;
-
-  return createMiddleware({
-    name: 'ConversationContextMiddleware',
-    async beforeModel(context) {
-      context.budget = createContextBudgetSnapshot(context.inputBudget, {
-        systemMessage: context.systemMessage,
-        messages: context.state.messages,
-      }, estimateTokens);
-
-      if (summary) {
-        await compactSummaryIfNeeded(context, summary);
-      }
-
-      return undefined;
-    },
-  });
+export interface SummaryMiddlewareOptions {
+  summary: false | SummaryOptions;
 }
 
-export function refreshContextBudget(
-  context: Pick<BeforeModelContext, 'systemMessage' | 'state' | 'inputBudget' | 'budget'>,
-  estimateTokens: ContextBudgetEstimator = estimateModelInputTokens
-): ContextBudgetSnapshot | undefined {
-  const snapshot = createContextBudgetSnapshot(context.inputBudget, {
-    systemMessage: context.systemMessage,
-    messages: context.state.messages,
-  }, estimateTokens);
-
-  context.budget = snapshot;
-  return snapshot;
+export interface SummaryExecutionOptions {
+  force?: boolean;
+  instructions?: string;
 }
 
-export function createContextBudgetSnapshot(
-  inputBudget: AgentInputBudget | undefined,
-  input: ContextBudgetEstimateInput,
-  estimateTokens: ContextBudgetEstimator = estimateModelInputTokens
-): ContextBudgetSnapshot | undefined {
-  const maxInputTokens = inputBudget?.maxInputTokens ?? 0;
-  if (maxInputTokens < 1) {
+export function createSummaryMiddleware(
+  options: SummaryMiddlewareOptions,
+): BaseMiddleware | undefined {
+  if (!options.summary) {
     return undefined;
   }
 
-  const reservedTokens = Math.max(0, inputBudget?.reservedTokens ?? 0);
-  const availableInputTokens = Math.max(0, maxInputTokens - reservedTokens);
-  const estimatedInputTokens = estimateTokens(input);
-
-  return {
-    maxInputTokens,
-    reservedTokens,
-    availableInputTokens,
-    estimatedInputTokens,
-    overBudget: estimatedInputTokens > availableInputTokens,
-  };
-}
-
-export function estimateModelInputTokens(input: ContextBudgetEstimateInput): number {
-  const systemTokens = input.systemMessage.reduce((total, content) => total + estimateTextTokens(content) + 4, 0);
-  const messageTokens = input.messages.reduce((total, message) => total + estimateTextTokens(serializeMessageContent(message)) + 6, 0);
-  return systemTokens + messageTokens;
+  const summary = normalizeSummaryOptions(options.summary);
+  return createMiddleware({
+    name: 'SummaryMiddleware',
+    async beforeModel(context) {
+      await compactSummaryIfNeeded(context, summary);
+      return undefined;
+    },
+  });
 }
 
 export function readSummaryRecord(messages: BaseMessage[]): SummaryRecord | undefined {
@@ -168,19 +113,17 @@ export function readSummaryRecord(messages: BaseMessage[]): SummaryRecord | unde
 export async function compactSummaryIfNeeded(
   context: BeforeModelContext,
   options: Required<SummaryOptions>,
-  execution: {
-    force?: boolean;
-    instructions?: string;
-  } = {},
-): Promise<void> {
+  execution: SummaryExecutionOptions = {},
+): Promise<boolean> {
   const executionMeta = readExecutionMetadata(context);
+  let changed = false;
 
   while (shouldCompactHistory(context, options, execution.force === true)) {
     const summaryState = splitSummaryState(context.state.messages);
     const recentStart = resolveRecentStart(summaryState.conversationMessages, options.keepLastMessages);
     const olderMessages = summaryState.conversationMessages.slice(0, recentStart);
     if (olderMessages.length === 0) {
-      return;
+      return changed;
     }
 
     const nextSummary = await options.summarize({
@@ -198,7 +141,7 @@ export async function compactSummaryIfNeeded(
       summarizedMessages: (summaryState.summary?.summarizedMessages ?? 0) + olderMessages.length,
     }, options.maxChars);
     if (!summaryMessage) {
-      return;
+      return changed;
     }
 
     const recentMessages = summaryState.conversationMessages.slice(recentStart);
@@ -209,13 +152,27 @@ export async function compactSummaryIfNeeded(
     ];
     context.messages.length = 0;
     context.messages.push(...context.state.messages);
-    refreshContextBudget(context, options.estimateTokens);
+    context.budget = createContextBudgetSnapshot(context.inputBudget, {
+      systemMessage: context.systemMessage,
+      messages: context.state.messages,
+    }, options.estimateTokens);
+    changed = true;
   }
+
+  return changed;
 }
 
 export function normalizeSummaryOptions(options: SummaryOptions): Required<SummaryOptions> {
-  if (typeof options.summarize !== 'function') {
-    throw new Error('Summary summary configuration requires a summarize function');
+  return resolveSummaryOptions(options);
+}
+
+export function resolveSummaryOptions(
+  options: SummarySettings,
+  defaultSummarize?: SummaryGenerator,
+): Required<SummaryOptions> {
+  const summarize = options.summarize ?? defaultSummarize;
+  if (typeof summarize !== 'function') {
+    throw new Error('Summary configuration requires a summarize function');
   }
 
   const maxMessages = options.maxMessages ?? DEFAULT_MAX_MESSAGES;
@@ -245,13 +202,32 @@ export function normalizeSummaryOptions(options: SummaryOptions): Required<Summa
   }
 
   return {
-    summarize: options.summarize,
+    summarize,
     maxMessages,
     keepLastMessages,
     maxChars,
     maxInputTokens,
     compactThresholdRatio,
     estimateTokens,
+  };
+}
+
+export function createModelSummaryGenerator(model: BaseChatModel): SummaryGenerator {
+  return async (input) => {
+    const response = await model.invoke([
+      new SystemMessage([
+        'You compress earlier conversation context for a coding agent.',
+        'Preserve requirements, decisions, constraints, unresolved questions, TODOs, file paths, commands, errors, and approvals.',
+        'Return concise plain text only.',
+      ].join(' ')),
+      new HumanMessage(renderSummaryPrompt(input)),
+    ]);
+
+    const summary = stringifyContent(response.content).trim();
+    if (!summary) {
+      throw new Error('Summary model returned an empty summary.');
+    }
+    return summary;
   };
 }
 
@@ -406,25 +382,60 @@ function shouldCompactHistory(
   return estimate >= compactTriggerTokens;
 }
 
-function estimateTextTokens(text: string): number {
-  return Math.max(1, Math.ceil(text.length / 4));
+function renderSummaryPrompt(input: SummaryInput): string {
+  const sections = [
+    input.instructions ? `Additional instructions:\n${input.instructions.trim()}` : undefined,
+    input.previousSummary ? `Previous summary:\n${input.previousSummary.trim()}` : undefined,
+    `Execution:\n- threadId: ${input.threadId ?? 'unknown'}\n- turn: ${input.turn}`,
+    `Durable context:\n${stringifyContext(input.context)}`,
+    `Messages to compact:\n${renderMessages(input.messages)}`,
+  ].filter((value): value is string => Boolean(value));
+
+  return [
+    'Summarize the older conversation context for future turns.',
+    'Keep the output factual and compact.',
+    ...sections,
+  ].join('\n\n');
 }
 
-function serializeMessageContent(message: BaseMessage): string {
-  const parts: string[] = [];
-  const text = message.text.trim();
+function renderMessages(messages: BaseMessage[]): string {
+  return messages.map((message, index) => {
+    const content = stringifyContent(message.content);
+    const extras: string[] = [];
 
-  if (text) {
-    parts.push(text);
+    if ('tool_calls' in message && Array.isArray((message as {tool_calls?: unknown[]}).tool_calls)) {
+      extras.push(`tool_calls=${JSON.stringify((message as {tool_calls?: unknown[]}).tool_calls)}`);
+    }
+    if ('additional_kwargs' in message && (message as {additional_kwargs?: unknown}).additional_kwargs) {
+      extras.push(`additional_kwargs=${JSON.stringify((message as {additional_kwargs?: unknown}).additional_kwargs)}`);
+    }
+
+    return [
+      `[${index + 1}] ${message.getType()}`,
+      content || '(empty)',
+      ...extras,
+    ].join('\n');
+  }).join('\n\n');
+}
+
+function stringifyContext(context: AgentRuntimeContext): string {
+  return Object.keys(context).length > 0 ? JSON.stringify(context, null, 2) : '{}';
+}
+
+function stringifyContent(content: unknown): string {
+  if (typeof content === 'string') {
+    return content;
   }
-
-  if ('tool_calls' in message && Array.isArray((message as {tool_calls?: unknown[]}).tool_calls)) {
-    parts.push(JSON.stringify((message as {tool_calls?: unknown[]}).tool_calls));
+  if (Array.isArray(content)) {
+    return content.map((item) => {
+      if (typeof item === 'string') {
+        return item;
+      }
+      if (item && typeof item === 'object' && 'text' in item && typeof item.text === 'string') {
+        return item.text;
+      }
+      return JSON.stringify(item);
+    }).join('\n');
   }
-
-  if ('additional_kwargs' in message && (message as {additional_kwargs?: unknown}).additional_kwargs) {
-    parts.push(JSON.stringify((message as {additional_kwargs?: unknown}).additional_kwargs));
-  }
-
-  return parts.join('\n');
+  return content == null ? '' : JSON.stringify(content);
 }

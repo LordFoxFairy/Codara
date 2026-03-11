@@ -7,12 +7,12 @@ describe('Codara middleware stack', () => {
     const middlewares = createCodaraMiddlewares({});
 
     expect(middlewares.map((middleware) => middleware.name)).toEqual([
-      'ConversationContextMiddleware',
+      'BudgetMiddleware',
       'HumanInTheLoopMiddleware',
     ]);
   });
 
-  it('should place logging first, caller middlewares before budget/summary, and keep HIL last', () => {
+  it('should place logging first, caller middlewares before budget, and keep HIL last', () => {
     const custom = createMiddleware({
       name: 'CustomMiddleware',
       beforeModel: () => undefined,
@@ -26,7 +26,7 @@ describe('Codara middleware stack', () => {
     expect(middlewares.map((middleware) => middleware.name)).toEqual([
       'LoggingMiddleware',
       'CustomMiddleware',
-      'ConversationContextMiddleware',
+      'BudgetMiddleware',
       'HumanInTheLoopMiddleware',
     ]);
   });
@@ -43,34 +43,12 @@ describe('Codara middleware stack', () => {
 
     expect(middlewares.map((middleware) => middleware.name)).toEqual([
       'AliasMiddleware',
-      'ConversationContextMiddleware',
+      'BudgetMiddleware',
       'HumanInTheLoopMiddleware',
     ]);
   });
 
-  it('should keep summary middleware disabled by default', () => {
-    const middlewares = createCodaraMiddlewares({});
-
-    expect(middlewares.map((middleware) => middleware.name)).toEqual([
-      'ConversationContextMiddleware',
-      'HumanInTheLoopMiddleware',
-    ]);
-  });
-
-  it('should keep summary inside the conversation context stage so it can compact against the full prompt input', () => {
-    const middlewares = createCodaraMiddlewares({
-      summary: {
-        summarize: () => 'summary',
-      },
-    });
-
-    expect(middlewares.map((middleware) => middleware.name)).toEqual([
-      'ConversationContextMiddleware',
-      'HumanInTheLoopMiddleware',
-    ]);
-  });
-
-  it('should let caller middlewares contribute system messages before conversation context runs', () => {
+  it('should let caller middlewares contribute system messages before budget runs', () => {
     const custom = createMiddleware({
       name: 'CustomPromptMiddleware',
       beforeModel(context) {
@@ -80,15 +58,12 @@ describe('Codara middleware stack', () => {
     });
 
     const middlewares = createCodaraMiddlewares({
-      summary: {
-        summarize: () => 'summary',
-      },
       middleware: [custom],
     });
 
     expect(middlewares.map((middleware) => middleware.name)).toEqual([
       'CustomPromptMiddleware',
-      'ConversationContextMiddleware',
+      'BudgetMiddleware',
       'HumanInTheLoopMiddleware',
     ]);
   });
@@ -109,12 +84,14 @@ describe('Codara middleware stack', () => {
       afterAgent: expect.any(Function),
     });
 
-    expect(byName.get('ConversationContextMiddleware')).toMatchObject({
+    expect(byName.get('BudgetMiddleware')).toMatchObject({
       beforeModel: expect.any(Function),
     });
-    expect(byName.get('ConversationContextMiddleware')?.beforeAgent).toBeUndefined();
-    expect(byName.get('ConversationContextMiddleware')?.wrapModelCall).toBeUndefined();
-    expect(byName.get('ConversationContextMiddleware')?.wrapToolCall).toBeUndefined();
+    expect(byName.get('BudgetMiddleware')?.beforeAgent).toBeUndefined();
+    expect(byName.get('BudgetMiddleware')?.wrapModelCall).toBeUndefined();
+    expect(byName.get('BudgetMiddleware')?.wrapToolCall).toBeUndefined();
+
+    expect(byName.get('SummaryMiddleware')).toBeUndefined();
 
     expect(byName.get('HumanInTheLoopMiddleware')).toMatchObject({
       wrapToolCall: expect.any(Function),

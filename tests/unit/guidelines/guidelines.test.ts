@@ -2,9 +2,7 @@ import {describe, expect, it} from 'bun:test';
 import {mkdir, mkdtemp, writeFile} from 'node:fs/promises';
 import path from 'node:path';
 import {tmpdir} from 'node:os';
-import {createGuidelinesMiddleware} from '@core/middleware/guidelines';
 import {createCodaraGuidelinesSource} from '@core/instructions/guidelines';
-import type {BeforeModelContext} from '@core/middleware';
 
 describe('AGENTS guidelines', () => {
   it('should resolve the nearest AGENTS.md from cwd', async () => {
@@ -56,35 +54,6 @@ describe('AGENTS guidelines', () => {
     expect(content).toContain('Run tests before merge.');
   });
 
-  it('should inject preloaded guideline content', async () => {
-    const root = await mkdtemp(path.join(tmpdir(), 'codara-guidelines-'));
-    const userHome = path.join(root, 'home');
-    const projectRoot = path.join(root, 'project');
-    const projectFile = path.join(projectRoot, 'AGENTS.md');
-
-    await mkdir(projectRoot, {recursive: true});
-    await writeFile(projectFile, '# Original rule.\n', 'utf8');
-
-    const guidelinesSource = createCodaraGuidelinesSource({userHome, projectRoot});
-    const middleware = createGuidelinesMiddleware(guidelinesSource);
-    const context: BeforeModelContext = {
-      state: {messages: []},
-      messages: [],
-      runtime: {context: {}},
-      systemMessage: ['base system'],
-      execution: {
-        threadId: 'thread_1',
-        runId: 'run_1',
-        turn: 1,
-        maxTurns: 8,
-        requestId: 'req_1',
-      },
-    };
-
-    await middleware.beforeModel?.(context);
-    expect(context.systemMessage[1]).toContain('Original rule.');
-  });
-
   it('should preserve root-to-cwd guideline order in loaded files', async () => {
     const root = await mkdtemp(path.join(tmpdir(), 'codara-guidelines-'));
     const userHome = path.join(root, 'home');
@@ -113,24 +82,21 @@ describe('AGENTS guidelines', () => {
     expect(text.indexOf('# Package Rules')).toBeLessThan(text.indexOf('# App Rules'));
   });
 
-  it('should expand @imports inside guideline files', async () => {
+  it('should keep guideline loading simple and read file content directly', async () => {
     const root = await mkdtemp(path.join(tmpdir(), 'codara-guidelines-'));
     const userHome = path.join(root, 'home');
     const projectRoot = path.join(root, 'project');
-    const importedFile = path.join(projectRoot, 'shared-guidelines.md');
     const projectFile = path.join(projectRoot, 'AGENTS.md');
 
     await mkdir(projectRoot, {recursive: true});
-    await writeFile(importedFile, '# Shared Rules\n\nPrefer narrow commits.\n', 'utf8');
-    await writeFile(projectFile, '# Project Rules\n\n@./shared-guidelines.md\n\nRun tests before merge.\n', 'utf8');
+    await writeFile(projectFile, '# Project Rules\n\nRun tests before merge.\n@./shared-guidelines.md\n', 'utf8');
 
     const guidelinesSource = createCodaraGuidelinesSource({userHome, projectRoot});
     const content = await guidelinesSource?.getContent();
 
     expect(content).toBeDefined();
     expect(content).toContain('# Project Rules');
-    expect(content).toContain('# Shared Rules');
-    expect(content).toContain('Prefer narrow commits.');
     expect(content).toContain('Run tests before merge.');
+    expect(content).toContain('@./shared-guidelines.md');
   });
 });

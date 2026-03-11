@@ -39,7 +39,6 @@ import {
   type AgentCheckpoint,
   type AgentCheckpointInfo,
 } from '@core/checkpoint';
-import {normalizeSummaryOptions} from '@core/middleware/conversation';
 import {type BaseExecutionContext, type MiddlewareRuntimeShared} from '@core/middleware';
 import {MiddlewarePipeline} from '@core/middleware/pipeline';
 import {deepClone} from '@core/shared/clone';
@@ -145,9 +144,6 @@ export function createAgent(options: CreateAgentOptions): Agent {
   const threadId = checkpoint?.ref.threadId ?? options.threadId ?? randomUUID();
   const checkpointer = options.checkpointer ?? createAgentMemoryCheckpointer();
   const inputBudget = options.inputBudget;
-  if (options.summary) {
-    normalizeSummaryOptions(options.summary);
-  }
   const state = createInitialAgentState(
     threadId,
     {
@@ -374,11 +370,6 @@ export function createAgent(options: CreateAgentOptions): Agent {
   return {
     getState() {
       return toAgentState(state);
-    },
-
-    async compactConversation() {
-      assertNotRunning(state);
-      throw new Error('Conversation compaction is not implemented yet.');
     },
 
     async invoke(input, config = {}) {

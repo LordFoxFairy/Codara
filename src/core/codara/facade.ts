@@ -2,8 +2,8 @@ import type {BaseChatModel} from '@langchain/core/language_models/chat_models';
 import type {StructuredToolInterface} from '@langchain/core/tools';
 import type {AgentCheckpointer} from '@core/checkpoint';
 import type {BaseMiddleware, HILMiddlewareOptions, LoggingMiddlewareOptions} from '@core/middleware';
-import {createConversationContextMiddleware, type SummaryOptions} from '@core/middleware/conversation';
-import {createHILMiddleware, createLoggingMiddleware} from '@core/middleware';
+import type {SummarySettings} from '@core/middleware/summary';
+import {createBudgetMiddleware, createHILMiddleware, createLoggingMiddleware} from '@core/middleware';
 import {ChatModelFactory, loadModelRoutingConfig, ModelRegistry, type ModelInfo, type ModelRoutingConfig} from '@core/provider';
 import {
   createCodaraGuidelinesSource,
@@ -68,7 +68,7 @@ export interface CodaraOptions {
   middleware?: BaseMiddleware[];
   guidelines?: boolean | GuidelinesOptions;
   skills?: false | CodaraSkillOptions;
-  summary?: false | SummaryOptions;
+  summary?: false | SummarySettings;
   hil?: false | HILMiddlewareOptions;
   logging?: false | LoggingMiddlewareOptions;
   sessionId?: string;
@@ -93,10 +93,7 @@ export type CreateCodaraChatModelOptions =
 
 export type CodaraToolsOptions = Pick<CodaraOptions, 'builtinTools' | 'cwd' | 'tools'>;
 
-export type CodaraMiddlewareOptions = Pick<
-  CodaraOptions,
-  'cwd' | 'projectRoot' | 'userHome' | 'middleware' | 'guidelines' | 'skills' | 'summary' | 'hil' | 'logging'
->;
+export type CodaraMiddlewareOptions = Pick<CodaraOptions, 'middleware' | 'hil' | 'logging'>;
 
 export type Codara = Session & {
   listCommands(): Promise<readonly CodaraCommandSpec[]>;
@@ -207,7 +204,7 @@ export function createCodaraMiddlewares(options: CodaraMiddlewareOptions = {}): 
     middlewares.push(createLoggingMiddleware(options.logging));
   }
   middlewares.push(...(options.middleware ?? []));
-  middlewares.push(createConversationContextMiddleware({summary: options.summary}));
+  middlewares.push(createBudgetMiddleware());
   if (options.hil !== false) {
     middlewares.push(createHILMiddleware(options.hil ?? {}));
   }
@@ -215,7 +212,7 @@ export function createCodaraMiddlewares(options: CodaraMiddlewareOptions = {}): 
 }
 
 function resolveCodaraSkills(
-  options: Pick<CodaraMiddlewareOptions, 'skills' | 'cwd'>,
+  options: Pick<CodaraOptions, 'skills' | 'cwd'>,
 ): {store: SkillStore; subagentRoots: string[]} | undefined {
   if (options.skills === false) {
     return undefined;

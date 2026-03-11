@@ -4,7 +4,7 @@ import {
   createContextBudgetSnapshot,
   estimateModelInputTokens,
   refreshContextBudget,
-} from '@core/middleware/conversation';
+} from '@core/middleware/budget';
 import type {BeforeModelContext} from '@core/middleware';
 
 describe('context budget middleware', () => {
