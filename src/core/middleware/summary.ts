@@ -1,11 +1,10 @@
 import {SystemMessage, type BaseMessage} from '@langchain/core/messages';
 import type {AgentRuntimeContext} from '@core/agents';
-import {createMiddleware, type BaseMiddleware, type BeforeModelContext} from '@core/middleware';
+import type {BeforeModelContext} from '@core/middleware';
 import {
   estimateModelInputTokens,
   refreshContextBudget,
   type ContextBudgetEstimator,
-  type ContextBudgetEstimateInput,
 } from '@core/middleware/context-budget';
 
 const DEFAULT_MAX_MESSAGES = 30;
@@ -37,7 +36,7 @@ export interface SummaryInput {
 /** 摘要生成函数。 */
 export type SummaryGenerator = (input: SummaryInput) => Promise<string> | string;
 
-/** SummaryMiddleware 配置。 */
+/** Conversation summary compaction 配置。 */
 export interface SummaryOptions {
   summarize: SummaryGenerator;
   maxMessages?: number;
@@ -46,21 +45,6 @@ export interface SummaryOptions {
   maxInputTokens?: number;
   compactThresholdRatio?: number;
   estimateTokens?: ContextBudgetEstimator;
-}
-
-/**
- * @deprecated Prefer `createConversationContextMiddleware({summary: ...})` in the main runtime path.
- * This wrapper is kept only as a low-level compatibility primitive.
- */
-export function createSummaryMiddleware(options: SummaryOptions): BaseMiddleware {
-  const normalized = normalizeOptions(options);
-
-  return createMiddleware({
-    name: 'SummaryMiddleware',
-    beforeModel: async (context) => {
-      await compactSummaryIfNeeded(context, normalized);
-    },
-  });
 }
 
 /** 从当前消息状态中读取已持久化的摘要记录。 */
@@ -267,7 +251,7 @@ function isMessageType(message: BaseMessage | undefined, type: string): boolean 
 
 function normalizeOptions(options: SummaryOptions): Required<SummaryOptions> {
   if (typeof options.summarize !== 'function') {
-    throw new Error('SummaryMiddleware requires a summarize function');
+    throw new Error('Summary summary configuration requires a summarize function');
   }
 
   const maxMessages = options.maxMessages ?? DEFAULT_MAX_MESSAGES;
@@ -278,22 +262,22 @@ function normalizeOptions(options: SummaryOptions): Required<SummaryOptions> {
   const estimateTokens = options.estimateTokens ?? estimateModelInputTokens;
 
   if (maxMessages < 2) {
-    throw new Error('SummaryMiddleware maxMessages must be at least 2');
+    throw new Error('Summary configuration maxMessages must be at least 2');
   }
   if (keepLastMessages < 1) {
-    throw new Error('SummaryMiddleware keepLastMessages must be at least 1');
+    throw new Error('Summary configuration keepLastMessages must be at least 1');
   }
   if (keepLastMessages >= maxMessages) {
-    throw new Error('SummaryMiddleware keepLastMessages must be smaller than maxMessages');
+    throw new Error('Summary configuration keepLastMessages must be smaller than maxMessages');
   }
   if (maxChars < 1) {
-    throw new Error('SummaryMiddleware maxChars must be positive');
+    throw new Error('Summary configuration maxChars must be positive');
   }
   if (maxInputTokens < 0) {
-    throw new Error('SummaryMiddleware maxInputTokens must be zero or positive');
+    throw new Error('Summary configuration maxInputTokens must be zero or positive');
   }
   if (compactThresholdRatio <= 0 || compactThresholdRatio > 1) {
-    throw new Error('SummaryMiddleware compactThresholdRatio must be between 0 and 1');
+    throw new Error('Summary configuration compactThresholdRatio must be between 0 and 1');
   }
 
   return {
@@ -332,7 +316,7 @@ function shouldCompactHistory(
   const estimate = context.budget?.estimatedInputTokens ?? options.estimateTokens({
     systemMessage: context.systemMessage,
     messages: context.state.messages,
-  } as ContextBudgetEstimateInput);
+  });
   const availableInputTokens = context.budget?.availableInputTokens
     ?? Math.max(0, maxInputTokens - (context.inputBudget?.reservedTokens ?? 0));
   const compactTriggerTokens = Math.max(1, Math.floor(availableInputTokens * options.compactThresholdRatio));

@@ -1,9 +1,8 @@
-import {AIMessage} from '@langchain/core/messages';
+import {AIMessage, SystemMessage, type BaseMessage} from '@langchain/core/messages';
 import type {ModelCallContext} from '@core/middleware';
 import type {AgentStreamWriter} from '@core/agents/engine/stream-writer';
 import {chunkToMessage, toMessageChunk} from '@core/agents/engine/model';
 import type {AgentRuntime, AgentRunContext} from '@core/agents/loop/run';
-import {buildConversationMessages} from '@core/middleware/conversation-input';
 
 const CODARA_KEY = 'codara';
 const CONTEXT_BUDGET_KEY = 'contextBudget';
@@ -25,7 +24,7 @@ export async function runModelStepStream(
 ): Promise<AIMessage> {
   const invoke = async (request?: ModelCallContext) => {
     const nextRequest = request ?? context;
-    const {modelMessages} = buildConversationMessages(nextRequest);
+    const modelMessages = buildModelMessages(nextRequest.systemMessage, nextRequest.messages);
     let aggregate;
 
     for await (const chunk of runtime.model.stream(modelMessages)) {
@@ -53,9 +52,14 @@ async function invokeModel(
   request?: ModelCallContext
 ): Promise<AIMessage> {
   const nextRequest = request ?? context;
-  const {modelMessages} = buildConversationMessages(nextRequest);
+  const modelMessages = buildModelMessages(nextRequest.systemMessage, nextRequest.messages);
   const response = await runtime.model.invoke(modelMessages);
   return attachContextBudgetMetadata(response, nextRequest.budget);
+}
+
+function buildModelMessages(systemMessage: string[], messages: BaseMessage[]): BaseMessage[] {
+  const systemMessages = systemMessage.map((content) => new SystemMessage(content));
+  return [...systemMessages, ...messages];
 }
 
 function attachContextBudgetMetadata(

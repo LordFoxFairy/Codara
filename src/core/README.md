@@ -95,11 +95,10 @@ src/index.ts
   - `conversation-context`
   - `hil`
 - conversation internals:
-  - `conversation-input`
   - `context-budget`
   - `summary`
 
-后者仍然存在，但它们只是 `conversation-context` 复用的子能力，不应再被看作默认主链里的并列 middleware。
+另外，model input assembly 直接留在 `agents/loop/model-step.ts`，不再单独保留 `conversation-input.ts` 这种薄 helper 文件。上面这些 conversation internals 只是 `conversation-context` 复用的子能力，不应再被看作默认主链里的并列 middleware。
 
 状态边界：
 
@@ -253,9 +252,10 @@ checkpoint 边界：
 - Codara 默认装配使用 `middleware/conversation-context.ts` 统一处理：
   - 完整输入预算估算
   - 可选的 summary compact
-- 这样默认 runtime 不再依赖 `context-budget` 与 `summary` 两个独立 middleware 的隐式排序。
-- `conversation-input.ts`、`context-budget.ts`、`summary.ts` 都属于 conversation internals。
-- `createContextBudgetMiddleware(...)` 与 `createSummaryMiddleware(...)` 仍保留在各自子路径下，主要用于底层测试和兼容场景；默认主路径不再把它们当成对等 middleware 心智公开。
+- 这样默认 runtime 的公开心智只保留一个 conversation middleware，不再把 `context-budget` 与 `summary` 视为两个并列 middleware。
+- `context-budget.ts` 与 `summary.ts` 属于 conversation internals；model input assembly 直接留在 `agents/loop/model-step.ts`，不再单独保留 `conversation-input.ts` 这种薄 helper 文件。
+- `context-budget.ts` 现在只保留预算快照/估算工具；`summary.ts` 只保留摘要压缩算法与记录解析工具。
+- 这个 slice 属于 pre-model request preparation，不拥有 `session` lifecycle，也不拥有 checkpoint ownership。
 
 ## Todo / Subagent / Task
 

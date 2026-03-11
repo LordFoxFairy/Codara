@@ -61,6 +61,7 @@ export async function resolveCodaraRuntime(options: CodaraOptions = {}): Promise
     modelCatalog,
     agentsSource: plan.agentsSource,
     skills: plan.skills,
+    skillsSource: plan.skillsSource,
     tools: plan.tools,
     middleware: plan.middleware,
     inputBudget,

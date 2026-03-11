@@ -63,6 +63,8 @@ describe('agent runtime input helpers', () => {
     const merged = injectResumePayload({hil: {existing: true}}, pause, {decision: 'approve'});
     expect(merged.hil).toEqual({
       existing: true,
+      currentPause: pause,
+      resume: {decision: 'approve'},
       resumes: {
         pause_1: {decision: 'approve'},
         call_1: {decision: 'approve'},
