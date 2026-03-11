@@ -1,9 +1,10 @@
 import type {BaseMessage} from '@langchain/core/messages';
-import type {AgentRuntimeContext, AgentRuntimeValues} from '@core/agents/contract/agent';
-import {mergeContext} from '@core/agents/engine/runtime-input';
+import type {AgentRuntimeContext, AgentRuntimeValues} from './agent';
+import {z} from 'zod';
 import {deepClone} from '@core/support/clone';
 
 const RESERVED_AGENT_CONTEXT_KEYS = new Set(['todos', 'summary']);
+const recordSchema = z.record(z.string(), z.unknown());
 
 export interface AgentStateUpdate {
   messages?: BaseMessage[];
@@ -66,6 +67,20 @@ export function applyAgentStateUpdate(
   if (runtime && (update.context || update.runtimeContext)) {
     runtime.context = mergeContext(state.context ?? {}, runtime.runtimeContext);
   }
+}
+
+export function mergeContext(base: AgentRuntimeContext, overrides: AgentRuntimeContext | undefined): AgentRuntimeContext {
+  if (!overrides || Object.keys(overrides).length === 0) {
+    return base;
+  }
+
+  const merged: AgentRuntimeContext = {...base};
+  for (const [key, value] of Object.entries(overrides)) {
+    const left = recordSchema.safeParse(merged[key]);
+    const right = recordSchema.safeParse(value);
+    merged[key] = left.success && right.success ? {...left.data, ...right.data} : value;
+  }
+  return merged;
 }
 
 function assertNoReservedAgentStateInContext(context: AgentRuntimeContext): void {

@@ -10,8 +10,12 @@
 import type {AIMessage, BaseMessage, ToolCall, ToolMessage} from '@langchain/core/messages';
 import type {StructuredToolInterface} from '@langchain/core/tools';
 import {z} from 'zod';
-import type {AgentInputBudget, AgentRuntimeContext, AgentRuntimeValues} from '@core/agents/contract/agent';
-import type {AgentStateUpdate} from '@core/agents/command';
+import type {
+  AgentInputBudget,
+  AgentRuntimeContext,
+  AgentRuntimeValues,
+} from '@core/agents/models/agent';
+import type {AgentStateUpdate} from '@core/agents/models/command';
 import type {ContextBudgetSnapshot} from '@core/middleware/conversation';
 
 export type MiddlewareRuntimeShared = Record<string, unknown>;

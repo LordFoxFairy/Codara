@@ -10,8 +10,8 @@
 import type {AIMessage, ToolMessage} from '@langchain/core/messages';
 import type {StructuredToolInterface} from '@langchain/core/tools';
 import {z} from 'zod';
-import type {AgentRuntimeContext} from '@core/agents/contract/agent';
-import {applyAgentStateUpdate} from '@core/agents/command';
+import {applyAgentStateUpdate} from '@core/agents/models/command';
+import type {AgentRuntimeContext} from '@core/agents/models/agent';
 import {
   type AfterAgentContext,
   type AfterModelContext,

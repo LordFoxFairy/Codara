@@ -5,13 +5,13 @@ import {
   applyAgentStateSnapshot,
   cloneAgentState,
   createInitialAgentState,
+  createRunContext,
   restoreCheckpointMetadata,
   toAgentState,
   toCheckpointInfo,
   toCheckpointState,
   type MutableAgentState,
-} from '@core/agents/engine/state';
-import {createRunContext} from '@core/agents/loop/run';
+} from '@core/agents';
 import type {AgentCheckpoint} from '@core/checkpoint';
 
 describe('agent checkpoint state helpers', () => {

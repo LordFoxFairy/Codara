@@ -1,6 +1,7 @@
 import {AIMessage, HumanMessage, type BaseMessage} from '@langchain/core/messages';
 import {z} from 'zod';
-import type {AgentState} from '@core/agents';
+import type {AgentInputBudget, AgentState} from '@core/agents/models/agent';
+import {estimateModelInputTokens} from '@core/middleware/conversation';
 import type {SessionMetadata} from '@core/sessions/types';
 import {readMessageText} from '@core/support/messages';
 
@@ -10,19 +11,6 @@ const usageMetadataSchema = z.object({
   output_tokens: z.number().finite().optional(),
   completion_tokens: z.number().finite().optional(),
   total_tokens: z.number().finite().optional(),
-}).loose();
-
-const contextBudgetSchema = z.object({
-  maxInputTokens: z.number().finite(),
-  availableInputTokens: z.number().finite(),
-  estimatedInputTokens: z.number().finite(),
-  overBudget: z.boolean().optional(),
-}).loose();
-
-const responseMetadataSchema = z.object({
-  codara: z.object({
-    contextBudget: contextBudgetSchema.optional(),
-  }).loose().optional(),
 }).loose();
 
 export function createSessionMetadata(
@@ -68,6 +56,7 @@ export function touchSessionMetadata(metadata: SessionMetadata, updatedAt: strin
 export function updateSessionMetadataFromAgentState(
   metadata: SessionMetadata,
   agentState: AgentState,
+  inputBudget?: AgentInputBudget,
 ): void {
   metadata.messageCount = agentState.messages.length;
 
@@ -87,7 +76,7 @@ export function updateSessionMetadataFromAgentState(
     }
   }
 
-  const currentContextWindow = readLatestContextWindow(agentState.messages);
+  const currentContextWindow = readContextWindow(agentState.messages, inputBudget);
   if (currentContextWindow) {
     metadata.contextWindow = currentContextWindow;
   } else {
@@ -97,10 +86,11 @@ export function updateSessionMetadataFromAgentState(
 
 export function buildSessionTelemetryPatch(
   state: AgentState,
+  inputBudget?: AgentInputBudget,
   previousState?: Pick<AgentState, 'messages'>,
 ): Pick<SessionMetadata, 'usage' | 'contextWindow'> {
   const latestUsage = readLatestUsageTotals(readNewMessages(state.messages, previousState?.messages));
-  const latestContext = readLatestContextWindow(state.messages);
+  const latestContext = readContextWindow(state.messages, inputBudget);
 
   return {
     ...(latestUsage ? {usage: latestUsage} : {}),
@@ -180,33 +170,31 @@ function readLatestUsageTotals(messages: BaseMessage[]): SessionMetadata['usage'
   };
 }
 
-function readLatestContextWindow(
+function readContextWindow(
   messages: BaseMessage[],
+  inputBudget?: AgentInputBudget,
 ): SessionMetadata['contextWindow'] | undefined {
-  for (let index = messages.length - 1; index >= 0; index -= 1) {
-    const message = messages[index];
-    if (!AIMessage.isInstance(message)) {
-      continue;
-    }
-
-    const parsed = responseMetadataSchema.safeParse(message.response_metadata);
-    const snapshot = parsed.success ? parsed.data.codara?.contextBudget : undefined;
-    if (!snapshot) {
-      continue;
-    }
-
-    return {
-      maxInputTokens: snapshot.maxInputTokens,
-      availableInputTokens: snapshot.availableInputTokens,
-      estimatedInputTokens: snapshot.estimatedInputTokens,
-      usagePercent: snapshot.availableInputTokens > 0
-        ? Math.round((snapshot.estimatedInputTokens / snapshot.availableInputTokens) * 1000) / 10
-        : 0,
-      overBudget: snapshot.overBudget === true,
-    };
+  if (messages.length === 0) {
+    return undefined;
   }
 
-  return undefined;
+  const maxInputTokens = inputBudget?.maxInputTokens ?? 0;
+  if (maxInputTokens < 1) {
+    return undefined;
+  }
+
+  const availableInputTokens = Math.max(0, maxInputTokens - Math.max(0, inputBudget?.reservedTokens ?? 0));
+  const estimatedInputTokens = estimateModelInputTokens({systemMessage: [], messages});
+
+  return {
+    maxInputTokens,
+    availableInputTokens,
+    estimatedInputTokens,
+    usagePercent: availableInputTokens > 0
+      ? Math.round((estimatedInputTokens / availableInputTokens) * 1000) / 10
+      : 0,
+    overBudget: estimatedInputTokens > availableInputTokens,
+  };
 }
 
 function readNewMessages(

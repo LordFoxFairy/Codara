@@ -9,7 +9,7 @@ import type {
   PauseUIActionOption,
   PauseUIConfig,
   ResumePayload,
-} from '@core/agents/contract/pause';
+} from '@core/agents/models/agent';
 
 export type HILActionDescriptor = PauseActionDescriptor;
 export type HILPauseRequest = PauseRequest;
@@ -85,12 +85,20 @@ const interruptConfigValueSchema = z.object({
   metadata: recordSchema.optional(),
   allowedDecisions: z.array(z.enum(['approve', 'edit', 'reject'])).optional(),
 }).loose();
+const optionalTrimmedStringSchema = z.preprocess((value) => {
+  if (typeof value !== 'string') {
+    return value;
+  }
+
+  const normalized = value.trim();
+  return normalized.length > 0 ? normalized : undefined;
+}, z.string().optional());
 const hilResumeActionPayloadSchema = z.object({
   decision: z.enum(['approve', 'edit', 'reject']).optional(),
-  action: z.string().trim().min(1).optional(),
-  scope: z.string().trim().min(1).optional(),
-  comment: z.string().trim().min(1).optional(),
-  editedToolName: z.string().trim().min(1).optional(),
+  action: optionalTrimmedStringSchema,
+  scope: optionalTrimmedStringSchema,
+  comment: optionalTrimmedStringSchema,
+  editedToolName: optionalTrimmedStringSchema,
   editedToolArgs: recordSchema.optional(),
   metadata: recordSchema.optional(),
 }).loose();
@@ -106,7 +114,7 @@ const pauseRequestSchema = z.object({
     runId: z.string(),
     turn: z.number(),
     requestId: z.string(),
-    toolIndex: z.number(),
+    toolIndex: z.number().optional(),
   }).loose(),
   channel: z.string().optional(),
   ui: hilUIConfigSchema.optional(),

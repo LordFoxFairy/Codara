@@ -2,18 +2,19 @@ import {HumanMessage, SystemMessage, ToolMessage, type BaseMessage} from '@langc
 import type {BaseChatModel} from '@langchain/core/language_models/chat_models';
 import type {StructuredToolInterface} from '@langchain/core/tools';
 import {z} from 'zod';
-import {createAgent} from '@core/agents/engine/agent';
+import {
+  createAgent,
+  type AgentInputBudget,
+  type AgentRuntimeContext,
+  type AgentTurnContextPreparer,
+  type AgentRuntimeValues,
+  type CreateAgentOptions,
+  type PauseRequest,
+  type ResumePayload,
+  type ToolErrorHandler,
+} from '@core/agents';
 import type {BaseMiddleware, HILToolMessagePayload} from '@core/middleware';
 import type {ExecutionContextMetadata} from '@core/middleware/types';
-import type {
-  AgentInputBudget,
-  AgentRuntimeContext,
-  AgentTurnContextPreparer,
-  AgentRuntimeValues,
-  CreateAgentOptions,
-  ToolErrorHandler,
-} from '@core/agents/contract/agent';
-import type {PauseRequest, ResumePayload} from '@core/agents/contract/pause';
 import type {AgentCheckpointer} from '@core/checkpoint';
 import {deepClone} from '@core/support/clone';
 import {readLatestAssistantText} from '@core/support/messages';
@@ -187,7 +188,7 @@ export function readDelegatedParentRuntimeMetadata(
   configurable: unknown,
   toolName: string,
 ): DelegatedParentRuntimeMetadata {
-  const record = delegatedRuntimeContextSchema.safeParse(configurable);
+  const record = delegatedRuntimeContextSchema.safeParse(readDelegatedRuntimeContext(configurable));
   const runtimeContext = record.success ? record.data : undefined;
   const resume = readDelegatedResumeState(runtimeContext, toolName);
 
@@ -199,6 +200,15 @@ export function readDelegatedParentRuntimeMetadata(
     ),
     ...(resume ? {resume} : {}),
   };
+}
+
+function readDelegatedRuntimeContext(configurable: unknown): unknown {
+  if (!configurable || typeof configurable !== 'object') {
+    return configurable;
+  }
+
+  const record = configurable as Record<string, unknown>;
+  return record.context ?? record.runtimeContext ?? configurable;
 }
 
 function resolveDelegatedAgentTools(
