@@ -1,10 +1,10 @@
 import {createSession} from '@core/sessions';
-import {createCodaraCommandRunner} from '@core/codara/commands';
-import type {Codara, CodaraOptions} from '@core/codara/types';
+import {createCodaraCommandRunner} from '@core/product/commands';
+import type {Codara, CodaraOptions} from '@core/product/types';
 import type {Session, SessionState, SessionStore} from '@core/sessions';
-import type {CodaraCommandHost} from '@core/codara/commands';
-import {createCodaraSessionAssembly} from '@core/codara/runtime';
-import {createSkillCodaraCommands} from '@core/codara/commands/skills';
+import type {CodaraCommandHost} from '@core/product/commands';
+import {createCodaraSessionAssembly} from '@core/product/runtime';
+import {createSkillCodaraCommands} from '@core/product/commands/skills';
 
 /**
  * 创建 Codara 实例。

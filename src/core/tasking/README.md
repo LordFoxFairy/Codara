@@ -20,7 +20,6 @@
 
 ```text
 tasking/
-  # internal host adapter remains in codara/tasking.ts
   delegation.ts       # delegated child runner + helpers
   task.ts              # formal Task tool (public API stays runtime-agnostic)
   shared-tasks.ts      # TaskCreate/TaskUpdate/TaskList
@@ -34,5 +33,5 @@ tasking/
 - `middleware/*` 只保留 generic lifecycle domain；tasking 的 middleware facade 与对应 primitive 放在同一 tasking 文件中，避免再拆出一层薄 wrapper 目录。
 - 根入口 / `@core` 和 `@core/tasking` 应只保留 `TaskMiddleware` 作为委派主入口；低层 delegation helper 退回 `@core/tasking/delegation`，`createTaskTool(...)` 退回 `@core/tasking/task` 作为内部实现。
 - `skills` 只负责发现和解析；`Task` 通过 `runtime.shared.skills` 消费定义，不直接读 store。
-- 宿主装配（例如 Codara child-agent 创建）属于 `codara/tasking.ts`，不继续污染 tasking 核心 API。
+- 宿主装配（例如 Codara child-agent 创建）通过 product layer 接入，不继续污染 tasking 核心 API。
 - child delegation 的限制优先通过能力装配表达：创建 child 时直接剔除 delegation tools，而不是在运行期依赖 `agentType` 再做一层兜底分支。

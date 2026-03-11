@@ -5,7 +5,7 @@ import {
   type SkillCommandDefinition,
 } from '@core/skills/commands';
 import type {SkillsSource} from '@core/sessions/skills';
-import type {CodaraCommandDefinition} from '@core/codara/commands/types';
+import type {CodaraCommandDefinition} from '@core/product/commands/types';
 
 export async function createSkillCodaraCommands(
   source: SkillsSource,

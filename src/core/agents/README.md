@@ -29,7 +29,7 @@ createCodara(...)
 
 - `createAgent(...)`：通用执行体
 - `sessions/*`：实例宿主
-- `codara/*`：产品入口与默认装配
+- `product/*`：产品入口与默认装配
 
 ## 目录
 

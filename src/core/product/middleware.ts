@@ -1,12 +1,12 @@
 import {createHILMiddleware, createLoggingMiddleware, type BaseMiddleware} from '@core/middleware';
 import {createGuidelinesMiddleware} from '@core/middleware/guidelines';
 import {createConversationContextMiddleware} from '@core/middleware/conversation-context';
-import type {CodaraMiddlewareOptions, CodaraSkillOptions} from '@core/codara/types';
+import type {CodaraMiddlewareOptions, CodaraSkillOptions} from '@core/product/types';
 import {createSkillsMiddleware} from '@core/skills';
 import type {AgentsSource} from '@core/sessions/agents';
 import type {SkillsSource} from '@core/sessions/skills';
 import {FileSystemSkillStore, type SkillStore} from '@core/skills';
-import {resolveWorkspaceRoot} from '@core/workspace';
+import {resolveWorkspaceRoot} from '@core/support/workspace';
 
 export interface CodaraResolvedSkills {
   store: SkillStore;

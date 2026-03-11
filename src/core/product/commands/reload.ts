@@ -1,4 +1,4 @@
-import type {CodaraCommandDefinition} from '@core/codara/commands/types';
+import type {CodaraCommandDefinition} from '@core/product/commands/types';
 
 export function createReloadCommand(): CodaraCommandDefinition {
   return {

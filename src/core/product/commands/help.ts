@@ -1,4 +1,4 @@
-import type {CodaraCommandDefinition, CodaraCommandResult, CodaraCommandSpec} from '@core/codara/commands/types';
+import type {CodaraCommandDefinition, CodaraCommandResult, CodaraCommandSpec} from '@core/product/commands/types';
 
 export function createHelpCommand(): CodaraCommandDefinition {
   return {

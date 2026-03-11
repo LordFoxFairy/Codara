@@ -1,15 +1,15 @@
-import {createCompactCommand} from '@core/codara/commands/compact';
-import {createHelpCommand} from '@core/codara/commands/help';
-import {createMemoryCommand} from '@core/codara/commands/memory';
-import {createReloadCommand} from '@core/codara/commands/reload';
-import {createResumeCommand} from '@core/codara/commands/resume';
+import {createCompactCommand} from '@core/product/commands/compact';
+import {createHelpCommand} from '@core/product/commands/help';
+import {createMemoryCommand} from '@core/product/commands/memory';
+import {createReloadCommand} from '@core/product/commands/reload';
+import {createResumeCommand} from '@core/product/commands/resume';
 import type {
   CodaraCommandDefinition,
   CodaraCommandHost,
   CodaraCommandResult,
   ParsedCodaraCommand,
   CodaraCommandSpec,
-} from '@core/codara/commands/types';
+} from '@core/product/commands/types';
 
 export interface CodaraCommandRunner {
   listCommands(): Promise<readonly CodaraCommandSpec[]>;

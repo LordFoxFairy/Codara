@@ -3,12 +3,12 @@ import {createCodaraAgentsSource} from '@core/sessions/agents';
 import type {CreateSessionOptions} from '@core/sessions/types';
 import type {SkillsSource} from '@core/sessions/skills';
 import {createCodaraSkillsSource} from '@core/sessions/skills';
-import {createCodaraModelCatalog, DEFAULT_CODARA_MODEL_ALIAS} from '@core/codara/models';
+import {createCodaraModelCatalog, DEFAULT_CODARA_MODEL_ALIAS} from '@core/product/models';
 import {
   createCodaraMiddlewares,
   resolveCodaraSkills,
-} from '@core/codara/middleware';
-import type {CodaraOptions, CodaraToolsOptions} from '@core/codara/types';
+} from '@core/product/middleware';
+import type {CodaraOptions, CodaraToolsOptions} from '@core/product/types';
 import {createBuiltinTools} from '@core/tools';
 
 export interface CodaraSessionAssembly {
@@ -35,14 +35,16 @@ export function createCodaraSessionAssembly(options: CodaraOptions = {}): Codara
     guidelines: options.guidelines,
   });
 
-  const modelCatalog = options.catalog ?? createCodaraModelCatalog({
-    config: options.config,
-  });
   const skills = resolveCodaraSkills(options);
   const skillsSource = skills ? createCodaraSkillsSource(skills) : undefined;
 
   const alias = options.alias?.trim() || DEFAULT_CODARA_MODEL_ALIAS;
   const model = options.model ?? (options.modelResolver ? options.modelResolver() : undefined);
+  const modelCatalog = model
+    ? undefined
+    : options.catalog ?? createCodaraModelCatalog({
+      config: options.config,
+    });
   const tools = createCodaraTools(options);
   const middleware = createCodaraMiddlewares(options, agentsSource, skillsSource, skills);
 
@@ -50,7 +52,7 @@ export function createCodaraSessionAssembly(options: CodaraOptions = {}): Codara
     sessionOptions: {
       modelRef: alias,
       ...(model ? {model} : {}),
-      modelCatalog,
+      ...(modelCatalog ? {modelCatalog} : {}),
       agentsSource,
       ...(skillsSource ? {skillsSource} : {}),
       tools,
