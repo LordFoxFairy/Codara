@@ -211,6 +211,13 @@ checkpoint 边界：
 
 它们是四条不同边界，不应再混叫成 “memory”。
 
+| Concept | Owner | Persistence | Contains | Product Meaning |
+| --- | --- | --- | --- | --- |
+| `AGENTS.md` | session source layer | file system | project/global instructions | source input |
+| `state.context` | agent runtime | checkpoint | durable agent context | durable runtime state |
+| `checkpoint` | checkpointer | checkpoint store | messages, context, values, pendingPause | branch runtime snapshot history |
+| `session metadata` | session host | `metadata.json` | catalog summary, usage, lastActivity | host/session index |
+
 
 ## Summary 中间件
 
