@@ -8,7 +8,7 @@ function createBaseContext() {
   return {
     state: {messages, context: {}, values: {}},
     messages,
-    runtime: {context: {}, agentContext: {}},
+    runtime: {context: {}, agentContext: {}, runtimeContext: {}, shared: {}},
     systemMessage: [],
     runId: 'run_1',
     turn: 1,
@@ -213,11 +213,20 @@ describe('MiddlewarePipeline', () => {
     }).toThrow('Middleware "guard" failed in beforeModel: blocked');
   });
 
-  it('should apply runtime-only context updates without persisting them into state.context', async () => {
+  it('should keep durable and runtime context mirrors synchronized across middleware hooks', async () => {
+    const seen: Array<{
+      effective: Record<string, unknown>;
+      runtimeContext: Record<string, unknown>;
+      agentContext: Record<string, unknown>;
+    }> = [];
+
     const pipeline = new MiddlewarePipeline([
       {
         name: 'runtime_data',
         beforeAgent: () => ({
+          context: {
+            tenantId: 'tenant-1',
+          },
           runtimeContext: {
             skills: {
               loaded: true,
@@ -225,17 +234,56 @@ describe('MiddlewarePipeline', () => {
           },
         }),
       },
+      {
+        name: 'runtime_data_reader',
+        beforeAgent: (context) => {
+          seen.push({
+            effective: {...context.runtime.context},
+            runtimeContext: {...(context.runtime.runtimeContext ?? {})},
+            agentContext: {...(context.runtime.agentContext ?? {})},
+          });
+        },
+      },
     ]);
 
     const context = createBaseContext();
     await pipeline.beforeAgent(context);
 
     expect(context.runtime.context).toEqual({
+      tenantId: 'tenant-1',
       skills: {
         loaded: true,
       },
     });
-    expect(context.state.context).toEqual({});
+    expect(context.runtime.runtimeContext).toEqual({
+      skills: {
+        loaded: true,
+      },
+    });
+    expect(context.runtime.agentContext).toEqual({
+      tenantId: 'tenant-1',
+    });
+    expect(context.state.context).toEqual({
+      tenantId: 'tenant-1',
+    });
+    expect(seen).toEqual([
+      {
+        effective: {
+          tenantId: 'tenant-1',
+          skills: {
+            loaded: true,
+          },
+        },
+        runtimeContext: {
+          skills: {
+            loaded: true,
+          },
+        },
+        agentContext: {
+          tenantId: 'tenant-1',
+        },
+      },
+    ]);
   });
 
   it('should include middleware name and stage when wrap hook throws', async () => {

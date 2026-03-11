@@ -92,8 +92,9 @@ describe('HIL user confirmation flow', () => {
     );
 
     expect(firstResult.reason).toBe('complete');
+    expect(model.invocations).toHaveLength(1);
     expect(String(firstResult.state.messages[firstResult.state.messages.length - 1]?.content)).toContain(
-      'WAITING_USER_CONFIRMATION'
+      '"type":"hil_pause"'
     );
     expect(bashInvokeCount).toBe(0);
 

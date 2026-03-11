@@ -113,7 +113,7 @@ class AsyncResultQueue<T, TReturn> implements AsyncGenerator<T, TReturn, void> {
 /** Agent 流式输出写出器。 */
 export interface AgentStreamWriter {
   stream: AsyncGenerator<AgentStreamOutput, AgentResult, void>;
-  emitMessages(input: {runId: string; turn: number; chunk: AIMessageChunk}): Promise<void>;
+  emitMessages(input: {runId: string; threadId: string; requestId: string; turn: number; chunk: AIMessageChunk}): Promise<void>;
   emitModelUpdate(message: AIMessage): Promise<void>;
   emitToolUpdate(message: ToolMessage): Promise<void>;
   emitValues(messages: BaseMessage[]): Promise<void>;
@@ -155,6 +155,8 @@ export function createStreamWriter(config: AgentStreamConfig | undefined): Agent
         response_metadata: {
           ...(input.chunk.response_metadata ?? {}),
           runId: input.runId,
+          threadId: input.threadId,
+          requestId: input.requestId,
           turn: input.turn,
         },
       });

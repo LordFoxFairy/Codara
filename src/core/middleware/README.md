@@ -2,7 +2,7 @@
 
 ## 概述
 
-`@core/middleware` 提供与 Agent loop 对齐的 6 个 hooks，用于注入日志、上下文 source、输入预算、上下文压缩、工具拦截等横切逻辑。
+`@core/middleware` 提供与 Agent loop 对齐的 6 个 hooks，用于注入日志、上下文 source、conversation context、工具拦截等横切逻辑。
 
 生命周期顺序固定为：
 
@@ -86,19 +86,39 @@ const result = await agent.invoke(
 公共字段（多数 hooks 都可用）：
 
 - `state.messages` / `messages`：当前消息列表
-- `runtime.context`：持久化上下文（随 checkpoint 保存，跨 invoke 保留）
+- `runtime.context`：当前 hook 可见的有效上下文视图（`agentContext + runtimeContext` 的合成结果，不直接持久化）
+- `runtime.agentContext`：持久化 agent context（随 checkpoint 保存，跨 invoke 保留）
 - `runtime.runtimeContext`：临时运行时上下文（仅本次 invoke 有效，不持久化）
 - `runtime.shared`：同一次运行内由 middleware 生成并共享的派生数据，不进入 checkpoint
 - `systemMessage`：可在 `beforeModel` 或 `wrapModelCall` 中追加系统消息
 - `runId`、`turn`、`maxTurns`、`requestId`
 - `inputBudget`：本轮调用的输入预算配置
-- `budget`：当前 turn 的输入预算快照（由 `ContextBudgetMiddleware` 计算）
+- `budget`：当前 turn 的输入预算快照（默认由 `ConversationContextMiddleware` 维护）
 
 特有字段：
 
 - `afterModel`：`response`
 - `wrapToolCall`：`toolCall`、`toolIndex`、`tool`
 - `afterAgent`：`result`
+
+## 默认主链
+
+Codara 默认 runtime 只把下面几类模块当成一等 middleware stage：
+
+- `LoggingMiddleware`
+- `GuidelinesMiddleware`
+- `SkillsMiddleware`
+- caller middlewares
+- `ConversationContextMiddleware`
+- `HumanInTheLoopMiddleware`
+
+其中：
+
+- `conversation-input.ts`
+- `context-budget.ts`
+- `summary.ts`
+
+都属于 conversation internals。它们可以被直接导入复用，但不应再被理解为默认主链中的并列 stage。
 
 ## 典型模式
 

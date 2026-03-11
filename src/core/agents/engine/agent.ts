@@ -1,7 +1,9 @@
 import {randomUUID} from 'node:crypto';
 import {
+  applyAgentStateSnapshot,
   createInitialAgentState,
   cloneValues,
+  hasEquivalentCheckpointState,
   summarizeResult,
   type MutableAgentState,
 } from '@core/agents/engine/state';
@@ -19,7 +21,9 @@ import {
 import {assertNotRunning, assertReadyForInvoke, assertReadyForResume} from '@core/agents/engine/lifecycle';
 import {
   createRunContext,
+  resolveEffectiveContext,
   runAfterHook,
+  runBeforeModelStage,
   runBeforeHook,
   runLoop,
   streamLoop,
@@ -36,6 +40,7 @@ import type {
   AgentResumeConfig,
   AgentResumeStreamConfig,
   AgentState,
+  AgentStatus,
   CreateAgentOptions,
 } from '@core/agents/contract/agent';
 import type {AgentStreamConfig, AgentStreamOutput} from '@core/agents/contract/stream';
@@ -76,7 +81,7 @@ class AgentInstance implements Agent {
   }
 
   getState(): AgentState {
-    return createAgentState(this.threadId, this.state);
+    return createAgentState(this.state);
   }
 
   async compactConversation(
@@ -85,51 +90,62 @@ class AgentInstance implements Agent {
     } = {}
   ): Promise<AgentState> {
     assertNotRunning(this.state);
+    const baselineState = createAgentState(this.state);
     const manualCompactContext = mergeContext(config.context ?? {}, {
       codara: {
         forceCompactConversation: true,
         ...(config.instructions ? {compactInstructions: config.instructions} : {}),
       },
     });
-    const state = createAgentState(this.threadId, this.state);
-    const run = createRunContext(state, this.state.context, this.state.values, {
-      context: mergeContext(this.state.context, manualCompactContext),
+    const run = createRunContext(createAgentState(this.state), {
+      context: manualCompactContext,
       inputBudget: config.inputBudget ?? this.inputBudget,
       recursionLimit: 1,
     });
+    const lifecycle = this.enterRunningState();
+    const effectiveContext = resolveEffectiveContext(run);
 
-    // 合并持久化上下文和临时上下文
-    const effectiveContext = mergeContext(run.state.context, run.runtimeContext);
+    try {
+      this.runtime.pipeline.validateContext(effectiveContext);
+    } catch (error) {
+      const result = this.abortPreflight(
+        lifecycle,
+        createErrorResult(run.state, 0, formatErrorMessage(error, 'context validation failed'))
+      );
+      throw result.error;
+    }
 
-    const context = {
-      state: run.state,
-      messages: run.state.messages,
-      runtime: {
-        context: effectiveContext,
-        agentContext: effectiveContext,
-        shared: run.shared,
-      },
-      systemMessage: [],
-      runId: run.runId,
-      turn: 1,
-      maxTurns: 1,
-      requestId: `${run.runId}:compact`,
-      inputBudget: run.inputBudget,
+    let context;
+    try {
+      context = await runBeforeModelStage(run, this.runtime, 1, `${run.runId}:compact`);
+    } catch (error) {
+      const result = this.abortPreflight(lifecycle, createErrorResult(run.state, 0, toErrorMessage(error)));
+      throw result.error;
+    }
+
+    const compactedState = {
+      agentType: baselineState.agentType,
+      messages: context.state.messages,
+      context: context.state.context ?? {},
+      values: context.state.values ?? {},
     };
 
-    this.runtime.pipeline.validateContext(effectiveContext);
-    await this.runtime.pipeline.beforeAgent(context);
-    await this.runtime.pipeline.beforeModel(context);
+    if (hasEquivalentCheckpointState(baselineState, compactedState)) {
+      this.state.status = baselineState.status;
+      this.state.updatedAt = lifecycle.updatedAt;
+      return baselineState;
+    }
 
-    this.state.messages = [...context.state.messages];
-    this.state.context = mergeContext({}, context.state.context);
-    this.state.values = this.runtime.pipeline.normalizeValues(cloneValues(context.state.values));
-    this.state.pendingPause = context.state.pendingPause;
+    applyAgentStateSnapshot(this.state, {
+      messages: compactedState.messages,
+      context: compactedState.context,
+      values: this.runtime.pipeline.normalizeValues(cloneValues(compactedState.values)),
+      pendingPause: this.state.pendingPause,
+    });
     this.state.status = this.state.pendingPause ? 'paused' : 'idle';
     this.touch();
     await this.persistCheckpoint('manual');
-
-    return createAgentState(this.threadId, this.state);
+    return createAgentState(this.state);
   }
 
   async invoke(input?: AgentInput, config: AgentInvokeConfig = {}): Promise<AgentResult> {
@@ -189,30 +205,32 @@ class AgentInstance implements Agent {
     config: AgentInvokeConfig,
     source: AgentCheckpointInfo['source']
   ): Promise<AgentResult> {
-    const loopState = this.prepareLoop(input);
+    const runState = this.createPendingRunState(input);
     const startIndex = this.state.messages.length;
-    const run = createRunContext(loopState, this.state.context, this.state.values, {
+    const run = createRunContext(runState, {
       ...config,
-      context: mergeContext(this.state.context, config.context),
+      context: config.context,
       inputBudget: config.inputBudget ?? this.inputBudget,
     });
+    const lifecycle = this.enterRunningState();
 
     try {
-      this.runtime.pipeline.validateContext(run.runtimeContext);
+      this.runtime.pipeline.validateContext(resolveEffectiveContext(run));
     } catch (error) {
-      return createErrorResult(loopState, 0, formatErrorMessage(error, 'context validation failed'));
+      return this.abortPreflight(
+        lifecycle,
+        createErrorResult(runState, 0, formatErrorMessage(error, 'context validation failed'))
+      );
     }
 
     const beforeRunResult = await runBeforeHook(run, config);
     if (beforeRunResult) {
-      return beforeRunResult;
+      return this.abortPreflight(lifecycle, beforeRunResult);
     }
 
     const loopResult = await runLoop(run, this.runtime);
     const result = await runAfterHook(run, loopResult, config);
-    this.state.messages = [...result.state.messages];
-    await this.applyRunResult(result, startIndex, source, config.checkpoint ?? true);
-    return result;
+    return this.applyRunResult(result, startIndex, source, config.checkpoint ?? true);
   }
 
   private async *executeStream(
@@ -220,23 +238,27 @@ class AgentInstance implements Agent {
     config: AgentStreamConfig,
     source: AgentCheckpointInfo['source']
   ): AsyncGenerator<AgentStreamOutput, AgentResult, void> {
-    const loopState = this.prepareLoop(input);
+    const runState = this.createPendingRunState(input);
     const startIndex = this.state.messages.length;
-    const run = createRunContext(loopState, this.state.context, this.state.values, {
+    const run = createRunContext(runState, {
       ...config,
-      context: mergeContext(this.state.context, config.context),
+      context: config.context,
       inputBudget: config.inputBudget ?? this.inputBudget,
     });
+    const lifecycle = this.enterRunningState();
 
     try {
-      this.runtime.pipeline.validateContext(run.runtimeContext);
+      this.runtime.pipeline.validateContext(resolveEffectiveContext(run));
     } catch (error) {
-      return createErrorResult(loopState, 0, formatErrorMessage(error, 'context validation failed'));
+      return this.abortPreflight(
+        lifecycle,
+        createErrorResult(runState, 0, formatErrorMessage(error, 'context validation failed'))
+      );
     }
 
     const beforeRunResult = await runBeforeHook(run, config);
     if (beforeRunResult) {
-      return beforeRunResult;
+      return this.abortPreflight(lifecycle, beforeRunResult);
     }
 
     const stream = createStreamWriter(config);
@@ -244,10 +266,9 @@ class AgentInstance implements Agent {
       await stream.emitValues(run.state.messages);
       const loopResult = await streamLoop(run, this.runtime, stream);
       const result = await runAfterHook(run, loopResult, config);
-      this.state.messages = [...result.state.messages];
-      await this.applyRunResult(result, startIndex, source, config.checkpoint ?? true);
-      stream.finish(result);
-      return result;
+      const finalized = await this.applyRunResult(result, startIndex, source, config.checkpoint ?? true);
+      stream.finish(finalized);
+      return finalized;
     })().catch((error) => {
       stream.fail(error);
       throw error;
@@ -266,16 +287,34 @@ class AgentInstance implements Agent {
     }
   }
 
-  private prepareLoop(input: AgentInput): AgentState {
+  private createPendingRunState(input: AgentInput): AgentState {
+    const pendingState = createAgentState(this.state);
     const appendedInput = normalizeAgentInput(input);
     if (appendedInput.length > 0) {
-      this.state.messages.push(...appendedInput);
+      pendingState.messages.push(...appendedInput);
     }
 
+    pendingState.status = 'running';
+    return pendingState;
+  }
+
+  private enterRunningState(): RunLifecycleSnapshot {
+    const snapshot: RunLifecycleSnapshot = {
+      status: this.state.status,
+      updatedAt: this.state.updatedAt,
+    };
     this.state.status = 'running';
     this.touch();
+    return snapshot;
+  }
 
-    return createAgentState(this.threadId, this.state);
+  private abortPreflight(snapshot: RunLifecycleSnapshot, result: AgentResult): AgentResult {
+    this.state.status = snapshot.status;
+    this.state.updatedAt = snapshot.updatedAt;
+    return {
+      ...result,
+      state: createAgentState(this.state),
+    };
   }
 
   private async applyRunResult(
@@ -283,17 +322,25 @@ class AgentInstance implements Agent {
     startIndex: number,
     source: AgentCheckpointInfo['source'],
     checkpoint: boolean
-  ): Promise<void> {
+  ): Promise<AgentResult> {
     this.state.lastResult = summarizeResult(result);
-    this.state.context = mergeContext({}, result.state.context);
-    this.state.values = this.runtime.pipeline.normalizeValues(cloneValues(result.state.values));
-    this.state.pendingPause = readLatestPause(this.state.messages.slice(startIndex));
+    applyAgentStateSnapshot(this.state, {
+      messages: result.state.messages,
+      context: result.state.context,
+      values: this.runtime.pipeline.normalizeValues(cloneValues(result.state.values)),
+      pendingPause: readLatestPause(result.state.messages.slice(startIndex)),
+    });
     this.state.status = this.state.pendingPause ? 'paused' : 'idle';
     this.touch();
 
     if (checkpoint) {
       await this.persistCheckpoint(source, result);
     }
+
+    return {
+      ...result,
+      state: createAgentState(this.state),
+    };
   }
 
   private async persistCheckpoint(source: AgentCheckpointInfo['source'], result?: AgentResult): Promise<AgentCheckpoint> {
@@ -318,4 +365,13 @@ function createErrorResult(state: AgentState, turns: number, message: string): A
     turns,
     error: new Error(message),
   };
+}
+
+function toErrorMessage(error: unknown): string {
+  return error instanceof Error ? error.message : String(error);
+}
+
+interface RunLifecycleSnapshot {
+  status: AgentStatus;
+  updatedAt: string;
 }

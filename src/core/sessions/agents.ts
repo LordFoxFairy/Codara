@@ -13,6 +13,10 @@ const DEFAULT_LINES = 500;
 export type AgentsFileScope = 'global' | 'project';
 export type GuidelineFile = WorkspaceScopedFile;
 
+export interface AgentsFileStackEntry extends WorkspaceScopedFile {
+  loaded: boolean;
+}
+
 export interface LoadedGuidelines {
   files: GuidelineFile[];
   content: string;
@@ -26,6 +30,7 @@ export interface AgentsFileOverview {
   globalPath: string;
   projectPath: string;
   loadedPaths: string[];
+  stack: AgentsFileStackEntry[];
 }
 
 export interface AgentsFileOptions extends WorkspaceFileOptions {
@@ -101,15 +106,25 @@ export async function loadGuidelines(options: GuidelinesOptions = {}): Promise<L
 export async function inspectAgentsFiles(
   options: AgentsFileOptions = {},
 ): Promise<AgentsFileOverview> {
-  const {globalPath, projectPath} = resolveAgentsFileTargets(options);
+  const discovered = discoverHierarchicalWorkspaceFiles('AGENTS.md', {
+    cwd: options.cwd,
+    projectRoot: options.projectRoot,
+    userHome: options.userHome ?? homedir(),
+  });
+  const {globalPath, projectPath} = resolveAgentsFileTargets(options, discovered);
   const loaded = options.guidelines === false
     ? undefined
     : await loadGuidelines(resolveGuidelinesOptions(options));
+  const loadedPaths = loaded?.files.map((file) => file.path) ?? [];
 
   return {
     globalPath,
     projectPath,
-    loadedPaths: loaded?.files.map((file) => file.path) ?? [],
+    loadedPaths,
+    stack: discovered.map((file) => ({
+      ...file,
+      loaded: loadedPaths.includes(file.path),
+    })),
   };
 }
 
@@ -194,18 +209,32 @@ export function createCodaraAgentsSource(options: CodaraAgentsSourceOptions = {}
 function resolveAgentsFileTargets(options: AgentsFileOptions): {
   globalPath: string;
   projectPath: string;
+}
+function resolveAgentsFileTargets(
+  options: AgentsFileOptions,
+  discovered: WorkspaceScopedFile[],
+): {
+  globalPath: string;
+  projectPath: string;
+}
+function resolveAgentsFileTargets(
+  options: AgentsFileOptions,
+  discovered?: WorkspaceScopedFile[],
+): {
+  globalPath: string;
+  projectPath: string;
 } {
-  const discovered = discoverHierarchicalWorkspaceFiles('AGENTS.md', {
+  const resolved = discovered ?? discoverHierarchicalWorkspaceFiles('AGENTS.md', {
     cwd: options.cwd,
     projectRoot: options.projectRoot,
     userHome: options.userHome ?? homedir(),
   });
-  const globalPath = discovered[0]?.path ?? path.join(options.userHome ?? homedir(), '.codara', 'AGENTS.md');
+  const globalPath = resolved[0]?.path ?? path.join(options.userHome ?? homedir(), '.codara', 'AGENTS.md');
   const projectRoot = resolveWorkspaceRoot({
     cwd: options.cwd,
     projectRoot: options.projectRoot,
   });
-  const projectPath = discovered.at(-1)?.path ?? path.join(projectRoot, 'AGENTS.md');
+  const projectPath = resolved.at(-1)?.path ?? path.join(projectRoot, 'AGENTS.md');
 
   return {globalPath, projectPath};
 }

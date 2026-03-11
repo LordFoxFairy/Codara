@@ -54,9 +54,9 @@ export {
 /** Middleware */
 export {
   createMiddleware,
+  createConversationContextMiddleware,
   createSharedTaskMiddleware,
   createGuidelinesMiddleware,
-  createSummaryMiddleware,
   createSkillsMiddleware,
   createHILMiddleware,
   createLoggingMiddleware,
@@ -70,7 +70,7 @@ export {
 
 export type {
   BaseMiddleware,
-  SummaryOptions,
+  ConversationContextMiddlewareOptions,
   HILMiddlewareOptions,
   LoggingMiddlewareOptions,
   HILResumePayload,

@@ -4,6 +4,7 @@ import {createConversationContextMiddleware} from '@core/middleware/conversation
 import type {CodaraMiddlewareOptions, CodaraSkillOptions} from '@core/codara/types';
 import {createSkillsMiddleware} from '@core/skills';
 import type {AgentsSource} from '@core/sessions/agents';
+import type {SkillsSource} from '@core/sessions/skills';
 import {FileSystemSkillStore, type SkillStore} from '@core/skills';
 import {resolveWorkspaceRoot} from '@core/workspace';
 
@@ -26,6 +27,7 @@ export interface CodaraResolvedSkills {
 export function createCodaraMiddlewares(
   options: CodaraMiddlewareOptions = {},
   agentsSource?: AgentsSource,
+  skillsSource?: SkillsSource,
   resolvedSkills = resolveCodaraSkills(options),
 ): BaseMiddleware[] {
   const middlewares: BaseMiddleware[] = [];
@@ -42,7 +44,9 @@ export function createCodaraMiddlewares(
 
   // 3. Skills（默认启用）
   if (resolvedSkills) {
-    middlewares.push(createSkillsMiddleware(resolvedSkills));
+    middlewares.push(skillsSource
+      ? createSkillsMiddleware({source: skillsSource})
+      : createSkillsMiddleware(resolvedSkills));
   }
 
   // 4. Caller middlewares（让追加的 systemMessage 也能进入 budget / summary）

@@ -11,7 +11,7 @@ import {
 import type {BaseChatModel} from '@langchain/core/language_models/chat_models';
 import type {StructuredToolInterface} from '@langchain/core/tools';
 import {createAgent} from '@core/agents';
-import {createMiddleware, type BaseMiddleware} from '@core/middleware';
+import {createHILMiddleware, createMiddleware, type BaseMiddleware} from '@core/middleware';
 import {z} from 'zod';
 
 class FakeModel {
@@ -217,6 +217,56 @@ describe('Agent', () => {
     expect(result.turns).toBe(3);
   });
 
+  it('afterAgent 的 turn 级结果应保持 continue，而最终 max_turns 只由 run 结果拥有', async () => {
+    const events: string[] = [];
+    const toolCall: ToolCall = {id: 'call_loop_ownership', name: 'echo', args: {}};
+    const tool = {
+      name: 'echo',
+      description: 'Echo tool',
+      schema: {} as never,
+      invoke: async () => 'pong'
+    } as unknown as StructuredToolInterface;
+
+    const model = new FakeModel(
+      Array.from({length: 10}, () => new AIMessage({content: '', tool_calls: [toolCall]}))
+    ) as unknown as BaseChatModel;
+
+    const runner = createAgent({
+      model,
+      tools: [tool],
+      middleware: [
+        {
+          name: 'max_turns_probe',
+          afterAgent: (context) => {
+            events.push(`turn:${context.turn}:${context.result.reason}`);
+          },
+        },
+      ],
+    });
+
+    const result = await runner.invoke({messages: [new HumanMessage('start')]}, {recursionLimit: 2});
+
+    expect(result.reason).toBe('max_turns');
+    expect(result.turns).toBe(2);
+    expect(events).toEqual([
+      'turn:1:continue',
+      'turn:2:continue',
+    ]);
+  });
+
+  it('非法 recursionLimit 不应污染 agent 内部状态', async () => {
+    const model = new FakeModel([new AIMessage('done')]) as unknown as BaseChatModel;
+    const runner = createAgent({model});
+
+    await expect(
+      runner.invoke({messages: [new HumanMessage('start')]}, {recursionLimit: 0})
+    ).rejects.toThrow('recursionLimit must be at least 1');
+
+    const state = runner.getState();
+    expect(state.status).toBe('idle');
+    expect(state.messages).toHaveLength(0);
+  });
+
   it('应支持 beforeRun/afterRun 两个 invoke 外钩子', async () => {
     const events: string[] = [];
     let preRunId = '';
@@ -259,6 +309,8 @@ describe('Agent', () => {
     expect(result.reason).toBe('error');
     expect(result.turns).toBe(0);
     expect(result.error?.message).toContain('beforeRun failed: pre boom');
+    expect(runner.getState().status).toBe('idle');
+    expect(runner.getState().messages).toHaveLength(0);
   });
 
   it('afterRun 抛错时应将非 error 结果转为 error', async () => {
@@ -392,6 +444,51 @@ describe('Agent', () => {
     ]);
   });
 
+  it('runtimeShared 应在同一次 run 的多轮之间保持可见', async () => {
+    const events: string[] = [];
+    const toolCall: ToolCall = {id: 'call_shared', name: 'echo', args: {}};
+    const responses: AIMessage[] = [
+      new AIMessage({content: '', tool_calls: [toolCall]}),
+      new AIMessage('done'),
+    ];
+    const model = new FakeModel(responses) as unknown as BaseChatModel;
+    const tool = {
+      name: 'echo',
+      description: 'Echo tool',
+      schema: {} as never,
+      invoke: async () => 'pong',
+    } as unknown as StructuredToolInterface;
+
+    const runner = createAgent({
+      model,
+      tools: [tool],
+      middleware: [
+        {
+          name: 'runtime_shared_probe',
+          beforeModel: (context) => {
+            events.push(`shared:${context.turn}:${String(context.runtime.shared?.flag ?? 'none')}`);
+            if (context.turn === 1) {
+              return {
+                runtimeShared: {
+                  flag: 'ready',
+                },
+              };
+            }
+            return undefined;
+          },
+        },
+      ],
+    });
+
+    const result = await runner.invoke({messages: [new HumanMessage('start')]});
+
+    expect(result.reason).toBe('complete');
+    expect(events).toEqual([
+      'shared:1:none',
+      'shared:2:ready',
+    ]);
+  });
+
   it('应支持 middleware 单数入参别名', async () => {
     const order: string[] = [];
     const model = new FakeModel([new AIMessage('done')]) as unknown as BaseChatModel;
@@ -497,6 +594,142 @@ describe('Agent', () => {
     expect(String((firstInvoke[0] as SystemMessage).content)).toContain('User ID: user-123, Tenant: acme-corp');
   });
 
+  it('应区分持久 context、临时 runtimeContext 和合成后的有效 context', async () => {
+    let seen:
+      | {
+          context: Record<string, unknown>;
+          agentContext: Record<string, unknown>;
+          runtimeContext: Record<string, unknown>;
+        }
+      | undefined;
+
+    const model = new FakeModel([new AIMessage('done')]) as unknown as BaseChatModel;
+    const middleware = createMiddleware({
+      name: 'ContextBoundaryMiddleware',
+      beforeModel: (context) => {
+        seen = {
+          context: context.runtime.context,
+          agentContext: context.runtime.agentContext ?? {},
+          runtimeContext: context.runtime.runtimeContext ?? {},
+        };
+      },
+    });
+
+    const runner = createAgent({
+      model,
+      context: {
+        tenantId: 'tenant-1',
+        profile: {
+          locale: 'zh-CN',
+        },
+      },
+      middleware: [middleware],
+    });
+
+    const result = await runner.invoke('hello', {
+      context: {
+        userId: 'user-123',
+        profile: {
+          timezone: 'Asia/Shanghai',
+        },
+      },
+    });
+
+    expect(result.reason).toBe('complete');
+    expect(seen?.context).toEqual({
+      tenantId: 'tenant-1',
+      userId: 'user-123',
+      profile: {
+        locale: 'zh-CN',
+        timezone: 'Asia/Shanghai',
+      },
+      threadId: result.state.threadId,
+    });
+    expect(seen?.agentContext).toEqual({
+      tenantId: 'tenant-1',
+      profile: {
+        locale: 'zh-CN',
+      },
+    });
+    expect(seen?.runtimeContext).toEqual({
+      userId: 'user-123',
+      profile: {
+        timezone: 'Asia/Shanghai',
+      },
+    });
+    expect(result.state.context).toEqual({
+      tenantId: 'tenant-1',
+      profile: {
+        locale: 'zh-CN',
+      },
+    });
+    expect(seen?.context.threadId).toBe(result.state.threadId);
+  });
+
+  it('应将 threadId/runId/requestId/toolCallId 暴露给工具调用元数据', async () => {
+    let seenConfigurable: Record<string, unknown> | undefined;
+    let seenMetadata: Record<string, unknown> | undefined;
+    const toolCall: ToolCall = {id: 'call_ids', name: 'echo', args: {text: 'ping'}};
+    const model = new FakeModel([
+      new AIMessage({content: '', tool_calls: [toolCall]}),
+      new AIMessage('done'),
+    ]) as unknown as BaseChatModel;
+    const tool = {
+      name: 'echo',
+      description: 'Echo tool',
+      schema: {} as never,
+      invoke: async (_args: unknown, config?: {configurable?: Record<string, unknown>; metadata?: Record<string, unknown>}) => {
+        seenConfigurable = config?.configurable;
+        seenMetadata = config?.metadata;
+        return 'pong';
+      },
+    } as unknown as StructuredToolInterface;
+
+    const runner = createAgent({model, tools: [tool], threadId: 'thread-tool-ids'});
+    const result = await runner.invoke({messages: [new HumanMessage('start')]});
+
+    expect(result.reason).toBe('complete');
+    expect(seenConfigurable?.threadId).toBe('thread-tool-ids');
+    expect(typeof seenConfigurable?.runId).toBe('string');
+    expect(seenConfigurable?.requestId).toBe(`${seenConfigurable?.runId}:turn:1:tool:call_ids`);
+    expect(seenConfigurable?.turn).toBe(1);
+    expect(seenConfigurable?.toolCallId).toBe('call_ids');
+    expect(seenConfigurable?.toolIndex).toBe(0);
+    expect(seenMetadata?.threadId).toBe('thread-tool-ids');
+    expect(seenMetadata?.toolCallId).toBe('call_ids');
+  });
+
+  it('contextSchema 校验应基于持久 context 与临时 context 的合成结果', async () => {
+    const model = new FakeModel([new AIMessage('done')]) as unknown as BaseChatModel;
+    const userContextMiddleware = createMiddleware({
+      name: 'MergedContextValidationMiddleware',
+      contextSchema: z.object({
+        userId: z.string(),
+        tenantId: z.string(),
+      }),
+      beforeModel: () => undefined,
+    });
+
+    const runner = createAgent({
+      model,
+      context: {
+        tenantId: 'tenant-1',
+      },
+      middleware: [userContextMiddleware],
+    });
+
+    const result = await runner.invoke(
+      {messages: [new HumanMessage('hello')]},
+      {
+        context: {
+          userId: 'user-123',
+        },
+      }
+    );
+
+    expect(result.reason).toBe('complete');
+  });
+
   it('context 不满足 middleware.contextSchema 时应返回 error', async () => {
     const model = new FakeModel([new AIMessage('done')]) as unknown as BaseChatModel;
     const userContextMiddleware = createMiddleware({
@@ -524,6 +757,57 @@ describe('Agent', () => {
 
     expect(result.reason).toBe('error');
     expect(result.error?.message).toContain('context validation failed');
+    expect(runner.getState().status).toBe('idle');
+    expect(runner.getState().messages).toHaveLength(0);
+  });
+
+  it('HIL pause 应在当前 turn 结束运行，而不是继续消耗后续 turn', async () => {
+    const toolCall: ToolCall = {id: 'call_pause_stop', name: 'bash', args: {command: 'git status'}};
+    let invocations = 0;
+    let bashInvokeCount = 0;
+    const model = {
+      invoke: async () => {
+        invocations += 1;
+        return new AIMessage({content: '', tool_calls: [toolCall]});
+      },
+      bindTools: () => ({
+        invoke: async () => {
+          invocations += 1;
+          return new AIMessage({content: '', tool_calls: [toolCall]});
+        }
+      })
+    } as unknown as BaseChatModel;
+
+    const bashTool = {
+      name: 'bash',
+      description: 'bash',
+      schema: {} as never,
+      invoke: async () => {
+        bashInvokeCount += 1;
+        return 'executed';
+      },
+    } as unknown as StructuredToolInterface;
+
+    const runner = createAgent({
+      model,
+      tools: [bashTool],
+      middleware: [
+        createHILMiddleware({
+          interruptOn: {
+            bash: true,
+          },
+        }),
+      ],
+    });
+
+    const result = await runner.invoke({messages: [new HumanMessage('run git status')]});
+
+    expect(result.reason).toBe('complete');
+    expect(result.turns).toBe(1);
+    expect(result.state.status).toBe('paused');
+    expect(result.state.pendingPause?.action.toolName).toBe('bash');
+    expect(invocations).toBe(1);
+    expect(bashInvokeCount).toBe(0);
   });
 
   it('stream(messages) 应输出模型 chunks 并返回最终结果', async () => {
@@ -549,6 +833,9 @@ describe('Agent', () => {
     expect(chunks).toHaveLength(2);
     expect(String(chunks[0]?.content)).toBe('he');
     expect(String(chunks[1]?.content)).toBe('llo');
+    expect(chunks[0]?.response_metadata.threadId).toBe(result?.state.threadId);
+    expect(typeof chunks[0]?.response_metadata.runId).toBe('string');
+    expect(chunks[0]?.response_metadata.requestId).toBe(`${chunks[0]?.response_metadata.runId}:turn:1`);
     expect(chunks[0]?.response_metadata.turn).toBe(1);
     expect(result?.reason).toBe('complete');
     expect(String(result?.state.messages[result.state.messages.length - 1]?.content)).toBe('hello');

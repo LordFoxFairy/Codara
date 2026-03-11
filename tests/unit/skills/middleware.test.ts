@@ -89,7 +89,7 @@ You are a Reviewer subagent.
     const middleware = createSkillsMiddleware({store})
     const context = createBaseContext('run_shared_runtime')
 
-    const update = await middleware.beforeAgent?.(context)
+    const update = await middleware.beforeModel?.(context)
     const runtime = (update?.runtimeShared as {skills?: {agentDefinitions?: Record<string, {name: string}>}} | undefined)?.skills
     expect(runtime?.agentDefinitions?.Reviewer?.name).toBe('Reviewer')
     expect(update?.context).toBeUndefined()

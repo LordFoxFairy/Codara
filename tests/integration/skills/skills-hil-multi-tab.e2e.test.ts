@@ -94,7 +94,8 @@ describe('HIL multi-tab pause metadata', () => {
     );
 
     expect(result.reason).toBe('complete');
-    expect(String(result.state.messages[result.state.messages.length - 1]?.content)).toContain('TWO_TABS_PAUSED');
+    expect(model.invocations).toHaveLength(1);
+    expect(String(result.state.messages[result.state.messages.length - 1]?.content)).toContain('"type":"hil_pause"');
 
     expect(writeInvokeCount).toBe(0);
     expect(emailInvokeCount).toBe(0);
