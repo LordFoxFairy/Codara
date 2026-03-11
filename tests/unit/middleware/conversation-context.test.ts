@@ -3,15 +3,17 @@ import {AIMessage, HumanMessage, type BaseMessage} from '@langchain/core/message
 import type {ModelCallContext} from '@core/middleware';
 import {createBudgetMiddleware} from '@core/middleware';
 import {MiddlewarePipeline} from '@core/middleware/pipeline';
-import {readSummaryRecord, createSummaryMiddleware} from '@core/middleware/summary';
+import {createSummaryMiddleware} from '@core/middleware/summary';
 
 describe('budget and summary middleware', () => {
+  function readSummaryMessage(messages: BaseMessage[]): BaseMessage | undefined {
+    return messages.find((message) => message.getType() === 'ai' && message.text.startsWith('Summary:\n'));
+  }
+
   it('should refresh budget and compact history in one stage', async () => {
     const budget = createBudgetMiddleware();
     const summary = createSummaryMiddleware({
       summary: {
-        maxMessages: 4,
-        keepLastMessages: 2,
         summarize: () => 'summary block',
       },
     });
@@ -29,7 +31,7 @@ describe('budget and summary middleware', () => {
       state: {messages},
       messages,
       runtime: {context: {}},
-      systemMessage: ['caller prompt'],
+      systemMessage: ['x'.repeat(120)],
       execution: {
         threadId: 'thread-1',
         runId: 'run-1',
@@ -38,7 +40,7 @@ describe('budget and summary middleware', () => {
         requestId: 'req-1',
       },
       inputBudget: {
-        maxInputTokens: 40,
+        maxInputTokens: 20,
       },
     };
 
@@ -46,7 +48,7 @@ describe('budget and summary middleware', () => {
 
     expect(context.budget).toBeDefined();
     expect(context.budget?.estimatedInputTokens).toBeGreaterThan(0);
-    expect(readSummaryRecord(context.state.messages)?.content).toBe('summary block');
+    expect(readSummaryMessage(context.state.messages)?.text).toBe('Summary:\nsummary block');
   });
 
   it('should still refresh budget when summary is disabled', async () => {
@@ -73,7 +75,7 @@ describe('budget and summary middleware', () => {
     await pipeline.beforeModel(context);
 
     expect(context.budget).toBeDefined();
-    expect(readSummaryRecord(context.state.messages)).toBeUndefined();
+    expect(readSummaryMessage(context.state.messages)).toBeUndefined();
   });
 
   it('should keep both stages as beforeModel-only middleware', () => {
@@ -97,8 +99,6 @@ describe('budget and summary middleware', () => {
   it('should not force summary compaction when messages are below the automatic threshold', async () => {
     const summary = createSummaryMiddleware({
       summary: {
-        maxMessages: 99,
-        keepLastMessages: 2,
         summarize: () => 'manual summary block',
       },
     });
@@ -131,6 +131,6 @@ describe('budget and summary middleware', () => {
 
     await pipeline.beforeModel(context);
 
-    expect(readSummaryRecord(context.state.messages)).toBeUndefined();
+    expect(readSummaryMessage(context.state.messages)).toBeUndefined();
   });
 });

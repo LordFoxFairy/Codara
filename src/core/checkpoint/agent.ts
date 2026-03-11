@@ -79,8 +79,8 @@ export function createAgentMemoryCheckpointer(): AgentCheckpointer {
       deserialize: deserializeAgentCheckpointState,
     },
     info: {
-      serialize: serializeAgentCheckpointInfo,
-      deserialize: deserializeAgentCheckpointInfo,
+      serialize: (info) => ({...info}),
+      deserialize: parseAgentCheckpointInfo,
     },
   });
 }
@@ -93,8 +93,46 @@ export function createAgentFileCheckpointer(options: AgentFileCheckpointerOption
       deserialize: deserializeAgentCheckpointState,
     },
     info: {
-      serialize: serializeAgentCheckpointInfo,
-      deserialize: deserializeAgentCheckpointInfo,
+      serialize: (info) => ({...info}),
+      deserialize: parseAgentCheckpointInfo,
+    },
+  });
+}
+
+export async function putForkCheckpoint(
+  checkpointer: AgentCheckpointer,
+  threadId: string,
+  state: AgentCheckpointState,
+): Promise<AgentCheckpoint> {
+  return checkpointer.put({
+    threadId,
+    state: cloneCheckpointState(state),
+    info: {
+      source: 'fork',
+      status: state.pendingPause ? 'paused' : 'idle',
+      step: 0,
+      createdAt: new Date().toISOString(),
+    },
+  });
+}
+
+export async function putManualCheckpoint(
+  checkpointer: AgentCheckpointer,
+  threadId: string,
+  state: AgentCheckpointState,
+  latest?: AgentCheckpoint,
+): Promise<AgentCheckpoint> {
+  return checkpointer.put({
+    threadId,
+    ...(latest?.ref.checkpointId ? {parentCheckpointId: latest.ref.checkpointId} : {}),
+    state: cloneCheckpointState(state),
+    info: {
+      source: 'manual',
+      status: 'idle',
+      reason: 'complete',
+      turns: 0,
+      step: (latest?.info.step ?? 0) + 1,
+      createdAt: new Date().toISOString(),
     },
   });
 }
@@ -103,6 +141,16 @@ function serializeAgentCheckpointState(state: AgentCheckpointState): PersistedAg
   return {
     agentType: state.agentType,
     messages: mapChatMessagesToStoredMessages(state.messages),
+    context: deepClone(state.context),
+    values: deepClone(state.values),
+    ...(state.pendingPause ? {pendingPause: deepClone(state.pendingPause)} : {}),
+  };
+}
+
+function cloneCheckpointState(state: AgentCheckpointState): AgentCheckpointState {
+  return {
+    agentType: state.agentType,
+    messages: mapStoredMessagesToChatMessages(mapChatMessagesToStoredMessages(state.messages)) as BaseMessage[],
     context: deepClone(state.context),
     values: deepClone(state.values),
     ...(state.pendingPause ? {pendingPause: deepClone(state.pendingPause)} : {}),
@@ -126,11 +174,7 @@ function deserializeAgentCheckpointState(raw: unknown): AgentCheckpointState {
   };
 }
 
-function serializeAgentCheckpointInfo(info: AgentCheckpointInfo): AgentCheckpointInfo {
-  return {...info};
-}
-
-function deserializeAgentCheckpointInfo(raw: unknown): AgentCheckpointInfo {
+function parseAgentCheckpointInfo(raw: unknown): AgentCheckpointInfo {
   const record = checkpointInfoSchema.parse(raw);
   return {
     source: record.source,

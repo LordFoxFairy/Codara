@@ -17,33 +17,28 @@ import type {
   ToolErrorHandler,
 } from '@core/agents';
 import {
-  hasEquivalentCheckpointState,
-  cloneAgentContext,
-  cloneAgentMessages,
-  cloneAgentValues,
-  clonePauseRequest,
   createAgent,
   normalizeAgentInput,
 } from '@core/agents';
 import type {AgentCheckpointer, CompactOptions} from '@core/checkpoint';
-import {createAgentMemoryCheckpointer} from '@core/checkpoint';
-import type {BaseMiddleware, BeforeModelContext} from '@core/middleware';
+import {createAgentMemoryCheckpointer, putForkCheckpoint, putManualCheckpoint} from '@core/checkpoint';
+import type {BaseMiddleware} from '@core/middleware';
 import {
-  compactSummaryIfNeeded,
+  compactConversationWithSummary,
   createModelSummaryGenerator,
   createSummaryMiddleware,
   resolveSummaryOptions,
   type SummaryOptions,
   type SummarySettings,
 } from '@core/middleware/summary';
-import type {GuidelinesSource} from '@core/instructions/guidelines';
+import type {GuidelinesSource} from '@core/sessions/guidelines';
 import {
   formatSkillsList,
   formatSkillsLocations,
   SKILLS_SYSTEM_PROMPT,
   type SkillsRuntimeData,
   type SkillsSource,
-} from '@core/instructions/skills';
+} from '@core/skills';
 import type {ModelInfo} from '@core/provider';
 import {
   createSessionMetadata,
@@ -223,13 +218,7 @@ export function createSession(options: CreateSessionOptions): Session {
       options.skillsSource?.reload();
     }
 
-    const guidelinesMessage = await options.guidelinesSource?.getContent?.();
-    const skillsRuntime = await options.skillsSource?.getRuntime?.();
-    systemContext = {
-      systemMessage: [guidelinesMessage, skillsRuntime ? createSkillsSystemMessage(skillsRuntime) : undefined]
-        .filter((value): value is string => Boolean(value)),
-      ...(skillsRuntime ? {runtimeShared: {skills: skillsRuntime}} : {}),
-    };
+    systemContext = await buildSessionSystemContext(options.guidelinesSource, options.skillsSource);
     return systemContext;
   }
 
@@ -259,19 +248,7 @@ export function createSession(options: CreateSessionOptions): Session {
 
   async function bootstrapSessionAgent(): Promise<Agent> {
     const systemContext = await loadSessionSystemContext();
-    const modelSelection = await (async (): Promise<{model: BaseChatModel; modelInfo?: ModelInfo}> => {
-      if (options.model) {
-        return {model: await options.model};
-      }
-
-      if (!options.modelCatalog) {
-        throw new Error('Either model or modelCatalog must be provided');
-      }
-
-      const catalog = await options.modelCatalog;
-      const modelRef = options.modelRef ?? 'default';
-      return {model: await catalog.create(modelRef), modelInfo: catalog.getInfo(modelRef)};
-    })();
+    const modelSelection = await resolveSessionModel(options);
     const checkpoint = restoreCheckpoint ? await getLatestCheckpoint() : undefined;
 
     inputBudget = options.inputBudget ?? deriveSessionInputBudget(modelSelection.modelInfo);
@@ -342,22 +319,12 @@ export function createSession(options: CreateSessionOptions): Session {
   async function fork(optionsOverride: {sessionId?: string; threadId?: string; store?: SessionStore} = {}) {
     const base = (await getAgent()).getState();
     const childThreadId = optionsOverride.threadId ?? randomUUID();
-
-    await checkpointer.put({
-      threadId: childThreadId,
-      state: {
-        agentType: base.agentType,
-        messages: cloneAgentMessages(base.messages),
-        context: cloneAgentContext(base.context),
-        values: cloneAgentValues(base.values),
-        ...(base.pendingPause ? {pendingPause: clonePauseRequest(base.pendingPause)} : {}),
-      },
-      info: {
-        source: 'fork',
-        status: base.pendingPause ? 'paused' : 'idle',
-        step: 0,
-        createdAt: new Date().toISOString(),
-      },
+    await putForkCheckpoint(checkpointer, childThreadId, {
+      agentType: base.agentType,
+      messages: base.messages,
+      context: base.context,
+      values: base.values,
+      ...(base.pendingPause ? {pendingPause: base.pendingPause} : {}),
     });
 
     const child = createSession({
@@ -370,33 +337,6 @@ export function createSession(options: CreateSessionOptions): Session {
     });
     await child.hydrate();
     return child;
-  }
-
-  async function persistCompactedConversation(
-    current: AgentState,
-    messages: BaseMessage[],
-    context: Record<string, unknown>,
-    values: Record<string, unknown>,
-  ) {
-    const latest = await getLatestCheckpoint();
-    await checkpointer.put({
-      threadId,
-      ...(latest?.ref.checkpointId ? {parentCheckpointId: latest.ref.checkpointId} : {}),
-      state: {
-        agentType: current.agentType,
-        messages: cloneAgentMessages(messages),
-        context: cloneAgentContext(context),
-        values: cloneAgentValues(values),
-      },
-      info: {
-        source: 'manual',
-        status: 'idle',
-        reason: 'complete',
-        turns: 0,
-        step: (latest?.info.step ?? 0) + 1,
-        createdAt: new Date().toISOString(),
-      },
-    });
   }
 
   async function compactConversation(compactOptions: {instructions?: string} = {}) {
@@ -421,58 +361,29 @@ export function createSession(options: CreateSessionOptions): Session {
     }
 
     const systemContext = await loadSessionSystemContext();
-    const before = {
-      agentType: current.agentType,
+    const compacted = await compactConversationWithSummary({
       messages: current.messages,
       context: current.context,
       values: current.values,
-      pendingPause: current.pendingPause,
-    };
-    const nextMessages = cloneAgentMessages(current.messages);
-    const nextContext = cloneAgentContext(current.context);
-    const nextValues = cloneAgentValues(current.values);
-    const context: BeforeModelContext = {
-      state: {
-        messages: nextMessages,
-        context: nextContext,
-        values: nextValues,
-      },
-      messages: nextMessages,
-      runtime: {
-        context: nextContext,
-        runtimeContext: {},
-        ...(systemContext.runtimeShared ? {shared: systemContext.runtimeShared} : {}),
-      },
-      systemMessage: [...systemContext.systemMessage],
-      execution: {
-        threadId,
-        runId: randomUUID(),
-        turn: 1,
-        maxTurns: 1,
-        requestId: `${sessionId}:compact`,
-      },
+      systemMessage: systemContext.systemMessage,
+      runtimeShared: systemContext.runtimeShared,
+      threadId,
+      requestId: `${sessionId}:compact:${randomUUID()}`,
       inputBudget,
-    };
-
-    const changed = await compactSummaryIfNeeded(context, summary, {
-      force: true,
       instructions: compactOptions.instructions,
-    });
+    }, summary);
 
-    const after = {
-      agentType: current.agentType,
-      messages: context.state.messages,
-      context: nextContext,
-      values: nextValues,
-      pendingPause: current.pendingPause,
-    };
-
-    if (!changed || hasEquivalentCheckpointState(before, after)) {
+    if (!compacted) {
       await sync(current);
       return current;
     }
 
-    await persistCompactedConversation(current, context.state.messages, nextContext, nextValues);
+    await putManualCheckpoint(checkpointer, threadId, {
+      agentType: current.agentType,
+      messages: compacted.messages,
+      context: compacted.context,
+      values: compacted.values,
+    }, await getLatestCheckpoint());
 
     clearAgentCache();
     const next = (await getAgent()).getState();
@@ -550,6 +461,36 @@ export function createSession(options: CreateSessionOptions): Session {
       await saveSessionState();
     },
   };
+}
+
+async function buildSessionSystemContext(
+  guidelinesSource?: GuidelinesSource,
+  skillsSource?: SkillsSource,
+): Promise<SessionSystemContext> {
+  const guidelinesMessage = await guidelinesSource?.getContent?.();
+  const skillsRuntime = await skillsSource?.getRuntime?.();
+
+  return {
+    systemMessage: [guidelinesMessage, skillsRuntime ? createSkillsSystemMessage(skillsRuntime) : undefined]
+      .filter((value): value is string => Boolean(value)),
+    ...(skillsRuntime ? {runtimeShared: {skills: skillsRuntime}} : {}),
+  };
+}
+
+async function resolveSessionModel(
+  options: CreateSessionOptions,
+): Promise<{model: BaseChatModel; modelInfo?: ModelInfo}> {
+  if (options.model) {
+    return {model: await options.model};
+  }
+
+  if (!options.modelCatalog) {
+    throw new Error('Either model or modelCatalog must be provided');
+  }
+
+  const catalog = await options.modelCatalog;
+  const modelRef = options.modelRef ?? 'default';
+  return {model: await catalog.create(modelRef), modelInfo: catalog.getInfo(modelRef)};
 }
 
 function createSkillsSystemMessage(runtime: Pick<SkillsRuntimeData, 'sources' | 'discovered'>): string {

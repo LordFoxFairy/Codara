@@ -4,7 +4,6 @@ import {AIMessage, type BaseMessage, type ToolCall} from '@langchain/core/messag
 import {tool} from '@langchain/core/tools';
 import {z} from 'zod';
 import {createAgentMemoryCheckpointer, createCodara} from '@core';
-import {readSummaryRecord} from '@core/middleware/summary';
 import {EchoModel, SystemEchoModel} from './codara-fixtures';
 
 class PauseThenCompleteModel {
@@ -26,6 +25,10 @@ class PauseThenCompleteModel {
 }
 
 describe('Codara slash commands', () => {
+  function readSummaryMessage(messages: BaseMessage[]): BaseMessage | undefined {
+    return messages.find((message) => message.getType() === 'ai' && message.text.startsWith('Summary:\n'));
+  }
+
   it('should expose built-in slash command help', async () => {
     const codara = createCodara({
       model: new EchoModel() as unknown as BaseChatModel,
@@ -68,8 +71,6 @@ describe('Codara slash commands', () => {
       skills: false,
       builtinTools: false,
       summary: {
-        maxMessages: 99,
-        keepLastMessages: 2,
         summarize: () => 'manual compact summary',
       },
     });
@@ -82,7 +83,7 @@ describe('Codara slash commands', () => {
 
     expect(result.ok).toBe(true);
     expect(result.output).toContain('Conversation context compacted');
-    expect(readSummaryRecord(result.state?.messages ?? [])?.content).toBe('manual compact summary');
+    expect(readSummaryMessage(result.state?.messages ?? [])?.text).toBe('Summary:\nmanual compact summary');
   });
 
   it('should pass custom compact instructions into the summary middleware path', async () => {
@@ -92,8 +93,6 @@ describe('Codara slash commands', () => {
       skills: false,
       builtinTools: false,
       summary: {
-        maxMessages: 99,
-        keepLastMessages: 2,
         summarize: ({instructions}) => {
           seenInstructions = instructions;
           return 'manual compact summary';

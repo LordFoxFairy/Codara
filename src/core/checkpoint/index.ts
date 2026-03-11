@@ -46,4 +46,6 @@ export {
   type AgentCheckpointStatus,
   type AgentCheckpointSummary,
   type AgentFileCheckpointerOptions,
+  putForkCheckpoint,
+  putManualCheckpoint,
 } from '@core/checkpoint/agent';

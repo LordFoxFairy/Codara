@@ -12,7 +12,7 @@ import {
   resolveSubagentDefinition,
   type SkillsRuntimeData,
   type SubagentDefinition,
-} from '@core/instructions/skills/runtime';
+} from '@core/skills/runtime';
 import {filterToolsByReferences} from '@core/tools';
 import {createAgentMemoryCheckpointer} from '@core/checkpoint';
 
@@ -59,6 +59,7 @@ export function createTaskTool(options: CreateTaskToolOptions): StructuredToolIn
         checkpointer: delegatedCheckpointer,
       }, {
         prompt,
+        ...(subagent_type ? {subagentType: subagent_type} : {}),
         maxTurns: max_turns ?? profile.maxTurns,
         toolName: TASK_TOOL_NAME,
         parentExecution: delegated.parentExecution,

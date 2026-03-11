@@ -64,31 +64,12 @@ describe('createTaskTool delegation', () => {
             },
           } as ToolCall],
         }),
-        new AIMessage({
-          content: '',
-          tool_calls: [{
-            id: 'call_task_pause',
-            name: TASK_TOOL_NAME,
-            args: {
-              prompt: 'Investigate the guarded flow',
-              subagent_type: 'general-purpose',
-            },
-          } as ToolCall],
-        }),
         new AIMessage('done'),
       ]) as unknown as BaseChatModel,
       middleware: [createAgentSkillsMiddleware(createBuiltinSubagentStore())],
       tools: [
         createTaskTool({
           model: new ScriptedModel([
-            new AIMessage({
-              content: '',
-              tool_calls: [{
-                id: 'child_guarded_call',
-                name: 'dangerous_tool',
-                args: {path: 'task-guarded.txt'},
-              } as ToolCall],
-            }),
             new AIMessage({
               content: '',
               tool_calls: [{

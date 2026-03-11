@@ -84,70 +84,55 @@ interface DelegatedPauseMetadata {
   parentToolName: string;
 }
 
+interface ParentExecution {
+  threadId: string;
+  runId: string;
+  requestId: string;
+  toolCallId: string;
+  turn: number;
+  maxTurns: number;
+  toolIndex: number;
+}
+
 interface DelegatedResumeState {
   childThreadId: string;
   payload: ResumePayload;
 }
 
 export interface DelegatedParentRuntimeMetadata {
-  parentExecution: ExecutionContextMetadata & {
-    toolIndex: number;
-    toolCallId: string;
-  };
+  parentExecution: ParentExecution;
   resume?: DelegatedResumeState;
+}
+
+interface DelegatedChildInput {
+  prompt: string;
+  subagentType?: string;
+  maxTurns?: number;
+  toolName: string;
+  parentExecution: ParentExecution;
+  profileModel?: BaseChatModel;
+  profileMiddleware?: BaseMiddleware[];
+  profileContext?: AgentRuntimeContext;
+  profileTools?: StructuredToolInterface[];
+  profileSystemPrompt?: string;
+  resume?: DelegatedResumeState;
+}
+
+interface ParentPauseContext {
+  execution: ParentExecution;
+  prompt: string;
+  subagentType?: string;
+  maxTurns?: number;
 }
 
 const DELEGATION_TOOL = Symbol.for('codara.tasks.delegation.tool');
 
 export async function runDelegatedAgent(
   options: DelegatedAgentOptions,
-  input: {
-    prompt: string;
-    maxTurns?: number;
-    toolName: string;
-    parentExecution: ExecutionContextMetadata & {
-      toolIndex: number;
-      toolCallId: string;
-    };
-    profileModel?: BaseChatModel;
-    profileMiddleware?: BaseMiddleware[];
-    profileContext?: AgentRuntimeContext;
-    profileTools?: StructuredToolInterface[];
-    profileSystemPrompt?: string;
-    resume?: {
-      childThreadId: string;
-      payload: ResumePayload;
-    };
-  }
+  input: DelegatedChildInput,
 ): Promise<ToolMessage> {
-  const mergedContext = mergeRuntimeContext(options.context, input.profileContext);
-  const childOptions: CreateAgentOptions = {
-    model: input.profileModel ?? options.model,
-    agentType: 'subagent',
-    tools: resolveDelegatedAgentTools(
-      input.profileTools ?? options.tools ?? [],
-      input.toolName,
-      options.blockedToolNames,
-    ),
-    ...(input.profileMiddleware ?? options.middleware?.length ? {middleware: [...(input.profileMiddleware ?? options.middleware ?? [])]} : {}),
-    handleToolErrors: options.handleToolErrors,
-    checkpointer: options.checkpointer,
-    inputBudget: options.inputBudget,
-    prepareTurnContext: options.prepareTurnContext,
-    ...(mergedContext ? {context: mergedContext} : {}),
-    ...(options.values ? {values: deepClone(options.values)} : {}),
-  };
-  const child = createAgent(childOptions);
-  const messages = createDelegatedAgentInput(
-    input.prompt,
-    mergeSystemPrompt(input.profileSystemPrompt, options.systemPrompt),
-  );
-  const result = input.resume
-    ? await resumeDelegatedChild(childOptions, input.resume, input.maxTurns)
-    : await child.invoke(
-        {messages},
-        {...(input.maxTurns ? {recursionLimit: input.maxTurns} : {})},
-      );
+  const childOptions = buildDelegatedChildOptions(options, input);
+  const result = await runDelegatedChild(childOptions, input, options.systemPrompt);
 
   if (result.state.pendingPause) {
     return createDelegatedPauseToolMessage(result.state.pendingPause, {
@@ -156,6 +141,7 @@ export async function runDelegatedAgent(
     }, {
       execution: input.parentExecution,
       prompt: input.prompt,
+      subagentType: input.subagentType,
       maxTurns: input.maxTurns,
     });
   }
@@ -211,6 +197,59 @@ function readDelegatedRuntimeContext(configurable: unknown): unknown {
   return record.context ?? record.runtimeContext ?? configurable;
 }
 
+function createDelegatedAgentInput(prompt: string, systemPrompt: string | undefined): BaseMessage[] {
+  const messages: BaseMessage[] = [];
+  if (systemPrompt?.trim()) {
+    messages.push(new SystemMessage(systemPrompt.trim()));
+  }
+  messages.push(new HumanMessage(prompt));
+  return messages;
+}
+
+function buildDelegatedChildOptions(
+  options: DelegatedAgentOptions,
+  input: DelegatedChildInput,
+): CreateAgentOptions {
+  const mergedContext = mergeRuntimeContext(options.context, input.profileContext);
+
+  return {
+    model: input.profileModel ?? options.model,
+    agentType: 'subagent',
+    tools: resolveDelegatedAgentTools(
+      input.profileTools ?? options.tools ?? [],
+      input.toolName,
+      options.blockedToolNames,
+    ),
+    ...(input.profileMiddleware ?? options.middleware?.length ? {middleware: [...(input.profileMiddleware ?? options.middleware ?? [])]} : {}),
+    handleToolErrors: options.handleToolErrors,
+    checkpointer: options.checkpointer,
+    inputBudget: options.inputBudget,
+    prepareTurnContext: options.prepareTurnContext,
+    ...(mergedContext ? {context: mergedContext} : {}),
+    ...(options.values ? {values: deepClone(options.values)} : {}),
+  };
+}
+
+async function runDelegatedChild(
+  childOptions: CreateAgentOptions,
+  input: DelegatedChildInput,
+  toolSystemPrompt: string | undefined,
+) {
+  if (input.resume) {
+    return resumeDelegatedChild(childOptions, input.resume, input.maxTurns);
+  }
+
+  const child = createAgent(childOptions);
+  const messages = createDelegatedAgentInput(
+    input.prompt,
+    mergeSystemPrompt(input.profileSystemPrompt, toolSystemPrompt),
+  );
+  return child.invoke(
+    {messages},
+    {...(input.maxTurns ? {recursionLimit: input.maxTurns} : {})},
+  );
+}
+
 function resolveDelegatedAgentTools(
   tools: StructuredToolInterface[],
   toolName: string,
@@ -222,10 +261,7 @@ function resolveDelegatedAgentTools(
 
 async function resumeDelegatedChild(
   childOptions: CreateAgentOptions,
-  resume: {
-    childThreadId: string;
-    payload: ResumePayload;
-  },
+  resume: DelegatedResumeState,
   maxTurns: number | undefined,
 ) {
   const checkpoint = await childOptions.checkpointer?.getLatest(resume.childThreadId);
@@ -239,15 +275,6 @@ async function resumeDelegatedChild(
     resume.payload,
     {resumeMode: 'tool', ...(maxTurns ? {recursionLimit: maxTurns} : {})},
   );
-}
-
-function createDelegatedAgentInput(prompt: string, systemPrompt: string | undefined): BaseMessage[] {
-  const messages: BaseMessage[] = [];
-  if (systemPrompt?.trim()) {
-    messages.push(new SystemMessage(systemPrompt.trim()));
-  }
-  messages.push(new HumanMessage(prompt));
-  return messages;
 }
 
 function mergeSystemPrompt(profileSystemPrompt: string | undefined, toolSystemPrompt: string | undefined): string | undefined {
@@ -308,14 +335,7 @@ function createDelegatedAgentToolMessage(result: DelegatedAgentResult): ToolMess
 function createDelegatedPauseToolMessage(
   pause: PauseRequest,
   delegated: DelegatedPauseMetadata,
-  parent: {
-    execution: ExecutionContextMetadata & {
-      toolIndex: number;
-      toolCallId: string;
-    };
-    prompt: string;
-    maxTurns?: number;
-  },
+  parent: ParentPauseContext,
 ): ToolMessage {
   const request: PauseRequest = {
     id: `${parent.execution.runId}:${parent.execution.turn}:${parent.execution.toolCallId}:delegated`,
@@ -325,6 +345,7 @@ function createDelegatedPauseToolMessage(
       toolName: delegated.parentToolName,
       toolArgs: {
         prompt: parent.prompt,
+        ...(parent.subagentType ? {subagent_type: parent.subagentType} : {}),
         ...(typeof parent.maxTurns === 'number' ? {max_turns: parent.maxTurns} : {}),
       },
     },

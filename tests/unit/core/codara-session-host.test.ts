@@ -9,7 +9,6 @@ import {
   openCodaraSession,
   openLatestCodaraSession,
 } from '@core';
-import {readSummaryRecord} from '@core/middleware/summary';
 import type {BaseChatModel} from '@langchain/core/language_models/chat_models';
 import {AIMessage, HumanMessage, SystemMessage, type BaseMessage} from '@langchain/core/messages';
 import {EchoModel, SystemEchoModel} from './codara-fixtures';
@@ -34,6 +33,10 @@ class SummaryAwareModel {
 }
 
 describe('Codara session lifecycle', () => {
+  function readSummaryMessage(messages: BaseMessage[]): BaseMessage | undefined {
+    return messages.find((message) => message.getType() === 'ai' && message.text.startsWith('Summary:\n'));
+  }
+
   it('should reopen a stored session by session id', async () => {
     const checkpointer = createAgentMemoryCheckpointer();
     const store = new FileSessionStore({
@@ -381,8 +384,6 @@ describe('Codara session lifecycle', () => {
       skills: false,
       builtinTools: false,
       summary: {
-        maxMessages: 99,
-        keepLastMessages: 2,
         summarize: () => 'session compact summary',
       },
     });
@@ -394,7 +395,7 @@ describe('Codara session lifecycle', () => {
     const compacted = await codara.compactConversation();
     const latest = await checkpointer.getLatest('codara-session-manual-compact-thread');
 
-    expect(readSummaryRecord(compacted.messages)?.content).toBe('session compact summary');
+    expect(readSummaryMessage(compacted.messages)?.text).toBe('Summary:\nsession compact summary');
     expect(latest?.info.source).toBe('manual');
   });
 
@@ -404,10 +405,7 @@ describe('Codara session lifecycle', () => {
       threadId: 'codara-session-default-summary-thread',
       skills: false,
       builtinTools: false,
-      summary: {
-        maxMessages: 99,
-        keepLastMessages: 2,
-      },
+      summary: {},
     });
 
     await codara.invoke('one');
@@ -416,6 +414,6 @@ describe('Codara session lifecycle', () => {
 
     const compacted = await codara.compactConversation();
 
-    expect(readSummaryRecord(compacted.messages)?.content).toBe('default model summary');
+    expect(readSummaryMessage(compacted.messages)?.text).toBe('Summary:\ndefault model summary');
   });
 });

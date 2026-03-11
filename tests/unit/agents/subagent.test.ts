@@ -328,27 +328,11 @@ describe('Task delegation', () => {
           id: 'call_task_pause',
           name: TASK_TOOL_NAME,
           args: {prompt: 'Run guarded child task'},
-        } as ToolCall],
-      }),
-      new AIMessage({
-        content: '',
-        tool_calls: [{
-          id: 'call_task_pause',
-          name: TASK_TOOL_NAME,
-          args: {prompt: 'Run guarded child task'},
-        } as ToolCall],
+          } as ToolCall],
       }),
       new AIMessage('parent_done'),
     ]);
     const childModel = new ScriptedModel([
-      new AIMessage({
-        content: '',
-        tool_calls: [{
-          id: 'child_guarded_call',
-          name: 'dangerous_tool',
-          args: {path: 'guarded.txt'},
-        } as ToolCall],
-      }),
       new AIMessage({
         content: '',
         tool_calls: [{
