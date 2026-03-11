@@ -16,7 +16,7 @@ import {
   type ToolCallContext,
 } from '@core/middleware';
 import {parseHILToolMessagePayload} from '@core/middleware/hil';
-import {toError} from '@core/support/errors';
+import {toError} from './errors';
 
 export type AgentTurnOutcome = 'continue' | 'complete';
 
@@ -86,7 +86,7 @@ async function runModel(
   });
 }
 
-async function runTools(
+export async function runTools(
   run: AgentRunContext,
   runtime: AgentRuntime,
   context: BaseExecutionContext,
@@ -147,7 +147,7 @@ async function runTools(
   }
 }
 
-async function finishTurn(
+export async function finishTurn(
   runtime: AgentRuntime,
   context: BaseExecutionContext,
   result: AgentRunSummary,

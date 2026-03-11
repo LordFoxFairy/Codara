@@ -70,7 +70,7 @@ class ToolLoopUsageModel {
 }
 
 describe('Codara session telemetry', () => {
-  it('should persist usage totals and current context window telemetry on the session host', async () => {
+  it('should persist usage totals and current context window telemetry on the session', async () => {
     const codara = createCodara({
       model: new UsageModel() as unknown as BaseChatModel,
       skills: false,

@@ -22,11 +22,6 @@ export {
 } from '@core/tools/builtin';
 export {filterToolsByReferences, normalizeToolReferenceName} from '@core/tools/names';
 export {
-  readToolExecutionPolicy,
-  withToolExecutionPolicy,
-  type ToolExecutionPolicy,
-} from '@core/tools/execution-policy';
-export {
   countLines,
   countOccurrences,
   formatError,

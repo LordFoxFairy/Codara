@@ -15,7 +15,7 @@ import type {
   AgentCheckpointStatus,
   AgentCheckpointSummary,
 } from '@core/checkpoint';
-import {deepClone} from '@core/support/clone';
+import {deepClone} from '@core/shared/clone';
 
 type DurableState = {
   agentType: AgentType;

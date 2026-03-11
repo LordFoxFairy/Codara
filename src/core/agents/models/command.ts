@@ -1,7 +1,7 @@
 import type {BaseMessage} from '@langchain/core/messages';
 import type {AgentRuntimeContext, AgentRuntimeValues} from './agent';
 import {z} from 'zod';
-import {deepClone} from '@core/support/clone';
+import {deepClone} from '@core/shared/clone';
 
 const RESERVED_AGENT_CONTEXT_KEYS = new Set(['todos', 'summary']);
 const recordSchema = z.record(z.string(), z.unknown());

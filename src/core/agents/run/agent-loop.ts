@@ -1,5 +1,5 @@
 import {randomUUID} from 'node:crypto';
-import {AIMessage, AIMessageChunk, BaseMessage, HumanMessage, ToolMessage} from '@langchain/core/messages';
+import {AIMessage, AIMessageChunk, BaseMessage, HumanMessage, ToolMessage, type ToolCall} from '@langchain/core/messages';
 import type {StructuredToolInterface} from '@langchain/core/tools';
 import {z} from 'zod';
 import {mergeContext} from '../models/command';
@@ -7,7 +7,6 @@ import {
   applyAgentStateSnapshot,
   cloneAgentValues,
   createInitialAgentState,
-  hasEquivalentCheckpointState,
   restoreCheckpointMetadata,
   summarizeResult,
   toAgentState,
@@ -16,12 +15,13 @@ import {
   type MutableAgentState,
 } from '../models/state';
 import {createStreamWriter} from './stream';
-import {runAgentTurn} from './turn';
+import {finishTurn, runAgentTurn, runTools} from './turn';
 import type {
   Agent,
   AgentInput,
   AgentInputBudget,
   AgentInvokeConfig,
+  AgentResumeConfig,
   AgentResult,
   AgentRuntimeContext,
   AgentState,
@@ -39,11 +39,11 @@ import {
   type AgentCheckpoint,
   type AgentCheckpointInfo,
 } from '@core/checkpoint';
-import {compactSummaryIfNeeded, normalizeSummaryOptions} from '@core/middleware/conversation';
+import {normalizeSummaryOptions} from '@core/middleware/conversation';
 import {type BaseExecutionContext, type MiddlewareRuntimeShared} from '@core/middleware';
 import {MiddlewarePipeline} from '@core/middleware/pipeline';
-import {deepClone} from '@core/support/clone';
-import {formatErrorMessage} from '@core/support/errors';
+import {deepClone} from '@core/shared/clone';
+import {formatErrorMessage} from './errors';
 import {parseHILToolMessagePayload} from '@core/middleware/hil';
 
 const DEFAULT_RECURSION_LIMIT = 25;
@@ -59,6 +59,8 @@ export interface AgentRuntime {
   tools: Map<string, StructuredToolInterface>;
   pipeline: MiddlewarePipeline;
   handleToolErrors: ToolErrorHandler;
+  systemMessage: string[];
+  runtimeShared: MiddlewareRuntimeShared;
   prepareTurnContext?: AgentTurnContextPreparer;
 }
 
@@ -121,6 +123,7 @@ export function injectResumePayload(
 export function createRunContext(
   state: AgentState,
   config: Pick<AgentInvokeConfig, 'recursionLimit' | 'context' | 'inputBudget'> = {},
+  runtimeShared: MiddlewareRuntimeShared = {},
 ): AgentRunContext {
   const maxTurns = config.recursionLimit ?? DEFAULT_RECURSION_LIMIT;
   if (maxTurns < 1) {
@@ -131,7 +134,7 @@ export function createRunContext(
     runId: randomUUID(),
     maxTurns,
     runtimeContext: deepClone(config.context ?? {}),
-    shared: {},
+    shared: deepClone(runtimeShared),
     inputBudget: config.inputBudget,
   };
 }
@@ -142,7 +145,9 @@ export function createAgent(options: CreateAgentOptions): Agent {
   const threadId = checkpoint?.ref.threadId ?? options.threadId ?? randomUUID();
   const checkpointer = options.checkpointer ?? createAgentMemoryCheckpointer();
   const inputBudget = options.inputBudget;
-  const summary = options.summary ? normalizeSummaryOptions(options.summary) : undefined;
+  if (options.summary) {
+    normalizeSummaryOptions(options.summary);
+  }
   const state = createInitialAgentState(
     threadId,
     {
@@ -192,7 +197,7 @@ export function createAgent(options: CreateAgentOptions): Agent {
       runState.messages.push(...appended);
     }
     runState.status = 'running';
-    return createRunContext(runState, {...config, inputBudget: config.inputBudget ?? inputBudget});
+    return createRunContext(runState, {...config, inputBudget: config.inputBudget ?? inputBudget}, runtime.runtimeShared);
   };
 
   const applyRunResult = async (
@@ -313,57 +318,67 @@ export function createAgent(options: CreateAgentOptions): Agent {
     }
   };
 
+  const resumeDelegatedTool = async (
+    payload: ResumePayload,
+    config: AgentResumeConfig,
+  ): Promise<AgentResult> => {
+    const startIndex = state.messages.length;
+    const pause = state.pendingPause as PauseRequest;
+    const run = createRunContext(
+      toAgentState(state),
+      {
+        inputBudget: config.inputBudget ?? inputBudget,
+        recursionLimit: config.recursionLimit,
+        context: injectResumePayload(config.context, pause, payload),
+      },
+      runtime.runtimeShared,
+    );
+    const lifecycle = enterRunningState();
+
+    try {
+      runtime.pipeline.validateContext(mergeContext(run.state.context, run.runtimeContext));
+      const beforeRunResult = await runBeforeHook(run, config);
+      if (beforeRunResult) {
+        return abortPreflight(lifecycle, beforeRunResult);
+      }
+
+      run.state.pendingPause = undefined;
+      const toolContext = await createTurnContext(run, runtime, 1, `${run.runId}:resume-tool`);
+      const toolCall: ToolCall = {
+        id: pause.action.toolCallId,
+        name: pause.action.toolName,
+        args: pause.action.toolArgs ?? {},
+      };
+      await runTools(run, runtime, toolContext, [toolCall]);
+
+      let result: AgentResult;
+      if (run.state.pendingPause) {
+        await finishTurn(runtime, toolContext, {reason: 'complete', turns: 1});
+        result = {reason: 'complete', state: run.state, turns: 1};
+      } else {
+        await finishTurn(runtime, toolContext, {reason: 'continue', turns: 1});
+        result = await runLoop(run, runtime, undefined, 2);
+      }
+
+      return applyRunResult(
+        await runAfterHook(run, result, config),
+        startIndex,
+        'resume',
+        config.checkpoint ?? true,
+      );
+    } catch (error) {
+      return abortPreflight(lifecycle, createErrorResult(run.state, 0, formatErrorMessage(error, 'resume failed')));
+    }
+  };
+
   return {
     getState() {
       return toAgentState(state);
     },
 
-    async compactConversation(config = {}) {
+    async compactConversation() {
       assertNotRunning(state);
-      const baseline = toAgentState(state);
-      const run = createRunContext(toAgentState(state), {
-        context: config.context,
-        inputBudget: config.inputBudget ?? inputBudget,
-        recursionLimit: 1,
-      });
-      const lifecycle = enterRunningState();
-
-      try {
-        runtime.pipeline.validateContext(mergeContext(run.state.context, run.runtimeContext));
-        const context = await createTurnContext(run, runtime, 1, `${run.runId}:compact`);
-        if (summary) {
-          await compactSummaryIfNeeded(context, summary, {
-            force: true,
-            ...(config.instructions ? {instructions: config.instructions} : {}),
-          });
-        }
-
-        const compacted = {
-          agentType: baseline.agentType,
-          messages: context.state.messages,
-          context: context.state.context ?? {},
-          values: context.state.values ?? {},
-        };
-
-        if (hasEquivalentCheckpointState(baseline, compacted)) {
-          state.status = baseline.status;
-          state.updatedAt = lifecycle.updatedAt;
-          return baseline;
-        }
-
-        applyAgentStateSnapshot(state, {
-          messages: compacted.messages,
-          context: compacted.context,
-          values: runtime.pipeline.normalizeValues(cloneAgentValues(compacted.values)),
-          pendingPause: state.pendingPause,
-        });
-        state.status = state.pendingPause ? 'paused' : 'idle';
-        touch();
-        await persistCheckpoint('manual');
-        return toAgentState(state);
-      } catch (error) {
-        throw abortPreflight(lifecycle, createErrorResult(run.state, 0, formatErrorMessage(error, 'compact failed'))).error;
-      }
+      throw new Error('Conversation compaction is not implemented yet.');
     },
 
     async invoke(input, config = {}) {
@@ -373,9 +388,13 @@ export function createAgent(options: CreateAgentOptions): Agent {
 
     async resume(payload, config = {}) {
       assertReadyForResume(state);
+      const pause = state.pendingPause as PauseRequest;
+      if (isDelegatedPause(pause)) {
+        return resumeDelegatedTool(payload, config);
+      }
       return execute(
         config.input,
-        {...config, context: injectResumePayload(config.context, state.pendingPause as PauseRequest, payload)},
+        {...config, context: injectResumePayload(config.context, pause, payload)},
         'resume',
       );
     },
@@ -421,8 +440,9 @@ async function runLoop(
   run: AgentRunContext,
   runtime: AgentRuntime,
   stream?: ReturnType<typeof createStreamWriter>,
+  startTurn = 1,
 ): Promise<AgentResult> {
-  for (let turn = 1; turn <= run.maxTurns; turn += 1) {
+  for (let turn = startTurn; turn <= run.maxTurns; turn += 1) {
     try {
       if ((await runAgentTurn(run, runtime, turn, stream)) === 'complete') {
         return {reason: 'complete', state: run.state, turns: turn};
@@ -448,7 +468,7 @@ export async function createTurnContext(
       runtimeContext: run.runtimeContext,
       shared: run.shared,
     },
-    systemMessage: [],
+    systemMessage: [...runtime.systemMessage],
     execution: {
       threadId: run.state.threadId,
       runId: run.runId,
@@ -503,6 +523,8 @@ function buildRuntime(options: CreateAgentOptions): AgentRuntime {
     tools: registry,
     pipeline,
     handleToolErrors: options.handleToolErrors ?? true,
+    systemMessage: [...(options.systemMessage ?? [])],
+    runtimeShared: deepClone(options.runtimeShared ?? {}),
     prepareTurnContext: options.prepareTurnContext,
   };
 }
@@ -581,6 +603,17 @@ function assertNotRunning(state: MutableAgentState): void {
   if (state.status === 'running') {
     throw new Error('Agent is currently running.');
   }
+}
+
+function isDelegatedPause(pause: PauseRequest): boolean {
+  return Boolean(
+    pause.metadata
+    && typeof pause.metadata === 'object'
+    && 'codara' in pause.metadata
+    && pause.metadata.codara
+    && typeof pause.metadata.codara === 'object'
+    && 'delegatedSubagent' in pause.metadata.codara,
+  );
 }
 
 function createErrorResult(state: AgentState, turns: number, message: string): AgentResult {

@@ -12,7 +12,7 @@ import {
 import type {BaseChatModel} from '@langchain/core/language_models/chat_models';
 import {EchoModel} from './codara-fixtures';
 
-describe('Codara session host', () => {
+describe('Codara session lifecycle', () => {
   it('should reopen a stored session by session id', async () => {
     const checkpointer = createAgentMemoryCheckpointer();
     const store = new FileSessionStore({
@@ -216,7 +216,7 @@ describe('Codara session host', () => {
     expect(restored.getState().metadata?.messageCount).toBe(hydratedState.messages.length);
   });
 
-  it('should not treat hydrate as new host activity when reopening a stored session', async () => {
+  it('should not treat hydrate as new session activity when reopening a stored session', async () => {
     const checkpointer = createAgentMemoryCheckpointer();
     const store = new FileSessionStore({
       basePath: await mkdtemp(path.join(tmpdir(), 'codara-session-hydrate-activity-')),
@@ -319,7 +319,7 @@ describe('Codara session host', () => {
     await expect(reopened.invoke('again')).rejects.toThrow('Agent is closed.');
   });
 
-  it('should reopen a disposed stored session with a new ready host lifecycle', async () => {
+  it('should reopen a disposed stored session with a new ready session lifecycle', async () => {
     const checkpointer = createAgentMemoryCheckpointer();
     const store = new FileSessionStore({
       basePath: await mkdtemp(path.join(tmpdir(), 'codara-session-reopen-disposed-')),

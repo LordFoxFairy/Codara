@@ -8,15 +8,11 @@ export function readMessageText(message: BaseMessage | undefined): string | unde
 export function readLatestAssistantText(messages: readonly BaseMessage[]): string | undefined {
   for (let index = messages.length - 1; index >= 0; index -= 1) {
     const message = messages[index];
-    if (!AIMessage.isInstance(message)) {
-      continue;
-    }
-
-    const text = readMessageText(message);
-    if (text) {
-      return text;
+    if (AIMessage.isInstance(message)) {
+      const text = readMessageText(message);
+      if (text) {
+        return text;
+      }
     }
   }
-
-  return undefined;
 }

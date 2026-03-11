@@ -260,18 +260,14 @@ describe('summary middleware', () => {
     expect(readSummaryRecord(context.state.messages)?.content).toBe('near-limit summary');
   });
 
-  it('should forward manual compact instructions through agent.compactConversation', async () => {
-    let seenInstructions: string | undefined;
+  it('should keep manual compact reserved until the algorithm is redesigned', async () => {
     const agent = createAgent({
       model: new FakeModel([new AIMessage('done')]) as unknown as BaseChatModel,
       threadId: 'thread-instructions',
       summary: {
         maxMessages: 99,
         keepLastMessages: 2,
-        summarize: ({instructions}) => {
-          seenInstructions = instructions;
-          return 'instruction-aware summary';
-        },
+        summarize: () => 'instruction-aware summary',
       },
     });
 
@@ -285,12 +281,11 @@ describe('summary middleware', () => {
       ],
     });
 
-    const compacted = await agent.compactConversation({
-      instructions: 'focus on decisions only',
-    });
-
-    expect(seenInstructions).toBe('focus on decisions only');
-    expect(readSummaryRecord(compacted.messages)?.content).toBe('instruction-aware summary');
+    await expect(
+      agent.compactConversation({
+        instructions: 'focus on decisions only',
+      }),
+    ).rejects.toThrow('Conversation compaction is not implemented yet.');
   });
 
   it('should preserve the full summary across later compactions even when model-visible content is truncated', async () => {

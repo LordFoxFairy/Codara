@@ -103,7 +103,7 @@ describe('agent checkpoint source semantics', () => {
     expect(latest?.info.reason).toBe('complete');
   });
 
-  it('should not write a manual checkpoint when compactConversation produces no runtime mutation', async () => {
+  it('should keep manual compact disabled until the new algorithm is implemented', async () => {
     const checkpointer = createAgentMemoryCheckpointer();
     const agent = createAgent({
       model: new SequenceModel([new AIMessage('done')]) as unknown as BaseChatModel,
@@ -114,7 +114,7 @@ describe('agent checkpoint source semantics', () => {
     await agent.invoke('hello');
     const before = await checkpointer.list('checkpoint-source-compact-noop');
 
-    await agent.compactConversation();
+    await expect(agent.compactConversation()).rejects.toThrow('Conversation compaction is not implemented yet.');
 
     const after = await checkpointer.list('checkpoint-source-compact-noop');
     expect(after).toHaveLength(before.length);
@@ -122,7 +122,7 @@ describe('agent checkpoint source semantics', () => {
     expect(after.at(-1)?.info.source).toBe('invoke');
   });
 
-  it('should persist a manual checkpoint only when compactConversation actually rewrites runtime state', async () => {
+  it('should not enter manual compact flow even when summary settings are present', async () => {
     const checkpointer = createAgentMemoryCheckpointer();
     const agent = createAgent({
       model: new SequenceModel([new AIMessage('done')]) as unknown as BaseChatModel,
@@ -146,15 +146,11 @@ describe('agent checkpoint source semantics', () => {
     });
 
     const before = await checkpointer.list('checkpoint-source-compact-manual');
-    const compacted = await agent.compactConversation();
+    await expect(agent.compactConversation()).rejects.toThrow('Conversation compaction is not implemented yet.');
     const after = await checkpointer.list('checkpoint-source-compact-manual');
 
-    expect(String(compacted.messages[0]?.content)).toContain('# Conversation Summary');
-    expect(after).toHaveLength(before.length + 1);
-    expect(after.at(-1)?.info.source).toBe('manual');
-    expect(after.at(-1)?.info.status).toBe('idle');
-    expect(after.at(-1)?.info.reason).toBeUndefined();
-    expect(after.at(-1)?.info.turns).toBeUndefined();
+    expect(after).toHaveLength(before.length);
+    expect(after.at(-1)?.info.source).toBe('invoke');
   });
 
   it('should persist reset and dispose checkpoints with their own control sources', async () => {
@@ -207,7 +203,7 @@ describe('agent checkpoint source semantics', () => {
     });
   });
 
-  it('should keep compact instructions out of durable context and checkpoint state', async () => {
+  it('should reject manual compact before any context or checkpoint mutation is attempted', async () => {
     const checkpointer = createAgentMemoryCheckpointer();
     const agent = createAgent({
       model: new SequenceModel([new AIMessage('done')]) as unknown as BaseChatModel,
@@ -233,24 +229,20 @@ describe('agent checkpoint source semantics', () => {
       ],
     });
 
-    const compacted = await agent.compactConversation({
+    await expect(agent.compactConversation({
       instructions: 'compact only, do not persist this instruction',
       context: {
         userId: 'user-123',
       },
-    });
+    })).rejects.toThrow('Conversation compaction is not implemented yet.');
     const latest = await checkpointer.getLatest('checkpoint-source-compact-context-boundary');
 
-    expect(String(compacted.messages[0]?.content)).toContain('# Conversation Summary');
-    expect(compacted.context).toEqual({
-      tenantId: 'tenant-1',
-    });
     expect(latest?.state.context).toEqual({
       tenantId: 'tenant-1',
     });
   });
 
-  it('should not write a manual checkpoint when compactConversation fails during context validation', async () => {
+  it('should reject manual compact before middleware validation runs', async () => {
     const checkpointer = createAgentMemoryCheckpointer();
     const agent = createAgent({
       model: new SequenceModel([new AIMessage('done')]) as unknown as BaseChatModel,
@@ -274,16 +266,14 @@ describe('agent checkpoint source semantics', () => {
     await agent.invoke('hello');
     const before = await checkpointer.list('checkpoint-source-compact-validation-error');
 
-    await expect(
-      agent.compactConversation()
-    ).rejects.toThrow('context validation failed');
+    await expect(agent.compactConversation()).rejects.toThrow('Conversation compaction is not implemented yet.');
 
     const after = await checkpointer.list('checkpoint-source-compact-validation-error');
     expect(after).toHaveLength(before.length);
     expect(agent.getState().status).toBe('idle');
   });
 
-  it('should roll back running state when compactConversation fails inside middleware preflight', async () => {
+  it('should reject manual compact before middleware hooks run', async () => {
     const checkpointer = createAgentMemoryCheckpointer();
     const agent = createAgent({
       model: new SequenceModel([new AIMessage('done')]) as unknown as BaseChatModel,
@@ -302,9 +292,7 @@ describe('agent checkpoint source semantics', () => {
     await agent.invoke('hello');
     const before = await checkpointer.list('checkpoint-source-compact-beforemodel-error');
 
-    await expect(
-      agent.compactConversation()
-    ).rejects.toThrow('compact beforeModel failed');
+    await expect(agent.compactConversation()).rejects.toThrow('Conversation compaction is not implemented yet.');
 
     const after = await checkpointer.list('checkpoint-source-compact-beforemodel-error');
     expect(after).toHaveLength(before.length);

@@ -16,8 +16,8 @@ import {
 import type {BaseMiddleware, HILToolMessagePayload} from '@core/middleware';
 import type {ExecutionContextMetadata} from '@core/middleware/types';
 import type {AgentCheckpointer} from '@core/checkpoint';
-import {deepClone} from '@core/support/clone';
-import {readLatestAssistantText} from '@core/support/messages';
+import {deepClone} from '@core/shared/clone';
+import {readLatestAssistantText} from '@core/shared/messages';
 
 const delegatedAgentResultSchema = z.object({
   type: z.literal('delegated_agent_result'),
