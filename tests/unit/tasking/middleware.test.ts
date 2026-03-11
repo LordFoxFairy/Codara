@@ -14,7 +14,7 @@ import {
 import {
   readDelegatedAgentResult,
 } from '@core/tasking/delegation';
-import {createAgentSkillsMiddleware, createBuiltinAgentStore} from '../agents/task-tool.fixtures';
+import {createAgentSkillsMiddleware, createBuiltinSubagentStore} from '../agents/task-tool.fixtures';
 
 class ScriptedModel {
   private index = 0;
@@ -65,7 +65,7 @@ class SystemEchoModel {
 
 describe('tasking middlewares', () => {
   it('should register the delegated Task tool through middleware', async () => {
-    const store = createBuiltinAgentStore();
+    const store = createBuiltinSubagentStore();
     const taskMiddleware = createTaskMiddleware({
       model: new ChildSummaryModel() as unknown as BaseChatModel,
     });
@@ -98,7 +98,7 @@ describe('tasking middlewares', () => {
   });
 
   it('should inject available subagent definitions from skills runtime before model calls', async () => {
-    const store = createBuiltinAgentStore();
+    const store = createBuiltinSubagentStore();
     const taskMiddleware = createTaskMiddleware({
       model: new ChildSummaryModel() as unknown as BaseChatModel,
     });

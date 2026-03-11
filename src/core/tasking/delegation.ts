@@ -13,6 +13,7 @@ import type {
 } from '@core/agents/contract/agent';
 import type {PauseRequest, ResumePayload} from '@core/agents/contract/pause';
 import type {AgentCheckpointer} from '@core/checkpoint/state';
+import {deepClone} from '@core/support/clone';
 
 export interface DelegatedAgentOptions {
   model: BaseChatModel;
@@ -91,7 +92,7 @@ export async function runDelegatedAgent(
     checkpointer: options.checkpointer,
     inputBudget: options.inputBudget,
     ...(mergedContext ? {context: mergedContext} : {}),
-    ...(options.values ? {values: cloneStructured(options.values)} : {}),
+    ...(options.values ? {values: deepClone(options.values)} : {}),
   };
   const child = createAgent(childOptions);
   const messages = createDelegatedAgentInput(
@@ -225,8 +226,8 @@ function mergeRuntimeContext(
   }
 
   return {
-    ...(baseContext ? cloneStructured(baseContext) : {}),
-    ...(profileContext ? cloneStructured(profileContext) : {}),
+    ...(baseContext ? deepClone(baseContext) : {}),
+    ...(profileContext ? deepClone(profileContext) : {}),
   };
 }
 
@@ -369,22 +370,6 @@ function stringifyMessageContent(content: BaseMessage['content']): string {
 
     return JSON.stringify(part);
   }).join('\n');
-}
-
-function cloneStructured<T>(value: T): T {
-  try {
-    return structuredClone(value);
-  } catch {
-    if (Array.isArray(value)) {
-      return [...value] as T;
-    }
-
-    if (value && typeof value === 'object') {
-      return {...(value as Record<string, unknown>)} as T;
-    }
-
-    return value;
-  }
 }
 
 function readDelegatedResumeState(

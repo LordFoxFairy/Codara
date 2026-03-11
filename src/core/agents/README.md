@@ -22,6 +22,7 @@
 ```text
 createCodara(...)
   -> createSession(...)
+    -> guidelines / skills preload
     -> createAgent(...)
       -> checkpoint/*
       -> middleware/*
@@ -108,9 +109,9 @@ const agent = createAgent({
 
 当前 `Task` tool 的 MVP 边界：
 - 内部仍复用 `createAgent(...)`
-- 子代理定义来自真实 agent files，而不是代码硬编码
-- 默认会从 `.codara/skills/*/agents/*.md` 发现 agent definitions
-- 也支持通过显式 `agents/` roots 提供定义，例如插件目录下的 `agents/*.md`
+- 子代理定义来自真实 markdown files，而不是代码硬编码
+- 默认会从 `.codara/skills/*/agents/*.md` 发现 subagent definitions
+- 也支持通过显式 `subagentRoots` 提供定义，例如插件目录下的 `agents/*.md`
 - 不负责共享 task 协调；共享协调由 `TaskCreate/TaskUpdate/TaskList` 负责
 
 公开心智保持克制：
@@ -118,3 +119,12 @@ const agent = createAgent({
 - `@core/tasking` 只保留 tasking 域公开能力；低层 delegation helper 退回 `@core/tasking/delegation`，`createTaskTool(...)` 退回 `@core/tasking/task`
 - `agents/*` 回到纯执行内核，不再承载 task/subagent 领域文件
 - `Task` 的公共选项保持中性；宿主侧的 child-agent/runtime 绑定通过 tasking host adapter 接入，不继续暴露在主 API 选项里
+
+## 文件数量
+
+`agents/*` 现在文件数看起来不少，但主因是它按三层拆开了：
+- `contract/*`：公开合同
+- `engine/*`：状态、runtime 装配、checkpoint 边界
+- `loop/*`：turn / model / tool 主链
+
+这里的目标不是“多文件”，而是避免把执行内核重新揉回一个 800 行 owner。当前仍然保留的文件，基本都能直接回答“它保护的是哪一段边界”。如果后续某个文件只是 20 行桥接且没有独立 owner 价值，再继续并回去。

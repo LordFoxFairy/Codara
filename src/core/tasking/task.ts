@@ -12,7 +12,7 @@ import {
   resolveSubagentDefinition,
   type SkillsRuntimeData,
   type SubagentDefinition,
-} from '@core/skills/agents';
+} from '@core/skills/subagents';
 import type {MiddlewareRuntimeShared} from '@core/middleware';
 import {filterToolsByReferences} from '@core/tools';
 import {createAgentMemoryCheckpointer} from '@core/checkpoint';
@@ -22,7 +22,7 @@ export const TASK_TOOL_NAME = 'Task';
 export const TASK_TOOL_DESCRIPTION = `Delegate a focused task to an isolated subagent.
 Use this tool when a sub-problem should run in a fresh context window and return only a concise summary.
 
-Subagent definitions are loaded from agent definition files such as .codara/skills/*/agents/*.md or explicit agents roots.
+Subagent definitions are loaded from markdown files such as .codara/skills/*/agents/*.md or explicit subagent roots.
 Use TaskCreate/TaskUpdate/TaskList for shared task coordination, not this delegation tool.`;
 
 const TaskToolInputSchema = z.object({
@@ -126,7 +126,7 @@ function asRecord(value: unknown): Record<string, unknown> {
 }
 
 function formatAvailableSubagents(runtime: SkillsRuntimeData | undefined): string | undefined {
-  const definitions = Object.values(runtime?.agentDefinitions ?? {});
+  const definitions = Object.values(runtime?.subagentDefinitions ?? {});
   if (definitions.length === 0) {
     return undefined;
   }

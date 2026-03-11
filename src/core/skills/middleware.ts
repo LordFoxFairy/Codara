@@ -7,14 +7,14 @@ import {
   formatSkillsList,
   formatSkillsLocations,
 } from '@core/skills/metadata'
-import {loadSkillsRuntimeData, readSkillsRuntimeData} from '@core/skills/agents'
+import {loadSkillsRuntimeData, readSkillsRuntimeData} from '@core/skills/subagents'
 import type {SkillsSource} from '@core/sessions/skills'
 import type {SkillStore} from '@core/skills/types'
 
 export interface SkillsMiddlewareOptions {
   store?: SkillStore
   source?: SkillsSource
-  agentRoots?: string[]
+  subagentRoots?: string[]
 }
 
 /**
@@ -60,6 +60,6 @@ export function createSkillsMiddleware(options: SkillsMiddlewareOptions) {
     if (!store) {
       throw new Error('SkillsMiddleware requires either a skills store or a skills source')
     }
-    return loadSkillsRuntimeData(store, options.agentRoots ?? [])
+    return loadSkillsRuntimeData(store, options.subagentRoots ?? [])
   }
 }

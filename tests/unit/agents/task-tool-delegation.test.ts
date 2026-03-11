@@ -7,7 +7,7 @@ import {createAgent} from '@core/agents';
 import {createHILMiddleware} from '@core/middleware';
 import {TASK_TOOL_NAME, createTaskTool} from '@core/tasking/task';
 import {readDelegatedAgentResult} from '@core/tasking/delegation';
-import {createBuiltinAgentStore, createAgentSkillsMiddleware, ChildSummaryModel, ScriptedModel} from './task-tool.fixtures';
+import {createBuiltinSubagentStore, createAgentSkillsMiddleware, ChildSummaryModel, ScriptedModel} from './task-tool.fixtures';
 
 describe('createTaskTool delegation', () => {
   it('应通过正式 Task 工具委派子代理并回传摘要', async () => {
@@ -26,7 +26,7 @@ describe('createTaskTool delegation', () => {
         }),
         new AIMessage('done'),
       ]) as unknown as BaseChatModel,
-      middleware: [createAgentSkillsMiddleware(createBuiltinAgentStore())],
+      middleware: [createAgentSkillsMiddleware(createBuiltinSubagentStore())],
       tools: [
         createTaskTool({
           model: new ChildSummaryModel() as unknown as BaseChatModel,
@@ -77,7 +77,7 @@ describe('createTaskTool delegation', () => {
         }),
         new AIMessage('done'),
       ]) as unknown as BaseChatModel,
-      middleware: [createAgentSkillsMiddleware(createBuiltinAgentStore())],
+      middleware: [createAgentSkillsMiddleware(createBuiltinSubagentStore())],
       tools: [
         createTaskTool({
           model: new ScriptedModel([

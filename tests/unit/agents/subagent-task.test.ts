@@ -17,7 +17,7 @@ import {
 import {createSkillsMiddleware, FileSystemSkillStore} from '@core/skills';
 import {createTaskTool} from '@core/tasking/task';
 
-function createBuiltinAgentStore() {
+function createBuiltinSubagentStore() {
   return new FileSystemSkillStore({
     sources: [path.join(process.cwd(), '.codara', 'skills')],
     cacheTtlMs: 0,
@@ -156,7 +156,7 @@ describe('task delegation + task store', () => {
 
     const parent = createAgent({
       model: parentModel,
-      middleware: [createSkillsMiddleware({store: createBuiltinAgentStore()})],
+      middleware: [createSkillsMiddleware({store: createBuiltinSubagentStore()})],
       tools: [taskCreateTool, taskTool],
     });
 

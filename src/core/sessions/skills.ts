@@ -14,7 +14,7 @@ export interface FileSkillsSourceOptions {
 
 export interface CodaraSkillsSourceOptions {
   store: SkillStore;
-  agentRoots?: string[];
+  subagentRoots?: string[];
 }
 
 /**
@@ -61,7 +61,7 @@ export class FileSkillsSource implements SkillsSource {
 
 export function createCodaraSkillsSource(options: CodaraSkillsSourceOptions): SkillsSource {
   return new FileSkillsSource({
-    load: () => loadSkillsRuntimeData(options.store, options.agentRoots ?? []),
+    load: () => loadSkillsRuntimeData(options.store, options.subagentRoots ?? []),
     reload: () => options.store.refresh?.(),
   });
 }
