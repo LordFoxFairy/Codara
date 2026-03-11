@@ -3,8 +3,9 @@ import type {BaseChatModel} from '@langchain/core/language_models/chat_models';
 import type {StructuredToolInterface} from '@langchain/core/tools';
 import type {BaseMiddleware} from '@core/middleware';
 import type {PauseRequest, ResumePayload} from '@core/agents/contract/pause';
-import type {AgentCheckpoint, AgentCheckpointer} from '@core/checkpoint/state';
+import type {AgentCheckpoint, AgentCheckpointer} from '@core/checkpoint';
 import type {AgentStreamConfig, AgentStreamOutput} from '@core/agents/contract/stream';
+import type {SummaryOptions} from '@core/middleware/conversation';
 
 export type AgentRuntimeContext = Record<string, unknown>;
 export type AgentRuntimeValues = Record<string, unknown>;
@@ -132,6 +133,8 @@ export interface CreateAgentOptions {
   values?: AgentRuntimeValues;
   /** 模型输入预算，用于 context compaction 等能力。 */
   inputBudget?: AgentInputBudget;
+  /** agent 直接拥有的手动摘要压缩配置。 */
+  summary?: false | SummaryOptions;
   /** 每次 turn 在 middleware 前准备 system layers / shared runtime。 */
   prepareTurnContext?: AgentTurnContextPreparer;
 }

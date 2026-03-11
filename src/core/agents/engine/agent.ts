@@ -9,7 +9,6 @@ import {
 } from '@core/agents/engine/state';
 import {
   injectResumePayload,
-  mergeContext,
   normalizeAgentInput,
   readLatestPause,
 } from '@core/agents/engine/runtime-input';
@@ -18,7 +17,6 @@ import {
   persistAgentCheckpoint,
   updateStateFromCheckpointRecord,
 } from '@core/agents/engine/checkpoint';
-import {assertNotRunning, assertReadyForInvoke, assertReadyForResume} from '@core/agents/engine/lifecycle';
 import {
   createRunContext,
   resolveEffectiveContext,
@@ -49,9 +47,14 @@ import {
   type AgentCheckpoint,
   type AgentCheckpointInfo,
   type AgentCheckpointer,
-} from '@core/checkpoint/state';
+} from '@core/checkpoint';
 import type {PauseRequest, ResumePayload} from '@core/agents/contract/pause';
 import {formatErrorMessage} from '@core/support/errors';
+import {
+  compactSummaryIfNeeded,
+  normalizeSummaryOptions,
+  type SummaryOptions,
+} from '@core/middleware/conversation';
 
 /** `createAgent(...)` 返回的默认实现。 */
 class AgentInstance implements Agent {
@@ -59,6 +62,7 @@ class AgentInstance implements Agent {
   private readonly threadId: string;
   private readonly checkpointer: AgentCheckpointer;
   private readonly inputBudget: AgentInputBudget | undefined;
+  private readonly summary: Required<SummaryOptions> | undefined;
   private readonly state: MutableAgentState;
 
   constructor(options: CreateAgentOptions) {
@@ -67,6 +71,7 @@ class AgentInstance implements Agent {
     this.threadId = checkpoint?.ref.threadId ?? options.threadId ?? randomUUID();
     this.checkpointer = options.checkpointer ?? createAgentMemoryCheckpointer();
     this.inputBudget = options.inputBudget;
+    this.summary = options.summary ? normalizeSummaryOptions(options.summary) : undefined;
     const initialValues = this.runtime.pipeline.createInitialValues(checkpoint?.state.values ?? options.values ?? {});
     this.state = createInitialAgentState(
       this.threadId,
@@ -91,14 +96,8 @@ class AgentInstance implements Agent {
   ): Promise<AgentState> {
     assertNotRunning(this.state);
     const baselineState = createAgentState(this.state);
-    const manualCompactContext = mergeContext(config.context ?? {}, {
-      codara: {
-        forceCompactConversation: true,
-        ...(config.instructions ? {compactInstructions: config.instructions} : {}),
-      },
-    });
     const run = createRunContext(createAgentState(this.state), {
-      context: manualCompactContext,
+      context: config.context,
       inputBudget: config.inputBudget ?? this.inputBudget,
       recursionLimit: 1,
     });
@@ -118,6 +117,12 @@ class AgentInstance implements Agent {
     let context;
     try {
       context = await runBeforeModelStage(run, this.runtime, 1, `${run.runId}:compact`);
+      if (this.summary) {
+        await compactSummaryIfNeeded(context, this.summary, {
+          force: true,
+          ...(config.instructions ? {instructions: config.instructions} : {}),
+        });
+      }
     } catch (error) {
       const result = this.abortPreflight(lifecycle, createErrorResult(run.state, 0, toErrorMessage(error)));
       throw result.error;
@@ -356,6 +361,36 @@ class AgentInstance implements Agent {
 
 export function createAgent(options: CreateAgentOptions): Agent {
   return new AgentInstance(options);
+}
+
+function assertReadyForInvoke(state: MutableAgentState): void {
+  assertNotClosed(state);
+  assertNotRunning(state);
+
+  if (state.status === 'paused') {
+    throw new Error('Agent is paused; call resume(...) or reset() before invoking again.');
+  }
+}
+
+function assertReadyForResume(state: MutableAgentState): void {
+  assertNotClosed(state);
+  assertNotRunning(state);
+
+  if (state.status !== 'paused' || !state.pendingPause) {
+    throw new Error('Agent is not paused; resume(...) is only valid after a HIL pause.');
+  }
+}
+
+function assertNotRunning(state: MutableAgentState): void {
+  if (state.status === 'running') {
+    throw new Error('Agent is currently running.');
+  }
+}
+
+function assertNotClosed(state: MutableAgentState): void {
+  if (state.status === 'closed') {
+    throw new Error('Agent is closed.');
+  }
 }
 
 function createErrorResult(state: AgentState, turns: number, message: string): AgentResult {

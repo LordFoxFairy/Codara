@@ -9,14 +9,17 @@ import type {
   AgentTurnContextPreparer,
   ToolErrorHandler,
 } from '@core/agents/contract/agent';
-import type {AgentModel} from '@core/agents/engine/model';
+import type {AgentModel} from '@core/agents/engine/runtime';
 import type {AgentStreamWriter} from '@core/agents/engine/stream-writer';
-import {runTurn, runTurnStream, type AgentTurnOutcome} from '@core/agents/loop/turn';
-import type {BaseExecutionContext, MiddlewareRuntimeShared} from '@core/middleware';
+import {readLatestPause} from '@core/agents/engine/runtime-input';
+import {runModelStep, runModelStepStream} from '@core/agents/loop/model-step';
+import {runAfterAgentStep, runToolStep, runToolStepStream} from '@core/agents/loop/tool-step';
+import type {AgentRunSummary, BaseExecutionContext, MiddlewareRuntimeShared} from '@core/middleware';
 import type {MiddlewarePipeline} from '@core/middleware/pipeline';
 import {deepClone} from '@core/support/clone';
 import {toError, formatErrorMessage} from '@core/support/errors';
 import {mergeContext} from '@core/agents/engine/runtime-input';
+import type {AIMessage, ToolCall} from '@langchain/core/messages';
 
 const DEFAULT_RECURSION_LIMIT = 25;
 
@@ -133,7 +136,12 @@ export async function runAfterHook(
 
 /** 执行非流式主循环。 */
 export async function runLoop(run: AgentRunContext, runtime: AgentRuntime): Promise<AgentResult> {
-  return runLoopCore(run, runtime, (r, rt, turn) => runTurn(r, rt, turn));
+  return runLoopCore(run, runtime, (context, execution, cycle) => runLoopIteration(
+    context,
+    execution,
+    cycle,
+    new NonStreamIterationStrategy(),
+  ));
 }
 
 /** 执行流式主循环。 */
@@ -142,7 +150,12 @@ export async function streamLoop(
   runtime: AgentRuntime,
   stream: AgentStreamWriter
 ): Promise<AgentResult> {
-  return runLoopCore(run, runtime, (r, rt, turn) => runTurnStream(r, rt, turn, stream));
+  return runLoopCore(run, runtime, (context, execution, cycle) => runLoopIteration(
+    context,
+    execution,
+    cycle,
+    new StreamIterationStrategy(stream),
+  ));
 }
 
 export async function runBeforeModelStage(
@@ -162,24 +175,109 @@ export async function runBeforeModelStage(
 async function runLoopCore(
   run: AgentRunContext,
   runtime: AgentRuntime,
-  executeTurn: (run: AgentRunContext, runtime: AgentRuntime, turn: number) => Promise<AgentTurnOutcome>
+  executeIteration: (
+    run: AgentRunContext,
+    runtime: AgentRuntime,
+    cycle: number,
+  ) => Promise<LoopIterationOutcome>,
 ): Promise<AgentResult> {
-  let turns = 0;
+  let iterations = 0;
 
-  for (let turn = 1; turn <= run.maxTurns; turn += 1) {
-    turns = turn;
+  for (let cycle = 1; cycle <= run.maxTurns; cycle += 1) {
+    iterations = cycle;
 
     try {
-      const outcome = await executeTurn(run, runtime, turn);
+      const outcome = await executeIteration(run, runtime, cycle);
       if (outcome === 'complete') {
-        return createAgentResult(run.state, turns, 'complete');
+        return createAgentResult(run.state, iterations, 'complete');
       }
     } catch (error) {
-      return createAgentResult(run.state, turns, 'error', error);
+      return createAgentResult(run.state, iterations, 'error', error);
     }
   }
 
-  return createAgentResult(run.state, turns, 'max_turns');
+  return createAgentResult(run.state, iterations, 'max_turns');
+}
+
+interface LoopIterationStrategy {
+  executeModel(runtime: AgentRuntime, run: AgentRunContext, context: BaseExecutionContext): Promise<AIMessage>;
+  afterModelMessage(message: AIMessage, run: AgentRunContext): Promise<void>;
+  executeTools(run: AgentRunContext, runtime: AgentRuntime, context: BaseExecutionContext, toolCalls: ToolCall[]): Promise<void>;
+}
+
+class NonStreamIterationStrategy implements LoopIterationStrategy {
+  async executeModel(runtime: AgentRuntime, contextRun: AgentRunContext, context: BaseExecutionContext): Promise<AIMessage> {
+    void contextRun;
+    return runModelStep(runtime, context);
+  }
+
+  async afterModelMessage(): Promise<void> {
+    // 非流式模式无需额外操作
+  }
+
+  async executeTools(run: AgentRunContext, runtime: AgentRuntime, context: BaseExecutionContext, toolCalls: ToolCall[]): Promise<void> {
+    await runToolStep(run, runtime, context, toolCalls);
+  }
+}
+
+class StreamIterationStrategy implements LoopIterationStrategy {
+  constructor(private readonly stream: AgentStreamWriter) {}
+
+  async executeModel(runtime: AgentRuntime, run: AgentRunContext, context: BaseExecutionContext): Promise<AIMessage> {
+    return runModelStepStream(runtime, run, context, this.stream);
+  }
+
+  async afterModelMessage(message: AIMessage, run: AgentRunContext): Promise<void> {
+    await this.stream.emitModelUpdate(message);
+    await this.stream.emitValues(run.state.messages);
+  }
+
+  async executeTools(run: AgentRunContext, runtime: AgentRuntime, context: BaseExecutionContext, toolCalls: ToolCall[]): Promise<void> {
+    await runToolStepStream(run, runtime, context, toolCalls, this.stream);
+  }
+}
+
+type LoopIterationOutcome = 'continue' | 'complete';
+
+async function runLoopIteration(
+  run: AgentRunContext,
+  runtime: AgentRuntime,
+  cycle: number,
+  strategy: LoopIterationStrategy,
+): Promise<LoopIterationOutcome> {
+  const cycleStartIndex = run.state.messages.length;
+  const context = await runBeforeModelStage(run, runtime, cycle, `${run.runId}:turn:${cycle}`);
+  const pipeline = runtime.pipeline;
+  let cycleResult: AgentRunSummary = {reason: 'continue', turns: cycle};
+
+  try {
+    const modelMessage = await strategy.executeModel(runtime, run, context);
+    run.state.messages.push(modelMessage);
+    await strategy.afterModelMessage(modelMessage, run);
+
+    await pipeline.afterModel({...context, response: modelMessage});
+
+    if (!modelMessage.tool_calls?.length) {
+      cycleResult = {reason: 'complete', turns: cycle};
+    } else {
+      await strategy.executeTools(run, runtime, context, modelMessage.tool_calls);
+      const pause = readLatestPause(run.state.messages.slice(cycleStartIndex));
+      if (pause) {
+        run.state.pendingPause = pause;
+        cycleResult = {reason: 'complete', turns: cycle};
+      }
+    }
+  } catch (error) {
+    cycleResult = {reason: 'error', turns: cycle, error: toError(error)};
+  }
+
+  await runAfterAgentStep(pipeline, context, cycleResult);
+
+  if (cycleResult.error) {
+    throw cycleResult.error;
+  }
+
+  return cycleResult.reason === 'complete' ? 'complete' : 'continue';
 }
 
 function toHookContext(run: AgentRunContext): AgentHookContext {

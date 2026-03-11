@@ -5,7 +5,7 @@ import {tool} from '@langchain/core/tools';
 import {z} from 'zod';
 import {createAgent} from '@core/agents';
 import {createAgentMemoryCheckpointer} from '@core/checkpoint';
-import {createConversationContextMiddleware, createHILMiddleware} from '@core/middleware';
+import {createHILMiddleware} from '@core/middleware';
 
 class SequenceModel {
   private index = 0;
@@ -128,15 +128,11 @@ describe('agent checkpoint source semantics', () => {
       model: new SequenceModel([new AIMessage('done')]) as unknown as BaseChatModel,
       checkpointer,
       threadId: 'checkpoint-source-compact-manual',
-      middleware: [
-        createConversationContextMiddleware({
-          summary: {
-            maxMessages: 99,
-            keepLastMessages: 2,
-            summarize: () => 'manual compact summary',
-          },
-        }),
-      ],
+      summary: {
+        maxMessages: 99,
+        keepLastMessages: 2,
+        summarize: () => 'manual compact summary',
+      },
     });
 
     await agent.invoke({
@@ -198,9 +194,6 @@ describe('agent checkpoint source semantics', () => {
     const result = await agent.invoke('hello', {
       context: {
         userId: 'user-123',
-        codara: {
-          forceCompactConversation: true,
-        },
       },
     });
     const latest = await checkpointer.getLatest('checkpoint-source-invoke-context-boundary');
@@ -214,7 +207,7 @@ describe('agent checkpoint source semantics', () => {
     });
   });
 
-  it('should keep compact runtime flags and instructions out of durable context and checkpoint state', async () => {
+  it('should keep compact instructions out of durable context and checkpoint state', async () => {
     const checkpointer = createAgentMemoryCheckpointer();
     const agent = createAgent({
       model: new SequenceModel([new AIMessage('done')]) as unknown as BaseChatModel,
@@ -223,15 +216,11 @@ describe('agent checkpoint source semantics', () => {
       context: {
         tenantId: 'tenant-1',
       },
-      middleware: [
-        createConversationContextMiddleware({
-          summary: {
-            maxMessages: 99,
-            keepLastMessages: 2,
-            summarize: () => 'manual compact summary',
-          },
-        }),
-      ],
+      summary: {
+        maxMessages: 99,
+        keepLastMessages: 2,
+        summarize: () => 'manual compact summary',
+      },
     });
 
     await agent.invoke({

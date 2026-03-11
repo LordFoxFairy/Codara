@@ -1,7 +1,7 @@
 import {AIMessage, SystemMessage, type BaseMessage} from '@langchain/core/messages';
 import {readExecutionMetadata, type ModelCallContext} from '@core/middleware';
 import type {AgentStreamWriter} from '@core/agents/engine/stream-writer';
-import {chunkToMessage, toMessageChunk} from '@core/agents/engine/model';
+import {chunkToMessage, toMessageChunk} from '@core/agents/engine/runtime';
 import type {AgentRuntime, AgentRunContext} from '@core/agents/loop/run';
 
 const CODARA_KEY = 'codara';

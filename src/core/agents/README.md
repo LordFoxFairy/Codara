@@ -30,7 +30,7 @@ createCodara(...)
 
 - `createAgent(...)`：通用执行体
 - `sessions/*`：实例宿主
-- `product/*`：产品入口与默认装配
+- `codara/*`：产品入口与默认装配
 
 ## 目录
 
@@ -43,23 +43,20 @@ agents/
   engine/
     agent.ts
     checkpoint.ts
-    lifecycle.ts
-    model.ts
     runtime-input.ts
     runtime.ts
     state.ts
     stream-writer.ts
     tools.ts
   loop/
-    model-step.ts
     run.ts
+    model-step.ts
     tool-step.ts
-    turn.ts
 ```
 
 - `contract/*`：公开合同
 - `engine/*`：agent 内部实现
-- `loop/*`：loop 主链与步骤执行
+- `loop/*`：loop 主链与 model/tool 步骤执行
 
 ## 用法
 
@@ -125,6 +122,6 @@ const agent = createAgent({
 `agents/*` 现在文件数看起来不少，但主因是它按三层拆开了：
 - `contract/*`：公开合同
 - `engine/*`：状态、runtime 装配、checkpoint 边界
-- `loop/*`：turn / model / tool 主链
+- `loop/*`：run / model / tool 主链
 
-这里的目标不是“多文件”，而是避免把执行内核重新揉回一个 800 行 owner。当前仍然保留的文件，基本都能直接回答“它保护的是哪一段边界”。如果后续某个文件只是 20 行桥接且没有独立 owner 价值，再继续并回去。
+这里的目标不是“多文件”，而是避免把执行内核重新揉回一个 800 行 owner。当前保留下来的文件需要能直接回答“它保护的是哪一段边界”。已经确认没有 owner 价值的薄文件，例如 `engine/lifecycle.ts`、`engine/model.ts`，已经并回主 owner 文件，避免继续增加跳转成本。

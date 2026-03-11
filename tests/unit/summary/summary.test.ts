@@ -260,11 +260,13 @@ describe('summary middleware', () => {
     expect(readSummaryRecord(context.state.messages)?.content).toBe('near-limit summary');
   });
 
-  it('should forward manual compact instructions to the summary generator', async () => {
+  it('should forward manual compact instructions through agent.compactConversation', async () => {
     let seenInstructions: string | undefined;
-    const middleware = createConversationContextMiddleware({
+    const agent = createAgent({
+      model: new FakeModel([new AIMessage('done')]) as unknown as BaseChatModel,
+      threadId: 'thread-instructions',
       summary: {
-        maxMessages: 4,
+        maxMessages: 99,
         keepLastMessages: 2,
         summarize: ({instructions}) => {
           seenInstructions = instructions;
@@ -273,34 +275,22 @@ describe('summary middleware', () => {
       },
     });
 
-    const pipeline = new MiddlewarePipeline([middleware]);
-    const messages = [
-      new HumanMessage('one'),
-      new AIMessage('two'),
-      new HumanMessage('three'),
-      new AIMessage('four'),
-      new HumanMessage('five'),
-    ];
+    await agent.invoke({
+      messages: [
+        new HumanMessage('one'),
+        new AIMessage('two'),
+        new HumanMessage('three'),
+        new AIMessage('four'),
+        new HumanMessage('five'),
+      ],
+    });
 
-    const context: ModelCallContext = {
-      state: {messages},
-      messages,
-      runtime: {
-        context: {
-          codara: {
-            forceCompactConversation: true,
-            compactInstructions: 'focus on decisions only',
-          },
-        },
-      },
-      systemMessage: [],
-      execution: createExecution('thread-instructions', 'run-instructions', 1, 'req-instructions'),
-    };
-
-    await pipeline.beforeModel(context);
+    const compacted = await agent.compactConversation({
+      instructions: 'focus on decisions only',
+    });
 
     expect(seenInstructions).toBe('focus on decisions only');
-    expect(readSummaryRecord(context.state.messages)?.content).toBe('instruction-aware summary');
+    expect(readSummaryRecord(compacted.messages)?.content).toBe('instruction-aware summary');
   });
 
   it('should preserve the full summary across later compactions even when model-visible content is truncated', async () => {
