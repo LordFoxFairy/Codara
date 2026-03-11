@@ -1,11 +1,14 @@
 import {randomUUID} from 'node:crypto';
 import {mkdir, readdir, readFile, rename, writeFile} from 'node:fs/promises';
 import path from 'node:path';
+import {z} from 'zod';
 import type {CreateTaskInput, TaskRecord, TaskStore, TaskStatus, UpdateTaskInput} from '@core/tasks/types';
 
 export interface TaskFileStoreOptions {
   rootDir: string;
 }
+
+const taskRecordInputSchema = z.object({}).loose().catch({});
 
 export function createTaskMemoryStore(): TaskStore {
   return new InMemoryTaskStore();
@@ -338,7 +341,7 @@ function sortTasks(tasks: TaskRecord[]): TaskRecord[] {
 }
 
 function parseTaskRecord(value: unknown): TaskRecord {
-  const record = isPlainRecord(value) ? value : {};
+  const record = taskRecordInputSchema.parse(value);
   const status = parseTaskStatus(record.status);
   const createdAt = typeof record.createdAt === 'string' ? record.createdAt : new Date(0).toISOString();
   const updatedAt = typeof record.updatedAt === 'string' ? record.updatedAt : createdAt;
@@ -390,10 +393,6 @@ function cloneTask(task: TaskRecord): TaskRecord {
       blockedBy: [...task.blockedBy],
     };
   }
-}
-
-function isPlainRecord(value: unknown): value is Record<string, unknown> {
-  return Boolean(value) && typeof value === 'object' && !Array.isArray(value);
 }
 
 function isFileMissing(error: unknown): boolean {

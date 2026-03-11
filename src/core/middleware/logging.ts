@@ -1,4 +1,5 @@
 import type {ToolMessage} from '@langchain/core/messages';
+import {z} from 'zod';
 import {
   createMiddleware,
   readExecutionMetadata,
@@ -46,6 +47,7 @@ const LEVEL_PRIORITY: Record<MiddlewareLogLevel, number> = {
 };
 
 const DEFAULT_LEVEL: MiddlewareLogLevel = 'info';
+const responseMetadataSchema = z.record(z.string(), z.unknown());
 
 /**
  * Built-in structured logging middleware.
@@ -205,7 +207,8 @@ function toolOutcomeDetails(message: ToolMessage): Pick<MiddlewareLogRecord, 'to
     toolStatus: message.status === 'error' ? 'error' : 'success',
   };
 
-  const metadata = isRecord(message.response_metadata) ? message.response_metadata : undefined;
+  const parsed = responseMetadataSchema.safeParse(message.response_metadata);
+  const metadata = parsed.success ? parsed.data : undefined;
   if (!metadata) {
     return details;
   }
@@ -213,10 +216,6 @@ function toolOutcomeDetails(message: ToolMessage): Pick<MiddlewareLogRecord, 'to
   details.toolMetadata = metadata;
 
   return details;
-}
-
-function isRecord(value: unknown): value is Record<string, unknown> {
-  return value !== null && typeof value === 'object' && !Array.isArray(value);
 }
 
 function toErrorName(error: unknown): string {

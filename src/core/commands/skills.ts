@@ -1,4 +1,3 @@
-import {AIMessage, type BaseMessage} from '@langchain/core/messages';
 import {
   createSkillCommandInvocation,
   discoverSkillCommandsFromRuntime,
@@ -6,6 +5,7 @@ import {
 } from '@core/instructions/skills/commands';
 import type {SkillsSource} from '@core/instructions/skills';
 import type {CodaraCommandDefinition} from '@core/commands/types';
+import {readLatestAssistantText} from '@core/support/messages';
 
 export async function createSkillCodaraCommands(
   source: SkillsSource,
@@ -45,47 +45,9 @@ function bindSkillCommand(command: SkillCommandDefinition): CodaraCommandDefinit
       return {
         ok: true,
         command: parsed.name,
-        output: readLatestAssistantText(result.state.messages),
+        output: readLatestAssistantText(result.state.messages) ?? '(no output)',
         state: result.state,
       };
     },
   };
-}
-
-function readLatestAssistantText(messages: readonly BaseMessage[]): string {
-  for (let index = messages.length - 1; index >= 0; index -= 1) {
-    const message = messages[index];
-    if (!message || !AIMessage.isInstance(message)) {
-      continue;
-    }
-
-    const content = renderMessageContent(message.content);
-    if (content) {
-      return content;
-    }
-  }
-
-  return '(no output)';
-}
-
-function renderMessageContent(content: unknown): string {
-  if (typeof content === 'string') {
-    return content;
-  }
-
-  if (!Array.isArray(content)) {
-    return '';
-  }
-
-  return content
-    .map((item) => {
-      if (typeof item === 'string') {
-        return item;
-      }
-      if (item && typeof item === 'object' && 'text' in item && typeof item.text === 'string') {
-        return item.text;
-      }
-      return '';
-    })
-    .join('');
 }

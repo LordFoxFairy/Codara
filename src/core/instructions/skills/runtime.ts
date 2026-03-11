@@ -1,9 +1,40 @@
 import {readdir, readFile, stat} from 'node:fs/promises';
 import path from 'node:path';
-import type {MiddlewareRuntimeShared} from '@core/middleware';
+import {z} from 'zod';
 import {parseMarkdownFrontmatterDocument} from '@core/instructions/skills/loading';
 import {normalizeDiscoveredSkills} from '@core/instructions/skills/metadata';
 import type {SkillMetadata, SkillStore} from '@core/instructions/skills/types';
+
+const subagentHintsSchema = z.object({
+  model: z.string().trim().min(1).optional(),
+  middlewareNames: z.array(z.string().trim().min(1)).optional(),
+  permissionMode: z.string().trim().min(1).optional(),
+});
+
+const subagentDefinitionSchema = z.object({
+  name: z.string().trim().min(1),
+  description: z.string().trim().min(1),
+  systemPrompt: z.string(),
+  tools: z.array(z.string()).optional(),
+  maxTurns: z.number().optional(),
+  hints: subagentHintsSchema.optional(),
+});
+
+const skillsRuntimeDataSchema = z.object({
+  discovered: z.array(z.custom<SkillMetadata>(() => true)),
+  sources: z.array(z.string()),
+  subagentDefinitions: z.record(z.string(), subagentDefinitionSchema),
+});
+
+const subagentFrontmatterSchema = z.object({
+  name: z.string().trim().min(1).optional(),
+  description: z.string().trim().min(1).optional(),
+  model: z.string().trim().min(1).optional(),
+  permissionMode: z.string().trim().min(1).optional(),
+  permission_mode: z.string().trim().min(1).optional(),
+  maxTurns: z.number().optional(),
+  max_turns: z.number().optional(),
+}).loose();
 
 export interface SubagentDefinition {
   name: string;
@@ -50,25 +81,14 @@ export async function loadSkillsRuntimeData(
   };
 }
 
-export function readSkillsRuntimeData(shared: MiddlewareRuntimeShared | undefined): SkillsRuntimeData | undefined {
-  const record = shared?.skills;
-  if (!isRecord(record)) {
-    return undefined;
-  }
+const runtimeSharedSchema = z.object({
+  skills: z.unknown().optional(),
+}).loose();
 
-  const discovered = Array.isArray(record.discovered) ? record.discovered : undefined;
-  const sources = Array.isArray(record.sources) ? record.sources : undefined;
-  const subagentDefinitions = isRecord(record.subagentDefinitions) ? record.subagentDefinitions : undefined;
-
-  if (!discovered || !sources || !subagentDefinitions) {
-    return undefined;
-  }
-
-  return {
-    discovered: discovered as SkillMetadata[],
-    sources: sources.filter((value): value is string => typeof value === 'string'),
-    subagentDefinitions: subagentDefinitions as Record<string, SubagentDefinition>,
-  };
+export function readSkillsRuntimeData(shared: unknown): SkillsRuntimeData | undefined {
+  const runtime = runtimeSharedSchema.safeParse(shared);
+  const parsed = skillsRuntimeDataSchema.safeParse(runtime.success ? runtime.data.skills : undefined);
+  return parsed.success ? parsed.data : undefined;
 }
 
 export function resolveSubagentDefinition(
@@ -150,17 +170,15 @@ async function parseDefinitionFile(filePath: string): Promise<SubagentDefinition
     return undefined;
   }
 
-  const name = typeof document.frontmatter.name === 'string'
-    ? document.frontmatter.name.trim()
-    : path.basename(filePath, '.md');
-  const description = typeof document.frontmatter.description === 'string'
-    ? document.frontmatter.description.trim()
-    : document.body.split('\n').find((line) => line.trim())?.trim() ?? name;
+  const frontmatter = subagentFrontmatterSchema.safeParse(document.frontmatter);
+  const parsedFrontmatter = frontmatter.success ? frontmatter.data : {};
+  const name = parsedFrontmatter.name ?? path.basename(filePath, '.md');
+  const description = parsedFrontmatter.description ?? document.body.split('\n').find((line) => line.trim())?.trim() ?? name;
   const tools = readStringList(document.frontmatter.tools);
   const middlewareNames = readStringList(document.frontmatter.middleware ?? document.frontmatter.middlewares);
-  const model = readOptionalString(document.frontmatter.model);
-  const permissionMode = readOptionalString(document.frontmatter.permissionMode ?? document.frontmatter.permission_mode);
-  const maxTurns = readOptionalNumber(document.frontmatter.maxTurns ?? document.frontmatter.max_turns);
+  const model = parsedFrontmatter.model;
+  const permissionMode = parsedFrontmatter.permissionMode ?? parsedFrontmatter.permission_mode;
+  const maxTurns = parsedFrontmatter.maxTurns ?? parsedFrontmatter.max_turns;
   const hints = {
     ...(middlewareNames.length > 0 ? {middlewareNames} : {}),
     ...(model ? {model} : {}),
@@ -185,19 +203,6 @@ async function fileExists(filePath: string): Promise<boolean> {
   }
 }
 
-function readOptionalString(value: unknown): string | undefined {
-  if (typeof value !== 'string') {
-    return undefined;
-  }
-
-  const normalized = value.trim();
-  return normalized || undefined;
-}
-
-function readOptionalNumber(value: unknown): number | undefined {
-  return typeof value === 'number' ? value : undefined;
-}
-
 function readStringList(value: unknown): string[] {
   if (Array.isArray(value)) {
     return value
@@ -219,8 +224,4 @@ function readStringList(value: unknown): string[] {
 function normalizeDefinitionName(value: string | undefined): string {
   const normalized = value?.trim();
   return normalized || DEFAULT_SUBAGENT_TYPE;
-}
-
-function isRecord(value: unknown): value is Record<string, unknown> {
-  return Boolean(value) && typeof value === 'object' && !Array.isArray(value);
 }

@@ -1,6 +1,29 @@
-import {AIMessage, type BaseMessage} from '@langchain/core/messages';
+import {AIMessage, HumanMessage, type BaseMessage} from '@langchain/core/messages';
+import {z} from 'zod';
 import type {AgentState} from '@core/agents';
 import type {SessionMetadata} from '@core/sessions/types';
+import {readMessageText} from '@core/support/messages';
+
+const usageMetadataSchema = z.object({
+  input_tokens: z.number().finite().optional(),
+  prompt_tokens: z.number().finite().optional(),
+  output_tokens: z.number().finite().optional(),
+  completion_tokens: z.number().finite().optional(),
+  total_tokens: z.number().finite().optional(),
+}).loose();
+
+const contextBudgetSchema = z.object({
+  maxInputTokens: z.number().finite(),
+  availableInputTokens: z.number().finite(),
+  estimatedInputTokens: z.number().finite(),
+  overBudget: z.boolean().optional(),
+}).loose();
+
+const responseMetadataSchema = z.object({
+  codara: z.object({
+    contextBudget: contextBudgetSchema.optional(),
+  }).loose().optional(),
+}).loose();
 
 export function createSessionMetadata(
   createdAt: string,
@@ -49,7 +72,7 @@ export function updateSessionMetadataFromAgentState(
   metadata.messageCount = agentState.messages.length;
 
   const lastMessage = agentState.messages[agentState.messages.length - 1];
-  const lastText = readMessageText(lastMessage?.content);
+  const lastText = readMessageText(lastMessage);
   if (lastText) {
     metadata.lastMessage = lastText.slice(0, 200);
   } else {
@@ -57,8 +80,8 @@ export function updateSessionMetadataFromAgentState(
   }
 
   if (!metadata.title) {
-    const firstHuman = agentState.messages.find((message) => isMessageType(message, 'human'));
-    const title = readMessageText(firstHuman?.content);
+    const firstHuman = agentState.messages.find(HumanMessage.isInstance);
+    const title = readMessageText(firstHuman);
     if (title) {
       metadata.title = title.slice(0, 80);
     }
@@ -110,47 +133,6 @@ export function mergeSessionTelemetry(
   void patch.contextWindow;
 }
 
-function readMessageText(content: unknown): string | undefined {
-  if (typeof content === 'string') {
-    return content;
-  }
-
-  if (!Array.isArray(content)) {
-    return undefined;
-  }
-
-  return content
-    .flatMap((part) => {
-      if (!part || typeof part !== 'object') {
-        return [];
-      }
-
-      if ('type' in part && part.type === 'text' && 'text' in part && typeof part.text === 'string') {
-        return [part.text];
-      }
-
-      return [];
-    })
-    .join('\n')
-    .trim() || undefined;
-}
-
-function isMessageType(message: unknown, expected: string): boolean {
-  if (!message || typeof message !== 'object') {
-    return false;
-  }
-
-  if ('_getType' in message && typeof message._getType === 'function') {
-    return message._getType() === expected;
-  }
-
-  if ('type' in message && typeof message.type === 'string') {
-    return message.type === expected;
-  }
-
-  return false;
-}
-
 function readLatestUsageTotals(messages: BaseMessage[]): SessionMetadata['usage'] | undefined {
   let modelCalls = 0;
   let promptTokens = 0;
@@ -165,10 +147,14 @@ function readLatestUsageTotals(messages: BaseMessage[]): SessionMetadata['usage'
       continue;
     }
 
-    const usage = asRecord(message.usage_metadata);
-    const prompt = readNumber(usage.input_tokens) ?? readNumber(usage.prompt_tokens) ?? 0;
-    const completion = readNumber(usage.output_tokens) ?? readNumber(usage.completion_tokens) ?? 0;
-    const total = readNumber(usage.total_tokens) ?? (prompt + completion);
+    const parsed = usageMetadataSchema.safeParse(message.usage_metadata);
+    if (!parsed.success) {
+      continue;
+    }
+
+    const prompt = parsed.data.input_tokens ?? parsed.data.prompt_tokens ?? 0;
+    const completion = parsed.data.output_tokens ?? parsed.data.completion_tokens ?? 0;
+    const total = parsed.data.total_tokens ?? (prompt + completion);
 
     modelCalls += 1;
     promptTokens += prompt;
@@ -203,27 +189,18 @@ function readLatestContextWindow(
       continue;
     }
 
-    const responseMetadata = asRecord(message.response_metadata);
-    const codara = asRecord(responseMetadata.codara);
-    const snapshot = asRecord(codara.contextBudget);
-    const maxInputTokens = readNumber(snapshot.maxInputTokens);
-    const availableInputTokens = readNumber(snapshot.availableInputTokens);
-    const estimatedInputTokens = readNumber(snapshot.estimatedInputTokens);
-
-    if (
-      maxInputTokens === undefined
-      || availableInputTokens === undefined
-      || estimatedInputTokens === undefined
-    ) {
+    const parsed = responseMetadataSchema.safeParse(message.response_metadata);
+    const snapshot = parsed.success ? parsed.data.codara?.contextBudget : undefined;
+    if (!snapshot) {
       continue;
     }
 
     return {
-      maxInputTokens,
-      availableInputTokens,
-      estimatedInputTokens,
-      usagePercent: availableInputTokens > 0
-        ? Math.round((estimatedInputTokens / availableInputTokens) * 1000) / 10
+      maxInputTokens: snapshot.maxInputTokens,
+      availableInputTokens: snapshot.availableInputTokens,
+      estimatedInputTokens: snapshot.estimatedInputTokens,
+      usagePercent: snapshot.availableInputTokens > 0
+        ? Math.round((snapshot.estimatedInputTokens / snapshot.availableInputTokens) * 1000) / 10
         : 0,
       overBudget: snapshot.overBudget === true,
     };
@@ -255,37 +232,9 @@ function messagesMatch(left: BaseMessage | undefined, right: BaseMessage | undef
     return false;
   }
 
-  return readMessageType(left) === readMessageType(right)
+  return left.type === right.type
     && left.id === right.id
     && left.name === right.name
     && JSON.stringify(left.content) === JSON.stringify(right.content)
     && JSON.stringify((left as AIMessage).tool_calls ?? null) === JSON.stringify((right as AIMessage).tool_calls ?? null);
-}
-
-function readMessageType(message: BaseMessage): string | undefined {
-  const candidate = message as BaseMessage & {
-    getType?: () => string;
-    _getType?: () => string;
-    type?: string;
-  };
-
-  if (typeof candidate.getType === 'function') {
-    return candidate.getType();
-  }
-
-  if (typeof candidate._getType === 'function') {
-    return candidate._getType();
-  }
-
-  return candidate.type;
-}
-
-function asRecord(value: unknown): Record<string, unknown> {
-  return value !== null && typeof value === 'object' && !Array.isArray(value)
-    ? value as Record<string, unknown>
-    : {};
-}
-
-function readNumber(value: unknown): number | undefined {
-  return typeof value === 'number' && Number.isFinite(value) ? value : undefined;
 }

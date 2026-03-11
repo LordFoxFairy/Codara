@@ -1,6 +1,7 @@
-import {AIMessage, HumanMessage, SystemMessage, ToolMessage, type BaseMessage} from '@langchain/core/messages';
+import {HumanMessage, SystemMessage, ToolMessage, type BaseMessage} from '@langchain/core/messages';
 import type {BaseChatModel} from '@langchain/core/language_models/chat_models';
 import type {StructuredToolInterface} from '@langchain/core/tools';
+import {z} from 'zod';
 import {createAgent} from '@core/agents/engine/agent';
 import type {BaseMiddleware, HILToolMessagePayload} from '@core/middleware';
 import type {ExecutionContextMetadata} from '@core/middleware/types';
@@ -15,6 +16,44 @@ import type {
 import type {PauseRequest, ResumePayload} from '@core/agents/contract/pause';
 import type {AgentCheckpointer} from '@core/checkpoint';
 import {deepClone} from '@core/support/clone';
+import {readLatestAssistantText} from '@core/support/messages';
+
+const delegatedAgentResultSchema = z.object({
+  type: z.literal('delegated_agent_result'),
+  threadId: z.string(),
+  turns: z.number(),
+  reason: z.enum(['complete', 'error', 'max_turns']),
+  summary: z.string().optional(),
+  errorMessage: z.string().optional(),
+});
+
+const parentExecutionSchema = z.object({
+  threadId: z.string().trim().min(1),
+  runId: z.string().trim().min(1),
+  requestId: z.string().trim().min(1),
+  toolCallId: z.string().trim().min(1),
+  turn: z.number(),
+  maxTurns: z.number(),
+  toolIndex: z.number(),
+});
+
+const delegatedPauseMetadataSchema = z.object({
+  codara: z.object({
+    delegatedSubagent: z.object({
+      childThreadId: z.string().trim().min(1),
+      parentToolName: z.string().trim().min(1),
+    }).optional(),
+  }).loose().optional(),
+}).loose();
+
+const delegatedRuntimeContextSchema = z.object({
+  hil: z.object({
+    currentPause: z.object({
+      metadata: z.unknown().optional(),
+    }).loose().optional(),
+    resume: z.unknown().optional(),
+  }).loose().optional(),
+}).loose();
 
 export interface DelegatedAgentOptions {
   model: BaseChatModel;
@@ -140,38 +179,24 @@ export function markDelegationTool<TTool extends StructuredToolInterface>(tool: 
 }
 
 export function readDelegatedAgentResult(value: unknown): DelegatedAgentResult | undefined {
-  if (!value || typeof value !== 'object' || Array.isArray(value)) {
-    return undefined;
-  }
-
-  const record = value as Record<string, unknown>;
-  if (record.type !== 'delegated_agent_result') {
-    return undefined;
-  }
-
-  if (typeof record.threadId !== 'string' || typeof record.turns !== 'number' || typeof record.reason !== 'string') {
-    return undefined;
-  }
-
-  return {
-    type: 'delegated_agent_result',
-    threadId: record.threadId,
-    turns: record.turns,
-    reason: record.reason as DelegatedAgentResult['reason'],
-    ...(typeof record.summary === 'string' ? {summary: record.summary} : {}),
-    ...(typeof record.errorMessage === 'string' ? {errorMessage: record.errorMessage} : {}),
-  };
+  const parsed = delegatedAgentResultSchema.safeParse(value);
+  return parsed.success ? parsed.data : undefined;
 }
 
 export function readDelegatedParentRuntimeMetadata(
   configurable: unknown,
   toolName: string,
 ): DelegatedParentRuntimeMetadata {
-  const record = asRecord(configurable);
-  const resume = readDelegatedResumeState(record.runtimeContext, toolName);
+  const record = delegatedRuntimeContextSchema.safeParse(configurable);
+  const runtimeContext = record.success ? record.data : undefined;
+  const resume = readDelegatedResumeState(runtimeContext, toolName);
 
   return {
-    parentExecution: readParentExecution(record.execution),
+    parentExecution: readParentExecution(
+      configurable && typeof configurable === 'object' && 'execution' in configurable
+        ? configurable.execution
+        : undefined
+    ),
     ...(resume ? {resume} : {}),
   };
 }
@@ -338,56 +363,25 @@ function formatDelegatedAgentResult(result: DelegatedAgentResult): string {
 }
 
 function readLatestAssistantSummary(messages: BaseMessage[]): string | undefined {
-  for (let index = messages.length - 1; index >= 0; index -= 1) {
-    const message = messages[index];
-    if (!AIMessage.isInstance(message)) {
-      continue;
-    }
-
-    const content = stringifyMessageContent(message.content).trim();
-    if (content) {
-      return content;
-    }
-  }
-
-  return undefined;
-}
-
-function stringifyMessageContent(content: BaseMessage['content']): string {
-  if (typeof content === 'string') {
-    return content;
-  }
-
-  if (!Array.isArray(content)) {
-    return String(content ?? '');
-  }
-
-  return content.map((part) => {
-    if (typeof part === 'string') {
-      return part;
-    }
-
-    if (part && typeof part === 'object' && 'text' in part && typeof part.text === 'string') {
-      return part.text;
-    }
-
-    return JSON.stringify(part);
-  }).join('\n');
+  return readLatestAssistantText(messages);
 }
 
 function readDelegatedResumeState(
   runtimeContext: unknown,
   toolName: string,
 ): DelegatedResumeState | undefined {
-  const root = asRecord(runtimeContext);
-  const hil = asRecord(root.hil);
-  const currentPause = asRecord(hil.currentPause);
-  const delegated = readDelegatedPauseMetadata(asRecord(currentPause.metadata), toolName);
+  const parsed = delegatedRuntimeContextSchema.safeParse(runtimeContext);
+  if (!parsed.success) {
+    return undefined;
+  }
+
+  const hil = parsed.data.hil;
+  const delegated = readDelegatedPauseMetadata(hil?.currentPause?.metadata, toolName);
   if (!delegated) {
     return undefined;
   }
 
-  const payload = hil.resume;
+  const payload = hil?.resume;
   if (payload === undefined) {
     return undefined;
   }
@@ -402,8 +396,9 @@ function mergeDelegatedPauseMetadata(
   metadata: Record<string, unknown> | undefined,
   delegated: DelegatedPauseMetadata,
 ): Record<string, unknown> {
-  const base = asRecord(metadata);
-  const codara = asRecord(base.codara);
+  const parsed = delegatedPauseMetadataSchema.safeParse(metadata);
+  const base = parsed.success ? parsed.data : {};
+  const codara = base.codara ?? {};
 
   return {
     ...base,
@@ -418,13 +413,13 @@ function mergeDelegatedPauseMetadata(
 }
 
 function readDelegatedPauseMetadata(
-  metadata: Record<string, unknown> | undefined,
+  metadata: unknown,
   toolName: string,
 ): DelegatedPauseMetadata | undefined {
-  const codara = asRecord(asRecord(metadata).codara);
-  const delegated = asRecord(codara.delegatedSubagent);
-  const childThreadId = readString(delegated.childThreadId);
-  const parentToolName = readString(delegated.parentToolName);
+  const parsed = delegatedPauseMetadataSchema.safeParse(metadata);
+  const delegated = parsed.success ? parsed.data.codara?.delegatedSubagent : undefined;
+  const childThreadId = delegated?.childThreadId;
+  const parentToolName = delegated?.parentToolName;
 
   if (!childThreadId || !parentToolName || parentToolName !== toolName) {
     return undefined;
@@ -436,52 +431,14 @@ function readDelegatedPauseMetadata(
   };
 }
 
-function asRecord(value: unknown): Record<string, unknown> {
-  return value && typeof value === 'object' && !Array.isArray(value)
-    ? value as Record<string, unknown>
-    : {};
-}
-
 function readParentExecution(value: unknown): ExecutionContextMetadata & {
   toolIndex: number;
   toolCallId: string;
 } {
-  const execution = asRecord(value);
-  const threadId = readString(execution.threadId);
-  const runId = readString(execution.runId);
-  const requestId = readString(execution.requestId);
-  const toolCallId = readString(execution.toolCallId);
-  const turn = readNumber(execution.turn);
-  const maxTurns = readNumber(execution.maxTurns);
-  const toolIndex = readNumber(execution.toolIndex);
-
-  if (
-    !threadId
-    || !runId
-    || !requestId
-    || !toolCallId
-    || typeof turn !== 'number'
-    || typeof maxTurns !== 'number'
-    || typeof toolIndex !== 'number'
-  ) {
+  const parsed = parentExecutionSchema.safeParse(value);
+  if (!parsed.success) {
     throw new Error('Delegation tools require execution metadata with toolCallId and toolIndex.');
   }
 
-  return {
-    threadId,
-    runId,
-    requestId,
-    turn,
-    maxTurns,
-    toolIndex,
-    toolCallId,
-  };
-}
-
-function readString(value: unknown): string | undefined {
-  return typeof value === 'string' && value.trim() ? value : undefined;
-}
-
-function readNumber(value: unknown): number | undefined {
-  return typeof value === 'number' ? value : undefined;
+  return parsed.data;
 }

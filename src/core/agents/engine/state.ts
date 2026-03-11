@@ -257,5 +257,5 @@ interface PersistedAgentCheckpointComparableState {
 }
 
 function isChatMessageLike(value: unknown): value is BaseMessage {
-  return Boolean(value) && typeof value === 'object' && 'toDict' in (value as Record<string, unknown>);
+  return value !== null && typeof value === 'object' && 'toDict' in value;
 }

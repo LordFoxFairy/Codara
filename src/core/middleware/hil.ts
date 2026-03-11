@@ -68,7 +68,67 @@ const hilUIConfigSchema = z.object({
   tab: z.string().optional(),
   modal: z.string().optional(),
   actions: z.array(hilUIActionOptionSchema).optional(),
-}).passthrough();
+}).loose();
+
+const recordSchema = z.record(z.string(), z.unknown());
+const hilContextConfigSchema = z.object({
+  interruptOn: z.record(z.string(), z.any()).optional(),
+  descriptionPrefix: z.string().optional(),
+  hil: z.unknown().optional(),
+  resumes: recordSchema.optional(),
+  resume: z.unknown().optional(),
+}).loose();
+const interruptConfigValueSchema = z.object({
+  description: z.union([z.string(), z.custom<HILDescriptionFactory>((value) => typeof value === 'function')]).optional(),
+  channel: z.string().optional(),
+  ui: hilUIConfigSchema.optional(),
+  metadata: recordSchema.optional(),
+  allowedDecisions: z.array(z.enum(['approve', 'edit', 'reject'])).optional(),
+}).loose();
+const hilResumeActionPayloadSchema = z.object({
+  decision: z.enum(['approve', 'edit', 'reject']).optional(),
+  action: z.string().trim().min(1).optional(),
+  scope: z.string().trim().min(1).optional(),
+  comment: z.string().trim().min(1).optional(),
+  editedToolName: z.string().trim().min(1).optional(),
+  editedToolArgs: recordSchema.optional(),
+  metadata: recordSchema.optional(),
+}).loose();
+const pauseRequestSchema = z.object({
+  id: z.string(),
+  description: z.string(),
+  action: z.object({
+    toolCallId: z.string(),
+    toolName: z.string(),
+  }).loose(),
+  review: z.unknown(),
+  runtime: z.object({
+    runId: z.string(),
+    turn: z.number(),
+    requestId: z.string(),
+    toolIndex: z.number(),
+  }).loose(),
+  channel: z.string().optional(),
+  ui: hilUIConfigSchema.optional(),
+  metadata: recordSchema.optional(),
+}).loose().transform((value) => value as unknown as PauseRequest);
+const hilPauseToolMessagePayloadSchema = z.object({
+  type: z.literal('hil_pause'),
+  request: pauseRequestSchema,
+});
+const hilDenyToolMessagePayloadSchema = z.object({
+  type: z.literal('hil_deny'),
+  reason: z.string(),
+  metadata: recordSchema,
+  action: z.object({
+    toolCallId: z.string(),
+    toolName: z.string(),
+  }),
+});
+const hilToolMessagePayloadSchema = z.union([
+  hilPauseToolMessagePayloadSchema,
+  hilDenyToolMessagePayloadSchema,
+]);
 
 /**
  * Generic resume payload shape used by higher-level interaction layers.
@@ -167,11 +227,11 @@ const DEFAULT_NAME = 'HumanInTheLoopMiddleware';
 const DEFAULT_DESCRIPTION_PREFIX = 'Tool execution paused for human interaction';
 const DEFAULT_ALLOWED_DECISIONS: PauseReviewDecision[] = ['approve', 'edit', 'reject'];
 
-const contextSchema = z.looseObject({
+const contextSchema = z.object({
   interruptOn: z.record(z.string(), z.any()).optional(),
   descriptionPrefix: z.string().optional(),
   hil: z.record(z.string(), z.any()).optional(),
-});
+}).loose();
 
 /**
  * Generic Human-in-the-Loop middleware.
@@ -246,21 +306,21 @@ function resolveEffectiveConfig(options: HILMiddlewareOptions, runtimeContext: u
 }
 
 function extractRuntimeHILOverrides(runtimeContext: unknown): HILContextConfig {
-  if (!isRecord(runtimeContext)) {
+  const root = hilContextConfigSchema.safeParse(runtimeContext);
+  if (!root.success) {
     return {};
   }
 
-  // Support both `context.hil.{...}` and top-level fallback.
-  const preferred = isRecord(runtimeContext.hil) ? runtimeContext.hil : runtimeContext;
+  const nested = contextSchema.safeParse(root.data.hil);
+  const preferred = nested.success ? nested.data : root.data;
   const parsed = contextSchema.safeParse(preferred);
   if (!parsed.success) {
     return {};
   }
 
-  const data = parsed.data as Record<string, unknown>;
   return {
-    interruptOn: isRecord(data.interruptOn) ? (data.interruptOn as HILInterruptOn) : undefined,
-    descriptionPrefix: typeof data.descriptionPrefix === 'string' ? data.descriptionPrefix : undefined,
+    interruptOn: parsed.data.interruptOn as HILInterruptOn | undefined,
+    descriptionPrefix: parsed.data.descriptionPrefix,
   };
 }
 
@@ -279,43 +339,17 @@ function resolveInterruptConfig(toolName: string, interruptOn: HILInterruptOn | 
     return {};
   }
 
-  if (!isRecord(rawValue)) {
+  const parsed = interruptConfigValueSchema.safeParse(rawValue);
+  if (!parsed.success) {
     throw new Error(`Invalid interruptOn config for tool "${toolName}"`);
   }
 
-  const raw = rawValue as Record<string, unknown>;
-
-  const description = raw.description;
-  if (description !== undefined && typeof description !== 'string' && typeof description !== 'function') {
-    throw new Error(`interruptOn.${toolName}.description must be a string or function`);
-  }
-
-  const channel = raw.channel;
-  if (channel !== undefined && typeof channel !== 'string') {
-    throw new Error(`interruptOn.${toolName}.channel must be a string`);
-  }
-
-  const ui = raw.ui;
-  if (ui !== undefined && !isHILUIConfig(ui)) {
-    throw new Error(`interruptOn.${toolName}.ui must be an object`);
-  }
-
-  const metadata = raw.metadata;
-  if (metadata !== undefined && !isRecord(metadata)) {
-    throw new Error(`interruptOn.${toolName}.metadata must be an object`);
-  }
-
-  const allowedDecisions = raw.allowedDecisions;
-  if (allowedDecisions !== undefined && !isHILReviewDecisions(allowedDecisions)) {
-    throw new Error(`interruptOn.${toolName}.allowedDecisions must be an array of approve/edit/reject`);
-  }
-
   return {
-    ...(description !== undefined ? {description: description as string | HILDescriptionFactory} : {}),
-    ...(channel !== undefined ? {channel} : {}),
-    ...(ui !== undefined ? {ui} : {}),
-    ...(metadata !== undefined ? {metadata: metadata as Record<string, unknown>} : {}),
-    ...(allowedDecisions !== undefined ? {allowedDecisions: [...allowedDecisions]} : {}),
+    ...(parsed.data.description !== undefined ? {description: parsed.data.description} : {}),
+    ...(parsed.data.channel !== undefined ? {channel: parsed.data.channel} : {}),
+    ...(parsed.data.ui !== undefined ? {ui: parsed.data.ui} : {}),
+    ...(parsed.data.metadata !== undefined ? {metadata: parsed.data.metadata} : {}),
+    ...(parsed.data.allowedDecisions !== undefined ? {allowedDecisions: [...parsed.data.allowedDecisions]} : {}),
   };
 }
 
@@ -501,26 +535,27 @@ function defaultDenyMessageFactory(decision: HILDenyDecision, context: ToolCallC
 }
 
 function defaultResumeResolver(request: PauseRequest, context: ToolCallContext): ResumePayload | undefined {
-  const root = context.runtime.context;
-  if (!isRecord(root)) {
+  const root = hilContextConfigSchema.safeParse(context.runtime.context);
+  if (!root.success) {
     return undefined;
   }
 
-  const hil = isRecord(root.hil) ? root.hil : root;
+  const nested = hilContextConfigSchema.safeParse(root.data.hil);
+  const hil = nested.success ? nested.data : root.data;
+  const resumes = recordSchema.catch({}).parse(hil.resumes);
 
   // 1) exact map by pause id
-  const resumes = hil.resumes;
-  if (hasOwnRecordKey(resumes, request.id)) {
+  if (Object.prototype.hasOwnProperty.call(resumes, request.id)) {
     return resumes[request.id];
   }
 
   // 2) map by tool call id
-  if (hasOwnRecordKey(resumes, request.action.toolCallId)) {
+  if (Object.prototype.hasOwnProperty.call(resumes, request.action.toolCallId)) {
     return resumes[request.action.toolCallId];
   }
 
   // 3) single resume payload
-  if (hasOwnRecordKey(hil, 'resume')) {
+  if (Object.prototype.hasOwnProperty.call(hil, 'resume')) {
     return hil.resume;
   }
 
@@ -532,22 +567,8 @@ function defaultResumeResolver(request: PauseRequest, context: ToolCallContext):
  * This keeps UI-specific transport formats out of middleware handlers.
  */
 export function parseHILResumeActionPayload(payload: ResumePayload): HILResumeActionPayload {
-  if (!isRecord(payload)) {
-    return {};
-  }
-
-  const editedToolArgs = isRecord(payload.editedToolArgs) ? payload.editedToolArgs : undefined;
-  const metadata = isRecord(payload.metadata) ? payload.metadata : undefined;
-
-  return {
-    decision: isHILReviewDecision(payload.decision) ? payload.decision : undefined,
-    action: parseOptionalNonEmptyString(payload.action),
-    scope: parseOptionalNonEmptyString(payload.scope),
-    comment: parseOptionalNonEmptyString(payload.comment),
-    editedToolName: parseOptionalNonEmptyString(payload.editedToolName),
-    ...(editedToolArgs ? {editedToolArgs} : {}),
-    ...(metadata ? {metadata} : {}),
-  };
+  const parsed = hilResumeActionPayloadSchema.safeParse(payload);
+  return parsed.success ? parsed.data : {};
 }
 
 /**
@@ -590,12 +611,8 @@ export function parseHILToolMessagePayload(content: unknown): HILToolMessagePayl
   }
 
   try {
-    const parsed = JSON.parse(raw) as unknown;
-    if (!isHILToolMessagePayload(parsed)) {
-      return undefined;
-    }
-
-    return parsed;
+    const parsed = hilToolMessagePayloadSchema.safeParse(JSON.parse(raw));
+    return parsed.success ? parsed.data as HILToolMessagePayload : undefined;
   } catch {
     return undefined;
   }
@@ -626,7 +643,7 @@ function resolveToolCallId(toolCall: ToolCall, toolIndex: number): string {
 }
 
 function normalizeArgs(args: unknown): Record<string, unknown> {
-  return isRecord(args) ? args : {};
+  return recordSchema.catch({}).parse(args);
 }
 
 function buildPauseObservabilityMetadata(request: PauseRequest): HILObservabilityMetadata {
@@ -677,54 +694,4 @@ function normalizeAllowedDecisions(allowedDecisions: PauseReviewDecision[] | und
   }
 
   return unique;
-}
-
-function parseOptionalNonEmptyString(value: unknown): string | undefined {
-  if (typeof value !== 'string') {
-    return undefined;
-  }
-
-  const normalized = value.trim();
-  return normalized.length > 0 ? normalized : undefined;
-}
-
-function isRecord(value: unknown): value is Record<string, unknown> {
-  return typeof value === 'object' && value !== null;
-}
-
-function hasOwnRecordKey(record: unknown, key: string): record is Record<string, unknown> {
-  return isRecord(record) && Object.prototype.hasOwnProperty.call(record, key);
-}
-
-function isHILReviewDecision(value: unknown): value is PauseReviewDecision {
-  return value === 'approve' || value === 'edit' || value === 'reject';
-}
-
-function isHILReviewDecisions(value: unknown): value is PauseReviewDecision[] {
-  return Array.isArray(value) && value.every((item) => isHILReviewDecision(item));
-}
-
-function isHILPauseMessagePayload(value: unknown): value is Extract<HILToolMessagePayload, {type: 'hil_pause'}> {
-  return isRecord(value)
-    && value.type === 'hil_pause'
-    && isRecord(value.request)
-    && typeof value.request.id === 'string';
-}
-
-function isHILDenyMessagePayload(value: unknown): value is Extract<HILToolMessagePayload, {type: 'hil_deny'}> {
-  return isRecord(value)
-    && value.type === 'hil_deny'
-    && typeof value.reason === 'string'
-    && isRecord(value.metadata)
-    && isRecord(value.action)
-    && typeof value.action.toolCallId === 'string'
-    && typeof value.action.toolName === 'string';
-}
-
-function isHILToolMessagePayload(value: unknown): value is HILToolMessagePayload {
-  return isHILPauseMessagePayload(value) || isHILDenyMessagePayload(value);
-}
-
-function isHILUIConfig(value: unknown): value is PauseUIConfig {
-  return hilUIConfigSchema.safeParse(value).success;
 }

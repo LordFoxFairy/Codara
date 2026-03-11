@@ -13,7 +13,6 @@ import {
   type SkillsRuntimeData,
   type SubagentDefinition,
 } from '@core/instructions/skills/runtime';
-import type {MiddlewareRuntimeShared} from '@core/middleware';
 import {filterToolsByReferences} from '@core/tools';
 import {createAgentMemoryCheckpointer} from '@core/checkpoint';
 
@@ -30,6 +29,9 @@ const TaskToolInputSchema = z.object({
   subagent_type: z.string().optional().describe('Subagent definition name, such as "general-purpose", "Explore", or "Plan"'),
   max_turns: z.number().int().positive().max(100).optional().describe('Optional max turns for the delegated subagent'),
 });
+const taskToolConfigSchema = z.object({
+  configurable: z.record(z.string(), z.unknown()).optional(),
+}).loose();
 
 type TaskToolInput = z.infer<typeof TaskToolInputSchema>;
 
@@ -46,10 +48,10 @@ export function createTaskTool(options: CreateTaskToolOptions): StructuredToolIn
 
   return markDelegationTool(tool(
     async ({prompt, subagent_type, max_turns}: TaskToolInput, config) => {
-      const configurable = asRecord(config?.configurable);
+      const configurable = taskToolConfigSchema.parse(config).configurable ?? {};
       const delegated = readDelegatedParentRuntimeMetadata(configurable, TASK_TOOL_NAME);
       const profile = resolveSubagentDefinition(
-        readAgentSkillsRuntime(configurable.runtimeShared),
+        readSkillsRuntimeData(configurable.runtimeShared),
         subagent_type,
       );
       return runDelegatedAgent({
@@ -109,20 +111,6 @@ function resolveDefinitionTools(
   }
 
   return filterToolsByReferences(tools, definition.tools);
-}
-
-function readAgentSkillsRuntime(value: unknown) {
-  if (!value || typeof value !== 'object' || Array.isArray(value)) {
-    return undefined;
-  }
-
-  return readSkillsRuntimeData(value as MiddlewareRuntimeShared);
-}
-
-function asRecord(value: unknown): Record<string, unknown> {
-  return value && typeof value === 'object' && !Array.isArray(value)
-    ? value as Record<string, unknown>
-    : {};
 }
 
 function formatAvailableSubagents(runtime: SkillsRuntimeData | undefined): string | undefined {

@@ -1,4 +1,4 @@
-import {AIMessage, AIMessageChunk} from '@langchain/core/messages';
+import {AIMessage, AIMessageChunk, BaseMessage} from '@langchain/core/messages';
 import type {StructuredToolInterface} from '@langchain/core/tools';
 import type {BaseMiddleware} from '@core/middleware';
 import {MiddlewarePipeline} from '@core/middleware/pipeline';
@@ -141,8 +141,13 @@ function bindModelTools(
 }
 
 function readMessageType(message: unknown): string {
-  if (message && typeof message === 'object' && '_getType' in message && typeof message._getType === 'function') {
-    return String(message._getType());
+  if (AIMessageChunk.isInstance(message) || BaseMessage.isInstance(message)) {
+    return message.type;
   }
+
+  if (message && typeof message === 'object' && 'type' in message && typeof message.type === 'string') {
+    return message.type;
+  }
+
   return typeof message;
 }

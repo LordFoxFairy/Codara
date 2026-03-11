@@ -1,5 +1,6 @@
 import type {BaseMessage} from '@langchain/core/messages';
 import {HumanMessage, ToolMessage} from '@langchain/core/messages';
+import {z} from 'zod';
 import type {
   AgentInput,
   AgentMessagesInput,
@@ -8,6 +9,8 @@ import type {
 import {parseHILToolMessagePayload} from '@core/middleware/hil';
 import type {PauseRequest, ResumePayload} from '@core/agents/contract/pause';
 import {deepClone} from '@core/support/clone';
+
+const recordSchema = z.record(z.string(), z.unknown());
 
 export function normalizeAgentInput(input: AgentInput): BaseMessage[] {
   if (input === undefined) {
@@ -52,9 +55,9 @@ export function injectResumePayload(
   payload: ResumePayload
 ): AgentRuntimeContext {
   const nextContext = mergeContext({}, context);
-  const root = ensureRecord(nextContext);
-  const rawHil = ensureRecord(root.hil);
-  const rawResumes = ensureRecord(rawHil.resumes);
+  const root = recordSchema.catch({}).parse(nextContext);
+  const rawHil = recordSchema.catch({}).parse(root.hil);
+  const rawResumes = recordSchema.catch({}).parse(rawHil.resumes);
 
   root.hil = {
     ...rawHil,
@@ -78,19 +81,13 @@ export function mergeContext(base: AgentRuntimeContext, overrides: AgentRuntimeC
   const merged: AgentRuntimeContext = {...base};
   for (const [key, value] of Object.entries(overrides)) {
     const previous = merged[key];
-    if (isPlainRecord(previous) && isPlainRecord(value)) {
-      merged[key] = {...previous, ...value};
+    const previousRecord = recordSchema.safeParse(previous);
+    const nextRecord = recordSchema.safeParse(value);
+    if (previousRecord.success && nextRecord.success) {
+      merged[key] = {...previousRecord.data, ...nextRecord.data};
     } else {
       merged[key] = value;
     }
   }
   return merged;
-}
-
-function ensureRecord(value: unknown): Record<string, unknown> {
-  return isPlainRecord(value) ? value : {};
-}
-
-function isPlainRecord(value: unknown): value is Record<string, unknown> {
-  return Boolean(value) && typeof value === 'object' && !Array.isArray(value);
 }

@@ -224,8 +224,11 @@ export function parseMarkdownFrontmatterDocument(
       console.warn(`Skipping ${skillPath}: frontmatter is not a mapping`)
       return null
     }
+    const frontmatter = Object.fromEntries(
+      Object.entries(parsed).map(([key, value]) => [String(key), value])
+    )
     return {
-      frontmatter: parsed as Record<string, unknown>,
+      frontmatter,
       body: match[2] ?? ''
     }
   } catch (error) {

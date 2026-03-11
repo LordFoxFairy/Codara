@@ -1,4 +1,5 @@
 import {AIMessage, SystemMessage, type BaseMessage} from '@langchain/core/messages';
+import {z} from 'zod';
 import {readExecutionMetadata, type ModelCallContext} from '@core/middleware';
 import type {AgentStreamWriter} from '@core/agents/engine/stream-writer';
 import {chunkToMessage, toMessageChunk} from '@core/agents/engine/runtime';
@@ -6,6 +7,7 @@ import type {AgentRuntime, AgentRunContext} from '@core/agents/loop/run';
 
 const CODARA_KEY = 'codara';
 const CONTEXT_BUDGET_KEY = 'contextBudget';
+const responseMetadataSchema = z.record(z.string(), z.unknown()).catch({});
 
 export async function runModelStep(
   runtime: AgentRuntime,
@@ -71,8 +73,8 @@ function attachContextBudgetMetadata(
     return message;
   }
 
-  const responseMetadata = asRecord(message.response_metadata);
-  const codara = asRecord(responseMetadata[CODARA_KEY]);
+  const responseMetadata = responseMetadataSchema.parse(message.response_metadata);
+  const codara = responseMetadataSchema.parse(responseMetadata[CODARA_KEY]);
 
   return new AIMessage({
     content: message.content,
@@ -90,10 +92,4 @@ function attachContextBudgetMetadata(
       },
     },
   });
-}
-
-function asRecord(value: unknown): Record<string, unknown> {
-  return value && typeof value === 'object' && !Array.isArray(value)
-    ? {...(value as Record<string, unknown>)}
-    : {};
 }

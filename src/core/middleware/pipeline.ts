@@ -9,6 +9,7 @@
 
 import type {AIMessage, ToolMessage} from '@langchain/core/messages';
 import type {StructuredToolInterface} from '@langchain/core/tools';
+import {z} from 'zod';
 import type {AgentRuntimeContext} from '@core/agents/contract/agent';
 import {applyAgentStateUpdate} from '@core/agents/command';
 import {
@@ -24,6 +25,8 @@ import {
   type ToolCallContext,
   type ToolCallHandler
 } from '@core/middleware/types';
+
+const recordSchema = z.record(z.string(), z.unknown());
 
 export class MiddlewarePipeline {
   private readonly middlewares: ReadonlyArray<BaseMiddleware>;
@@ -73,11 +76,12 @@ export class MiddlewarePipeline {
       }
 
       const parsed = schema.safeParse({});
-      if (!parsed.success || !isPlainRecord(parsed.data)) {
+      const defaults = parsed.success ? recordSchema.safeParse(parsed.data) : {success: false} as const;
+      if (!defaults.success) {
         return values;
       }
 
-      return {...values, ...parsed.data};
+      return {...values, ...defaults.data};
     }, {});
 
     return this.normalizeValues({...defaults, ...cloneRecord(seed)});
@@ -97,13 +101,14 @@ export class MiddlewarePipeline {
         throw new Error(`Middleware "${middleware.name}" state validation failed: ${parsed.error.message}`);
       }
 
-      if (!isPlainRecord(parsed.data)) {
+      const nextState = recordSchema.safeParse(parsed.data);
+      if (!nextState.success) {
         continue;
       }
 
       normalized = {
         ...normalized,
-        ...parsed.data,
+        ...nextState.data,
       };
     }
 
@@ -282,10 +287,6 @@ async function runWrappedStage<TContext, TResult>(
 function createStageError(middlewareName: string, stage: MiddlewareStageName, error: unknown): MiddlewareError {
   const sourceError = error instanceof Error ? error : new Error(String(error));
   return new MiddlewareError(middlewareName, stage, sourceError);
-}
-
-function isPlainRecord(value: unknown): value is Record<string, unknown> {
-  return Boolean(value) && typeof value === 'object' && !Array.isArray(value);
 }
 
 function cloneRecord<T extends Record<string, unknown>>(value: T): T {

@@ -3,6 +3,7 @@ import {
   mapStoredMessagesToChatMessages,
   type BaseMessage,
 } from '@langchain/core/messages';
+import {z} from 'zod';
 import {FileCheckpointer} from '@core/checkpoint/file';
 import {InMemoryCheckpointer} from '@core/checkpoint/in-memory';
 import type {CheckpointRecord, Checkpointer} from '@core/checkpoint';
@@ -54,6 +55,24 @@ export interface AgentFileCheckpointerOptions {
   rootDir: string;
 }
 
+const checkpointStateSchema = z.object({
+  agentType: z.enum(['main', 'subagent']).catch('main'),
+  messages: z.array(z.unknown()).catch([]),
+  context: z.record(z.string(), z.unknown()).catch({}),
+  values: z.record(z.string(), z.unknown()).catch({}),
+  pendingPause: z.record(z.string(), z.unknown()).optional(),
+}).loose();
+
+const checkpointInfoSchema = z.object({
+  source: z.enum(['invoke', 'resume', 'reset', 'dispose', 'manual', 'fork']).catch('manual'),
+  status: z.enum(['idle', 'paused', 'closed', 'error']).catch('idle'),
+  reason: z.enum(['complete', 'error', 'max_turns']).optional(),
+  turns: z.number().optional(),
+  errorMessage: z.string().optional(),
+  step: z.number().catch(0),
+  createdAt: z.string().catch(new Date(0).toISOString()),
+}).loose();
+
 export function createAgentMemoryCheckpointer(): AgentCheckpointer {
   return new InMemoryCheckpointer<AgentCheckpointState, AgentCheckpointInfo>({
     state: {
@@ -92,18 +111,17 @@ function serializeAgentCheckpointState(state: AgentCheckpointState): PersistedAg
 }
 
 function deserializeAgentCheckpointState(raw: unknown): AgentCheckpointState {
-  const record = ensureRecord(raw);
-  const storedMessages = Array.isArray(record.messages) ? record.messages : [];
+  const record = checkpointStateSchema.parse(raw);
   const messages = mapStoredMessagesToChatMessages(
-    storedMessages as Parameters<typeof mapStoredMessagesToChatMessages>[0]
+    record.messages as Parameters<typeof mapStoredMessagesToChatMessages>[0]
   );
 
   return {
-    agentType: parseAgentType(record.agentType),
+    agentType: record.agentType,
     messages: messages as BaseMessage[],
-    context: deepClone(asCheckpointContext(record.context)),
-    values: deepClone(asCheckpointValues(record.values)),
-    ...(isPlainRecord(record.pendingPause)
+    context: deepClone(record.context) as AgentCheckpointContext,
+    values: deepClone(record.values) as AgentCheckpointValues,
+    ...(record.pendingPause
       ? {pendingPause: deepClone(record.pendingPause) as unknown as PauseRequest}
       : {}),
   };
@@ -114,60 +132,14 @@ function serializeAgentCheckpointInfo(info: AgentCheckpointInfo): AgentCheckpoin
 }
 
 function deserializeAgentCheckpointInfo(raw: unknown): AgentCheckpointInfo {
-  const record = ensureRecord(raw);
+  const record = checkpointInfoSchema.parse(raw);
   return {
-    source: parseSource(record.source),
-    status: parseStatus(record.status),
-    ...(typeof record.reason === 'string' ? {reason: record.reason as AgentCheckpointInfo['reason']} : {}),
-    ...(typeof record.turns === 'number' ? {turns: record.turns} : {}),
-    ...(typeof record.errorMessage === 'string' ? {errorMessage: record.errorMessage} : {}),
-    step: typeof record.step === 'number' ? record.step : 0,
-    createdAt: typeof record.createdAt === 'string' ? record.createdAt : new Date(0).toISOString(),
+    source: record.source,
+    status: record.status,
+    ...(record.reason ? {reason: record.reason} : {}),
+    ...(record.turns !== undefined ? {turns: record.turns} : {}),
+    ...(record.errorMessage ? {errorMessage: record.errorMessage} : {}),
+    step: record.step,
+    createdAt: record.createdAt,
   };
-}
-
-function parseSource(value: unknown): AgentCheckpointInfo['source'] {
-  switch (value) {
-    case 'invoke':
-    case 'resume':
-    case 'reset':
-    case 'dispose':
-    case 'manual':
-    case 'fork':
-      return value;
-    default:
-      return 'manual';
-  }
-}
-
-function parseStatus(value: unknown): AgentCheckpointInfo['status'] {
-  switch (value) {
-    case 'idle':
-    case 'paused':
-    case 'closed':
-    case 'error':
-      return value;
-    default:
-      return 'idle';
-  }
-}
-
-function parseAgentType(value: unknown): AgentType {
-  return value === 'subagent' ? 'subagent' : 'main';
-}
-
-function asCheckpointContext(value: unknown): AgentCheckpointContext {
-  return isPlainRecord(value) ? (deepClone(value) as AgentCheckpointContext) : {};
-}
-
-function asCheckpointValues(value: unknown): AgentCheckpointValues {
-  return isPlainRecord(value) ? (deepClone(value) as AgentCheckpointValues) : {};
-}
-
-function ensureRecord(value: unknown): Record<string, unknown> {
-  return isPlainRecord(value) ? value : {};
-}
-
-function isPlainRecord(value: unknown): value is Record<string, unknown> {
-  return Boolean(value) && typeof value === 'object' && !Array.isArray(value);
 }

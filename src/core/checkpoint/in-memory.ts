@@ -153,7 +153,7 @@ function cloneValue<T>(value: T): T {
     }
 
     if (value && typeof value === 'object') {
-      return {...(value as Record<string, unknown>)} as T;
+      return {...value} as T;
     }
 
     return value;

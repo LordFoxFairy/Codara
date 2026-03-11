@@ -1,4 +1,5 @@
-import {SystemMessage, type BaseMessage} from '@langchain/core/messages';
+import {SystemMessage, ToolMessage, type BaseMessage} from '@langchain/core/messages';
+import {z} from 'zod';
 import type {AgentInputBudget, AgentRuntimeContext} from '@core/agents';
 import {createMiddleware, readExecutionMetadata, type BaseMiddleware, type BeforeModelContext} from '@core/middleware/types';
 
@@ -10,6 +11,17 @@ const CODARA_KEY = 'codara';
 const SUMMARY_KEY = 'summary';
 const SUMMARY_HEADER = '# Conversation Summary';
 const SUMMARY_INTRO = 'The following summary captures earlier conversation context that has been compacted.';
+const summaryMetadataSchema = z.object({
+  content: z.string().trim().min(1),
+  updatedAt: z.string().optional(),
+  summarizedMessages: z.number().optional(),
+}).loose();
+
+const additionalSummarySchema = z.object({
+  codara: z.object({
+    summary: summaryMetadataSchema.optional(),
+  }).loose().optional(),
+}).loose();
 
 export interface ContextBudgetSnapshot {
   maxInputTokens: number;
@@ -251,8 +263,13 @@ function splitSummaryState(messages: BaseMessage[]): {
   const leadingSystemMessages: SystemMessage[] = [];
   let index = 0;
 
-  while (index < messages.length && isMessageType(messages[index], 'system')) {
-    leadingSystemMessages.push(messages[index] as SystemMessage);
+  while (index < messages.length) {
+    const message = messages[index];
+    if (!SystemMessage.isInstance(message)) {
+      break;
+    }
+
+    leadingSystemMessages.push(message);
     index += 1;
   }
 
@@ -278,7 +295,7 @@ function splitSummaryState(messages: BaseMessage[]): {
 function resolveRecentStart(messages: BaseMessage[], keepLastMessages: number): number {
   let start = Math.max(0, messages.length - keepLastMessages);
 
-  while (start > 0 && isMessageType(messages[start], 'tool')) {
+  while (start > 0 && ToolMessage.isInstance(messages[start])) {
     start -= 1;
   }
 
@@ -287,12 +304,12 @@ function resolveRecentStart(messages: BaseMessage[], keepLastMessages: number): 
 
 function readSummaryMessage(messages: BaseMessage[]): SystemMessage | undefined {
   for (const message of messages) {
-    if (!isMessageType(message, 'system')) {
+    if (!SystemMessage.isInstance(message)) {
       break;
     }
 
     if (parseSummaryVisibleContent(message.content) || readSummaryMetadata(message)) {
-      return message as SystemMessage;
+      return message;
     }
   }
 
@@ -343,20 +360,16 @@ function parseSummaryVisibleContent(content: unknown): string | undefined {
 }
 
 function readSummaryMetadata(message: BaseMessage): SummaryRecord | undefined {
-  const additional = 'additional_kwargs' in message
-    ? asRecord((message as {additional_kwargs?: unknown}).additional_kwargs)
-    : {};
-  const codara = asRecord(additional[CODARA_KEY]);
-  const summary = asRecord(codara[SUMMARY_KEY]);
-  const content = typeof summary.content === 'string' ? summary.content.trim() : '';
-  if (!content) {
+  const parsed = additionalSummarySchema.safeParse(message.additional_kwargs);
+  const summary = parsed.success ? parsed.data.codara?.summary : undefined;
+  if (!summary) {
     return undefined;
   }
 
   return {
-    content,
-    updatedAt: typeof summary.updatedAt === 'string' ? summary.updatedAt : new Date().toISOString(),
-    summarizedMessages: typeof summary.summarizedMessages === 'number' ? summary.summarizedMessages : 0,
+    content: summary.content,
+    updatedAt: summary.updatedAt ?? new Date().toISOString(),
+    summarizedMessages: summary.summarizedMessages ?? 0,
   };
 }
 
@@ -399,13 +412,10 @@ function estimateTextTokens(text: string): number {
 
 function serializeMessageContent(message: BaseMessage): string {
   const parts: string[] = [];
+  const text = message.text.trim();
 
-  if (typeof message.content === 'string') {
-    parts.push(message.content);
-  } else if (Array.isArray(message.content)) {
-    parts.push(JSON.stringify(message.content));
-  } else if (message.content !== undefined && message.content !== null) {
-    parts.push(String(message.content));
+  if (text) {
+    parts.push(text);
   }
 
   if ('tool_calls' in message && Array.isArray((message as {tool_calls?: unknown[]}).tool_calls)) {
@@ -417,20 +427,4 @@ function serializeMessageContent(message: BaseMessage): string {
   }
 
   return parts.join('\n');
-}
-
-function isMessageType(message: BaseMessage | undefined, type: string): boolean {
-  if (!message || typeof message !== 'object') {
-    return false;
-  }
-
-  if ('type' in message && typeof (message as {type?: unknown}).type === 'string') {
-    return (message as {type: string}).type === type;
-  }
-
-  return type === 'system' ? SystemMessage.isInstance(message) : false;
-}
-
-function asRecord(value: unknown): Record<string, unknown> {
-  return value && typeof value === 'object' && !Array.isArray(value) ? {...(value as Record<string, unknown>)} : {};
 }
