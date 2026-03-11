@@ -5,7 +5,7 @@ import {
 } from '@langchain/core/messages';
 import {FileCheckpointer} from '@core/checkpoint/file';
 import {InMemoryCheckpointer} from '@core/checkpoint/in-memory';
-import type {CheckpointRecord, Checkpointer} from '@core/checkpoint/types';
+import type {CheckpointRecord, Checkpointer} from '@core/checkpoint';
 import type {PauseRequest} from '@core/agents/contract/pause';
 import type {AgentType} from '@core/agents/contract/agent';
 import {deepClone} from '@core/support/clone';

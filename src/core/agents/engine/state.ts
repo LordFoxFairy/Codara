@@ -17,7 +17,7 @@ import type {
   AgentCheckpointInfo,
   AgentCheckpointStatus,
   AgentCheckpointSummary,
-} from '@core/checkpoint/state';
+} from '@core/checkpoint';
 import type {PauseRequest} from '@core/agents/contract/pause';
 import {deepClone} from '@core/support/clone';
 

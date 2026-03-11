@@ -1,4 +1,4 @@
-import type {AgentCheckpoint, AgentCheckpointInfo, AgentCheckpointer} from '@core/checkpoint/state';
+import type {AgentCheckpoint, AgentCheckpointInfo, AgentCheckpointer} from '@core/checkpoint';
 import type {AgentResult, AgentState} from '@core/agents/contract/agent';
 import {
   restoreCheckpointMetadata,
