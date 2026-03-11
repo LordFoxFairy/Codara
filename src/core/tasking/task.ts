@@ -3,6 +3,7 @@ import {z} from 'zod';
 import {createMiddleware, type BaseMiddleware} from '@core/middleware';
 import {
   type CreateSubagentToolOptions,
+  markDelegationTool,
   readDelegatedParentRuntimeMetadata,
   runDelegatedAgent,
 } from '@core/tasking/subagent';
@@ -43,7 +44,7 @@ export interface CreateTaskMiddlewareOptions extends CreateTaskToolOptions {
 export function createTaskTool(options: CreateTaskToolOptions): StructuredToolInterface {
   const delegatedCheckpointer = options.checkpointer ?? createAgentMemoryCheckpointer();
 
-  return tool(
+  return markDelegationTool(tool(
     async ({prompt, subagent_type, max_turns}: TaskToolInput, config) => {
       const configurable = readConfigurable(config?.configurable);
       const delegated = readDelegatedParentRuntimeMetadata(configurable, TASK_TOOL_NAME);
@@ -68,7 +69,7 @@ export function createTaskTool(options: CreateTaskToolOptions): StructuredToolIn
       description: options.description ?? TASK_TOOL_DESCRIPTION,
       schema: TaskToolInputSchema,
     },
-  );
+  ));
 }
 
 export const TASK_MIDDLEWARE_SYSTEM_PROMPT = `## Task Delegation

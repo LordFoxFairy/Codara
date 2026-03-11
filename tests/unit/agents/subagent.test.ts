@@ -5,7 +5,13 @@ import {tool, type StructuredToolInterface} from '@langchain/core/tools';
 import {z} from 'zod';
 import {createAgent} from '@core/agents';
 import {createHILMiddleware, createMiddleware} from '@core/middleware';
-import {createSubagentTool, DEFAULT_SUBAGENT_TOOL_NAME, readDelegatedAgentResult} from '@core/tasking';
+import {
+  createSubagentTool,
+  createTaskTool,
+  DEFAULT_SUBAGENT_TOOL_NAME,
+  TASK_TOOL_NAME,
+  readDelegatedAgentResult,
+} from '@core/tasking';
 import {createAgentMemoryCheckpointer} from '@core/checkpoint';
 
 class ScriptedModel {
@@ -136,36 +142,47 @@ describe('createSubagentTool', () => {
     expect(childModel.boundToolNames).toEqual(['echo']);
   });
 
-  it('应基于 agentType 阻止不同名字的 subagent tool 继续派发', async () => {
+  it('应在子代理中移除所有 delegation tools，而不是依赖 agentType 运行时兜底', async () => {
     const nestedToolName = 'spawn_research_agent';
-    const childModel = new ScriptedModel([
+    const parentModel = new ScriptedModel([
       new AIMessage({
         content: '',
         tool_calls: [{
-          id: 'call_nested_subagent',
-          name: nestedToolName,
-          args: {prompt: 'nested'},
+          id: 'call_subagent_capability_filter',
+          name: DEFAULT_SUBAGENT_TOOL_NAME,
+          args: {prompt: 'child should not receive delegation tools'},
         } as ToolCall],
       }),
-      new AIMessage('child_done'),
+      new AIMessage('parent_done'),
     ]);
+    const childModel = new ScriptedModel([new AIMessage('child_done')]);
     const renamedNestedTool = createSubagentTool({
       name: nestedToolName,
       model: new ScriptedModel([new AIMessage('nested_done')]) as unknown as BaseChatModel,
     });
-    const child = createAgent({
-      agentType: 'subagent',
+    const taskTool = createTaskTool({
+      model: new ScriptedModel([new AIMessage('task_done')]) as unknown as BaseChatModel,
+    });
+    const echoTool = tool(async () => 'pong', {
+      name: 'echo',
+      description: 'Echo tool',
+      schema: z.object({}),
+    });
+    const subagentTool = createSubagentTool({
       model: childModel as unknown as BaseChatModel,
-      tools: [renamedNestedTool],
+      tools: [echoTool, renamedNestedTool, taskTool],
+    });
+    const parent = createAgent({
+      model: parentModel as unknown as BaseChatModel,
+      tools: [subagentTool],
     });
 
-    const result = await child.invoke('start');
+    const result = await parent.invoke('start');
 
     expect(result.reason).toBe('complete');
-    const toolMessages = result.state.messages.filter((message) => ToolMessage.isInstance(message)) as ToolMessage[];
-    expect(toolMessages).toHaveLength(1);
-    expect(toolMessages[0]?.status).toBe('error');
-    expect(String(toolMessages[0]?.content)).toContain('Subagents cannot delegate to other subagents');
+    expect(childModel.boundToolNames).toEqual(['echo']);
+    expect(childModel.boundToolNames).not.toContain(nestedToolName);
+    expect(childModel.boundToolNames).not.toContain(TASK_TOOL_NAME);
   });
 
   it('应将子代理失败收敛成可解释的工具结果，而不是让父代理崩溃', async () => {

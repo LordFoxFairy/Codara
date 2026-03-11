@@ -7,7 +7,6 @@ import {createMiddleware, type BaseMiddleware} from '@core/middleware';
 import type {HILToolMessagePayload} from '@core/middleware';
 import type {
   AgentInputBudget,
-  AgentType,
   AgentRuntimeContext,
   AgentRuntimeValues,
   CreateAgentOptions,
@@ -74,7 +73,6 @@ export interface DelegatedResumeState {
 }
 
 export interface DelegatedParentRuntimeMetadata {
-  parentAgentType: AgentType;
   parentToolCallId: string;
   parentRunId: string;
   parentRequestId: string;
@@ -83,11 +81,13 @@ export interface DelegatedParentRuntimeMetadata {
   resume?: DelegatedResumeState;
 }
 
+const DELEGATION_TOOL = Symbol.for('codara.tasking.delegation.tool');
+
 export function createSubagentTool(options: CreateSubagentToolOptions): StructuredToolInterface {
   const toolName = options.name?.trim() || DEFAULT_SUBAGENT_TOOL_NAME;
   const delegatedCheckpointer = options.checkpointer ?? createAgentMemoryCheckpointer();
 
-  return tool(
+  return markDelegationTool(tool(
     async ({prompt, max_turns}: SubagentToolInput, config) => {
       const delegated = readDelegatedParentRuntimeMetadata(config?.configurable, toolName);
 
@@ -106,7 +106,7 @@ export function createSubagentTool(options: CreateSubagentToolOptions): Structur
       description: options.description ?? DEFAULT_SUBAGENT_TOOL_DESCRIPTION,
       schema: SubagentToolInputSchema,
     },
-  );
+  ));
 }
 
 export function createSubagentMiddleware(options: CreateSubagentMiddlewareOptions): BaseMiddleware {
@@ -122,7 +122,6 @@ export async function runDelegatedAgent(
     prompt: string;
     maxTurns?: number;
     toolName: string;
-    parentAgentType: AgentType;
     parentToolCallId: string;
     parentRunId: string;
     parentRequestId: string;
@@ -139,10 +138,6 @@ export async function runDelegatedAgent(
     };
   }
 ): Promise<ToolMessage> {
-  if (input.parentAgentType === 'subagent') {
-    throw new Error('Subagents cannot delegate to other subagents');
-  }
-
   const childOptions: CreateAgentOptions = {
     model: input.profileModel ?? options.model,
     agentType: 'subagent',
@@ -245,7 +240,7 @@ function resolveSubagentTools(
   blockedToolNames: string[] | undefined
 ): StructuredToolInterface[] {
   const blocked = new Set([toolName, ...(blockedToolNames ?? [])]);
-  return tools.filter((candidate) => !blocked.has(candidate.name));
+  return tools.filter((candidate) => !blocked.has(candidate.name) && !isDelegationTool(candidate));
 }
 
 function resolveSubagentMiddleware(options: CreateSubagentToolOptions): BaseMiddleware[] | undefined {
@@ -264,8 +259,22 @@ function createSubagentInput(prompt: string, systemPrompt: string | undefined): 
   return messages;
 }
 
-function readAgentType(value: unknown): AgentType {
-  return value === 'subagent' ? 'subagent' : 'main';
+export function markDelegationTool<TTool extends StructuredToolInterface>(tool: TTool): TTool {
+  Object.defineProperty(tool, DELEGATION_TOOL, {
+    value: true,
+    enumerable: false,
+    configurable: true,
+    writable: false,
+  });
+  return tool;
+}
+
+function isDelegationTool(tool: StructuredToolInterface | undefined): boolean {
+  if (!tool) {
+    return false;
+  }
+
+  return (tool as unknown as Record<PropertyKey, unknown>)[DELEGATION_TOOL] === true;
 }
 
 function createDelegatedAgentResult(
@@ -560,7 +569,6 @@ export function readDelegatedParentRuntimeMetadata(
   const resume = readDelegatedResumeState(record.invokeContext, toolName);
 
   return {
-    parentAgentType: readAgentType(record.agentType),
     parentToolCallId: readString(execution.toolCallId) ?? readString(record.toolCallId) ?? '',
     parentRunId: readString(execution.runId) ?? readString(record.runId) ?? '',
     parentRequestId: readString(execution.requestId) ?? readString(record.requestId) ?? '',
