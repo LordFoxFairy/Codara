@@ -16,7 +16,7 @@ export {
   type SkillsRuntimeData,
   type SubagentDefinition,
   type SubagentDefinitionHints,
-} from '@core/skills/agents';
+} from '@core/skills/subagents';
 export {
   MAX_SKILL_COMPATIBILITY_LENGTH,
   MAX_SKILL_DESCRIPTION_LENGTH,

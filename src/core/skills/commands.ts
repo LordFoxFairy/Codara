@@ -1,4 +1,4 @@
-import type {SkillsRuntimeData} from '@core/skills/agents';
+import type {SkillsRuntimeData} from '@core/skills/subagents';
 import type {SkillMetadata, SkillStore} from '@core/skills/types';
 import {normalizeDiscoveredSkills} from '@core/skills/metadata';
 
