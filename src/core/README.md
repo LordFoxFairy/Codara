@@ -49,7 +49,7 @@ createCodara(...)
 
 - `codara` 负责产品 facade 与默认装配，没有侵入执行内核。
 - `session` 负责实例宿主与 AGENTS source 生命周期持有，没有承接 agent 工作流状态。
-- `sessions/agent-host.ts` 只承接 session 内部对 `createAgent(...)` 的执行桥接，不反向泄漏为独立公共层。
+- `session` 现在直接持有 host bootstrap，并通过内部 bootstrap helper 完成 `createAgent(...)` 的 lazy restore，不再保留额外的 host bridge owner。
 - `agentsSource` 负责 AGENTS projection 缓存与失效，避免把 `AGENTS.md` 加载逻辑揉进 agent 内核。
 - `skillsSource` 负责 session-scoped skills runtime projection，避免把 skills discovery 放进每次 model call 的 middleware 初始化职责。
 - `agent` 仍然是唯一执行原语，`subagent`/`Task` 是组合，不是第二套 runtime。

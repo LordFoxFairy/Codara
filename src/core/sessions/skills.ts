@@ -9,6 +9,7 @@ export interface SkillsSource {
 
 export interface FileSkillsSourceOptions {
   load: () => Promise<SkillsRuntimeData>;
+  reload?: () => void;
 }
 
 export interface CodaraSkillsSourceOptions {
@@ -52,6 +53,7 @@ export class FileSkillsSource implements SkillsSource {
   }
 
   reload(): void {
+    this.options.reload?.();
     this.cache = undefined;
     this.inflight = undefined;
   }
@@ -60,5 +62,6 @@ export class FileSkillsSource implements SkillsSource {
 export function createCodaraSkillsSource(options: CodaraSkillsSourceOptions): SkillsSource {
   return new FileSkillsSource({
     load: () => loadSkillsRuntimeData(options.store, options.agentRoots ?? []),
+    reload: () => options.store.refresh?.(),
   });
 }

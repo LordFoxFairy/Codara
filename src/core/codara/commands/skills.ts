@@ -1,17 +1,35 @@
 import {AIMessage, type BaseMessage} from '@langchain/core/messages';
 import {
   createSkillCommandInvocation,
-  discoverSkillCommands,
   type SkillCommandDefinition,
 } from '@core/skills/commands';
-import type {SkillStore} from '@core/skills';
+import type {SkillsSource} from '@core/sessions/skills';
+import type {SkillsRuntimeData} from '@core/skills';
 import type {CodaraCommandDefinition} from '@core/codara/commands/types';
 
 export async function createSkillCodaraCommands(
-  store: SkillStore,
+  source: SkillsSource,
 ): Promise<readonly CodaraCommandDefinition[]> {
-  const commands = await discoverSkillCommands(store);
+  const commands = discoverSkillCommandsFromRuntime(await source.getRuntime());
   return commands.map(bindSkillCommand);
+}
+
+function discoverSkillCommandsFromRuntime(
+  runtime: SkillsRuntimeData,
+): readonly SkillCommandDefinition[] {
+  return runtime.discovered.flatMap((skill) => {
+    if (!skill.command?.name) {
+      return [];
+    }
+
+    return [{
+      name: skill.command.name,
+      description: skill.command.description ?? skill.description,
+      usage: skill.command.usage ?? `/${skill.command.name} <request>`,
+      ...(skill.command.aliases?.length ? {aliases: skill.command.aliases} : {}),
+      skill,
+    }];
+  });
 }
 
 function bindSkillCommand(command: SkillCommandDefinition): CodaraCommandDefinition {

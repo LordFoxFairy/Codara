@@ -82,6 +82,46 @@ command-name: design
     expect(commandNames).toContain('design');
     expect(commandNames).not.toContain('architect');
   });
+
+  it('should keep skill-derived commands stable until reloadSources is called', async () => {
+    const skillsRoot = await createSkillRoot('architect', `---
+name: architect
+description: Architecture planning skill
+command-name: architect
+---
+# Architect Skill
+`);
+    const skillFile = path.join(skillsRoot, 'architect', 'SKILL.md');
+
+    const codara = createCodara({
+      model: new EchoModel() as unknown as BaseChatModel,
+      builtinTools: false,
+      skills: {
+        sources: [skillsRoot],
+        cacheTtlMs: 0,
+      },
+    });
+
+    expect((await codara.listCommands()).map((command) => command.name)).toContain('architect');
+
+    await writeFile(skillFile, `---
+name: architect
+description: Architecture planning skill
+command-name: design
+---
+# Architect Skill
+`, 'utf8');
+
+    const commandNamesBeforeReload = (await codara.listCommands()).map((command) => command.name);
+    expect(commandNamesBeforeReload).toContain('architect');
+    expect(commandNamesBeforeReload).not.toContain('design');
+
+    await codara.reloadSources();
+
+    const commandNamesAfterReload = (await codara.listCommands()).map((command) => command.name);
+    expect(commandNamesAfterReload).toContain('design');
+    expect(commandNamesAfterReload).not.toContain('architect');
+  });
 });
 
 async function createSkillRoot(skillName: string, content: string): Promise<string> {

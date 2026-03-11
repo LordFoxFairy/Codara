@@ -19,7 +19,6 @@ import type {AgentsFileOverview, AgentsFileScope, AgentsSource} from '@core/sess
 import type {SkillsSource} from '@core/sessions/skills';
 import type {SessionStore} from '@core/sessions/store';
 import type {ModelInfo} from '@core/provider';
-import type {SkillStore} from '@core/skills';
 
 /** Session 自身的生命周期状态。 */
 export type SessionStatus = 'ready' | 'closed';
@@ -94,7 +93,6 @@ export interface CreateSessionOptions {
 
   // AGENTS source lifecycle
   agentsSource?: AgentsSource;
-  skillsStore?: SkillStore;
   skillsSource?: SkillsSource;
 
   // Session store

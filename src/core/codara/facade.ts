@@ -34,6 +34,7 @@ function createCodaraInstance(
   restoredState?: SessionState,
 ): Codara {
   const runtime = createCodaraRuntimePlan(options);
+  const skillsSource = runtime.skillsSource;
   const session = createSession({
     ...(restoredState ? {state: restoredState} : {}),
     sessionId: options.sessionId,
@@ -42,8 +43,7 @@ function createCodaraInstance(
     model: runtime.model,
     modelCatalog: runtime.modelCatalog,
     agentsSource: runtime.agentsSource,
-    skillsStore: runtime.skills?.store,
-    skillsSource: runtime.skillsSource,
+    skillsSource,
     store: options.store,
     tools: runtime.tools,
     middleware: runtime.middleware,
@@ -55,8 +55,8 @@ function createCodaraInstance(
     values: options.values,
   });
   const commands = createCodaraCommandRunner({
-    getDynamicCommands: runtime.skills
-      ? () => createSkillCodaraCommands(runtime.skills!.store)
+    getDynamicCommands: skillsSource
+      ? () => createSkillCodaraCommands(skillsSource)
       : undefined,
     host: createCodaraCommandHost(session),
   });
