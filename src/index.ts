@@ -63,6 +63,11 @@ export {
   createSharedTaskMiddleware,
   createTaskMiddleware,
 } from '@core/tasking';
+export {
+  createCodaraGuidelinesSource,
+  createCodaraSkillsSource,
+  createSourceTurnContextPreparer,
+} from '@core/sources';
 
 // ============================================
 // 类型导出（供高级用户使用）
@@ -75,5 +80,13 @@ export type {
   LoggingMiddlewareOptions,
   HILResumePayload,
 } from '@core/middleware';
+export type {
+  AgentsFileOverview,
+  AgentsFileScope,
+  GuidelinesOptions,
+  GuidelinesSource,
+  SkillsSource,
+  SourceTurnContextOptions,
+} from '@core/sources';
 
 export type {AgentCheckpoint, AgentCheckpointer} from '@core/checkpoint';

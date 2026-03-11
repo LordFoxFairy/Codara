@@ -56,6 +56,17 @@ export {
   type AgentCheckpointer,
 } from '@core/checkpoint';
 export {
+  createCodaraGuidelinesSource,
+  createCodaraSkillsSource,
+  createSourceTurnContextPreparer,
+  type AgentsFileOverview,
+  type AgentsFileScope,
+  type GuidelinesOptions,
+  type GuidelinesSource,
+  type SkillsSource,
+  type SourceTurnContextOptions,
+} from '@core/sources';
+export {
   createBuiltinTools,
   createFetchTool,
   createSearchTool,

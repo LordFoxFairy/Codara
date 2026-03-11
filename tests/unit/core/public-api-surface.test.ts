@@ -22,4 +22,14 @@ describe('core public APIs', () => {
     expect('createTaskTool' in core).toBe(false);
     expect('createTaskTool' in api).toBe(false);
   });
+
+  it('should expose source constructors in the advanced public barrels', () => {
+    expect('createCodaraGuidelinesSource' in core).toBe(true);
+    expect('createCodaraSkillsSource' in core).toBe(true);
+    expect('createSourceTurnContextPreparer' in core).toBe(true);
+
+    expect('createCodaraGuidelinesSource' in api).toBe(true);
+    expect('createCodaraSkillsSource' in api).toBe(true);
+    expect('createSourceTurnContextPreparer' in api).toBe(true);
+  });
 });

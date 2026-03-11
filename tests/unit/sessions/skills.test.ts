@@ -1,6 +1,6 @@
 import {describe, expect, it} from 'bun:test';
 import path from 'node:path';
-import {createCodaraSkillsSource} from '@core/sessions/skills';
+import {createCodaraSkillsSource} from '@core/sources';
 import type {SkillMetadata, SkillStore} from '@core/skills';
 
 describe('Codara skills source', () => {

@@ -3,7 +3,7 @@ import {mkdir, mkdtemp, writeFile} from 'node:fs/promises';
 import path from 'node:path';
 import {tmpdir} from 'node:os';
 import {createGuidelinesMiddleware} from '@core/middleware/guidelines';
-import {createCodaraGuidelinesSource} from '@core/guidelines';
+import {createCodaraGuidelinesSource} from '@core/sources';
 import type {BeforeModelContext} from '@core/middleware';
 
 describe('AGENTS guidelines', () => {
