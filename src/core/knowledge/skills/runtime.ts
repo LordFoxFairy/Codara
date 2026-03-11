@@ -1,9 +1,9 @@
 import {readdir, readFile, stat} from 'node:fs/promises';
 import path from 'node:path';
 import type {MiddlewareRuntimeShared} from '@core/middleware';
-import {parseMarkdownFrontmatterDocument} from '@core/resources/skills/loading';
-import {normalizeDiscoveredSkills} from '@core/resources/skills/metadata';
-import type {SkillMetadata, SkillStore} from '@core/resources/skills/types';
+import {parseMarkdownFrontmatterDocument} from '@core/knowledge/skills/loading';
+import {normalizeDiscoveredSkills} from '@core/knowledge/skills/metadata';
+import type {SkillMetadata, SkillStore} from '@core/knowledge/skills/types';
 
 export interface SubagentDefinition {
   name: string;

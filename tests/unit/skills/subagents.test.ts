@@ -5,8 +5,8 @@ import path from 'node:path';
 import {filterToolsByReferences} from '@core/tools';
 import {tool} from '@langchain/core/tools';
 import {z} from 'zod';
-import {loadSkillsRuntimeData, resolveSubagentDefinition} from '@core/resources/skills';
-import {FileSystemSkillStore} from '@core/resources/skills';
+import {loadSkillsRuntimeData, resolveSubagentDefinition} from '@core/knowledge/skills';
+import {FileSystemSkillStore} from '@core/knowledge/skills';
 
 function createBuiltinSubagentStore() {
   return new FileSystemSkillStore({

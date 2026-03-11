@@ -1,2 +1,2 @@
-export * from '@core/resources/guidelines';
-export * from '@core/resources/skills';
+export * from '@core/knowledge/guidelines';
+export * from '@core/knowledge/skills';

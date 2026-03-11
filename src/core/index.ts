@@ -57,13 +57,11 @@ export {
 } from '@core/checkpoint';
 export {
   createCodaraGuidelinesSource,
-  createCodaraSkillsSource,
   type AgentsFileOverview,
   type AgentsFileScope,
   type GuidelinesOptions,
   type GuidelinesSource,
-  type SkillsSource,
-} from '@core/resources';
+} from '@core/knowledge/guidelines';
 export {
   createBuiltinTools,
   createFetchTool,
@@ -73,13 +71,15 @@ export {
   type BuiltinToolOptions,
 } from '@core/tools';
 export {
+  createCodaraSkillsSource,
   FileSystemSkillStore,
   getDefaultSkillSources,
   loadSkillsRuntimeData,
   type SkillMetadata,
   type SkillStore,
+  type SkillsSource,
   type SkillsRuntimeData,
-} from '@core/resources/skills';
+} from '@core/knowledge/skills';
 export {
   createSession,
   FileSessionStore,

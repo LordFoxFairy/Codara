@@ -8,7 +8,7 @@ import {tool} from '@langchain/core/tools'
 import {z} from 'zod'
 import {createAgent} from '@core/agents'
 import {createHILMiddleware, createMiddleware, createSkillsMiddleware} from '@core/middleware'
-import {FileSystemSkillStore} from '@core/resources/skills'
+import {FileSystemSkillStore} from '@core/knowledge/skills'
 
 class PauseAwareModel {
   private step = 0

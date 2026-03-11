@@ -1,6 +1,6 @@
-import type {SkillsRuntimeData} from '@core/resources/skills/runtime';
-import type {SkillMetadata, SkillStore} from '@core/resources/skills/types';
-import {normalizeDiscoveredSkills} from '@core/resources/skills/metadata';
+import type {SkillsRuntimeData} from '@core/knowledge/skills/runtime';
+import type {SkillMetadata, SkillStore} from '@core/knowledge/skills/types';
+import {normalizeDiscoveredSkills} from '@core/knowledge/skills/metadata';
 
 export interface SkillCommandDefinition {
   name: string;

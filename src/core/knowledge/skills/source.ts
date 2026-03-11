@@ -1,6 +1,6 @@
-import type {SkillsRuntimeData} from '@core/resources/skills/runtime';
-import {loadSkillsRuntimeData} from '@core/resources/skills/runtime';
-import type {SkillStore} from '@core/resources/skills/types';
+import type {SkillsRuntimeData} from '@core/knowledge/skills/runtime';
+import {loadSkillsRuntimeData} from '@core/knowledge/skills/runtime';
+import type {SkillStore} from '@core/knowledge/skills/types';
 
 export interface SkillsSource {
   getRuntime(): Promise<SkillsRuntimeData>;

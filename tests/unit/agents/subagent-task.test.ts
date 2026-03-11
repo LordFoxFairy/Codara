@@ -15,7 +15,7 @@ import {
   TASK_TOOL_NAME,
 } from '@core/tasking';
 import {createSkillsMiddleware} from '@core/middleware';
-import {FileSystemSkillStore} from '@core/resources/skills';
+import {FileSystemSkillStore} from '@core/knowledge/skills';
 import {createTaskTool} from '@core/tasking/task';
 
 function createBuiltinSubagentStore() {

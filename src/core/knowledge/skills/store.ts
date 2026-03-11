@@ -1,9 +1,9 @@
 import {readdir, readFile, stat} from 'node:fs/promises'
 import {homedir} from 'node:os'
 import path from 'node:path'
-import {parseSkillMetadataFromContent} from '@core/resources/skills/loading'
-import {skillsMetadataReducer} from '@core/resources/skills/metadata'
-import type {SkillMetadata, SkillStore} from '@core/resources/skills/types'
+import {parseSkillMetadataFromContent} from '@core/knowledge/skills/loading'
+import {skillsMetadataReducer} from '@core/knowledge/skills/metadata'
+import type {SkillMetadata, SkillStore} from '@core/knowledge/skills/types'
 import {resolveWorkspaceRoot} from '@core/support/workspace'
 
 const DEFAULT_CACHE_TTL_MS = 5_000

@@ -8,7 +8,7 @@ import {tool} from '@langchain/core/tools'
 import {z} from 'zod'
 import {createAgent} from '@core/agents'
 import {createMiddleware, createSkillsMiddleware} from '@core/middleware'
-import {FileSystemSkillStore} from '@core/resources/skills'
+import {FileSystemSkillStore} from '@core/knowledge/skills'
 
 const DEBUG_LOG = process.env.SKILLS_E2E_LOG === '1'
 

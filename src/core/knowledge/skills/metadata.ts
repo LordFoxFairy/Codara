@@ -1,5 +1,5 @@
 import {z} from 'zod'
-import type {SkillMetadata} from '@core/resources/skills/types'
+import type {SkillMetadata} from '@core/knowledge/skills/types'
 
 export const SkillMetadataEntrySchema = z.object({
   name: z.string(),

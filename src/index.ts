@@ -65,8 +65,10 @@ export {
 } from '@core/tasking';
 export {
   createCodaraGuidelinesSource,
+} from '@core/knowledge/guidelines';
+export {
   createCodaraSkillsSource,
-} from '@core/resources';
+} from '@core/knowledge/skills';
 
 // ============================================
 // 类型导出（供高级用户使用）
@@ -84,7 +86,7 @@ export type {
   AgentsFileScope,
   GuidelinesOptions,
   GuidelinesSource,
-  SkillsSource,
-} from '@core/resources';
+} from '@core/knowledge/guidelines';
+export type {SkillsSource} from '@core/knowledge/skills';
 
 export type {AgentCheckpoint, AgentCheckpointer} from '@core/checkpoint';

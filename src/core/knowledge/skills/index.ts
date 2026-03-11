@@ -4,7 +4,7 @@ export {
   type CodaraSkillsSourceOptions,
   type FileSkillsSourceOptions,
   type SkillsSource,
-} from '@core/resources/skills/source';
+} from '@core/knowledge/skills/source';
 export {
   formatSkillAnnotations,
   formatSkillsList,
@@ -14,7 +14,7 @@ export {
   type SkillMetadataEntry,
   SkillMetadataEntrySchema,
   skillsMetadataReducer,
-} from '@core/resources/skills/metadata';
+} from '@core/knowledge/skills/metadata';
 export {
   loadSkillsRuntimeData,
   readSkillsRuntimeData,
@@ -22,7 +22,7 @@ export {
   type SkillsRuntimeData,
   type SubagentDefinition,
   type SubagentDefinitionHints,
-} from '@core/resources/skills/runtime';
+} from '@core/knowledge/skills/runtime';
 export {
   MAX_SKILL_COMPATIBILITY_LENGTH,
   MAX_SKILL_DESCRIPTION_LENGTH,
@@ -33,19 +33,19 @@ export {
   validateMetadata,
   validateSkillName,
   type MarkdownFrontmatterDocument,
-} from '@core/resources/skills/loading';
+} from '@core/knowledge/skills/loading';
 export {
   discoverSkillCommands,
   discoverSkillCommandsFromRuntime,
   createSkillCommandInvocation,
   type SkillCommandDefinition,
   type SkillCommandInvocation,
-} from '@core/resources/skills/commands';
+} from '@core/knowledge/skills/commands';
 export {
   FileSystemSkillStore,
   getDefaultSkillSources,
-} from '@core/resources/skills/store';
+} from '@core/knowledge/skills/store';
 export type {
   SkillMetadata,
   SkillStore,
-} from '@core/resources/skills/types';
+} from '@core/knowledge/skills/types';

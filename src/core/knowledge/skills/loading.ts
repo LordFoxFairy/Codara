@@ -1,5 +1,5 @@
 import yaml from 'yaml'
-import type {SkillCommandMetadata, SkillMetadata} from '@core/resources/skills/types'
+import type {SkillCommandMetadata, SkillMetadata} from '@core/knowledge/skills/types'
 
 export const MAX_SKILL_FILE_SIZE = 10 * 1024 * 1024
 export const MAX_SKILL_NAME_LENGTH = 64
