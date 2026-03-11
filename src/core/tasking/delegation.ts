@@ -13,7 +13,7 @@ import type {
   ToolErrorHandler,
 } from '@core/agents/contract/agent';
 import type {PauseRequest, ResumePayload} from '@core/agents/contract/pause';
-import type {AgentCheckpointer} from '@core/checkpoint/state';
+import type {AgentCheckpointer} from '@core/checkpoint';
 import {deepClone} from '@core/support/clone';
 
 export interface DelegatedAgentOptions {
