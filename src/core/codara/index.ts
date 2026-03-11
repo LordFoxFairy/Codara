@@ -11,12 +11,6 @@ export {
   type CodaraResolvedSkills,
 } from '@core/codara/middleware';
 export {
-  createCodaraTaskMiddleware,
-  createCodaraTaskTool,
-  createCodaraSubagentMiddleware,
-  createCodaraSubagentTool,
-} from '@core/codara/tasking';
-export {
   createCodaraCommandRunner,
   type CodaraCommandResult,
   type CodaraCommandSpec,
@@ -31,9 +25,5 @@ export {
 } from '@core/codara/models';
 export {
   createCodaraTools,
-  createCodaraRuntimePlan,
-  resolveCodaraRuntime,
-  type CodaraRuntimePlan,
-  type ResolvedCodaraRuntime,
 } from '@core/codara/runtime';
 export {createCodara, openCodaraSession, openLatestCodaraSession} from '@core/codara/facade';
