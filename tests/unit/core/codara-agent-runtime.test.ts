@@ -60,6 +60,42 @@ class CodaraFacadeModel {
 }
 
 describe('Codara agent runtime flow', () => {
+  it('should pass handleToolErrors through the Codara facade into the agent runtime', async () => {
+    const boomTool = tool(
+      async () => {
+        throw new Error('tool boom');
+      },
+      {
+        name: 'boom',
+        description: 'Always fails',
+        schema: z.object({}),
+      }
+    );
+    const model = {
+      async invoke(): Promise<AIMessage> {
+        return new AIMessage({
+          content: '',
+          tool_calls: [{id: 'call_boom', name: 'boom', args: {}} as ToolCall],
+        });
+      },
+      bindTools(): unknown {
+        return this;
+      },
+    } as unknown as BaseChatModel;
+
+    const codara = createCodara({
+      model,
+      tools: [boomTool],
+      handleToolErrors: false,
+      hil: false,
+    });
+
+    const result = await codara.invoke('run the failing tool');
+
+    expect(result.reason).toBe('error');
+    expect(result.error?.message).toContain('Tool "boom" execution failed');
+  });
+
   it('should stream, checkpoint, reload, and resume through the top-level Codara facade', async () => {
     const root = await mkdtemp(path.join(tmpdir(), 'codara-core-stream-'));
     const projectRoot = path.join(root, 'project');

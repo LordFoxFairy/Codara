@@ -30,6 +30,7 @@ export async function bootstrapSessionAgent(
   return createAgent({
     model: selection.model,
     tools: options.sessionOptions.tools,
+    handleToolErrors: options.sessionOptions.handleToolErrors,
     middleware: options.sessionOptions.middleware,
     checkpointer: options.checkpointer,
     threadId: options.threadId,

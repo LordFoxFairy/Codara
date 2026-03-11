@@ -10,6 +10,7 @@ import type {
   AgentState,
   AgentStreamConfig,
   AgentStreamOutput,
+  ToolErrorHandler,
 } from '@core/agents';
 import type {AgentCheckpointer} from '@core/checkpoint/state';
 import type {CompactOptions} from '@core/checkpoint/types';
@@ -100,6 +101,7 @@ export interface CreateSessionOptions {
 
   // Agent 配置
   tools?: StructuredToolInterface[];
+  handleToolErrors?: ToolErrorHandler;
   middleware?: BaseMiddleware[];
   checkpointer?: AgentCheckpointer;
 

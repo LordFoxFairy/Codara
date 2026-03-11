@@ -9,7 +9,7 @@ export {
   resolveCodaraPath,
   resolveModelMetadataConfigPath,
   resolveModelRoutingConfigPath,
-} from '@core/provider/config/path';
+} from '@core/provider/config/loader';
 export {
   ConfigSchema,
   ModelMetadataConfigSchema,

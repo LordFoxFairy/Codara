@@ -3,7 +3,7 @@ import {createCodaraCommandRunner} from '@core/codara/commands';
 import type {Codara, CodaraOptions} from '@core/codara/types';
 import type {Session, SessionState, SessionStore} from '@core/sessions';
 import type {CodaraCommandHost} from '@core/codara/commands';
-import {createCodaraRuntimePlan} from '@core/codara/runtime';
+import {createCodaraSessionAssembly} from '@core/codara/runtime';
 import {createSkillCodaraCommands} from '@core/codara/commands/skills';
 
 /**
@@ -33,26 +33,19 @@ function createCodaraInstance(
   options: CodaraOptions,
   restoredState?: SessionState,
 ): Codara {
-  const runtime = createCodaraRuntimePlan(options);
-  const skillsSource = runtime.skillsSource;
+  const assembly = createCodaraSessionAssembly(options);
+  const skillsSource = assembly.skillsSource;
   const session = createSession({
     ...(restoredState ? {state: restoredState} : {}),
     sessionId: options.sessionId,
     threadId: options.threadId,
-    modelRef: runtime.alias,
-    model: runtime.model,
-    modelCatalog: runtime.modelCatalog,
-    agentsSource: runtime.agentsSource,
-    skillsSource,
     store: options.store,
-    tools: runtime.tools,
-    middleware: runtime.middleware,
     checkpointer: options.checkpointer,
     restore: options.restore,
-    inputBudget: options.inputBudget,
     messages: options.messages,
     context: options.context,
     values: options.values,
+    ...assembly.sessionOptions,
   });
   const commands = createCodaraCommandRunner({
     getDynamicCommands: skillsSource
