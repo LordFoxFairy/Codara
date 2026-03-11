@@ -4,7 +4,7 @@ export function createMemoryCommand(): CodaraCommandDefinition {
   return {
     name: 'memory',
     usage: '/memory [show|project|global]',
-    description: 'Inspect or prepare the session AGENTS.md memory files for manual editing.',
+    description: 'Inspect or prepare the session AGENTS.md source files for manual editing.',
     source: {type: 'builtin'},
     async execute({command, host}) {
       const subcommand = (command.args[0] ?? 'show').toLowerCase();

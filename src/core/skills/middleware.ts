@@ -20,7 +20,7 @@ export interface SkillsMiddlewareOptions {
 /**
  * Deepagents-style skills middleware:
  * - discover skills via store on model call
- * - inject skills system section in wrapModelCall
+ * - inject skills system section in beforeModel
  *
  * Note:
  * - middleware does not keep run-level cache

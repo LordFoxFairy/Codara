@@ -7,7 +7,7 @@ import {createCodara} from '@core';
 import {EchoModel} from './codara-fixtures';
 
 describe('Codara memory command', () => {
-  it('should show the current AGENTS.md memory stack through /memory show', async () => {
+  it('should show the current AGENTS.md source stack through /memory show', async () => {
     const root = await mkdtemp(path.join(tmpdir(), 'codara-memory-command-'));
     const userHome = path.join(root, 'home');
     const projectRoot = path.join(root, 'project');
@@ -106,7 +106,7 @@ describe('Codara memory command', () => {
     await access(globalFile);
   });
 
-  it('should default /memory to showing the available AGENTS.md memory targets', async () => {
+  it('should default /memory to showing the available AGENTS.md source targets', async () => {
     const root = await mkdtemp(path.join(tmpdir(), 'codara-memory-command-'));
     const userHome = path.join(root, 'home');
     const projectRoot = path.join(root, 'project');
