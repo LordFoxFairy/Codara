@@ -23,7 +23,7 @@ export type AgentStreamMode = 'values' | 'updates' | 'messages' | 'custom';
  * }
  * ```
  *
- * metadata (runId, turn) 会注入到 chunk.response_metadata 中
+ * metadata (`threadId`, `runId`, `requestId`, `turn`) 会注入到 chunk.response_metadata 中
  */
 export type AgentStreamMessagesChunk = AIMessageChunk;
 

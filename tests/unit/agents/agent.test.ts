@@ -407,6 +407,51 @@ describe('Agent', () => {
     ]);
   });
 
+  it('runtimeShared 应在同一次 run 的多轮之间保持可见', async () => {
+    const events: string[] = [];
+    const toolCall: ToolCall = {id: 'call_shared', name: 'echo', args: {}};
+    const responses: AIMessage[] = [
+      new AIMessage({content: '', tool_calls: [toolCall]}),
+      new AIMessage('done'),
+    ];
+    const model = new FakeModel(responses) as unknown as BaseChatModel;
+    const tool = {
+      name: 'echo',
+      description: 'Echo tool',
+      schema: {} as never,
+      invoke: async () => 'pong',
+    } as unknown as StructuredToolInterface;
+
+    const runner = createAgent({
+      model,
+      tools: [tool],
+      middleware: [
+        {
+          name: 'runtime_shared_probe',
+          beforeModel: (context) => {
+            events.push(`shared:${context.turn}:${String(context.runtime.shared?.flag ?? 'none')}`);
+            if (context.turn === 1) {
+              return {
+                runtimeShared: {
+                  flag: 'ready',
+                },
+              };
+            }
+            return undefined;
+          },
+        },
+      ],
+    });
+
+    const result = await runner.invoke({messages: [new HumanMessage('start')]});
+
+    expect(result.reason).toBe('complete');
+    expect(events).toEqual([
+      'shared:1:none',
+      'shared:2:ready',
+    ]);
+  });
+
   it('应支持 middleware 单数入参别名', async () => {
     const order: string[] = [];
     const model = new FakeModel([new AIMessage('done')]) as unknown as BaseChatModel;
@@ -554,26 +599,25 @@ describe('Agent', () => {
     });
 
     expect(result.reason).toBe('complete');
-    expect(seen).toEqual({
-      context: {
-        tenantId: 'tenant-1',
-        userId: 'user-123',
-        profile: {
-          locale: 'zh-CN',
-          timezone: 'Asia/Shanghai',
-        },
+    expect(seen?.context).toEqual({
+      tenantId: 'tenant-1',
+      userId: 'user-123',
+      profile: {
+        locale: 'zh-CN',
+        timezone: 'Asia/Shanghai',
       },
-      agentContext: {
-        tenantId: 'tenant-1',
-        profile: {
-          locale: 'zh-CN',
-        },
+      threadId: result.state.threadId,
+    });
+    expect(seen?.agentContext).toEqual({
+      tenantId: 'tenant-1',
+      profile: {
+        locale: 'zh-CN',
       },
-      runtimeContext: {
-        userId: 'user-123',
-        profile: {
-          timezone: 'Asia/Shanghai',
-        },
+    });
+    expect(seen?.runtimeContext).toEqual({
+      userId: 'user-123',
+      profile: {
+        timezone: 'Asia/Shanghai',
       },
     });
     expect(result.state.context).toEqual({
@@ -582,6 +626,40 @@ describe('Agent', () => {
         locale: 'zh-CN',
       },
     });
+    expect(seen?.context.threadId).toBe(result.state.threadId);
+  });
+
+  it('应将 threadId/runId/requestId/toolCallId 暴露给工具调用元数据', async () => {
+    let seenConfigurable: Record<string, unknown> | undefined;
+    let seenMetadata: Record<string, unknown> | undefined;
+    const toolCall: ToolCall = {id: 'call_ids', name: 'echo', args: {text: 'ping'}};
+    const model = new FakeModel([
+      new AIMessage({content: '', tool_calls: [toolCall]}),
+      new AIMessage('done'),
+    ]) as unknown as BaseChatModel;
+    const tool = {
+      name: 'echo',
+      description: 'Echo tool',
+      schema: {} as never,
+      invoke: async (_args: unknown, config?: {configurable?: Record<string, unknown>; metadata?: Record<string, unknown>}) => {
+        seenConfigurable = config?.configurable;
+        seenMetadata = config?.metadata;
+        return 'pong';
+      },
+    } as unknown as StructuredToolInterface;
+
+    const runner = createAgent({model, tools: [tool], threadId: 'thread-tool-ids'});
+    const result = await runner.invoke({messages: [new HumanMessage('start')]});
+
+    expect(result.reason).toBe('complete');
+    expect(seenConfigurable?.threadId).toBe('thread-tool-ids');
+    expect(typeof seenConfigurable?.runId).toBe('string');
+    expect(seenConfigurable?.requestId).toBe(`${seenConfigurable?.runId}:turn:1:tool:call_ids`);
+    expect(seenConfigurable?.turn).toBe(1);
+    expect(seenConfigurable?.toolCallId).toBe('call_ids');
+    expect(seenConfigurable?.toolIndex).toBe(0);
+    expect(seenMetadata?.threadId).toBe('thread-tool-ids');
+    expect(seenMetadata?.toolCallId).toBe('call_ids');
   });
 
   it('contextSchema 校验应基于持久 context 与临时 context 的合成结果', async () => {
@@ -669,6 +747,9 @@ describe('Agent', () => {
     expect(chunks).toHaveLength(2);
     expect(String(chunks[0]?.content)).toBe('he');
     expect(String(chunks[1]?.content)).toBe('llo');
+    expect(chunks[0]?.response_metadata.threadId).toBe(result?.state.threadId);
+    expect(typeof chunks[0]?.response_metadata.runId).toBe('string');
+    expect(chunks[0]?.response_metadata.requestId).toBe(`${chunks[0]?.response_metadata.runId}:turn:1`);
     expect(chunks[0]?.response_metadata.turn).toBe(1);
     expect(result?.reason).toBe('complete');
     expect(String(result?.state.messages[result.state.messages.length - 1]?.content)).toBe('hello');

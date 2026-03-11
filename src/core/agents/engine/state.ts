@@ -46,6 +46,11 @@ interface AgentInitialInput {
   values?: AgentRuntimeValues;
 }
 
+type CheckpointComparableState = Pick<
+  AgentRuntimeState | AgentState,
+  'agentType' | 'messages' | 'context' | 'values' | 'pendingPause'
+>;
+
 export function createInitialAgentState(
   threadId: string,
   input: AgentInitialInput | undefined,
@@ -112,6 +117,13 @@ export function toCheckpointState(state: AgentRuntimeState): AgentCheckpointStat
     values: cloneAgentValues(state.values),
     ...(state.pendingPause ? {pendingPause: clonePauseRequest(state.pendingPause)} : {}),
   };
+}
+
+export function hasEquivalentCheckpointState(
+  left: CheckpointComparableState,
+  right: CheckpointComparableState
+): boolean {
+  return JSON.stringify(toComparableCheckpointState(left)) === JSON.stringify(toComparableCheckpointState(right));
 }
 
 export function toCheckpointInfo(
@@ -218,6 +230,26 @@ export function applyAgentStateSnapshot(
   target.context = cloneAgentContext(snapshot.context);
   target.values = cloneAgentValues(snapshot.values);
   target.pendingPause = clonePauseRequest(snapshot.pendingPause);
+}
+
+function toComparableCheckpointState(
+  state: CheckpointComparableState
+): PersistedAgentCheckpointComparableState {
+  return {
+    agentType: state.agentType,
+    messages: mapChatMessagesToStoredMessages(state.messages),
+    context: cloneAgentContext(state.context),
+    values: cloneAgentValues(state.values),
+    ...(state.pendingPause ? {pendingPause: clonePauseRequest(state.pendingPause)} : {}),
+  };
+}
+
+interface PersistedAgentCheckpointComparableState {
+  agentType: AgentType;
+  messages: ReturnType<typeof mapChatMessagesToStoredMessages>;
+  context: AgentRuntimeContext;
+  values: AgentRuntimeValues;
+  pendingPause?: PauseRequest;
 }
 
 function isChatMessageLike(value: unknown): value is BaseMessage {

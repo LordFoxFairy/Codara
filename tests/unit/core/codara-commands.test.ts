@@ -3,7 +3,7 @@ import type {BaseChatModel} from '@langchain/core/language_models/chat_models';
 import {AIMessage, type BaseMessage, type ToolCall} from '@langchain/core/messages';
 import {tool} from '@langchain/core/tools';
 import {z} from 'zod';
-import {createCodara} from '@core';
+import {createAgentMemoryCheckpointer, createCodara} from '@core';
 import {EchoModel, SystemEchoModel} from './codara-fixtures';
 
 class PauseThenCompleteModel {
@@ -166,6 +166,54 @@ describe('Codara slash commands', () => {
     const result = await codara.executeCommand('/resume approve approved by command');
     expect(result.ok).toBe(true);
     expect(result.output).toContain('approved');
+    expect(result.state?.status).toBe('idle');
+    expect(String(result.state?.messages.at(-1)?.content)).toBe('resumed');
+  });
+
+  it('should resume a restored paused session through slash commands even before explicit hydrate', async () => {
+    const bashTool = tool(
+      async ({command}: {command: string}) => `executed:${command}`,
+      {
+        name: 'bash',
+        description: 'Execute shell command',
+        schema: z.object({command: z.string()}),
+      },
+    );
+    const checkpointer = createAgentMemoryCheckpointer();
+    const original = createCodara({
+      model: new PauseThenCompleteModel() as unknown as BaseChatModel,
+      tools: [bashTool],
+      checkpointer,
+      skills: false,
+      builtinTools: false,
+      hil: {
+        interruptOn: {
+          bash: true,
+        },
+      },
+      threadId: 'resume-command-restore-thread',
+    });
+
+    await original.invoke('run command');
+    expect(original.getAgentState().status).toBe('paused');
+
+    const restored = createCodara({
+      model: new PauseThenCompleteModel() as unknown as BaseChatModel,
+      tools: [bashTool],
+      checkpointer,
+      skills: false,
+      builtinTools: false,
+      hil: {
+        interruptOn: {
+          bash: true,
+        },
+      },
+      threadId: 'resume-command-restore-thread',
+      restore: 'latest',
+    });
+
+    const result = await restored.executeCommand('/resume approve approved by command');
+    expect(result.ok).toBe(true);
     expect(result.state?.status).toBe('idle');
     expect(String(result.state?.messages.at(-1)?.content)).toBe('resumed');
   });

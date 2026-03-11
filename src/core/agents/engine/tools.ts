@@ -20,11 +20,15 @@ export async function executeToolCall(
   toolCallId: string,
   tool: StructuredToolInterface | undefined,
   handleToolErrors: ToolErrorHandler,
-  state: Pick<AgentState, 'agentType' | 'messages' | 'context' | 'values'>,
+  state: Pick<AgentState, 'threadId' | 'agentType' | 'messages' | 'context' | 'values'>,
   runtime?: {
     context: AgentState['context'];
     runtimeContext?: AgentState['context'];
     shared?: Record<string, unknown>;
+    runId?: string;
+    turn?: number;
+    requestId?: string;
+    toolIndex?: number;
   },
   normalizeValues?: (values: AgentState['values']) => AgentState['values']
 ): Promise<ToolMessage> {
@@ -41,6 +45,12 @@ export async function executeToolCall(
     const result = await tool.invoke(toolCall.args, {
       toolCall,
       configurable: {
+        threadId: state.threadId,
+        runId: runtime?.runId,
+        turn: runtime?.turn,
+        requestId: runtime?.requestId,
+        toolCallId,
+        toolIndex: runtime?.toolIndex,
         agentType: state.agentType,
         agentContext: state.context,
         runtimeContext: runtime?.context ?? state.context,
@@ -49,6 +59,12 @@ export async function executeToolCall(
       },
       metadata: {
         agentType: state.agentType,
+        threadId: state.threadId,
+        runId: runtime?.runId,
+        turn: runtime?.turn,
+        requestId: runtime?.requestId,
+        toolCallId,
+        toolIndex: runtime?.toolIndex,
       },
     });
     if (ToolMessage.isInstance(result)) {
@@ -127,10 +143,15 @@ function createToolError(toolCallId: string, content: string): ToolMessage {
 function applyToolCommand(
   command: Command,
   toolCallId: string,
-  state: Pick<AgentState, 'agentType' | 'messages' | 'context' | 'values'>,
+  state: Pick<AgentState, 'threadId' | 'agentType' | 'messages' | 'context' | 'values'>,
   runtime?: {
     context: AgentState['context'];
     shared?: Record<string, unknown>;
+    runtimeContext?: AgentState['context'];
+    runId?: string;
+    turn?: number;
+    requestId?: string;
+    toolIndex?: number;
   },
   normalizeValues?: (values: AgentState['values']) => AgentState['values'],
   fallbackToolMessage?: ToolMessage
