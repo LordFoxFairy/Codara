@@ -226,11 +226,19 @@ export function createSessionAgentHost(
 
     async reset(): Promise<AgentState | undefined> {
       if (!agentInstance) {
+        const checkpoint = await options.checkpointer.getLatest(options.threadId);
+        if (!checkpoint) {
+          return undefined;
+        }
+      }
+
+      const agent = await getAgent();
+      if (!agent) {
         return undefined;
       }
 
-      await agentInstance.reset();
-      const state = agentInstance.getState();
+      await agent.reset();
+      const state = agent.getState();
       await options.syncSessionFromState(state);
       return state;
     },

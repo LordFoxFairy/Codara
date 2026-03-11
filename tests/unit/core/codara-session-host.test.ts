@@ -139,4 +139,35 @@ describe('Codara session host', () => {
     expect(String(hydratedState.messages[1]?.content)).toBe('seen_humans:1');
     expect(restored.getState().metadata?.messageCount).toBe(hydratedState.messages.length);
   });
+
+  it('should reset a restoring session even before the agent is explicitly hydrated', async () => {
+    const checkpointer = createAgentMemoryCheckpointer();
+
+    const original = createCodara({
+      model: new EchoModel() as unknown as BaseChatModel,
+      threadId: 'codara-reset-before-hydrate-thread',
+      checkpointer,
+      skills: false,
+      builtinTools: false,
+    });
+
+    await original.invoke('hello');
+
+    const restored = createCodara({
+      model: new EchoModel() as unknown as BaseChatModel,
+      threadId: 'codara-reset-before-hydrate-thread',
+      restore: 'latest',
+      checkpointer,
+      skills: false,
+      builtinTools: false,
+    });
+
+    await restored.reset();
+    const result = await restored.invoke('again');
+
+    expect(result.reason).toBe('complete');
+    expect(result.state.messages).toHaveLength(2);
+    expect(String(result.state.messages[0]?.content)).toBe('again');
+    expect(String(result.state.messages[1]?.content)).toBe('seen_humans:1');
+  });
 });
