@@ -1,7 +1,7 @@
 import type {BaseMessage} from '@langchain/core/messages';
 import type {AgentRuntimeContext, AgentRuntimeValues} from '@core/agents/contract/agent';
 import {mergeContext} from '@core/agents/engine/runtime-input';
-import {deepClone} from '@core/shared/clone';
+import {deepClone} from '@core/support/clone';
 
 const RESERVED_AGENT_CONTEXT_KEYS = new Set(['todos', 'summary']);
 
