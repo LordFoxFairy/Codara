@@ -90,26 +90,23 @@ createCodara(...)
 
 ## Future Memory Non-Goals
 
-如果后面再设计真正的产品级 memory，当前先明确这些非目标：
+如果后面再设计真正的产品级 memory，当前仍要明确这些非目标：
 
 - 不是 `checkpoint` 的别名
 - 不是 `state.context` 的别名
 - 不是 `session metadata` 的别名
-- 不是 `/memory` 命令当前展示的 `AGENTS.md` source stack
 
-也就是说，未来若引入 memory：
-- 必须有自己独立的产品语义
-- 必须有独立的数据边界
-- 不能再复用现有名词把 checkpoint/context/session metadata 混成一个概念
+也就是说，未来若引入 memory，必须有自己独立的产品语义和数据边界。
 
 ## Conversation Context
 
-- Codara 默认装配使用 `middleware/conversation.ts` 统一处理：
-  - 完整输入预算估算
-  - 可选的 summary compact
-- 这样默认 runtime 的公开心智只保留一个 conversation middleware，不再把 `context-budget` 与 `summary` 视为两个并列 middleware。
-- `middleware/conversation.ts` 现在是单文件 owner：预算快照、摘要压缩算法和公开 builder 都收在同一个能力文件里，避免再为这一个 slice 创建额外目录。
-- 这个 slice 属于 pre-model request preparation，不拥有 `session` lifecycle，也不拥有 checkpoint ownership。
+- `BudgetMiddleware`
+  - 只负责输入预算估算
+  - 只读，不写 checkpoint
+- `SummaryMiddleware`
+  - 负责自动 compact conversation
+  - 会改消息，并由 session/manual compact 路径落 checkpoint
+- 这两个 concern 已拆开，不再混成一个 conversation owner。
 
 ## Todo / Subagent / Task
 
@@ -166,7 +163,6 @@ createCodara(...)
 - slash commands 归属 `src/core/commands/`
 - 当前内建命令：
   - `/help`
-  - `/memory`
   - `/resume`
   - `/compact`
 - `/reload`
@@ -176,10 +172,9 @@ createCodara(...)
   - `builtin`：宿主内建命令
   - `skill`：由 skills discovery 暴露的命令入口
 - 这些命令属于 Codara agent surface，不属于 `createAgent(...)` 内核
-- `/memory` 直接围绕 `AGENTS.md` 工作，不恢复旧 `MEMORY.md` 机制
-- `/memory` 默认展示当前 AGENTS source stack 与可编辑 target，显式使用 `show / project / global`
-- `/memory project|global` 返回宿主 `open_file` 动作，供 UI/CLI 打开目标 `AGENTS.md`
-- `/compact` 目前只保留命令和 agent hook 位置；手动 compact 算法已移除，等待按新的产品语义重做
+- `/compact`
+  - 通过 session 入口触发 summary middleware
+  - 手动 compact 后会写入 `manual` checkpoint
 - `/compact checkpoints [keepLast]` 只整理 checkpoint store，不混入 conversation summary 语义
 
 ## Conversation Compact
@@ -191,7 +186,7 @@ createCodara(...)
   - 默认 alias 为 `sonnet`
   - 优先使用 model metadata 的 `contextWindow`
   - 默认阈值为可用输入预算的 95%
-  - 手动 `/compact` 入口当前仅保留位置，算法待重做
+  - 手动 `/compact` 通过 session 入口触发 summary 逻辑并写入 `manual` checkpoint
   - 多窗口若要分支，优先调用 `fork()`，不要共享同一条 `threadId`
 
 ## CLI 用法
