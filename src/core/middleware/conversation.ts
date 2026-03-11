@@ -1,11 +1,6 @@
 import {SystemMessage, type BaseMessage} from '@langchain/core/messages';
-import type {AgentRuntimeContext} from '@core/agents';
-import {readExecutionMetadata, type BeforeModelContext} from '@core/middleware/types';
-import {
-  estimateModelInputTokens,
-  refreshContextBudget,
-  type ContextBudgetEstimator,
-} from '@core/middleware/conversation/budget';
+import type {AgentInputBudget, AgentRuntimeContext} from '@core/agents';
+import {createMiddleware, readExecutionMetadata, type BaseMiddleware, type BeforeModelContext} from '@core/middleware/types';
 
 const DEFAULT_MAX_MESSAGES = 30;
 const DEFAULT_KEEP_LAST_MESSAGES = 12;
@@ -16,14 +11,27 @@ const SUMMARY_KEY = 'summary';
 const SUMMARY_HEADER = '# Conversation Summary';
 const SUMMARY_INTRO = 'The following summary captures earlier conversation context that has been compacted.';
 
-/** 摘要记录。 */
+export interface ContextBudgetSnapshot {
+  maxInputTokens: number;
+  reservedTokens: number;
+  availableInputTokens: number;
+  estimatedInputTokens: number;
+  overBudget: boolean;
+}
+
+export interface ContextBudgetEstimateInput {
+  systemMessage: string[];
+  messages: BaseMessage[];
+}
+
+export type ContextBudgetEstimator = (input: ContextBudgetEstimateInput) => number;
+
 export interface SummaryRecord {
   content: string;
   updatedAt: string;
   summarizedMessages: number;
 }
 
-/** 传给摘要器的输入。 */
 export interface SummaryInput {
   previousSummary?: string;
   messages: BaseMessage[];
@@ -33,10 +41,8 @@ export interface SummaryInput {
   turn: number;
 }
 
-/** 摘要生成函数。 */
 export type SummaryGenerator = (input: SummaryInput) => Promise<string> | string;
 
-/** Conversation summary compaction 配置。 */
 export interface SummaryOptions {
   summarize: SummaryGenerator;
   maxMessages?: number;
@@ -47,7 +53,83 @@ export interface SummaryOptions {
   estimateTokens?: ContextBudgetEstimator;
 }
 
-/** 从当前消息状态中读取已持久化的摘要记录。 */
+export interface ConversationContextMiddlewareOptions {
+  summary?: false | SummaryOptions;
+  estimateTokens?: ContextBudgetEstimator;
+}
+
+/**
+ * Codara pre-model request preparation middleware.
+ *
+ * It intentionally keeps input-budget refresh and optional summary compaction
+ * in one stage so the default runtime no longer relies on two separate
+ * middleware entries being ordered correctly.
+ */
+export function createConversationContextMiddleware(
+  options: ConversationContextMiddlewareOptions = {},
+): BaseMiddleware {
+  const estimateTokens = options.estimateTokens ?? estimateModelInputTokens;
+  const summary = options.summary ? normalizeSummaryOptions(options.summary) : undefined;
+
+  return createMiddleware({
+    name: 'ConversationContextMiddleware',
+    async beforeModel(context) {
+      context.budget = createContextBudgetSnapshot(context.inputBudget, {
+        systemMessage: context.systemMessage,
+        messages: context.state.messages,
+      }, estimateTokens);
+
+      if (summary) {
+        await compactSummaryIfNeeded(context, summary);
+      }
+
+      return undefined;
+    },
+  });
+}
+
+export function refreshContextBudget(
+  context: Pick<BeforeModelContext, 'systemMessage' | 'state' | 'inputBudget' | 'budget'>,
+  estimateTokens: ContextBudgetEstimator = estimateModelInputTokens
+): ContextBudgetSnapshot | undefined {
+  const snapshot = createContextBudgetSnapshot(context.inputBudget, {
+    systemMessage: context.systemMessage,
+    messages: context.state.messages,
+  }, estimateTokens);
+
+  context.budget = snapshot;
+  return snapshot;
+}
+
+export function createContextBudgetSnapshot(
+  inputBudget: AgentInputBudget | undefined,
+  input: ContextBudgetEstimateInput,
+  estimateTokens: ContextBudgetEstimator = estimateModelInputTokens
+): ContextBudgetSnapshot | undefined {
+  const maxInputTokens = inputBudget?.maxInputTokens ?? 0;
+  if (maxInputTokens < 1) {
+    return undefined;
+  }
+
+  const reservedTokens = Math.max(0, inputBudget?.reservedTokens ?? 0);
+  const availableInputTokens = Math.max(0, maxInputTokens - reservedTokens);
+  const estimatedInputTokens = estimateTokens(input);
+
+  return {
+    maxInputTokens,
+    reservedTokens,
+    availableInputTokens,
+    estimatedInputTokens,
+    overBudget: estimatedInputTokens > availableInputTokens,
+  };
+}
+
+export function estimateModelInputTokens(input: ContextBudgetEstimateInput): number {
+  const systemTokens = input.systemMessage.reduce((total, content) => total + estimateTextTokens(content) + 4, 0);
+  const messageTokens = input.messages.reduce((total, message) => total + estimateTextTokens(serializeMessageContent(message)) + 6, 0);
+  return systemTokens + messageTokens;
+}
+
 export function readSummaryRecord(messages: BaseMessage[]): SummaryRecord | undefined {
   const summaryMessage = readSummaryMessage(messages);
   if (!summaryMessage) {
@@ -76,6 +158,7 @@ export async function compactSummaryIfNeeded(
   options: Required<SummaryOptions>,
   execution: {
     force?: boolean;
+    instructions?: string;
   } = {},
 ): Promise<void> {
   const executionMeta = readExecutionMetadata(context);
@@ -92,7 +175,7 @@ export async function compactSummaryIfNeeded(
       previousSummary: summaryState.summary?.content,
       messages: olderMessages,
       context: context.runtime.context,
-      instructions: readCompactInstructions(context.runtime.context),
+      instructions: execution.instructions,
       threadId: executionMeta.threadId,
       turn: executionMeta.turn,
     });
@@ -119,7 +202,45 @@ export async function compactSummaryIfNeeded(
 }
 
 export function normalizeSummaryOptions(options: SummaryOptions): Required<SummaryOptions> {
-  return normalizeOptions(options);
+  if (typeof options.summarize !== 'function') {
+    throw new Error('Summary summary configuration requires a summarize function');
+  }
+
+  const maxMessages = options.maxMessages ?? DEFAULT_MAX_MESSAGES;
+  const keepLastMessages = options.keepLastMessages ?? DEFAULT_KEEP_LAST_MESSAGES;
+  const maxChars = options.maxChars ?? DEFAULT_MAX_CHARS;
+  const maxInputTokens = options.maxInputTokens ?? 0;
+  const compactThresholdRatio = options.compactThresholdRatio ?? DEFAULT_COMPACT_THRESHOLD_RATIO;
+  const estimateTokens = options.estimateTokens ?? estimateModelInputTokens;
+
+  if (maxMessages < 2) {
+    throw new Error('Summary configuration maxMessages must be at least 2');
+  }
+  if (keepLastMessages < 1) {
+    throw new Error('Summary configuration keepLastMessages must be at least 1');
+  }
+  if (keepLastMessages >= maxMessages) {
+    throw new Error('Summary configuration keepLastMessages must be smaller than maxMessages');
+  }
+  if (maxChars < 1) {
+    throw new Error('Summary configuration maxChars must be positive');
+  }
+  if (maxInputTokens < 0) {
+    throw new Error('Summary configuration maxInputTokens must be zero or positive');
+  }
+  if (compactThresholdRatio <= 0 || compactThresholdRatio > 1) {
+    throw new Error('Summary configuration compactThresholdRatio must be between 0 and 1');
+  }
+
+  return {
+    summarize: options.summarize,
+    maxMessages,
+    keepLastMessages,
+    maxChars,
+    maxInputTokens,
+    compactThresholdRatio,
+    estimateTokens,
+  };
 }
 
 function splitSummaryState(messages: BaseMessage[]): {
@@ -239,60 +360,6 @@ function readSummaryMetadata(message: BaseMessage): SummaryRecord | undefined {
   };
 }
 
-function isMessageType(message: BaseMessage | undefined, type: string): boolean {
-  if (!message || typeof message !== 'object') {
-    return false;
-  }
-
-  if ('type' in message && typeof (message as {type?: unknown}).type === 'string') {
-    return (message as {type: string}).type === type;
-  }
-
-  return type === 'system' ? SystemMessage.isInstance(message) : false;
-}
-
-function normalizeOptions(options: SummaryOptions): Required<SummaryOptions> {
-  if (typeof options.summarize !== 'function') {
-    throw new Error('Summary summary configuration requires a summarize function');
-  }
-
-  const maxMessages = options.maxMessages ?? DEFAULT_MAX_MESSAGES;
-  const keepLastMessages = options.keepLastMessages ?? DEFAULT_KEEP_LAST_MESSAGES;
-  const maxChars = options.maxChars ?? DEFAULT_MAX_CHARS;
-  const maxInputTokens = options.maxInputTokens ?? 0;
-  const compactThresholdRatio = options.compactThresholdRatio ?? DEFAULT_COMPACT_THRESHOLD_RATIO;
-  const estimateTokens = options.estimateTokens ?? estimateModelInputTokens;
-
-  if (maxMessages < 2) {
-    throw new Error('Summary configuration maxMessages must be at least 2');
-  }
-  if (keepLastMessages < 1) {
-    throw new Error('Summary configuration keepLastMessages must be at least 1');
-  }
-  if (keepLastMessages >= maxMessages) {
-    throw new Error('Summary configuration keepLastMessages must be smaller than maxMessages');
-  }
-  if (maxChars < 1) {
-    throw new Error('Summary configuration maxChars must be positive');
-  }
-  if (maxInputTokens < 0) {
-    throw new Error('Summary configuration maxInputTokens must be zero or positive');
-  }
-  if (compactThresholdRatio <= 0 || compactThresholdRatio > 1) {
-    throw new Error('Summary configuration compactThresholdRatio must be between 0 and 1');
-  }
-
-  return {
-    summarize: options.summarize,
-    maxMessages,
-    keepLastMessages,
-    maxChars,
-    maxInputTokens,
-    compactThresholdRatio,
-    estimateTokens,
-  };
-}
-
 function shouldCompactHistory(
   context: BeforeModelContext,
   options: Required<SummaryOptions>,
@@ -326,12 +393,42 @@ function shouldCompactHistory(
   return estimate >= compactTriggerTokens;
 }
 
-function readCompactInstructions(context: Record<string, unknown>): string | undefined {
-  const codara = asRecord(context[CODARA_KEY]);
-  const instructions = codara.compactInstructions;
-  return typeof instructions === 'string' && instructions.trim()
-    ? instructions.trim()
-    : undefined;
+function estimateTextTokens(text: string): number {
+  return Math.max(1, Math.ceil(text.length / 4));
+}
+
+function serializeMessageContent(message: BaseMessage): string {
+  const parts: string[] = [];
+
+  if (typeof message.content === 'string') {
+    parts.push(message.content);
+  } else if (Array.isArray(message.content)) {
+    parts.push(JSON.stringify(message.content));
+  } else if (message.content !== undefined && message.content !== null) {
+    parts.push(String(message.content));
+  }
+
+  if ('tool_calls' in message && Array.isArray((message as {tool_calls?: unknown[]}).tool_calls)) {
+    parts.push(JSON.stringify((message as {tool_calls?: unknown[]}).tool_calls));
+  }
+
+  if ('additional_kwargs' in message && (message as {additional_kwargs?: unknown}).additional_kwargs) {
+    parts.push(JSON.stringify((message as {additional_kwargs?: unknown}).additional_kwargs));
+  }
+
+  return parts.join('\n');
+}
+
+function isMessageType(message: BaseMessage | undefined, type: string): boolean {
+  if (!message || typeof message !== 'object') {
+    return false;
+  }
+
+  if ('type' in message && typeof (message as {type?: unknown}).type === 'string') {
+    return (message as {type: string}).type === type;
+  }
+
+  return type === 'system' ? SystemMessage.isInstance(message) : false;
 }
 
 function asRecord(value: unknown): Record<string, unknown> {

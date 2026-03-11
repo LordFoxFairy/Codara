@@ -114,10 +114,9 @@ Codara 默认 runtime 只把下面几类模块当成一等 middleware stage：
 
 其中：
 
-- `conversation/budget.ts`
-- `conversation/summary.ts`
+- `conversation/*`
 
-都属于 conversation internals。它们不再作为独立 middleware 暴露心智，而是作为 `ConversationContextMiddleware` 内部使用的策略/算法模块存在。
+不再属于 middleware 子目录。它们已经提升为平级 conversation 小域；`middleware/conversation.ts` 只保留 `ConversationContextMiddleware` 这个公开 builder。
 
 ### 默认主链职责矩阵
 
@@ -142,7 +141,7 @@ Codara 默认 runtime 只把下面几类模块当成一等 middleware stage：
 source-driven system layers 现在走另一条链：
 
 - `Session`
-  - preload / reload `sources/*`
+  - preload / reload `knowledge/*`
 - `Agent prepareTurnContext`
   - 读取 source snapshot
   - 组装 `systemMessage`
@@ -159,16 +158,14 @@ request-preparation slice 的职责应固定理解为：
 
 - model input assembly
   - directly owned by `agents/loop/model-step.ts`
-- `context-budget`
+- `middleware/conversation`
   - transient budget snapshot / heuristic
-  - not a standalone middleware stage
-- `summary`
-  - compaction helper over `messages`
-  - not a standalone middleware stage
-- `conversation-context`
-  - 编排上面三个能力的默认 pre-model stage
+  - summary compaction helper over `messages`
+  - default pre-model middleware stage
 
-目录上它们现在固定归到 `middleware/conversation/*`，而不是继续平铺在 `middleware/` 根层。根层只保留一等 middleware owner。
+目录上现在固定分为：
+- `middleware/conversation.ts`
+  - 单文件 owner，包含 builder、预算和摘要逻辑
 
 ## 典型模式
 

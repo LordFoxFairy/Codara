@@ -2,7 +2,8 @@ import {describe, expect, it} from 'bun:test';
 import {AIMessage, HumanMessage, type BaseMessage} from '@langchain/core/messages';
 import type {ModelCallContext} from '@core/middleware';
 import {MiddlewarePipeline} from '@core/middleware/pipeline';
-import {createConversationContextMiddleware, readSummaryRecord} from '@core/middleware/conversation';
+import {readSummaryRecord} from '@core/middleware/conversation';
+import {createConversationContextMiddleware} from '@core/middleware/conversation';
 
 describe('conversation context middleware', () => {
   it('should refresh budget and compact history in one stage', async () => {
@@ -90,7 +91,7 @@ describe('conversation context middleware', () => {
     expect(middleware.afterAgent).toBeUndefined();
   });
 
-  it('should force summary compaction when runtime requests manual compact', async () => {
+  it('should not force summary compaction when messages are below the automatic threshold', async () => {
     const middleware = createConversationContextMiddleware({
       summary: {
         maxMessages: 99,
@@ -111,13 +112,7 @@ describe('conversation context middleware', () => {
     const context: ModelCallContext = {
       state: {messages},
       messages,
-      runtime: {
-        context: {
-          codara: {
-            forceCompactConversation: true,
-          },
-        },
-      },
+      runtime: {context: {}},
       systemMessage: ['caller prompt'],
       execution: {
         threadId: 'thread-3',
@@ -133,6 +128,6 @@ describe('conversation context middleware', () => {
 
     await pipeline.beforeModel(context);
 
-    expect(readSummaryRecord(context.state.messages)?.content).toBe('manual summary block');
+    expect(readSummaryRecord(context.state.messages)).toBeUndefined();
   });
 });

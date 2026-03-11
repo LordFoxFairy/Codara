@@ -12,7 +12,7 @@ import type {StructuredToolInterface} from '@langchain/core/tools';
 import {z} from 'zod';
 import type {AgentInputBudget, AgentRuntimeContext, AgentRuntimeValues} from '@core/agents/contract/agent';
 import type {AgentStateUpdate} from '@core/agents/command';
-import type {ContextBudgetSnapshot} from '@core/middleware/conversation/budget';
+import type {ContextBudgetSnapshot} from '@core/middleware/conversation';
 
 export type MiddlewareRuntimeShared = Record<string, unknown>;
 
