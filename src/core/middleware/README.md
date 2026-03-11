@@ -120,6 +120,34 @@ Codara 默认 runtime 只把下面几类模块当成一等 middleware stage：
 
 都属于 conversation internals。它们可以被直接导入复用，但不应再被理解为默认主链中的并列 stage。
 
+### 默认主链职责矩阵
+
+- `LoggingMiddleware`
+  - hook scope: all 6 hooks
+  - role: observer only
+  - should not own source loading, context compaction, or tool policy
+- `GuidelinesMiddleware`
+  - hook scope: `beforeModel`
+  - role: inject AGENTS source projection into `systemMessage`
+- `SkillsMiddleware`
+  - hook scope: `beforeModel`
+  - role:
+    - inject skills prompt section into `systemMessage`
+    - expose discovered skills runtime in `runtime.shared.skills`
+- caller middleware
+  - hook scope: user-defined
+  - role: custom runtime rewrites that should still participate in later conversation budgeting/compaction
+- `ConversationContextMiddleware`
+  - hook scope: `beforeModel`
+  - role:
+    - refresh budget snapshot
+    - optionally compact old conversation messages
+- `HumanInTheLoopMiddleware`
+  - hook scope: `wrapToolCall`
+  - role: pause/resume interception only
+
+这条默认主链里，source stage、conversation stage、interaction stage、observer stage 各自只有一个默认 owner，不应重叠。
+
 ## 典型模式
 
 ### 内置 LoggingMiddleware

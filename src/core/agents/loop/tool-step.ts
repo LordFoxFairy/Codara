@@ -3,6 +3,7 @@ import type {AgentRunSummary, BaseExecutionContext, ToolCallContext} from '@core
 import {parseHILToolMessagePayload} from '@core/middleware/hil';
 import type {AgentStreamWriter} from '@core/agents/engine/stream-writer';
 import {executeToolCall, resolveToolCallId} from '@core/agents/engine/tools';
+import {readLatestPause} from '@core/agents/engine/runtime-input';
 import type {AgentRuntime, AgentRunContext} from '@core/agents/loop/run';
 import {readToolExecutionPolicy} from '@core/tools';
 import {toError} from '@core/shared/errors';
@@ -17,6 +18,9 @@ export async function runToolStep(
     const results = await Promise.all(batch.map((entry) => executeWrappedToolCall(run, runtime, context, entry)));
     for (const {toolMessage} of results) {
       run.state.messages.push(toolMessage);
+    }
+    if (stopToolExecutionAfterPause(run, results.map(({toolMessage}) => toolMessage))) {
+      return;
     }
   }
 }
@@ -39,6 +43,9 @@ export async function runToolStepStream(
       if (payload) {
         await stream.emitCustom({runId: context.runId, turn: context.turn, payload});
       }
+    }
+    if (stopToolExecutionAfterPause(run, results.map(({toolMessage}) => toolMessage))) {
+      return;
     }
   }
 }
@@ -146,4 +153,17 @@ function createToolExecutionBatches(
 
   flushParallel();
   return batches;
+}
+
+function stopToolExecutionAfterPause(
+  run: AgentRunContext,
+  batchMessages: Awaited<ReturnType<typeof executeToolCall>>[],
+): boolean {
+  const pause = readLatestPause(batchMessages);
+  if (!pause) {
+    return false;
+  }
+
+  run.state.pendingPause = pause;
+  return true;
 }

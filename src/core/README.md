@@ -194,6 +194,23 @@ checkpoint 边界：
 - `session metadata`
 - `state.context`
 
+四个容易混淆的概念，当前应固定这样理解：
+
+- `AGENTS.md`
+  - source input
+  - 通过 `/memory` 和 `/reload` 管理
+- `state.context`
+  - durable agent context
+  - 随 checkpoint 保存与恢复
+- `checkpoint`
+  - conversation branch 的 runtime snapshot history
+  - 保存 `messages/context/values/pendingPause`
+- `session metadata`
+  - host catalog summary
+  - 保存 `sessionId/threadId/lastActivity/messageCount/lastMessage/usage/contextWindow`
+
+它们是四条不同边界，不应再混叫成 “memory”。
+
 
 ## Summary 中间件
 
