@@ -35,7 +35,7 @@ class MultiToolPauseModel {
 }
 
 describe('HIL multi-tab pause metadata', () => {
-  it('should emit two pause requests with different ui tab metadata', async () => {
+  it('should emit the first pause request and stop later serial tools in the same turn', async () => {
     const model = new MultiToolPauseModel();
 
     let writeInvokeCount = 0;
@@ -100,14 +100,9 @@ describe('HIL multi-tab pause metadata', () => {
     expect(writeInvokeCount).toBe(0);
     expect(emailInvokeCount).toBe(0);
 
-    expect(pauseRequests).toHaveLength(2);
-
-    const byTool = new Map(pauseRequests.map((request) => [request.action.toolName, request]));
-
-    expect(byTool.get('write_file')?.channel).toBe('approval-center');
-    expect((byTool.get('write_file')?.ui as Record<string, unknown>)?.tab).toBe('FileOps');
-
-    expect(byTool.get('send_email')?.channel).toBe('approval-center');
-    expect((byTool.get('send_email')?.ui as Record<string, unknown>)?.tab).toBe('CommsOps');
+    expect(pauseRequests).toHaveLength(1);
+    expect(pauseRequests[0]?.action.toolName).toBe('write_file');
+    expect(pauseRequests[0]?.channel).toBe('approval-center');
+    expect((pauseRequests[0]?.ui as Record<string, unknown>)?.tab).toBe('FileOps');
   });
 });

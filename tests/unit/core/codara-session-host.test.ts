@@ -1,5 +1,5 @@
 import {describe, expect, it} from 'bun:test';
-import {mkdtemp} from 'node:fs/promises';
+import {mkdtemp, readFile} from 'node:fs/promises';
 import {tmpdir} from 'node:os';
 import path from 'node:path';
 import {
@@ -153,6 +153,39 @@ describe('Codara session host', () => {
     // Trigger agent initialization
     await codara.invoke('test');
     expect(codara.getAgentState().messages.length).toBeGreaterThan(0);
+  });
+
+  it('should persist only session catalog metadata in metadata.json, not runtime history or durable context', async () => {
+    const basePath = await mkdtemp(path.join(tmpdir(), 'codara-session-metadata-boundary-'));
+    const checkpointer = createAgentMemoryCheckpointer();
+    const store = new FileSessionStore({basePath});
+
+    const codara = createCodara({
+      model: new EchoModel() as unknown as BaseChatModel,
+      sessionId: 'metadata-boundary-session',
+      threadId: 'metadata-boundary-thread',
+      checkpointer,
+      store,
+      skills: false,
+      builtinTools: false,
+      context: {project: 'codara'},
+    });
+
+    await codara.invoke('hello');
+
+    const metadataPath = path.join(basePath, 'metadata-boundary-session', 'metadata.json');
+    const persisted = JSON.parse(await readFile(metadataPath, 'utf8')) as Record<string, unknown>;
+
+    expect(persisted.threadId).toBe('metadata-boundary-thread');
+    expect(persisted).not.toHaveProperty('messages');
+    expect(persisted).not.toHaveProperty('context');
+    expect(persisted).not.toHaveProperty('values');
+    expect(persisted).not.toHaveProperty('pendingPause');
+    expect((persisted.metadata as {messageCount?: number})?.messageCount).toBeGreaterThan(0);
+
+    const latestCheckpoint = await checkpointer.getLatest('metadata-boundary-thread');
+    expect(latestCheckpoint?.state.context).toEqual({project: 'codara'});
+    expect(latestCheckpoint?.state.messages.length).toBeGreaterThan(0);
   });
 
   it('should hydrate a restoring session without requiring a new invoke', async () => {
