@@ -64,7 +64,7 @@ export {
 export {
   createConversationContextMiddleware,
   type ConversationContextMiddlewareOptions,
-} from '@core/middleware/conversation-context';
+} from '@core/middleware/conversation';
 export {
   createWriteTodosTool,
   readTodoState,

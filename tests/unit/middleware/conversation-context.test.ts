@@ -2,8 +2,7 @@ import {describe, expect, it} from 'bun:test';
 import {AIMessage, HumanMessage, type BaseMessage} from '@langchain/core/messages';
 import type {ModelCallContext} from '@core/middleware';
 import {MiddlewarePipeline} from '@core/middleware/pipeline';
-import {createConversationContextMiddleware} from '@core/middleware/conversation-context';
-import {readSummaryRecord} from '@core/middleware/summary';
+import {createConversationContextMiddleware, readSummaryRecord} from '@core/middleware/conversation';
 
 describe('conversation context middleware', () => {
   it('should refresh budget and compact history in one stage', async () => {

@@ -116,8 +116,8 @@ Codara 默认 runtime 只把下面几类模块当成一等 middleware stage：
 
 其中：
 
-- `context-budget.ts`
-- `summary.ts`
+- `conversation/budget.ts`
+- `conversation/summary.ts`
 
 都属于 conversation internals。它们不再作为独立 middleware 暴露心智，而是作为 `ConversationContextMiddleware` 内部使用的策略/算法模块存在。
 
@@ -161,6 +161,8 @@ request-preparation slice 的职责应固定理解为：
   - not a standalone middleware stage
 - `conversation-context`
   - 编排上面三个能力的默认 pre-model stage
+
+目录上它们现在固定归到 `middleware/conversation/*`，而不是继续平铺在 `middleware/` 根层。根层只保留一等 middleware owner。
 
 ## 典型模式
 

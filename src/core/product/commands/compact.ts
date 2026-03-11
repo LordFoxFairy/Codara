@@ -1,4 +1,4 @@
-import {readSummaryRecord} from '@core/middleware/summary';
+import {readSummaryRecord} from '@core/middleware/conversation';
 import type {CodaraCommandDefinition} from '@core/product/commands/types';
 
 export function createCompactCommand(): CodaraCommandDefinition {

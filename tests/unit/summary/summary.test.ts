@@ -3,10 +3,10 @@ import {AIMessage, HumanMessage, SystemMessage, type BaseMessage} from '@langcha
 import type {BaseChatModel} from '@langchain/core/language_models/chat_models';
 import {createAgent} from '@core/agents';
 import {createAgentMemoryCheckpointer} from '@core/checkpoint';
-import {estimateModelInputTokens} from '@core/middleware/context-budget';
+import {estimateModelInputTokens} from '@core/middleware/conversation';
 import {createConversationContextMiddleware, type ModelCallContext} from '@core/middleware';
 import {MiddlewarePipeline} from '@core/middleware/pipeline';
-import {readSummaryRecord} from '@core/middleware/summary';
+import {readSummaryRecord} from '@core/middleware/conversation';
 
 class FakeModel {
   constructor(private readonly responses: AIMessage[]) {}
