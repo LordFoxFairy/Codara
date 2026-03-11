@@ -4,6 +4,7 @@ import type {BaseChatModel} from '@langchain/core/language_models/chat_models';
 import {tool, type StructuredToolInterface} from '@langchain/core/tools';
 import {z} from 'zod';
 import {createAgent} from '@core/agents';
+import {createMiddleware} from '@core/middleware';
 import {createSubagentTool, DEFAULT_SUBAGENT_TOOL_NAME, readDelegatedAgentResult} from '@core/tasking';
 import {createAgentMemoryCheckpointer} from '@core/checkpoint';
 
@@ -40,6 +41,22 @@ class HumanCountModel {
 
   bindTools(tools: StructuredToolInterface[]): this {
     this.boundToolNames = tools.map((candidate) => candidate.name);
+    return this;
+  }
+}
+
+class ChildProbeModel {
+  async invoke(messages: BaseMessage[]): Promise<AIMessage> {
+    const systemText = messages
+      .filter((message) => message.getType() === 'system')
+      .map((message) => String(message.content))
+      .join('\n---\n');
+    const humanCount = messages.filter((message) => HumanMessage.isInstance(message)).length;
+    return new AIMessage(`${systemText}\nchild_humans:${humanCount}`.trim());
+  }
+
+  bindTools(tools: StructuredToolInterface[]): this {
+    void tools;
     return this;
   }
 }
@@ -218,5 +235,113 @@ describe('createSubagentTool', () => {
     });
 
     expect(restored.getState().agentType).toBe('subagent');
+  });
+
+  it('应默认隔离父代理的 messages、context、values 和 runtime.shared', async () => {
+    const parentModel = new ScriptedModel([
+      new AIMessage({
+        content: '',
+        tool_calls: [{
+          id: 'call_subagent_isolation',
+          name: DEFAULT_SUBAGENT_TOOL_NAME,
+          args: {prompt: 'Inspect isolation'},
+        } as ToolCall],
+      }),
+      new AIMessage('parent_done'),
+    ]);
+
+    const childProbe = createMiddleware({
+      name: 'child-probe',
+      beforeModel(context) {
+        context.systemMessage.push(JSON.stringify({
+          agentContext: context.runtime.agentContext,
+          runtimeContext: context.runtime.runtimeContext,
+          runtimeShared: context.runtime.shared,
+          values: context.state.values,
+        }));
+        return undefined;
+      },
+    });
+
+    const subagentTool = createSubagentTool({
+      model: new ChildProbeModel() as unknown as BaseChatModel,
+      middleware: [childProbe],
+    });
+
+    const parent = createAgent({
+      model: parentModel as unknown as BaseChatModel,
+      tools: [subagentTool],
+      context: {parentContext: true},
+      values: {parentValue: true},
+      middleware: [
+        createMiddleware({
+          name: 'parent-runtime-shared',
+          beforeModel: () => ({
+            runtimeShared: {
+              parentShared: true,
+            },
+          }),
+        }),
+      ],
+    });
+
+    const result = await parent.invoke({messages: [new HumanMessage('parent_request')]});
+    const toolMessage = result.state.messages.find((message) => ToolMessage.isInstance(message)) as ToolMessage;
+
+    expect(result.reason).toBe('complete');
+    expect(String(toolMessage.content)).toContain('"agentContext":{}');
+    expect(String(toolMessage.content)).toContain('"runtimeContext":{}');
+    expect(String(toolMessage.content)).toContain('"runtimeShared":{}');
+    expect(String(toolMessage.content)).toContain('"values":{}');
+    expect(String(toolMessage.content)).toContain('child_humans:1');
+    expect(String(toolMessage.content)).not.toContain('parent_request');
+  });
+
+  it('应只继承显式为子代理提供的 context 和 values seed', async () => {
+    const parentModel = new ScriptedModel([
+      new AIMessage({
+        content: '',
+        tool_calls: [{
+          id: 'call_subagent_seeded',
+          name: DEFAULT_SUBAGENT_TOOL_NAME,
+          args: {prompt: 'Inspect seeds'},
+        } as ToolCall],
+      }),
+      new AIMessage('parent_done'),
+    ]);
+
+    const childProbe = createMiddleware({
+      name: 'child-seed-probe',
+      beforeModel(context) {
+        context.systemMessage.push(JSON.stringify({
+          agentContext: context.runtime.agentContext,
+          values: context.state.values,
+        }));
+        return undefined;
+      },
+    });
+
+    const subagentTool = createSubagentTool({
+      model: new ChildProbeModel() as unknown as BaseChatModel,
+      middleware: [childProbe],
+      context: {seededContext: 'child-only'},
+      values: {seededValue: 1},
+    });
+
+    const parent = createAgent({
+      model: parentModel as unknown as BaseChatModel,
+      tools: [subagentTool],
+      context: {parentContext: true},
+      values: {parentValue: true},
+    });
+
+    const result = await parent.invoke({messages: [new HumanMessage('parent_request')]});
+    const toolMessage = result.state.messages.find((message) => ToolMessage.isInstance(message)) as ToolMessage;
+
+    expect(result.reason).toBe('complete');
+    expect(String(toolMessage.content)).toContain('"agentContext":{"seededContext":"child-only"}');
+    expect(String(toolMessage.content)).toContain('"values":{"seededValue":1}');
+    expect(String(toolMessage.content)).not.toContain('parentContext');
+    expect(String(toolMessage.content)).not.toContain('parentValue');
   });
 });
