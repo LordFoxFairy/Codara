@@ -1,6 +1,6 @@
 import type {StructuredToolInterface} from '@langchain/core/tools';
 import type {BaseMiddleware} from '@core/middleware';
-import {MiddlewarePipeline} from '@core/middleware';
+import {MiddlewarePipeline} from '@core/middleware/pipeline';
 import type {CreateAgentOptions} from '@core/agents/contract/agent';
 import type {AgentRuntime} from '@core/agents/loop/run';
 import {buildAgentModel} from '@core/agents/engine/model';

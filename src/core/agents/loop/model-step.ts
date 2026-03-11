@@ -1,5 +1,5 @@
 import {AIMessage, SystemMessage, type BaseMessage} from '@langchain/core/messages';
-import type {ModelCallContext} from '@core/middleware';
+import {readExecutionMetadata, type ModelCallContext} from '@core/middleware';
 import type {AgentStreamWriter} from '@core/agents/engine/stream-writer';
 import {chunkToMessage, toMessageChunk} from '@core/agents/engine/model';
 import type {AgentRuntime, AgentRunContext} from '@core/agents/loop/run';
@@ -24,6 +24,7 @@ export async function runModelStepStream(
 ): Promise<AIMessage> {
   const invoke = async (request?: ModelCallContext) => {
     const nextRequest = request ?? context;
+    const execution = readExecutionMetadata(nextRequest);
     const modelMessages = buildModelMessages(nextRequest.systemMessage, nextRequest.messages);
     let aggregate;
 
@@ -31,10 +32,10 @@ export async function runModelStepStream(
       const normalized = toMessageChunk(chunk);
       aggregate = aggregate ? aggregate.concat(normalized) : normalized;
       await stream.emitMessages({
-        runId: run.runId,
-        threadId: run.state.threadId,
-        requestId: context.requestId,
-        turn: context.turn,
+        runId: execution.runId,
+        threadId: execution.threadId,
+        requestId: execution.requestId,
+        turn: execution.turn,
         chunk: normalized,
       });
     }

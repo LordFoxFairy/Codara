@@ -27,19 +27,12 @@ import {
 import {assertNoDuplicateNames, runSimpleStage, runWrappedStage} from '@core/middleware/execution';
 
 export class MiddlewarePipeline {
-  private readonly middlewares: BaseMiddleware[];
+  private readonly middlewares: ReadonlyArray<BaseMiddleware>;
 
   constructor(middlewares: BaseMiddleware[] = []) {
-    this.middlewares = middlewares.map((middleware) => createMiddleware(middleware));
-    assertNoDuplicateNames(this.middlewares);
-  }
-
-  use(middleware: BaseMiddleware): void {
-    const normalized = createMiddleware(middleware);
-    if (this.middlewares.some((item) => item.name === normalized.name)) {
-      throw new Error(`Duplicate middleware name: ${normalized.name}`);
-    }
-    this.middlewares.push(normalized);
+    const normalized = middlewares.map((middleware) => createMiddleware(middleware));
+    assertNoDuplicateNames(normalized);
+    this.middlewares = Object.freeze(normalized);
   }
 
   list(): ReadonlyArray<Readonly<BaseMiddleware>> {
@@ -53,22 +46,6 @@ export class MiddlewarePipeline {
   get(name: string): Readonly<BaseMiddleware> | undefined {
     const middleware = this.middlewares.find((middleware) => middleware.name === name);
     return middleware as Readonly<BaseMiddleware> | undefined;
-  }
-
-  /** 删除中间件；若 middleware 标记为 required 则抛错。 */
-  remove(name: string): boolean {
-    const index = this.middlewares.findIndex((middleware) => middleware.name === name);
-    if (index < 0) {
-      return false;
-    }
-
-    const middleware = this.middlewares[index];
-    if (middleware.required) {
-      throw new Error(`Cannot remove required middleware: ${name}`);
-    }
-
-    this.middlewares.splice(index, 1);
-    return true;
   }
 
   validateContext(context: AgentRuntimeContext): void {

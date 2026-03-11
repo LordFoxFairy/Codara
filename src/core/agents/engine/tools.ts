@@ -30,6 +30,14 @@ export async function executeToolCall(
     turn?: number;
     requestId?: string;
     toolIndex?: number;
+    execution?: {
+      threadId: string;
+      runId: string;
+      turn: number;
+      requestId: string;
+      toolIndex?: number;
+      toolCallId?: string;
+    };
   },
   normalizeValues?: (values: AgentState['values']) => AgentState['values']
 ): Promise<ToolMessage> {
@@ -53,6 +61,14 @@ export async function executeToolCall(
         requestId: runtime?.requestId,
         toolCallId,
         toolIndex: runtime?.toolIndex,
+        execution: runtime?.execution ?? {
+          threadId: state.threadId,
+          runId: runtime?.runId ?? '',
+          turn: runtime?.turn ?? 0,
+          requestId: runtime?.requestId ?? '',
+          ...(typeof runtime?.toolIndex === 'number' ? {toolIndex: runtime.toolIndex} : {}),
+          toolCallId,
+        },
         agentType: state.agentType,
         agentContext: state.context,
         runtimeContext: runtime?.context ?? state.context,
@@ -67,6 +83,14 @@ export async function executeToolCall(
         requestId: runtime?.requestId,
         toolCallId,
         toolIndex: runtime?.toolIndex,
+        execution: runtime?.execution ?? {
+          threadId: state.threadId,
+          runId: runtime?.runId ?? '',
+          turn: runtime?.turn ?? 0,
+          requestId: runtime?.requestId ?? '',
+          ...(typeof runtime?.toolIndex === 'number' ? {toolIndex: runtime.toolIndex} : {}),
+          toolCallId,
+        },
       },
     });
     if (ToolMessage.isInstance(result)) {
@@ -167,6 +191,14 @@ function applyToolCommand(
     turn?: number;
     requestId?: string;
     toolIndex?: number;
+    execution?: {
+      threadId: string;
+      runId: string;
+      turn: number;
+      requestId: string;
+      toolIndex?: number;
+      toolCallId?: string;
+    };
   },
   normalizeValues?: (values: AgentState['values']) => AgentState['values'],
   fallbackToolMessage?: ToolMessage

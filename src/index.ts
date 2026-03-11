@@ -55,14 +55,16 @@ export {
 export {
   createMiddleware,
   createConversationContextMiddleware,
-  createSharedTaskMiddleware,
   createGuidelinesMiddleware,
   createSkillsMiddleware,
   createHILMiddleware,
   createLoggingMiddleware,
+} from '@core/middleware';
+export {
+  createSharedTaskMiddleware,
   createSubagentMiddleware,
   createTaskMiddleware,
-} from '@core/middleware';
+} from '@core/tasking';
 
 // ============================================
 // 类型导出（供高级用户使用）

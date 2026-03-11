@@ -4,7 +4,8 @@ import type {BaseChatModel} from '@langchain/core/language_models/chat_models';
 import {createAgent} from '@core/agents';
 import {createAgentMemoryCheckpointer} from '@core/checkpoint';
 import {estimateModelInputTokens} from '@core/middleware/context-budget';
-import {createConversationContextMiddleware, MiddlewarePipeline, type ModelCallContext} from '@core/middleware';
+import {createConversationContextMiddleware, type ModelCallContext} from '@core/middleware';
+import {MiddlewarePipeline} from '@core/middleware/pipeline';
 import {readSummaryRecord} from '@core/middleware/summary';
 
 class FakeModel {

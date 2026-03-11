@@ -11,7 +11,8 @@ import type {
 import type {AgentModel} from '@core/agents/engine/model';
 import type {AgentStreamWriter} from '@core/agents/engine/stream-writer';
 import {runTurn, runTurnStream, type AgentTurnOutcome} from '@core/agents/loop/turn';
-import type {BaseExecutionContext, MiddlewarePipeline, MiddlewareRuntimeShared} from '@core/middleware';
+import type {BaseExecutionContext, MiddlewareRuntimeShared} from '@core/middleware';
+import type {MiddlewarePipeline} from '@core/middleware/pipeline';
 import {deepClone} from '@core/shared/clone';
 import {toError, formatErrorMessage} from '@core/shared/errors';
 import {mergeContext} from '@core/agents/engine/runtime-input';
@@ -62,16 +63,25 @@ export function createExecutionContext(
   turn: number,
   requestId: string
 ): BaseExecutionContext {
+  const effectiveContext = resolveEffectiveContext(run);
+
   return {
     state: run.state,
     messages: run.state.messages,
     runtime: {
-      context: withThreadId(resolveEffectiveContext(run), run.state.threadId),
+      context: effectiveContext,
       agentContext: run.state.context,
       runtimeContext: run.runtimeContext,
       shared: run.shared,
     },
     systemMessage: [],
+    execution: {
+      threadId: run.state.threadId,
+      runId: run.runId,
+      turn,
+      maxTurns: run.maxTurns,
+      requestId,
+    },
     runId: run.runId,
     turn,
     maxTurns: run.maxTurns,
@@ -207,12 +217,5 @@ function createAgentResult(
     state,
     turns,
     ...(error === undefined ? {} : {error: toError(error)}),
-  };
-}
-
-function withThreadId(context: AgentRuntimeContext, threadId: string): AgentRuntimeContext {
-  return {
-    ...context,
-    threadId,
   };
 }

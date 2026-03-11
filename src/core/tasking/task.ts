@@ -1,10 +1,9 @@
 import {tool, type StructuredToolInterface} from '@langchain/core/tools';
 import {z} from 'zod';
-import type {AgentType} from '@core/agents/contract/agent';
 import {createMiddleware, type BaseMiddleware} from '@core/middleware';
 import {
   type CreateSubagentToolOptions,
-  readDelegatedResumeState,
+  readDelegatedParentRuntimeMetadata,
   runDelegatedAgent,
 } from '@core/tasking/subagent';
 import {
@@ -47,7 +46,7 @@ export function createTaskTool(options: CreateTaskToolOptions): StructuredToolIn
   return tool(
     async ({prompt, subagent_type, max_turns}: TaskToolInput, config) => {
       const configurable = readConfigurable(config?.configurable);
-      const delegatedResume = readDelegatedResumeState(configurable.invokeContext, TASK_TOOL_NAME);
+      const delegated = readDelegatedParentRuntimeMetadata(configurable, TASK_TOOL_NAME);
       const profile = resolveSubagentDefinition(
         readAgentSkillsRuntime(configurable.runtimeShared),
         subagent_type,
@@ -59,15 +58,9 @@ export function createTaskTool(options: CreateTaskToolOptions): StructuredToolIn
         prompt,
         maxTurns: max_turns ?? profile.maxTurns,
         toolName: TASK_TOOL_NAME,
-        parentAgentType: readAgentType(configurable.agentType),
-        parentToolCallId: readString(configurable.toolCallId) ?? '',
-        parentRunId: readString(configurable.runId) ?? '',
-        parentRequestId: readString(configurable.requestId) ?? '',
-        parentTurn: readNumber(configurable.turn) ?? 0,
-        parentToolIndex: readNumber(configurable.toolIndex) ?? 0,
+        ...delegated,
         profileTools: resolveDefinitionTools(options.tools ?? [], profile),
         profileSystemPrompt: profile.systemPrompt,
-        ...(delegatedResume ? {resume: delegatedResume} : {}),
       });
     },
     {
@@ -105,10 +98,6 @@ export function createTaskMiddleware(options: CreateTaskMiddlewareOptions): Base
   });
 }
 
-function readAgentType(value: unknown): AgentType {
-  return value === 'subagent' ? 'subagent' : 'main';
-}
-
 function resolveDefinitionTools(
   tools: StructuredToolInterface[],
   definition: SubagentDefinition
@@ -132,14 +121,6 @@ function readConfigurable(value: unknown): Record<string, unknown> {
   return value && typeof value === 'object' && !Array.isArray(value)
     ? value as Record<string, unknown>
     : {};
-}
-
-function readString(value: unknown): string | undefined {
-  return typeof value === 'string' && value.trim() ? value : undefined;
-}
-
-function readNumber(value: unknown): number | undefined {
-  return typeof value === 'number' ? value : undefined;
 }
 
 function formatAvailableSubagents(runtime: SkillsRuntimeData | undefined): string | undefined {

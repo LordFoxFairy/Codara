@@ -22,20 +22,26 @@ import type {PauseRequest} from '@core/agents/contract/pause';
 import {deepClone} from '@core/shared/clone';
 
 /** Agent 内部运行态。 */
-export interface AgentRuntimeState {
-  threadId: string;
+export interface AgentDurableState {
   agentType: AgentType;
-  checkpointId?: string;
   messages: BaseMessage[];
   context: AgentRuntimeContext;
   values: AgentRuntimeValues;
-  status: AgentStatus;
   pendingPause?: PauseRequest;
+}
+
+export interface AgentExecutionControlState {
+  threadId: string;
+  checkpointId?: string;
+  status: AgentStatus;
   lastResult?: AgentCheckpointSummary;
   step: number;
   createdAt: string;
   updatedAt: string;
 }
+
+/** Agent 内部运行态。 */
+export interface AgentRuntimeState extends AgentDurableState, AgentExecutionControlState {}
 
 export type MutableAgentState = AgentRuntimeState;
 
@@ -47,7 +53,7 @@ interface AgentInitialInput {
 }
 
 type CheckpointComparableState = Pick<
-  AgentRuntimeState | AgentState,
+  AgentDurableState | AgentState,
   'agentType' | 'messages' | 'context' | 'values' | 'pendingPause'
 >;
 
@@ -100,16 +106,18 @@ export function summarizeCheckpointInfo(info: AgentCheckpointInfo): AgentCheckpo
 export function toAgentState(state: AgentRuntimeState): AgentState {
   return {
     threadId: state.threadId,
-    agentType: state.agentType,
-    messages: cloneAgentMessages(state.messages),
-    context: cloneAgentContext(state.context),
-    values: cloneAgentValues(state.values),
+    ...cloneDurableAgentState(state),
     status: state.status,
-    ...(state.pendingPause ? {pendingPause: clonePauseRequest(state.pendingPause)} : {}),
   };
 }
 
 export function toCheckpointState(state: AgentRuntimeState): AgentCheckpointState {
+  return cloneDurableAgentState(state);
+}
+
+export function cloneDurableAgentState(
+  state: Pick<AgentDurableState, 'agentType' | 'messages' | 'context' | 'values' | 'pendingPause'>,
+): AgentDurableState {
   return {
     agentType: state.agentType,
     messages: cloneAgentMessages(state.messages),
@@ -213,12 +221,8 @@ export function clonePauseRequest<T extends PauseRequest | undefined>(pause: T):
 export function cloneAgentState(state: AgentState): AgentState {
   return {
     threadId: state.threadId,
-    agentType: state.agentType,
-    messages: cloneAgentMessages(state.messages),
-    context: cloneAgentContext(state.context),
-    values: cloneAgentValues(state.values),
+    ...cloneDurableAgentState(state),
     status: state.status,
-    ...(state.pendingPause ? {pendingPause: clonePauseRequest(state.pendingPause)} : {}),
   };
 }
 

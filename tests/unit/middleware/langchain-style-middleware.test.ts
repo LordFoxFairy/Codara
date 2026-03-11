@@ -1,6 +1,7 @@
 import {describe, expect, it} from 'bun:test';
 import {AIMessage, HumanMessage, type BaseMessage} from '@langchain/core/messages';
-import {createMiddleware, MiddlewarePipeline} from '@core/middleware';
+import {createMiddleware} from '@core/middleware';
+import {MiddlewarePipeline} from '@core/middleware/pipeline';
 
 function createContext() {
   const messages = [new HumanMessage('hello')] as BaseMessage[];

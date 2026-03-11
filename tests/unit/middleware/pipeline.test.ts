@@ -1,6 +1,7 @@
 import {describe, expect, it} from 'bun:test';
 import {AIMessage, HumanMessage, ToolMessage, type BaseMessage, type ToolCall} from '@langchain/core/messages';
-import {MiddlewarePipeline, type BaseMiddleware} from '@core/middleware';
+import type {BaseMiddleware} from '@core/middleware';
+import {MiddlewarePipeline} from '@core/middleware/pipeline';
 import {z} from 'zod';
 
 function createBaseContext() {
@@ -316,16 +317,15 @@ describe('MiddlewarePipeline', () => {
     }).toThrow('Middleware "failing_wrap" failed in wrapToolCall: wrap boom');
   });
 
-  it('should prevent removing required middleware', () => {
+  it('should expose an immutable middleware registry snapshot', () => {
     const pipeline = new MiddlewarePipeline([
       {name: 'safety', required: true, beforeAgent: () => undefined},
       {name: 'logging', beforeModel: () => undefined},
     ]);
 
-    expect(() => pipeline.remove('safety')).toThrow('Cannot remove required middleware');
-
-    pipeline.remove('logging');
-    expect(pipeline.list().map((m) => m.name)).toEqual(['safety']);
+    expect(pipeline.list().map((middleware) => middleware.name)).toEqual(['safety', 'logging']);
+    expect(pipeline.has('safety')).toBe(true);
+    expect(pipeline.get('logging')?.name).toBe('logging');
   });
 
   it('should reject duplicate middleware names and invalid definitions', () => {

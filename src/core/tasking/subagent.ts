@@ -73,14 +73,23 @@ export interface DelegatedResumeState {
   payload: ResumePayload;
 }
 
+export interface DelegatedParentRuntimeMetadata {
+  parentAgentType: AgentType;
+  parentToolCallId: string;
+  parentRunId: string;
+  parentRequestId: string;
+  parentTurn: number;
+  parentToolIndex: number;
+  resume?: DelegatedResumeState;
+}
+
 export function createSubagentTool(options: CreateSubagentToolOptions): StructuredToolInterface {
   const toolName = options.name?.trim() || DEFAULT_SUBAGENT_TOOL_NAME;
   const delegatedCheckpointer = options.checkpointer ?? createAgentMemoryCheckpointer();
 
   return tool(
     async ({prompt, max_turns}: SubagentToolInput, config) => {
-      const configurable = asRecord(config?.configurable);
-      const delegatedResume = readDelegatedResumeState(configurable.invokeContext, toolName);
+      const delegated = readDelegatedParentRuntimeMetadata(config?.configurable, toolName);
 
       return runDelegatedAgent({
         ...options,
@@ -89,13 +98,7 @@ export function createSubagentTool(options: CreateSubagentToolOptions): Structur
         prompt,
         maxTurns: max_turns,
         toolName,
-        parentAgentType: readAgentType(configurable.agentType),
-        parentToolCallId: readString(configurable.toolCallId) ?? '',
-        parentRunId: readString(configurable.runId) ?? '',
-        parentRequestId: readString(configurable.requestId) ?? '',
-        parentTurn: readNumber(configurable.turn) ?? 0,
-        parentToolIndex: readNumber(configurable.toolIndex) ?? 0,
-        ...(delegatedResume ? {resume: delegatedResume} : {}),
+        ...delegated,
       });
     },
     {
@@ -547,3 +550,22 @@ export function readDelegatedAgentResult(value: unknown): DelegatedAgentResult |
 }
 
 export {readDelegatedResumeState};
+
+export function readDelegatedParentRuntimeMetadata(
+  configurable: unknown,
+  toolName: string,
+): DelegatedParentRuntimeMetadata {
+  const record = asRecord(configurable);
+  const execution = asRecord(record.execution);
+  const resume = readDelegatedResumeState(record.invokeContext, toolName);
+
+  return {
+    parentAgentType: readAgentType(record.agentType),
+    parentToolCallId: readString(execution.toolCallId) ?? readString(record.toolCallId) ?? '',
+    parentRunId: readString(execution.runId) ?? readString(record.runId) ?? '',
+    parentRequestId: readString(execution.requestId) ?? readString(record.requestId) ?? '',
+    parentTurn: readNumber(execution.turn) ?? readNumber(record.turn) ?? 0,
+    parentToolIndex: readNumber(execution.toolIndex) ?? readNumber(record.toolIndex) ?? 0,
+    ...(resume ? {resume} : {}),
+  };
+}

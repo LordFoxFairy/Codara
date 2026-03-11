@@ -1,5 +1,10 @@
 import type {ToolMessage} from '@langchain/core/messages';
-import {createMiddleware, type BaseExecutionContext, type ToolCallContext} from '@core/middleware/types';
+import {
+  createMiddleware,
+  readExecutionMetadata,
+  type BaseExecutionContext,
+  type ToolCallContext,
+} from '@core/middleware/types';
 
 export type MiddlewareLogLevel = 'debug' | 'info' | 'warn' | 'error';
 export type MiddlewareLogEvent = 'stage_start' | 'stage_end' | 'stage_error';
@@ -138,15 +143,17 @@ export function createLoggingMiddleware(options: LoggingMiddlewareOptions = {}) 
     context: BaseExecutionContext,
     extra: Partial<MiddlewareLogRecord> = {},
   ): MiddlewareLogRecord {
+    const execution = readExecutionMetadata(context);
+
     return {
       timestamp: new Date().toISOString(),
       level,
       middleware: middlewareName,
       stage,
       event,
-      runId: context.runId,
-      turn: context.turn,
-      requestId: context.requestId,
+      runId: execution.runId,
+      turn: execution.turn,
+      requestId: execution.requestId,
       ...extra,
     };
   }

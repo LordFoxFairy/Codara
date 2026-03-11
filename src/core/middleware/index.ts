@@ -7,14 +7,15 @@ export {
   type BaseMiddleware,
   type BeforeAgentContext,
   type BeforeModelContext,
+  type ExecutionContextMetadata,
   type MiddlewareRuntimeContext,
   type MiddlewareRuntimeShared,
   type ModelCallContext,
   type ModelCallHandler,
+  readExecutionMetadata,
   type ToolCallContext,
   type ToolCallHandler,
 } from '@core/middleware/types';
-export {MiddlewarePipeline} from '@core/middleware/pipeline';
 export {
   createSkillsMiddleware,
 } from '@core/skills';
@@ -77,18 +78,3 @@ export {
   type TodoListMiddlewareOptions,
   type TodoMiddlewareState,
 } from '@core/middleware/todo';
-export {
-  createSharedTaskMiddleware,
-  createSubagentMiddleware,
-  createTaskMiddleware,
-  DEFAULT_SUBAGENT_TOOL_DESCRIPTION,
-  DEFAULT_SUBAGENT_TOOL_NAME,
-  TASK_CREATE_TOOL_NAME,
-  TASK_LIST_TOOL_NAME,
-  TASK_TOOL_DESCRIPTION,
-  TASK_TOOL_NAME,
-  TASK_UPDATE_TOOL_NAME,
-  type CreateSharedTaskMiddlewareOptions,
-  type CreateSubagentMiddlewareOptions,
-  type CreateTaskMiddlewareOptions,
-} from '@core/tasking';

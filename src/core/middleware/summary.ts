@@ -1,6 +1,6 @@
 import {SystemMessage, type BaseMessage} from '@langchain/core/messages';
 import type {AgentRuntimeContext} from '@core/agents';
-import type {BeforeModelContext} from '@core/middleware';
+import {readExecutionMetadata, type BeforeModelContext} from '@core/middleware';
 import {
   estimateModelInputTokens,
   refreshContextBudget,
@@ -78,6 +78,8 @@ export async function compactSummaryIfNeeded(
     force?: boolean;
   } = {},
 ): Promise<void> {
+  const executionMeta = readExecutionMetadata(context);
+
   while (shouldCompactHistory(context, options, execution.force === true)) {
     const summaryState = splitSummaryState(context.state.messages);
     const recentStart = resolveRecentStart(summaryState.conversationMessages, options.keepLastMessages);
@@ -91,8 +93,8 @@ export async function compactSummaryIfNeeded(
       messages: olderMessages,
       context: context.runtime.context,
       instructions: readCompactInstructions(context.runtime.context),
-      threadId: readThreadId(context.runtime.context),
-      turn: context.turn,
+      threadId: executionMeta.threadId,
+      turn: executionMeta.turn,
     });
 
     const summaryMessage = createSummaryMessage({
@@ -322,11 +324,6 @@ function shouldCompactHistory(
   const compactTriggerTokens = Math.max(1, Math.floor(availableInputTokens * options.compactThresholdRatio));
 
   return estimate >= compactTriggerTokens;
-}
-
-function readThreadId(context: Record<string, unknown>): string | undefined {
-  const value = context.threadId;
-  return typeof value === 'string' && value.trim() ? value : undefined;
 }
 
 function readCompactInstructions(context: Record<string, unknown>): string | undefined {

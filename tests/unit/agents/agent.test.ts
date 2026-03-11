@@ -600,6 +600,7 @@ describe('Agent', () => {
           context: Record<string, unknown>;
           agentContext: Record<string, unknown>;
           runtimeContext: Record<string, unknown>;
+          execution: {threadId?: string};
         }
       | undefined;
 
@@ -611,6 +612,7 @@ describe('Agent', () => {
           context: context.runtime.context,
           agentContext: context.runtime.agentContext ?? {},
           runtimeContext: context.runtime.runtimeContext ?? {},
+          execution: context.execution ?? {},
         };
       },
     });
@@ -643,7 +645,6 @@ describe('Agent', () => {
         locale: 'zh-CN',
         timezone: 'Asia/Shanghai',
       },
-      threadId: result.state.threadId,
     });
     expect(seen?.agentContext).toEqual({
       tenantId: 'tenant-1',
@@ -663,7 +664,7 @@ describe('Agent', () => {
         locale: 'zh-CN',
       },
     });
-    expect(seen?.context.threadId).toBe(result.state.threadId);
+    expect(seen?.execution.threadId).toBe(result.state.threadId);
   });
 
   it('应将 threadId/runId/requestId/toolCallId 暴露给工具调用元数据', async () => {
@@ -695,8 +696,26 @@ describe('Agent', () => {
     expect(seenConfigurable?.turn).toBe(1);
     expect(seenConfigurable?.toolCallId).toBe('call_ids');
     expect(seenConfigurable?.toolIndex).toBe(0);
+    expect(seenConfigurable?.execution).toEqual({
+      threadId: 'thread-tool-ids',
+      runId: seenConfigurable?.runId,
+      turn: 1,
+      maxTurns: 25,
+      requestId: seenConfigurable?.requestId,
+      toolIndex: 0,
+      toolCallId: 'call_ids',
+    });
     expect(seenMetadata?.threadId).toBe('thread-tool-ids');
     expect(seenMetadata?.toolCallId).toBe('call_ids');
+    expect(seenMetadata?.execution).toEqual({
+      threadId: 'thread-tool-ids',
+      runId: seenConfigurable?.runId,
+      turn: 1,
+      maxTurns: 25,
+      requestId: seenConfigurable?.requestId,
+      toolIndex: 0,
+      toolCallId: 'call_ids',
+    });
   });
 
   it('contextSchema 校验应基于持久 context 与临时 context 的合成结果', async () => {

@@ -14,4 +14,14 @@ describe('middleware public surface', () => {
     expect('refreshContextBudget' in middleware).toBe(false);
     expect('compactSummaryIfNeeded' in middleware).toBe(false);
   });
+
+  it('should keep tasking domain middlewares out of the generic middleware barrel', () => {
+    expect('createTaskMiddleware' in middleware).toBe(false);
+    expect('createSubagentMiddleware' in middleware).toBe(false);
+    expect('createSharedTaskMiddleware' in middleware).toBe(false);
+  });
+
+  it('should keep the middleware executor internal', () => {
+    expect('MiddlewarePipeline' in middleware).toBe(false);
+  });
 });

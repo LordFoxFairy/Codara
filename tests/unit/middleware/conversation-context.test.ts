@@ -1,6 +1,7 @@
 import {describe, expect, it} from 'bun:test';
 import {AIMessage, HumanMessage, type BaseMessage} from '@langchain/core/messages';
-import {MiddlewarePipeline, type ModelCallContext} from '@core/middleware';
+import type {ModelCallContext} from '@core/middleware';
+import {MiddlewarePipeline} from '@core/middleware/pipeline';
 import {createConversationContextMiddleware} from '@core/middleware/conversation-context';
 import {readSummaryRecord} from '@core/middleware/summary';
 

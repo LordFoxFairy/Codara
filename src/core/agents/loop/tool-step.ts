@@ -1,5 +1,5 @@
 import type {ToolCall} from '@langchain/core/messages';
-import type {AgentRunSummary, BaseExecutionContext, ToolCallContext} from '@core/middleware';
+import {readExecutionMetadata, type AgentRunSummary, type BaseExecutionContext, type ToolCallContext} from '@core/middleware';
 import {parseHILToolMessagePayload} from '@core/middleware/hil';
 import type {AgentStreamWriter} from '@core/agents/engine/stream-writer';
 import {executeToolCall, resolveToolCallId} from '@core/agents/engine/tools';
@@ -41,7 +41,12 @@ export async function runToolStepStream(
 
       const payload = parseHILToolMessagePayload(toolMessage.content);
       if (payload) {
-        await stream.emitCustom({runId: context.runId, turn: context.turn, payload});
+        const execution = readExecutionMetadata(context);
+        await stream.emitCustom({
+          runId: execution.runId,
+          turn: execution.turn,
+          payload,
+        });
       }
     }
     if (stopToolExecutionAfterPause(run, results.map(({toolMessage}) => toolMessage))) {
@@ -71,9 +76,18 @@ function createToolContext(
   toolCallId: string,
   tool: ToolCallContext['tool']
 ): ToolCallContext {
+  const execution = readExecutionMetadata(context);
+  const nextRequestId = `${execution.requestId}:tool:${toolCallId}`;
+
   return {
     ...context,
-    requestId: `${context.requestId}:tool:${toolCallId}`,
+    requestId: nextRequestId,
+    execution: {
+      ...execution,
+      requestId: nextRequestId,
+      toolIndex,
+      toolCallId,
+    },
     toolCall,
     toolIndex,
     tool,
@@ -96,12 +110,19 @@ async function executeWrappedToolCall(
   const toolCallId = resolveToolCallId(toolCall, toolIndex);
   const tool = runtime.tools.get(toolCall.name);
   const toolContext = createToolContext(context, toolCall, toolIndex, toolCallId, tool);
+  const baseExecution = readExecutionMetadata(toolContext);
 
   const toolMessage = await pipeline.wrapToolCall(toolContext, (request?: ToolCallContext) => {
     const nextCall = request?.toolCall ?? toolCall;
     const nextIndex = request?.toolIndex ?? toolIndex;
     const nextTool = request?.tool ?? runtime.tools.get(nextCall.name);
     const nextToolCallId = resolveToolCallId(nextCall, nextIndex);
+    const nextExecution = request?.execution ?? {
+      ...baseExecution,
+      ...(typeof nextIndex === 'number' ? {toolIndex: nextIndex} : {}),
+      toolCallId: nextToolCallId,
+    };
+
     return executeToolCall(
       nextCall,
       nextToolCallId,
@@ -110,10 +131,11 @@ async function executeWrappedToolCall(
       run.state,
       {
         ...(request?.runtime ?? context.runtime),
-        runId: request?.runId ?? context.runId,
-        turn: request?.turn ?? context.turn,
-        requestId: request?.requestId ?? context.requestId,
+        runId: nextExecution.runId,
+        turn: nextExecution.turn,
+        requestId: nextExecution.requestId,
         toolIndex: nextIndex,
+        execution: nextExecution,
       },
       (values) => runtime.pipeline.normalizeValues(values ?? {})
     );

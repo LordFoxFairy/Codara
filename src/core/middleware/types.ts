@@ -16,8 +16,18 @@ import type {ContextBudgetSnapshot} from '@core/middleware/context-budget';
 
 export type MiddlewareRuntimeShared = Record<string, unknown>;
 
+export interface ExecutionContextMetadata {
+  threadId: string;
+  runId: string;
+  turn: number;
+  maxTurns: number;
+  requestId: string;
+  toolIndex?: number;
+  toolCallId?: string;
+}
+
 export interface MiddlewareRuntimeContext {
-  /** 有效上下文（持久化 + 临时合并后的结果）。Middleware 直接使用即可。 */
+  /** 有效业务上下文（持久化 + 临时合并后的结果，不包含执行元数据）。 */
   context: AgentRuntimeContext;
   /** 当前 agent 的持久上下文，会进入 checkpoint。 */
   agentContext?: AgentRuntimeContext;
@@ -39,6 +49,8 @@ export interface BaseExecutionContext {
   runtime: MiddlewareRuntimeContext;
   /** 在 wrapModelCall 中可追加系统消息。 */
   systemMessage: string[];
+  /** 本轮执行元数据，不属于业务 context。 */
+  execution?: ExecutionContextMetadata;
   runId: string;
   turn: number;
   maxTurns: number;
@@ -117,4 +129,22 @@ export function createMiddleware(config: BaseMiddleware): BaseMiddleware {
     ...config,
     name: normalizedName
   });
+}
+
+export function readExecutionMetadata(context: BaseExecutionContext): ExecutionContextMetadata {
+  if (context.execution) {
+    return context.execution;
+  }
+
+  const threadId = typeof context.runtime.context.threadId === 'string'
+    ? context.runtime.context.threadId
+    : '';
+
+  return {
+    threadId,
+    runId: context.runId,
+    turn: context.turn,
+    maxTurns: context.maxTurns,
+    requestId: context.requestId,
+  };
 }

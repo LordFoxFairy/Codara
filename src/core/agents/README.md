@@ -113,7 +113,7 @@ const agent = createAgent({
 
 ```ts
 import {createAgent} from '@core/agents';
-import {createTaskMiddleware} from '@core/middleware';
+import {createTaskMiddleware} from '@core/tasking';
 
 const taskMiddleware = createTaskMiddleware({
   model,
@@ -134,7 +134,7 @@ const agent = createAgent({
 - 不负责共享 task 协调；共享协调由 `TaskCreate/TaskUpdate/TaskList` 负责
 
 公开心智保持克制：
-- `@core/middleware` 暴露 `createTaskMiddleware(...)`、`createSubagentMiddleware(...)`、`createSharedTaskMiddleware(...)`
-- `@core/tasking` 暴露低层 `createSubagentTool(...)`、`createTaskTool(...)`，作为 runtime primitive
+- `@core/tasking` 暴露 tasking 域能力，包括 `createTaskMiddleware(...)`、`createSubagentMiddleware(...)`、`createSharedTaskMiddleware(...)`
+- `@core/tasking` 也暴露低层 `createSubagentTool(...)`、`createTaskTool(...)`，作为 runtime primitive
 - `agents/*` 回到纯执行内核，不再承载 task/subagent 领域文件
 - `Task` 的公共选项保持中性；宿主侧的 child-agent/runtime 绑定通过 tasking host adapter 接入，不继续暴露在主 API 选项里

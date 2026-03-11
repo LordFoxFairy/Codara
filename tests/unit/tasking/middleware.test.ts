@@ -3,17 +3,17 @@ import {AIMessage, HumanMessage, SystemMessage, ToolMessage, type BaseMessage, t
 import type {BaseChatModel} from '@langchain/core/language_models/chat_models';
 import type {StructuredToolInterface} from '@langchain/core/tools';
 import {createAgent} from '@core/agents';
-import {readDelegatedAgentResult} from '@core/tasking';
 import {
   createSharedTaskMiddleware,
   createSubagentMiddleware,
+  createTaskMemoryStore,
   createTaskMiddleware,
   DEFAULT_SUBAGENT_TOOL_NAME,
+  readDelegatedAgentResult,
   TASK_CREATE_TOOL_NAME,
   TASK_LIST_TOOL_NAME,
   TASK_TOOL_NAME,
-} from '@core/middleware';
-import {createTaskMemoryStore} from '@core/tasking';
+} from '@core/tasking';
 import {createAgentSkillsMiddleware, createBuiltinAgentStore} from '../agents/task-tool.fixtures';
 
 class ScriptedModel {

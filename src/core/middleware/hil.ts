@@ -1,6 +1,6 @@
 import {ToolMessage, type ToolCall} from '@langchain/core/messages';
 import {z} from 'zod';
-import {createMiddleware, type ToolCallContext} from '@core/middleware/types';
+import {createMiddleware, readExecutionMetadata, type ToolCallContext} from '@core/middleware/types';
 import type {
   PauseActionDescriptor,
   PauseRequest,
@@ -54,6 +54,21 @@ export interface HILContextConfig {
   interruptOn?: HILInterruptOn;
   descriptionPrefix?: string;
 }
+
+const hilUIActionOptionSchema = z.object({
+  id: z.string(),
+  label: z.string(),
+  kind: z.enum(['primary', 'secondary', 'danger']).optional(),
+  description: z.string().optional(),
+  requiresConfirmation: z.boolean().optional(),
+  requiresToolEdit: z.boolean().optional(),
+});
+
+const hilUIConfigSchema = z.object({
+  tab: z.string().optional(),
+  modal: z.string().optional(),
+  actions: z.array(hilUIActionOptionSchema).optional(),
+}).passthrough();
 
 /**
  * Generic resume payload shape used by higher-level interaction layers.
@@ -395,6 +410,7 @@ async function defaultPauseRequestFactory(
   config: HILInterruptConfig,
   descriptionPrefix: string
 ): Promise<PauseRequest> {
+  const execution = readExecutionMetadata(context);
   const toolCallId = resolveToolCallId(context.toolCall, context.toolIndex);
   const toolName = context.toolCall.name;
   const toolArgs = normalizeArgs(context.toolCall.args);
@@ -402,7 +418,7 @@ async function defaultPauseRequestFactory(
   const description = await resolveDescription(context, config.description, descriptionPrefix, toolName, toolArgs);
 
   return {
-    id: `${context.runId}:${context.turn}:${toolCallId}`,
+    id: `${execution.runId}:${execution.turn}:${toolCallId}`,
     description,
     action: {
       toolCallId,
@@ -414,9 +430,9 @@ async function defaultPauseRequestFactory(
       allowedDecisions: normalizeAllowedDecisions(config.allowedDecisions),
     },
     runtime: {
-      runId: context.runId,
-      turn: context.turn,
-      requestId: context.requestId,
+      runId: execution.runId,
+      turn: execution.turn,
+      requestId: execution.requestId,
       toolIndex: context.toolIndex,
     },
     ...(config.channel ? {channel: config.channel} : {}),
@@ -709,56 +725,6 @@ function isHILToolMessagePayload(value: unknown): value is HILToolMessagePayload
   return isHILPauseMessagePayload(value) || isHILDenyMessagePayload(value);
 }
 
-function isHILUIActionOption(value: unknown): value is PauseUIActionOption {
-  if (!isRecord(value)) {
-    return false;
-  }
-
-  if (typeof value.id !== 'string' || typeof value.label !== 'string') {
-    return false;
-  }
-
-  if (value.kind !== undefined && value.kind !== 'primary' && value.kind !== 'secondary' && value.kind !== 'danger') {
-    return false;
-  }
-
-  if (value.description !== undefined && typeof value.description !== 'string') {
-    return false;
-  }
-
-  if (value.requiresConfirmation !== undefined && typeof value.requiresConfirmation !== 'boolean') {
-    return false;
-  }
-
-  return !(value.requiresToolEdit !== undefined && typeof value.requiresToolEdit !== 'boolean');
-
-
-}
-
 function isHILUIConfig(value: unknown): value is PauseUIConfig {
-  if (!isRecord(value)) {
-    return false;
-  }
-
-  if (value.tab !== undefined && typeof value.tab !== 'string') {
-    return false;
-  }
-
-  if (value.modal !== undefined && typeof value.modal !== 'string') {
-    return false;
-  }
-
-  if (value.actions !== undefined) {
-    if (!Array.isArray(value.actions)) {
-      return false;
-    }
-
-    for (const action of value.actions) {
-      if (!isHILUIActionOption(action)) {
-        return false;
-      }
-    }
-  }
-
-  return true;
+  return hilUIConfigSchema.safeParse(value).success;
 }

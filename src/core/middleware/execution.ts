@@ -39,7 +39,7 @@ function createStageError(middlewareName: string, stage: MiddlewareStageName, er
   return new MiddlewareError(middlewareName, stage, sourceError);
 }
 
-export function assertNoDuplicateNames(middlewares: BaseMiddleware[]): void {
+export function assertNoDuplicateNames(middlewares: ReadonlyArray<BaseMiddleware>): void {
   const seen = new Set<string>();
   for (const middleware of middlewares) {
     if (seen.has(middleware.name)) {
@@ -56,7 +56,7 @@ type WrappedStageHook<TContext, TResult> = (
 ) => Promise<TResult>;
 
 export async function runSimpleStage<TContext, TUpdate>(
-  middlewares: BaseMiddleware[],
+  middlewares: ReadonlyArray<BaseMiddleware>,
   stage: MiddlewareStageName,
   context: TContext,
   pickHook: (
@@ -82,7 +82,7 @@ export async function runSimpleStage<TContext, TUpdate>(
 }
 
 export async function runWrappedStage<TContext, TResult>(
-  middlewares: BaseMiddleware[],
+  middlewares: ReadonlyArray<BaseMiddleware>,
   stage: MiddlewareStageName,
   context: TContext,
   baseHandler: (request?: TContext) => Promise<TResult>,

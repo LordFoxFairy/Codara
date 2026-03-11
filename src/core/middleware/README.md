@@ -344,16 +344,19 @@ const toolInterceptor = createMiddleware({
 - 校验通过：进入正常执行链路
 - 校验失败：返回 `reason = error`
 
-## Pipeline 管理 API
+## Pipeline 执行器
 
 ```typescript
-pipeline.use(middleware);
 pipeline.has('LoggingMiddleware');
 pipeline.get('LoggingMiddleware');
 pipeline.list(); // 只读副本
-pipeline.remove('LoggingMiddleware');
 pipeline.validateContext(context); // 可选手动校验
 ```
+
+说明：
+
+- `MiddlewarePipeline` 现在是内部执行器，不再从主 middleware barrel 暴露。
+- 运行时只在 agent 构造时注入 middleware 数组，不支持对已创建 runtime 做可变注册/删除。
 
 ## 错误处理
 
