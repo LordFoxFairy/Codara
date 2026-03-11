@@ -11,10 +11,8 @@ export interface BuiltConversationMessages {
 }
 
 /**
- * Build the exact message list that will be sent to the model.
- *
- * This helper is intentionally shared by runtime stages and budgeting logic so
- * conversation input assembly does not drift across the stack.
+ * Internal conversation helper shared by model invocation and budget estimation.
+ * It is not intended to be treated as a peer runtime stage.
  */
 export function buildConversationMessages(input: ConversationModelInput): BuiltConversationMessages {
   const systemMessages = input.systemMessage.map((content) => new SystemMessage(content));

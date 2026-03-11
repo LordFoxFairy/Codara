@@ -11,13 +11,19 @@ describe('Codara memory command', () => {
     const root = await mkdtemp(path.join(tmpdir(), 'codara-memory-command-'));
     const userHome = path.join(root, 'home');
     const projectRoot = path.join(root, 'project');
+    const packageRoot = path.join(projectRoot, 'packages');
     const cwd = path.join(projectRoot, 'packages', 'app');
     const globalFile = path.join(userHome, '.codara', 'AGENTS.md');
+    const rootFile = path.join(projectRoot, 'AGENTS.md');
+    const packageFile = path.join(packageRoot, 'AGENTS.md');
     const projectFile = path.join(cwd, 'AGENTS.md');
 
     await mkdir(path.dirname(globalFile), {recursive: true});
     await mkdir(cwd, {recursive: true});
+    await writeFile(path.join(projectRoot, 'package.json'), '{}\n', 'utf8');
     await writeFile(globalFile, '# Global Rules\n', 'utf8');
+    await writeFile(rootFile, '# Root Rules\n', 'utf8');
+    await writeFile(packageFile, '# Package Rules\n', 'utf8');
     await writeFile(projectFile, '# App Rules\n', 'utf8');
 
     const codara = createCodara({
@@ -31,9 +37,13 @@ describe('Codara memory command', () => {
     const result = await codara.executeCommand('/memory show');
 
     expect(result.ok).toBe(true);
+    expect(result.output).toContain('AGENTS source stack:');
     expect(result.output).toContain(globalFile);
+    expect(result.output).toContain(rootFile);
+    expect(result.output).toContain(packageFile);
     expect(result.output).toContain(projectFile);
     expect(result.output).toContain('(loaded)');
+    expect(result.output).toContain('Edit targets:');
   });
 
   it('should prepare the project AGENTS.md target through /memory project', async () => {

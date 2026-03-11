@@ -23,6 +23,7 @@ export async function executeToolCall(
   state: Pick<AgentState, 'agentType' | 'messages' | 'context' | 'values'>,
   runtime?: {
     context: AgentState['context'];
+    runtimeContext?: AgentState['context'];
     shared?: Record<string, unknown>;
   },
   normalizeValues?: (values: AgentState['values']) => AgentState['values']
@@ -43,6 +44,7 @@ export async function executeToolCall(
         agentType: state.agentType,
         agentContext: state.context,
         runtimeContext: runtime?.context ?? state.context,
+        invokeContext: runtime?.runtimeContext ?? {},
         runtimeShared: runtime?.shared ?? {},
       },
       metadata: {

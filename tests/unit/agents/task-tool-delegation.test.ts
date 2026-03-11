@@ -2,7 +2,7 @@ import {describe, expect, it} from 'bun:test';
 import {AIMessage, ToolMessage, type ToolCall} from '@langchain/core/messages';
 import type {BaseChatModel} from '@langchain/core/language_models/chat_models';
 import {createAgent} from '@core/agents';
-import {createTaskTool, TASK_TOOL_NAME} from '@core/tasking';
+import {createTaskTool, TASK_TOOL_NAME, readDelegatedAgentResult} from '@core/tasking';
 import {createBuiltinAgentStore, createAgentSkillsMiddleware, ChildSummaryModel, ScriptedModel} from './task-tool.fixtures';
 
 describe('createTaskTool delegation', () => {
@@ -36,5 +36,13 @@ describe('createTaskTool delegation', () => {
     expect(result.reason).toBe('complete');
     expect(String(toolMessage.content)).toContain('Subagent completed.');
     expect(String(toolMessage.content)).toContain('summary:\ntask_child_humans:1');
+    expect(readDelegatedAgentResult(toolMessage.artifact)).toEqual({
+      type: 'delegated_agent_result',
+      agentType: 'subagent',
+      threadId: expect.any(String),
+      turns: 1,
+      reason: 'complete',
+      summary: 'task_child_humans:1',
+    });
   });
 });

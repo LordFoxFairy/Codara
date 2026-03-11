@@ -43,6 +43,7 @@ function createCodaraInstance(
     modelCatalog: runtime.modelCatalog,
     agentsSource: runtime.agentsSource,
     skillsStore: runtime.skills?.store,
+    skillsSource: runtime.skillsSource,
     store: options.store,
     tools: runtime.tools,
     middleware: runtime.middleware,

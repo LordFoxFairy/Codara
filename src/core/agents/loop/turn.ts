@@ -1,10 +1,13 @@
 import type {AgentRunSummary, BaseExecutionContext} from '@core/middleware';
-import type {AgentRunContext, AgentRuntime} from '@core/agents/loop/run';
+import {
+  resolveEffectiveContext,
+  type AgentRunContext,
+  type AgentRuntime,
+} from '@core/agents/loop/run';
 import type {AgentStreamWriter} from '@core/agents/engine/stream-writer';
 import {runModelStep, runModelStepStream} from '@core/agents/loop/model-step';
 import {runAfterAgentStep, runToolStep, runToolStepStream} from '@core/agents/loop/tool-step';
 import {toError} from '@core/shared/errors';
-import {mergeContext} from '@core/agents/engine/runtime-input';
 import type {AIMessage, ToolCall} from '@langchain/core/messages';
 
 export type AgentTurnOutcome = 'continue' | 'complete';
@@ -109,15 +112,15 @@ async function runTurnCore(
 }
 
 function createTurnContext(run: AgentRunContext, turn: number): BaseExecutionContext {
-  // 合并持久化上下文和临时上下文
-  const mergedContext = mergeContext(run.state.context, run.runtimeContext);
+  const mergedContext = resolveEffectiveContext(run);
 
   return {
     state: run.state,
     messages: run.state.messages,
     runtime: {
       context: mergedContext,
-      agentContext: mergedContext,
+      agentContext: run.state.context,
+      runtimeContext: run.runtimeContext,
       shared: run.shared,
     },
     systemMessage: [],

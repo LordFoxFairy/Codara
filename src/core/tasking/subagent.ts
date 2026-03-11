@@ -1,4 +1,4 @@
-import {AIMessage, HumanMessage, SystemMessage, type BaseMessage} from '@langchain/core/messages';
+import {AIMessage, HumanMessage, SystemMessage, ToolMessage, type BaseMessage} from '@langchain/core/messages';
 import type {BaseChatModel} from '@langchain/core/language_models/chat_models';
 import {tool, type StructuredToolInterface} from '@langchain/core/tools';
 import {z} from 'zod';
@@ -49,6 +49,16 @@ export interface CreateSubagentMiddlewareOptions extends CreateSubagentToolOptio
   name?: string;
 }
 
+export interface DelegatedAgentResult {
+  type: 'delegated_agent_result';
+  agentType: 'subagent';
+  threadId: string;
+  turns: number;
+  reason: 'complete' | 'error' | 'max_turns';
+  summary?: string;
+  errorMessage?: string;
+}
+
 export function createSubagentTool(options: CreateSubagentToolOptions): StructuredToolInterface {
   const toolName = options.name?.trim() || DEFAULT_SUBAGENT_TOOL_NAME;
 
@@ -89,7 +99,7 @@ export async function runDelegatedAgent(
     profileTools?: StructuredToolInterface[];
     profileSystemPrompt?: string;
   }
-): Promise<string> {
+): Promise<ToolMessage> {
   if (input.parentAgentType === 'subagent') {
     throw new Error('Subagents cannot delegate to other subagents');
   }
@@ -121,7 +131,14 @@ export async function runDelegatedAgent(
     {messages},
     {...(input.maxTurns ? {recursionLimit: input.maxTurns} : {})}
   );
-  return formatSubagentResult(result.state.threadId, result.turns, result.reason, result.error, result.state.messages);
+  const delegatedResult = createDelegatedAgentResult(
+    result.state.threadId,
+    result.turns,
+    result.reason,
+    result.error,
+    result.state.messages
+  );
+  return createDelegatedAgentToolMessage(delegatedResult);
 }
 
 function mergeSystemPrompt(profileSystemPrompt: string | undefined, toolSystemPrompt: string | undefined): string | undefined {
@@ -172,31 +189,52 @@ function readAgentType(value: unknown): AgentType {
   return value === 'subagent' ? 'subagent' : 'main';
 }
 
-function formatSubagentResult(
+function createDelegatedAgentResult(
   threadId: string,
   turns: number,
   reason: 'complete' | 'error' | 'max_turns',
   error: Error | undefined,
   messages: BaseMessage[]
-): string {
+): DelegatedAgentResult {
   const summary = readLatestAssistantSummary(messages);
 
-  if (reason === 'error') {
+  return {
+    type: 'delegated_agent_result',
+    agentType: 'subagent',
+    threadId,
+    turns,
+    reason,
+    ...(summary ? {summary} : {}),
+    ...(error?.message ? {errorMessage: error.message} : {}),
+  };
+}
+
+function createDelegatedAgentToolMessage(result: DelegatedAgentResult): ToolMessage {
+  return new ToolMessage({
+    content: formatDelegatedAgentResult(result),
+    artifact: result,
+    status: result.reason === 'error' ? 'error' : 'success',
+    tool_call_id: '',
+  });
+}
+
+function formatDelegatedAgentResult(result: DelegatedAgentResult): string {
+  if (result.reason === 'error') {
     return [
-      `Subagent failed.`,
-      `subagent_id: ${threadId}`,
-      `turns: ${turns}`,
-      `error: ${error?.message ?? 'Unknown error'}`,
-      ...(summary ? [`summary:\n${summary}`] : []),
+      'Subagent failed.',
+      `subagent_id: ${result.threadId}`,
+      `turns: ${result.turns}`,
+      `error: ${result.errorMessage ?? 'Unknown error'}`,
+      ...(result.summary ? [`summary:\n${result.summary}`] : []),
     ].join('\n');
   }
 
   return [
-    `Subagent completed.`,
-    `subagent_id: ${threadId}`,
-    `turns: ${turns}`,
-    `reason: ${reason}`,
-    ...(summary ? [`summary:\n${summary}`] : []),
+    'Subagent completed.',
+    `subagent_id: ${result.threadId}`,
+    `turns: ${result.turns}`,
+    `reason: ${result.reason}`,
+    ...(result.summary ? [`summary:\n${result.summary}`] : []),
   ].join('\n');
 }
 
@@ -252,4 +290,29 @@ function cloneStructured<T>(value: T): T {
 
     return value;
   }
+}
+
+export function readDelegatedAgentResult(value: unknown): DelegatedAgentResult | undefined {
+  if (!value || typeof value !== 'object' || Array.isArray(value)) {
+    return undefined;
+  }
+
+  const record = value as Record<string, unknown>;
+  if (record.type !== 'delegated_agent_result' || record.agentType !== 'subagent') {
+    return undefined;
+  }
+
+  if (typeof record.threadId !== 'string' || typeof record.turns !== 'number' || typeof record.reason !== 'string') {
+    return undefined;
+  }
+
+  return {
+    type: 'delegated_agent_result',
+    agentType: 'subagent',
+    threadId: record.threadId,
+    turns: record.turns,
+    reason: record.reason as DelegatedAgentResult['reason'],
+    ...(typeof record.summary === 'string' ? {summary: record.summary} : {}),
+    ...(typeof record.errorMessage === 'string' ? {errorMessage: record.errorMessage} : {}),
+  };
 }
