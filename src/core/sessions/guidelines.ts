@@ -6,28 +6,17 @@ import {resolveWorkspaceRoot} from '@core/shared/workspace';
 
 const DEFAULT_LINES = 200;
 const AGENTS_FILE_NAME = 'AGENTS.md';
-export type GuidelineFile = WorkspaceScopedFile;
 
-export interface WorkspaceFileOptions extends WorkspaceRootOptions {
+export interface GuidelinesWorkspaceOptions extends WorkspaceRootOptions {
   userHome?: string;
 }
 
-export interface WorkspaceScopedFile {
-  scope: 'global' | 'project';
-  path: string;
-}
-
-interface LoadedWorkspaceFile extends WorkspaceScopedFile {
-  content: string;
-  truncated: boolean;
-}
-
 export interface LoadedGuidelines {
-  files: GuidelineFile[];
+  files: string[];
   content: string;
 }
 
-export interface GuidelinesOptions extends WorkspaceFileOptions {
+export interface GuidelinesOptions extends GuidelinesWorkspaceOptions {
   maxLines?: number;
 }
 
@@ -39,25 +28,17 @@ export interface FileGuidelinesSourceOptions {
   load: () => Promise<string | undefined>;
 }
 
-export interface CodaraGuidelinesSourceOptions extends WorkspaceFileOptions {
+export interface CodaraGuidelinesSourceOptions extends GuidelinesWorkspaceOptions {
   guidelines?: boolean | GuidelinesOptions;
 }
 
-interface ResolvedGuidelinesOptions extends WorkspaceFileOptions {
+interface ResolvedGuidelinesOptions extends GuidelinesWorkspaceOptions {
   maxLines: number;
 }
 
 export async function loadGuidelines(options: GuidelinesOptions = {}): Promise<LoadedGuidelines | undefined> {
   const settings = resolveGuidelinesOptions(options);
-  const loadedFiles = await loadGuidelineFiles(discoverGuidelineFiles(settings), settings.maxLines);
-  if (loadedFiles.length === 0) {
-    return undefined;
-  }
-
-  return {
-    files: loadedFiles.map(({scope, path: filePath}) => ({scope, path: filePath})),
-    content: formatGuidelineContent(loadedFiles, settings.maxLines),
-  };
+  return buildLoadedGuidelines(discoverGuidelineFiles(settings), settings.maxLines);
 }
 
 export class FileGuidelinesSource implements GuidelinesSource {
@@ -81,18 +62,15 @@ export function createCodaraGuidelinesSource(options: CodaraGuidelinesSourceOpti
   });
 }
 
-function discoverGuidelineFiles(options: WorkspaceFileOptions): WorkspaceScopedFile[] {
+function discoverGuidelineFiles(options: GuidelinesWorkspaceOptions): string[] {
   const userHome = options.userHome ?? homedir();
   const projectRoot = resolveWorkspaceRoot(options);
   const cwd = path.resolve(options.cwd ?? projectRoot);
-  const projectFiles: WorkspaceScopedFile[] = [];
+  const projectFiles: string[] = [];
   let current = cwd;
 
   while (true) {
-    projectFiles.push({
-      scope: 'project',
-      path: path.join(current, AGENTS_FILE_NAME),
-    });
+    projectFiles.push(path.join(current, AGENTS_FILE_NAME));
 
     if (current === projectRoot) {
       break;
@@ -106,32 +84,33 @@ function discoverGuidelineFiles(options: WorkspaceFileOptions): WorkspaceScopedF
   }
 
   return [
-    {scope: 'global', path: path.join(userHome, '.codara', AGENTS_FILE_NAME)},
+    path.join(userHome, '.codara', AGENTS_FILE_NAME),
     ...projectFiles.reverse(),
   ];
 }
 
 async function loadGuidelineFiles(
-  files: WorkspaceScopedFile[],
+  files: string[],
   maxLines: number,
-): Promise<LoadedWorkspaceFile[]> {
-  const loaded: LoadedWorkspaceFile[] = [];
+): Promise<{files: string[]; blocks: string[]} | undefined> {
+  const loadedFiles: string[] = [];
+  const blocks: string[] = [];
 
-  for (const file of files) {
-    const content = await readGuidelineFile(file.path, maxLines);
+  for (const filePath of files) {
+    const content = await readGuidelineFile(filePath, maxLines);
     if (!content) {
       continue;
     }
 
-    loaded.push({
-      scope: file.scope,
-      path: file.path,
-      content: content.value,
-      truncated: content.truncated,
-    });
+    loadedFiles.push(filePath);
+    blocks.push(...renderGuidelineBlock(filePath, content.value, content.truncated, maxLines, blocks.length > 0));
   }
 
-  return loaded;
+  if (loadedFiles.length === 0) {
+    return undefined;
+  }
+
+  return {files: loadedFiles, blocks};
 }
 
 async function readGuidelineFile(
@@ -161,25 +140,46 @@ async function readGuidelineFile(
   };
 }
 
-function formatGuidelineContent(files: LoadedWorkspaceFile[], maxLines: number): string {
+async function buildLoadedGuidelines(
+  files: string[],
+  maxLines: number,
+): Promise<LoadedGuidelines | undefined> {
+  const loaded = await loadGuidelineFiles(files, maxLines);
+  if (!loaded) {
+    return undefined;
+  }
+
+  return {
+    files: loaded.files,
+    content: formatGuidelineContent(loaded.blocks),
+  };
+}
+
+function formatGuidelineContent(blocks: string[]): string {
   return [
     '# AGENTS Guidelines',
     '',
-    'Loaded from the configured source stack. Read the source files directly if more detail is required.',
+    'Loaded from the workspace guideline stack. Read the files directly if more detail is required.',
     '',
-    ...files.flatMap((file, index) => {
-      const label = file.scope === 'global' ? 'Global AGENTS.md' : 'Project AGENTS.md';
-      const block = [
-        `## ${label}`,
-        `Path: ${file.path}`,
-        '',
-        file.content,
-        ...(file.truncated ? ['', `Truncated after ${maxLines} lines. Read the file directly for full content.`] : []),
-      ];
-
-      return index === 0 ? block : ['', ...block];
-    }),
+    ...blocks,
   ].join('\n');
+}
+
+function renderGuidelineBlock(
+  filePath: string,
+  content: string,
+  truncated: boolean,
+  maxLines: number,
+  addSeparator: boolean,
+): string[] {
+  return [
+    ...(addSeparator ? [''] : []),
+    '## AGENTS.md',
+    `Path: ${filePath}`,
+    '',
+    content,
+    ...(truncated ? ['', `Truncated after ${maxLines} lines. Read the file directly for full content.`] : []),
+  ];
 }
 
 function resolveGuidelinesOptions(
