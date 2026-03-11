@@ -95,6 +95,49 @@ describe('Codara session host', () => {
     expect(restoredAgentState.messages.at(-1)?.getType()).toBe('ai');
   });
 
+  it('should prefer the latest non-closed stored session when opening the latest session', async () => {
+    const checkpointer = createAgentMemoryCheckpointer();
+    const store = new FileSessionStore({
+      basePath: await mkdtemp(path.join(tmpdir(), 'codara-session-latest-ready-')),
+    });
+
+    const active = createCodara({
+      model: new EchoModel() as unknown as BaseChatModel,
+      sessionId: 'latest-active-session',
+      threadId: 'latest-active-thread',
+      checkpointer,
+      store,
+      skills: false,
+      builtinTools: false,
+    });
+    await active.invoke('hello from active');
+    await Bun.sleep(10);
+
+    const closed = createCodara({
+      model: new EchoModel() as unknown as BaseChatModel,
+      sessionId: 'latest-closed-session',
+      threadId: 'latest-closed-thread',
+      checkpointer,
+      store,
+      skills: false,
+      builtinTools: false,
+    });
+    await closed.invoke('hello from closed');
+    await closed.dispose();
+
+    const reopened = await openLatestCodaraSession({
+      model: new EchoModel() as unknown as BaseChatModel,
+      checkpointer,
+      store,
+      skills: false,
+      builtinTools: false,
+    });
+
+    expect(reopened.getState().sessionId).toBe('latest-active-session');
+    expect(reopened.getState().threadId).toBe('latest-active-thread');
+    expect(reopened.getAgentState().status).toBe('idle');
+  });
+
   it('should open a new session when the target thread does not exist yet', async () => {
     const codara = createCodara({
       model: new EchoModel() as unknown as BaseChatModel,

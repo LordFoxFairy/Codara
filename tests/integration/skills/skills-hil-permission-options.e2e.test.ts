@@ -125,8 +125,9 @@ describe('HIL permission choice contract', () => {
     );
 
     expect(firstResult.reason).toBe('complete');
+    expect(model.invocations).toHaveLength(1);
     expect(String(firstResult.state.messages[firstResult.state.messages.length - 1]?.content)).toContain(
-      'WAITING_FOR_PERMISSION_CHOICE'
+      '"type":"hil_pause"'
     );
     expect(executedCommand).toBe('');
     expect(pauseRequests).toHaveLength(1);

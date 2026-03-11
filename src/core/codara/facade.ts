@@ -141,7 +141,8 @@ async function resolveLatestSession(store: SessionStore): Promise<SessionState |
     includeArchived: true,
     sortBy: 'updatedAt',
     sortOrder: 'desc',
-    limit: 1,
   });
-  return sessions[0];
+
+  const latestReadyHost = sessions.find((session) => session.sessionStatus !== 'closed');
+  return latestReadyHost ?? sessions[0];
 }
