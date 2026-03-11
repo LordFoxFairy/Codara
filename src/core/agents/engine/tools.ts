@@ -55,9 +55,9 @@ export async function executeToolCall(
       configurable: {
         execution,
         agentType: state.agentType,
-        agentContext: state.context,
-        runtimeContext: runtime?.context ?? state.context,
-        invokeContext: runtime?.runtimeContext ?? {},
+        durableContext: state.context,
+        context: runtime?.context ?? state.context,
+        runtimeContext: runtime?.runtimeContext ?? {},
         runtimeShared: runtime?.shared ?? {},
       },
       metadata: {

@@ -699,6 +699,13 @@ describe('Agent', () => {
       toolIndex: 0,
       toolCallId: 'call_ids',
     });
+    expect(seenConfigurable).toMatchObject({
+      agentType: 'main',
+      durableContext: {},
+      context: {},
+      runtimeContext: {},
+      runtimeShared: {},
+    });
     expect(seenMetadata?.execution).toEqual({
       threadId: 'thread-tool-ids',
       runId: expect.any(String),

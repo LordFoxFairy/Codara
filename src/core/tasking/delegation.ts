@@ -164,7 +164,7 @@ export function readDelegatedParentRuntimeMetadata(
   toolName: string,
 ): DelegatedParentRuntimeMetadata {
   const record = asRecord(configurable);
-  const resume = readDelegatedResumeState(record.invokeContext, toolName);
+  const resume = readDelegatedResumeState(record.runtimeContext, toolName);
 
   return {
     parentExecution: readParentExecution(record.execution),
@@ -388,10 +388,10 @@ function cloneStructured<T>(value: T): T {
 }
 
 function readDelegatedResumeState(
-  invokeContext: unknown,
+  runtimeContext: unknown,
   toolName: string,
 ): DelegatedResumeState | undefined {
-  const root = asRecord(invokeContext);
+  const root = asRecord(runtimeContext);
   const hil = asRecord(root.hil);
   const currentPause = asRecord(hil.currentPause);
   const delegated = readDelegatedPauseMetadata(asRecord(currentPause.metadata), toolName);
