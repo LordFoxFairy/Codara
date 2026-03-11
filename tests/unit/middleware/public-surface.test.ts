@@ -15,7 +15,7 @@ describe('middleware public surface', () => {
     expect('compactSummaryIfNeeded' in middleware).toBe(false);
   });
 
-  it('should keep tasking domain middlewares out of the generic middleware barrel', () => {
+  it('should keep tasks domain middlewares out of the generic middleware barrel', () => {
     expect('createTaskMiddleware' in middleware).toBe(false);
     expect('createSubagentMiddleware' in middleware).toBe(false);
     expect('createSharedTaskMiddleware' in middleware).toBe(false);

@@ -31,7 +31,7 @@ export {
   createTaskMiddleware,
   type CreateSharedTaskMiddlewareOptions,
   type CreateTaskMiddlewareOptions,
-} from '@core/tasking';
+} from '@core/tasks';
 export {
   createConversationContextMiddleware,
   createGuidelinesMiddleware,
@@ -61,7 +61,7 @@ export {
   type AgentsFileScope,
   type GuidelinesOptions,
   type GuidelinesSource,
-} from '@core/knowledge/guidelines';
+} from '@core/instructions/guidelines';
 export {
   createBuiltinTools,
   createFetchTool,
@@ -79,7 +79,7 @@ export {
   type SkillStore,
   type SkillsSource,
   type SkillsRuntimeData,
-} from '@core/knowledge/skills';
+} from '@core/instructions/skills';
 export {
   createSession,
   FileSessionStore,

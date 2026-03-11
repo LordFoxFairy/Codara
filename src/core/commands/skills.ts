@@ -3,8 +3,8 @@ import {
   createSkillCommandInvocation,
   discoverSkillCommandsFromRuntime,
   type SkillCommandDefinition,
-} from '@core/knowledge/skills/commands';
-import type {SkillsSource} from '@core/knowledge/skills';
+} from '@core/instructions/skills/commands';
+import type {SkillsSource} from '@core/instructions/skills';
 import type {CodaraCommandDefinition} from '@core/commands/types';
 
 export async function createSkillCodaraCommands(

@@ -6,7 +6,7 @@ import type {CodaraCommandHost} from '@core/commands';
 import {createSkillCodaraCommands} from '@core/commands/skills';
 import {
   createCodaraGuidelinesSource,
-} from '@core/knowledge/guidelines';
+} from '@core/instructions/guidelines';
 import {createCodaraModelCatalog, DEFAULT_CODARA_MODEL_ALIAS} from '@core/codara/models';
 import {createHILMiddleware, createLoggingMiddleware, type BaseMiddleware} from '@core/middleware';
 import {createConversationContextMiddleware} from '@core/middleware/conversation';
@@ -14,7 +14,7 @@ import {
   createCodaraSkillsSource,
   FileSystemSkillStore,
   type SkillStore,
-} from '@core/knowledge/skills';
+} from '@core/instructions/skills';
 import {resolveWorkspaceRoot} from '@core/support/workspace';
 import {createBuiltinTools} from '@core/tools';
 import type {StructuredToolInterface} from '@langchain/core/tools';

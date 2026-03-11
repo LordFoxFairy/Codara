@@ -5,8 +5,8 @@ import {tool} from '@langchain/core/tools';
 import {z} from 'zod';
 import {createAgent} from '@core/agents';
 import {createHILMiddleware} from '@core/middleware';
-import {TASK_TOOL_NAME, createTaskTool} from '@core/tasking/task';
-import {readDelegatedAgentResult} from '@core/tasking/delegation';
+import {TASK_TOOL_NAME, createTaskTool} from '@core/tasks/task';
+import {readDelegatedAgentResult} from '@core/tasks/delegation';
 import {createBuiltinSubagentStore, createAgentSkillsMiddleware, ChildSummaryModel, ScriptedModel} from './task-tool.fixtures';
 
 describe('createTaskTool delegation', () => {

@@ -7,7 +7,7 @@ describe('Codara public surface', () => {
     expect('resolveCodaraRuntime' in codara).toBe(false);
   });
 
-  it('should keep thin Codara tasking wrappers out of the public codara barrel', () => {
+  it('should keep thin Codara tasks wrappers out of the public codara barrel', () => {
     expect('createCodaraTaskTool' in codara).toBe(false);
     expect('createCodaraTaskMiddleware' in codara).toBe(false);
     expect('createCodaraSubagentTool' in codara).toBe(false);

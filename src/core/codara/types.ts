@@ -5,10 +5,10 @@ import type {
   AgentInput,
 } from '@core/agents';
 import type {BaseMiddleware, HILMiddlewareOptions, LoggingMiddlewareOptions} from '@core/middleware';
-import type {SkillStore} from '@core/knowledge/skills';
+import type {SkillStore} from '@core/instructions/skills';
 import type {Session, SessionStore} from '@core/sessions';
 import type {CodaraModelCatalog, CreateCodaraModelCatalogOptions} from '@core/codara/models';
-import type {GuidelinesOptions} from '@core/knowledge/guidelines';
+import type {GuidelinesOptions} from '@core/instructions/guidelines';
 import type {SummaryOptions} from '@core/middleware/conversation';
 import type {AgentCheckpointer} from '@core/checkpoint';
 import type {CodaraCommandResult, CodaraCommandSpec} from '@core/commands/types';

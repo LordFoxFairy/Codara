@@ -8,7 +8,7 @@ import {
   FileSystemSkillStore,
   type SkillMetadata,
   type SkillStore
-} from '@core/knowledge/skills'
+} from '@core/instructions/skills'
 
 function createBaseContext(runId: string) {
   const messages: BaseMessage[] = [new HumanMessage('hello')]

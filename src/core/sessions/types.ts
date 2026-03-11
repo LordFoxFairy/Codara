@@ -17,8 +17,8 @@ import type {AgentCheckpointer, CompactOptions} from '@core/checkpoint';
 import type {BaseMiddleware} from '@core/middleware';
 import type {SummaryOptions} from '@core/middleware/conversation';
 import type {ResumePayload} from '@core/agents/contract/pause';
-import type {AgentsFileOverview, AgentsFileScope, GuidelinesSource} from '@core/knowledge/guidelines';
-import type {SkillsSource} from '@core/knowledge/skills';
+import type {AgentsFileOverview, AgentsFileScope, GuidelinesSource} from '@core/instructions/guidelines';
+import type {SkillsSource} from '@core/instructions/skills';
 import type {SessionStore} from '@core/sessions/store';
 import type {ModelInfo} from '@core/provider';
 

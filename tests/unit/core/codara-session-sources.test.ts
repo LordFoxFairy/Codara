@@ -4,7 +4,7 @@ import path from 'node:path';
 import {tmpdir} from 'node:os';
 import {createCodara, FileSessionStore} from '@core';
 import type {BaseChatModel} from '@langchain/core/language_models/chat_models';
-import type {SkillMetadata, SkillStore} from '@core/knowledge/skills/types';
+import type {SkillMetadata, SkillStore} from '@core/instructions/skills/types';
 import {SystemEchoModel} from './codara-fixtures';
 
 describe('Codara session source lifecycle', () => {

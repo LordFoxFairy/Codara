@@ -42,8 +42,8 @@ import {
   formatSkillsLocations,
   SKILLS_SYSTEM_PROMPT,
   type SkillsRuntimeData,
-} from '@core/knowledge/skills';
-import {readSkillsRuntimeData} from '@core/knowledge/skills/runtime';
+} from '@core/instructions/skills';
+import {readSkillsRuntimeData} from '@core/instructions/skills/runtime';
 import {normalizeSummaryOptions} from '@core/middleware/conversation';
 
 /**

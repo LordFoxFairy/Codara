@@ -5,24 +5,24 @@
 ```text
 public API
   -> codara/*
-    -> resources/*
+    -> instructions/*
     -> sessions/*
       -> agents/*
         -> middleware/*
-        -> tasking/*
+        -> tasks/*
         -> checkpoint/*
 ```
 
 一句话：
 
-`codara 负责产品装配，resources 负责预热资源与投影，session 负责 host lifecycle，agent 负责执行，middleware 负责运行时拦截，tasking 负责委派。`
+`codara 负责产品装配，instructions 负责预热资源与投影，session 负责 host lifecycle，agent 负责执行，middleware 负责运行时拦截，tasks 负责委派。`
 
 ## 关键边界
 
 - `codara/*`
   - 只装配默认模型、工具、middleware、commands
   - 不负责 host lifecycle，不负责 loop
-- `resources/*`
+- `instructions/*`
   - 单独负责 `AGENTS.md` 与 skills runtime 的发现、加载、inspect、ensure、cache
   - session 只 preload/reload 它们，agent turn preparation 只消费 snapshot
 - `sessions/*`
@@ -33,7 +33,7 @@ public API
 - `middleware/*`
   - 只负责 runtime interception
   - 默认栈不再承载 source preload 或默认 source prompt 注入
-- `tasking/*`
+- `tasks/*`
   - `Task` 是唯一公开委派入口
   - subagent 是它背后的执行机制
 
@@ -122,10 +122,10 @@ createCodara(...)
   - 对 `createAgent(...)` 的受约束复用
   - 子代理独立上下文、独立 checkpoint 边界
   - 当前以正式的 `TaskMiddleware` 委派为主
-  - owner 心智对齐 DeepAgents：由 tasking/middleware 域维护，不是 core loop 的特权路径
+  - owner 心智对齐 DeepAgents：由 tasks/middleware 域维护，不是 core loop 的特权路径
 - `task`
   - 共享协调层，不属于单个 agent 的内部状态
-  - 通过 `tasking/*` 域中的 `TaskStore` 与 `SharedTaskMiddleware` 暴露
+  - 通过 `tasks/*` 域中的 `TaskStore` 与 `SharedTaskMiddleware` 暴露
   - 可被主代理与子代理共同访问
 
 三者分工不同，不应混用：

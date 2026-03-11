@@ -82,16 +82,16 @@ for await (const chunk of agent.stream('hello', {streamMode: 'messages'})) {
 
 ## Delegation Internals
 
-delegated child run 不是新 runtime，而是对 `createAgent(...)` 的一次受约束复用；实现现在归属 `tasking/*` 域，而不是 agent 内核本身。
+delegated child run 不是新 runtime，而是对 `createAgent(...)` 的一次受约束复用；实现现在归属 `tasks/*` 域，而不是 agent 内核本身。
 它不再属于公开主入口，当前只应被视为 `Task` 背后的内部 delegation mechanism。
 
 ## Task Delegation Tool
 
-正式的委派入口应以 `TaskMiddleware` 暴露，它在内部注册 `Task` 工具；底层复用 delegated child run 作为执行机制。owner 心智对齐 DeepAgents: 这条能力属于 tasking/middleware 域，不是 agent 内核自己维护的另一套执行系统。
+正式的委派入口应以 `TaskMiddleware` 暴露，它在内部注册 `Task` 工具；底层复用 delegated child run 作为执行机制。owner 心智对齐 DeepAgents: 这条能力属于 tasks/middleware 域，不是 agent 内核自己维护的另一套执行系统。
 
 ```ts
 import {createAgent} from '@core/agents';
-import {createTaskMiddleware} from '@core/tasking';
+import {createTaskMiddleware} from '@core/tasks';
 
 const taskMiddleware = createTaskMiddleware({
   model,
@@ -113,9 +113,9 @@ const agent = createAgent({
 
 公开心智保持克制：
 - 根入口 / `@core` 只应把 `createTaskMiddleware(...)` 讲成委派主入口
-- `@core/tasking` 只保留 tasking 域公开能力；低层 delegation helper 退回 `@core/tasking/delegation`，`createTaskTool(...)` 退回 `@core/tasking/task`
+- `@core/tasks` 只保留 tasks 域公开能力；低层 delegation helper 退回 `@core/tasks/delegation`，`createTaskTool(...)` 退回 `@core/tasks/task`
 - `agents/*` 回到纯执行内核，不再承载 task/subagent 领域文件
-- `Task` 的公共选项保持中性；宿主侧的 child-agent/runtime 绑定通过 tasking host adapter 接入，不继续暴露在主 API 选项里
+- `Task` 的公共选项保持中性；宿主侧的 child-agent/runtime 绑定通过 tasks host adapter 接入，不继续暴露在主 API 选项里
 
 ## 文件数量
 

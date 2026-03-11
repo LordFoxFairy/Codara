@@ -2,7 +2,7 @@ import {describe, expect, it} from 'bun:test'
 import {mkdtemp, mkdir, writeFile} from 'node:fs/promises'
 import {tmpdir} from 'node:os'
 import path from 'node:path'
-import {FileSystemSkillStore} from '@core/knowledge/skills'
+import {FileSystemSkillStore} from '@core/instructions/skills'
 
 function decode(bytes: Uint8Array): string {
   return new TextDecoder().decode(bytes).trim()

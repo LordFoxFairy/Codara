@@ -141,7 +141,7 @@ Codara 默认 runtime 只把下面几类模块当成一等 middleware stage：
 source-driven system layers 现在走另一条链：
 
 - `Session`
-  - preload / reload `knowledge/*`
+  - preload / reload `instructions/*`
 - `Agent prepareTurnContext`
   - 读取 source snapshot
   - 组装 `systemMessage`

@@ -27,7 +27,7 @@ export type {
   AgentResumeConfig,
   AgentResumeStreamConfig,
 } from '@core/agents';
-export type {TaskRecord, TaskStore, TaskStatus, CreateTaskInput, UpdateTaskInput} from '@core/tasking';
+export type {TaskRecord, TaskStore, TaskStatus, CreateTaskInput, UpdateTaskInput} from '@core/tasks';
 
 /** Session 相关类型 */
 export type {Session, SessionState, SessionStatus, SessionStore} from '@core/sessions';
@@ -62,13 +62,13 @@ export {
 export {
   createSharedTaskMiddleware,
   createTaskMiddleware,
-} from '@core/tasking';
+} from '@core/tasks';
 export {
   createCodaraGuidelinesSource,
-} from '@core/knowledge/guidelines';
+} from '@core/instructions/guidelines';
 export {
   createCodaraSkillsSource,
-} from '@core/knowledge/skills';
+} from '@core/instructions/skills';
 
 // ============================================
 // 类型导出（供高级用户使用）
@@ -86,7 +86,7 @@ export type {
   AgentsFileScope,
   GuidelinesOptions,
   GuidelinesSource,
-} from '@core/knowledge/guidelines';
-export type {SkillsSource} from '@core/knowledge/skills';
+} from '@core/instructions/guidelines';
+export type {SkillsSource} from '@core/instructions/skills';
 
 export type {AgentCheckpoint, AgentCheckpointer} from '@core/checkpoint';
