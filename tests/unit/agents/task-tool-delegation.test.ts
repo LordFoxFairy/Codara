@@ -1,7 +1,10 @@
 import {describe, expect, it} from 'bun:test';
 import {AIMessage, ToolMessage, type ToolCall} from '@langchain/core/messages';
 import type {BaseChatModel} from '@langchain/core/language_models/chat_models';
+import {tool} from '@langchain/core/tools';
+import {z} from 'zod';
 import {createAgent} from '@core/agents';
+import {createHILMiddleware} from '@core/middleware';
 import {createTaskTool, TASK_TOOL_NAME, readDelegatedAgentResult} from '@core/tasking';
 import {createBuiltinAgentStore, createAgentSkillsMiddleware, ChildSummaryModel, ScriptedModel} from './task-tool.fixtures';
 
@@ -44,5 +47,108 @@ describe('createTaskTool delegation', () => {
       reason: 'complete',
       summary: 'task_child_humans:1',
     });
+  });
+
+  it('应将 Task child 的 HIL pause 提升到 parent，并在 resume 后继续 child checkpoint', async () => {
+    let dangerousInvokeCount = 0;
+    const parent = createAgent({
+      model: new ScriptedModel([
+        new AIMessage({
+          content: '',
+          tool_calls: [{
+            id: 'call_task_pause',
+            name: TASK_TOOL_NAME,
+            args: {
+              prompt: 'Investigate the guarded flow',
+              subagent_type: 'general-purpose',
+            },
+          } as ToolCall],
+        }),
+        new AIMessage({
+          content: '',
+          tool_calls: [{
+            id: 'call_task_pause',
+            name: TASK_TOOL_NAME,
+            args: {
+              prompt: 'Investigate the guarded flow',
+              subagent_type: 'general-purpose',
+            },
+          } as ToolCall],
+        }),
+        new AIMessage('done'),
+      ]) as unknown as BaseChatModel,
+      middleware: [createAgentSkillsMiddleware(createBuiltinAgentStore())],
+      tools: [
+        createTaskTool({
+          model: new ScriptedModel([
+            new AIMessage({
+              content: '',
+              tool_calls: [{
+                id: 'child_guarded_call',
+                name: 'dangerous_tool',
+                args: {path: 'task-guarded.txt'},
+              } as ToolCall],
+            }),
+            new AIMessage({
+              content: '',
+              tool_calls: [{
+                id: 'child_guarded_call',
+                name: 'dangerous_tool',
+                args: {path: 'task-guarded.txt'},
+              } as ToolCall],
+            }),
+            new AIMessage('task_child_done'),
+          ]) as unknown as BaseChatModel,
+          tools: [
+            tool(async () => {
+              dangerousInvokeCount += 1;
+              return 'dangerous:done';
+            }, {
+              name: 'dangerous_tool',
+              description: 'Dangerous tool',
+              schema: z.object({
+                path: z.string(),
+              }),
+            }),
+          ],
+          middleware: [
+            createHILMiddleware({
+              interruptOn: {
+                dangerous_tool: true,
+              },
+            }),
+          ],
+        }),
+      ],
+    });
+
+    const paused = await parent.invoke('delegate this');
+
+    expect(paused.reason).toBe('complete');
+    expect(paused.state.status).toBe('paused');
+    expect(paused.state.pendingPause?.metadata).toMatchObject({
+      codara: {
+        delegatedSubagent: {
+          childThreadId: expect.any(String),
+          childPause: expect.objectContaining({
+            action: expect.objectContaining({
+              toolName: 'dangerous_tool',
+            }),
+          }),
+          parentToolName: TASK_TOOL_NAME,
+        },
+      },
+    });
+
+    const resumed = await parent.resume({decision: 'approve'});
+    const toolMessages = resumed.state.messages.filter((message) => ToolMessage.isInstance(message)) as ToolMessage[];
+    const toolMessage = toolMessages[toolMessages.length - 1] as ToolMessage;
+
+    expect(resumed.reason).toBe('complete');
+    expect(resumed.state.status).toBe('idle');
+    expect(resumed.state.pendingPause).toBeUndefined();
+    expect(dangerousInvokeCount).toBe(1);
+    expect(String(toolMessage.content)).toContain('Subagent completed.');
+    expect(String(toolMessage.content)).toContain('summary:\ntask_child_done');
   });
 });

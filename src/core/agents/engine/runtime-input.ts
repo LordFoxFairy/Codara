@@ -58,6 +58,8 @@ export function injectResumePayload(
 
   root.hil = {
     ...rawHil,
+    currentPause: deepClone(pause),
+    resume: payload,
     resumes: {
       ...rawResumes,
       [pause.id]: payload,

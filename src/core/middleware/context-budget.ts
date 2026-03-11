@@ -1,7 +1,6 @@
 import type {BaseMessage} from '@langchain/core/messages';
 import type {AgentInputBudget} from '@core/agents';
-import {createMiddleware, type BeforeModelContext, type BaseMiddleware} from '@core/middleware/types';
-import type {ConversationModelInput} from '@core/middleware/conversation-input';
+import type {BeforeModelContext} from '@core/middleware/types';
 
 export interface ContextBudgetSnapshot {
   maxInputTokens: number;
@@ -11,31 +10,12 @@ export interface ContextBudgetSnapshot {
   overBudget: boolean;
 }
 
-export type ContextBudgetEstimateInput = ConversationModelInput;
+export interface ContextBudgetEstimateInput {
+  systemMessage: string[];
+  messages: BaseMessage[];
+}
 
 export type ContextBudgetEstimator = (input: ContextBudgetEstimateInput) => number;
-
-export interface ContextBudgetMiddlewareOptions {
-  estimateTokens?: ContextBudgetEstimator;
-}
-
-/**
- * @deprecated Prefer `createConversationContextMiddleware(...)` in the main runtime path.
- * This wrapper is kept only as a low-level compatibility primitive.
- */
-export function createContextBudgetMiddleware(
-  options: ContextBudgetMiddlewareOptions = {}
-): BaseMiddleware {
-  const estimateTokens = options.estimateTokens ?? estimateModelInputTokens;
-
-  return createMiddleware({
-    name: 'ContextBudgetMiddleware',
-    beforeModel(context) {
-      refreshContextBudget(context, estimateTokens);
-      return undefined;
-    },
-  });
-}
 
 export function refreshContextBudget(
   context: Pick<BeforeModelContext, 'systemMessage' | 'state' | 'inputBudget' | 'budget'>,

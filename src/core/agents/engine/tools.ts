@@ -3,6 +3,7 @@ import {ToolInputParsingException, type StructuredToolInterface} from '@langchai
 import {ToolInvocationError} from 'langchain';
 import {Command, isCommand, applyAgentStateUpdate} from '@core/agents/command';
 import type {AgentState, ToolErrorHandler} from '@core/agents/contract/agent';
+import {readToolExecutionPolicy} from '@core/tools';
 
 export function resolveToolCallId(toolCall: ToolCall, toolIndex: number): string {
   const existingId = typeof toolCall.id === 'string' ? toolCall.id.trim() : '';
@@ -42,6 +43,7 @@ export async function executeToolCall(
   }
 
   try {
+    const executionPolicy = readToolExecutionPolicy(tool);
     const result = await tool.invoke(toolCall.args, {
       toolCall,
       configurable: {
@@ -77,12 +79,18 @@ export async function executeToolCall(
 
       const artifactCommand = readCommandArtifact(toolMessage.artifact);
       if (artifactCommand) {
+        if (executionPolicy === 'parallel_safe') {
+          return createParallelMutationError(toolCallId, toolCall.name);
+        }
         return applyToolCommand(artifactCommand, toolCallId, state, runtime, normalizeValues, toolMessage);
       }
 
       return toolMessage;
     }
     if (isCommand(result)) {
+      if (executionPolicy === 'parallel_safe') {
+        return createParallelMutationError(toolCallId, toolCall.name);
+      }
       return applyToolCommand(result, toolCallId, state, runtime, normalizeValues);
     }
     const content = String(result);
@@ -138,6 +146,13 @@ function createToolError(toolCallId: string, content: string): ToolMessage {
     tool_call_id: toolCallId,
     status: 'error'
   });
+}
+
+function createParallelMutationError(toolCallId: string, toolName: string): ToolMessage {
+  return createToolError(
+    toolCallId,
+    `Tool "${toolName}" is marked parallel_safe and cannot mutate runtime state`
+  );
 }
 
 function applyToolCommand(

@@ -8,6 +8,8 @@
 
 `beforeAgent -> beforeModel -> wrapModelCall -> afterModel -> wrapToolCall -> afterAgent`
 
+这里的 `beforeAgent / afterAgent` 是 agent loop 内每个 turn 的 hook，不是 `session` 级、也不是一次 `invoke()` 只触发一次的 host lifecycle hook。
+
 ## 快速开始
 
 ```typescript
@@ -114,11 +116,10 @@ Codara 默认 runtime 只把下面几类模块当成一等 middleware stage：
 
 其中：
 
-- `conversation-input.ts`
 - `context-budget.ts`
 - `summary.ts`
 
-都属于 conversation internals。它们可以被直接导入复用，但不应再被理解为默认主链中的并列 stage。
+都属于 conversation internals。它们不再作为独立 middleware 暴露心智，而是作为 `ConversationContextMiddleware` 内部使用的策略/算法模块存在。
 
 ### 默认主链职责矩阵
 
@@ -140,13 +141,26 @@ Codara 默认 runtime 只把下面几类模块当成一等 middleware stage：
 - `ConversationContextMiddleware`
   - hook scope: `beforeModel`
   - role:
-    - refresh budget snapshot
-    - optionally compact old conversation messages
+    - refresh budget snapshot for the current model request
+    - optionally compact old conversation messages before the current model request
 - `HumanInTheLoopMiddleware`
   - hook scope: `wrapToolCall`
   - role: pause/resume interception only
 
 这条默认主链里，source stage、conversation stage、interaction stage、observer stage 各自只有一个默认 owner，不应重叠。
+
+request-preparation slice 的职责应固定理解为：
+
+- model input assembly
+  - directly owned by `agents/loop/model-step.ts`
+- `context-budget`
+  - transient budget snapshot / heuristic
+  - not a standalone middleware stage
+- `summary`
+  - compaction helper over `messages`
+  - not a standalone middleware stage
+- `conversation-context`
+  - 编排上面三个能力的默认 pre-model stage
 
 ## 典型模式
 
