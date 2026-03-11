@@ -8,7 +8,7 @@ export function createResumeCommand(): CodaraCommandDefinition {
     aliases: ['continue'],
     source: {type: 'builtin'},
     async execute({command, host}) {
-      const state = host.getAgentState();
+      const state = await host.hydrate();
       if (state.status !== 'paused' || !state.pendingPause) {
         return errorResult(command.name, 'No paused action is waiting for review in the current session.');
       }

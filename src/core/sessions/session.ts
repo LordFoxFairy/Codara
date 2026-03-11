@@ -28,7 +28,7 @@ export function createSession(options: CreateSessionOptions): Session {
   const isRestoringThread = options.threadId !== undefined;
   const createdAt = restoredState?.createdAt ?? new Date().toISOString();
   let updatedAt = restoredState?.updatedAt ?? createdAt;
-  let sessionStatus: SessionStatus = restoredState?.sessionStatus ?? 'ready';
+  let sessionStatus: SessionStatus = 'ready';
   const metadata: SessionMetadata = createSessionMetadata(
     createdAt,
     restoredState?.metadata,

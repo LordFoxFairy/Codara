@@ -103,6 +103,7 @@ function createCodaraCommandHost(
     compactCheckpoints: (keepLast: number | undefined) => session.compactCheckpoints(
       typeof keepLast === 'number' ? {keepLast} : undefined
     ),
+    hydrate: () => session.hydrate(),
     getAgentState: () => session.getAgentState(),
     inspectAgentsFiles: () => session.inspectAgentsFiles(),
     ensureAgentsFileTarget: (scope: 'global' | 'project') => session.ensureAgentsFileTarget(scope),

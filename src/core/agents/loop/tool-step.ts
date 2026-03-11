@@ -101,7 +101,13 @@ async function executeWrappedToolCall(
       nextTool,
       runtime.handleToolErrors,
       run.state,
-      request?.runtime ?? context.runtime,
+      {
+        ...(request?.runtime ?? context.runtime),
+        runId: request?.runId ?? context.runId,
+        turn: request?.turn ?? context.turn,
+        requestId: request?.requestId ?? context.requestId,
+        toolIndex: nextIndex,
+      },
       (values) => runtime.pipeline.normalizeValues(values ?? {})
     );
   });

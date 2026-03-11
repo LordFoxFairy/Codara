@@ -157,7 +157,7 @@ export function createSessionAgentHost(
 
     async hydrate(): Promise<AgentState> {
       const state = (await getAgent()).getState();
-      await options.syncSessionFromState(state);
+      await options.syncSessionFromState(state, {touchActivity: false});
       return state;
     },
 
@@ -244,9 +244,14 @@ export function createSessionAgentHost(
     },
 
     async dispose(): Promise<void> {
-      if (agentInstance) {
-        await agentInstance.dispose();
+      if (!agentInstance) {
+        const checkpoint = await options.checkpointer.getLatest(options.threadId);
+        if (!checkpoint) {
+          return;
+        }
       }
+
+      await (await getAgent()).dispose();
     },
   };
 }

@@ -11,7 +11,8 @@ import type {
 import type {AgentModel} from '@core/agents/engine/model';
 import type {AgentStreamWriter} from '@core/agents/engine/stream-writer';
 import {runTurn, runTurnStream, type AgentTurnOutcome} from '@core/agents/loop/turn';
-import type {MiddlewarePipeline, MiddlewareRuntimeShared} from '@core/middleware';
+import type {BaseExecutionContext, MiddlewarePipeline, MiddlewareRuntimeShared} from '@core/middleware';
+import {deepClone} from '@core/shared/clone';
 import {toError, formatErrorMessage} from '@core/shared/errors';
 import {mergeContext} from '@core/agents/engine/runtime-input';
 
@@ -46,7 +47,7 @@ export function createRunContext(
     state,
     runId: randomUUID(),
     maxTurns: normalizeMaxTurns(config.recursionLimit),
-    runtimeContext: config.context ?? {},
+    runtimeContext: deepClone(config.context ?? {}),
     shared: {},
     inputBudget: config.inputBudget,
   };
@@ -54,6 +55,29 @@ export function createRunContext(
 
 export function resolveEffectiveContext(run: Pick<AgentRunContext, 'state' | 'runtimeContext'>): AgentRuntimeContext {
   return mergeContext(run.state.context, run.runtimeContext);
+}
+
+export function createExecutionContext(
+  run: AgentRunContext,
+  turn: number,
+  requestId: string
+): BaseExecutionContext {
+  return {
+    state: run.state,
+    messages: run.state.messages,
+    runtime: {
+      context: withThreadId(resolveEffectiveContext(run), run.state.threadId),
+      agentContext: run.state.context,
+      runtimeContext: run.runtimeContext,
+      shared: run.shared,
+    },
+    systemMessage: [],
+    runId: run.runId,
+    turn,
+    maxTurns: run.maxTurns,
+    requestId,
+    inputBudget: run.inputBudget,
+  };
 }
 
 /** 在主循环之外执行 beforeRun 钩子。 */
@@ -114,6 +138,18 @@ export async function streamLoop(
   return runLoopCore(run, runtime, (r, rt, turn) => runTurnStream(r, rt, turn, stream));
 }
 
+export async function runBeforeModelStage(
+  run: AgentRunContext,
+  runtime: AgentRuntime,
+  turn: number,
+  requestId: string
+): Promise<BaseExecutionContext> {
+  const context = createExecutionContext(run, turn, requestId);
+  await runtime.pipeline.beforeAgent(context);
+  await runtime.pipeline.beforeModel(context);
+  return context;
+}
+
 /** 核心循环逻辑，由 runLoop 和 streamLoop 共享。 */
 async function runLoopCore(
   run: AgentRunContext,
@@ -171,5 +207,12 @@ function createAgentResult(
     state,
     turns,
     ...(error === undefined ? {} : {error: toError(error)}),
+  };
+}
+
+function withThreadId(context: AgentRuntimeContext, threadId: string): AgentRuntimeContext {
+  return {
+    ...context,
+    threadId,
   };
 }

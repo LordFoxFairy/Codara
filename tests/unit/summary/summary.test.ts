@@ -387,4 +387,35 @@ describe('summary middleware', () => {
     expect(readSummaryRecord(restored.getState().messages)?.content).toBe('persisted summary');
     expect(restored.getState().messages).toHaveLength(4);
   });
+
+  it('should provide the real agent threadId to the summary generator without caller-injected runtime context', async () => {
+    let seenThreadId: string | undefined;
+    const agent = createAgent({
+      model: new FakeModel([new AIMessage('done')]) as unknown as BaseChatModel,
+      threadId: 'summary-real-thread',
+      middleware: [
+        createSummaryMiddleware({
+          maxMessages: 4,
+          keepLastMessages: 2,
+          summarize: ({threadId}) => {
+            seenThreadId = threadId;
+            return 'thread-aware summary';
+          },
+        }),
+      ],
+    });
+
+    const result = await agent.invoke({
+      messages: [
+        new HumanMessage('one'),
+        new AIMessage('two'),
+        new HumanMessage('three'),
+        new AIMessage('four'),
+        new HumanMessage('five'),
+      ],
+    });
+
+    expect(result.reason).toBe('complete');
+    expect(seenThreadId).toBe('summary-real-thread');
+  });
 });

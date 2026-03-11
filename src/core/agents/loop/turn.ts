@@ -1,6 +1,5 @@
-import type {AgentRunSummary, BaseExecutionContext} from '@core/middleware';
 import {
-  resolveEffectiveContext,
+  runBeforeModelStage,
   type AgentRunContext,
   type AgentRuntime,
 } from '@core/agents/loop/run';
@@ -9,6 +8,7 @@ import {runModelStep, runModelStepStream} from '@core/agents/loop/model-step';
 import {runAfterAgentStep, runToolStep, runToolStepStream} from '@core/agents/loop/tool-step';
 import {toError} from '@core/shared/errors';
 import type {AIMessage, ToolCall} from '@langchain/core/messages';
+import type {AgentRunSummary, BaseExecutionContext} from '@core/middleware';
 
 export type AgentTurnOutcome = 'continue' | 'complete';
 
@@ -79,14 +79,11 @@ async function runTurnCore(
   turn: number,
   strategy: TurnExecutionStrategy
 ): Promise<AgentTurnOutcome> {
-  const context = createTurnContext(run, turn);
+  const context = await runBeforeModelStage(run, runtime, turn, `${run.runId}:turn:${turn}`);
   const pipeline = runtime.pipeline;
   let turnResult: AgentRunSummary = {reason: 'continue', turns: turn};
 
   try {
-    await pipeline.beforeAgent(context);
-    await pipeline.beforeModel(context);
-
     const modelMessage = await strategy.executeModel(runtime, run, context);
     run.state.messages.push(modelMessage);
     await strategy.afterModelMessage(modelMessage, run);
@@ -109,25 +106,4 @@ async function runTurnCore(
   }
 
   return turnResult.reason === 'complete' ? 'complete' : 'continue';
-}
-
-function createTurnContext(run: AgentRunContext, turn: number): BaseExecutionContext {
-  const mergedContext = resolveEffectiveContext(run);
-
-  return {
-    state: run.state,
-    messages: run.state.messages,
-    runtime: {
-      context: mergedContext,
-      agentContext: run.state.context,
-      runtimeContext: run.runtimeContext,
-      shared: run.shared,
-    },
-    systemMessage: [],
-    runId: run.runId,
-    turn,
-    maxTurns: run.maxTurns,
-    requestId: `${run.runId}:turn:${turn}`,
-    inputBudget: run.inputBudget,
-  };
 }
