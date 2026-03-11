@@ -69,6 +69,21 @@ describe('conversation context middleware', () => {
     expect(readSummaryRecord(context.state.messages)).toBeUndefined();
   });
 
+  it('should remain a beforeModel-only request-preparation stage', () => {
+    const middleware = createConversationContextMiddleware({
+      summary: {
+        summarize: () => 'summary block',
+      },
+    });
+
+    expect(middleware.beforeModel).toEqual(expect.any(Function));
+    expect(middleware.beforeAgent).toBeUndefined();
+    expect(middleware.wrapModelCall).toBeUndefined();
+    expect(middleware.afterModel).toBeUndefined();
+    expect(middleware.wrapToolCall).toBeUndefined();
+    expect(middleware.afterAgent).toBeUndefined();
+  });
+
   it('should force summary compaction when runtime requests manual compact', async () => {
     const middleware = createConversationContextMiddleware({
       summary: {

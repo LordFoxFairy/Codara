@@ -1,5 +1,9 @@
 import {createMiddleware, type BaseMiddleware} from '@core/middleware/types';
-import {refreshContextBudget, type ContextBudgetEstimator} from '@core/middleware/context-budget';
+import {
+  createContextBudgetSnapshot,
+  estimateModelInputTokens,
+  type ContextBudgetEstimator,
+} from '@core/middleware/context-budget';
 import {
   compactSummaryIfNeeded,
   normalizeSummaryOptions,
@@ -15,7 +19,7 @@ export interface ConversationContextMiddlewareOptions {
 }
 
 /**
- * Codara conversation lifecycle middleware.
+ * Codara pre-model request preparation middleware.
  *
  * It intentionally keeps input-budget refresh and optional summary compaction
  * in one stage so the default runtime no longer relies on two separate
@@ -24,13 +28,16 @@ export interface ConversationContextMiddlewareOptions {
 export function createConversationContextMiddleware(
   options: ConversationContextMiddlewareOptions = {},
 ): BaseMiddleware {
-  const estimateTokens = options.estimateTokens;
+  const estimateTokens = options.estimateTokens ?? estimateModelInputTokens;
   const summary = options.summary ? normalizeSummaryOptions(options.summary) : undefined;
 
   return createMiddleware({
     name: 'ConversationContextMiddleware',
     async beforeModel(context) {
-      refreshContextBudget(context, estimateTokens);
+      context.budget = createContextBudgetSnapshot(context.inputBudget, {
+        systemMessage: context.systemMessage,
+        messages: context.state.messages,
+      }, estimateTokens);
 
       if (summary) {
         await compactSummaryIfNeeded(context, summary, {

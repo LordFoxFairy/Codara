@@ -39,9 +39,11 @@ class InMemoryTaskStore implements TaskStore {
       throw new Error(`Task "${input.taskId}" not found`);
     }
 
-    const next = await applyTaskUpdate(existing, input, async (taskId) => this.records.get(taskId));
-    this.records.set(next.id, next);
-    return cloneTask(next);
+    const nextGraph = await applyTaskUpdate(existing, input, async (taskId) => this.records.get(taskId));
+    for (const [taskId, record] of nextGraph) {
+      this.records.set(taskId, record);
+    }
+    return cloneTask(nextGraph.get(input.taskId) as TaskRecord);
   }
 }
 
@@ -82,9 +84,11 @@ class FileTaskStore implements TaskStore {
       throw new Error(`Task "${input.taskId}" not found`);
     }
 
-    const next = await applyTaskUpdate(existing, input, (taskId) => this.get(taskId));
-    await this.writeTask(next);
-    return cloneTask(next);
+    const nextGraph = await applyTaskUpdate(existing, input, (taskId) => this.get(taskId));
+    for (const record of nextGraph.values()) {
+      await this.writeTask(record);
+    }
+    return cloneTask(nextGraph.get(input.taskId) as TaskRecord);
   }
 
   private taskPath(taskId: string): string {
@@ -131,26 +135,46 @@ async function applyTaskUpdate(
   existing: TaskRecord,
   input: UpdateTaskInput,
   getTask: (taskId: string) => Promise<TaskRecord | undefined> | TaskRecord | undefined
-): Promise<TaskRecord> {
+): Promise<Map<string, TaskRecord>> {
+  const graph = new Map<string, TaskRecord>([[existing.id, cloneTask(existing)]]);
+  const now = new Date().toISOString();
+  const readTask = async (taskId: string): Promise<TaskRecord | undefined> => {
+    const cached = graph.get(taskId);
+    if (cached) {
+      return cached;
+    }
+
+    const loaded = await getTask(taskId);
+    if (!loaded) {
+      return undefined;
+    }
+
+    const cloned = cloneTask(loaded);
+    graph.set(taskId, cloned);
+    return cloned;
+  };
+
+  await reconcileTaskRelationships(graph.get(existing.id) as TaskRecord, readTask, now);
+  await applyGraphAdditions(graph.get(existing.id) as TaskRecord, input, readTask, now);
+
+  const current = graph.get(existing.id) as TaskRecord;
   const nextStatus = input.status ?? existing.status;
-  const nextBlockedBy = mergeTaskIds(existing.blockedBy, input.addBlockedBy);
-  const nextBlocks = mergeTaskIds(existing.blocks, input.addBlocks);
 
   if (nextStatus === 'in_progress') {
-    const unresolved = await findUnresolvedDependencies(nextBlockedBy, getTask);
+    const unresolved = await findUnresolvedDependencies(current.blockedBy, readTask);
     if (unresolved.length > 0) {
       throw new Error(`Task "${existing.id}" is blocked by: ${unresolved.join(', ')}`);
     }
   }
 
-  return {
-    ...existing,
+  graph.set(existing.id, {
+    ...current,
     ...(input.owner !== undefined ? {owner: normalizeOptionalText(input.owner)} : {}),
     status: nextStatus,
-    blocks: nextBlocks,
-    blockedBy: nextBlockedBy,
-    updatedAt: new Date().toISOString(),
-  };
+    updatedAt: now,
+  });
+
+  return graph;
 }
 
 async function findUnresolvedDependencies(
@@ -178,6 +202,130 @@ function mergeTaskIds(existing: string[], additions: string[] | undefined): stri
     }
   }
   return Array.from(merged);
+}
+
+async function reconcileTaskRelationships(
+  task: TaskRecord,
+  getTask: (taskId: string) => Promise<TaskRecord | undefined>,
+  now: string,
+): Promise<void> {
+  for (const blockedId of task.blocks) {
+    const blockedTask = await getTask(blockedId);
+    if (blockedTask && !blockedTask.blockedBy.includes(task.id)) {
+      blockedTask.blockedBy = mergeTaskIds(blockedTask.blockedBy, [task.id]);
+      blockedTask.updatedAt = now;
+    }
+  }
+
+  for (const prerequisiteId of task.blockedBy) {
+    const prerequisite = await getTask(prerequisiteId);
+    if (prerequisite && !prerequisite.blocks.includes(task.id)) {
+      prerequisite.blocks = mergeTaskIds(prerequisite.blocks, [task.id]);
+      prerequisite.updatedAt = now;
+    }
+  }
+}
+
+async function applyGraphAdditions(
+  task: TaskRecord,
+  input: UpdateTaskInput,
+  getTask: (taskId: string) => Promise<TaskRecord | undefined>,
+  now: string,
+): Promise<void> {
+  for (const blockedId of normalizeNewTaskIds(input.addBlocks)) {
+    await addDependencyEdge(task.id, blockedId, getTask, now);
+  }
+
+  for (const prerequisiteId of normalizeNewTaskIds(input.addBlockedBy)) {
+    await addDependencyEdge(prerequisiteId, task.id, getTask, now);
+  }
+
+  const current = await getTask(task.id);
+  if (!current) {
+    return;
+  }
+
+  current.blocks = dedupeTaskIds(current.blocks);
+  current.blockedBy = dedupeTaskIds(current.blockedBy);
+}
+
+async function addDependencyEdge(
+  sourceTaskId: string,
+  blockedTaskId: string,
+  getTask: (taskId: string) => Promise<TaskRecord | undefined>,
+  now: string,
+): Promise<void> {
+  if (sourceTaskId === blockedTaskId) {
+    throw new Error(`Task "${sourceTaskId}" cannot depend on itself`);
+  }
+
+  const source = await getRequiredTask(sourceTaskId, getTask);
+  const blocked = await getRequiredTask(blockedTaskId, getTask);
+
+  if (await hasDependencyPath(blocked.id, source.id, getTask)) {
+    throw new Error(`Adding dependency ${source.id} -> ${blocked.id} would create a cycle`);
+  }
+
+  source.blocks = mergeTaskIds(source.blocks, [blocked.id]);
+  source.updatedAt = now;
+  blocked.blockedBy = mergeTaskIds(blocked.blockedBy, [source.id]);
+  blocked.updatedAt = now;
+}
+
+async function getRequiredTask(
+  taskId: string,
+  getTask: (taskId: string) => Promise<TaskRecord | undefined>,
+): Promise<TaskRecord> {
+  const task = await getTask(taskId);
+  if (!task) {
+    throw new Error(`Task "${taskId}" not found`);
+  }
+  return task;
+}
+
+async function hasDependencyPath(
+  startTaskId: string,
+  targetTaskId: string,
+  getTask: (taskId: string) => Promise<TaskRecord | undefined>,
+): Promise<boolean> {
+  const visited = new Set<string>();
+  const queue = [startTaskId];
+
+  while (queue.length > 0) {
+    const currentId = queue.shift() as string;
+    if (currentId === targetTaskId) {
+      return true;
+    }
+
+    if (visited.has(currentId)) {
+      continue;
+    }
+    visited.add(currentId);
+
+    const current = await getTask(currentId);
+    if (!current) {
+      continue;
+    }
+
+    for (const nextId of current.blocks) {
+      if (!visited.has(nextId)) {
+        queue.push(nextId);
+      }
+    }
+  }
+
+  return false;
+}
+
+function normalizeNewTaskIds(taskIds: string[] | undefined): string[] {
+  return dedupeTaskIds(taskIds ?? []);
+}
+
+function dedupeTaskIds(taskIds: string[]): string[] {
+  return taskIds
+    .map((taskId) => taskId.trim())
+    .filter(Boolean)
+    .filter((taskId, index, all) => all.indexOf(taskId) === index);
 }
 
 function normalizeOptionalText(value: string | undefined): string | undefined {

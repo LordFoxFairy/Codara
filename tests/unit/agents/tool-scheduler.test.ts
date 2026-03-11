@@ -3,6 +3,7 @@ import {AIMessage, HumanMessage, ToolMessage, type ToolCall} from '@langchain/co
 import type {BaseChatModel} from '@langchain/core/language_models/chat_models';
 import type {StructuredToolInterface} from '@langchain/core/tools';
 import {createAgent} from '@core/agents';
+import {Command} from '@core/agents/command';
 import {withToolExecutionPolicy} from '@core/tools';
 
 class ScriptedModel {
@@ -115,5 +116,88 @@ describe('tool execution scheduler', () => {
     expect(fetchStartIndex).toBeGreaterThan(writeStartIndex);
     expect(events.indexOf('read_a:end')).toBeLessThan(writeStartIndex);
     expect(events.indexOf('read_b:end')).toBeLessThan(writeStartIndex);
+  });
+
+  it('should reject runtime Command mutations from parallel-safe tools', async () => {
+    const model = new ScriptedModel([
+      new AIMessage({
+        content: '',
+        tool_calls: [
+          {id: 'call_mutate', name: 'read_and_mutate', args: {}} as ToolCall,
+          {id: 'call_read', name: 'read_ok', args: {}} as ToolCall,
+        ],
+      }),
+      new AIMessage('done'),
+    ]) as unknown as BaseChatModel;
+
+    const agent = createAgent({
+      model,
+      tools: [
+        withToolExecutionPolicy({
+          name: 'read_and_mutate',
+          description: 'Bad parallel tool',
+          schema: {} as never,
+          invoke: async () => new Command({
+            update: {
+              runtimeShared: {bad: true},
+              values: {count: 1},
+            },
+          }),
+        } as unknown as StructuredToolInterface, 'parallel_safe'),
+        withToolExecutionPolicy({
+          name: 'read_ok',
+          description: 'Good parallel tool',
+          schema: {} as never,
+          invoke: async () => 'read_ok:done',
+        } as unknown as StructuredToolInterface, 'parallel_safe'),
+      ],
+    });
+
+    const result = await agent.invoke({messages: [new HumanMessage('start')]});
+    const toolMessages = result.state.messages.filter((message) => ToolMessage.isInstance(message)) as ToolMessage[];
+
+    expect(toolMessages.map((message) => message.status)).toEqual(['error', undefined]);
+    expect(String(toolMessages[0]?.content)).toContain('parallel_safe');
+    expect(result.state.values).toEqual({});
+  });
+
+  it('should reject artifact Command mutations from parallel-safe tools', async () => {
+    const model = new ScriptedModel([
+      new AIMessage({
+        content: '',
+        tool_calls: [
+          {id: 'call_mutate', name: 'read_with_artifact_command', args: {}} as ToolCall,
+        ],
+      }),
+      new AIMessage('done'),
+    ]) as unknown as BaseChatModel;
+
+    const agent = createAgent({
+      model,
+      tools: [
+        withToolExecutionPolicy({
+          name: 'read_with_artifact_command',
+          description: 'Bad artifact tool',
+          schema: {} as never,
+          invoke: async () => new ToolMessage({
+            content: 'mutating',
+            artifact: new Command({
+              update: {
+                values: {count: 1},
+              },
+            }),
+            tool_call_id: '',
+          }),
+        } as unknown as StructuredToolInterface, 'parallel_safe'),
+      ],
+    });
+
+    const result = await agent.invoke({messages: [new HumanMessage('start')]});
+    const toolMessages = result.state.messages.filter((message) => ToolMessage.isInstance(message)) as ToolMessage[];
+
+    expect(toolMessages).toHaveLength(1);
+    expect(toolMessages[0]?.status).toBe('error');
+    expect(String(toolMessages[0]?.content)).toContain('parallel_safe');
+    expect(result.state.values).toEqual({});
   });
 });

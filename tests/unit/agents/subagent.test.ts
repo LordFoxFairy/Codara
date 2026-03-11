@@ -4,7 +4,7 @@ import type {BaseChatModel} from '@langchain/core/language_models/chat_models';
 import {tool, type StructuredToolInterface} from '@langchain/core/tools';
 import {z} from 'zod';
 import {createAgent} from '@core/agents';
-import {createMiddleware} from '@core/middleware';
+import {createHILMiddleware, createMiddleware} from '@core/middleware';
 import {createSubagentTool, DEFAULT_SUBAGENT_TOOL_NAME, readDelegatedAgentResult} from '@core/tasking';
 import {createAgentMemoryCheckpointer} from '@core/checkpoint';
 
@@ -210,6 +210,103 @@ describe('createSubagentTool', () => {
       reason: 'error',
       errorMessage: 'child boom',
     });
+  });
+
+  it('应将 child HIL pause 提升到 parent，并在 resume 后继续 child checkpoint', async () => {
+    const parentModel = new ScriptedModel([
+      new AIMessage({
+        content: '',
+        tool_calls: [{
+          id: 'call_subagent_pause',
+          name: DEFAULT_SUBAGENT_TOOL_NAME,
+          args: {prompt: 'Run guarded child task'},
+        } as ToolCall],
+      }),
+      new AIMessage({
+        content: '',
+        tool_calls: [{
+          id: 'call_subagent_pause',
+          name: DEFAULT_SUBAGENT_TOOL_NAME,
+          args: {prompt: 'Run guarded child task'},
+        } as ToolCall],
+      }),
+      new AIMessage('parent_done'),
+    ]);
+    const childModel = new ScriptedModel([
+      new AIMessage({
+        content: '',
+        tool_calls: [{
+          id: 'child_guarded_call',
+          name: 'dangerous_tool',
+          args: {path: 'guarded.txt'},
+        } as ToolCall],
+      }),
+      new AIMessage({
+        content: '',
+        tool_calls: [{
+          id: 'child_guarded_call',
+          name: 'dangerous_tool',
+          args: {path: 'guarded.txt'},
+        } as ToolCall],
+      }),
+      new AIMessage('child_done'),
+    ]);
+
+    let dangerousInvokeCount = 0;
+    const dangerousTool = tool(async () => {
+      dangerousInvokeCount += 1;
+      return 'dangerous:done';
+    }, {
+      name: 'dangerous_tool',
+      description: 'Dangerous tool',
+      schema: z.object({path: z.string()}),
+    });
+
+    const subagentTool = createSubagentTool({
+      model: childModel as unknown as BaseChatModel,
+      tools: [dangerousTool],
+      middleware: [
+        createHILMiddleware({
+          interruptOn: {dangerous_tool: true},
+        }),
+      ],
+    });
+
+    const parent = createAgent({
+      model: parentModel as unknown as BaseChatModel,
+      tools: [subagentTool],
+    });
+
+    const firstResult = await parent.invoke('start');
+
+    expect(firstResult.reason).toBe('complete');
+    expect(firstResult.state.status).toBe('paused');
+    expect(firstResult.state.pendingPause?.metadata).toMatchObject({
+      codara: {
+        delegatedSubagent: {
+          childThreadId: expect.any(String),
+          parentToolName: DEFAULT_SUBAGENT_TOOL_NAME,
+        },
+      },
+    });
+    expect(dangerousInvokeCount).toBe(0);
+
+    const secondResult = await parent.resume(
+      {decision: 'approve'},
+      {
+        recursionLimit: 4,
+      }
+    );
+
+    expect(secondResult.reason).toBe('complete');
+    expect(secondResult.state.status).toBe('idle');
+    expect(secondResult.state.pendingPause).toBeUndefined();
+    expect(dangerousInvokeCount).toBe(1);
+
+    const delegatedToolMessages = secondResult.state.messages.filter((message) => ToolMessage.isInstance(message)) as ToolMessage[];
+    const delegatedResult = readDelegatedAgentResult(delegatedToolMessages[delegatedToolMessages.length - 1]?.artifact);
+    expect(delegatedResult?.reason).toBe('complete');
+    expect(delegatedResult?.summary).toBe('child_done');
   });
 
   it('应持久化 agentType，并在 checkpoint 恢复后保持 subagent 身份', async () => {
