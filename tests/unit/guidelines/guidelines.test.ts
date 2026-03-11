@@ -70,12 +70,15 @@ describe('AGENTS guidelines', () => {
     const context: BeforeModelContext = {
       state: {messages: []},
       messages: [],
-      runtime: {context: {}, agentContext: {}},
+      runtime: {context: {}},
       systemMessage: ['base system'],
-      runId: 'run_1',
-      turn: 1,
-      maxTurns: 8,
-      requestId: 'req_1',
+      execution: {
+        threadId: 'thread_1',
+        runId: 'run_1',
+        turn: 1,
+        maxTurns: 8,
+        requestId: 'req_1',
+      },
     };
 
     await middleware.beforeModel?.(context);

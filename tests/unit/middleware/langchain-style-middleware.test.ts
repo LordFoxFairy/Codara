@@ -8,12 +8,15 @@ function createContext() {
   return {
     state: {messages},
     messages,
-    runtime: {context: {}, agentContext: {}},
+    runtime: {context: {}},
     systemMessage: [],
-    runId: 'run_style',
-    turn: 1,
-    maxTurns: 3,
-    requestId: 'req_style'
+    execution: {
+      threadId: 'thread_style',
+      runId: 'run_style',
+      turn: 1,
+      maxTurns: 3,
+      requestId: 'req_style',
+    },
   };
 }
 

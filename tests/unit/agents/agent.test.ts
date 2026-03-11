@@ -238,7 +238,7 @@ describe('Agent', () => {
         {
           name: 'max_turns_probe',
           afterAgent: (context) => {
-            events.push(`turn:${context.turn}:${context.result.reason}`);
+            events.push(`turn:${context.execution.turn}:${context.result.reason}`);
           },
         },
       ],
@@ -396,24 +396,24 @@ describe('Agent', () => {
       {
         name: 'trace',
         beforeAgent: (context) => {
-          events.push(`beforeAgent:${context.turn}`);
+          events.push(`beforeAgent:${context.execution.turn}`);
         },
         beforeModel: (context) => {
-          events.push(`beforeModel:${context.turn}`);
+          events.push(`beforeModel:${context.execution.turn}`);
         },
         wrapModelCall: async (context, next) => {
-          events.push(`wrapModel:start:${context.turn}`);
+          events.push(`wrapModel:start:${context.execution.turn}`);
           const response = await next();
-          events.push(`wrapModel:end:${context.turn}`);
+          events.push(`wrapModel:end:${context.execution.turn}`);
           return response;
         },
         afterModel: (context) => {
-          events.push(`afterModel:${context.turn}`);
+          events.push(`afterModel:${context.execution.turn}`);
         },
         wrapToolCall: async (context, next) => {
-          events.push(`wrapTool:start:${context.turn}:${context.toolCall.name}`);
+          events.push(`wrapTool:start:${context.execution.turn}:${context.toolCall.name}`);
           const response = await next();
-          events.push(`wrapTool:end:${context.turn}:${context.toolCall.name}`);
+          events.push(`wrapTool:end:${context.execution.turn}:${context.toolCall.name}`);
           return response;
         },
         afterAgent: (context) => {
@@ -466,8 +466,8 @@ describe('Agent', () => {
         {
           name: 'runtime_shared_probe',
           beforeModel: (context) => {
-            events.push(`shared:${context.turn}:${String(context.runtime.shared?.flag ?? 'none')}`);
-            if (context.turn === 1) {
+            events.push(`shared:${context.execution.turn}:${String(context.runtime.shared?.flag ?? 'none')}`);
+            if (context.execution.turn === 1) {
               return {
                 runtimeShared: {
                   flag: 'ready',
@@ -598,7 +598,7 @@ describe('Agent', () => {
     let seen:
       | {
           context: Record<string, unknown>;
-          agentContext: Record<string, unknown>;
+          durableContext: Record<string, unknown>;
           runtimeContext: Record<string, unknown>;
           execution: {threadId?: string};
         }
@@ -610,7 +610,7 @@ describe('Agent', () => {
       beforeModel: (context) => {
         seen = {
           context: context.runtime.context,
-          agentContext: context.runtime.agentContext ?? {},
+          durableContext: context.state.context ?? {},
           runtimeContext: context.runtime.runtimeContext ?? {},
           execution: context.execution ?? {},
         };
@@ -646,7 +646,7 @@ describe('Agent', () => {
         timezone: 'Asia/Shanghai',
       },
     });
-    expect(seen?.agentContext).toEqual({
+    expect(seen?.durableContext).toEqual({
       tenantId: 'tenant-1',
       profile: {
         locale: 'zh-CN',
@@ -690,29 +690,21 @@ describe('Agent', () => {
     const result = await runner.invoke({messages: [new HumanMessage('start')]});
 
     expect(result.reason).toBe('complete');
-    expect(seenConfigurable?.threadId).toBe('thread-tool-ids');
-    expect(typeof seenConfigurable?.runId).toBe('string');
-    expect(seenConfigurable?.requestId).toBe(`${seenConfigurable?.runId}:turn:1:tool:call_ids`);
-    expect(seenConfigurable?.turn).toBe(1);
-    expect(seenConfigurable?.toolCallId).toBe('call_ids');
-    expect(seenConfigurable?.toolIndex).toBe(0);
     expect(seenConfigurable?.execution).toEqual({
       threadId: 'thread-tool-ids',
-      runId: seenConfigurable?.runId,
+      runId: expect.any(String),
       turn: 1,
       maxTurns: 25,
-      requestId: seenConfigurable?.requestId,
+      requestId: expect.stringContaining(':turn:1:tool:call_ids'),
       toolIndex: 0,
       toolCallId: 'call_ids',
     });
-    expect(seenMetadata?.threadId).toBe('thread-tool-ids');
-    expect(seenMetadata?.toolCallId).toBe('call_ids');
     expect(seenMetadata?.execution).toEqual({
       threadId: 'thread-tool-ids',
-      runId: seenConfigurable?.runId,
+      runId: expect.any(String),
       turn: 1,
       maxTurns: 25,
-      requestId: seenConfigurable?.requestId,
+      requestId: expect.stringContaining(':turn:1:tool:call_ids'),
       toolIndex: 0,
       toolCallId: 'call_ids',
     });
@@ -979,7 +971,11 @@ describe('Agent', () => {
                 toolArgs: context.toolCall.args,
               },
               review: {decision: 'ask', allowedDecisions: ['approve', 'reject']},
-              runtime: {runId: context.runId, requestId: context.requestId, turn: context.turn},
+              runtime: {
+                runId: context.execution.runId,
+                requestId: context.execution.requestId,
+                turn: context.execution.turn,
+              },
             },
           }),
           tool_call_id: context.toolCall.id ?? 'call_pause',

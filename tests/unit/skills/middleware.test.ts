@@ -15,12 +15,15 @@ function createBaseContext(runId: string) {
   return {
     state: {messages},
     messages,
-    runtime: {context: {}, shared: {}, agentContext: {}},
+    runtime: {context: {}, shared: {}},
     systemMessage: ['base-system'],
-    runId,
-    turn: 1,
-    maxTurns: 3,
-    requestId: `${runId}-req`
+    execution: {
+      threadId: `${runId}-thread`,
+      runId,
+      turn: 1,
+      maxTurns: 3,
+      requestId: `${runId}-req`,
+    },
   }
 }
 
@@ -148,7 +151,14 @@ custom-threshold: 0.8
     const context = createBaseContext(runId)
 
     await middleware.beforeModel?.(context)
-    await middleware.beforeModel?.({...context, turn: 2, requestId: `${runId}-req-2`})
+    await middleware.beforeModel?.({
+      ...context,
+      execution: {
+        ...context.execution,
+        turn: 2,
+        requestId: `${runId}-req-2`,
+      },
+    })
 
     expect(discoverCalls).toBe(2)
   })

@@ -34,7 +34,6 @@ export function applyAgentStateUpdate(
   update: AgentStateUpdate | undefined,
   runtime?: {
     context: AgentRuntimeContext;
-    agentContext?: AgentRuntimeContext;
     runtimeContext?: AgentRuntimeContext;
     shared?: Record<string, unknown>;
   }
@@ -50,9 +49,6 @@ export function applyAgentStateUpdate(
   if (update.context) {
     assertNoReservedAgentStateInContext(update.context);
     state.context = mergeRecords(state.context, update.context);
-    if (runtime) {
-      runtime.agentContext = state.context;
-    }
   }
 
   if (update.runtimeContext && runtime) {
@@ -68,7 +64,7 @@ export function applyAgentStateUpdate(
   }
 
   if (runtime && (update.context || update.runtimeContext)) {
-    runtime.context = mergeContext(runtime.agentContext ?? state.context ?? {}, runtime.runtimeContext);
+    runtime.context = mergeContext(state.context ?? {}, runtime.runtimeContext);
   }
 }
 

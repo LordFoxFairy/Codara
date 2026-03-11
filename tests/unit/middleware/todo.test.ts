@@ -75,12 +75,15 @@ describe('todoListMiddleware', () => {
     await pipeline.afterModel({
       state: {messages, context: {}, values: {}},
       messages,
-      runtime: {context: {}, agentContext: {}},
+      runtime: {context: {}},
       systemMessage: [],
-      runId: 'run_todo',
-      turn: 1,
-      maxTurns: 3,
-      requestId: 'req_todo',
+      execution: {
+        threadId: 'thread_todo',
+        runId: 'run_todo',
+        turn: 1,
+        maxTurns: 3,
+        requestId: 'req_todo',
+      },
       response: new AIMessage({
         content: 'I will update the todos',
         tool_calls: [
@@ -113,12 +116,15 @@ describe('todoListMiddleware', () => {
           },
         },
         messages,
-        runtime: {context: {}, agentContext: {}},
+        runtime: {context: {}},
         systemMessage: [],
-        runId: 'run_todo_snapshot',
-        turn: 2,
-        maxTurns: 3,
-        requestId: 'req_todo_snapshot',
+        execution: {
+          threadId: 'thread_todo_snapshot',
+          runId: 'run_todo_snapshot',
+          turn: 2,
+          maxTurns: 3,
+          requestId: 'req_todo_snapshot',
+        },
       },
       async (request) => {
         seenSystemMessages.push([...(request?.systemMessage ?? [])]);

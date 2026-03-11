@@ -3,6 +3,7 @@ import {ToolInputParsingException, type StructuredToolInterface} from '@langchai
 import {ToolInvocationError} from 'langchain';
 import {Command, isCommand, applyAgentStateUpdate} from '@core/agents/command';
 import type {AgentState, ToolErrorHandler} from '@core/agents/contract/agent';
+import type {ExecutionContextMetadata} from '@core/middleware/types';
 import {readToolExecutionPolicy} from '@core/tools';
 
 export function resolveToolCallId(toolCall: ToolCall, toolIndex: number): string {
@@ -26,18 +27,7 @@ export async function executeToolCall(
     context: AgentState['context'];
     runtimeContext?: AgentState['context'];
     shared?: Record<string, unknown>;
-    runId?: string;
-    turn?: number;
-    requestId?: string;
-    toolIndex?: number;
-    execution?: {
-      threadId: string;
-      runId: string;
-      turn: number;
-      requestId: string;
-      toolIndex?: number;
-      toolCallId?: string;
-    };
+    execution: ExecutionContextMetadata;
   },
   normalizeValues?: (values: AgentState['values']) => AgentState['values']
 ): Promise<ToolMessage> {
@@ -52,23 +42,18 @@ export async function executeToolCall(
 
   try {
     const executionPolicy = readToolExecutionPolicy(tool);
+    const execution = runtime?.execution ?? {
+      threadId: state.threadId,
+      runId: '',
+      turn: 0,
+      maxTurns: 0,
+      requestId: '',
+      toolCallId,
+    };
     const result = await tool.invoke(toolCall.args, {
       toolCall,
       configurable: {
-        threadId: state.threadId,
-        runId: runtime?.runId,
-        turn: runtime?.turn,
-        requestId: runtime?.requestId,
-        toolCallId,
-        toolIndex: runtime?.toolIndex,
-        execution: runtime?.execution ?? {
-          threadId: state.threadId,
-          runId: runtime?.runId ?? '',
-          turn: runtime?.turn ?? 0,
-          requestId: runtime?.requestId ?? '',
-          ...(typeof runtime?.toolIndex === 'number' ? {toolIndex: runtime.toolIndex} : {}),
-          toolCallId,
-        },
+        execution,
         agentType: state.agentType,
         agentContext: state.context,
         runtimeContext: runtime?.context ?? state.context,
@@ -77,20 +62,7 @@ export async function executeToolCall(
       },
       metadata: {
         agentType: state.agentType,
-        threadId: state.threadId,
-        runId: runtime?.runId,
-        turn: runtime?.turn,
-        requestId: runtime?.requestId,
-        toolCallId,
-        toolIndex: runtime?.toolIndex,
-        execution: runtime?.execution ?? {
-          threadId: state.threadId,
-          runId: runtime?.runId ?? '',
-          turn: runtime?.turn ?? 0,
-          requestId: runtime?.requestId ?? '',
-          ...(typeof runtime?.toolIndex === 'number' ? {toolIndex: runtime.toolIndex} : {}),
-          toolCallId,
-        },
+        execution,
       },
     });
     if (ToolMessage.isInstance(result)) {
@@ -187,18 +159,7 @@ function applyToolCommand(
     context: AgentState['context'];
     shared?: Record<string, unknown>;
     runtimeContext?: AgentState['context'];
-    runId?: string;
-    turn?: number;
-    requestId?: string;
-    toolIndex?: number;
-    execution?: {
-      threadId: string;
-      runId: string;
-      turn: number;
-      requestId: string;
-      toolIndex?: number;
-      toolCallId?: string;
-    };
+    execution: ExecutionContextMetadata;
   },
   normalizeValues?: (values: AgentState['values']) => AgentState['values'],
   fallbackToolMessage?: ToolMessage

@@ -110,7 +110,7 @@ describe('Skills task completion flow', () => {
     const probeMiddleware = createMiddleware({
       name: 'TaskCompletionProbe',
       wrapModelCall: async (request, handler) => {
-        debugLog(`wrapModelCall turn=${request.turn}, systemMessages=${request.systemMessage.length}`)
+        debugLog(`wrapModelCall turn=${request.execution.turn}, systemMessages=${request.systemMessage.length}`)
         return handler(request)
       },
       wrapToolCall: async (request, handler) => {

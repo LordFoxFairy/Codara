@@ -81,7 +81,6 @@ function createToolContext(
 
   return {
     ...context,
-    requestId: nextRequestId,
     execution: {
       ...execution,
       requestId: nextRequestId,
@@ -123,22 +122,18 @@ async function executeWrappedToolCall(
       toolCallId: nextToolCallId,
     };
 
-    return executeToolCall(
-      nextCall,
-      nextToolCallId,
-      nextTool,
-      runtime.handleToolErrors,
-      run.state,
-      {
-        ...(request?.runtime ?? context.runtime),
-        runId: nextExecution.runId,
-        turn: nextExecution.turn,
-        requestId: nextExecution.requestId,
-        toolIndex: nextIndex,
-        execution: nextExecution,
-      },
-      (values) => runtime.pipeline.normalizeValues(values ?? {})
-    );
+      return executeToolCall(
+        nextCall,
+        nextToolCallId,
+        nextTool,
+        runtime.handleToolErrors,
+        run.state,
+        {
+          ...(request?.runtime ?? context.runtime),
+          execution: nextExecution,
+        },
+        (values) => runtime.pipeline.normalizeValues(values ?? {})
+      );
   });
 
   return {toolMessage};

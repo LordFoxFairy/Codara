@@ -67,7 +67,7 @@ Use references before final answer.
     const probeMiddleware = createMiddleware({
       name: 'SkillsProbe',
       wrapModelCall: async (request, handler) => {
-        systemPromptsByTurn.set(request.turn, request.systemMessage.join('\n'))
+        systemPromptsByTurn.set(request.execution.turn, request.systemMessage.join('\n'))
         return handler(request)
       }
     })

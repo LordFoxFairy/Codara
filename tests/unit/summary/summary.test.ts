@@ -25,6 +25,16 @@ class FakeModel {
   }
 }
 
+function createExecution(
+  threadId: string,
+  runId: string,
+  turn: number,
+  requestId: string,
+  maxTurns: number = 8,
+) {
+  return {threadId, runId, turn, maxTurns, requestId};
+}
+
 describe('summary middleware', () => {
   it('should summarize older messages and replace them inside state.messages', async () => {
     const middleware = createConversationContextMiddleware({
@@ -51,12 +61,15 @@ describe('summary middleware', () => {
     const context: ModelCallContext = {
       state: {messages},
       messages,
-      runtime: {context: {threadId: 'thread-1'}, agentContext: {}},
+      runtime: {context: {}},
       systemMessage: [],
-      runId: 'run-1',
-      turn: 2,
-      maxTurns: 8,
-      requestId: 'req-1',
+      execution: {
+        threadId: 'thread-1',
+        runId: 'run-1',
+        turn: 2,
+        maxTurns: 8,
+        requestId: 'req-1',
+      },
     };
 
     await pipeline.beforeModel(context);
@@ -96,10 +109,7 @@ describe('summary middleware', () => {
       messages,
       runtime: {context: {}},
       systemMessage: [],
-      runId: 'run-1',
-      turn: 1,
-      maxTurns: 8,
-      requestId: 'req-1',
+      execution: createExecution('thread-existing', 'run-1', 1, 'req-1'),
     };
 
     await pipeline.beforeModel(context);
@@ -134,10 +144,7 @@ describe('summary middleware', () => {
       messages,
       runtime: {context: {}},
       systemMessage: [],
-      runId: 'run-1',
-      turn: 2,
-      maxTurns: 8,
-      requestId: 'req-1',
+      execution: createExecution('thread-caller', 'run-1', 2, 'req-1'),
     };
 
     await pipeline.beforeModel(context);
@@ -173,10 +180,7 @@ describe('summary middleware', () => {
       messages,
       runtime: {context: {}},
       systemMessage: ['x'.repeat(120)],
-      runId: 'run-budget',
-      turn: 1,
-      maxTurns: 8,
-      requestId: 'req-budget',
+      execution: createExecution('thread-budget', 'run-budget', 1, 'req-budget'),
       inputBudget: {maxInputTokens: 40},
     };
 
@@ -213,10 +217,7 @@ describe('summary middleware', () => {
       messages,
       runtime: {context: {}},
       systemMessage: ['x'.repeat(80)],
-      runId: 'run-threshold',
-      turn: 1,
-      maxTurns: 8,
-      requestId: 'req-threshold',
+      execution: createExecution('thread-threshold', 'run-threshold', 1, 'req-threshold'),
       inputBudget: {maxInputTokens: 60},
     };
 
@@ -250,10 +251,7 @@ describe('summary middleware', () => {
       messages,
       runtime: {context: {}},
       systemMessage: [],
-      runId: 'run-near-limit',
-      turn: 1,
-      maxTurns: 8,
-      requestId: 'req-near-limit',
+      execution: createExecution('thread-near-limit', 'run-near-limit', 1, 'req-near-limit'),
       inputBudget: {maxInputTokens: 100},
     };
 
@@ -294,13 +292,9 @@ describe('summary middleware', () => {
             compactInstructions: 'focus on decisions only',
           },
         },
-        agentContext: {},
       },
       systemMessage: [],
-      runId: 'run-instructions',
-      turn: 1,
-      maxTurns: 8,
-      requestId: 'req-instructions',
+      execution: createExecution('thread-instructions', 'run-instructions', 1, 'req-instructions'),
     };
 
     await pipeline.beforeModel(context);
@@ -339,10 +333,7 @@ describe('summary middleware', () => {
       messages,
       runtime: {context: {}},
       systemMessage: [],
-      runId: 'run-1',
-      turn: 1,
-      maxTurns: 8,
-      requestId: 'req-1',
+      execution: createExecution('thread-summary-loop', 'run-1', 1, 'req-1'),
     };
 
     await pipeline.beforeModel(context);
@@ -352,7 +343,7 @@ describe('summary middleware', () => {
 
     await pipeline.beforeModel({
       ...context,
-      turn: 2,
+      execution: createExecution('thread-summary-loop', 'run-1', 2, 'req-1'),
     });
 
     expect(seenPreviousSummaries).toEqual([undefined, 'first full summary block']);

@@ -70,7 +70,6 @@ export function createExecutionContext(
     messages: run.state.messages,
     runtime: {
       context: effectiveContext,
-      agentContext: run.state.context,
       runtimeContext: run.runtimeContext,
       shared: run.shared,
     },
@@ -82,10 +81,6 @@ export function createExecutionContext(
       maxTurns: run.maxTurns,
       requestId,
     },
-    runId: run.runId,
-    turn,
-    maxTurns: run.maxTurns,
-    requestId,
     inputBudget: run.inputBudget,
   };
 }

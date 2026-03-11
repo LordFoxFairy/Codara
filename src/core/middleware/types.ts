@@ -29,8 +29,6 @@ export interface ExecutionContextMetadata {
 export interface MiddlewareRuntimeContext {
   /** 有效业务上下文（持久化 + 临时合并后的结果，不包含执行元数据）。 */
   context: AgentRuntimeContext;
-  /** 当前 agent 的持久上下文，会进入 checkpoint。 */
-  agentContext?: AgentRuntimeContext;
   /** 当前 invoke/resume 的临时上下文，不进入 checkpoint。 */
   runtimeContext?: AgentRuntimeContext;
   /** 同一次运行内由 middleware 生成、供其他 middleware/tools 复用的共享派生数据。 */
@@ -50,11 +48,7 @@ export interface BaseExecutionContext {
   /** 在 wrapModelCall 中可追加系统消息。 */
   systemMessage: string[];
   /** 本轮执行元数据，不属于业务 context。 */
-  execution?: ExecutionContextMetadata;
-  runId: string;
-  turn: number;
-  maxTurns: number;
-  requestId: string;
+  execution: ExecutionContextMetadata;
   inputBudget?: AgentInputBudget;
   budget?: ContextBudgetSnapshot;
 }
@@ -132,19 +126,5 @@ export function createMiddleware(config: BaseMiddleware): BaseMiddleware {
 }
 
 export function readExecutionMetadata(context: BaseExecutionContext): ExecutionContextMetadata {
-  if (context.execution) {
-    return context.execution;
-  }
-
-  const threadId = typeof context.runtime.context.threadId === 'string'
-    ? context.runtime.context.threadId
-    : '';
-
-  return {
-    threadId,
-    runId: context.runId,
-    turn: context.turn,
-    maxTurns: context.maxTurns,
-    requestId: context.requestId,
-  };
+  return context.execution;
 }
