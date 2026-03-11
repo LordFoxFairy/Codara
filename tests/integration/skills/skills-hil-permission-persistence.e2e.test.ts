@@ -173,8 +173,9 @@ describe('HIL permission persistence flow', () => {
     );
 
     expect(firstResult.reason).toBe('complete');
+    expect(firstResult.state.status).toBe('paused');
     expect(String(firstResult.state.messages[firstResult.state.messages.length - 1]?.content)).toContain(
-      'WAITING_FOR_PERMISSION'
+      '"type":"hil_pause"'
     );
     expect(bashInvokeCount).toBe(0);
     expect(firstPauseIds).toHaveLength(1);

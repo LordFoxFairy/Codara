@@ -11,7 +11,7 @@ import {
 import type {BaseChatModel} from '@langchain/core/language_models/chat_models';
 import type {StructuredToolInterface} from '@langchain/core/tools';
 import {createAgent} from '@core/agents';
-import {createMiddleware, type BaseMiddleware} from '@core/middleware';
+import {createHILMiddleware, createMiddleware, type BaseMiddleware} from '@core/middleware';
 import {z} from 'zod';
 
 class FakeModel {
@@ -215,6 +215,43 @@ describe('Agent', () => {
 
     expect(result.reason).toBe('max_turns');
     expect(result.turns).toBe(3);
+  });
+
+  it('afterAgent 的 turn 级结果应保持 continue，而最终 max_turns 只由 run 结果拥有', async () => {
+    const events: string[] = [];
+    const toolCall: ToolCall = {id: 'call_loop_ownership', name: 'echo', args: {}};
+    const tool = {
+      name: 'echo',
+      description: 'Echo tool',
+      schema: {} as never,
+      invoke: async () => 'pong'
+    } as unknown as StructuredToolInterface;
+
+    const model = new FakeModel(
+      Array.from({length: 10}, () => new AIMessage({content: '', tool_calls: [toolCall]}))
+    ) as unknown as BaseChatModel;
+
+    const runner = createAgent({
+      model,
+      tools: [tool],
+      middleware: [
+        {
+          name: 'max_turns_probe',
+          afterAgent: (context) => {
+            events.push(`turn:${context.turn}:${context.result.reason}`);
+          },
+        },
+      ],
+    });
+
+    const result = await runner.invoke({messages: [new HumanMessage('start')]}, {recursionLimit: 2});
+
+    expect(result.reason).toBe('max_turns');
+    expect(result.turns).toBe(2);
+    expect(events).toEqual([
+      'turn:1:continue',
+      'turn:2:continue',
+    ]);
   });
 
   it('非法 recursionLimit 不应污染 agent 内部状态', async () => {
@@ -722,6 +759,55 @@ describe('Agent', () => {
     expect(result.error?.message).toContain('context validation failed');
     expect(runner.getState().status).toBe('idle');
     expect(runner.getState().messages).toHaveLength(0);
+  });
+
+  it('HIL pause 应在当前 turn 结束运行，而不是继续消耗后续 turn', async () => {
+    const toolCall: ToolCall = {id: 'call_pause_stop', name: 'bash', args: {command: 'git status'}};
+    let invocations = 0;
+    let bashInvokeCount = 0;
+    const model = {
+      invoke: async () => {
+        invocations += 1;
+        return new AIMessage({content: '', tool_calls: [toolCall]});
+      },
+      bindTools: () => ({
+        invoke: async () => {
+          invocations += 1;
+          return new AIMessage({content: '', tool_calls: [toolCall]});
+        }
+      })
+    } as unknown as BaseChatModel;
+
+    const bashTool = {
+      name: 'bash',
+      description: 'bash',
+      schema: {} as never,
+      invoke: async () => {
+        bashInvokeCount += 1;
+        return 'executed';
+      },
+    } as unknown as StructuredToolInterface;
+
+    const runner = createAgent({
+      model,
+      tools: [bashTool],
+      middleware: [
+        createHILMiddleware({
+          interruptOn: {
+            bash: true,
+          },
+        }),
+      ],
+    });
+
+    const result = await runner.invoke({messages: [new HumanMessage('run git status')]});
+
+    expect(result.reason).toBe('complete');
+    expect(result.turns).toBe(1);
+    expect(result.state.status).toBe('paused');
+    expect(result.state.pendingPause?.action.toolName).toBe('bash');
+    expect(invocations).toBe(1);
+    expect(bashInvokeCount).toBe(0);
   });
 
   it('stream(messages) 应输出模型 chunks 并返回最终结果', async () => {

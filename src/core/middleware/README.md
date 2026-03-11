@@ -86,7 +86,8 @@ const result = await agent.invoke(
 公共字段（多数 hooks 都可用）：
 
 - `state.messages` / `messages`：当前消息列表
-- `runtime.context`：持久化上下文（随 checkpoint 保存，跨 invoke 保留）
+- `runtime.context`：当前 hook 可见的有效上下文视图（`agentContext + runtimeContext` 的合成结果，不直接持久化）
+- `runtime.agentContext`：持久化 agent context（随 checkpoint 保存，跨 invoke 保留）
 - `runtime.runtimeContext`：临时运行时上下文（仅本次 invoke 有效，不持久化）
 - `runtime.shared`：同一次运行内由 middleware 生成并共享的派生数据，不进入 checkpoint
 - `systemMessage`：可在 `beforeModel` 或 `wrapModelCall` 中追加系统消息

@@ -104,11 +104,11 @@ describe('Skills + HIL permission guidance', () => {
     }, {recursionLimit: 4})
 
     expect(result.reason).toBe('complete')
-    expect(model.invocations).toHaveLength(2)
+    expect(model.invocations).toHaveLength(1)
     expect(bashInvokeCount).toBe(0)
 
     const finalMessage = result.state.messages[result.state.messages.length - 1]
-    expect(String(finalMessage?.content)).toContain('PAUSED_BY_HIL')
+    expect(String(finalMessage?.content)).toContain('"type":"hil_pause"')
 
     const firstProbeView = probeSystemMessages[0] ?? ''
     expect(firstProbeView).toContain('permission-policy')

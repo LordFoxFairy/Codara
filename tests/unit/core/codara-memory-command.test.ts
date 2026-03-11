@@ -44,6 +44,8 @@ describe('Codara memory command', () => {
     expect(result.output).toContain(projectFile);
     expect(result.output).toContain('(loaded)');
     expect(result.output).toContain('Edit targets:');
+    expect(result.output).toContain('This view only shows AGENTS.md source files.');
+    expect(result.output).toContain('It does not show checkpoint history, session metadata, or durable agent context.');
   });
 
   it('should prepare the project AGENTS.md target through /memory project', async () => {
@@ -132,5 +134,6 @@ describe('Codara memory command', () => {
     expect(result.output).toContain(globalFile);
     expect(result.output).toContain(projectFile);
     expect(result.output).toContain('/memory project');
+    expect(result.output).toContain('AGENTS.md source files');
   });
 });

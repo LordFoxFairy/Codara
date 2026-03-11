@@ -106,10 +106,17 @@ src/index.ts
 - `messages`
   - 对话历史
   - `summary` 在这一层做压缩并通过 checkpoint 持久化
-- `context`
-  - 持久 agent context + 本轮 invoke context + transient runtime data 的有效合成视图
-  - `skills` 这类可重建派生数据只存在于运行期，不进入 checkpoint
+- `state.context`
+  - 持久 agent context
+  - 随 checkpoint 保存与恢复
   - 不承载 `todo` 这类 agent-owned 状态
+- `runtime.runtimeContext`
+  - 本轮 invoke/resume 的临时上下文
+  - 不进入 checkpoint
+- `runtime.context`
+  - 当前 hook 可见的有效上下文视图
+  - 由 `state.context + runtime.runtimeContext` 合成
+  - `skills` 这类可重建派生数据不应写回这一层做持久化
 - `runtime.shared`
   - middleware 生成、同一次运行内共享的派生数据
   - `skills` runtime 现在在这一层
@@ -133,6 +140,9 @@ checkpoint 边界：
 - `guidelines`
   - source: `AGENTS.md`
   - scope: 项目规范
+- `memory` command
+  - product meaning: AGENTS source inspection / edit target selection
+  - not a view of checkpoint history, session metadata, or durable context
 - `summary`
   - scope: 对话压缩
   - layer: conversation context stage + `messages`
@@ -248,6 +258,7 @@ checkpoint 边界：
 - `openCodaraSession(...)` / `openLatestCodaraSession(...)`
   - 显式打开历史 session
   - 返回前会 hydrate 已恢复的 runtime state
+  - `openLatestCodaraSession(...)` 默认优先选择最新的非 `closed` stored session；若都已关闭，才回退到最新存档
   - 不与 HIL pause 恢复混用
 - `createCodaraModelCatalog(...)`
   - 基于 provider 配置、registry 和 factory 的模型目录

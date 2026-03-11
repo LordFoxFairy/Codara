@@ -3,6 +3,7 @@ import {
   type AgentRunContext,
   type AgentRuntime,
 } from '@core/agents/loop/run';
+import {readLatestPause} from '@core/agents/engine/runtime-input';
 import type {AgentStreamWriter} from '@core/agents/engine/stream-writer';
 import {runModelStep, runModelStepStream} from '@core/agents/loop/model-step';
 import {runAfterAgentStep, runToolStep, runToolStepStream} from '@core/agents/loop/tool-step';
@@ -79,6 +80,7 @@ async function runTurnCore(
   turn: number,
   strategy: TurnExecutionStrategy
 ): Promise<AgentTurnOutcome> {
+  const turnStartIndex = run.state.messages.length;
   const context = await runBeforeModelStage(run, runtime, turn, `${run.runId}:turn:${turn}`);
   const pipeline = runtime.pipeline;
   let turnResult: AgentRunSummary = {reason: 'continue', turns: turn};
@@ -94,6 +96,11 @@ async function runTurnCore(
       turnResult = {reason: 'complete', turns: turn};
     } else {
       await strategy.executeTools(run, runtime, context, modelMessage.tool_calls);
+      const pause = readLatestPause(run.state.messages.slice(turnStartIndex));
+      if (pause) {
+        run.state.pendingPause = pause;
+        turnResult = {reason: 'complete', turns: turn};
+      }
     }
   } catch (error) {
     turnResult = {reason: 'error', turns: turn, error: toError(error)};
