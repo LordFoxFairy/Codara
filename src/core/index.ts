@@ -58,14 +58,12 @@ export {
 export {
   createCodaraGuidelinesSource,
   createCodaraSkillsSource,
-  createSourceTurnContextPreparer,
   type AgentsFileOverview,
   type AgentsFileScope,
   type GuidelinesOptions,
   type GuidelinesSource,
   type SkillsSource,
-  type SourceTurnContextOptions,
-} from '@core/sources';
+} from '@core/resources';
 export {
   createBuiltinTools,
   createFetchTool,
@@ -81,7 +79,7 @@ export {
   type SkillMetadata,
   type SkillStore,
   type SkillsRuntimeData,
-} from '@core/skills';
+} from '@core/resources/skills';
 export {
   createSession,
   FileSessionStore,

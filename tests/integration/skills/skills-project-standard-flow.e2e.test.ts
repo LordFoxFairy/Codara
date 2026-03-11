@@ -5,8 +5,8 @@ import {AIMessage, HumanMessage, type BaseMessage} from '@langchain/core/message
 import type {BaseChatModel} from '@langchain/core/language_models/chat_models'
 import type {StructuredToolInterface} from '@langchain/core/tools'
 import {createAgent} from '@core/agents'
-import {createMiddleware} from '@core/middleware'
-import {createSkillsMiddleware, FileSystemSkillStore} from '@core/skills'
+import {createMiddleware, createSkillsMiddleware} from '@core/middleware'
+import {FileSystemSkillStore} from '@core/resources/skills'
 
 class ScriptedModel {
   readonly invocations: BaseMessage[][] = []

@@ -18,7 +18,7 @@ export {
 } from '@core/middleware/types';
 export {
   createSkillsMiddleware,
-} from '@core/skills';
+} from '@core/middleware/skills';
 export {
   createLoggingMiddleware,
   type LoggingMiddlewareOptions,

@@ -7,8 +7,8 @@ import type {StructuredToolInterface} from '@langchain/core/tools'
 import {tool} from '@langchain/core/tools'
 import {z} from 'zod'
 import {createAgent} from '@core/agents'
-import {createMiddleware} from '@core/middleware'
-import {createSkillsMiddleware, FileSystemSkillStore} from '@core/skills'
+import {createMiddleware, createSkillsMiddleware} from '@core/middleware'
+import {FileSystemSkillStore} from '@core/resources/skills'
 
 const DEBUG_LOG = process.env.SKILLS_E2E_LOG === '1'
 

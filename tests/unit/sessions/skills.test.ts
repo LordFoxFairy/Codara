@@ -1,7 +1,7 @@
 import {describe, expect, it} from 'bun:test';
 import path from 'node:path';
-import {createCodaraSkillsSource} from '@core/sources';
-import type {SkillMetadata, SkillStore} from '@core/skills';
+import {createCodaraSkillsSource} from '@core/resources';
+import type {SkillMetadata, SkillStore} from '@core/resources/skills';
 
 describe('Codara skills source', () => {
   it('should let source.reload invalidate both source cache and underlying store cache', async () => {

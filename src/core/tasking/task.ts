@@ -12,7 +12,7 @@ import {
   resolveSubagentDefinition,
   type SkillsRuntimeData,
   type SubagentDefinition,
-} from '@core/skills/subagents';
+} from '@core/resources/skills/runtime';
 import type {MiddlewareRuntimeShared} from '@core/middleware';
 import {filterToolsByReferences} from '@core/tools';
 import {createAgentMemoryCheckpointer} from '@core/checkpoint';
