@@ -27,6 +27,7 @@ export interface AgentInputBudget {
  * 对外只暴露调用方真正需要的状态：
  * - threadId: 当前运行链标识
  * - messages: 当前对话历史
+ * - context: 持久化 agent context（checkpoint 保存与恢复的 durable context）
  * - status: 当前执行状态
  * - pendingPause: 当前未恢复的 HIL 暂停
  */
@@ -96,7 +97,7 @@ export interface CreateAgentOptions {
   checkpoint?: AgentCheckpoint;
   /** 初始对话历史。 */
   messages?: BaseMessage[];
-  /** 初始运行上下文。 */
+  /** 初始持久化 agent context。 */
   context?: AgentRuntimeContext;
   /** 初始持久状态值（供 middleware state 使用）。 */
   values?: AgentRuntimeValues;
@@ -108,7 +109,7 @@ export interface CreateAgentOptions {
 export interface AgentInvokeConfig {
   /** 最大 turn 数，默认 25。 */
   recursionLimit?: number;
-  /** 中间件可见的运行时上下文。 */
+  /** 本次 invoke 的临时运行时上下文。 */
   context?: AgentRuntimeContext;
   /** 可选的本次调用输入预算覆盖。 */
   inputBudget?: AgentInputBudget;

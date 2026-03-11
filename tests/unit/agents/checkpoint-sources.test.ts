@@ -184,6 +184,83 @@ describe('agent checkpoint source semantics', () => {
     expect(afterDispose?.info.status).toBe('closed');
   });
 
+  it('should keep invoke-scoped runtime context out of durable agent context and checkpoint state', async () => {
+    const checkpointer = createAgentMemoryCheckpointer();
+    const agent = createAgent({
+      model: new SequenceModel([new AIMessage('done')]) as unknown as BaseChatModel,
+      checkpointer,
+      threadId: 'checkpoint-source-invoke-context-boundary',
+      context: {
+        tenantId: 'tenant-1',
+      },
+    });
+
+    const result = await agent.invoke('hello', {
+      context: {
+        userId: 'user-123',
+        codara: {
+          forceCompactConversation: true,
+        },
+      },
+    });
+    const latest = await checkpointer.getLatest('checkpoint-source-invoke-context-boundary');
+
+    expect(result.reason).toBe('complete');
+    expect(result.state.context).toEqual({
+      tenantId: 'tenant-1',
+    });
+    expect(latest?.state.context).toEqual({
+      tenantId: 'tenant-1',
+    });
+  });
+
+  it('should keep compact runtime flags and instructions out of durable context and checkpoint state', async () => {
+    const checkpointer = createAgentMemoryCheckpointer();
+    const agent = createAgent({
+      model: new SequenceModel([new AIMessage('done')]) as unknown as BaseChatModel,
+      checkpointer,
+      threadId: 'checkpoint-source-compact-context-boundary',
+      context: {
+        tenantId: 'tenant-1',
+      },
+      middleware: [
+        createConversationContextMiddleware({
+          summary: {
+            maxMessages: 99,
+            keepLastMessages: 2,
+            summarize: () => 'manual compact summary',
+          },
+        }),
+      ],
+    });
+
+    await agent.invoke({
+      messages: [
+        new HumanMessage('one'),
+        new AIMessage('two'),
+        new HumanMessage('three'),
+        new AIMessage('four'),
+        new HumanMessage('five'),
+      ],
+    });
+
+    const compacted = await agent.compactConversation({
+      instructions: 'compact only, do not persist this instruction',
+      context: {
+        userId: 'user-123',
+      },
+    });
+    const latest = await checkpointer.getLatest('checkpoint-source-compact-context-boundary');
+
+    expect(String(compacted.messages[0]?.content)).toContain('# Conversation Summary');
+    expect(compacted.context).toEqual({
+      tenantId: 'tenant-1',
+    });
+    expect(latest?.state.context).toEqual({
+      tenantId: 'tenant-1',
+    });
+  });
+
   it('should not write a manual checkpoint when compactConversation fails during context validation', async () => {
     const checkpointer = createAgentMemoryCheckpointer();
     const agent = createAgent({
