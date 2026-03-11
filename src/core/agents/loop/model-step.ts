@@ -31,7 +31,13 @@ export async function runModelStepStream(
     for await (const chunk of runtime.model.stream(modelMessages)) {
       const normalized = toMessageChunk(chunk);
       aggregate = aggregate ? aggregate.concat(normalized) : normalized;
-      await stream.emitMessages({runId: run.runId, turn: context.turn, chunk: normalized});
+      await stream.emitMessages({
+        runId: run.runId,
+        threadId: run.state.threadId,
+        requestId: context.requestId,
+        turn: context.turn,
+        chunk: normalized,
+      });
     }
 
     const message = aggregate ? chunkToMessage(aggregate) : new AIMessage('');

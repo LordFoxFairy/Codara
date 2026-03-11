@@ -175,4 +175,26 @@ describe('Codara session telemetry', () => {
       lastTotalTokens: 110,
     });
   });
+
+  it('should clear state-derived metadata after reset while preserving cumulative usage totals', async () => {
+    const codara = createCodara({
+      model: new UsageModel() as unknown as BaseChatModel,
+      skills: false,
+      builtinTools: false,
+      inputBudget: {
+        maxInputTokens: 200,
+        reservedTokens: 50,
+      },
+    });
+
+    await codara.invoke('hello telemetry');
+    await codara.reset();
+
+    const metadata = codara.getState().metadata;
+    expect(metadata?.messageCount).toBe(0);
+    expect(metadata?.lastMessage).toBeUndefined();
+    expect(metadata?.contextWindow).toBeUndefined();
+    expect(metadata?.usage?.totalTokens).toBe(150);
+    expect(metadata?.usage?.modelCalls).toBe(1);
+  });
 });

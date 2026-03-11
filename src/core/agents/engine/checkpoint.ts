@@ -9,10 +9,9 @@ import {
 } from '@core/agents/engine/state';
 
 export function createAgentState(
-  threadId: string,
   state: AgentRuntimeState
 ): AgentState {
-  return toAgentState(threadId, state);
+  return toAgentState(state);
 }
 
 export async function persistAgentCheckpoint(

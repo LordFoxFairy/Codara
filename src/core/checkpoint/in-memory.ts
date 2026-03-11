@@ -1,10 +1,20 @@
 import {randomUUID} from 'node:crypto';
 import type {CheckpointRecord, Checkpointer, CompactOptions, PutCheckpointInput} from '@core/checkpoint/types';
 
+interface MemoryCodec<T> {
+  serialize(value: T): unknown;
+  deserialize(raw: unknown): T;
+}
+
 interface ThreadState<TState, TInfo> {
   latestCheckpointId?: string;
   order: string[];
   records: Map<string, CheckpointRecord<TState, TInfo>>;
+}
+
+export interface InMemoryCheckpointerOptions<TState = unknown, TInfo = unknown> {
+  state?: MemoryCodec<TState>;
+  info?: MemoryCodec<TInfo>;
 }
 
 /**
@@ -16,6 +26,13 @@ export class InMemoryCheckpointer<TState = unknown, TInfo = unknown>
   implements Checkpointer<TState, TInfo>
 {
   private readonly threads = new Map<string, ThreadState<TState, TInfo>>();
+  private readonly stateCodec?: MemoryCodec<TState>;
+  private readonly infoCodec?: MemoryCodec<TInfo>;
+
+  constructor(options: InMemoryCheckpointerOptions<TState, TInfo> = {}) {
+    this.stateCodec = options.state;
+    this.infoCodec = options.info;
+  }
 
   async getLatest(threadId: string): Promise<CheckpointRecord<TState, TInfo> | undefined> {
     const thread = this.threads.get(threadId);
@@ -24,7 +41,7 @@ export class InMemoryCheckpointer<TState = unknown, TInfo = unknown>
     }
 
     const record = thread.records.get(thread.latestCheckpointId);
-    return record ? cloneRecord(record) : undefined;
+    return record ? this.cloneRecord(record) : undefined;
   }
 
   async get(ref: {
@@ -32,7 +49,7 @@ export class InMemoryCheckpointer<TState = unknown, TInfo = unknown>
     checkpointId: string;
   }): Promise<CheckpointRecord<TState, TInfo> | undefined> {
     const record = this.threads.get(ref.threadId)?.records.get(ref.checkpointId);
-    return record ? cloneRecord(record) : undefined;
+    return record ? this.cloneRecord(record) : undefined;
   }
 
   async put(input: PutCheckpointInput<TState, TInfo>): Promise<CheckpointRecord<TState, TInfo>> {
@@ -44,14 +61,14 @@ export class InMemoryCheckpointer<TState = unknown, TInfo = unknown>
         checkpointId,
         ...(input.parentCheckpointId ? {parentCheckpointId: input.parentCheckpointId} : {}),
       },
-      state: cloneValue(input.state),
-      info: cloneValue(input.info),
+      state: this.cloneState(input.state),
+      info: this.cloneInfo(input.info),
     };
 
     thread.records.set(checkpointId, record);
     thread.order.push(checkpointId);
     thread.latestCheckpointId = checkpointId;
-    return cloneRecord(record);
+    return this.cloneRecord(record);
   }
 
   async list(threadId: string): Promise<Array<CheckpointRecord<TState, TInfo>>> {
@@ -63,7 +80,7 @@ export class InMemoryCheckpointer<TState = unknown, TInfo = unknown>
     return thread.order
       .map((checkpointId) => thread.records.get(checkpointId))
       .filter((record): record is CheckpointRecord<TState, TInfo> => Boolean(record))
-      .map((record) => cloneRecord(record));
+      .map((record) => this.cloneRecord(record));
   }
 
   async deleteThread(threadId: string): Promise<void> {
@@ -107,16 +124,24 @@ export class InMemoryCheckpointer<TState = unknown, TInfo = unknown>
     this.threads.set(threadId, next);
     return next;
   }
-}
 
-function cloneRecord<TState, TInfo>(
-  record: CheckpointRecord<TState, TInfo>
-): CheckpointRecord<TState, TInfo> {
-  return {
-    ref: {...record.ref},
-    state: cloneValue(record.state),
-    info: cloneValue(record.info),
-  };
+  private cloneRecord(
+    record: CheckpointRecord<TState, TInfo>
+  ): CheckpointRecord<TState, TInfo> {
+    return {
+      ref: {...record.ref},
+      state: this.cloneState(record.state),
+      info: this.cloneInfo(record.info),
+    };
+  }
+
+  private cloneState(value: TState): TState {
+    return cloneWithCodec(value, this.stateCodec);
+  }
+
+  private cloneInfo(value: TInfo): TInfo {
+    return cloneWithCodec(value, this.infoCodec);
+  }
 }
 
 function cloneValue<T>(value: T): T {
@@ -133,4 +158,12 @@ function cloneValue<T>(value: T): T {
 
     return value;
   }
+}
+
+function cloneWithCodec<T>(value: T, codec?: MemoryCodec<T>): T {
+  if (!codec) {
+    return cloneValue(value);
+  }
+
+  return codec.deserialize(cloneValue(codec.serialize(value)));
 }

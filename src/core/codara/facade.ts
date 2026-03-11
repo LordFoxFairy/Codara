@@ -43,6 +43,7 @@ function createCodaraInstance(
     modelCatalog: runtime.modelCatalog,
     agentsSource: runtime.agentsSource,
     skillsStore: runtime.skills?.store,
+    skillsSource: runtime.skillsSource,
     store: options.store,
     tools: runtime.tools,
     middleware: runtime.middleware,
@@ -102,6 +103,7 @@ function createCodaraCommandHost(
     compactCheckpoints: (keepLast: number | undefined) => session.compactCheckpoints(
       typeof keepLast === 'number' ? {keepLast} : undefined
     ),
+    hydrate: () => session.hydrate(),
     getAgentState: () => session.getAgentState(),
     inspectAgentsFiles: () => session.inspectAgentsFiles(),
     ensureAgentsFileTarget: (scope: 'global' | 'project') => session.ensureAgentsFileTarget(scope),
@@ -139,7 +141,8 @@ async function resolveLatestSession(store: SessionStore): Promise<SessionState |
     includeArchived: true,
     sortBy: 'updatedAt',
     sortOrder: 'desc',
-    limit: 1,
   });
-  return sessions[0];
+
+  const latestReadyHost = sessions.find((session) => session.sessionStatus !== 'closed');
+  return latestReadyHost ?? sessions[0];
 }

@@ -27,8 +27,10 @@ export {
   DEFAULT_SUBAGENT_TOOL_NAME,
   createSubagentMiddleware,
   createSubagentTool,
+  readDelegatedAgentResult,
   type CreateSubagentMiddlewareOptions,
   type CreateSubagentToolOptions,
+  type DelegatedAgentResult,
 } from '@core/tasking/subagent';
 export {
   TASK_MIDDLEWARE_SYSTEM_PROMPT,

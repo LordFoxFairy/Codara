@@ -33,14 +33,15 @@ export {
   createTaskTool,
 } from '@core/tasking';
 export {
+  createConversationContextMiddleware,
   createGuidelinesMiddleware,
   createHILMiddleware,
   createLoggingMiddleware,
   createMiddleware,
   createSkillsMiddleware,
-  createSummaryMiddleware,
   MiddlewarePipeline,
   type BaseMiddleware,
+  type ConversationContextMiddlewareOptions,
   type HILMiddlewareOptions,
   type HILResumePayload,
   type LoggingMiddlewareOptions,

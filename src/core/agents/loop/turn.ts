@@ -1,11 +1,15 @@
-import type {AgentRunSummary, BaseExecutionContext} from '@core/middleware';
-import type {AgentRunContext, AgentRuntime} from '@core/agents/loop/run';
+import {
+  runBeforeModelStage,
+  type AgentRunContext,
+  type AgentRuntime,
+} from '@core/agents/loop/run';
+import {readLatestPause} from '@core/agents/engine/runtime-input';
 import type {AgentStreamWriter} from '@core/agents/engine/stream-writer';
 import {runModelStep, runModelStepStream} from '@core/agents/loop/model-step';
 import {runAfterAgentStep, runToolStep, runToolStepStream} from '@core/agents/loop/tool-step';
 import {toError} from '@core/shared/errors';
-import {mergeContext} from '@core/agents/engine/runtime-input';
 import type {AIMessage, ToolCall} from '@langchain/core/messages';
+import type {AgentRunSummary, BaseExecutionContext} from '@core/middleware';
 
 export type AgentTurnOutcome = 'continue' | 'complete';
 
@@ -76,14 +80,12 @@ async function runTurnCore(
   turn: number,
   strategy: TurnExecutionStrategy
 ): Promise<AgentTurnOutcome> {
-  const context = createTurnContext(run, turn);
+  const turnStartIndex = run.state.messages.length;
+  const context = await runBeforeModelStage(run, runtime, turn, `${run.runId}:turn:${turn}`);
   const pipeline = runtime.pipeline;
   let turnResult: AgentRunSummary = {reason: 'continue', turns: turn};
 
   try {
-    await pipeline.beforeAgent(context);
-    await pipeline.beforeModel(context);
-
     const modelMessage = await strategy.executeModel(runtime, run, context);
     run.state.messages.push(modelMessage);
     await strategy.afterModelMessage(modelMessage, run);
@@ -94,6 +96,11 @@ async function runTurnCore(
       turnResult = {reason: 'complete', turns: turn};
     } else {
       await strategy.executeTools(run, runtime, context, modelMessage.tool_calls);
+      const pause = readLatestPause(run.state.messages.slice(turnStartIndex));
+      if (pause) {
+        run.state.pendingPause = pause;
+        turnResult = {reason: 'complete', turns: turn};
+      }
     }
   } catch (error) {
     turnResult = {reason: 'error', turns: turn, error: toError(error)};
@@ -106,25 +113,4 @@ async function runTurnCore(
   }
 
   return turnResult.reason === 'complete' ? 'complete' : 'continue';
-}
-
-function createTurnContext(run: AgentRunContext, turn: number): BaseExecutionContext {
-  // 合并持久化上下文和临时上下文
-  const mergedContext = mergeContext(run.state.context, run.runtimeContext);
-
-  return {
-    state: run.state,
-    messages: run.state.messages,
-    runtime: {
-      context: mergedContext,
-      agentContext: mergedContext,
-      shared: run.shared,
-    },
-    systemMessage: [],
-    runId: run.runId,
-    turn,
-    maxTurns: run.maxTurns,
-    requestId: `${run.runId}:turn:${turn}`,
-    inputBudget: run.inputBudget,
-  };
 }

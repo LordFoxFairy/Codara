@@ -1,4 +1,8 @@
-import type {BaseMessage} from '@langchain/core/messages';
+import {
+  mapChatMessagesToStoredMessages,
+  mapStoredMessagesToChatMessages,
+  type BaseMessage,
+} from '@langchain/core/messages';
 import type {
   AgentResult,
   AgentState,
@@ -42,6 +46,11 @@ interface AgentInitialInput {
   values?: AgentRuntimeValues;
 }
 
+type CheckpointComparableState = Pick<
+  AgentRuntimeState | AgentState,
+  'agentType' | 'messages' | 'context' | 'values' | 'pendingPause'
+>;
+
 export function createInitialAgentState(
   threadId: string,
   input: AgentInitialInput | undefined,
@@ -56,11 +65,11 @@ export function createInitialAgentState(
     threadId: checkpoint?.ref.threadId ?? threadId,
     agentType: restoredState?.agentType ?? input?.agentType ?? 'main',
     checkpointId: checkpoint?.ref.checkpointId,
-    messages: [...(restoredState?.messages ?? input?.messages ?? [])],
-    context: deepClone(restoredState?.context ?? input?.context ?? {}),
-    values: deepClone(input?.values ?? restoredState?.values ?? {}),
+    messages: cloneAgentMessages(restoredState?.messages ?? input?.messages ?? []),
+    context: cloneAgentContext(restoredState?.context ?? input?.context ?? {}),
+    values: cloneAgentValues(input?.values ?? restoredState?.values ?? {}),
     status: deriveRuntimeStatus(pendingPause, restoredInfo?.status),
-    pendingPause: pendingPause ? deepClone(pendingPause) : undefined,
+    pendingPause: clonePauseRequest(pendingPause),
     lastResult: restoredInfo ? summarizeCheckpointInfo(restoredInfo) : undefined,
     step: restoredInfo?.step ?? 0,
     createdAt: now,
@@ -88,26 +97,33 @@ export function summarizeCheckpointInfo(info: AgentCheckpointInfo): AgentCheckpo
   };
 }
 
-export function toAgentState(threadId: string, state: AgentRuntimeState): AgentState {
+export function toAgentState(state: AgentRuntimeState): AgentState {
   return {
-    threadId,
+    threadId: state.threadId,
     agentType: state.agentType,
-    messages: [...state.messages],
-    context: deepClone(state.context),
-    values: deepClone(state.values),
+    messages: cloneAgentMessages(state.messages),
+    context: cloneAgentContext(state.context),
+    values: cloneAgentValues(state.values),
     status: state.status,
-    ...(state.pendingPause ? {pendingPause: deepClone(state.pendingPause)} : {}),
+    ...(state.pendingPause ? {pendingPause: clonePauseRequest(state.pendingPause)} : {}),
   };
 }
 
 export function toCheckpointState(state: AgentRuntimeState): AgentCheckpointState {
   return {
     agentType: state.agentType,
-    messages: [...state.messages],
-    context: deepClone(state.context),
-    values: deepClone(state.values),
-    ...(state.pendingPause ? {pendingPause: deepClone(state.pendingPause)} : {}),
+    messages: cloneAgentMessages(state.messages),
+    context: cloneAgentContext(state.context),
+    values: cloneAgentValues(state.values),
+    ...(state.pendingPause ? {pendingPause: clonePauseRequest(state.pendingPause)} : {}),
   };
+}
+
+export function hasEquivalentCheckpointState(
+  left: CheckpointComparableState,
+  right: CheckpointComparableState
+): boolean {
+  return JSON.stringify(toComparableCheckpointState(left)) === JSON.stringify(toComparableCheckpointState(right));
 }
 
 export function toCheckpointInfo(
@@ -167,5 +183,75 @@ export function toCheckpointStatus(
 }
 
 export function cloneValues(values: AgentRuntimeValues): AgentRuntimeValues {
+  return cloneAgentValues(values);
+}
+
+export function cloneAgentMessages<T extends BaseMessage[]>(messages: T): T {
+  if (messages.every(isChatMessageLike)) {
+    return mapStoredMessagesToChatMessages(
+      mapChatMessagesToStoredMessages(messages),
+    ) as T;
+  }
+
+  return mapStoredMessagesToChatMessages(
+    messages as Parameters<typeof mapStoredMessagesToChatMessages>[0],
+  ) as T;
+}
+
+export function cloneAgentContext<T extends AgentRuntimeContext>(context: T): T {
+  return deepClone(context);
+}
+
+export function cloneAgentValues<T extends AgentRuntimeValues>(values: T): T {
   return deepClone(values);
+}
+
+export function clonePauseRequest<T extends PauseRequest | undefined>(pause: T): T {
+  return (pause ? deepClone(pause) : undefined) as T;
+}
+
+export function cloneAgentState(state: AgentState): AgentState {
+  return {
+    threadId: state.threadId,
+    agentType: state.agentType,
+    messages: cloneAgentMessages(state.messages),
+    context: cloneAgentContext(state.context),
+    values: cloneAgentValues(state.values),
+    status: state.status,
+    ...(state.pendingPause ? {pendingPause: clonePauseRequest(state.pendingPause)} : {}),
+  };
+}
+
+export function applyAgentStateSnapshot(
+  target: MutableAgentState,
+  snapshot: Pick<AgentState, 'messages' | 'context' | 'values' | 'pendingPause'>
+): void {
+  target.messages = cloneAgentMessages(snapshot.messages);
+  target.context = cloneAgentContext(snapshot.context);
+  target.values = cloneAgentValues(snapshot.values);
+  target.pendingPause = clonePauseRequest(snapshot.pendingPause);
+}
+
+function toComparableCheckpointState(
+  state: CheckpointComparableState
+): PersistedAgentCheckpointComparableState {
+  return {
+    agentType: state.agentType,
+    messages: mapChatMessagesToStoredMessages(state.messages),
+    context: cloneAgentContext(state.context),
+    values: cloneAgentValues(state.values),
+    ...(state.pendingPause ? {pendingPause: clonePauseRequest(state.pendingPause)} : {}),
+  };
+}
+
+interface PersistedAgentCheckpointComparableState {
+  agentType: AgentType;
+  messages: ReturnType<typeof mapChatMessagesToStoredMessages>;
+  context: AgentRuntimeContext;
+  values: AgentRuntimeValues;
+  pendingPause?: PauseRequest;
+}
+
+function isChatMessageLike(value: unknown): value is BaseMessage {
+  return Boolean(value) && typeof value === 'object' && 'toDict' in (value as Record<string, unknown>);
 }

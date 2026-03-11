@@ -4,7 +4,7 @@ import type {BaseChatModel} from '@langchain/core/language_models/chat_models';
 import {tool, type StructuredToolInterface} from '@langchain/core/tools';
 import {z} from 'zod';
 import {createAgent} from '@core/agents';
-import {createSubagentTool, DEFAULT_SUBAGENT_TOOL_NAME} from '@core/tasking';
+import {createSubagentTool, DEFAULT_SUBAGENT_TOOL_NAME, readDelegatedAgentResult} from '@core/tasking';
 import {createAgentMemoryCheckpointer} from '@core/checkpoint';
 
 class ScriptedModel {
@@ -71,6 +71,14 @@ describe('createSubagentTool', () => {
     expect(result.reason).toBe('complete');
     expect(toolMessage.content).toContain('Subagent completed.');
     expect(toolMessage.content).toContain('summary:\nchild_humans:1');
+    expect(readDelegatedAgentResult(toolMessage.artifact)).toEqual({
+      type: 'delegated_agent_result',
+      agentType: 'subagent',
+      threadId: expect.any(String),
+      turns: 1,
+      reason: 'complete',
+      summary: 'child_humans:1',
+    });
   });
 
   it('应在子代理中排除同名 subagent 工具，禁止嵌套委派', async () => {
@@ -176,6 +184,15 @@ describe('createSubagentTool', () => {
     expect(result.reason).toBe('complete');
     expect(toolMessage.content).toContain('Subagent failed.');
     expect(toolMessage.content).toContain('error: child boom');
+    expect(toolMessage.status).toBe('error');
+    expect(readDelegatedAgentResult(toolMessage.artifact)).toEqual({
+      type: 'delegated_agent_result',
+      agentType: 'subagent',
+      threadId: expect.any(String),
+      turns: 1,
+      reason: 'error',
+      errorMessage: 'child boom',
+    });
   });
 
   it('应持久化 agentType，并在 checkpoint 恢复后保持 subagent 身份', async () => {

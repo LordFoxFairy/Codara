@@ -6,6 +6,7 @@ import type {CreateSessionOptions, Session, SessionState, SessionStatus, Session
 import {createSessionAgentHost} from '@core/sessions/agent-host';
 import {
   buildSessionTelemetryPatch,
+  cloneForkSessionMetadata,
   cloneSessionMetadata,
   createSessionMetadata,
   mergeSessionTelemetry,
@@ -27,7 +28,7 @@ export function createSession(options: CreateSessionOptions): Session {
   const isRestoringThread = options.threadId !== undefined;
   const createdAt = restoredState?.createdAt ?? new Date().toISOString();
   let updatedAt = restoredState?.updatedAt ?? createdAt;
-  let sessionStatus: SessionStatus = restoredState?.sessionStatus ?? 'ready';
+  let sessionStatus: SessionStatus = 'ready';
   const metadata: SessionMetadata = createSessionMetadata(
     createdAt,
     restoredState?.metadata,
@@ -77,10 +78,30 @@ export function createSession(options: CreateSessionOptions): Session {
     await saveSession();
   }
 
+  async function reloadHostSources(): Promise<void> {
+    if (options.agentsSource) {
+      options.agentsSource.reload();
+    }
+    if (options.skillsSource) {
+      options.skillsSource.reload();
+    }
+    await options.skillsStore?.refresh?.();
+  }
+
+  async function preloadHostSources(): Promise<void> {
+    await options.agentsSource?.getContent?.();
+    await options.skillsSource?.getRuntime?.();
+  }
+
   function requireReady(): void {
     if (sessionStatus === 'closed') {
       throw new Error('Session is closed.');
     }
+  }
+
+  function runReady<T>(operation: () => T): T {
+    requireReady();
+    return operation();
   }
 
   function buildSessionState(): SessionState {
@@ -103,6 +124,8 @@ export function createSession(options: CreateSessionOptions): Session {
     createSession,
     syncSessionFromState,
     cloneMetadata: () => cloneSessionMetadata(metadata),
+    cloneForkMetadata: () => cloneForkSessionMetadata(metadata),
+    prepareHostSources: preloadHostSources,
   });
 
   return {
@@ -115,54 +138,47 @@ export function createSession(options: CreateSessionOptions): Session {
     },
 
     async hydrate(): Promise<AgentState> {
-      requireReady();
-      return agentHost.hydrate();
+      return runReady(() => agentHost.hydrate());
     },
 
     async compactConversation(compactOptions = {}): Promise<AgentState> {
-      requireReady();
-      return agentHost.compactConversation(compactOptions);
+      return runReady(() => agentHost.compactConversation(compactOptions));
     },
 
     async fork(forkOptions = {}): Promise<Session> {
-      requireReady();
-      return agentHost.fork(forkOptions);
+      return runReady(() => agentHost.fork(forkOptions));
     },
 
     async invoke(input, config) {
-      requireReady();
-      return agentHost.invoke(input, config);
+      return runReady(() => agentHost.invoke(input, config));
     },
 
     async *stream(
       input,
       config,
     ) {
-      requireReady();
+      runReady(() => undefined);
       return yield* agentHost.stream(input, config);
     },
 
     async resumePause(payload, config) {
-      requireReady();
-      return agentHost.resumePause(payload, config);
+      return runReady(() => agentHost.resumePause(payload, config));
     },
 
     async *resumePauseStream(payload, config) {
-      requireReady();
+      runReady(() => undefined);
       return yield* agentHost.resumePauseStream(payload, config);
     },
 
     async reloadSources(): Promise<void> {
-      requireReady();
+      runReady(() => undefined);
       touch();
-      if (options.agentsSource) {
-        options.agentsSource.reload();
-      }
-      await options.skillsStore?.refresh?.();
+      await reloadHostSources();
       await saveSession();
     },
 
     async inspectAgentsFiles() {
+      runReady(() => undefined);
       if (!options.agentsSource?.inspectFiles) {
         throw new Error('AGENTS file actions are not available for this session.');
       }
@@ -170,6 +186,7 @@ export function createSession(options: CreateSessionOptions): Session {
     },
 
     async ensureAgentsFileTarget(scope) {
+      runReady(() => undefined);
       if (!options.agentsSource?.ensureFileTarget) {
         throw new Error('AGENTS file actions are not available for this session.');
       }
@@ -177,7 +194,7 @@ export function createSession(options: CreateSessionOptions): Session {
     },
 
     async compactCheckpoints(options?: CompactOptions): Promise<void> {
-      requireReady();
+      runReady(() => undefined);
       if (!checkpointer.compact) {
         return;
       }
@@ -188,7 +205,7 @@ export function createSession(options: CreateSessionOptions): Session {
     },
 
     async reset(): Promise<void> {
-      requireReady();
+      runReady(() => undefined);
       const nextState = await agentHost.reset();
       if (nextState) {
         return;

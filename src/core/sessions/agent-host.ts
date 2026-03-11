@@ -1,3 +1,4 @@
+import {randomUUID} from 'node:crypto';
 import type {
   Agent,
   AgentInput,
@@ -12,8 +13,12 @@ import type {
 } from '@core/agents';
 import {createAgent, normalizeAgentInput} from '@core/agents';
 import {deriveAgentInputBudget} from '@core/agents/input-budget';
-import {deepClone} from '@core/shared/clone';
-import {mapChatMessagesToStoredMessages, mapStoredMessagesToChatMessages} from '@langchain/core/messages';
+import {
+  cloneAgentContext,
+  cloneAgentMessages,
+  clonePauseRequest,
+  cloneAgentValues,
+} from '@core/agents/engine/state';
 import type {BaseChatModel} from '@langchain/core/language_models/chat_models';
 import type {ModelInfo} from '@core/provider';
 import type {CreateSessionOptions} from '@core/sessions/types';
@@ -61,6 +66,8 @@ export interface CreateSessionAgentHostOptions {
     options?: SessionAgentHostSyncOptions,
   ): Promise<void>;
   cloneMetadata(): Partial<import('@core/sessions/types').SessionMetadata>;
+  cloneForkMetadata(): Partial<import('@core/sessions/types').SessionMetadata>;
+  prepareHostSources(): Promise<void>;
 }
 
 export function createSessionAgentHost(
@@ -79,6 +86,7 @@ export function createSessionAgentHost(
     }
 
     agentBootstrap = (async () => {
+      await options.prepareHostSources();
       const selection = await resolveSessionModelSelection(options.sessionOptions);
       const shouldRestore = options.sessionOptions.restore === 'latest'
         || (options.sessionOptions.restore !== 'never' && options.isRestoringThread);
@@ -149,7 +157,7 @@ export function createSessionAgentHost(
 
     async hydrate(): Promise<AgentState> {
       const state = (await getAgent()).getState();
-      await options.syncSessionFromState(state);
+      await options.syncSessionFromState(state, {touchActivity: false});
       return state;
     },
 
@@ -161,17 +169,31 @@ export function createSessionAgentHost(
 
     async fork(forkOptions = {}): Promise<import('@core/sessions/types').Session> {
       const baseState = (await getAgent()).getState();
+      const threadId = forkOptions.threadId ?? randomUUID();
+      await options.checkpointer.put({
+        threadId,
+        state: {
+          agentType: baseState.agentType,
+          messages: cloneAgentMessages(baseState.messages),
+          context: cloneAgentContext(baseState.context),
+          values: cloneAgentValues(baseState.values),
+          ...(baseState.pendingPause ? {pendingPause: clonePauseRequest(baseState.pendingPause)} : {}),
+        },
+        info: {
+          source: 'fork',
+          status: baseState.pendingPause ? 'paused' : 'idle',
+          step: 0,
+          createdAt: new Date().toISOString(),
+        },
+      });
       const child = options.createSession({
         ...options.sessionOptions,
         sessionId: forkOptions.sessionId,
-        threadId: forkOptions.threadId,
+        threadId,
         store: forkOptions.store ?? options.sessionOptions.store,
-        restore: 'never',
-        messages: cloneAgentMessages(baseState.messages),
-        context: deepClone(baseState.context),
-        values: deepClone(baseState.values),
+        restore: 'latest',
         metadata: {
-          ...options.cloneMetadata(),
+          ...options.cloneForkMetadata(),
           forkedFromSessionId: options.sessionId,
           forkedFromThreadId: options.threadId,
         },
@@ -204,19 +226,32 @@ export function createSessionAgentHost(
 
     async reset(): Promise<AgentState | undefined> {
       if (!agentInstance) {
+        const checkpoint = await options.checkpointer.getLatest(options.threadId);
+        if (!checkpoint) {
+          return undefined;
+        }
+      }
+
+      const agent = await getAgent();
+      if (!agent) {
         return undefined;
       }
 
-      await agentInstance.reset();
-      const state = agentInstance.getState();
+      await agent.reset();
+      const state = agent.getState();
       await options.syncSessionFromState(state);
       return state;
     },
 
     async dispose(): Promise<void> {
-      if (agentInstance) {
-        await agentInstance.dispose();
+      if (!agentInstance) {
+        const checkpoint = await options.checkpointer.getLatest(options.threadId);
+        if (!checkpoint) {
+          return;
+        }
       }
+
+      await (await getAgent()).dispose();
     },
   };
 }
@@ -248,10 +283,4 @@ function resolveSessionInputBudget(
   modelInfo?: Pick<ModelInfo, 'contextWindow' | 'maxOutputTokens'>,
 ): AgentInputBudget | undefined {
   return options.inputBudget ?? deriveAgentInputBudget(modelInfo);
-}
-
-function cloneAgentMessages(messages: AgentState['messages']): AgentState['messages'] {
-  return mapStoredMessagesToChatMessages(
-    mapChatMessagesToStoredMessages(messages),
-  ) as AgentState['messages'];
 }

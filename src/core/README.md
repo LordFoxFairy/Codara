@@ -51,6 +51,7 @@ createCodara(...)
 - `session` 负责实例宿主与 AGENTS source 生命周期持有，没有承接 agent 工作流状态。
 - `sessions/agent-host.ts` 只承接 session 内部对 `createAgent(...)` 的执行桥接，不反向泄漏为独立公共层。
 - `agentsSource` 负责 AGENTS projection 缓存与失效，避免把 `AGENTS.md` 加载逻辑揉进 agent 内核。
+- `skillsSource` 负责 session-scoped skills runtime projection，避免把 skills discovery 放进每次 model call 的 middleware 初始化职责。
 - `agent` 仍然是唯一执行原语，`subagent`/`Task` 是组合，不是第二套 runtime。
 - `SkillsMiddleware -> runtime.shared.skills -> Task` 已经形成单一数据流，没有再开旁路 discovery。
 - `skills -> command metadata -> codara/commands` 现在也是单向链路，skills 只声明，commands 只绑定宿主执行。
@@ -85,15 +86,37 @@ src/index.ts
 5. `conversation-context`
 6. `hil`
 
+这里要刻意区分两层心智：
+
+- 一等 runtime stage:
+  - `logging`
+  - `guidelines`
+  - `skills`
+  - `conversation-context`
+  - `hil`
+- conversation internals:
+  - `conversation-input`
+  - `context-budget`
+  - `summary`
+
+后者仍然存在，但它们只是 `conversation-context` 复用的子能力，不应再被看作默认主链里的并列 middleware。
+
 状态边界：
 
 - `messages`
   - 对话历史
   - `summary` 在这一层做压缩并通过 checkpoint 持久化
-- `context`
-  - 持久 agent context + 本轮 invoke context + transient runtime data 的有效合成视图
-  - `skills` 这类可重建派生数据只存在于运行期，不进入 checkpoint
+- `state.context`
+  - 持久 agent context
+  - 随 checkpoint 保存与恢复
   - 不承载 `todo` 这类 agent-owned 状态
+- `runtime.runtimeContext`
+  - 本轮 invoke/resume 的临时上下文
+  - 不进入 checkpoint
+- `runtime.context`
+  - 当前 hook 可见的有效上下文视图
+  - 由 `state.context + runtime.runtimeContext` 合成
+  - `skills` 这类可重建派生数据不应写回这一层做持久化
 - `runtime.shared`
   - middleware 生成、同一次运行内共享的派生数据
   - `skills` runtime 现在在这一层
@@ -117,6 +140,9 @@ checkpoint 边界：
 - `guidelines`
   - source: `AGENTS.md`
   - scope: 项目规范
+- `memory` command
+  - product meaning: AGENTS source inspection / edit target selection
+  - not a view of checkpoint history, session metadata, or durable context
 - `summary`
   - scope: 对话压缩
   - layer: conversation context stage + `messages`
@@ -153,9 +179,9 @@ checkpoint 边界：
 ## AGENTS.md 规范
 
 - `AGENTS.md` 通过 `middleware/guidelines.ts` 接入
-- 当前只支持两层：
+- 当前 source stack 包含：
   - `~/.codara/AGENTS.md`
-  - `<workspaceRoot>/AGENTS.md`
+  - 从 `projectRoot` 到 `cwd` 的层级 `AGENTS.md`
 - 工作区根优先从 `cwd` 向上查找 `.codara`、`.git`、`package.json`
 - 在 session 创建阶段生成内容投影
 - 后续模型调用复用同一份内容
@@ -188,7 +214,8 @@ checkpoint 边界：
   - 完整输入预算估算
   - 可选的 summary compact
 - 这样默认 runtime 不再依赖 `context-budget` 与 `summary` 两个独立 middleware 的隐式排序。
-- `createContextBudgetMiddleware(...)` 与 `createSummaryMiddleware(...)` 仍保留为底层原语，但 Codara 主路径使用组合后的 conversation context stage。
+- `conversation-input.ts`、`context-budget.ts`、`summary.ts` 都属于 conversation internals。
+- `createContextBudgetMiddleware(...)` 与 `createSummaryMiddleware(...)` 仍保留在各自子路径下，主要用于底层测试和兼容场景；默认主路径不再把它们当成对等 middleware 心智公开。
 
 ## Todo / Subagent / Task
 
@@ -231,6 +258,7 @@ checkpoint 边界：
 - `openCodaraSession(...)` / `openLatestCodaraSession(...)`
   - 显式打开历史 session
   - 返回前会 hydrate 已恢复的 runtime state
+  - `openLatestCodaraSession(...)` 默认优先选择最新的非 `closed` stored session；若都已关闭，才回退到最新存档
   - 不与 HIL pause 恢复混用
 - `createCodaraModelCatalog(...)`
   - 基于 provider 配置、registry 和 factory 的模型目录
@@ -255,7 +283,7 @@ checkpoint 边界：
   - `skill`：由 skills discovery 暴露的命令入口
 - 这些命令属于 host surface，不属于 `createAgent(...)` 内核
 - `/memory` 直接围绕 `AGENTS.md` 工作，不恢复旧 `MEMORY.md` 机制
-- `/memory` 默认展示可选 scope，显式使用 `show / project / global`
+- `/memory` 默认展示当前 AGENTS source stack 与可编辑 target，显式使用 `show / project / global`
 - `/memory project|global` 返回宿主 `open_file` 动作，供 UI/CLI 打开目标 `AGENTS.md`
 - `/compact` 通过 `Agent.compactConversation()` 复用现有 `beforeAgent + beforeModel + conversation-context` 路径
 - `/compact checkpoints [keepLast]` 只整理 checkpoint store，不混入 conversation summary 语义

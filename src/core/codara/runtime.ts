@@ -4,6 +4,8 @@ import type {AgentInputBudget} from '@core/agents';
 import type {BaseMiddleware} from '@core/middleware';
 import type {AgentsSource} from '@core/sessions/agents';
 import {createCodaraAgentsSource} from '@core/sessions/agents';
+import type {SkillsSource} from '@core/sessions/skills';
+import {createCodaraSkillsSource} from '@core/sessions/skills';
 import {createCodaraModelCatalog, DEFAULT_CODARA_MODEL_ALIAS, type CodaraModelCatalog} from '@core/codara/models';
 import {
   createCodaraMiddlewares,
@@ -20,6 +22,7 @@ export interface ResolvedCodaraRuntime {
   modelCatalog: CodaraModelCatalog;
   agentsSource?: AgentsSource;
   skills?: CodaraResolvedSkills;
+  skillsSource?: SkillsSource;
   tools: StructuredToolInterface[];
   middleware: BaseMiddleware[];
   inputBudget?: AgentInputBudget;
@@ -31,6 +34,7 @@ export interface CodaraRuntimePlan {
   modelCatalog: CodaraModelCatalog | Promise<CodaraModelCatalog>;
   agentsSource?: AgentsSource;
   skills?: CodaraResolvedSkills;
+  skillsSource?: SkillsSource;
   tools: StructuredToolInterface[];
   middleware: BaseMiddleware[];
 }
@@ -75,11 +79,12 @@ export function createCodaraRuntimePlan(options: CodaraOptions = {}): CodaraRunt
     config: options.config,
   });
   const skills = resolveCodaraSkills(options);
+  const skillsSource = skills ? createCodaraSkillsSource(skills) : undefined;
 
   const alias = options.alias?.trim() || DEFAULT_CODARA_MODEL_ALIAS;
   const model = options.model ?? (options.modelResolver ? options.modelResolver() : undefined);
   const tools = createCodaraTools(options);
-  const middleware = createCodaraMiddlewares(options, agentsSource, skills);
+  const middleware = createCodaraMiddlewares(options, agentsSource, skillsSource, skills);
 
   return {
     alias,
@@ -87,6 +92,7 @@ export function createCodaraRuntimePlan(options: CodaraOptions = {}): CodaraRunt
     modelCatalog,
     agentsSource,
     skills,
+    skillsSource,
     tools,
     middleware,
   };

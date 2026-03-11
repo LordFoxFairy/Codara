@@ -24,7 +24,7 @@ export interface AgentCheckpointState {
 }
 
 export interface AgentCheckpointInfo {
-  source: 'invoke' | 'resume' | 'reset' | 'dispose' | 'manual';
+  source: 'invoke' | 'resume' | 'reset' | 'dispose' | 'manual' | 'fork';
   status: AgentCheckpointStatus;
   reason?: AgentCheckpointReason;
   turns?: number;
@@ -55,7 +55,16 @@ export interface AgentFileCheckpointerOptions {
 }
 
 export function createAgentMemoryCheckpointer(): AgentCheckpointer {
-  return new InMemoryCheckpointer<AgentCheckpointState, AgentCheckpointInfo>();
+  return new InMemoryCheckpointer<AgentCheckpointState, AgentCheckpointInfo>({
+    state: {
+      serialize: serializeAgentCheckpointState,
+      deserialize: deserializeAgentCheckpointState,
+    },
+    info: {
+      serialize: serializeAgentCheckpointInfo,
+      deserialize: deserializeAgentCheckpointInfo,
+    },
+  });
 }
 
 export function createAgentFileCheckpointer(options: AgentFileCheckpointerOptions): AgentCheckpointer {
@@ -124,6 +133,7 @@ function parseSource(value: unknown): AgentCheckpointInfo['source'] {
     case 'reset':
     case 'dispose':
     case 'manual':
+    case 'fork':
       return value;
     default:
       return 'manual';

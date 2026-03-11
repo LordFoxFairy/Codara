@@ -42,6 +42,7 @@ export interface CodaraCommandHost {
     instructions?: string;
   }): Promise<AgentState>;
   compactCheckpoints(keepLast?: number): Promise<void>;
+  hydrate(): Promise<AgentState>;
   getAgentState(): AgentState;
   inspectAgentsFiles(): Promise<AgentsFileOverview>;
   ensureAgentsFileTarget(scope: AgentsFileScope): Promise<string>;
