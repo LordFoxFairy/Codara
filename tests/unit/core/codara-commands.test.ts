@@ -51,7 +51,7 @@ describe('Codara slash commands', () => {
     ]);
   });
 
-  it('should reload host sources through slash commands without touching createAgent', async () => {
+  it('should reload session sources through slash commands without touching createAgent', async () => {
     const codara = createCodara({
       model: new EchoModel() as unknown as BaseChatModel,
       skills: false,
@@ -63,7 +63,7 @@ describe('Codara slash commands', () => {
     expect(result.output).toContain('AGENTS.md');
   });
 
-  it('should compact the current conversation through the slash command host surface', async () => {
+  it('should keep the manual compact command reserved until the algorithm is redesigned', async () => {
     const codara = createCodara({
       model: new SystemEchoModel() as unknown as BaseChatModel,
       skills: false,
@@ -81,14 +81,11 @@ describe('Codara slash commands', () => {
 
     const result = await codara.executeCommand('/compact');
 
-    expect(result.ok).toBe(true);
-    expect(result.output).toContain('Conversation compacted');
-    expect(String(result.state?.messages[0]?.content)).toContain('# Conversation Summary');
-    expect(result.state?.messages.some((message) => message instanceof AIMessage)).toBe(true);
+    expect(result.ok).toBe(false);
+    expect(result.output).toContain('not implemented yet');
   });
 
-  it('should pass custom compact instructions through the host command surface', async () => {
-    let seenInstructions: string | undefined;
+  it('should reject custom compact instructions until the manual compact algorithm exists', async () => {
     const codara = createCodara({
       model: new SystemEchoModel() as unknown as BaseChatModel,
       skills: false,
@@ -96,10 +93,7 @@ describe('Codara slash commands', () => {
       summary: {
         maxMessages: 99,
         keepLastMessages: 2,
-        summarize: ({instructions}) => {
-          seenInstructions = instructions;
-          return 'manual compact summary';
-        },
+        summarize: () => 'manual compact summary',
       },
     });
 
@@ -109,12 +103,11 @@ describe('Codara slash commands', () => {
 
     const result = await codara.executeCommand('/compact focus on decisions and pending risks');
 
-    expect(result.ok).toBe(true);
-    expect(result.output).toContain('custom instructions');
-    expect(seenInstructions).toBe('focus on decisions and pending risks');
+    expect(result.ok).toBe(false);
+    expect(result.output).toContain('not implemented yet');
   });
 
-  it('should compact checkpoint history through the slash command host surface', async () => {
+  it('should compact checkpoint history through the slash command agent surface', async () => {
     const codara = createCodara({
       model: new EchoModel() as unknown as BaseChatModel,
       skills: false,
@@ -139,7 +132,7 @@ describe('Codara slash commands', () => {
     expect(result.output).toContain('Unknown command');
   });
 
-  it('should resume a paused HIL action through the slash command host surface', async () => {
+  it('should resume a paused HIL action through the slash command agent surface', async () => {
     const bashTool = tool(
       async ({command}: {command: string}) => `executed:${command}`,
       {

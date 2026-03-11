@@ -8,7 +8,7 @@
 // ============================================
 
 /** 创建或打开 Codara 会话（推荐入口） */
-export {createCodara, openCodaraSession, openLatestCodaraSession} from '@core/codara';
+export {createCodara, createCodaraAgent, openCodaraSession, openLatestCodaraSession} from '@core/codara';
 
 /** Codara 相关类型 */
 export type {

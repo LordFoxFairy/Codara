@@ -45,10 +45,10 @@ describe('Codara facade runtime', () => {
     expect(String(agentState.messages[1]?.content)).toBe('seen_humans:1');
   });
 
-  it('should allow a modelResolver override without changing the main createCodara API', async () => {
+  it('should allow an async model without adding a second model entry path', async () => {
     const model = new EchoModel();
     const codara = createCodara({
-      modelResolver: async () => model as unknown as BaseChatModel,
+      model: Promise.resolve(model as unknown as BaseChatModel),
       skills: false,
       builtinTools: false,
     });

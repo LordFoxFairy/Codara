@@ -48,7 +48,7 @@ command-aliases:
     expect(result.state?.messages.some((message) => String(message.content).includes('design a safer session model'))).toBe(true);
   });
 
-  it('should refresh skill-derived commands when host sources are reloaded', async () => {
+  it('should refresh skill-derived commands when session sources are reloaded', async () => {
     const skillsRoot = await createSkillRoot('architect', `---
 name: architect
 description: Architecture planning skill

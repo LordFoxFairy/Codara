@@ -1,5 +1,7 @@
-import type {AgentResult, AgentState} from '@core/agents';
+import type {AgentResult, AgentState, ResumePayload} from '@core/agents';
+import type {AgentResumeConfig} from '@core/agents';
 import type {AgentsFileOverview, AgentsFileScope} from '@core/instructions/guidelines';
+import type {CompactOptions} from '@core/checkpoint';
 
 export interface ParsedCodaraCommand {
   raw: string;
@@ -37,27 +39,24 @@ export interface CodaraCommandResult {
   };
 }
 
-export interface CodaraCommandHost {
+export interface CodaraCommandAgent {
   compactConversation(options?: {
     instructions?: string;
   }): Promise<AgentState>;
-  compactCheckpoints(keepLast?: number): Promise<void>;
+  compactCheckpoints(options?: CompactOptions): Promise<void>;
   hydrate(): Promise<AgentState>;
   getAgentState(): AgentState;
   inspectAgentsFiles(): Promise<AgentsFileOverview>;
   ensureAgentsFileTarget(scope: AgentsFileScope): Promise<string>;
-  invokePrompt(input: string): Promise<AgentResult>;
+  invoke(input: string): Promise<AgentResult>;
   reloadSources(): Promise<void>;
-  resumePause(payload: {
-    decision: 'approve' | 'reject';
-    feedback?: string;
-  }): Promise<AgentState>;
+  resumePause(payload: ResumePayload, config?: AgentResumeConfig): Promise<AgentResult>;
 }
 
 export interface CodaraCommandContext {
   command: ParsedCodaraCommand;
   registry: readonly CodaraCommandDefinition[];
-  host: CodaraCommandHost;
+  agent: CodaraCommandAgent;
 }
 
 export interface CodaraCommandDefinition extends CodaraCommandSpec {

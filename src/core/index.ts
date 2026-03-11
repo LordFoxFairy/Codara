@@ -2,6 +2,7 @@
 
 export {
   createCodara,
+  createCodaraAgent,
   openCodaraSession,
   openLatestCodaraSession,
   type Codara,

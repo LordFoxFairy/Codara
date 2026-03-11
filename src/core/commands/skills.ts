@@ -5,7 +5,7 @@ import {
 } from '@core/instructions/skills/commands';
 import type {SkillsSource} from '@core/instructions/skills';
 import type {CodaraCommandDefinition} from '@core/commands/types';
-import {readLatestAssistantText} from '@core/support/messages';
+import {readLatestAssistantText} from '@core/shared/messages';
 
 export async function createSkillCodaraCommands(
   source: SkillsSource,
@@ -25,7 +25,7 @@ function bindSkillCommand(command: SkillCommandDefinition): CodaraCommandDefinit
       skillPath: command.skill.path,
     },
     ...(command.aliases?.length ? {aliases: command.aliases} : {}),
-    async execute({command: parsed, host}) {
+    async execute({command: parsed, agent}) {
       if (!parsed.argsText.trim()) {
         return {
           ok: false,
@@ -41,7 +41,7 @@ function bindSkillCommand(command: SkillCommandDefinition): CodaraCommandDefinit
       }
 
       const invocation = createSkillCommandInvocation(command, parsed.argsText);
-      const result = await host.invokePrompt(invocation.prompt);
+      const result = await agent.invoke(invocation.prompt);
       return {
         ok: true,
         command: parsed.name,

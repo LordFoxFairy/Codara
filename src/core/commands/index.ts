@@ -2,7 +2,7 @@ export {createCodaraCommandRunner} from '@core/commands/runner';
 export type {
   CodaraCommandContext,
   CodaraCommandDefinition,
-  CodaraCommandHost,
+  CodaraCommandAgent,
   CodaraCommandResult,
   CodaraCommandSpec,
   ParsedCodaraCommand,
