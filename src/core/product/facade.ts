@@ -3,7 +3,7 @@ import {createCodaraCommandRunner} from '@core/product/commands';
 import type {Codara, CodaraOptions} from '@core/product/types';
 import type {Session, SessionState, SessionStore} from '@core/sessions';
 import type {CodaraCommandHost} from '@core/product/commands';
-import {createCodaraSessionAssembly} from '@core/product/runtime';
+import {createCodaraSessionAssembly} from '@core/product/assembly';
 import {createSkillCodaraCommands} from '@core/product/commands/skills';
 
 /**

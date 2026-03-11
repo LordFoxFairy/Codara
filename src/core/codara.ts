@@ -9,7 +9,7 @@ export {
   createCodaraMiddlewares,
   resolveCodaraSkills,
   type CodaraResolvedSkills,
-} from '@core/product/middleware';
+} from '@core/product/stack';
 export {
   createCodaraCommandRunner,
   type CodaraCommandResult,
@@ -23,5 +23,5 @@ export {
   type CreateCodaraChatModelOptions,
   type CreateCodaraModelCatalogOptions,
 } from '@core/product/models';
-export {createCodaraTools} from '@core/product/runtime';
+export {createCodaraTools} from '@core/product/tools';
 export {createCodara, openCodaraSession, openLatestCodaraSession} from '@core/product/facade';
