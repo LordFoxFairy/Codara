@@ -1,14 +1,28 @@
-import {afterEach, describe, expect, it} from "bun:test";
+import {afterEach, beforeEach, describe, expect, it} from "bun:test";
+import path from "node:path";
 import {ChatModelFactory, loadModelRoutingConfig, ModelRegistry, parseModelRoutingConfig} from "@core/provider";
 import {createMockRoutingConfig, startMockOpenAIServer} from "./mock-openai-server";
 
 describe("DeepSeek End-to-End", () => {
     const cleanups: Array<() => void> = [];
+    let originalCodaraPath: string | undefined;
+
+    beforeEach(() => {
+        originalCodaraPath = process.env.CODARA_PATH;
+        process.env.CODARA_PATH = path.join(process.cwd(), ".codara");
+    });
 
     afterEach(() => {
         while (cleanups.length > 0) {
             cleanups.pop()?.();
         }
+
+        if (originalCodaraPath === undefined) {
+            delete process.env.CODARA_PATH;
+            return;
+        }
+
+        process.env.CODARA_PATH = originalCodaraPath;
     });
 
     it("应正常加载配置并解析 deepseek 路由", async () => {
