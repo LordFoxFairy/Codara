@@ -14,6 +14,7 @@
 ## Review
 - Commit `86b3450` `refactor(core): consolidate session runtime infrastructure`
 - Commit `e83445a` `refactor(core): unify codara facade and slash commands`
+- Commit `d9ce93f` `fix(core): route delegated resumes through tool mode`
 - Verification:
   - `bun test tests/unit/agents/checkpoint-sources.test.ts tests/unit/core/codara-session-fork.test.ts tests/unit/core/codara-session-host.test.ts tests/unit/core/codara-session-sources.test.ts tests/unit/core/codara-session-telemetry.test.ts tests/unit/summary/summary.test.ts`
   - `bun test tests/unit/core/codara-commands.test.ts tests/unit/core/codara-facade.test.ts tests/unit/core/codara-skill-commands.test.ts`
