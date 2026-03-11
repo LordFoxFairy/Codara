@@ -810,6 +810,52 @@ describe('Agent', () => {
     expect(bashInvokeCount).toBe(0);
   });
 
+  it('HIL pause 应阻止同一 turn 后续的 serial tool batches 继续执行', async () => {
+    const bashCall: ToolCall = {id: 'call_pause_then_stop', name: 'bash', args: {command: 'git status'}};
+    const echoCall: ToolCall = {id: 'call_should_not_run', name: 'echo', args: {text: 'after pause'}};
+    let echoInvokeCount = 0;
+    const model = new FakeModel([
+      new AIMessage({content: '', tool_calls: [bashCall, echoCall]}),
+    ]) as unknown as BaseChatModel;
+
+    const bashTool = {
+      name: 'bash',
+      description: 'bash',
+      schema: {} as never,
+      invoke: async () => 'executed',
+    } as unknown as StructuredToolInterface;
+    const echoTool = {
+      name: 'echo',
+      description: 'echo',
+      schema: {} as never,
+      invoke: async () => {
+        echoInvokeCount += 1;
+        return 'should not happen';
+      },
+    } as unknown as StructuredToolInterface;
+
+    const runner = createAgent({
+      model,
+      tools: [bashTool, echoTool],
+      middleware: [
+        createHILMiddleware({
+          interruptOn: {
+            bash: true,
+          },
+        }),
+      ],
+    });
+
+    const result = await runner.invoke({messages: [new HumanMessage('run guarded tools')]});
+
+    expect(result.reason).toBe('complete');
+    expect(result.turns).toBe(1);
+    expect(result.state.status).toBe('paused');
+    expect(result.state.pendingPause?.action.toolName).toBe('bash');
+    expect(echoInvokeCount).toBe(0);
+    expect(result.state.messages.some((message) => message instanceof ToolMessage && message.tool_call_id === 'call_should_not_run')).toBe(false);
+  });
+
   it('stream(messages) 应输出模型 chunks 并返回最终结果', async () => {
     const model = new StreamingModel(
       [new AIMessage('hello')],

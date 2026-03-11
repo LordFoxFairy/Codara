@@ -114,4 +114,50 @@ describe('Codara middleware stack', () => {
     ]);
   });
 
+  it('should keep default middleware responsibilities non-overlapping in the main route', () => {
+    const middlewares = createCodaraMiddlewares({
+      logging: {enabled: true},
+      skills: {store: new EmptySkillStore()},
+    });
+
+    const byName = new Map(middlewares.map((middleware) => [middleware.name, middleware]));
+
+    expect(byName.get('LoggingMiddleware')).toMatchObject({
+      beforeAgent: expect.any(Function),
+      beforeModel: expect.any(Function),
+      wrapModelCall: expect.any(Function),
+      afterModel: expect.any(Function),
+      wrapToolCall: expect.any(Function),
+      afterAgent: expect.any(Function),
+    });
+
+    expect(byName.get('GuidelinesMiddleware')).toMatchObject({
+      beforeModel: expect.any(Function),
+    });
+    expect(byName.get('GuidelinesMiddleware')?.beforeAgent).toBeUndefined();
+    expect(byName.get('GuidelinesMiddleware')?.wrapModelCall).toBeUndefined();
+    expect(byName.get('GuidelinesMiddleware')?.wrapToolCall).toBeUndefined();
+
+    expect(byName.get('SkillsMiddleware')).toMatchObject({
+      beforeModel: expect.any(Function),
+    });
+    expect(byName.get('SkillsMiddleware')?.beforeAgent).toBeUndefined();
+    expect(byName.get('SkillsMiddleware')?.wrapModelCall).toBeUndefined();
+    expect(byName.get('SkillsMiddleware')?.wrapToolCall).toBeUndefined();
+
+    expect(byName.get('ConversationContextMiddleware')).toMatchObject({
+      beforeModel: expect.any(Function),
+    });
+    expect(byName.get('ConversationContextMiddleware')?.beforeAgent).toBeUndefined();
+    expect(byName.get('ConversationContextMiddleware')?.wrapModelCall).toBeUndefined();
+    expect(byName.get('ConversationContextMiddleware')?.wrapToolCall).toBeUndefined();
+
+    expect(byName.get('HumanInTheLoopMiddleware')).toMatchObject({
+      wrapToolCall: expect.any(Function),
+    });
+    expect(byName.get('HumanInTheLoopMiddleware')?.beforeModel).toBeUndefined();
+    expect(byName.get('HumanInTheLoopMiddleware')?.wrapModelCall).toBeUndefined();
+    expect(byName.get('HumanInTheLoopMiddleware')?.afterAgent).toBeUndefined();
+  });
+
 });
