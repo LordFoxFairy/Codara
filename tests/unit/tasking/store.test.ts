@@ -65,6 +65,88 @@ describe('task store', () => {
     expect(updated.status).toBe('in_progress');
   });
 
+  it('应在写入 addBlockedBy 时同步更新前置任务的 blocks', async () => {
+    const store = createTaskMemoryStore();
+    const prerequisite = await store.create({
+      subject: 'Design schema',
+      description: 'Plan the graph',
+    });
+    const blocked = await store.create({
+      subject: 'Implement worker',
+      description: 'Build the worker',
+    });
+
+    const updated = await store.update({
+      taskId: blocked.id,
+      addBlockedBy: [prerequisite.id],
+    });
+    const refreshedPrerequisite = await store.get(prerequisite.id);
+
+    expect(updated.blockedBy).toEqual([prerequisite.id]);
+    expect(refreshedPrerequisite?.blocks).toEqual([blocked.id]);
+  });
+
+  it('应在写入 addBlocks 时同步更新目标任务的 blockedBy', async () => {
+    const store = createTaskMemoryStore();
+    const prerequisite = await store.create({
+      subject: 'Design schema',
+      description: 'Plan the graph',
+    });
+    const blocked = await store.create({
+      subject: 'Implement worker',
+      description: 'Build the worker',
+    });
+
+    const updated = await store.update({
+      taskId: prerequisite.id,
+      addBlocks: [blocked.id],
+    });
+    const refreshedBlocked = await store.get(blocked.id);
+
+    expect(updated.blocks).toEqual([blocked.id]);
+    expect(refreshedBlocked?.blockedBy).toEqual([prerequisite.id]);
+  });
+
+  it('应拒绝自依赖和不存在的任务引用', async () => {
+    const store = createTaskMemoryStore();
+    const task = await store.create({
+      subject: 'Design schema',
+      description: 'Plan the graph',
+    });
+
+    await expect(store.update({
+      taskId: task.id,
+      addBlockedBy: [task.id],
+    })).rejects.toThrow(`Task "${task.id}" cannot depend on itself`);
+
+    await expect(store.update({
+      taskId: task.id,
+      addBlockedBy: ['missing-task'],
+    })).rejects.toThrow('Task "missing-task" not found');
+  });
+
+  it('应拒绝明显的 dependency cycle', async () => {
+    const store = createTaskMemoryStore();
+    const first = await store.create({
+      subject: 'First',
+      description: 'First task',
+    });
+    const second = await store.create({
+      subject: 'Second',
+      description: 'Second task',
+    });
+
+    await store.update({
+      taskId: second.id,
+      addBlockedBy: [first.id],
+    });
+
+    await expect(store.update({
+      taskId: first.id,
+      addBlockedBy: [second.id],
+    })).rejects.toThrow(`Adding dependency ${second.id} -> ${first.id} would create a cycle`);
+  });
+
   it('file store 应跨实例持久化任务', async () => {
     const rootDir = await mkdtemp(path.join(os.tmpdir(), 'codara-task-store-'));
 
@@ -81,6 +163,36 @@ describe('task store', () => {
       expect(listed).toHaveLength(1);
       expect(listed[0]?.id).toBe(created.id);
       expect(listed[0]?.subject).toBe('Persist tasks');
+    } finally {
+      await rm(rootDir, {recursive: true, force: true});
+    }
+  });
+
+  it('file store 应持久化双向 dependency graph', async () => {
+    const rootDir = await mkdtemp(path.join(os.tmpdir(), 'codara-task-store-graph-'));
+
+    try {
+      const first = createTaskFileStore({rootDir});
+      const prerequisite = await first.create({
+        subject: 'Design schema',
+        description: 'Plan the graph',
+      });
+      const blocked = await first.create({
+        subject: 'Implement worker',
+        description: 'Build the worker',
+      });
+
+      await first.update({
+        taskId: blocked.id,
+        addBlockedBy: [prerequisite.id],
+      });
+
+      const second = createTaskFileStore({rootDir});
+      const persistedPrerequisite = await second.get(prerequisite.id);
+      const persistedBlocked = await second.get(blocked.id);
+
+      expect(persistedPrerequisite?.blocks).toEqual([blocked.id]);
+      expect(persistedBlocked?.blockedBy).toEqual([prerequisite.id]);
     } finally {
       await rm(rootDir, {recursive: true, force: true});
     }

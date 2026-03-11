@@ -59,4 +59,31 @@ describe('task tools', () => {
       status: 'in_progress',
     })).rejects.toThrow(`Task "${blocked.id}" is blocked by: ${prerequisite.id}`);
   });
+
+  it('应通过单一写路径维护 blocks 与 blockedBy 的双向关系', async () => {
+    const store = createTaskMemoryStore();
+    const createTool = createTaskCreateTool({store});
+    const updateTool = createTaskUpdateTool({store});
+
+    await createTool.invoke({
+      subject: 'Plan schema',
+      description: 'Define task dependencies',
+    });
+    await createTool.invoke({
+      subject: 'Write worker',
+      description: 'Implement the worker logic',
+    });
+
+    const [prerequisite, blocked] = await store.list();
+    await updateTool.invoke({
+      taskId: blocked?.id,
+      addBlockedBy: [prerequisite?.id ?? ''],
+    });
+
+    const refreshedPrerequisite = await store.get(prerequisite?.id ?? '');
+    const refreshedBlocked = await store.get(blocked?.id ?? '');
+
+    expect(refreshedPrerequisite?.blocks).toEqual([blocked?.id]);
+    expect(refreshedBlocked?.blockedBy).toEqual([prerequisite?.id]);
+  });
 });

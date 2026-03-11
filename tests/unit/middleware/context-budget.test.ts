@@ -1,7 +1,6 @@
 import {describe, expect, it} from 'bun:test';
 import {HumanMessage} from '@langchain/core/messages';
 import {
-  createContextBudgetMiddleware,
   createContextBudgetSnapshot,
   estimateModelInputTokens,
   refreshContextBudget,
@@ -28,8 +27,7 @@ describe('context budget middleware', () => {
     expect(snapshot?.overBudget).toBe(false);
   });
 
-  it('should refresh the runtime budget snapshot during beforeModel', async () => {
-    const middleware = createContextBudgetMiddleware();
+  it('should refresh the runtime budget snapshot directly on a beforeModel-shaped context', () => {
     const context: BeforeModelContext = {
       state: {
         messages: [new HumanMessage('hello world')],
@@ -44,7 +42,7 @@ describe('context budget middleware', () => {
       inputBudget: {maxInputTokens: 20},
     };
 
-    await middleware.beforeModel?.(context);
+    refreshContextBudget(context);
 
     expect(context.budget?.estimatedInputTokens).toBeGreaterThan(20);
     expect(context.budget?.overBudget).toBe(true);

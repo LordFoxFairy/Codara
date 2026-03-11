@@ -4,6 +4,7 @@ import type {AgentType} from '@core/agents/contract/agent';
 import {createMiddleware, type BaseMiddleware} from '@core/middleware';
 import {
   type CreateSubagentToolOptions,
+  readDelegatedResumeState,
   runDelegatedAgent,
 } from '@core/tasking/subagent';
 import {
@@ -14,6 +15,7 @@ import {
 } from '@core/skills/agents';
 import type {MiddlewareRuntimeShared} from '@core/middleware';
 import {filterToolsByReferences} from '@core/tools';
+import {createAgentMemoryCheckpointer} from '@core/checkpoint';
 
 export const TASK_TOOL_NAME = 'Task';
 
@@ -40,19 +42,32 @@ export interface CreateTaskMiddlewareOptions extends CreateTaskToolOptions {
 }
 
 export function createTaskTool(options: CreateTaskToolOptions): StructuredToolInterface {
+  const delegatedCheckpointer = options.checkpointer ?? createAgentMemoryCheckpointer();
+
   return tool(
     async ({prompt, subagent_type, max_turns}: TaskToolInput, config) => {
+      const configurable = readConfigurable(config?.configurable);
+      const delegatedResume = readDelegatedResumeState(configurable.invokeContext, TASK_TOOL_NAME);
       const profile = resolveSubagentDefinition(
-        readAgentSkillsRuntime(config?.configurable?.runtimeShared),
+        readAgentSkillsRuntime(configurable.runtimeShared),
         subagent_type,
       );
-      return runDelegatedAgent(options, {
+      return runDelegatedAgent({
+        ...options,
+        checkpointer: delegatedCheckpointer,
+      }, {
         prompt,
         maxTurns: max_turns ?? profile.maxTurns,
         toolName: TASK_TOOL_NAME,
-        parentAgentType: readAgentType(config?.configurable?.agentType),
+        parentAgentType: readAgentType(configurable.agentType),
+        parentToolCallId: readString(configurable.toolCallId) ?? '',
+        parentRunId: readString(configurable.runId) ?? '',
+        parentRequestId: readString(configurable.requestId) ?? '',
+        parentTurn: readNumber(configurable.turn) ?? 0,
+        parentToolIndex: readNumber(configurable.toolIndex) ?? 0,
         profileTools: resolveDefinitionTools(options.tools ?? [], profile),
         profileSystemPrompt: profile.systemPrompt,
+        ...(delegatedResume ? {resume: delegatedResume} : {}),
       });
     },
     {
@@ -111,6 +126,20 @@ function readAgentSkillsRuntime(value: unknown) {
   }
 
   return readSkillsRuntimeData(value as MiddlewareRuntimeShared);
+}
+
+function readConfigurable(value: unknown): Record<string, unknown> {
+  return value && typeof value === 'object' && !Array.isArray(value)
+    ? value as Record<string, unknown>
+    : {};
+}
+
+function readString(value: unknown): string | undefined {
+  return typeof value === 'string' && value.trim() ? value : undefined;
+}
+
+function readNumber(value: unknown): number | undefined {
+  return typeof value === 'number' ? value : undefined;
 }
 
 function formatAvailableSubagents(runtime: SkillsRuntimeData | undefined): string | undefined {
