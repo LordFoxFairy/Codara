@@ -16,7 +16,7 @@ import type {AgentCheckpointer} from '@core/checkpoint/state';
 import type {CompactOptions} from '@core/checkpoint/types';
 import type {BaseMiddleware} from '@core/middleware';
 import type {ResumePayload} from '@core/agents/contract/pause';
-import type {AgentsFileOverview, AgentsFileScope, AgentsSource} from '@core/sessions/agents';
+import type {AgentsFileOverview, AgentsFileScope, GuidelinesSource} from '@core/guidelines';
 import type {SkillsSource} from '@core/sessions/skills';
 import type {SessionStore} from '@core/sessions/store';
 import type {ModelInfo} from '@core/provider';
@@ -93,7 +93,7 @@ export interface CreateSessionOptions {
   modelCatalog?: SessionModelCatalog | Promise<SessionModelCatalog>;
 
   // AGENTS source lifecycle
-  agentsSource?: AgentsSource;
+  guidelinesSource?: GuidelinesSource;
   skillsSource?: SkillsSource;
 
   // Session store

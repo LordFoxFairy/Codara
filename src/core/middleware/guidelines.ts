@@ -1,15 +1,15 @@
 import {createMiddleware} from '@core/middleware';
-import type {AgentsSource} from '@core/sessions/agents';
+import type {GuidelinesSource} from '@core/guidelines';
 /** 注入由 AGENTS source 提供的 AGENTS.md 投影。 */
-export function createGuidelinesMiddleware(agentsSource?: AgentsSource) {
+export function createGuidelinesMiddleware(guidelinesSource?: GuidelinesSource) {
   return createMiddleware({
     name: 'GuidelinesMiddleware',
     async beforeModel(context) {
-      if (!agentsSource) {
+      if (!guidelinesSource) {
         return undefined;
       }
 
-      const content = await agentsSource.getContent();
+      const content = await guidelinesSource.getContent();
       if (!content) {
         return undefined;
       }

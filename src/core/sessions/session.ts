@@ -67,6 +67,11 @@ export function createSession(options: CreateSessionOptions): Session {
     touchSessionMetadata(metadata, updatedAt);
   }
 
+  async function touchAndSaveSession(): Promise<void> {
+    touch();
+    await saveSession();
+  }
+
   async function saveSession(): Promise<void> {
     if (!store) {
       return;
@@ -106,13 +111,17 @@ export function createSession(options: CreateSessionOptions): Session {
   }
 
   async function reloadHostSources(): Promise<void> {
-    options.agentsSource?.reload();
+    options.guidelinesSource?.reload();
     options.skillsSource?.reload();
   }
 
   async function preloadHostSources(): Promise<void> {
-    await options.agentsSource?.getContent?.();
+    await options.guidelinesSource?.getContent?.();
     await options.skillsSource?.getRuntime?.();
+  }
+
+  async function hasStoredCheckpoint(): Promise<boolean> {
+    return Boolean(await checkpointer.getLatest(threadId));
   }
 
   async function getAgent(): Promise<Agent> {
@@ -169,15 +178,10 @@ export function createSession(options: CreateSessionOptions): Session {
     return result;
   }
 
-  function requireReady(): void {
+  function ensureReady(): void {
     if (sessionStatus === 'closed') {
       throw new Error('Session is closed.');
     }
-  }
-
-  function runReady<T>(operation: () => T): T {
-    requireReady();
-    return operation();
   }
 
   function buildSessionState(): SessionState {
@@ -235,13 +239,9 @@ export function createSession(options: CreateSessionOptions): Session {
   }
 
   async function resetSession(): Promise<void> {
-    if (!agentInstance) {
-      const checkpoint = await checkpointer.getLatest(threadId);
-      if (!checkpoint) {
-        touch();
-        await saveSession();
-        return;
-      }
+    if (!agentInstance && !await hasStoredCheckpoint()) {
+      await touchAndSaveSession();
+      return;
     }
 
     const agent = await getAgent();
@@ -254,20 +254,26 @@ export function createSession(options: CreateSessionOptions): Session {
       return;
     }
 
-    if (!agentInstance) {
-      const checkpoint = await checkpointer.getLatest(threadId);
-      if (!checkpoint) {
-        sessionStatus = 'closed';
-        touch();
-        await saveSession();
-        return;
-      }
+    if (!agentInstance && !await hasStoredCheckpoint()) {
+      sessionStatus = 'closed';
+      await touchAndSaveSession();
+      return;
     }
 
     await (await getAgent()).dispose();
     sessionStatus = 'closed';
-    touch();
-    await saveSession();
+    await touchAndSaveSession();
+  }
+
+  function requireGuidelinesActions() {
+    const source = options.guidelinesSource;
+    if (!source?.inspectFiles || !source.ensureFileTarget) {
+      throw new Error('AGENTS file actions are not available for this session.');
+    }
+    return {
+      inspectFiles: source.inspectFiles.bind(source),
+      ensureFileTarget: source.ensureFileTarget.bind(source),
+    };
   }
 
   return {
@@ -280,85 +286,79 @@ export function createSession(options: CreateSessionOptions): Session {
     },
 
     async hydrate(): Promise<AgentState> {
-      return runReady(async () => {
-        const state = (await getAgent()).getState();
-        await syncSessionFromState(state, {touchActivity: false});
-        return state;
-      });
+      ensureReady();
+      const state = (await getAgent()).getState();
+      await syncSessionFromState(state, {touchActivity: false});
+      return state;
     },
 
     async compactConversation(compactOptions = {}): Promise<AgentState> {
-      return runReady(async () => {
-        const state = await (await getAgent()).compactConversation(compactOptions);
-        await syncSessionFromState(state);
-        return state;
-      });
+      ensureReady();
+      const state = await (await getAgent()).compactConversation(compactOptions);
+      await syncSessionFromState(state);
+      return state;
     },
 
     async fork(forkOptions = {}): Promise<Session> {
-      return runReady(() => forkSession(forkOptions));
+      ensureReady();
+      return forkSession(forkOptions);
     },
 
     async invoke(input?: AgentInput, config?: AgentInvokeConfig): Promise<AgentResult> {
-      return runReady(() => runAgentResult((agent) => agent.invoke(input, config)));
+      ensureReady();
+      return runAgentResult((agent) => agent.invoke(input, config));
     },
 
     async *stream(
       input?: AgentInput,
       config?: AgentStreamConfig,
     ): AsyncGenerator<AgentStreamOutput, AgentResult, void> {
-      runReady(() => undefined);
+      ensureReady();
       return yield* runAgentStreamResult((agent) => agent.stream(input, config));
     },
 
     async resumePause(payload: ResumePayload, config?: AgentResumeConfig): Promise<AgentResult> {
-      return runReady(() => runAgentResult((agent) => agent.resume(payload, config)));
+      ensureReady();
+      return runAgentResult((agent) => agent.resume(payload, config));
     },
 
     async *resumePauseStream(
       payload: ResumePayload,
       config?: AgentResumeStreamConfig,
     ): AsyncGenerator<AgentStreamOutput, AgentResult, void> {
-      runReady(() => undefined);
+      ensureReady();
       return yield* runAgentStreamResult((agent) => agent.resumeStream(payload, config));
     },
 
     async reloadSources(): Promise<void> {
-      runReady(() => undefined);
-      touch();
+      ensureReady();
       await reloadHostSources();
-      await saveSession();
+      await touchAndSaveSession();
     },
 
     async inspectAgentsFiles() {
-      runReady(() => undefined);
-      if (!options.agentsSource?.inspectFiles) {
-        throw new Error('AGENTS file actions are not available for this session.');
-      }
-      return options.agentsSource.inspectFiles();
+      ensureReady();
+      return requireGuidelinesActions().inspectFiles();
     },
 
     async ensureAgentsFileTarget(scope) {
-      runReady(() => undefined);
-      if (!options.agentsSource?.ensureFileTarget) {
-        throw new Error('AGENTS file actions are not available for this session.');
-      }
-      return options.agentsSource.ensureFileTarget(scope);
+      ensureReady();
+      return requireGuidelinesActions().ensureFileTarget(scope);
     },
 
     async compactCheckpoints(compactOptions?: CompactOptions): Promise<void> {
-      runReady(() => undefined);
+      ensureReady();
       if (!checkpointer.compact) {
         return;
       }
 
       await checkpointer.compact(threadId, compactOptions);
-      touch();
-      await saveSession();
+      await touchAndSaveSession();
     },
 
     async reset(): Promise<void> {
-      return runReady(() => resetSession());
+      ensureReady();
+      return resetSession();
     },
 
     async dispose(): Promise<void> {
