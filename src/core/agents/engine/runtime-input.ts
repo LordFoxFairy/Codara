@@ -7,7 +7,7 @@ import type {
 } from '@core/agents/contract/agent';
 import {parseHILToolMessagePayload} from '@core/middleware/hil';
 import type {PauseRequest, ResumePayload} from '@core/agents/contract/pause';
-import {deepClone} from '@core/shared/clone';
+import {deepClone} from '@core/support/clone';
 
 export function normalizeAgentInput(input: AgentInput): BaseMessage[] {
   if (input === undefined) {

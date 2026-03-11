@@ -6,7 +6,7 @@ import {executeToolCall, resolveToolCallId} from '@core/agents/engine/tools';
 import {readLatestPause} from '@core/agents/engine/runtime-input';
 import type {AgentRuntime, AgentRunContext} from '@core/agents/loop/run';
 import {readToolExecutionPolicy} from '@core/tools';
-import {toError} from '@core/shared/errors';
+import {toError} from '@core/support/errors';
 
 export async function runToolStep(
   run: AgentRunContext,

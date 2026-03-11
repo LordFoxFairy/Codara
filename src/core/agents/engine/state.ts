@@ -19,7 +19,7 @@ import type {
   AgentCheckpointSummary,
 } from '@core/checkpoint/state';
 import type {PauseRequest} from '@core/agents/contract/pause';
-import {deepClone} from '@core/shared/clone';
+import {deepClone} from '@core/support/clone';
 
 /** Agent 内部运行态。 */
 export interface AgentDurableState {

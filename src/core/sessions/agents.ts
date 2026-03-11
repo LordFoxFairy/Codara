@@ -1,12 +1,12 @@
 import {mkdir, writeFile} from 'node:fs/promises';
 import {homedir} from 'node:os';
 import path from 'node:path';
-import type {WorkspaceFileOptions, WorkspaceScopedFile} from '@core/workspace';
+import type {WorkspaceFileOptions, WorkspaceScopedFile} from '@core/support/workspace';
 import {
   discoverHierarchicalWorkspaceFiles,
   loadInstructionFiles,
   resolveWorkspaceRoot,
-} from '@core/workspace';
+} from '@core/support/workspace';
 
 const DEFAULT_LINES = 500;
 

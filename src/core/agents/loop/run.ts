@@ -13,8 +13,8 @@ import type {AgentStreamWriter} from '@core/agents/engine/stream-writer';
 import {runTurn, runTurnStream, type AgentTurnOutcome} from '@core/agents/loop/turn';
 import type {BaseExecutionContext, MiddlewareRuntimeShared} from '@core/middleware';
 import type {MiddlewarePipeline} from '@core/middleware/pipeline';
-import {deepClone} from '@core/shared/clone';
-import {toError, formatErrorMessage} from '@core/shared/errors';
+import {deepClone} from '@core/support/clone';
+import {toError, formatErrorMessage} from '@core/support/errors';
 import {mergeContext} from '@core/agents/engine/runtime-input';
 
 const DEFAULT_RECURSION_LIMIT = 25;

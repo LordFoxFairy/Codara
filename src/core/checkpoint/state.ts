@@ -8,7 +8,7 @@ import {InMemoryCheckpointer} from '@core/checkpoint/in-memory';
 import type {CheckpointRecord, Checkpointer} from '@core/checkpoint/types';
 import type {PauseRequest} from '@core/agents/contract/pause';
 import type {AgentType} from '@core/agents/contract/agent';
-import {deepClone} from '@core/shared/clone';
+import {deepClone} from '@core/support/clone';
 
 export type AgentCheckpointStatus = 'idle' | 'paused' | 'closed' | 'error';
 export type AgentCheckpointReason = 'complete' | 'error' | 'max_turns';

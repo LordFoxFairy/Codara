@@ -7,7 +7,7 @@ import {readLatestPause} from '@core/agents/engine/runtime-input';
 import type {AgentStreamWriter} from '@core/agents/engine/stream-writer';
 import {runModelStep, runModelStepStream} from '@core/agents/loop/model-step';
 import {runAfterAgentStep, runToolStep, runToolStepStream} from '@core/agents/loop/tool-step';
-import {toError} from '@core/shared/errors';
+import {toError} from '@core/support/errors';
 import type {AIMessage, ToolCall} from '@langchain/core/messages';
 import type {AgentRunSummary, BaseExecutionContext} from '@core/middleware';
 
