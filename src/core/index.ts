@@ -62,7 +62,7 @@ export {
   createCodaraGuidelinesSource,
   type GuidelinesOptions,
   type GuidelinesSource,
-} from '@core/instructions/guidelines';
+} from '@core/sessions/guidelines';
 export {
   createBuiltinTools,
   createFetchTool,
@@ -80,7 +80,7 @@ export {
   type SkillStore,
   type SkillsSource,
   type SkillsRuntimeData,
-} from '@core/instructions/skills';
+} from '@core/skills';
 export {
   createSession,
   FileSessionStore,

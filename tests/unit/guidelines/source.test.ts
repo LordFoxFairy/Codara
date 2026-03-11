@@ -1,5 +1,5 @@
 import {describe, expect, it} from 'bun:test';
-import {FileGuidelinesSource} from '@core/instructions/guidelines';
+import {FileGuidelinesSource} from '@core/sessions/guidelines';
 
 describe('FileGuidelinesSource', () => {
   it('should read the latest AGENTS content directly without source-level caching', async () => {

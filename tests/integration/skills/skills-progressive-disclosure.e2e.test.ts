@@ -7,7 +7,7 @@ import type {BaseChatModel} from '@langchain/core/language_models/chat_models'
 import type {StructuredToolInterface} from '@langchain/core/tools'
 import {createAgent} from '@core/agents'
 import {createMiddleware, createSkillsMiddleware} from '@core/middleware'
-import {FileSystemSkillStore} from '@core/instructions/skills'
+import {FileSystemSkillStore} from '@core/skills'
 
 class ScriptedModel {
   readonly invocations: BaseMessage[][] = []

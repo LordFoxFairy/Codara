@@ -8,12 +8,12 @@ import {ChatModelFactory, loadModelRoutingConfig, ModelRegistry, type ModelInfo,
 import {
   createCodaraGuidelinesSource,
   type GuidelinesOptions,
-} from '@core/instructions/guidelines';
+} from '@core/sessions/guidelines';
 import {
   createCodaraSkillsSource,
   FileSystemSkillStore,
   type SkillStore,
-} from '@core/instructions/skills';
+} from '@core/skills';
 import {createSkillCodaraCommands} from '@core/commands/skills';
 import {createCodaraCommandRunner, type CodaraCommandResult, type CodaraCommandSpec} from '@core/commands';
 import {createSession, type Session, type SessionState, type SessionStore} from '@core/sessions';

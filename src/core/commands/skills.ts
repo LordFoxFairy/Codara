@@ -2,8 +2,8 @@ import {
   createSkillCommandInvocation,
   discoverSkillCommandsFromRuntime,
   type SkillCommandDefinition,
-} from '@core/instructions/skills/commands';
-import type {SkillsSource} from '@core/instructions/skills';
+} from '@core/skills/commands';
+import type {SkillsSource} from '@core/skills';
 import type {CodaraCommandDefinition} from '@core/commands/types';
 import {readLatestAssistantText} from '@core/shared/messages';
 

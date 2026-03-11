@@ -2,7 +2,7 @@ import {describe, expect, it} from 'bun:test';
 import {
   createSkillsMiddleware,
 } from '@core/middleware';
-import {FileSystemSkillStore, getDefaultSkillSources, type SkillStore} from '@core/instructions/skills';
+import {FileSystemSkillStore, getDefaultSkillSources, type SkillStore} from '@core/skills';
 
 describe('middleware unified skills exports', () => {
   it('should expose the skills middleware without leaking skills store helpers from @core/middleware', async () => {

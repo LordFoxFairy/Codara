@@ -2,7 +2,7 @@ import {describe, expect, it} from 'bun:test';
 import {mkdir, mkdtemp, writeFile} from 'node:fs/promises';
 import path from 'node:path';
 import {tmpdir} from 'node:os';
-import {createCodaraGuidelinesSource} from '@core/instructions/guidelines';
+import {createCodaraGuidelinesSource} from '@core/sessions/guidelines';
 
 describe('AGENTS guidelines', () => {
   it('should resolve the nearest AGENTS.md from cwd', async () => {

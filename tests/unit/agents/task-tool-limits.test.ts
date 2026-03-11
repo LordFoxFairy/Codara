@@ -8,7 +8,7 @@ import {tool} from '@langchain/core/tools';
 import {z} from 'zod';
 import {createAgent} from '@core/agents';
 import {TASK_TOOL_NAME, createTaskTool} from '@core/tasks/task';
-import {FileSystemSkillStore} from '@core/instructions/skills';
+import {FileSystemSkillStore} from '@core/skills';
 import {createAgentSkillsMiddleware, ScriptedModel} from './task-tool.fixtures';
 
 describe('createTaskTool limits', () => {

@@ -6,10 +6,10 @@ import {
   SKILLS_SYSTEM_PROMPT,
   formatSkillsList,
   formatSkillsLocations,
-} from '@core/instructions/skills/metadata'
-import {loadSkillsRuntimeData, readSkillsRuntimeData} from '@core/instructions/skills/runtime'
-import type {SkillsSource} from '@core/instructions/skills'
-import type {SkillStore} from '@core/instructions/skills/types'
+} from '@core/skills/metadata'
+import {loadSkillsRuntimeData, readSkillsRuntimeData} from '@core/skills/runtime'
+import type {SkillsSource} from '@core/skills'
+import type {SkillStore} from '@core/skills/types'
 
 export interface SkillsMiddlewareOptions {
   store?: SkillStore
