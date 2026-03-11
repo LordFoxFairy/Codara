@@ -17,6 +17,7 @@ export function buildAgentRuntime(options: CreateAgentOptions): AgentRuntime {
     tools: buildToolRegistry(tools),
     pipeline,
     handleToolErrors,
+    prepareTurnContext: options.prepareTurnContext,
   };
 }
 

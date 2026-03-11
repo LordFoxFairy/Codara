@@ -7,6 +7,7 @@ import type {ExecutionContextMetadata} from '@core/middleware/types';
 import type {
   AgentInputBudget,
   AgentRuntimeContext,
+  AgentTurnContextPreparer,
   AgentRuntimeValues,
   CreateAgentOptions,
   ToolErrorHandler,
@@ -24,6 +25,7 @@ export interface DelegatedAgentOptions {
   inputBudget?: AgentInputBudget;
   context?: AgentRuntimeContext;
   values?: AgentRuntimeValues;
+  prepareTurnContext?: AgentTurnContextPreparer;
   systemPrompt?: string;
   blockedToolNames?: string[];
 }
@@ -91,6 +93,7 @@ export async function runDelegatedAgent(
     handleToolErrors: options.handleToolErrors,
     checkpointer: options.checkpointer,
     inputBudget: options.inputBudget,
+    prepareTurnContext: options.prepareTurnContext,
     ...(mergedContext ? {context: mergedContext} : {}),
     ...(options.values ? {values: deepClone(options.values)} : {}),
   };

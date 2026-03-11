@@ -35,6 +35,7 @@ export async function bootstrapSessionAgent(
     checkpointer: options.checkpointer,
     threadId: options.threadId,
     inputBudget: resolveSessionInputBudget(options.sessionOptions, selection.modelInfo),
+    prepareTurnContext: options.sessionOptions.prepareTurnContext,
     ...(checkpoint ? {checkpoint} : {}),
     ...(messages ? {messages} : {}),
     ...(options.sessionOptions.context ? {context: options.sessionOptions.context} : {}),

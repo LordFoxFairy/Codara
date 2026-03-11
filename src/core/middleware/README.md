@@ -2,7 +2,7 @@
 
 ## 概述
 
-`@core/middleware` 提供与 Agent loop 对齐的 6 个 hooks，用于注入日志、上下文 source、conversation context、工具拦截等横切逻辑。
+`@core/middleware` 提供与 Agent loop 对齐的 6 个 hooks，用于注入日志、conversation context、工具拦截等横切逻辑。
 
 生命周期顺序固定为：
 
@@ -108,8 +108,6 @@ const result = await agent.invoke(
 Codara 默认 runtime 只把下面几类模块当成一等 middleware stage：
 
 - `LoggingMiddleware`
-- `GuidelinesMiddleware`
-- `SkillsMiddleware`
 - caller middlewares
 - `ConversationContextMiddleware`
 - `HumanInTheLoopMiddleware`
@@ -127,14 +125,6 @@ Codara 默认 runtime 只把下面几类模块当成一等 middleware stage：
   - hook scope: all 6 hooks
   - role: observer only
   - should not own source loading, context compaction, or tool policy
-- `GuidelinesMiddleware`
-  - hook scope: `beforeModel`
-  - role: inject AGENTS source projection into `systemMessage`
-- `SkillsMiddleware`
-  - hook scope: `beforeModel`
-  - role:
-    - inject skills prompt section into `systemMessage`
-    - expose discovered skills runtime in `runtime.shared.skills`
 - caller middleware
   - hook scope: user-defined
   - role: custom runtime rewrites that should still participate in later conversation budgeting/compaction
@@ -148,6 +138,22 @@ Codara 默认 runtime 只把下面几类模块当成一等 middleware stage：
   - role: pause/resume interception only
 
 这条默认主链里，source stage、conversation stage、interaction stage、observer stage 各自只有一个默认 owner，不应重叠。
+
+source-driven system layers 现在走另一条链：
+
+- `Session`
+  - preload / reload `sources/*`
+- `Agent prepareTurnContext`
+  - 读取 source snapshot
+  - 组装 `systemMessage`
+  - 预填 `runtime.shared` 中的 source-derived runtime data
+
+因此：
+
+- `GuidelinesMiddleware`
+- `SkillsMiddleware`
+
+保留为高级手动扩展，不再属于 Codara 默认产品路径。
 
 request-preparation slice 的职责应固定理解为：
 

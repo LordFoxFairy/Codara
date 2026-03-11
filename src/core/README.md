@@ -5,7 +5,7 @@
 ```text
 public API
   -> product/*
-    -> guidelines/* + skills/*
+    -> sources/*
     -> sessions/*
       -> agents/*
         -> middleware/*
@@ -15,24 +15,24 @@ public API
 
 一句话：
 
-`product 负责装配，guidelines/skills 负责 source projection，session 负责 host lifecycle，agent 负责执行，middleware 负责能力扩展，tasking 负责委派。`
+`product 负责装配，sources 负责 source projection，session 负责 host lifecycle，agent 负责执行，middleware 负责运行时拦截，tasking 负责委派。`
 
 ## 关键边界
 
 - `product/*`
   - 只装配默认模型、工具、middleware、commands
   - 不负责 host lifecycle，不负责 loop
-- `guidelines/*`
-  - 单独负责 `AGENTS.md` 的发现、加载、inspect、ensure
-  - session 只 preload/reload 它，middleware 只消费它
+- `sources/*`
+  - 单独负责 `AGENTS.md` 与 skills runtime 的发现、加载、inspect、ensure、cache
+  - session 只 preload/reload 它们，agent turn preparation 只消费 snapshot
 - `sessions/*`
   - 只负责 lazy bootstrap、restore、reloadSources、metadata、fork、dispose
-  - 不拥有 middleware 语义
+  - 不拥有 middleware 语义，也不负责每次 model call 的 prompt 拼装
 - `agents/*`
-  - 只负责 invoke/stream/resume、turn loop、tool loop、checkpoint projection
+  - 只负责 invoke/stream/resume、turn loop、tool loop、checkpoint projection、turn-level prompt assembly
 - `middleware/*`
   - 只负责 runtime interception
-  - `guidelines` middleware 只把 projection 放进 prompt，不再拥有 source lifecycle
+  - 默认栈不再承载 source preload 或默认 source prompt 注入
 - `tasking/*`
   - `Task` 是唯一公开委派入口
   - subagent 是它背后的执行机制
@@ -46,12 +46,18 @@ createCodara(...)
     -> createCodaraSkillsSource(...)
     -> createCodaraTools(...)
     -> createCodaraMiddlewares(...)
+    -> createSourceTurnContextPreparer(...)
   -> createSession(...)
     -> first hydrate/invoke/stream/resume
       -> preload guidelines + skills
       -> resolve model
       -> restore checkpoint
       -> createAgent(...)
+  -> each model turn
+    -> prepareTurnContext(...)
+      -> read cached source snapshots
+      -> assemble system layers
+    -> runtime middleware stages
 ```
 
 这里的重点是：
@@ -59,7 +65,7 @@ createCodara(...)
 - `init` 在 session host 完成
 - middleware 不做 source discovery
 - tools 不做 session bootstrap
-- `guidelines` 和 `skills` 先形成 projection，再由 middleware 注入给 loop
+- `guidelines` 和 `skills` 先形成 projection，再由 agent turn preparation 注入给 loop
 
 ## 维护原则
 

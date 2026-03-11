@@ -6,6 +6,7 @@ import type {
   AgentResult,
   AgentRuntimeContext,
   AgentState,
+  AgentTurnContextPreparer,
   ToolErrorHandler,
 } from '@core/agents/contract/agent';
 import type {AgentModel} from '@core/agents/engine/model';
@@ -37,6 +38,7 @@ export interface AgentRuntime {
   tools: Map<string, StructuredToolInterface>;
   pipeline: MiddlewarePipeline;
   handleToolErrors: ToolErrorHandler;
+  prepareTurnContext?: AgentTurnContextPreparer;
 }
 
 /** 为 invoke/stream 创建运行上下文。 */
@@ -150,6 +152,7 @@ export async function runBeforeModelStage(
   requestId: string
 ): Promise<BaseExecutionContext> {
   const context = createExecutionContext(run, turn, requestId);
+  await runtime.prepareTurnContext?.(context);
   await runtime.pipeline.beforeAgent(context);
   await runtime.pipeline.beforeModel(context);
   return context;

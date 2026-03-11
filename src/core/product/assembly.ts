@@ -1,7 +1,10 @@
-import {createCodaraGuidelinesSource} from '@core/guidelines';
+import {
+  createCodaraGuidelinesSource,
+  createCodaraSkillsSource,
+  createSourceTurnContextPreparer,
+  type SkillsSource,
+} from '@core/sources';
 import type {CreateSessionOptions} from '@core/sessions/types';
-import type {SkillsSource} from '@core/sessions/skills';
-import {createCodaraSkillsSource} from '@core/sessions/skills';
 import {createCodaraModelCatalog, DEFAULT_CODARA_MODEL_ALIAS} from '@core/product/models';
 import {
   createCodaraMiddlewares,
@@ -21,6 +24,7 @@ export interface CodaraSessionAssembly {
     | 'tools'
     | 'handleToolErrors'
     | 'middleware'
+    | 'prepareTurnContext'
     | 'inputBudget'
   >;
   skillsSource?: SkillsSource;
@@ -45,7 +49,11 @@ export function createCodaraSessionAssembly(options: CodaraOptions = {}): Codara
       config: options.config,
     });
   const tools = createCodaraTools(options);
-  const middleware = createCodaraMiddlewares(options, guidelinesSource, skillsSource, skills);
+  const middleware = createCodaraMiddlewares(options);
+  const prepareTurnContext = createSourceTurnContextPreparer({
+    guidelinesSource,
+    skillsSource,
+  });
 
   return {
     sessionOptions: {
@@ -57,6 +65,7 @@ export function createCodaraSessionAssembly(options: CodaraOptions = {}): Codara
       tools,
       ...(options.handleToolErrors !== undefined ? {handleToolErrors: options.handleToolErrors} : {}),
       middleware,
+      ...(prepareTurnContext ? {prepareTurnContext} : {}),
       ...(options.inputBudget ? {inputBudget: options.inputBudget} : {}),
     },
     ...(skillsSource ? {skillsSource} : {}),

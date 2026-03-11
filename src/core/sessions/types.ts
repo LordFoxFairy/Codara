@@ -3,6 +3,7 @@ import type {StructuredToolInterface} from '@langchain/core/tools';
 import type {
   AgentInputBudget,
   AgentInput,
+  AgentTurnContextPreparer,
   AgentInvokeConfig,
   AgentResumeConfig,
   AgentResumeStreamConfig,
@@ -16,8 +17,7 @@ import type {AgentCheckpointer} from '@core/checkpoint/state';
 import type {CompactOptions} from '@core/checkpoint/types';
 import type {BaseMiddleware} from '@core/middleware';
 import type {ResumePayload} from '@core/agents/contract/pause';
-import type {AgentsFileOverview, AgentsFileScope, GuidelinesSource} from '@core/guidelines';
-import type {SkillsSource} from '@core/sessions/skills';
+import type {AgentsFileOverview, AgentsFileScope, GuidelinesSource, SkillsSource} from '@core/sources';
 import type {SessionStore} from '@core/sessions/store';
 import type {ModelInfo} from '@core/provider';
 
@@ -104,6 +104,7 @@ export interface CreateSessionOptions {
   handleToolErrors?: ToolErrorHandler;
   middleware?: BaseMiddleware[];
   checkpointer?: AgentCheckpointer;
+  prepareTurnContext?: AgentTurnContextPreparer;
 
   // Checkpoint 恢复策略
   restore?: 'latest' | 'never';

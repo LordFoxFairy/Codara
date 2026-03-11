@@ -15,6 +15,35 @@ export interface AgentInputBudget {
   reservedTokens?: number;
 }
 
+export interface AgentExecutionMetadata {
+  threadId: string;
+  runId: string;
+  turn: number;
+  maxTurns: number;
+  requestId: string;
+}
+
+export interface AgentTurnPreparationContext {
+  state: {
+    messages: BaseMessage[];
+    context?: AgentRuntimeContext;
+    values?: AgentRuntimeValues;
+  };
+  messages: BaseMessage[];
+  runtime: {
+    context: AgentRuntimeContext;
+    runtimeContext?: AgentRuntimeContext;
+    shared?: Record<string, unknown>;
+  };
+  systemMessage: string[];
+  execution: AgentExecutionMetadata;
+  inputBudget?: AgentInputBudget;
+}
+
+export type AgentTurnContextPreparer = (
+  context: AgentTurnPreparationContext,
+) => Promise<void> | void;
+
 /**
  * Agent 对外状态。
  *
@@ -103,6 +132,8 @@ export interface CreateAgentOptions {
   values?: AgentRuntimeValues;
   /** 模型输入预算，用于 context compaction 等能力。 */
   inputBudget?: AgentInputBudget;
+  /** 每次 turn 在 middleware 前准备 system layers / shared runtime。 */
+  prepareTurnContext?: AgentTurnContextPreparer;
 }
 
 /** invoke(...) 调用配置。 */

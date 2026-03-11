@@ -1,17 +1,12 @@
 import {describe, expect, it} from 'bun:test';
 import {createMiddleware} from '@core/middleware';
 import {createCodaraMiddlewares} from '@core/codara';
-import {EmptySkillStore} from './codara-fixtures';
 
 describe('Codara middleware stack', () => {
-  it('should include SkillsMiddleware by default', () => {
-    const middlewares = createCodaraMiddlewares({
-      skills: {store: new EmptySkillStore()},
-    });
+  it('should keep the default stack runtime-only', () => {
+    const middlewares = createCodaraMiddlewares({});
 
     expect(middlewares.map((middleware) => middleware.name)).toEqual([
-      'GuidelinesMiddleware',
-      'SkillsMiddleware',
       'ConversationContextMiddleware',
       'HumanInTheLoopMiddleware',
     ]);
@@ -25,14 +20,11 @@ describe('Codara middleware stack', () => {
 
     const middlewares = createCodaraMiddlewares({
       logging: {enabled: true},
-      skills: {store: new EmptySkillStore()},
       middleware: [custom],
     });
 
     expect(middlewares.map((middleware) => middleware.name)).toEqual([
       'LoggingMiddleware',
-      'GuidelinesMiddleware',
-      'SkillsMiddleware',
       'CustomMiddleware',
       'ConversationContextMiddleware',
       'HumanInTheLoopMiddleware',
@@ -46,13 +38,10 @@ describe('Codara middleware stack', () => {
     });
 
     const middlewares = createCodaraMiddlewares({
-      skills: {store: new EmptySkillStore()},
       middleware: [custom],
     });
 
     expect(middlewares.map((middleware) => middleware.name)).toEqual([
-      'GuidelinesMiddleware',
-      'SkillsMiddleware',
       'AliasMiddleware',
       'ConversationContextMiddleware',
       'HumanInTheLoopMiddleware',
@@ -60,13 +49,9 @@ describe('Codara middleware stack', () => {
   });
 
   it('should keep summary middleware disabled by default', () => {
-    const middlewares = createCodaraMiddlewares({
-      skills: {store: new EmptySkillStore()},
-    });
+    const middlewares = createCodaraMiddlewares({});
 
     expect(middlewares.map((middleware) => middleware.name)).toEqual([
-      'GuidelinesMiddleware',
-      'SkillsMiddleware',
       'ConversationContextMiddleware',
       'HumanInTheLoopMiddleware',
     ]);
@@ -74,15 +59,12 @@ describe('Codara middleware stack', () => {
 
   it('should keep summary inside the conversation context stage so it can compact against the full prompt input', () => {
     const middlewares = createCodaraMiddlewares({
-      skills: {store: new EmptySkillStore()},
       summary: {
         summarize: () => 'summary',
       },
     });
 
     expect(middlewares.map((middleware) => middleware.name)).toEqual([
-      'GuidelinesMiddleware',
-      'SkillsMiddleware',
       'ConversationContextMiddleware',
       'HumanInTheLoopMiddleware',
     ]);
@@ -98,7 +80,6 @@ describe('Codara middleware stack', () => {
     });
 
     const middlewares = createCodaraMiddlewares({
-      skills: {store: new EmptySkillStore()},
       summary: {
         summarize: () => 'summary',
       },
@@ -106,8 +87,6 @@ describe('Codara middleware stack', () => {
     });
 
     expect(middlewares.map((middleware) => middleware.name)).toEqual([
-      'GuidelinesMiddleware',
-      'SkillsMiddleware',
       'CustomPromptMiddleware',
       'ConversationContextMiddleware',
       'HumanInTheLoopMiddleware',
@@ -117,7 +96,6 @@ describe('Codara middleware stack', () => {
   it('should keep default middleware responsibilities non-overlapping in the main route', () => {
     const middlewares = createCodaraMiddlewares({
       logging: {enabled: true},
-      skills: {store: new EmptySkillStore()},
     });
 
     const byName = new Map(middlewares.map((middleware) => [middleware.name, middleware]));
@@ -130,20 +108,6 @@ describe('Codara middleware stack', () => {
       wrapToolCall: expect.any(Function),
       afterAgent: expect.any(Function),
     });
-
-    expect(byName.get('GuidelinesMiddleware')).toMatchObject({
-      beforeModel: expect.any(Function),
-    });
-    expect(byName.get('GuidelinesMiddleware')?.beforeAgent).toBeUndefined();
-    expect(byName.get('GuidelinesMiddleware')?.wrapModelCall).toBeUndefined();
-    expect(byName.get('GuidelinesMiddleware')?.wrapToolCall).toBeUndefined();
-
-    expect(byName.get('SkillsMiddleware')).toMatchObject({
-      beforeModel: expect.any(Function),
-    });
-    expect(byName.get('SkillsMiddleware')?.beforeAgent).toBeUndefined();
-    expect(byName.get('SkillsMiddleware')?.wrapModelCall).toBeUndefined();
-    expect(byName.get('SkillsMiddleware')?.wrapToolCall).toBeUndefined();
 
     expect(byName.get('ConversationContextMiddleware')).toMatchObject({
       beforeModel: expect.any(Function),
@@ -158,6 +122,14 @@ describe('Codara middleware stack', () => {
     expect(byName.get('HumanInTheLoopMiddleware')?.beforeModel).toBeUndefined();
     expect(byName.get('HumanInTheLoopMiddleware')?.wrapModelCall).toBeUndefined();
     expect(byName.get('HumanInTheLoopMiddleware')?.afterAgent).toBeUndefined();
+  });
+
+  it('should not leak source-driven prompt injection back into the default runtime stack', () => {
+    const middlewares = createCodaraMiddlewares({});
+    const names = new Set(middlewares.map((middleware) => middleware.name));
+
+    expect(names.has('GuidelinesMiddleware')).toBe(false);
+    expect(names.has('SkillsMiddleware')).toBe(false);
   });
 
 });
