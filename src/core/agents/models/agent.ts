@@ -131,8 +131,16 @@ export interface AgentStreamConfig extends Omit<AgentInvokeConfig, 'context'> {
   streamMode?: AgentStreamMode | AgentStreamMode[];
 }
 
-export interface AgentResumeConfig extends Omit<AgentInvokeConfig, 'context'> { input?: AgentInput; context?: AgentRuntimeContext; }
-export interface AgentResumeStreamConfig extends Omit<AgentStreamConfig, 'context'> { input?: AgentInput; context?: AgentRuntimeContext; }
+export interface AgentResumeConfig extends Omit<AgentInvokeConfig, 'context'> {
+  input?: AgentInput;
+  context?: AgentRuntimeContext;
+  resumeMode?: 'model' | 'tool';
+}
+export interface AgentResumeStreamConfig extends Omit<AgentStreamConfig, 'context'> {
+  input?: AgentInput;
+  context?: AgentRuntimeContext;
+  resumeMode?: 'model' | 'tool';
+}
 
 export interface Agent {
   getState(): AgentState;

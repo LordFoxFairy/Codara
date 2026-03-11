@@ -237,7 +237,7 @@ async function resumeDelegatedChild(
 
   return child.resume(
     resume.payload,
-    {...(maxTurns ? {recursionLimit: maxTurns} : {})},
+    {resumeMode: 'tool', ...(maxTurns ? {recursionLimit: maxTurns} : {})},
   );
 }
 

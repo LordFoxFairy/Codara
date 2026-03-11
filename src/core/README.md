@@ -15,13 +15,13 @@ public API
 
 一句话：
 
-`codara 负责产品装配，instructions 负责预热资源与投影，session 负责 host lifecycle，agent 负责执行，middleware 负责运行时拦截，tasks 负责委派。`
+`codara 负责产品装配，instructions 负责预热资源与投影，session 负责 session lifecycle，agent 负责执行，middleware 负责运行时拦截，tasks 负责委派。`
 
 ## 关键边界
 
 - `codara/*`
   - 只装配默认模型、工具、middleware、commands
-  - 不负责 host lifecycle，不负责 loop
+  - 不负责 session lifecycle，不负责 loop
 - `instructions/*`
   - 单独负责 `AGENTS.md` 与 skills runtime 的发现、加载、inspect、ensure、cache
   - session 只 preload/reload 它们，agent turn preparation 只消费 snapshot
@@ -53,15 +53,14 @@ createCodara(...)
       -> restore checkpoint
       -> createAgent(...)
   -> each model turn
-    -> prepareTurnContext(...)
-      -> read session-owned system layers
-      -> merge runtime shared data
+    -> read session-owned system layers
+    -> merge runtime shared data
     -> runtime middleware stages
 ```
 
 这里的重点是：
 
-- `init` 在 session host 完成
+- `init` 在 session 完成
 - middleware 不做 resource discovery
 - tools 不做 session bootstrap
 - `guidelines` 和 `skills` 先形成 projection，再由 session 缓存并传给 agent loop
@@ -69,7 +68,7 @@ createCodara(...)
 ## 维护原则
 
 - 不让 `middleware` 反向依赖 `sessions/*` 的 owner 语义
-- 不让 `agents/*` 吸收 codara/source/host 职责
+- 不让 `agents/*` 吸收 codara/source/session 职责
 - 不为了减少文件数把不同 owner 再揉成一个大文件
 - 只有“没有独立 owner 价值”的小文件才继续合并
 
@@ -176,11 +175,11 @@ createCodara(...)
 - 命令来源会被正式区分为：
   - `builtin`：宿主内建命令
   - `skill`：由 skills discovery 暴露的命令入口
-- 这些命令属于 host surface，不属于 `createAgent(...)` 内核
+- 这些命令属于 Codara agent surface，不属于 `createAgent(...)` 内核
 - `/memory` 直接围绕 `AGENTS.md` 工作，不恢复旧 `MEMORY.md` 机制
 - `/memory` 默认展示当前 AGENTS source stack 与可编辑 target，显式使用 `show / project / global`
 - `/memory project|global` 返回宿主 `open_file` 动作，供 UI/CLI 打开目标 `AGENTS.md`
-- `/compact` 由 `Agent.compactConversation()` 直接拥有；conversation middleware 只负责自动摘要与预算准备，不再代持手动 compact 控制
+- `/compact` 目前只保留命令和 agent hook 位置；手动 compact 算法已移除，等待按新的产品语义重做
 - `/compact checkpoints [keepLast]` 只整理 checkpoint store，不混入 conversation summary 语义
 
 ## Conversation Compact
@@ -192,7 +191,7 @@ createCodara(...)
   - 默认 alias 为 `sonnet`
   - 优先使用 model metadata 的 `contextWindow`
   - 默认阈值为可用输入预算的 95%
-  - 手动 `/compact` 可强制触发
+  - 手动 `/compact` 入口当前仅保留位置，算法待重做
   - 多窗口若要分支，优先调用 `fork()`，不要共享同一条 `threadId`
 
 ## CLI 用法

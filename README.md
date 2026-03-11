@@ -240,8 +240,8 @@ tests/integration      # integration 与本地 mock provider stack
 
 1. `src/core/README.md`
 2. `src/core/agents/README.md`
-3. `src/core/sessions/session.ts`
-4. `src/core/agents/engine/agent.ts`
+3. `src/core/sessions/host.ts`
+4. `src/core/agents/agent-loop.ts`
 5. `src/core/middleware/context-budget.ts`
 
 ## 当前共识

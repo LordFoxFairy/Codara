@@ -33,7 +33,7 @@ src/core/instructions/skills/
 - `command-name` / `command-description` / `command-usage` / `command-aliases` 用于声明宿主级 slash command。
 - skills 负责声明，Codara command registry 负责暴露，Session/agent 负责执行。
 - 这条链复用同一份 skills discovery，不再开旁路。
-- 命令来源会被正式标记为 `skill`，与内建 `builtin` host commands 区分开。
+- 命令来源会被正式标记为 `skill`，与内建 `builtin` agent commands 区分开。
 
 ## 当前边界
 

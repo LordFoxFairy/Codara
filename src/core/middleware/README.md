@@ -157,7 +157,7 @@ source-driven system layers 现在走另一条链：
 request-preparation slice 的职责应固定理解为：
 
 - model input assembly
-  - directly owned by `agents/loop/model-step.ts`
+  - directly owned by `agents/agent-loop.ts`
 - `middleware/conversation`
   - transient budget snapshot / heuristic
   - summary compaction helper over `messages`

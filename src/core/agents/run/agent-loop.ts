@@ -389,7 +389,7 @@ export function createAgent(options: CreateAgentOptions): Agent {
     async resume(payload, config = {}) {
       assertReadyForResume(state);
       const pause = state.pendingPause as PauseRequest;
-      if (isDelegatedPause(pause)) {
+      if (config.resumeMode === 'tool' || isDelegatedPause(pause)) {
         return resumeDelegatedTool(payload, config);
       }
       return execute(
@@ -427,9 +427,13 @@ export function createAgent(options: CreateAgentOptions): Agent {
 
     async *resumeStream(payload, config = {}) {
       assertReadyForResume(state);
+      const pause = state.pendingPause as PauseRequest;
+      if (config.resumeMode === 'tool' || isDelegatedPause(pause)) {
+        throw new Error('Streaming tool resume is not implemented yet.');
+      }
       return yield* executeStream(
         config.input,
-        {...config, context: injectResumePayload(config.context, state.pendingPause as PauseRequest, payload)},
+        {...config, context: injectResumePayload(config.context, pause, payload)},
         'resume',
       );
     },
