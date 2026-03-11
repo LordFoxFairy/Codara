@@ -33,6 +33,7 @@ export function applyAgentStateUpdate(
   update: AgentStateUpdate | undefined,
   runtime?: {
     context: AgentRuntimeContext;
+    runtimeContext?: AgentRuntimeContext;
     shared?: Record<string, unknown>;
   }
 ): void {
@@ -51,6 +52,7 @@ export function applyAgentStateUpdate(
 
   if (update.runtimeContext && runtime) {
     runtime.context = mergeRecords(runtime.context, update.runtimeContext) ?? {};
+    runtime.runtimeContext = mergeRecords(runtime.runtimeContext, update.runtimeContext) ?? {};
   }
 
   if (update.runtimeShared && runtime) {

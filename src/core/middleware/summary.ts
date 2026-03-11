@@ -48,7 +48,10 @@ export interface SummaryOptions {
   estimateTokens?: ContextBudgetEstimator;
 }
 
-/** 创建对话摘要中间件。 */
+/**
+ * @deprecated Prefer `createConversationContextMiddleware({summary: ...})` in the main runtime path.
+ * This wrapper is kept only as a low-level compatibility primitive.
+ */
 export function createSummaryMiddleware(options: SummaryOptions): BaseMiddleware {
   const normalized = normalizeOptions(options);
 

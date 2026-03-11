@@ -2,6 +2,8 @@ import {describe, expect, it} from 'bun:test';
 import {HumanMessage} from '@langchain/core/messages';
 import type {AgentResult} from '@core/agents';
 import {
+  applyAgentStateSnapshot,
+  cloneAgentState,
   createInitialAgentState,
   restoreCheckpointMetadata,
   toAgentState,
@@ -9,16 +11,17 @@ import {
   toCheckpointState,
   type MutableAgentState,
 } from '@core/agents/engine/state';
+import {createRunContext} from '@core/agents/loop/run';
 import type {AgentCheckpoint} from '@core/checkpoint/state';
 
 describe('agent checkpoint state helpers', () => {
   it('should convert runtime state into public and checkpoint snapshots without sharing mutable references', () => {
     const runtimeState = createRuntimeState();
 
-    const publicState = toAgentState('thread-public', runtimeState);
+    const publicState = toAgentState(runtimeState);
     const checkpointState = toCheckpointState(runtimeState);
 
-    expect(publicState.threadId).toBe('thread-public');
+    expect(publicState.threadId).toBe('thread-runtime');
     expect(publicState.agentType).toBe('subagent');
     expect(checkpointState.agentType).toBe('subagent');
     expect(checkpointState.pendingPause?.id).toBe('pause-1');
@@ -33,7 +36,7 @@ describe('agent checkpoint state helpers', () => {
   it('should restore checkpoint metadata back into runtime state', () => {
     const runtimeState = createRuntimeState();
     const checkpointState = toCheckpointState(runtimeState);
-    const publicState = toAgentState('thread-runtime', runtimeState);
+    const publicState = toAgentState(runtimeState);
     const result: AgentResult = {
       reason: 'complete',
       turns: 3,
@@ -60,6 +63,53 @@ describe('agent checkpoint state helpers', () => {
       reason: 'complete',
       turns: 3,
     });
+  });
+
+  it('should clone agent state for run usage without sharing mutable references', () => {
+    const runtimeState = createRuntimeState();
+    const cloned = cloneAgentState(toAgentState(runtimeState));
+
+    cloned.messages.push(new HumanMessage('new'));
+    (cloned.context.nested as {flag: boolean}).flag = false;
+    (cloned.values.todo as {done: boolean}).done = true;
+
+    expect(runtimeState.messages).toHaveLength(1);
+    expect((runtimeState.context.nested as {flag: boolean}).flag).toBe(true);
+    expect((runtimeState.values.todo as {done: boolean}).done).toBe(false);
+  });
+
+  it('should not rewrite the provided state when building run context', () => {
+    const runtimeState = createRuntimeState();
+    const state = toAgentState(runtimeState);
+    const originalContext = state.context;
+    const originalValues = state.values;
+
+    const run = createRunContext(state, {
+      context: {ephemeral: true},
+    });
+
+    expect(run.state).toBe(state);
+    expect(state.context).toBe(originalContext);
+    expect(state.values).toBe(originalValues);
+    expect(run.runtimeContext).toEqual({ephemeral: true});
+  });
+
+  it('should apply a state snapshot back into runtime state with cloned data', () => {
+    const runtimeState = createRuntimeState();
+    const nextState = toAgentState(runtimeState);
+    nextState.messages.push(new HumanMessage('next'));
+    nextState.context = {nested: {flag: false}};
+    nextState.values = {todo: {done: true}};
+    nextState.pendingPause = undefined;
+
+    applyAgentStateSnapshot(runtimeState, nextState);
+
+    expect(runtimeState.messages).toHaveLength(2);
+    expect((runtimeState.context.nested as {flag: boolean}).flag).toBe(false);
+    expect((runtimeState.values.todo as {done: boolean}).done).toBe(true);
+
+    nextState.messages.push(new HumanMessage('mutate-after-apply'));
+    expect(runtimeState.messages).toHaveLength(2);
   });
 });
 

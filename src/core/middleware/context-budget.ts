@@ -19,6 +19,10 @@ export interface ContextBudgetMiddlewareOptions {
   estimateTokens?: ContextBudgetEstimator;
 }
 
+/**
+ * @deprecated Prefer `createConversationContextMiddleware(...)` in the main runtime path.
+ * This wrapper is kept only as a low-level compatibility primitive.
+ */
 export function createContextBudgetMiddleware(
   options: ContextBudgetMiddlewareOptions = {}
 ): BaseMiddleware {

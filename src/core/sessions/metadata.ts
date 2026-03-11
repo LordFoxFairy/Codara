@@ -30,6 +30,14 @@ export function cloneSessionMetadata(
   };
 }
 
+export function cloneForkSessionMetadata(
+  metadata: Partial<SessionMetadata> | undefined,
+): Partial<SessionMetadata> {
+  const cloned = cloneSessionMetadata(metadata);
+  delete cloned.usage;
+  return cloned;
+}
+
 export function touchSessionMetadata(metadata: SessionMetadata, updatedAt: string): void {
   metadata.lastActivity = updatedAt;
 }
@@ -44,6 +52,8 @@ export function updateSessionMetadataFromAgentState(
   const lastText = readMessageText(lastMessage?.content);
   if (lastText) {
     metadata.lastMessage = lastText.slice(0, 200);
+  } else {
+    delete metadata.lastMessage;
   }
 
   if (!metadata.title) {
@@ -52,6 +62,13 @@ export function updateSessionMetadataFromAgentState(
     if (title) {
       metadata.title = title.slice(0, 80);
     }
+  }
+
+  const currentContextWindow = readLatestContextWindow(agentState.messages);
+  if (currentContextWindow) {
+    metadata.contextWindow = currentContextWindow;
+  } else {
+    delete metadata.contextWindow;
   }
 }
 
@@ -90,9 +107,7 @@ export function mergeSessionTelemetry(
     metadata.usage = usage;
   }
 
-  if (patch.contextWindow) {
-    metadata.contextWindow = patch.contextWindow;
-  }
+  void patch.contextWindow;
 }
 
 function readMessageText(content: unknown): string | undefined {

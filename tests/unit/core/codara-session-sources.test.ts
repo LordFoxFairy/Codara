@@ -4,6 +4,7 @@ import path from 'node:path';
 import {tmpdir} from 'node:os';
 import {createCodara, FileSessionStore} from '@core';
 import type {BaseChatModel} from '@langchain/core/language_models/chat_models';
+import type {SkillMetadata, SkillStore} from '@core/skills/types';
 import {SystemEchoModel} from './codara-fixtures';
 
 describe('Codara session source lifecycle', () => {
@@ -144,5 +145,104 @@ describe('Codara session source lifecycle', () => {
     const persisted = await store.get(after.sessionId);
     expect(persisted?.updatedAt).toBe(after.updatedAt);
     expect(persisted?.metadata?.lastActivity).toBe(after.metadata?.lastActivity);
+  });
+
+  it('should preload skills runtime at session bootstrap and reuse it on the later model call', async () => {
+    const root = await mkdtemp(path.join(tmpdir(), 'codara-session-skills-bootstrap-'));
+    const userHome = path.join(root, 'home');
+    const projectRoot = path.join(root, 'project');
+    await mkdir(path.join(userHome, '.codara'), {recursive: true});
+    await mkdir(path.join(projectRoot, '.git'), {recursive: true});
+
+    let discoverCalls = 0;
+    const store: SkillStore = {
+      async discover(): Promise<SkillMetadata[]> {
+        discoverCalls += 1;
+        return [
+          {
+            name: 'bootstrap-skill',
+            description: 'session-owned preload',
+            path: path.join(projectRoot, '.codara', 'skills', 'bootstrap-skill', 'SKILL.md'),
+          },
+        ];
+      },
+      listSources() {
+        return [path.join(projectRoot, '.codara', 'skills')];
+      },
+    };
+
+    const codara = createCodara({
+      model: new SystemEchoModel() as unknown as BaseChatModel,
+      projectRoot,
+      userHome,
+      guidelines: false,
+      skills: {store},
+      builtinTools: false,
+    });
+
+    await codara.hydrate();
+    expect(discoverCalls).toBe(1);
+
+    await codara.invoke('hello');
+    expect(discoverCalls).toBe(1);
+  });
+
+  it('should reload skills projections for the same Codara host only after reloadSources is called', async () => {
+    const root = await mkdtemp(path.join(tmpdir(), 'codara-session-skills-reload-'));
+    const userHome = path.join(root, 'home');
+    const projectRoot = path.join(root, 'project');
+    const skillDir = path.join(projectRoot, '.codara', 'skills', 'demo-skill');
+    await mkdir(path.join(userHome, '.codara'), {recursive: true});
+    await mkdir(path.join(projectRoot, '.git'), {recursive: true});
+    await mkdir(skillDir, {recursive: true});
+    await writeFile(
+      path.join(skillDir, 'SKILL.md'),
+      `---
+name: demo-skill
+description: skill rule v1
+---
+# Demo
+`,
+      'utf8',
+    );
+
+    const codara = createCodara({
+      model: new SystemEchoModel() as unknown as BaseChatModel,
+      projectRoot,
+      userHome,
+      guidelines: false,
+      skills: {
+        projectRoot,
+        userHome,
+        cacheTtlMs: 0,
+      },
+      builtinTools: false,
+    });
+
+    const first = await codara.invoke('hello');
+    const firstText = String(first.state.messages[first.state.messages.length - 1]?.content);
+    expect(firstText).toContain('skill rule v1');
+
+    await writeFile(
+      path.join(skillDir, 'SKILL.md'),
+      `---
+name: demo-skill
+description: skill rule v2
+---
+# Demo
+`,
+      'utf8',
+    );
+
+    const second = await codara.invoke('again');
+    const secondText = String(second.state.messages[second.state.messages.length - 1]?.content);
+    expect(secondText).toContain('skill rule v1');
+    expect(secondText).not.toContain('skill rule v2');
+
+    await codara.reloadSources();
+    const third = await codara.invoke('after reload');
+    const thirdText = String(third.state.messages[third.state.messages.length - 1]?.content);
+    expect(thirdText).toContain('skill rule v2');
+    expect(thirdText).not.toContain('skill rule v1');
   });
 });

@@ -5,7 +5,6 @@ import type {
   AgentInvokeConfig,
   AgentResult,
   AgentRuntimeContext,
-  AgentRuntimeValues,
   AgentState,
   ToolErrorHandler,
 } from '@core/agents/contract/agent';
@@ -14,6 +13,7 @@ import type {AgentStreamWriter} from '@core/agents/engine/stream-writer';
 import {runTurn, runTurnStream, type AgentTurnOutcome} from '@core/agents/loop/turn';
 import type {MiddlewarePipeline, MiddlewareRuntimeShared} from '@core/middleware';
 import {toError, formatErrorMessage} from '@core/shared/errors';
+import {mergeContext} from '@core/agents/engine/runtime-input';
 
 const DEFAULT_RECURSION_LIMIT = 25;
 
@@ -40,12 +40,8 @@ export interface AgentRuntime {
 /** 为 invoke/stream 创建运行上下文。 */
 export function createRunContext(
   state: AgentState,
-  persistedContext: AgentRuntimeContext,
-  agentValues: AgentRuntimeValues,
   config: Pick<AgentInvokeConfig, 'recursionLimit' | 'context' | 'inputBudget'> = {}
 ): AgentRunContext {
-  state.context = persistedContext;
-  state.values = agentValues;
   return {
     state,
     runId: randomUUID(),
@@ -54,6 +50,10 @@ export function createRunContext(
     shared: {},
     inputBudget: config.inputBudget,
   };
+}
+
+export function resolveEffectiveContext(run: Pick<AgentRunContext, 'state' | 'runtimeContext'>): AgentRuntimeContext {
+  return mergeContext(run.state.context, run.runtimeContext);
 }
 
 /** 在主循环之外执行 beforeRun 钩子。 */

@@ -3,6 +3,7 @@ import {AIMessage, HumanMessage, SystemMessage, ToolMessage, type BaseMessage, t
 import type {BaseChatModel} from '@langchain/core/language_models/chat_models';
 import type {StructuredToolInterface} from '@langchain/core/tools';
 import {createAgent} from '@core/agents';
+import {readDelegatedAgentResult} from '@core/tasking';
 import {
   createSharedTaskMiddleware,
   createSubagentMiddleware,
@@ -93,6 +94,7 @@ describe('tasking middlewares', () => {
     expect(taskMiddleware.tools?.map((tool) => tool.name)).toEqual([TASK_TOOL_NAME]);
     expect(result.reason).toBe('complete');
     expect(String(toolMessage.content)).toContain('child middleware summary');
+    expect(readDelegatedAgentResult(toolMessage.artifact)?.summary).toBe('child middleware summary');
   });
 
   it('should inject available subagent definitions from skills runtime before model calls', async () => {
@@ -144,6 +146,7 @@ describe('tasking middlewares', () => {
     expect(subagentMiddleware.tools?.map((tool) => tool.name)).toEqual([DEFAULT_SUBAGENT_TOOL_NAME]);
     expect(result.reason).toBe('complete');
     expect(String(toolMessage.content)).toContain('child middleware summary');
+    expect(readDelegatedAgentResult(toolMessage.artifact)?.summary).toBe('child middleware summary');
   });
 
   it('should expose shared task coordination tools as a dedicated middleware', async () => {

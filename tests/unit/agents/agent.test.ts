@@ -217,6 +217,19 @@ describe('Agent', () => {
     expect(result.turns).toBe(3);
   });
 
+  it('非法 recursionLimit 不应污染 agent 内部状态', async () => {
+    const model = new FakeModel([new AIMessage('done')]) as unknown as BaseChatModel;
+    const runner = createAgent({model});
+
+    await expect(
+      runner.invoke({messages: [new HumanMessage('start')]}, {recursionLimit: 0})
+    ).rejects.toThrow('recursionLimit must be at least 1');
+
+    const state = runner.getState();
+    expect(state.status).toBe('idle');
+    expect(state.messages).toHaveLength(0);
+  });
+
   it('应支持 beforeRun/afterRun 两个 invoke 外钩子', async () => {
     const events: string[] = [];
     let preRunId = '';
@@ -259,6 +272,8 @@ describe('Agent', () => {
     expect(result.reason).toBe('error');
     expect(result.turns).toBe(0);
     expect(result.error?.message).toContain('beforeRun failed: pre boom');
+    expect(runner.getState().status).toBe('idle');
+    expect(runner.getState().messages).toHaveLength(0);
   });
 
   it('afterRun 抛错时应将非 error 结果转为 error', async () => {
@@ -497,6 +512,109 @@ describe('Agent', () => {
     expect(String((firstInvoke[0] as SystemMessage).content)).toContain('User ID: user-123, Tenant: acme-corp');
   });
 
+  it('应区分持久 context、临时 runtimeContext 和合成后的有效 context', async () => {
+    let seen:
+      | {
+          context: Record<string, unknown>;
+          agentContext: Record<string, unknown>;
+          runtimeContext: Record<string, unknown>;
+        }
+      | undefined;
+
+    const model = new FakeModel([new AIMessage('done')]) as unknown as BaseChatModel;
+    const middleware = createMiddleware({
+      name: 'ContextBoundaryMiddleware',
+      beforeModel: (context) => {
+        seen = {
+          context: context.runtime.context,
+          agentContext: context.runtime.agentContext ?? {},
+          runtimeContext: context.runtime.runtimeContext ?? {},
+        };
+      },
+    });
+
+    const runner = createAgent({
+      model,
+      context: {
+        tenantId: 'tenant-1',
+        profile: {
+          locale: 'zh-CN',
+        },
+      },
+      middleware: [middleware],
+    });
+
+    const result = await runner.invoke('hello', {
+      context: {
+        userId: 'user-123',
+        profile: {
+          timezone: 'Asia/Shanghai',
+        },
+      },
+    });
+
+    expect(result.reason).toBe('complete');
+    expect(seen).toEqual({
+      context: {
+        tenantId: 'tenant-1',
+        userId: 'user-123',
+        profile: {
+          locale: 'zh-CN',
+          timezone: 'Asia/Shanghai',
+        },
+      },
+      agentContext: {
+        tenantId: 'tenant-1',
+        profile: {
+          locale: 'zh-CN',
+        },
+      },
+      runtimeContext: {
+        userId: 'user-123',
+        profile: {
+          timezone: 'Asia/Shanghai',
+        },
+      },
+    });
+    expect(result.state.context).toEqual({
+      tenantId: 'tenant-1',
+      profile: {
+        locale: 'zh-CN',
+      },
+    });
+  });
+
+  it('contextSchema 校验应基于持久 context 与临时 context 的合成结果', async () => {
+    const model = new FakeModel([new AIMessage('done')]) as unknown as BaseChatModel;
+    const userContextMiddleware = createMiddleware({
+      name: 'MergedContextValidationMiddleware',
+      contextSchema: z.object({
+        userId: z.string(),
+        tenantId: z.string(),
+      }),
+      beforeModel: () => undefined,
+    });
+
+    const runner = createAgent({
+      model,
+      context: {
+        tenantId: 'tenant-1',
+      },
+      middleware: [userContextMiddleware],
+    });
+
+    const result = await runner.invoke(
+      {messages: [new HumanMessage('hello')]},
+      {
+        context: {
+          userId: 'user-123',
+        },
+      }
+    );
+
+    expect(result.reason).toBe('complete');
+  });
+
   it('context 不满足 middleware.contextSchema 时应返回 error', async () => {
     const model = new FakeModel([new AIMessage('done')]) as unknown as BaseChatModel;
     const userContextMiddleware = createMiddleware({
@@ -524,6 +642,8 @@ describe('Agent', () => {
 
     expect(result.reason).toBe('error');
     expect(result.error?.message).toContain('context validation failed');
+    expect(runner.getState().status).toBe('idle');
+    expect(runner.getState().messages).toHaveLength(0);
   });
 
   it('stream(messages) 应输出模型 chunks 并返回最终结果', async () => {

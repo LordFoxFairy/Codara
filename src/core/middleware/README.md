@@ -2,7 +2,7 @@
 
 ## 概述
 
-`@core/middleware` 提供与 Agent loop 对齐的 6 个 hooks，用于注入日志、上下文 source、输入预算、上下文压缩、工具拦截等横切逻辑。
+`@core/middleware` 提供与 Agent loop 对齐的 6 个 hooks，用于注入日志、上下文 source、conversation context、工具拦截等横切逻辑。
 
 生命周期顺序固定为：
 
@@ -92,13 +92,32 @@ const result = await agent.invoke(
 - `systemMessage`：可在 `beforeModel` 或 `wrapModelCall` 中追加系统消息
 - `runId`、`turn`、`maxTurns`、`requestId`
 - `inputBudget`：本轮调用的输入预算配置
-- `budget`：当前 turn 的输入预算快照（由 `ContextBudgetMiddleware` 计算）
+- `budget`：当前 turn 的输入预算快照（默认由 `ConversationContextMiddleware` 维护）
 
 特有字段：
 
 - `afterModel`：`response`
 - `wrapToolCall`：`toolCall`、`toolIndex`、`tool`
 - `afterAgent`：`result`
+
+## 默认主链
+
+Codara 默认 runtime 只把下面几类模块当成一等 middleware stage：
+
+- `LoggingMiddleware`
+- `GuidelinesMiddleware`
+- `SkillsMiddleware`
+- caller middlewares
+- `ConversationContextMiddleware`
+- `HumanInTheLoopMiddleware`
+
+其中：
+
+- `conversation-input.ts`
+- `context-budget.ts`
+- `summary.ts`
+
+都属于 conversation internals。它们可以被直接导入复用，但不应再被理解为默认主链中的并列 stage。
 
 ## 典型模式
 
