@@ -1,5 +1,5 @@
 import {createMiddleware} from '@core/middleware';
-import type {GuidelinesSource} from '@core/guidelines';
+import type {GuidelinesSource} from '@core/sources';
 /** 注入由 AGENTS source 提供的 AGENTS.md 投影。 */
 export function createGuidelinesMiddleware(guidelinesSource?: GuidelinesSource) {
   return createMiddleware({

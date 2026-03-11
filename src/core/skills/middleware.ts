@@ -8,7 +8,7 @@ import {
   formatSkillsLocations,
 } from '@core/skills/metadata'
 import {loadSkillsRuntimeData, readSkillsRuntimeData} from '@core/skills/subagents'
-import type {SkillsSource} from '@core/sessions/skills'
+import type {SkillsSource} from '@core/sources'
 import type {SkillStore} from '@core/skills/types'
 
 export interface SkillsMiddlewareOptions {
