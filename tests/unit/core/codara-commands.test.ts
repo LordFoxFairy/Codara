@@ -4,6 +4,7 @@ import {AIMessage, type BaseMessage, type ToolCall} from '@langchain/core/messag
 import {tool} from '@langchain/core/tools';
 import {z} from 'zod';
 import {createAgentMemoryCheckpointer, createCodara} from '@core';
+import {readSummaryRecord} from '@core/middleware/summary';
 import {EchoModel, SystemEchoModel} from './codara-fixtures';
 
 class PauseThenCompleteModel {
@@ -35,7 +36,6 @@ describe('Codara slash commands', () => {
     const result = await codara.executeCommand('/help');
     expect(result.ok).toBe(true);
     expect(result.output).toContain('/help [command]');
-    expect(result.output).toContain('/memory [show|project|global]');
     expect(result.output).toContain('/resume [approve|reject] [feedback]');
     expect(result.output).toContain('/compact [instructions] | /compact checkpoints [keepLast]');
     expect(result.output).toContain('/reload');
@@ -44,7 +44,6 @@ describe('Codara slash commands', () => {
       source: command.source.type,
     }))).toEqual([
       {name: 'help', source: 'builtin'},
-      {name: 'memory', source: 'builtin'},
       {name: 'resume', source: 'builtin'},
       {name: 'compact', source: 'builtin'},
       {name: 'reload', source: 'builtin'},
@@ -63,7 +62,7 @@ describe('Codara slash commands', () => {
     expect(result.output).toContain('AGENTS.md');
   });
 
-  it('should keep the manual compact command reserved until the algorithm is redesigned', async () => {
+  it('should compact the current conversation through the session-owned compact path', async () => {
     const codara = createCodara({
       model: new SystemEchoModel() as unknown as BaseChatModel,
       skills: false,
@@ -81,11 +80,13 @@ describe('Codara slash commands', () => {
 
     const result = await codara.executeCommand('/compact');
 
-    expect(result.ok).toBe(false);
-    expect(result.output).toContain('not implemented yet');
+    expect(result.ok).toBe(true);
+    expect(result.output).toContain('Conversation context compacted');
+    expect(readSummaryRecord(result.state?.messages ?? [])?.content).toBe('manual compact summary');
   });
 
-  it('should reject custom compact instructions until the manual compact algorithm exists', async () => {
+  it('should pass custom compact instructions into the summary middleware path', async () => {
+    let seenInstructions: string | undefined;
     const codara = createCodara({
       model: new SystemEchoModel() as unknown as BaseChatModel,
       skills: false,
@@ -93,7 +94,10 @@ describe('Codara slash commands', () => {
       summary: {
         maxMessages: 99,
         keepLastMessages: 2,
-        summarize: () => 'manual compact summary',
+        summarize: ({instructions}) => {
+          seenInstructions = instructions;
+          return 'manual compact summary';
+        },
       },
     });
 
@@ -103,8 +107,8 @@ describe('Codara slash commands', () => {
 
     const result = await codara.executeCommand('/compact focus on decisions and pending risks');
 
-    expect(result.ok).toBe(false);
-    expect(result.output).toContain('not implemented yet');
+    expect(result.ok).toBe(true);
+    expect(seenInstructions).toBe('focus on decisions and pending risks');
   });
 
   it('should compact checkpoint history through the slash command agent surface', async () => {

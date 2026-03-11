@@ -1,6 +1,5 @@
 import type {AgentResult, AgentState, ResumePayload} from '@core/agents';
 import type {AgentResumeConfig} from '@core/agents';
-import type {AgentsFileOverview, AgentsFileScope} from '@core/instructions/guidelines';
 import type {CompactOptions} from '@core/checkpoint';
 
 export interface ParsedCodaraCommand {
@@ -46,8 +45,6 @@ export interface CodaraCommandAgent {
   compactCheckpoints(options?: CompactOptions): Promise<void>;
   hydrate(): Promise<AgentState>;
   getAgentState(): AgentState;
-  inspectAgentsFiles(): Promise<AgentsFileOverview>;
-  ensureAgentsFileTarget(scope: AgentsFileScope): Promise<string>;
   invoke(input: string): Promise<AgentResult>;
   reloadSources(): Promise<void>;
   resumePause(payload: ResumePayload, config?: AgentResumeConfig): Promise<AgentResult>;
