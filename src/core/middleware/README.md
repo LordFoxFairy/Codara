@@ -40,7 +40,7 @@ const agent = createAgent({
 
 - `wrapModelCall(request, handler)`
 - `handler(request)` 传递改写后的请求
-- `request.runtime.context` 读取 invoke 上下文
+- `request.runtime.context` 读取当前 hook 可见的有效上下文视图
 - `request.systemMessage` 注入系统消息
 - `contextSchema` 做上下文校验
 

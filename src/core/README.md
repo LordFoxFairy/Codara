@@ -191,6 +191,8 @@ checkpoint 边界：
 `AGENTS.md` 在当前架构中属于项目规范源，不属于：
 - `skills`
 - `checkpoint`
+- `session metadata`
+- `state.context`
 
 
 ## Summary 中间件
@@ -207,6 +209,20 @@ checkpoint 边界：
 - `guidelines`
 - `session`
 - `checkpoint`
+
+## Future Memory Non-Goals
+
+如果后面再设计真正的产品级 memory，当前先明确这些非目标：
+
+- 不是 `checkpoint` 的别名
+- 不是 `state.context` 的别名
+- 不是 `session metadata` 的别名
+- 不是 `/memory` 命令当前展示的 `AGENTS.md` source stack
+
+也就是说，未来若引入 memory：
+- 必须有自己独立的产品语义
+- 必须有独立的数据边界
+- 不能再复用现有名词把 checkpoint/context/session metadata 混成一个概念
 
 ## Conversation Context
 
