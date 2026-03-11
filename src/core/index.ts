@@ -25,12 +25,12 @@ export {
   type CreateAgentOptions,
 } from '@core/agents';
 export {
-  DEFAULT_SUBAGENT_TOOL_DESCRIPTION,
-  DEFAULT_SUBAGENT_TOOL_NAME,
   TASK_TOOL_DESCRIPTION,
   TASK_TOOL_NAME,
-  createSubagentTool,
-  createTaskTool,
+  createSharedTaskMiddleware,
+  createTaskMiddleware,
+  type CreateSharedTaskMiddlewareOptions,
+  type CreateTaskMiddlewareOptions,
 } from '@core/tasking';
 export {
   createConversationContextMiddleware,
@@ -86,7 +86,3 @@ export {
   type ModelInfo,
   type ModelRoutingConfig,
 } from '@core/provider';
-export {
-  type CreateSubagentToolOptions,
-  type CreateTaskToolOptions,
-} from '@core/tasking';

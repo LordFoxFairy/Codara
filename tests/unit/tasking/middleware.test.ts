@@ -5,15 +5,15 @@ import type {StructuredToolInterface} from '@langchain/core/tools';
 import {createAgent} from '@core/agents';
 import {
   createSharedTaskMiddleware,
-  createSubagentMiddleware,
   createTaskMemoryStore,
   createTaskMiddleware,
-  DEFAULT_SUBAGENT_TOOL_NAME,
-  readDelegatedAgentResult,
   TASK_CREATE_TOOL_NAME,
   TASK_LIST_TOOL_NAME,
   TASK_TOOL_NAME,
 } from '@core/tasking';
+import {
+  readDelegatedAgentResult,
+} from '@core/tasking/delegation';
 import {createAgentSkillsMiddleware, createBuiltinAgentStore} from '../agents/task-tool.fixtures';
 
 class ScriptedModel {
@@ -117,18 +117,18 @@ describe('tasking middlewares', () => {
     expect(String(lastAi.content)).toContain('Explore');
   });
 
-  it('should register the primitive subagent tool through middleware', async () => {
-    const subagentMiddleware = createSubagentMiddleware({
+  it('should delegate through Task middleware without requiring skills runtime for the default delegate', async () => {
+    const taskMiddleware = createTaskMiddleware({
       model: new ChildSummaryModel() as unknown as BaseChatModel,
     });
     const model = new ScriptedModel([
       new AIMessage({
         content: '',
         tool_calls: [{
-          id: 'call_subagent_middleware',
-          name: DEFAULT_SUBAGENT_TOOL_NAME,
+          id: 'call_task_default_delegate',
+          name: TASK_TOOL_NAME,
           args: {
-            prompt: 'subdelegate this',
+            prompt: 'delegate with the default child',
           },
         } as ToolCall],
       }),
@@ -137,13 +137,13 @@ describe('tasking middlewares', () => {
 
     const agent = createAgent({
       model,
-      middleware: [subagentMiddleware],
+      middleware: [taskMiddleware],
     });
 
     const result = await agent.invoke([new HumanMessage('start')]);
     const toolMessage = result.state.messages.find((message) => ToolMessage.isInstance(message)) as ToolMessage;
 
-    expect(subagentMiddleware.tools?.map((tool) => tool.name)).toEqual([DEFAULT_SUBAGENT_TOOL_NAME]);
+    expect(taskMiddleware.tools?.map((tool) => tool.name)).toEqual([TASK_TOOL_NAME]);
     expect(result.reason).toBe('complete');
     expect(String(toolMessage.content)).toContain('child middleware summary');
     expect(readDelegatedAgentResult(toolMessage.artifact)?.summary).toBe('child middleware summary');

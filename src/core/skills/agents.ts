@@ -27,6 +27,14 @@ export interface SkillsRuntimeData {
   agentDefinitions: Record<string, SubagentDefinition>;
 }
 
+export const DEFAULT_SUBAGENT_TYPE = 'general-purpose';
+
+const DEFAULT_SUBAGENT_DEFINITION: SubagentDefinition = {
+  name: DEFAULT_SUBAGENT_TYPE,
+  description: 'General-purpose delegate',
+  systemPrompt: '',
+};
+
 export async function loadSkillsRuntimeData(
   store: SkillStore,
   agentRoots: string[] = []
@@ -70,11 +78,15 @@ export function resolveSubagentDefinition(
   const definitionName = normalizeDefinitionName(subagentType);
   const definition = runtime?.agentDefinitions?.[definitionName];
 
-  if (!definition) {
-    throw new Error(`Unknown subagent_type "${definitionName}"`);
+  if (definition) {
+    return definition;
   }
 
-  return definition;
+  if (definitionName === DEFAULT_SUBAGENT_TYPE) {
+    return DEFAULT_SUBAGENT_DEFINITION;
+  }
+
+  throw new Error(`Unknown subagent_type "${definitionName}"`);
 }
 
 async function loadAgentDefinitions(
@@ -206,7 +218,7 @@ function readStringList(value: unknown): string[] {
 
 function normalizeDefinitionName(value: string | undefined): string {
   const normalized = value?.trim();
-  return normalized || 'general-purpose';
+  return normalized || DEFAULT_SUBAGENT_TYPE;
 }
 
 function isRecord(value: unknown): value is Record<string, unknown> {

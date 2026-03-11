@@ -38,7 +38,6 @@ export type {Session, SessionState, SessionStatus, SessionStore} from '@core/ses
 
 /** Agent 构建 */
 export {createAgent} from '@core/agents';
-export {createSubagentTool, createTaskTool} from '@core/tasking';
 
 /** Session 管理 */
 export {createSession, FileSessionStore} from '@core/sessions';
@@ -62,7 +61,6 @@ export {
 } from '@core/middleware';
 export {
   createSharedTaskMiddleware,
-  createSubagentMiddleware,
   createTaskMiddleware,
 } from '@core/tasking';
 

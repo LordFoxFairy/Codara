@@ -2,11 +2,11 @@ import {tool, type StructuredToolInterface} from '@langchain/core/tools';
 import {z} from 'zod';
 import {createMiddleware, type BaseMiddleware} from '@core/middleware';
 import {
-  type CreateSubagentToolOptions,
+  type DelegatedAgentOptions,
   markDelegationTool,
   readDelegatedParentRuntimeMetadata,
   runDelegatedAgent,
-} from '@core/tasking/subagent';
+} from '@core/tasking/delegation';
 import {
   readSkillsRuntimeData,
   resolveSubagentDefinition,
@@ -33,7 +33,7 @@ const TaskToolInputSchema = z.object({
 
 type TaskToolInput = z.infer<typeof TaskToolInputSchema>;
 
-export interface CreateTaskToolOptions extends Omit<CreateSubagentToolOptions, 'name' | 'description'> {
+export interface CreateTaskToolOptions extends DelegatedAgentOptions {
   description?: string;
 }
 
@@ -46,7 +46,7 @@ export function createTaskTool(options: CreateTaskToolOptions): StructuredToolIn
 
   return markDelegationTool(tool(
     async ({prompt, subagent_type, max_turns}: TaskToolInput, config) => {
-      const configurable = readConfigurable(config?.configurable);
+      const configurable = asRecord(config?.configurable);
       const delegated = readDelegatedParentRuntimeMetadata(configurable, TASK_TOOL_NAME);
       const profile = resolveSubagentDefinition(
         readAgentSkillsRuntime(configurable.runtimeShared),
@@ -59,7 +59,8 @@ export function createTaskTool(options: CreateTaskToolOptions): StructuredToolIn
         prompt,
         maxTurns: max_turns ?? profile.maxTurns,
         toolName: TASK_TOOL_NAME,
-        ...delegated,
+        parentExecution: delegated.parentExecution,
+        ...(delegated.resume ? {resume: delegated.resume} : {}),
         profileTools: resolveDefinitionTools(options.tools ?? [], profile),
         profileSystemPrompt: profile.systemPrompt,
       });
@@ -118,7 +119,7 @@ function readAgentSkillsRuntime(value: unknown) {
   return readSkillsRuntimeData(value as MiddlewareRuntimeShared);
 }
 
-function readConfigurable(value: unknown): Record<string, unknown> {
+function asRecord(value: unknown): Record<string, unknown> {
   return value && typeof value === 'object' && !Array.isArray(value)
     ? value as Record<string, unknown>
     : {};

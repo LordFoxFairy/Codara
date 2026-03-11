@@ -74,7 +74,7 @@ src/index.ts
       -> createSession(...)
         -> restore latest checkpoint when threadId is reused
         -> createAgent(...)
-          -> runtime loop / checkpoint / Task / subagent
+          -> runtime loop / checkpoint / Task delegation
 ```
 
 默认 middleware 顺序：
@@ -158,10 +158,10 @@ checkpoint 边界：
   - layer: `values`
 - `tasking`
   - scope: 委派执行与共享任务协调的统一能力域
-  - includes: `subagent` primitive、`Task`、`TaskStore`、tasking middleware facades
+  - includes: `Task` 及其背后的 delegation capability + helper、`TaskStore`、tasking middleware facades
 - `subagent`
   - scope: 委派执行
-  - layer: 同一 agent runtime，`agentType = subagent`
+  - layer: `tasking/*` 域中由 `TaskMiddleware` 驱动的执行机制；child 仍复用同一 agent runtime
 - `Task`
   - scope: 正式委派能力
   - layer: `TaskMiddleware`
@@ -266,7 +266,8 @@ checkpoint 边界：
 - `subagent`
   - 对 `createAgent(...)` 的受约束复用
   - 子代理独立上下文、独立 checkpoint 边界
-  - 当前优先通过 `SubagentMiddleware` 或正式的 `TaskMiddleware` 委派
+  - 当前以正式的 `TaskMiddleware` 委派为主
+  - owner 心智对齐 DeepAgents：由 tasking/middleware 域维护，不是 core loop 的特权路径
 - `task`
   - 共享协调层，不属于单个 agent 的内部状态
   - 通过 `tasking/*` 域中的 `TaskStore` 与 `SharedTaskMiddleware` 暴露
@@ -278,8 +279,7 @@ checkpoint 边界：
 - `task` 负责跨 agent 协调
 
 正式命名上：
-- `TaskMiddleware` = 注册正式 `Task` 委派工具
-- `SubagentMiddleware` = 注册原始 `delegate_to_subagent` 工具
+- `TaskMiddleware` = 注册正式 `Task` 委派工具，是产品主入口
 - `SharedTaskMiddleware` = 注册 `TaskCreate/TaskUpdate/TaskList`
 
 更完整的 `subagent/task` 结构、流程图、测试地图与当前不足，见 `docs/subagent-task-architecture.md`。

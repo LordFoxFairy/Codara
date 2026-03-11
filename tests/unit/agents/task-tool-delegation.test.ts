@@ -5,7 +5,8 @@ import {tool} from '@langchain/core/tools';
 import {z} from 'zod';
 import {createAgent} from '@core/agents';
 import {createHILMiddleware} from '@core/middleware';
-import {createTaskTool, TASK_TOOL_NAME, readDelegatedAgentResult} from '@core/tasking';
+import {TASK_TOOL_NAME, createTaskTool} from '@core/tasking/task';
+import {readDelegatedAgentResult} from '@core/tasking/delegation';
 import {createBuiltinAgentStore, createAgentSkillsMiddleware, ChildSummaryModel, ScriptedModel} from './task-tool.fixtures';
 
 describe('createTaskTool delegation', () => {
@@ -37,11 +38,10 @@ describe('createTaskTool delegation', () => {
     const toolMessage = result.state.messages.find((message) => ToolMessage.isInstance(message)) as ToolMessage;
 
     expect(result.reason).toBe('complete');
-    expect(String(toolMessage.content)).toContain('Subagent completed.');
+    expect(String(toolMessage.content)).toContain('Delegated task completed.');
     expect(String(toolMessage.content)).toContain('summary:\ntask_child_humans:1');
     expect(readDelegatedAgentResult(toolMessage.artifact)).toEqual({
       type: 'delegated_agent_result',
-      agentType: 'subagent',
       threadId: expect.any(String),
       turns: 1,
       reason: 'complete',
@@ -130,11 +130,6 @@ describe('createTaskTool delegation', () => {
       codara: {
         delegatedSubagent: {
           childThreadId: expect.any(String),
-          childPause: expect.objectContaining({
-            action: expect.objectContaining({
-              toolName: 'dangerous_tool',
-            }),
-          }),
           parentToolName: TASK_TOOL_NAME,
         },
       },
@@ -148,7 +143,7 @@ describe('createTaskTool delegation', () => {
     expect(resumed.state.status).toBe('idle');
     expect(resumed.state.pendingPause).toBeUndefined();
     expect(dangerousInvokeCount).toBe(1);
-    expect(String(toolMessage.content)).toContain('Subagent completed.');
+    expect(String(toolMessage.content)).toContain('Delegated task completed.');
     expect(String(toolMessage.content)).toContain('summary:\ntask_child_done');
   });
 });

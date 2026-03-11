@@ -1,10 +1,9 @@
 import {AIMessage, HumanMessage, SystemMessage, ToolMessage, type BaseMessage} from '@langchain/core/messages';
 import type {BaseChatModel} from '@langchain/core/language_models/chat_models';
-import {tool, type StructuredToolInterface} from '@langchain/core/tools';
-import {z} from 'zod';
+import type {StructuredToolInterface} from '@langchain/core/tools';
 import {createAgent} from '@core/agents/engine/agent';
-import {createMiddleware, type BaseMiddleware} from '@core/middleware';
-import type {HILToolMessagePayload} from '@core/middleware';
+import type {BaseMiddleware, HILToolMessagePayload} from '@core/middleware';
+import type {ExecutionContextMetadata} from '@core/middleware/types';
 import type {
   AgentInputBudget,
   AgentRuntimeContext,
@@ -14,25 +13,8 @@ import type {
 } from '@core/agents/contract/agent';
 import type {PauseRequest, ResumePayload} from '@core/agents/contract/pause';
 import type {AgentCheckpointer} from '@core/checkpoint/state';
-import {createAgentMemoryCheckpointer} from '@core/checkpoint/state';
 
-export const DEFAULT_SUBAGENT_TOOL_NAME = 'delegate_to_subagent';
-
-export const DEFAULT_SUBAGENT_TOOL_DESCRIPTION = `Delegate a focused task to an isolated subagent.
-Use this when a sub-problem would benefit from a fresh context window or a filtered toolset.
-The subagent runs independently and returns only a concise result summary back to the current agent.
-
-Do not use this tool for trivial work that can be completed directly in the current agent.
-Do not call this tool from inside another subagent unless nested delegation is explicitly supported.`;
-
-const SubagentToolInputSchema = z.object({
-  prompt: z.string().min(1).describe('The task for the subagent to execute'),
-  max_turns: z.number().int().positive().max(100).optional().describe('Optional max turns for the subagent run'),
-});
-
-type SubagentToolInput = z.infer<typeof SubagentToolInputSchema>;
-
-export interface CreateSubagentToolOptions {
+export interface DelegatedAgentOptions {
   model: BaseChatModel;
   tools?: StructuredToolInterface[];
   middleware?: BaseMiddleware[];
@@ -42,18 +24,11 @@ export interface CreateSubagentToolOptions {
   context?: AgentRuntimeContext;
   values?: AgentRuntimeValues;
   systemPrompt?: string;
-  name?: string;
-  description?: string;
   blockedToolNames?: string[];
-}
-
-export interface CreateSubagentMiddlewareOptions extends CreateSubagentToolOptions {
-  name?: string;
 }
 
 export interface DelegatedAgentResult {
   type: 'delegated_agent_result';
-  agentType: 'subagent';
   threadId: string;
   turns: number;
   reason: 'complete' | 'error' | 'max_turns';
@@ -63,70 +38,34 @@ export interface DelegatedAgentResult {
 
 interface DelegatedPauseMetadata {
   childThreadId: string;
-  childPause: PauseRequest;
   parentToolName: string;
 }
 
-export interface DelegatedResumeState {
+interface DelegatedResumeState {
   childThreadId: string;
   payload: ResumePayload;
 }
 
 export interface DelegatedParentRuntimeMetadata {
-  parentToolCallId: string;
-  parentRunId: string;
-  parentRequestId: string;
-  parentTurn: number;
-  parentToolIndex: number;
+  parentExecution: ExecutionContextMetadata & {
+    toolIndex: number;
+    toolCallId: string;
+  };
   resume?: DelegatedResumeState;
 }
 
 const DELEGATION_TOOL = Symbol.for('codara.tasking.delegation.tool');
 
-export function createSubagentTool(options: CreateSubagentToolOptions): StructuredToolInterface {
-  const toolName = options.name?.trim() || DEFAULT_SUBAGENT_TOOL_NAME;
-  const delegatedCheckpointer = options.checkpointer ?? createAgentMemoryCheckpointer();
-
-  return markDelegationTool(tool(
-    async ({prompt, max_turns}: SubagentToolInput, config) => {
-      const delegated = readDelegatedParentRuntimeMetadata(config?.configurable, toolName);
-
-      return runDelegatedAgent({
-        ...options,
-        checkpointer: delegatedCheckpointer,
-      }, {
-        prompt,
-        maxTurns: max_turns,
-        toolName,
-        ...delegated,
-      });
-    },
-    {
-      name: toolName,
-      description: options.description ?? DEFAULT_SUBAGENT_TOOL_DESCRIPTION,
-      schema: SubagentToolInputSchema,
-    },
-  ));
-}
-
-export function createSubagentMiddleware(options: CreateSubagentMiddlewareOptions): BaseMiddleware {
-  return createMiddleware({
-    name: options.name?.trim() || 'SubagentMiddleware',
-    tools: [createSubagentTool(options)],
-  });
-}
-
 export async function runDelegatedAgent(
-  options: CreateSubagentToolOptions,
+  options: DelegatedAgentOptions,
   input: {
     prompt: string;
     maxTurns?: number;
     toolName: string;
-    parentToolCallId: string;
-    parentRunId: string;
-    parentRequestId: string;
-    parentTurn: number;
-    parentToolIndex: number;
+    parentExecution: ExecutionContextMetadata & {
+      toolIndex: number;
+      toolCallId: string;
+    };
     profileModel?: BaseChatModel;
     profileMiddleware?: BaseMiddleware[];
     profileContext?: AgentRuntimeContext;
@@ -138,60 +77,108 @@ export async function runDelegatedAgent(
     };
   }
 ): Promise<ToolMessage> {
+  const mergedContext = mergeRuntimeContext(options.context, input.profileContext);
   const childOptions: CreateAgentOptions = {
     model: input.profileModel ?? options.model,
     agentType: 'subagent',
-    tools: resolveSubagentTools(
+    tools: resolveDelegatedAgentTools(
       input.profileTools ?? options.tools ?? [],
       input.toolName,
-      options.blockedToolNames
+      options.blockedToolNames,
     ),
-    middleware: input.profileMiddleware ?? resolveSubagentMiddleware(options),
+    ...(input.profileMiddleware ?? options.middleware?.length ? {middleware: [...(input.profileMiddleware ?? options.middleware ?? [])]} : {}),
     handleToolErrors: options.handleToolErrors,
     checkpointer: options.checkpointer,
     inputBudget: options.inputBudget,
-    ...(mergeRuntimeContext(options.context, input.profileContext)
-      ? {context: mergeRuntimeContext(options.context, input.profileContext)}
-      : {}),
+    ...(mergedContext ? {context: mergedContext} : {}),
     ...(options.values ? {values: cloneStructured(options.values)} : {}),
   };
   const child = createAgent(childOptions);
-
-  const messages = createSubagentInput(
+  const messages = createDelegatedAgentInput(
     input.prompt,
-    mergeSystemPrompt(input.profileSystemPrompt, options.systemPrompt)
+    mergeSystemPrompt(input.profileSystemPrompt, options.systemPrompt),
   );
   const result = input.resume
     ? await resumeDelegatedChild(childOptions, input.resume, input.maxTurns)
     : await child.invoke(
         {messages},
-        {...(input.maxTurns ? {recursionLimit: input.maxTurns} : {})}
+        {...(input.maxTurns ? {recursionLimit: input.maxTurns} : {})},
       );
 
   if (result.state.pendingPause) {
     return createDelegatedPauseToolMessage(result.state.pendingPause, {
       childThreadId: result.state.threadId,
-      childPause: result.state.pendingPause,
       parentToolName: input.toolName,
     }, {
-      toolCallId: input.parentToolCallId,
-      runId: input.parentRunId,
-      requestId: input.parentRequestId,
-      turn: input.parentTurn,
-      toolIndex: input.parentToolIndex,
+      execution: input.parentExecution,
       prompt: input.prompt,
       maxTurns: input.maxTurns,
     });
   }
 
-  const delegatedResult = createDelegatedAgentResult(
+  return createDelegatedAgentToolMessage(createDelegatedAgentResult(
     result.state.threadId,
     result.turns,
     result.reason,
     result.error,
-    result.state.messages
-  );
-  return createDelegatedAgentToolMessage(delegatedResult);
+    result.state.messages,
+  ));
+}
+
+export function markDelegationTool<TTool extends StructuredToolInterface>(tool: TTool): TTool {
+  Object.defineProperty(tool, DELEGATION_TOOL, {
+    value: true,
+    enumerable: false,
+    configurable: true,
+    writable: false,
+  });
+  return tool;
+}
+
+export function readDelegatedAgentResult(value: unknown): DelegatedAgentResult | undefined {
+  if (!value || typeof value !== 'object' || Array.isArray(value)) {
+    return undefined;
+  }
+
+  const record = value as Record<string, unknown>;
+  if (record.type !== 'delegated_agent_result') {
+    return undefined;
+  }
+
+  if (typeof record.threadId !== 'string' || typeof record.turns !== 'number' || typeof record.reason !== 'string') {
+    return undefined;
+  }
+
+  return {
+    type: 'delegated_agent_result',
+    threadId: record.threadId,
+    turns: record.turns,
+    reason: record.reason as DelegatedAgentResult['reason'],
+    ...(typeof record.summary === 'string' ? {summary: record.summary} : {}),
+    ...(typeof record.errorMessage === 'string' ? {errorMessage: record.errorMessage} : {}),
+  };
+}
+
+export function readDelegatedParentRuntimeMetadata(
+  configurable: unknown,
+  toolName: string,
+): DelegatedParentRuntimeMetadata {
+  const record = asRecord(configurable);
+  const resume = readDelegatedResumeState(record.invokeContext, toolName);
+
+  return {
+    parentExecution: readParentExecution(record.execution),
+    ...(resume ? {resume} : {}),
+  };
+}
+
+function resolveDelegatedAgentTools(
+  tools: StructuredToolInterface[],
+  toolName: string,
+  blockedToolNames: string[] | undefined,
+): StructuredToolInterface[] {
+  const blocked = new Set([toolName, ...(blockedToolNames ?? [])]);
+  return tools.filter((candidate) => !blocked.has(candidate.name) && !isDelegationTool(candidate));
 }
 
 async function resumeDelegatedChild(
@@ -211,8 +198,17 @@ async function resumeDelegatedChild(
 
   return child.resume(
     resume.payload,
-    {...(maxTurns ? {recursionLimit: maxTurns} : {})}
+    {...(maxTurns ? {recursionLimit: maxTurns} : {})},
   );
+}
+
+function createDelegatedAgentInput(prompt: string, systemPrompt: string | undefined): BaseMessage[] {
+  const messages: BaseMessage[] = [];
+  if (systemPrompt?.trim()) {
+    messages.push(new SystemMessage(systemPrompt.trim()));
+  }
+  messages.push(new HumanMessage(prompt));
+  return messages;
 }
 
 function mergeSystemPrompt(profileSystemPrompt: string | undefined, toolSystemPrompt: string | undefined): string | undefined {
@@ -222,7 +218,7 @@ function mergeSystemPrompt(profileSystemPrompt: string | undefined, toolSystemPr
 
 function mergeRuntimeContext(
   baseContext: AgentRuntimeContext | undefined,
-  profileContext: AgentRuntimeContext | undefined
+  profileContext: AgentRuntimeContext | undefined,
 ): AgentRuntimeContext | undefined {
   if (!baseContext && !profileContext) {
     return undefined;
@@ -232,41 +228,6 @@ function mergeRuntimeContext(
     ...(baseContext ? cloneStructured(baseContext) : {}),
     ...(profileContext ? cloneStructured(profileContext) : {}),
   };
-}
-
-function resolveSubagentTools(
-  tools: StructuredToolInterface[],
-  toolName: string,
-  blockedToolNames: string[] | undefined
-): StructuredToolInterface[] {
-  const blocked = new Set([toolName, ...(blockedToolNames ?? [])]);
-  return tools.filter((candidate) => !blocked.has(candidate.name) && !isDelegationTool(candidate));
-}
-
-function resolveSubagentMiddleware(options: CreateSubagentToolOptions): BaseMiddleware[] | undefined {
-  if (options.middleware?.length) {
-    return [...options.middleware];
-  }
-  return undefined;
-}
-
-function createSubagentInput(prompt: string, systemPrompt: string | undefined): BaseMessage[] {
-  const messages: BaseMessage[] = [];
-  if (systemPrompt?.trim()) {
-    messages.push(new SystemMessage(systemPrompt.trim()));
-  }
-  messages.push(new HumanMessage(prompt));
-  return messages;
-}
-
-export function markDelegationTool<TTool extends StructuredToolInterface>(tool: TTool): TTool {
-  Object.defineProperty(tool, DELEGATION_TOOL, {
-    value: true,
-    enumerable: false,
-    configurable: true,
-    writable: false,
-  });
-  return tool;
 }
 
 function isDelegationTool(tool: StructuredToolInterface | undefined): boolean {
@@ -282,13 +243,12 @@ function createDelegatedAgentResult(
   turns: number,
   reason: 'complete' | 'error' | 'max_turns',
   error: Error | undefined,
-  messages: BaseMessage[]
+  messages: BaseMessage[],
 ): DelegatedAgentResult {
   const summary = readLatestAssistantSummary(messages);
 
   return {
     type: 'delegated_agent_result',
-    agentType: 'subagent',
     threadId,
     turns,
     reason,
@@ -310,20 +270,19 @@ function createDelegatedPauseToolMessage(
   pause: PauseRequest,
   delegated: DelegatedPauseMetadata,
   parent: {
-    toolCallId: string;
-    runId: string;
-    requestId: string;
-    turn: number;
-    toolIndex: number;
+    execution: ExecutionContextMetadata & {
+      toolIndex: number;
+      toolCallId: string;
+    };
     prompt: string;
     maxTurns?: number;
   },
 ): ToolMessage {
   const request: PauseRequest = {
-    id: `${parent.runId}:${parent.turn}:${parent.toolCallId}:delegated`,
+    id: `${parent.execution.runId}:${parent.execution.turn}:${parent.execution.toolCallId}:delegated`,
     description: pause.description,
     action: {
-      toolCallId: parent.toolCallId,
+      toolCallId: parent.execution.toolCallId,
       toolName: delegated.parentToolName,
       toolArgs: {
         prompt: parent.prompt,
@@ -332,10 +291,10 @@ function createDelegatedPauseToolMessage(
     },
     review: pause.review,
     runtime: {
-      runId: parent.runId,
-      turn: parent.turn,
-      requestId: parent.requestId,
-      toolIndex: parent.toolIndex,
+      runId: parent.execution.runId,
+      turn: parent.execution.turn,
+      requestId: parent.execution.requestId,
+      toolIndex: parent.execution.toolIndex,
     },
     ...(pause.channel ? {channel: pause.channel} : {}),
     ...(pause.ui ? {ui: pause.ui} : {}),
@@ -349,7 +308,7 @@ function createDelegatedPauseToolMessage(
 
   return new ToolMessage({
     content: JSON.stringify(payload),
-    tool_call_id: parent.toolCallId,
+    tool_call_id: parent.execution.toolCallId,
     name: delegated.parentToolName,
   });
 }
@@ -357,8 +316,8 @@ function createDelegatedPauseToolMessage(
 function formatDelegatedAgentResult(result: DelegatedAgentResult): string {
   if (result.reason === 'error') {
     return [
-      'Subagent failed.',
-      `subagent_id: ${result.threadId}`,
+      'Delegated task failed.',
+      `delegate_id: ${result.threadId}`,
       `turns: ${result.turns}`,
       `error: ${result.errorMessage ?? 'Unknown error'}`,
       ...(result.summary ? [`summary:\n${result.summary}`] : []),
@@ -366,8 +325,8 @@ function formatDelegatedAgentResult(result: DelegatedAgentResult): string {
   }
 
   return [
-    'Subagent completed.',
-    `subagent_id: ${result.threadId}`,
+    'Delegated task completed.',
+    `delegate_id: ${result.threadId}`,
     `turns: ${result.turns}`,
     `reason: ${result.reason}`,
     ...(result.summary ? [`summary:\n${result.summary}`] : []),
@@ -434,12 +393,8 @@ function readDelegatedResumeState(
 ): DelegatedResumeState | undefined {
   const root = asRecord(invokeContext);
   const hil = asRecord(root.hil);
-  const currentPause = readPauseRequest(hil.currentPause);
-  if (!currentPause) {
-    return undefined;
-  }
-
-  const delegated = readDelegatedPauseMetadata(currentPause.metadata, toolName);
+  const currentPause = asRecord(hil.currentPause);
+  const delegated = readDelegatedPauseMetadata(asRecord(currentPause.metadata), toolName);
   if (!delegated) {
     return undefined;
   }
@@ -468,7 +423,6 @@ function mergeDelegatedPauseMetadata(
       ...codara,
       delegatedSubagent: {
         childThreadId: delegated.childThreadId,
-        childPause: cloneStructured(delegated.childPause),
         parentToolName: delegated.parentToolName,
       },
     },
@@ -482,41 +436,16 @@ function readDelegatedPauseMetadata(
   const codara = asRecord(asRecord(metadata).codara);
   const delegated = asRecord(codara.delegatedSubagent);
   const childThreadId = readString(delegated.childThreadId);
-  const childPause = readPauseRequest(delegated.childPause);
   const parentToolName = readString(delegated.parentToolName);
 
-  if (!childThreadId || !childPause || !parentToolName || parentToolName !== toolName) {
+  if (!childThreadId || !parentToolName || parentToolName !== toolName) {
     return undefined;
   }
 
   return {
     childThreadId,
-    childPause,
     parentToolName,
   };
-}
-
-function readPauseRequest(value: unknown): PauseRequest | undefined {
-  const record = asRecord(value);
-  const action = asRecord(record.action);
-  const review = asRecord(record.review);
-  const runtime = asRecord(record.runtime);
-  if (
-    !readString(record.id) ||
-    !readString(record.description) ||
-    !readString(action.toolCallId) ||
-    !readString(action.toolName) ||
-    !readString(review.actionName) ||
-    !Array.isArray(review.allowedDecisions) ||
-    typeof runtime.turn !== 'number' ||
-    typeof runtime.toolIndex !== 'number' ||
-    !readString(runtime.runId) ||
-    !readString(runtime.requestId)
-  ) {
-    return undefined;
-  }
-
-  return cloneStructured(record as unknown as PauseRequest);
 }
 
 function asRecord(value: unknown): Record<string, unknown> {
@@ -525,55 +454,46 @@ function asRecord(value: unknown): Record<string, unknown> {
     : {};
 }
 
+function readParentExecution(value: unknown): ExecutionContextMetadata & {
+  toolIndex: number;
+  toolCallId: string;
+} {
+  const execution = asRecord(value);
+  const threadId = readString(execution.threadId);
+  const runId = readString(execution.runId);
+  const requestId = readString(execution.requestId);
+  const toolCallId = readString(execution.toolCallId);
+  const turn = readNumber(execution.turn);
+  const maxTurns = readNumber(execution.maxTurns);
+  const toolIndex = readNumber(execution.toolIndex);
+
+  if (
+    !threadId
+    || !runId
+    || !requestId
+    || !toolCallId
+    || typeof turn !== 'number'
+    || typeof maxTurns !== 'number'
+    || typeof toolIndex !== 'number'
+  ) {
+    throw new Error('Delegation tools require execution metadata with toolCallId and toolIndex.');
+  }
+
+  return {
+    threadId,
+    runId,
+    requestId,
+    turn,
+    maxTurns,
+    toolIndex,
+    toolCallId,
+  };
+}
+
 function readString(value: unknown): string | undefined {
   return typeof value === 'string' && value.trim() ? value : undefined;
 }
 
 function readNumber(value: unknown): number | undefined {
   return typeof value === 'number' ? value : undefined;
-}
-
-export function readDelegatedAgentResult(value: unknown): DelegatedAgentResult | undefined {
-  if (!value || typeof value !== 'object' || Array.isArray(value)) {
-    return undefined;
-  }
-
-  const record = value as Record<string, unknown>;
-  if (record.type !== 'delegated_agent_result' || record.agentType !== 'subagent') {
-    return undefined;
-  }
-
-  if (typeof record.threadId !== 'string' || typeof record.turns !== 'number' || typeof record.reason !== 'string') {
-    return undefined;
-  }
-
-  return {
-    type: 'delegated_agent_result',
-    agentType: 'subagent',
-    threadId: record.threadId,
-    turns: record.turns,
-    reason: record.reason as DelegatedAgentResult['reason'],
-    ...(typeof record.summary === 'string' ? {summary: record.summary} : {}),
-    ...(typeof record.errorMessage === 'string' ? {errorMessage: record.errorMessage} : {}),
-  };
-}
-
-export {readDelegatedResumeState};
-
-export function readDelegatedParentRuntimeMetadata(
-  configurable: unknown,
-  toolName: string,
-): DelegatedParentRuntimeMetadata {
-  const record = asRecord(configurable);
-  const execution = asRecord(record.execution);
-  const resume = readDelegatedResumeState(record.invokeContext, toolName);
-
-  return {
-    parentToolCallId: readString(execution.toolCallId) ?? readString(record.toolCallId) ?? '',
-    parentRunId: readString(execution.runId) ?? readString(record.runId) ?? '',
-    parentRequestId: readString(execution.requestId) ?? readString(record.requestId) ?? '',
-    parentTurn: readNumber(execution.turn) ?? readNumber(record.turn) ?? 0,
-    parentToolIndex: readNumber(execution.toolIndex) ?? readNumber(record.toolIndex) ?? 0,
-    ...(resume ? {resume} : {}),
-  };
 }
