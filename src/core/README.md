@@ -4,8 +4,8 @@
 
 ```text
 public API
-  -> product/*
-    -> sources/*
+  -> codara/*
+    -> resources/*
     -> sessions/*
       -> agents/*
         -> middleware/*
@@ -15,14 +15,14 @@ public API
 
 一句话：
 
-`product 负责装配，sources 负责 source projection，session 负责 host lifecycle，agent 负责执行，middleware 负责运行时拦截，tasking 负责委派。`
+`codara 负责产品装配，resources 负责预热资源与投影，session 负责 host lifecycle，agent 负责执行，middleware 负责运行时拦截，tasking 负责委派。`
 
 ## 关键边界
 
-- `product/*`
+- `codara/*`
   - 只装配默认模型、工具、middleware、commands
   - 不负责 host lifecycle，不负责 loop
-- `sources/*`
+- `resources/*`
   - 单独负责 `AGENTS.md` 与 skills runtime 的发现、加载、inspect、ensure、cache
   - session 只 preload/reload 它们，agent turn preparation 只消费 snapshot
 - `sessions/*`
@@ -41,43 +41,42 @@ public API
 
 ```text
 createCodara(...)
-  -> createCodaraSessionAssembly(...)
-    -> createCodaraGuidelinesSource(...)
-    -> createCodaraSkillsSource(...)
-    -> createCodaraTools(...)
-    -> createCodaraMiddlewares(...)
-    -> createSourceTurnContextPreparer(...)
+  -> createCodaraGuidelinesSource(...)
+  -> createCodaraSkillsSource(...)
+  -> createCodaraTools(...)
+  -> createCodaraMiddlewares(...)
   -> createSession(...)
     -> first hydrate/invoke/stream/resume
       -> preload guidelines + skills
+      -> cache stable system layers
       -> resolve model
       -> restore checkpoint
       -> createAgent(...)
   -> each model turn
     -> prepareTurnContext(...)
-      -> read cached source snapshots
-      -> assemble system layers
+      -> read session-owned system layers
+      -> merge runtime shared data
     -> runtime middleware stages
 ```
 
 这里的重点是：
 
 - `init` 在 session host 完成
-- middleware 不做 source discovery
+- middleware 不做 resource discovery
 - tools 不做 session bootstrap
-- `guidelines` 和 `skills` 先形成 projection，再由 agent turn preparation 注入给 loop
+- `guidelines` 和 `skills` 先形成 projection，再由 session 缓存并传给 agent loop
 
 ## 维护原则
 
 - 不让 `middleware` 反向依赖 `sessions/*` 的 owner 语义
-- 不让 `agents/*` 吸收 product/source/host 职责
+- 不让 `agents/*` 吸收 codara/source/host 职责
 - 不为了减少文件数把不同 owner 再揉成一个大文件
 - 只有“没有独立 owner 价值”的小文件才继续合并
 
 
 ## Summary 中间件
 
-- `middleware/conversation/summary.ts` 提供可选的上下文压缩算法
+- `middleware/conversation.ts` 提供 conversation compact 能力
 - 它会在消息历史过长时：
   - 压缩较早消息
   - 将较早消息替换为持久化的 summary message
@@ -106,12 +105,11 @@ createCodara(...)
 
 ## Conversation Context
 
-- Codara 默认装配使用 `middleware/conversation/context.ts` 统一处理：
+- Codara 默认装配使用 `middleware/conversation.ts` 统一处理：
   - 完整输入预算估算
   - 可选的 summary compact
 - 这样默认 runtime 的公开心智只保留一个 conversation middleware，不再把 `context-budget` 与 `summary` 视为两个并列 middleware。
-- `middleware/conversation/budget.ts` 与 `middleware/conversation/summary.ts` 属于 conversation internals；model input assembly 直接留在 `agents/loop/model-step.ts`，不再单独保留 `conversation-input.ts` 这种薄 helper 文件。
-- `middleware/conversation/budget.ts` 只保留预算快照/估算工具；`middleware/conversation/summary.ts` 只保留摘要压缩算法与记录解析工具。
+- `middleware/conversation.ts` 现在是单文件 owner：预算快照、摘要压缩算法和公开 builder 都收在同一个能力文件里，避免再为这一个 slice 创建额外目录。
 - 这个 slice 属于 pre-model request preparation，不拥有 `session` lifecycle，也不拥有 checkpoint ownership。
 
 ## Todo / Subagent / Task
@@ -166,7 +164,7 @@ createCodara(...)
 
 ## Slash Commands
 
-- slash commands 归属 `src/core/product/commands/`
+- slash commands 归属 `src/core/commands/`
 - 当前内建命令：
   - `/help`
   - `/memory`
@@ -182,7 +180,7 @@ createCodara(...)
 - `/memory` 直接围绕 `AGENTS.md` 工作，不恢复旧 `MEMORY.md` 机制
 - `/memory` 默认展示当前 AGENTS source stack 与可编辑 target，显式使用 `show / project / global`
 - `/memory project|global` 返回宿主 `open_file` 动作，供 UI/CLI 打开目标 `AGENTS.md`
-- `/compact` 通过 `Agent.compactConversation()` 复用现有 `beforeAgent + beforeModel + conversation-context` 路径
+- `/compact` 由 `Agent.compactConversation()` 直接拥有；conversation middleware 只负责自动摘要与预算准备，不再代持手动 compact 控制
 - `/compact checkpoints [keepLast]` 只整理 checkpoint store，不混入 conversation summary 语义
 
 ## Conversation Compact

@@ -1,5 +1,5 @@
 import {describe, expect, it} from 'bun:test';
-import {FileGuidelinesSource} from '@core/sources';
+import {FileGuidelinesSource} from '@core/resources';
 
 describe('FileGuidelinesSource', () => {
   it('should keep AGENTS content stable until it is explicitly reloaded', async () => {

@@ -26,10 +26,10 @@ describe('core public APIs', () => {
   it('should expose source constructors in the advanced public barrels', () => {
     expect('createCodaraGuidelinesSource' in core).toBe(true);
     expect('createCodaraSkillsSource' in core).toBe(true);
-    expect('createSourceTurnContextPreparer' in core).toBe(true);
+    expect('createSourceTurnContextPreparer' in core).toBe(false);
 
     expect('createCodaraGuidelinesSource' in api).toBe(true);
     expect('createCodaraSkillsSource' in api).toBe(true);
-    expect('createSourceTurnContextPreparer' in api).toBe(true);
+    expect('createSourceTurnContextPreparer' in api).toBe(false);
   });
 });

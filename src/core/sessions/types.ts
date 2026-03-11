@@ -13,11 +13,11 @@ import type {
   AgentStreamOutput,
   ToolErrorHandler,
 } from '@core/agents';
-import type {AgentCheckpointer} from '@core/checkpoint/state';
-import type {CompactOptions} from '@core/checkpoint/types';
+import type {AgentCheckpointer, CompactOptions} from '@core/checkpoint';
 import type {BaseMiddleware} from '@core/middleware';
+import type {SummaryOptions} from '@core/middleware/conversation';
 import type {ResumePayload} from '@core/agents/contract/pause';
-import type {AgentsFileOverview, AgentsFileScope, GuidelinesSource, SkillsSource} from '@core/sources';
+import type {AgentsFileOverview, AgentsFileScope, GuidelinesSource, SkillsSource} from '@core/resources';
 import type {SessionStore} from '@core/sessions/store';
 import type {ModelInfo} from '@core/provider';
 
@@ -105,6 +105,7 @@ export interface CreateSessionOptions {
   middleware?: BaseMiddleware[];
   checkpointer?: AgentCheckpointer;
   prepareTurnContext?: AgentTurnContextPreparer;
+  summary?: false | SummaryOptions;
 
   // Checkpoint 恢复策略
   restore?: 'latest' | 'never';

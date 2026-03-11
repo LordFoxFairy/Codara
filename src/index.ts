@@ -66,8 +66,7 @@ export {
 export {
   createCodaraGuidelinesSource,
   createCodaraSkillsSource,
-  createSourceTurnContextPreparer,
-} from '@core/sources';
+} from '@core/resources';
 
 // ============================================
 // 类型导出（供高级用户使用）
@@ -86,7 +85,6 @@ export type {
   GuidelinesOptions,
   GuidelinesSource,
   SkillsSource,
-  SourceTurnContextOptions,
-} from '@core/sources';
+} from '@core/resources';
 
 export type {AgentCheckpoint, AgentCheckpointer} from '@core/checkpoint';

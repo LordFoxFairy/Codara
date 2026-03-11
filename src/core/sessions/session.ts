@@ -10,16 +10,17 @@ import type {
   AgentStreamConfig,
   AgentStreamOutput,
 } from '@core/agents';
-import {createAgentMemoryCheckpointer} from '@core/checkpoint/state';
-import type {CompactOptions} from '@core/checkpoint/types';
+import {createAgent, normalizeAgentInput} from '@core/agents';
+import {createAgentMemoryCheckpointer, type CompactOptions} from '@core/checkpoint';
 import type {ResumePayload} from '@core/agents/contract/pause';
+import {deriveAgentInputBudget} from '@core/agents/input-budget';
+import type {BaseChatModel} from '@langchain/core/language_models/chat_models';
 import {
   cloneAgentContext,
   cloneAgentMessages,
   cloneAgentValues,
   clonePauseRequest,
 } from '@core/agents/engine/state';
-import {bootstrapSessionAgent} from '@core/sessions/bootstrap';
 import type {
   CreateSessionOptions,
   Session,
@@ -35,6 +36,15 @@ import {
   touchSessionMetadata,
   updateSessionMetadataFromAgentState,
 } from '@core/sessions/metadata';
+import type {ModelInfo} from '@core/provider';
+import {
+  formatSkillsList,
+  formatSkillsLocations,
+  SKILLS_SYSTEM_PROMPT,
+  type SkillsRuntimeData,
+} from '@core/resources/skills';
+import {readSkillsRuntimeData} from '@core/resources/skills/runtime';
+import {normalizeSummaryOptions} from '@core/middleware/conversation';
 
 /**
  * 创建 session 实例。
@@ -61,6 +71,9 @@ export function createSession(options: CreateSessionOptions): Session {
   const checkpointer = options.checkpointer ?? createAgentMemoryCheckpointer();
   let agentInstance: Agent | undefined;
   let agentBootstrap: Promise<Agent> | undefined;
+  let guidelinesSystemMessage: string | undefined;
+  let skillsRuntimeSnapshot: SkillsRuntimeData | undefined;
+  let skillsSystemMessage: string | undefined;
 
   function touch(): void {
     updatedAt = new Date().toISOString();
@@ -113,11 +126,18 @@ export function createSession(options: CreateSessionOptions): Session {
   async function reloadHostSources(): Promise<void> {
     options.guidelinesSource?.reload();
     options.skillsSource?.reload();
+    guidelinesSystemMessage = undefined;
+    skillsRuntimeSnapshot = undefined;
+    skillsSystemMessage = undefined;
+    await preloadHostSources();
   }
 
   async function preloadHostSources(): Promise<void> {
-    await options.guidelinesSource?.getContent?.();
-    await options.skillsSource?.getRuntime?.();
+    guidelinesSystemMessage = await options.guidelinesSource?.getContent?.();
+    skillsRuntimeSnapshot = await options.skillsSource?.getRuntime?.();
+    skillsSystemMessage = skillsRuntimeSnapshot
+      ? createSkillsSystemMessage(skillsRuntimeSnapshot)
+      : undefined;
   }
 
   async function hasStoredCheckpoint(): Promise<boolean> {
@@ -133,13 +153,7 @@ export function createSession(options: CreateSessionOptions): Session {
       return agentBootstrap;
     }
 
-    agentBootstrap = bootstrapSessionAgent({
-      sessionOptions: options,
-      threadId,
-      isRestoringThread,
-      checkpointer,
-      prepareHostSources: preloadHostSources,
-    }).then((agent) => {
+    agentBootstrap = initializeAgent().then((agent) => {
       agentInstance = agent;
       return agent;
     });
@@ -265,6 +279,57 @@ export function createSession(options: CreateSessionOptions): Session {
     await touchAndSaveSession();
   }
 
+  async function initializeAgent(): Promise<Agent> {
+    await preloadHostSources();
+    const selection = await resolveModelSelection();
+    const shouldRestore = options.restore === 'latest'
+      || (options.restore !== 'never' && isRestoringThread);
+    const checkpoint = shouldRestore
+      ? await checkpointer.getLatest(threadId)
+      : undefined;
+    const messages = options.messages
+      ? normalizeAgentInput(options.messages)
+      : undefined;
+
+    return createAgent({
+      model: selection.model,
+      tools: options.tools,
+      handleToolErrors: options.handleToolErrors,
+      middleware: options.middleware,
+      checkpointer,
+      threadId,
+      inputBudget: options.inputBudget ?? deriveAgentInputBudget(selection.modelInfo),
+      ...(options.summary ? {summary: normalizeSummaryOptions(options.summary)} : {}),
+      prepareTurnContext: composePrepareTurnContext(),
+      ...(checkpoint ? {checkpoint} : {}),
+      ...(messages ? {messages} : {}),
+      ...(options.context ? {context: options.context} : {}),
+      ...(options.values ? {values: options.values} : {}),
+    });
+  }
+
+  async function resolveModelSelection(): Promise<{
+    model: BaseChatModel;
+    modelInfo?: ModelInfo;
+  }> {
+    if (options.model) {
+      return {
+        model: await options.model,
+      };
+    }
+
+    if (!options.modelCatalog) {
+      throw new Error('Either model or modelCatalog must be provided');
+    }
+
+    const catalog = await options.modelCatalog;
+    const modelRef = options.modelRef ?? 'default';
+    return {
+      model: await catalog.create(modelRef),
+      modelInfo: catalog.getInfo(modelRef),
+    };
+  }
+
   function requireGuidelinesActions() {
     const source = options.guidelinesSource;
     if (!source?.inspectFiles || !source.ensureFileTarget) {
@@ -273,6 +338,31 @@ export function createSession(options: CreateSessionOptions): Session {
     return {
       inspectFiles: source.inspectFiles.bind(source),
       ensureFileTarget: source.ensureFileTarget.bind(source),
+    };
+  }
+
+  function composePrepareTurnContext() {
+    if (!guidelinesSystemMessage && !skillsRuntimeSnapshot && !options.prepareTurnContext) {
+      return undefined;
+    }
+
+    return async (context: Parameters<NonNullable<CreateSessionOptions['prepareTurnContext']>>[0]) => {
+      if (guidelinesSystemMessage) {
+        context.systemMessage.push(guidelinesSystemMessage);
+      }
+
+      if (skillsRuntimeSnapshot) {
+        const shared = context.runtime.shared ?? (context.runtime.shared = {});
+        if (!readSkillsRuntimeData(shared)) {
+          shared.skills = skillsRuntimeSnapshot;
+        }
+
+        if (skillsSystemMessage) {
+          context.systemMessage.push(skillsSystemMessage);
+        }
+      }
+
+      await options.prepareTurnContext?.(context);
     };
   }
 
@@ -365,4 +455,12 @@ export function createSession(options: CreateSessionOptions): Session {
       await disposeSession();
     },
   };
+}
+
+function createSkillsSystemMessage(
+  runtime: Pick<SkillsRuntimeData, 'sources' | 'discovered'>,
+): string {
+  return SKILLS_SYSTEM_PROMPT
+    .replace('{skills_locations}', formatSkillsLocations(runtime.sources))
+    .replace('{skills_list}', formatSkillsList(runtime.discovered, runtime.sources));
 }
