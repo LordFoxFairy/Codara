@@ -2,6 +2,7 @@
 
 export {
   createCodara,
+  createCodaraAgent,
   openCodaraSession,
   openLatestCodaraSession,
   type Codara,
@@ -25,27 +26,29 @@ export {
   type CreateAgentOptions,
 } from '@core/agents';
 export {
-  DEFAULT_SUBAGENT_TOOL_DESCRIPTION,
-  DEFAULT_SUBAGENT_TOOL_NAME,
   TASK_TOOL_DESCRIPTION,
   TASK_TOOL_NAME,
-  createSubagentTool,
-  createTaskTool,
-} from '@core/tasking';
+  createSharedTaskMiddleware,
+  createTaskMiddleware,
+  type CreateSharedTaskMiddlewareOptions,
+  type CreateTaskMiddlewareOptions,
+} from '@core/tasks';
 export {
-  createConversationContextMiddleware,
-  createGuidelinesMiddleware,
+  createBudgetMiddleware,
   createHILMiddleware,
   createLoggingMiddleware,
   createMiddleware,
+  createSummaryMiddleware,
   createSkillsMiddleware,
-  MiddlewarePipeline,
   type BaseMiddleware,
-  type ConversationContextMiddlewareOptions,
+  type BudgetMiddlewareOptions,
+  type ExecutionContextMetadata,
   type HILMiddlewareOptions,
   type HILResumePayload,
   type LoggingMiddlewareOptions,
   type MiddlewareLogRecord,
+  type SummarySettings,
+  type SummaryOptions,
 } from '@core/middleware';
 export {
   FileCheckpointer,
@@ -56,6 +59,11 @@ export {
   type AgentCheckpointer,
 } from '@core/checkpoint';
 export {
+  createCodaraGuidelinesSource,
+  type GuidelinesOptions,
+  type GuidelinesSource,
+} from '@core/sessions/guidelines';
+export {
   createBuiltinTools,
   createFetchTool,
   createSearchTool,
@@ -64,11 +72,13 @@ export {
   type BuiltinToolOptions,
 } from '@core/tools';
 export {
+  createCodaraSkillsSource,
   FileSystemSkillStore,
   getDefaultSkillSources,
   loadSkillsRuntimeData,
   type SkillMetadata,
   type SkillStore,
+  type SkillsSource,
   type SkillsRuntimeData,
 } from '@core/skills';
 export {
@@ -86,7 +96,3 @@ export {
   type ModelInfo,
   type ModelRoutingConfig,
 } from '@core/provider';
-export {
-  type CreateSubagentToolOptions,
-  type CreateTaskToolOptions,
-} from '@core/tasking';

@@ -7,12 +7,17 @@ function createToolContext(toolCall: ToolCall, runtimeContext: Record<string, un
   return {
     state: {messages},
     messages,
-    runtime: {context: runtimeContext, agentContext: runtimeContext},
+    runtime: {context: runtimeContext},
     systemMessage: [],
-    runId: 'run_hil_route_1',
-    turn: 1,
-    maxTurns: 3,
-    requestId: 'req_hil_route_1',
+    execution: {
+      threadId: 'thread_hil_route_1',
+      runId: 'run_hil_route_1',
+      turn: 1,
+      maxTurns: 3,
+      requestId: 'req_hil_route_1',
+      toolIndex: 0,
+      toolCallId: toolCall.id ?? 'tool_0',
+    },
     toolCall,
     toolIndex: 0,
   };

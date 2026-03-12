@@ -2,6 +2,9 @@ import {describe, expect, it} from 'bun:test';
 import {createAgentMemoryCheckpointer, createCodara} from '@core';
 import type {BaseChatModel} from '@langchain/core/language_models/chat_models';
 import {AIMessageChunk} from '@langchain/core/messages';
+import {mkdtemp, rm} from 'node:fs/promises';
+import {tmpdir} from 'node:os';
+import path from 'node:path';
 import {EchoModel, StreamingEchoModel} from './codara-fixtures';
 
 describe('Codara facade runtime', () => {
@@ -42,10 +45,10 @@ describe('Codara facade runtime', () => {
     expect(String(agentState.messages[1]?.content)).toBe('seen_humans:1');
   });
 
-  it('should allow a modelResolver override without changing the main createCodara API', async () => {
+  it('should allow an async model without adding a second model entry path', async () => {
     const model = new EchoModel();
     const codara = createCodara({
-      modelResolver: async () => model as unknown as BaseChatModel,
+      model: Promise.resolve(model as unknown as BaseChatModel),
       skills: false,
       builtinTools: false,
     });
@@ -53,6 +56,41 @@ describe('Codara facade runtime', () => {
     const result = await codara.invoke('hello');
     expect(result.reason).toBe('complete');
     expect(String(result.state.messages[result.state.messages.length - 1]?.content)).toBe('seen_humans:1');
+  });
+
+  it('should not require a home config when an explicit model is provided', async () => {
+    const originalHome = process.env.HOME;
+    const originalCodaraPath = process.env.CODARA_PATH;
+    const isolatedHome = await mkdtemp(path.join(tmpdir(), 'codara-no-home-config-'));
+
+    process.env.HOME = isolatedHome;
+    delete process.env.CODARA_PATH;
+
+    try {
+      const codara = createCodara({
+        model: new EchoModel() as unknown as BaseChatModel,
+        skills: false,
+        builtinTools: false,
+      });
+
+      const result = await codara.invoke('hello');
+      expect(result.reason).toBe('complete');
+      expect(String(result.state.messages[result.state.messages.length - 1]?.content)).toBe('seen_humans:1');
+    } finally {
+      if (originalHome === undefined) {
+        delete process.env.HOME;
+      } else {
+        process.env.HOME = originalHome;
+      }
+
+      if (originalCodaraPath === undefined) {
+        delete process.env.CODARA_PATH;
+      } else {
+        process.env.CODARA_PATH = originalCodaraPath;
+      }
+
+      await rm(isolatedHome, {recursive: true, force: true});
+    }
   });
 
   it('should recreate the agent after reset', async () => {

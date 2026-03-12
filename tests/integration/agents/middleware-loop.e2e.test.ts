@@ -40,20 +40,20 @@ describe('Agent Middleware End-to-End', () => {
     const traceMiddleware = createMiddleware({
       name: 'TraceMiddleware',
       beforeAgent: (state) => {
-        events.push(`beforeAgent:${state.turn}`);
+        events.push(`beforeAgent:${state.execution.turn}`);
       },
       wrapModelCall: async (request, handler) => {
-        events.push(`wrapModelCall:start:${request.turn}`);
+        events.push(`wrapModelCall:start:${request.execution.turn}`);
         const message = await handler(request);
-        events.push(`wrapModelCall:end:${request.turn}`);
+        events.push(`wrapModelCall:end:${request.execution.turn}`);
         return message;
       },
       wrapToolCall: async (request, handler) => {
-        events.push(`wrapToolCall:${request.turn}:${request.toolCall.name}`);
+        events.push(`wrapToolCall:${request.execution.turn}:${request.toolCall.name}`);
         return handler(request);
       },
       afterAgent: (state) => {
-        events.push(`afterAgent:${state.turn}:${state.result.reason}`);
+        events.push(`afterAgent:${state.execution.turn}:${state.result.reason}`);
       }
     });
 

@@ -1,5 +1,5 @@
 import {randomUUID} from 'node:crypto';
-import type {CheckpointRecord, Checkpointer, CompactOptions, PutCheckpointInput} from '@core/checkpoint/types';
+import type {CheckpointRecord, Checkpointer, CompactOptions, PutCheckpointInput} from '@core/checkpoint';
 
 interface MemoryCodec<T> {
   serialize(value: T): unknown;
@@ -153,7 +153,7 @@ function cloneValue<T>(value: T): T {
     }
 
     if (value && typeof value === 'object') {
-      return {...(value as Record<string, unknown>)} as T;
+      return {...value} as T;
     }
 
     return value;

@@ -5,7 +5,7 @@ import {
   mergeContext,
   normalizeAgentInput,
   readLatestPause,
-} from '@core/agents/engine/runtime-input';
+} from '@core/agents';
 import type {HILPauseRequest} from '@core/middleware/hil';
 
 describe('agent runtime input helpers', () => {

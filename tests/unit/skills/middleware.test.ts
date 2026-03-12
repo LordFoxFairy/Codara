@@ -3,8 +3,8 @@ import {mkdir, mkdtemp, writeFile} from 'node:fs/promises'
 import {tmpdir} from 'node:os'
 import path from 'node:path'
 import {HumanMessage, type BaseMessage} from '@langchain/core/messages'
+import {createSkillsMiddleware} from '@core/middleware'
 import {
-  createSkillsMiddleware,
   FileSystemSkillStore,
   type SkillMetadata,
   type SkillStore
@@ -15,12 +15,15 @@ function createBaseContext(runId: string) {
   return {
     state: {messages},
     messages,
-    runtime: {context: {}, shared: {}, agentContext: {}},
+    runtime: {context: {}, shared: {}},
     systemMessage: ['base-system'],
-    runId,
-    turn: 1,
-    maxTurns: 3,
-    requestId: `${runId}-req`
+    execution: {
+      threadId: `${runId}-thread`,
+      runId,
+      turn: 1,
+      maxTurns: 3,
+      requestId: `${runId}-req`,
+    },
   }
 }
 
@@ -90,8 +93,8 @@ You are a Reviewer subagent.
     const context = createBaseContext('run_shared_runtime')
 
     const update = await middleware.beforeModel?.(context)
-    const runtime = (update?.runtimeShared as {skills?: {agentDefinitions?: Record<string, {name: string}>}} | undefined)?.skills
-    expect(runtime?.agentDefinitions?.Reviewer?.name).toBe('Reviewer')
+    const runtime = (update?.runtimeShared as {skills?: {subagentDefinitions?: Record<string, {name: string}>}} | undefined)?.skills
+    expect(runtime?.subagentDefinitions?.Reviewer?.name).toBe('Reviewer')
     expect(update?.context).toBeUndefined()
   })
 
@@ -148,7 +151,14 @@ custom-threshold: 0.8
     const context = createBaseContext(runId)
 
     await middleware.beforeModel?.(context)
-    await middleware.beforeModel?.({...context, turn: 2, requestId: `${runId}-req-2`})
+    await middleware.beforeModel?.({
+      ...context,
+      execution: {
+        ...context.execution,
+        turn: 2,
+        requestId: `${runId}-req-2`,
+      },
+    })
 
     expect(discoverCalls).toBe(2)
   })

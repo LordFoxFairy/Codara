@@ -1,20 +1,24 @@
 import {describe, expect, it} from 'bun:test';
 import {AIMessage, HumanMessage, type BaseMessage} from '@langchain/core/messages';
-import {MiddlewarePipeline, type ModelCallContext} from '@core/middleware';
-import {createConversationContextMiddleware} from '@core/middleware/conversation-context';
-import {readSummaryRecord} from '@core/middleware/summary';
+import type {ModelCallContext} from '@core/middleware';
+import {createBudgetMiddleware} from '@core/middleware';
+import {MiddlewarePipeline} from '@core/middleware/pipeline';
+import {createSummaryMiddleware} from '@core/middleware/summary';
 
-describe('conversation context middleware', () => {
+describe('budget and summary middleware', () => {
+  function readSummaryMessage(messages: BaseMessage[]): BaseMessage | undefined {
+    return messages.find((message) => message.getType() === 'ai' && message.text.startsWith('Summary:\n'));
+  }
+
   it('should refresh budget and compact history in one stage', async () => {
-    const middleware = createConversationContextMiddleware({
+    const budget = createBudgetMiddleware();
+    const summary = createSummaryMiddleware({
       summary: {
-        maxMessages: 4,
-        keepLastMessages: 2,
         summarize: () => 'summary block',
       },
     });
 
-    const pipeline = new MiddlewarePipeline([middleware]);
+    const pipeline = new MiddlewarePipeline([budget, summary!]);
     const messages: BaseMessage[] = [
       new HumanMessage('one'),
       new AIMessage('two'),
@@ -27,13 +31,16 @@ describe('conversation context middleware', () => {
       state: {messages},
       messages,
       runtime: {context: {}},
-      systemMessage: ['caller prompt'],
-      runId: 'run-1',
-      turn: 1,
-      maxTurns: 8,
-      requestId: 'req-1',
+      systemMessage: ['x'.repeat(120)],
+      execution: {
+        threadId: 'thread-1',
+        runId: 'run-1',
+        turn: 1,
+        maxTurns: 8,
+        requestId: 'req-1',
+      },
       inputBudget: {
-        maxInputTokens: 40,
+        maxInputTokens: 20,
       },
     };
 
@@ -41,12 +48,11 @@ describe('conversation context middleware', () => {
 
     expect(context.budget).toBeDefined();
     expect(context.budget?.estimatedInputTokens).toBeGreaterThan(0);
-    expect(readSummaryRecord(context.state.messages)?.content).toBe('summary block');
+    expect(readSummaryMessage(context.state.messages)?.text).toBe('Summary:\nsummary block');
   });
 
   it('should still refresh budget when summary is disabled', async () => {
-    const middleware = createConversationContextMiddleware();
-    const pipeline = new MiddlewarePipeline([middleware]);
+    const pipeline = new MiddlewarePipeline([createBudgetMiddleware()]);
     const messages: BaseMessage[] = [new HumanMessage('hello')];
 
     const context: ModelCallContext = {
@@ -54,10 +60,13 @@ describe('conversation context middleware', () => {
       messages,
       runtime: {context: {}},
       systemMessage: ['caller prompt'],
-      runId: 'run-2',
-      turn: 1,
-      maxTurns: 8,
-      requestId: 'req-2',
+      execution: {
+        threadId: 'thread-2',
+        runId: 'run-2',
+        turn: 1,
+        maxTurns: 8,
+        requestId: 'req-2',
+      },
       inputBudget: {
         maxInputTokens: 40,
       },
@@ -66,34 +75,35 @@ describe('conversation context middleware', () => {
     await pipeline.beforeModel(context);
 
     expect(context.budget).toBeDefined();
-    expect(readSummaryRecord(context.state.messages)).toBeUndefined();
+    expect(readSummaryMessage(context.state.messages)).toBeUndefined();
   });
 
-  it('should remain a beforeModel-only request-preparation stage', () => {
-    const middleware = createConversationContextMiddleware({
+  it('should keep both stages as beforeModel-only middleware', () => {
+    const budget = createBudgetMiddleware();
+    const summary = createSummaryMiddleware({
       summary: {
         summarize: () => 'summary block',
       },
     });
 
-    expect(middleware.beforeModel).toEqual(expect.any(Function));
-    expect(middleware.beforeAgent).toBeUndefined();
-    expect(middleware.wrapModelCall).toBeUndefined();
-    expect(middleware.afterModel).toBeUndefined();
-    expect(middleware.wrapToolCall).toBeUndefined();
-    expect(middleware.afterAgent).toBeUndefined();
+    for (const middleware of [budget, summary!]) {
+      expect(middleware.beforeModel).toEqual(expect.any(Function));
+      expect(middleware.beforeAgent).toBeUndefined();
+      expect(middleware.wrapModelCall).toBeUndefined();
+      expect(middleware.afterModel).toBeUndefined();
+      expect(middleware.wrapToolCall).toBeUndefined();
+      expect(middleware.afterAgent).toBeUndefined();
+    }
   });
 
-  it('should force summary compaction when runtime requests manual compact', async () => {
-    const middleware = createConversationContextMiddleware({
+  it('should not force summary compaction when messages are below the automatic threshold', async () => {
+    const summary = createSummaryMiddleware({
       summary: {
-        maxMessages: 99,
-        keepLastMessages: 2,
         summarize: () => 'manual summary block',
       },
     });
 
-    const pipeline = new MiddlewarePipeline([middleware]);
+    const pipeline = new MiddlewarePipeline([createBudgetMiddleware(), summary!]);
     const messages: BaseMessage[] = [
       new HumanMessage('one'),
       new AIMessage('two'),
@@ -105,18 +115,15 @@ describe('conversation context middleware', () => {
     const context: ModelCallContext = {
       state: {messages},
       messages,
-      runtime: {
-        context: {
-          codara: {
-            forceCompactConversation: true,
-          },
-        },
-      },
+      runtime: {context: {}},
       systemMessage: ['caller prompt'],
-      runId: 'run-3',
-      turn: 1,
-      maxTurns: 8,
-      requestId: 'req-3',
+      execution: {
+        threadId: 'thread-3',
+        runId: 'run-3',
+        turn: 1,
+        maxTurns: 8,
+        requestId: 'req-3',
+      },
       inputBudget: {
         maxInputTokens: 400,
       },
@@ -124,6 +131,6 @@ describe('conversation context middleware', () => {
 
     await pipeline.beforeModel(context);
 
-    expect(readSummaryRecord(context.state.messages)?.content).toBe('manual summary block');
+    expect(readSummaryMessage(context.state.messages)).toBeUndefined();
   });
 });

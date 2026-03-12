@@ -9,8 +9,9 @@
 
 import type {AIMessage, ToolMessage} from '@langchain/core/messages';
 import type {StructuredToolInterface} from '@langchain/core/tools';
-import type {AgentRuntimeContext} from '@core/agents/contract/agent';
-import {applyAgentStateUpdate} from '@core/agents/command';
+import {z} from 'zod';
+import {applyAgentStateUpdate} from '@core/agents/models/command';
+import type {AgentRuntimeContext} from '@core/agents/models/agent';
 import {
   type AfterAgentContext,
   type AfterModelContext,
@@ -24,22 +25,16 @@ import {
   type ToolCallContext,
   type ToolCallHandler
 } from '@core/middleware/types';
-import {assertNoDuplicateNames, runSimpleStage, runWrappedStage} from '@core/middleware/execution';
+
+const recordSchema = z.record(z.string(), z.unknown());
 
 export class MiddlewarePipeline {
-  private readonly middlewares: BaseMiddleware[];
+  private readonly middlewares: ReadonlyArray<BaseMiddleware>;
 
   constructor(middlewares: BaseMiddleware[] = []) {
-    this.middlewares = middlewares.map((middleware) => createMiddleware(middleware));
-    assertNoDuplicateNames(this.middlewares);
-  }
-
-  use(middleware: BaseMiddleware): void {
-    const normalized = createMiddleware(middleware);
-    if (this.middlewares.some((item) => item.name === normalized.name)) {
-      throw new Error(`Duplicate middleware name: ${normalized.name}`);
-    }
-    this.middlewares.push(normalized);
+    const normalized = middlewares.map((middleware) => createMiddleware(middleware));
+    assertNoDuplicateNames(normalized);
+    this.middlewares = Object.freeze(normalized);
   }
 
   list(): ReadonlyArray<Readonly<BaseMiddleware>> {
@@ -53,22 +48,6 @@ export class MiddlewarePipeline {
   get(name: string): Readonly<BaseMiddleware> | undefined {
     const middleware = this.middlewares.find((middleware) => middleware.name === name);
     return middleware as Readonly<BaseMiddleware> | undefined;
-  }
-
-  /** 删除中间件；若 middleware 标记为 required 则抛错。 */
-  remove(name: string): boolean {
-    const index = this.middlewares.findIndex((middleware) => middleware.name === name);
-    if (index < 0) {
-      return false;
-    }
-
-    const middleware = this.middlewares[index];
-    if (middleware.required) {
-      throw new Error(`Cannot remove required middleware: ${name}`);
-    }
-
-    this.middlewares.splice(index, 1);
-    return true;
   }
 
   validateContext(context: AgentRuntimeContext): void {
@@ -97,11 +76,12 @@ export class MiddlewarePipeline {
       }
 
       const parsed = schema.safeParse({});
-      if (!parsed.success || !isPlainRecord(parsed.data)) {
+      const defaults = parsed.success ? recordSchema.safeParse(parsed.data) : {success: false} as const;
+      if (!defaults.success) {
         return values;
       }
 
-      return {...values, ...parsed.data};
+      return {...values, ...defaults.data};
     }, {});
 
     return this.normalizeValues({...defaults, ...cloneRecord(seed)});
@@ -121,13 +101,14 @@ export class MiddlewarePipeline {
         throw new Error(`Middleware "${middleware.name}" state validation failed: ${parsed.error.message}`);
       }
 
-      if (!isPlainRecord(parsed.data)) {
+      const nextState = recordSchema.safeParse(parsed.data);
+      if (!nextState.success) {
         continue;
       }
 
       normalized = {
         ...normalized,
-        ...parsed.data,
+        ...nextState.data,
       };
     }
 
@@ -190,8 +171,122 @@ export class MiddlewarePipeline {
   }
 }
 
-function isPlainRecord(value: unknown): value is Record<string, unknown> {
-  return Boolean(value) && typeof value === 'object' && !Array.isArray(value);
+type MiddlewareStageName =
+  | 'beforeAgent'
+  | 'beforeModel'
+  | 'wrapModelCall'
+  | 'afterModel'
+  | 'wrapToolCall'
+  | 'afterAgent';
+
+class MiddlewareError extends Error {
+  constructor(
+    public readonly middlewareName: string,
+    public readonly stage: MiddlewareStageName,
+    public readonly cause: Error
+  ) {
+    super(`Middleware "${middlewareName}" failed in ${stage}: ${cause.message}`);
+    this.name = 'MiddlewareError';
+
+    if (Error.captureStackTrace) {
+      Error.captureStackTrace(this, MiddlewareError);
+    }
+  }
+}
+
+function assertNoDuplicateNames(middlewares: ReadonlyArray<BaseMiddleware>): void {
+  const seen = new Set<string>();
+  for (const middleware of middlewares) {
+    if (seen.has(middleware.name)) {
+      throw new Error(`Duplicate middleware name: ${middleware.name}`);
+    }
+    seen.add(middleware.name);
+  }
+}
+
+type SimpleStageHook<TContext, TUpdate> = (context: TContext) => Promise<TUpdate | void> | TUpdate | void;
+type WrappedStageHook<TContext, TResult> = (
+  context: TContext,
+  handler: (request?: TContext) => Promise<TResult>
+) => Promise<TResult>;
+
+async function runSimpleStage<TContext, TUpdate>(
+  middlewares: ReadonlyArray<BaseMiddleware>,
+  stage: MiddlewareStageName,
+  context: TContext,
+  pickHook: (
+    middleware: BaseMiddleware
+  ) => SimpleStageHook<TContext, TUpdate> | undefined,
+  applyUpdate?: (context: TContext, update: TUpdate) => void
+): Promise<void> {
+  for (const middleware of middlewares) {
+    const hook = pickHook(middleware);
+    if (!hook) {
+      continue;
+    }
+
+    try {
+      const update = await hook(context);
+      if (update !== undefined && applyUpdate) {
+        applyUpdate(context, update);
+      }
+    } catch (error) {
+      throw createStageError(middleware.name, stage, error);
+    }
+  }
+}
+
+async function runWrappedStage<TContext, TResult>(
+  middlewares: ReadonlyArray<BaseMiddleware>,
+  stage: MiddlewareStageName,
+  context: TContext,
+  baseHandler: (request?: TContext) => Promise<TResult>,
+  pickHook: (
+    middleware: BaseMiddleware
+  ) => WrappedStageHook<TContext, TResult> | undefined
+): Promise<TResult> {
+  const wrappers: Array<{
+    middleware: BaseMiddleware;
+    hook: WrappedStageHook<TContext, TResult>;
+  }> = [];
+
+  for (const middleware of middlewares) {
+    const hook = pickHook(middleware);
+    if (hook) {
+      wrappers.push({middleware, hook});
+    }
+  }
+
+  const dispatch = async (index: number, request?: TContext): Promise<TResult> => {
+    const current = wrappers[index];
+    if (!current) {
+      return baseHandler(request ?? context);
+    }
+
+    try {
+      let nextRunning = false;
+      return await current.hook(request ?? context, async (nextRequest?: TContext) => {
+        if (nextRunning) {
+          throw new Error(`Pipeline violation: next() called concurrently in ${current.middleware.name}`);
+        }
+        nextRunning = true;
+        try {
+          return await dispatch(index + 1, nextRequest ?? request);
+        } finally {
+          nextRunning = false;
+        }
+      });
+    } catch (error) {
+      throw createStageError(current.middleware.name, stage, error);
+    }
+  };
+
+  return dispatch(0, context);
+}
+
+function createStageError(middlewareName: string, stage: MiddlewareStageName, error: unknown): MiddlewareError {
+  const sourceError = error instanceof Error ? error : new Error(String(error));
+  return new MiddlewareError(middlewareName, stage, sourceError);
 }
 
 function cloneRecord<T extends Record<string, unknown>>(value: T): T {

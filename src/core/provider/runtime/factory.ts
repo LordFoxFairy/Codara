@@ -43,10 +43,7 @@ export class ChatModelFactory {
 
         // ChatOpenAI 使用 configuration.baseURL。
         if (modelInfo.type === "openai" && modelInfo.baseUrl) {
-            const currentConfig =
-                typeof initOptions.configuration === "object" && initOptions.configuration
-                    ? (initOptions.configuration as Record<string, unknown>)
-                    : ({} as Record<string, unknown>);
+            const currentConfig = initOptions.configuration ?? {};
             initOptions.configuration = {
                 ...currentConfig,
                 baseURL: currentConfig.baseURL ?? modelInfo.baseUrl,

@@ -3,7 +3,7 @@ import {AIMessage, HumanMessage, ToolMessage, type BaseMessage} from '@langchain
 import type {BaseChatModel} from '@langchain/core/language_models/chat_models';
 import {createAgent} from '@core/agents';
 import {createAgentMemoryCheckpointer} from '@core/checkpoint';
-import {MiddlewarePipeline} from '@core/middleware';
+import {MiddlewarePipeline} from '@core/middleware/pipeline';
 import {readTodoState, todoListMiddleware, TODO_TOOL_NAME} from '@core/middleware/todo';
 
 class TodoTestModel {
@@ -75,12 +75,15 @@ describe('todoListMiddleware', () => {
     await pipeline.afterModel({
       state: {messages, context: {}, values: {}},
       messages,
-      runtime: {context: {}, agentContext: {}},
+      runtime: {context: {}},
       systemMessage: [],
-      runId: 'run_todo',
-      turn: 1,
-      maxTurns: 3,
-      requestId: 'req_todo',
+      execution: {
+        threadId: 'thread_todo',
+        runId: 'run_todo',
+        turn: 1,
+        maxTurns: 3,
+        requestId: 'req_todo',
+      },
       response: new AIMessage({
         content: 'I will update the todos',
         tool_calls: [
@@ -113,12 +116,15 @@ describe('todoListMiddleware', () => {
           },
         },
         messages,
-        runtime: {context: {}, agentContext: {}},
+        runtime: {context: {}},
         systemMessage: [],
-        runId: 'run_todo_snapshot',
-        turn: 2,
-        maxTurns: 3,
-        requestId: 'req_todo_snapshot',
+        execution: {
+          threadId: 'thread_todo_snapshot',
+          runId: 'run_todo_snapshot',
+          turn: 2,
+          maxTurns: 3,
+          requestId: 'req_todo_snapshot',
+        },
       },
       async (request) => {
         seenSystemMessages.push([...(request?.systemMessage ?? [])]);

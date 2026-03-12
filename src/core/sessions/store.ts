@@ -2,48 +2,23 @@ import {mkdir, readFile, readdir, rm, writeFile} from 'node:fs/promises';
 import {existsSync} from 'node:fs';
 import path from 'node:path';
 import {homedir} from 'node:os';
-import type {SessionState} from './types';
+import type {SessionState} from './session';
 
-/**
- * Session 列表选项
- */
 export interface SessionListOptions {
-  /** 是否包含已归档的 sessions */
   includeArchived?: boolean;
-  /** 按字段排序 */
   sortBy?: 'createdAt' | 'updatedAt' | 'lastActivity';
-  /** 排序方向 */
   sortOrder?: 'asc' | 'desc';
-  /** 限制返回数量 */
   limit?: number;
-  /** 按标签过滤 */
   tags?: string[];
 }
 
-/**
- * Session 存储接口
- */
 export interface SessionStore {
-  /** 保存 session 元数据 */
   save(sessionId: string, state: SessionState): Promise<void>;
-
-  /** 获取 session 元数据 */
   get(sessionId: string): Promise<SessionState | undefined>;
-
-  /** 列出所有 sessions */
   list(options?: SessionListOptions): Promise<SessionState[]>;
-
-  /** 删除 session */
   delete(sessionId: string): Promise<void>;
-
-  /** 搜索 sessions */
-  search(query: string): Promise<SessionState[]>;
 }
 
-/**
- * 基于文件系统的 Session 存储实现
- * 存储路径：~/.codara/sessions/{sessionId}/metadata.json
- */
 export class FileSessionStore implements SessionStore {
   private readonly basePath: string;
 
@@ -130,30 +105,5 @@ export class FileSessionStore implements SessionStore {
     }
 
     await rm(sessionDir, {recursive: true, force: true});
-  }
-
-  async search(query: string): Promise<SessionState[]> {
-    const allSessions = await this.list({includeArchived: true});
-    const lowerQuery = query.toLowerCase();
-
-    return allSessions.filter((session) => {
-      if (session.metadata?.title?.toLowerCase().includes(lowerQuery)) {
-        return true;
-      }
-
-      if (session.metadata?.lastMessage?.toLowerCase().includes(lowerQuery)) {
-        return true;
-      }
-
-      if (session.metadata?.tags?.some((tag) => tag.toLowerCase().includes(lowerQuery))) {
-        return true;
-      }
-
-      if (session.sessionId.toLowerCase().includes(lowerQuery)) {
-        return true;
-      }
-
-      return false;
-    });
   }
 }
