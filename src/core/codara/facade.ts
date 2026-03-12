@@ -6,7 +6,12 @@ import type {AgentCheckpointer} from '@core/checkpoint';
 import {createAgentFileCheckpointer} from '@core/checkpoint';
 import type {BaseMiddleware, HILMiddlewareOptions, LoggingMiddlewareOptions} from '@core/middleware';
 import type {SummarySettings} from '@core/middleware/summary';
-import {createBudgetMiddleware, createHILMiddleware, createLoggingMiddleware} from '@core/middleware';
+import {
+  createBudgetMiddleware,
+  createDailySessionFileLogSink,
+  createHILMiddleware,
+  createLoggingMiddleware,
+} from '@core/middleware';
 import {ChatModelFactory, loadModelRoutingConfig, loadModelRoutingConfigFromPath, ModelRegistry, resolveCodaraPath, type ModelInfo, type ModelRoutingConfig} from '@core/provider';
 import {
   createCodaraGuidelinesSource,
@@ -24,6 +29,7 @@ import {resolveWorkspaceRoot} from '@core/shared/workspace';
 import {createBuiltinTools} from '@core/tools';
 
 export const DEFAULT_CODARA_MODEL_ALIAS = 'default';
+const DEFAULT_RUNTIME_FILE_LOGGING_ENABLED = true;
 
 export class CodaraModelCatalog {
   constructor(
@@ -76,7 +82,6 @@ export interface CodaraOptions {
   hil?: false | HILMiddlewareOptions;
   logging?: false | LoggingMiddlewareOptions;
   sessionId?: string;
-  threadId?: string;
   restore?: 'latest' | 'never';
   store?: SessionStore;
   checkpointer?: AgentCheckpointer;
@@ -132,13 +137,15 @@ export function createCodaraHost(options: CodaraHostOptions = {}): Codara {
   const catalog = !options.model && !options.catalog && !options.config
     ? loadModelRoutingConfigFromPath(codaraPath).then((config) => createCodaraModelCatalog({config}))
     : options.catalog;
+  const logging = resolveRuntimeLoggingOptions(options);
 
   return createCodara({
     ...options,
+    ...(logging === false ? {logging: false} : {logging}),
     ...(catalog ? {catalog} : {}),
     ...(options.store ? {} : {store: new FileSessionStore({basePath: path.join(codaraPath, 'sessions')})}),
     ...(options.checkpointer ? {} : {
-      checkpointer: createAgentFileCheckpointer({rootDir: path.join(codaraPath, 'state', 'threads')}),
+      checkpointer: createAgentFileCheckpointer({rootDir: path.join(codaraPath, 'state', 'sessions')}),
     }),
     restore: options.restore ?? 'latest',
   });
@@ -152,7 +159,6 @@ export function createCodaraAgent(options: CodaraOptions, restoredState?: Sessio
     ...(restoredState ? {state: restoredState} : {}),
     id: options.id,
     sessionId: options.sessionId,
-    threadId: options.threadId,
     store: options.store,
     checkpointer: options.checkpointer,
     restore: options.restore,
@@ -269,7 +275,6 @@ async function reopenCodaraSession(options: CodaraOptions, state: SessionState):
   const codara = createCodaraAgent({
     ...options,
     sessionId: state.sessionId,
-    threadId: state.threadId,
     restore: 'latest',
   }, state);
   await codara.hydrate();
@@ -295,4 +300,25 @@ function resolveCodaraHostPath(options: Pick<CodaraHostOptions, 'codaraPath' | '
   }
 
   return path.resolve(resolveCodaraPath());
+}
+
+function resolveRuntimeLoggingOptions(
+  options: Pick<CodaraHostOptions, 'logging' | 'cwd' | 'projectRoot'>,
+): false | LoggingMiddlewareOptions {
+  if (!DEFAULT_RUNTIME_FILE_LOGGING_ENABLED || options.logging === false || options.logging?.enabled === false) {
+    return false;
+  }
+
+  const workspaceRoot = resolveWorkspaceRoot({
+    cwd: options.cwd,
+    projectRoot: options.projectRoot,
+  });
+  const rootDir = path.join(workspaceRoot, '.codara', 'logs');
+  const provided = options.logging ?? {};
+
+  return {
+    ...provided,
+    enabled: true,
+    logger: provided.logger ?? createDailySessionFileLogSink({rootDir}),
+  };
 }

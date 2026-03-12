@@ -89,7 +89,7 @@ describe('Codara session source lifecycle', () => {
     const codara = createCodara({
       model: new SystemEchoModel() as unknown as BaseChatModel,
       cwd: nestedCwd,
-      threadId: 'reload-sources-thread',
+      sessionId: 'reload-sources-thread',
       userHome,
       guidelines: true,
       skills: false,

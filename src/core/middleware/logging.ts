@@ -1,3 +1,5 @@
+import {appendFileSync, mkdirSync} from 'node:fs';
+import path from 'node:path';
 import type {ToolMessage} from '@langchain/core/messages';
 import {z} from 'zod';
 import {
@@ -16,6 +18,7 @@ export interface MiddlewareLogRecord {
   middleware: string;
   stage: 'beforeAgent' | 'beforeModel' | 'wrapModelCall' | 'afterModel' | 'wrapToolCall' | 'afterAgent';
   event: MiddlewareLogEvent;
+  sessionId: string;
   runId: string;
   turn: number;
   requestId: string;
@@ -153,6 +156,7 @@ export function createLoggingMiddleware(options: LoggingMiddlewareOptions = {}) 
       middleware: middlewareName,
       stage,
       event,
+      sessionId: execution.sessionId,
       runId: execution.runId,
       turn: execution.turn,
       requestId: execution.requestId,
@@ -235,4 +239,46 @@ function toErrorMessage(error: unknown): string {
 function defaultLogSink(record: MiddlewareLogRecord): void {
   // Keep default output machine-readable for log aggregation.
   console.log(JSON.stringify(record));
+}
+
+export function createDailySessionFileLogSink(options: {rootDir: string}): MiddlewareLogSink {
+  const rootDir = path.resolve(options.rootDir);
+
+  return (record) => {
+    const filePath = resolveDailySessionLogPath(rootDir, record.sessionId, record.timestamp);
+    mkdirSync(path.dirname(filePath), {recursive: true});
+    appendFileSync(filePath, `${JSON.stringify(record)}\n`, 'utf8');
+  };
+}
+
+function resolveDailySessionLogPath(rootDir: string, sessionId: string, timestamp: string): string {
+  const day = normalizeLogDay(timestamp);
+  const sessionSegments = normalizeSessionLogSegments(sessionId);
+  return path.join(rootDir, ...sessionSegments, `${day}.log`);
+}
+
+function normalizeLogDay(timestamp: string): string {
+  const day = timestamp.slice(0, 10);
+  return /^\d{4}-\d{2}-\d{2}$/.test(day) ? day : 'unknown-date';
+}
+
+function normalizeSessionLogSegments(sessionId: string): string[] {
+  const segments = sessionId
+    .split(/[\\/]+/)
+    .map((segment) => sanitizeLogPathSegment(segment.trim()))
+    .filter(Boolean);
+
+  return segments.length > 0 ? segments : ['unknown-session'];
+}
+
+function sanitizeLogPathSegment(segment: string): string {
+  if (!segment || segment === '.' || segment === '..') {
+    return '_';
+  }
+
+  const sanitized = segment.replace(/[<>:"|?*\u0000-\u001F]/g, '_');
+  if (!sanitized || sanitized === '.' || sanitized === '..') {
+    return '_';
+  }
+  return sanitized;
 }

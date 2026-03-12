@@ -10,7 +10,7 @@ import type {HILToolMessagePayload} from '@core/middleware/hil';
 
 export interface AgentStreamWriter {
   stream: AsyncGenerator<AgentStreamOutput, AgentResult, void>;
-  emitMessages(input: {runId: string; threadId: string; requestId: string; turn: number; chunk: AIMessageChunk}): Promise<void>;
+  emitMessages(input: {runId: string; sessionId: string; requestId: string; turn: number; chunk: AIMessageChunk}): Promise<void>;
   emitModelUpdate(message: AIMessage): Promise<void>;
   emitToolUpdate(message: ToolMessage): Promise<void>;
   emitValues(messages: BaseMessage[]): Promise<void>;
@@ -43,11 +43,11 @@ export function createStreamWriter(config: AgentStreamConfig | undefined): Agent
           ...(input.chunk.tool_calls ? {tool_calls: input.chunk.tool_calls} : {}),
           ...(input.chunk.invalid_tool_calls ? {invalid_tool_calls: input.chunk.invalid_tool_calls} : {}),
           ...(input.chunk.usage_metadata ? {usage_metadata: input.chunk.usage_metadata} : {}),
-          ...(input.chunk.additional_kwargs ? {additional_kwargs: input.chunk.additional_kwargs} : {}),
+            ...(input.chunk.additional_kwargs ? {additional_kwargs: input.chunk.additional_kwargs} : {}),
           response_metadata: {
             ...(input.chunk.response_metadata ?? {}),
             runId: input.runId,
-            threadId: input.threadId,
+            sessionId: input.sessionId,
             requestId: input.requestId,
             turn: input.turn,
           },

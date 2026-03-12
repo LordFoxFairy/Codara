@@ -21,11 +21,10 @@ export function createSessionMetadata(
 export function forkSessionMetadata(
   metadata: SessionMetadata,
   sessionId: string,
-  threadId: string,
 ): Partial<SessionMetadata> {
   const cloned = cloneSessionMetadata(metadata);
   delete cloned.usage;
-  return {...cloned, forkedFromSessionId: sessionId, forkedFromThreadId: threadId};
+  return {...cloned, forkedFromSessionId: sessionId};
 }
 
 export function syncSessionMetadata(

@@ -26,7 +26,7 @@ type DurableState = {
 };
 
 export type AgentRuntimeState = DurableState & {
-  threadId: string;
+  sessionId: string;
   checkpointId?: string;
   status: AgentStatus;
   lastResult?: AgentCheckpointSummary;
@@ -38,7 +38,7 @@ export type AgentRuntimeState = DurableState & {
 export type MutableAgentState = AgentRuntimeState;
 
 export function createInitialAgentState(
-  threadId: string,
+  sessionId: string,
   input?: {agentType?: AgentType; messages?: BaseMessage[]; context?: AgentRuntimeContext; values?: AgentRuntimeValues},
   checkpoint?: AgentCheckpoint,
 ): MutableAgentState {
@@ -47,7 +47,7 @@ export function createInitialAgentState(
   const pendingPause = restored?.pendingPause;
 
   return {
-    threadId: checkpoint?.ref.threadId ?? threadId,
+    sessionId: checkpoint?.ref.sessionId ?? sessionId,
     agentType: restored?.agentType ?? input?.agentType ?? 'main',
     checkpointId: checkpoint?.ref.checkpointId,
     messages: cloneAgentMessages(restored?.messages ?? input?.messages ?? []),
@@ -81,7 +81,7 @@ export function summarizeCheckpointInfo(info: AgentCheckpointInfo): AgentCheckpo
 }
 
 export function toAgentState(state: AgentRuntimeState): AgentState {
-  return {threadId: state.threadId, ...cloneDurableState(state), status: state.status};
+  return {sessionId: state.sessionId, ...cloneDurableState(state), status: state.status};
 }
 
 export function toCheckpointState(state: AgentRuntimeState): AgentCheckpointState {
@@ -129,7 +129,7 @@ export function hasEquivalentCheckpointState(
 }
 
 export function cloneAgentState(state: AgentState): AgentState {
-  return {threadId: state.threadId, ...cloneDurableState(state), status: state.status};
+  return {sessionId: state.sessionId, ...cloneDurableState(state), status: state.status};
 }
 
 export function cloneAgentMessages<T extends BaseMessage[]>(messages: T): T {

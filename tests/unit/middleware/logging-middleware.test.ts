@@ -3,7 +3,16 @@ import {AIMessage, HumanMessage, ToolMessage, type BaseMessage, type ToolCall} f
 import type {BaseChatModel} from '@langchain/core/language_models/chat_models';
 import type {StructuredToolInterface} from '@langchain/core/tools';
 import {createAgent} from '@core/agents';
-import {createHILMiddleware, createLoggingMiddleware, type MiddlewareLogRecord, type ToolCallContext} from '@core/middleware';
+import {mkdtemp, readFile, rm} from 'node:fs/promises';
+import {tmpdir} from 'node:os';
+import path from 'node:path';
+import {
+  createDailySessionFileLogSink,
+  createHILMiddleware,
+  createLoggingMiddleware,
+  type MiddlewareLogRecord,
+  type ToolCallContext,
+} from '@core/middleware';
 import {MiddlewarePipeline} from '@core/middleware/pipeline';
 
 class FakeModel {
@@ -42,7 +51,7 @@ function createToolContext(toolCall: ToolCall, runtimeContext: Record<string, un
     runtime: {context: runtimeContext},
     systemMessage: [],
     execution: {
-      threadId: 'thread_log_1',
+      sessionId: 'thread_log_1',
       runId: 'run_log_1',
       turn: 1,
       maxTurns: 3,
@@ -199,5 +208,38 @@ describe('createLoggingMiddleware', () => {
       interactionSkill: 'permission-policy',
       interactionActionIds: ['allow_once', 'always', 'deny'],
     });
+  });
+
+  it('should write JSONL records under logs/<sessionId>/YYYY-MM-DD.log', async () => {
+    const root = await mkdtemp(path.join(tmpdir(), 'codara-logging-sink-'));
+    const sink = createDailySessionFileLogSink({rootDir: root});
+    const timestamp = '2026-03-12T10:20:30.000Z';
+
+    try {
+      sink({
+        timestamp,
+        level: 'info',
+        middleware: 'LoggingMiddleware',
+        stage: 'wrapModelCall',
+        event: 'stage_end',
+        sessionId: 'nested/session-1',
+        runId: 'run-1',
+        turn: 1,
+        requestId: 'req-1',
+      });
+
+      const filePath = path.join(root, 'nested', 'session-1', '2026-03-12.log');
+      const content = await readFile(filePath, 'utf8');
+      const lines = content.trim().split('\n');
+
+      expect(lines).toHaveLength(1);
+      expect(JSON.parse(lines[0] ?? '{}')).toMatchObject({
+        sessionId: 'nested/session-1',
+        runId: 'run-1',
+        requestId: 'req-1',
+      });
+    } finally {
+      await rm(root, {recursive: true, force: true});
+    }
   });
 });

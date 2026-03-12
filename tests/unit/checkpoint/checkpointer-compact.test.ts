@@ -26,14 +26,14 @@ function createRecord(counter: number, step: number) {
 describe('Checkpointer compact', () => {
   it('should keep the latest checkpoints and detach the oldest kept parent in memory', async () => {
     const checkpointer = new InMemoryCheckpointer<TestState, TestInfo>();
-    const first = await checkpointer.put({threadId: 'thread-memory', ...createRecord(1, 1)});
+    const first = await checkpointer.put({sessionId: 'thread-memory', ...createRecord(1, 1)});
     const second = await checkpointer.put({
-      threadId: 'thread-memory',
+      sessionId: 'thread-memory',
       parentCheckpointId: first.ref.checkpointId,
       ...createRecord(2, 2),
     });
     await checkpointer.put({
-      threadId: 'thread-memory',
+      sessionId: 'thread-memory',
       parentCheckpointId: second.ref.checkpointId,
       ...createRecord(3, 3),
     });
@@ -59,14 +59,14 @@ describe('Checkpointer compact', () => {
       },
     });
 
-    const first = await checkpointer.put({threadId: 'thread-file', ...createRecord(1, 1)});
+    const first = await checkpointer.put({sessionId: 'thread-file', ...createRecord(1, 1)});
     const second = await checkpointer.put({
-      threadId: 'thread-file',
+      sessionId: 'thread-file',
       parentCheckpointId: first.ref.checkpointId,
       ...createRecord(2, 2),
     });
     await checkpointer.put({
-      threadId: 'thread-file',
+      sessionId: 'thread-file',
       parentCheckpointId: second.ref.checkpointId,
       ...createRecord(3, 3),
     });

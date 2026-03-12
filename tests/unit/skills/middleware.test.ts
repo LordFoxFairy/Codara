@@ -18,7 +18,7 @@ function createBaseContext(runId: string) {
     runtime: {context: {}, shared: {}},
     systemMessage: ['base-system'],
     execution: {
-      threadId: `${runId}-thread`,
+      sessionId: `${runId}-thread`,
       runId,
       turn: 1,
       maxTurns: 3,

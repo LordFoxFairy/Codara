@@ -21,7 +21,7 @@ import type {ContextBudgetSnapshot} from '@core/middleware/budget';
 export type MiddlewareRuntimeShared = Record<string, unknown>;
 
 export interface ExecutionContextMetadata {
-  threadId: string;
+  sessionId: string;
   runId: string;
   turn: number;
   maxTurns: number;

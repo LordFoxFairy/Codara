@@ -15,7 +15,7 @@ export async function executeToolCall(
   toolCallId: string,
   tool: StructuredToolInterface | undefined,
   handleToolErrors: ToolErrorHandler,
-  state: Pick<AgentState, 'threadId' | 'agentType' | 'messages' | 'context' | 'values'>,
+  state: Pick<AgentState, 'sessionId' | 'agentType' | 'messages' | 'context' | 'values'>,
   runtime?: {
     context: AgentState['context'];
     runtimeContext?: AgentState['context'];
@@ -30,7 +30,7 @@ export async function executeToolCall(
 
   try {
     const execution = runtime?.execution ?? {
-      threadId: state.threadId,
+      sessionId: state.sessionId,
       runId: '',
       turn: 0,
       maxTurns: 0,
@@ -97,7 +97,7 @@ async function handleToolFailure(
 function applyToolCommand(
   command: Command,
   toolCallId: string,
-  state: Pick<AgentState, 'threadId' | 'agentType' | 'messages' | 'context' | 'values'>,
+  state: Pick<AgentState, 'sessionId' | 'agentType' | 'messages' | 'context' | 'values'>,
   runtime?: {
     context: AgentState['context'];
     runtimeContext?: AgentState['context'];

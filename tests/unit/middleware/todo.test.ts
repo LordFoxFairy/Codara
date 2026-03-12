@@ -78,7 +78,7 @@ describe('todoListMiddleware', () => {
       runtime: {context: {}},
       systemMessage: [],
       execution: {
-        threadId: 'thread_todo',
+        sessionId: 'thread_todo',
         runId: 'run_todo',
         turn: 1,
         maxTurns: 3,
@@ -119,7 +119,7 @@ describe('todoListMiddleware', () => {
         runtime: {context: {}},
         systemMessage: [],
         execution: {
-          threadId: 'thread_todo_snapshot',
+          sessionId: 'thread_todo_snapshot',
           runId: 'run_todo_snapshot',
           turn: 2,
           maxTurns: 3,
@@ -161,7 +161,7 @@ describe('todoListMiddleware', () => {
         new AIMessage('done'),
       ]),
       checkpointer,
-      threadId: 'todo-thread',
+      sessionId: 'todo-thread',
       middleware: [todoListMiddleware()],
     });
 
@@ -179,7 +179,7 @@ describe('todoListMiddleware', () => {
     const restored = createAgent({
       model: createTodoModel([new AIMessage('done')]),
       checkpointer,
-      threadId: 'todo-thread',
+      sessionId: 'todo-thread',
       checkpoint: restoredCheckpoint,
       middleware: [todoListMiddleware()],
     });

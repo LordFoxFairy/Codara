@@ -10,7 +10,7 @@ function createToolContext(toolCall: ToolCall): ToolCallContext {
     runtime: {context: {}},
     systemMessage: [],
     execution: {
-      threadId: 'thread_hil_meta_1',
+      sessionId: 'thread_hil_meta_1',
       runId: 'run_hil_meta_1',
       turn: 1,
       maxTurns: 3,
