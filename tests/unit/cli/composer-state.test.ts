@@ -10,7 +10,7 @@ import {
   moveComposerCursorLeft,
   moveComposerCursorRight,
   moveComposerCursorUp,
-} from '@/cli/state/composer-state';
+} from '@/cli/composer/state';
 
 describe('cli composer state', () => {
   test('insertComposerText should insert at cursor position', () => {
