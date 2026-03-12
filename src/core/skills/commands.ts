@@ -1,3 +1,4 @@
+import type {SkillsRuntimeData} from '@core/skills/runtime';
 import type {SkillMetadata, SkillStore} from '@core/skills/types';
 import {normalizeDiscoveredSkills} from '@core/skills/metadata';
 
@@ -20,20 +21,21 @@ export interface SkillCommandInvocation {
 export async function discoverSkillCommands(
   store: SkillStore,
 ): Promise<readonly SkillCommandDefinition[]> {
-  const skills = normalizeDiscoveredSkills(await store.discover());
+  return discoverSkillCommandsFromMetadata(normalizeDiscoveredSkills(await store.discover()));
+}
 
+export function discoverSkillCommandsFromRuntime(
+  runtime: Pick<SkillsRuntimeData, 'discovered'>,
+): readonly SkillCommandDefinition[] {
+  return discoverSkillCommandsFromMetadata(runtime.discovered);
+}
+
+function discoverSkillCommandsFromMetadata(
+  skills: readonly SkillMetadata[],
+): readonly SkillCommandDefinition[] {
   return skills.flatMap((skill) => {
-    if (!skill.command?.name) {
-      return [];
-    }
-
-    return [{
-      name: skill.command.name,
-      description: skill.command.description ?? skill.description,
-      usage: skill.command.usage ?? `/${skill.command.name} <request>`,
-      ...(skill.command.aliases?.length ? {aliases: skill.command.aliases} : {}),
-      skill,
-    }];
+    const definition = toSkillCommandDefinition(skill);
+    return definition ? [definition] : [];
   });
 }
 
@@ -53,5 +55,19 @@ export function createSkillCommandInvocation(
       'User request:',
       request,
     ].join('\n'),
+  };
+}
+
+function toSkillCommandDefinition(skill: SkillMetadata): SkillCommandDefinition | undefined {
+  if (!skill.command?.name) {
+    return undefined;
+  }
+
+  return {
+    name: skill.command.name,
+    description: skill.command.description ?? skill.description,
+    usage: skill.command.usage ?? `/${skill.command.name} <request>`,
+    ...(skill.command.aliases?.length ? {aliases: skill.command.aliases} : {}),
+    skill,
   };
 }

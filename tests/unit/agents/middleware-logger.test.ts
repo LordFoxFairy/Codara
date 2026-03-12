@@ -47,28 +47,28 @@ describe('Agent Middleware Logger', () => {
     const loggingMiddleware = createMiddleware({
       name: 'stage-logger',
       beforeAgent: (context) => {
-        logs.push(`beforeAgent:${context.turn}`);
+        logs.push(`beforeAgent:${context.execution.turn}`);
       },
       beforeModel: (context) => {
-        logs.push(`beforeModel:${context.turn}`);
+        logs.push(`beforeModel:${context.execution.turn}`);
       },
       wrapModelCall: async (request, handler) => {
-        logs.push(`wrapModelCall:start:${request.turn}`);
+        logs.push(`wrapModelCall:start:${request.execution.turn}`);
         const response = await handler(request);
-        logs.push(`wrapModelCall:end:${request.turn}`);
+        logs.push(`wrapModelCall:end:${request.execution.turn}`);
         return response;
       },
       afterModel: (context) => {
-        logs.push(`afterModel:${context.turn}`);
+        logs.push(`afterModel:${context.execution.turn}`);
       },
       wrapToolCall: async (request, handler) => {
-        logs.push(`wrapToolCall:start:${request.turn}:${request.toolCall.name}`);
+        logs.push(`wrapToolCall:start:${request.execution.turn}:${request.toolCall.name}`);
         const message = await handler(request);
-        logs.push(`wrapToolCall:end:${request.turn}:${request.toolCall.name}`);
+        logs.push(`wrapToolCall:end:${request.execution.turn}:${request.toolCall.name}`);
         return message;
       },
       afterAgent: (context) => {
-        logs.push(`afterAgent:${context.turn}:${context.result.reason}`);
+        logs.push(`afterAgent:${context.execution.turn}:${context.result.reason}`);
       }
     });
     const runner = createAgent({

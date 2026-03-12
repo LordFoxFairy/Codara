@@ -40,27 +40,27 @@ describe('Agent Middleware Logger End-to-End', () => {
     const loggingMiddleware = createMiddleware({
       name: 'LoggingMiddleware',
       beforeAgent: (state) => {
-        logs.push(`beforeAgent:${state.turn}`);
+        logs.push(`beforeAgent:${state.execution.turn}`);
       },
       beforeModel: (state) => {
-        logs.push(`beforeModel:${state.turn}:${state.messages.length}`);
+        logs.push(`beforeModel:${state.execution.turn}:${state.messages.length}`);
       },
       wrapModelCall: async (request, handler) => {
-        logs.push(`wrapModelCall:start:${request.turn}`);
+        logs.push(`wrapModelCall:start:${request.execution.turn}`);
         const response = await handler(request);
-        logs.push(`wrapModelCall:end:${request.turn}`);
+        logs.push(`wrapModelCall:end:${request.execution.turn}`);
         return response;
       },
       afterModel: (state) => {
         const lastMessage = state.messages[state.messages.length - 1];
-        logs.push(`afterModel:${state.turn}:${String(lastMessage?.content ?? '')}`);
+        logs.push(`afterModel:${state.execution.turn}:${String(lastMessage?.content ?? '')}`);
       },
       wrapToolCall: async (request, handler) => {
-        logs.push(`wrapToolCall:${request.turn}:${request.toolCall.name}`);
+        logs.push(`wrapToolCall:${request.execution.turn}:${request.toolCall.name}`);
         return handler(request);
       },
       afterAgent: (state) => {
-        logs.push(`afterAgent:${state.turn}:${state.result.reason}`);
+        logs.push(`afterAgent:${state.execution.turn}:${state.result.reason}`);
       }
     });
     const retryMiddleware = createMiddleware({

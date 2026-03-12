@@ -84,7 +84,7 @@ describe('Codara session fork', () => {
     expect((await checkpointer.getLatest(fork.getState().threadId))?.info.source).toBe('fork');
   });
 
-  it('should not inherit cumulative parent usage telemetry into a forked session host', async () => {
+  it('should not inherit cumulative parent usage telemetry into a forked session', async () => {
     const checkpointer = createAgentMemoryCheckpointer();
     const codara = createCodara({
       model: new UsageModel() as unknown as BaseChatModel,

@@ -8,7 +8,7 @@
 // ============================================
 
 /** 创建或打开 Codara 会话（推荐入口） */
-export {createCodara, openCodaraSession, openLatestCodaraSession} from '@core/codara';
+export {createCodara, createCodaraAgent, openCodaraSession, openLatestCodaraSession} from '@core/codara';
 
 /** Codara 相关类型 */
 export type {
@@ -27,7 +27,7 @@ export type {
   AgentResumeConfig,
   AgentResumeStreamConfig,
 } from '@core/agents';
-export type {TaskRecord, TaskStore, TaskStatus, CreateTaskInput, UpdateTaskInput} from '@core/tasking';
+export type {TaskRecord, TaskStore, TaskStatus, CreateTaskInput, UpdateTaskInput} from '@core/tasks';
 
 /** Session 相关类型 */
 export type {Session, SessionState, SessionStatus, SessionStore} from '@core/sessions';
@@ -38,7 +38,6 @@ export type {Session, SessionState, SessionStatus, SessionStore} from '@core/ses
 
 /** Agent 构建 */
 export {createAgent} from '@core/agents';
-export {createSubagentTool, createTaskTool} from '@core/tasking';
 
 /** Session 管理 */
 export {createSession, FileSessionStore} from '@core/sessions';
@@ -54,15 +53,22 @@ export {
 /** Middleware */
 export {
   createMiddleware,
-  createConversationContextMiddleware,
-  createSharedTaskMiddleware,
-  createGuidelinesMiddleware,
+  createBudgetMiddleware,
+  createSummaryMiddleware,
   createSkillsMiddleware,
   createHILMiddleware,
   createLoggingMiddleware,
-  createSubagentMiddleware,
-  createTaskMiddleware,
 } from '@core/middleware';
+export {
+  createSharedTaskMiddleware,
+  createTaskMiddleware,
+} from '@core/tasks';
+export {
+  createCodaraGuidelinesSource,
+} from '@core/sessions/guidelines';
+export {
+  createCodaraSkillsSource,
+} from '@core/skills';
 
 // ============================================
 // 类型导出（供高级用户使用）
@@ -70,10 +76,17 @@ export {
 
 export type {
   BaseMiddleware,
-  ConversationContextMiddlewareOptions,
+  BudgetMiddlewareOptions,
   HILMiddlewareOptions,
   LoggingMiddlewareOptions,
   HILResumePayload,
+  SummarySettings,
+  SummaryOptions,
 } from '@core/middleware';
+export type {
+  GuidelinesOptions,
+  GuidelinesSource,
+} from '@core/sessions/guidelines';
+export type {SkillsSource} from '@core/skills';
 
 export type {AgentCheckpoint, AgentCheckpointer} from '@core/checkpoint';

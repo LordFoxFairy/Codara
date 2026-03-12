@@ -4,7 +4,7 @@ import {
   createContextBudgetSnapshot,
   estimateModelInputTokens,
   refreshContextBudget,
-} from '@core/middleware/context-budget';
+} from '@core/middleware/budget';
 import type {BeforeModelContext} from '@core/middleware';
 
 describe('context budget middleware', () => {
@@ -33,12 +33,15 @@ describe('context budget middleware', () => {
         messages: [new HumanMessage('hello world')],
       },
       messages: [new HumanMessage('hello world')],
-      runtime: {context: {}, agentContext: {}},
+      runtime: {context: {}},
       systemMessage: ['x'.repeat(200)],
-      runId: 'run-budget',
-      turn: 1,
-      maxTurns: 5,
-      requestId: 'req-budget',
+      execution: {
+        threadId: 'thread-budget',
+        runId: 'run-budget',
+        turn: 1,
+        maxTurns: 5,
+        requestId: 'req-budget',
+      },
       inputBudget: {maxInputTokens: 20},
     };
 
@@ -54,12 +57,15 @@ describe('context budget middleware', () => {
         messages: [new HumanMessage('hello world')],
       },
       messages: [new HumanMessage('hello world')],
-      runtime: {context: {}, agentContext: {}},
+      runtime: {context: {}},
       systemMessage: ['base system'],
-      runId: 'run-refresh',
-      turn: 1,
-      maxTurns: 5,
-      requestId: 'req-refresh',
+      execution: {
+        threadId: 'thread-refresh',
+        runId: 'run-refresh',
+        turn: 1,
+        maxTurns: 5,
+        requestId: 'req-refresh',
+      },
       inputBudget: {maxInputTokens: 50},
     };
 

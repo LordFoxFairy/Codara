@@ -1,13 +1,39 @@
+import {homedir} from 'node:os';
 import {fromZodError} from "zod-validation-error";
 import {ConfigSchema, ModelMetadataConfigSchema} from "@core/provider/config/schema";
-import {
-    resolveModelMetadataConfigPath,
-    resolveModelRoutingConfigPath,
-} from "@core/provider/config/path";
 import type {ModelMetadataConfig, ModelRoutingConfig, RouterRule} from "@core/provider/model";
+
+const CODARA_PATH_ENV = 'CODARA_PATH';
 
 const toErrorMessage = (error: unknown): string =>
     error instanceof Error ? error.message : "未知错误";
+
+const trimTrailingSlash = (value: string): string => value.replace(/\/+$/, '');
+
+export function resolveCodaraPath(): string {
+    const customPath = process.env[CODARA_PATH_ENV]?.trim();
+    if (customPath) {
+        return trimTrailingSlash(customPath);
+    }
+
+    const home =
+        process.env.HOME?.trim()
+        || process.env.USERPROFILE?.trim()
+        || homedir().trim();
+    if (!home) {
+        throw new Error("无法获取用户主目录");
+    }
+
+    return `${trimTrailingSlash(home)}/.codara`;
+}
+
+export function resolveModelRoutingConfigPath(): string {
+    return `${resolveCodaraPath()}/config.json`;
+}
+
+export function resolveModelMetadataConfigPath(): string {
+    return `${resolveCodaraPath()}/model-metadata.json`;
+}
 
 /** 解析单个路由规则（`provider:model`）。 */
 function parseRouterRule(alias: string, target: string): RouterRule {

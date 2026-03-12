@@ -1,18 +1,22 @@
 import {describe, expect, it} from 'bun:test';
 import {AIMessage, HumanMessage, type BaseMessage} from '@langchain/core/messages';
-import {createMiddleware, MiddlewarePipeline} from '@core/middleware';
+import {createMiddleware} from '@core/middleware';
+import {MiddlewarePipeline} from '@core/middleware/pipeline';
 
 function createContext() {
   const messages = [new HumanMessage('hello')] as BaseMessage[];
   return {
     state: {messages},
     messages,
-    runtime: {context: {}, agentContext: {}},
+    runtime: {context: {}},
     systemMessage: [],
-    runId: 'run_style',
-    turn: 1,
-    maxTurns: 3,
-    requestId: 'req_style'
+    execution: {
+      threadId: 'thread_style',
+      runId: 'run_style',
+      turn: 1,
+      maxTurns: 3,
+      requestId: 'req_style',
+    },
   };
 }
 

@@ -1,5 +1,11 @@
 import type {ToolMessage} from '@langchain/core/messages';
-import {createMiddleware, type BaseExecutionContext, type ToolCallContext} from '@core/middleware/types';
+import {z} from 'zod';
+import {
+  createMiddleware,
+  readExecutionMetadata,
+  type BaseExecutionContext,
+  type ToolCallContext,
+} from '@core/middleware/types';
 
 export type MiddlewareLogLevel = 'debug' | 'info' | 'warn' | 'error';
 export type MiddlewareLogEvent = 'stage_start' | 'stage_end' | 'stage_error';
@@ -41,6 +47,7 @@ const LEVEL_PRIORITY: Record<MiddlewareLogLevel, number> = {
 };
 
 const DEFAULT_LEVEL: MiddlewareLogLevel = 'info';
+const responseMetadataSchema = z.record(z.string(), z.unknown());
 
 /**
  * Built-in structured logging middleware.
@@ -138,15 +145,17 @@ export function createLoggingMiddleware(options: LoggingMiddlewareOptions = {}) 
     context: BaseExecutionContext,
     extra: Partial<MiddlewareLogRecord> = {},
   ): MiddlewareLogRecord {
+    const execution = readExecutionMetadata(context);
+
     return {
       timestamp: new Date().toISOString(),
       level,
       middleware: middlewareName,
       stage,
       event,
-      runId: context.runId,
-      turn: context.turn,
-      requestId: context.requestId,
+      runId: execution.runId,
+      turn: execution.turn,
+      requestId: execution.requestId,
       ...extra,
     };
   }
@@ -198,7 +207,8 @@ function toolOutcomeDetails(message: ToolMessage): Pick<MiddlewareLogRecord, 'to
     toolStatus: message.status === 'error' ? 'error' : 'success',
   };
 
-  const metadata = isRecord(message.response_metadata) ? message.response_metadata : undefined;
+  const parsed = responseMetadataSchema.safeParse(message.response_metadata);
+  const metadata = parsed.success ? parsed.data : undefined;
   if (!metadata) {
     return details;
   }
@@ -206,10 +216,6 @@ function toolOutcomeDetails(message: ToolMessage): Pick<MiddlewareLogRecord, 'to
   details.toolMetadata = metadata;
 
   return details;
-}
-
-function isRecord(value: unknown): value is Record<string, unknown> {
-  return value !== null && typeof value === 'object' && !Array.isArray(value);
 }
 
 function toErrorName(error: unknown): string {

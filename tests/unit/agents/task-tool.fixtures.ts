@@ -1,19 +1,20 @@
 import path from 'node:path';
 import {AIMessage, HumanMessage, SystemMessage, type BaseMessage} from '@langchain/core/messages';
 import type {StructuredToolInterface} from '@langchain/core/tools';
-import {createSkillsMiddleware, FileSystemSkillStore} from '@core/skills';
+import {createSkillsMiddleware} from '@core/middleware';
+import {FileSystemSkillStore} from '@core/skills';
 
-export function createBuiltinAgentStore() {
+export function createBuiltinSubagentStore() {
   return new FileSystemSkillStore({
     sources: [path.join(process.cwd(), '.codara', 'skills')],
     cacheTtlMs: 0,
   });
 }
 
-export function createAgentSkillsMiddleware(store: FileSystemSkillStore, agentRoots?: string[]) {
+export function createAgentSkillsMiddleware(store: FileSystemSkillStore, subagentRoots?: string[]) {
   return createSkillsMiddleware({
     store,
-    ...(agentRoots?.length ? {agentRoots} : {}),
+    ...(subagentRoots?.length ? {subagentRoots} : {}),
   });
 }
 

@@ -10,9 +10,33 @@ import {
   openLatestCodaraSession,
 } from '@core';
 import type {BaseChatModel} from '@langchain/core/language_models/chat_models';
-import {EchoModel} from './codara-fixtures';
+import {AIMessage, HumanMessage, SystemMessage, type BaseMessage} from '@langchain/core/messages';
+import {EchoModel, SystemEchoModel} from './codara-fixtures';
 
-describe('Codara session host', () => {
+class SummaryAwareModel {
+  async invoke(messages: BaseMessage[]): Promise<AIMessage> {
+    const isSummaryPass = messages.some((message) =>
+      SystemMessage.isInstance(message) && String(message.content).includes('compress earlier conversation context'),
+    );
+
+    if (isSummaryPass) {
+      return new AIMessage('default model summary');
+    }
+
+    const humanCount = messages.filter((message) => HumanMessage.isInstance(message)).length;
+    return new AIMessage(`seen_humans:${humanCount}`);
+  }
+
+  bindTools(): this {
+    return this;
+  }
+}
+
+describe('Codara session lifecycle', () => {
+  function readSummaryMessage(messages: BaseMessage[]): BaseMessage | undefined {
+    return messages.find((message) => message.getType() === 'ai' && message.text.startsWith('Summary:\n'));
+  }
+
   it('should reopen a stored session by session id', async () => {
     const checkpointer = createAgentMemoryCheckpointer();
     const store = new FileSessionStore({
@@ -216,7 +240,7 @@ describe('Codara session host', () => {
     expect(restored.getState().metadata?.messageCount).toBe(hydratedState.messages.length);
   });
 
-  it('should not treat hydrate as new host activity when reopening a stored session', async () => {
+  it('should not treat hydrate as new session activity when reopening a stored session', async () => {
     const checkpointer = createAgentMemoryCheckpointer();
     const store = new FileSessionStore({
       basePath: await mkdtemp(path.join(tmpdir(), 'codara-session-hydrate-activity-')),
@@ -319,7 +343,7 @@ describe('Codara session host', () => {
     await expect(reopened.invoke('again')).rejects.toThrow('Agent is closed.');
   });
 
-  it('should reopen a disposed stored session with a new ready host lifecycle', async () => {
+  it('should reopen a disposed stored session with a new ready session lifecycle', async () => {
     const checkpointer = createAgentMemoryCheckpointer();
     const store = new FileSessionStore({
       basePath: await mkdtemp(path.join(tmpdir(), 'codara-session-reopen-disposed-')),
@@ -349,5 +373,47 @@ describe('Codara session host', () => {
 
     expect(reopened.getState().sessionStatus).toBe('ready');
     expect(reopened.getAgentState().status).toBe('closed');
+  });
+
+  it('should persist a manual checkpoint when session-owned compact rewrites conversation history', async () => {
+    const checkpointer = createAgentMemoryCheckpointer();
+    const codara = createCodara({
+      model: new SystemEchoModel() as unknown as BaseChatModel,
+      threadId: 'codara-session-manual-compact-thread',
+      checkpointer,
+      skills: false,
+      builtinTools: false,
+      summary: {
+        summarize: () => 'session compact summary',
+      },
+    });
+
+    await codara.invoke('one');
+    await codara.invoke('two');
+    await codara.invoke('three');
+
+    const compacted = await codara.compactConversation();
+    const latest = await checkpointer.getLatest('codara-session-manual-compact-thread');
+
+    expect(readSummaryMessage(compacted.messages)?.text).toBe('Summary:\nsession compact summary');
+    expect(latest?.info.source).toBe('manual');
+  });
+
+  it('should fall back to the session model for summary generation when summarize is omitted', async () => {
+    const codara = createCodara({
+      model: new SummaryAwareModel() as unknown as BaseChatModel,
+      threadId: 'codara-session-default-summary-thread',
+      skills: false,
+      builtinTools: false,
+      summary: {},
+    });
+
+    await codara.invoke('one');
+    await codara.invoke('two');
+    await codara.invoke('three');
+
+    const compacted = await codara.compactConversation();
+
+    expect(readSummaryMessage(compacted.messages)?.text).toBe('Summary:\ndefault model summary');
   });
 });

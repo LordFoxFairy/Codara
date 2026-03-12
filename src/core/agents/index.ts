@@ -8,34 +8,19 @@ export type {
   AgentResult,
   AgentResumeConfig,
   AgentResumeStreamConfig,
+  AgentExecutionMetadata,
   AgentRuntimeContext,
   AgentRuntimeValues,
-  AgentState,
-  AgentStatus,
-  AgentType,
-  CreateAgentOptions,
-  ToolErrorHandler,
-} from '@core/agents/contract/agent';
-export type {
-  AgentStreamChunkMap,
   AgentStreamConfig,
   AgentStreamCustomChunk,
-  AgentStreamEnvelope,
-  AgentStreamMessagesChunk,
   AgentStreamMode,
   AgentStreamOutput,
-  AgentStreamUpdatesChunk,
-  AgentStreamValuesChunk,
-} from '@core/agents/contract/stream';
-export {
-  Command,
-  applyAgentStateUpdate,
-  isCommand,
-  type AgentStateUpdate,
-} from '@core/agents/command';
-export {createAgent} from '@core/agents/engine/agent';
-export {normalizeAgentInput} from '@core/agents/engine/runtime-input';
-export type {
+  AgentState,
+  AgentStatus,
+  AgentTurnContextPreparer,
+  AgentTurnPreparationContext,
+  AgentType,
+  CreateAgentOptions,
   PauseActionDescriptor,
   PauseRequest,
   PauseReviewDecision,
@@ -43,4 +28,39 @@ export type {
   PauseUIActionOption,
   PauseUIConfig,
   ResumePayload,
-} from '@core/agents/contract/pause';
+  ToolErrorHandler,
+} from '@core/agents/models/agent';
+export {
+  applyAgentStateSnapshot,
+  cloneAgentContext,
+  cloneAgentMessages,
+  cloneAgentState,
+  cloneAgentValues,
+  clonePauseRequest,
+  createInitialAgentState,
+  hasEquivalentCheckpointState,
+  restoreCheckpointMetadata,
+  summarizeCheckpointInfo,
+  summarizeResult,
+  toAgentState,
+  toCheckpointInfo,
+  toCheckpointState,
+  type AgentRuntimeState,
+  type MutableAgentState,
+} from '@core/agents/models/state';
+export {
+  Command,
+  applyAgentStateUpdate,
+  isCommand,
+  mergeContext,
+  type AgentStateUpdate,
+} from '@core/agents/models/command';
+export {
+  createAgent,
+  createRunContext,
+  injectResumePayload,
+  normalizeAgentInput,
+  readLatestPause,
+  type AgentRunContext,
+  type AgentRuntime,
+} from '@core/agents/run/agent-loop';

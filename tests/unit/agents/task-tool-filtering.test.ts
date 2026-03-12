@@ -4,8 +4,8 @@ import type {BaseChatModel} from '@langchain/core/language_models/chat_models';
 import {tool} from '@langchain/core/tools';
 import {z} from 'zod';
 import {createAgent} from '@core/agents';
-import {createTaskTool, TASK_TOOL_NAME} from '@core/tasking';
-import {createBuiltinAgentStore, createAgentSkillsMiddleware, ChildSummaryModel, ScriptedModel} from './task-tool.fixtures';
+import {TASK_TOOL_NAME, createTaskTool} from '@core/tasks/task';
+import {createBuiltinSubagentStore, createAgentSkillsMiddleware, ChildSummaryModel, ScriptedModel} from './task-tool.fixtures';
 
 describe('createTaskTool filtering', () => {
   it('应对 builtin Explore profile 应用工具过滤', async () => {
@@ -25,7 +25,7 @@ describe('createTaskTool filtering', () => {
         }),
         new AIMessage('done'),
       ]) as unknown as BaseChatModel,
-      middleware: [createAgentSkillsMiddleware(createBuiltinAgentStore())],
+      middleware: [createAgentSkillsMiddleware(createBuiltinSubagentStore())],
       tools: [
         createTaskTool({
           model: childModel as unknown as BaseChatModel,

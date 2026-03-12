@@ -7,19 +7,18 @@ import {
   createAgent,
 } from '@core/agents';
 import {
-  createSubagentTool,
-  DEFAULT_SUBAGENT_TOOL_NAME,
-  createTaskTool,
-  TASK_TOOL_NAME,
   createTaskCreateTool,
   createTaskListTool,
   createTaskMemoryStore,
   TASK_CREATE_TOOL_NAME,
   TASK_LIST_TOOL_NAME,
-} from '@core/tasking';
-import {createSkillsMiddleware, FileSystemSkillStore} from '@core/skills';
+  TASK_TOOL_NAME,
+} from '@core/tasks';
+import {createSkillsMiddleware} from '@core/middleware';
+import {FileSystemSkillStore} from '@core/skills';
+import {createTaskTool} from '@core/tasks/task';
 
-function createBuiltinAgentStore() {
+function createBuiltinSubagentStore() {
   return new FileSystemSkillStore({
     sources: [path.join(process.cwd(), '.codara', 'skills')],
     cacheTtlMs: 0,
@@ -74,8 +73,8 @@ class SharedTaskReaderModel {
   }
 }
 
-describe('subagent + task store', () => {
-  it('主代理创建的 task 应能被子代理读取到', async () => {
+describe('task delegation + task store', () => {
+  it('主代理创建的 shared task 应能被默认 delegated child 读取到', async () => {
     const store = createTaskMemoryStore();
     const parentModel = new ScriptedModel([
       new AIMessage({
@@ -92,8 +91,8 @@ describe('subagent + task store', () => {
       new AIMessage({
         content: '',
         tool_calls: [{
-          id: 'call_subagent_task',
-          name: DEFAULT_SUBAGENT_TOOL_NAME,
+          id: 'call_task_delegate_default',
+          name: TASK_TOOL_NAME,
           args: {prompt: 'Inspect shared tasks'},
         } as ToolCall],
       }),
@@ -101,25 +100,25 @@ describe('subagent + task store', () => {
     ]) as unknown as BaseChatModel;
     const taskCreateTool = createTaskCreateTool({store});
     const taskListTool = createTaskListTool({store});
-    const subagentTool = createSubagentTool({
+    const taskTool = createTaskTool({
       model: new SharedTaskReaderModel() as unknown as BaseChatModel,
       tools: [taskListTool],
     });
 
     const parent = createAgent({
       model: parentModel,
-      tools: [taskCreateTool, subagentTool],
+      tools: [taskCreateTool, taskTool],
     });
 
     const result = await parent.invoke({messages: [new HumanMessage('Coordinate auth work')]});
-    const subagentMessage = result.state.messages
+    const delegatedMessage = result.state.messages
       .filter((message) => ToolMessage.isInstance(message))
       .map((message) => message as ToolMessage)
-      .find((message) => String(message.content).includes('Subagent completed.')) as ToolMessage | undefined;
+      .find((message) => String(message.content).includes('Delegated task completed.')) as ToolMessage | undefined;
 
     expect(result.reason).toBe('complete');
-    expect(subagentMessage).toBeDefined();
-    expect(String(subagentMessage?.content)).toContain('shared_tasks_visible:true');
+    expect(delegatedMessage).toBeDefined();
+    expect(String(delegatedMessage?.content)).toContain('shared_tasks_visible:true');
   });
 
   it('正式 Task 工具应能与 TaskCreate/TaskList 并存，并读取共享 task store', async () => {
@@ -158,7 +157,7 @@ describe('subagent + task store', () => {
 
     const parent = createAgent({
       model: parentModel,
-      middleware: [createSkillsMiddleware({store: createBuiltinAgentStore()})],
+      middleware: [createSkillsMiddleware({store: createBuiltinSubagentStore()})],
       tools: [taskCreateTool, taskTool],
     });
 
@@ -166,7 +165,7 @@ describe('subagent + task store', () => {
     const taskMessage = result.state.messages
       .filter((message) => ToolMessage.isInstance(message))
       .map((message) => message as ToolMessage)
-      .find((message) => String(message.content).includes('Subagent completed.')) as ToolMessage | undefined;
+      .find((message) => String(message.content).includes('Delegated task completed.')) as ToolMessage | undefined;
 
     expect(result.reason).toBe('complete');
     expect(taskMessage).toBeDefined();

@@ -39,7 +39,7 @@ describe('Codara session source lifecycle', () => {
     expect(secondText).not.toContain('project rule v2');
   });
 
-  it('should load updated guidelines for a new session host', async () => {
+  it('should load updated guidelines for a new session instance', async () => {
     const root = await mkdtemp(path.join(tmpdir(), 'codara-session-refresh-'));
     const userHome = path.join(root, 'home');
     const projectRoot = path.join(root, 'project');
@@ -76,7 +76,7 @@ describe('Codara session source lifecycle', () => {
     expect(text).not.toContain('project rule v1');
   });
 
-  it('should reload source projections for the same Codara host when reloadSources is called', async () => {
+  it('should reload source projections for the same Codara session when reloadSources is called', async () => {
     const root = await mkdtemp(path.join(tmpdir(), 'codara-session-reload-'));
     const userHome = path.join(root, 'home');
     const projectRoot = path.join(root, 'project');
@@ -110,7 +110,7 @@ describe('Codara session source lifecycle', () => {
     expect(secondText).not.toContain('project rule v1');
   });
 
-  it('should persist session activity metadata when host sources are reloaded', async () => {
+  it('should persist session activity metadata when session sources are reloaded', async () => {
     const root = await mkdtemp(path.join(tmpdir(), 'codara-session-reload-metadata-'));
     const userHome = path.join(root, 'home');
     const projectRoot = path.join(root, 'project');
@@ -187,7 +187,7 @@ describe('Codara session source lifecycle', () => {
     expect(discoverCalls).toBe(1);
   });
 
-  it('should reload skills projections for the same Codara host only after reloadSources is called', async () => {
+  it('should reload skills projections for the same Codara session only after reloadSources is called', async () => {
     const root = await mkdtemp(path.join(tmpdir(), 'codara-session-skills-reload-'));
     const userHome = path.join(root, 'home');
     const projectRoot = path.join(root, 'project');

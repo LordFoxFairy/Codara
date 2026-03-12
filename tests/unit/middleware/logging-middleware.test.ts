@@ -3,7 +3,8 @@ import {AIMessage, HumanMessage, ToolMessage, type BaseMessage, type ToolCall} f
 import type {BaseChatModel} from '@langchain/core/language_models/chat_models';
 import type {StructuredToolInterface} from '@langchain/core/tools';
 import {createAgent} from '@core/agents';
-import {createHILMiddleware, createLoggingMiddleware, MiddlewarePipeline, type MiddlewareLogRecord, type ToolCallContext} from '@core/middleware';
+import {createHILMiddleware, createLoggingMiddleware, type MiddlewareLogRecord, type ToolCallContext} from '@core/middleware';
+import {MiddlewarePipeline} from '@core/middleware/pipeline';
 
 class FakeModel {
   private index = 0;
@@ -38,12 +39,17 @@ function createToolContext(toolCall: ToolCall, runtimeContext: Record<string, un
   return {
     state: {messages},
     messages,
-    runtime: {context: runtimeContext, agentContext: runtimeContext},
+    runtime: {context: runtimeContext},
     systemMessage: [],
-    runId: 'run_log_1',
-    turn: 1,
-    maxTurns: 3,
-    requestId: 'req_log_1',
+    execution: {
+      threadId: 'thread_log_1',
+      runId: 'run_log_1',
+      turn: 1,
+      maxTurns: 3,
+      requestId: 'req_log_1',
+      toolIndex: 0,
+      toolCallId: toolCall.id ?? 'tool_0',
+    },
     toolCall,
     toolIndex: 0,
   };

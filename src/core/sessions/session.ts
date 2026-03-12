@@ -1,227 +1,500 @@
 import {randomUUID} from 'node:crypto';
-import type {AgentState} from '@core/agents';
-import {createAgentMemoryCheckpointer} from '@core/checkpoint/state';
-import type {CompactOptions} from '@core/checkpoint/types';
-import type {CreateSessionOptions, Session, SessionState, SessionStatus, SessionMetadata} from '@core/sessions/types';
-import {createSessionAgentHost} from '@core/sessions/agent-host';
+import type {BaseMessage} from '@langchain/core/messages';
+import type {BaseChatModel} from '@langchain/core/language_models/chat_models';
+import type {StructuredToolInterface} from '@langchain/core/tools';
+import type {
+  Agent,
+  AgentInput,
+  AgentInputBudget,
+  AgentInvokeConfig,
+  AgentResumeConfig,
+  AgentResumeStreamConfig,
+  AgentResult,
+  AgentState,
+  AgentStreamConfig,
+  AgentStreamOutput,
+  ResumePayload,
+  ToolErrorHandler,
+} from '@core/agents';
 import {
-  buildSessionTelemetryPatch,
-  cloneForkSessionMetadata,
-  cloneSessionMetadata,
+  createAgent,
+  normalizeAgentInput,
+} from '@core/agents';
+import type {AgentCheckpointer, CompactOptions} from '@core/checkpoint';
+import {createAgentMemoryCheckpointer, putForkCheckpoint, putManualCheckpoint} from '@core/checkpoint';
+import type {BaseMiddleware} from '@core/middleware';
+import {
+  compactConversationWithSummary,
+  createModelSummaryGenerator,
+  createSummaryMiddleware,
+  resolveSummaryOptions,
+  type SummaryOptions,
+  type SummarySettings,
+} from '@core/middleware/summary';
+import type {GuidelinesSource} from '@core/sessions/guidelines';
+import {
+  formatSkillsList,
+  formatSkillsLocations,
+  SKILLS_SYSTEM_PROMPT,
+  type SkillsRuntimeData,
+  type SkillsSource,
+} from '@core/skills';
+import type {ModelInfo} from '@core/provider';
+import {
   createSessionMetadata,
-  mergeSessionTelemetry,
-  touchSessionMetadata,
-  updateSessionMetadataFromAgentState,
-} from '@core/sessions/metadata';
+  deriveSessionInputBudget,
+  forkSessionMetadata,
+  syncSessionMetadata,
+} from '@core/shared/session-metadata';
+import type {SessionStore} from './store';
 
-/**
- * 创建 session 实例。
- * Session 负责：
- * - AGENTS source 生命周期持有与刷新
- * - agent 实例管理（lazy creation、checkpoint restore）
- * - 对外暴露 invoke/stream/resume 等方法
- */
+export type SessionStatus = 'ready' | 'closed';
+
+export interface SessionMetadata {
+  title?: string;
+  lastMessage?: string;
+  messageCount: number;
+  tags?: string[];
+  archived?: boolean;
+  lastActivity: string;
+  usage?: {
+    modelCalls: number;
+    promptTokens: number;
+    completionTokens: number;
+    totalTokens: number;
+    lastPromptTokens?: number;
+    lastCompletionTokens?: number;
+    lastTotalTokens?: number;
+  };
+  contextWindow?: {
+    maxInputTokens: number;
+    availableInputTokens: number;
+    estimatedInputTokens: number;
+    usagePercent: number;
+    overBudget: boolean;
+  };
+  forkedFromSessionId?: string;
+  forkedFromThreadId?: string;
+}
+
+export interface SessionState {
+  sessionId: string;
+  threadId: string;
+  sessionStatus: SessionStatus;
+  createdAt: string;
+  updatedAt: string;
+  metadata?: SessionMetadata;
+}
+
+export interface SessionModelCatalog {
+  create(modelRef?: string): Promise<BaseChatModel>;
+  getInfo(modelRef?: string): ModelInfo;
+}
+
+export interface CreateSessionOptions {
+  state?: SessionState;
+  sessionId?: string;
+  threadId?: string;
+  modelRef?: string;
+  model?: BaseChatModel | Promise<BaseChatModel>;
+  modelCatalog?: SessionModelCatalog | Promise<SessionModelCatalog>;
+  guidelinesSource?: GuidelinesSource;
+  skillsSource?: SkillsSource;
+  store?: SessionStore;
+  tools?: StructuredToolInterface[];
+  handleToolErrors?: ToolErrorHandler;
+  middleware?: BaseMiddleware[];
+  checkpointer?: AgentCheckpointer;
+  summary?: false | SummarySettings;
+  restore?: 'latest' | 'never';
+  inputBudget?: AgentInputBudget;
+  messages?: AgentInput;
+  context?: Record<string, unknown>;
+  values?: Record<string, unknown>;
+  metadata?: Partial<SessionMetadata>;
+}
+
+export interface Session {
+  getState(): SessionState;
+  getAgentState(): AgentState;
+  hydrate(): Promise<AgentState>;
+  compactConversation(options?: {instructions?: string}): Promise<AgentState>;
+  fork(options?: {sessionId?: string; threadId?: string; store?: SessionStore}): Promise<Session>;
+  invoke(input?: AgentInput, config?: AgentInvokeConfig): Promise<AgentResult>;
+  stream(input?: AgentInput, config?: AgentStreamConfig): AsyncGenerator<AgentStreamOutput, AgentResult, void>;
+  resumePause(payload: ResumePayload, config?: AgentResumeConfig): Promise<AgentResult>;
+  resumePauseStream(
+    payload: ResumePayload,
+    config?: AgentResumeStreamConfig,
+  ): AsyncGenerator<AgentStreamOutput, AgentResult, void>;
+  reloadSources(): Promise<void>;
+  compactCheckpoints(options?: CompactOptions): Promise<void>;
+  reset(): Promise<void>;
+  dispose(): Promise<void>;
+}
+
+interface SessionSystemContext {
+  systemMessage: string[];
+  runtimeShared?: {
+    skills: SkillsRuntimeData;
+  };
+}
+
 export function createSession(options: CreateSessionOptions): Session {
-  const restoredState = options.state;
-  const sessionId = restoredState?.sessionId ?? options.sessionId ?? randomUUID();
-  const threadId = restoredState?.threadId ?? options.threadId ?? randomUUID();
-  const isRestoringThread = options.threadId !== undefined;
-  const createdAt = restoredState?.createdAt ?? new Date().toISOString();
-  let updatedAt = restoredState?.updatedAt ?? createdAt;
+  const restored = options.state;
+  const sessionId = restored?.sessionId ?? options.sessionId ?? randomUUID();
+  const threadId = restored?.threadId ?? options.threadId ?? randomUUID();
+  const createdAt = restored?.createdAt ?? new Date().toISOString();
+  let updatedAt = restored?.updatedAt ?? createdAt;
   let sessionStatus: SessionStatus = 'ready';
-  const metadata: SessionMetadata = createSessionMetadata(
-    createdAt,
-    restoredState?.metadata,
-    options.metadata,
-  );
-  const store = options.store;
+  const metadata = createSessionMetadata(createdAt, restored?.metadata, options.metadata);
   const checkpointer = options.checkpointer ?? createAgentMemoryCheckpointer();
+  const restoreCheckpoint = options.restore !== 'never';
+  let inputBudget = options.inputBudget;
+  let agent: Agent | undefined;
+  let agentPromise: Promise<Agent> | undefined;
+  let systemContext: SessionSystemContext | undefined;
+  let summaryOptions: Required<SummaryOptions> | undefined;
 
-  function touch(): void {
-    updatedAt = new Date().toISOString();
-    touchSessionMetadata(metadata, updatedAt);
+  function state(): SessionState {
+    return {sessionId, threadId, sessionStatus, createdAt, updatedAt, metadata};
   }
 
-  async function saveSession(): Promise<void> {
-    if (store) {
-      await store.save(sessionId, {
-        sessionId,
-        threadId,
-        sessionStatus,
-        createdAt,
-        updatedAt,
-        metadata,
-      });
+  function touch() {
+    updatedAt = new Date().toISOString();
+    metadata.lastActivity = updatedAt;
+  }
+
+  function clearAgentCache() {
+    agent = undefined;
+    agentPromise = undefined;
+    summaryOptions = undefined;
+  }
+
+  async function save() {
+    if (options.store) {
+      await options.store.save(sessionId, state());
     }
   }
 
-  function updateMetadataFromState(agentState: AgentState): void {
-    updateSessionMetadataFromAgentState(metadata, agentState);
+  async function saveSessionState(touchActivity = true) {
+    if (touchActivity) {
+      touch();
+    }
+    await save();
   }
 
-  async function syncSessionFromState(
-    agentState: AgentState,
-    options: {
-      touchActivity?: boolean;
-      applyTelemetry?: boolean;
-      previousState?: Pick<AgentState, 'messages'>;
-    } = {},
-  ): Promise<void> {
-    if (options.touchActivity !== false) {
+  async function getLatestCheckpoint() {
+    return checkpointer.getLatest(threadId);
+  }
+
+  async function hasStoredCheckpoint() {
+    return Boolean(await getLatestCheckpoint());
+  }
+
+  async function sync(
+    next: AgentState,
+    syncOptions: {touchActivity?: boolean; collectUsage?: boolean; previousMessages?: readonly BaseMessage[]} = {},
+  ) {
+    if (syncOptions.touchActivity !== false) {
       touch();
     }
 
-    updateMetadataFromState(agentState);
-    if (options.applyTelemetry) {
-      mergeSessionTelemetry(metadata, buildSessionTelemetryPatch(agentState, options.previousState));
-    }
-    await saveSession();
+    syncSessionMetadata(metadata, next, {
+      inputBudget,
+      collectUsage: syncOptions.collectUsage,
+      previousMessages: syncOptions.previousMessages,
+    });
+    await save();
   }
 
-  async function reloadHostSources(): Promise<void> {
-    if (options.agentsSource) {
-      options.agentsSource.reload();
+  async function loadSessionSystemContext(forceReload = false): Promise<SessionSystemContext> {
+    if (!forceReload && systemContext) {
+      return systemContext;
     }
-    if (options.skillsSource) {
-      options.skillsSource.reload();
+
+    if (forceReload) {
+      systemContext = undefined;
+      options.skillsSource?.reload();
     }
-    await options.skillsStore?.refresh?.();
+
+    systemContext = await buildSessionSystemContext(options.guidelinesSource, options.skillsSource);
+    return systemContext;
   }
 
-  async function preloadHostSources(): Promise<void> {
-    await options.agentsSource?.getContent?.();
-    await options.skillsSource?.getRuntime?.();
+  function requireAgent(): Agent {
+    if (!agent) {
+      throw new Error('Agent not initialized. Call invoke/stream first.');
+    }
+    return agent;
   }
 
-  function requireReady(): void {
+  async function getAgent(): Promise<Agent> {
+    if (agent) {
+      return agent;
+    }
+    if (!agentPromise) {
+      agentPromise = bootstrapSessionAgent().then((instance) => {
+        agent = instance;
+        return instance;
+      }).finally(() => {
+        if (!agent) {
+          clearAgentCache();
+        }
+      });
+    }
+    return agentPromise;
+  }
+
+  async function bootstrapSessionAgent(): Promise<Agent> {
+    const systemContext = await loadSessionSystemContext();
+    const modelSelection = await resolveSessionModel(options);
+    const checkpoint = restoreCheckpoint ? await getLatestCheckpoint() : undefined;
+
+    inputBudget = options.inputBudget ?? deriveSessionInputBudget(modelSelection.modelInfo);
+    summaryOptions = options.summary
+      ? resolveSummaryOptions(options.summary, createModelSummaryGenerator(modelSelection.model))
+      : undefined;
+
+    return createAgent({
+      model: modelSelection.model,
+      tools: options.tools,
+      handleToolErrors: options.handleToolErrors,
+      middleware: buildSessionMiddleware(summaryOptions),
+      checkpointer,
+      threadId,
+      inputBudget,
+      ...(checkpoint ? {checkpoint} : {}),
+      ...(options.messages ? {messages: normalizeAgentInput(options.messages)} : {}),
+      ...(options.context ? {context: options.context} : {}),
+      ...(options.values ? {values: options.values} : {}),
+      ...(systemContext.systemMessage.length > 0 ? {systemMessage: systemContext.systemMessage} : {}),
+      ...(systemContext.runtimeShared ? {runtimeShared: systemContext.runtimeShared} : {}),
+    });
+  }
+
+  function buildSessionMiddleware(summary: Required<SummaryOptions> | undefined): BaseMiddleware[] | undefined {
+    const middlewares = [...(options.middleware ?? [])];
+    if (!summary || middlewares.some((middleware) => middleware.name === 'SummaryMiddleware')) {
+      return middlewares.length > 0 ? middlewares : undefined;
+    }
+
+    const summaryMiddleware = createSummaryMiddleware({summary});
+    if (!summaryMiddleware) {
+      return middlewares.length > 0 ? middlewares : undefined;
+    }
+
+    const hilIndex = middlewares.findIndex((middleware) => middleware.name === 'HumanInTheLoopMiddleware');
+    if (hilIndex < 0) {
+      middlewares.push(summaryMiddleware);
+      return middlewares;
+    }
+
+    middlewares.splice(hilIndex, 0, summaryMiddleware);
+    return middlewares;
+  }
+
+  function ensureReady() {
     if (sessionStatus === 'closed') {
       throw new Error('Session is closed.');
     }
   }
 
-  function runReady<T>(operation: () => T): T {
-    requireReady();
-    return operation();
+  async function run(operation: (instance: Agent) => Promise<AgentResult>) {
+    const instance = await getAgent();
+    const previousMessages = instance.getState().messages;
+    const result = await operation(instance);
+    await sync(result.state, {collectUsage: true, previousMessages});
+    return result;
   }
 
-  function buildSessionState(): SessionState {
-    return {
-      sessionId,
+  async function* runStream(operation: (instance: Agent) => AsyncGenerator<AgentStreamOutput, AgentResult, void>) {
+    const instance = await getAgent();
+    const previousMessages = instance.getState().messages;
+    const result = yield* operation(instance);
+    await sync(result.state, {collectUsage: true, previousMessages});
+    return result;
+  }
+
+  async function fork(optionsOverride: {sessionId?: string; threadId?: string; store?: SessionStore} = {}) {
+    const base = (await getAgent()).getState();
+    const childThreadId = optionsOverride.threadId ?? randomUUID();
+    await putForkCheckpoint(checkpointer, childThreadId, {
+      agentType: base.agentType,
+      messages: base.messages,
+      context: base.context,
+      values: base.values,
+      ...(base.pendingPause ? {pendingPause: base.pendingPause} : {}),
+    });
+
+    const child = createSession({
+      ...options,
+      sessionId: optionsOverride.sessionId,
+      threadId: childThreadId,
+      store: optionsOverride.store ?? options.store,
+      restore: 'latest',
+      metadata: forkSessionMetadata(metadata, sessionId, threadId),
+    });
+    await child.hydrate();
+    return child;
+  }
+
+  async function compactConversation(compactOptions: {instructions?: string} = {}) {
+    ensureReady();
+    if (!options.summary) {
+      throw new Error('Conversation compaction is not configured for this session.');
+    }
+
+    const instance = await getAgent();
+    const summary = summaryOptions;
+
+    if (!summary) {
+      throw new Error('Conversation compaction is not configured for this session.');
+    }
+
+    const current = instance.getState();
+    if (current.status === 'running') {
+      throw new Error('Agent is currently running.');
+    }
+    if (current.status === 'paused') {
+      throw new Error('Agent is paused; resume(...) or reset() before compacting the conversation.');
+    }
+
+    const systemContext = await loadSessionSystemContext();
+    const compacted = await compactConversationWithSummary({
+      messages: current.messages,
+      context: current.context,
+      values: current.values,
+      systemMessage: systemContext.systemMessage,
+      runtimeShared: systemContext.runtimeShared,
       threadId,
-      sessionStatus,
-      createdAt,
-      updatedAt,
-      metadata,
-    };
-  }
+      requestId: `${sessionId}:compact:${randomUUID()}`,
+      inputBudget,
+      instructions: compactOptions.instructions,
+    }, summary);
 
-  const agentHost = createSessionAgentHost({
-    sessionOptions: options,
-    threadId,
-    isRestoringThread,
-    checkpointer,
-    sessionId,
-    createSession,
-    syncSessionFromState,
-    cloneMetadata: () => cloneSessionMetadata(metadata),
-    cloneForkMetadata: () => cloneForkSessionMetadata(metadata),
-    prepareHostSources: preloadHostSources,
-  });
+    if (!compacted) {
+      await sync(current);
+      return current;
+    }
+
+    await putManualCheckpoint(checkpointer, threadId, {
+      agentType: current.agentType,
+      messages: compacted.messages,
+      context: compacted.context,
+      values: compacted.values,
+    }, await getLatestCheckpoint());
+
+    clearAgentCache();
+    const next = (await getAgent()).getState();
+    await sync(next);
+    return next;
+  }
 
   return {
-    getState(): SessionState {
-      return buildSessionState();
+    getState: state,
+    getAgentState() {
+      return requireAgent().getState();
     },
-
-    getAgentState(): AgentState {
-      return agentHost.requireInitializedAgent().getState();
+    async hydrate() {
+      ensureReady();
+      const next = (await getAgent()).getState();
+      await sync(next, {touchActivity: false});
+      return next;
     },
-
-    async hydrate(): Promise<AgentState> {
-      return runReady(() => agentHost.hydrate());
+    compactConversation,
+    async fork(forkOptions = {}) {
+      ensureReady();
+      return fork(forkOptions);
     },
-
-    async compactConversation(compactOptions = {}): Promise<AgentState> {
-      return runReady(() => agentHost.compactConversation(compactOptions));
-    },
-
-    async fork(forkOptions = {}): Promise<Session> {
-      return runReady(() => agentHost.fork(forkOptions));
-    },
-
     async invoke(input, config) {
-      return runReady(() => agentHost.invoke(input, config));
+      ensureReady();
+      return run((instance) => instance.invoke(input, config));
     },
-
-    async *stream(
-      input,
-      config,
-    ) {
-      runReady(() => undefined);
-      return yield* agentHost.stream(input, config);
+    async *stream(input, config) {
+      ensureReady();
+      return yield* runStream((instance) => instance.stream(input, config));
     },
-
     async resumePause(payload, config) {
-      return runReady(() => agentHost.resumePause(payload, config));
+      ensureReady();
+      return run((instance) => instance.resume(payload, config));
     },
-
     async *resumePauseStream(payload, config) {
-      runReady(() => undefined);
-      return yield* agentHost.resumePauseStream(payload, config);
+      ensureReady();
+      return yield* runStream((instance) => instance.resumeStream(payload, config));
     },
-
-    async reloadSources(): Promise<void> {
-      runReady(() => undefined);
-      touch();
-      await reloadHostSources();
-      await saveSession();
+    async reloadSources() {
+      ensureReady();
+      await loadSessionSystemContext(true);
+      clearAgentCache();
+      await saveSessionState();
     },
-
-    async inspectAgentsFiles() {
-      runReady(() => undefined);
-      if (!options.agentsSource?.inspectFiles) {
-        throw new Error('AGENTS file actions are not available for this session.');
-      }
-      return options.agentsSource.inspectFiles();
-    },
-
-    async ensureAgentsFileTarget(scope) {
-      runReady(() => undefined);
-      if (!options.agentsSource?.ensureFileTarget) {
-        throw new Error('AGENTS file actions are not available for this session.');
-      }
-      return options.agentsSource.ensureFileTarget(scope);
-    },
-
-    async compactCheckpoints(options?: CompactOptions): Promise<void> {
-      runReady(() => undefined);
+    async compactCheckpoints(optionsOverride) {
+      ensureReady();
       if (!checkpointer.compact) {
         return;
       }
-
-      await checkpointer.compact(threadId, options);
-      touch();
-      await saveSession();
+      await checkpointer.compact(threadId, optionsOverride);
+      await saveSessionState();
     },
-
-    async reset(): Promise<void> {
-      runReady(() => undefined);
-      const nextState = await agentHost.reset();
-      if (nextState) {
+    async reset() {
+      ensureReady();
+      if (!agent && !(await hasStoredCheckpoint())) {
+        await saveSessionState();
         return;
       }
-      touch();
-      await saveSession();
+      const instance = await getAgent();
+      await instance.reset();
+      await sync(instance.getState());
     },
-
-    async dispose(): Promise<void> {
+    async dispose() {
       if (sessionStatus === 'closed') {
         return;
       }
-      await agentHost.dispose();
+      if (!agent && !(await hasStoredCheckpoint())) {
+        sessionStatus = 'closed';
+        await saveSessionState();
+        return;
+      }
+      await (await getAgent()).dispose();
       sessionStatus = 'closed';
-      touch();
-      await saveSession();
+      await saveSessionState();
     },
   };
+}
+
+async function buildSessionSystemContext(
+  guidelinesSource?: GuidelinesSource,
+  skillsSource?: SkillsSource,
+): Promise<SessionSystemContext> {
+  const guidelinesMessage = await guidelinesSource?.getContent?.();
+  const skillsRuntime = await skillsSource?.getRuntime?.();
+
+  return {
+    systemMessage: [guidelinesMessage, skillsRuntime ? createSkillsSystemMessage(skillsRuntime) : undefined]
+      .filter((value): value is string => Boolean(value)),
+    ...(skillsRuntime ? {runtimeShared: {skills: skillsRuntime}} : {}),
+  };
+}
+
+async function resolveSessionModel(
+  options: CreateSessionOptions,
+): Promise<{model: BaseChatModel; modelInfo?: ModelInfo}> {
+  if (options.model) {
+    return {model: await options.model};
+  }
+
+  if (!options.modelCatalog) {
+    throw new Error('Either model or modelCatalog must be provided');
+  }
+
+  const catalog = await options.modelCatalog;
+  const modelRef = options.modelRef ?? 'default';
+  return {model: await catalog.create(modelRef), modelInfo: catalog.getInfo(modelRef)};
+}
+
+function createSkillsSystemMessage(runtime: Pick<SkillsRuntimeData, 'sources' | 'discovered'>): string {
+  return SKILLS_SYSTEM_PROMPT
+    .replace('{skills_locations}', formatSkillsLocations(runtime.sources))
+    .replace('{skills_list}', formatSkillsList(runtime.discovered, runtime.sources));
 }

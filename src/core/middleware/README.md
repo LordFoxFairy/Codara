@@ -2,7 +2,7 @@
 
 ## 概述
 
-`@core/middleware` 提供与 Agent loop 对齐的 6 个 hooks，用于注入日志、上下文 source、conversation context、工具拦截等横切逻辑。
+`@core/middleware` 提供与 Agent loop 对齐的 6 个 hooks，用于注入日志、conversation context、工具拦截等横切逻辑。
 
 生命周期顺序固定为：
 
@@ -88,12 +88,12 @@ const result = await agent.invoke(
 公共字段（多数 hooks 都可用）：
 
 - `state.messages` / `messages`：当前消息列表
-- `runtime.context`：当前 hook 可见的有效上下文视图（`agentContext + runtimeContext` 的合成结果，不直接持久化）
-- `runtime.agentContext`：持久化 agent context（随 checkpoint 保存，跨 invoke 保留）
+- `state.context`：持久化 agent context（随 checkpoint 保存，跨 invoke 保留）
+- `runtime.context`：当前 hook 可见的有效上下文视图（`state.context + runtime.runtimeContext` 的合成结果，不直接持久化）
 - `runtime.runtimeContext`：临时运行时上下文（仅本次 invoke 有效，不持久化）
 - `runtime.shared`：同一次运行内由 middleware 生成并共享的派生数据，不进入 checkpoint
 - `systemMessage`：可在 `beforeModel` 或 `wrapModelCall` 中追加系统消息
-- `runId`、`turn`、`maxTurns`、`requestId`
+- `execution.runId`、`execution.turn`、`execution.maxTurns`、`execution.requestId`
 - `inputBudget`：本轮调用的输入预算配置
 - `budget`：当前 turn 的输入预算快照（默认由 `ConversationContextMiddleware` 维护）
 
@@ -108,18 +108,15 @@ const result = await agent.invoke(
 Codara 默认 runtime 只把下面几类模块当成一等 middleware stage：
 
 - `LoggingMiddleware`
-- `GuidelinesMiddleware`
-- `SkillsMiddleware`
 - caller middlewares
 - `ConversationContextMiddleware`
 - `HumanInTheLoopMiddleware`
 
 其中：
 
-- `context-budget.ts`
-- `summary.ts`
+- `conversation/*`
 
-都属于 conversation internals。它们不再作为独立 middleware 暴露心智，而是作为 `ConversationContextMiddleware` 内部使用的策略/算法模块存在。
+不再属于 middleware 子目录。它们已经提升为平级 conversation 小域；`middleware/conversation.ts` 只保留 `ConversationContextMiddleware` 这个公开 builder。
 
 ### 默认主链职责矩阵
 
@@ -127,14 +124,6 @@ Codara 默认 runtime 只把下面几类模块当成一等 middleware stage：
   - hook scope: all 6 hooks
   - role: observer only
   - should not own source loading, context compaction, or tool policy
-- `GuidelinesMiddleware`
-  - hook scope: `beforeModel`
-  - role: inject AGENTS source projection into `systemMessage`
-- `SkillsMiddleware`
-  - hook scope: `beforeModel`
-  - role:
-    - inject skills prompt section into `systemMessage`
-    - expose discovered skills runtime in `runtime.shared.skills`
 - caller middleware
   - hook scope: user-defined
   - role: custom runtime rewrites that should still participate in later conversation budgeting/compaction
@@ -149,18 +138,34 @@ Codara 默认 runtime 只把下面几类模块当成一等 middleware stage：
 
 这条默认主链里，source stage、conversation stage、interaction stage、observer stage 各自只有一个默认 owner，不应重叠。
 
+source-driven system layers 现在走另一条链：
+
+- `Session`
+  - preload / reload `instructions/*`
+- `Agent prepareTurnContext`
+  - 读取 source snapshot
+  - 组装 `systemMessage`
+  - 预填 `runtime.shared` 中的 source-derived runtime data
+
+因此：
+
+- `GuidelinesMiddleware`
+- `SkillsMiddleware`
+
+保留为高级手动扩展，不再属于 Codara 默认产品路径。
+
 request-preparation slice 的职责应固定理解为：
 
 - model input assembly
-  - directly owned by `agents/loop/model-step.ts`
-- `context-budget`
+  - directly owned by `agents/agent-loop.ts`
+- `middleware/conversation`
   - transient budget snapshot / heuristic
-  - not a standalone middleware stage
-- `summary`
-  - compaction helper over `messages`
-  - not a standalone middleware stage
-- `conversation-context`
-  - 编排上面三个能力的默认 pre-model stage
+  - summary compaction helper over `messages`
+  - default pre-model middleware stage
+
+目录上现在固定分为：
+- `middleware/conversation.ts`
+  - 单文件 owner，包含 builder、预算和摘要逻辑
 
 ## 典型模式
 
@@ -344,16 +349,19 @@ const toolInterceptor = createMiddleware({
 - 校验通过：进入正常执行链路
 - 校验失败：返回 `reason = error`
 
-## Pipeline 管理 API
+## Pipeline 执行器
 
 ```typescript
-pipeline.use(middleware);
 pipeline.has('LoggingMiddleware');
 pipeline.get('LoggingMiddleware');
 pipeline.list(); // 只读副本
-pipeline.remove('LoggingMiddleware');
 pipeline.validateContext(context); // 可选手动校验
 ```
+
+说明：
+
+- `MiddlewarePipeline` 现在是内部执行器，不再从主 middleware barrel 暴露。
+- 运行时只在 agent 构造时注入 middleware 数组，不支持对已创建 runtime 做可变注册/删除。
 
 ## 错误处理
 

@@ -10,17 +10,29 @@
 import type {AIMessage, BaseMessage, ToolCall, ToolMessage} from '@langchain/core/messages';
 import type {StructuredToolInterface} from '@langchain/core/tools';
 import {z} from 'zod';
-import type {AgentInputBudget, AgentRuntimeContext, AgentRuntimeValues} from '@core/agents/contract/agent';
-import type {AgentStateUpdate} from '@core/agents/command';
-import type {ContextBudgetSnapshot} from '@core/middleware/context-budget';
+import type {
+  AgentInputBudget,
+  AgentRuntimeContext,
+  AgentRuntimeValues,
+} from '@core/agents/models/agent';
+import type {AgentStateUpdate} from '@core/agents/models/command';
+import type {ContextBudgetSnapshot} from '@core/middleware/budget';
 
 export type MiddlewareRuntimeShared = Record<string, unknown>;
 
+export interface ExecutionContextMetadata {
+  threadId: string;
+  runId: string;
+  turn: number;
+  maxTurns: number;
+  requestId: string;
+  toolIndex?: number;
+  toolCallId?: string;
+}
+
 export interface MiddlewareRuntimeContext {
-  /** 有效上下文（持久化 + 临时合并后的结果）。Middleware 直接使用即可。 */
+  /** 有效业务上下文（持久化 + 临时合并后的结果，不包含执行元数据）。 */
   context: AgentRuntimeContext;
-  /** 当前 agent 的持久上下文，会进入 checkpoint。 */
-  agentContext?: AgentRuntimeContext;
   /** 当前 invoke/resume 的临时上下文，不进入 checkpoint。 */
   runtimeContext?: AgentRuntimeContext;
   /** 同一次运行内由 middleware 生成、供其他 middleware/tools 复用的共享派生数据。 */
@@ -39,10 +51,8 @@ export interface BaseExecutionContext {
   runtime: MiddlewareRuntimeContext;
   /** 在 wrapModelCall 中可追加系统消息。 */
   systemMessage: string[];
-  runId: string;
-  turn: number;
-  maxTurns: number;
-  requestId: string;
+  /** 本轮执行元数据，不属于业务 context。 */
+  execution: ExecutionContextMetadata;
   inputBudget?: AgentInputBudget;
   budget?: ContextBudgetSnapshot;
 }
@@ -117,4 +127,8 @@ export function createMiddleware(config: BaseMiddleware): BaseMiddleware {
     ...config,
     name: normalizedName
   });
+}
+
+export function readExecutionMetadata(context: BaseExecutionContext): ExecutionContextMetadata {
+  return context.execution;
 }

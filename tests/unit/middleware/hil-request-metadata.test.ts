@@ -7,12 +7,17 @@ function createToolContext(toolCall: ToolCall): ToolCallContext {
   return {
     state: {messages},
     messages,
-    runtime: {context: {}, agentContext: {}},
+    runtime: {context: {}},
     systemMessage: [],
-    runId: 'run_hil_meta_1',
-    turn: 1,
-    maxTurns: 3,
-    requestId: 'req_hil_meta_1',
+    execution: {
+      threadId: 'thread_hil_meta_1',
+      runId: 'run_hil_meta_1',
+      turn: 1,
+      maxTurns: 3,
+      requestId: 'req_hil_meta_1',
+      toolIndex: 0,
+      toolCallId: toolCall.id ?? 'tool_0',
+    },
     toolCall,
     toolIndex: 0,
   };

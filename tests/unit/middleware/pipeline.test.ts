@@ -1,6 +1,7 @@
 import {describe, expect, it} from 'bun:test';
 import {AIMessage, HumanMessage, ToolMessage, type BaseMessage, type ToolCall} from '@langchain/core/messages';
-import {MiddlewarePipeline, type BaseMiddleware} from '@core/middleware';
+import type {BaseMiddleware} from '@core/middleware';
+import {MiddlewarePipeline} from '@core/middleware/pipeline';
 import {z} from 'zod';
 
 function createBaseContext() {
@@ -8,12 +9,15 @@ function createBaseContext() {
   return {
     state: {messages, context: {}, values: {}},
     messages,
-    runtime: {context: {}, agentContext: {}, runtimeContext: {}, shared: {}},
+    runtime: {context: {}, runtimeContext: {}, shared: {}},
     systemMessage: [],
-    runId: 'run_1',
-    turn: 1,
-    maxTurns: 3,
-    requestId: 'req_1'
+    execution: {
+      threadId: 'thread_1',
+      runId: 'run_1',
+      turn: 1,
+      maxTurns: 3,
+      requestId: 'req_1',
+    },
   };
 }
 
@@ -213,11 +217,11 @@ describe('MiddlewarePipeline', () => {
     }).toThrow('Middleware "guard" failed in beforeModel: blocked');
   });
 
-  it('should keep durable and runtime context mirrors synchronized across middleware hooks', async () => {
+  it('should keep durable and runtime context views synchronized across middleware hooks', async () => {
     const seen: Array<{
       effective: Record<string, unknown>;
       runtimeContext: Record<string, unknown>;
-      agentContext: Record<string, unknown>;
+      durableContext: Record<string, unknown>;
     }> = [];
 
     const pipeline = new MiddlewarePipeline([
@@ -240,7 +244,7 @@ describe('MiddlewarePipeline', () => {
           seen.push({
             effective: {...context.runtime.context},
             runtimeContext: {...(context.runtime.runtimeContext ?? {})},
-            agentContext: {...(context.runtime.agentContext ?? {})},
+            durableContext: {...(context.state.context ?? {})},
           });
         },
       },
@@ -260,9 +264,6 @@ describe('MiddlewarePipeline', () => {
         loaded: true,
       },
     });
-    expect(context.runtime.agentContext).toEqual({
-      tenantId: 'tenant-1',
-    });
     expect(context.state.context).toEqual({
       tenantId: 'tenant-1',
     });
@@ -279,7 +280,7 @@ describe('MiddlewarePipeline', () => {
             loaded: true,
           },
         },
-        agentContext: {
+        durableContext: {
           tenantId: 'tenant-1',
         },
       },
@@ -316,16 +317,15 @@ describe('MiddlewarePipeline', () => {
     }).toThrow('Middleware "failing_wrap" failed in wrapToolCall: wrap boom');
   });
 
-  it('should prevent removing required middleware', () => {
+  it('should expose an immutable middleware registry snapshot', () => {
     const pipeline = new MiddlewarePipeline([
       {name: 'safety', required: true, beforeAgent: () => undefined},
       {name: 'logging', beforeModel: () => undefined},
     ]);
 
-    expect(() => pipeline.remove('safety')).toThrow('Cannot remove required middleware');
-
-    pipeline.remove('logging');
-    expect(pipeline.list().map((m) => m.name)).toEqual(['safety']);
+    expect(pipeline.list().map((middleware) => middleware.name)).toEqual(['safety', 'logging']);
+    expect(pipeline.has('safety')).toBe(true);
+    expect(pipeline.get('logging')?.name).toBe('logging');
   });
 
   it('should reject duplicate middleware names and invalid definitions', () => {

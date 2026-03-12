@@ -6,8 +6,8 @@ import {AIMessage, HumanMessage, type BaseMessage} from '@langchain/core/message
 import type {BaseChatModel} from '@langchain/core/language_models/chat_models'
 import type {StructuredToolInterface} from '@langchain/core/tools'
 import {createAgent} from '@core/agents'
-import {createMiddleware} from '@core/middleware'
-import {createSkillsMiddleware, FileSystemSkillStore} from '@core/skills'
+import {createMiddleware, createSkillsMiddleware} from '@core/middleware'
+import {FileSystemSkillStore} from '@core/skills'
 
 class ScriptedModel {
   readonly invocations: BaseMessage[][] = []
@@ -67,7 +67,7 @@ Use references before final answer.
     const probeMiddleware = createMiddleware({
       name: 'SkillsProbe',
       wrapModelCall: async (request, handler) => {
-        systemPromptsByTurn.set(request.turn, request.systemMessage.join('\n'))
+        systemPromptsByTurn.set(request.execution.turn, request.systemMessage.join('\n'))
         return handler(request)
       }
     })

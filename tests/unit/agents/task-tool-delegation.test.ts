@@ -5,8 +5,9 @@ import {tool} from '@langchain/core/tools';
 import {z} from 'zod';
 import {createAgent} from '@core/agents';
 import {createHILMiddleware} from '@core/middleware';
-import {createTaskTool, TASK_TOOL_NAME, readDelegatedAgentResult} from '@core/tasking';
-import {createBuiltinAgentStore, createAgentSkillsMiddleware, ChildSummaryModel, ScriptedModel} from './task-tool.fixtures';
+import {TASK_TOOL_NAME, createTaskTool} from '@core/tasks/task';
+import {readDelegatedAgentResult} from '@core/tasks/delegation';
+import {createBuiltinSubagentStore, createAgentSkillsMiddleware, ChildSummaryModel, ScriptedModel} from './task-tool.fixtures';
 
 describe('createTaskTool delegation', () => {
   it('应通过正式 Task 工具委派子代理并回传摘要', async () => {
@@ -25,7 +26,7 @@ describe('createTaskTool delegation', () => {
         }),
         new AIMessage('done'),
       ]) as unknown as BaseChatModel,
-      middleware: [createAgentSkillsMiddleware(createBuiltinAgentStore())],
+      middleware: [createAgentSkillsMiddleware(createBuiltinSubagentStore())],
       tools: [
         createTaskTool({
           model: new ChildSummaryModel() as unknown as BaseChatModel,
@@ -37,11 +38,10 @@ describe('createTaskTool delegation', () => {
     const toolMessage = result.state.messages.find((message) => ToolMessage.isInstance(message)) as ToolMessage;
 
     expect(result.reason).toBe('complete');
-    expect(String(toolMessage.content)).toContain('Subagent completed.');
+    expect(String(toolMessage.content)).toContain('Delegated task completed.');
     expect(String(toolMessage.content)).toContain('summary:\ntask_child_humans:1');
     expect(readDelegatedAgentResult(toolMessage.artifact)).toEqual({
       type: 'delegated_agent_result',
-      agentType: 'subagent',
       threadId: expect.any(String),
       turns: 1,
       reason: 'complete',
@@ -64,31 +64,12 @@ describe('createTaskTool delegation', () => {
             },
           } as ToolCall],
         }),
-        new AIMessage({
-          content: '',
-          tool_calls: [{
-            id: 'call_task_pause',
-            name: TASK_TOOL_NAME,
-            args: {
-              prompt: 'Investigate the guarded flow',
-              subagent_type: 'general-purpose',
-            },
-          } as ToolCall],
-        }),
         new AIMessage('done'),
       ]) as unknown as BaseChatModel,
-      middleware: [createAgentSkillsMiddleware(createBuiltinAgentStore())],
+      middleware: [createAgentSkillsMiddleware(createBuiltinSubagentStore())],
       tools: [
         createTaskTool({
           model: new ScriptedModel([
-            new AIMessage({
-              content: '',
-              tool_calls: [{
-                id: 'child_guarded_call',
-                name: 'dangerous_tool',
-                args: {path: 'task-guarded.txt'},
-              } as ToolCall],
-            }),
             new AIMessage({
               content: '',
               tool_calls: [{
@@ -130,11 +111,6 @@ describe('createTaskTool delegation', () => {
       codara: {
         delegatedSubagent: {
           childThreadId: expect.any(String),
-          childPause: expect.objectContaining({
-            action: expect.objectContaining({
-              toolName: 'dangerous_tool',
-            }),
-          }),
           parentToolName: TASK_TOOL_NAME,
         },
       },
@@ -148,7 +124,7 @@ describe('createTaskTool delegation', () => {
     expect(resumed.state.status).toBe('idle');
     expect(resumed.state.pendingPause).toBeUndefined();
     expect(dangerousInvokeCount).toBe(1);
-    expect(String(toolMessage.content)).toContain('Subagent completed.');
+    expect(String(toolMessage.content)).toContain('Delegated task completed.');
     expect(String(toolMessage.content)).toContain('summary:\ntask_child_done');
   });
 });
