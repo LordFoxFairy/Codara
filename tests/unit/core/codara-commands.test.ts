@@ -187,7 +187,7 @@ describe('Codara slash commands', () => {
           bash: true,
         },
       },
-      sessionId: 'resume-command-restore-thread',
+      sessionId: 'resume-command-restore-session',
     });
 
     await original.invoke('run command');
@@ -204,7 +204,7 @@ describe('Codara slash commands', () => {
           bash: true,
         },
       },
-      sessionId: 'resume-command-restore-thread',
+      sessionId: 'resume-command-restore-session',
       restore: 'latest',
     });
 

@@ -34,17 +34,17 @@ describe('Checkpointer', () => {
     const checkpointer = new InMemoryCheckpointer<TestState, TestInfo>();
 
     const first = await checkpointer.put({
-      sessionId: 'thread-a',
+      sessionId: 'session-a',
       ...createRecord(1, 1),
     });
     const second = await checkpointer.put({
-      sessionId: 'thread-a',
+      sessionId: 'session-a',
       parentCheckpointId: first.ref.checkpointId,
       ...createRecord(2, 2),
     });
 
-    expect((await checkpointer.getLatest('thread-a'))?.ref.checkpointId).toBe(second.ref.checkpointId);
-    expect((await checkpointer.list('thread-a')).map((item) => item.state.counter)).toEqual([1, 2]);
+    expect((await checkpointer.getLatest('session-a'))?.ref.checkpointId).toBe(second.ref.checkpointId);
+    expect((await checkpointer.list('session-a')).map((item) => item.state.counter)).toEqual([1, 2]);
   });
 
   it('should persist history to files with a codec', async () => {
@@ -62,18 +62,18 @@ describe('Checkpointer', () => {
     });
 
     const first = await checkpointer.put({
-      sessionId: 'thread-b',
+      sessionId: 'session-b',
       ...createRecord(1, 1),
     });
     const second = await checkpointer.put({
-      sessionId: 'thread-b',
+      sessionId: 'session-b',
       parentCheckpointId: first.ref.checkpointId,
       ...createRecord(2, 2),
     });
 
-    const latest = await checkpointer.getLatest('thread-b');
-    const list = await checkpointer.list('thread-b');
-    const indexPath = path.join(rootDir, 'thread-b', 'index.json');
+    const latest = await checkpointer.getLatest('session-b');
+    const list = await checkpointer.list('session-b');
+    const indexPath = path.join(rootDir, 'session-b', 'index.json');
 
     expect(latest?.ref.checkpointId).toBe(second.ref.checkpointId);
     expect(list.map((item) => item.state.counter)).toEqual([1, 2]);
@@ -98,16 +98,16 @@ describe('Checkpointer', () => {
 
     for (const checkpointer of [memory, file]) {
       await checkpointer.put({
-        sessionId: 'thread-delete',
+        sessionId: 'session-delete',
         ...createRecord(1, 1),
       });
 
-      expect(await checkpointer.getLatest('thread-delete')).toBeDefined();
+      expect(await checkpointer.getLatest('session-delete')).toBeDefined();
 
-      await checkpointer.deleteSession('thread-delete');
+      await checkpointer.deleteSession('session-delete');
 
-      expect(await checkpointer.getLatest('thread-delete')).toBeUndefined();
-      expect(await checkpointer.list('thread-delete')).toEqual([]);
+      expect(await checkpointer.getLatest('session-delete')).toBeUndefined();
+      expect(await checkpointer.list('session-delete')).toEqual([]);
     }
   });
 });

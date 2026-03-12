@@ -51,7 +51,7 @@ You are a Reviewer subagent.
       const checkpointer = createAgentMemoryCheckpointer();
       const agent = createAgent({
         model: new SingleResponseModel() as unknown as BaseChatModel,
-        sessionId: 'skills-runtime-context-thread',
+        sessionId: 'skills-runtime-context-session',
         checkpointer,
         middleware: [
           createSkillsMiddleware({
@@ -61,7 +61,7 @@ You are a Reviewer subagent.
       });
 
       await agent.invoke('hello');
-      const checkpoint = await checkpointer.getLatest('skills-runtime-context-thread');
+      const checkpoint = await checkpointer.getLatest('skills-runtime-context-session');
 
       expect(checkpoint?.state.context).toEqual({});
     } finally {

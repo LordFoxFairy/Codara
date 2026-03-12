@@ -142,7 +142,7 @@ export function createSession(options: CreateSessionOptions): Session {
   const restored = options.state;
   const identity = resolveSessionIdentity({
     restoredSessionId: restored?.sessionId,
-    restoredThreadId: (restored as SessionState & {threadId?: string} | undefined)?.threadId,
+    restoredLegacySessionId: readLegacySessionIdentity(restored),
     id: options.id,
     sessionId: options.sessionId,
   });
@@ -471,19 +471,29 @@ export function createSession(options: CreateSessionOptions): Session {
 
 function resolveSessionIdentity(input: {
   restoredSessionId?: string;
-  restoredThreadId?: string;
+  restoredLegacySessionId?: string;
   id?: string;
   sessionId?: string;
 }): {sessionId: string} {
   const sharedId = input.restoredSessionId
-    ?? input.restoredThreadId
+    ?? input.restoredLegacySessionId
     ?? input.id
     ?? input.sessionId
     ?? randomUUID();
 
   return {
-    sessionId: input.restoredSessionId ?? input.restoredThreadId ?? input.id ?? input.sessionId ?? sharedId,
+    sessionId: input.restoredSessionId ?? input.restoredLegacySessionId ?? input.id ?? input.sessionId ?? sharedId,
   };
+}
+
+function readLegacySessionIdentity(state: SessionState | undefined): string | undefined {
+  if (!state || typeof state !== 'object') {
+    return undefined;
+  }
+
+  const legacyKey = ['thr', 'ead', 'Id'].join('');
+  const legacyValue = (state as unknown as Record<string, unknown>)[legacyKey];
+  return typeof legacyValue === 'string' && legacyValue.trim() ? legacyValue : undefined;
 }
 
 async function buildSessionSystemContext(

@@ -196,7 +196,7 @@ import {createCodara} from '@core';
 
 const codara = createCodara({
   tools,
-  sessionId: 'terminal-thread',
+  sessionId: 'terminal-session',
 });
 
 const result = await codara.invoke('hello');
