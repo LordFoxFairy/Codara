@@ -15,7 +15,7 @@
 - `app/`
   - CLI 启动层
   - 只放 CLI shell 装配、controller 和宿主瞬时状态
-  - core host 在入口创建后再注入进来
+  - core runtime 在入口创建后再注入进来
 - `composer/`
   - 输入框的纯编辑模型
 - `components/`
@@ -31,7 +31,7 @@
 
 - `app/use-cli-controller.ts`
   - 统一协调 UI 状态，并直接消费注入进来的 `core` 会话实例
-  - 不再在 React hook 里创建 session host
+  - 不再在 React hook 里创建 session runtime
   - 直接消费 LangChain `AIMessageChunk`，不再维护 CLI 自己的 chunk 适配层
 - `app/view-state.ts`
   - 只定义 CLI 宿主侧瞬时 UI 状态，不复制 core 的 session 语义

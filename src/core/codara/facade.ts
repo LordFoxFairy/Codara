@@ -92,7 +92,7 @@ export interface CodaraOptions {
   values?: Record<string, unknown>;
 }
 
-export interface CodaraHostOptions extends CodaraOptions {
+export interface CodaraRuntimeOptions extends CodaraOptions {
   codaraPath?: string;
 }
 
@@ -129,11 +129,11 @@ export async function createCodaraChatModel(
 }
 
 export function createCodara(options: CodaraOptions = {}): Codara {
-  return createCodaraAgent(options);
+  return assembleCodara(options);
 }
 
-export function createCodaraHost(options: CodaraHostOptions = {}): Codara {
-  const codaraPath = resolveCodaraHostPath(options);
+export function createCodaraRuntime(options: CodaraRuntimeOptions = {}): Codara {
+  const codaraPath = resolveCodaraRuntimePath(options);
   const catalog = !options.model && !options.catalog && !options.config
     ? loadModelRoutingConfigFromPath(codaraPath).then((config) => createCodaraModelCatalog({config}))
     : options.catalog;
@@ -145,13 +145,13 @@ export function createCodaraHost(options: CodaraHostOptions = {}): Codara {
     ...(catalog ? {catalog} : {}),
     ...(options.store ? {} : {store: new FileSessionStore({basePath: path.join(codaraPath, 'sessions')})}),
     ...(options.checkpointer ? {} : {
-      checkpointer: createAgentFileCheckpointer({rootDir: path.join(codaraPath, 'state', 'sessions')}),
+      checkpointer: createAgentFileCheckpointer({rootDir: path.join(codaraPath, 'sessions')}),
     }),
     restore: options.restore ?? 'latest',
   });
 }
 
-export function createCodaraAgent(options: CodaraOptions, restoredState?: SessionState): Codara {
+function assembleCodara(options: CodaraOptions, restoredState?: SessionState): Codara {
   const skills = resolveCodaraSkills(options);
   const skillsSource = skills ? createCodaraSkillsSource(skills) : undefined;
   const alias = normalizeAlias(options.alias);
@@ -272,7 +272,7 @@ function resolveCodaraSkills(
 }
 
 async function reopenCodaraSession(options: CodaraOptions, state: SessionState): Promise<Codara> {
-  const codara = createCodaraAgent({
+  const codara = assembleCodara({
     ...options,
     sessionId: state.sessionId,
     restore: 'latest',
@@ -285,7 +285,7 @@ function normalizeAlias(alias: string | undefined): string {
   return alias?.trim() || DEFAULT_CODARA_MODEL_ALIAS;
 }
 
-function resolveCodaraHostPath(options: Pick<CodaraHostOptions, 'codaraPath' | 'cwd' | 'projectRoot'>): string {
+function resolveCodaraRuntimePath(options: Pick<CodaraRuntimeOptions, 'codaraPath' | 'cwd' | 'projectRoot'>): string {
   if (options.codaraPath?.trim()) {
     return path.resolve(options.codaraPath.trim());
   }
@@ -303,7 +303,7 @@ function resolveCodaraHostPath(options: Pick<CodaraHostOptions, 'codaraPath' | '
 }
 
 function resolveRuntimeLoggingOptions(
-  options: Pick<CodaraHostOptions, 'logging' | 'cwd' | 'projectRoot'>,
+  options: Pick<CodaraRuntimeOptions, 'logging' | 'cwd' | 'projectRoot'>,
 ): false | LoggingMiddlewareOptions {
   if (!DEFAULT_RUNTIME_FILE_LOGGING_ENABLED || options.logging === false || options.logging?.enabled === false) {
     return false;
@@ -313,7 +313,7 @@ function resolveRuntimeLoggingOptions(
     cwd: options.cwd,
     projectRoot: options.projectRoot,
   });
-  const rootDir = path.join(workspaceRoot, '.codara', 'logs');
+  const rootDir = path.join(workspaceRoot, '.codara', 'sessions');
   const provided = options.logging ?? {};
 
   return {

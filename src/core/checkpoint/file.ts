@@ -1,5 +1,5 @@
 import {randomUUID} from 'node:crypto';
-import {mkdir, readFile, readdir, rm, writeFile} from 'node:fs/promises';
+import {mkdir, readFile, rm, writeFile} from 'node:fs/promises';
 import path from 'node:path';
 import type {CheckpointRecord, Checkpointer, CompactOptions, PutCheckpointInput} from '@core/checkpoint';
 
@@ -24,15 +24,9 @@ interface PersistedCheckpointRecord {
   info: unknown;
 }
 
-interface PersistedLatestPointer {
-  checkpointId: string;
-}
-
 /**
  * Filesystem-backed checkpointer intended for CLI / terminal persistence.
- * Each session stores a single head pointer plus immutable checkpoint records.
- * History order is reconstructed from `parentCheckpointId`, so there is no
- * duplicated index file to keep in sync.
+ * Each session stores a single durable checkpoint snapshot.
  */
 export class FileCheckpointer<TState = unknown, TInfo = unknown>
   implements Checkpointer<TState, TInfo>
@@ -48,25 +42,19 @@ export class FileCheckpointer<TState = unknown, TInfo = unknown>
   }
 
   async getLatest(sessionId: string): Promise<CheckpointRecord<TState, TInfo> | undefined> {
-    const latestPath = this.latestPointerPath(sessionId);
-    const latest = await readJsonFile<PersistedLatestPointer>(latestPath);
-    if (!latest?.checkpointId) {
-      return undefined;
-    }
-
-    return this.get({sessionId, checkpointId: latest.checkpointId});
+    const record = await readJsonFile<PersistedCheckpointRecord>(this.latestCheckpointPath(sessionId));
+    return record ? this.decodeRecord(record) : undefined;
   }
 
   async get(ref: {
     sessionId: string;
     checkpointId: string;
   }): Promise<CheckpointRecord<TState, TInfo> | undefined> {
-    const record = await readJsonFile<PersistedCheckpointRecord>(this.checkpointPath(ref.sessionId, ref.checkpointId));
-    if (!record) {
+    const latest = await this.getLatest(ref.sessionId);
+    if (!latest || latest.ref.checkpointId !== ref.checkpointId) {
       return undefined;
     }
-
-    return this.decodeRecord(record);
+    return latest;
   }
 
   async put(input: PutCheckpointInput<TState, TInfo>): Promise<CheckpointRecord<TState, TInfo>> {
@@ -75,38 +63,20 @@ export class FileCheckpointer<TState = unknown, TInfo = unknown>
       ref: {
         sessionId: input.sessionId,
         checkpointId,
-        ...(input.parentCheckpointId ? {parentCheckpointId: input.parentCheckpointId} : {}),
       },
       state: input.state,
       info: input.info,
     };
 
     await mkdir(this.checkpointsDir(input.sessionId), {recursive: true});
-
-    await writeJsonFile(this.checkpointPath(input.sessionId, checkpointId), this.encodeRecord(record));
-    await writeJsonFile(this.latestPointerPath(input.sessionId), {checkpointId});
+    await writeJsonFile(this.latestCheckpointPath(input.sessionId), this.encodeRecord(record));
 
     return this.decodeRecord(this.encodeRecord(record));
   }
 
   async list(sessionId: string): Promise<Array<CheckpointRecord<TState, TInfo>>> {
-    const records: Array<CheckpointRecord<TState, TInfo>> = [];
-    const seen = new Set<string>();
-    let current = await this.getLatest(sessionId);
-
-    while (current && !seen.has(current.ref.checkpointId)) {
-      records.push(current);
-      seen.add(current.ref.checkpointId);
-
-      const parentCheckpointId = current.ref.parentCheckpointId;
-      if (!parentCheckpointId) {
-        break;
-      }
-
-      current = await this.get({sessionId, checkpointId: parentCheckpointId});
-    }
-
-    return records.reverse();
+    const latest = await this.getLatest(sessionId);
+    return latest ? [latest] : [];
   }
 
   async deleteSession(sessionId: string): Promise<void> {
@@ -114,41 +84,8 @@ export class FileCheckpointer<TState = unknown, TInfo = unknown>
   }
 
   async compact(sessionId: string, options?: CompactOptions): Promise<void> {
-    const keepLast = options?.keepLast ?? 10;
-    const allRecords = await this.list(sessionId);
-
-    if (allRecords.length <= keepLast) {
-      return;
-    }
-
-    const keptRecords = allRecords.slice(-keepLast);
-    const toKeep = new Set(keptRecords.map((record) => record.ref.checkpointId));
-
-    const checkpointsDir = this.checkpointsDir(sessionId);
-    const files = await readdir(checkpointsDir).catch(() => []);
-
-    for (const file of files) {
-      if (!file.endsWith('.json')) {
-        continue;
-      }
-
-      const checkpointId = file.replace('.json', '');
-      if (!toKeep.has(checkpointId)) {
-        await rm(path.join(checkpointsDir, file), {force: true});
-      }
-    }
-
-    const oldestKept = keptRecords[0];
-    if (oldestKept?.ref.parentCheckpointId) {
-      const rewritten: CheckpointRecord<TState, TInfo> = {
-        ...oldestKept,
-        ref: {
-          ...oldestKept.ref,
-          parentCheckpointId: undefined,
-        },
-      };
-      await writeJsonFile(this.checkpointPath(sessionId, oldestKept.ref.checkpointId), this.encodeRecord(rewritten));
-    }
+    void sessionId;
+    void options;
   }
 
   private sessionDir(sessionId: string): string {
@@ -159,12 +96,8 @@ export class FileCheckpointer<TState = unknown, TInfo = unknown>
     return path.join(this.sessionDir(sessionId), 'checkpoints');
   }
 
-  private checkpointPath(sessionId: string, checkpointId: string): string {
-    return path.join(this.checkpointsDir(sessionId), `${checkpointId}.json`);
-  }
-
-  private latestPointerPath(sessionId: string): string {
-    return path.join(this.sessionDir(sessionId), 'latest.json');
+  private latestCheckpointPath(sessionId: string): string {
+    return path.join(this.checkpointsDir(sessionId), 'latest.json');
   }
 
   private encodeRecord(record: CheckpointRecord<TState, TInfo>): PersistedCheckpointRecord {

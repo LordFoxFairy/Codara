@@ -47,7 +47,7 @@ describe('Checkpointer', () => {
     expect((await checkpointer.list('session-a')).map((item) => item.state.counter)).toEqual([1, 2]);
   });
 
-  it('should persist history to files with a codec', async () => {
+  it('should persist only the latest durable checkpoint to files with a codec', async () => {
     const rootDir = await mkdtemp(path.join(os.tmpdir(), 'codara-checkpointer-'));
     const checkpointer = new FileCheckpointer<TestState, TestInfo>({
       rootDir,
@@ -74,10 +74,12 @@ describe('Checkpointer', () => {
     const latest = await checkpointer.getLatest('session-b');
     const list = await checkpointer.list('session-b');
     const indexPath = path.join(rootDir, 'session-b', 'index.json');
+    const latestPath = path.join(rootDir, 'session-b', 'checkpoints', 'latest.json');
 
     expect(latest?.ref.checkpointId).toBe(second.ref.checkpointId);
-    expect(list.map((item) => item.state.counter)).toEqual([1, 2]);
-    expect(list[1]?.ref.parentCheckpointId).toBe(first.ref.checkpointId);
+    expect(list.map((item) => item.state.counter)).toEqual([2]);
+    expect(list[0]?.ref.parentCheckpointId).toBeUndefined();
+    await expect(access(latestPath)).resolves.toBeNull();
     await expect(access(indexPath)).rejects.toHaveProperty('code', 'ENOENT');
   });
 
