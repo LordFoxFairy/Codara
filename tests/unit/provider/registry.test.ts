@@ -113,6 +113,29 @@ describe("ModelRegistry", () => {
     warnSpy.mockRestore();
   });
 
+  it("未使用到的 provider 不应在获取其他 alias 时输出 warning", () => {
+    const warnSpy = spyOn(console, "warn").mockImplementation(mock(() => {}));
+    const config: ModelRoutingConfig = {
+      ...mockConfig,
+      providers: [
+        {
+          ...mockConfig.providers[0],
+          apiKey: "$EMPTY_OPENROUTER_KEY",
+        },
+        mockConfig.providers[1],
+      ],
+    };
+
+    process.env.EMPTY_OPENROUTER_KEY = "   ";
+    const registry = new ModelRegistry(config);
+
+    const opus = registry.getByAlias("opus");
+
+    expect(opus.alias).toBe("opus");
+    expect(warnSpy).not.toHaveBeenCalled();
+    warnSpy.mockRestore();
+  });
+
   it("provider 不存在时应 fail-fast", () => {
     const invalidConfig: ModelRoutingConfig = {
       providers: [
