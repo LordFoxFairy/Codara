@@ -1,3 +1,4 @@
+import {randomUUID} from 'node:crypto';
 import {useCallback, useEffect, useMemo, useRef, useState} from 'react';
 import type {Codara, SessionState} from '@core';
 import {AIMessageChunk, type BaseMessage} from '@langchain/core/messages';
@@ -54,7 +55,7 @@ export function useCliController(options: UseCliControllerOptions): CliControlle
   const [composerActivityVersion, setComposerActivityVersion] = useState(0);
   const [notices, setNotices] = useState<CliNotice[]>([
     {
-      id: createMessageId('system'),
+      id: `system-${randomUUID()}`,
       level: 'system',
       content: startupMessage,
     },
@@ -75,7 +76,7 @@ export function useCliController(options: UseCliControllerOptions): CliControlle
     setNotices((current) => [
       ...current,
       {
-        id: createMessageId(level),
+        id: `${level}-${randomUUID()}`,
         level,
         content: message,
       },
@@ -105,7 +106,7 @@ export function useCliController(options: UseCliControllerOptions): CliControlle
 
   const runAgentPrompt = useCallback(async (prompt: string) => {
     setActiveTurn({
-      id: createMessageId('turn'),
+      id: `turn-${randomUUID()}`,
       prompt,
       response: '',
       responseRole: 'assistant',
@@ -264,8 +265,4 @@ export function useCliController(options: UseCliControllerOptions): CliControlle
     moveCursorEnd,
     submitDraft,
   };
-}
-
-function createMessageId(prefix: string): string {
-  return `${prefix}-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
 }
