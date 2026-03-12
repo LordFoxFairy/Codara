@@ -73,13 +73,17 @@ export class ModelRegistry {
         provider: ProviderConfig,
         modelMetadata?: ModelMetadataConfig
     ): ModelInfo {
+        const apiKey = expandApiKey(provider.apiKey, (message) => {
+            console.warn(`Provider "${provider.name}" apiKey 配置无效：${message}`);
+        });
+
         return {
             provider: provider.name,
             model: rule.model,
             type: provider.name === "anthropic" ? "anthropic" : "openai",
             alias: rule.alias,
             baseUrl: provider.baseUrl,
-            apiKey: expandApiKey(provider.apiKey),
+            apiKey,
             ...(typeof modelMetadata?.contextWindow === "number" ? {contextWindow: modelMetadata.contextWindow} : {}),
             ...(typeof modelMetadata?.maxOutputTokens === "number" ? {maxOutputTokens: modelMetadata.maxOutputTokens} : {}),
         };
