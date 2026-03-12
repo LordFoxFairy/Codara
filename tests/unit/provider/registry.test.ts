@@ -1,4 +1,4 @@
-import {describe, expect, it, beforeEach, afterEach} from "bun:test";
+import {describe, expect, it, beforeEach, afterEach, mock, spyOn} from "bun:test";
 import {ModelRegistry} from "@core/provider";
 import type {ModelRoutingConfig} from "@core/provider";
 
@@ -91,6 +91,26 @@ describe("ModelRegistry", () => {
     const registry = new ModelRegistry(mockConfig);
     const aliases = registry.getAliases();
     expect(aliases).toEqual(["sonnet", "opus"]);
+  });
+
+  it("apiKey 配置无效时应 warning 并跳过", () => {
+    const warnSpy = spyOn(console, "warn").mockImplementation(mock(() => {}));
+    const config: ModelRoutingConfig = {
+      ...mockConfig,
+      providers: [
+        {
+          ...mockConfig.providers[0],
+          apiKey: "$   ",
+        },
+        mockConfig.providers[1],
+      ],
+    };
+
+    const registry = new ModelRegistry(config);
+
+    expect(registry.getByAlias("sonnet").apiKey).toBeUndefined();
+    expect(warnSpy).toHaveBeenCalledWith('Provider "openrouter" apiKey 配置无效：apiKey 环境变量名为空，已跳过');
+    warnSpy.mockRestore();
   });
 
   it("provider 不存在时应 fail-fast", () => {
