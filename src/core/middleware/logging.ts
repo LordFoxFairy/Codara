@@ -19,7 +19,7 @@ export interface MiddlewareLogRecord {
   timestamp: string;
   level: MiddlewareLogLevel;
   middleware: string;
-  stage: 'beforeAgent' | 'beforeModel' | 'wrapModelCall' | 'afterModel' | 'wrapToolCall' | 'afterAgent';
+  stage: 'beforeAgent' | 'beforeModel' | 'wrapModelCall' | 'afterModel' | 'wrapToolCall' | 'assistantMessage' | 'toolMessage' | 'afterAgent';
   event: MiddlewareLogEvent;
   sessionId: string;
   runId: string;
@@ -34,6 +34,8 @@ export interface MiddlewareLogRecord {
   toolContent?: string;
   toolArtifactType?: string;
   toolMetadata?: Record<string, unknown>;
+  messageType?: 'assistant' | 'tool';
+  messageText?: string;
   resultReason?: 'continue' | 'complete' | 'error';
   responseText?: string;
   responseToolCallCount?: number;
@@ -122,6 +124,10 @@ export function createLoggingMiddleware(options: LoggingMiddlewareOptions = {}) 
         ...afterModelDetails(context),
         durationMs: Date.now() - startedAt,
       }));
+      const assistantTranscript = assistantTranscriptDetails(context.response);
+      if (assistantTranscript) {
+        emit(buildBaseRecord('info', 'assistantMessage', 'stage_end', context, assistantTranscript));
+      }
     },
 
     async wrapToolCall(context, handler) {
@@ -130,10 +136,16 @@ export function createLoggingMiddleware(options: LoggingMiddlewareOptions = {}) 
 
       try {
         const toolMessage = await handler(context);
+        const outcome = toolOutcomeDetails(toolMessage);
         emit(buildBaseRecord('info', 'wrapToolCall', 'stage_end', context, {
           ...toolDetails(context),
-          ...toolOutcomeDetails(toolMessage),
+          ...outcome,
           durationMs: Date.now() - startedAt,
+        }));
+        emit(buildBaseRecord('info', 'toolMessage', 'stage_end', context, {
+          ...toolDetails(context),
+          ...outcome,
+          ...toolTranscriptDetails(toolMessage),
         }));
         return toolMessage;
       } catch (error) {
@@ -245,6 +257,30 @@ function toolOutcomeDetails(
   details.toolMetadata = metadata;
 
   return details;
+}
+
+function toolTranscriptDetails(
+  message: ToolMessage,
+): Pick<MiddlewareLogRecord, 'messageType' | 'messageText'> {
+  const toolContent = serializeForLog(message.content);
+  return {
+    messageType: 'tool',
+    ...(toolContent ? {messageText: toolContent} : {}),
+  };
+}
+
+function assistantTranscriptDetails(
+  response: AIMessage,
+): Pick<MiddlewareLogRecord, 'messageType' | 'messageText'> | undefined {
+  const messageText = readMessageText(response);
+  if (!messageText) {
+    return undefined;
+  }
+
+  return {
+    messageType: 'assistant',
+    messageText,
+  };
 }
 
 function modelResponseDetails(response: AIMessage): Pick<MiddlewareLogRecord, 'responseText' | 'responseToolCallCount' | 'responseToolNames'> {
@@ -372,7 +408,12 @@ function sanitizeLogPathSegment(segment: string): string {
     return '_';
   }
 
-  const sanitized = segment.replace(/[<>:"|?*\u0000-\u001F]/g, '_');
+  const sanitized = [...segment]
+    .map((char) => {
+      const code = char.charCodeAt(0);
+      return code <= 31 || '<>:"|?*'.includes(char) ? '_' : char;
+    })
+    .join('');
   if (!sanitized || sanitized === '.' || sanitized === '..') {
     return '_';
   }

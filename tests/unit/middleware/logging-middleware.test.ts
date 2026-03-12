@@ -102,10 +102,14 @@ describe('createLoggingMiddleware', () => {
     const wrapModelStart = logs.find((record) => record.stage === 'wrapModelCall' && record.event === 'stage_start');
     const wrapModelEnd = logs.find((record) => record.stage === 'wrapModelCall' && record.event === 'stage_end');
     const wrapToolEnd = logs.find((record) => record.stage === 'wrapToolCall' && record.event === 'stage_end');
+    const assistantTranscript = logs.find((record) => record.stage === 'assistantMessage' && record.event === 'stage_end');
+    const toolTranscript = logs.find((record) => record.stage === 'toolMessage' && record.event === 'stage_end');
 
     expect(wrapModelStart).toBeDefined();
     expect(wrapModelEnd).toBeDefined();
     expect(wrapModelEnd?.durationMs).toBeGreaterThanOrEqual(0);
+    expect(assistantTranscript?.messageType).toBe('assistant');
+    expect(assistantTranscript?.messageText).toBe('done');
 
     expect(wrapToolEnd?.toolName).toBe('echo');
     expect(wrapToolEnd?.toolCallId).toBe('call_log_1');
@@ -113,6 +117,11 @@ describe('createLoggingMiddleware', () => {
     expect(wrapToolEnd?.toolArgsText).toContain('"text":"ping"');
     expect(wrapToolEnd?.toolContent).toBe('pong');
     expect(wrapToolEnd?.toolArtifactType).toBe('string');
+    expect(toolTranscript?.toolName).toBe('echo');
+    expect(toolTranscript?.toolCallId).toBe('call_log_1');
+    expect(toolTranscript?.messageType).toBe('tool');
+    expect(toolTranscript?.messageText).toBe('pong');
+    expect(toolTranscript?.toolContent).toBe('pong');
 
     const afterModelEnd = logs.find((record) => record.stage === 'afterModel' && record.event === 'stage_end');
     expect(afterModelEnd?.responseToolCallCount).toBe(1);
