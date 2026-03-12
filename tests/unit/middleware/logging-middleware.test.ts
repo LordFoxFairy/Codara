@@ -110,9 +110,19 @@ describe('createLoggingMiddleware', () => {
     expect(wrapToolEnd?.toolName).toBe('echo');
     expect(wrapToolEnd?.toolCallId).toBe('call_log_1');
     expect(wrapToolEnd?.toolIndex).toBe(0);
+    expect(wrapToolEnd?.toolArgsText).toContain('"text":"ping"');
+    expect(wrapToolEnd?.toolContent).toBe('pong');
+    expect(wrapToolEnd?.toolArtifactType).toBe('string');
+
+    const afterModelEnd = logs.find((record) => record.stage === 'afterModel' && record.event === 'stage_end');
+    expect(afterModelEnd?.responseToolCallCount).toBe(1);
+    expect(afterModelEnd?.responseToolNames).toEqual(['echo']);
 
     const afterAgentEndLogs = logs.filter((record) => record.stage === 'afterAgent' && record.event === 'stage_end');
     expect(afterAgentEndLogs.some((record) => record.resultReason === 'complete')).toBe(true);
+    const completedAfterAgent = afterAgentEndLogs.find((record) => record.resultReason === 'complete');
+    expect(completedAfterAgent?.messageCount).toBe(4);
+    expect(completedAfterAgent?.lastAssistantText).toBe('done');
   });
 
   it('should filter debug logs when level is info', async () => {
@@ -201,6 +211,8 @@ describe('createLoggingMiddleware', () => {
         && record.toolMetadata?.toolResultType === 'hil_pause';
     });
     expect(pauseLog).toBeDefined();
+    expect(pauseLog?.toolArgsText).toContain('"command":"git status"');
+    expect(pauseLog?.toolContent).toContain('"type":"hil_pause"');
     expect(pauseLog?.toolMetadata).toMatchObject({
       toolResultType: 'hil_pause',
       interactionDecision: 'ask',
@@ -210,7 +222,7 @@ describe('createLoggingMiddleware', () => {
     });
   });
 
-  it('should write JSONL records under logs/<sessionId>/YYYY-MM-DD.log', async () => {
+  it('should write JSONL records under <sessionId>/logs/YYYY-MM-DD.log', async () => {
     const root = await mkdtemp(path.join(tmpdir(), 'codara-logging-sink-'));
     const sink = createDailySessionFileLogSink({rootDir: root});
     const timestamp = '2026-03-12T10:20:30.000Z';
@@ -228,7 +240,7 @@ describe('createLoggingMiddleware', () => {
         requestId: 'req-1',
       });
 
-      const filePath = path.join(root, 'nested', 'session-1', '2026-03-12.log');
+      const filePath = path.join(root, 'nested', 'session-1', 'logs', '2026-03-12.log');
       const content = await readFile(filePath, 'utf8');
       const lines = content.trim().split('\n');
 

@@ -8,12 +8,12 @@
 // ============================================
 
 /** 创建或打开 Codara 会话（推荐入口） */
-export {createCodara, createCodaraAgent, createCodaraHost, DEFAULT_CODARA_MODEL_ALIAS, openCodaraSession, openLatestCodaraSession} from '@core/codara';
+export {createCodara, createCodaraRuntime, DEFAULT_CODARA_MODEL_ALIAS, openCodaraSession, openLatestCodaraSession} from '@core/codara';
 
 /** Codara 相关类型 */
 export type {
   Codara,
-  CodaraHostOptions,
+  CodaraRuntimeOptions,
   CodaraOptions,
 } from '@core/codara';
 

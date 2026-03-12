@@ -1,14 +1,13 @@
 export type {
   Codara,
-  CodaraHostOptions,
+  CodaraRuntimeOptions,
   CodaraOptions,
 } from '@core/codara/facade';
 export {
   CodaraModelCatalog,
   createCodara,
-  createCodaraAgent,
   createCodaraChatModel,
-  createCodaraHost,
+  createCodaraRuntime,
   createCodaraModelCatalog,
   DEFAULT_CODARA_MODEL_ALIAS,
   openCodaraSession,

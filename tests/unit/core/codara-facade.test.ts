@@ -1,5 +1,5 @@
 import {describe, expect, it} from 'bun:test';
-import {createAgentMemoryCheckpointer, createCodara, createCodaraHost} from '@core';
+import {createAgentMemoryCheckpointer, createCodara, createCodaraRuntime} from '@core';
 import type {BaseChatModel} from '@langchain/core/language_models/chat_models';
 import {AIMessageChunk} from '@langchain/core/messages';
 import {mkdtemp, mkdir, readFile, rm, stat, writeFile} from 'node:fs/promises';
@@ -137,8 +137,8 @@ describe('Codara facade runtime', () => {
     expect(String(agentState.messages[1]?.content)).toBe('seen_humans:1');
   });
 
-  it('should provide a core-owned persistent host entry for CLI consumers', async () => {
-    const root = await mkdtemp(path.join(tmpdir(), 'codara-host-entry-'));
+  it('should provide a core-owned persistent runtime entry for CLI consumers', async () => {
+    const root = await mkdtemp(path.join(tmpdir(), 'codara-runtime-entry-'));
     const cwd = path.join(root, 'project');
     const codaraRoot = path.join(cwd, '.codara');
 
@@ -150,7 +150,7 @@ describe('Codara facade runtime', () => {
     }, null, 2));
 
     try {
-      const codara = createCodaraHost({
+      const codara = createCodaraRuntime({
         cwd,
         model: new EchoModel() as unknown as BaseChatModel,
         skills: false,
@@ -163,13 +163,13 @@ describe('Codara facade runtime', () => {
       const sessionId = codara.getState().sessionId;
 
       await expect(stat(path.join(codaraRoot, 'sessions', sessionId, 'metadata.json'))).resolves.toBeDefined();
-      await expect(stat(path.join(codaraRoot, 'state', 'sessions', sessionId, 'latest.json'))).resolves.toBeDefined();
+      await expect(stat(path.join(codaraRoot, 'sessions', sessionId, 'checkpoints', 'latest.json'))).resolves.toBeDefined();
     } finally {
       await rm(root, {recursive: true, force: true});
     }
   });
 
-  it('should write runtime logs to project .codara/logs/<sessionId>/YYYY-MM-DD.log by default', async () => {
+  it('should write runtime logs to project .codara/sessions/<sessionId>/logs/YYYY-MM-DD.log by default', async () => {
     const root = await mkdtemp(path.join(tmpdir(), 'codara-runtime-logs-'));
     const cwd = path.join(root, 'project');
     const codaraRoot = path.join(cwd, '.codara');
@@ -182,7 +182,7 @@ describe('Codara facade runtime', () => {
     }, null, 2));
 
     try {
-      const codara = createCodaraHost({
+      const codara = createCodaraRuntime({
         cwd,
         model: new EchoModel() as unknown as BaseChatModel,
         skills: false,
@@ -193,7 +193,7 @@ describe('Codara facade runtime', () => {
       expect(result.reason).toBe('complete');
 
       const sessionId = codara.getState().sessionId;
-      const logPath = path.join(codaraRoot, 'logs', sessionId, `${new Date().toISOString().slice(0, 10)}.log`);
+      const logPath = path.join(codaraRoot, 'sessions', sessionId, 'logs', `${new Date().toISOString().slice(0, 10)}.log`);
       const content = await readFile(logPath, 'utf8');
       const records = content.trim().split('\n').map((line) => JSON.parse(line));
 

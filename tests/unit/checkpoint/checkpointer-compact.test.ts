@@ -45,7 +45,7 @@ describe('Checkpointer compact', () => {
     expect(list[0]?.ref.parentCheckpointId).toBeUndefined();
   });
 
-  it('should keep the latest checkpoints and detach the oldest kept parent on disk', async () => {
+  it('should keep only the latest durable checkpoint on disk', async () => {
     const rootDir = await mkdtemp(path.join(tmpdir(), 'codara-checkpointer-compact-'));
     const checkpointer = new FileCheckpointer<TestState, TestInfo>({
       rootDir,
@@ -74,7 +74,7 @@ describe('Checkpointer compact', () => {
     await checkpointer.compact?.('session-file', {keepLast: 2});
 
     const list = await checkpointer.list('session-file');
-    expect(list.map((item) => item.state.counter)).toEqual([2, 3]);
+    expect(list.map((item) => item.state.counter)).toEqual([3]);
     expect(list[0]?.ref.parentCheckpointId).toBeUndefined();
   });
 });

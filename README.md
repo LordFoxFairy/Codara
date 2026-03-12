@@ -30,7 +30,7 @@ AI 驱动的终端代码代理运行时与产品 facade。
 ```text
 src/index.ts
   -> core/codara facade
-  -> session host
+  -> session runtime
   -> openCodaraSession(...) / openLatestCodaraSession(...)
   -> createAgent(...)
   -> middleware pipeline
@@ -60,9 +60,9 @@ src/index.ts
 
 - `AGENTS.md` = guidelines
 - source stack 属于 session，不属于 agent
-- 同一个 Codara host 支持 `reloadSources()`
+- 同一个 Codara runtime 支持 `reloadSources()`
 - 历史 checkpoint 可通过 `compactCheckpoints()` 手动整理
-- slash commands 也属于 host surface，不进入 `createAgent(...)` 内核
+- slash commands 也属于 runtime surface，不进入 `createAgent(...)` 内核
 
 ## Slash Commands
 
@@ -83,7 +83,7 @@ src/index.ts
   - 清空当前 session 的 `AGENTS.md` source cache
   - 同时刷新 skills discovery cache
 
-这些命令当前由 `src/core/codara/commands/` 管理，并通过 `createCodara()` 返回的 host surface 暴露。
+这些命令当前由 `src/core/codara/commands/` 管理，并通过 `createCodara()` 返回的 runtime surface 暴露。
 
 默认 conversation lifecycle 会在接近输入窗口上限时自动 compact：
 - 默认 alias 为 `sonnet`
@@ -240,7 +240,7 @@ tests/integration      # integration 与本地 mock provider stack
 
 1. `src/core/README.md`
 2. `src/core/agents/README.md`
-3. `src/core/sessions/host.ts`
+3. `src/core/codara/facade.ts`
 4. `src/core/agents/agent-loop.ts`
 5. `src/core/middleware/context-budget.ts`
 

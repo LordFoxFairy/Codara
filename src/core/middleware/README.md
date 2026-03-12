@@ -8,7 +8,7 @@
 
 `beforeAgent -> beforeModel -> wrapModelCall -> afterModel -> wrapToolCall -> afterAgent`
 
-这里的 `beforeAgent / afterAgent` 是 agent loop 内每个 turn 的 hook，不是 `session` 级、也不是一次 `invoke()` 只触发一次的 host lifecycle hook。
+这里的 `beforeAgent / afterAgent` 是 agent loop 内每个 turn 的 hook，不是 `session` 级、也不是一次 `invoke()` 只触发一次的 runtime lifecycle hook。
 
 ## 快速开始
 
