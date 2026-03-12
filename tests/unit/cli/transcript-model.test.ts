@@ -1,15 +1,21 @@
 import {describe, expect, test} from 'bun:test';
-import {AIMessage, HumanMessage, SystemMessage} from '@langchain/core/messages';
+import {AIMessage, HumanMessage, SystemMessage, ToolMessage, type ToolCall} from '@langchain/core/messages';
 import {buildTranscriptItems, hasTranscriptContent} from '@/cli/transcript/model';
 
 describe('cli transcript model', () => {
   test('should build transcript items from notices, core messages, and active turn', () => {
+    const echoToolCall: ToolCall = {id: 'call_echo_1', name: 'echo', args: {text: 'ping'}};
     const items = buildTranscriptItems({
       notices: [
         {id: 'n1', level: 'system', content: 'ready'},
         {id: 'n2', level: 'warning', content: 'careful'},
       ],
-      coreMessages: [new HumanMessage('hello'), new AIMessage('world')],
+      coreMessages: [
+        new HumanMessage('hello'),
+        new AIMessage('world'),
+        new AIMessage({content: '', tool_calls: [echoToolCall]}),
+        new ToolMessage({content: 'pong:ping', tool_call_id: 'call_echo_1'}),
+      ],
       activeTurn: {
         id: 'turn-1',
         prompt: 'draft',
@@ -23,9 +29,57 @@ describe('cli transcript model', () => {
       'warning:careful',
       'user:hello',
       'assistant:world',
+      'tool:Echo(text: ping)',
+      'tool:pong:ping',
       'user:draft',
       'assistant:streaming',
     ]);
+  });
+
+  test('should project task tool calls and task list results as task transcript items', () => {
+    const taskListCall: ToolCall = {id: 'call_task_list_1', name: 'TaskList', args: {}};
+    const items = buildTranscriptItems({
+      notices: [],
+      coreMessages: [
+        new AIMessage({content: '', tool_calls: [taskListCall]}),
+        new ToolMessage({
+          content: [
+            'Tasks:',
+            '- id: task-1 | subject: Inspect transcript | status: in_progress | description: Verify task rendering | blockedBy: (none) | blocks: task-2',
+            '- id: task-2 | subject: Report result | status: pending | description: Summarize changes | blockedBy: task-1 | blocks: (none)',
+          ].join('\n'),
+          tool_call_id: 'call_task_list_1',
+        }),
+      ],
+    });
+
+    expect(items.map((item) => item.role)).toEqual(['task', 'task']);
+    expect(items[0]?.content).toBe('TaskList');
+    expect(items[1]?.content).toContain('Tasks:');
+    expect(items[1]?.content).toContain('- id: task-1\n  subject: Inspect transcript\n  status: in_progress');
+    expect(items[1]?.content).toContain('- id: task-2\n  subject: Report result\n  status: pending');
+  });
+
+  test('should format common tool calls with friendly Claude-style summaries', () => {
+    const items = buildTranscriptItems({
+      notices: [],
+      coreMessages: [
+        new AIMessage({
+          content: '',
+          tool_calls: [
+            {id: 'call_bash_1', name: 'bash', args: {command: 'git status'}} as ToolCall,
+            {id: 'call_read_1', name: 'read_file', args: {file_path: '/tmp/demo.ts', offset: 10, limit: 20}} as ToolCall,
+            {id: 'call_fetch_1', name: 'fetch_url', args: {url: 'https://example.com/docs', method: 'GET'}} as ToolCall,
+          ],
+        }),
+      ],
+    });
+
+    expect(items).toHaveLength(1);
+    expect(items[0]?.role).toBe('tool');
+    expect(items[0]?.content).toContain('- Bash(git status)');
+    expect(items[0]?.content).toContain('- Read(/tmp/demo.ts:10+20)');
+    expect(items[0]?.content).toContain('- Fetch(https://example.com/docs)');
   });
 
   test('should treat notice-only output as transcript content after startup', () => {
@@ -42,6 +96,14 @@ describe('cli transcript model', () => {
   test('should treat non-empty core system messages as transcript content', () => {
     expect(hasTranscriptContent({
       coreMessages: [new SystemMessage('system note')],
+      notices: [{id: 'startup', level: 'system', content: 'startup'}],
+      initialNoticeCount: 1,
+    })).toBe(true);
+  });
+
+  test('should treat tool messages as transcript content', () => {
+    expect(hasTranscriptContent({
+      coreMessages: [new ToolMessage({content: 'pong:ping', tool_call_id: 'call_tool_1'})],
       notices: [{id: 'startup', level: 'system', content: 'startup'}],
       initialNoticeCount: 1,
     })).toBe(true);
