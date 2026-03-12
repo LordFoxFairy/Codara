@@ -140,13 +140,10 @@ interface SessionSystemContext {
 
 export function createSession(options: CreateSessionOptions): Session {
   const restored = options.state;
-  const identity = resolveSessionIdentity({
-    restoredSessionId: restored?.sessionId,
-    restoredLegacySessionId: readLegacySessionIdentity(restored),
+  const sessionId = resolveSessionId(restored, {
     id: options.id,
     sessionId: options.sessionId,
   });
-  const sessionId = identity.sessionId;
   const createdAt = restored?.createdAt ?? new Date().toISOString();
   let updatedAt = restored?.updatedAt ?? createdAt;
   let sessionStatus: SessionStatus = 'ready';
@@ -174,17 +171,13 @@ export function createSession(options: CreateSessionOptions): Session {
     summaryOptions = undefined;
   }
 
-  async function save() {
-    if (options.store) {
-      await options.store.save(sessionId, state());
-    }
-  }
-
-  async function saveSessionState(touchActivity = true) {
+  async function persistSessionState(touchActivity = true) {
     if (touchActivity) {
       touch();
     }
-    await save();
+    if (options.store) {
+      await options.store.save(sessionId, state());
+    }
   }
 
   async function getLatestCheckpoint() {
@@ -208,7 +201,9 @@ export function createSession(options: CreateSessionOptions): Session {
       collectUsage: syncOptions.collectUsage,
       previousMessages: syncOptions.previousMessages,
     });
-    await save();
+    if (options.store) {
+      await options.store.save(sessionId, state());
+    }
   }
 
   async function loadSessionSystemContext(forceReload = false): Promise<SessionSystemContext> {
@@ -321,11 +316,11 @@ export function createSession(options: CreateSessionOptions): Session {
 
   async function fork(optionsOverride: {id?: string; sessionId?: string; store?: SessionStore} = {}) {
     const base = (await getAgent()).getState();
-    const childIdentity = resolveSessionIdentity({
+    const childSessionId = resolveSessionId(undefined, {
       id: optionsOverride.id,
       sessionId: optionsOverride.sessionId,
     });
-    await putForkCheckpoint(checkpointer, childIdentity.sessionId, {
+    await putForkCheckpoint(checkpointer, childSessionId, {
       agentType: base.agentType,
       messages: base.messages,
       context: base.context,
@@ -335,8 +330,8 @@ export function createSession(options: CreateSessionOptions): Session {
 
     const child = createSession({
       ...options,
-      id: childIdentity.sessionId,
-      sessionId: childIdentity.sessionId,
+      id: childSessionId,
+      sessionId: childSessionId,
       store: optionsOverride.store ?? options.store,
       restore: 'latest',
       metadata: forkSessionMetadata(metadata, sessionId),
@@ -433,7 +428,7 @@ export function createSession(options: CreateSessionOptions): Session {
       ensureReady();
       await loadSessionSystemContext(true);
       clearAgentCache();
-      await saveSessionState();
+      await persistSessionState();
     },
     async compactCheckpoints(optionsOverride) {
       ensureReady();
@@ -441,12 +436,12 @@ export function createSession(options: CreateSessionOptions): Session {
         return;
       }
       await checkpointer.compact(sessionId, optionsOverride);
-      await saveSessionState();
+      await persistSessionState();
     },
     async reset() {
       ensureReady();
       if (!agent && !(await hasStoredCheckpoint())) {
-        await saveSessionState();
+        await persistSessionState();
         return;
       }
       const instance = await getAgent();
@@ -459,41 +454,25 @@ export function createSession(options: CreateSessionOptions): Session {
       }
       if (!agent && !(await hasStoredCheckpoint())) {
         sessionStatus = 'closed';
-        await saveSessionState();
+        await persistSessionState();
         return;
       }
       await (await getAgent()).dispose();
       sessionStatus = 'closed';
-      await saveSessionState();
+      await persistSessionState();
     },
   };
 }
 
-function resolveSessionIdentity(input: {
-  restoredSessionId?: string;
-  restoredLegacySessionId?: string;
-  id?: string;
-  sessionId?: string;
-}): {sessionId: string} {
-  const sharedId = input.restoredSessionId
-    ?? input.restoredLegacySessionId
-    ?? input.id
-    ?? input.sessionId
-    ?? randomUUID();
-
-  return {
-    sessionId: input.restoredSessionId ?? input.restoredLegacySessionId ?? input.id ?? input.sessionId ?? sharedId,
-  };
-}
-
-function readLegacySessionIdentity(state: SessionState | undefined): string | undefined {
-  if (!state || typeof state !== 'object') {
-    return undefined;
-  }
-
-  const legacyKey = ['thr', 'ead', 'Id'].join('');
-  const legacyValue = (state as unknown as Record<string, unknown>)[legacyKey];
-  return typeof legacyValue === 'string' && legacyValue.trim() ? legacyValue : undefined;
+function resolveSessionId(
+  restored: SessionState | undefined,
+  input: {
+    id?: string;
+    sessionId?: string;
+  } = {},
+): string {
+  const restoredSessionId = restored?.sessionId?.trim();
+  return restoredSessionId || input.id || input.sessionId || randomUUID();
 }
 
 async function buildSessionSystemContext(
