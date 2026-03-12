@@ -93,6 +93,7 @@ export interface SessionModelCatalog {
 
 export interface CreateSessionOptions {
   state?: SessionState;
+  id?: string;
   sessionId?: string;
   threadId?: string;
   modelRef?: string;
@@ -119,7 +120,7 @@ export interface Session {
   getAgentState(): AgentState;
   hydrate(): Promise<AgentState>;
   compactConversation(options?: {instructions?: string}): Promise<AgentState>;
-  fork(options?: {sessionId?: string; threadId?: string; store?: SessionStore}): Promise<Session>;
+  fork(options?: {id?: string; sessionId?: string; threadId?: string; store?: SessionStore}): Promise<Session>;
   invoke(input?: AgentInput, config?: AgentInvokeConfig): Promise<AgentResult>;
   stream(input?: AgentInput, config?: AgentStreamConfig): AsyncGenerator<AgentStreamOutput, AgentResult, void>;
   resumePause(payload: ResumePayload, config?: AgentResumeConfig): Promise<AgentResult>;
@@ -142,8 +143,15 @@ interface SessionSystemContext {
 
 export function createSession(options: CreateSessionOptions): Session {
   const restored = options.state;
-  const sessionId = restored?.sessionId ?? options.sessionId ?? randomUUID();
-  const threadId = restored?.threadId ?? options.threadId ?? randomUUID();
+  const identity = resolveSessionIdentity({
+    restoredSessionId: restored?.sessionId,
+    restoredThreadId: restored?.threadId,
+    id: options.id,
+    sessionId: options.sessionId,
+    threadId: options.threadId,
+  });
+  const sessionId = identity.sessionId;
+  const threadId = identity.threadId;
   const createdAt = restored?.createdAt ?? new Date().toISOString();
   let updatedAt = restored?.updatedAt ?? createdAt;
   let sessionStatus: SessionStatus = 'ready';
@@ -316,10 +324,14 @@ export function createSession(options: CreateSessionOptions): Session {
     return result;
   }
 
-  async function fork(optionsOverride: {sessionId?: string; threadId?: string; store?: SessionStore} = {}) {
+  async function fork(optionsOverride: {id?: string; sessionId?: string; threadId?: string; store?: SessionStore} = {}) {
     const base = (await getAgent()).getState();
-    const childThreadId = optionsOverride.threadId ?? randomUUID();
-    await putForkCheckpoint(checkpointer, childThreadId, {
+    const childIdentity = resolveSessionIdentity({
+      id: optionsOverride.id,
+      sessionId: optionsOverride.sessionId,
+      threadId: optionsOverride.threadId,
+    });
+    await putForkCheckpoint(checkpointer, childIdentity.threadId, {
       agentType: base.agentType,
       messages: base.messages,
       context: base.context,
@@ -329,8 +341,9 @@ export function createSession(options: CreateSessionOptions): Session {
 
     const child = createSession({
       ...options,
-      sessionId: optionsOverride.sessionId,
-      threadId: childThreadId,
+      id: childIdentity.sessionId,
+      sessionId: childIdentity.sessionId,
+      threadId: childIdentity.threadId,
       store: optionsOverride.store ?? options.store,
       restore: 'latest',
       metadata: forkSessionMetadata(metadata, sessionId, threadId),
@@ -460,6 +473,26 @@ export function createSession(options: CreateSessionOptions): Session {
       sessionStatus = 'closed';
       await saveSessionState();
     },
+  };
+}
+
+function resolveSessionIdentity(input: {
+  restoredSessionId?: string;
+  restoredThreadId?: string;
+  id?: string;
+  sessionId?: string;
+  threadId?: string;
+}): {sessionId: string; threadId: string} {
+  const sharedId = input.restoredSessionId
+    ?? input.restoredThreadId
+    ?? input.id
+    ?? input.sessionId
+    ?? input.threadId
+    ?? randomUUID();
+
+  return {
+    sessionId: input.restoredSessionId ?? input.restoredThreadId ?? input.id ?? input.sessionId ?? input.threadId ?? sharedId,
+    threadId: input.restoredThreadId ?? input.restoredSessionId ?? input.id ?? input.threadId ?? input.sessionId ?? sharedId,
   };
 }
 

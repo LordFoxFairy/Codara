@@ -1,10 +1,13 @@
+import {existsSync} from 'node:fs';
+import path from 'node:path';
 import type {BaseChatModel} from '@langchain/core/language_models/chat_models';
 import type {StructuredToolInterface} from '@langchain/core/tools';
 import type {AgentCheckpointer} from '@core/checkpoint';
+import {createAgentFileCheckpointer} from '@core/checkpoint';
 import type {BaseMiddleware, HILMiddlewareOptions, LoggingMiddlewareOptions} from '@core/middleware';
 import type {SummarySettings} from '@core/middleware/summary';
 import {createBudgetMiddleware, createHILMiddleware, createLoggingMiddleware} from '@core/middleware';
-import {ChatModelFactory, loadModelRoutingConfig, ModelRegistry, type ModelInfo, type ModelRoutingConfig} from '@core/provider';
+import {ChatModelFactory, loadModelRoutingConfig, loadModelRoutingConfigFromPath, ModelRegistry, resolveCodaraPath, type ModelInfo, type ModelRoutingConfig} from '@core/provider';
 import {
   createCodaraGuidelinesSource,
   type GuidelinesOptions,
@@ -16,7 +19,7 @@ import {
 } from '@core/skills';
 import {createSkillCodaraCommands} from '@core/commands/skills';
 import {createCodaraCommandRunner, type CodaraCommandResult, type CodaraCommandSpec} from '@core/commands';
-import {createSession, type Session, type SessionState, type SessionStore} from '@core/sessions';
+import {createSession, FileSessionStore, type Session, type SessionState, type SessionStore} from '@core/sessions';
 import {resolveWorkspaceRoot} from '@core/shared/workspace';
 import {createBuiltinTools} from '@core/tools';
 
@@ -56,6 +59,7 @@ export interface CodaraSkillOptions {
 }
 
 export interface CodaraOptions {
+  id?: string;
   config?: ModelRoutingConfig;
   alias?: string;
   model?: BaseChatModel | Promise<BaseChatModel>;
@@ -81,6 +85,10 @@ export interface CodaraOptions {
   messages?: import('@core/agents').AgentInput;
   context?: Record<string, unknown>;
   values?: Record<string, unknown>;
+}
+
+export interface CodaraHostOptions extends CodaraOptions {
+  codaraPath?: string;
 }
 
 export type CreateCodaraModelCatalogOptions = Pick<CodaraOptions, 'config'>;
@@ -119,12 +127,30 @@ export function createCodara(options: CodaraOptions = {}): Codara {
   return createCodaraAgent(options);
 }
 
+export function createCodaraHost(options: CodaraHostOptions = {}): Codara {
+  const codaraPath = resolveCodaraHostPath(options);
+  const catalog = !options.model && !options.catalog && !options.config
+    ? loadModelRoutingConfigFromPath(codaraPath).then((config) => createCodaraModelCatalog({config}))
+    : options.catalog;
+
+  return createCodara({
+    ...options,
+    ...(catalog ? {catalog} : {}),
+    ...(options.store ? {} : {store: new FileSessionStore({basePath: path.join(codaraPath, 'sessions')})}),
+    ...(options.checkpointer ? {} : {
+      checkpointer: createAgentFileCheckpointer({rootDir: path.join(codaraPath, 'state', 'threads')}),
+    }),
+    restore: options.restore ?? 'latest',
+  });
+}
+
 export function createCodaraAgent(options: CodaraOptions, restoredState?: SessionState): Codara {
   const skills = resolveCodaraSkills(options);
   const skillsSource = skills ? createCodaraSkillsSource(skills) : undefined;
   const alias = normalizeAlias(options.alias);
   const session = createSession({
     ...(restoredState ? {state: restoredState} : {}),
+    id: options.id,
     sessionId: options.sessionId,
     threadId: options.threadId,
     store: options.store,
@@ -252,4 +278,21 @@ async function reopenCodaraSession(options: CodaraOptions, state: SessionState):
 
 function normalizeAlias(alias: string | undefined): string {
   return alias?.trim() || DEFAULT_CODARA_MODEL_ALIAS;
+}
+
+function resolveCodaraHostPath(options: Pick<CodaraHostOptions, 'codaraPath' | 'cwd' | 'projectRoot'>): string {
+  if (options.codaraPath?.trim()) {
+    return path.resolve(options.codaraPath.trim());
+  }
+
+  const workspaceRoot = resolveWorkspaceRoot({
+    cwd: options.cwd,
+    projectRoot: options.projectRoot,
+  });
+  const projectCodaraPath = path.join(workspaceRoot, '.codara');
+  if (existsSync(path.join(projectCodaraPath, 'config.json'))) {
+    return projectCodaraPath;
+  }
+
+  return path.resolve(resolveCodaraPath());
 }

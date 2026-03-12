@@ -7,6 +7,7 @@ export type {
 } from '@core/provider/model';
 export {
   resolveCodaraPath,
+  loadModelRoutingConfigFromPath,
   resolveModelMetadataConfigPath,
   resolveModelRoutingConfigPath,
 } from '@core/provider/config/loader';

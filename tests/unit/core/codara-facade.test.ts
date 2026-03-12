@@ -1,8 +1,8 @@
 import {describe, expect, it} from 'bun:test';
-import {createAgentMemoryCheckpointer, createCodara} from '@core';
+import {createAgentMemoryCheckpointer, createCodara, createCodaraHost} from '@core';
 import type {BaseChatModel} from '@langchain/core/language_models/chat_models';
 import {AIMessageChunk} from '@langchain/core/messages';
-import {mkdtemp, rm} from 'node:fs/promises';
+import {mkdtemp, mkdir, rm, stat, writeFile} from 'node:fs/promises';
 import {tmpdir} from 'node:os';
 import path from 'node:path';
 import {EchoModel, StreamingEchoModel} from './codara-fixtures';
@@ -135,5 +135,62 @@ describe('Codara facade runtime', () => {
     const agentState = codara.getAgentState();
     expect(agentState.messages).toHaveLength(2);
     expect(String(agentState.messages[1]?.content)).toBe('seen_humans:1');
+  });
+
+  it('should provide a core-owned persistent host entry for CLI consumers', async () => {
+    const root = await mkdtemp(path.join(tmpdir(), 'codara-host-entry-'));
+    const cwd = path.join(root, 'project');
+    const codaraRoot = path.join(cwd, '.codara');
+
+    await mkdir(cwd, {recursive: true});
+    await mkdir(codaraRoot, {recursive: true});
+    await writeFile(path.join(codaraRoot, 'config.json'), JSON.stringify({
+      providers: [{name: 'test', apiKey: 'x', models: ['echo']}],
+      router: {default: 'test:echo'},
+    }, null, 2));
+
+    try {
+      const codara = createCodaraHost({
+        cwd,
+        model: new EchoModel() as unknown as BaseChatModel,
+        skills: false,
+        builtinTools: false,
+      });
+
+      const result = await codara.invoke('hello');
+      expect(result.reason).toBe('complete');
+
+      const sessionId = codara.getState().sessionId;
+      const threadId = codara.getState().threadId;
+
+      await expect(stat(path.join(codaraRoot, 'sessions', sessionId, 'metadata.json'))).resolves.toBeDefined();
+      await expect(stat(path.join(codaraRoot, 'state', 'threads', threadId, 'latest.json'))).resolves.toBeDefined();
+    } finally {
+      await rm(root, {recursive: true, force: true});
+    }
+  });
+
+  it('should default sessionId and threadId to the same identity source', () => {
+    const codara = createCodara({
+      model: new EchoModel() as unknown as BaseChatModel,
+      skills: false,
+      builtinTools: false,
+    });
+
+    const state = codara.getState();
+    expect(state.sessionId).toBe(state.threadId);
+  });
+
+  it('should accept a unified id for the public session identity', () => {
+    const codara = createCodara({
+      id: 'shared-id',
+      model: new EchoModel() as unknown as BaseChatModel,
+      skills: false,
+      builtinTools: false,
+    });
+
+    const state = codara.getState();
+    expect(state.sessionId).toBe('shared-id');
+    expect(state.threadId).toBe('shared-id');
   });
 });
