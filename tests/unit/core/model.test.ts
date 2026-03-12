@@ -92,7 +92,7 @@ describe('Codara model facade', () => {
     const checkpointer = createAgentMemoryCheckpointer();
     const codara = createCodara({
       config: baseConfig,
-      sessionId: 'missing-thread',
+      sessionId: 'missing-session',
       checkpointer,
       restore: 'latest',
       skills: false,
@@ -100,7 +100,7 @@ describe('Codara model facade', () => {
 
     // When no checkpoint exists, session should still be created
     const state = codara.getState();
-    expect(state.sessionId).toBe('missing-thread');
+    expect(state.sessionId).toBe('missing-session');
     expect(state.sessionStatus).toBe('ready');
   });
 

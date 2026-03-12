@@ -686,12 +686,12 @@ describe('Agent', () => {
       },
     } as unknown as StructuredToolInterface;
 
-    const runner = createAgent({model, tools: [tool], sessionId: 'thread-tool-ids'});
+    const runner = createAgent({model, tools: [tool], sessionId: 'session-tool-ids'});
     const result = await runner.invoke({messages: [new HumanMessage('start')]});
 
     expect(result.reason).toBe('complete');
     expect(seenConfigurable?.execution).toEqual({
-      sessionId: 'thread-tool-ids',
+      sessionId: 'session-tool-ids',
       runId: expect.any(String),
       turn: 1,
       maxTurns: 25,
@@ -707,7 +707,7 @@ describe('Agent', () => {
       runtimeShared: {},
     });
     expect(seenMetadata?.execution).toEqual({
-      sessionId: 'thread-tool-ids',
+      sessionId: 'session-tool-ids',
       runId: expect.any(String),
       turn: 1,
       maxTurns: 25,

@@ -136,7 +136,7 @@ allowed-tools:
     const firstModel = new CodaraFacadeModel();
     const codara = createCodara({
       model: firstModel as unknown as BaseChatModel,
-      sessionId: 'codara-e2e-thread',
+      sessionId: 'codara-e2e-session',
       tools: [bashTool],
       checkpointer,
       skills: {
@@ -191,7 +191,7 @@ allowed-tools:
     const restoredModel = new CodaraFacadeModel();
     const restored = createCodara({
       model: restoredModel as unknown as BaseChatModel,
-      sessionId: 'codara-e2e-thread',
+      sessionId: 'codara-e2e-session',
       restore: 'latest',
       tools: [bashTool],
       checkpointer,

@@ -161,7 +161,7 @@ describe('todoListMiddleware', () => {
         new AIMessage('done'),
       ]),
       checkpointer,
-      sessionId: 'todo-thread',
+      sessionId: 'todo-session',
       middleware: [todoListMiddleware()],
     });
 
@@ -173,13 +173,13 @@ describe('todoListMiddleware', () => {
       {content: 'Implement todo middleware', status: 'in_progress'},
     ]);
 
-    const restoredCheckpoint = await checkpointer.getLatest('todo-thread');
+    const restoredCheckpoint = await checkpointer.getLatest('todo-session');
     expect(restoredCheckpoint).toBeDefined();
 
     const restored = createAgent({
       model: createTodoModel([new AIMessage('done')]),
       checkpointer,
-      sessionId: 'todo-thread',
+      sessionId: 'todo-session',
       checkpoint: restoredCheckpoint,
       middleware: [todoListMiddleware()],
     });

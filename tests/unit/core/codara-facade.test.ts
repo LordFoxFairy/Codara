@@ -14,7 +14,7 @@ describe('Codara facade runtime', () => {
 
     const codara = createCodara({
       model: model as unknown as BaseChatModel,
-      sessionId: 'core-facade-thread',
+      sessionId: 'core-facade-session',
       checkpointer,
       skills: false,
     });
