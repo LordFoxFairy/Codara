@@ -186,11 +186,15 @@ export function createAgent(options: CreateAgentOptions): Agent {
   const createRun = (
     input: AgentInput,
     config: Pick<AgentInvokeConfig, 'recursionLimit' | 'context' | 'inputBudget'>,
+    options: {clearPendingPause?: boolean} = {},
   ): AgentRunContext => {
     const runState = toAgentState(state);
     const appended = normalizeAgentInput(input);
     if (appended.length) {
       runState.messages.push(...appended);
+    }
+    if (options.clearPendingPause) {
+      runState.pendingPause = undefined;
     }
     runState.status = 'running';
     return createRunContext(runState, {...config, inputBudget: config.inputBudget ?? inputBudget}, runtime.runtimeShared);
@@ -253,7 +257,7 @@ export function createAgent(options: CreateAgentOptions): Agent {
     source: AgentCheckpointInfo['source'],
   ): Promise<AgentResult> => {
     const startIndex = state.messages.length;
-    const run = createRun(input, config);
+    const run = createRun(input, config, {clearPendingPause: source === 'resume'});
     const lifecycle = enterRunningState();
 
     try {
@@ -279,7 +283,7 @@ export function createAgent(options: CreateAgentOptions): Agent {
     source: AgentCheckpointInfo['source'],
   ): AsyncGenerator<AgentStreamOutput, AgentResult, void> {
     const startIndex = state.messages.length;
-    const run = createRun(input, config);
+    const run = createRun(input, config, {clearPendingPause: source === 'resume'});
     const lifecycle = enterRunningState();
 
     try {

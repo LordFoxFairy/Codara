@@ -874,6 +874,90 @@ describe('Agent', () => {
     expect(result.state.messages.some((message) => message instanceof ToolMessage && message.tool_call_id === 'call_should_not_run')).toBe(false);
   });
 
+  it('resume 后应清掉旧 pause 并继续进入下一轮 model', async () => {
+    const modelInvocations: string[] = [];
+    let bashInvokeCount = 0;
+    const model = {
+      invoke: async (messages: BaseMessage[]) => {
+        const text = messages.map((message) => String(message.content)).join('\n');
+        modelInvocations.push(text);
+
+        if (text.includes('executed:git status')) {
+          return new AIMessage('confirmed');
+        }
+
+        return new AIMessage({
+          content: '',
+          tool_calls: [{id: 'call_resume_continue', name: 'bash', args: {command: 'git status'}} as ToolCall],
+        });
+      },
+      bindTools: () => ({
+        invoke: async (messages: BaseMessage[]) => {
+          const text = messages.map((message) => String(message.content)).join('\n');
+          modelInvocations.push(text);
+
+          if (text.includes('executed:git status')) {
+            return new AIMessage('confirmed');
+          }
+
+          return new AIMessage({
+            content: '',
+            tool_calls: [{id: 'call_resume_continue', name: 'bash', args: {command: 'git status'}} as ToolCall],
+          });
+        }
+      })
+    } as unknown as BaseChatModel;
+
+    const bashTool = {
+      name: 'bash',
+      description: 'bash',
+      schema: {} as never,
+      invoke: async () => {
+        bashInvokeCount += 1;
+        return 'executed:git status';
+      },
+    } as unknown as StructuredToolInterface;
+
+    const runner = createAgent({
+      model,
+      tools: [bashTool],
+      middleware: [
+        createHILMiddleware({
+          interruptOn: {
+            bash: true,
+          },
+          handleResume: async (_request, resumePayload, context, handler) => {
+            return (resumePayload as {action?: string}).action === 'allow'
+              ? handler(context)
+              : new ToolMessage({
+                  content: 'denied',
+                  tool_call_id: context.toolCall.id ?? 'denied',
+                  status: 'error',
+                });
+          },
+        }),
+      ],
+    });
+
+    const firstResult = await runner.invoke({messages: [new HumanMessage('run git status')]}, {recursionLimit: 4});
+    expect(firstResult.state.status).toBe('paused');
+
+    const secondResult = await runner.resume(
+      {action: 'allow'},
+      {
+        input: new HumanMessage('approved and continue'),
+        recursionLimit: 4,
+      }
+    );
+
+    expect(secondResult.reason).toBe('complete');
+    expect(secondResult.state.status).toBe('idle');
+    expect(secondResult.state.pendingPause).toBeUndefined();
+    expect(bashInvokeCount).toBe(1);
+    expect(modelInvocations).toHaveLength(3);
+    expect(String(secondResult.state.messages[secondResult.state.messages.length - 1]?.content)).toBe('confirmed');
+  });
+
   it('stream(messages) 应输出模型 chunks 并返回最终结果', async () => {
     const model = new StreamingModel(
       [new AIMessage('hello')],
