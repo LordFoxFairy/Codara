@@ -1,5 +1,10 @@
-import React from 'react';
+﻿import React from 'react';
 import {render} from 'ink';
-import {CodaraCliApp} from './app';
+import {ensureCliCodaraPath} from './adapters/bootstrap-config';
+
+ensureCliCodaraPath();
+
+const {CodaraCliApp} = await import('./app/shell-app');
 
 render(<CodaraCliApp />);
+
