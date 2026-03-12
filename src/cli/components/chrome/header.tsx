@@ -1,13 +1,15 @@
 import React from 'react';
 import {Box, Text} from 'ink';
-import type {CliLayoutMode} from '../app/layout-mode';
-import type {CliRunState, CliSessionMeta} from '../state/shell-types';
+import type {SessionState} from '@core';
+import type {CliLayoutMode} from '../../app/layout-mode';
+import type {CliRunState} from '../../app/view-state';
 import {RobotMark} from './robot-mark';
 
 interface HeaderProps {
   cwd: string;
   layoutMode: CliLayoutMode;
-  meta: CliSessionMeta;
+  session: SessionState;
+  modelAlias: string;
   runState: CliRunState;
 }
 
@@ -33,10 +35,12 @@ function MetaRow({
 }
 
 export function Header(props: HeaderProps): React.JSX.Element {
-  const {cwd, layoutMode, meta, runState} = props;
-  const status = runState.error ? `${runState.status} (${runState.error})` : runState.status;
+  const {cwd, layoutMode, session, modelAlias, runState} = props;
   const isCompact = layoutMode !== 'wide';
   const isMinimal = layoutMode === 'minimal';
+  const title = session.metadata?.title?.trim() || 'Codara Code';
+  const subtitle = session.metadata?.lastMessage?.trim() || 'Session ready for prompts';
+  const messageCount = String(session.metadata?.messageCount ?? 0);
 
   return (
     <Box flexDirection={isCompact ? 'column' : 'row'}>
@@ -47,17 +51,17 @@ export function Header(props: HeaderProps): React.JSX.Element {
       ) : null}
       <Box flexDirection="column" flexGrow={1} flexShrink={1}>
         <Text color="blueBright" wrap="truncate-end">
-          {meta.title}
+          {title}
         </Text>
         <Text dimColor wrap="truncate-end">
-          {meta.subtitle}
+          {subtitle}
         </Text>
         <Box marginTop={1} flexDirection="column">
-          <MetaRow label="Model" value={meta.model} />
-          {!isMinimal ? <MetaRow label="Route" value={meta.route} /> : null}
-          {!isMinimal ? <MetaRow label="Mode" value={meta.mode} /> : null}
-          {!isMinimal ? <MetaRow label="Session" value={meta.session} /> : null}
-          <MetaRow label="Status" value={status} />
+          <MetaRow label="Model" value={modelAlias} />
+          {!isMinimal ? <MetaRow label="Route" value={modelAlias} /> : null}
+          {!isMinimal ? <MetaRow label="Session" value={session.sessionId} valueWrap="truncate-middle" /> : null}
+          {!isMinimal ? <MetaRow label="Msgs" value={messageCount} /> : null}
+          <MetaRow label="Status" value={runState.status} />
           <MetaRow label="Path" value={cwd} valueWrap="truncate-middle" />
         </Box>
       </Box>

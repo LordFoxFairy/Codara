@@ -1,4 +1,4 @@
-﻿import type {CliComposerState} from './shell-types';
+﻿import type {CliComposerState} from './types';
 
 export function createComposerState(text = '', cursorOffset = text.length): CliComposerState {
   return {

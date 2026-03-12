@@ -1,8 +1,8 @@
-﻿import React from 'react';
+import React from 'react';
 import {Box, Text} from 'ink';
+import {useBlinkingCursor} from '../../hooks/use-blinking-cursor';
+import type {CliComposerState} from '../../composer/types';
 import {buildComposerViewport} from './composer-view';
-import {useBlinkingCursor} from '../hooks/use-blinking-cursor';
-import type {CliComposerState} from '../state/shell-types';
 
 interface PromptFrameProps {
   terminalWidth: number;

@@ -1,7 +1,10 @@
 import React from 'react';
 import {Box, Text} from 'ink';
-import type {CliLayoutMode} from '../app/layout-mode';
-import {AUTO_UPDATE_HINT, SHORTCUTS_HINT, THINKING_HINT} from '../adapters/session-meta';
+import type {CliLayoutMode} from '../../app/layout-mode';
+
+const SHORTCUTS_HINT = '? for shortcuts';
+const THINKING_HINT = 'Thinking off (tab to toggle)';
+const AUTO_UPDATE_HINT = 'Auto-updating...';
 
 interface FooterProps {
   layoutMode: CliLayoutMode;

@@ -1,6 +1,6 @@
 import React from 'react';
 import {Box, Text} from 'ink';
-import type {CliLayoutMode} from '../app/layout-mode';
+import type {CliLayoutMode} from '../../app/layout-mode';
 
 interface WelcomeStateProps {
   layoutMode: CliLayoutMode;
