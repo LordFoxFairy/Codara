@@ -3,9 +3,12 @@
 export {
   createCodara,
   createCodaraAgent,
+  createCodaraHost,
+  DEFAULT_CODARA_MODEL_ALIAS,
   openCodaraSession,
   openLatestCodaraSession,
   type Codara,
+  type CodaraHostOptions,
   type CodaraOptions,
 } from '@core/codara';
 export {

@@ -78,8 +78,12 @@ export function parseModelRoutingConfig(
 
 /** 加载并解析配置文件。 */
 export async function loadModelRoutingConfig(): Promise<ModelRoutingConfig> {
-    const configPath = resolveModelRoutingConfigPath();
-    const metadataPath = resolveModelMetadataConfigPath();
+    return loadModelRoutingConfigFromPath(resolveCodaraPath());
+}
+
+export async function loadModelRoutingConfigFromPath(codaraPath: string): Promise<ModelRoutingConfig> {
+    const configPath = `${trimTrailingSlash(codaraPath)}/config.json`;
+    const metadataPath = `${trimTrailingSlash(codaraPath)}/model-metadata.json`;
 
     try {
         const [data, metadata] = await Promise.all([
