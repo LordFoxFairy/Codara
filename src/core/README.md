@@ -187,7 +187,7 @@ createCodara(...)
   - 优先使用 model metadata 的 `contextWindow`
   - 默认阈值为可用输入预算的 95%
   - 手动 `/compact` 通过 session 入口触发 summary 逻辑并写入 `manual` checkpoint
-  - 多窗口若要分支，优先调用 `fork()`，不要共享同一条 `threadId`
+  - 多窗口若要分支，优先调用 `fork()`，不要共享同一条 `sessionId`
 
 ## CLI 用法
 
@@ -196,7 +196,7 @@ import {createCodara} from '@core';
 
 const codara = createCodara({
   tools,
-  threadId: 'terminal-thread',
+  sessionId: 'terminal-thread',
 });
 
 const result = await codara.invoke('hello');
@@ -211,4 +211,4 @@ for await (const chunk of codara.stream('hello', {streamMode: 'messages'})) {
 }
 ```
 
-传入固定 `threadId` 后，`invoke(...)` / `stream(...)` 会优先恢复该 thread 的最新 checkpoint；不存在时再创建新实例。
+传入固定 `sessionId` 后，`invoke(...)` / `stream(...)` 会优先恢复该 session 的最新 checkpoint；不存在时再创建新实例。

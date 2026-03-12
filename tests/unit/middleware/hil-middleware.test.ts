@@ -17,7 +17,7 @@ function createToolContext(toolCall: ToolCall, runtimeContext: Record<string, un
     runtime: {context: runtimeContext},
     systemMessage: [],
     execution: {
-      threadId: 'thread_hil_1',
+      sessionId: 'thread_hil_1',
       runId: 'run_hil_1',
       turn: 1,
       maxTurns: 3,

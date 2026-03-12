@@ -74,12 +74,10 @@ export interface SessionMetadata {
     overBudget: boolean;
   };
   forkedFromSessionId?: string;
-  forkedFromThreadId?: string;
 }
 
 export interface SessionState {
   sessionId: string;
-  threadId: string;
   sessionStatus: SessionStatus;
   createdAt: string;
   updatedAt: string;
@@ -95,7 +93,6 @@ export interface CreateSessionOptions {
   state?: SessionState;
   id?: string;
   sessionId?: string;
-  threadId?: string;
   modelRef?: string;
   model?: BaseChatModel | Promise<BaseChatModel>;
   modelCatalog?: SessionModelCatalog | Promise<SessionModelCatalog>;
@@ -120,7 +117,7 @@ export interface Session {
   getAgentState(): AgentState;
   hydrate(): Promise<AgentState>;
   compactConversation(options?: {instructions?: string}): Promise<AgentState>;
-  fork(options?: {id?: string; sessionId?: string; threadId?: string; store?: SessionStore}): Promise<Session>;
+  fork(options?: {id?: string; sessionId?: string; store?: SessionStore}): Promise<Session>;
   invoke(input?: AgentInput, config?: AgentInvokeConfig): Promise<AgentResult>;
   stream(input?: AgentInput, config?: AgentStreamConfig): AsyncGenerator<AgentStreamOutput, AgentResult, void>;
   resumePause(payload: ResumePayload, config?: AgentResumeConfig): Promise<AgentResult>;
@@ -145,13 +142,11 @@ export function createSession(options: CreateSessionOptions): Session {
   const restored = options.state;
   const identity = resolveSessionIdentity({
     restoredSessionId: restored?.sessionId,
-    restoredThreadId: restored?.threadId,
+    restoredThreadId: (restored as SessionState & {threadId?: string} | undefined)?.threadId,
     id: options.id,
     sessionId: options.sessionId,
-    threadId: options.threadId,
   });
   const sessionId = identity.sessionId;
-  const threadId = identity.threadId;
   const createdAt = restored?.createdAt ?? new Date().toISOString();
   let updatedAt = restored?.updatedAt ?? createdAt;
   let sessionStatus: SessionStatus = 'ready';
@@ -165,7 +160,7 @@ export function createSession(options: CreateSessionOptions): Session {
   let summaryOptions: Required<SummaryOptions> | undefined;
 
   function state(): SessionState {
-    return {sessionId, threadId, sessionStatus, createdAt, updatedAt, metadata};
+    return {sessionId, sessionStatus, createdAt, updatedAt, metadata};
   }
 
   function touch() {
@@ -193,7 +188,7 @@ export function createSession(options: CreateSessionOptions): Session {
   }
 
   async function getLatestCheckpoint() {
-    return checkpointer.getLatest(threadId);
+    return checkpointer.getLatest(sessionId);
   }
 
   async function hasStoredCheckpoint() {
@@ -270,7 +265,7 @@ export function createSession(options: CreateSessionOptions): Session {
       handleToolErrors: options.handleToolErrors,
       middleware: buildSessionMiddleware(summaryOptions),
       checkpointer,
-      threadId,
+      sessionId,
       inputBudget,
       ...(checkpoint ? {checkpoint} : {}),
       ...(options.messages ? {messages: normalizeAgentInput(options.messages)} : {}),
@@ -324,14 +319,13 @@ export function createSession(options: CreateSessionOptions): Session {
     return result;
   }
 
-  async function fork(optionsOverride: {id?: string; sessionId?: string; threadId?: string; store?: SessionStore} = {}) {
+  async function fork(optionsOverride: {id?: string; sessionId?: string; store?: SessionStore} = {}) {
     const base = (await getAgent()).getState();
     const childIdentity = resolveSessionIdentity({
       id: optionsOverride.id,
       sessionId: optionsOverride.sessionId,
-      threadId: optionsOverride.threadId,
     });
-    await putForkCheckpoint(checkpointer, childIdentity.threadId, {
+    await putForkCheckpoint(checkpointer, childIdentity.sessionId, {
       agentType: base.agentType,
       messages: base.messages,
       context: base.context,
@@ -343,10 +337,9 @@ export function createSession(options: CreateSessionOptions): Session {
       ...options,
       id: childIdentity.sessionId,
       sessionId: childIdentity.sessionId,
-      threadId: childIdentity.threadId,
       store: optionsOverride.store ?? options.store,
       restore: 'latest',
-      metadata: forkSessionMetadata(metadata, sessionId, threadId),
+      metadata: forkSessionMetadata(metadata, sessionId),
     });
     await child.hydrate();
     return child;
@@ -380,7 +373,7 @@ export function createSession(options: CreateSessionOptions): Session {
       values: current.values,
       systemMessage: systemContext.systemMessage,
       runtimeShared: systemContext.runtimeShared,
-      threadId,
+      sessionId,
       requestId: `${sessionId}:compact:${randomUUID()}`,
       inputBudget,
       instructions: compactOptions.instructions,
@@ -391,7 +384,7 @@ export function createSession(options: CreateSessionOptions): Session {
       return current;
     }
 
-    await putManualCheckpoint(checkpointer, threadId, {
+    await putManualCheckpoint(checkpointer, sessionId, {
       agentType: current.agentType,
       messages: compacted.messages,
       context: compacted.context,
@@ -447,7 +440,7 @@ export function createSession(options: CreateSessionOptions): Session {
       if (!checkpointer.compact) {
         return;
       }
-      await checkpointer.compact(threadId, optionsOverride);
+      await checkpointer.compact(sessionId, optionsOverride);
       await saveSessionState();
     },
     async reset() {
@@ -481,18 +474,15 @@ function resolveSessionIdentity(input: {
   restoredThreadId?: string;
   id?: string;
   sessionId?: string;
-  threadId?: string;
-}): {sessionId: string; threadId: string} {
+}): {sessionId: string} {
   const sharedId = input.restoredSessionId
     ?? input.restoredThreadId
     ?? input.id
     ?? input.sessionId
-    ?? input.threadId
     ?? randomUUID();
 
   return {
-    sessionId: input.restoredSessionId ?? input.restoredThreadId ?? input.id ?? input.sessionId ?? input.threadId ?? sharedId,
-    threadId: input.restoredThreadId ?? input.restoredSessionId ?? input.id ?? input.threadId ?? input.sessionId ?? sharedId,
+    sessionId: input.restoredSessionId ?? input.restoredThreadId ?? input.id ?? input.sessionId ?? sharedId,
   };
 }
 

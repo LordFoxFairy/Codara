@@ -51,7 +51,7 @@ You are a Reviewer subagent.
       const checkpointer = createAgentMemoryCheckpointer();
       const agent = createAgent({
         model: new SingleResponseModel() as unknown as BaseChatModel,
-        threadId: 'skills-runtime-context-thread',
+        sessionId: 'skills-runtime-context-thread',
         checkpointer,
         middleware: [
           createSkillsMiddleware({

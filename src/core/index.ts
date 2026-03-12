@@ -37,6 +37,7 @@ export {
   type CreateTaskMiddlewareOptions,
 } from '@core/tasks';
 export {
+  createDailySessionFileLogSink,
   createBudgetMiddleware,
   createHILMiddleware,
   createLoggingMiddleware,

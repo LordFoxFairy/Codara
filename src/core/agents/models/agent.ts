@@ -18,7 +18,13 @@ export type ToolErrorHandler =
   | ((error: unknown, toolCall: ToolCall) => ToolMessage | void | Promise<ToolMessage | void>);
 
 export interface AgentInputBudget { maxInputTokens?: number; reservedTokens?: number; }
-export interface AgentExecutionMetadata { threadId: string; runId: string; turn: number; maxTurns: number; requestId: string; }
+export interface AgentExecutionMetadata {
+  sessionId: string;
+  runId: string;
+  turn: number;
+  maxTurns: number;
+  requestId: string;
+}
 
 export interface PauseActionDescriptor {
   toolCallId: string;
@@ -82,7 +88,7 @@ export interface AgentTurnPreparationContext {
 export type AgentTurnContextPreparer = (context: AgentTurnPreparationContext) => Promise<void> | void;
 
 export interface AgentState {
-  threadId: string;
+  sessionId: string;
   agentType: AgentType;
   messages: BaseMessage[];
   context: AgentRuntimeContext;
@@ -160,7 +166,7 @@ export interface CreateAgentOptions {
   tools?: StructuredToolInterface[];
   handleToolErrors?: ToolErrorHandler;
   middleware?: BaseMiddleware[];
-  threadId?: string;
+  sessionId?: string;
   checkpointer?: AgentCheckpointer;
   checkpoint?: AgentCheckpoint;
   messages?: BaseMessage[];

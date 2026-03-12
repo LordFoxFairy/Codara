@@ -36,7 +36,7 @@ describe('context budget middleware', () => {
       runtime: {context: {}},
       systemMessage: ['x'.repeat(200)],
       execution: {
-        threadId: 'thread-budget',
+        sessionId: 'thread-budget',
         runId: 'run-budget',
         turn: 1,
         maxTurns: 5,
@@ -60,7 +60,7 @@ describe('context budget middleware', () => {
       runtime: {context: {}},
       systemMessage: ['base system'],
       execution: {
-        threadId: 'thread-refresh',
+        sessionId: 'thread-refresh',
         runId: 'run-refresh',
         turn: 1,
         maxTurns: 5,

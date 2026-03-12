@@ -45,7 +45,7 @@ describe('Codara session lifecycle', () => {
 
     const firstCodara = createCodara({
       model: new EchoModel() as unknown as BaseChatModel,
-      threadId: 'codara-session-thread',
+      sessionId: 'codara-session-thread',
       checkpointer,
       store,
       skills: false,
@@ -86,7 +86,7 @@ describe('Codara session lifecycle', () => {
     const firstCodara = createCodara({
       model: new EchoModel() as unknown as BaseChatModel,
       checkpointer,
-      threadId: 'codara-open-thread',
+      sessionId: 'codara-open-thread',
       store,
       skills: false,
       builtinTools: false,
@@ -128,7 +128,6 @@ describe('Codara session lifecycle', () => {
     const active = createCodara({
       model: new EchoModel() as unknown as BaseChatModel,
       sessionId: 'latest-active-session',
-      threadId: 'latest-active-thread',
       checkpointer,
       store,
       skills: false,
@@ -140,7 +139,6 @@ describe('Codara session lifecycle', () => {
     const closed = createCodara({
       model: new EchoModel() as unknown as BaseChatModel,
       sessionId: 'latest-closed-session',
-      threadId: 'latest-closed-thread',
       checkpointer,
       store,
       skills: false,
@@ -158,21 +156,20 @@ describe('Codara session lifecycle', () => {
     });
 
     expect(reopened.getState().sessionId).toBe('latest-active-session');
-    expect(reopened.getState().threadId).toBe('latest-active-thread');
     expect(reopened.getAgentState().status).toBe('idle');
   });
 
-  it('should open a new session when the target thread does not exist yet', async () => {
+  it('should open a new session when the target session does not exist yet', async () => {
     const codara = createCodara({
       model: new EchoModel() as unknown as BaseChatModel,
       checkpointer: createAgentMemoryCheckpointer(),
-      threadId: 'brand-new-thread',
+      sessionId: 'brand-new-thread',
       skills: false,
       builtinTools: false,
     });
 
     const state = codara.getState();
-    expect(state.threadId).toBe('brand-new-thread');
+    expect(state.sessionId).toBe('brand-new-thread');
 
     // Trigger agent initialization
     await codara.invoke('test');
@@ -187,7 +184,6 @@ describe('Codara session lifecycle', () => {
     const codara = createCodara({
       model: new EchoModel() as unknown as BaseChatModel,
       sessionId: 'metadata-boundary-session',
-      threadId: 'metadata-boundary-thread',
       checkpointer,
       store,
       skills: false,
@@ -200,14 +196,14 @@ describe('Codara session lifecycle', () => {
     const metadataPath = path.join(basePath, 'metadata-boundary-session', 'metadata.json');
     const persisted = JSON.parse(await readFile(metadataPath, 'utf8')) as Record<string, unknown>;
 
-    expect(persisted.threadId).toBe('metadata-boundary-thread');
+    expect(persisted.sessionId).toBe('metadata-boundary-session');
     expect(persisted).not.toHaveProperty('messages');
     expect(persisted).not.toHaveProperty('context');
     expect(persisted).not.toHaveProperty('values');
     expect(persisted).not.toHaveProperty('pendingPause');
     expect((persisted.metadata as {messageCount?: number})?.messageCount).toBeGreaterThan(0);
 
-    const latestCheckpoint = await checkpointer.getLatest('metadata-boundary-thread');
+    const latestCheckpoint = await checkpointer.getLatest('metadata-boundary-session');
     expect(latestCheckpoint?.state.context).toEqual({project: 'codara'});
     expect(latestCheckpoint?.state.messages.length).toBeGreaterThan(0);
   });
@@ -217,7 +213,7 @@ describe('Codara session lifecycle', () => {
 
     const original = createCodara({
       model: new EchoModel() as unknown as BaseChatModel,
-      threadId: 'codara-hydrate-thread',
+      sessionId: 'codara-hydrate-thread',
       checkpointer,
       skills: false,
       builtinTools: false,
@@ -227,7 +223,7 @@ describe('Codara session lifecycle', () => {
 
     const restored = createCodara({
       model: new EchoModel() as unknown as BaseChatModel,
-      threadId: 'codara-hydrate-thread',
+      sessionId: 'codara-hydrate-thread',
       restore: 'latest',
       checkpointer,
       skills: false,
@@ -249,7 +245,6 @@ describe('Codara session lifecycle', () => {
     const original = createCodara({
       model: new EchoModel() as unknown as BaseChatModel,
       sessionId: 'hydrate-activity-session',
-      threadId: 'hydrate-activity-thread',
       store,
       checkpointer,
       skills: false,
@@ -281,7 +276,7 @@ describe('Codara session lifecycle', () => {
 
     const original = createCodara({
       model: new EchoModel() as unknown as BaseChatModel,
-      threadId: 'codara-reset-before-hydrate-thread',
+      sessionId: 'codara-reset-before-hydrate-thread',
       checkpointer,
       skills: false,
       builtinTools: false,
@@ -291,7 +286,7 @@ describe('Codara session lifecycle', () => {
 
     const restored = createCodara({
       model: new EchoModel() as unknown as BaseChatModel,
-      threadId: 'codara-reset-before-hydrate-thread',
+      sessionId: 'codara-reset-before-hydrate-thread',
       restore: 'latest',
       checkpointer,
       skills: false,
@@ -312,7 +307,7 @@ describe('Codara session lifecycle', () => {
 
     const original = createCodara({
       model: new EchoModel() as unknown as BaseChatModel,
-      threadId: 'codara-dispose-before-hydrate-thread',
+      sessionId: 'codara-dispose-before-hydrate-thread',
       checkpointer,
       skills: false,
       builtinTools: false,
@@ -322,7 +317,7 @@ describe('Codara session lifecycle', () => {
 
     const restored = createCodara({
       model: new EchoModel() as unknown as BaseChatModel,
-      threadId: 'codara-dispose-before-hydrate-thread',
+      sessionId: 'codara-dispose-before-hydrate-thread',
       restore: 'latest',
       checkpointer,
       skills: false,
@@ -333,7 +328,7 @@ describe('Codara session lifecycle', () => {
 
     const reopened = createCodara({
       model: new EchoModel() as unknown as BaseChatModel,
-      threadId: 'codara-dispose-before-hydrate-thread',
+      sessionId: 'codara-dispose-before-hydrate-thread',
       restore: 'latest',
       checkpointer,
       skills: false,
@@ -352,7 +347,6 @@ describe('Codara session lifecycle', () => {
     const original = createCodara({
       model: new EchoModel() as unknown as BaseChatModel,
       sessionId: 'disposed-session-reopen',
-      threadId: 'disposed-session-thread',
       store,
       checkpointer,
       skills: false,
@@ -379,7 +373,7 @@ describe('Codara session lifecycle', () => {
     const checkpointer = createAgentMemoryCheckpointer();
     const codara = createCodara({
       model: new SystemEchoModel() as unknown as BaseChatModel,
-      threadId: 'codara-session-manual-compact-thread',
+      sessionId: 'codara-session-manual-compact-thread',
       checkpointer,
       skills: false,
       builtinTools: false,
@@ -402,7 +396,7 @@ describe('Codara session lifecycle', () => {
   it('should fall back to the session model for summary generation when summarize is omitted', async () => {
     const codara = createCodara({
       model: new SummaryAwareModel() as unknown as BaseChatModel,
-      threadId: 'codara-session-default-summary-thread',
+      sessionId: 'codara-session-default-summary-thread',
       skills: false,
       builtinTools: false,
       summary: {},

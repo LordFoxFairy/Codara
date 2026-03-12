@@ -11,7 +11,7 @@ function createContext() {
     runtime: {context: {}},
     systemMessage: [],
     execution: {
-      threadId: 'thread_style',
+      sessionId: 'thread_style',
       runId: 'run_style',
       turn: 1,
       maxTurns: 3,

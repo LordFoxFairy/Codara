@@ -20,6 +20,7 @@ export {
   createSkillsMiddleware,
 } from '@core/middleware/skills';
 export {
+  createDailySessionFileLogSink,
   createLoggingMiddleware,
   type LoggingMiddlewareOptions,
   type MiddlewareLogEvent,

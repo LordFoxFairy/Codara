@@ -141,11 +141,11 @@ export function createRunContext(
 export function createAgent(options: CreateAgentOptions): Agent {
   const runtime = buildRuntime(options);
   const checkpoint = options.checkpoint;
-  const threadId = checkpoint?.ref.threadId ?? options.threadId ?? randomUUID();
+  const sessionId = checkpoint?.ref.sessionId ?? options.sessionId ?? randomUUID();
   const checkpointer = options.checkpointer ?? createAgentMemoryCheckpointer();
   const inputBudget = options.inputBudget;
   const state = createInitialAgentState(
-    threadId,
+    sessionId,
     {
       agentType: options.agentType,
       ...(options.messages ? {messages: options.messages} : {}),
@@ -161,7 +161,7 @@ export function createAgent(options: CreateAgentOptions): Agent {
 
   const persistCheckpoint = async (source: AgentCheckpointInfo['source'], result?: AgentResult): Promise<AgentCheckpoint> => {
     const record = await checkpointer.put({
-      threadId,
+      sessionId,
       ...(state.checkpointId ? {parentCheckpointId: state.checkpointId} : {}),
       state: toCheckpointState(state),
       info: toCheckpointInfo(state, source, result),
@@ -469,7 +469,7 @@ export async function createTurnContext(
     },
     systemMessage: [...runtime.systemMessage],
     execution: {
-      threadId: run.state.threadId,
+      sessionId: run.state.sessionId,
       runId: run.runId,
       turn,
       maxTurns: run.maxTurns,

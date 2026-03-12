@@ -21,7 +21,7 @@ import {readLatestAssistantText} from '@core/shared/messages';
 
 const delegatedAgentResultSchema = z.object({
   type: z.literal('delegated_agent_result'),
-  threadId: z.string(),
+  sessionId: z.string(),
   turns: z.number(),
   reason: z.enum(['complete', 'error', 'max_turns']),
   summary: z.string().optional(),
@@ -29,7 +29,7 @@ const delegatedAgentResultSchema = z.object({
 });
 
 const parentExecutionSchema = z.object({
-  threadId: z.string().trim().min(1),
+  sessionId: z.string().trim().min(1),
   runId: z.string().trim().min(1),
   requestId: z.string().trim().min(1),
   toolCallId: z.string().trim().min(1),
@@ -41,7 +41,7 @@ const parentExecutionSchema = z.object({
 const delegatedPauseMetadataSchema = z.object({
   codara: z.object({
     delegatedSubagent: z.object({
-      childThreadId: z.string().trim().min(1),
+      childSessionId: z.string().trim().min(1),
       parentToolName: z.string().trim().min(1),
     }).optional(),
   }).loose().optional(),
@@ -72,7 +72,7 @@ export interface DelegatedAgentOptions {
 
 export interface DelegatedAgentResult {
   type: 'delegated_agent_result';
-  threadId: string;
+  sessionId: string;
   turns: number;
   reason: 'complete' | 'error' | 'max_turns';
   summary?: string;
@@ -80,12 +80,12 @@ export interface DelegatedAgentResult {
 }
 
 interface DelegatedPauseMetadata {
-  childThreadId: string;
+  childSessionId: string;
   parentToolName: string;
 }
 
 interface ParentExecution {
-  threadId: string;
+  sessionId: string;
   runId: string;
   requestId: string;
   toolCallId: string;
@@ -95,7 +95,7 @@ interface ParentExecution {
 }
 
 interface DelegatedResumeState {
-  childThreadId: string;
+  childSessionId: string;
   payload: ResumePayload;
 }
 
@@ -136,7 +136,7 @@ export async function runDelegatedAgent(
 
   if (result.state.pendingPause) {
     return createDelegatedPauseToolMessage(result.state.pendingPause, {
-      childThreadId: result.state.threadId,
+      childSessionId: result.state.sessionId,
       parentToolName: input.toolName,
     }, {
       execution: input.parentExecution,
@@ -147,7 +147,7 @@ export async function runDelegatedAgent(
   }
 
   return createDelegatedAgentToolMessage(createDelegatedAgentResult(
-    result.state.threadId,
+    result.state.sessionId,
     result.turns,
     result.reason,
     result.error,
@@ -264,10 +264,10 @@ async function resumeDelegatedChild(
   resume: DelegatedResumeState,
   maxTurns: number | undefined,
 ) {
-  const checkpoint = await childOptions.checkpointer?.getLatest(resume.childThreadId);
+  const checkpoint = await childOptions.checkpointer?.getLatest(resume.childSessionId);
   const child = createAgent({
     ...childOptions,
-    threadId: resume.childThreadId,
+    sessionId: resume.childSessionId,
     ...(checkpoint ? {checkpoint} : {}),
   });
 
@@ -305,7 +305,7 @@ function isDelegationTool(tool: StructuredToolInterface | undefined): boolean {
 }
 
 function createDelegatedAgentResult(
-  threadId: string,
+  sessionId: string,
   turns: number,
   reason: 'complete' | 'error' | 'max_turns',
   error: Error | undefined,
@@ -315,7 +315,7 @@ function createDelegatedAgentResult(
 
   return {
     type: 'delegated_agent_result',
-    threadId,
+    sessionId,
     turns,
     reason,
     ...(summary ? {summary} : {}),
@@ -377,7 +377,7 @@ function formatDelegatedAgentResult(result: DelegatedAgentResult): string {
   if (result.reason === 'error') {
     return [
       'Delegated task failed.',
-      `delegate_id: ${result.threadId}`,
+      `delegate_id: ${result.sessionId}`,
       `turns: ${result.turns}`,
       `error: ${result.errorMessage ?? 'Unknown error'}`,
       ...(result.summary ? [`summary:\n${result.summary}`] : []),
@@ -386,7 +386,7 @@ function formatDelegatedAgentResult(result: DelegatedAgentResult): string {
 
   return [
     'Delegated task completed.',
-    `delegate_id: ${result.threadId}`,
+    `delegate_id: ${result.sessionId}`,
     `turns: ${result.turns}`,
     `reason: ${result.reason}`,
     ...(result.summary ? [`summary:\n${result.summary}`] : []),
@@ -418,7 +418,7 @@ function readDelegatedResumeState(
   }
 
   return {
-    childThreadId: delegated.childThreadId,
+    childSessionId: delegated.childSessionId,
     payload,
   };
 }
@@ -436,7 +436,7 @@ function mergeDelegatedPauseMetadata(
     codara: {
       ...codara,
       delegatedSubagent: {
-        childThreadId: delegated.childThreadId,
+        childSessionId: delegated.childSessionId,
         parentToolName: delegated.parentToolName,
       },
     },
@@ -449,15 +449,15 @@ function readDelegatedPauseMetadata(
 ): DelegatedPauseMetadata | undefined {
   const parsed = delegatedPauseMetadataSchema.safeParse(metadata);
   const delegated = parsed.success ? parsed.data.codara?.delegatedSubagent : undefined;
-  const childThreadId = delegated?.childThreadId;
+  const childSessionId = delegated?.childSessionId;
   const parentToolName = delegated?.parentToolName;
 
-  if (!childThreadId || !parentToolName || parentToolName !== toolName) {
+  if (!childSessionId || !parentToolName || parentToolName !== toolName) {
     return undefined;
   }
 
   return {
-    childThreadId,
+    childSessionId,
     parentToolName,
   };
 }

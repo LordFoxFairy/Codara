@@ -25,13 +25,13 @@ class FakeModel {
 }
 
 function createExecution(
-  threadId: string,
+  sessionId: string,
   runId: string,
   turn: number,
   requestId: string,
   maxTurns: number = 8,
 ) {
-  return {threadId, runId, turn, maxTurns, requestId};
+  return {sessionId, runId, turn, maxTurns, requestId};
 }
 
 function readSummaryMessage(messages: BaseMessage[]): BaseMessage | undefined {
@@ -64,7 +64,7 @@ describe('summary middleware', () => {
       runtime: {context: {}},
       systemMessage: ['x'.repeat(120)],
       execution: {
-        threadId: 'thread-1',
+        sessionId: 'thread-1',
         runId: 'run-1',
         turn: 2,
         maxTurns: 8,
@@ -264,7 +264,7 @@ describe('summary middleware', () => {
     const agent = createAgent({
       model,
       checkpointer,
-      threadId: 'summary-thread',
+      sessionId: 'summary-thread',
       inputBudget: {maxInputTokens: 20},
       middleware: [summary!],
     });
@@ -289,7 +289,7 @@ describe('summary middleware', () => {
     const restored = createAgent({
       model: new FakeModel([new AIMessage('done')]) as unknown as BaseChatModel,
       checkpointer,
-      threadId: 'summary-thread',
+      sessionId: 'summary-thread',
       checkpoint: restoredCheckpoint,
       middleware: [summary!],
     });
@@ -298,17 +298,17 @@ describe('summary middleware', () => {
     expect(restored.getState().messages).toHaveLength(4);
   });
 
-  it('should provide the real agent threadId to the summary generator without caller-injected runtime context', async () => {
-    let seenThreadId: string | undefined;
+  it('should provide the real agent sessionId to the summary generator without caller-injected runtime context', async () => {
+    let seenSessionId: string | undefined;
     const agent = createAgent({
       model: new FakeModel([new AIMessage('done')]) as unknown as BaseChatModel,
-      threadId: 'summary-real-thread',
+      sessionId: 'summary-real-thread',
       inputBudget: {maxInputTokens: 20},
       middleware: [
         createSummaryMiddleware({
           summary: {
-            summarize: ({threadId}) => {
-              seenThreadId = threadId;
+            summarize: ({sessionId}) => {
+              seenSessionId = sessionId;
               return 'thread-aware summary';
             },
           },
@@ -327,6 +327,6 @@ describe('summary middleware', () => {
     });
 
     expect(result.reason).toBe('complete');
-    expect(seenThreadId).toBe('summary-real-thread');
+    expect(seenSessionId).toBe('summary-real-thread');
   });
 });

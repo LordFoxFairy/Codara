@@ -6,7 +6,7 @@ interface MemoryCodec<T> {
   deserialize(raw: unknown): T;
 }
 
-interface ThreadState<TState, TInfo> {
+interface SessionState<TState, TInfo> {
   latestCheckpointId?: string;
   order: string[];
   records: Map<string, CheckpointRecord<TState, TInfo>>;
@@ -25,7 +25,7 @@ export interface InMemoryCheckpointerOptions<TState = unknown, TInfo = unknown> 
 export class InMemoryCheckpointer<TState = unknown, TInfo = unknown>
   implements Checkpointer<TState, TInfo>
 {
-  private readonly threads = new Map<string, ThreadState<TState, TInfo>>();
+  private readonly sessions = new Map<string, SessionState<TState, TInfo>>();
   private readonly stateCodec?: MemoryCodec<TState>;
   private readonly infoCodec?: MemoryCodec<TInfo>;
 
@@ -34,30 +34,30 @@ export class InMemoryCheckpointer<TState = unknown, TInfo = unknown>
     this.infoCodec = options.info;
   }
 
-  async getLatest(threadId: string): Promise<CheckpointRecord<TState, TInfo> | undefined> {
-    const thread = this.threads.get(threadId);
-    if (!thread?.latestCheckpointId) {
+  async getLatest(sessionId: string): Promise<CheckpointRecord<TState, TInfo> | undefined> {
+    const session = this.sessions.get(sessionId);
+    if (!session?.latestCheckpointId) {
       return undefined;
     }
 
-    const record = thread.records.get(thread.latestCheckpointId);
+    const record = session.records.get(session.latestCheckpointId);
     return record ? this.cloneRecord(record) : undefined;
   }
 
   async get(ref: {
-    threadId: string;
+    sessionId: string;
     checkpointId: string;
   }): Promise<CheckpointRecord<TState, TInfo> | undefined> {
-    const record = this.threads.get(ref.threadId)?.records.get(ref.checkpointId);
+    const record = this.sessions.get(ref.sessionId)?.records.get(ref.checkpointId);
     return record ? this.cloneRecord(record) : undefined;
   }
 
   async put(input: PutCheckpointInput<TState, TInfo>): Promise<CheckpointRecord<TState, TInfo>> {
-    const thread = this.ensureThread(input.threadId);
+    const session = this.ensureSession(input.sessionId);
     const checkpointId = randomUUID();
     const record: CheckpointRecord<TState, TInfo> = {
       ref: {
-        threadId: input.threadId,
+        sessionId: input.sessionId,
         checkpointId,
         ...(input.parentCheckpointId ? {parentCheckpointId: input.parentCheckpointId} : {}),
       },
@@ -65,63 +65,63 @@ export class InMemoryCheckpointer<TState = unknown, TInfo = unknown>
       info: this.cloneInfo(input.info),
     };
 
-    thread.records.set(checkpointId, record);
-    thread.order.push(checkpointId);
-    thread.latestCheckpointId = checkpointId;
+    session.records.set(checkpointId, record);
+    session.order.push(checkpointId);
+    session.latestCheckpointId = checkpointId;
     return this.cloneRecord(record);
   }
 
-  async list(threadId: string): Promise<Array<CheckpointRecord<TState, TInfo>>> {
-    const thread = this.threads.get(threadId);
-    if (!thread) {
+  async list(sessionId: string): Promise<Array<CheckpointRecord<TState, TInfo>>> {
+    const session = this.sessions.get(sessionId);
+    if (!session) {
       return [];
     }
 
-    return thread.order
-      .map((checkpointId) => thread.records.get(checkpointId))
+    return session.order
+      .map((checkpointId) => session.records.get(checkpointId))
       .filter((record): record is CheckpointRecord<TState, TInfo> => Boolean(record))
       .map((record) => this.cloneRecord(record));
   }
 
-  async deleteThread(threadId: string): Promise<void> {
-    this.threads.delete(threadId);
+  async deleteSession(sessionId: string): Promise<void> {
+    this.sessions.delete(sessionId);
   }
 
-  async compact(threadId: string, options?: CompactOptions): Promise<void> {
+  async compact(sessionId: string, options?: CompactOptions): Promise<void> {
     const keepLast = options?.keepLast ?? 10;
-    const thread = this.threads.get(threadId);
-    if (!thread || thread.order.length <= keepLast) {
+    const session = this.sessions.get(sessionId);
+    if (!session || session.order.length <= keepLast) {
       return;
     }
 
-    const keptOrder = thread.order.slice(-keepLast);
-    const removedOrder = thread.order.slice(0, -keepLast);
+    const keptOrder = session.order.slice(-keepLast);
+    const removedOrder = session.order.slice(0, -keepLast);
 
     for (const checkpointId of removedOrder) {
-      thread.records.delete(checkpointId);
+      session.records.delete(checkpointId);
     }
 
-    thread.order = keptOrder;
+    session.order = keptOrder;
     const oldestKept = keptOrder[0];
     if (oldestKept) {
-      const oldestRecord = thread.records.get(oldestKept);
+      const oldestRecord = session.records.get(oldestKept);
       if (oldestRecord?.ref.parentCheckpointId) {
         oldestRecord.ref.parentCheckpointId = undefined;
       }
     }
   }
 
-  private ensureThread(threadId: string): ThreadState<TState, TInfo> {
-    const existing = this.threads.get(threadId);
+  private ensureSession(sessionId: string): SessionState<TState, TInfo> {
+    const existing = this.sessions.get(sessionId);
     if (existing) {
       return existing;
     }
 
-    const next: ThreadState<TState, TInfo> = {
+    const next: SessionState<TState, TInfo> = {
       order: [],
       records: new Map<string, CheckpointRecord<TState, TInfo>>(),
     };
-    this.threads.set(threadId, next);
+    this.sessions.set(sessionId, next);
     return next;
   }
 

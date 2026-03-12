@@ -90,7 +90,7 @@ src/index.ts
 - 优先使用模型 metadata 推导的 `contextWindow`
 - 默认在可用输入预算的 95% 附近触发压缩
 - 手动 `/compact` 仍可强制立即压缩
-- 如需显式分支，使用 `fork()` 生成新的 `sessionId + threadId`
+- 如需显式分支，使用 `fork()` 生成新的 `sessionId`
 
 ## Todo / Task / Subagent
 
