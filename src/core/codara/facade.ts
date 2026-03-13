@@ -360,7 +360,7 @@ export function createCodaraMiddlewares(options: CodaraMiddlewareOptions = {}): 
 }
 
 function resolveCodaraSkills(
-  options: Pick<CodaraOptions, 'skills' | 'cwd'>,
+  options: Pick<CodaraOptions, 'skills' | 'cwd' | 'projectRoot' | 'userHome'>,
 ): {store: SkillStore; subagentRoots: string[]} | undefined {
   if (options.skills === false) {
     return undefined;
@@ -371,16 +371,16 @@ function resolveCodaraSkills(
   return {
     store: new FileSystemSkillStore({
       ...(options.skills?.sources ? {sources: options.skills.sources} : {}),
-      ...((options.skills?.projectRoot || options.skills?.cwd || options.cwd)
+      ...((options.skills?.projectRoot || options.projectRoot || options.skills?.cwd || options.cwd)
         ? {
             projectRoot: resolveWorkspaceRoot({
-              projectRoot: options.skills?.projectRoot,
+              projectRoot: options.skills?.projectRoot ?? options.projectRoot,
               cwd: options.skills?.cwd ?? options.cwd,
             }),
           }
         : {}),
       ...((options.skills?.cwd || options.cwd) ? {cwd: options.skills?.cwd ?? options.cwd} : {}),
-      ...(options.skills?.userHome ? {userHome: options.skills.userHome} : {}),
+      ...((options.skills?.userHome || options.userHome) ? {userHome: options.skills?.userHome ?? options.userHome} : {}),
       ...(typeof options.skills?.cacheTtlMs === 'number' ? {cacheTtlMs: options.skills.cacheTtlMs} : {}),
     }),
     subagentRoots: options.skills?.subagentRoots ?? [],

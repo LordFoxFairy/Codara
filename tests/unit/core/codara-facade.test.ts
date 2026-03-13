@@ -205,6 +205,37 @@ describe('Codara facade runtime', () => {
     expect(String(agentState.messages[1]?.content)).toBe('seen_humans:1');
   });
 
+  it('should discover global skill commands from the top-level userHome option', async () => {
+    const root = await mkdtemp(path.join(tmpdir(), 'codara-global-skills-home-'));
+    const cwd = path.join(root, 'project');
+    const userHome = path.join(root, 'home');
+    const skillDir = path.join(userHome, '.codara', 'skills', 'review-helper');
+
+    await mkdir(skillDir, {recursive: true});
+    await writeFile(path.join(skillDir, 'SKILL.md'), `---
+name: review-helper
+description: Review helper skill
+command-name: review-helper
+---
+# Review helper
+`, 'utf8');
+
+    try {
+      const codara = createCodara({
+        cwd,
+        projectRoot: cwd,
+        userHome,
+        model: new EchoModel() as unknown as BaseChatModel,
+        builtinTools: false,
+      });
+
+      const commands = await codara.listCommands();
+      expect(commands.map((command) => command.name)).toContain('review-helper');
+    } finally {
+      await rm(root, {recursive: true, force: true});
+    }
+  });
+
   it('should provide a core-owned persistent runtime entry for CLI consumers', async () => {
     const root = await mkdtemp(path.join(tmpdir(), 'codara-runtime-entry-'));
     const cwd = path.join(root, 'project');
