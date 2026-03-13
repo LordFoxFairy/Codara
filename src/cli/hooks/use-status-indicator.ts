@@ -91,12 +91,7 @@ export function describeStatusIndicator(input: StatusIndicatorInput, frame = 0):
       };
     case 'done':
       return {
-        banner: latestRuntimeEvent?.phase === 'end' && latestRuntimeEvent.label.trim()
-          ? `✓ ${latestRuntimeEvent.label.trim()}`
-          : '✓ Ready for next prompt',
-        status: latestRuntimeEvent?.phase === 'end' && latestRuntimeEvent.label.trim()
-          ? latestRuntimeEvent.label.trim()
-          : 'Ready',
+        status: 'Ready',
         color: 'green',
       };
     case 'error':

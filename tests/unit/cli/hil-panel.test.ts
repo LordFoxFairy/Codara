@@ -75,16 +75,67 @@ describe('HIL panel model', () => {
     };
 
     const model = describeHilPanel(review);
-    const text = model.lines.map((line) => line.text).join('\n');
+    const actionText = model.actions.map((line) => line.label).join('\n');
+    const optionText = model.options.map((line) => line.label).join('\n');
 
     expect(model.title).toBe('Need Your Input');
-    expect(text).not.toContain('Channel clarification-center');
-    expect(text).not.toContain('Tool AskUser');
-    expect(text).toContain('A few structured inputs are missing before the agent can continue.');
-    expect(text).toContain('[Product Domain]   ✓Submit');
-    expect(text).toContain('Which product domain should this work target?');
-    expect(text).toContain('1. SaaS product');
-    expect(text).toContain('2. Choose a domain or type your own answer.');
-    expect(text).toContain('3. Chat about this');
+    expect(model.badge).toBe('clarification-center');
+    expect(model.summary.join('\n')).toContain('A few structured inputs are missing before the agent can continue.');
+    expect(model.tabsLine).toContain('[Product Domain]');
+    expect(model.question).toContain('Which product domain should this work target?');
+    expect(optionText).toContain('SaaS product');
+    expect(optionText).toContain('Choose a domain or type your own answer.');
+    expect(actionText).toContain('Submit');
+    expect(actionText).toContain('Chat about this');
+  });
+
+  it('should describe permission reviews as a dedicated foreground panel', () => {
+    const review: CliHilReviewState = {
+      request: {
+        id: 'pause-2',
+        description: 'Permission review required for Bash(touch guarded.txt)',
+        action: {
+          toolCallId: 'call_2',
+          toolName: 'Bash',
+          toolArgs: {command: 'touch guarded.txt'},
+        },
+        review: {
+          actionName: 'Bash',
+          allowedDecisions: ['approve', 'reject'],
+        },
+        runtime: {
+          runId: 'run-2',
+          turn: 1,
+          requestId: 'request-2',
+          toolIndex: 0,
+        },
+        channel: 'permission-center',
+        ui: {
+          modal: 'permission-review',
+          actions: [
+            {id: 'approve', label: 'Approve once', kind: 'primary'},
+            {id: 'always', label: 'Always allow', kind: 'secondary', scope: 'project'},
+            {id: 'reject', label: 'Reject', kind: 'danger'},
+          ],
+        },
+      },
+      actions: [
+        {id: 'approve', label: 'Approve once', kind: 'primary'},
+        {id: 'always', label: 'Always allow', kind: 'secondary', scope: 'project'},
+        {id: 'reject', label: 'Reject', kind: 'danger'},
+      ],
+      selectedActionIndex: 1,
+      focus: 'actions',
+      draft: '',
+      busy: false,
+    };
+
+    const model = describeHilPanel(review);
+
+    expect(model.title).toBe('Permission Review');
+    expect(model.badge).toBe('permission');
+    expect(model.meta).toContain('Bash · touch guarded.txt');
+    expect(model.actions[1]?.label).toBe('Always allow (project)');
+    expect(model.input?.label).toBe('Note');
   });
 });

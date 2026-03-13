@@ -1,4 +1,4 @@
-﻿import {describe, expect, test} from 'bun:test';
+import {describe, expect, test} from 'bun:test';
 import {buildComposerViewport} from '@/cli/components/prompt/composer-view';
 import {createComposerState} from '@/cli/composer/state';
 

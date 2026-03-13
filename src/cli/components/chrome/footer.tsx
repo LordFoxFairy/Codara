@@ -2,29 +2,23 @@ import React from 'react';
 import {Box, Text} from 'ink';
 import type {CliLayoutMode} from '../../app/layout-mode';
 
-const SHORTCUTS_HINT = '? for shortcuts';
-const THINKING_HINT = 'Thinking off (tab to toggle)';
-const AUTO_UPDATE_HINT = 'Auto-updating...';
-
 interface FooterProps {
   layoutMode: CliLayoutMode;
 }
 
-export function Footer({layoutMode}: FooterProps): React.JSX.Element {
-  const shortcutsHint = layoutMode === 'minimal' ? '?' : SHORTCUTS_HINT;
-  const thinkingHint = layoutMode === 'minimal' ? 'Thinking off' : THINKING_HINT;
-  const updateHint = layoutMode === 'minimal' ? 'Auto-update on' : AUTO_UPDATE_HINT;
+export function describeFooter(layoutMode: CliLayoutMode): string {
+  if (layoutMode === 'minimal') {
+    return 'Enter send  ·  ? shortcuts  ·  Ctrl+C exit';
+  }
 
+  return 'Enter send  ·  Ctrl+C exit  ·  ? shortcuts  ·  tab thinking';
+}
+
+export function Footer({layoutMode}: FooterProps): React.JSX.Element {
   return (
-    <Box marginTop={1} flexDirection="column">
+    <Box marginTop={1}>
       <Text dimColor wrap="truncate-end">
-        {shortcutsHint}
-      </Text>
-      <Text dimColor wrap="truncate-end">
-        {thinkingHint}
-      </Text>
-      <Text dimColor wrap="truncate-end">
-        {updateHint}
+        {describeFooter(layoutMode)}
       </Text>
     </Box>
   );

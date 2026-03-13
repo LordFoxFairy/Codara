@@ -30,9 +30,7 @@ import {
 } from './hil-review';
 import type {CliActiveTurn, CliHilReviewState, CliNotice, CliRunState} from './view-state';
 
-const STARTUP_MESSAGE =
-  'Interactive Codara CLI. Type a prompt or slash command and press Enter. Press Ctrl+C or Esc to exit.';
-const INITIAL_NOTICE_COUNT = 1;
+const STARTUP_MESSAGE = '';
 const HIL_AUTO_ACTION_DELAY_MS = 30;
 
 export interface UseCliControllerOptions {
@@ -86,15 +84,20 @@ export function useCliController(options: UseCliControllerOptions): CliControlle
     reopenSession,
     openFile,
   } = options;
+  const initialNotices = useMemo<CliNotice[]>(
+    () => startupMessage.trim()
+      ? [{
+          id: `system-${randomUUID()}`,
+          level: 'system',
+          content: startupMessage.trim(),
+        }]
+      : [],
+    [startupMessage],
+  );
+  const initialNoticeCount = initialNotices.length;
   const [composer, setComposer] = useState(() => createComposerState());
   const [composerActivityVersion, setComposerActivityVersion] = useState(0);
-  const [notices, setNotices] = useState<CliNotice[]>([
-    {
-      id: `system-${randomUUID()}`,
-      level: 'system',
-      content: startupMessage,
-    },
-  ]);
+  const [notices, setNotices] = useState<CliNotice[]>(initialNotices);
   const [activeTurn, setActiveTurn] = useState<CliActiveTurn | undefined>();
   const [hilReview, setHilReview] = useState<CliHilReviewState | undefined>();
   const [coreMessages, setCoreMessages] = useState<readonly BaseMessage[]>([]);
@@ -432,9 +435,9 @@ export function useCliController(options: UseCliControllerOptions): CliControlle
       notices,
       activeTurn,
       runtimeEvents,
-      initialNoticeCount: INITIAL_NOTICE_COUNT,
+      initialNoticeCount,
     }),
-    [activeTurn, coreMessages, notices, runtimeEvents],
+    [activeTurn, coreMessages, initialNoticeCount, notices, runtimeEvents],
   );
 
   return {

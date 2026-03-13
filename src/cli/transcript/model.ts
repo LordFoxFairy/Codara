@@ -117,13 +117,23 @@ function mapRuntimeEventRole(kind: CodaraRuntimeEvent['kind']): TranscriptRole {
 }
 
 function formatRuntimeEvent(event: CodaraRuntimeEvent): string {
-  const phaseLabel = event.phase === 'start'
-    ? 'start'
-    : event.phase === 'update'
-      ? 'update'
-      : 'done';
+  if (event.kind === 'tool' || event.kind === 'task') {
+    if (event.phase === 'end') {
+      if (event.status === 'done' && event.detail?.trim()) {
+        return event.detail.trim();
+      }
 
-  return [phaseLabel, event.label, event.detail].filter(Boolean).join('\n');
+      if (event.status === 'paused' || event.status === 'error') {
+        return [event.label, event.detail].filter(Boolean).join('\n');
+      }
+
+      return event.label.trim();
+    }
+
+    return [event.label, event.detail].filter(Boolean).join('\n');
+  }
+
+  return [event.label, event.detail].filter(Boolean).join('\n');
 }
 
 function mapCoreMessageRole(message: BaseMessage): TranscriptRole {
