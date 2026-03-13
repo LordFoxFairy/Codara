@@ -331,6 +331,19 @@ export async function createCliRuntime(input: {
           skills: false,
         }),
       };
+    case 'progressive-disclosure':
+      return {
+        codara: createCodaraRuntime({
+          cwd: input.cwd,
+          projectRoot: input.cwd,
+          codaraPath: path.join(input.cwd, '.codara'),
+          ...(input.sessionId ? {sessionId: input.sessionId} : {}),
+          model: new ProgressiveDisclosureCliModel(path.join(input.cwd, 'packages', 'app', 'src', 'feature.ts')) as unknown as BaseChatModel,
+          tools: [createReadFileTool()],
+          builtinTools: false,
+          skills: false,
+        }),
+      };
     case 'command-surface':
       return {
         codara: createCodaraRuntime({
@@ -488,6 +501,36 @@ class SkillAwareScriptedModel {
     }
 
     return new AIMessage('TASK_DONE');
+  }
+
+  bindTools(_tools: StructuredToolInterface[]): this {
+    void _tools;
+    return this;
+  }
+}
+
+class ProgressiveDisclosureCliModel {
+  constructor(private readonly targetPath: string) {}
+
+  async invoke(messages: BaseMessage[]): Promise<AIMessage> {
+    const toolMessage = findToolMessage(messages, 'call_progressive_disclosure_read');
+    if (!toolMessage) {
+      return new AIMessage({
+        content: '',
+        tool_calls: [{
+          id: 'call_progressive_disclosure_read',
+          name: 'read_file',
+          args: {path: this.targetPath},
+        } as ToolCall],
+      });
+    }
+
+    const systemText = messages
+      .filter((message): message is SystemMessage => SystemMessage.isInstance(message))
+      .map((message) => stringifyMessage(message.content))
+      .join('\n');
+
+    return new AIMessage(`PROGRESSIVE_DISCLOSURE_DONE:${systemText.includes('APP_RULE')}`);
   }
 
   bindTools(_tools: StructuredToolInterface[]): this {

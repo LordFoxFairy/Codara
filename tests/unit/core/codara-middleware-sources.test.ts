@@ -25,7 +25,6 @@ describe('Codara middleware source integration', () => {
       model: new SystemEchoModel() as unknown as BaseChatModel,
       cwd: nestedCwd,
       userHome,
-      guidelines: true,
       skills: false,
       builtinTools: false,
       hil: false,

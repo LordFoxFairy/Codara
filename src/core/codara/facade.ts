@@ -28,11 +28,11 @@ import {
 import {ChatModelFactory, loadModelRoutingConfig, loadModelRoutingConfigFromPath, ModelRegistry, resolveCodaraPath, type ModelInfo, type ModelRoutingConfig} from '@core/provider';
 import {
   createCodaraGuidelinesSource,
-  type GuidelinesOptions,
+  type GuidelinesSource,
 } from '@core/instructions/guidelines';
 import {
   createCodaraPromptSource,
-  type PromptOptions,
+  type PromptSource,
 } from '@core/instructions/prompt';
 import {
   createCodaraSkillsSource,
@@ -101,8 +101,6 @@ export interface CodaraOptions {
   tools?: StructuredToolInterface[];
   builtinTools?: boolean;
   middleware?: BaseMiddleware[];
-  guidelines?: boolean | GuidelinesOptions;
-  prompt?: boolean | PromptOptions;
   skills?: false | CodaraSkillOptions;
   summary?: false | SummarySettings;
   hil?: false | HILMiddlewareOptions;
@@ -210,6 +208,21 @@ function assembleCodara(options: CodaraOptions, restoredState?: SessionState): C
   const skills = resolveCodaraSkills(options);
   const skillsSource = skills ? createCodaraSkillsSource(skills) : undefined;
   const alias = normalizeAlias(options.alias);
+  const guidelinesSource = createCodaraGuidelinesSource({
+    cwd: options.cwd,
+    projectRoot: options.projectRoot,
+    userHome: options.userHome,
+  });
+  const promptSource = createCodaraPromptSource({
+    cwd: options.cwd,
+    projectRoot: options.projectRoot,
+    userHome: options.userHome,
+  });
+  const tools = createCodaraTools(options);
+  configureInstructionReadTool(tools, {
+    promptSource,
+    guidelinesSource,
+  });
   const session = createSession({
     ...(restoredState ? {state: restoredState} : {}),
     id: options.id,
@@ -223,20 +236,10 @@ function assembleCodara(options: CodaraOptions, restoredState?: SessionState): C
     modelRef: alias,
     ...(options.model ? {model: options.model} : {}),
     ...(!options.model ? {modelCatalog: options.catalog ?? createCodaraModelCatalog({config: options.config})} : {}),
-    guidelinesSource: createCodaraGuidelinesSource({
-      cwd: options.cwd,
-      projectRoot: options.projectRoot,
-      userHome: options.userHome,
-      guidelines: options.guidelines,
-    }),
-    promptSource: createCodaraPromptSource({
-      cwd: options.cwd,
-      projectRoot: options.projectRoot,
-      userHome: options.userHome,
-      prompt: options.prompt,
-    }),
+    guidelinesSource,
+    promptSource,
     ...(skillsSource ? {skillsSource} : {}),
-    tools: createCodaraTools(options),
+    tools,
     ...(options.handleToolErrors !== undefined ? {handleToolErrors: options.handleToolErrors} : {}),
     middleware: createCodaraMiddlewares(options),
     ...(options.summary ? {summary: options.summary} : {}),
@@ -344,6 +347,61 @@ export function createCodaraTools(options: CodaraToolsOptions = {}): StructuredT
     byName.set(tool.name, tool);
   }
   return [...byName.values()];
+}
+
+function configureInstructionReadTool(
+  tools: StructuredToolInterface[],
+  sources: {
+    promptSource?: Pick<PromptSource, 'activateTarget'>;
+    guidelinesSource?: Pick<GuidelinesSource, 'activateTarget'>;
+  },
+): void {
+  if (!sources.promptSource && !sources.guidelinesSource) {
+    return;
+  }
+
+  for (const tool of tools) {
+    if (tool.name !== 'read_file') {
+      continue;
+    }
+
+    const originalInvoke = tool.invoke.bind(tool);
+    tool.invoke = async (input, config) => {
+      const result = await originalInvoke(input, config);
+      const filePath = readInstructionReadPath(input);
+      if (!filePath || isInstructionReadFailure(result)) {
+        return result;
+      }
+
+      await sources.promptSource?.activateTarget({path: filePath, kind: 'file'});
+      await sources.guidelinesSource?.activateTarget({path: filePath, kind: 'file'});
+      return result;
+    };
+  }
+}
+
+function readInstructionReadPath(input: unknown): string | undefined {
+  if (!input || typeof input !== 'object' || Array.isArray(input)) {
+    return undefined;
+  }
+
+  const record = input as Record<string, unknown>;
+  const filePath = typeof record.file_path === 'string' ? record.file_path.trim() : '';
+  if (filePath) {
+    return filePath;
+  }
+
+  const pathValue = typeof record.path === 'string' ? record.path.trim() : '';
+  return pathValue || undefined;
+}
+
+function isInstructionReadFailure(result: unknown): boolean {
+  if (typeof result !== 'string') {
+    return false;
+  }
+
+  const trimmed = result.trim();
+  return trimmed.startsWith('Error:') || trimmed.startsWith('Tool execution failed:');
 }
 
 export function createCodaraMiddlewares(options: CodaraMiddlewareOptions = {}): BaseMiddleware[] {
