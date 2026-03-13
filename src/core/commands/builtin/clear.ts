@@ -7,6 +7,9 @@ export const clearCommand: CodaraCommandDefinition = {
   usage: '/clear',
   description: 'Clear the current conversation state and keep the session ready for a new prompt.',
   source: BUILTIN_SOURCE,
+  help: {
+    executionMode: 'runtime_command',
+  },
   async execute({command, agent}) {
     await agent.reset();
     return {

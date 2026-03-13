@@ -8,6 +8,9 @@ export const pluginCommand: CodaraCommandDefinition = {
   usage: '/plugin install <plugin>@<source>',
   description: 'Install a supported Claude-style plugin by importing its skills into Codara.',
   source: BUILTIN_SOURCE,
+  help: {
+    executionMode: 'runtime_command',
+  },
   async execute({command, agent, environment}) {
     const subcommand = command.args[0]?.trim().toLowerCase();
     if (subcommand !== 'install') {

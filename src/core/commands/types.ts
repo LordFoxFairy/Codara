@@ -14,6 +14,15 @@ export interface CodaraCommandSpec {
   usage: string;
   aliases?: string[];
   source: CodaraCommandSource;
+  help?: CodaraCommandHelpMetadata;
+}
+
+export type CodaraCommandExecutionMode = 'runtime_command' | 'host_action' | 'agent_workflow';
+
+export interface CodaraCommandHelpMetadata {
+  executionMode: CodaraCommandExecutionMode;
+  allowedTools?: string[];
+  requiredShellCommands?: string[];
 }
 
 export type CodaraCommandSource =

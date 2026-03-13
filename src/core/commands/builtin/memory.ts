@@ -12,6 +12,9 @@ export const memoryCommand: CodaraCommandDefinition = {
   usage: '/memory [show|project|global]',
   description: 'Inspect or open the current AGENTS.md memory scopes for this runtime.',
   source: BUILTIN_SOURCE,
+  help: {
+    executionMode: 'host_action',
+  },
   async execute({command, environment}) {
     const target = (command.args[0] ?? 'show').trim().toLowerCase();
     const files = resolveMemoryFiles(environment);

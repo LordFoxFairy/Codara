@@ -7,6 +7,9 @@ export const resumeCommand: CodaraCommandDefinition = {
   usage: '/resume <sessionId>',
   description: 'Reopen a stored conversation by sessionId.',
   source: BUILTIN_SOURCE,
+  help: {
+    executionMode: 'host_action',
+  },
   async execute({command, agent}) {
     const sessionId = command.args[0]?.trim();
     if (!sessionId) {

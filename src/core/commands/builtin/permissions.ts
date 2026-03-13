@@ -12,6 +12,9 @@ export const permissionsCommand: CodaraCommandDefinition = {
   usage: '/permissions [show|edit]',
   description: 'Inspect or open the active permission policy files for this runtime.',
   source: BUILTIN_SOURCE,
+  help: {
+    executionMode: 'host_action',
+  },
   async execute({command, environment}) {
     const target = (command.args[0] ?? 'show').trim().toLowerCase();
     const settingsFile = resolvePermissionSettingsFile(environment);
