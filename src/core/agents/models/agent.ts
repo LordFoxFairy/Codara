@@ -90,7 +90,8 @@ export interface PauseRequest {
   metadata?: Record<string, unknown>;
 }
 
-export interface AgentTurnPreparationContext {
+/** Current agent context assembled immediately before the next model call. */
+export interface AgentPreparationContext {
   state: {
     messages: BaseMessage[];
     context?: AgentRuntimeContext;
@@ -107,7 +108,7 @@ export interface AgentTurnPreparationContext {
   inputBudget?: AgentInputBudget;
 }
 
-export type AgentTurnContextPreparer = (context: AgentTurnPreparationContext) => Promise<void> | void;
+export type AgentContextPreparer = (context: AgentPreparationContext) => Promise<void> | void;
 
 export interface AgentState {
   sessionId: string;
@@ -197,5 +198,5 @@ export interface CreateAgentOptions {
   systemMessage?: string[];
   runtimeShared?: Record<string, unknown>;
   inputBudget?: AgentInputBudget;
-  prepareTurnContext?: AgentTurnContextPreparer;
+  prepareContext?: AgentContextPreparer;
 }

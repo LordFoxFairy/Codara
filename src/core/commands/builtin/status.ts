@@ -3,7 +3,7 @@ import path from 'node:path';
 import {homedir} from 'node:os';
 import type {CodaraCommandDefinition} from '@core/commands/types';
 import {resolvePermissionSettingsFile} from '@core/middleware/permission';
-import {resolveWorkspaceRoot} from '@core/shared/workspace';
+import {resolveWorkspaceRoot} from '@core/config/workspace';
 
 const BUILTIN_SOURCE = {type: 'builtin'} as const;
 

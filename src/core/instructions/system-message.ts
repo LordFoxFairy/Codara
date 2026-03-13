@@ -21,6 +21,17 @@ export interface BaseSystemMessageRuntimeData {
   systemMessage: string[];
 }
 
+export interface PreparedInstructionContextTarget {
+  systemMessage: string[];
+  messages: BaseMessage[];
+  runtime: {
+    shared?: Record<string, unknown>;
+  };
+  state: {
+    messages: BaseMessage[];
+  };
+}
+
 const PROGRESSIVE_INSTRUCTION_PREFIX = 'Additional active instructions for the current workspace subtree:';
 
 export async function buildBaseSystemMessage(
@@ -87,6 +98,21 @@ export async function buildProgressiveInstructionMessages(
     promptMessage ? createProgressiveInstructionMessage(promptMessage) : undefined,
     guidelinesMessage ? createProgressiveInstructionMessage(guidelinesMessage) : undefined,
   ].filter((message): message is BaseMessage => Boolean(message));
+}
+
+export function applyPreparedInstructionContext(
+  target: PreparedInstructionContextTarget,
+  base: BaseSystemMessageBundle,
+  progressiveMessages: BaseMessage[],
+): void {
+  target.systemMessage = [...base.systemMessage];
+  target.runtime.shared = {
+    ...(target.runtime.shared ?? {}),
+    ...(base.runtimeShared ?? {}),
+  };
+  target.messages = progressiveMessages.length > 0
+    ? [...progressiveMessages, ...target.state.messages]
+    : target.state.messages;
 }
 
 function createSkillsSystemMessage(runtime: Pick<SkillsRuntimeData, 'sources' | 'discovered'>): string {

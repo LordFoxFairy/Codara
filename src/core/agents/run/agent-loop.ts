@@ -29,7 +29,7 @@ import type {
   AgentStatus,
   AgentStreamConfig,
   AgentStreamOutput,
-  AgentTurnContextPreparer,
+  AgentContextPreparer,
   CreateAgentOptions,
   PauseRequest,
   ResumePayload,
@@ -61,7 +61,7 @@ export interface AgentRuntime {
   handleToolErrors: ToolErrorHandler;
   systemMessage: string[];
   runtimeShared: MiddlewareRuntimeShared;
-  prepareTurnContext?: AgentTurnContextPreparer;
+  prepareContext?: AgentContextPreparer;
 }
 
 export interface AgentRunContext {
@@ -544,7 +544,7 @@ export async function createTurnContext(
   const context: BaseExecutionContext = {
     state: run.state,
     messages: run.state.messages,
-      runtime: {
+    runtime: {
       context: mergeContext(run.state.context, run.runtimeContext),
       runtimeContext: run.runtimeContext,
       shared: run.shared,
@@ -559,7 +559,7 @@ export async function createTurnContext(
     },
     inputBudget: run.inputBudget,
   };
-  await runtime.prepareTurnContext?.(context);
+  await runtime.prepareContext?.(context);
   await runtime.pipeline.beforeAgent(context);
   await runtime.pipeline.beforeModel(context);
   return context;
@@ -606,7 +606,7 @@ function buildRuntime(options: CreateAgentOptions): AgentRuntime {
     handleToolErrors: options.handleToolErrors ?? true,
     systemMessage: [...(options.systemMessage ?? [])],
     runtimeShared: deepClone(options.runtimeShared ?? {}),
-    prepareTurnContext: options.prepareTurnContext,
+    prepareContext: options.prepareContext,
   };
 }
 

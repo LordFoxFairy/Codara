@@ -2,7 +2,7 @@ import {existsSync} from 'node:fs';
 import path from 'node:path';
 import type {BaseChatModel} from '@langchain/core/language_models/chat_models';
 import type {StructuredToolInterface} from '@langchain/core/tools';
-import type {AgentTurnContextPreparer} from '@core/agents';
+import type {AgentContextPreparer} from '@core/agents';
 import type {AgentCheckpointer} from '@core/checkpoint';
 import {createAgentFileCheckpointer} from '@core/checkpoint';
 import type {BaseMiddleware, HILMiddlewareOptions, LoggingMiddlewareOptions} from '@core/middleware';
@@ -56,10 +56,13 @@ import {
   type SessionState,
   type SessionStore,
 } from '@core/sessions';
-import {deepClone} from '@core/shared/clone';
-import {resolveWorkspaceRoot} from '@core/shared/workspace';
+import {resolveWorkspaceRoot} from '@core/config/workspace';
 import {createBuiltinTools} from '@core/tools';
-import {buildBaseSystemMessage, buildProgressiveInstructionMessages} from '@core/instructions/system-message';
+import {
+  applyPreparedInstructionContext,
+  buildBaseSystemMessage,
+  buildProgressiveInstructionMessages,
+} from '@core/instructions/system-message';
 
 export const DEFAULT_CODARA_MODEL_ALIAS = 'default';
 const DEFAULT_RUNTIME_FILE_LOGGING_ENABLED = true;
@@ -176,7 +179,7 @@ export function createCodara(options: CodaraOptions = {}): Codara {
 
 export function createCodaraRuntime(options: CodaraRuntimeOptions = {}): Codara {
   const codaraPath = resolveCodaraRuntimePath(options);
-  const workspaceRoot = resolveWorkspaceRoot({
+  const projectRoot = resolveWorkspaceRoot({
     cwd: options.cwd,
     projectRoot: options.projectRoot,
   });
@@ -191,7 +194,7 @@ export function createCodaraRuntime(options: CodaraRuntimeOptions = {}): Codara 
     userHome: options.userHome,
   });
   const taskStore = options.taskStore ?? createTaskFileStore({
-    rootDir: path.join(workspaceRoot, '.codara', 'tasks'),
+    rootDir: path.join(projectRoot, '.codara', 'tasks'),
   });
   ensurePermissionSettingsFile({
     cwd: options.cwd,
@@ -496,11 +499,11 @@ function resolveCodaraRuntimePath(options: Pick<CodaraRuntimeOptions, 'codaraPat
     return path.resolve(options.codaraPath.trim());
   }
 
-  const workspaceRoot = resolveWorkspaceRoot({
+  const projectRoot = resolveWorkspaceRoot({
     cwd: options.cwd,
     projectRoot: options.projectRoot,
   });
-  const projectCodaraPath = path.join(workspaceRoot, '.codara');
+  const projectCodaraPath = path.join(projectRoot, '.codara');
   if (existsSync(path.join(projectCodaraPath, 'config.json'))) {
     return projectCodaraPath;
   }
@@ -515,11 +518,11 @@ function resolveRuntimeLoggingOptions(
     return false;
   }
 
-  const workspaceRoot = resolveWorkspaceRoot({
+  const projectRoot = resolveWorkspaceRoot({
     cwd: options.cwd,
     projectRoot: options.projectRoot,
   });
-  const rootDir = path.join(workspaceRoot, '.codara', 'sessions');
+  const rootDir = path.join(projectRoot, '.codara', 'sessions');
   const provided = options.logging ?? {};
 
   return {
@@ -564,7 +567,7 @@ function createRuntimeDefaultMiddlewares(input: {
         ...(input.catalog ? {catalog: input.catalog} : {}),
       })),
       tools: input.runtimeTools,
-      prepareTurnContext: createInstructionTurnContextPreparer({
+      prepareContext: createInstructionContextPreparer({
         promptSource: input.promptSource,
         guidelinesSource: input.guidelinesSource,
       }),
@@ -681,10 +684,10 @@ function summarizeCommandResult(result: CodaraCommandResult): string | undefined
   return output || undefined;
 }
 
-function createInstructionTurnContextPreparer(sources: {
+function createInstructionContextPreparer(sources: {
   promptSource?: PromptSource;
   guidelinesSource?: GuidelinesSource;
-}): AgentTurnContextPreparer | undefined {
+}): AgentContextPreparer | undefined {
   if (!sources.promptSource && !sources.guidelinesSource) {
     return undefined;
   }
@@ -692,13 +695,6 @@ function createInstructionTurnContextPreparer(sources: {
   return async (context) => {
     const next = await buildBaseSystemMessage(sources.promptSource, sources.guidelinesSource);
     const runtimeInstructions = await buildProgressiveInstructionMessages(sources.promptSource, sources.guidelinesSource);
-    context.systemMessage = [...next.systemMessage];
-    context.runtime.shared = {
-      ...deepClone(context.runtime.shared ?? {}),
-      ...deepClone(next.runtimeShared ?? {}),
-    };
-    context.messages = runtimeInstructions.length > 0
-      ? [...runtimeInstructions, ...context.state.messages]
-      : context.state.messages;
+    applyPreparedInstructionContext(context, next, runtimeInstructions);
   };
 }

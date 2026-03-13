@@ -6,8 +6,8 @@ import path from 'node:path';
 import yaml from 'yaml';
 import {AIMessage, HumanMessage, type BaseMessage, type ToolCall} from '@langchain/core/messages';
 import type {AgentResult} from '@core/agents';
-import {resolveWorkspaceRoot, type WorkspaceRootOptions} from '@core/shared/workspace';
-import {resolveAutoMemoryGlobal} from '@core/settings';
+import {resolveWorkspaceRoot, type WorkspaceRootOptions} from '@core/config/workspace';
+import {resolveAutoMemoryGlobal} from '@core/config/settings';
 
 const MEMORY_INDEX_FILE = 'MEMORY.md';
 const TOPICS_DIR = 'topics';

@@ -39,6 +39,7 @@ import {
   shouldRecordAutoMemoryTurn,
 } from '@core/memory/auto-memory';
 import {
+  applyPreparedInstructionContext,
   buildBaseSystemMessage,
   buildProgressiveInstructionMessages,
   type BaseSystemMessageBundle,
@@ -50,7 +51,6 @@ import {
   forkSessionMetadata,
   syncSessionMetadata,
 } from '@core/shared/session-metadata';
-import {deepClone} from '@core/shared/clone';
 import type {SessionStore} from './store';
 import {
   RuntimeEventsController,
@@ -236,7 +236,7 @@ export function createSession(options: CreateSessionOptions): Session {
     }
   }
 
-  async function loadSessionSystemContext(forceReload = false): Promise<{
+  async function loadBaseInstructionContext(forceReload = false): Promise<{
     systemMessage: string[];
     runtimeShared?: Record<string, unknown>;
   }> {
@@ -256,7 +256,7 @@ export function createSession(options: CreateSessionOptions): Session {
     return baseSystemContext;
   }
 
-  async function loadRuntimeInstructionMessages(): Promise<BaseMessage[]> {
+  async function loadProgressiveInstructionMessages(): Promise<BaseMessage[]> {
     return buildProgressiveInstructionMessages(
       options.promptSource,
       options.guidelinesSource,
@@ -288,7 +288,7 @@ export function createSession(options: CreateSessionOptions): Session {
   }
 
   async function bootstrapSessionAgent(): Promise<Agent> {
-    const systemContext = await loadSessionSystemContext();
+    const systemContext = await loadBaseInstructionContext();
     const modelSelection = await resolveSessionModel(options);
     const checkpoint = restoreCheckpoint ? await getLatestCheckpoint() : undefined;
 
@@ -311,7 +311,7 @@ export function createSession(options: CreateSessionOptions): Session {
       ...(options.values ? {values: options.values} : {}),
       ...(systemContext.systemMessage.length > 0 ? {systemMessage: systemContext.systemMessage} : {}),
       ...(systemContext.runtimeShared ? {runtimeShared: systemContext.runtimeShared} : {}),
-      prepareTurnContext: applySessionTurnContext,
+      prepareContext: applySessionContext,
     });
   }
 
@@ -388,14 +388,10 @@ export function createSession(options: CreateSessionOptions): Session {
     return result;
   }
 
-  async function applySessionTurnContext(context: import('@core/agents').AgentTurnPreparationContext): Promise<void> {
-    const next = await loadSessionSystemContext();
-    const runtimeInstructionMessages = await loadRuntimeInstructionMessages();
-    context.systemMessage = [...next.systemMessage];
-    context.runtime.shared = deepClone(next.runtimeShared ?? {});
-    context.messages = runtimeInstructionMessages.length > 0
-      ? [...runtimeInstructionMessages, ...context.state.messages]
-      : context.state.messages;
+  async function applySessionContext(context: import('@core/agents').AgentPreparationContext): Promise<void> {
+    const next = await loadBaseInstructionContext();
+    const runtimeInstructionMessages = await loadProgressiveInstructionMessages();
+    applyPreparedInstructionContext(context, next, runtimeInstructionMessages);
   }
 
   async function recordAutoMemory(
@@ -469,8 +465,8 @@ export function createSession(options: CreateSessionOptions): Session {
       throw new Error('Agent is paused; resume(...) or reset() before compacting the conversation.');
     }
 
-    const systemContext = await loadSessionSystemContext();
-    const runtimeInstructionMessages = await loadRuntimeInstructionMessages();
+    const systemContext = await loadBaseInstructionContext();
+    const runtimeInstructionMessages = await loadProgressiveInstructionMessages();
     const compacted = await compactConversationWithSummary({
       messages: runtimeInstructionMessages.length > 0
         ? [...runtimeInstructionMessages, ...current.messages]
@@ -584,7 +580,7 @@ export function createSession(options: CreateSessionOptions): Session {
     },
     async reloadSources() {
       ensureReady();
-      await loadSessionSystemContext(true);
+      await loadBaseInstructionContext(true);
       clearAgentCache();
       await persistSessionState();
     },

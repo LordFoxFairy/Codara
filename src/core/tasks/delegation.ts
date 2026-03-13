@@ -6,7 +6,7 @@ import {
   createAgent,
   type AgentInputBudget,
   type AgentRuntimeContext,
-  type AgentTurnContextPreparer,
+  type AgentContextPreparer,
   type AgentRuntimeValues,
   type CreateAgentOptions,
   type PauseRequest,
@@ -70,7 +70,7 @@ export interface DelegatedAgentOptions {
   inputBudget?: AgentInputBudget;
   context?: AgentRuntimeContext;
   values?: AgentRuntimeValues;
-  prepareTurnContext?: AgentTurnContextPreparer;
+  prepareContext?: AgentContextPreparer;
   systemMessages?: string[];
   systemPrompt?: string;
   blockedToolNames?: string[];
@@ -230,7 +230,7 @@ async function buildDelegatedChildOptions(
     handleToolErrors: options.handleToolErrors,
     checkpointer: options.checkpointer,
     inputBudget: options.inputBudget,
-    prepareTurnContext: options.prepareTurnContext,
+    prepareContext: options.prepareContext,
     ...(mergedContext ? {context: mergedContext} : {}),
     ...(options.values ? {values: deepClone(options.values)} : {}),
   };
