@@ -100,6 +100,41 @@ describe('cli transcript model', () => {
     expect(items[0]?.content).toBe('Need a little more information before I continue.');
   });
 
+  test('should hide AskUser tool results and HIL runtime noise after the interaction completes', () => {
+    const items = buildTranscriptItems({
+      notices: [],
+      coreMessages: [
+        new ToolMessage({
+          content: '{"action":"submit","answers":{"language":"Python"}}',
+          tool_call_id: 'call_ask_result',
+          name: 'AskUser',
+        }),
+      ],
+      runtimeEvents: [
+        {
+          id: 'evt_tool_ask_start',
+          sessionId: 'session-1',
+          timestamp: new Date().toISOString(),
+          kind: 'tool',
+          phase: 'start',
+          status: 'running',
+          label: 'AskUser(summary: Need a language)',
+        },
+        {
+          id: 'evt_hil_done',
+          sessionId: 'session-1',
+          timestamp: new Date().toISOString(),
+          kind: 'hil',
+          phase: 'end',
+          status: 'done',
+          label: 'Review selection applied',
+        },
+      ],
+    });
+
+    expect(items).toEqual([]);
+  });
+
   test('should prefer runtime step events over raw tool transcript blocks when available', () => {
     const items = buildTranscriptItems({
       notices: [],

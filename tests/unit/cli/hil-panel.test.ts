@@ -87,6 +87,9 @@ describe('HIL panel model', () => {
     expect(optionText).toContain('Choose a domain or type your own answer.');
     expect(actionText).toContain('Submit');
     expect(actionText).toContain('Chat about this');
+    expect(model.compactActions).toBe(true);
+    expect(model.meta).toBeUndefined();
+    expect(model.input?.style).toBe('inline');
   });
 
   it('should describe permission reviews as a dedicated foreground panel', () => {
@@ -137,5 +140,6 @@ describe('HIL panel model', () => {
     expect(model.meta).toContain('Bash · touch guarded.txt');
     expect(model.actions[1]?.label).toBe('Always allow (project)');
     expect(model.input?.label).toBe('Note');
+    expect(model.input?.style).toBe('box');
   });
 });

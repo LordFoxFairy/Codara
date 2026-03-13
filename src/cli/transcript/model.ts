@@ -1,5 +1,6 @@
 import {AIMessage, HumanMessage, SystemMessage, ToolMessage, type BaseMessage, type ToolCall} from '@langchain/core/messages';
 import type {CodaraRuntimeEvent} from '@core';
+import {parseAskUserResult} from '@core/middleware';
 import {parseHILToolMessagePayload} from '@core/middleware/hil';
 import {readMessageText} from '@core/shared/messages';
 import type {CliActiveTurn, CliNotice} from '../app/view-state';
@@ -88,7 +89,7 @@ export function hasTranscriptContent(input: HasTranscriptContentInput): boolean 
 
 function buildRuntimeEventItems(events: readonly CodaraRuntimeEvent[]): TranscriptItem[] {
   return events.map((event) => {
-    if (event.kind === 'turn' || event.kind === 'model') {
+    if (event.kind === 'turn' || event.kind === 'model' || shouldHideRuntimeEvent(event)) {
       return undefined;
     }
 
@@ -233,6 +234,9 @@ function buildToolResultItems(
   }
 
   const resolvedName = resolveToolMessageName(message, toolLookup);
+  if (isInteractionToolName(resolvedName) || parseAskUserResult(text)) {
+    return [];
+  }
   const role: TranscriptRole = isTaskToolName(resolvedName) ? 'task' : 'tool';
 
   return [{
@@ -240,6 +244,27 @@ function buildToolResultItems(
     role,
     content: role === 'task' ? formatTaskResultText(text) : text,
   }];
+}
+
+function shouldHideRuntimeEvent(event: CodaraRuntimeEvent): boolean {
+  if (event.kind === 'hil') {
+    return true;
+  }
+
+  if (event.kind !== 'tool') {
+    return false;
+  }
+
+  if (event.label.includes('AskUser')) {
+    return true;
+  }
+
+  if (parseAskUserResult(event.detail)) {
+    return true;
+  }
+
+  const hilPayload = parseHILToolMessagePayload(event.detail);
+  return hilPayload?.type === 'hil_pause';
 }
 
 function createToolCallLookup(messages: readonly BaseMessage[]): Map<string, ToolCall> {
