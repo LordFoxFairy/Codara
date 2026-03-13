@@ -29,7 +29,7 @@ class GuardedSystemEchoModel {
     }
 
     const systemText = messages
-      .filter((message) => message.getType() === 'system')
+      .filter((message) => message.type === 'system')
       .map((message) => String(message.content))
       .join('\n---\n');
     return new AIMessage(systemText);
@@ -210,7 +210,7 @@ You are a Researcher subagent.
       });
 
       const resumed = await parent.resume({decision: 'approve'});
-      const toolMessages = resumed.state.messages.filter((message) => message.getType() === 'tool');
+      const toolMessages = resumed.state.messages.filter((message) => message.type === 'tool');
       const finalToolMessage = toolMessages[toolMessages.length - 1];
 
       expect(resumed.reason).toBe('complete');

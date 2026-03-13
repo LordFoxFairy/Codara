@@ -148,7 +148,7 @@ function buildCoreMessageItems(
   toolLookup: Map<string, ToolCall>,
   preferRuntimeSteps: boolean,
 ): TranscriptItem[] {
-  const messageId = String(message.id ?? `${message.getType()}-${index}`);
+  const messageId = String(message.id ?? `${message.type}-${index}`);
 
   if (AIMessage.isInstance(message)) {
     return buildAssistantItems(message, messageId, preferRuntimeSteps);

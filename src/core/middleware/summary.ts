@@ -264,7 +264,7 @@ function buildSummaryPrompt(input: SummaryInput): string {
 
 function formatMessages(messages: BaseMessage[]): string {
   return messages.map((message, index) => [
-    `[${index + 1}] ${message.getType()}`,
+    `[${index + 1}] ${message.type}`,
     message.text.trim() || '(empty)',
   ].join('\n')).join('\n\n');
 }

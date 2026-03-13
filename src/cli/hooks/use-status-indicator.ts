@@ -23,7 +23,6 @@ export function useStatusIndicator(input: StatusIndicatorInput): StatusIndicator
 
   useEffect(() => {
     if (input.runState.status !== 'running') {
-      setFrame(0);
       return;
     }
 
@@ -34,7 +33,7 @@ export function useStatusIndicator(input: StatusIndicatorInput): StatusIndicator
     return () => clearInterval(timer);
   }, [input.runState.status]);
 
-  return describeStatusIndicator(input, frame);
+  return describeStatusIndicator(input, input.runState.status === 'running' ? frame : 0);
 }
 
 export function describeStatusIndicator(input: StatusIndicatorInput, frame = 0): StatusIndicatorModel {

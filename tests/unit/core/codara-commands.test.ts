@@ -9,7 +9,7 @@ import {EchoModel, SystemEchoModel} from './codara-fixtures';
 
 describe('Codara slash commands', () => {
   function readSummaryMessage(messages: BaseMessage[]): BaseMessage | undefined {
-    return messages.find((message) => message.getType() === 'ai' && message.text.startsWith('Summary:\n'));
+    return messages.find((message) => message.type === 'ai' && message.text.startsWith('Summary:\n'));
   }
 
   it('should expose built-in slash command help', async () => {

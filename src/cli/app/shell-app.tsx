@@ -30,7 +30,6 @@ export interface CodaraCliAppProps {
 export function CodaraCliApp(props: CodaraCliAppProps): React.JSX.Element {
   const {
     codara,
-    cwd,
     initialPrompt,
     modelAlias,
     startupMessage,
