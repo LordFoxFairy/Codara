@@ -29,6 +29,10 @@ export interface MarkdownFrontmatterDocument {
   body: string
 }
 
+export interface ParseMarkdownDocumentOptions {
+  requireFrontmatter?: boolean
+}
+
 /**
  * Same name/contract as docs/deepagents/skills.ts.
  */
@@ -206,10 +210,25 @@ export function parseMarkdownFrontmatterDocument(
   content: string,
   skillPath: string
 ): MarkdownFrontmatterDocument | null {
+  return parseMarkdownDocument(content, skillPath, {requireFrontmatter: true})
+}
+
+export function parseMarkdownDocument(
+  content: string,
+  skillPath: string,
+  options: ParseMarkdownDocumentOptions = {}
+): MarkdownFrontmatterDocument | null {
   const match = content.match(/^---\s*\n([\s\S]*?)\n---(?:\s*\n|$)([\s\S]*)$/)
   if (!match) {
-    console.warn(`Skipping ${skillPath}: no valid YAML frontmatter found`)
-    return null
+    if (options.requireFrontmatter) {
+      console.warn(`Skipping ${skillPath}: no valid YAML frontmatter found`)
+      return null
+    }
+
+    return {
+      frontmatter: {},
+      body: content
+    }
   }
 
   try {
