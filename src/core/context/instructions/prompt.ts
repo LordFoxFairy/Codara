@@ -1,25 +1,14 @@
 import path from 'node:path';
-import type {WorkspaceRootOptions} from '@core/config/workspace';
 import {
-  type InstructionPathTarget,
+  type ProgressiveInstructionSource,
+  type ProgressiveInstructionWorkspaceOptions,
   SessionScopedProgressiveInstructionSource,
 } from '@core/context/instructions/progressive-source';
 
 const HANDBOOK_FILE_NAME = 'codara.md';
 
-export interface PromptWorkspaceOptions extends WorkspaceRootOptions {
-  userHome?: string;
-}
-
-export type PromptOptions = PromptWorkspaceOptions;
-
-export interface PromptSource {
-  getContent(): Promise<string | undefined>;
-  getBootstrapContent(): Promise<string | undefined>;
-  getProgressiveContent(): Promise<string | undefined>;
-  reload(): void;
-  activateTarget(target: InstructionPathTarget): Promise<boolean>;
-}
+export type PromptOptions = ProgressiveInstructionWorkspaceOptions;
+export type PromptSource = ProgressiveInstructionSource;
 
 export function createCodaraPromptSource(options: PromptOptions = {}): PromptSource {
   return new SessionScopedProgressiveInstructionSource({

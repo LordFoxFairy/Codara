@@ -1,25 +1,14 @@
 import path from 'node:path';
-import type {WorkspaceRootOptions} from '@core/config/workspace';
 import {
-  type InstructionPathTarget,
+  type ProgressiveInstructionSource,
+  type ProgressiveInstructionWorkspaceOptions,
   SessionScopedProgressiveInstructionSource,
 } from '@core/context/instructions/progressive-source';
 
 const AGENTS_FILE_NAME = 'AGENTS.md';
 
-export interface GuidelinesWorkspaceOptions extends WorkspaceRootOptions {
-  userHome?: string;
-}
-
-export type GuidelinesOptions = GuidelinesWorkspaceOptions;
-
-export interface GuidelinesSource {
-  getContent(): Promise<string | undefined>;
-  getBootstrapContent(): Promise<string | undefined>;
-  getProgressiveContent(): Promise<string | undefined>;
-  reload(): void;
-  activateTarget(target: InstructionPathTarget): Promise<boolean>;
-}
+export type GuidelinesOptions = ProgressiveInstructionWorkspaceOptions;
+export type GuidelinesSource = ProgressiveInstructionSource;
 
 export function createCodaraGuidelinesSource(options: GuidelinesOptions = {}): GuidelinesSource {
   return new SessionScopedProgressiveInstructionSource({
