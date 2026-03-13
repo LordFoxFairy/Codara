@@ -95,6 +95,53 @@ describe('Codara slash commands', () => {
     }
   });
 
+  it('should translate supported plugin commands into Codara skill commands when the plugin ships commands without skills', async () => {
+    const root = await mkdtemp(path.join(tmpdir(), 'codara-command-plugin-command-'));
+    const projectRoot = path.join(root, 'project');
+    const userHome = path.join(root, 'home');
+    const fixtureRoot = path.join(root, 'code-review-fixture');
+    const commandDir = path.join(fixtureRoot, 'commands');
+
+    await mkdir(commandDir, {recursive: true});
+    await Bun.write(path.join(commandDir, 'code-review.md'), [
+      '---',
+      'description: Review a pull request with multiple agents.',
+      'allowed-tools: Bash(gh pr view:*)',
+      '---',
+      '',
+      'Provide a code review for the current pull request.',
+      '',
+    ].join('\n'));
+
+    const previousOverride = process.env.CODARA_PLUGIN_CODE_REVIEW_SOURCE;
+    process.env.CODARA_PLUGIN_CODE_REVIEW_SOURCE = fixtureRoot;
+
+    try {
+      const codara = createCodara({
+        cwd: projectRoot,
+        projectRoot,
+        userHome,
+        model: new EchoModel() as unknown as BaseChatModel,
+        skills: false,
+        builtinTools: false,
+      });
+
+      const result = await codara.executeCommand('/plugin install code-review@claude-plugins-official');
+      expect(result.ok).toBe(true);
+      expect(result.output).toContain('code-review-code-review');
+
+      const installed = await readFile(path.join(userHome, '.codara', 'skills', 'code-review-code-review', 'SKILL.md'), 'utf8');
+      expect(installed).toContain('command-name: code-review');
+      expect(installed).toContain('Provide a code review for the current pull request.');
+    } finally {
+      if (previousOverride === undefined) {
+        delete process.env.CODARA_PLUGIN_CODE_REVIEW_SOURCE;
+      } else {
+        process.env.CODARA_PLUGIN_CODE_REVIEW_SOURCE = previousOverride;
+      }
+    }
+  });
+
   it('should report the current runtime status through slash commands', async () => {
     const root = await mkdtemp(path.join(tmpdir(), 'codara-command-status-'));
     const projectRoot = path.join(root, 'project');
