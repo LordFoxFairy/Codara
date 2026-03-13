@@ -44,6 +44,14 @@ const SUPPORTED_PLUGINS: readonly SupportedPluginDefinition[] = [
     commandsPath: 'commands',
     localOverrideEnv: 'CODARA_PLUGIN_CODE_REVIEW_SOURCE',
   },
+  {
+    name: 'skill-creator',
+    sources: ['claude-plugins-official'],
+    repoUrl: 'https://github.com/anthropics/claude-plugins-official',
+    rootPath: 'plugins/skill-creator',
+    skillsPath: 'skills',
+    localOverrideEnv: 'CODARA_PLUGIN_SKILL_CREATOR_SOURCE',
+  },
 ];
 
 export function listSupportedPluginSpecs(): string[] {
