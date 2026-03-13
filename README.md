@@ -5,9 +5,8 @@ AI 驱动的终端代码代理运行时与产品 facade。
 ## 当前状态
 
 - 默认基线已干净：
-  - `bun run typecheck`
-  - `bun run lint`
-  - `bun test`
+  - `bun run check:fast`
+  - `bun run check`
 - 主心智已经收敛：一切围绕 `createAgent(...)`，`codara` 只是 facade，`session` 只是宿主。
 
 ## 核心能力
@@ -236,10 +235,20 @@ bun run dev
 质量检查：
 
 ```bash
-bun run typecheck
-bun run lint
-bun test
+bun run check:fast
+bun run check:cases
+bun run check
 ```
+
+- `bun run check:fast`
+  - 日常快速自检
+  - 运行 `lint + typecheck`
+- `bun run check:cases`
+  - 端到端验收入口
+  - 运行 `check:fast + tests/cases`
+- `bun run check`
+  - 完整默认基线
+  - 运行 `check:fast + bun test`
 
 ## 测试策略
 
