@@ -42,10 +42,31 @@ export interface PauseUIActionOption {
   requiresToolEdit?: boolean;
 }
 
+export interface PauseUIFormOption {
+  id: string;
+  label: string;
+  description?: string;
+}
+
+export interface PauseUIFormTab {
+  id: string;
+  label: string;
+  question: string;
+  input?: 'select' | 'multiselect' | 'text' | 'mixed';
+  options?: PauseUIFormOption[];
+  placeholder?: string;
+}
+
+export interface PauseUIFormConfig {
+  summary?: string;
+  tabs: PauseUIFormTab[];
+}
+
 export interface PauseUIConfig {
   tab?: string;
   modal?: string;
   actions?: PauseUIActionOption[];
+  form?: PauseUIFormConfig;
   [key: string]: unknown;
 }
 
