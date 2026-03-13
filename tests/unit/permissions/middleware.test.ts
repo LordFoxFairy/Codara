@@ -1,0 +1,89 @@
+import {describe, expect, it} from 'bun:test';
+import {mkdtemp} from 'node:fs/promises';
+import {tmpdir} from 'node:os';
+import path from 'node:path';
+import {HumanMessage, ToolMessage, type BaseMessage, type ToolCall} from '@langchain/core/messages';
+import {createPermissionMiddleware, ensurePermissionSettingsFile} from '@core';
+import {parseHILToolMessagePayload, type ToolCallContext} from '@core/middleware';
+
+function createToolContext(toolCall: ToolCall, runtimeContext: Record<string, unknown> = {}): ToolCallContext {
+  const messages = [new HumanMessage('run')] as BaseMessage[];
+  return {
+    state: {messages},
+    messages,
+    runtime: {context: runtimeContext},
+    systemMessage: [],
+    execution: {
+      sessionId: 'session_permission_mw_1',
+      runId: 'run_permission_mw_1',
+      turn: 1,
+      maxTurns: 3,
+      requestId: 'req_permission_mw_1',
+      toolIndex: 0,
+      toolCallId: toolCall.id ?? 'tool_0',
+    },
+    toolCall,
+    toolIndex: 0,
+  };
+}
+
+describe('createPermissionMiddleware', () => {
+  it('should pause unsupported tool calls with permission metadata', async () => {
+    const projectRoot = await mkdtemp(path.join(tmpdir(), 'codara-permission-mw-pause-'));
+    ensurePermissionSettingsFile({projectRoot, cwd: projectRoot});
+    const middleware = createPermissionMiddleware({projectRoot, cwd: projectRoot});
+    const toolCall: ToolCall = {id: 'call_permission_pause_1', name: 'bash', args: {command: 'touch guarded.txt'}};
+
+    const result = await middleware.wrapToolCall?.(createToolContext(toolCall), async () => {
+      return new ToolMessage({content: 'should-not-run', tool_call_id: 'call_permission_pause_1'});
+    });
+
+    const payload = parseHILToolMessagePayload(result?.content);
+    expect(payload?.type).toBe('hil_pause');
+    expect(payload?.type === 'hil_pause' ? payload.request.channel : '').toBe('permission-center');
+    expect(
+      payload?.type === 'hil_pause'
+        ? (payload.request.metadata as {permissionPolicy?: {expression?: string}}).permissionPolicy?.expression
+        : '',
+    ).toBe('Bash(touch guarded.txt)');
+    expect(
+      payload?.type === 'hil_pause'
+        ? (payload.request.metadata as {codara?: {actor?: {agentType?: string}}}).codara?.actor?.agentType
+        : '',
+    ).toBe('main');
+  });
+
+  it('should resume through the generic HIL payload contract', async () => {
+    const projectRoot = await mkdtemp(path.join(tmpdir(), 'codara-permission-mw-resume-'));
+    ensurePermissionSettingsFile({projectRoot, cwd: projectRoot});
+    const middleware = createPermissionMiddleware({projectRoot, cwd: projectRoot});
+    const toolCall: ToolCall = {id: 'call_permission_resume_1', name: 'bash', args: {command: 'touch guarded.txt'}};
+
+    const result = await middleware.wrapToolCall?.(
+      createToolContext(toolCall, {
+        hil: {
+          resume: {
+            action: 'always',
+            decision: 'approve',
+          },
+        },
+      }),
+      async () => new ToolMessage({content: 'continued', tool_call_id: 'call_permission_resume_1'}),
+    );
+
+    expect(String(result?.content)).toBe('continued');
+  });
+
+  it('should allow common read-only bash inspection commands from the default settings skeleton', async () => {
+    const projectRoot = await mkdtemp(path.join(tmpdir(), 'codara-permission-mw-allow-'));
+    ensurePermissionSettingsFile({projectRoot, cwd: projectRoot});
+    const middleware = createPermissionMiddleware({projectRoot, cwd: projectRoot});
+    const toolCall: ToolCall = {id: 'call_permission_allow_1', name: 'bash', args: {command: 'git status'}};
+
+    const result = await middleware.wrapToolCall?.(createToolContext(toolCall), async () => {
+      return new ToolMessage({content: 'continued', tool_call_id: 'call_permission_allow_1'});
+    });
+
+    expect(String(result?.content)).toBe('continued');
+  });
+});

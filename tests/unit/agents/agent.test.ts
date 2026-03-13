@@ -954,7 +954,7 @@ describe('Agent', () => {
     expect(secondResult.state.status).toBe('idle');
     expect(secondResult.state.pendingPause).toBeUndefined();
     expect(bashInvokeCount).toBe(1);
-    expect(modelInvocations).toHaveLength(3);
+    expect(modelInvocations).toHaveLength(2);
     expect(String(secondResult.state.messages[secondResult.state.messages.length - 1]?.content)).toBe('confirmed');
   });
 

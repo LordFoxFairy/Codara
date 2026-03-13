@@ -1,4 +1,4 @@
-import {HumanMessage, SystemMessage, ToolMessage, type BaseMessage} from '@langchain/core/messages';
+import {HumanMessage, ToolMessage, type BaseMessage} from '@langchain/core/messages';
 import type {BaseChatModel} from '@langchain/core/language_models/chat_models';
 import type {StructuredToolInterface} from '@langchain/core/tools';
 import {z} from 'zod';
@@ -66,6 +66,7 @@ export interface DelegatedAgentOptions {
   context?: AgentRuntimeContext;
   values?: AgentRuntimeValues;
   prepareTurnContext?: AgentTurnContextPreparer;
+  systemMessages?: string[];
   systemPrompt?: string;
   blockedToolNames?: string[];
 }
@@ -132,7 +133,7 @@ export async function runDelegatedAgent(
   input: DelegatedChildInput,
 ): Promise<ToolMessage> {
   const childOptions = buildDelegatedChildOptions(options, input);
-  const result = await runDelegatedChild(childOptions, input, options.systemPrompt);
+  const result = await runDelegatedChild(childOptions, input);
 
   if (result.state.pendingPause) {
     return createDelegatedPauseToolMessage(result.state.pendingPause, {
@@ -197,11 +198,8 @@ function readDelegatedRuntimeContext(configurable: unknown): unknown {
   return record.context ?? record.runtimeContext ?? configurable;
 }
 
-function createDelegatedAgentInput(prompt: string, systemPrompt: string | undefined): BaseMessage[] {
+function createDelegatedAgentInput(prompt: string): BaseMessage[] {
   const messages: BaseMessage[] = [];
-  if (systemPrompt?.trim()) {
-    messages.push(new SystemMessage(systemPrompt.trim()));
-  }
   messages.push(new HumanMessage(prompt));
   return messages;
 }
@@ -215,6 +213,9 @@ function buildDelegatedChildOptions(
   return {
     model: input.profileModel ?? options.model,
     agentType: 'subagent',
+    ...(mergeDelegatedSystemMessages(options.systemMessages, input.profileSystemPrompt, options.systemPrompt).length > 0
+      ? {systemMessage: mergeDelegatedSystemMessages(options.systemMessages, input.profileSystemPrompt, options.systemPrompt)}
+      : {}),
     tools: resolveDelegatedAgentTools(
       input.profileTools ?? options.tools ?? [],
       input.toolName,
@@ -233,17 +234,13 @@ function buildDelegatedChildOptions(
 async function runDelegatedChild(
   childOptions: CreateAgentOptions,
   input: DelegatedChildInput,
-  toolSystemPrompt: string | undefined,
 ) {
   if (input.resume) {
     return resumeDelegatedChild(childOptions, input.resume, input.maxTurns);
   }
 
   const child = createAgent(childOptions);
-  const messages = createDelegatedAgentInput(
-    input.prompt,
-    mergeSystemPrompt(input.profileSystemPrompt, toolSystemPrompt),
-  );
+  const messages = createDelegatedAgentInput(input.prompt);
   return child.invoke(
     {messages},
     {...(input.maxTurns ? {recursionLimit: input.maxTurns} : {})},
@@ -280,6 +277,17 @@ async function resumeDelegatedChild(
 function mergeSystemPrompt(profileSystemPrompt: string | undefined, toolSystemPrompt: string | undefined): string | undefined {
   const parts = [profileSystemPrompt?.trim(), toolSystemPrompt?.trim()].filter(Boolean);
   return parts.length > 0 ? parts.join('\n\n') : undefined;
+}
+
+function mergeDelegatedSystemMessages(
+  inheritedMessages: string[] | undefined,
+  profileSystemPrompt: string | undefined,
+  toolSystemPrompt: string | undefined,
+): string[] {
+  return [
+    ...(inheritedMessages ?? []),
+    ...(mergeSystemPrompt(profileSystemPrompt, toolSystemPrompt) ? [mergeSystemPrompt(profileSystemPrompt, toolSystemPrompt) as string] : []),
+  ];
 }
 
 function mergeRuntimeContext(

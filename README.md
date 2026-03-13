@@ -74,7 +74,8 @@ src/index.ts
   - `project/global` 返回宿主 `open_file` 动作，便于 UI/CLI 打开目标文件
   - 编辑后配合 `/reload` 生效
 - `/resume`
-  - 恢复当前已暂停的 HIL 动作
+  - 通过 `sessionId` 恢复指定历史会话
+  - permission/HIL 不走 slash command，走通用 HIL 面板或直接编辑 settings JSON
 - `/compact`
   - 手动触发当前 conversation context 压缩
   - 复用已有 `conversation-context -> summary` 路径，不重写第二套逻辑
@@ -131,18 +132,17 @@ agents/*.md
 
 ```text
 logging
--> guidelines
--> skills
 -> caller middlewares
--> conversation-context
--> hil
+-> budget
+-> permission (generic HIL-backed middleware in runtime)
 ```
 
 说明：
 
 - `logging` 只做观测
-- `conversation-context` 统一负责完整输入预算估算与摘要压缩
-- `hil` 只做 pause / resume 协议
+- `budget` 统一负责完整输入预算估算与摘要压缩
+- `permission` 是权限策略 middleware，本身复用通用 HIL pause / resume 协议
+- 通用 `hil` 仍然是底层协议层，不等于 `/resume`
 - 会话恢复与 HIL 恢复是两种不同能力：
   - `openCodaraSession(...)` / `openLatestCodaraSession(...)` = 打开历史会话，并在返回前 hydrate 已恢复状态
   - `resumePause(...)` / `resumePauseStream(...)` = 恢复 HIL 暂停

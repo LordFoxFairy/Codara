@@ -54,6 +54,30 @@ export {
   type SummaryOptions,
 } from '@core/middleware';
 export {
+  createPermissionMiddleware,
+  createPermissionRuntime,
+  ensurePermissionSettingsFile,
+  evaluatePermissionExpression,
+  evaluatePermissionToolCall,
+  formatPermissionExpression,
+  handlePermissionFallbackResume,
+  isPermissionPause,
+  persistAllowedPermission,
+  persistPermissionScope,
+  persistPermissionRule,
+  validatePermissionSettings,
+  type PermissionDecision,
+  type PermissionEvaluationResult,
+  type PermissionGrantScope,
+  type PermissionMiddlewareOptions,
+  type PermissionPolicyOptions,
+  type PermissionRuntime,
+  type PermissionRuntimeOptions,
+  type PermissionRuleMatch,
+  type PermissionSourceInfo,
+  type PermissionValidationResult,
+} from '@core/permissions';
+export {
   FileCheckpointer,
   InMemoryCheckpointer,
   createAgentFileCheckpointer,
@@ -65,7 +89,17 @@ export {
   createCodaraGuidelinesSource,
   type GuidelinesOptions,
   type GuidelinesSource,
-} from '@core/sessions/guidelines';
+} from '@core/instructions/guidelines';
+export {
+  createCodaraPromptSource,
+  type PromptOptions,
+  type PromptSource,
+} from '@core/instructions/prompt';
+export {
+  readBaseSystemMessage,
+  type BaseSystemMessageBundle,
+  type BaseSystemMessageRuntimeData,
+} from '@core/instructions/system-message';
 export {
   createBuiltinTools,
   createFetchTool,

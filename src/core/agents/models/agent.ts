@@ -37,6 +37,7 @@ export interface PauseUIActionOption {
   label: string;
   kind?: 'primary' | 'secondary' | 'danger';
   description?: string;
+  scope?: string;
   requiresConfirmation?: boolean;
   requiresToolEdit?: boolean;
 }

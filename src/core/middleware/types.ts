@@ -14,6 +14,7 @@ import type {
   AgentInputBudget,
   AgentRuntimeContext,
   AgentRuntimeValues,
+  AgentType,
 } from '@core/agents/models/agent';
 import type {AgentStateUpdate} from '@core/agents/models/command';
 import type {ContextBudgetSnapshot} from '@core/middleware/budget';
@@ -41,6 +42,7 @@ export interface MiddlewareRuntimeContext {
 
 export interface BaseExecutionContext {
   state: {
+    agentType?: AgentType;
     messages: BaseMessage[];
     context?: AgentRuntimeContext;
     values?: AgentRuntimeValues;
