@@ -56,7 +56,7 @@ describe('case: runtime permission default ask', () => {
 
     expect(result.exitCode).toBe(0);
     expect(result.output).toContain('RUNTIME_GIT_STATUS_DONE');
-    expect(result.output).not.toContain('HIL Review');
+    expect(result.output).not.toContain('Permission Review');
     expect(result.output).not.toContain('HIL action:');
   });
 

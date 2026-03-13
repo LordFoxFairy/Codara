@@ -138,6 +138,39 @@ describe('cli transcript model', () => {
     expect(items[1]?.content).toContain('CHILD_DONE');
   });
 
+  test('should surface readable tool results instead of generic done markers for runtime events', () => {
+    const items = buildTranscriptItems({
+      notices: [],
+      coreMessages: [],
+      runtimeEvents: [
+        {
+          id: 'evt_tool_start',
+          sessionId: 'session-1',
+          timestamp: new Date().toISOString(),
+          kind: 'tool',
+          phase: 'start',
+          status: 'running',
+          label: 'Running Bash(git status)',
+        },
+        {
+          id: 'evt_tool_end',
+          sessionId: 'session-1',
+          timestamp: new Date().toISOString(),
+          kind: 'tool',
+          phase: 'end',
+          status: 'done',
+          label: 'Tool completed',
+          detail: 'executed:git status',
+        },
+      ],
+    });
+
+    expect(items.map((item) => item.content)).toEqual([
+      'Running Bash(git status)',
+      'executed:git status',
+    ]);
+  });
+
   test('should treat notice-only output as transcript content after startup', () => {
     expect(hasTranscriptContent({
       coreMessages: [],

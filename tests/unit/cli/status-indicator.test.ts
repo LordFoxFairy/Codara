@@ -23,7 +23,8 @@ describe('cli status indicator', () => {
 
   it('should describe paused, done, idle, and error states with product-facing text', () => {
     expect(describeStatusIndicator({runState: {status: 'paused'}}).banner).toBe('⏺ Waiting for input');
-    expect(describeStatusIndicator({runState: {status: 'done'}}).banner).toBe('✓ Ready for next prompt');
+    expect(describeStatusIndicator({runState: {status: 'done'}}).banner).toBeUndefined();
+    expect(describeStatusIndicator({runState: {status: 'done'}}).status).toBe('Ready');
     expect(describeStatusIndicator({runState: {status: 'idle'}}).banner).toBeUndefined();
     expect(describeStatusIndicator({runState: {status: 'idle'}}).status).toBe('Ready');
     expect(describeStatusIndicator({runState: {status: 'error', error: 'boom'}}).banner).toBe('✕ Review the latest error');

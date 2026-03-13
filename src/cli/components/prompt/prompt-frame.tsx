@@ -26,6 +26,10 @@ function createDivider(terminalWidth: number): string {
   return '\u2500'.repeat(createDividerWidth(terminalWidth));
 }
 
+function createPromptPrefix(index: number): string {
+  return index === 0 ? '\u203a ' : '  ';
+}
+
 function buildCursorRenderParts(
   beforeCursor: string,
   afterCursor: string,
@@ -63,7 +67,7 @@ export function PromptFrame({
 
         return (
           <Box key={`${index}-${line.beforeCursor.length}-${line.afterCursor.length}-${line.isCursorLine ? 1 : 0}`}>
-            <Text color="greenBright">{index === 0 ? '> ' : '  '}</Text>
+            <Text color="greenBright">{createPromptPrefix(index)}</Text>
             <Box flexGrow={1} flexShrink={1}>
               {line.isCursorLine ? (
                 <Text wrap="truncate-end" dimColor={renderParts.dimColor}>
@@ -79,7 +83,6 @@ export function PromptFrame({
         );
       })}
       {viewport.hasOverflowBelow ? <Text dimColor>  ...</Text> : null}
-      <Text dimColor>{divider}</Text>
     </Box>
   );
 }
