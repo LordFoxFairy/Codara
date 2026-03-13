@@ -1,4 +1,5 @@
 import {AIMessage, HumanMessage, SystemMessage, ToolMessage, type BaseMessage, type ToolCall} from '@langchain/core/messages';
+import {parseHILToolMessagePayload} from '@core/middleware/hil';
 import {readMessageText} from '@core/shared/messages';
 import type {CliActiveTurn, CliNotice} from '../app/view-state';
 
@@ -143,6 +144,18 @@ function buildToolResultItems(
   messageId: string,
   toolLookup: Map<string, ToolCall>,
 ): TranscriptItem[] {
+  const hilPayload = parseHILToolMessagePayload(message.content);
+  if (hilPayload?.type === 'hil_pause') {
+    return [];
+  }
+  if (hilPayload?.type === 'hil_deny') {
+    return [{
+      id: messageId,
+      role: 'error',
+      content: hilPayload.reason,
+    }];
+  }
+
   const text = readMessageText(message);
   if (!text) {
     return [];
