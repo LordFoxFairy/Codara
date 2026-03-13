@@ -42,6 +42,8 @@ docs/
 # Coverage
 coverage/
 
+.codara/sessions
+
 # Lock files (uncomment the ones you don't use)
 # package-lock.json
 # yarn.lock
