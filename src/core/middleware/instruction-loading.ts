@@ -1,5 +1,5 @@
-import type {GuidelinesSource} from '@core/instructions/guidelines';
-import type {PromptSource} from '@core/instructions/prompt';
+import type {GuidelinesSource} from '@core/context/instructions/guidelines';
+import type {PromptSource} from '@core/context/instructions/prompt';
 import {parseHILToolMessagePayload} from '@core/middleware/hil';
 import {createMiddleware, type BaseMiddleware} from '@core/middleware/types';
 

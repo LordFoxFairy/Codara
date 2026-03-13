@@ -15,9 +15,9 @@ import type {
   AgentRuntimeContext,
   AgentRuntimeValues,
   AgentType,
-} from '@core/agents/models/agent';
+} from '@core/agents/models/types';
 import type {AgentStateUpdate} from '@core/agents/models/command';
-import type {ContextBudgetSnapshot} from '@core/middleware/budget';
+import type {ContextBudgetSnapshot} from '@core/middleware/budget-types';
 
 export type MiddlewareRuntimeShared = Record<string, unknown>;
 

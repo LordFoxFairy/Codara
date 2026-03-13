@@ -7,9 +7,9 @@ import type {BaseChatModel} from '@langchain/core/language_models/chat_models';
 import {tool, type StructuredToolInterface} from '@langchain/core/tools';
 import {z} from 'zod';
 import {createAgent} from '@core/agents';
-import {createCodaraGuidelinesSource} from '@core/instructions/guidelines';
-import {createCodaraPromptSource} from '@core/instructions/prompt';
-import {buildBaseSystemMessage, buildProgressiveInstructionMessages} from '@core/instructions/system-message';
+import {createCodaraGuidelinesSource} from '@core/context/instructions/guidelines';
+import {createCodaraPromptSource} from '@core/context/instructions/prompt';
+import {buildBaseSystemMessage, buildProgressiveInstructionMessages} from '@core/context/system-message';
 import {createInstructionLoadingMiddleware} from '@core/middleware';
 import {
   createSharedTaskMiddleware,

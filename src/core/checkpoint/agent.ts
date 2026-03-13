@@ -6,8 +6,8 @@ import {
 import {z} from 'zod';
 import {FileCheckpointer} from '@core/checkpoint/file';
 import {InMemoryCheckpointer} from '@core/checkpoint/in-memory';
-import type {CheckpointRecord, Checkpointer} from '@core/checkpoint';
-import type {AgentType, PauseRequest} from '@core/agents/models/agent';
+import type {CheckpointRecord, Checkpointer} from '@core/checkpoint/types';
+import type {AgentType, PauseRequest} from '@core/agents/models/types';
 import {deepClone} from '@core/shared/clone';
 
 export type AgentCheckpointStatus = 'idle' | 'paused' | 'closed' | 'error';

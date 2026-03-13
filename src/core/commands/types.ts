@@ -1,5 +1,5 @@
-import type {AgentResult, AgentState} from '@core/agents';
-import type {CompactOptions} from '@core/checkpoint';
+import type {AgentResult, AgentState} from '@core/agents/models/agent';
+import type {CompactOptions} from '@core/checkpoint/types';
 
 export interface ParsedCodaraCommand {
   raw: string;

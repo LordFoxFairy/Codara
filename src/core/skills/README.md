@@ -3,7 +3,7 @@
 ## 目录结构
 
 ```text
-src/core/instructions/skills/
+src/core/skills/
   source.ts      # session-scoped SkillsSource
   store.ts       # 文件系统技能发现（source layering + cache）
   loading.ts     # SKILL.md frontmatter 解析与校验

@@ -1,5 +1,5 @@
 import type {BaseMessage} from '@langchain/core/messages';
-import type {AgentRuntimeContext, AgentRuntimeValues} from './agent';
+import type {AgentRuntimeContext, AgentRuntimeValues} from './types';
 import {z} from 'zod';
 import {deepClone} from '@core/shared/clone';
 

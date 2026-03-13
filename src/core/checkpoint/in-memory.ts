@@ -1,5 +1,10 @@
 import {randomUUID} from 'node:crypto';
-import type {CheckpointRecord, Checkpointer, CompactOptions, PutCheckpointInput} from '@core/checkpoint';
+import type {
+  CheckpointRecord,
+  Checkpointer,
+  CompactOptions,
+  PutCheckpointInput,
+} from '@core/checkpoint/types';
 
 interface MemoryCodec<T> {
   serialize(value: T): unknown;

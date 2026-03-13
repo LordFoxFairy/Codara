@@ -3,7 +3,6 @@ import type {BaseChatModel} from '@langchain/core/language_models/chat_models';
 import type {StructuredToolInterface} from '@langchain/core/tools';
 import {z} from 'zod';
 import {
-  createAgent,
   type AgentInputBudget,
   type AgentRuntimeContext,
   type AgentContextPreparer,
@@ -12,10 +11,12 @@ import {
   type PauseRequest,
   type ResumePayload,
   type ToolErrorHandler,
-} from '@core/agents';
-import type {BaseMiddleware, HILToolMessagePayload} from '@core/middleware';
+} from '@core/agents/models/agent';
+import {createAgent} from '@core/agents/run/agent-loop';
+import type {BaseMiddleware} from '@core/middleware/types';
+import type {HILToolMessagePayload} from '@core/middleware/hil';
 import type {ExecutionContextMetadata} from '@core/middleware/types';
-import type {AgentCheckpointer} from '@core/checkpoint';
+import type {AgentCheckpointer} from '@core/checkpoint/agent';
 import {deepClone} from '@core/shared/clone';
 import {readLatestAssistantText} from '@core/shared/messages';
 

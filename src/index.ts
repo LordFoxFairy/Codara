@@ -91,13 +91,13 @@ export {
 } from '@core/tasks';
 export {
   createCodaraGuidelinesSource,
-} from '@core/instructions/guidelines';
+} from '@core/context/instructions/guidelines';
 export {
   createCodaraPromptSource,
-} from '@core/instructions/prompt';
+} from '@core/context/instructions/prompt';
 export {
   readBaseSystemMessage,
-} from '@core/instructions/system-message';
+} from '@core/context/system-message';
 export {
   createCodaraSkillsSource,
 } from '@core/skills';
@@ -123,15 +123,15 @@ export type {
 export type {
   GuidelinesOptions,
   GuidelinesSource,
-} from '@core/instructions/guidelines';
+} from '@core/context/instructions/guidelines';
 export type {
   PromptOptions,
   PromptSource,
-} from '@core/instructions/prompt';
+} from '@core/context/instructions/prompt';
 export type {
   BaseSystemMessageBundle,
   BaseSystemMessageRuntimeData,
-} from '@core/instructions/system-message';
+} from '@core/context/system-message';
 export type {SkillsSource} from '@core/skills';
 
 export type {AgentCheckpoint, AgentCheckpointer} from '@core/checkpoint';

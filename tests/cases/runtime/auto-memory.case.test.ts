@@ -12,7 +12,7 @@ import {
   createInteractionMiddleware,
   createSession,
 } from '@core';
-import {createAutoMemoryRuntime, resolveAutoMemoryRoot} from '@core/memory/auto-memory';
+import {createAutoMemoryRuntime, resolveAutoMemoryRoot} from '@core/context/memory/auto-memory';
 
 describe('runtime auto memory cases', () => {
   it('writes global auto memory after a successful main-agent turn by default', async () => {
