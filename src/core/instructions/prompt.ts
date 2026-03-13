@@ -4,7 +4,8 @@ import path from 'node:path';
 import type {WorkspaceRootOptions} from '@core/shared/workspace';
 import {resolveWorkspaceRoot} from '@core/shared/workspace';
 
-const PROMPT_FILE_NAME = 'prompt.md';
+const HANDBOOK_FILE_NAME = 'codara.md';
+const LEGACY_PROMPT_FILE_NAME = 'prompt.md';
 
 export interface PromptWorkspaceOptions extends WorkspaceRootOptions {
   userHome?: string;
@@ -62,9 +63,9 @@ async function loadPromptFiles(files: string[]): Promise<string | undefined> {
   }
 
   return [
-    '# Codara Prompt Manual',
+    '# Codara Handbook',
     '',
-    'Loaded from the Codara prompt stack. Treat this as the product handbook for this workspace.',
+    'Loaded from the Codara handbook stack. Treat this as the core product manual for this workspace.',
     '',
     ...blocks,
   ].join('\n');
@@ -74,8 +75,10 @@ function discoverPromptFiles(options: PromptWorkspaceOptions): string[] {
   const userHome = options.userHome ?? homedir();
   const projectRoot = resolveWorkspaceRoot(options);
   return [
-    path.join(userHome, '.codara', PROMPT_FILE_NAME),
-    path.join(projectRoot, '.codara', PROMPT_FILE_NAME),
+    path.join(userHome, '.codara', HANDBOOK_FILE_NAME),
+    path.join(projectRoot, '.codara', HANDBOOK_FILE_NAME),
+    path.join(userHome, '.codara', LEGACY_PROMPT_FILE_NAME),
+    path.join(projectRoot, '.codara', LEGACY_PROMPT_FILE_NAME),
   ];
 }
 
@@ -92,9 +95,10 @@ async function readPromptFile(filePath: string): Promise<string | undefined> {
 }
 
 function renderPromptBlock(filePath: string, content: string, addSeparator: boolean): string[] {
+  const fileName = path.basename(filePath);
   return [
     ...(addSeparator ? [''] : []),
-    '## prompt.md',
+    `## ${fileName}`,
     `Path: ${filePath}`,
     '',
     content,

@@ -5,7 +5,7 @@ import path from 'node:path';
 import {runRealCliCase} from '../helpers/real-cli';
 
 describe('subagent prompt manual cases', () => {
-  it('should make .codara/prompt.md visible inside delegated child system prompts through the real CLI', async () => {
+  it('should make .codara/codara.md visible inside delegated child system prompts through the real CLI', async () => {
     const root = await mkdtemp(path.join(tmpdir(), 'codara-case-subagent-prompt-'));
     const projectRoot = path.join(root, 'project');
     const codaraPath = path.join(projectRoot, '.codara');
@@ -14,7 +14,7 @@ describe('subagent prompt manual cases', () => {
 
     await mkdir(skillAgentsDir, {recursive: true});
     await mkdir(demoSkillDir, {recursive: true});
-    await writeFile(path.join(codaraPath, 'prompt.md'), 'PROJECT_HANDBOOK_RULE\nAlways summarize what handbook rules you followed.', 'utf8');
+    await writeFile(path.join(codaraPath, 'codara.md'), 'PROJECT_HANDBOOK_RULE\nAlways summarize what handbook rules you followed.', 'utf8');
     await writeFile(path.join(projectRoot, 'AGENTS.md'), 'PROJECT_AGENTS_RULE\nRespect the workspace playbook.', 'utf8');
     await writeFile(
       path.join(demoSkillDir, 'SKILL.md'),
