@@ -5,6 +5,33 @@ import {describe, expect, it} from 'bun:test';
 import {runRealCliCase} from '../helpers/real-cli';
 
 describe('runtime command surface cases', () => {
+  it('should render paginated help through the real CLI path', async () => {
+    const root = await mkdtemp(path.join(tmpdir(), 'codara-case-help-cli-'));
+    const projectRoot = path.join(root, 'project');
+    await mkdir(path.join(projectRoot, '.codara'), {recursive: true});
+
+    const firstPage = await runRealCliCase({
+      cwd: projectRoot,
+      prompt: '/help',
+      scenario: 'command-surface',
+    });
+
+    expect(firstPage.exitCode).toBe(0);
+    expect(firstPage.output).toContain('Codara commands (page 1/2)');
+    expect(firstPage.output).toContain('Run /help 2 for more commands.');
+    expect(firstPage.output).toContain('Built-in commands:');
+
+    const secondPage = await runRealCliCase({
+      cwd: projectRoot,
+      prompt: '/help 2',
+      scenario: 'command-surface',
+    });
+
+    expect(secondPage.exitCode).toBe(0);
+    expect(secondPage.output).toContain('Codara commands (page 2/2)');
+    expect(secondPage.output).toContain('/reload');
+  });
+
   it('should render runtime status through the real CLI path', async () => {
     const root = await mkdtemp(path.join(tmpdir(), 'codara-case-status-cli-'));
     const projectRoot = path.join(root, 'project');

@@ -21,15 +21,29 @@ describe('Codara slash commands', () => {
 
     const result = await codara.executeCommand('/help');
     expect(result.ok).toBe(true);
-    expect(result.output).toContain('/help [command]');
+    expect(result.output).toContain('Codara commands (page 1/2)');
+    expect(result.output).toContain('Run /help <command> for details.');
+    expect(result.output).toContain('Run /help 2 for more commands.');
+    expect(result.output).toContain('Built-in commands:');
+    expect(result.output).toContain('/help');
     expect(result.output).toContain('/clear');
-    expect(result.output).toContain('/status');
-    expect(result.output).toContain('/memory [show|project|global]');
-    expect(result.output).toContain('/permissions [show|edit]');
-    expect(result.output).toContain('/plugin install <plugin>@<source>');
-    expect(result.output).toContain('/resume <sessionId>');
-    expect(result.output).toContain('/compact [instructions] | /compact checkpoints [keepLast]');
-    expect(result.output).toContain('/reload');
+    expect(result.output).toContain('/resume');
+    expect(result.output).not.toContain('/compact');
+    expect(result.output).not.toContain('/reload');
+
+    const secondPage = await codara.executeCommand('/help 2');
+    expect(secondPage.ok).toBe(true);
+    expect(secondPage.output).toContain('Codara commands (page 2/2)');
+    expect(secondPage.output).toContain('Built-in commands (continued):');
+    expect(secondPage.output).toContain('/compact');
+    expect(secondPage.output).toContain('/reload');
+    expect(secondPage.output).toContain('Run /help 1 to go back.');
+
+    const helpDetails = await codara.executeCommand('/help help');
+    expect(helpDetails.ok).toBe(true);
+    expect(helpDetails.output).toContain('/help');
+    expect(helpDetails.output).toContain('Usage: /help [command|page]');
+    expect(helpDetails.output).toContain('Type: built-in command');
     expect((await codara.listCommands()).map((command) => ({
       name: command.name,
       source: command.source.type,
@@ -235,6 +249,20 @@ describe('Codara slash commands', () => {
       const installed = await readFile(path.join(userHome, '.codara', 'skills', 'code-review-code-review', 'SKILL.md'), 'utf8');
       expect(installed).toContain('command-name: code-review');
       expect(installed).toContain('Provide a code review for the current pull request.');
+
+      const runtime = createCodara({
+        cwd: projectRoot,
+        projectRoot,
+        userHome,
+        model: new EchoModel() as unknown as BaseChatModel,
+        builtinTools: false,
+      });
+
+      const help = await runtime.executeCommand('/help code-review');
+      expect(help.ok).toBe(true);
+      expect(help.output).toContain('Type: skill command');
+      expect(help.output).toContain('Scope: global');
+      expect(help.output).toContain('Skill: code-review-code-review');
     } finally {
       if (previousOverride === undefined) {
         delete process.env.CODARA_PLUGIN_CODE_REVIEW_SOURCE;

@@ -67,7 +67,10 @@ src/index.ts
 ## Slash Commands
 
 - `/help`
-  - 列出当前内建命令与由 skills 暴露的动态命令
+  - 默认显示分页后的命令首页
+  - 支持 `/help 2` 这类翻页
+  - 支持 `/help <command>` 查看单个命令详情
+  - 会区分 built-in 与 skill command，并标出 skill 作用域
 - `/clear`
   - 清空当前 conversation state
   - 保留当前 `sessionId`，直接进入下一轮新会话
