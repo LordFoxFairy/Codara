@@ -56,6 +56,7 @@ export {
   persistAllowedPermission,
   persistPermissionScope,
   persistPermissionRule,
+  resolvePermissionSettingsFile,
   validatePermissionSettings,
   createSummaryMiddleware,
   createSkillsMiddleware,

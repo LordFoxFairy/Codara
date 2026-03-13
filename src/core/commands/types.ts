@@ -47,15 +47,39 @@ export interface CodaraCommandAgent {
   compactCheckpoints(options?: CompactOptions): Promise<void>;
   hydrate(): Promise<AgentState>;
   getAgentState(): AgentState;
-  getState(): {sessionId: string};
+  getState(): {
+    sessionId: string;
+    sessionStatus: string;
+    metadata?: {
+      title?: string;
+      lastMessage?: string;
+      messageCount?: number;
+      lastActivity?: string;
+      usage?: {
+        modelCalls?: number;
+        promptTokens?: number;
+        completionTokens?: number;
+        totalTokens?: number;
+      };
+      contextWindow?: {
+        maxInputTokens: number;
+        availableInputTokens: number;
+        estimatedInputTokens: number;
+        usagePercent: number;
+        overBudget: boolean;
+      };
+    };
+  };
   invoke(input: string): Promise<AgentResult>;
   reloadSources(): Promise<void>;
+  reset(): Promise<void>;
 }
 
 export interface CodaraCommandEnvironment {
   cwd?: string;
   projectRoot?: string;
   userHome?: string;
+  modelAlias?: string;
 }
 
 export interface CodaraCommandContext {

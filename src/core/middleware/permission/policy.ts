@@ -639,12 +639,16 @@ function resolveUserHome(options: PermissionPolicyOptions): string {
   return path.resolve(options.userHome ?? os.homedir());
 }
 
-function resolveSettingsFile(options: PermissionPolicyOptions): string {
+export function resolvePermissionSettingsFile(options: PermissionPolicyOptions): string {
   if (options.settingsFile?.trim()) {
     return path.resolve(options.settingsFile);
   }
 
   return path.join(resolveProjectRoot(options), '.codara', 'settings.local.json');
+}
+
+function resolveSettingsFile(options: PermissionPolicyOptions): string {
+  return resolvePermissionSettingsFile(options);
 }
 
 function readNormalizedSettingsRecord(
