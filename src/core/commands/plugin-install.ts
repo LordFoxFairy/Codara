@@ -4,8 +4,11 @@ import {cp, mkdir, mkdtemp, readdir, readFile, rm, writeFile} from 'node:fs/prom
 import {homedir, tmpdir} from 'node:os';
 import path from 'node:path';
 import {parseMarkdownFrontmatterDocument} from '@core/skills/loading';
+import {resolveWorkspaceRoot} from '@core/shared/workspace';
 
 export interface PluginInstallEnvironment {
+  cwd?: string;
+  projectRoot?: string;
   userHome?: string;
 }
 
@@ -73,7 +76,7 @@ export async function installPluginSkills(
     ].join('\n'));
   }
 
-  const destinationRoot = path.join(path.resolve(environment.userHome ?? homedir()), '.codara', 'skills');
+  const destinationRoot = await resolvePluginDestinationRoot(environment);
   const sourceRoot = await materializePluginSource(definition);
 
   try {
@@ -122,6 +125,71 @@ export async function installPluginSkills(
       await sourceRoot.cleanup();
     }
   }
+}
+
+async function resolvePluginDestinationRoot(environment: PluginInstallEnvironment): Promise<string> {
+  const scope = await resolvePluginInstallScope(environment);
+  if (scope === 'project') {
+    return path.join(resolveWorkspaceRoot({
+      cwd: environment.cwd,
+      projectRoot: environment.projectRoot,
+    }), '.codara', 'skills');
+  }
+
+  return path.join(path.resolve(environment.userHome ?? homedir()), '.codara', 'skills');
+}
+
+async function resolvePluginInstallScope(environment: PluginInstallEnvironment): Promise<'global' | 'project'> {
+  const userSettings = await readCodaraSettings(path.join(path.resolve(environment.userHome ?? homedir()), '.codara', 'settings.json'));
+  const projectRoot = resolveWorkspaceRoot({
+    cwd: environment.cwd,
+    projectRoot: environment.projectRoot,
+  });
+  const projectSettings = await readCodaraSettings(path.join(projectRoot, '.codara', 'settings.json'));
+
+  if (typeof projectSettings.plugins?.installGlobal === 'boolean') {
+    return projectSettings.plugins.installGlobal ? 'global' : 'project';
+  }
+
+  if (typeof userSettings.plugins?.installGlobal === 'boolean') {
+    return userSettings.plugins.installGlobal ? 'global' : 'project';
+  }
+
+  return 'global';
+}
+
+interface CodaraSettingsRecord {
+  plugins?: {
+    installGlobal?: boolean;
+  };
+}
+
+async function readCodaraSettings(filePath: string): Promise<CodaraSettingsRecord> {
+  if (!existsSync(filePath)) {
+    return {};
+  }
+
+  try {
+    const parsed = JSON.parse(await readFile(filePath, 'utf8')) as unknown;
+    if (!isRecord(parsed)) {
+      return {};
+    }
+    return {
+      plugins: readPluginSettings(parsed.plugins),
+    };
+  } catch {
+    return {};
+  }
+}
+
+function readPluginSettings(value: unknown): CodaraSettingsRecord['plugins'] {
+  if (!isRecord(value)) {
+    return undefined;
+  }
+
+  return {
+    ...(typeof value.installGlobal === 'boolean' ? {installGlobal: value.installGlobal} : {}),
+  };
 }
 
 interface MaterializedPluginSource {
@@ -285,6 +353,10 @@ function normalizeAllowedTools(value: unknown): string[] {
 
 function escapeYamlScalar(value: string): string {
   return JSON.stringify(value);
+}
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === 'object' && value !== null && !Array.isArray(value);
 }
 
 function parsePluginSpec(spec: string): {name: string; source: string} {
