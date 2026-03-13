@@ -7,9 +7,11 @@ import {createAgentFileCheckpointer} from '@core/checkpoint';
 import type {BaseMiddleware, HILMiddlewareOptions, LoggingMiddlewareOptions} from '@core/middleware';
 import type {SummarySettings} from '@core/middleware/summary';
 import {
+  createAskUserTool,
   createBudgetMiddleware,
   createDailySessionFileLogSink,
   createHILMiddleware,
+  createInteractionMiddleware,
   createLoggingMiddleware,
 } from '@core/middleware';
 import {
@@ -152,6 +154,8 @@ export function createCodaraRuntime(options: CodaraRuntimeOptions = {}): Codara 
     ? loadModelRoutingConfigFromPath(codaraPath).then((config) => createCodaraModelCatalog({config}))
     : options.catalog;
   const logging = resolveRuntimeLoggingOptions(options);
+  const runtimeInteractionTools = options.hil === false ? [] : [createAskUserTool()];
+  const runtimeInteractionMiddleware = options.hil === false ? [] : [createInteractionMiddleware()];
   const permissionMiddleware = options.hil === false ? [] : [createPermissionMiddleware({
     ...(typeof options.hil === 'object' && options.hil !== null ? options.hil : {}),
     cwd: options.cwd,
@@ -161,7 +165,8 @@ export function createCodaraRuntime(options: CodaraRuntimeOptions = {}): Codara 
 
   return createCodara({
     ...options,
-    middleware: [...(options.middleware ?? []), ...permissionMiddleware],
+    tools: mergeRuntimeTools(options.tools, runtimeInteractionTools),
+    middleware: [...(options.middleware ?? []), ...runtimeInteractionMiddleware, ...permissionMiddleware],
     hil: false,
     ...(logging === false ? {logging: false} : {logging}),
     ...(catalog ? {catalog} : {}),
@@ -311,6 +316,27 @@ async function reopenCodaraSession(options: CodaraOptions, state: SessionState):
 
 function normalizeAlias(alias: string | undefined): string {
   return alias?.trim() || DEFAULT_CODARA_MODEL_ALIAS;
+}
+
+function mergeRuntimeTools(
+  callerTools: StructuredToolInterface[] | undefined,
+  runtimeTools: StructuredToolInterface[],
+): StructuredToolInterface[] | undefined {
+  if (runtimeTools.length === 0) {
+    return callerTools;
+  }
+
+  const byName = new Map<string, StructuredToolInterface>();
+  for (const tool of callerTools ?? []) {
+    byName.set(tool.name, tool);
+  }
+  for (const tool of runtimeTools) {
+    if (!byName.has(tool.name)) {
+      byName.set(tool.name, tool);
+    }
+  }
+
+  return [...byName.values()];
 }
 
 function resolveCodaraRuntimePath(options: Pick<CodaraRuntimeOptions, 'codaraPath' | 'cwd' | 'projectRoot'>): string {

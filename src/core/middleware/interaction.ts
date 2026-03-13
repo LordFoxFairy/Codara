@@ -55,7 +55,7 @@ export function createAskUserTool() {
     async () => 'AskUser requires interaction middleware to pause and collect user input.',
     {
       name: ASK_USER_TOOL_NAME,
-      description: 'Request structured user input before the agent continues.',
+      description: 'Request structured user input before the agent continues. Use this when key requirements, scope, priorities, or constraints are missing and proceeding would force guesses, weak plans, or wasted work. Prefer AskUser before reading files, planning architecture, or running exploratory steps when a small number of concrete user answers would materially change the next action. If clarification is needed, call AskUser directly instead of only saying that you will ask questions.',
       schema: AskUserSchema,
     },
   );
@@ -66,6 +66,7 @@ export function createInteractionMiddleware(options: InteractionMiddlewareOption
 
   return createHILMiddleware({
     ...options,
+    name: options.name?.trim() || 'InteractionMiddleware',
     resolveDecision: async (input) => {
       if (input.context.toolCall.name !== askUserToolName) {
         return options.resolveDecision?.(input);
