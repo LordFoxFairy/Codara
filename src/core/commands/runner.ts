@@ -1,6 +1,7 @@
 import type {
-  CodaraCommandDefinition,
   CodaraCommandAgent,
+  CodaraCommandDefinition,
+  CodaraCommandEnvironment,
   CodaraCommandResult,
   CodaraCommandSpec,
   ParsedCodaraCommand,
@@ -15,6 +16,7 @@ export interface CodaraCommandRunner {
 export interface CreateCodaraCommandRunnerOptions {
   agent: CodaraCommandAgent;
   getDynamicCommands?: () => Promise<readonly CodaraCommandDefinition[]>;
+  environment?: CodaraCommandEnvironment;
 }
 
 export function createCodaraCommandRunner(options: CreateCodaraCommandRunnerOptions): CodaraCommandRunner {
@@ -41,7 +43,12 @@ export function createCodaraCommandRunner(options: CreateCodaraCommandRunnerOpti
         };
       }
 
-      return definition.execute({command, registry, agent: options.agent});
+      return definition.execute({
+        command,
+        registry,
+        agent: options.agent,
+        environment: options.environment ?? {},
+      });
     },
   };
 }
@@ -92,6 +99,7 @@ function toSpec(command: CodaraCommandDefinition): CodaraCommandSpec {
     usage: command.usage,
     description: command.description,
     source: command.source,
+    ...(command.help ? {help: command.help} : {}),
     ...(command.aliases?.length ? {aliases: [...command.aliases]} : {}),
   };
 }

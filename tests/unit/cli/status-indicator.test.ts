@@ -21,12 +21,38 @@ describe('cli status indicator', () => {
     }, 0).banner).toBe('⏺ Responding');
   });
 
-  it('should describe paused, done, idle, busy-hil, and error states with product-facing text', () => {
+  it('should describe paused, done, idle, and error states with product-facing text', () => {
     expect(describeStatusIndicator({runState: {status: 'paused'}}).banner).toBe('⏺ Waiting for input');
     expect(describeStatusIndicator({runState: {status: 'done'}}).banner).toBe('✓ Ready for next prompt');
     expect(describeStatusIndicator({runState: {status: 'idle'}}).banner).toBeUndefined();
     expect(describeStatusIndicator({runState: {status: 'idle'}}).status).toBe('Ready');
     expect(describeStatusIndicator({runState: {status: 'error', error: 'boom'}}).banner).toBe('✕ Review the latest error');
-    expect(describeStatusIndicator({runState: {status: 'paused'}, hilBusy: true}).banner).toBe('⏺ Applying selection');
+  });
+
+  it('should surface runtime event labels for active review and command work', () => {
+    expect(describeStatusIndicator({
+      runState: {status: 'paused'},
+      latestRuntimeEvent: {
+        id: 'evt-1',
+        sessionId: 'session-1',
+        timestamp: new Date().toISOString(),
+        kind: 'hil',
+        phase: 'start',
+        status: 'paused',
+        label: 'Permission review required',
+      },
+    }).banner).toBe('⏺ Permission review required');
+    expect(describeStatusIndicator({
+      runState: {status: 'running'},
+      latestRuntimeEvent: {
+        id: 'evt-2',
+        sessionId: 'session-1',
+        timestamp: new Date().toISOString(),
+        kind: 'command',
+        phase: 'start',
+        status: 'running',
+        label: 'Running /reload',
+      },
+    }).banner).toBe('⏺ Running /reload');
   });
 });

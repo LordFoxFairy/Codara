@@ -56,6 +56,7 @@ export {
   persistAllowedPermission,
   persistPermissionScope,
   persistPermissionRule,
+  resolvePermissionSettingsFile,
   validatePermissionSettings,
   createSummaryMiddleware,
   createSkillsMiddleware,
@@ -118,6 +119,8 @@ export {
 export {
   createSession,
   FileSessionStore,
+  type CodaraRuntimeEvent,
+  type CodaraRuntimeEventListener,
   type Session,
   type SessionStore,
   type SessionState,

@@ -35,7 +35,7 @@ function createExecution(
 }
 
 function readSummaryMessage(messages: BaseMessage[]): BaseMessage | undefined {
-  return messages.find((message) => message.getType() === 'ai' && message.text.startsWith('Summary:\n'));
+  return messages.find((message) => message.type === 'ai' && message.text.startsWith('Summary:\n'));
 }
 
 describe('summary middleware', () => {

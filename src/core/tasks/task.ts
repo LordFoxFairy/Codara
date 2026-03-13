@@ -86,6 +86,12 @@ export const TASK_MIDDLEWARE_SYSTEM_PROMPT = `## Task Delegation
 You can delegate focused work to a dedicated subagent with the \`Task\` tool.
 Use it when a sub-problem deserves a fresh context window and a concise summary back to the current agent.
 
+Workflow guidance:
+- for non-trivial work, first use \`write_todos\` to make the active plan visible
+- use \`Task\` only when the work benefits from a fresh context window or a specialist delegate
+- keep cross-agent coordination in \`TaskCreate\` / \`TaskUpdate\` / \`TaskList\`
+- do not use slash commands or permission reviews as a task coordination mechanism
+
 When using \`Task\`:
 - choose the best available \`subagent_type\` when one fits
 - omit \`subagent_type\` to use the default general-purpose delegate

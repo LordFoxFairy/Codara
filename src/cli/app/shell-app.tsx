@@ -24,21 +24,22 @@ export interface CodaraCliAppProps {
   hilAutoActions?: CliHilAutoAction[];
   autoExitOnSettledPrompt?: boolean;
   reopenSession?: (sessionId: string) => Promise<void>;
+  openFile?: (targetPath: string) => Promise<boolean>;
 }
 
 export function CodaraCliApp(props: CodaraCliAppProps): React.JSX.Element {
   const {
     codara,
-    cwd,
     initialPrompt,
     modelAlias,
     startupMessage,
     hilAutoActions,
     autoExitOnSettledPrompt = false,
     reopenSession,
+    openFile,
   } = props;
   const {exit} = useApp();
-  const shell = useCliController({codara, initialPrompt, startupMessage, hilAutoActions, reopenSession});
+  const shell = useCliController({codara, initialPrompt, startupMessage, hilAutoActions, reopenSession, openFile});
   const terminalWidth = useTerminalWidth();
   const layoutMode = resolveCliLayoutMode(terminalWidth);
   const hasInitialPrompt = Boolean(initialPrompt?.trim());
@@ -95,18 +96,25 @@ export function CodaraCliApp(props: CodaraCliAppProps): React.JSX.Element {
   return (
     <Box flexDirection="column" paddingX={1} paddingY={1}>
       <Header
-        cwd={cwd}
         layoutMode={layoutMode}
         session={shell.sessionState}
         modelAlias={modelAlias}
         runState={shell.runState}
-        activeTurn={shell.activeTurn}
-        hilBusy={shell.hilReview?.busy}
+        latestRuntimeEvent={shell.latestRuntimeEvent}
       />
       {shell.hasConversation ? (
-        <Transcript coreMessages={shell.coreMessages} notices={shell.notices} activeTurn={shell.activeTurn} />
+        <Transcript
+          coreMessages={shell.coreMessages}
+          notices={shell.notices}
+          activeTurn={shell.activeTurn}
+          runtimeEvents={shell.runtimeEvents}
+        />
       ) : <WelcomeState layoutMode={layoutMode} />}
-      <ActivityLine runState={shell.runState} activeTurn={shell.activeTurn} hilBusy={shell.hilReview?.busy} />
+      <ActivityLine
+        runState={shell.runState}
+        activeTurn={shell.activeTurn}
+        latestRuntimeEvent={shell.latestRuntimeEvent}
+      />
       {shell.hilReview ? <HilPanel review={shell.hilReview} /> : null}
       <PromptFrame
         terminalWidth={terminalWidth}

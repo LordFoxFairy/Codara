@@ -1,19 +1,16 @@
 import React from 'react';
 import {Box, Text} from 'ink';
-import type {SessionState} from '@core';
+import type {CodaraRuntimeEvent, SessionState} from '@core';
 import type {CliLayoutMode} from '../../app/layout-mode';
-import type {CliActiveTurn, CliRunState} from '../../app/view-state';
-import {RobotMark} from './robot-mark';
+import type {CliRunState} from '../../app/view-state';
 import {describeStatusIndicator} from '../../hooks/use-status-indicator';
 
 interface HeaderProps {
-  cwd: string;
   layoutMode: CliLayoutMode;
   session: SessionState;
   modelAlias: string;
   runState: CliRunState;
-  activeTurn?: CliActiveTurn;
-  hilBusy?: boolean;
+  latestRuntimeEvent?: CodaraRuntimeEvent;
 }
 
 function MetaRow({
@@ -38,21 +35,19 @@ function MetaRow({
 }
 
 export function Header(props: HeaderProps): React.JSX.Element {
-  const {cwd, layoutMode, session, modelAlias, runState, activeTurn, hilBusy} = props;
-  const isCompact = layoutMode !== 'wide';
+  const {layoutMode, session, modelAlias, runState, latestRuntimeEvent} = props;
   const isMinimal = layoutMode === 'minimal';
   const title = session.metadata?.title?.trim() || 'Codara Code';
   const subtitle = session.metadata?.lastMessage?.trim() || 'Session ready for prompts';
   const messageCount = String(session.metadata?.messageCount ?? 0);
-  const status = describeStatusIndicator({runState, activeTurn, hilBusy});
+  const status = describeStatusIndicator({runState, latestRuntimeEvent});
+  const contextWindow = session.metadata?.contextWindow;
+  const contextUsage = contextWindow
+    ? `${Math.round(contextWindow.usagePercent)}% (${contextWindow.estimatedInputTokens}/${contextWindow.maxInputTokens})`
+    : 'n/a';
 
   return (
-    <Box flexDirection={isCompact ? 'column' : 'row'}>
-      {!isMinimal ? (
-        <Box flexShrink={0}>
-          <RobotMark />
-        </Box>
-      ) : null}
+    <Box flexDirection="column">
       <Box flexDirection="column" flexGrow={1} flexShrink={1}>
         <Text color="blueBright" wrap="truncate-end">
           {title}
@@ -62,11 +57,10 @@ export function Header(props: HeaderProps): React.JSX.Element {
         </Text>
         <Box marginTop={1} flexDirection="column">
           <MetaRow label="Model" value={modelAlias} />
-          {!isMinimal ? <MetaRow label="Route" value={modelAlias} /> : null}
-          {!isMinimal ? <MetaRow label="Session" value={session.sessionId} valueWrap="truncate-middle" /> : null}
+          <MetaRow label="Session" value={session.sessionId} valueWrap="truncate-middle" />
           {!isMinimal ? <MetaRow label="Msgs" value={messageCount} /> : null}
+          <MetaRow label="Context" value={contextUsage} />
           <MetaRow label="Status" value={status.status} />
-          <MetaRow label="Path" value={cwd} valueWrap="truncate-middle" />
         </Box>
       </Box>
     </Box>

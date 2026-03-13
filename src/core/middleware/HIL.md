@@ -106,7 +106,7 @@ Recommended conventions:
 
 - `core/middleware/hil.ts`
   - pause/resume protocol
-- `core/permissions/*`
+- `core/middleware/permission/*`
   - permission policy and persistence
 - CLI or other hosts
   - render the shared HIL UI from `ui.form` and `ui.actions`

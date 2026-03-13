@@ -15,7 +15,7 @@ import {
   persistPermissionScope,
   type PermissionGrantScope,
   type PermissionPolicyOptions,
-} from '@core/permissions/policy';
+} from '@core/middleware/permission/policy';
 
 export interface PermissionRuntimeOptions extends PermissionPolicyOptions {
   includeEditAction?: boolean;

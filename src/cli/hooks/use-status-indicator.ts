@@ -1,4 +1,5 @@
 import {useEffect, useState} from 'react';
+import type {CodaraRuntimeEvent} from '@core';
 import type {CliActiveTurn, CliRunState} from '../app/view-state';
 
 const THINKING_FRAMES = ['✳ Thinking', '✳ Thinking.', '✳ Thinking..', '✳ Thinking...'];
@@ -8,7 +9,7 @@ const FRAME_INTERVAL_MS = 220;
 export interface StatusIndicatorInput {
   runState: CliRunState;
   activeTurn?: CliActiveTurn;
-  hilBusy?: boolean;
+  latestRuntimeEvent?: CodaraRuntimeEvent;
 }
 
 export interface StatusIndicatorModel {
@@ -22,7 +23,6 @@ export function useStatusIndicator(input: StatusIndicatorInput): StatusIndicator
 
   useEffect(() => {
     if (input.runState.status !== 'running') {
-      setFrame(0);
       return;
     }
 
@@ -33,22 +33,41 @@ export function useStatusIndicator(input: StatusIndicatorInput): StatusIndicator
     return () => clearInterval(timer);
   }, [input.runState.status]);
 
-  return describeStatusIndicator(input, frame);
+  return describeStatusIndicator(input, input.runState.status === 'running' ? frame : 0);
 }
 
 export function describeStatusIndicator(input: StatusIndicatorInput, frame = 0): StatusIndicatorModel {
-  const {runState, activeTurn, hilBusy} = input;
-
-  if (hilBusy) {
-    return {
-      banner: '⏺ Applying selection',
-      status: 'Applying',
-      color: 'blueBright',
-    };
-  }
+  const {runState, activeTurn, latestRuntimeEvent} = input;
+  const activeEventLabel = latestRuntimeEvent?.label?.trim();
 
   switch (runState.status) {
     case 'running':
+      if (latestRuntimeEvent?.kind === 'model') {
+        if (activeTurn?.response.trim()) {
+          return {
+            banner: cycle(RESPONDING_FRAMES, frame),
+            status: 'Responding',
+            color: 'green',
+          };
+        }
+
+        return {
+          banner: cycle(THINKING_FRAMES, frame),
+          status: 'Thinking',
+          color: 'yellow',
+        };
+      }
+
+      if (activeEventLabel) {
+        return {
+          banner: `⏺ ${activeEventLabel}`,
+          status: activeEventLabel,
+          color: latestRuntimeEvent?.kind === 'command' || latestRuntimeEvent?.kind === 'summary'
+            ? 'blueBright'
+            : 'yellow',
+        };
+      }
+
       if (activeTurn?.response.trim()) {
         return {
           banner: cycle(RESPONDING_FRAMES, frame),
@@ -64,14 +83,20 @@ export function describeStatusIndicator(input: StatusIndicatorInput, frame = 0):
       };
     case 'paused':
       return {
-        banner: '⏺ Waiting for input',
-        status: 'Waiting',
+        banner: latestRuntimeEvent?.label?.trim()
+          ? `⏺ ${latestRuntimeEvent.label.trim()}`
+          : '⏺ Waiting for input',
+        status: latestRuntimeEvent?.label?.trim() || 'Waiting',
         color: 'blueBright',
       };
     case 'done':
       return {
-        banner: '✓ Ready for next prompt',
-        status: 'Ready',
+        banner: latestRuntimeEvent?.phase === 'end' && latestRuntimeEvent.label.trim()
+          ? `✓ ${latestRuntimeEvent.label.trim()}`
+          : '✓ Ready for next prompt',
+        status: latestRuntimeEvent?.phase === 'end' && latestRuntimeEvent.label.trim()
+          ? latestRuntimeEvent.label.trim()
+          : 'Ready',
         color: 'green',
       };
     case 'error':

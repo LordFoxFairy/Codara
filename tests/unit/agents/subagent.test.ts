@@ -49,7 +49,7 @@ class HumanCountModel {
 class ChildProbeModel {
   async invoke(messages: BaseMessage[]): Promise<AIMessage> {
     const systemText = messages
-      .filter((message) => message.getType() === 'system')
+      .filter((message) => message.type === 'system')
       .map((message) => String(message.content))
       .join('\n---\n');
     const humanCount = messages.filter((message) => HumanMessage.isInstance(message)).length;

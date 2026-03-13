@@ -19,6 +19,11 @@ import type {AgentCheckpointer} from '@core/checkpoint';
 import {deepClone} from '@core/shared/clone';
 import {readLatestAssistantText} from '@core/shared/messages';
 
+export type DelegatedAgentModelResolver =
+  | BaseChatModel
+  | Promise<BaseChatModel>
+  | (() => BaseChatModel | Promise<BaseChatModel>);
+
 const delegatedAgentResultSchema = z.object({
   type: z.literal('delegated_agent_result'),
   sessionId: z.string(),
@@ -57,7 +62,7 @@ const delegatedRuntimeContextSchema = z.object({
 }).loose();
 
 export interface DelegatedAgentOptions {
-  model: BaseChatModel;
+  model: DelegatedAgentModelResolver;
   tools?: StructuredToolInterface[];
   middleware?: BaseMiddleware[];
   handleToolErrors?: ToolErrorHandler;
@@ -111,7 +116,7 @@ interface DelegatedChildInput {
   maxTurns?: number;
   toolName: string;
   parentExecution: ParentExecution;
-  profileModel?: BaseChatModel;
+  profileModel?: DelegatedAgentModelResolver;
   profileMiddleware?: BaseMiddleware[];
   profileContext?: AgentRuntimeContext;
   profileTools?: StructuredToolInterface[];
@@ -132,7 +137,7 @@ export async function runDelegatedAgent(
   options: DelegatedAgentOptions,
   input: DelegatedChildInput,
 ): Promise<ToolMessage> {
-  const childOptions = buildDelegatedChildOptions(options, input);
+  const childOptions = await buildDelegatedChildOptions(options, input);
   const result = await runDelegatedChild(childOptions, input);
 
   if (result.state.pendingPause) {
@@ -204,14 +209,14 @@ function createDelegatedAgentInput(prompt: string): BaseMessage[] {
   return messages;
 }
 
-function buildDelegatedChildOptions(
+async function buildDelegatedChildOptions(
   options: DelegatedAgentOptions,
   input: DelegatedChildInput,
-): CreateAgentOptions {
+): Promise<CreateAgentOptions> {
   const mergedContext = mergeRuntimeContext(options.context, input.profileContext);
 
   return {
-    model: input.profileModel ?? options.model,
+    model: await resolveDelegatedModel(input.profileModel ?? options.model),
     agentType: 'subagent',
     ...(mergeDelegatedSystemMessages(options.systemMessages, input.profileSystemPrompt, options.systemPrompt).length > 0
       ? {systemMessage: mergeDelegatedSystemMessages(options.systemMessages, input.profileSystemPrompt, options.systemPrompt)}
@@ -302,6 +307,14 @@ function mergeRuntimeContext(
     ...(baseContext ? deepClone(baseContext) : {}),
     ...(profileContext ? deepClone(profileContext) : {}),
   };
+}
+
+async function resolveDelegatedModel(model: DelegatedAgentModelResolver): Promise<BaseChatModel> {
+  if (typeof model === 'function') {
+    return await model();
+  }
+
+  return await model;
 }
 
 function isDelegationTool(tool: StructuredToolInterface | undefined): boolean {
