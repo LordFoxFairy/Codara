@@ -1,14 +1,14 @@
 export {
   createPermissionMiddleware,
   type PermissionMiddlewareOptions,
-} from '@core/permissions/middleware';
+} from '@core/middleware/permission/middleware';
 export {
   createPermissionRuntime,
   handlePermissionFallbackResume,
   isPermissionPause,
   type PermissionRuntime,
   type PermissionRuntimeOptions,
-} from '@core/permissions/runtime';
+} from '@core/middleware/permission/runtime';
 export {
   ensurePermissionSettingsFile,
   evaluatePermissionExpression,
@@ -17,6 +17,7 @@ export {
   persistAllowedPermission,
   persistPermissionScope,
   persistPermissionRule,
+  resolvePermissionSettingsFile,
   validatePermissionSettings,
   type PermissionDecision,
   type PermissionEvaluationResult,
@@ -25,4 +26,4 @@ export {
   type PermissionRuleMatch,
   type PermissionSourceInfo,
   type PermissionValidationResult,
-} from '@core/permissions/policy';
+} from '@core/middleware/permission/policy';

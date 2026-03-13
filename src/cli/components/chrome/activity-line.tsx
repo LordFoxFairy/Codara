@@ -1,16 +1,17 @@
 import React from 'react';
 import {Box, Text} from 'ink';
+import type {CodaraRuntimeEvent} from '@core';
 import type {CliActiveTurn, CliRunState} from '../../app/view-state';
 import {useStatusIndicator} from '../../hooks/use-status-indicator';
 
 interface ActivityLineProps {
   runState: CliRunState;
   activeTurn?: CliActiveTurn;
-  hilBusy?: boolean;
+  latestRuntimeEvent?: CodaraRuntimeEvent;
 }
 
-export function ActivityLine({runState, activeTurn, hilBusy}: ActivityLineProps): React.JSX.Element | null {
-  const status = useStatusIndicator({runState, activeTurn, hilBusy});
+export function ActivityLine({runState, activeTurn, latestRuntimeEvent}: ActivityLineProps): React.JSX.Element | null {
+  const status = useStatusIndicator({runState, activeTurn, latestRuntimeEvent});
   if (!status.banner) {
     return null;
   }

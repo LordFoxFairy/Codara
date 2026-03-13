@@ -133,7 +133,7 @@ createCodara(...)
 - `TaskMiddleware` = 注册正式 `Task` 委派工具，是产品主入口
 - `SharedTaskMiddleware` = 注册 `TaskCreate/TaskUpdate/TaskList`
 
-更完整的 `subagent/task` 结构、流程图、测试地图与当前不足，见 `docs/subagent-task-architecture.md`。
+更完整的 `subagent/task` 结构、边界与当前规则，见 `src/core/tasks/README.md`。
 
 子代理类型本身不在 core 里硬编码。
 它们应来自真实 agent definition 文件，例如：
@@ -163,14 +163,28 @@ createCodara(...)
 - slash commands 归属 `src/core/commands/`
 - 当前内建命令：
   - `/help`
+  - `/clear`
+  - `/status`
+  - `/memory`
+  - `/permissions`
+  - `/plugin`
   - `/resume`
   - `/compact`
-- `/reload`
+  - `/reload`
   - 刷新 `AGENTS.md` source 与 skills discovery cache
 - skills 还可以通过 `command-name` 显式声明动态 slash commands
+- `/help`
+  - 默认输出分页后的命令首页
+  - 支持 `/help <page>` 翻页
+  - 支持 `/help <command>` 查看详情
+  - 对 skill command 会标出 project/global/external scope
 - 命令来源会被正式区分为：
   - `builtin`：宿主内建命令
   - `skill`：由 skills discovery 暴露的命令入口
+- skill command 在真正调用 agent 之前会做前置能力检查：
+  - 校验 skill `allowed-tools` 是否能被当前 runtime 提供
+  - 对 `Bash(...)` 规则额外检查对应 shell binary 是否在 PATH 中
+  - 缺能力时直接返回明确错误，不盲目发起 agent invoke
 - 这些命令属于 Codara agent surface，不属于 `createAgent(...)` 内核
 - `/compact`
   - 通过 session 入口触发 summary middleware
@@ -182,7 +196,7 @@ createCodara(...)
 
 ## Permission 与 HIL
 
-- `permissions/*`
+- `middleware/permission/*`
   - 负责 settings 文件、规则评估、`allow/ask/deny`、`always` 持久化
 - `middleware/hil.ts`
   - 只负责通用 pause / resume 协议

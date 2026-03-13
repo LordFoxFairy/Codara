@@ -1,7 +1,7 @@
 import {readdir, readFile, stat} from 'node:fs/promises';
 import path from 'node:path';
 import {z} from 'zod';
-import {parseMarkdownFrontmatterDocument} from '@core/skills/loading';
+import {parseMarkdownDocument} from '@core/skills/loading';
 import {normalizeDiscoveredSkills} from '@core/skills/metadata';
 import type {SkillMetadata, SkillStore} from '@core/skills/types';
 
@@ -165,7 +165,7 @@ async function parseDefinitionFile(filePath: string): Promise<SubagentDefinition
     return undefined;
   }
 
-  const document = parseMarkdownFrontmatterDocument(content, filePath);
+  const document = parseMarkdownDocument(content, filePath);
   if (!document) {
     return undefined;
   }
@@ -173,7 +173,7 @@ async function parseDefinitionFile(filePath: string): Promise<SubagentDefinition
   const frontmatter = subagentFrontmatterSchema.safeParse(document.frontmatter);
   const parsedFrontmatter = frontmatter.success ? frontmatter.data : {};
   const name = parsedFrontmatter.name ?? path.basename(filePath, '.md');
-  const description = parsedFrontmatter.description ?? document.body.split('\n').find((line) => line.trim())?.trim() ?? name;
+  const description = parsedFrontmatter.description ?? readDefaultDefinitionDescription(document.body, name);
   const tools = readStringList(document.frontmatter.tools);
   const middlewareNames = readStringList(document.frontmatter.middleware ?? document.frontmatter.middlewares);
   const model = parsedFrontmatter.model;
@@ -193,6 +193,19 @@ async function parseDefinitionFile(filePath: string): Promise<SubagentDefinition
     ...(typeof maxTurns === 'number' ? {maxTurns} : {}),
     ...(Object.keys(hints).length > 0 ? {hints} : {}),
   };
+}
+
+function readDefaultDefinitionDescription(body: string, fallback: string): string {
+  for (const line of body.split('\n')) {
+    const trimmed = line.trim();
+    if (!trimmed) {
+      continue;
+    }
+
+    return trimmed.replace(/^#+\s*/, '') || fallback;
+  }
+
+  return fallback;
 }
 
 async function fileExists(filePath: string): Promise<boolean> {

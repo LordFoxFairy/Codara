@@ -1,6 +1,6 @@
 import {randomUUID} from 'node:crypto';
 import {useCallback, useEffect, useMemo, useRef, useState} from 'react';
-import type {Codara, SessionState} from '@core';
+import type {Codara, CodaraRuntimeEvent, SessionState} from '@core';
 import {AIMessageChunk, type BaseMessage} from '@langchain/core/messages';
 import {
   backspaceComposerText,
@@ -41,6 +41,7 @@ export interface UseCliControllerOptions {
   startupMessage?: string;
   hilAutoActions?: CliHilAutoAction[];
   reopenSession?: (sessionId: string) => Promise<void>;
+  openFile?: (targetPath: string) => Promise<boolean>;
 }
 
 export interface CliController {
@@ -50,6 +51,8 @@ export interface CliController {
   activeTurn?: CliActiveTurn;
   hilReview?: CliHilReviewState;
   coreMessages: readonly BaseMessage[];
+  runtimeEvents: readonly CodaraRuntimeEvent[];
+  latestRuntimeEvent?: CodaraRuntimeEvent;
   hasConversation: boolean;
   runState: CliRunState;
   sessionState: SessionState;
@@ -81,6 +84,7 @@ export function useCliController(options: UseCliControllerOptions): CliControlle
     startupMessage = STARTUP_MESSAGE,
     hilAutoActions = [],
     reopenSession,
+    openFile,
   } = options;
   const [composer, setComposer] = useState(() => createComposerState());
   const [composerActivityVersion, setComposerActivityVersion] = useState(0);
@@ -94,6 +98,7 @@ export function useCliController(options: UseCliControllerOptions): CliControlle
   const [activeTurn, setActiveTurn] = useState<CliActiveTurn | undefined>();
   const [hilReview, setHilReview] = useState<CliHilReviewState | undefined>();
   const [coreMessages, setCoreMessages] = useState<readonly BaseMessage[]>([]);
+  const [runtimeEvents, setRuntimeEvents] = useState<readonly CodaraRuntimeEvent[]>([]);
   const [runState, setRunState] = useState<CliRunState>({status: 'idle'});
   const [sessionState, setSessionState] = useState<SessionState>(() => codara.getState());
   const isRunningRef = useRef(false);
@@ -105,6 +110,13 @@ export function useCliController(options: UseCliControllerOptions): CliControlle
   useEffect(() => {
     hilReviewRef.current = hilReview;
   }, [hilReview]);
+
+  useEffect(() => {
+    setRuntimeEvents([]);
+    return codara.subscribeRuntimeEvents((event) => {
+      setRuntimeEvents((current) => [...current, event].slice(-40));
+    });
+  }, [codara]);
 
   const appendNotice = useCallback((level: CliNotice['level'], content: string) => {
     const message = content.trim();
@@ -160,12 +172,21 @@ export function useCliController(options: UseCliControllerOptions): CliControlle
       return;
     }
 
+    if (result.action?.type === 'open_file') {
+      const opened = openFile ? await openFile(result.action.path) : false;
+      appendNotice(opened ? 'system' : 'warning', opened
+        ? `Opened ${result.action.path}`
+        : `Open file: ${result.action.path}`);
+      setRunState(result.ok ? {status: 'done'} : {status: 'error', error: result.output});
+      return;
+    }
+
     appendNotice(result.ok ? 'system' : 'error', result.output || '(no output)');
     const nextAgentState = await refreshCoreState();
     setRunState(result.ok
       ? nextAgentState.status === 'paused' ? {status: 'paused'} : {status: 'done'}
       : {status: 'error', error: result.output});
-  }, [appendNotice, codara, refreshCoreState, reopenSession, sessionState.sessionId]);
+  }, [appendNotice, codara, openFile, refreshCoreState, reopenSession, sessionState.sessionId]);
 
   const runAgentPrompt = useCallback(async (prompt: string) => {
     setActiveTurn({
@@ -208,6 +229,7 @@ export function useCliController(options: UseCliControllerOptions): CliControlle
 
     isRunningRef.current = true;
     setRunState({status: 'running'});
+    setRuntimeEvents([]);
 
     try {
       if (prompt.startsWith('/')) {
@@ -409,9 +431,10 @@ export function useCliController(options: UseCliControllerOptions): CliControlle
       coreMessages,
       notices,
       activeTurn,
+      runtimeEvents,
       initialNoticeCount: INITIAL_NOTICE_COUNT,
     }),
-    [activeTurn, coreMessages, notices],
+    [activeTurn, coreMessages, notices, runtimeEvents],
   );
 
   return {
@@ -421,6 +444,8 @@ export function useCliController(options: UseCliControllerOptions): CliControlle
     activeTurn,
     hilReview,
     coreMessages,
+    runtimeEvents,
+    latestRuntimeEvent: runtimeEvents[runtimeEvents.length - 1],
     hasConversation,
     runState,
     sessionState,

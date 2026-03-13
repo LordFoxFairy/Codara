@@ -126,4 +126,33 @@ You are a Researcher subagent.
       await rm(root, {recursive: true, force: true});
     }
   });
+
+  it('应兼容无 frontmatter 的 Claude-style agent markdown', async () => {
+    const root = await mkdtemp(path.join(os.tmpdir(), 'codara-agent-frontmatterless-'));
+
+    try {
+      const skillDir = path.join(root, 'claude-imported-skill');
+      const agentsDir = path.join(skillDir, 'agents');
+      await mkdir(agentsDir, {recursive: true});
+      await writeFile(path.join(skillDir, 'SKILL.md'), `---
+name: claude-imported-skill
+description: imported skill with plain markdown agents
+---
+# Imported skill
+`, 'utf8');
+      await writeFile(path.join(agentsDir, 'analyzer.md'), `# Post-hoc Analyzer Agent
+
+Analyze blind comparison results and produce improvement suggestions.
+`, 'utf8');
+
+      const runtime = await loadSkillsRuntimeData(new FileSystemSkillStore({sources: [root], cacheTtlMs: 0}));
+      const analyzer = resolveSubagentDefinition(runtime, 'analyzer');
+
+      expect(analyzer.name).toBe('analyzer');
+      expect(analyzer.description).toBe('Post-hoc Analyzer Agent');
+      expect(analyzer.systemPrompt).toContain('Analyze blind comparison results');
+    } finally {
+      await rm(root, {recursive: true, force: true});
+    }
+  });
 });

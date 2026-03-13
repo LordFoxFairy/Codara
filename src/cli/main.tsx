@@ -1,4 +1,5 @@
 ﻿import path from 'node:path';
+import {spawn} from 'node:child_process';
 import {pathToFileURL} from 'node:url';
 import React from 'react';
 import {render} from 'ink';
@@ -22,6 +23,7 @@ render(
     modelAlias={modelAlias}
     hilAutoActions={hilAutoActions}
     autoExitOnSettledPrompt={autoExitOnSettledPrompt}
+    openFile={openFileInHost}
   />,
 );
 
@@ -86,6 +88,7 @@ interface CliRuntimeRootProps {
   modelAlias: string;
   hilAutoActions: CliHilAutoAction[];
   autoExitOnSettledPrompt: boolean;
+  openFile: (targetPath: string) => Promise<boolean>;
 }
 
 function CliRuntimeRoot(props: CliRuntimeRootProps): React.JSX.Element {
@@ -116,8 +119,25 @@ function CliRuntimeRoot(props: CliRuntimeRootProps): React.JSX.Element {
       hilAutoActions={props.hilAutoActions}
       autoExitOnSettledPrompt={props.autoExitOnSettledPrompt}
       reopenSession={reopenSession}
+      openFile={props.openFile}
     />
   );
+}
+
+async function openFileInHost(targetPath: string): Promise<boolean> {
+  const editor = process.env.EDITOR?.trim();
+  if (!editor) {
+    return false;
+  }
+
+  return await new Promise<boolean>((resolve) => {
+    const child = spawn(editor, [targetPath], {
+      stdio: 'inherit',
+      shell: true,
+    });
+    child.on('error', () => resolve(false));
+    child.on('exit', (code) => resolve(code === 0));
+  });
 }
 
 function readHilAutoActions(raw: string | undefined): CliHilAutoAction[] {

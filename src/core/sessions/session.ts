@@ -1,5 +1,5 @@
 import {randomUUID} from 'node:crypto';
-import type {BaseMessage} from '@langchain/core/messages';
+import {AIMessageChunk, type BaseMessage} from '@langchain/core/messages';
 import type {BaseChatModel} from '@langchain/core/language_models/chat_models';
 import type {StructuredToolInterface} from '@langchain/core/tools';
 import type {
@@ -43,6 +43,11 @@ import {
   syncSessionMetadata,
 } from '@core/shared/session-metadata';
 import type {SessionStore} from './store';
+import {
+  RuntimeEventsController,
+  type CodaraRuntimeEventListener,
+} from './runtime-events';
+export type {CodaraRuntimeEvent, CodaraRuntimeEventListener} from './runtime-events';
 
 export type SessionStatus = 'ready' | 'closed';
 
@@ -112,6 +117,8 @@ export interface CreateSessionOptions {
 export interface Session {
   getState(): SessionState;
   getAgentState(): AgentState;
+  getAvailableToolNames(): string[];
+  subscribeRuntimeEvents(listener: CodaraRuntimeEventListener): () => void;
   hydrate(): Promise<AgentState>;
   compactConversation(options?: {instructions?: string}): Promise<AgentState>;
   fork(options?: {id?: string; sessionId?: string; store?: SessionStore}): Promise<Session>;
@@ -150,9 +157,32 @@ export function createSession(options: CreateSessionOptions): Session {
   let agentPromise: Promise<Agent> | undefined;
   let systemContext: SessionSystemContext | undefined;
   let summaryOptions: Required<SummaryOptions> | undefined;
+  const runtimeEvents = new RuntimeEventsController(sessionId);
 
   function state(): SessionState {
     return {sessionId, sessionStatus, createdAt, updatedAt, metadata};
+  }
+
+  function getAvailableToolNames(): string[] {
+    const names = new Set<string>();
+
+    for (const tool of options.tools ?? []) {
+      const name = tool.name?.trim();
+      if (name) {
+        names.add(name);
+      }
+    }
+
+    for (const middleware of options.middleware ?? []) {
+      for (const tool of middleware.tools ?? []) {
+        const name = tool.name?.trim();
+        if (name) {
+          names.add(name);
+        }
+      }
+    }
+
+    return [...names];
   }
 
   function touch() {
@@ -267,7 +297,7 @@ export function createSession(options: CreateSessionOptions): Session {
   }
 
   function buildSessionMiddleware(summary: Required<SummaryOptions> | undefined): BaseMiddleware[] | undefined {
-    const middlewares = [...(options.middleware ?? [])];
+    const middlewares = [runtimeEvents.createMiddleware(), ...(options.middleware ?? [])];
     if (!summary || middlewares.some((middleware) => middleware.name === 'SummaryMiddleware')) {
       return middlewares.length > 0 ? middlewares : undefined;
     }
@@ -304,7 +334,32 @@ export function createSession(options: CreateSessionOptions): Session {
   async function* runStream(operation: (instance: Agent) => AsyncGenerator<AgentStreamOutput, AgentResult, void>) {
     const instance = await getAgent();
     const previousMessages = instance.getState().messages;
-    const result = yield* operation(instance);
+    let sawModelResponse = false;
+    const stream = operation(instance);
+    let result: AgentResult | undefined;
+    while (true) {
+      const next = await stream.next();
+      if (next.done) {
+        result = next.value;
+        break;
+      }
+
+      if (!sawModelResponse && AIMessageChunk.isInstance(next.value)) {
+        const runId = readResponseMetadataString(next.value.response_metadata, 'runId');
+        const turn = readResponseMetadataNumber(next.value.response_metadata, 'turn');
+        if (runId && typeof turn === 'number' && next.value.text?.trim()) {
+          runtimeEvents.modelResponding(runId, turn);
+          sawModelResponse = true;
+        }
+      }
+
+      yield next.value;
+    }
+
+    if (!result) {
+      throw new Error('Stream finished without an AgentResult.');
+    }
+
     await sync(result.state, {collectUsage: true, previousMessages});
     return result;
   }
@@ -340,19 +395,23 @@ export function createSession(options: CreateSessionOptions): Session {
     if (!options.summary) {
       throw new Error('Conversation compaction is not configured for this session.');
     }
+    const summaryEventId = runtimeEvents.summaryStarted('Compacting context');
 
     const instance = await getAgent();
     const summary = summaryOptions;
 
     if (!summary) {
+      runtimeEvents.summaryFinished(summaryEventId, 'error', 'Context compaction failed', 'Summary middleware is not configured.');
       throw new Error('Conversation compaction is not configured for this session.');
     }
 
     const current = instance.getState();
     if (current.status === 'running') {
+      runtimeEvents.summaryFinished(summaryEventId, 'error', 'Context compaction failed', 'Agent is currently running.');
       throw new Error('Agent is currently running.');
     }
     if (current.status === 'paused') {
+      runtimeEvents.summaryFinished(summaryEventId, 'error', 'Context compaction failed', 'Agent is paused.');
       throw new Error('Agent is paused; resume(...) or reset() before compacting the conversation.');
     }
 
@@ -371,6 +430,7 @@ export function createSession(options: CreateSessionOptions): Session {
 
     if (!compacted) {
       await sync(current);
+      runtimeEvents.summaryFinished(summaryEventId, 'done', 'Context compact skipped');
       return current;
     }
 
@@ -384,13 +444,38 @@ export function createSession(options: CreateSessionOptions): Session {
     clearAgentCache();
     const next = (await getAgent()).getState();
     await sync(next);
+    runtimeEvents.summaryFinished(summaryEventId, 'done', 'Context compacted');
     return next;
+  }
+
+  async function runHilResume<T>(operation: () => Promise<T>, pendingDescription: string | undefined): Promise<T> {
+    const eventId = runtimeEvents.hilResumeStarted(
+      pendingDescription?.trim() ? `Resuming review: ${pendingDescription.trim()}` : 'Applying review selection',
+    );
+
+    try {
+      const result = await operation();
+      runtimeEvents.hilResumeFinished(eventId, 'done', 'Review selection applied');
+      return result;
+    } catch (error) {
+      runtimeEvents.hilResumeFinished(
+        eventId,
+        'error',
+        'Review selection failed',
+        error instanceof Error ? error.message : String(error),
+      );
+      throw error;
+    }
   }
 
   return {
     getState: state,
     getAgentState() {
       return requireAgent().getState();
+    },
+    getAvailableToolNames,
+    subscribeRuntimeEvents(listener) {
+      return runtimeEvents.subscribe(listener);
     },
     async hydrate() {
       ensureReady();
@@ -413,11 +498,32 @@ export function createSession(options: CreateSessionOptions): Session {
     },
     async resumePause(payload, config) {
       ensureReady();
-      return run((instance) => instance.resume(payload, config));
+      const instance = await getAgent();
+      return runHilResume(
+        () => run((current) => current.resume(payload, config)),
+        instance.getState().pendingPause?.description,
+      );
     },
     async *resumePauseStream(payload, config) {
       ensureReady();
-      return yield* runStream((instance) => instance.resumeStream(payload, config));
+      const pendingDescription = (await getAgent()).getState().pendingPause?.description;
+      const eventId = runtimeEvents.hilResumeStarted(
+        pendingDescription?.trim() ? `Resuming review: ${pendingDescription.trim()}` : 'Applying review selection',
+      );
+
+      try {
+        const result = yield* runStream((instance) => instance.resumeStream(payload, config));
+        runtimeEvents.hilResumeFinished(eventId, 'done', 'Review selection applied');
+        return result;
+      } catch (error) {
+        runtimeEvents.hilResumeFinished(
+          eventId,
+          'error',
+          'Review selection failed',
+          error instanceof Error ? error.message : String(error),
+        );
+        throw error;
+      }
     },
     async reloadSources() {
       ensureReady();
@@ -457,6 +563,22 @@ export function createSession(options: CreateSessionOptions): Session {
       await persistSessionState();
     },
   };
+}
+
+function readResponseMetadataString(
+  metadata: Record<string, unknown> | undefined,
+  key: string,
+): string | undefined {
+  const value = metadata?.[key];
+  return typeof value === 'string' && value.trim() ? value.trim() : undefined;
+}
+
+function readResponseMetadataNumber(
+  metadata: Record<string, unknown> | undefined,
+  key: string,
+): number | undefined {
+  const value = metadata?.[key];
+  return typeof value === 'number' && Number.isFinite(value) ? value : undefined;
 }
 
 function resolveSessionId(

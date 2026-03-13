@@ -7,6 +7,9 @@ export const reloadCommand: CodaraCommandDefinition = {
   usage: '/reload',
   description: 'Invalidate session-scoped codara.md, AGENTS.md, and skills caches and reload sources on the next model call.',
   source: BUILTIN_SOURCE,
+  help: {
+    executionMode: 'runtime_command',
+  },
   async execute({command, agent}) {
     await agent.reloadSources();
     return {

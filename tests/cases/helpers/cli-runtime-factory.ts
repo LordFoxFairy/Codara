@@ -319,6 +319,96 @@ export async function createCliRuntime(input: {
           ],
         }),
       };
+    case 'memory-project':
+      return {
+        codara: createCodaraRuntime({
+          cwd: input.cwd,
+          projectRoot: input.cwd,
+          codaraPath: path.join(input.cwd, '.codara'),
+          ...(input.sessionId ? {sessionId: input.sessionId} : {}),
+          model: new ScriptedModel([new AIMessage('MEMORY_UNUSED')]) as unknown as BaseChatModel,
+          builtinTools: false,
+          skills: false,
+        }),
+      };
+    case 'command-surface':
+      return {
+        codara: createCodaraRuntime({
+          cwd: input.cwd,
+          projectRoot: input.cwd,
+          codaraPath: path.join(input.cwd, '.codara'),
+          ...(input.sessionId ? {sessionId: input.sessionId} : {}),
+          model: new ScriptedModel([new AIMessage('COMMAND_SURFACE_UNUSED')]) as unknown as BaseChatModel,
+          builtinTools: false,
+          skills: false,
+        }),
+      };
+    case 'command-surface-skill-help':
+      return {
+        codara: createCodaraRuntime({
+          cwd: input.cwd,
+          projectRoot: input.cwd,
+          codaraPath: path.join(input.cwd, '.codara'),
+          ...(input.sessionId ? {sessionId: input.sessionId} : {}),
+          model: new ScriptedModel([new AIMessage('COMMAND_SURFACE_SKILL_HELP_UNUSED')]) as unknown as BaseChatModel,
+          builtinTools: false,
+          skills: {
+            store: createProjectSkillStore(input.cwd),
+          },
+        }),
+      };
+    case 'plugin-install':
+      return {
+        codara: createCodaraRuntime({
+          cwd: input.cwd,
+          projectRoot: input.cwd,
+          codaraPath: path.join(input.cwd, '.codara'),
+          ...(input.sessionId ? {sessionId: input.sessionId} : {}),
+          model: new ScriptedModel([new AIMessage('PLUGIN_INSTALL_UNUSED')]) as unknown as BaseChatModel,
+          builtinTools: false,
+          skills: false,
+        }),
+      };
+    case 'skill-command-preflight-missing-tool':
+      return {
+        codara: createCodaraRuntime({
+          cwd: input.cwd,
+          projectRoot: input.cwd,
+          codaraPath: path.join(input.cwd, '.codara'),
+          ...(input.sessionId ? {sessionId: input.sessionId} : {}),
+          model: new ScriptedModel([new AIMessage('SKILL_PREFLIGHT_UNEXPECTED_MODEL_CALL')]) as unknown as BaseChatModel,
+          builtinTools: false,
+          skills: {
+            store: createProjectSkillStore(input.cwd),
+          },
+        }),
+      };
+    case 'skill-command-preflight-missing-binary':
+      return {
+        codara: createCodaraRuntime({
+          cwd: input.cwd,
+          projectRoot: input.cwd,
+          codaraPath: path.join(input.cwd, '.codara'),
+          ...(input.sessionId ? {sessionId: input.sessionId} : {}),
+          model: new ScriptedModel([new AIMessage('SKILL_PREFLIGHT_UNEXPECTED_MODEL_CALL')]) as unknown as BaseChatModel,
+          builtinTools: true,
+          skills: {
+            store: createProjectSkillStore(input.cwd),
+          },
+        }),
+      };
+    case 'default-runtime-workflow':
+      return {
+        codara: createCodaraRuntime({
+          cwd: input.cwd,
+          projectRoot: input.cwd,
+          codaraPath: path.join(input.cwd, '.codara'),
+          ...(input.sessionId ? {sessionId: input.sessionId} : {}),
+          model: new DefaultRuntimeWorkflowCliModel() as unknown as BaseChatModel,
+          builtinTools: false,
+          skills: false,
+        }),
+      };
     default:
       throw new Error(`Unsupported real CLI case scenario: ${scenario || '(empty)'}`);
   }
@@ -608,6 +698,67 @@ class ParentScriptedModel {
   bindTools(_tools: StructuredToolInterface[]): this {
     void _tools;
     return this;
+  }
+}
+
+class DefaultRuntimeWorkflowCliModel {
+  bindTools(_tools: StructuredToolInterface[]): this {
+    void _tools;
+    return this;
+  }
+
+  async invoke(messages: BaseMessage[]): Promise<AIMessage> {
+    const text = messages.map((message) => stringifyMessage(message.content)).join('\n');
+
+    if (text.includes('Inspect isolated child work') && !text.includes('Delegated task completed.')) {
+      return new AIMessage('CHILD_FLOW_DONE');
+    }
+
+    if (text.includes('Delegated task completed.')) {
+      return new AIMessage('DEFAULT_RUNTIME_FLOW_DONE');
+    }
+
+    if (text.includes('Task created.')) {
+      return new AIMessage({
+        content: '',
+        tool_calls: [{
+          id: 'call_default_runtime_task',
+          name: 'Task',
+          args: {
+            prompt: 'Inspect isolated child work',
+            subagent_type: 'general-purpose',
+          },
+        } as ToolCall],
+      });
+    }
+
+    if (text.includes('Updated todo list to')) {
+      return new AIMessage({
+        content: '',
+        tool_calls: [{
+          id: 'call_default_runtime_task_create',
+          name: 'TaskCreate',
+          args: {
+            subject: 'Track default runtime workflow',
+            description: 'Shared coordination state from the default runtime entry.',
+          },
+        } as ToolCall],
+      });
+    }
+
+    return new AIMessage({
+      content: '',
+      tool_calls: [{
+        id: 'call_default_runtime_todos',
+        name: 'write_todos',
+        args: {
+          todos: [
+            {content: 'Track default runtime workflow', status: 'in_progress'},
+            {content: 'Review delegated child output', status: 'pending'},
+          ],
+        },
+      } as ToolCall],
+    });
   }
 }
 
