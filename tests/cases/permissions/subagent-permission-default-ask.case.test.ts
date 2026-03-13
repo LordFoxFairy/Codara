@@ -36,6 +36,6 @@ describe('case: subagent permission default ask', () => {
 
     expect(second.exitCode).toBe(0);
     expect(second.output).toContain('SUBAGENT_PERMISSION_PARENT_DONE');
-    expect(second.output).not.toContain('HIL Review');
+    expect(second.output).not.toContain('Permission Review');
   });
 });
