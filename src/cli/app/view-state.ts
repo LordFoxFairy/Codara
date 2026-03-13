@@ -1,4 +1,6 @@
-export type CliStatus = 'idle' | 'running' | 'done' | 'error';
+import type {PauseRequest, PauseUIActionOption} from '@core/agents';
+
+export type CliStatus = 'idle' | 'running' | 'paused' | 'done' | 'error';
 
 export interface CliRunState {
   status: CliStatus;
@@ -16,4 +18,19 @@ export interface CliActiveTurn {
   prompt: string;
   response: string;
   responseRole: 'assistant' | 'system';
+}
+
+export type CliHilFocus = 'actions' | 'input';
+
+export interface CliHilReviewAction extends PauseUIActionOption {
+  kind: 'primary' | 'secondary' | 'danger';
+}
+
+export interface CliHilReviewState {
+  request: PauseRequest;
+  actions: CliHilReviewAction[];
+  selectedActionIndex: number;
+  focus: CliHilFocus;
+  draft: string;
+  busy: boolean;
 }

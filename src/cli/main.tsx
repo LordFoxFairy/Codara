@@ -1,12 +1,143 @@
-﻿import React from 'react';
+﻿import path from 'node:path';
+import {pathToFileURL} from 'node:url';
+import React from 'react';
 import {render} from 'ink';
-import {createCodaraRuntime, DEFAULT_CODARA_MODEL_ALIAS} from '@core';
+import {createCodaraRuntime, DEFAULT_CODARA_MODEL_ALIAS, type Codara} from '@core';
+import type {CliHilAutoAction} from './app/hil-review';
 
 const {CodaraCliApp} = await import('./app/shell-app');
 
-const cwd = process.cwd();
+const cwd = process.env.CODARA_CLI_CWD?.trim() || process.cwd();
 const initialPrompt = process.argv.slice(2).join(' ').trim();
 const modelAlias = DEFAULT_CODARA_MODEL_ALIAS;
-const codara = createCodaraRuntime({cwd});
+const initialRuntime = await createCliRuntime({cwd, initialPrompt, modelAlias});
+const autoExitOnSettledPrompt = process.env.CODARA_CLI_AUTO_EXIT_AFTER_INITIAL_PROMPT === '1';
+const hilAutoActions = readHilAutoActions(process.env.CODARA_CLI_HIL_AUTO_ACTIONS);
 
-render(<CodaraCliApp codara={codara} cwd={cwd} modelAlias={modelAlias} initialPrompt={initialPrompt} />);
+render(
+  <CliRuntimeRoot
+    cwd={cwd}
+    initialPrompt={initialPrompt}
+    initialRuntime={initialRuntime}
+    modelAlias={modelAlias}
+    hilAutoActions={hilAutoActions}
+    autoExitOnSettledPrompt={autoExitOnSettledPrompt}
+  />,
+);
+
+interface CliRuntimeFactoryInput {
+  cwd: string;
+  initialPrompt: string;
+  modelAlias: string;
+  sessionId?: string;
+}
+
+interface CliRuntimeFactoryResult {
+  codara: Codara;
+  modelAlias?: string;
+}
+
+async function createCliRuntime(input: CliRuntimeFactoryInput): Promise<CliRuntimeFactoryResult> {
+  const factoryModulePath = process.env.CODARA_CLI_RUNTIME_FACTORY?.trim();
+  if (!factoryModulePath) {
+    return {
+      codara: createCodaraRuntime({
+        cwd: input.cwd,
+        ...(input.sessionId ? {sessionId: input.sessionId} : {}),
+      }),
+      modelAlias: input.modelAlias,
+    };
+  }
+
+  const moduleUrl = pathToFileURL(path.resolve(factoryModulePath)).href;
+  const module = await import(moduleUrl) as {
+    default?: (input: CliRuntimeFactoryInput) => Promise<CliRuntimeFactoryResult | Codara> | CliRuntimeFactoryResult | Codara;
+    createCliRuntime?: (input: CliRuntimeFactoryInput) => Promise<CliRuntimeFactoryResult | Codara> | CliRuntimeFactoryResult | Codara;
+  };
+  const factory = module.createCliRuntime ?? module.default;
+  if (!factory) {
+    throw new Error(`CLI runtime factory does not export default or createCliRuntime: ${factoryModulePath}`);
+  }
+
+  const result = await factory(input);
+  if (isCodara(result)) {
+    return {codara: result, modelAlias: input.modelAlias};
+  }
+
+  return {
+    codara: result.codara,
+    modelAlias: result.modelAlias?.trim() || input.modelAlias,
+  };
+}
+
+function isCodara(value: CliRuntimeFactoryResult | Codara): value is Codara {
+  return typeof value === 'object'
+    && value !== null
+    && 'invoke' in value
+    && typeof value.invoke === 'function'
+    && 'stream' in value
+    && typeof value.stream === 'function';
+}
+
+interface CliRuntimeRootProps {
+  cwd: string;
+  initialPrompt: string;
+  initialRuntime: CliRuntimeFactoryResult;
+  modelAlias: string;
+  hilAutoActions: CliHilAutoAction[];
+  autoExitOnSettledPrompt: boolean;
+}
+
+function CliRuntimeRoot(props: CliRuntimeRootProps): React.JSX.Element {
+  const [runtime, setRuntime] = React.useState(props.initialRuntime);
+  const [startupMessage, setStartupMessage] = React.useState<string | undefined>();
+  const [appInitialPrompt, setAppInitialPrompt] = React.useState(props.initialPrompt);
+
+  const reopenSession = React.useCallback(async (sessionId: string) => {
+    const nextRuntime = await createCliRuntime({
+      cwd: props.cwd,
+      initialPrompt: '',
+      modelAlias: runtime.modelAlias ?? props.modelAlias,
+      sessionId,
+    });
+    setRuntime(nextRuntime);
+    setStartupMessage(`Reopened session ${sessionId}.`);
+    setAppInitialPrompt('');
+  }, [props.cwd, props.modelAlias, runtime.modelAlias]);
+
+  return (
+    <CodaraCliApp
+      key={runtime.codara.getState().sessionId}
+      codara={runtime.codara}
+      cwd={props.cwd}
+      modelAlias={runtime.modelAlias ?? props.modelAlias}
+      initialPrompt={appInitialPrompt}
+      startupMessage={startupMessage}
+      hilAutoActions={props.hilAutoActions}
+      autoExitOnSettledPrompt={props.autoExitOnSettledPrompt}
+      reopenSession={reopenSession}
+    />
+  );
+}
+
+function readHilAutoActions(raw: string | undefined): CliHilAutoAction[] {
+  const value = raw?.trim();
+  if (!value) {
+    return [];
+  }
+
+  if (value.startsWith('[')) {
+    const parsed = JSON.parse(value) as Array<string | CliHilAutoAction>;
+    return parsed.map(normalizeHilAutoAction);
+  }
+
+  return [normalizeHilAutoAction(value)];
+}
+
+function normalizeHilAutoAction(value: string | CliHilAutoAction): CliHilAutoAction {
+  if (typeof value === 'string') {
+    return {action: value};
+  }
+
+  return value;
+}
