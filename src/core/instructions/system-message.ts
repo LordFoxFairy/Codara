@@ -1,3 +1,4 @@
+import {HumanMessage, type BaseMessage} from '@langchain/core/messages';
 import type {GuidelinesSource} from '@core/instructions/guidelines';
 import type {PromptSource} from '@core/instructions/prompt';
 import type {AutoMemorySource} from '@core/memory/auto-memory';
@@ -20,14 +21,16 @@ export interface BaseSystemMessageRuntimeData {
   systemMessage: string[];
 }
 
+const PROGRESSIVE_INSTRUCTION_PREFIX = 'Additional active instructions for the current workspace subtree:';
+
 export async function buildBaseSystemMessage(
   promptSource?: PromptSource,
   guidelinesSource?: GuidelinesSource,
   skillsSource?: SkillsSource,
   autoMemorySource?: AutoMemorySource,
 ): Promise<BaseSystemMessageBundle> {
-  const promptMessage = await promptSource?.getContent?.();
-  const guidelinesMessage = await guidelinesSource?.getContent?.();
+  const promptMessage = await promptSource?.getBootstrapContent?.();
+  const guidelinesMessage = await guidelinesSource?.getBootstrapContent?.();
   const skillsRuntime = await skillsSource?.getRuntime?.();
   const autoMemoryMessage = await autoMemorySource?.getContent?.();
   const systemMessage = [
@@ -74,8 +77,24 @@ export function createBaseSystemMessageRuntimeShared(systemMessage: string[]): R
   };
 }
 
+export async function buildProgressiveInstructionMessages(
+  promptSource?: PromptSource,
+  guidelinesSource?: GuidelinesSource,
+): Promise<BaseMessage[]> {
+  const promptMessage = await promptSource?.getProgressiveContent?.();
+  const guidelinesMessage = await guidelinesSource?.getProgressiveContent?.();
+  return [
+    promptMessage ? createProgressiveInstructionMessage(promptMessage) : undefined,
+    guidelinesMessage ? createProgressiveInstructionMessage(guidelinesMessage) : undefined,
+  ].filter((message): message is BaseMessage => Boolean(message));
+}
+
 function createSkillsSystemMessage(runtime: Pick<SkillsRuntimeData, 'sources' | 'discovered'>): string {
   return SKILLS_SYSTEM_PROMPT
     .replace('{skills_locations}', formatSkillsLocations(runtime.sources))
     .replace('{skills_list}', formatSkillsList(runtime.discovered, runtime.sources));
+}
+
+function createProgressiveInstructionMessage(content: string): BaseMessage {
+  return new HumanMessage([PROGRESSIVE_INSTRUCTION_PREFIX, '', content].join('\n'));
 }

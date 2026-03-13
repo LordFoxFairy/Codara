@@ -56,11 +56,13 @@ export function createTaskTool(options: CreateTaskToolOptions): StructuredToolIn
         subagent_type,
       );
       const baseSystemMessage = readBaseSystemMessage(configurable.runtimeShared);
+      const inheritedBaseMessageCount = baseSystemMessage?.systemMessage.length ?? 0;
       return runDelegatedAgent({
         ...options,
         ...(baseSystemMessage?.systemMessage?.length || options.systemMessages?.length || options.systemPrompt
           ? {systemMessages: mergeTaskSystemMessages(baseSystemMessage?.systemMessage, options.systemMessages, options.systemPrompt)}
           : {}),
+        prepareTurnContext: wrapDelegatedPrepareTurnContext(options.prepareTurnContext, inheritedBaseMessageCount),
         checkpointer: delegatedCheckpointer,
       }, {
         prompt,
@@ -151,4 +153,21 @@ function mergeTaskSystemMessages(
     ...(providedMessages ?? []),
     ...(baseSystemPrompt?.trim() ? [baseSystemPrompt.trim()] : []),
   ];
+}
+
+function wrapDelegatedPrepareTurnContext(
+  prepareTurnContext: CreateTaskToolOptions['prepareTurnContext'],
+  inheritedBaseMessageCount: number,
+): CreateTaskToolOptions['prepareTurnContext'] {
+  if (!prepareTurnContext) {
+    return undefined;
+  }
+
+  return async (context) => {
+    const preservedExtras = context.systemMessage.slice(inheritedBaseMessageCount);
+    await prepareTurnContext(context);
+    if (preservedExtras.length > 0) {
+      context.systemMessage.push(...preservedExtras);
+    }
+  };
 }

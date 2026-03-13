@@ -2,6 +2,7 @@ import {existsSync} from 'node:fs';
 import path from 'node:path';
 import type {BaseChatModel} from '@langchain/core/language_models/chat_models';
 import type {StructuredToolInterface} from '@langchain/core/tools';
+import type {AgentTurnContextPreparer} from '@core/agents';
 import type {AgentCheckpointer} from '@core/checkpoint';
 import {createAgentFileCheckpointer} from '@core/checkpoint';
 import type {BaseMiddleware, HILMiddlewareOptions, LoggingMiddlewareOptions} from '@core/middleware';
@@ -11,6 +12,7 @@ import {
   createBudgetMiddleware,
   createDailySessionFileLogSink,
   createHILMiddleware,
+  createInstructionLoadingMiddleware,
   createInteractionMiddleware,
   createLoggingMiddleware,
   todoListMiddleware,
@@ -54,8 +56,10 @@ import {
   type SessionState,
   type SessionStore,
 } from '@core/sessions';
+import {deepClone} from '@core/shared/clone';
 import {resolveWorkspaceRoot} from '@core/shared/workspace';
 import {createBuiltinTools} from '@core/tools';
+import {buildBaseSystemMessage, buildProgressiveInstructionMessages} from '@core/instructions/system-message';
 
 export const DEFAULT_CODARA_MODEL_ALIAS = 'default';
 const DEFAULT_RUNTIME_FILE_LOGGING_ENABLED = true;
@@ -176,6 +180,16 @@ export function createCodaraRuntime(options: CodaraRuntimeOptions = {}): Codara 
     cwd: options.cwd,
     projectRoot: options.projectRoot,
   });
+  const guidelinesSource = createCodaraGuidelinesSource({
+    cwd: options.cwd,
+    projectRoot: options.projectRoot,
+    userHome: options.userHome,
+  });
+  const promptSource = createCodaraPromptSource({
+    cwd: options.cwd,
+    projectRoot: options.projectRoot,
+    userHome: options.userHome,
+  });
   const taskStore = options.taskStore ?? createTaskFileStore({
     rootDir: path.join(workspaceRoot, '.codara', 'tasks'),
   });
@@ -200,9 +214,11 @@ export function createCodaraRuntime(options: CodaraRuntimeOptions = {}): Codara 
     taskStore,
     logging,
     catalog,
+    promptSource,
+    guidelinesSource,
   });
 
-  return createCodara({
+  return assembleCodara({
     ...options,
     tools: runtimeTools,
     middleware: runtimeMiddlewares,
@@ -217,29 +233,32 @@ export function createCodaraRuntime(options: CodaraRuntimeOptions = {}): Codara 
       checkpointer: createAgentFileCheckpointer({rootDir: path.join(codaraPath, 'sessions')}),
     }),
     restore: options.restore ?? 'latest',
-  });
+  }, undefined, {promptSource, guidelinesSource});
 }
 
-function assembleCodara(options: CodaraOptions, restoredState?: SessionState): Codara {
+function assembleCodara(
+  options: CodaraOptions,
+  restoredState?: SessionState,
+  preloadedSources?: {
+    promptSource?: PromptSource;
+    guidelinesSource?: GuidelinesSource;
+  },
+): Codara {
   const skills = resolveCodaraSkills(options);
   const skillsSource = skills ? createCodaraSkillsSource(skills) : undefined;
   const autoMemory = resolveCodaraAutoMemory(options);
   const alias = normalizeAlias(options.alias);
-  const guidelinesSource = createCodaraGuidelinesSource({
+  const guidelinesSource = preloadedSources?.guidelinesSource ?? createCodaraGuidelinesSource({
     cwd: options.cwd,
     projectRoot: options.projectRoot,
     userHome: options.userHome,
   });
-  const promptSource = createCodaraPromptSource({
+  const promptSource = preloadedSources?.promptSource ?? createCodaraPromptSource({
     cwd: options.cwd,
     projectRoot: options.projectRoot,
     userHome: options.userHome,
   });
   const tools = createCodaraTools(options);
-  configureInstructionReadTool(tools, {
-    promptSource,
-    guidelinesSource,
-  });
   const session = createSession({
     ...(restoredState ? {state: restoredState} : {}),
     id: options.id,
@@ -259,7 +278,10 @@ function assembleCodara(options: CodaraOptions, restoredState?: SessionState): C
     ...(autoMemory ? {autoMemory} : {}),
     tools,
     ...(options.handleToolErrors !== undefined ? {handleToolErrors: options.handleToolErrors} : {}),
-    middleware: createCodaraMiddlewares(options),
+    middleware: createCodaraMiddlewares(options, {
+      promptSource,
+      guidelinesSource,
+    }),
     ...(options.summary ? {summary: options.summary} : {}),
     ...(options.inputBudget ? {inputBudget: options.inputBudget} : {}),
   });
@@ -381,67 +403,24 @@ export function createCodaraTools(options: CodaraToolsOptions = {}): StructuredT
   return [...byName.values()];
 }
 
-function configureInstructionReadTool(
-  tools: StructuredToolInterface[],
-  sources: {
+export function createCodaraMiddlewares(
+  options: CodaraMiddlewareOptions = {},
+  sources?: {
     promptSource?: Pick<PromptSource, 'activateTarget'>;
     guidelinesSource?: Pick<GuidelinesSource, 'activateTarget'>;
   },
-): void {
-  if (!sources.promptSource && !sources.guidelinesSource) {
-    return;
-  }
-
-  for (const tool of tools) {
-    if (tool.name !== 'read_file') {
-      continue;
-    }
-
-    const originalInvoke = tool.invoke.bind(tool);
-    tool.invoke = async (input, config) => {
-      const result = await originalInvoke(input, config);
-      const filePath = readInstructionReadPath(input);
-      if (!filePath || isInstructionReadFailure(result)) {
-        return result;
-      }
-
-      await sources.promptSource?.activateTarget({path: filePath, kind: 'file'});
-      await sources.guidelinesSource?.activateTarget({path: filePath, kind: 'file'});
-      return result;
-    };
-  }
-}
-
-function readInstructionReadPath(input: unknown): string | undefined {
-  if (!input || typeof input !== 'object' || Array.isArray(input)) {
-    return undefined;
-  }
-
-  const record = input as Record<string, unknown>;
-  const filePath = typeof record.file_path === 'string' ? record.file_path.trim() : '';
-  if (filePath) {
-    return filePath;
-  }
-
-  const pathValue = typeof record.path === 'string' ? record.path.trim() : '';
-  return pathValue || undefined;
-}
-
-function isInstructionReadFailure(result: unknown): boolean {
-  if (typeof result !== 'string') {
-    return false;
-  }
-
-  const trimmed = result.trim();
-  return trimmed.startsWith('Error:') || trimmed.startsWith('Tool execution failed:');
-}
-
-export function createCodaraMiddlewares(options: CodaraMiddlewareOptions = {}): BaseMiddleware[] {
+): BaseMiddleware[] {
   const middlewares: BaseMiddleware[] = [];
   if (options.logging && options.logging.enabled !== false) {
     middlewares.push(createLoggingMiddleware(options.logging));
   }
   middlewares.push(...(options.middleware ?? []));
+  if (!middlewares.some((middleware) => middleware.name === 'InstructionLoadingMiddleware')) {
+    const instructionLoading = createInstructionLoadingMiddleware(sources ?? {});
+    if (instructionLoading) {
+      middlewares.push(instructionLoading);
+    }
+  }
   middlewares.push(createBudgetMiddleware());
   if (options.hil !== false) {
     middlewares.push(createHILMiddleware(options.hil ?? {}));
@@ -556,6 +535,8 @@ function createRuntimeDefaultMiddlewares(input: {
   taskStore: TaskStore;
   logging: false | LoggingMiddlewareOptions;
   catalog?: CodaraModelCatalog | Promise<CodaraModelCatalog>;
+  promptSource: PromptSource;
+  guidelinesSource: GuidelinesSource;
 }): BaseMiddleware[] {
   const callerMiddlewares = input.options.middleware ?? [];
   const byName = new Map<string, BaseMiddleware>();
@@ -583,6 +564,10 @@ function createRuntimeDefaultMiddlewares(input: {
         ...(input.catalog ? {catalog: input.catalog} : {}),
       })),
       tools: input.runtimeTools,
+      prepareTurnContext: createInstructionTurnContextPreparer({
+        promptSource: input.promptSource,
+        guidelinesSource: input.guidelinesSource,
+      }),
       middleware: createDelegatedRuntimeMiddlewares({
         ...input,
         tools: input.runtimeTools,
@@ -611,6 +596,8 @@ function createDelegatedRuntimeMiddlewares(input: {
   taskStore: TaskStore;
   logging: false | LoggingMiddlewareOptions;
   tools?: StructuredToolInterface[];
+  promptSource: PromptSource;
+  guidelinesSource: GuidelinesSource;
 }): BaseMiddleware[] {
   const middlewares: BaseMiddleware[] = [];
   const callerMiddlewares = (input.options.middleware ?? [])
@@ -635,6 +622,16 @@ function createDelegatedRuntimeMiddlewares(input: {
 
   for (const middleware of callerMiddlewares) {
     push(middleware);
+  }
+
+  if (!seen.has('InstructionLoadingMiddleware')) {
+    const instructionLoading = createInstructionLoadingMiddleware({
+      promptSource: input.promptSource,
+      guidelinesSource: input.guidelinesSource,
+    });
+    if (instructionLoading) {
+      push(instructionLoading);
+    }
   }
 
   if (!seen.has('todoListMiddleware') && !providedToolNames.has('write_todos')) {
@@ -682,4 +679,26 @@ function hasSharedTaskTools(toolNames: ReadonlySet<string>): boolean {
 function summarizeCommandResult(result: CodaraCommandResult): string | undefined {
   const output = result.output.trim();
   return output || undefined;
+}
+
+function createInstructionTurnContextPreparer(sources: {
+  promptSource?: PromptSource;
+  guidelinesSource?: GuidelinesSource;
+}): AgentTurnContextPreparer | undefined {
+  if (!sources.promptSource && !sources.guidelinesSource) {
+    return undefined;
+  }
+
+  return async (context) => {
+    const next = await buildBaseSystemMessage(sources.promptSource, sources.guidelinesSource);
+    const runtimeInstructions = await buildProgressiveInstructionMessages(sources.promptSource, sources.guidelinesSource);
+    context.systemMessage = [...next.systemMessage];
+    context.runtime.shared = {
+      ...deepClone(context.runtime.shared ?? {}),
+      ...deepClone(next.runtimeShared ?? {}),
+    };
+    context.messages = runtimeInstructions.length > 0
+      ? [...runtimeInstructions, ...context.state.messages]
+      : context.state.messages;
+  };
 }

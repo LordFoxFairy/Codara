@@ -15,6 +15,8 @@ export type PromptOptions = PromptWorkspaceOptions;
 
 export interface PromptSource {
   getContent(): Promise<string | undefined>;
+  getBootstrapContent(): Promise<string | undefined>;
+  getProgressiveContent(): Promise<string | undefined>;
   reload(): void;
   activateTarget(target: InstructionPathTarget): Promise<boolean>;
 }

@@ -11,6 +11,8 @@ export interface InstructionPathTarget {
 
 export interface ProgressiveInstructionSource {
   getContent(): Promise<string | undefined>;
+  getBootstrapContent(): Promise<string | undefined>;
+  getProgressiveContent(): Promise<string | undefined>;
   reload(): void;
   activateTarget(target: InstructionPathTarget): Promise<boolean>;
 }
@@ -32,7 +34,7 @@ export class SessionScopedProgressiveInstructionSource implements ProgressiveIns
   private readonly startupFiles: string[];
   private readonly activatedFiles = new Set<string>();
   private readonly fileCache = new Map<string, string | null>();
-  private renderedCache?: {key: string; content?: string};
+  private renderedCaches = new Map<string, {key: string; content?: string}>();
 
   constructor(private readonly options: ProgressiveInstructionSourceOptions) {
     this.userHome = path.resolve(options.userHome ?? homedir());
@@ -48,52 +50,21 @@ export class SessionScopedProgressiveInstructionSource implements ProgressiveIns
   }
 
   async getContent(): Promise<string | undefined> {
-    const filePaths = this.listFilePaths();
-    await this.primeFiles(filePaths);
-    const files = filePaths
-      .map((filePath) => {
-        const content = this.fileCache.get(filePath);
-        return content ? {filePath, content} : undefined;
-      })
-      .filter((entry): entry is {filePath: string; content: string} => Boolean(entry));
+    return this.renderProjection('all', this.listFilePaths());
+  }
 
-    const cacheKey = files.map((entry) => `${entry.filePath}:${entry.content.length}`).join('\0');
-    if (this.renderedCache?.key === cacheKey) {
-      return this.renderedCache.content;
-    }
+  async getBootstrapContent(): Promise<string | undefined> {
+    return this.renderProjection('bootstrap', this.startupFiles);
+  }
 
-    if (files.length === 0) {
-      this.renderedCache = {key: cacheKey, content: undefined};
-      return undefined;
-    }
-
-    const blocks: string[] = [];
-    for (const file of files) {
-      if (blocks.length > 0) {
-        blocks.push('');
-      }
-      blocks.push(`## ${this.options.blockTitle(file.filePath)}`);
-      blocks.push(`Path: ${file.filePath}`);
-      blocks.push('');
-      blocks.push(file.content);
-    }
-
-    const content = [
-      this.options.title,
-      '',
-      this.options.lead,
-      '',
-      ...blocks,
-    ].join('\n');
-
-    this.renderedCache = {key: cacheKey, content};
-    return content;
+  async getProgressiveContent(): Promise<string | undefined> {
+    return this.renderProjection('progressive', sortProjectFiles([...this.activatedFiles], this.projectRoot));
   }
 
   reload(): void {
     this.activatedFiles.clear();
     this.fileCache.clear();
-    this.renderedCache = undefined;
+    this.renderedCaches.clear();
   }
 
   async activateTarget(target: InstructionPathTarget): Promise<boolean> {
@@ -116,7 +87,7 @@ export class SessionScopedProgressiveInstructionSource implements ProgressiveIns
     }
 
     await this.primeFiles(this.listFilePaths());
-    this.renderedCache = undefined;
+    this.renderedCaches.clear();
     return true;
   }
 
@@ -134,6 +105,49 @@ export class SessionScopedProgressiveInstructionSource implements ProgressiveIns
       }
       this.fileCache.set(filePath, await loadInstructionFile(filePath, this.options.maxImportDepth ?? 5));
     }
+  }
+
+  private async renderProjection(cacheName: string, filePaths: string[]): Promise<string | undefined> {
+    await this.primeFiles(filePaths);
+    const files = filePaths
+      .map((filePath) => {
+        const content = this.fileCache.get(filePath);
+        return content ? {filePath, content} : undefined;
+      })
+      .filter((entry): entry is {filePath: string; content: string} => Boolean(entry));
+
+    const cacheKey = files.map((entry) => `${entry.filePath}:${entry.content.length}`).join('\0');
+    const cached = this.renderedCaches.get(cacheName);
+    if (cached?.key === cacheKey) {
+      return cached.content;
+    }
+
+    if (files.length === 0) {
+      this.renderedCaches.set(cacheName, {key: cacheKey, content: undefined});
+      return undefined;
+    }
+
+    const blocks: string[] = [];
+    for (const file of files) {
+      if (blocks.length > 0) {
+        blocks.push('');
+      }
+      blocks.push(`## ${this.options.blockTitle(file.filePath)}`);
+      blocks.push(`Path: ${file.filePath}`);
+      blocks.push('');
+      blocks.push(file.content);
+    }
+
+    const content = [
+      this.options.title,
+      '',
+      this.options.lead,
+      '',
+      ...blocks,
+    ].join('\n');
+
+    this.renderedCaches.set(cacheName, {key: cacheKey, content});
+    return content;
   }
 }
 
