@@ -129,10 +129,14 @@ function buildAssistantItems(message: AIMessage, messageId: string): TranscriptI
 
   const toolCalls = Array.isArray(message.tool_calls) ? message.tool_calls : [];
   if (toolCalls.length > 0) {
+    const visibleToolCalls = toolCalls.filter((toolCall) => !isInteractionToolName(toolCall.name));
+    if (visibleToolCalls.length === 0) {
+      return items;
+    }
     items.push({
       id: `${messageId}-tools`,
-      role: toolCalls.every((toolCall) => isTaskToolName(toolCall.name)) ? 'task' : 'tool',
-      content: formatToolCallGroup(toolCalls),
+      role: visibleToolCalls.every((toolCall) => isTaskToolName(toolCall.name)) ? 'task' : 'tool',
+      content: formatToolCallGroup(visibleToolCalls),
     });
   }
 
@@ -266,6 +270,10 @@ function formatFriendlyToolSummary(toolName: string, args: unknown): string | un
     default:
       return undefined;
   }
+}
+
+function isInteractionToolName(toolName: string | undefined): boolean {
+  return (toolName || '').trim() === 'AskUser';
 }
 
 function formatTaskResultText(content: string): string {

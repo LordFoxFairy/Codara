@@ -82,6 +82,24 @@ describe('cli transcript model', () => {
     expect(items[0]?.content).toContain('- Fetch(https://example.com/docs)');
   });
 
+  test('should hide AskUser tool call groups because the HIL panel already renders the interaction', () => {
+    const items = buildTranscriptItems({
+      notices: [],
+      coreMessages: [
+        new AIMessage({
+          content: 'Need a little more information before I continue.',
+          tool_calls: [
+            {id: 'call_ask_1', name: 'AskUser', args: {summary: 'Clarify the brief'}} as ToolCall,
+          ],
+        }),
+      ],
+    });
+
+    expect(items).toHaveLength(1);
+    expect(items[0]?.role).toBe('assistant');
+    expect(items[0]?.content).toBe('Need a little more information before I continue.');
+  });
+
   test('should treat notice-only output as transcript content after startup', () => {
     expect(hasTranscriptContent({
       coreMessages: [],

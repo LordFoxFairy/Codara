@@ -77,14 +77,14 @@ describe('HIL panel model', () => {
     const model = describeHilPanel(review);
     const text = model.lines.map((line) => line.text).join('\n');
 
-    expect(model.title).toBe('HIL Review');
-    expect(text).toContain('Channel clarification-center | Tab Brief Intake | Form');
-    expect(text).toContain('Tool AskUser(1 prompt)');
-    expect(text).toContain('[Product Domain]');
-    expect(text).toContain('Which product domain should this work target? [multi-select]');
+    expect(model.title).toBe('Need Your Input');
+    expect(text).not.toContain('Channel clarification-center');
+    expect(text).not.toContain('Tool AskUser');
+    expect(text).toContain('A few structured inputs are missing before the agent can continue.');
+    expect(text).toContain('[Product Domain]   ✓Submit');
+    expect(text).toContain('Which product domain should this work target?');
     expect(text).toContain('1. SaaS product');
-    expect(text).toContain('Input: Choose a domain or type your own answer.');
-    expect(text).toContain('> Submit');
-    expect(text).toContain('Chat about this');
+    expect(text).toContain('2. Choose a domain or type your own answer.');
+    expect(text).toContain('3. Chat about this');
   });
 });
