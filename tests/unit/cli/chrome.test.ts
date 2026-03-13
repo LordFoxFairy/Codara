@@ -36,6 +36,7 @@ describe('CLI chrome', () => {
     const model = describeHeader({
       layoutMode: 'wide',
       session,
+      cwd: '/tmp/codara-demo',
       modelAlias: 'sonnet',
       runState: {status: 'paused'},
       latestRuntimeEvent,
@@ -47,10 +48,11 @@ describe('CLI chrome', () => {
     expect(model.subtitle).toContain('12 msgs');
     expect(model.subtitle).toContain('6% ctx');
     expect(model.subtitle).toContain('waiting for review');
+    expect(model.pathLine).toBe('/tmp/codara-demo');
   });
 
   it('should keep the footer to a single compact hint line', () => {
-    expect(describeFooter('wide')).toBe('Ctrl+C exit  ·  ? shortcuts  ·  tab thinking  ·  auto-update on');
-    expect(describeFooter('minimal')).toBe('? shortcuts  ·  tab thinking  ·  auto-update on');
+    expect(describeFooter('wide')).toBe('Enter send  ·  Ctrl+C exit  ·  ? shortcuts  ·  tab thinking');
+    expect(describeFooter('minimal')).toBe('Enter send  ·  ? shortcuts  ·  Ctrl+C exit');
   });
 });

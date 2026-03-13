@@ -22,7 +22,7 @@ function buildComposerLines(composer: CliComposerState): {lines: ComposerRenderL
         {
           beforeCursor: '',
           afterCursor: '',
-          placeholder: 'Type a request',
+          placeholder: 'Try "fix lint errors"',
           isCursorLine: true,
         },
       ],

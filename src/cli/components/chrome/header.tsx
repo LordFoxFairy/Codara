@@ -4,10 +4,12 @@ import type {CodaraRuntimeEvent, SessionState} from '@core';
 import type {CliLayoutMode} from '../../app/layout-mode';
 import type {CliRunState} from '../../app/view-state';
 import {describeStatusIndicator} from '../../hooks/use-status-indicator';
+import {RobotMark} from './robot-mark';
 
 interface HeaderProps {
   layoutMode: CliLayoutMode;
   session: SessionState;
+  cwd: string;
   modelAlias: string;
   runState: CliRunState;
   latestRuntimeEvent?: CodaraRuntimeEvent;
@@ -16,10 +18,11 @@ interface HeaderProps {
 export interface HeaderModel {
   title: string;
   subtitle: string;
+  pathLine?: string;
 }
 
 export function describeHeader(props: HeaderProps): HeaderModel {
-  const {layoutMode, session, modelAlias, runState, latestRuntimeEvent} = props;
+  const {layoutMode, session, cwd, modelAlias, runState, latestRuntimeEvent} = props;
   const isMinimal = layoutMode === 'minimal';
   const title = session.metadata?.title?.trim() || 'Codara';
   const messageCount = session.metadata?.messageCount ?? 0;
@@ -39,6 +42,7 @@ export function describeHeader(props: HeaderProps): HeaderModel {
       `${contextUsage} ctx`,
       status.status.toLowerCase(),
     ].join('  ·  '),
+    ...(!isMinimal ? {pathLine: cwd} : {}),
   };
 }
 
@@ -52,12 +56,17 @@ function shortenSessionId(value: string): string {
 }
 
 export function Header(props: HeaderProps): React.JSX.Element {
+  const {layoutMode} = props;
   const model = describeHeader(props);
 
   return (
-    <Box flexDirection="column">
-      <Text color="blueBright" wrap="truncate-end">{model.title}</Text>
-      <Text dimColor wrap="truncate-end">{model.subtitle}</Text>
+    <Box flexDirection={layoutMode === 'minimal' ? 'column' : 'row'}>
+      {layoutMode === 'minimal' ? null : <RobotMark />}
+      <Box flexDirection="column" flexGrow={1} flexShrink={1}>
+        <Text color="blueBright" wrap="truncate-end">{model.title}</Text>
+        <Text dimColor wrap="truncate-end">{model.subtitle}</Text>
+        {model.pathLine ? <Text dimColor wrap="truncate-middle">{model.pathLine}</Text> : null}
+      </Box>
     </Box>
   );
 }
