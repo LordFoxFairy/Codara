@@ -343,6 +343,20 @@ export async function createCliRuntime(input: {
           skills: false,
         }),
       };
+    case 'command-surface-skill-help':
+      return {
+        codara: createCodaraRuntime({
+          cwd: input.cwd,
+          projectRoot: input.cwd,
+          codaraPath: path.join(input.cwd, '.codara'),
+          ...(input.sessionId ? {sessionId: input.sessionId} : {}),
+          model: new ScriptedModel([new AIMessage('COMMAND_SURFACE_SKILL_HELP_UNUSED')]) as unknown as BaseChatModel,
+          builtinTools: false,
+          skills: {
+            store: createProjectSkillStore(input.cwd),
+          },
+        }),
+      };
     case 'plugin-install':
       return {
         codara: createCodaraRuntime({

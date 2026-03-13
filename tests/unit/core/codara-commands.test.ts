@@ -44,6 +44,7 @@ describe('Codara slash commands', () => {
     expect(helpDetails.output).toContain('/help');
     expect(helpDetails.output).toContain('Usage: /help [command|page]');
     expect(helpDetails.output).toContain('Type: built-in command');
+    expect(helpDetails.output).toContain('Execution: runtime command');
     expect((await codara.listCommands()).map((command) => ({
       name: command.name,
       source: command.source.type,
@@ -261,8 +262,12 @@ describe('Codara slash commands', () => {
       const help = await runtime.executeCommand('/help code-review');
       expect(help.ok).toBe(true);
       expect(help.output).toContain('Type: skill command');
+      expect(help.output).toContain('Execution: agent workflow');
       expect(help.output).toContain('Scope: global');
+      expect(help.output).toContain('Allowed tools: Bash(gh pr view:*)');
+      expect(help.output).toContain('Required shell commands: gh');
       expect(help.output).toContain('Skill: code-review-code-review');
+      expect(help.output).toContain('Runtime requirement: run this command in a Codara runtime that exposes the listed tools.');
     } finally {
       if (previousOverride === undefined) {
         delete process.env.CODARA_PLUGIN_CODE_REVIEW_SOURCE;
