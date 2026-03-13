@@ -1,9 +1,9 @@
 import {AIMessage, HumanMessage, type BaseMessage} from '@langchain/core/messages';
-import type {AgentInputBudget, AgentState} from '@core/agents';
+import type {AgentInputBudget, AgentState} from '@core/agents/models/agent';
 import {estimateModelInputTokens} from '@core/middleware/budget';
 import type {ModelInfo} from '@core/provider';
 import {readLatestVisibleMessageText, readMessageText} from '@core/shared/messages';
-import type {SessionMetadata} from '@core/sessions/session';
+import type {SessionMetadata} from '@core/sessions/types';
 
 export function createSessionMetadata(
   createdAt: string,

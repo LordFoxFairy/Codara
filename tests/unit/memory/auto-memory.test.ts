@@ -8,7 +8,7 @@ import {
   createAutoMemoryRuntime,
   resolveAutoMemoryRoot,
   shouldRecordAutoMemoryTurn,
-} from '@core/memory/auto-memory';
+} from '@core/context/memory/auto-memory';
 
 describe('auto memory runtime', () => {
   it('resolves the memory root globally by default and lets project settings override user settings', async () => {

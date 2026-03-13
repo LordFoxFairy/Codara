@@ -5,7 +5,7 @@ import {homedir} from 'node:os';
 import path from 'node:path';
 import yaml from 'yaml';
 import {AIMessage, HumanMessage, type BaseMessage, type ToolCall} from '@langchain/core/messages';
-import type {AgentResult} from '@core/agents';
+import type {AgentResult} from '@core/agents/models/agent';
 import {resolveWorkspaceRoot, type WorkspaceRootOptions} from '@core/config/workspace';
 import {resolveAutoMemoryGlobal} from '@core/config/settings';
 

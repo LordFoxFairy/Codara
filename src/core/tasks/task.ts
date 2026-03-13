@@ -1,6 +1,6 @@
 import {tool, type StructuredToolInterface} from '@langchain/core/tools';
 import {z} from 'zod';
-import {createMiddleware, type BaseMiddleware} from '@core/middleware';
+import {createMiddleware, type BaseMiddleware} from '@core/middleware/types';
 import {
   type DelegatedAgentOptions,
   markDelegationTool,
@@ -13,9 +13,9 @@ import {
   type SkillsRuntimeData,
   type SubagentDefinition,
 } from '@core/skills/runtime';
-import {readBaseSystemMessage} from '@core/instructions/system-message';
+import {readBaseSystemMessage} from '@core/context/system-message';
 import {filterToolsByReferences} from '@core/tools';
-import {createAgentMemoryCheckpointer} from '@core/checkpoint';
+import {createAgentMemoryCheckpointer} from '@core/checkpoint/agent';
 
 export const TASK_TOOL_NAME = 'Task';
 

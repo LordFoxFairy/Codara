@@ -2,8 +2,8 @@ import {ToolMessage} from '@langchain/core/messages';
 import {tool} from '@langchain/core/tools';
 import {z} from 'zod';
 import {Command} from '@core/agents/models/command';
-import type {AgentRuntimeValues} from '@core/agents/models/agent';
-import {createMiddleware, type BaseMiddleware, type AfterModelContext} from '@core/middleware';
+import type {AgentRuntimeValues} from '@core/agents/models/types';
+import {createMiddleware, type BaseMiddleware, type AfterModelContext} from '@core/middleware/types';
 
 /**
  * Ported from LangChain JS todoListMiddleware.

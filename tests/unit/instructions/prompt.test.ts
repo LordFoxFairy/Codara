@@ -2,7 +2,7 @@ import {describe, expect, it} from 'bun:test';
 import {mkdir, mkdtemp, writeFile} from 'node:fs/promises';
 import path from 'node:path';
 import {tmpdir} from 'node:os';
-import {createCodaraPromptSource} from '@core/instructions/prompt';
+import {createCodaraPromptSource} from '@core/context/instructions/prompt';
 
 describe('Codara handbook prompt source', () => {
   it('loads only the startup-visible handbook chain before deeper paths are touched', async () => {

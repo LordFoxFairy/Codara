@@ -3,7 +3,7 @@ import type {WorkspaceRootOptions} from '@core/config/workspace';
 import {
   type InstructionPathTarget,
   SessionScopedProgressiveInstructionSource,
-} from '@core/instructions/progressive-source';
+} from '@core/context/instructions/progressive-source';
 
 const AGENTS_FILE_NAME = 'AGENTS.md';
 

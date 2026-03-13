@@ -1,20 +1,22 @@
 import {mapChatMessagesToStoredMessages, mapStoredMessagesToChatMessages, type BaseMessage} from '@langchain/core/messages';
 import type {
   AgentResult,
+  AgentState,
+} from './agent';
+import type {
   AgentRuntimeContext,
   AgentRuntimeValues,
-  AgentState,
   AgentStatus,
   AgentType,
   PauseRequest,
-} from './agent';
+} from './types';
 import type {
   AgentCheckpoint,
   AgentCheckpointInfo,
   AgentCheckpointState,
   AgentCheckpointStatus,
   AgentCheckpointSummary,
-} from '@core/checkpoint';
+} from '@core/checkpoint/agent';
 import {deepClone} from '@core/shared/clone';
 
 type DurableState = {

@@ -15,14 +15,16 @@ import type {
   AgentStreamOutput,
   ResumePayload,
   ToolErrorHandler,
-} from '@core/agents';
+} from '@core/agents/models/agent';
+import {createAgent, normalizeAgentInput} from '@core/agents/run/agent-loop';
+import type {CompactOptions} from '@core/checkpoint/types';
 import {
-  createAgent,
-  normalizeAgentInput,
-} from '@core/agents';
-import type {AgentCheckpointer, CompactOptions} from '@core/checkpoint';
-import {createAgentMemoryCheckpointer, putForkCheckpoint, putManualCheckpoint} from '@core/checkpoint';
-import type {BaseMiddleware} from '@core/middleware';
+  createAgentMemoryCheckpointer,
+  putForkCheckpoint,
+  putManualCheckpoint,
+  type AgentCheckpointer,
+} from '@core/checkpoint/agent';
+import type {BaseMiddleware} from '@core/middleware/types';
 import {
   compactConversationWithSummary,
   createModelSummaryGenerator,
@@ -31,19 +33,19 @@ import {
   type SummaryOptions,
   type SummarySettings,
 } from '@core/middleware/summary';
-import type {GuidelinesSource} from '@core/instructions/guidelines';
-import {type PromptSource} from '@core/instructions/prompt';
+import type {GuidelinesSource} from '@core/context/instructions/guidelines';
+import {type PromptSource} from '@core/context/instructions/prompt';
 import {type SkillsSource} from '@core/skills';
 import {
   type AutoMemoryRuntime,
   shouldRecordAutoMemoryTurn,
-} from '@core/memory/auto-memory';
+} from '@core/context/memory/auto-memory';
 import {
   applyPreparedInstructionContext,
   buildBaseSystemMessage,
   buildProgressiveInstructionMessages,
   type BaseSystemMessageBundle,
-} from '@core/instructions/system-message';
+} from '@core/context/system-message';
 import type {ModelInfo} from '@core/provider';
 import {
   createSessionMetadata,
@@ -56,43 +58,8 @@ import {
   RuntimeEventsController,
   type CodaraRuntimeEventListener,
 } from './runtime-events';
+import type {SessionMetadata, SessionState, SessionStatus} from './types';
 export type {CodaraRuntimeEvent, CodaraRuntimeEventListener} from './runtime-events';
-
-export type SessionStatus = 'ready' | 'closed';
-
-export interface SessionMetadata {
-  title?: string;
-  lastMessage?: string;
-  messageCount: number;
-  tags?: string[];
-  archived?: boolean;
-  lastActivity: string;
-  usage?: {
-    modelCalls: number;
-    promptTokens: number;
-    completionTokens: number;
-    totalTokens: number;
-    lastPromptTokens?: number;
-    lastCompletionTokens?: number;
-    lastTotalTokens?: number;
-  };
-  contextWindow?: {
-    maxInputTokens: number;
-    availableInputTokens: number;
-    estimatedInputTokens: number;
-    usagePercent: number;
-    overBudget: boolean;
-  };
-  forkedFromSessionId?: string;
-}
-
-export interface SessionState {
-  sessionId: string;
-  sessionStatus: SessionStatus;
-  createdAt: string;
-  updatedAt: string;
-  metadata?: SessionMetadata;
-}
 
 export interface SessionModelCatalog {
   create(modelRef?: string): Promise<BaseChatModel>;

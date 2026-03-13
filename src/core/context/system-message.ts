@@ -1,7 +1,7 @@
 import {HumanMessage, type BaseMessage} from '@langchain/core/messages';
-import type {GuidelinesSource} from '@core/instructions/guidelines';
-import type {PromptSource} from '@core/instructions/prompt';
-import type {AutoMemorySource} from '@core/memory/auto-memory';
+import type {GuidelinesSource} from '@core/context/instructions/guidelines';
+import type {PromptSource} from '@core/context/instructions/prompt';
+import type {AutoMemorySource} from '@core/context/memory/auto-memory';
 import {
   formatSkillsList,
   formatSkillsLocations,

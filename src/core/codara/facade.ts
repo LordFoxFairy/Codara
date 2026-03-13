@@ -31,15 +31,15 @@ import {ChatModelFactory, loadModelRoutingConfig, loadModelRoutingConfigFromPath
 import {
   createCodaraGuidelinesSource,
   type GuidelinesSource,
-} from '@core/instructions/guidelines';
+} from '@core/context/instructions/guidelines';
 import {
   createCodaraPromptSource,
   type PromptSource,
-} from '@core/instructions/prompt';
+} from '@core/context/instructions/prompt';
 import {
   createAutoMemoryRuntime,
   type AutoMemoryRuntime,
-} from '@core/memory/auto-memory';
+} from '@core/context/memory/auto-memory';
 import {
   createCodaraSkillsSource,
   FileSystemSkillStore,
@@ -62,7 +62,7 @@ import {
   applyPreparedInstructionContext,
   buildBaseSystemMessage,
   buildProgressiveInstructionMessages,
-} from '@core/instructions/system-message';
+} from '@core/context/system-message';
 
 export const DEFAULT_CODARA_MODEL_ALIAS = 'default';
 const DEFAULT_RUNTIME_FILE_LOGGING_ENABLED = true;

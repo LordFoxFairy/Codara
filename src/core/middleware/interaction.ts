@@ -1,7 +1,7 @@
 import {ToolMessage} from '@langchain/core/messages';
 import {tool} from '@langchain/core/tools';
 import {z} from 'zod';
-import type {PauseUIActionOption} from '@core/agents';
+import type {PauseUIActionOption} from '@core/agents/models/types';
 import {createHILMiddleware, parseHILResumeActionPayload, type HILMiddlewareOptions} from '@core/middleware/hil';
 
 const ASK_USER_TOOL_NAME = 'AskUser';
