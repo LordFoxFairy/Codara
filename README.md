@@ -71,6 +71,9 @@ src/index.ts
   - 支持 `/help 2` 这类翻页
   - 支持 `/help <command>` 查看单个命令详情
   - 会区分 built-in 与 skill command，并标出 skill 作用域
+- skill command
+  - 执行前会检查 `allowed-tools`
+  - 若 runtime 缺少所需工具，或 `Bash(...)` 依赖的 shell binary 不在 PATH 中，会先返回明确错误而不是盲目进入 agent
 - `/clear`
   - 清空当前 conversation state
   - 保留当前 `sessionId`，直接进入下一轮新会话
