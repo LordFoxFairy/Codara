@@ -34,7 +34,7 @@ class SummaryAwareModel {
 
 describe('Codara session lifecycle', () => {
   function readSummaryMessage(messages: BaseMessage[]): BaseMessage | undefined {
-    return messages.find((message) => message.getType() === 'ai' && message.text.startsWith('Summary:\n'));
+    return messages.find((message) => message.type === 'ai' && message.text.startsWith('Summary:\n'));
   }
 
   it('should reopen a stored session by session id', async () => {
@@ -73,8 +73,8 @@ describe('Codara session lifecycle', () => {
     const restoredAgentState = secondCodara.getAgentState();
     expect(restoredAgentState.messages.length).toBe(hydratedState.messages.length + 2);
     expect(String(restoredAgentState.messages[1]?.content)).toBe('seen_humans:1');
-    expect(restoredAgentState.messages.at(-2)?.getType()).toBe('human');
-    expect(restoredAgentState.messages.at(-1)?.getType()).toBe('ai');
+    expect(restoredAgentState.messages.at(-2)?.type).toBe('human');
+    expect(restoredAgentState.messages.at(-1)?.type).toBe('ai');
   });
 
   it('should open the latest stored session explicitly', async () => {
@@ -115,8 +115,8 @@ describe('Codara session lifecycle', () => {
     const restoredAgentState = secondCodara.getAgentState();
     expect(restoredAgentState.messages.length).toBe(hydratedState.messages.length + 2);
     expect(String(restoredAgentState.messages[1]?.content)).toBe('seen_humans:1');
-    expect(restoredAgentState.messages.at(-2)?.getType()).toBe('human');
-    expect(restoredAgentState.messages.at(-1)?.getType()).toBe('ai');
+    expect(restoredAgentState.messages.at(-2)?.type).toBe('human');
+    expect(restoredAgentState.messages.at(-1)?.type).toBe('ai');
   });
 
   it('should prefer the latest non-closed stored session when opening the latest session', async () => {

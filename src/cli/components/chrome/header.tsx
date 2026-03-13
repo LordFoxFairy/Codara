@@ -36,7 +36,6 @@ function MetaRow({
 
 export function Header(props: HeaderProps): React.JSX.Element {
   const {layoutMode, session, modelAlias, runState, latestRuntimeEvent} = props;
-  const isCompact = layoutMode !== 'wide';
   const isMinimal = layoutMode === 'minimal';
   const title = session.metadata?.title?.trim() || 'Codara Code';
   const subtitle = session.metadata?.lastMessage?.trim() || 'Session ready for prompts';

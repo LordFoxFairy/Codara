@@ -89,9 +89,9 @@ export type ToolCallHandler = (request?: ToolCallContext) => Promise<ToolMessage
 export interface BaseMiddleware {
   name: string;
   /** 可选持久 state schema（用于 middleware state 默认值和校验）。 */
-  stateSchema?: z.ZodTypeAny;
+  stateSchema?: z.ZodType;
   /** 可选 context 校验器（例如 zod schema）。 */
-  contextSchema?: z.ZodTypeAny;
+  contextSchema?: z.ZodType;
   /** middleware 注册的附加 tools。 */
   tools?: StructuredToolInterface[];
   /** 标记后不可通过 pipeline.remove 删除。 */
