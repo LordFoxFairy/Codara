@@ -38,7 +38,11 @@ import {
   type AutoMemoryRuntime,
   shouldRecordAutoMemoryTurn,
 } from '@core/memory/auto-memory';
-import {buildBaseSystemMessage} from '@core/instructions/system-message';
+import {
+  buildBaseSystemMessage,
+  buildProgressiveInstructionMessages,
+  type BaseSystemMessageBundle,
+} from '@core/instructions/system-message';
 import type {ModelInfo} from '@core/provider';
 import {
   createSessionMetadata,
@@ -157,6 +161,7 @@ export function createSession(options: CreateSessionOptions): Session {
   let agent: Agent | undefined;
   let agentPromise: Promise<Agent> | undefined;
   let summaryOptions: Required<SummaryOptions> | undefined;
+  let baseSystemContext: BaseSystemMessageBundle | undefined;
   const runtimeEvents = new RuntimeEventsController(sessionId);
 
   function state(): SessionState {
@@ -235,18 +240,26 @@ export function createSession(options: CreateSessionOptions): Session {
     systemMessage: string[];
     runtimeShared?: Record<string, unknown>;
   }> {
-    if (forceReload) {
+    if (forceReload || !baseSystemContext) {
       options.promptSource?.reload?.();
       options.guidelinesSource?.reload?.();
       options.skillsSource?.reload();
       options.autoMemory?.source.reload();
+      baseSystemContext = await buildBaseSystemMessage(
+        options.promptSource,
+        options.guidelinesSource,
+        options.skillsSource,
+        options.autoMemory?.source,
+      );
     }
 
-    return buildBaseSystemMessage(
+    return baseSystemContext;
+  }
+
+  async function loadRuntimeInstructionMessages(): Promise<BaseMessage[]> {
+    return buildProgressiveInstructionMessages(
       options.promptSource,
       options.guidelinesSource,
-      options.skillsSource,
-      options.autoMemory?.source,
     );
   }
 
@@ -275,7 +288,7 @@ export function createSession(options: CreateSessionOptions): Session {
   }
 
   async function bootstrapSessionAgent(): Promise<Agent> {
-    await loadSessionSystemContext();
+    const systemContext = await loadSessionSystemContext();
     const modelSelection = await resolveSessionModel(options);
     const checkpoint = restoreCheckpoint ? await getLatestCheckpoint() : undefined;
 
@@ -296,6 +309,8 @@ export function createSession(options: CreateSessionOptions): Session {
       ...(options.messages ? {messages: normalizeAgentInput(options.messages)} : {}),
       ...(options.context ? {context: options.context} : {}),
       ...(options.values ? {values: options.values} : {}),
+      ...(systemContext.systemMessage.length > 0 ? {systemMessage: systemContext.systemMessage} : {}),
+      ...(systemContext.runtimeShared ? {runtimeShared: systemContext.runtimeShared} : {}),
       prepareTurnContext: applySessionTurnContext,
     });
   }
@@ -375,8 +390,12 @@ export function createSession(options: CreateSessionOptions): Session {
 
   async function applySessionTurnContext(context: import('@core/agents').AgentTurnPreparationContext): Promise<void> {
     const next = await loadSessionSystemContext();
+    const runtimeInstructionMessages = await loadRuntimeInstructionMessages();
     context.systemMessage = [...next.systemMessage];
     context.runtime.shared = deepClone(next.runtimeShared ?? {});
+    context.messages = runtimeInstructionMessages.length > 0
+      ? [...runtimeInstructionMessages, ...context.state.messages]
+      : context.state.messages;
   }
 
   async function recordAutoMemory(
@@ -451,8 +470,11 @@ export function createSession(options: CreateSessionOptions): Session {
     }
 
     const systemContext = await loadSessionSystemContext();
+    const runtimeInstructionMessages = await loadRuntimeInstructionMessages();
     const compacted = await compactConversationWithSummary({
-      messages: current.messages,
+      messages: runtimeInstructionMessages.length > 0
+        ? [...runtimeInstructionMessages, ...current.messages]
+        : current.messages,
       context: current.context,
       values: current.values,
       systemMessage: systemContext.systemMessage,
