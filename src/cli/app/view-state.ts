@@ -47,5 +47,6 @@ export interface CliHilReviewState {
   focus: CliHilFocus;
   draft: string;
   busy: boolean;
+  validationMessage?: string;
   form?: CliHilFormState;
 }

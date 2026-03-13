@@ -11,6 +11,7 @@ export interface CliHilAutoAction {
   scope?: string;
   comment?: string;
   editedToolArgs?: Record<string, unknown>;
+  answers?: Record<string, CliHilAnswerValue>;
 }
 
 export function syncCliHilReviewState(
@@ -31,6 +32,7 @@ export function syncCliHilReviewState(
       selectedActionIndex: Math.min(current.selectedActionIndex, Math.max(actions.length - 1, 0)),
       form,
       draft: form ? readHilFormDraft(form) : current.draft,
+      validationMessage: undefined,
     };
   }
 
@@ -38,7 +40,7 @@ export function syncCliHilReviewState(
     request,
     actions,
     selectedActionIndex: 0,
-    focus: 'actions',
+    focus: form ? 'input' : 'actions',
     draft: form ? readHilFormDraft(form) : '',
     busy: false,
     ...(form ? {form} : {}),
@@ -51,7 +53,7 @@ export function selectPreviousCliHilAction(current: CliHilReviewState): CliHilRe
   }
 
   return {
-    ...current,
+    ...clearCliHilValidation(current),
     selectedActionIndex: (current.selectedActionIndex - 1 + current.actions.length) % current.actions.length,
   };
 }
@@ -62,14 +64,14 @@ export function selectNextCliHilAction(current: CliHilReviewState): CliHilReview
   }
 
   return {
-    ...current,
+    ...clearCliHilValidation(current),
     selectedActionIndex: (current.selectedActionIndex + 1) % current.actions.length,
   };
 }
 
 export function toggleCliHilFocus(current: CliHilReviewState): CliHilReviewState {
   return {
-    ...current,
+    ...clearCliHilValidation(current),
     focus: current.focus === 'actions' ? 'input' : 'actions',
   };
 }
@@ -78,14 +80,14 @@ export function updateCliHilDraft(current: CliHilReviewState, draft: string): Cl
   if (current.form) {
     const nextForm = updateHilFormAnswer(current.form, draft);
     return {
-      ...current,
+      ...clearCliHilValidation(current),
       draft,
       form: nextForm,
     };
   }
 
   return {
-    ...current,
+    ...clearCliHilValidation(current),
     draft,
   };
 }
@@ -101,7 +103,7 @@ export function selectPreviousCliHilTab(current: CliHilReviewState): CliHilRevie
   };
 
   return {
-    ...current,
+    ...clearCliHilValidation(current),
     form: nextForm,
     draft: readHilFormDraft(nextForm),
   };
@@ -118,7 +120,7 @@ export function selectNextCliHilTab(current: CliHilReviewState): CliHilReviewSta
   };
 
   return {
-    ...current,
+    ...clearCliHilValidation(current),
     form: nextForm,
     draft: readHilFormDraft(nextForm),
   };
@@ -130,7 +132,7 @@ export function applyCliHilFormShortcut(current: CliHilReviewState, input: strin
   }
 
   const activeTab = current.form.tabs[current.form.activeTabIndex];
-  if (!activeTab) {
+  if (!activeTab || activeTab.options.length === 0) {
     return undefined;
   }
 
@@ -147,10 +149,20 @@ export function applyCliHilFormShortcut(current: CliHilReviewState, input: strin
   const answer = activeTab.input === 'multiselect'
     ? toggleHilFormSelection(current.form, option.label)
     : option.label;
-  const nextForm = updateHilFormAnswer(current.form, answer);
+  let nextForm = updateHilFormAnswer(current.form, answer);
+  if (activeTab.input !== 'multiselect') {
+    const nextIncompleteTabIndex = findNextIncompleteTabIndex(nextForm, current.form.activeTabIndex);
+    if (nextIncompleteTabIndex >= 0) {
+      nextForm = {
+        ...nextForm,
+        activeTabIndex: nextIncompleteTabIndex,
+      };
+    }
+  }
+
   return {
-    ...current,
-    draft: formatHilAnswerValue(answer),
+    ...clearCliHilValidation(current),
+    draft: readHilFormDraft(nextForm),
     form: nextForm,
   };
 }
@@ -215,6 +227,41 @@ export function buildCliHilResumePayload(
   return payload;
 }
 
+export function prepareCliHilSubmission(
+  review: CliHilReviewState,
+  actionOverride?: CliHilAutoAction,
+): {review: CliHilReviewState; payload?: ResumePayload} {
+  const nextReview = applyCliHilAutoAnswers(review, actionOverride?.answers);
+  const action = actionOverride
+    ? resolveRequestedAction(nextReview.actions, actionOverride.action)
+    : nextReview.actions[nextReview.selectedActionIndex];
+
+  if (action?.id === 'submit' && nextReview.form) {
+    const firstIncompleteTabIndex = findFirstIncompleteTabIndex(nextReview.form);
+    if (firstIncompleteTabIndex >= 0) {
+      const nextForm = {
+        ...nextReview.form,
+        activeTabIndex: firstIncompleteTabIndex,
+      };
+      const tab = nextForm.tabs[firstIncompleteTabIndex];
+      return {
+        review: {
+          ...nextReview,
+          focus: 'input',
+          draft: readHilFormDraft(nextForm),
+          form: nextForm,
+          validationMessage: tab ? `Complete ${tab.label} before submitting.` : 'Complete each question before submitting.',
+        },
+      };
+    }
+  }
+
+  return {
+    review: clearCliHilValidation(nextReview),
+    payload: buildCliHilResumePayload(nextReview, actionOverride),
+  };
+}
+
 function resolveRequestedAction(actions: readonly CliHilReviewAction[], actionId: string): CliHilReviewAction {
   const normalized = actionId.trim().toLowerCase();
   const resolved = actions.find((action) => action.id.toLowerCase() === normalized);
@@ -222,6 +269,38 @@ function resolveRequestedAction(actions: readonly CliHilReviewAction[], actionId
     throw new Error(`Unknown HIL action: ${actionId}`);
   }
   return resolved;
+}
+
+function applyCliHilAutoAnswers(
+  review: CliHilReviewState,
+  answers: Record<string, CliHilAnswerValue> | undefined,
+): CliHilReviewState {
+  if (!review.form || !answers) {
+    return review;
+  }
+
+  const nextAnswers = Object.fromEntries(
+    Object.entries(answers)
+      .flatMap(([key, value]) => normalizeAnswerEntry(key, value))
+      .map(([key, value]) => [key, value]),
+  );
+  if (Object.keys(nextAnswers).length === 0) {
+    return review;
+  }
+
+  const nextForm: CliHilFormState = {
+    ...review.form,
+    answers: {
+      ...review.form.answers,
+      ...nextAnswers,
+    },
+  };
+
+  return {
+    ...clearCliHilValidation(review),
+    form: nextForm,
+    draft: readHilFormDraft(nextForm),
+  };
 }
 
 function parseEditedToolArgs(raw: string): Record<string, unknown> {
@@ -355,7 +434,9 @@ function normalizeHilFormTab(tab: unknown) {
   const normalizedInput: 'select' | 'multiselect' | 'text' | 'mixed' | undefined =
     input === 'select' || input === 'multiselect' || input === 'text' || input === 'mixed'
       ? input
-      : undefined;
+      : Array.isArray(record.options) && record.options.length > 0
+        ? 'select'
+        : undefined;
 
   const options = Array.isArray(record.options)
     ? record.options
@@ -413,4 +494,52 @@ function toggleHilFormSelection(form: CliHilFormState, label: string): string[] 
 
 function formatHilAnswerValue(value: CliHilAnswerValue): string {
   return Array.isArray(value) ? value.join(', ') : value;
+}
+
+function clearCliHilValidation(current: CliHilReviewState): CliHilReviewState {
+  if (!current.validationMessage) {
+    return current;
+  }
+
+  return {
+    ...current,
+    validationMessage: undefined,
+  };
+}
+
+function findFirstIncompleteTabIndex(form: CliHilFormState): number {
+  return form.tabs.findIndex((tab) => !isHilAnswerComplete(form.answers[tab.id]));
+}
+
+function findNextIncompleteTabIndex(form: CliHilFormState, currentIndex: number): number {
+  for (let index = currentIndex + 1; index < form.tabs.length; index += 1) {
+    const tab = form.tabs[index];
+    if (tab && !isHilAnswerComplete(form.answers[tab.id])) {
+      return index;
+    }
+  }
+
+  return -1;
+}
+
+function isHilAnswerComplete(value: CliHilAnswerValue | undefined): boolean {
+  if (typeof value === 'string') {
+    return value.trim().length > 0;
+  }
+
+  return Array.isArray(value) && value.some((entry) => entry.trim().length > 0);
+}
+
+function normalizeAnswerEntry(key: string, value: CliHilAnswerValue): Array<[string, CliHilAnswerValue]> {
+  const normalizedKey = key.trim();
+  if (!normalizedKey) {
+    return [];
+  }
+
+  if (typeof value === 'string') {
+    return value.trim().length > 0 ? [[normalizedKey, value]] : [];
+  }
+
+  const normalized = value.filter((entry) => entry.trim().length > 0);
+  return normalized.length > 0 ? [[normalizedKey, normalized]] : [];
 }

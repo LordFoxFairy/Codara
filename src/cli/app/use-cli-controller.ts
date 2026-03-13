@@ -18,7 +18,7 @@ import type {CliComposerState} from '../composer/types';
 import {hasTranscriptContent} from '../transcript/model';
 import {
   applyCliHilFormShortcut,
-  buildCliHilResumePayload,
+  prepareCliHilSubmission,
   selectNextCliHilTab,
   selectNextCliHilAction,
   selectPreviousCliHilTab,
@@ -348,7 +348,7 @@ export function useCliController(options: UseCliControllerOptions): CliControlle
       if (!current) {
         return current;
       }
-      const shortcut = current.focus !== 'input' ? applyCliHilFormShortcut(current, input) : undefined;
+      const shortcut = applyCliHilFormShortcut(current, input);
       if (shortcut) {
         return shortcut;
       }
@@ -383,17 +383,25 @@ export function useCliController(options: UseCliControllerOptions): CliControlle
       return;
     }
 
+    const prepared = prepareCliHilSubmission(review, autoAction);
+    if (!prepared.payload) {
+      setHilReview(prepared.review);
+      setRunState({status: 'paused'});
+      return;
+    }
+
     isRunningRef.current = true;
     setRunState({status: 'running'});
-    setHilReview((current) => current ? {...current, busy: true} : current);
+    setHilReview((current) => current ? {...prepared.review, busy: true} : current);
 
     try {
       const selectedAction = autoAction
-        ? review.actions.find((action) => action.id.toLowerCase() === autoAction.action.trim().toLowerCase())
-        : review.actions[review.selectedActionIndex];
-      const payload = buildCliHilResumePayload(review, autoAction);
-      appendNotice('system', `HIL action: ${selectedAction?.label ?? autoAction?.action ?? 'resume'}`);
-      const result = await codara.resumePause(payload);
+        ? prepared.review.actions.find((action) => action.id.toLowerCase() === autoAction.action.trim().toLowerCase())
+        : prepared.review.actions[prepared.review.selectedActionIndex];
+      if (!prepared.review.form) {
+        appendNotice('system', `HIL action: ${selectedAction?.label ?? autoAction?.action ?? 'resume'}`);
+      }
+      const result = await codara.resumePause(prepared.payload);
       setCoreMessages(result.state.messages);
       setSessionState(codara.getState());
       setHilReview((current) => syncCliHilReviewState(current, result.state.pendingPause));
