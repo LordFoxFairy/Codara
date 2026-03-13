@@ -27,6 +27,7 @@ export function createPermissionMiddleware(options: PermissionMiddlewareOptions 
 
   return createHILMiddleware({
     ...hilOptions,
+    name: hilOptions.name?.trim() || 'PermissionMiddleware',
     resolveDecision: async (input) => {
       const permissionDecision = await permissionRuntime.resolveToolDecision(input.context);
       if (permissionDecision) {

@@ -1,7 +1,7 @@
 import {describe, expect, it} from 'bun:test';
 import {createAgentMemoryCheckpointer, createCodara, createCodaraRuntime} from '@core';
 import type {BaseChatModel} from '@langchain/core/language_models/chat_models';
-import {AIMessageChunk} from '@langchain/core/messages';
+import {AIMessage, AIMessageChunk, ToolMessage, type ToolCall} from '@langchain/core/messages';
 import {mkdtemp, mkdir, readFile, rm, stat, writeFile} from 'node:fs/promises';
 import {tmpdir} from 'node:os';
 import path from 'node:path';
@@ -199,6 +199,75 @@ describe('Codara facade runtime', () => {
 
       expect(records.length).toBeGreaterThan(0);
       expect(records.every((record) => record.sessionId === sessionId)).toBe(true);
+    } finally {
+      await rm(root, {recursive: true, force: true});
+    }
+  });
+
+  it('should include AskUser interaction capability in the default runtime entry', async () => {
+    const root = await mkdtemp(path.join(tmpdir(), 'codara-runtime-ask-user-'));
+    const cwd = path.join(root, 'project');
+    const codaraRoot = path.join(cwd, '.codara');
+
+    await mkdir(cwd, {recursive: true});
+    await mkdir(codaraRoot, {recursive: true});
+    await writeFile(path.join(codaraRoot, 'config.json'), JSON.stringify({
+      providers: [{name: 'test', apiKey: 'x', models: ['echo']}],
+      router: {default: 'test:echo'},
+    }, null, 2));
+
+    class AskUserModel {
+      async invoke(messages: import('@langchain/core/messages').BaseMessage[]): Promise<AIMessage> {
+        const existingResult = messages.find((message) => (
+          ToolMessage.isInstance(message) && String(message.content).includes('"action":"submit"')
+        ));
+        if (existingResult) {
+          return new AIMessage('ASK_USER_DONE');
+        }
+
+        return new AIMessage({
+          content: '',
+          tool_calls: [{
+            id: 'call_runtime_ask_user',
+            name: 'AskUser',
+            args: {
+              summary: 'Need one critical product answer before planning continues.',
+              questions: [{id: 'domain', label: 'Domain', question: 'Which domain?'}],
+            },
+          } as ToolCall],
+        });
+      }
+
+      bindTools(): this {
+        return this;
+      }
+    }
+
+    try {
+      const codara = createCodaraRuntime({
+        cwd,
+        model: new AskUserModel() as unknown as BaseChatModel,
+        skills: false,
+        builtinTools: false,
+      });
+
+      const paused = await codara.invoke('plan this product');
+      expect(paused.reason).toBe('complete');
+      expect(paused.state.status).toBe('paused');
+      expect(paused.state.pendingPause?.action.toolName).toBe('AskUser');
+      expect(paused.state.pendingPause?.ui?.form?.tabs[0]?.label).toBe('Domain');
+
+      const resumed = await codara.resumePause({
+        action: 'submit',
+        metadata: {
+          form: {
+            answers: {
+              domain: 'SaaS',
+            },
+          },
+        },
+      });
+      expect(String(resumed.state.messages[resumed.state.messages.length - 1]?.content)).toBe('ASK_USER_DONE');
     } finally {
       await rm(root, {recursive: true, force: true});
     }
