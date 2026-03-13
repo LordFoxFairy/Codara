@@ -187,14 +187,14 @@ describe('Codara session source lifecycle', () => {
     expect(discoverCalls).toBe(1);
   });
 
-  it('should load .codara/prompt.md into the session system prompt and refresh it after reloadSources', async () => {
+  it('should load .codara/codara.md into the session system prompt and refresh it after reloadSources', async () => {
     const root = await mkdtemp(path.join(tmpdir(), 'codara-session-prompt-reload-'));
     const userHome = path.join(root, 'home');
     const projectRoot = path.join(root, 'project');
     await mkdir(path.join(userHome, '.codara'), {recursive: true});
     await mkdir(path.join(projectRoot, '.git'), {recursive: true});
     await mkdir(path.join(projectRoot, '.codara'), {recursive: true});
-    await writeFile(path.join(projectRoot, '.codara', 'prompt.md'), 'project handbook v1', 'utf8');
+    await writeFile(path.join(projectRoot, '.codara', 'codara.md'), 'project handbook v1', 'utf8');
 
     const codara = createCodara({
       model: new SystemEchoModel() as unknown as BaseChatModel,
@@ -209,7 +209,7 @@ describe('Codara session source lifecycle', () => {
     const firstText = String(first.state.messages[first.state.messages.length - 1]?.content);
     expect(firstText).toContain('project handbook v1');
 
-    await writeFile(path.join(projectRoot, '.codara', 'prompt.md'), 'project handbook v2', 'utf8');
+    await writeFile(path.join(projectRoot, '.codara', 'codara.md'), 'project handbook v2', 'utf8');
 
     const second = await codara.invoke('again');
     const secondText = String(second.state.messages[second.state.messages.length - 1]?.content);
