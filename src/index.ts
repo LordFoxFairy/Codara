@@ -13,6 +13,7 @@ export {createCodara, createCodaraRuntime, DEFAULT_CODARA_MODEL_ALIAS, openCodar
 /** Codara 相关类型 */
 export type {
   Codara,
+  CodaraAutoMemoryOptions,
   CodaraRuntimeOptions,
   CodaraOptions,
 } from '@core/codara';

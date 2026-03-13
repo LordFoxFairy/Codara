@@ -7,6 +7,13 @@ import {tmpdir} from 'node:os';
 import path from 'node:path';
 import {EchoModel, StreamingEchoModel} from './codara-fixtures';
 
+const createRuntimeForTest = (options: Parameters<typeof createCodaraRuntime>[0]) => (
+  createCodaraRuntime({
+    ...options,
+    autoMemory: false,
+  })
+);
+
 class DefaultRuntimeWorkflowModel {
   async invoke(messages: import('@langchain/core/messages').BaseMessage[]): Promise<AIMessage> {
     const text = messages.map((message) => String(message.content)).join('\n');
@@ -249,7 +256,7 @@ command-name: review-helper
     }, null, 2));
 
     try {
-      const codara = createCodaraRuntime({
+      const codara = createRuntimeForTest({
         cwd,
         model: new EchoModel() as unknown as BaseChatModel,
         skills: false,
@@ -281,7 +288,7 @@ command-name: review-helper
     }, null, 2));
 
     try {
-      const codara = createCodaraRuntime({
+      const codara = createRuntimeForTest({
         cwd,
         model: new EchoModel() as unknown as BaseChatModel,
         skills: false,
@@ -343,7 +350,7 @@ command-name: review-helper
     }
 
     try {
-      const codara = createCodaraRuntime({
+      const codara = createRuntimeForTest({
         cwd,
         model: new AskUserModel() as unknown as BaseChatModel,
         skills: false,
@@ -385,7 +392,7 @@ command-name: review-helper
     }, null, 2));
 
     try {
-      const codara = createCodaraRuntime({
+      const codara = createRuntimeForTest({
         cwd,
         model: new DefaultRuntimeWorkflowModel() as unknown as BaseChatModel,
         skills: false,

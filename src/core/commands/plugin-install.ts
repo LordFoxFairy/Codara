@@ -1,9 +1,10 @@
 import {spawn} from 'node:child_process';
 import {existsSync} from 'node:fs';
-import {cp, mkdir, mkdtemp, readdir, readFile, rm, writeFile} from 'node:fs/promises';
+import {cp, mkdir, mkdtemp, readFile, readdir, rm, writeFile} from 'node:fs/promises';
 import {homedir, tmpdir} from 'node:os';
 import path from 'node:path';
 import {parseMarkdownFrontmatterDocument} from '@core/skills/loading';
+import {resolvePluginInstallGlobal} from '@core/settings';
 import {resolveWorkspaceRoot} from '@core/shared/workspace';
 
 export interface PluginInstallEnvironment {
@@ -140,56 +141,7 @@ async function resolvePluginDestinationRoot(environment: PluginInstallEnvironmen
 }
 
 async function resolvePluginInstallScope(environment: PluginInstallEnvironment): Promise<'global' | 'project'> {
-  const userSettings = await readCodaraSettings(path.join(path.resolve(environment.userHome ?? homedir()), '.codara', 'settings.json'));
-  const projectRoot = resolveWorkspaceRoot({
-    cwd: environment.cwd,
-    projectRoot: environment.projectRoot,
-  });
-  const projectSettings = await readCodaraSettings(path.join(projectRoot, '.codara', 'settings.json'));
-
-  if (typeof projectSettings.plugins?.installGlobal === 'boolean') {
-    return projectSettings.plugins.installGlobal ? 'global' : 'project';
-  }
-
-  if (typeof userSettings.plugins?.installGlobal === 'boolean') {
-    return userSettings.plugins.installGlobal ? 'global' : 'project';
-  }
-
-  return 'global';
-}
-
-interface CodaraSettingsRecord {
-  plugins?: {
-    installGlobal?: boolean;
-  };
-}
-
-async function readCodaraSettings(filePath: string): Promise<CodaraSettingsRecord> {
-  if (!existsSync(filePath)) {
-    return {};
-  }
-
-  try {
-    const parsed = JSON.parse(await readFile(filePath, 'utf8')) as unknown;
-    if (!isRecord(parsed)) {
-      return {};
-    }
-    return {
-      plugins: readPluginSettings(parsed.plugins),
-    };
-  } catch {
-    return {};
-  }
-}
-
-function readPluginSettings(value: unknown): CodaraSettingsRecord['plugins'] {
-  if (!isRecord(value)) {
-    return undefined;
-  }
-
-  return {
-    ...(typeof value.installGlobal === 'boolean' ? {installGlobal: value.installGlobal} : {}),
-  };
+  return resolvePluginInstallGlobal(environment) ? 'global' : 'project';
 }
 
 interface MaterializedPluginSource {
@@ -353,10 +305,6 @@ function normalizeAllowedTools(value: unknown): string[] {
 
 function escapeYamlScalar(value: string): string {
   return JSON.stringify(value);
-}
-
-function isRecord(value: unknown): value is Record<string, unknown> {
-  return typeof value === 'object' && value !== null && !Array.isArray(value);
 }
 
 function parsePluginSpec(spec: string): {name: string; source: string} {

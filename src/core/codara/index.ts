@@ -1,5 +1,6 @@
 export type {
   Codara,
+  CodaraAutoMemoryOptions,
   CodaraRuntimeOptions,
   CodaraOptions,
 } from '@core/codara/facade';

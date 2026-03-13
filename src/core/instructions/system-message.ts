@@ -1,5 +1,6 @@
 import type {GuidelinesSource} from '@core/instructions/guidelines';
 import type {PromptSource} from '@core/instructions/prompt';
+import type {AutoMemorySource} from '@core/memory/auto-memory';
 import {
   formatSkillsList,
   formatSkillsLocations,
@@ -23,14 +24,17 @@ export async function buildBaseSystemMessage(
   promptSource?: PromptSource,
   guidelinesSource?: GuidelinesSource,
   skillsSource?: SkillsSource,
+  autoMemorySource?: AutoMemorySource,
 ): Promise<BaseSystemMessageBundle> {
   const promptMessage = await promptSource?.getContent?.();
   const guidelinesMessage = await guidelinesSource?.getContent?.();
   const skillsRuntime = await skillsSource?.getRuntime?.();
+  const autoMemoryMessage = await autoMemorySource?.getContent?.();
   const systemMessage = [
     promptMessage,
     guidelinesMessage,
     skillsRuntime ? createSkillsSystemMessage(skillsRuntime) : undefined,
+    autoMemoryMessage,
   ].filter((value): value is string => Boolean(value));
   const runtimeShared = {
     ...(skillsRuntime ? {skills: skillsRuntime} : {}),

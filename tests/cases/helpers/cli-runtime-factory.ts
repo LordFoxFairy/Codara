@@ -33,6 +33,13 @@ import {createTaskTool} from '@core/tasks/task';
 import {FileSystemSkillStore} from '@core/skills';
 import {seedProjectSkillFixtures} from '../../helpers/project-skill-fixtures';
 
+const createCliCaseRuntime = (options: Parameters<typeof createCodaraRuntime>[0]) => (
+  createCodaraRuntime({
+    ...options,
+    autoMemory: false,
+  })
+);
+
 export async function createCliRuntime(input: {
   cwd: string;
   initialPrompt: string;
@@ -47,7 +54,7 @@ export async function createCliRuntime(input: {
       await seedProjectSkillFixtures(input.cwd);
       await seedPermissions(input.cwd, ['Read(*)']);
       return {
-        codara: createCodaraRuntime({
+        codara: createCliCaseRuntime({
           cwd: input.cwd,
           projectRoot: input.cwd,
           codaraPath: path.join(input.cwd, '.codara'),
@@ -69,7 +76,7 @@ export async function createCliRuntime(input: {
       await seedProjectSkillFixtures(input.cwd);
       const store = createTaskFileStore({rootDir: path.join(input.cwd, '.codara', 'case-tasks')});
       return {
-        codara: createCodaraRuntime({
+        codara: createCliCaseRuntime({
           cwd: input.cwd,
           projectRoot: input.cwd,
           codaraPath: path.join(input.cwd, '.codara'),
