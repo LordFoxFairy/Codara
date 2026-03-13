@@ -167,6 +167,7 @@ createCodara(...)
   - `/status`
   - `/memory`
   - `/permissions`
+  - `/plugin`
   - `/resume`
   - `/compact`
   - `/reload`

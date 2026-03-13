@@ -1,5 +1,5 @@
 import {describe, expect, it} from 'bun:test';
-import {mkdtemp} from 'node:fs/promises';
+import {mkdir, mkdtemp, readFile} from 'node:fs/promises';
 import {tmpdir} from 'node:os';
 import path from 'node:path';
 import type {BaseChatModel} from '@langchain/core/language_models/chat_models';
@@ -26,6 +26,7 @@ describe('Codara slash commands', () => {
     expect(result.output).toContain('/status');
     expect(result.output).toContain('/memory [show|project|global]');
     expect(result.output).toContain('/permissions [show|edit]');
+    expect(result.output).toContain('/plugin install <plugin>@<source>');
     expect(result.output).toContain('/resume <sessionId>');
     expect(result.output).toContain('/compact [instructions] | /compact checkpoints [keepLast]');
     expect(result.output).toContain('/reload');
@@ -38,10 +39,60 @@ describe('Codara slash commands', () => {
       {name: 'status', source: 'builtin'},
       {name: 'memory', source: 'builtin'},
       {name: 'permissions', source: 'builtin'},
+      {name: 'plugin', source: 'builtin'},
       {name: 'resume', source: 'builtin'},
       {name: 'compact', source: 'builtin'},
       {name: 'reload', source: 'builtin'},
     ]);
+  });
+
+  it('should import supported Claude-style plugins by copying their skills into Codara skill sources', async () => {
+    const root = await mkdtemp(path.join(tmpdir(), 'codara-command-plugin-'));
+    const projectRoot = path.join(root, 'project');
+    const userHome = path.join(root, 'home');
+    const fixtureRoot = path.join(root, 'superpowers-fixture');
+    const skillDir = path.join(fixtureRoot, 'skills', 'brainstorming');
+
+    await mkdir(skillDir, {recursive: true});
+    await Bun.write(path.join(skillDir, 'SKILL.md'), [
+      '---',
+      'name: brainstorming',
+      'description: Facilitate better design brainstorming.',
+      '---',
+      '',
+      '# Brainstorming',
+      '',
+      'Fixture skill.',
+      '',
+    ].join('\n'));
+
+    const previousOverride = process.env.CODARA_PLUGIN_SUPERPOWERS_SOURCE;
+    process.env.CODARA_PLUGIN_SUPERPOWERS_SOURCE = fixtureRoot;
+
+    try {
+      const codara = createCodara({
+        cwd: projectRoot,
+        projectRoot,
+        userHome,
+        model: new EchoModel() as unknown as BaseChatModel,
+        skills: false,
+        builtinTools: false,
+      });
+
+      const result = await codara.executeCommand('/plugin install superpowers@claude-plugins-official');
+      expect(result.ok).toBe(true);
+      expect(result.output).toContain('Installed 1 skills');
+      expect(result.output).toContain('brainstorming');
+
+      const installed = await readFile(path.join(userHome, '.codara', 'skills', 'brainstorming', 'SKILL.md'), 'utf8');
+      expect(installed).toContain('name: brainstorming');
+    } finally {
+      if (previousOverride === undefined) {
+        delete process.env.CODARA_PLUGIN_SUPERPOWERS_SOURCE;
+      } else {
+        process.env.CODARA_PLUGIN_SUPERPOWERS_SOURCE = previousOverride;
+      }
+    }
   });
 
   it('should report the current runtime status through slash commands', async () => {
