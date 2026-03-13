@@ -84,8 +84,10 @@ src/index.ts
   - `edit` 返回宿主 `open_file` 动作，打开项目 `.codara/settings.local.json`
 - `/plugin`
   - 当前支持 `install`
-  - 兼容 `superpowers@claude-plugins-official` 这类 Claude 风格安装语法
-  - 底层会把上游 `skills/*` 导入到 `~/.codara/skills`，然后刷新当前 session skill sources
+  - 兼容 `superpowers@claude-plugins-official`、`code-review@claude-plugins-official` 这类 Claude 风格安装语法
+  - 底层会把上游 `skills/*` 直接导入到 `~/.codara/skills`
+  - 若插件只提供 `commands/*.md`，Codara 会把它们翻译成 skill-command 再导入
+  - 导入完成后会刷新当前 session skill sources
 - `/resume`
   - 通过 `sessionId` 恢复指定历史会话
   - permission/HIL 不走 slash command，走通用 HIL 面板或直接编辑 settings JSON

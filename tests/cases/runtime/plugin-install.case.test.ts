@@ -45,4 +45,43 @@ describe('runtime plugin install cases', () => {
     const content = await readFile(installedSkill, 'utf8');
     expect(content).toContain('using-superpowers');
   });
+
+  it('should translate official plugin commands into Codara skill commands through the same install flow', async () => {
+    const root = await mkdtemp(path.join(tmpdir(), 'codara-case-plugin-command-install-'));
+    const projectRoot = path.join(root, 'project');
+    const homeRoot = path.join(root, 'home');
+    const fixtureRoot = path.join(root, 'code-review-fixture');
+    const commandDir = path.join(fixtureRoot, 'commands');
+
+    await mkdir(path.join(projectRoot, '.codara'), {recursive: true});
+    await mkdir(commandDir, {recursive: true});
+    await mkdir(homeRoot, {recursive: true});
+    await Bun.write(path.join(commandDir, 'code-review.md'), [
+      '---',
+      'description: Review a pull request with multiple agents.',
+      'allowed-tools: Bash(gh pr view:*)',
+      '---',
+      '',
+      'Provide a code review for the current pull request.',
+      '',
+    ].join('\n'));
+
+    const result = await runRealCliCase({
+      cwd: projectRoot,
+      prompt: '/plugin install code-review@claude-plugins-official',
+      scenario: 'plugin-install',
+      env: {
+        HOME: homeRoot,
+        CODARA_PLUGIN_CODE_REVIEW_SOURCE: fixtureRoot,
+      },
+    });
+
+    expect(result.exitCode).toBe(0);
+    expect(result.output).toContain('Imported plugin code-review@claude-plugins-official');
+    expect(result.output).toContain('code-review-code-review');
+
+    const installedSkill = path.join(homeRoot, '.codara', 'skills', 'code-review-code-review', 'SKILL.md');
+    const content = await readFile(installedSkill, 'utf8');
+    expect(content).toContain('command-name: code-review');
+  });
 });
