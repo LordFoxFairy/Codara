@@ -58,7 +58,8 @@ allowed-tools:
 
     expect(result.exitCode).toBe(0);
     expect(result.output).toContain('Cannot run /repo-review in this runtime.');
-    expect(result.output).toContain('Missing shell commands in PATH: codara-missing-binary-please-do-not-install');
+    expect(result.output).toContain('Missing shell commands in PATH:');
+    expect(result.output).toContain('codara-missing-binary-please-do-not-install');
     expect(result.output).toContain('Suggested fixes:');
   });
 });

@@ -1,9 +1,12 @@
 import {describe, expect, it} from 'bun:test';
-import {mkdir, mkdtemp, writeFile} from 'node:fs/promises';
+import {mkdir, mkdtemp, readFile, writeFile} from 'node:fs/promises';
 import path from 'node:path';
 import {tmpdir} from 'node:os';
 import {createCodara, FileSessionStore} from '@core';
 import type {BaseChatModel} from '@langchain/core/language_models/chat_models';
+import {AIMessage, HumanMessage, SystemMessage, ToolMessage, type BaseMessage, type ToolCall} from '@langchain/core/messages';
+import {tool} from '@langchain/core/tools';
+import {z} from 'zod';
 import type {SkillMetadata, SkillStore} from '@core/skills/types';
 import {SystemEchoModel} from './codara-fixtures';
 
@@ -22,7 +25,6 @@ describe('Codara session source lifecycle', () => {
       model: new SystemEchoModel() as unknown as BaseChatModel,
       cwd: nestedCwd,
       userHome,
-      guidelines: true,
       skills: false,
       builtinTools: false,
     });
@@ -53,7 +55,6 @@ describe('Codara session source lifecycle', () => {
       model: new SystemEchoModel() as unknown as BaseChatModel,
       cwd: nestedCwd,
       userHome,
-      guidelines: true,
       skills: false,
       builtinTools: false,
     });
@@ -65,7 +66,6 @@ describe('Codara session source lifecycle', () => {
       model: new SystemEchoModel() as unknown as BaseChatModel,
       cwd: nestedCwd,
       userHome,
-      guidelines: true,
       skills: false,
       builtinTools: false,
     });
@@ -91,7 +91,6 @@ describe('Codara session source lifecycle', () => {
       cwd: nestedCwd,
       sessionId: 'reload-sources-session',
       userHome,
-      guidelines: true,
       skills: false,
       builtinTools: false,
     });
@@ -128,7 +127,6 @@ describe('Codara session source lifecycle', () => {
       cwd: nestedCwd,
       userHome,
       store,
-      guidelines: true,
       skills: false,
       builtinTools: false,
     });
@@ -175,7 +173,6 @@ describe('Codara session source lifecycle', () => {
       model: new SystemEchoModel() as unknown as BaseChatModel,
       projectRoot,
       userHome,
-      guidelines: false,
       skills: {store},
       builtinTools: false,
     });
@@ -200,7 +197,6 @@ describe('Codara session source lifecycle', () => {
       model: new SystemEchoModel() as unknown as BaseChatModel,
       projectRoot,
       userHome,
-      guidelines: false,
       skills: false,
       builtinTools: false,
     });
@@ -221,6 +217,66 @@ describe('Codara session source lifecycle', () => {
     const thirdText = String(third.state.messages[third.state.messages.length - 1]?.content);
     expect(thirdText).toContain('project handbook v2');
     expect(thirdText).not.toContain('project handbook v1');
+  });
+
+  it('should add deeper AGENTS.md rules on the next turn after a file tool hits that subtree', async () => {
+    const root = await mkdtemp(path.join(tmpdir(), 'codara-session-guidelines-disclosure-'));
+    const userHome = path.join(root, 'home');
+    const projectRoot = path.join(root, 'project');
+    const targetFile = path.join(projectRoot, 'packages', 'app', 'src', 'feature.ts');
+
+    await mkdir(path.join(userHome, '.codara'), {recursive: true});
+    await mkdir(path.join(projectRoot, '.git'), {recursive: true});
+    await mkdir(path.dirname(targetFile), {recursive: true});
+    await writeFile(path.join(projectRoot, 'AGENTS.md'), 'ROOT_RULE', 'utf8');
+    await writeFile(path.join(projectRoot, 'packages', 'app', 'AGENTS.md'), 'APP_RULE', 'utf8');
+    await writeFile(targetFile, 'export const feature = true;\n', 'utf8');
+
+    const codara = createCodara({
+      model: new ProgressiveDisclosureModel(targetFile, 'APP_RULE') as unknown as BaseChatModel,
+      projectRoot,
+      cwd: projectRoot,
+      userHome,
+      skills: false,
+      builtinTools: false,
+      tools: [createSessionReadFileTool()],
+    });
+
+    const result = await codara.invoke('inspect the feature file');
+    const text = String(result.state.messages[result.state.messages.length - 1]?.content);
+
+    expect(text).toBe('visible:true');
+  });
+
+  it('should add deeper hidden handbook rules on the next turn after a file tool hits that subtree', async () => {
+    const root = await mkdtemp(path.join(tmpdir(), 'codara-session-prompt-disclosure-'));
+    const userHome = path.join(root, 'home');
+    const projectRoot = path.join(root, 'project');
+    const targetFile = path.join(projectRoot, 'packages', 'app', 'src', 'feature.ts');
+
+    await mkdir(path.join(userHome, '.codara'), {recursive: true});
+    await mkdir(path.join(projectRoot, '.git'), {recursive: true});
+    await mkdir(path.join(projectRoot, '.codara'), {recursive: true});
+    await mkdir(path.join(projectRoot, 'packages', 'app', '.codara'), {recursive: true});
+    await mkdir(path.dirname(targetFile), {recursive: true});
+    await writeFile(path.join(projectRoot, '.codara', 'codara.md'), 'ROOT_HANDBOOK', 'utf8');
+    await writeFile(path.join(projectRoot, 'packages', 'app', '.codara', 'codara.md'), 'APP_HANDBOOK', 'utf8');
+    await writeFile(targetFile, 'export const feature = true;\n', 'utf8');
+
+    const codara = createCodara({
+      model: new ProgressiveDisclosureModel(targetFile, 'APP_HANDBOOK') as unknown as BaseChatModel,
+      projectRoot,
+      cwd: projectRoot,
+      userHome,
+      skills: false,
+      builtinTools: false,
+      tools: [createSessionReadFileTool()],
+    });
+
+    const result = await codara.invoke('inspect the feature file');
+    const text = String(result.state.messages[result.state.messages.length - 1]?.content);
+
+    expect(text).toBe('visible:true');
   });
 
   it('should reload skills projections for the same Codara session only after reloadSources is called', async () => {
@@ -246,7 +302,6 @@ description: skill rule v1
       model: new SystemEchoModel() as unknown as BaseChatModel,
       projectRoot,
       userHome,
-      guidelines: false,
       skills: {
         projectRoot,
         userHome,
@@ -282,3 +337,53 @@ description: skill rule v2
     expect(thirdText).not.toContain('skill rule v1');
   });
 });
+
+class ProgressiveDisclosureModel {
+  constructor(
+    private readonly targetFile: string,
+    private readonly expectedRule: string,
+  ) {}
+
+  async invoke(messages: BaseMessage[]): Promise<AIMessage> {
+    const toolMessage = messages.find((message) => (
+      ToolMessage.isInstance(message) && message.tool_call_id === 'call_progressive_read'
+    )) as ToolMessage | undefined;
+
+    if (!toolMessage) {
+      return new AIMessage({
+        content: '',
+        tool_calls: [{
+          id: 'call_progressive_read',
+          name: 'read_file',
+          args: {path: this.targetFile},
+        } as ToolCall],
+      });
+    }
+
+    const systemText = messages
+      .filter((message): message is SystemMessage => SystemMessage.isInstance(message))
+      .map((message) => String(message.content))
+      .join('\n');
+    const runtimeInstructionText = messages
+      .filter((message): message is HumanMessage => HumanMessage.isInstance(message))
+      .map((message) => String(message.content))
+      .join('\n');
+
+    return new AIMessage(`visible:${runtimeInstructionText.includes(this.expectedRule) && !systemText.includes(this.expectedRule)}`);
+  }
+
+  bindTools(): this {
+    return this;
+  }
+}
+
+function createSessionReadFileTool() {
+  return tool(
+    async ({path: targetPath}: {path: string}) => readFile(targetPath, 'utf8'),
+    {
+      name: 'read_file',
+      description: 'Read file content for progressive disclosure tests',
+      schema: z.object({path: z.string()}),
+    },
+  );
+}

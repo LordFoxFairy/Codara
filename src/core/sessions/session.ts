@@ -15,14 +15,16 @@ import type {
   AgentStreamOutput,
   ResumePayload,
   ToolErrorHandler,
-} from '@core/agents';
+} from '@core/agents/models/agent';
+import {createAgent, normalizeAgentInput} from '@core/agents/run/agent-loop';
+import type {CompactOptions} from '@core/checkpoint/types';
 import {
-  createAgent,
-  normalizeAgentInput,
-} from '@core/agents';
-import type {AgentCheckpointer, CompactOptions} from '@core/checkpoint';
-import {createAgentMemoryCheckpointer, putForkCheckpoint, putManualCheckpoint} from '@core/checkpoint';
-import type {BaseMiddleware} from '@core/middleware';
+  createAgentMemoryCheckpointer,
+  putForkCheckpoint,
+  putManualCheckpoint,
+  type AgentCheckpointer,
+} from '@core/checkpoint/agent';
+import type {BaseMiddleware} from '@core/middleware/types';
 import {
   compactConversationWithSummary,
   createModelSummaryGenerator,
@@ -31,10 +33,19 @@ import {
   type SummaryOptions,
   type SummarySettings,
 } from '@core/middleware/summary';
-import type {GuidelinesSource} from '@core/instructions/guidelines';
-import {type PromptSource} from '@core/instructions/prompt';
+import type {GuidelinesSource} from '@core/context/instructions/guidelines';
+import {type PromptSource} from '@core/context/instructions/prompt';
 import {type SkillsSource} from '@core/skills';
-import {buildBaseSystemMessage} from '@core/instructions/system-message';
+import {
+  type AutoMemoryRuntime,
+  shouldRecordAutoMemoryTurn,
+} from '@core/context/memory/auto-memory';
+import {
+  applyPreparedInstructionContext,
+  buildBaseSystemMessage,
+  buildProgressiveInstructionMessages,
+  type BaseSystemMessageBundle,
+} from '@core/context/system-message';
 import type {ModelInfo} from '@core/provider';
 import {
   createSessionMetadata,
@@ -47,43 +58,8 @@ import {
   RuntimeEventsController,
   type CodaraRuntimeEventListener,
 } from './runtime-events';
+import type {SessionMetadata, SessionState, SessionStatus} from './types';
 export type {CodaraRuntimeEvent, CodaraRuntimeEventListener} from './runtime-events';
-
-export type SessionStatus = 'ready' | 'closed';
-
-export interface SessionMetadata {
-  title?: string;
-  lastMessage?: string;
-  messageCount: number;
-  tags?: string[];
-  archived?: boolean;
-  lastActivity: string;
-  usage?: {
-    modelCalls: number;
-    promptTokens: number;
-    completionTokens: number;
-    totalTokens: number;
-    lastPromptTokens?: number;
-    lastCompletionTokens?: number;
-    lastTotalTokens?: number;
-  };
-  contextWindow?: {
-    maxInputTokens: number;
-    availableInputTokens: number;
-    estimatedInputTokens: number;
-    usagePercent: number;
-    overBudget: boolean;
-  };
-  forkedFromSessionId?: string;
-}
-
-export interface SessionState {
-  sessionId: string;
-  sessionStatus: SessionStatus;
-  createdAt: string;
-  updatedAt: string;
-  metadata?: SessionMetadata;
-}
 
 export interface SessionModelCatalog {
   create(modelRef?: string): Promise<BaseChatModel>;
@@ -100,6 +76,7 @@ export interface CreateSessionOptions {
   guidelinesSource?: GuidelinesSource;
   promptSource?: PromptSource;
   skillsSource?: SkillsSource;
+  autoMemory?: AutoMemoryRuntime;
   store?: SessionStore;
   tools?: StructuredToolInterface[];
   handleToolErrors?: ToolErrorHandler;
@@ -135,11 +112,6 @@ export interface Session {
   dispose(): Promise<void>;
 }
 
-interface SessionSystemContext {
-  systemMessage: string[];
-  runtimeShared?: Record<string, unknown>;
-}
-
 export function createSession(options: CreateSessionOptions): Session {
   const restored = options.state;
   const sessionId = resolveSessionId(restored, {
@@ -155,8 +127,8 @@ export function createSession(options: CreateSessionOptions): Session {
   let inputBudget = options.inputBudget;
   let agent: Agent | undefined;
   let agentPromise: Promise<Agent> | undefined;
-  let systemContext: SessionSystemContext | undefined;
   let summaryOptions: Required<SummaryOptions> | undefined;
+  let baseSystemContext: BaseSystemMessageBundle | undefined;
   const runtimeEvents = new RuntimeEventsController(sessionId);
 
   function state(): SessionState {
@@ -231,18 +203,31 @@ export function createSession(options: CreateSessionOptions): Session {
     }
   }
 
-  async function loadSessionSystemContext(forceReload = false): Promise<SessionSystemContext> {
-    if (!forceReload && systemContext) {
-      return systemContext;
-    }
-
-    if (forceReload) {
-      systemContext = undefined;
+  async function loadBaseInstructionContext(forceReload = false): Promise<{
+    systemMessage: string[];
+    runtimeShared?: Record<string, unknown>;
+  }> {
+    if (forceReload || !baseSystemContext) {
+      options.promptSource?.reload?.();
+      options.guidelinesSource?.reload?.();
       options.skillsSource?.reload();
+      options.autoMemory?.source.reload();
+      baseSystemContext = await buildBaseSystemMessage(
+        options.promptSource,
+        options.guidelinesSource,
+        options.skillsSource,
+        options.autoMemory?.source,
+      );
     }
 
-    systemContext = await buildSessionSystemContext(options.promptSource, options.guidelinesSource, options.skillsSource);
-    return systemContext;
+    return baseSystemContext;
+  }
+
+  async function loadProgressiveInstructionMessages(): Promise<BaseMessage[]> {
+    return buildProgressiveInstructionMessages(
+      options.promptSource,
+      options.guidelinesSource,
+    );
   }
 
   function requireAgent(): Agent {
@@ -270,7 +255,7 @@ export function createSession(options: CreateSessionOptions): Session {
   }
 
   async function bootstrapSessionAgent(): Promise<Agent> {
-    const systemContext = await loadSessionSystemContext();
+    const systemContext = await loadBaseInstructionContext();
     const modelSelection = await resolveSessionModel(options);
     const checkpoint = restoreCheckpoint ? await getLatestCheckpoint() : undefined;
 
@@ -293,11 +278,15 @@ export function createSession(options: CreateSessionOptions): Session {
       ...(options.values ? {values: options.values} : {}),
       ...(systemContext.systemMessage.length > 0 ? {systemMessage: systemContext.systemMessage} : {}),
       ...(systemContext.runtimeShared ? {runtimeShared: systemContext.runtimeShared} : {}),
+      prepareContext: applySessionContext,
     });
   }
 
   function buildSessionMiddleware(summary: Required<SummaryOptions> | undefined): BaseMiddleware[] | undefined {
-    const middlewares = [runtimeEvents.createMiddleware(), ...(options.middleware ?? [])];
+    const middlewares = [
+      runtimeEvents.createMiddleware(),
+      ...(options.middleware ?? []),
+    ];
     if (!summary || middlewares.some((middleware) => middleware.name === 'SummaryMiddleware')) {
       return middlewares.length > 0 ? middlewares : undefined;
     }
@@ -325,15 +314,16 @@ export function createSession(options: CreateSessionOptions): Session {
 
   async function run(operation: (instance: Agent) => Promise<AgentResult>) {
     const instance = await getAgent();
-    const previousMessages = instance.getState().messages;
+    const previousMessages = [...instance.getState().messages];
     const result = await operation(instance);
+    await recordAutoMemory(previousMessages, result.state.messages, result);
     await sync(result.state, {collectUsage: true, previousMessages});
     return result;
   }
 
   async function* runStream(operation: (instance: Agent) => AsyncGenerator<AgentStreamOutput, AgentResult, void>) {
     const instance = await getAgent();
-    const previousMessages = instance.getState().messages;
+    const previousMessages = [...instance.getState().messages];
     let sawModelResponse = false;
     const stream = operation(instance);
     let result: AgentResult | undefined;
@@ -360,8 +350,35 @@ export function createSession(options: CreateSessionOptions): Session {
       throw new Error('Stream finished without an AgentResult.');
     }
 
+    await recordAutoMemory(previousMessages, result.state.messages, result);
     await sync(result.state, {collectUsage: true, previousMessages});
     return result;
+  }
+
+  async function applySessionContext(context: import('@core/agents').AgentPreparationContext): Promise<void> {
+    const next = await loadBaseInstructionContext();
+    const runtimeInstructionMessages = await loadProgressiveInstructionMessages();
+    applyPreparedInstructionContext(context, next, runtimeInstructionMessages);
+  }
+
+  async function recordAutoMemory(
+    previousMessages: readonly BaseMessage[],
+    nextMessages: readonly BaseMessage[],
+    result: AgentResult,
+  ): Promise<void> {
+    if (!options.autoMemory || !shouldRecordAutoMemoryTurn(result)) {
+      return;
+    }
+
+    try {
+      await options.autoMemory.recordTurn({
+        previousMessages,
+        nextMessages,
+        sessionId,
+      });
+    } catch {
+      // Auto memory is best-effort and should not break the turn lifecycle.
+    }
   }
 
   async function fork(optionsOverride: {id?: string; sessionId?: string; store?: SessionStore} = {}) {
@@ -415,9 +432,12 @@ export function createSession(options: CreateSessionOptions): Session {
       throw new Error('Agent is paused; resume(...) or reset() before compacting the conversation.');
     }
 
-    const systemContext = await loadSessionSystemContext();
+    const systemContext = await loadBaseInstructionContext();
+    const runtimeInstructionMessages = await loadProgressiveInstructionMessages();
     const compacted = await compactConversationWithSummary({
-      messages: current.messages,
+      messages: runtimeInstructionMessages.length > 0
+        ? [...runtimeInstructionMessages, ...current.messages]
+        : current.messages,
       context: current.context,
       values: current.values,
       systemMessage: systemContext.systemMessage,
@@ -527,7 +547,7 @@ export function createSession(options: CreateSessionOptions): Session {
     },
     async reloadSources() {
       ensureReady();
-      await loadSessionSystemContext(true);
+      await loadBaseInstructionContext(true);
       clearAgentCache();
       await persistSessionState();
     },
@@ -590,14 +610,6 @@ function resolveSessionId(
 ): string {
   const restoredSessionId = restored?.sessionId?.trim();
   return restoredSessionId || input.id || input.sessionId || randomUUID();
-}
-
-async function buildSessionSystemContext(
-  promptSource?: PromptSource,
-  guidelinesSource?: GuidelinesSource,
-  skillsSource?: SkillsSource,
-): Promise<SessionSystemContext> {
-  return buildBaseSystemMessage(promptSource, guidelinesSource, skillsSource);
 }
 
 async function resolveSessionModel(

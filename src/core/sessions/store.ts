@@ -2,7 +2,7 @@ import {mkdir, readFile, readdir, rm, writeFile} from 'node:fs/promises';
 import {existsSync} from 'node:fs';
 import path from 'node:path';
 import {homedir} from 'node:os';
-import type {SessionState} from './session';
+import type {SessionState} from './types';
 
 export interface SessionListOptions {
   includeArchived?: boolean;

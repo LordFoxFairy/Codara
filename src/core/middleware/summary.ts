@@ -4,7 +4,7 @@ import type {
   AgentInputBudget,
   AgentRuntimeContext,
   AgentRuntimeValues,
-} from '@core/agents';
+} from '@core/agents/models/types';
 import {estimateModelInputTokens} from '@core/middleware/budget';
 import {
   createMiddleware,
@@ -96,7 +96,7 @@ export async function compactConversationWithSummary(
   };
 }
 
-export async function compactSummaryIfNeeded(
+async function compactSummaryIfNeeded(
   context: BeforeModelContext,
   options: SummaryOptions,
   execution: SummaryExecutionOptions = {},
@@ -133,10 +133,6 @@ export async function compactSummaryIfNeeded(
   context.state.messages = nextMessages;
   context.messages = nextMessages;
   return true;
-}
-
-export function normalizeSummaryOptions(options: SummarySettings): SummaryOptions {
-  return resolveSummaryOptions(options);
 }
 
 export function resolveSummaryOptions(

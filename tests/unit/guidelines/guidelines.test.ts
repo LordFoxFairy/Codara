@@ -2,101 +2,97 @@ import {describe, expect, it} from 'bun:test';
 import {mkdir, mkdtemp, writeFile} from 'node:fs/promises';
 import path from 'node:path';
 import {tmpdir} from 'node:os';
-import {createCodaraGuidelinesSource} from '@core/instructions/guidelines';
+import {createCodaraGuidelinesSource} from '@core/context/instructions/guidelines';
 
 describe('AGENTS guidelines', () => {
-  it('should resolve the nearest AGENTS.md from cwd', async () => {
+  it('loads only the startup-visible AGENTS chain before deeper paths are touched', async () => {
     const root = await mkdtemp(path.join(tmpdir(), 'codara-guidelines-'));
     const userHome = path.join(root, 'home');
     const projectRoot = path.join(root, 'project');
-    const nestedCwd = path.join(projectRoot, 'packages', 'app');
-    const globalFile = path.join(userHome, '.codara', 'AGENTS.md');
-    const projectFile = path.join(projectRoot, 'AGENTS.md');
-    const packageFile = path.join(projectRoot, 'packages', 'AGENTS.md');
-    const appFile = path.join(nestedCwd, 'AGENTS.md');
+    const cwd = path.join(projectRoot, 'packages');
+    const deeperDir = path.join(projectRoot, 'packages', 'app');
 
     await mkdir(path.join(userHome, '.codara'), {recursive: true});
-    await mkdir(path.join(projectRoot, '.codara'), {recursive: true});
-    await mkdir(nestedCwd, {recursive: true});
-    await writeFile(globalFile, '# Global Rules\n\nKeep commits small.\n', 'utf8');
-    await writeFile(projectFile, '# Project Rules\n\nRun tests before merge.\n', 'utf8');
-    await writeFile(packageFile, '# Package Rules\n\nUse package lint first.\n', 'utf8');
-    await writeFile(appFile, '# App Rules\n\nPrefer feature flags.\n', 'utf8');
+    await mkdir(path.join(projectRoot, '.git'), {recursive: true});
+    await mkdir(deeperDir, {recursive: true});
+    await writeFile(path.join(userHome, '.codara', 'AGENTS.md'), '# Global Rules', 'utf8');
+    await writeFile(path.join(projectRoot, 'AGENTS.md'), '# Project Rules', 'utf8');
+    await writeFile(path.join(projectRoot, 'packages', 'AGENTS.md'), '# Package Rules', 'utf8');
+    await writeFile(path.join(deeperDir, 'AGENTS.md'), '# App Rules', 'utf8');
 
-    const guidelinesSource = createCodaraGuidelinesSource({userHome, cwd: nestedCwd});
+    const guidelinesSource = createCodaraGuidelinesSource({userHome, cwd});
     const content = await guidelinesSource?.getContent();
 
     expect(content).toBeDefined();
     expect(content).toContain('# Global Rules');
     expect(content).toContain('# Project Rules');
     expect(content).toContain('# Package Rules');
+    expect(content).not.toContain('# App Rules');
+  });
+
+  it('loads deeper subtree AGENTS after a matching file path is activated', async () => {
+    const root = await mkdtemp(path.join(tmpdir(), 'codara-guidelines-'));
+    const userHome = path.join(root, 'home');
+    const projectRoot = path.join(root, 'project');
+    const cwd = projectRoot;
+    const deeperDir = path.join(projectRoot, 'packages', 'app');
+    const targetFile = path.join(deeperDir, 'src', 'feature.ts');
+
+    await mkdir(path.join(userHome, '.codara'), {recursive: true});
+    await mkdir(path.join(projectRoot, '.git'), {recursive: true});
+    await mkdir(path.dirname(targetFile), {recursive: true});
+    await writeFile(path.join(projectRoot, 'AGENTS.md'), '# Project Rules', 'utf8');
+    await writeFile(path.join(deeperDir, 'AGENTS.md'), '# App Rules', 'utf8');
+    await writeFile(targetFile, 'export const feature = true;\n', 'utf8');
+
+    const guidelinesSource = createCodaraGuidelinesSource({userHome, cwd});
+    expect(await guidelinesSource?.getContent()).not.toContain('# App Rules');
+
+    await guidelinesSource?.activateTarget?.({path: targetFile, kind: 'file'});
+    const content = await guidelinesSource?.getContent();
+
+    expect(content).toContain('# Project Rules');
     expect(content).toContain('# App Rules');
   });
 
-  it('should load guidelines from project root', async () => {
+  it('expands @path imports up to the fixed depth limit', async () => {
     const root = await mkdtemp(path.join(tmpdir(), 'codara-guidelines-'));
-    const userHome = path.join(root, 'home');
     const projectRoot = path.join(root, 'project');
-    const globalFile = path.join(userHome, '.codara', 'AGENTS.md');
-    const projectFile = path.join(projectRoot, 'AGENTS.md');
+    const importsDir = path.join(projectRoot, 'imports');
 
-    await mkdir(path.dirname(globalFile), {recursive: true});
-    await mkdir(projectRoot, {recursive: true});
-    await writeFile(globalFile, '# Global Rules\n\nKeep commits small.\nUse Chinese comments when helpful.\n', 'utf8');
-    await writeFile(projectFile, '# Project Rules\n\nUse pnpm only.\nRun tests before merge.\n', 'utf8');
-
-    const guidelinesSource = createCodaraGuidelinesSource({userHome, projectRoot});
-    const content = await guidelinesSource?.getContent();
-
-    expect(content).toBeDefined();
-    expect(content).toContain('# Global Rules');
-    expect(content).toContain('# Project Rules');
-    expect(content).toContain('Run tests before merge.');
-  });
-
-  it('should preserve root-to-cwd guideline order in loaded files', async () => {
-    const root = await mkdtemp(path.join(tmpdir(), 'codara-guidelines-'));
-    const userHome = path.join(root, 'home');
-    const projectRoot = path.join(root, 'project');
-    const nestedCwd = path.join(projectRoot, 'packages', 'app');
-    const globalFile = path.join(userHome, '.codara', 'AGENTS.md');
-    const projectFile = path.join(projectRoot, 'AGENTS.md');
-    const packageFile = path.join(projectRoot, 'packages', 'AGENTS.md');
-    const appFile = path.join(nestedCwd, 'AGENTS.md');
-
-    await mkdir(path.dirname(globalFile), {recursive: true});
     await mkdir(path.join(projectRoot, '.git'), {recursive: true});
-    await mkdir(nestedCwd, {recursive: true});
-    await writeFile(globalFile, '# Global Rules\n', 'utf8');
-    await writeFile(projectFile, '# Project Rules\n', 'utf8');
-    await writeFile(packageFile, '# Package Rules\n', 'utf8');
-    await writeFile(appFile, '# App Rules\n', 'utf8');
+    await mkdir(importsDir, {recursive: true});
+    await writeFile(path.join(projectRoot, 'AGENTS.md'), '# Root\n@./imports/level1.md\n', 'utf8');
+    await writeFile(path.join(importsDir, 'level1.md'), 'L1\n@./level2.md\n', 'utf8');
+    await writeFile(path.join(importsDir, 'level2.md'), 'L2\n@./level3.md\n', 'utf8');
+    await writeFile(path.join(importsDir, 'level3.md'), 'L3\n@./level4.md\n', 'utf8');
+    await writeFile(path.join(importsDir, 'level4.md'), 'L4\n@./level5.md\n', 'utf8');
+    await writeFile(path.join(importsDir, 'level5.md'), 'L5\n@./level6.md\n', 'utf8');
+    await writeFile(path.join(importsDir, 'level6.md'), 'L6\n', 'utf8');
 
-    const guidelinesSource = createCodaraGuidelinesSource({userHome, cwd: nestedCwd});
+    const guidelinesSource = createCodaraGuidelinesSource({projectRoot});
     const content = await guidelinesSource?.getContent();
 
-    expect(content).toBeDefined();
-    const text = content ?? '';
-    expect(text.indexOf('# Global Rules')).toBeLessThan(text.indexOf('# Project Rules'));
-    expect(text.indexOf('# Project Rules')).toBeLessThan(text.indexOf('# Package Rules'));
-    expect(text.indexOf('# Package Rules')).toBeLessThan(text.indexOf('# App Rules'));
+    expect(content).toContain('# Root');
+    expect(content).toContain('L1');
+    expect(content).toContain('L5');
+    expect(content).not.toContain('L6');
+    expect(content).toContain('@./level6.md');
   });
 
-  it('should keep guideline loading simple and read file content directly', async () => {
+  it('loads large AGENTS files in full instead of truncating to 200 lines', async () => {
     const root = await mkdtemp(path.join(tmpdir(), 'codara-guidelines-'));
-    const userHome = path.join(root, 'home');
     const projectRoot = path.join(root, 'project');
-    const projectFile = path.join(projectRoot, 'AGENTS.md');
+    const lines = Array.from({length: 240}, (_, index) => `line ${index + 1}`).join('\n');
 
-    await mkdir(projectRoot, {recursive: true});
-    await writeFile(projectFile, '# Project Rules\n\nRun tests before merge.\n@./shared-guidelines.md\n', 'utf8');
+    await mkdir(path.join(projectRoot, '.git'), {recursive: true});
+    await writeFile(path.join(projectRoot, 'AGENTS.md'), lines, 'utf8');
 
-    const guidelinesSource = createCodaraGuidelinesSource({userHome, projectRoot});
+    const guidelinesSource = createCodaraGuidelinesSource({projectRoot});
     const content = await guidelinesSource?.getContent();
 
-    expect(content).toBeDefined();
-    expect(content).toContain('# Project Rules');
-    expect(content).toContain('Run tests before merge.');
-    expect(content).toContain('@./shared-guidelines.md');
+    expect(content).toContain('line 1');
+    expect(content).toContain('line 240');
+    expect(content).not.toContain('Truncated after 200 lines');
   });
 });

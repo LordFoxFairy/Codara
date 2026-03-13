@@ -1,7 +1,12 @@
 import {randomUUID} from 'node:crypto';
 import {mkdir, readFile, rm, writeFile} from 'node:fs/promises';
 import path from 'node:path';
-import type {CheckpointRecord, Checkpointer, CompactOptions, PutCheckpointInput} from '@core/checkpoint';
+import type {
+  CheckpointRecord,
+  Checkpointer,
+  CompactOptions,
+  PutCheckpointInput,
+} from '@core/checkpoint/types';
 
 interface JsonCodec<T> {
   serialize(value: T): unknown;

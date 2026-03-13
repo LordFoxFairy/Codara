@@ -1,6 +1,6 @@
 import {tool, type StructuredToolInterface} from '@langchain/core/tools';
 import {z} from 'zod';
-import {createMiddleware, type BaseMiddleware} from '@core/middleware';
+import {createMiddleware, type BaseMiddleware} from '@core/middleware/types';
 import type {TaskRecord, TaskStore, TaskStatus} from '@core/tasks/types';
 
 export const TASK_CREATE_TOOL_NAME = 'TaskCreate';

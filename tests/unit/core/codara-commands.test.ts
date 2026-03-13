@@ -7,6 +7,13 @@ import type {BaseMessage} from '@langchain/core/messages';
 import {createCodara, createCodaraRuntime} from '@core';
 import {EchoModel, SystemEchoModel} from './codara-fixtures';
 
+const createRuntimeForTest = (options: Parameters<typeof createCodaraRuntime>[0]) => (
+  createCodaraRuntime({
+    ...options,
+    autoMemory: false,
+  })
+);
+
 describe('Codara slash commands', () => {
   function readSummaryMessage(messages: BaseMessage[]): BaseMessage | undefined {
     return messages.find((message) => message.type === 'ai' && message.text.startsWith('Summary:\n'));
@@ -468,7 +475,7 @@ describe('Codara slash commands', () => {
     const root = await mkdtemp(path.join(tmpdir(), 'codara-command-resume-'));
     const projectRoot = path.join(root, 'project');
     const codaraPath = path.join(projectRoot, '.codara');
-    const current = createCodaraRuntime({
+    const current = createRuntimeForTest({
       cwd: projectRoot,
       projectRoot,
       codaraPath,
@@ -477,7 +484,7 @@ describe('Codara slash commands', () => {
       builtinTools: false,
       skills: false,
     });
-    const target = createCodaraRuntime({
+    const target = createRuntimeForTest({
       cwd: projectRoot,
       projectRoot,
       codaraPath,
