@@ -1,6 +1,7 @@
-import type {PauseRequest, PauseUIActionOption} from '@core/agents';
+import type {PauseRequest, PauseUIActionOption, PauseUIFormOption, PauseUIFormTab} from '@core/agents';
 
 export type CliStatus = 'idle' | 'running' | 'paused' | 'done' | 'error';
+export type CliHilAnswerValue = string | string[];
 
 export interface CliRunState {
   status: CliStatus;
@@ -26,25 +27,17 @@ export interface CliHilReviewAction extends PauseUIActionOption {
   kind: 'primary' | 'secondary' | 'danger';
 }
 
-export interface CliHilClarificationOption {
-  id: string;
-  label: string;
-  description?: string;
-}
+export type CliHilFormOption = PauseUIFormOption;
 
-export interface CliHilClarificationTab {
-  id: string;
-  label: string;
-  question: string;
-  options: CliHilClarificationOption[];
-  placeholder?: string;
-}
+export type CliHilFormTab = Omit<PauseUIFormTab, 'options'> & {
+  options: CliHilFormOption[];
+};
 
-export interface CliHilClarificationState {
+export interface CliHilFormState {
   summary?: string;
-  tabs: CliHilClarificationTab[];
+  tabs: CliHilFormTab[];
   activeTabIndex: number;
-  answers: Record<string, string>;
+  answers: Record<string, CliHilAnswerValue>;
 }
 
 export interface CliHilReviewState {
@@ -54,5 +47,5 @@ export interface CliHilReviewState {
   focus: CliHilFocus;
   draft: string;
   busy: boolean;
-  clarification?: CliHilClarificationState;
+  form?: CliHilFormState;
 }

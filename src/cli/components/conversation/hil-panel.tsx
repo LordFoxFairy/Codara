@@ -7,50 +7,116 @@ interface HilPanelProps {
 }
 
 export function HilPanel({review}: HilPanelProps): React.JSX.Element {
-  const selectedAction = review.actions[review.selectedActionIndex];
-  const inputTitle = selectedAction?.requiresToolEdit ? 'Edited tool args JSON' : 'Optional note';
-  const codaraMetadata = readCodaraHilMetadata(review.request.metadata);
+  const model = describeHilPanel(review);
 
   return (
     <Box marginTop={1} marginBottom={1} flexDirection="column" borderStyle="round" borderColor="yellow" paddingX={1}>
-      <Text color="yellow">HIL Review</Text>
-      <Text>{review.request.description}</Text>
-      <Text dimColor>
-        {`Channel ${review.request.channel || 'default'} | Tab ${review.request.ui?.tab || 'Review'}`}
-      </Text>
-      {codaraMetadata ? <Text dimColor>{codaraMetadata}</Text> : null}
-      <Text dimColor wrap="truncate-end">
-        {`Tool ${review.request.action.toolName} ${JSON.stringify(review.request.action.toolArgs ?? {})}`}
-      </Text>
-
-      <Box marginTop={1} flexDirection="column">
-        {review.actions.map((action, index) => {
-          const selected = index === review.selectedActionIndex;
-          const suffix = action.requiresToolEdit ? ' [edit]' : action.requiresConfirmation ? ' [confirm]' : '';
-          return (
-            <Box key={action.id} flexDirection="column">
-              <Text color={selected ? 'green' : undefined}>
-                {`${selected ? '>' : ' '} ${action.label}${suffix}`}
-              </Text>
-              {action.description ? <Text dimColor>{`  ${action.description}`}</Text> : null}
-            </Box>
-          );
-        })}
-      </Box>
-
-      <Box marginTop={1} flexDirection="column">
-        <Text color={review.focus === 'input' ? 'green' : 'gray'}>
-          {`${review.focus === 'input' ? '>' : ' '} ${inputTitle}`}
+      <Text color="yellow">{model.title}</Text>
+      {model.lines.map((line, index) => (
+        <Text key={`${index}-${line.color ?? 'default'}`} color={line.color} dimColor={line.dimColor} wrap={line.wrap}>
+          {line.text}
         </Text>
-        <Text>{review.draft || '(empty)'}</Text>
-      </Box>
-
-      <Text dimColor>
-        Tab switch focus. Up/Down choose action. Enter submit. Shift+Enter inserts newline in the input box.
-      </Text>
-      {review.busy ? <Text color="cyan">Applying HIL decision...</Text> : null}
+      ))}
     </Box>
   );
+}
+
+export interface HilPanelLine {
+  text: string;
+  color?: 'yellow' | 'green' | 'gray' | 'cyan';
+  dimColor?: boolean;
+  wrap?: 'truncate-end';
+}
+
+export interface HilPanelModel {
+  title: string;
+  lines: HilPanelLine[];
+}
+
+export function describeHilPanel(review: CliHilReviewState): HilPanelModel {
+  const selectedAction = review.actions[review.selectedActionIndex];
+  const inputTitle = selectedAction?.requiresToolEdit ? 'Edited tool args JSON' : 'Optional note';
+  const codaraMetadata = readCodaraHilMetadata(review.request.metadata);
+  const activeFormTab = review.form?.tabs[review.form.activeTabIndex];
+  const lines: HilPanelLine[] = [
+    {text: review.request.description},
+    {text: `Channel ${review.request.channel || 'default'} | Tab ${review.request.ui?.tab || 'Review'}${review.form ? ' | Form' : ''}`, dimColor: true},
+  ];
+
+  if (codaraMetadata) {
+    lines.push({text: codaraMetadata, dimColor: true});
+  }
+
+  lines.push({
+    text: `Tool ${describeHilAction(review)}`,
+    dimColor: true,
+    wrap: 'truncate-end',
+  });
+
+  if (review.form) {
+    if (review.form.summary) {
+      lines.push({text: review.form.summary});
+    }
+    lines.push({
+      text: review.form.tabs
+        .map((tab, index) => `${index === review.form?.activeTabIndex ? '[' : ''}${tab.label}${index === review.form?.activeTabIndex ? ']' : ''}`)
+        .join('  '),
+      dimColor: true,
+    });
+    if (activeFormTab) {
+      const modeSuffix = activeFormTab.input === 'multiselect'
+        ? ' [multi-select]'
+        : activeFormTab.input === 'text'
+          ? ' [text]'
+          : '';
+      lines.push({text: `${activeFormTab.question}${modeSuffix}`});
+      for (const [index, option] of activeFormTab.options.entries()) {
+        lines.push({text: `${index + 1}. ${option.label}`});
+        if (option.description) {
+          lines.push({text: `   ${option.description}`, dimColor: true});
+        }
+      }
+      if (activeFormTab.placeholder) {
+        lines.push({text: `Input: ${activeFormTab.placeholder}`, dimColor: true});
+      }
+    }
+  }
+
+  for (const [index, action] of review.actions.entries()) {
+    const selected = index === review.selectedActionIndex;
+    const suffix = action.requiresToolEdit ? ' [edit]' : action.requiresConfirmation ? ' [confirm]' : '';
+    lines.push({text: `${selected ? '>' : ' '} ${action.label}${suffix}`, color: selected ? 'green' : undefined});
+    if (action.description) {
+      lines.push({text: `  ${action.description}`, dimColor: true});
+    }
+  }
+
+  lines.push({
+    text: `${review.focus === 'input' ? '>' : ' '} ${inputTitle}`,
+    color: review.focus === 'input' ? 'green' : 'gray',
+  });
+  lines.push({text: review.draft || '(empty)'});
+  lines.push({
+    text: 'Tab switch focus. Left/Right switch form tabs when present. Up/Down choose action. Enter submit. Shift+Enter inserts newline in the input box.',
+    dimColor: true,
+  });
+  if (review.busy) {
+    lines.push({text: 'Applying HIL decision...', color: 'cyan'});
+  }
+
+  return {
+    title: 'HIL Review',
+    lines,
+  };
+}
+
+function describeHilAction(review: CliHilReviewState): string {
+  if (review.request.action.toolName === 'AskUser' && review.form) {
+    const count = review.form.tabs.length;
+    return `AskUser(${count} prompt${count === 1 ? '' : 's'})`;
+  }
+
+  return `${review.request.action.toolName} ${JSON.stringify(review.request.action.toolArgs ?? {})}`;
 }
 
 function readCodaraHilMetadata(metadata: unknown): string | undefined {
