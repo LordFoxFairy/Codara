@@ -37,8 +37,11 @@
   - 只定义 CLI 宿主侧瞬时 UI 状态，不复制 core 的 session 语义
 - `transcript/model.ts`
   - 统一承接 transcript 可见性与消息投影规则
+  - 把 core runtime events 转成更接近代理步骤流的 CLI 可见项
 - `components/chrome/header.tsx`
   - 直接读 `SessionState`，不再引入 CLI 自定义 session metadata 投影
+- `main.tsx`
+  - 负责宿主级 action，例如 `open_file` 的终端侧处理
 
 ## 原则
 
