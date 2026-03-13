@@ -21,7 +21,6 @@ describe('case: generic HIL form UI', () => {
 
     expect(result.exitCode).toBe(0);
     expect(result.output).toContain('HIL action: Submit');
-    expect(result.output).toContain('AskUser(summary: A few structured inputs are missing before the agent can');
     expect(result.output).toContain('{"action":"submit","answers":{}}');
     expect(result.output).toContain('HIL_FORM_DONE:empty');
   });

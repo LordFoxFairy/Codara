@@ -27,6 +27,19 @@ export interface CodaraCliAppProps {
   openFile?: (targetPath: string) => Promise<boolean>;
 }
 
+export type CliForegroundSurface = 'hil' | 'transcript' | 'welcome';
+
+export function resolveCliForegroundSurface(input: {
+  hasHilReview: boolean;
+  hasConversation: boolean;
+}): CliForegroundSurface {
+  if (input.hasHilReview) {
+    return 'hil';
+  }
+
+  return input.hasConversation ? 'transcript' : 'welcome';
+}
+
 export function CodaraCliApp(props: CodaraCliAppProps): React.JSX.Element {
   const {
     codara,
@@ -44,6 +57,10 @@ export function CodaraCliApp(props: CodaraCliAppProps): React.JSX.Element {
   const layoutMode = resolveCliLayoutMode(terminalWidth);
   const hasInitialPrompt = Boolean(initialPrompt?.trim());
   const hasHilReview = Boolean(shell.hilReview);
+  const foregroundSurface = resolveCliForegroundSurface({
+    hasHilReview,
+    hasConversation: shell.hasConversation,
+  });
 
   // 输入监听挂在组装层；展示组件不直接感知键盘事件。
   usePromptInput({
@@ -102,27 +119,32 @@ export function CodaraCliApp(props: CodaraCliAppProps): React.JSX.Element {
         runState={shell.runState}
         latestRuntimeEvent={shell.latestRuntimeEvent}
       />
-      {shell.hasConversation ? (
-        <Transcript
-          coreMessages={shell.coreMessages}
-          notices={shell.notices}
-          activeTurn={shell.activeTurn}
-          runtimeEvents={shell.runtimeEvents}
-        />
-      ) : <WelcomeState layoutMode={layoutMode} />}
-      <ActivityLine
-        runState={shell.runState}
-        activeTurn={shell.activeTurn}
-        latestRuntimeEvent={shell.latestRuntimeEvent}
-      />
-      {shell.hilReview ? <HilPanel review={shell.hilReview} /> : null}
-      <PromptFrame
-        terminalWidth={terminalWidth}
-        composer={shell.composer}
-        cursorActivityVersion={shell.composerActivityVersion}
-        isRunning={shell.runState.status === 'running'}
-      />
-      <Footer layoutMode={layoutMode} />
+      {foregroundSurface === 'hil' && shell.hilReview ? (
+        <HilPanel review={shell.hilReview} />
+      ) : (
+        <>
+          {foregroundSurface === 'transcript' ? (
+            <Transcript
+              coreMessages={shell.coreMessages}
+              notices={shell.notices}
+              activeTurn={shell.activeTurn}
+              runtimeEvents={shell.runtimeEvents}
+            />
+          ) : <WelcomeState layoutMode={layoutMode} />}
+          <ActivityLine
+            runState={shell.runState}
+            activeTurn={shell.activeTurn}
+            latestRuntimeEvent={shell.latestRuntimeEvent}
+          />
+          <PromptFrame
+            terminalWidth={terminalWidth}
+            composer={shell.composer}
+            cursorActivityVersion={shell.composerActivityVersion}
+            isRunning={shell.runState.status === 'running'}
+          />
+          <Footer layoutMode={layoutMode} />
+        </>
+      )}
     </Box>
   );
 }

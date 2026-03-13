@@ -17,7 +17,7 @@ export function ActivityLine({runState, activeTurn, latestRuntimeEvent}: Activit
   }
 
   return (
-    <Box marginTop={1} marginBottom={1}>
+    <Box marginTop={1}>
       <Text color={status.color}>{status.banner}</Text>
     </Box>
   );

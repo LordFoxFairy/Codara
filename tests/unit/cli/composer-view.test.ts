@@ -10,7 +10,7 @@ describe('cli composer viewport', () => {
       {
         beforeCursor: '',
         afterCursor: '',
-        placeholder: 'Try "fix lint errors"',
+        placeholder: 'Type a request',
         isCursorLine: true,
       },
     ]);
