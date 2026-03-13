@@ -2,6 +2,7 @@ import {existsSync} from 'node:fs';
 import path from 'node:path';
 import type {BaseChatModel} from '@langchain/core/language_models/chat_models';
 import type {StructuredToolInterface} from '@langchain/core/tools';
+import type {AgentContextPreparer} from '@core/agents';
 import type {AgentCheckpointer} from '@core/checkpoint';
 import {createAgentFileCheckpointer} from '@core/checkpoint';
 import type {BaseMiddleware, HILMiddlewareOptions, LoggingMiddlewareOptions} from '@core/middleware';
@@ -11,6 +12,7 @@ import {
   createBudgetMiddleware,
   createDailySessionFileLogSink,
   createHILMiddleware,
+  createInstructionLoadingMiddleware,
   createInteractionMiddleware,
   createLoggingMiddleware,
   todoListMiddleware,
@@ -28,12 +30,16 @@ import {
 import {ChatModelFactory, loadModelRoutingConfig, loadModelRoutingConfigFromPath, ModelRegistry, resolveCodaraPath, type ModelInfo, type ModelRoutingConfig} from '@core/provider';
 import {
   createCodaraGuidelinesSource,
-  type GuidelinesOptions,
-} from '@core/instructions/guidelines';
+  type GuidelinesSource,
+} from '@core/context/instructions/guidelines';
 import {
   createCodaraPromptSource,
-  type PromptOptions,
-} from '@core/instructions/prompt';
+  type PromptSource,
+} from '@core/context/instructions/prompt';
+import {
+  createAutoMemoryRuntime,
+  type AutoMemoryRuntime,
+} from '@core/context/memory/auto-memory';
 import {
   createCodaraSkillsSource,
   FileSystemSkillStore,
@@ -50,8 +56,13 @@ import {
   type SessionState,
   type SessionStore,
 } from '@core/sessions';
-import {resolveWorkspaceRoot} from '@core/shared/workspace';
+import {resolveWorkspaceRoot} from '@core/config/workspace';
 import {createBuiltinTools} from '@core/tools';
+import {
+  applyPreparedInstructionContext,
+  buildBaseSystemMessage,
+  buildProgressiveInstructionMessages,
+} from '@core/context/system-message';
 
 export const DEFAULT_CODARA_MODEL_ALIAS = 'default';
 const DEFAULT_RUNTIME_FILE_LOGGING_ENABLED = true;
@@ -89,6 +100,14 @@ export interface CodaraSkillOptions {
   cacheTtlMs?: number;
 }
 
+export interface CodaraAutoMemoryOptions {
+  cwd?: string;
+  projectRoot?: string;
+  userHome?: string;
+  autoGlobal?: boolean;
+  rootDir?: string;
+}
+
 export interface CodaraOptions {
   id?: string;
   config?: ModelRoutingConfig;
@@ -101,8 +120,6 @@ export interface CodaraOptions {
   tools?: StructuredToolInterface[];
   builtinTools?: boolean;
   middleware?: BaseMiddleware[];
-  guidelines?: boolean | GuidelinesOptions;
-  prompt?: boolean | PromptOptions;
   skills?: false | CodaraSkillOptions;
   summary?: false | SummarySettings;
   hil?: false | HILMiddlewareOptions;
@@ -116,6 +133,7 @@ export interface CodaraOptions {
   messages?: import('@core/agents').AgentInput;
   context?: Record<string, unknown>;
   values?: Record<string, unknown>;
+  autoMemory?: false | CodaraAutoMemoryOptions;
 }
 
 export interface CodaraRuntimeOptions extends CodaraOptions {
@@ -161,12 +179,22 @@ export function createCodara(options: CodaraOptions = {}): Codara {
 
 export function createCodaraRuntime(options: CodaraRuntimeOptions = {}): Codara {
   const codaraPath = resolveCodaraRuntimePath(options);
-  const workspaceRoot = resolveWorkspaceRoot({
+  const projectRoot = resolveWorkspaceRoot({
     cwd: options.cwd,
     projectRoot: options.projectRoot,
   });
+  const guidelinesSource = createCodaraGuidelinesSource({
+    cwd: options.cwd,
+    projectRoot: options.projectRoot,
+    userHome: options.userHome,
+  });
+  const promptSource = createCodaraPromptSource({
+    cwd: options.cwd,
+    projectRoot: options.projectRoot,
+    userHome: options.userHome,
+  });
   const taskStore = options.taskStore ?? createTaskFileStore({
-    rootDir: path.join(workspaceRoot, '.codara', 'tasks'),
+    rootDir: path.join(projectRoot, '.codara', 'tasks'),
   });
   ensurePermissionSettingsFile({
     cwd: options.cwd,
@@ -189,13 +217,18 @@ export function createCodaraRuntime(options: CodaraRuntimeOptions = {}): Codara 
     taskStore,
     logging,
     catalog,
+    promptSource,
+    guidelinesSource,
   });
 
-  return createCodara({
+  return assembleCodara({
     ...options,
     tools: runtimeTools,
     middleware: runtimeMiddlewares,
     hil: false,
+    autoMemory: options.autoMemory === false
+      ? false
+      : (typeof options.autoMemory === 'object' && options.autoMemory !== null ? options.autoMemory : {}),
     ...(logging === false ? {logging: false} : {logging}),
     ...(catalog ? {catalog} : {}),
     ...(options.store ? {} : {store: new FileSessionStore({basePath: path.join(codaraPath, 'sessions')})}),
@@ -203,13 +236,32 @@ export function createCodaraRuntime(options: CodaraRuntimeOptions = {}): Codara 
       checkpointer: createAgentFileCheckpointer({rootDir: path.join(codaraPath, 'sessions')}),
     }),
     restore: options.restore ?? 'latest',
-  });
+  }, undefined, {promptSource, guidelinesSource});
 }
 
-function assembleCodara(options: CodaraOptions, restoredState?: SessionState): Codara {
+function assembleCodara(
+  options: CodaraOptions,
+  restoredState?: SessionState,
+  preloadedSources?: {
+    promptSource?: PromptSource;
+    guidelinesSource?: GuidelinesSource;
+  },
+): Codara {
   const skills = resolveCodaraSkills(options);
   const skillsSource = skills ? createCodaraSkillsSource(skills) : undefined;
+  const autoMemory = resolveCodaraAutoMemory(options);
   const alias = normalizeAlias(options.alias);
+  const guidelinesSource = preloadedSources?.guidelinesSource ?? createCodaraGuidelinesSource({
+    cwd: options.cwd,
+    projectRoot: options.projectRoot,
+    userHome: options.userHome,
+  });
+  const promptSource = preloadedSources?.promptSource ?? createCodaraPromptSource({
+    cwd: options.cwd,
+    projectRoot: options.projectRoot,
+    userHome: options.userHome,
+  });
+  const tools = createCodaraTools(options);
   const session = createSession({
     ...(restoredState ? {state: restoredState} : {}),
     id: options.id,
@@ -223,22 +275,16 @@ function assembleCodara(options: CodaraOptions, restoredState?: SessionState): C
     modelRef: alias,
     ...(options.model ? {model: options.model} : {}),
     ...(!options.model ? {modelCatalog: options.catalog ?? createCodaraModelCatalog({config: options.config})} : {}),
-    guidelinesSource: createCodaraGuidelinesSource({
-      cwd: options.cwd,
-      projectRoot: options.projectRoot,
-      userHome: options.userHome,
-      guidelines: options.guidelines,
-    }),
-    promptSource: createCodaraPromptSource({
-      cwd: options.cwd,
-      projectRoot: options.projectRoot,
-      userHome: options.userHome,
-      prompt: options.prompt,
-    }),
+    guidelinesSource,
+    promptSource,
     ...(skillsSource ? {skillsSource} : {}),
-    tools: createCodaraTools(options),
+    ...(autoMemory ? {autoMemory} : {}),
+    tools,
     ...(options.handleToolErrors !== undefined ? {handleToolErrors: options.handleToolErrors} : {}),
-    middleware: createCodaraMiddlewares(options),
+    middleware: createCodaraMiddlewares(options, {
+      promptSource,
+      guidelinesSource,
+    }),
     ...(options.summary ? {summary: options.summary} : {}),
     ...(options.inputBudget ? {inputBudget: options.inputBudget} : {}),
   });
@@ -306,6 +352,20 @@ function assembleCodara(options: CodaraOptions, restoredState?: SessionState): C
   };
 }
 
+function resolveCodaraAutoMemory(options: CodaraOptions): AutoMemoryRuntime | undefined {
+  if (options.autoMemory === false || !options.autoMemory) {
+    return undefined;
+  }
+
+  return createAutoMemoryRuntime({
+    cwd: options.autoMemory.cwd ?? options.cwd,
+    projectRoot: options.autoMemory.projectRoot ?? options.projectRoot,
+    userHome: options.autoMemory.userHome ?? options.userHome,
+    autoGlobal: options.autoMemory.autoGlobal,
+    rootDir: options.autoMemory.rootDir,
+  });
+}
+
 export async function openCodaraSession(
   options: CodaraOptions & {sessionId: string; store: SessionStore},
 ): Promise<Codara> {
@@ -346,12 +406,24 @@ export function createCodaraTools(options: CodaraToolsOptions = {}): StructuredT
   return [...byName.values()];
 }
 
-export function createCodaraMiddlewares(options: CodaraMiddlewareOptions = {}): BaseMiddleware[] {
+export function createCodaraMiddlewares(
+  options: CodaraMiddlewareOptions = {},
+  sources?: {
+    promptSource?: Pick<PromptSource, 'activateTarget'>;
+    guidelinesSource?: Pick<GuidelinesSource, 'activateTarget'>;
+  },
+): BaseMiddleware[] {
   const middlewares: BaseMiddleware[] = [];
   if (options.logging && options.logging.enabled !== false) {
     middlewares.push(createLoggingMiddleware(options.logging));
   }
   middlewares.push(...(options.middleware ?? []));
+  if (!middlewares.some((middleware) => middleware.name === 'InstructionLoadingMiddleware')) {
+    const instructionLoading = createInstructionLoadingMiddleware(sources ?? {});
+    if (instructionLoading) {
+      middlewares.push(instructionLoading);
+    }
+  }
   middlewares.push(createBudgetMiddleware());
   if (options.hil !== false) {
     middlewares.push(createHILMiddleware(options.hil ?? {}));
@@ -427,11 +499,11 @@ function resolveCodaraRuntimePath(options: Pick<CodaraRuntimeOptions, 'codaraPat
     return path.resolve(options.codaraPath.trim());
   }
 
-  const workspaceRoot = resolveWorkspaceRoot({
+  const projectRoot = resolveWorkspaceRoot({
     cwd: options.cwd,
     projectRoot: options.projectRoot,
   });
-  const projectCodaraPath = path.join(workspaceRoot, '.codara');
+  const projectCodaraPath = path.join(projectRoot, '.codara');
   if (existsSync(path.join(projectCodaraPath, 'config.json'))) {
     return projectCodaraPath;
   }
@@ -446,11 +518,11 @@ function resolveRuntimeLoggingOptions(
     return false;
   }
 
-  const workspaceRoot = resolveWorkspaceRoot({
+  const projectRoot = resolveWorkspaceRoot({
     cwd: options.cwd,
     projectRoot: options.projectRoot,
   });
-  const rootDir = path.join(workspaceRoot, '.codara', 'sessions');
+  const rootDir = path.join(projectRoot, '.codara', 'sessions');
   const provided = options.logging ?? {};
 
   return {
@@ -466,6 +538,8 @@ function createRuntimeDefaultMiddlewares(input: {
   taskStore: TaskStore;
   logging: false | LoggingMiddlewareOptions;
   catalog?: CodaraModelCatalog | Promise<CodaraModelCatalog>;
+  promptSource: PromptSource;
+  guidelinesSource: GuidelinesSource;
 }): BaseMiddleware[] {
   const callerMiddlewares = input.options.middleware ?? [];
   const byName = new Map<string, BaseMiddleware>();
@@ -493,6 +567,10 @@ function createRuntimeDefaultMiddlewares(input: {
         ...(input.catalog ? {catalog: input.catalog} : {}),
       })),
       tools: input.runtimeTools,
+      prepareContext: createInstructionContextPreparer({
+        promptSource: input.promptSource,
+        guidelinesSource: input.guidelinesSource,
+      }),
       middleware: createDelegatedRuntimeMiddlewares({
         ...input,
         tools: input.runtimeTools,
@@ -521,6 +599,8 @@ function createDelegatedRuntimeMiddlewares(input: {
   taskStore: TaskStore;
   logging: false | LoggingMiddlewareOptions;
   tools?: StructuredToolInterface[];
+  promptSource: PromptSource;
+  guidelinesSource: GuidelinesSource;
 }): BaseMiddleware[] {
   const middlewares: BaseMiddleware[] = [];
   const callerMiddlewares = (input.options.middleware ?? [])
@@ -545,6 +625,16 @@ function createDelegatedRuntimeMiddlewares(input: {
 
   for (const middleware of callerMiddlewares) {
     push(middleware);
+  }
+
+  if (!seen.has('InstructionLoadingMiddleware')) {
+    const instructionLoading = createInstructionLoadingMiddleware({
+      promptSource: input.promptSource,
+      guidelinesSource: input.guidelinesSource,
+    });
+    if (instructionLoading) {
+      push(instructionLoading);
+    }
   }
 
   if (!seen.has('todoListMiddleware') && !providedToolNames.has('write_todos')) {
@@ -592,4 +682,19 @@ function hasSharedTaskTools(toolNames: ReadonlySet<string>): boolean {
 function summarizeCommandResult(result: CodaraCommandResult): string | undefined {
   const output = result.output.trim();
   return output || undefined;
+}
+
+function createInstructionContextPreparer(sources: {
+  promptSource?: PromptSource;
+  guidelinesSource?: GuidelinesSource;
+}): AgentContextPreparer | undefined {
+  if (!sources.promptSource && !sources.guidelinesSource) {
+    return undefined;
+  }
+
+  return async (context) => {
+    const next = await buildBaseSystemMessage(sources.promptSource, sources.guidelinesSource);
+    const runtimeInstructions = await buildProgressiveInstructionMessages(sources.promptSource, sources.guidelinesSource);
+    applyPreparedInstructionContext(context, next, runtimeInstructions);
+  };
 }

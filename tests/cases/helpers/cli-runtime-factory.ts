@@ -1,6 +1,6 @@
 import {readFile} from 'node:fs/promises';
 import path from 'node:path';
-import {AIMessage, ToolMessage, type BaseMessage, type ToolCall, SystemMessage} from '@langchain/core/messages';
+import {AIMessage, HumanMessage, ToolMessage, type BaseMessage, type ToolCall, SystemMessage} from '@langchain/core/messages';
 import type {BaseChatModel} from '@langchain/core/language_models/chat_models';
 import type {StructuredToolInterface} from '@langchain/core/tools';
 import {tool} from '@langchain/core/tools';
@@ -33,6 +33,13 @@ import {createTaskTool} from '@core/tasks/task';
 import {FileSystemSkillStore} from '@core/skills';
 import {seedProjectSkillFixtures} from '../../helpers/project-skill-fixtures';
 
+const createCliCaseRuntime = (options: Parameters<typeof createCodaraRuntime>[0]) => (
+  createCodaraRuntime({
+    ...options,
+    autoMemory: false,
+  })
+);
+
 export async function createCliRuntime(input: {
   cwd: string;
   initialPrompt: string;
@@ -47,7 +54,7 @@ export async function createCliRuntime(input: {
       await seedProjectSkillFixtures(input.cwd);
       await seedPermissions(input.cwd, ['Read(*)']);
       return {
-        codara: createCodaraRuntime({
+        codara: createCliCaseRuntime({
           cwd: input.cwd,
           projectRoot: input.cwd,
           codaraPath: path.join(input.cwd, '.codara'),
@@ -69,7 +76,7 @@ export async function createCliRuntime(input: {
       await seedProjectSkillFixtures(input.cwd);
       const store = createTaskFileStore({rootDir: path.join(input.cwd, '.codara', 'case-tasks')});
       return {
-        codara: createCodaraRuntime({
+        codara: createCliCaseRuntime({
           cwd: input.cwd,
           projectRoot: input.cwd,
           codaraPath: path.join(input.cwd, '.codara'),
@@ -331,6 +338,19 @@ export async function createCliRuntime(input: {
           skills: false,
         }),
       };
+    case 'progressive-disclosure':
+      return {
+        codara: createCodaraRuntime({
+          cwd: input.cwd,
+          projectRoot: input.cwd,
+          codaraPath: path.join(input.cwd, '.codara'),
+          ...(input.sessionId ? {sessionId: input.sessionId} : {}),
+          model: new ProgressiveDisclosureCliModel(path.join(input.cwd, 'packages', 'app', 'src', 'feature.ts')) as unknown as BaseChatModel,
+          tools: [createReadFileTool()],
+          builtinTools: false,
+          skills: false,
+        }),
+      };
     case 'command-surface':
       return {
         codara: createCodaraRuntime({
@@ -488,6 +508,40 @@ class SkillAwareScriptedModel {
     }
 
     return new AIMessage('TASK_DONE');
+  }
+
+  bindTools(_tools: StructuredToolInterface[]): this {
+    void _tools;
+    return this;
+  }
+}
+
+class ProgressiveDisclosureCliModel {
+  constructor(private readonly targetPath: string) {}
+
+  async invoke(messages: BaseMessage[]): Promise<AIMessage> {
+    const toolMessage = findToolMessage(messages, 'call_progressive_disclosure_read');
+    if (!toolMessage) {
+      return new AIMessage({
+        content: '',
+        tool_calls: [{
+          id: 'call_progressive_disclosure_read',
+          name: 'read_file',
+          args: {path: this.targetPath},
+        } as ToolCall],
+      });
+    }
+
+    const systemText = messages
+      .filter((message): message is SystemMessage => SystemMessage.isInstance(message))
+      .map((message) => stringifyMessage(message.content))
+      .join('\n');
+    const runtimeInstructionText = messages
+      .filter((message): message is HumanMessage => HumanMessage.isInstance(message))
+      .map((message) => stringifyMessage(message.content))
+      .join('\n');
+
+    return new AIMessage(`PROGRESSIVE_DISCLOSURE_DONE:${runtimeInstructionText.includes('APP_RULE') && !systemText.includes('APP_RULE')}`);
   }
 
   bindTools(_tools: StructuredToolInterface[]): this {

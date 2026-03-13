@@ -7,6 +7,7 @@ export {
   openCodaraSession,
   openLatestCodaraSession,
   type Codara,
+  type CodaraAutoMemoryOptions,
   type CodaraRuntimeOptions,
   type CodaraOptions,
 } from '@core/codara';
@@ -87,17 +88,17 @@ export {
   createCodaraGuidelinesSource,
   type GuidelinesOptions,
   type GuidelinesSource,
-} from '@core/instructions/guidelines';
+} from '@core/context/instructions/guidelines';
 export {
   createCodaraPromptSource,
   type PromptOptions,
   type PromptSource,
-} from '@core/instructions/prompt';
+} from '@core/context/instructions/prompt';
 export {
   readBaseSystemMessage,
   type BaseSystemMessageBundle,
   type BaseSystemMessageRuntimeData,
-} from '@core/instructions/system-message';
+} from '@core/context/system-message';
 export {
   createBuiltinTools,
   createFetchTool,

@@ -1,5 +1,11 @@
 import {randomUUID} from 'node:crypto';
-import type {CheckpointRecord, Checkpointer, CompactOptions, PutCheckpointInput} from '@core/checkpoint';
+import type {
+  CheckpointRecord,
+  Checkpointer,
+  CompactOptions,
+  PutCheckpointInput,
+} from '@core/checkpoint/types';
+import {deepClone} from '@core/shared/clone';
 
 interface MemoryCodec<T> {
   serialize(value: T): unknown;
@@ -144,26 +150,10 @@ export class InMemoryCheckpointer<TState = unknown, TInfo = unknown>
   }
 }
 
-function cloneValue<T>(value: T): T {
-  try {
-    return structuredClone(value);
-  } catch {
-    if (Array.isArray(value)) {
-      return [...value] as T;
-    }
-
-    if (value && typeof value === 'object') {
-      return {...value} as T;
-    }
-
-    return value;
-  }
-}
-
 function cloneWithCodec<T>(value: T, codec?: MemoryCodec<T>): T {
   if (!codec) {
-    return cloneValue(value);
+    return deepClone(value);
   }
 
-  return codec.deserialize(cloneValue(codec.serialize(value)));
+  return codec.deserialize(deepClone(codec.serialize(value)));
 }

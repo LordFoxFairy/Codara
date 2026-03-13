@@ -29,7 +29,7 @@ import type {
   AgentStatus,
   AgentStreamConfig,
   AgentStreamOutput,
-  AgentTurnContextPreparer,
+  AgentContextPreparer,
   CreateAgentOptions,
   PauseRequest,
   ResumePayload,
@@ -39,8 +39,8 @@ import {
   createAgentMemoryCheckpointer,
   type AgentCheckpoint,
   type AgentCheckpointInfo,
-} from '@core/checkpoint';
-import {type BaseExecutionContext, type MiddlewareRuntimeShared} from '@core/middleware';
+} from '@core/checkpoint/agent';
+import type {BaseExecutionContext, MiddlewareRuntimeShared} from '@core/middleware/types';
 import {MiddlewarePipeline} from '@core/middleware/pipeline';
 import {deepClone} from '@core/shared/clone';
 import {formatErrorMessage} from './errors';
@@ -61,7 +61,7 @@ export interface AgentRuntime {
   handleToolErrors: ToolErrorHandler;
   systemMessage: string[];
   runtimeShared: MiddlewareRuntimeShared;
-  prepareTurnContext?: AgentTurnContextPreparer;
+  prepareContext?: AgentContextPreparer;
 }
 
 export interface AgentRunContext {
@@ -252,6 +252,114 @@ export function createAgent(options: CreateAgentOptions): Agent {
     }
   };
 
+  const runPreflight = async (
+    run: AgentRunContext,
+    lifecycle: {status: AgentStatus; updatedAt: string},
+    config: {beforeRun?: AgentInvokeConfig['beforeRun']},
+    failurePrefix: string,
+  ): Promise<AgentResult | undefined> => {
+    try {
+      runtime.pipeline.validateContext(mergeContext(run.state.context, run.runtimeContext));
+      const beforeRunResult = await runBeforeHook(run, config);
+      return beforeRunResult ? abortPreflight(lifecycle, beforeRunResult) : undefined;
+    } catch (error) {
+      return abortPreflight(lifecycle, createErrorResult(run.state, 0, formatErrorMessage(error, failurePrefix)));
+    }
+  };
+
+  const finalizeRun = async (
+    run: AgentRunContext,
+    result: AgentResult,
+    startIndex: number,
+    source: AgentCheckpointInfo['source'],
+    config?: {afterRun?: AgentInvokeConfig['afterRun']; checkpoint?: boolean},
+  ): Promise<AgentResult> => {
+    return applyRunResult(
+      await runAfterHook(run, result, config),
+      startIndex,
+      source,
+      config?.checkpoint ?? true,
+    );
+  };
+
+  const executeStreaming = async function* (
+    config: AgentStreamConfig | AgentResumeStreamConfig,
+    executeWithStream: (stream: ReturnType<typeof createStreamWriter>) => Promise<AgentResult>,
+  ): AsyncGenerator<AgentStreamOutput, AgentResult, void> {
+    const stream = createStreamWriter(config);
+    const execution = executeWithStream(stream).catch((error) => {
+      stream.fail(error);
+      throw error;
+    });
+
+    try {
+      for await (const chunk of stream.stream) {
+        yield chunk;
+      }
+      return await execution;
+    } finally {
+      await execution.catch(() => undefined);
+    }
+  };
+
+  const createResumeRun = (
+    pause: PauseRequest,
+    payload: ResumePayload,
+    config: Pick<AgentResumeConfig, 'context' | 'recursionLimit' | 'inputBudget'>,
+  ): AgentRunContext => {
+    return createRunContext(
+      toAgentState(state),
+      {
+        inputBudget: config.inputBudget ?? inputBudget,
+        recursionLimit: config.recursionLimit,
+        context: injectResumePayload(config.context, pause, payload),
+      },
+      runtime.runtimeShared,
+    );
+  };
+
+  const createPausedToolCall = (pause: PauseRequest): ToolCall => ({
+    id: pause.action.toolCallId,
+    name: pause.action.toolName,
+    args: pause.action.toolArgs ?? {},
+  });
+
+  const appendRunInput = async (
+    run: AgentRunContext,
+    input: AgentInput,
+    stream?: ReturnType<typeof createStreamWriter>,
+  ): Promise<void> => {
+    const appended = normalizeAgentInput(input);
+    if (appended.length === 0) {
+      return;
+    }
+
+    run.state.messages.push(...appended);
+    if (stream) {
+      await stream.emitValues(run.state.messages);
+    }
+  };
+
+  const continueFromPausedTool = async (
+    run: AgentRunContext,
+    pause: PauseRequest,
+    input: AgentInput,
+    stream?: ReturnType<typeof createStreamWriter>,
+  ): Promise<AgentResult> => {
+    run.state.pendingPause = undefined;
+    const toolContext = await createTurnContext(run, runtime, 1, `${run.runId}:resume-tool`);
+    await runTools(run, runtime, toolContext, [createPausedToolCall(pause)], stream);
+    await appendRunInput(run, input, stream);
+
+    if (run.state.pendingPause) {
+      await finishTurn(runtime, toolContext, {reason: 'complete', turns: 1});
+      return {reason: 'complete', state: run.state, turns: 1};
+    }
+
+    await finishTurn(runtime, toolContext, {reason: 'continue', turns: 1});
+    return runLoop(run, runtime, stream, 2);
+  };
+
   const execute = async (
     input: AgentInput,
     config: AgentInvokeConfig,
@@ -261,18 +369,13 @@ export function createAgent(options: CreateAgentOptions): Agent {
     const run = createRun(input, config, {clearPendingPause: source === 'resume'});
     const lifecycle = enterRunningState();
 
+    const preflightResult = await runPreflight(run, lifecycle, config, 'run failed');
+    if (preflightResult) {
+      return preflightResult;
+    }
+
     try {
-      runtime.pipeline.validateContext(mergeContext(run.state.context, run.runtimeContext));
-      const beforeRunResult = await runBeforeHook(run, config);
-      if (beforeRunResult) {
-        return abortPreflight(lifecycle, beforeRunResult);
-      }
-      return applyRunResult(
-        await runAfterHook(run, await runLoop(run, runtime), config),
-        startIndex,
-        source,
-        config.checkpoint ?? true,
-      );
+      return finalizeRun(run, await runLoop(run, runtime), startIndex, source, config);
     } catch (error) {
       return abortPreflight(lifecycle, createErrorResult(run.state, 0, formatErrorMessage(error, 'run failed')));
     }
@@ -287,33 +390,18 @@ export function createAgent(options: CreateAgentOptions): Agent {
     const run = createRun(input, config, {clearPendingPause: source === 'resume'});
     const lifecycle = enterRunningState();
 
-    try {
-      runtime.pipeline.validateContext(mergeContext(run.state.context, run.runtimeContext));
-      const beforeRunResult = await runBeforeHook(run, config);
-      if (beforeRunResult) {
-        return abortPreflight(lifecycle, beforeRunResult);
-      }
+    const preflightResult = await runPreflight(run, lifecycle, config, 'stream failed');
+    if (preflightResult) {
+      return preflightResult;
+    }
 
-      const stream = createStreamWriter(config);
-      const execution = (async () => {
+    try {
+      return yield* executeStreaming(config, async (stream) => {
         await stream.emitValues(run.state.messages);
-        const result = await runAfterHook(run, await runLoop(run, runtime, stream), config);
-        const finalized = await applyRunResult(result, startIndex, source, config.checkpoint ?? true);
+        const finalized = await finalizeRun(run, await runLoop(run, runtime, stream), startIndex, source, config);
         stream.finish(finalized);
         return finalized;
-      })().catch((error) => {
-        stream.fail(error);
-        throw error;
       });
-
-      try {
-        for await (const chunk of stream.stream) {
-          yield chunk;
-        }
-        return await execution;
-      } finally {
-        await execution.catch(() => undefined);
-      }
     } catch (error) {
       return abortPreflight(lifecycle, createErrorResult(run.state, 0, formatErrorMessage(error, 'stream failed')));
     }
@@ -325,52 +413,16 @@ export function createAgent(options: CreateAgentOptions): Agent {
   ): Promise<AgentResult> => {
     const startIndex = state.messages.length;
     const pause = state.pendingPause as PauseRequest;
-    const run = createRunContext(
-      toAgentState(state),
-      {
-        inputBudget: config.inputBudget ?? inputBudget,
-        recursionLimit: config.recursionLimit,
-        context: injectResumePayload(config.context, pause, payload),
-      },
-      runtime.runtimeShared,
-    );
+    const run = createResumeRun(pause, payload, config);
     const lifecycle = enterRunningState();
 
+    const preflightResult = await runPreflight(run, lifecycle, config, 'resume failed');
+    if (preflightResult) {
+      return preflightResult;
+    }
+
     try {
-      runtime.pipeline.validateContext(mergeContext(run.state.context, run.runtimeContext));
-      const beforeRunResult = await runBeforeHook(run, config);
-      if (beforeRunResult) {
-        return abortPreflight(lifecycle, beforeRunResult);
-      }
-
-      run.state.pendingPause = undefined;
-      const toolContext = await createTurnContext(run, runtime, 1, `${run.runId}:resume-tool`);
-      const toolCall: ToolCall = {
-        id: pause.action.toolCallId,
-        name: pause.action.toolName,
-        args: pause.action.toolArgs ?? {},
-      };
-      await runTools(run, runtime, toolContext, [toolCall]);
-      const resumeInput = normalizeAgentInput(config.input);
-      if (resumeInput.length > 0) {
-        run.state.messages.push(...resumeInput);
-      }
-
-      let result: AgentResult;
-      if (run.state.pendingPause) {
-        await finishTurn(runtime, toolContext, {reason: 'complete', turns: 1});
-        result = {reason: 'complete', state: run.state, turns: 1};
-      } else {
-        await finishTurn(runtime, toolContext, {reason: 'continue', turns: 1});
-        result = await runLoop(run, runtime, undefined, 2);
-      }
-
-      return applyRunResult(
-        await runAfterHook(run, result, config),
-        startIndex,
-        'resume',
-        config.checkpoint ?? true,
-      );
+      return finalizeRun(run, await continueFromPausedTool(run, pause, config.input), startIndex, 'resume', config);
     } catch (error) {
       return abortPreflight(lifecycle, createErrorResult(run.state, 0, formatErrorMessage(error, 'resume failed')));
     }
@@ -382,72 +434,27 @@ export function createAgent(options: CreateAgentOptions): Agent {
   ): AsyncGenerator<AgentStreamOutput, AgentResult, void> {
     const startIndex = state.messages.length;
     const pause = state.pendingPause as PauseRequest;
-    const run = createRunContext(
-      toAgentState(state),
-      {
-        inputBudget: config.inputBudget ?? inputBudget,
-        recursionLimit: config.recursionLimit,
-        context: injectResumePayload(config.context, pause, payload),
-      },
-      runtime.runtimeShared,
-    );
+    const run = createResumeRun(pause, payload, config);
     const lifecycle = enterRunningState();
 
+    const preflightResult = await runPreflight(run, lifecycle, config, 'resume failed');
+    if (preflightResult) {
+      return preflightResult;
+    }
+
     try {
-      runtime.pipeline.validateContext(mergeContext(run.state.context, run.runtimeContext));
-      const beforeRunResult = await runBeforeHook(run, config);
-      if (beforeRunResult) {
-        return abortPreflight(lifecycle, beforeRunResult);
-      }
-
-      const stream = createStreamWriter(config);
-      const execution = (async () => {
+      return yield* executeStreaming(config, async (stream) => {
         await stream.emitValues(run.state.messages);
-        run.state.pendingPause = undefined;
-        const toolContext = await createTurnContext(run, runtime, 1, `${run.runId}:resume-tool`);
-        const toolCall: ToolCall = {
-          id: pause.action.toolCallId,
-          name: pause.action.toolName,
-          args: pause.action.toolArgs ?? {},
-        };
-        await runTools(run, runtime, toolContext, [toolCall], stream);
-
-        const resumeInput = normalizeAgentInput(config.input);
-        if (resumeInput.length > 0) {
-          run.state.messages.push(...resumeInput);
-          await stream.emitValues(run.state.messages);
-        }
-
-        let result: AgentResult;
-        if (run.state.pendingPause) {
-          await finishTurn(runtime, toolContext, {reason: 'complete', turns: 1});
-          result = {reason: 'complete', state: run.state, turns: 1};
-        } else {
-          await finishTurn(runtime, toolContext, {reason: 'continue', turns: 1});
-          result = await runLoop(run, runtime, stream, 2);
-        }
-
-        const finalized = await applyRunResult(
-          await runAfterHook(run, result, config),
+        const finalized = await finalizeRun(
+          run,
+          await continueFromPausedTool(run, pause, config.input, stream),
           startIndex,
           'resume',
-          config.checkpoint ?? true,
+          config,
         );
         stream.finish(finalized);
         return finalized;
-      })().catch((error) => {
-        stream.fail(error);
-        throw error;
       });
-
-      try {
-        for await (const chunk of stream.stream) {
-          yield chunk;
-        }
-        return await execution;
-      } finally {
-        await execution.catch(() => undefined);
-      }
     } catch (error) {
       return abortPreflight(lifecycle, createErrorResult(run.state, 0, formatErrorMessage(error, 'resume failed')));
     }
@@ -544,7 +551,7 @@ export async function createTurnContext(
   const context: BaseExecutionContext = {
     state: run.state,
     messages: run.state.messages,
-      runtime: {
+    runtime: {
       context: mergeContext(run.state.context, run.runtimeContext),
       runtimeContext: run.runtimeContext,
       shared: run.shared,
@@ -559,7 +566,7 @@ export async function createTurnContext(
     },
     inputBudget: run.inputBudget,
   };
-  await runtime.prepareTurnContext?.(context);
+  await runtime.prepareContext?.(context);
   await runtime.pipeline.beforeAgent(context);
   await runtime.pipeline.beforeModel(context);
   return context;
@@ -606,7 +613,7 @@ function buildRuntime(options: CreateAgentOptions): AgentRuntime {
     handleToolErrors: options.handleToolErrors ?? true,
     systemMessage: [...(options.systemMessage ?? [])],
     runtimeShared: deepClone(options.runtimeShared ?? {}),
-    prepareTurnContext: options.prepareTurnContext,
+    prepareContext: options.prepareContext,
   };
 }
 

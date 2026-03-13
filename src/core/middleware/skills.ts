@@ -1,7 +1,7 @@
 import {
   createMiddleware,
   type ModelCallContext
-} from '@core/middleware'
+} from '@core/middleware/types'
 import {
   SKILLS_SYSTEM_PROMPT,
   formatSkillsList,

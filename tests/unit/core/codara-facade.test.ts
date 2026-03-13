@@ -1,11 +1,20 @@
 import {describe, expect, it} from 'bun:test';
 import {createAgentMemoryCheckpointer, createCodara, createCodaraRuntime} from '@core';
 import type {BaseChatModel} from '@langchain/core/language_models/chat_models';
-import {AIMessage, AIMessageChunk, ToolMessage, type ToolCall} from '@langchain/core/messages';
+import {AIMessage, AIMessageChunk, HumanMessage, SystemMessage, ToolMessage, type BaseMessage, type ToolCall} from '@langchain/core/messages';
+import {tool} from '@langchain/core/tools';
+import {z} from 'zod';
 import {mkdtemp, mkdir, readFile, rm, stat, writeFile} from 'node:fs/promises';
 import {tmpdir} from 'node:os';
 import path from 'node:path';
 import {EchoModel, StreamingEchoModel} from './codara-fixtures';
+
+const createRuntimeForTest = (options: Parameters<typeof createCodaraRuntime>[0]) => (
+  createCodaraRuntime({
+    ...options,
+    autoMemory: false,
+  })
+);
 
 class DefaultRuntimeWorkflowModel {
   async invoke(messages: import('@langchain/core/messages').BaseMessage[]): Promise<AIMessage> {
@@ -67,6 +76,71 @@ class DefaultRuntimeWorkflowModel {
     yield new AIMessageChunk({
       content: message.content,
       ...(message.tool_calls ? {tool_calls: message.tool_calls} : {}),
+    });
+  }
+
+  bindTools(): this {
+    return this;
+  }
+}
+
+class DefaultRuntimeProgressiveDisclosureModel {
+  constructor(private readonly targetFile: string) {}
+
+  async invoke(messages: BaseMessage[]): Promise<AIMessage> {
+    const delegatedResult = messages.find((message) => (
+      ToolMessage.isInstance(message) && message.tool_call_id === 'call_runtime_progressive_delegate'
+    )) as ToolMessage | undefined;
+
+    if (messages.some((message) => HumanMessage.isInstance(message) && String(message.content).includes('Inspect deeper child feature'))) {
+      const readResult = messages.find((message) => (
+        ToolMessage.isInstance(message) && message.tool_call_id === 'call_runtime_progressive_read'
+      )) as ToolMessage | undefined;
+
+      if (!readResult) {
+        return new AIMessage({
+          content: '',
+          tool_calls: [{
+            id: 'call_runtime_progressive_read',
+            name: 'read_file',
+            args: {path: this.targetFile},
+          } as ToolCall],
+        });
+      }
+
+      const systemText = messages
+        .filter((message): message is SystemMessage => SystemMessage.isInstance(message))
+        .map((message) => String(message.content))
+        .join('\n');
+      const runtimeInstructionText = messages
+        .filter((message): message is HumanMessage => HumanMessage.isInstance(message))
+        .map((message) => String(message.content))
+        .join('\n');
+
+      return new AIMessage(
+        `CHILD_RUNTIME_DISCLOSURE:${
+          runtimeInstructionText.includes('APP_RULE')
+          && runtimeInstructionText.includes('APP_HANDBOOK')
+          && !systemText.includes('APP_RULE')
+          && !systemText.includes('APP_HANDBOOK')
+        }`,
+      );
+    }
+
+    if (delegatedResult) {
+      return new AIMessage(`RUNTIME_DELEGATED_DISCLOSURE_DONE:${String(delegatedResult.content).includes('CHILD_RUNTIME_DISCLOSURE:true')}`);
+    }
+
+    return new AIMessage({
+      content: '',
+      tool_calls: [{
+        id: 'call_runtime_progressive_delegate',
+        name: 'Task',
+        args: {
+          prompt: 'Inspect deeper child feature',
+          subagent_type: 'general-purpose',
+        },
+      } as ToolCall],
     });
   }
 
@@ -249,7 +323,7 @@ command-name: review-helper
     }, null, 2));
 
     try {
-      const codara = createCodaraRuntime({
+      const codara = createRuntimeForTest({
         cwd,
         model: new EchoModel() as unknown as BaseChatModel,
         skills: false,
@@ -281,7 +355,7 @@ command-name: review-helper
     }, null, 2));
 
     try {
-      const codara = createCodaraRuntime({
+      const codara = createRuntimeForTest({
         cwd,
         model: new EchoModel() as unknown as BaseChatModel,
         skills: false,
@@ -343,7 +417,7 @@ command-name: review-helper
     }
 
     try {
-      const codara = createCodaraRuntime({
+      const codara = createRuntimeForTest({
         cwd,
         model: new AskUserModel() as unknown as BaseChatModel,
         skills: false,
@@ -385,7 +459,7 @@ command-name: review-helper
     }, null, 2));
 
     try {
-      const codara = createCodaraRuntime({
+      const codara = createRuntimeForTest({
         cwd,
         model: new DefaultRuntimeWorkflowModel() as unknown as BaseChatModel,
         skills: false,
@@ -399,6 +473,49 @@ command-name: review-helper
       const taskDir = path.join(codaraRoot, 'tasks');
       const taskFiles = await stat(taskDir);
       expect(taskFiles.isDirectory()).toBe(true);
+    } finally {
+      await rm(root, {recursive: true, force: true});
+    }
+  });
+
+  it('should let delegated runtime children append subtree instructions outside the base system path', async () => {
+    const root = await mkdtemp(path.join(tmpdir(), 'codara-runtime-progressive-child-'));
+    const cwd = path.join(root, 'project');
+    const codaraRoot = path.join(cwd, '.codara');
+    const targetFile = path.join(cwd, 'packages', 'app', 'src', 'feature.ts');
+
+    await mkdir(path.join(cwd, '.git'), {recursive: true});
+    await mkdir(codaraRoot, {recursive: true});
+    await mkdir(path.join(cwd, 'packages', 'app', '.codara'), {recursive: true});
+    await mkdir(path.dirname(targetFile), {recursive: true});
+    await writeFile(path.join(cwd, 'AGENTS.md'), 'ROOT_RULE', 'utf8');
+    await writeFile(path.join(cwd, 'packages', 'app', 'AGENTS.md'), 'APP_RULE', 'utf8');
+    await writeFile(path.join(codaraRoot, 'codara.md'), 'ROOT_HANDBOOK', 'utf8');
+    await writeFile(path.join(cwd, 'packages', 'app', '.codara', 'codara.md'), 'APP_HANDBOOK', 'utf8');
+    await writeFile(targetFile, 'export const feature = true;\n', 'utf8');
+    await writeFile(path.join(codaraRoot, 'config.json'), JSON.stringify({
+      providers: [{name: 'test', apiKey: 'x', models: ['echo']}],
+      router: {default: 'test:echo'},
+    }, null, 2));
+
+    try {
+      const codara = createRuntimeForTest({
+        cwd,
+        model: new DefaultRuntimeProgressiveDisclosureModel(targetFile) as unknown as BaseChatModel,
+        skills: false,
+        builtinTools: false,
+        tools: [
+          tool(async ({path: filePath}: {path: string}) => readFile(filePath, 'utf8'), {
+            name: 'read_file',
+            description: 'Read a file for runtime delegated disclosure tests.',
+            schema: z.object({path: z.string()}),
+          }),
+        ],
+      });
+
+      const result = await codara.invoke('run delegated progressive disclosure');
+      expect(result.reason).toBe('complete');
+      expect(String(result.state.messages[result.state.messages.length - 1]?.content)).toBe('RUNTIME_DELEGATED_DISCLOSURE_DONE:true');
     } finally {
       await rm(root, {recursive: true, force: true});
     }

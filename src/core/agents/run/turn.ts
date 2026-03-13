@@ -14,7 +14,7 @@ import {
   type BaseExecutionContext,
   type ModelCallContext,
   type ToolCallContext,
-} from '@core/middleware';
+} from '@core/middleware/types';
 import {parseHILToolMessagePayload} from '@core/middleware/hil';
 import {toError} from './errors';
 

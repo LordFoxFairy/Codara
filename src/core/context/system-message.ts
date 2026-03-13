@@ -1,5 +1,7 @@
-import type {GuidelinesSource} from '@core/instructions/guidelines';
-import type {PromptSource} from '@core/instructions/prompt';
+import {HumanMessage, type BaseMessage} from '@langchain/core/messages';
+import type {GuidelinesSource} from '@core/context/instructions/guidelines';
+import type {PromptSource} from '@core/context/instructions/prompt';
+import type {AutoMemorySource} from '@core/context/memory/auto-memory';
 import {
   formatSkillsList,
   formatSkillsLocations,
@@ -19,18 +21,34 @@ export interface BaseSystemMessageRuntimeData {
   systemMessage: string[];
 }
 
+export interface PreparedInstructionContextTarget {
+  systemMessage: string[];
+  messages: BaseMessage[];
+  runtime: {
+    shared?: Record<string, unknown>;
+  };
+  state: {
+    messages: BaseMessage[];
+  };
+}
+
+const PROGRESSIVE_INSTRUCTION_PREFIX = 'Additional active instructions for the current workspace subtree:';
+
 export async function buildBaseSystemMessage(
   promptSource?: PromptSource,
   guidelinesSource?: GuidelinesSource,
   skillsSource?: SkillsSource,
+  autoMemorySource?: AutoMemorySource,
 ): Promise<BaseSystemMessageBundle> {
-  const promptMessage = await promptSource?.getContent?.();
-  const guidelinesMessage = await guidelinesSource?.getContent?.();
+  const promptMessage = await promptSource?.getBootstrapContent?.();
+  const guidelinesMessage = await guidelinesSource?.getBootstrapContent?.();
   const skillsRuntime = await skillsSource?.getRuntime?.();
+  const autoMemoryMessage = await autoMemorySource?.getContent?.();
   const systemMessage = [
     promptMessage,
     guidelinesMessage,
     skillsRuntime ? createSkillsSystemMessage(skillsRuntime) : undefined,
+    autoMemoryMessage,
   ].filter((value): value is string => Boolean(value));
   const runtimeShared = {
     ...(skillsRuntime ? {skills: skillsRuntime} : {}),
@@ -62,7 +80,7 @@ export function readBaseSystemMessage(shared: unknown): BaseSystemMessageRuntime
   return normalized.length > 0 ? {systemMessage: normalized} : undefined;
 }
 
-export function createBaseSystemMessageRuntimeShared(systemMessage: string[]): Record<string, BaseSystemMessageRuntimeData> {
+function createBaseSystemMessageRuntimeShared(systemMessage: string[]): Record<string, BaseSystemMessageRuntimeData> {
   return {
     [BASE_SYSTEM_MESSAGE_KEY]: {
       systemMessage: [...systemMessage],
@@ -70,8 +88,39 @@ export function createBaseSystemMessageRuntimeShared(systemMessage: string[]): R
   };
 }
 
+export async function buildProgressiveInstructionMessages(
+  promptSource?: PromptSource,
+  guidelinesSource?: GuidelinesSource,
+): Promise<BaseMessage[]> {
+  const promptMessage = await promptSource?.getProgressiveContent?.();
+  const guidelinesMessage = await guidelinesSource?.getProgressiveContent?.();
+  return [
+    promptMessage ? createProgressiveInstructionMessage(promptMessage) : undefined,
+    guidelinesMessage ? createProgressiveInstructionMessage(guidelinesMessage) : undefined,
+  ].filter((message): message is BaseMessage => Boolean(message));
+}
+
+export function applyPreparedInstructionContext(
+  target: PreparedInstructionContextTarget,
+  base: BaseSystemMessageBundle,
+  progressiveMessages: BaseMessage[],
+): void {
+  target.systemMessage = [...base.systemMessage];
+  target.runtime.shared = {
+    ...(target.runtime.shared ?? {}),
+    ...(base.runtimeShared ?? {}),
+  };
+  target.messages = progressiveMessages.length > 0
+    ? [...progressiveMessages, ...target.state.messages]
+    : target.state.messages;
+}
+
 function createSkillsSystemMessage(runtime: Pick<SkillsRuntimeData, 'sources' | 'discovered'>): string {
   return SKILLS_SYSTEM_PROMPT
     .replace('{skills_locations}', formatSkillsLocations(runtime.sources))
     .replace('{skills_list}', formatSkillsList(runtime.discovered, runtime.sources));
+}
+
+function createProgressiveInstructionMessage(content: string): BaseMessage {
+  return new HumanMessage([PROGRESSIVE_INSTRUCTION_PREFIX, '', content].join('\n'));
 }

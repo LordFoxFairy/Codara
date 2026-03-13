@@ -1,6 +1,6 @@
 import {tool, type StructuredToolInterface} from '@langchain/core/tools';
 import {z} from 'zod';
-import {createMiddleware, type BaseMiddleware} from '@core/middleware';
+import {createMiddleware, type BaseMiddleware} from '@core/middleware/types';
 import {
   type DelegatedAgentOptions,
   markDelegationTool,
@@ -13,9 +13,9 @@ import {
   type SkillsRuntimeData,
   type SubagentDefinition,
 } from '@core/skills/runtime';
-import {readBaseSystemMessage} from '@core/instructions/system-message';
+import {readBaseSystemMessage} from '@core/context/system-message';
 import {filterToolsByReferences} from '@core/tools';
-import {createAgentMemoryCheckpointer} from '@core/checkpoint';
+import {createAgentMemoryCheckpointer} from '@core/checkpoint/agent';
 
 export const TASK_TOOL_NAME = 'Task';
 
@@ -56,11 +56,13 @@ export function createTaskTool(options: CreateTaskToolOptions): StructuredToolIn
         subagent_type,
       );
       const baseSystemMessage = readBaseSystemMessage(configurable.runtimeShared);
+      const inheritedBaseMessageCount = baseSystemMessage?.systemMessage.length ?? 0;
       return runDelegatedAgent({
         ...options,
         ...(baseSystemMessage?.systemMessage?.length || options.systemMessages?.length || options.systemPrompt
           ? {systemMessages: mergeTaskSystemMessages(baseSystemMessage?.systemMessage, options.systemMessages, options.systemPrompt)}
           : {}),
+        prepareContext: wrapDelegatedPrepareContext(options.prepareContext, inheritedBaseMessageCount),
         checkpointer: delegatedCheckpointer,
       }, {
         prompt,
@@ -151,4 +153,21 @@ function mergeTaskSystemMessages(
     ...(providedMessages ?? []),
     ...(baseSystemPrompt?.trim() ? [baseSystemPrompt.trim()] : []),
   ];
+}
+
+function wrapDelegatedPrepareContext(
+  prepareContext: CreateTaskToolOptions['prepareContext'],
+  inheritedBaseMessageCount: number,
+): CreateTaskToolOptions['prepareContext'] {
+  if (!prepareContext) {
+    return undefined;
+  }
+
+  return async (context) => {
+    const preservedExtras = context.systemMessage.slice(inheritedBaseMessageCount);
+    await prepareContext(context);
+    if (preservedExtras.length > 0) {
+      context.systemMessage.push(...preservedExtras);
+    }
+  };
 }

@@ -3,19 +3,20 @@ import type {BaseChatModel} from '@langchain/core/language_models/chat_models';
 import type {StructuredToolInterface} from '@langchain/core/tools';
 import {z} from 'zod';
 import {
-  createAgent,
   type AgentInputBudget,
   type AgentRuntimeContext,
-  type AgentTurnContextPreparer,
+  type AgentContextPreparer,
   type AgentRuntimeValues,
   type CreateAgentOptions,
   type PauseRequest,
   type ResumePayload,
   type ToolErrorHandler,
-} from '@core/agents';
-import type {BaseMiddleware, HILToolMessagePayload} from '@core/middleware';
+} from '@core/agents/models/agent';
+import {createAgent} from '@core/agents/run/agent-loop';
+import type {BaseMiddleware} from '@core/middleware/types';
+import type {HILToolMessagePayload} from '@core/middleware/hil';
 import type {ExecutionContextMetadata} from '@core/middleware/types';
-import type {AgentCheckpointer} from '@core/checkpoint';
+import type {AgentCheckpointer} from '@core/checkpoint/agent';
 import {deepClone} from '@core/shared/clone';
 import {readLatestAssistantText} from '@core/shared/messages';
 
@@ -70,7 +71,7 @@ export interface DelegatedAgentOptions {
   inputBudget?: AgentInputBudget;
   context?: AgentRuntimeContext;
   values?: AgentRuntimeValues;
-  prepareTurnContext?: AgentTurnContextPreparer;
+  prepareContext?: AgentContextPreparer;
   systemMessages?: string[];
   systemPrompt?: string;
   blockedToolNames?: string[];
@@ -230,7 +231,7 @@ async function buildDelegatedChildOptions(
     handleToolErrors: options.handleToolErrors,
     checkpointer: options.checkpointer,
     inputBudget: options.inputBudget,
-    prepareTurnContext: options.prepareTurnContext,
+    prepareContext: options.prepareContext,
     ...(mergedContext ? {context: mergedContext} : {}),
     ...(options.values ? {values: deepClone(options.values)} : {}),
   };
