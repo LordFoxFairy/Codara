@@ -1,9 +1,10 @@
 import {AIMessage, HumanMessage, SystemMessage, ToolMessage, type BaseMessage, type ToolCall} from '@langchain/core/messages';
+import type {CodaraRuntimeEvent} from '@core';
 import {parseHILToolMessagePayload} from '@core/middleware/hil';
 import {readMessageText} from '@core/shared/messages';
 import type {CliActiveTurn, CliNotice} from '../app/view-state';
 
-export type TranscriptRole = 'system' | 'warning' | 'user' | 'assistant' | 'tool' | 'task' | 'error';
+export type TranscriptRole = 'system' | 'warning' | 'user' | 'assistant' | 'tool' | 'task' | 'hil' | 'command' | 'error';
 
 export interface TranscriptItem {
   id: string;
@@ -15,6 +16,7 @@ export interface BuildTranscriptItemsInput {
   coreMessages: readonly BaseMessage[];
   notices: readonly CliNotice[];
   activeTurn?: CliActiveTurn;
+  runtimeEvents?: readonly CodaraRuntimeEvent[];
   limit?: number;
 }
 
@@ -22,20 +24,22 @@ export interface HasTranscriptContentInput {
   coreMessages: readonly BaseMessage[];
   notices: readonly CliNotice[];
   activeTurn?: CliActiveTurn;
+  runtimeEvents?: readonly CodaraRuntimeEvent[];
   initialNoticeCount?: number;
 }
 
-export const DEFAULT_TRANSCRIPT_LIMIT = 12;
+export const DEFAULT_TRANSCRIPT_LIMIT = 20;
 
 export function buildTranscriptItems(input: BuildTranscriptItemsInput): TranscriptItem[] {
   const toolLookup = createToolCallLookup(input.coreMessages);
+  const preferRuntimeSteps = (input.runtimeEvents?.length ?? 0) > 0;
   const items = [
     ...input.notices.map((notice) => ({
       id: notice.id,
       role: notice.level,
       content: notice.content,
     })),
-    ...input.coreMessages.flatMap((message, index) => buildCoreMessageItems(message, index, toolLookup)),
+    ...input.coreMessages.flatMap((message, index) => buildCoreMessageItems(message, index, toolLookup, preferRuntimeSteps)),
     ...(input.activeTurn
       ? [
           {
@@ -50,6 +54,7 @@ export function buildTranscriptItems(input: BuildTranscriptItemsInput): Transcri
           },
         ]
       : []),
+    ...buildRuntimeEventItems(input.runtimeEvents ?? []),
   ];
 
   return items
@@ -59,6 +64,10 @@ export function buildTranscriptItems(input: BuildTranscriptItemsInput): Transcri
 
 export function hasTranscriptContent(input: HasTranscriptContentInput): boolean {
   if (input.activeTurn) {
+    return true;
+  }
+
+  if ((input.runtimeEvents?.length ?? 0) > 0) {
     return true;
   }
 
@@ -75,6 +84,46 @@ export function hasTranscriptContent(input: HasTranscriptContentInput): boolean 
       || SystemMessage.isInstance(message)
     ));
   });
+}
+
+function buildRuntimeEventItems(events: readonly CodaraRuntimeEvent[]): TranscriptItem[] {
+  return events.map((event) => {
+    if (event.kind === 'turn' || event.kind === 'model') {
+      return undefined;
+    }
+
+    return {
+      id: event.id,
+      role: mapRuntimeEventRole(event.kind),
+      content: formatRuntimeEvent(event),
+    };
+  }).filter((item): item is TranscriptItem => Boolean(item));
+}
+
+function mapRuntimeEventRole(kind: CodaraRuntimeEvent['kind']): TranscriptRole {
+  switch (kind) {
+    case 'task':
+      return 'task';
+    case 'hil':
+      return 'hil';
+    case 'command':
+    case 'summary':
+      return 'command';
+    case 'tool':
+      return 'tool';
+    default:
+      return 'system';
+  }
+}
+
+function formatRuntimeEvent(event: CodaraRuntimeEvent): string {
+  const phaseLabel = event.phase === 'start'
+    ? 'start'
+    : event.phase === 'update'
+      ? 'update'
+      : 'done';
+
+  return [phaseLabel, event.label, event.detail].filter(Boolean).join('\n');
 }
 
 function mapCoreMessageRole(message: BaseMessage): TranscriptRole {
@@ -97,14 +146,18 @@ function buildCoreMessageItems(
   message: BaseMessage,
   index: number,
   toolLookup: Map<string, ToolCall>,
+  preferRuntimeSteps: boolean,
 ): TranscriptItem[] {
   const messageId = String(message.id ?? `${message.getType()}-${index}`);
 
   if (AIMessage.isInstance(message)) {
-    return buildAssistantItems(message, messageId);
+    return buildAssistantItems(message, messageId, preferRuntimeSteps);
   }
 
   if (ToolMessage.isInstance(message)) {
+    if (preferRuntimeSteps) {
+      return [];
+    }
     return buildToolResultItems(message, messageId, toolLookup);
   }
 
@@ -116,7 +169,7 @@ function buildCoreMessageItems(
   }] : [];
 }
 
-function buildAssistantItems(message: AIMessage, messageId: string): TranscriptItem[] {
+function buildAssistantItems(message: AIMessage, messageId: string, preferRuntimeSteps: boolean): TranscriptItem[] {
   const items: TranscriptItem[] = [];
   const text = readMessageText(message);
   if (text) {
@@ -125,6 +178,10 @@ function buildAssistantItems(message: AIMessage, messageId: string): TranscriptI
       role: 'assistant',
       content: text,
     });
+  }
+
+  if (preferRuntimeSteps) {
+    return items;
   }
 
   const toolCalls = Array.isArray(message.tool_calls) ? message.tool_calls : [];

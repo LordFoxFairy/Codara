@@ -100,6 +100,44 @@ describe('cli transcript model', () => {
     expect(items[0]?.content).toBe('Need a little more information before I continue.');
   });
 
+  test('should prefer runtime step events over raw tool transcript blocks when available', () => {
+    const items = buildTranscriptItems({
+      notices: [],
+      coreMessages: [
+        new AIMessage({
+          content: '',
+          tool_calls: [{id: 'call_task_1', name: 'Task', args: {prompt: 'Inspect child work'}} as ToolCall],
+        }),
+        new ToolMessage({content: 'Delegated task completed.\nsummary:\nCHILD_DONE', tool_call_id: 'call_task_1'}),
+      ],
+      runtimeEvents: [
+        {
+          id: 'evt_tool_1',
+          sessionId: 'session-1',
+          timestamp: new Date().toISOString(),
+          kind: 'tool',
+          phase: 'start',
+          status: 'running',
+          label: 'Delegating task',
+        },
+        {
+          id: 'evt_task_1',
+          sessionId: 'session-1',
+          timestamp: new Date().toISOString(),
+          kind: 'task',
+          phase: 'end',
+          status: 'done',
+          label: 'Delegated task completed',
+          detail: 'CHILD_DONE',
+        },
+      ],
+    });
+
+    expect(items.map((item) => item.role)).toEqual(['tool', 'task']);
+    expect(items[0]?.content).toContain('Delegating task');
+    expect(items[1]?.content).toContain('CHILD_DONE');
+  });
+
   test('should treat notice-only output as transcript content after startup', () => {
     expect(hasTranscriptContent({
       coreMessages: [],
@@ -123,6 +161,23 @@ describe('cli transcript model', () => {
     expect(hasTranscriptContent({
       coreMessages: [new ToolMessage({content: 'pong:ping', tool_call_id: 'call_tool_1'})],
       notices: [{id: 'startup', level: 'system', content: 'startup'}],
+      initialNoticeCount: 1,
+    })).toBe(true);
+  });
+
+  test('should treat runtime step events as transcript content', () => {
+    expect(hasTranscriptContent({
+      coreMessages: [],
+      notices: [{id: 'startup', level: 'system', content: 'startup'}],
+      runtimeEvents: [{
+        id: 'evt_runtime_1',
+        sessionId: 'session-1',
+        timestamp: new Date().toISOString(),
+        kind: 'command',
+        phase: 'start',
+        status: 'running',
+        label: 'Running /reload',
+      }],
       initialNoticeCount: 1,
     })).toBe(true);
   });
