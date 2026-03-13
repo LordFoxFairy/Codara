@@ -1,4 +1,6 @@
 export type {
+  CodaraRuntimeEvent,
+  CodaraRuntimeEventListener,
   Session,
   SessionState,
   SessionStatus,

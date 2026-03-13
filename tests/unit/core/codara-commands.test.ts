@@ -22,6 +22,7 @@ describe('Codara slash commands', () => {
     const result = await codara.executeCommand('/help');
     expect(result.ok).toBe(true);
     expect(result.output).toContain('/help [command]');
+    expect(result.output).toContain('/memory [show|project|global]');
     expect(result.output).toContain('/resume <sessionId>');
     expect(result.output).toContain('/compact [instructions] | /compact checkpoints [keepLast]');
     expect(result.output).toContain('/reload');
@@ -30,10 +31,42 @@ describe('Codara slash commands', () => {
       source: command.source.type,
     }))).toEqual([
       {name: 'help', source: 'builtin'},
+      {name: 'memory', source: 'builtin'},
       {name: 'resume', source: 'builtin'},
       {name: 'compact', source: 'builtin'},
       {name: 'reload', source: 'builtin'},
     ]);
+  });
+
+  it('should expose project and global memory targets through slash commands', async () => {
+    const root = await mkdtemp(path.join(tmpdir(), 'codara-command-memory-'));
+    const projectRoot = path.join(root, 'project');
+    const userHome = path.join(root, 'home');
+    const codara = createCodara({
+      cwd: projectRoot,
+      projectRoot,
+      userHome,
+      model: new EchoModel() as unknown as BaseChatModel,
+      skills: false,
+      builtinTools: false,
+    });
+
+    const show = await codara.executeCommand('/memory show');
+    expect(show.ok).toBe(true);
+    expect(show.output).toContain(path.join(projectRoot, 'AGENTS.md'));
+    expect(show.output).toContain(path.join(userHome, '.codara', 'AGENTS.md'));
+
+    const project = await codara.executeCommand('/memory project');
+    expect(project.action).toEqual({
+      type: 'open_file',
+      path: path.join(projectRoot, 'AGENTS.md'),
+    });
+
+    const global = await codara.executeCommand('/memory global');
+    expect(global.action).toEqual({
+      type: 'open_file',
+      path: path.join(userHome, '.codara', 'AGENTS.md'),
+    });
   });
 
   it('should reload session sources through slash commands without touching createAgent', async () => {
@@ -42,10 +75,18 @@ describe('Codara slash commands', () => {
       skills: false,
       builtinTools: false,
     });
+    const events: string[] = [];
+    codara.subscribeRuntimeEvents((event) => {
+      if (event.kind === 'command') {
+        events.push(`${event.phase}:${event.status}:${event.label}`);
+      }
+    });
 
     const result = await codara.executeCommand('/reload');
     expect(result.ok).toBe(true);
     expect(result.output).toContain('AGENTS.md');
+    expect(events.some((entry) => entry.includes('start:running:Running /reload'))).toBe(true);
+    expect(events.some((entry) => entry.includes('end:done:Completed /reload'))).toBe(true);
   });
 
   it('should compact the current conversation through the session-owned compact path', async () => {

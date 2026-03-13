@@ -118,6 +118,8 @@ export {
 export {
   createSession,
   FileSessionStore,
+  type CodaraRuntimeEvent,
+  type CodaraRuntimeEventListener,
   type Session,
   type SessionStore,
   type SessionState,

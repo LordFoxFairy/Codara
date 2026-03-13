@@ -133,6 +133,7 @@ agents/*.md
 ```text
 logging
 -> caller middlewares
+-> todo / shared tasks / Task (runtime defaults)
 -> budget
 -> permission (generic HIL-backed middleware in runtime)
 ```
@@ -140,6 +141,7 @@ logging
 说明：
 
 - `logging` 只做观测
+- `todo / shared tasks / Task` 是 `createCodaraRuntime(...)` 的默认产品工作流能力
 - `budget` 统一负责完整输入预算估算与摘要压缩
 - `permission` 是权限策略 middleware，本身复用通用 HIL pause / resume 协议
 - 通用 `hil` 仍然是底层协议层，不等于 `/resume`
@@ -228,9 +230,9 @@ bun test
 ```text
 src/core/agents        # createAgent 内核、loop、checkpoint runtime glue
 src/core/codara        # facade、session、source stack、装配
-src/core/middleware    # logging/guidelines/summary/todo/hil/context-budget
+src/core/middleware    # logging/summary/todo/hil/permission/context-budget
 src/core/skills        # skills store、runtime、agent definitions
-src/core/tasking       # subagent / Task / shared task store 统一域
+src/core/tasks         # subagent / Task / shared task store 统一域
 src/core/provider      # model routing、registry、factory
 tests/unit             # 单元测试
 tests/integration      # integration 与本地 mock provider stack

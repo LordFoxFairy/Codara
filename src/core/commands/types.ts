@@ -47,14 +47,22 @@ export interface CodaraCommandAgent {
   compactCheckpoints(options?: CompactOptions): Promise<void>;
   hydrate(): Promise<AgentState>;
   getAgentState(): AgentState;
+  getState(): {sessionId: string};
   invoke(input: string): Promise<AgentResult>;
   reloadSources(): Promise<void>;
+}
+
+export interface CodaraCommandEnvironment {
+  cwd?: string;
+  projectRoot?: string;
+  userHome?: string;
 }
 
 export interface CodaraCommandContext {
   command: ParsedCodaraCommand;
   registry: readonly CodaraCommandDefinition[];
   agent: CodaraCommandAgent;
+  environment: CodaraCommandEnvironment;
 }
 
 export interface CodaraCommandDefinition extends CodaraCommandSpec {

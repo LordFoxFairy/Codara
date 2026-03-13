@@ -133,7 +133,7 @@ createCodara(...)
 - `TaskMiddleware` = 注册正式 `Task` 委派工具，是产品主入口
 - `SharedTaskMiddleware` = 注册 `TaskCreate/TaskUpdate/TaskList`
 
-更完整的 `subagent/task` 结构、流程图、测试地图与当前不足，见 `docs/subagent-task-architecture.md`。
+更完整的 `subagent/task` 结构、边界与当前规则，见 `src/core/tasks/README.md`。
 
 子代理类型本身不在 core 里硬编码。
 它们应来自真实 agent definition 文件，例如：
@@ -163,6 +163,7 @@ createCodara(...)
 - slash commands 归属 `src/core/commands/`
 - 当前内建命令：
   - `/help`
+  - `/memory`
   - `/resume`
   - `/compact`
 - `/reload`

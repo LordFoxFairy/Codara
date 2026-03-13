@@ -119,6 +119,7 @@ allowed-tools:
     );
 
     const logs: MiddlewareLogRecord[] = [];
+    const runtimeEvents: Array<{kind: string; phase: string; status: string}> = [];
     let bashInvokeCount = 0;
     const bashTool = tool(
       async ({command}: {command: string}) => {
@@ -156,6 +157,9 @@ allowed-tools:
           logs.push(record);
         },
       },
+    });
+    codara.subscribeRuntimeEvents((event) => {
+      runtimeEvents.push({kind: event.kind, phase: event.phase, status: event.status});
     });
 
     const customEvents: AgentStreamCustomChunk[] = [];
@@ -239,6 +243,10 @@ allowed-tools:
         && record.resultReason === 'complete'
     );
     expect(finalLog).toBeDefined();
+    expect(runtimeEvents.some((event) => event.kind === 'turn' && event.phase === 'start')).toBe(true);
+    expect(runtimeEvents.some((event) => event.kind === 'model' && event.phase === 'start')).toBe(true);
+    expect(runtimeEvents.some((event) => event.kind === 'tool' && event.phase === 'start')).toBe(true);
+    expect(runtimeEvents.some((event) => event.kind === 'hil' && event.status === 'paused')).toBe(true);
 
   });
 });
