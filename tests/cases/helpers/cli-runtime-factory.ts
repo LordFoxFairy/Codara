@@ -355,6 +355,34 @@ export async function createCliRuntime(input: {
           skills: false,
         }),
       };
+    case 'skill-command-preflight-missing-tool':
+      return {
+        codara: createCodaraRuntime({
+          cwd: input.cwd,
+          projectRoot: input.cwd,
+          codaraPath: path.join(input.cwd, '.codara'),
+          ...(input.sessionId ? {sessionId: input.sessionId} : {}),
+          model: new ScriptedModel([new AIMessage('SKILL_PREFLIGHT_UNEXPECTED_MODEL_CALL')]) as unknown as BaseChatModel,
+          builtinTools: false,
+          skills: {
+            store: createProjectSkillStore(input.cwd),
+          },
+        }),
+      };
+    case 'skill-command-preflight-missing-binary':
+      return {
+        codara: createCodaraRuntime({
+          cwd: input.cwd,
+          projectRoot: input.cwd,
+          codaraPath: path.join(input.cwd, '.codara'),
+          ...(input.sessionId ? {sessionId: input.sessionId} : {}),
+          model: new ScriptedModel([new AIMessage('SKILL_PREFLIGHT_UNEXPECTED_MODEL_CALL')]) as unknown as BaseChatModel,
+          builtinTools: true,
+          skills: {
+            store: createProjectSkillStore(input.cwd),
+          },
+        }),
+      };
     case 'default-runtime-workflow':
       return {
         codara: createCodaraRuntime({

@@ -181,6 +181,10 @@ createCodara(...)
 - 命令来源会被正式区分为：
   - `builtin`：宿主内建命令
   - `skill`：由 skills discovery 暴露的命令入口
+- skill command 在真正调用 agent 之前会做前置能力检查：
+  - 校验 skill `allowed-tools` 是否能被当前 runtime 提供
+  - 对 `Bash(...)` 规则额外检查对应 shell binary 是否在 PATH 中
+  - 缺能力时直接返回明确错误，不盲目发起 agent invoke
 - 这些命令属于 Codara agent surface，不属于 `createAgent(...)` 内核
 - `/compact`
   - 通过 session 入口触发 summary middleware
