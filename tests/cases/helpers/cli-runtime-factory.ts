@@ -1,6 +1,6 @@
 import {readFile} from 'node:fs/promises';
 import path from 'node:path';
-import {AIMessage, ToolMessage, type BaseMessage, type ToolCall, SystemMessage} from '@langchain/core/messages';
+import {AIMessage, HumanMessage, ToolMessage, type BaseMessage, type ToolCall, SystemMessage} from '@langchain/core/messages';
 import type {BaseChatModel} from '@langchain/core/language_models/chat_models';
 import type {StructuredToolInterface} from '@langchain/core/tools';
 import {tool} from '@langchain/core/tools';
@@ -536,8 +536,12 @@ class ProgressiveDisclosureCliModel {
       .filter((message): message is SystemMessage => SystemMessage.isInstance(message))
       .map((message) => stringifyMessage(message.content))
       .join('\n');
+    const runtimeInstructionText = messages
+      .filter((message): message is HumanMessage => HumanMessage.isInstance(message))
+      .map((message) => stringifyMessage(message.content))
+      .join('\n');
 
-    return new AIMessage(`PROGRESSIVE_DISCLOSURE_DONE:${systemText.includes('APP_RULE')}`);
+    return new AIMessage(`PROGRESSIVE_DISCLOSURE_DONE:${runtimeInstructionText.includes('APP_RULE') && !systemText.includes('APP_RULE')}`);
   }
 
   bindTools(_tools: StructuredToolInterface[]): this {

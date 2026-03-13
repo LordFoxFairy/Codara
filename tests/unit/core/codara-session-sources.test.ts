@@ -4,7 +4,7 @@ import path from 'node:path';
 import {tmpdir} from 'node:os';
 import {createCodara, FileSessionStore} from '@core';
 import type {BaseChatModel} from '@langchain/core/language_models/chat_models';
-import {AIMessage, SystemMessage, ToolMessage, type BaseMessage, type ToolCall} from '@langchain/core/messages';
+import {AIMessage, HumanMessage, SystemMessage, ToolMessage, type BaseMessage, type ToolCall} from '@langchain/core/messages';
 import {tool} from '@langchain/core/tools';
 import {z} from 'zod';
 import type {SkillMetadata, SkillStore} from '@core/skills/types';
@@ -364,8 +364,12 @@ class ProgressiveDisclosureModel {
       .filter((message): message is SystemMessage => SystemMessage.isInstance(message))
       .map((message) => String(message.content))
       .join('\n');
+    const runtimeInstructionText = messages
+      .filter((message): message is HumanMessage => HumanMessage.isInstance(message))
+      .map((message) => String(message.content))
+      .join('\n');
 
-    return new AIMessage(`visible:${systemText.includes(this.expectedRule)}`);
+    return new AIMessage(`visible:${runtimeInstructionText.includes(this.expectedRule) && !systemText.includes(this.expectedRule)}`);
   }
 
   bindTools(): this {

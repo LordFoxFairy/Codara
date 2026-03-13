@@ -1,8 +1,16 @@
+import {mkdir, mkdtemp, readFile, writeFile} from 'node:fs/promises';
+import {tmpdir} from 'node:os';
+import path from 'node:path';
 import {describe, expect, it} from 'bun:test';
 import {AIMessage, HumanMessage, SystemMessage, ToolMessage, type BaseMessage, type ToolCall} from '@langchain/core/messages';
 import type {BaseChatModel} from '@langchain/core/language_models/chat_models';
-import type {StructuredToolInterface} from '@langchain/core/tools';
+import {tool, type StructuredToolInterface} from '@langchain/core/tools';
+import {z} from 'zod';
 import {createAgent} from '@core/agents';
+import {createCodaraGuidelinesSource} from '@core/instructions/guidelines';
+import {createCodaraPromptSource} from '@core/instructions/prompt';
+import {buildBaseSystemMessage, buildProgressiveInstructionMessages} from '@core/instructions/system-message';
+import {createInstructionLoadingMiddleware} from '@core/middleware';
 import {
   createSharedTaskMiddleware,
   createTaskMemoryStore,
@@ -55,6 +63,50 @@ class SystemEchoModel {
       .map((message) => String(message.content))
       .join('\n---\n');
     return new AIMessage(content);
+  }
+
+  bindTools(tools: StructuredToolInterface[]): this {
+    void tools;
+    return this;
+  }
+}
+
+class ChildProgressiveDisclosureModel {
+  constructor(private readonly targetFile: string) {}
+
+  async invoke(messages: BaseMessage[]): Promise<AIMessage> {
+    const toolMessage = messages.find((message) => (
+      ToolMessage.isInstance(message) && message.tool_call_id === 'call_child_progressive_read'
+    )) as ToolMessage | undefined;
+
+    if (!toolMessage) {
+      return new AIMessage({
+        content: '',
+        tool_calls: [{
+          id: 'call_child_progressive_read',
+          name: 'read_file',
+          args: {path: this.targetFile},
+        } as ToolCall],
+      });
+    }
+
+    const systemText = messages
+      .filter((message): message is SystemMessage => SystemMessage.isInstance(message))
+      .map((message) => String(message.content))
+      .join('\n');
+    const runtimeInstructionText = messages
+      .filter((message): message is HumanMessage => HumanMessage.isInstance(message))
+      .map((message) => String(message.content))
+      .join('\n');
+
+    return new AIMessage(
+      `child_visible:${
+        runtimeInstructionText.includes('APP_RULE')
+        && runtimeInstructionText.includes('APP_HANDBOOK')
+        && !systemText.includes('APP_RULE')
+        && !systemText.includes('APP_HANDBOOK')
+      }`,
+    );
   }
 
   bindTools(tools: StructuredToolInterface[]): this {
@@ -147,6 +199,76 @@ describe('tasks middlewares', () => {
     expect(result.reason).toBe('complete');
     expect(String(toolMessage.content)).toContain('child middleware summary');
     expect(readDelegatedAgentResult(toolMessage.artifact)?.summary).toBe('child middleware summary');
+  });
+
+  it('should let delegated children refresh deeper instruction markdown through the same read_file middleware path', async () => {
+    const root = await mkdtemp(path.join(tmpdir(), 'codara-task-progressive-'));
+    const projectRoot = path.join(root, 'project');
+    const targetFile = path.join(projectRoot, 'packages', 'app', 'src', 'feature.ts');
+    await mkdir(path.join(projectRoot, '.git'), {recursive: true});
+    await mkdir(path.join(projectRoot, '.codara'), {recursive: true});
+    await mkdir(path.join(projectRoot, 'packages', 'app', '.codara'), {recursive: true});
+    await mkdir(path.dirname(targetFile), {recursive: true});
+    await writeFile(path.join(projectRoot, 'AGENTS.md'), 'ROOT_RULE', 'utf8');
+    await writeFile(path.join(projectRoot, 'packages', 'app', 'AGENTS.md'), 'APP_RULE', 'utf8');
+    await writeFile(path.join(projectRoot, '.codara', 'codara.md'), 'ROOT_HANDBOOK', 'utf8');
+    await writeFile(path.join(projectRoot, 'packages', 'app', '.codara', 'codara.md'), 'APP_HANDBOOK', 'utf8');
+    await writeFile(targetFile, 'export const feature = true;\n', 'utf8');
+
+    const guidelinesSource = createCodaraGuidelinesSource({projectRoot, cwd: projectRoot});
+    const promptSource = createCodaraPromptSource({projectRoot, cwd: projectRoot});
+    const instructionLoadingMiddleware = createInstructionLoadingMiddleware({
+      promptSource,
+      guidelinesSource,
+    });
+    if (!instructionLoadingMiddleware) {
+      throw new Error('Instruction middleware should always be created for prompt/guidelines sources.');
+    }
+
+    const taskMiddleware = createTaskMiddleware({
+      model: new ChildProgressiveDisclosureModel(targetFile) as unknown as BaseChatModel,
+      tools: [
+        tool(async ({path: filePath}: {path: string}) => readFile(filePath, 'utf8'), {
+          name: 'read_file',
+          description: 'Read a file for delegated progressive disclosure tests.',
+          schema: z.object({path: z.string()}),
+        }),
+      ],
+      middleware: [instructionLoadingMiddleware],
+      prepareTurnContext: async (context) => {
+        const next = await buildBaseSystemMessage(promptSource, guidelinesSource);
+        const runtimeInstructions = await buildProgressiveInstructionMessages(promptSource, guidelinesSource);
+        context.systemMessage = [...next.systemMessage];
+        context.runtime.shared = next.runtimeShared ? {...next.runtimeShared} : {};
+        context.messages = runtimeInstructions.length > 0
+          ? [...runtimeInstructions, ...context.state.messages]
+          : context.state.messages;
+      },
+    });
+    const parentModel = new ScriptedModel([
+      new AIMessage({
+        content: '',
+        tool_calls: [{
+          id: 'call_task_progressive_delegate',
+          name: TASK_TOOL_NAME,
+          args: {
+            prompt: 'inspect the deeper feature file',
+          },
+        } as ToolCall],
+      }),
+      new AIMessage('done'),
+    ]) as unknown as BaseChatModel;
+
+    const agent = createAgent({
+      model: parentModel,
+      middleware: [taskMiddleware],
+    });
+
+    const result = await agent.invoke([new HumanMessage('start')]);
+    const toolMessage = result.state.messages.find((message) => ToolMessage.isInstance(message)) as ToolMessage;
+
+    expect(result.reason).toBe('complete');
+    expect(String(toolMessage.content)).toContain('child_visible:true');
   });
 
   it('should expose shared task coordination tools as a dedicated middleware', async () => {
