@@ -12,7 +12,7 @@ function createBaseContext() {
     runtime: {context: {}, runtimeContext: {}, shared: {}},
     systemMessage: [],
     execution: {
-      threadId: 'thread_1',
+      sessionId: 'thread_1',
       runId: 'run_1',
       turn: 1,
       maxTurns: 3,

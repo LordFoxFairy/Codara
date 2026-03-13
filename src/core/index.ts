@@ -2,10 +2,12 @@
 
 export {
   createCodara,
-  createCodaraAgent,
+  createCodaraRuntime,
+  DEFAULT_CODARA_MODEL_ALIAS,
   openCodaraSession,
   openLatestCodaraSession,
   type Codara,
+  type CodaraRuntimeOptions,
   type CodaraOptions,
 } from '@core/codara';
 export {
@@ -34,15 +36,37 @@ export {
   type CreateTaskMiddlewareOptions,
 } from '@core/tasks';
 export {
+  createDailySessionFileLogSink,
   createBudgetMiddleware,
   createHILMiddleware,
+  createInteractionMiddleware,
   createLoggingMiddleware,
   createMiddleware,
+  createAskUserTool,
+  ASK_USER_TOOL_NAME,
+  parseAskUserResult,
+  createPermissionMiddleware,
+  createPermissionRuntime,
+  ensurePermissionSettingsFile,
+  evaluatePermissionExpression,
+  evaluatePermissionToolCall,
+  formatPermissionExpression,
+  handlePermissionFallbackResume,
+  isPermissionPause,
+  persistAllowedPermission,
+  persistPermissionScope,
+  persistPermissionRule,
+  validatePermissionSettings,
   createSummaryMiddleware,
   createSkillsMiddleware,
   type BaseMiddleware,
+  type AskUserInput,
+  type AskUserOption,
+  type AskUserQuestion,
+  type AskUserResult,
   type BudgetMiddlewareOptions,
   type ExecutionContextMetadata,
+  type InteractionMiddlewareOptions,
   type HILMiddlewareOptions,
   type HILResumePayload,
   type LoggingMiddlewareOptions,
@@ -62,7 +86,17 @@ export {
   createCodaraGuidelinesSource,
   type GuidelinesOptions,
   type GuidelinesSource,
-} from '@core/sessions/guidelines';
+} from '@core/instructions/guidelines';
+export {
+  createCodaraPromptSource,
+  type PromptOptions,
+  type PromptSource,
+} from '@core/instructions/prompt';
+export {
+  readBaseSystemMessage,
+  type BaseSystemMessageBundle,
+  type BaseSystemMessageRuntimeData,
+} from '@core/instructions/system-message';
 export {
   createBuiltinTools,
   createFetchTool,

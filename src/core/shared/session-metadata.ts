@@ -2,7 +2,7 @@ import {AIMessage, HumanMessage, type BaseMessage} from '@langchain/core/message
 import type {AgentInputBudget, AgentState} from '@core/agents';
 import {estimateModelInputTokens} from '@core/middleware/budget';
 import type {ModelInfo} from '@core/provider';
-import {readMessageText} from '@core/shared/messages';
+import {readLatestVisibleMessageText, readMessageText} from '@core/shared/messages';
 import type {SessionMetadata} from '@core/sessions/session';
 
 export function createSessionMetadata(
@@ -21,11 +21,10 @@ export function createSessionMetadata(
 export function forkSessionMetadata(
   metadata: SessionMetadata,
   sessionId: string,
-  threadId: string,
 ): Partial<SessionMetadata> {
   const cloned = cloneSessionMetadata(metadata);
   delete cloned.usage;
-  return {...cloned, forkedFromSessionId: sessionId, forkedFromThreadId: threadId};
+  return {...cloned, forkedFromSessionId: sessionId};
 }
 
 export function syncSessionMetadata(
@@ -39,7 +38,7 @@ export function syncSessionMetadata(
 ) {
   metadata.messageCount = agentState.messages.length;
 
-  const lastText = readMessageText(agentState.messages.at(-1));
+  const lastText = readLatestVisibleMessageText(agentState.messages);
   if (lastText) {
     metadata.lastMessage = lastText.slice(0, 200);
   } else {

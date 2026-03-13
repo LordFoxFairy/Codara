@@ -1,5 +1,5 @@
 export interface CheckpointRef {
-  threadId: string;
+  sessionId: string;
   checkpointId: string;
   parentCheckpointId?: string;
 }
@@ -11,7 +11,7 @@ export interface CheckpointRecord<TState = unknown, TInfo = unknown> {
 }
 
 export interface PutCheckpointInput<TState = unknown, TInfo = unknown> {
-  threadId: string;
+  sessionId: string;
   parentCheckpointId?: string;
   state: TState;
   info: TInfo;
@@ -22,12 +22,12 @@ export interface CompactOptions {
 }
 
 export interface Checkpointer<TState = unknown, TInfo = unknown> {
-  getLatest(threadId: string): Promise<CheckpointRecord<TState, TInfo> | undefined>;
-  get(ref: {threadId: string; checkpointId: string}): Promise<CheckpointRecord<TState, TInfo> | undefined>;
+  getLatest(sessionId: string): Promise<CheckpointRecord<TState, TInfo> | undefined>;
+  get(ref: {sessionId: string; checkpointId: string}): Promise<CheckpointRecord<TState, TInfo> | undefined>;
   put(input: PutCheckpointInput<TState, TInfo>): Promise<CheckpointRecord<TState, TInfo>>;
-  list(threadId: string): Promise<Array<CheckpointRecord<TState, TInfo>>>;
-  deleteThread(threadId: string): Promise<void>;
-  compact?(threadId: string, options?: CompactOptions): Promise<void>;
+  list(sessionId: string): Promise<Array<CheckpointRecord<TState, TInfo>>>;
+  deleteSession(sessionId: string): Promise<void>;
+  compact?(sessionId: string, options?: CompactOptions): Promise<void>;
 }
 export {InMemoryCheckpointer} from '@core/checkpoint/in-memory';
 export {

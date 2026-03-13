@@ -13,6 +13,7 @@ import {
   type SkillsRuntimeData,
   type SubagentDefinition,
 } from '@core/skills/runtime';
+import {readBaseSystemMessage} from '@core/instructions/system-message';
 import {filterToolsByReferences} from '@core/tools';
 import {createAgentMemoryCheckpointer} from '@core/checkpoint';
 
@@ -54,8 +55,12 @@ export function createTaskTool(options: CreateTaskToolOptions): StructuredToolIn
         readSkillsRuntimeData(configurable.runtimeShared),
         subagent_type,
       );
+      const baseSystemMessage = readBaseSystemMessage(configurable.runtimeShared);
       return runDelegatedAgent({
         ...options,
+        ...(baseSystemMessage?.systemMessage?.length || options.systemMessages?.length || options.systemPrompt
+          ? {systemMessages: mergeTaskSystemMessages(baseSystemMessage?.systemMessage, options.systemMessages, options.systemPrompt)}
+          : {}),
         checkpointer: delegatedCheckpointer,
       }, {
         prompt,
@@ -128,4 +133,16 @@ function formatAvailableSubagents(runtime: SkillsRuntimeData | undefined): strin
       return `- ${definition.name}: ${definition.description}${toolRefs}${maxTurns}`;
     }),
   ].join('\n');
+}
+
+function mergeTaskSystemMessages(
+  inheritedMessages: string[] | undefined,
+  providedMessages: string[] | undefined,
+  baseSystemPrompt: string | undefined,
+): string[] {
+  return [
+    ...(inheritedMessages ?? []),
+    ...(providedMessages ?? []),
+    ...(baseSystemPrompt?.trim() ? [baseSystemPrompt.trim()] : []),
+  ];
 }

@@ -574,18 +574,54 @@ function buildObservabilityMetadata(
   ui?: PauseUIConfig,
 ): Record<string, unknown> {
   const skill = extractSkillFromMetadata(metadata);
+  const actorType = extractActorType(metadata);
+  const delegatedChildSessionId = extractDelegatedChildSessionId(metadata);
   const actionIds = extractActionIds(ui);
   return {
     toolResultType,
     interactionDecision: toolResultType === 'hil_pause' ? 'ask' : 'deny',
     ...(channel ? {interactionChannel: channel} : {}),
     ...(skill ? {interactionSkill: skill} : {}),
+    ...(actorType ? {interactionActorType: actorType} : {}),
+    ...(delegatedChildSessionId ? {delegatedChildSessionId} : {}),
     ...(actionIds.length > 0 ? {interactionActionIds: actionIds} : {}),
   };
 }
 
 function extractSkillFromMetadata(metadata: Record<string, unknown> | undefined): string | undefined {
   return typeof metadata?.skill === 'string' ? metadata.skill : undefined;
+}
+
+function extractActorType(metadata: Record<string, unknown> | undefined): string | undefined {
+  const codara = metadata?.codara;
+  if (!codara || typeof codara !== 'object' || Array.isArray(codara)) {
+    return undefined;
+  }
+
+  const actor = (codara as Record<string, unknown>).actor;
+  if (!actor || typeof actor !== 'object' || Array.isArray(actor)) {
+    return undefined;
+  }
+
+  return typeof (actor as Record<string, unknown>).agentType === 'string'
+    ? String((actor as Record<string, unknown>).agentType)
+    : undefined;
+}
+
+function extractDelegatedChildSessionId(metadata: Record<string, unknown> | undefined): string | undefined {
+  const codara = metadata?.codara;
+  if (!codara || typeof codara !== 'object' || Array.isArray(codara)) {
+    return undefined;
+  }
+
+  const delegated = (codara as Record<string, unknown>).delegatedSubagent;
+  if (!delegated || typeof delegated !== 'object' || Array.isArray(delegated)) {
+    return undefined;
+  }
+
+  return typeof (delegated as Record<string, unknown>).childSessionId === 'string'
+    ? String((delegated as Record<string, unknown>).childSessionId)
+    : undefined;
 }
 
 function extractActionIds(ui: PauseUIConfig | undefined): string[] {

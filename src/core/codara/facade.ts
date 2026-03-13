@@ -1,14 +1,32 @@
+import {existsSync} from 'node:fs';
+import path from 'node:path';
 import type {BaseChatModel} from '@langchain/core/language_models/chat_models';
 import type {StructuredToolInterface} from '@langchain/core/tools';
 import type {AgentCheckpointer} from '@core/checkpoint';
+import {createAgentFileCheckpointer} from '@core/checkpoint';
 import type {BaseMiddleware, HILMiddlewareOptions, LoggingMiddlewareOptions} from '@core/middleware';
 import type {SummarySettings} from '@core/middleware/summary';
-import {createBudgetMiddleware, createHILMiddleware, createLoggingMiddleware} from '@core/middleware';
-import {ChatModelFactory, loadModelRoutingConfig, ModelRegistry, type ModelInfo, type ModelRoutingConfig} from '@core/provider';
+import {
+  createAskUserTool,
+  createBudgetMiddleware,
+  createDailySessionFileLogSink,
+  createHILMiddleware,
+  createInteractionMiddleware,
+  createLoggingMiddleware,
+} from '@core/middleware';
+import {
+  createPermissionMiddleware,
+  ensurePermissionSettingsFile,
+} from '@core/permissions';
+import {ChatModelFactory, loadModelRoutingConfig, loadModelRoutingConfigFromPath, ModelRegistry, resolveCodaraPath, type ModelInfo, type ModelRoutingConfig} from '@core/provider';
 import {
   createCodaraGuidelinesSource,
   type GuidelinesOptions,
-} from '@core/sessions/guidelines';
+} from '@core/instructions/guidelines';
+import {
+  createCodaraPromptSource,
+  type PromptOptions,
+} from '@core/instructions/prompt';
 import {
   createCodaraSkillsSource,
   FileSystemSkillStore,
@@ -16,11 +34,12 @@ import {
 } from '@core/skills';
 import {createSkillCodaraCommands} from '@core/commands/skills';
 import {createCodaraCommandRunner, type CodaraCommandResult, type CodaraCommandSpec} from '@core/commands';
-import {createSession, type Session, type SessionState, type SessionStore} from '@core/sessions';
+import {createSession, FileSessionStore, type Session, type SessionState, type SessionStore} from '@core/sessions';
 import {resolveWorkspaceRoot} from '@core/shared/workspace';
 import {createBuiltinTools} from '@core/tools';
 
 export const DEFAULT_CODARA_MODEL_ALIAS = 'default';
+const DEFAULT_RUNTIME_FILE_LOGGING_ENABLED = true;
 
 export class CodaraModelCatalog {
   constructor(
@@ -56,6 +75,7 @@ export interface CodaraSkillOptions {
 }
 
 export interface CodaraOptions {
+  id?: string;
   config?: ModelRoutingConfig;
   alias?: string;
   model?: BaseChatModel | Promise<BaseChatModel>;
@@ -67,12 +87,12 @@ export interface CodaraOptions {
   builtinTools?: boolean;
   middleware?: BaseMiddleware[];
   guidelines?: boolean | GuidelinesOptions;
+  prompt?: boolean | PromptOptions;
   skills?: false | CodaraSkillOptions;
   summary?: false | SummarySettings;
   hil?: false | HILMiddlewareOptions;
   logging?: false | LoggingMiddlewareOptions;
   sessionId?: string;
-  threadId?: string;
   restore?: 'latest' | 'never';
   store?: SessionStore;
   checkpointer?: AgentCheckpointer;
@@ -81,6 +101,10 @@ export interface CodaraOptions {
   messages?: import('@core/agents').AgentInput;
   context?: Record<string, unknown>;
   values?: Record<string, unknown>;
+}
+
+export interface CodaraRuntimeOptions extends CodaraOptions {
+  codaraPath?: string;
 }
 
 export type CreateCodaraModelCatalogOptions = Pick<CodaraOptions, 'config'>;
@@ -116,17 +140,52 @@ export async function createCodaraChatModel(
 }
 
 export function createCodara(options: CodaraOptions = {}): Codara {
-  return createCodaraAgent(options);
+  return assembleCodara(options);
 }
 
-export function createCodaraAgent(options: CodaraOptions, restoredState?: SessionState): Codara {
+export function createCodaraRuntime(options: CodaraRuntimeOptions = {}): Codara {
+  const codaraPath = resolveCodaraRuntimePath(options);
+  ensurePermissionSettingsFile({
+    cwd: options.cwd,
+    projectRoot: options.projectRoot,
+    userHome: options.userHome,
+  });
+  const catalog = !options.model && !options.catalog && !options.config
+    ? loadModelRoutingConfigFromPath(codaraPath).then((config) => createCodaraModelCatalog({config}))
+    : options.catalog;
+  const logging = resolveRuntimeLoggingOptions(options);
+  const runtimeInteractionTools = options.hil === false ? [] : [createAskUserTool()];
+  const runtimeInteractionMiddleware = options.hil === false ? [] : [createInteractionMiddleware()];
+  const permissionMiddleware = options.hil === false ? [] : [createPermissionMiddleware({
+    ...(typeof options.hil === 'object' && options.hil !== null ? options.hil : {}),
+    cwd: options.cwd,
+    projectRoot: options.projectRoot,
+    userHome: options.userHome,
+  })];
+
+  return createCodara({
+    ...options,
+    tools: mergeRuntimeTools(options.tools, runtimeInteractionTools),
+    middleware: [...(options.middleware ?? []), ...runtimeInteractionMiddleware, ...permissionMiddleware],
+    hil: false,
+    ...(logging === false ? {logging: false} : {logging}),
+    ...(catalog ? {catalog} : {}),
+    ...(options.store ? {} : {store: new FileSessionStore({basePath: path.join(codaraPath, 'sessions')})}),
+    ...(options.checkpointer ? {} : {
+      checkpointer: createAgentFileCheckpointer({rootDir: path.join(codaraPath, 'sessions')}),
+    }),
+    restore: options.restore ?? 'latest',
+  });
+}
+
+function assembleCodara(options: CodaraOptions, restoredState?: SessionState): Codara {
   const skills = resolveCodaraSkills(options);
   const skillsSource = skills ? createCodaraSkillsSource(skills) : undefined;
   const alias = normalizeAlias(options.alias);
   const session = createSession({
     ...(restoredState ? {state: restoredState} : {}),
+    id: options.id,
     sessionId: options.sessionId,
-    threadId: options.threadId,
     store: options.store,
     checkpointer: options.checkpointer,
     restore: options.restore,
@@ -141,6 +200,12 @@ export function createCodaraAgent(options: CodaraOptions, restoredState?: Sessio
       projectRoot: options.projectRoot,
       userHome: options.userHome,
       guidelines: options.guidelines,
+    }),
+    promptSource: createCodaraPromptSource({
+      cwd: options.cwd,
+      projectRoot: options.projectRoot,
+      userHome: options.userHome,
+      prompt: options.prompt,
     }),
     ...(skillsSource ? {skillsSource} : {}),
     tools: createCodaraTools(options),
@@ -240,10 +305,9 @@ function resolveCodaraSkills(
 }
 
 async function reopenCodaraSession(options: CodaraOptions, state: SessionState): Promise<Codara> {
-  const codara = createCodaraAgent({
+  const codara = assembleCodara({
     ...options,
     sessionId: state.sessionId,
-    threadId: state.threadId,
     restore: 'latest',
   }, state);
   await codara.hydrate();
@@ -252,4 +316,63 @@ async function reopenCodaraSession(options: CodaraOptions, state: SessionState):
 
 function normalizeAlias(alias: string | undefined): string {
   return alias?.trim() || DEFAULT_CODARA_MODEL_ALIAS;
+}
+
+function mergeRuntimeTools(
+  callerTools: StructuredToolInterface[] | undefined,
+  runtimeTools: StructuredToolInterface[],
+): StructuredToolInterface[] | undefined {
+  if (runtimeTools.length === 0) {
+    return callerTools;
+  }
+
+  const byName = new Map<string, StructuredToolInterface>();
+  for (const tool of callerTools ?? []) {
+    byName.set(tool.name, tool);
+  }
+  for (const tool of runtimeTools) {
+    if (!byName.has(tool.name)) {
+      byName.set(tool.name, tool);
+    }
+  }
+
+  return [...byName.values()];
+}
+
+function resolveCodaraRuntimePath(options: Pick<CodaraRuntimeOptions, 'codaraPath' | 'cwd' | 'projectRoot'>): string {
+  if (options.codaraPath?.trim()) {
+    return path.resolve(options.codaraPath.trim());
+  }
+
+  const workspaceRoot = resolveWorkspaceRoot({
+    cwd: options.cwd,
+    projectRoot: options.projectRoot,
+  });
+  const projectCodaraPath = path.join(workspaceRoot, '.codara');
+  if (existsSync(path.join(projectCodaraPath, 'config.json'))) {
+    return projectCodaraPath;
+  }
+
+  return path.resolve(resolveCodaraPath());
+}
+
+function resolveRuntimeLoggingOptions(
+  options: Pick<CodaraRuntimeOptions, 'logging' | 'cwd' | 'projectRoot'>,
+): false | LoggingMiddlewareOptions {
+  if (!DEFAULT_RUNTIME_FILE_LOGGING_ENABLED || options.logging === false || options.logging?.enabled === false) {
+    return false;
+  }
+
+  const workspaceRoot = resolveWorkspaceRoot({
+    cwd: options.cwd,
+    projectRoot: options.projectRoot,
+  });
+  const rootDir = path.join(workspaceRoot, '.codara', 'sessions');
+  const provided = options.logging ?? {};
+
+  return {
+    ...provided,
+    enabled: true,
+    logger: provided.logger ?? createDailySessionFileLogSink({rootDir}),
+  };
 }

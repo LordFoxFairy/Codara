@@ -175,7 +175,23 @@ createCodara(...)
 - `/compact`
   - 通过 session 入口触发 summary middleware
   - 手动 compact 后会写入 `manual` checkpoint
+- `/resume`
+  - 只负责按 `sessionId` 重开 stored conversation
+  - permission/HIL 审批不通过 slash command 承载
 - `/compact checkpoints [keepLast]` 只整理 checkpoint store，不混入 conversation summary 语义
+
+## Permission 与 HIL
+
+- `permissions/*`
+  - 负责 settings 文件、规则评估、`allow/ask/deny`、`always` 持久化
+- `middleware/hil.ts`
+  - 只负责通用 pause / resume 协议
+- `createPermissionMiddleware(...)`
+  - 是权限在运行时中的正式接入点
+  - 复用通用 HIL，不再依赖 skills
+- CLI
+  - 只消费 pause request 的 `channel/ui/actions/metadata`
+  - 不自己实现权限策略
 
 ## Conversation Compact
 
@@ -187,7 +203,7 @@ createCodara(...)
   - 优先使用 model metadata 的 `contextWindow`
   - 默认阈值为可用输入预算的 95%
   - 手动 `/compact` 通过 session 入口触发 summary 逻辑并写入 `manual` checkpoint
-  - 多窗口若要分支，优先调用 `fork()`，不要共享同一条 `threadId`
+  - 多窗口若要分支，优先调用 `fork()`，不要共享同一条 `sessionId`
 
 ## CLI 用法
 
@@ -196,7 +212,7 @@ import {createCodara} from '@core';
 
 const codara = createCodara({
   tools,
-  threadId: 'terminal-thread',
+  sessionId: 'terminal-session',
 });
 
 const result = await codara.invoke('hello');
@@ -211,4 +227,4 @@ for await (const chunk of codara.stream('hello', {streamMode: 'messages'})) {
 }
 ```
 
-传入固定 `threadId` 后，`invoke(...)` / `stream(...)` 会优先恢复该 thread 的最新 checkpoint；不存在时再创建新实例。
+传入固定 `sessionId` 后，`invoke(...)` / `stream(...)` 会优先恢复该 session 的最新 checkpoint；不存在时再创建新实例。

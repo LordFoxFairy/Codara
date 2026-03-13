@@ -33,7 +33,7 @@ describe('budget and summary middleware', () => {
       runtime: {context: {}},
       systemMessage: ['x'.repeat(120)],
       execution: {
-        threadId: 'thread-1',
+        sessionId: 'session-1',
         runId: 'run-1',
         turn: 1,
         maxTurns: 8,
@@ -61,7 +61,7 @@ describe('budget and summary middleware', () => {
       runtime: {context: {}},
       systemMessage: ['caller prompt'],
       execution: {
-        threadId: 'thread-2',
+        sessionId: 'session-2',
         runId: 'run-2',
         turn: 1,
         maxTurns: 8,
@@ -118,7 +118,7 @@ describe('budget and summary middleware', () => {
       runtime: {context: {}},
       systemMessage: ['caller prompt'],
       execution: {
-        threadId: 'thread-3',
+        sessionId: 'session-3',
         runId: 'run-3',
         turn: 1,
         maxTurns: 8,

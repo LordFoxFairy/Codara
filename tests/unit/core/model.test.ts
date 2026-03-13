@@ -85,14 +85,14 @@ describe('Codara model facade', () => {
     await codara.invoke('test');
 
     expect(codara.getAgentState().messages.length).toBeGreaterThan(0);
-    expect(codara.getState().threadId.length).toBeGreaterThan(0);
+    expect(codara.getState().sessionId.length).toBeGreaterThan(0);
   });
 
   it('should load an alias-backed Codara agent from checkpoints', async () => {
     const checkpointer = createAgentMemoryCheckpointer();
     const codara = createCodara({
       config: baseConfig,
-      threadId: 'missing-thread',
+      sessionId: 'missing-session',
       checkpointer,
       restore: 'latest',
       skills: false,
@@ -100,7 +100,7 @@ describe('Codara model facade', () => {
 
     // When no checkpoint exists, session should still be created
     const state = codara.getState();
-    expect(state.threadId).toBe('missing-thread');
+    expect(state.sessionId).toBe('missing-session');
     expect(state.sessionStatus).toBe('ready');
   });
 

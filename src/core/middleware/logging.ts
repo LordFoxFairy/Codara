@@ -1,8 +1,13 @@
-import type {ToolMessage} from '@langchain/core/messages';
+import {appendFileSync, mkdirSync} from 'node:fs';
+import path from 'node:path';
+import type {AIMessage, ToolMessage} from '@langchain/core/messages';
 import {z} from 'zod';
+import {readLatestAssistantText, readMessageText} from '@core/shared/messages';
 import {
   createMiddleware,
   readExecutionMetadata,
+  type AfterAgentContext,
+  type AfterModelContext,
   type BaseExecutionContext,
   type ToolCallContext,
 } from '@core/middleware/types';
@@ -14,8 +19,9 @@ export interface MiddlewareLogRecord {
   timestamp: string;
   level: MiddlewareLogLevel;
   middleware: string;
-  stage: 'beforeAgent' | 'beforeModel' | 'wrapModelCall' | 'afterModel' | 'wrapToolCall' | 'afterAgent';
+  stage: 'beforeAgent' | 'beforeModel' | 'wrapModelCall' | 'afterModel' | 'wrapToolCall' | 'assistantMessage' | 'toolMessage' | 'afterAgent';
   event: MiddlewareLogEvent;
+  sessionId: string;
   runId: string;
   turn: number;
   requestId: string;
@@ -23,9 +29,19 @@ export interface MiddlewareLogRecord {
   toolName?: string;
   toolCallId?: string;
   toolIndex?: number;
+  toolArgsText?: string;
   toolStatus?: 'success' | 'error';
+  toolContent?: string;
+  toolArtifactType?: string;
   toolMetadata?: Record<string, unknown>;
+  messageType?: 'assistant' | 'tool';
+  messageText?: string;
   resultReason?: 'continue' | 'complete' | 'error';
+  responseText?: string;
+  responseToolCallCount?: number;
+  responseToolNames?: string[];
+  messageCount?: number;
+  lastAssistantText?: string;
   errorName?: string;
   errorMessage?: string;
 }
@@ -91,6 +107,7 @@ export function createLoggingMiddleware(options: LoggingMiddlewareOptions = {}) 
       try {
         const response = await handler(context);
         emit(buildBaseRecord('info', 'wrapModelCall', 'stage_end', context, {
+          ...modelResponseDetails(response),
           durationMs: Date.now() - startedAt,
         }));
         return response;
@@ -103,7 +120,14 @@ export function createLoggingMiddleware(options: LoggingMiddlewareOptions = {}) 
     async afterModel(context) {
       const startedAt = Date.now();
       emit(buildBaseRecord('debug', 'afterModel', 'stage_start', context));
-      emit(buildBaseRecord('info', 'afterModel', 'stage_end', context, {durationMs: Date.now() - startedAt}));
+      emit(buildBaseRecord('info', 'afterModel', 'stage_end', context, {
+        ...afterModelDetails(context),
+        durationMs: Date.now() - startedAt,
+      }));
+      const assistantTranscript = assistantTranscriptDetails(context.response);
+      if (assistantTranscript) {
+        emit(buildBaseRecord('info', 'assistantMessage', 'stage_end', context, assistantTranscript));
+      }
     },
 
     async wrapToolCall(context, handler) {
@@ -112,10 +136,16 @@ export function createLoggingMiddleware(options: LoggingMiddlewareOptions = {}) 
 
       try {
         const toolMessage = await handler(context);
+        const outcome = toolOutcomeDetails(toolMessage);
         emit(buildBaseRecord('info', 'wrapToolCall', 'stage_end', context, {
           ...toolDetails(context),
-          ...toolOutcomeDetails(toolMessage),
+          ...outcome,
           durationMs: Date.now() - startedAt,
+        }));
+        emit(buildBaseRecord('info', 'toolMessage', 'stage_end', context, {
+          ...toolDetails(context),
+          ...outcome,
+          ...toolTranscriptDetails(toolMessage),
         }));
         return toolMessage;
       } catch (error) {
@@ -132,6 +162,7 @@ export function createLoggingMiddleware(options: LoggingMiddlewareOptions = {}) 
         resultReason: context.result.reason,
       }));
       emit(buildBaseRecord('info', 'afterAgent', 'stage_end', context, {
+        ...afterAgentDetails(context),
         durationMs: Date.now() - startedAt,
         resultReason: context.result.reason,
       }));
@@ -153,6 +184,7 @@ export function createLoggingMiddleware(options: LoggingMiddlewareOptions = {}) 
       middleware: middlewareName,
       stage,
       event,
+      sessionId: execution.sessionId,
       runId: execution.runId,
       turn: execution.turn,
       requestId: execution.requestId,
@@ -176,11 +208,15 @@ export function createLoggingMiddleware(options: LoggingMiddlewareOptions = {}) 
   }
 }
 
-function toolDetails(context: ToolCallContext): Pick<MiddlewareLogRecord, 'toolName' | 'toolCallId' | 'toolIndex'> {
+function toolDetails(
+  context: ToolCallContext,
+): Pick<MiddlewareLogRecord, 'toolName' | 'toolCallId' | 'toolIndex' | 'toolArgsText'> {
+  const toolArgsText = serializeForLog(context.toolCall.args);
   return {
     toolName: context.toolCall.name,
     toolCallId: normalizeToolCallId(context),
     toolIndex: context.toolIndex,
+    ...(toolArgsText ? {toolArgsText} : {}),
   };
 }
 
@@ -202,9 +238,14 @@ function normalizeName(name: string | undefined): string {
  * `response_metadata`. Logging stores those metadata verbatim for downstream
  * consumers instead of re-shaping protocol fields.
  */
-function toolOutcomeDetails(message: ToolMessage): Pick<MiddlewareLogRecord, 'toolStatus' | 'toolMetadata'> {
-  const details: Pick<MiddlewareLogRecord, 'toolStatus' | 'toolMetadata'> = {
+function toolOutcomeDetails(
+  message: ToolMessage,
+): Pick<MiddlewareLogRecord, 'toolStatus' | 'toolMetadata' | 'toolContent' | 'toolArtifactType'> {
+  const toolContent = serializeForLog(message.content);
+  const details: Pick<MiddlewareLogRecord, 'toolStatus' | 'toolMetadata' | 'toolContent' | 'toolArtifactType'> = {
     toolStatus: message.status === 'error' ? 'error' : 'success',
+    ...(toolContent ? {toolContent} : {}),
+    ...(message.artifact !== undefined ? {toolArtifactType: describeArtifact(message.artifact)} : {}),
   };
 
   const parsed = responseMetadataSchema.safeParse(message.response_metadata);
@@ -216,6 +257,57 @@ function toolOutcomeDetails(message: ToolMessage): Pick<MiddlewareLogRecord, 'to
   details.toolMetadata = metadata;
 
   return details;
+}
+
+function toolTranscriptDetails(
+  message: ToolMessage,
+): Pick<MiddlewareLogRecord, 'messageType' | 'messageText'> {
+  const toolContent = serializeForLog(message.content);
+  return {
+    messageType: 'tool',
+    ...(toolContent ? {messageText: toolContent} : {}),
+  };
+}
+
+function assistantTranscriptDetails(
+  response: AIMessage,
+): Pick<MiddlewareLogRecord, 'messageType' | 'messageText'> | undefined {
+  const messageText = readMessageText(response);
+  if (!messageText) {
+    return undefined;
+  }
+
+  return {
+    messageType: 'assistant',
+    messageText,
+  };
+}
+
+function modelResponseDetails(response: AIMessage): Pick<MiddlewareLogRecord, 'responseText' | 'responseToolCallCount' | 'responseToolNames'> {
+  const responseText = readMessageText(response);
+  const toolCalls = Array.isArray(response.tool_calls) ? response.tool_calls : [];
+
+  return {
+    ...(responseText ? {responseText} : {}),
+    ...(toolCalls.length > 0 ? {
+      responseToolCallCount: toolCalls.length,
+      responseToolNames: toolCalls.map((toolCall) => toolCall.name).filter((name): name is string => Boolean(name)),
+    } : {}),
+  };
+}
+
+function afterModelDetails(context: AfterModelContext): Pick<MiddlewareLogRecord, 'responseText' | 'responseToolCallCount' | 'responseToolNames'> {
+  return modelResponseDetails(context.response);
+}
+
+function afterAgentDetails(
+  context: AfterAgentContext,
+): Pick<MiddlewareLogRecord, 'messageCount' | 'lastAssistantText'> {
+  const lastAssistantText = readLatestAssistantText(context.state.messages);
+  return {
+    messageCount: context.state.messages.length,
+    ...(lastAssistantText ? {lastAssistantText} : {}),
+  };
 }
 
 function toErrorName(error: unknown): string {
@@ -232,7 +324,98 @@ function toErrorMessage(error: unknown): string {
   return String(error);
 }
 
+function describeArtifact(artifact: unknown): string {
+  if (artifact === null) {
+    return 'null';
+  }
+  if (Array.isArray(artifact)) {
+    return 'array';
+  }
+  if (artifact instanceof Error) {
+    return artifact.name || 'Error';
+  }
+  if (typeof artifact === 'object' && artifact && 'constructor' in artifact) {
+    const constructorName = (artifact as {constructor?: {name?: string}}).constructor?.name;
+    return constructorName || 'object';
+  }
+  return typeof artifact;
+}
+
+function serializeForLog(value: unknown): string | undefined {
+  if (value === undefined) {
+    return undefined;
+  }
+
+  const text = typeof value === 'string'
+    ? value
+    : Array.isArray(value) || typeof value === 'object'
+      ? safeJsonStringify(value)
+      : String(value);
+
+  const normalized = text.trim();
+  if (!normalized) {
+    return undefined;
+  }
+
+  return normalized;
+}
+
+function safeJsonStringify(value: unknown): string {
+  try {
+    return JSON.stringify(value);
+  } catch {
+    return String(value);
+  }
+}
+
 function defaultLogSink(record: MiddlewareLogRecord): void {
   // Keep default output machine-readable for log aggregation.
   console.log(JSON.stringify(record));
+}
+
+export function createDailySessionFileLogSink(options: {rootDir: string}): MiddlewareLogSink {
+  const rootDir = path.resolve(options.rootDir);
+
+  return (record) => {
+    const filePath = resolveDailySessionLogPath(rootDir, record.sessionId, record.timestamp);
+    mkdirSync(path.dirname(filePath), {recursive: true});
+    appendFileSync(filePath, `${JSON.stringify(record)}\n`, 'utf8');
+  };
+}
+
+function resolveDailySessionLogPath(rootDir: string, sessionId: string, timestamp: string): string {
+  const day = normalizeLogDay(timestamp);
+  const sessionSegments = normalizeSessionLogSegments(sessionId);
+  return path.join(rootDir, ...sessionSegments, 'logs', `${day}.log`);
+}
+
+function normalizeLogDay(timestamp: string): string {
+  const day = timestamp.slice(0, 10);
+  return /^\d{4}-\d{2}-\d{2}$/.test(day) ? day : 'unknown-date';
+}
+
+function normalizeSessionLogSegments(sessionId: string): string[] {
+  const segments = sessionId
+    .split(/[\\/]+/)
+    .map((segment) => sanitizeLogPathSegment(segment.trim()))
+    .filter(Boolean);
+
+  return segments.length > 0 ? segments : ['unknown-session'];
+}
+
+function sanitizeLogPathSegment(segment: string): string {
+  if (!segment || segment === '.' || segment === '..') {
+    return '_';
+  }
+
+  const sanitized = [...segment]
+    .map((char) => {
+      const code = char.charCodeAt(0);
+      return code <= 31 || '<>:"|?*'.includes(char) ? '_' : char;
+    })
+    .join('');
+  if (!sanitized || sanitized === '.' || sanitized === '..') {
+    return '_';
+  }
+  return sanitized;
 }

@@ -22,6 +22,7 @@ import type {
   AgentInputBudget,
   AgentInvokeConfig,
   AgentResumeConfig,
+  AgentResumeStreamConfig,
   AgentResult,
   AgentRuntimeContext,
   AgentState,
@@ -141,11 +142,11 @@ export function createRunContext(
 export function createAgent(options: CreateAgentOptions): Agent {
   const runtime = buildRuntime(options);
   const checkpoint = options.checkpoint;
-  const threadId = checkpoint?.ref.threadId ?? options.threadId ?? randomUUID();
+  const sessionId = checkpoint?.ref.sessionId ?? options.sessionId ?? randomUUID();
   const checkpointer = options.checkpointer ?? createAgentMemoryCheckpointer();
   const inputBudget = options.inputBudget;
   const state = createInitialAgentState(
-    threadId,
+    sessionId,
     {
       agentType: options.agentType,
       ...(options.messages ? {messages: options.messages} : {}),
@@ -161,7 +162,7 @@ export function createAgent(options: CreateAgentOptions): Agent {
 
   const persistCheckpoint = async (source: AgentCheckpointInfo['source'], result?: AgentResult): Promise<AgentCheckpoint> => {
     const record = await checkpointer.put({
-      threadId,
+      sessionId,
       ...(state.checkpointId ? {parentCheckpointId: state.checkpointId} : {}),
       state: toCheckpointState(state),
       info: toCheckpointInfo(state, source, result),
@@ -318,7 +319,7 @@ export function createAgent(options: CreateAgentOptions): Agent {
     }
   };
 
-  const resumeDelegatedTool = async (
+  const resumePausedTool = async (
     payload: ResumePayload,
     config: AgentResumeConfig,
   ): Promise<AgentResult> => {
@@ -350,6 +351,10 @@ export function createAgent(options: CreateAgentOptions): Agent {
         args: pause.action.toolArgs ?? {},
       };
       await runTools(run, runtime, toolContext, [toolCall]);
+      const resumeInput = normalizeAgentInput(config.input);
+      if (resumeInput.length > 0) {
+        run.state.messages.push(...resumeInput);
+      }
 
       let result: AgentResult;
       if (run.state.pendingPause) {
@@ -371,6 +376,83 @@ export function createAgent(options: CreateAgentOptions): Agent {
     }
   };
 
+  const resumePausedToolStream = async function* (
+    payload: ResumePayload,
+    config: AgentResumeStreamConfig,
+  ): AsyncGenerator<AgentStreamOutput, AgentResult, void> {
+    const startIndex = state.messages.length;
+    const pause = state.pendingPause as PauseRequest;
+    const run = createRunContext(
+      toAgentState(state),
+      {
+        inputBudget: config.inputBudget ?? inputBudget,
+        recursionLimit: config.recursionLimit,
+        context: injectResumePayload(config.context, pause, payload),
+      },
+      runtime.runtimeShared,
+    );
+    const lifecycle = enterRunningState();
+
+    try {
+      runtime.pipeline.validateContext(mergeContext(run.state.context, run.runtimeContext));
+      const beforeRunResult = await runBeforeHook(run, config);
+      if (beforeRunResult) {
+        return abortPreflight(lifecycle, beforeRunResult);
+      }
+
+      const stream = createStreamWriter(config);
+      const execution = (async () => {
+        await stream.emitValues(run.state.messages);
+        run.state.pendingPause = undefined;
+        const toolContext = await createTurnContext(run, runtime, 1, `${run.runId}:resume-tool`);
+        const toolCall: ToolCall = {
+          id: pause.action.toolCallId,
+          name: pause.action.toolName,
+          args: pause.action.toolArgs ?? {},
+        };
+        await runTools(run, runtime, toolContext, [toolCall], stream);
+
+        const resumeInput = normalizeAgentInput(config.input);
+        if (resumeInput.length > 0) {
+          run.state.messages.push(...resumeInput);
+          await stream.emitValues(run.state.messages);
+        }
+
+        let result: AgentResult;
+        if (run.state.pendingPause) {
+          await finishTurn(runtime, toolContext, {reason: 'complete', turns: 1});
+          result = {reason: 'complete', state: run.state, turns: 1};
+        } else {
+          await finishTurn(runtime, toolContext, {reason: 'continue', turns: 1});
+          result = await runLoop(run, runtime, stream, 2);
+        }
+
+        const finalized = await applyRunResult(
+          await runAfterHook(run, result, config),
+          startIndex,
+          'resume',
+          config.checkpoint ?? true,
+        );
+        stream.finish(finalized);
+        return finalized;
+      })().catch((error) => {
+        stream.fail(error);
+        throw error;
+      });
+
+      try {
+        for await (const chunk of stream.stream) {
+          yield chunk;
+        }
+        return await execution;
+      } finally {
+        await execution.catch(() => undefined);
+      }
+    } catch (error) {
+      return abortPreflight(lifecycle, createErrorResult(run.state, 0, formatErrorMessage(error, 'resume failed')));
+    }
+  };
+
   return {
     getState() {
       return toAgentState(state);
@@ -383,10 +465,10 @@ export function createAgent(options: CreateAgentOptions): Agent {
 
     async resume(payload, config = {}) {
       assertReadyForResume(state);
-      const pause = state.pendingPause as PauseRequest;
-      if (config.resumeMode === 'tool' || isDelegatedPause(pause)) {
-        return resumeDelegatedTool(payload, config);
+      if (config.resumeMode !== 'model') {
+        return resumePausedTool(payload, config);
       }
+      const pause = state.pendingPause as PauseRequest;
       return execute(
         config.input,
         {...config, context: injectResumePayload(config.context, pause, payload)},
@@ -422,10 +504,10 @@ export function createAgent(options: CreateAgentOptions): Agent {
 
     async *resumeStream(payload, config = {}) {
       assertReadyForResume(state);
-      const pause = state.pendingPause as PauseRequest;
-      if (config.resumeMode === 'tool' || isDelegatedPause(pause)) {
-        throw new Error('Streaming tool resume is not implemented yet.');
+      if (config.resumeMode !== 'model') {
+        return yield* resumePausedToolStream(payload, config);
       }
+      const pause = state.pendingPause as PauseRequest;
       return yield* executeStream(
         config.input,
         {...config, context: injectResumePayload(config.context, pause, payload)},
@@ -469,7 +551,7 @@ export async function createTurnContext(
     },
     systemMessage: [...runtime.systemMessage],
     execution: {
-      threadId: run.state.threadId,
+      sessionId: run.state.sessionId,
       runId: run.runId,
       turn,
       maxTurns: run.maxTurns,
@@ -602,17 +684,6 @@ function assertNotRunning(state: MutableAgentState): void {
   if (state.status === 'running') {
     throw new Error('Agent is currently running.');
   }
-}
-
-function isDelegatedPause(pause: PauseRequest): boolean {
-  return Boolean(
-    pause.metadata
-    && typeof pause.metadata === 'object'
-    && 'codara' in pause.metadata
-    && pause.metadata.codara
-    && typeof pause.metadata.codara === 'object'
-    && 'delegatedSubagent' in pause.metadata.codara,
-  );
 }
 
 function createErrorResult(state: AgentState, turns: number, message: string): AgentResult {

@@ -21,7 +21,7 @@ describe('agent checkpoint state helpers', () => {
     const publicState = toAgentState(runtimeState);
     const checkpointState = toCheckpointState(runtimeState);
 
-    expect(publicState.threadId).toBe('thread-runtime');
+    expect(publicState.sessionId).toBe('session-runtime');
     expect(publicState.agentType).toBe('subagent');
     expect(checkpointState.agentType).toBe('subagent');
     expect(checkpointState.pendingPause?.id).toBe('pause-1');
@@ -45,14 +45,14 @@ describe('agent checkpoint state helpers', () => {
 
     const checkpoint: AgentCheckpoint = {
       ref: {
-        threadId: 'thread-runtime',
+        sessionId: 'session-runtime',
         checkpointId: 'checkpoint-2',
       },
       state: checkpointState,
       info: toCheckpointInfo(runtimeState, 'invoke', result),
     };
 
-    const restored = createInitialAgentState('thread-runtime', undefined);
+    const restored = createInitialAgentState('session-runtime', undefined);
     restoreCheckpointMetadata(restored, checkpoint);
 
     expect(restored.agentType).toBe('subagent');
@@ -114,7 +114,7 @@ describe('agent checkpoint state helpers', () => {
 });
 
 function createRuntimeState(): MutableAgentState {
-  const state = createInitialAgentState('thread-runtime', {
+  const state = createInitialAgentState('session-runtime', {
     agentType: 'subagent',
     messages: [new HumanMessage('hello')],
     context: {nested: {flag: true}},

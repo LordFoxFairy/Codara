@@ -18,7 +18,13 @@ export type ToolErrorHandler =
   | ((error: unknown, toolCall: ToolCall) => ToolMessage | void | Promise<ToolMessage | void>);
 
 export interface AgentInputBudget { maxInputTokens?: number; reservedTokens?: number; }
-export interface AgentExecutionMetadata { threadId: string; runId: string; turn: number; maxTurns: number; requestId: string; }
+export interface AgentExecutionMetadata {
+  sessionId: string;
+  runId: string;
+  turn: number;
+  maxTurns: number;
+  requestId: string;
+}
 
 export interface PauseActionDescriptor {
   toolCallId: string;
@@ -31,14 +37,36 @@ export interface PauseUIActionOption {
   label: string;
   kind?: 'primary' | 'secondary' | 'danger';
   description?: string;
+  scope?: string;
   requiresConfirmation?: boolean;
   requiresToolEdit?: boolean;
+}
+
+export interface PauseUIFormOption {
+  id: string;
+  label: string;
+  description?: string;
+}
+
+export interface PauseUIFormTab {
+  id: string;
+  label: string;
+  question: string;
+  input?: 'select' | 'multiselect' | 'text' | 'mixed';
+  options?: PauseUIFormOption[];
+  placeholder?: string;
+}
+
+export interface PauseUIFormConfig {
+  summary?: string;
+  tabs: PauseUIFormTab[];
 }
 
 export interface PauseUIConfig {
   tab?: string;
   modal?: string;
   actions?: PauseUIActionOption[];
+  form?: PauseUIFormConfig;
   [key: string]: unknown;
 }
 
@@ -82,7 +110,7 @@ export interface AgentTurnPreparationContext {
 export type AgentTurnContextPreparer = (context: AgentTurnPreparationContext) => Promise<void> | void;
 
 export interface AgentState {
-  threadId: string;
+  sessionId: string;
   agentType: AgentType;
   messages: BaseMessage[];
   context: AgentRuntimeContext;
@@ -160,7 +188,7 @@ export interface CreateAgentOptions {
   tools?: StructuredToolInterface[];
   handleToolErrors?: ToolErrorHandler;
   middleware?: BaseMiddleware[];
-  threadId?: string;
+  sessionId?: string;
   checkpointer?: AgentCheckpointer;
   checkpoint?: AgentCheckpoint;
   messages?: BaseMessage[];

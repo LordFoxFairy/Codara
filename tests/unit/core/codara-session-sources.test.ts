@@ -89,7 +89,7 @@ describe('Codara session source lifecycle', () => {
     const codara = createCodara({
       model: new SystemEchoModel() as unknown as BaseChatModel,
       cwd: nestedCwd,
-      threadId: 'reload-sources-thread',
+      sessionId: 'reload-sources-session',
       userHome,
       guidelines: true,
       skills: false,
@@ -185,6 +185,42 @@ describe('Codara session source lifecycle', () => {
 
     await codara.invoke('hello');
     expect(discoverCalls).toBe(1);
+  });
+
+  it('should load .codara/codara.md into the session system prompt and refresh it after reloadSources', async () => {
+    const root = await mkdtemp(path.join(tmpdir(), 'codara-session-prompt-reload-'));
+    const userHome = path.join(root, 'home');
+    const projectRoot = path.join(root, 'project');
+    await mkdir(path.join(userHome, '.codara'), {recursive: true});
+    await mkdir(path.join(projectRoot, '.git'), {recursive: true});
+    await mkdir(path.join(projectRoot, '.codara'), {recursive: true});
+    await writeFile(path.join(projectRoot, '.codara', 'codara.md'), 'project handbook v1', 'utf8');
+
+    const codara = createCodara({
+      model: new SystemEchoModel() as unknown as BaseChatModel,
+      projectRoot,
+      userHome,
+      guidelines: false,
+      skills: false,
+      builtinTools: false,
+    });
+
+    const first = await codara.invoke('hello');
+    const firstText = String(first.state.messages[first.state.messages.length - 1]?.content);
+    expect(firstText).toContain('project handbook v1');
+
+    await writeFile(path.join(projectRoot, '.codara', 'codara.md'), 'project handbook v2', 'utf8');
+
+    const second = await codara.invoke('again');
+    const secondText = String(second.state.messages[second.state.messages.length - 1]?.content);
+    expect(secondText).toContain('project handbook v1');
+    expect(secondText).not.toContain('project handbook v2');
+
+    await codara.reloadSources();
+    const third = await codara.invoke('after reload');
+    const thirdText = String(third.state.messages[third.state.messages.length - 1]?.content);
+    expect(thirdText).toContain('project handbook v2');
+    expect(thirdText).not.toContain('project handbook v1');
   });
 
   it('should reload skills projections for the same Codara session only after reloadSources is called', async () => {

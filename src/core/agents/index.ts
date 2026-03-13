@@ -27,6 +27,9 @@ export type {
   PauseReviewRequest,
   PauseUIActionOption,
   PauseUIConfig,
+  PauseUIFormConfig,
+  PauseUIFormOption,
+  PauseUIFormTab,
   ResumePayload,
   ToolErrorHandler,
 } from '@core/agents/models/agent';
