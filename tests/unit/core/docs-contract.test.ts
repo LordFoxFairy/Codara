@@ -17,7 +17,16 @@ describe('core docs contracts', () => {
     });
 
     const commandNames = (await codara.listCommands()).map((command) => `/${command.name}`);
-    expect(commandNames).toEqual(['/help', '/memory', '/resume', '/compact', '/reload']);
+    expect(commandNames).toEqual([
+      '/help',
+      '/clear',
+      '/status',
+      '/memory',
+      '/permissions',
+      '/resume',
+      '/compact',
+      '/reload',
+    ]);
     for (const command of commandNames) {
       expect(readme).toContain(command);
     }
