@@ -1,36 +1,18 @@
 import {describe, expect, it} from 'bun:test';
 import {readFile} from 'node:fs/promises';
 import path from 'node:path';
-import {createCodara} from '@core';
-import type {BaseChatModel} from '@langchain/core/language_models/chat_models';
-import {EchoModel} from './codara-fixtures';
-
 const repoRoot = process.cwd();
 
 describe('core docs contracts', () => {
-  it('should keep README slash commands aligned with the builtin registry', async () => {
+  it('should keep the root README focused on top-level docs entry points', async () => {
     const readme = await readFile(path.join(repoRoot, 'README.md'), 'utf8');
-    const codara = createCodara({
-      model: new EchoModel() as unknown as BaseChatModel,
-      skills: false,
-      builtinTools: false,
-    });
 
-    const commandNames = (await codara.listCommands()).map((command) => `/${command.name}`);
-    expect(commandNames).toEqual([
-      '/help',
-      '/clear',
-      '/status',
-      '/memory',
-      '/permissions',
-      '/plugin',
-      '/resume',
-      '/compact',
-      '/reload',
-    ]);
-    for (const command of commandNames) {
-      expect(readme).toContain(command);
-    }
+    expect(readme).toContain('Core Docs');
+    expect(readme).toContain('CLI Docs');
+    expect(readme).toContain('Tasks Docs');
+    expect(readme).toContain('bun install');
+    expect(readme).toContain('bun run dev');
+    expect(readme).not.toContain('Plugin Compatibility');
   });
 
   it('should keep the documented tasking and architecture references pointed at real files', async () => {
