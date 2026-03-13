@@ -45,6 +45,7 @@ export interface CodaraCommandAgent {
     instructions?: string;
   }): Promise<AgentState>;
   compactCheckpoints(options?: CompactOptions): Promise<void>;
+  getAvailableToolNames(): string[];
   hydrate(): Promise<AgentState>;
   getAgentState(): AgentState;
   getState(): {

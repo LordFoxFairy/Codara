@@ -117,6 +117,7 @@ export interface CreateSessionOptions {
 export interface Session {
   getState(): SessionState;
   getAgentState(): AgentState;
+  getAvailableToolNames(): string[];
   subscribeRuntimeEvents(listener: CodaraRuntimeEventListener): () => void;
   hydrate(): Promise<AgentState>;
   compactConversation(options?: {instructions?: string}): Promise<AgentState>;
@@ -160,6 +161,28 @@ export function createSession(options: CreateSessionOptions): Session {
 
   function state(): SessionState {
     return {sessionId, sessionStatus, createdAt, updatedAt, metadata};
+  }
+
+  function getAvailableToolNames(): string[] {
+    const names = new Set<string>();
+
+    for (const tool of options.tools ?? []) {
+      const name = tool.name?.trim();
+      if (name) {
+        names.add(name);
+      }
+    }
+
+    for (const middleware of options.middleware ?? []) {
+      for (const tool of middleware.tools ?? []) {
+        const name = tool.name?.trim();
+        if (name) {
+          names.add(name);
+        }
+      }
+    }
+
+    return [...names];
   }
 
   function touch() {
@@ -450,6 +473,7 @@ export function createSession(options: CreateSessionOptions): Session {
     getAgentState() {
       return requireAgent().getState();
     },
+    getAvailableToolNames,
     subscribeRuntimeEvents(listener) {
       return runtimeEvents.subscribe(listener);
     },
