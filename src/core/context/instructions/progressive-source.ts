@@ -9,6 +9,10 @@ export interface InstructionPathTarget {
   kind?: 'file' | 'directory';
 }
 
+export interface ProgressiveInstructionWorkspaceOptions extends WorkspaceRootOptions {
+  userHome?: string;
+}
+
 export interface ProgressiveInstructionSource {
   getContent(): Promise<string | undefined>;
   getBootstrapContent(): Promise<string | undefined>;
@@ -17,8 +21,7 @@ export interface ProgressiveInstructionSource {
   activateTarget(target: InstructionPathTarget): Promise<boolean>;
 }
 
-export interface ProgressiveInstructionSourceOptions extends WorkspaceRootOptions {
-  userHome?: string;
+export interface ProgressiveInstructionSourceOptions extends ProgressiveInstructionWorkspaceOptions {
   title: string;
   lead: string;
   globalFileName?: string;
