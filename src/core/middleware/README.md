@@ -142,9 +142,9 @@ source-driven system layers 现在走另一条链：
 
 - `Session`
   - preload / reload `instructions/*`
-- `Agent prepareTurnContext`
-  - 读取 source snapshot
-  - 组装 `systemMessage`
+- `Agent prepareContext`
+  - 应用当前 base instruction snapshot
+  - 附加运行中新激活的 instruction messages
   - 预填 `runtime.shared` 中的 source-derived runtime data
 
 因此：

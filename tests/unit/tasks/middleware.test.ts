@@ -235,7 +235,7 @@ describe('tasks middlewares', () => {
         }),
       ],
       middleware: [instructionLoadingMiddleware],
-      prepareTurnContext: async (context) => {
+      prepareContext: async (context) => {
         const next = await buildBaseSystemMessage(promptSource, guidelinesSource);
         const runtimeInstructions = await buildProgressiveInstructionMessages(promptSource, guidelinesSource);
         context.systemMessage = [...next.systemMessage];

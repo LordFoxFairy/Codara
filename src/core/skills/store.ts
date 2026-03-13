@@ -4,7 +4,7 @@ import path from 'node:path'
 import {parseSkillMetadataFromContent} from '@core/skills/loading'
 import {skillsMetadataReducer} from '@core/skills/metadata'
 import type {SkillMetadata, SkillStore} from '@core/skills/types'
-import {resolveWorkspaceRoot} from '@core/shared/workspace'
+import {resolveWorkspaceRoot} from '@core/config/workspace'
 
 const DEFAULT_CACHE_TTL_MS = 5_000
 const SKILL_FILE_NAME = 'SKILL.md'

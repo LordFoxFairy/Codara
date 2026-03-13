@@ -4,8 +4,8 @@ import {cp, mkdir, mkdtemp, readFile, readdir, rm, writeFile} from 'node:fs/prom
 import {homedir, tmpdir} from 'node:os';
 import path from 'node:path';
 import {parseMarkdownFrontmatterDocument} from '@core/skills/loading';
-import {resolvePluginInstallGlobal} from '@core/settings';
-import {resolveWorkspaceRoot} from '@core/shared/workspace';
+import {resolvePluginInstallGlobal} from '@core/config/settings';
+import {resolveWorkspaceRoot} from '@core/config/workspace';
 
 export interface PluginInstallEnvironment {
   cwd?: string;

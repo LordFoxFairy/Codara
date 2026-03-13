@@ -1,7 +1,7 @@
 import {existsSync, readFileSync} from 'node:fs';
 import {homedir} from 'node:os';
 import path from 'node:path';
-import {resolveWorkspaceRoot, type WorkspaceRootOptions} from '@core/shared/workspace';
+import {resolveWorkspaceRoot, type WorkspaceRootOptions} from '@core/config/workspace';
 
 export interface CodaraSettingsRecord {
   plugins?: {

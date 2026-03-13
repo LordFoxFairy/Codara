@@ -1,5 +1,5 @@
 import path from 'node:path';
-import type {WorkspaceRootOptions} from '@core/shared/workspace';
+import type {WorkspaceRootOptions} from '@core/config/workspace';
 import {
   type InstructionPathTarget,
   SessionScopedProgressiveInstructionSource,

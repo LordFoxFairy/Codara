@@ -1,8 +1,8 @@
 import {readFile} from 'node:fs/promises';
 import {homedir} from 'node:os';
 import path from 'node:path';
-import type {WorkspaceRootOptions} from '@core/shared/workspace';
-import {resolveWorkspaceRoot} from '@core/shared/workspace';
+import type {WorkspaceRootOptions} from '@core/config/workspace';
+import {resolveWorkspaceRoot} from '@core/config/workspace';
 
 export interface InstructionPathTarget {
   path: string;

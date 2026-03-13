@@ -62,7 +62,7 @@ export function createTaskTool(options: CreateTaskToolOptions): StructuredToolIn
         ...(baseSystemMessage?.systemMessage?.length || options.systemMessages?.length || options.systemPrompt
           ? {systemMessages: mergeTaskSystemMessages(baseSystemMessage?.systemMessage, options.systemMessages, options.systemPrompt)}
           : {}),
-        prepareTurnContext: wrapDelegatedPrepareTurnContext(options.prepareTurnContext, inheritedBaseMessageCount),
+        prepareContext: wrapDelegatedPrepareContext(options.prepareContext, inheritedBaseMessageCount),
         checkpointer: delegatedCheckpointer,
       }, {
         prompt,
@@ -155,17 +155,17 @@ function mergeTaskSystemMessages(
   ];
 }
 
-function wrapDelegatedPrepareTurnContext(
-  prepareTurnContext: CreateTaskToolOptions['prepareTurnContext'],
+function wrapDelegatedPrepareContext(
+  prepareContext: CreateTaskToolOptions['prepareContext'],
   inheritedBaseMessageCount: number,
-): CreateTaskToolOptions['prepareTurnContext'] {
-  if (!prepareTurnContext) {
+): CreateTaskToolOptions['prepareContext'] {
+  if (!prepareContext) {
     return undefined;
   }
 
   return async (context) => {
     const preservedExtras = context.systemMessage.slice(inheritedBaseMessageCount);
-    await prepareTurnContext(context);
+    await prepareContext(context);
     if (preservedExtras.length > 0) {
       context.systemMessage.push(...preservedExtras);
     }

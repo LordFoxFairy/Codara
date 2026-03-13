@@ -4,7 +4,7 @@ import os from 'node:os';
 import path from 'node:path';
 import type {ToolCall} from '@langchain/core/messages';
 import {normalizeToolReferenceName} from '@core/tools/names';
-import {resolveWorkspaceRoot} from '@core/shared/workspace';
+import {resolveWorkspaceRoot} from '@core/config/workspace';
 
 export type PermissionDecision = 'allow' | 'ask' | 'deny';
 export type PermissionGrantScope = 'exact' | 'tool' | 'project';
@@ -513,7 +513,7 @@ function buildSourceList(
 }
 
 function addCodaraSources(target: PermissionSourceRecord[], options: PermissionPolicyOptions): void {
-  const projectRoot = resolveProjectRoot(options);
+  const projectRoot = resolvePermissionProjectRoot(options);
   const userHome = resolveUserHome(options);
 
   target.push(
@@ -628,7 +628,7 @@ function normalizeDefaultDecision(value: unknown): PermissionDecision | null {
   return 'ask';
 }
 
-function resolveProjectRoot(options: PermissionPolicyOptions): string {
+function resolvePermissionProjectRoot(options: PermissionPolicyOptions): string {
   return resolveWorkspaceRoot({
     cwd: options.cwd,
     projectRoot: options.projectRoot,
@@ -644,7 +644,7 @@ export function resolvePermissionSettingsFile(options: PermissionPolicyOptions):
     return path.resolve(options.settingsFile);
   }
 
-  return path.join(resolveProjectRoot(options), '.codara', 'settings.local.json');
+  return path.join(resolvePermissionProjectRoot(options), '.codara', 'settings.local.json');
 }
 
 function resolveSettingsFile(options: PermissionPolicyOptions): string {
