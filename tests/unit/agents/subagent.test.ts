@@ -91,7 +91,7 @@ describe('Task delegation', () => {
     expect(toolMessage.content).toContain('summary:\nchild_humans:1');
     expect(readDelegatedAgentResult(toolMessage.artifact)).toEqual({
       type: 'delegated_agent_result',
-      threadId: expect.any(String),
+      sessionId: expect.any(String),
       turns: 1,
       reason: 'complete',
       summary: 'child_humans:1',
@@ -173,7 +173,7 @@ describe('Task delegation', () => {
     expect(toolMessage.status).toBe('error');
     expect(readDelegatedAgentResult(toolMessage.artifact)).toEqual({
       type: 'delegated_agent_result',
-      threadId: expect.any(String),
+      sessionId: expect.any(String),
       turns: 1,
       reason: 'error',
       errorMessage: 'child boom',
@@ -205,10 +205,10 @@ describe('Task delegation', () => {
     const result = await parent.invoke('start');
     const toolMessage = result.state.messages.find((message) => ToolMessage.isInstance(message)) as ToolMessage;
     const delegated = readDelegatedAgentResult(toolMessage.artifact);
-    const checkpoint = delegated ? await checkpointer.getLatest(delegated.threadId) : undefined;
+    const checkpoint = delegated ? await checkpointer.getLatest(delegated.sessionId) : undefined;
 
     expect(result.reason).toBe('complete');
-    expect(delegated?.threadId).toBeDefined();
+    expect(delegated?.sessionId).toBeDefined();
     expect(checkpoint?.state.agentType).toBe('subagent');
   });
 
@@ -376,7 +376,7 @@ describe('Task delegation', () => {
     expect(firstResult.state.pendingPause?.metadata).toMatchObject({
       codara: {
         delegatedSubagent: {
-          childThreadId: expect.any(String),
+          childSessionId: expect.any(String),
           parentToolName: TASK_TOOL_NAME,
         },
       },

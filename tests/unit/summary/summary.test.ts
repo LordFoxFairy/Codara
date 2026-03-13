@@ -25,13 +25,13 @@ class FakeModel {
 }
 
 function createExecution(
-  threadId: string,
+  sessionId: string,
   runId: string,
   turn: number,
   requestId: string,
   maxTurns: number = 8,
 ) {
-  return {threadId, runId, turn, maxTurns, requestId};
+  return {sessionId, runId, turn, maxTurns, requestId};
 }
 
 function readSummaryMessage(messages: BaseMessage[]): BaseMessage | undefined {
@@ -64,7 +64,7 @@ describe('summary middleware', () => {
       runtime: {context: {}},
       systemMessage: ['x'.repeat(120)],
       execution: {
-        threadId: 'thread-1',
+        sessionId: 'session-1',
         runId: 'run-1',
         turn: 2,
         maxTurns: 8,
@@ -105,7 +105,7 @@ describe('summary middleware', () => {
       messages,
       runtime: {context: {}},
       systemMessage: ['x'.repeat(120)],
-      execution: createExecution('thread-caller', 'run-1', 2, 'req-1'),
+      execution: createExecution('session-caller', 'run-1', 2, 'req-1'),
       inputBudget: {maxInputTokens: 20},
     };
 
@@ -138,7 +138,7 @@ describe('summary middleware', () => {
       messages,
       runtime: {context: {}},
       systemMessage: ['x'.repeat(120)],
-      execution: createExecution('thread-budget', 'run-budget', 1, 'req-budget'),
+      execution: createExecution('session-budget', 'run-budget', 1, 'req-budget'),
       inputBudget: {maxInputTokens: 40},
     };
 
@@ -170,7 +170,7 @@ describe('summary middleware', () => {
       messages,
       runtime: {context: {}},
       systemMessage: ['x'.repeat(40)],
-      execution: createExecution('thread-threshold', 'run-threshold', 1, 'req-threshold'),
+      execution: createExecution('session-threshold', 'run-threshold', 1, 'req-threshold'),
       inputBudget: {maxInputTokens: 40},
     };
 
@@ -200,7 +200,7 @@ describe('summary middleware', () => {
       messages,
       runtime: {context: {}},
       systemMessage: [],
-      execution: createExecution('thread-near-limit', 'run-near-limit', 1, 'req-near-limit'),
+      execution: createExecution('session-near-limit', 'run-near-limit', 1, 'req-near-limit'),
       inputBudget: {maxInputTokens: 20},
     };
 
@@ -234,7 +234,7 @@ describe('summary middleware', () => {
       messages,
       runtime: {context: {}},
       systemMessage: ['x'.repeat(120)],
-      execution: createExecution('thread-summary-loop', 'run-1', 1, 'req-1'),
+      execution: createExecution('session-summary-loop', 'run-1', 1, 'req-1'),
       inputBudget: {maxInputTokens: 20},
     };
 
@@ -244,7 +244,7 @@ describe('summary middleware', () => {
 
     await pipeline.beforeModel({
       ...context,
-      execution: createExecution('thread-summary-loop', 'run-1', 2, 'req-1'),
+      execution: createExecution('session-summary-loop', 'run-1', 2, 'req-1'),
       inputBudget: {maxInputTokens: 20},
     });
 
@@ -264,7 +264,7 @@ describe('summary middleware', () => {
     const agent = createAgent({
       model,
       checkpointer,
-      threadId: 'summary-thread',
+      sessionId: 'summary-session',
       inputBudget: {maxInputTokens: 20},
       middleware: [summary!],
     });
@@ -283,13 +283,13 @@ describe('summary middleware', () => {
     expect(agent.getState().messages).toHaveLength(4);
     expect(readSummaryMessage(agent.getState().messages)?.text).toBe('Summary:\npersisted summary');
 
-    const restoredCheckpoint = await checkpointer.getLatest('summary-thread');
+    const restoredCheckpoint = await checkpointer.getLatest('summary-session');
     expect(restoredCheckpoint).toBeDefined();
 
     const restored = createAgent({
       model: new FakeModel([new AIMessage('done')]) as unknown as BaseChatModel,
       checkpointer,
-      threadId: 'summary-thread',
+      sessionId: 'summary-session',
       checkpoint: restoredCheckpoint,
       middleware: [summary!],
     });
@@ -298,18 +298,18 @@ describe('summary middleware', () => {
     expect(restored.getState().messages).toHaveLength(4);
   });
 
-  it('should provide the real agent threadId to the summary generator without caller-injected runtime context', async () => {
-    let seenThreadId: string | undefined;
+  it('should provide the real agent sessionId to the summary generator without caller-injected runtime context', async () => {
+    let seenSessionId: string | undefined;
     const agent = createAgent({
       model: new FakeModel([new AIMessage('done')]) as unknown as BaseChatModel,
-      threadId: 'summary-real-thread',
+      sessionId: 'summary-real-session',
       inputBudget: {maxInputTokens: 20},
       middleware: [
         createSummaryMiddleware({
           summary: {
-            summarize: ({threadId}) => {
-              seenThreadId = threadId;
-              return 'thread-aware summary';
+            summarize: ({sessionId}) => {
+              seenSessionId = sessionId;
+              return 'session-aware summary';
             },
           },
         })!,
@@ -327,6 +327,6 @@ describe('summary middleware', () => {
     });
 
     expect(result.reason).toBe('complete');
-    expect(seenThreadId).toBe('summary-real-thread');
+    expect(seenSessionId).toBe('summary-real-session');
   });
 });

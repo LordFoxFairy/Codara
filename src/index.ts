@@ -8,11 +8,12 @@
 // ============================================
 
 /** 创建或打开 Codara 会话（推荐入口） */
-export {createCodara, createCodaraAgent, openCodaraSession, openLatestCodaraSession} from '@core/codara';
+export {createCodara, createCodaraRuntime, DEFAULT_CODARA_MODEL_ALIAS, openCodaraSession, openLatestCodaraSession} from '@core/codara';
 
 /** Codara 相关类型 */
 export type {
   Codara,
+  CodaraRuntimeOptions,
   CodaraOptions,
 } from '@core/codara';
 
@@ -57,7 +58,23 @@ export {
   createSummaryMiddleware,
   createSkillsMiddleware,
   createHILMiddleware,
+  createInteractionMiddleware,
+  createAskUserTool,
+  ASK_USER_TOOL_NAME,
+  parseAskUserResult,
   createLoggingMiddleware,
+  createPermissionMiddleware,
+  createPermissionRuntime,
+  ensurePermissionSettingsFile,
+  evaluatePermissionExpression,
+  evaluatePermissionToolCall,
+  formatPermissionExpression,
+  handlePermissionFallbackResume,
+  isPermissionPause,
+  persistAllowedPermission,
+  persistPermissionScope,
+  persistPermissionRule,
+  validatePermissionSettings,
 } from '@core/middleware';
 export {
   createSharedTaskMiddleware,
@@ -65,7 +82,13 @@ export {
 } from '@core/tasks';
 export {
   createCodaraGuidelinesSource,
-} from '@core/sessions/guidelines';
+} from '@core/instructions/guidelines';
+export {
+  createCodaraPromptSource,
+} from '@core/instructions/prompt';
+export {
+  readBaseSystemMessage,
+} from '@core/instructions/system-message';
 export {
   createCodaraSkillsSource,
 } from '@core/skills';
@@ -75,8 +98,13 @@ export {
 // ============================================
 
 export type {
+  AskUserInput,
+  AskUserOption,
+  AskUserQuestion,
+  AskUserResult,
   BaseMiddleware,
   BudgetMiddlewareOptions,
+  InteractionMiddlewareOptions,
   HILMiddlewareOptions,
   LoggingMiddlewareOptions,
   HILResumePayload,
@@ -86,7 +114,15 @@ export type {
 export type {
   GuidelinesOptions,
   GuidelinesSource,
-} from '@core/sessions/guidelines';
+} from '@core/instructions/guidelines';
+export type {
+  PromptOptions,
+  PromptSource,
+} from '@core/instructions/prompt';
+export type {
+  BaseSystemMessageBundle,
+  BaseSystemMessageRuntimeData,
+} from '@core/instructions/system-message';
 export type {SkillsSource} from '@core/skills';
 
 export type {AgentCheckpoint, AgentCheckpointer} from '@core/checkpoint';

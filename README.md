@@ -30,7 +30,7 @@ AI 驱动的终端代码代理运行时与产品 facade。
 ```text
 src/index.ts
   -> core/codara facade
-  -> session host
+  -> session runtime
   -> openCodaraSession(...) / openLatestCodaraSession(...)
   -> createAgent(...)
   -> middleware pipeline
@@ -60,9 +60,9 @@ src/index.ts
 
 - `AGENTS.md` = guidelines
 - source stack 属于 session，不属于 agent
-- 同一个 Codara host 支持 `reloadSources()`
+- 同一个 Codara runtime 支持 `reloadSources()`
 - 历史 checkpoint 可通过 `compactCheckpoints()` 手动整理
-- slash commands 也属于 host surface，不进入 `createAgent(...)` 内核
+- slash commands 也属于 runtime surface，不进入 `createAgent(...)` 内核
 
 ## Slash Commands
 
@@ -74,7 +74,8 @@ src/index.ts
   - `project/global` 返回宿主 `open_file` 动作，便于 UI/CLI 打开目标文件
   - 编辑后配合 `/reload` 生效
 - `/resume`
-  - 恢复当前已暂停的 HIL 动作
+  - 通过 `sessionId` 恢复指定历史会话
+  - permission/HIL 不走 slash command，走通用 HIL 面板或直接编辑 settings JSON
 - `/compact`
   - 手动触发当前 conversation context 压缩
   - 复用已有 `conversation-context -> summary` 路径，不重写第二套逻辑
@@ -83,14 +84,14 @@ src/index.ts
   - 清空当前 session 的 `AGENTS.md` source cache
   - 同时刷新 skills discovery cache
 
-这些命令当前由 `src/core/codara/commands/` 管理，并通过 `createCodara()` 返回的 host surface 暴露。
+这些命令当前由 `src/core/codara/commands/` 管理，并通过 `createCodara()` 返回的 runtime surface 暴露。
 
 默认 conversation lifecycle 会在接近输入窗口上限时自动 compact：
 - 默认 alias 为 `sonnet`
 - 优先使用模型 metadata 推导的 `contextWindow`
 - 默认在可用输入预算的 95% 附近触发压缩
 - 手动 `/compact` 仍可强制立即压缩
-- 如需显式分支，使用 `fork()` 生成新的 `sessionId + threadId`
+- 如需显式分支，使用 `fork()` 生成新的 `sessionId`
 
 ## Todo / Task / Subagent
 
@@ -131,18 +132,17 @@ agents/*.md
 
 ```text
 logging
--> guidelines
--> skills
 -> caller middlewares
--> conversation-context
--> hil
+-> budget
+-> permission (generic HIL-backed middleware in runtime)
 ```
 
 说明：
 
 - `logging` 只做观测
-- `conversation-context` 统一负责完整输入预算估算与摘要压缩
-- `hil` 只做 pause / resume 协议
+- `budget` 统一负责完整输入预算估算与摘要压缩
+- `permission` 是权限策略 middleware，本身复用通用 HIL pause / resume 协议
+- 通用 `hil` 仍然是底层协议层，不等于 `/resume`
 - 会话恢复与 HIL 恢复是两种不同能力：
   - `openCodaraSession(...)` / `openLatestCodaraSession(...)` = 打开历史会话，并在返回前 hydrate 已恢复状态
   - `resumePause(...)` / `resumePauseStream(...)` = 恢复 HIL 暂停
@@ -240,7 +240,7 @@ tests/integration      # integration 与本地 mock provider stack
 
 1. `src/core/README.md`
 2. `src/core/agents/README.md`
-3. `src/core/sessions/host.ts`
+3. `src/core/codara/facade.ts`
 4. `src/core/agents/agent-loop.ts`
 5. `src/core/middleware/context-budget.ts`
 

@@ -20,6 +20,7 @@ export {
   createSkillsMiddleware,
 } from '@core/middleware/skills';
 export {
+  createDailySessionFileLogSink,
   createLoggingMiddleware,
   type LoggingMiddlewareOptions,
   type MiddlewareLogEvent,
@@ -68,6 +69,42 @@ export {
   type SummarySettings,
   type SummaryOptions,
 } from '@core/middleware/summary';
+export {
+  ASK_USER_TOOL_NAME,
+  AskUserSchema,
+  createAskUserTool,
+  createInteractionMiddleware,
+  parseAskUserResult,
+  type AskUserInput,
+  type AskUserOption,
+  type AskUserQuestion,
+  type AskUserResult,
+  type InteractionMiddlewareOptions,
+} from '@core/middleware/interaction';
+export {
+  createPermissionMiddleware,
+  createPermissionRuntime,
+  ensurePermissionSettingsFile,
+  evaluatePermissionExpression,
+  evaluatePermissionToolCall,
+  formatPermissionExpression,
+  handlePermissionFallbackResume,
+  isPermissionPause,
+  persistAllowedPermission,
+  persistPermissionScope,
+  persistPermissionRule,
+  validatePermissionSettings,
+  type PermissionDecision,
+  type PermissionEvaluationResult,
+  type PermissionGrantScope,
+  type PermissionMiddlewareOptions,
+  type PermissionPolicyOptions,
+  type PermissionRuntime,
+  type PermissionRuntimeOptions,
+  type PermissionRuleMatch,
+  type PermissionSourceInfo,
+  type PermissionValidationResult,
+} from '@core/middleware/permission';
 export {
   createWriteTodosTool,
   readTodoState,

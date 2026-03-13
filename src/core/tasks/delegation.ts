@@ -1,4 +1,4 @@
-import {HumanMessage, SystemMessage, ToolMessage, type BaseMessage} from '@langchain/core/messages';
+import {HumanMessage, ToolMessage, type BaseMessage} from '@langchain/core/messages';
 import type {BaseChatModel} from '@langchain/core/language_models/chat_models';
 import type {StructuredToolInterface} from '@langchain/core/tools';
 import {z} from 'zod';
@@ -21,7 +21,7 @@ import {readLatestAssistantText} from '@core/shared/messages';
 
 const delegatedAgentResultSchema = z.object({
   type: z.literal('delegated_agent_result'),
-  threadId: z.string(),
+  sessionId: z.string(),
   turns: z.number(),
   reason: z.enum(['complete', 'error', 'max_turns']),
   summary: z.string().optional(),
@@ -29,7 +29,7 @@ const delegatedAgentResultSchema = z.object({
 });
 
 const parentExecutionSchema = z.object({
-  threadId: z.string().trim().min(1),
+  sessionId: z.string().trim().min(1),
   runId: z.string().trim().min(1),
   requestId: z.string().trim().min(1),
   toolCallId: z.string().trim().min(1),
@@ -41,7 +41,7 @@ const parentExecutionSchema = z.object({
 const delegatedPauseMetadataSchema = z.object({
   codara: z.object({
     delegatedSubagent: z.object({
-      childThreadId: z.string().trim().min(1),
+      childSessionId: z.string().trim().min(1),
       parentToolName: z.string().trim().min(1),
     }).optional(),
   }).loose().optional(),
@@ -66,13 +66,14 @@ export interface DelegatedAgentOptions {
   context?: AgentRuntimeContext;
   values?: AgentRuntimeValues;
   prepareTurnContext?: AgentTurnContextPreparer;
+  systemMessages?: string[];
   systemPrompt?: string;
   blockedToolNames?: string[];
 }
 
 export interface DelegatedAgentResult {
   type: 'delegated_agent_result';
-  threadId: string;
+  sessionId: string;
   turns: number;
   reason: 'complete' | 'error' | 'max_turns';
   summary?: string;
@@ -80,12 +81,12 @@ export interface DelegatedAgentResult {
 }
 
 interface DelegatedPauseMetadata {
-  childThreadId: string;
+  childSessionId: string;
   parentToolName: string;
 }
 
 interface ParentExecution {
-  threadId: string;
+  sessionId: string;
   runId: string;
   requestId: string;
   toolCallId: string;
@@ -95,7 +96,7 @@ interface ParentExecution {
 }
 
 interface DelegatedResumeState {
-  childThreadId: string;
+  childSessionId: string;
   payload: ResumePayload;
 }
 
@@ -132,11 +133,11 @@ export async function runDelegatedAgent(
   input: DelegatedChildInput,
 ): Promise<ToolMessage> {
   const childOptions = buildDelegatedChildOptions(options, input);
-  const result = await runDelegatedChild(childOptions, input, options.systemPrompt);
+  const result = await runDelegatedChild(childOptions, input);
 
   if (result.state.pendingPause) {
     return createDelegatedPauseToolMessage(result.state.pendingPause, {
-      childThreadId: result.state.threadId,
+      childSessionId: result.state.sessionId,
       parentToolName: input.toolName,
     }, {
       execution: input.parentExecution,
@@ -147,7 +148,7 @@ export async function runDelegatedAgent(
   }
 
   return createDelegatedAgentToolMessage(createDelegatedAgentResult(
-    result.state.threadId,
+    result.state.sessionId,
     result.turns,
     result.reason,
     result.error,
@@ -197,11 +198,8 @@ function readDelegatedRuntimeContext(configurable: unknown): unknown {
   return record.context ?? record.runtimeContext ?? configurable;
 }
 
-function createDelegatedAgentInput(prompt: string, systemPrompt: string | undefined): BaseMessage[] {
+function createDelegatedAgentInput(prompt: string): BaseMessage[] {
   const messages: BaseMessage[] = [];
-  if (systemPrompt?.trim()) {
-    messages.push(new SystemMessage(systemPrompt.trim()));
-  }
   messages.push(new HumanMessage(prompt));
   return messages;
 }
@@ -215,6 +213,9 @@ function buildDelegatedChildOptions(
   return {
     model: input.profileModel ?? options.model,
     agentType: 'subagent',
+    ...(mergeDelegatedSystemMessages(options.systemMessages, input.profileSystemPrompt, options.systemPrompt).length > 0
+      ? {systemMessage: mergeDelegatedSystemMessages(options.systemMessages, input.profileSystemPrompt, options.systemPrompt)}
+      : {}),
     tools: resolveDelegatedAgentTools(
       input.profileTools ?? options.tools ?? [],
       input.toolName,
@@ -233,17 +234,13 @@ function buildDelegatedChildOptions(
 async function runDelegatedChild(
   childOptions: CreateAgentOptions,
   input: DelegatedChildInput,
-  toolSystemPrompt: string | undefined,
 ) {
   if (input.resume) {
     return resumeDelegatedChild(childOptions, input.resume, input.maxTurns);
   }
 
   const child = createAgent(childOptions);
-  const messages = createDelegatedAgentInput(
-    input.prompt,
-    mergeSystemPrompt(input.profileSystemPrompt, toolSystemPrompt),
-  );
+  const messages = createDelegatedAgentInput(input.prompt);
   return child.invoke(
     {messages},
     {...(input.maxTurns ? {recursionLimit: input.maxTurns} : {})},
@@ -264,10 +261,10 @@ async function resumeDelegatedChild(
   resume: DelegatedResumeState,
   maxTurns: number | undefined,
 ) {
-  const checkpoint = await childOptions.checkpointer?.getLatest(resume.childThreadId);
+  const checkpoint = await childOptions.checkpointer?.getLatest(resume.childSessionId);
   const child = createAgent({
     ...childOptions,
-    threadId: resume.childThreadId,
+    sessionId: resume.childSessionId,
     ...(checkpoint ? {checkpoint} : {}),
   });
 
@@ -280,6 +277,17 @@ async function resumeDelegatedChild(
 function mergeSystemPrompt(profileSystemPrompt: string | undefined, toolSystemPrompt: string | undefined): string | undefined {
   const parts = [profileSystemPrompt?.trim(), toolSystemPrompt?.trim()].filter(Boolean);
   return parts.length > 0 ? parts.join('\n\n') : undefined;
+}
+
+function mergeDelegatedSystemMessages(
+  inheritedMessages: string[] | undefined,
+  profileSystemPrompt: string | undefined,
+  toolSystemPrompt: string | undefined,
+): string[] {
+  return [
+    ...(inheritedMessages ?? []),
+    ...(mergeSystemPrompt(profileSystemPrompt, toolSystemPrompt) ? [mergeSystemPrompt(profileSystemPrompt, toolSystemPrompt) as string] : []),
+  ];
 }
 
 function mergeRuntimeContext(
@@ -305,7 +313,7 @@ function isDelegationTool(tool: StructuredToolInterface | undefined): boolean {
 }
 
 function createDelegatedAgentResult(
-  threadId: string,
+  sessionId: string,
   turns: number,
   reason: 'complete' | 'error' | 'max_turns',
   error: Error | undefined,
@@ -315,7 +323,7 @@ function createDelegatedAgentResult(
 
   return {
     type: 'delegated_agent_result',
-    threadId,
+    sessionId,
     turns,
     reason,
     ...(summary ? {summary} : {}),
@@ -377,7 +385,7 @@ function formatDelegatedAgentResult(result: DelegatedAgentResult): string {
   if (result.reason === 'error') {
     return [
       'Delegated task failed.',
-      `delegate_id: ${result.threadId}`,
+      `delegate_id: ${result.sessionId}`,
       `turns: ${result.turns}`,
       `error: ${result.errorMessage ?? 'Unknown error'}`,
       ...(result.summary ? [`summary:\n${result.summary}`] : []),
@@ -386,7 +394,7 @@ function formatDelegatedAgentResult(result: DelegatedAgentResult): string {
 
   return [
     'Delegated task completed.',
-    `delegate_id: ${result.threadId}`,
+    `delegate_id: ${result.sessionId}`,
     `turns: ${result.turns}`,
     `reason: ${result.reason}`,
     ...(result.summary ? [`summary:\n${result.summary}`] : []),
@@ -418,7 +426,7 @@ function readDelegatedResumeState(
   }
 
   return {
-    childThreadId: delegated.childThreadId,
+    childSessionId: delegated.childSessionId,
     payload,
   };
 }
@@ -436,7 +444,7 @@ function mergeDelegatedPauseMetadata(
     codara: {
       ...codara,
       delegatedSubagent: {
-        childThreadId: delegated.childThreadId,
+        childSessionId: delegated.childSessionId,
         parentToolName: delegated.parentToolName,
       },
     },
@@ -449,15 +457,15 @@ function readDelegatedPauseMetadata(
 ): DelegatedPauseMetadata | undefined {
   const parsed = delegatedPauseMetadataSchema.safeParse(metadata);
   const delegated = parsed.success ? parsed.data.codara?.delegatedSubagent : undefined;
-  const childThreadId = delegated?.childThreadId;
+  const childSessionId = delegated?.childSessionId;
   const parentToolName = delegated?.parentToolName;
 
-  if (!childThreadId || !parentToolName || parentToolName !== toolName) {
+  if (!childSessionId || !parentToolName || parentToolName !== toolName) {
     return undefined;
   }
 
   return {
-    childThreadId,
+    childSessionId,
     parentToolName,
   };
 }

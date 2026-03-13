@@ -1,5 +1,4 @@
-import type {AgentResult, AgentState, ResumePayload} from '@core/agents';
-import type {AgentResumeConfig} from '@core/agents';
+import type {AgentResult, AgentState} from '@core/agents';
 import type {CompactOptions} from '@core/checkpoint';
 
 export interface ParsedCodaraCommand {
@@ -35,6 +34,9 @@ export interface CodaraCommandResult {
   action?: {
     type: 'open_file';
     path: string;
+  } | {
+    type: 'resume_session';
+    sessionId: string;
   };
 }
 
@@ -47,7 +49,6 @@ export interface CodaraCommandAgent {
   getAgentState(): AgentState;
   invoke(input: string): Promise<AgentResult>;
   reloadSources(): Promise<void>;
-  resumePause(payload: ResumePayload, config?: AgentResumeConfig): Promise<AgentResult>;
 }
 
 export interface CodaraCommandContext {

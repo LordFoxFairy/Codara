@@ -21,7 +21,7 @@ export interface SummaryInput {
   messages: BaseMessage[];
   context: AgentRuntimeContext;
   instructions?: string;
-  threadId?: string;
+  sessionId?: string;
   turn: number;
 }
 
@@ -50,7 +50,7 @@ export interface SummaryCompactionInput {
   values: AgentRuntimeValues;
   systemMessage: string[];
   runtimeShared?: MiddlewareRuntimeShared;
-  threadId: string;
+  sessionId: string;
   requestId: string;
   inputBudget?: AgentInputBudget;
   instructions?: string;
@@ -117,7 +117,7 @@ export async function compactSummaryIfNeeded(
     messages: compactedMessages,
     context: context.runtime.context,
     instructions: execution.instructions,
-    threadId: executionMeta.threadId,
+    sessionId: executionMeta.sessionId,
     turn: executionMeta.turn,
   })).trim();
 
@@ -185,7 +185,7 @@ function createSummaryContext(input: SummaryCompactionInput): BeforeModelContext
     },
     systemMessage: [...input.systemMessage],
     execution: {
-      threadId: input.threadId,
+      sessionId: input.sessionId,
       runId: input.requestId,
       turn: 1,
       maxTurns: 1,
@@ -250,7 +250,7 @@ function shouldCompact(
 function buildSummaryPrompt(input: SummaryInput): string {
   const sections = [
     input.instructions ? `Additional instructions:\n${input.instructions.trim()}` : undefined,
-    `Execution:\n- threadId: ${input.threadId ?? 'unknown'}\n- turn: ${input.turn}`,
+    `Execution:\n- sessionId: ${input.sessionId ?? 'unknown'}\n- turn: ${input.turn}`,
     `Durable context:\n${Object.keys(input.context).length > 0 ? JSON.stringify(input.context, null, 2) : '{}'}`,
     `Messages to compact:\n${formatMessages(input.messages)}`,
   ].filter((value): value is string => Boolean(value));

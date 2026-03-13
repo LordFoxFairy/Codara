@@ -75,7 +75,7 @@ async function runModel(
       aggregate = aggregate ? aggregate.concat(normalized) : normalized;
       await stream.emitMessages({
         runId: execution.runId,
-        threadId: execution.threadId,
+        sessionId: execution.sessionId,
         requestId: execution.requestId,
         turn: execution.turn,
         chunk: normalized,

@@ -101,11 +101,11 @@ export function createAgentFileCheckpointer(options: AgentFileCheckpointerOption
 
 export async function putForkCheckpoint(
   checkpointer: AgentCheckpointer,
-  threadId: string,
+  sessionId: string,
   state: AgentCheckpointState,
 ): Promise<AgentCheckpoint> {
   return checkpointer.put({
-    threadId,
+    sessionId,
     state: cloneCheckpointState(state),
     info: {
       source: 'fork',
@@ -118,12 +118,12 @@ export async function putForkCheckpoint(
 
 export async function putManualCheckpoint(
   checkpointer: AgentCheckpointer,
-  threadId: string,
+  sessionId: string,
   state: AgentCheckpointState,
   latest?: AgentCheckpoint,
 ): Promise<AgentCheckpoint> {
   return checkpointer.put({
-    threadId,
+    sessionId,
     ...(latest?.ref.checkpointId ? {parentCheckpointId: latest.ref.checkpointId} : {}),
     state: cloneCheckpointState(state),
     info: {

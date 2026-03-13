@@ -89,7 +89,7 @@ describe('HIL permission choice contract', () => {
               {id: 'edit', label: 'Edit and continue', kind: 'secondary', requiresToolEdit: true},
             ],
           },
-          metadata: {skill: 'permission-policy'},
+          metadata: {permissionPolicy: {expression: 'Bash(git status)'}},
         },
       },
       onPause: (request) => {

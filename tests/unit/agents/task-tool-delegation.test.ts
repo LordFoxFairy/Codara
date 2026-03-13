@@ -42,7 +42,7 @@ describe('createTaskTool delegation', () => {
     expect(String(toolMessage.content)).toContain('summary:\ntask_child_humans:1');
     expect(readDelegatedAgentResult(toolMessage.artifact)).toEqual({
       type: 'delegated_agent_result',
-      threadId: expect.any(String),
+      sessionId: expect.any(String),
       turns: 1,
       reason: 'complete',
       summary: 'task_child_humans:1',
@@ -110,7 +110,7 @@ describe('createTaskTool delegation', () => {
     expect(paused.state.pendingPause?.metadata).toMatchObject({
       codara: {
         delegatedSubagent: {
-          childThreadId: expect.any(String),
+          childSessionId: expect.any(String),
           parentToolName: TASK_TOOL_NAME,
         },
       },

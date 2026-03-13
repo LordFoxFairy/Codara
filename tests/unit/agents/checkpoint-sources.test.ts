@@ -34,7 +34,7 @@ describe('agent checkpoint source semantics', () => {
     const agent = createAgent({
       model: new SequenceModel([new AIMessage('done')]) as unknown as BaseChatModel,
       checkpointer,
-      threadId: 'checkpoint-source-invoke',
+      sessionId: 'checkpoint-source-invoke',
     });
 
     const result = await agent.invoke('hello');
@@ -78,7 +78,7 @@ describe('agent checkpoint source semantics', () => {
       model: new PauseThenCompleteModel() as unknown as BaseChatModel,
       tools: [bashTool],
       checkpointer,
-      threadId: 'checkpoint-source-resume',
+      sessionId: 'checkpoint-source-resume',
       middleware: [
         createHILMiddleware({
           interruptOn: {
@@ -108,7 +108,7 @@ describe('agent checkpoint source semantics', () => {
     const agent = createAgent({
       model: new SequenceModel([new AIMessage('done')]) as unknown as BaseChatModel,
       checkpointer,
-      threadId: 'checkpoint-source-controls',
+      sessionId: 'checkpoint-source-controls',
     });
 
     await agent.invoke('hello');
@@ -131,7 +131,7 @@ describe('agent checkpoint source semantics', () => {
     const agent = createAgent({
       model: new SequenceModel([new AIMessage('done')]) as unknown as BaseChatModel,
       checkpointer,
-      threadId: 'checkpoint-source-invoke-context-boundary',
+      sessionId: 'checkpoint-source-invoke-context-boundary',
       context: {
         tenantId: 'tenant-1',
       },

@@ -10,5 +10,13 @@
   "anthropic/claude-3.5-haiku": {
     "contextWindow": 200000,
     "maxOutputTokens": 8192
+  },
+  "deepseek-chat": {
+    "contextWindow": 64000,
+    "maxOutputTokens": 8000
+  },
+  "deepseek-reasoner": {
+    "contextWindow": 64000,
+    "maxOutputTokens": 8000
   }
 }

@@ -1,28 +1,11 @@
 import {describe, expect, it} from 'bun:test';
+import {mkdtemp} from 'node:fs/promises';
+import {tmpdir} from 'node:os';
+import path from 'node:path';
 import type {BaseChatModel} from '@langchain/core/language_models/chat_models';
-import {AIMessage, type BaseMessage, type ToolCall} from '@langchain/core/messages';
-import {tool} from '@langchain/core/tools';
-import {z} from 'zod';
-import {createAgentMemoryCheckpointer, createCodara} from '@core';
+import type {BaseMessage} from '@langchain/core/messages';
+import {createCodara, createCodaraRuntime} from '@core';
 import {EchoModel, SystemEchoModel} from './codara-fixtures';
-
-class PauseThenCompleteModel {
-  async invoke(messages: BaseMessage[]): Promise<AIMessage> {
-    const text = messages.map((message) => String(message.content)).join('\n');
-    if (text.includes('approved by command')) {
-      return new AIMessage('resumed');
-    }
-
-    return new AIMessage({
-      content: '',
-      tool_calls: [{id: 'call_resume', name: 'bash', args: {command: 'git status'}} as ToolCall],
-    });
-  }
-
-  bindTools(): this {
-    return this;
-  }
-}
 
 describe('Codara slash commands', () => {
   function readSummaryMessage(messages: BaseMessage[]): BaseMessage | undefined {
@@ -39,7 +22,7 @@ describe('Codara slash commands', () => {
     const result = await codara.executeCommand('/help');
     expect(result.ok).toBe(true);
     expect(result.output).toContain('/help [command]');
-    expect(result.output).toContain('/resume [approve|reject] [feedback]');
+    expect(result.output).toContain('/resume <sessionId>');
     expect(result.output).toContain('/compact [instructions] | /compact checkpoints [keepLast]');
     expect(result.output).toContain('/reload');
     expect((await codara.listCommands()).map((command) => ({
@@ -135,82 +118,67 @@ describe('Codara slash commands', () => {
     expect(result.output).toContain('Unknown command');
   });
 
-  it('should resume a paused HIL action through the slash command agent surface', async () => {
-    const bashTool = tool(
-      async ({command}: {command: string}) => `executed:${command}`,
-      {
-        name: 'bash',
-        description: 'Execute shell command',
-        schema: z.object({command: z.string()}),
-      },
-    );
-    const codara = createCodara({
-      model: new PauseThenCompleteModel() as unknown as BaseChatModel,
-      tools: [bashTool],
-      skills: false,
+  it('should return a resume_session action for a target stored session id', async () => {
+    const root = await mkdtemp(path.join(tmpdir(), 'codara-command-resume-'));
+    const projectRoot = path.join(root, 'project');
+    const codaraPath = path.join(projectRoot, '.codara');
+    const current = createCodaraRuntime({
+      cwd: projectRoot,
+      projectRoot,
+      codaraPath,
+      sessionId: 'current-session',
+      model: new EchoModel() as unknown as BaseChatModel,
       builtinTools: false,
-      hil: {
-        interruptOn: {
-          bash: true,
-        },
-      },
+      skills: false,
+    });
+    const target = createCodaraRuntime({
+      cwd: projectRoot,
+      projectRoot,
+      codaraPath,
+      sessionId: 'resume-target-session',
+      model: new EchoModel() as unknown as BaseChatModel,
+      builtinTools: false,
+      skills: false,
     });
 
-    await codara.invoke('run command');
-    expect(codara.getAgentState().status).toBe('paused');
+    await current.invoke('current');
+    await target.invoke('target');
 
-    const result = await codara.executeCommand('/resume approve approved by command');
+    const result = await current.executeCommand('/resume resume-target-session');
     expect(result.ok).toBe(true);
-    expect(result.output).toContain('approved');
-    expect(result.state?.status).toBe('idle');
-    expect(String(result.state?.messages.at(-1)?.content)).toBe('resumed');
+    expect(result.output).toContain('resume-target-session');
+    expect(result.action).toEqual({
+      type: 'resume_session',
+      sessionId: 'resume-target-session',
+    });
   });
 
-  it('should resume a restored paused session through slash commands even before explicit hydrate', async () => {
-    const bashTool = tool(
-      async ({command}: {command: string}) => `executed:${command}`,
-      {
-        name: 'bash',
-        description: 'Execute shell command',
-        schema: z.object({command: z.string()}),
-      },
-    );
-    const checkpointer = createAgentMemoryCheckpointer();
-    const original = createCodara({
-      model: new PauseThenCompleteModel() as unknown as BaseChatModel,
-      tools: [bashTool],
-      checkpointer,
+  it('should reject /resume without a session id', async () => {
+    const codara = createCodara({
+      model: new EchoModel() as unknown as BaseChatModel,
       skills: false,
       builtinTools: false,
-      hil: {
-        interruptOn: {
-          bash: true,
-        },
-      },
-      threadId: 'resume-command-restore-thread',
     });
 
-    await original.invoke('run command');
-    expect(original.getAgentState().status).toBe('paused');
+    const result = await codara.executeCommand('/resume');
+    expect(result.ok).toBe(false);
+    expect(result.output).toContain('Usage: /resume <sessionId>');
+  });
 
-    const restored = createCodara({
-      model: new PauseThenCompleteModel() as unknown as BaseChatModel,
-      tools: [bashTool],
-      checkpointer,
+  it('should report when /resume targets the current session', async () => {
+    const codara = createCodara({
+      sessionId: 'same-session',
+      model: new EchoModel() as unknown as BaseChatModel,
       skills: false,
       builtinTools: false,
-      hil: {
-        interruptOn: {
-          bash: true,
-        },
-      },
-      threadId: 'resume-command-restore-thread',
-      restore: 'latest',
     });
 
-    const result = await restored.executeCommand('/resume approve approved by command');
+    const result = await codara.executeCommand('/resume same-session');
     expect(result.ok).toBe(true);
-    expect(result.state?.status).toBe('idle');
-    expect(String(result.state?.messages.at(-1)?.content)).toBe('resumed');
+    expect(result.output).toContain('Already using session same-session.');
+    expect(result.action).toEqual({
+      type: 'resume_session',
+      sessionId: 'same-session',
+    });
   });
 });

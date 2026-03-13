@@ -600,7 +600,7 @@ describe('Agent', () => {
           context: Record<string, unknown>;
           durableContext: Record<string, unknown>;
           runtimeContext: Record<string, unknown>;
-          execution: {threadId?: string};
+          execution: {sessionId?: string};
         }
       | undefined;
 
@@ -664,10 +664,10 @@ describe('Agent', () => {
         locale: 'zh-CN',
       },
     });
-    expect(seen?.execution.threadId).toBe(result.state.threadId);
+    expect(seen?.execution.sessionId).toBe(result.state.sessionId);
   });
 
-  it('应将 threadId/runId/requestId/toolCallId 暴露给工具调用元数据', async () => {
+  it('应将 sessionId/runId/requestId/toolCallId 暴露给工具调用元数据', async () => {
     let seenConfigurable: Record<string, unknown> | undefined;
     let seenMetadata: Record<string, unknown> | undefined;
     const toolCall: ToolCall = {id: 'call_ids', name: 'echo', args: {text: 'ping'}};
@@ -686,12 +686,12 @@ describe('Agent', () => {
       },
     } as unknown as StructuredToolInterface;
 
-    const runner = createAgent({model, tools: [tool], threadId: 'thread-tool-ids'});
+    const runner = createAgent({model, tools: [tool], sessionId: 'session-tool-ids'});
     const result = await runner.invoke({messages: [new HumanMessage('start')]});
 
     expect(result.reason).toBe('complete');
     expect(seenConfigurable?.execution).toEqual({
-      threadId: 'thread-tool-ids',
+      sessionId: 'session-tool-ids',
       runId: expect.any(String),
       turn: 1,
       maxTurns: 25,
@@ -707,7 +707,7 @@ describe('Agent', () => {
       runtimeShared: {},
     });
     expect(seenMetadata?.execution).toEqual({
-      threadId: 'thread-tool-ids',
+      sessionId: 'session-tool-ids',
       runId: expect.any(String),
       turn: 1,
       maxTurns: 25,
@@ -954,7 +954,7 @@ describe('Agent', () => {
     expect(secondResult.state.status).toBe('idle');
     expect(secondResult.state.pendingPause).toBeUndefined();
     expect(bashInvokeCount).toBe(1);
-    expect(modelInvocations).toHaveLength(3);
+    expect(modelInvocations).toHaveLength(2);
     expect(String(secondResult.state.messages[secondResult.state.messages.length - 1]?.content)).toBe('confirmed');
   });
 
@@ -981,7 +981,7 @@ describe('Agent', () => {
     expect(chunks).toHaveLength(2);
     expect(String(chunks[0]?.content)).toBe('he');
     expect(String(chunks[1]?.content)).toBe('llo');
-    expect(chunks[0]?.response_metadata.threadId).toBe(result?.state.threadId);
+    expect(chunks[0]?.response_metadata.sessionId).toBe(result?.state.sessionId);
     expect(typeof chunks[0]?.response_metadata.runId).toBe('string');
     expect(chunks[0]?.response_metadata.requestId).toBe(`${chunks[0]?.response_metadata.runId}:turn:1`);
     expect(chunks[0]?.response_metadata.turn).toBe(1);
