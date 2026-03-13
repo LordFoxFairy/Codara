@@ -173,6 +173,11 @@ createCodara(...)
   - `/reload`
   - 刷新 `AGENTS.md` source 与 skills discovery cache
 - skills 还可以通过 `command-name` 显式声明动态 slash commands
+- `/help`
+  - 默认输出分页后的命令首页
+  - 支持 `/help <page>` 翻页
+  - 支持 `/help <command>` 查看详情
+  - 对 skill command 会标出 project/global/external scope
 - 命令来源会被正式区分为：
   - `builtin`：宿主内建命令
   - `skill`：由 skills discovery 暴露的命令入口
