@@ -5,7 +5,6 @@ import type {WorkspaceRootOptions} from '@core/shared/workspace';
 import {resolveWorkspaceRoot} from '@core/shared/workspace';
 
 const HANDBOOK_FILE_NAME = 'codara.md';
-const LEGACY_PROMPT_FILE_NAME = 'prompt.md';
 
 export interface PromptWorkspaceOptions extends WorkspaceRootOptions {
   userHome?: string;
@@ -77,8 +76,6 @@ function discoverPromptFiles(options: PromptWorkspaceOptions): string[] {
   return [
     path.join(userHome, '.codara', HANDBOOK_FILE_NAME),
     path.join(projectRoot, '.codara', HANDBOOK_FILE_NAME),
-    path.join(userHome, '.codara', LEGACY_PROMPT_FILE_NAME),
-    path.join(projectRoot, '.codara', LEGACY_PROMPT_FILE_NAME),
   ];
 }
 
