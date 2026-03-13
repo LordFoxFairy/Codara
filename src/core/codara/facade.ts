@@ -17,7 +17,7 @@ import {
 import {
   createPermissionMiddleware,
   ensurePermissionSettingsFile,
-} from '@core/permissions';
+} from '@core/middleware/permission';
 import {ChatModelFactory, loadModelRoutingConfig, loadModelRoutingConfigFromPath, ModelRegistry, resolveCodaraPath, type ModelInfo, type ModelRoutingConfig} from '@core/provider';
 import {
   createCodaraGuidelinesSource,
