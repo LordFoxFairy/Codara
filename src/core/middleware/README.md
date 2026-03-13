@@ -192,6 +192,8 @@ const loggingMiddleware = createLoggingMiddleware({
 
 `createHILMiddleware(options)` 提供通用“暂停-恢复”拦截能力（不内置审批决策语义）：
 
+更完整的协议说明见 [HIL.md](/Users/nako/WebstormProjects/github/thefoxfairy/Codara/src/core/middleware/HIL.md)。
+
 - `interruptOn[toolName] = true`：命中后进入 pause，返回结构化 `hil_pause` 消息
 - `interruptOn[toolName] = false` 或未配置：自动放行
 - `interruptOn[toolName] = {description, channel, ui, metadata, allowedDecisions}`：附加交互与 review 元信息
