@@ -343,6 +343,18 @@ export async function createCliRuntime(input: {
           skills: false,
         }),
       };
+    case 'plugin-install':
+      return {
+        codara: createCodaraRuntime({
+          cwd: input.cwd,
+          projectRoot: input.cwd,
+          codaraPath: path.join(input.cwd, '.codara'),
+          ...(input.sessionId ? {sessionId: input.sessionId} : {}),
+          model: new ScriptedModel([new AIMessage('PLUGIN_INSTALL_UNUSED')]) as unknown as BaseChatModel,
+          builtinTools: false,
+          skills: false,
+        }),
+      };
     case 'default-runtime-workflow':
       return {
         codara: createCodaraRuntime({

@@ -23,6 +23,7 @@ describe('core docs contracts', () => {
       '/status',
       '/memory',
       '/permissions',
+      '/plugin',
       '/resume',
       '/compact',
       '/reload',

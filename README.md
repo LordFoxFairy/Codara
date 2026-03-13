@@ -19,7 +19,7 @@ AI 驱动的终端代码代理运行时与产品 facade。
 - 显式 session 打开与 checkpoint compact 宿主接口
 - `AGENTS.md` 投影注入
 - summary + context budget 上下文管理
-- 宿主级 slash commands（`/help`、`/clear`、`/status`、`/memory`、`/permissions`、`/resume`、`/compact`、`/reload`）
+- 宿主级 slash commands（`/help`、`/clear`、`/status`、`/memory`、`/permissions`、`/plugin`、`/resume`、`/compact`、`/reload`）
 - `todo` agent 内部状态
 - `Task` / subagent 委派
 - `TaskCreate` / `TaskUpdate` / `TaskList` 共享协调层
@@ -82,6 +82,10 @@ src/index.ts
   - 支持 `show / edit`
   - `show` 汇总当前 permission policy source
   - `edit` 返回宿主 `open_file` 动作，打开项目 `.codara/settings.local.json`
+- `/plugin`
+  - 当前支持 `install`
+  - 兼容 `superpowers@claude-plugins-official` 这类 Claude 风格安装语法
+  - 底层会把上游 `skills/*` 导入到 `~/.codara/skills`，然后刷新当前 session skill sources
 - `/resume`
   - 通过 `sessionId` 恢复指定历史会话
   - permission/HIL 不走 slash command，走通用 HIL 面板或直接编辑 settings JSON
