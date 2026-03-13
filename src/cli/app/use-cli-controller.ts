@@ -17,7 +17,7 @@ import {
 import type {CliComposerState} from '../composer/types';
 import {hasTranscriptContent} from '../transcript/model';
 import {
-  applyCliHilClarificationShortcut,
+  applyCliHilFormShortcut,
   buildCliHilResumePayload,
   selectNextCliHilTab,
   selectNextCliHilAction,
@@ -33,6 +33,7 @@ import type {CliActiveTurn, CliHilReviewState, CliNotice, CliRunState} from './v
 const STARTUP_MESSAGE =
   'Interactive Codara CLI. Type a prompt or slash command and press Enter. Press Ctrl+C or Esc to exit.';
 const INITIAL_NOTICE_COUNT = 1;
+const HIL_AUTO_ACTION_DELAY_MS = 30;
 
 export interface UseCliControllerOptions {
   codara: Codara;
@@ -306,11 +307,11 @@ export function useCliController(options: UseCliControllerOptions): CliControlle
   }, []);
 
   const moveHilLeft = useCallback(() => {
-    setHilReview((current) => current?.clarification ? selectPreviousCliHilTab(current) : current ? toggleCliHilFocus(current) : current);
+    setHilReview((current) => current?.form ? selectPreviousCliHilTab(current) : current ? toggleCliHilFocus(current) : current);
   }, []);
 
   const moveHilRight = useCallback(() => {
-    setHilReview((current) => current?.clarification ? selectNextCliHilTab(current) : current ? toggleCliHilFocus(current) : current);
+    setHilReview((current) => current?.form ? selectNextCliHilTab(current) : current ? toggleCliHilFocus(current) : current);
   }, []);
 
   const toggleHilFocus = useCallback(() => {
@@ -322,7 +323,7 @@ export function useCliController(options: UseCliControllerOptions): CliControlle
       if (!current) {
         return current;
       }
-      const shortcut = current.focus !== 'input' ? applyCliHilClarificationShortcut(current, input) : undefined;
+      const shortcut = current.focus !== 'input' ? applyCliHilFormShortcut(current, input) : undefined;
       if (shortcut) {
         return shortcut;
       }
@@ -396,7 +397,11 @@ export function useCliController(options: UseCliControllerOptions): CliControlle
       return;
     }
 
-    void submitHilAction(nextAction);
+    const timer = setTimeout(() => {
+      void submitHilAction(nextAction);
+    }, HIL_AUTO_ACTION_DELAY_MS);
+
+    return () => clearTimeout(timer);
   }, [hilReview, submitHilAction]);
 
   const hasConversation = useMemo(

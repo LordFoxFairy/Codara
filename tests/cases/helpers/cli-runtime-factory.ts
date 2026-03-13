@@ -6,13 +6,18 @@ import type {StructuredToolInterface} from '@langchain/core/tools';
 import {tool} from '@langchain/core/tools';
 import {z} from 'zod';
 import {
-  createPermissionMiddleware,
   createCodaraRuntime,
   ensurePermissionSettingsFile,
   persistPermissionRule,
   type Codara,
 } from '@core';
-import {createSkillsMiddleware} from '@core/middleware';
+import {
+  createAskUserTool,
+  createInteractionMiddleware,
+  createPermissionMiddleware,
+  createSkillsMiddleware,
+  parseAskUserResult,
+} from '@core/middleware';
 import {
   createSharedTaskMiddleware,
   createTaskCreateTool,
@@ -297,6 +302,23 @@ export async function createCliRuntime(input: {
           skills: false,
         }),
       };
+    case 'hil-form':
+      return {
+        codara: createCodaraRuntime({
+          cwd: input.cwd,
+          projectRoot: input.cwd,
+          codaraPath: path.join(input.cwd, '.codara'),
+          ...(input.sessionId ? {sessionId: input.sessionId} : {}),
+          model: new HilFormCliModel() as unknown as BaseChatModel,
+          tools: [createAskUserTool()],
+          builtinTools: false,
+          skills: false,
+          hil: false,
+          middleware: [
+            createInteractionMiddleware(),
+          ],
+        }),
+      };
     default:
       throw new Error(`Unsupported real CLI case scenario: ${scenario || '(empty)'}`);
   }
@@ -422,6 +444,57 @@ class PermissionRuntimeCliModel {
     return new AIMessage({
       content: '',
       tool_calls: [{id: 'call_runtime_permission', name: 'bash', args: {command: this.command}} as ToolCall],
+    });
+  }
+
+  bindTools(): this {
+    return this;
+  }
+}
+
+class HilFormCliModel {
+  async invoke(messages: BaseMessage[]): Promise<AIMessage> {
+    const askUserResult = messages
+      .filter((message): message is ToolMessage => ToolMessage.isInstance(message))
+      .map((message) => parseAskUserResult(message.content))
+      .find((value): value is NonNullable<typeof value> => Boolean(value));
+    if (askUserResult) {
+      return new AIMessage(`HIL_FORM_DONE:${Object.keys(askUserResult.answers).join(',') || 'empty'}`);
+    }
+
+    return new AIMessage({
+      content: '',
+      tool_calls: [{
+        id: 'call_hil_form',
+        name: 'AskUser',
+        args: {
+          summary: 'A few structured inputs are missing before the agent can continue.',
+          tab: 'Brief Intake',
+          channel: 'clarification-center',
+          questions: [
+            {
+              id: 'domain',
+              label: 'Product Domain',
+              question: 'Which product domain should this work target?',
+              options: [
+                {id: 'saas', label: 'SaaS product', description: 'General software or platform work.'},
+                {id: 'infra', label: 'Infra tooling', description: 'Developer tooling and platform work.'},
+              ],
+              placeholder: 'Choose a domain or type your own answer.',
+            },
+            {
+              id: 'scope',
+              label: 'Target Scope',
+              question: 'What scale should the first iteration target?',
+              options: [
+                {id: 'mvp', label: 'MVP', description: 'Keep the first pass intentionally small.'},
+                {id: 'prod', label: 'Production', description: 'Aim at a complete production-ready pass.'},
+              ],
+              placeholder: 'Choose a scope or type your own answer.',
+            },
+          ],
+        },
+      } as ToolCall],
     });
   }
 

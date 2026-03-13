@@ -63,6 +63,8 @@ export function CodaraCliApp(props: CodaraCliAppProps): React.JSX.Element {
   useHilInput({
     active: hasHilReview,
     disabled: shell.hilReview?.busy ?? false,
+    onMoveLeft: shell.moveHilLeft,
+    onMoveRight: shell.moveHilRight,
     onSelectPrevious: shell.selectPreviousHilAction,
     onSelectNext: shell.selectNextHilAction,
     onToggleFocus: shell.toggleHilFocus,

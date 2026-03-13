@@ -1,6 +1,7 @@
 import type {PauseRequest, PauseReviewDecision, ResumePayload} from '@core/agents';
 import type {
-  CliHilClarificationState,
+  CliHilAnswerValue,
+  CliHilFormState,
   CliHilReviewAction,
   CliHilReviewState,
 } from './view-state';
@@ -21,15 +22,15 @@ export function syncCliHilReviewState(
   }
 
   const actions = resolveCliHilActions(request);
-  const clarification = resolveCliClarificationState(request, current?.clarification);
+  const form = resolveCliHilFormState(request, current?.form);
   if (current?.request.id === request.id) {
     return {
       ...current,
       request,
       actions,
       selectedActionIndex: Math.min(current.selectedActionIndex, Math.max(actions.length - 1, 0)),
-      clarification,
-      draft: clarification ? readClarificationDraft(clarification) : current.draft,
+      form,
+      draft: form ? readHilFormDraft(form) : current.draft,
     };
   }
 
@@ -38,9 +39,9 @@ export function syncCliHilReviewState(
     actions,
     selectedActionIndex: 0,
     focus: 'actions',
-    draft: clarification ? readClarificationDraft(clarification) : '',
+    draft: form ? readHilFormDraft(form) : '',
     busy: false,
-    ...(clarification ? {clarification} : {}),
+    ...(form ? {form} : {}),
   };
 }
 
@@ -74,12 +75,12 @@ export function toggleCliHilFocus(current: CliHilReviewState): CliHilReviewState
 }
 
 export function updateCliHilDraft(current: CliHilReviewState, draft: string): CliHilReviewState {
-  if (current.clarification) {
-    const nextClarification = updateClarificationAnswer(current.clarification, draft);
+  if (current.form) {
+    const nextForm = updateHilFormAnswer(current.form, draft);
     return {
       ...current,
       draft,
-      clarification: nextClarification,
+      form: nextForm,
     };
   }
 
@@ -90,45 +91,45 @@ export function updateCliHilDraft(current: CliHilReviewState, draft: string): Cl
 }
 
 export function selectPreviousCliHilTab(current: CliHilReviewState): CliHilReviewState {
-  if (!current.clarification || current.clarification.tabs.length === 0) {
+  if (!current.form || current.form.tabs.length === 0) {
     return current;
   }
 
-  const nextClarification = {
-    ...current.clarification,
-    activeTabIndex: (current.clarification.activeTabIndex - 1 + current.clarification.tabs.length) % current.clarification.tabs.length,
+  const nextForm = {
+    ...current.form,
+    activeTabIndex: (current.form.activeTabIndex - 1 + current.form.tabs.length) % current.form.tabs.length,
   };
 
   return {
     ...current,
-    clarification: nextClarification,
-    draft: readClarificationDraft(nextClarification),
+    form: nextForm,
+    draft: readHilFormDraft(nextForm),
   };
 }
 
 export function selectNextCliHilTab(current: CliHilReviewState): CliHilReviewState {
-  if (!current.clarification || current.clarification.tabs.length === 0) {
+  if (!current.form || current.form.tabs.length === 0) {
     return current;
   }
 
-  const nextClarification = {
-    ...current.clarification,
-    activeTabIndex: (current.clarification.activeTabIndex + 1) % current.clarification.tabs.length,
+  const nextForm = {
+    ...current.form,
+    activeTabIndex: (current.form.activeTabIndex + 1) % current.form.tabs.length,
   };
 
   return {
     ...current,
-    clarification: nextClarification,
-    draft: readClarificationDraft(nextClarification),
+    form: nextForm,
+    draft: readHilFormDraft(nextForm),
   };
 }
 
-export function applyCliHilClarificationShortcut(current: CliHilReviewState, input: string): CliHilReviewState | undefined {
-  if (!current.clarification) {
+export function applyCliHilFormShortcut(current: CliHilReviewState, input: string): CliHilReviewState | undefined {
+  if (!current.form) {
     return undefined;
   }
 
-  const activeTab = current.clarification.tabs[current.clarification.activeTabIndex];
+  const activeTab = current.form.tabs[current.form.activeTabIndex];
   if (!activeTab) {
     return undefined;
   }
@@ -143,12 +144,14 @@ export function applyCliHilClarificationShortcut(current: CliHilReviewState, inp
     return undefined;
   }
 
-  const answer = option.label;
-  const nextClarification = updateClarificationAnswer(current.clarification, answer);
+  const answer = activeTab.input === 'multiselect'
+    ? toggleHilFormSelection(current.form, option.label)
+    : option.label;
+  const nextForm = updateHilFormAnswer(current.form, answer);
   return {
     ...current,
-    draft: answer,
-    clarification: nextClarification,
+    draft: formatHilAnswerValue(answer),
+    form: nextForm,
   };
 }
 
@@ -200,11 +203,11 @@ export function buildCliHilResumePayload(
     }
   }
 
-  if (review.clarification) {
+  if (review.form) {
     payload.metadata = {
-      clarification: {
-        activeTabId: review.clarification.tabs[review.clarification.activeTabIndex]?.id,
-        answers: review.clarification.answers,
+      form: {
+        activeTabId: review.form.tabs[review.form.activeTabIndex]?.id,
+        answers: review.form.answers,
       },
     };
   }
@@ -265,11 +268,11 @@ function mapActionToDecision(actionId: string): PauseReviewDecision | undefined 
   return undefined;
 }
 
-function resolveCliClarificationState(
+function resolveCliHilFormState(
   request: PauseRequest,
-  current: CliHilClarificationState | undefined,
-): CliHilClarificationState | undefined {
-  const parsed = readClarificationMetadata(request.metadata);
+  current: CliHilFormState | undefined,
+): CliHilFormState | undefined {
+  const parsed = readHilFormConfig(request.ui);
   if (!parsed) {
     return undefined;
   }
@@ -283,58 +286,49 @@ function resolveCliClarificationState(
   };
 }
 
-function updateClarificationAnswer(
-  clarification: CliHilClarificationState,
-  answer: string,
-): CliHilClarificationState {
-  const activeTab = clarification.tabs[clarification.activeTabIndex];
+function updateHilFormAnswer(
+  form: CliHilFormState,
+  answer: CliHilAnswerValue,
+): CliHilFormState {
+  const activeTab = form.tabs[form.activeTabIndex];
   if (!activeTab) {
-    return clarification;
+    return form;
   }
 
   return {
-    ...clarification,
+    ...form,
     answers: {
-      ...clarification.answers,
+      ...form.answers,
       [activeTab.id]: answer,
     },
   };
 }
 
-function readClarificationDraft(clarification: CliHilClarificationState): string {
-  const activeTab = clarification.tabs[clarification.activeTabIndex];
+function readHilFormDraft(form: CliHilFormState): string {
+  const activeTab = form.tabs[form.activeTabIndex];
   if (!activeTab) {
     return '';
   }
-  return clarification.answers[activeTab.id] ?? '';
+  return formatHilAnswerValue(form.answers[activeTab.id] ?? '');
 }
 
-function readClarificationMetadata(metadata: unknown): CliHilClarificationState | undefined {
-  if (!metadata || typeof metadata !== 'object' || Array.isArray(metadata)) {
+function readHilFormConfig(ui: PauseRequest['ui']): CliHilFormState | undefined {
+  if (!ui || !ui.form || typeof ui.form !== 'object' || Array.isArray(ui.form)) {
     return undefined;
   }
 
-  const codara = (metadata as Record<string, unknown>).codara;
-  if (!codara || typeof codara !== 'object' || Array.isArray(codara)) {
-    return undefined;
-  }
-
-  const clarification = (codara as Record<string, unknown>).clarification;
-  if (!clarification || typeof clarification !== 'object' || Array.isArray(clarification)) {
-    return undefined;
-  }
-
-  const tabs = Array.isArray((clarification as Record<string, unknown>).tabs)
-    ? ((clarification as Record<string, unknown>).tabs as unknown[])
-      .map(normalizeClarificationTab)
-      .filter((tab): tab is NonNullable<ReturnType<typeof normalizeClarificationTab>> => Boolean(tab))
+  const form = ui.form;
+  const tabs = Array.isArray(form.tabs)
+    ? (form.tabs as unknown[])
+      .map(normalizeHilFormTab)
+      .filter((tab): tab is NonNullable<ReturnType<typeof normalizeHilFormTab>> => Boolean(tab))
     : [];
   if (tabs.length === 0) {
     return undefined;
   }
 
-  const summary = typeof (clarification as Record<string, unknown>).summary === 'string'
-    ? String((clarification as Record<string, unknown>).summary).trim()
+  const summary = typeof form.summary === 'string'
+    ? String(form.summary).trim()
     : undefined;
 
   return {
@@ -345,7 +339,7 @@ function readClarificationMetadata(metadata: unknown): CliHilClarificationState 
   };
 }
 
-function normalizeClarificationTab(tab: unknown) {
+function normalizeHilFormTab(tab: unknown) {
   if (!tab || typeof tab !== 'object' || Array.isArray(tab)) {
     return undefined;
   }
@@ -357,11 +351,16 @@ function normalizeClarificationTab(tab: unknown) {
   if (!id || !label || !question) {
     return undefined;
   }
+  const input = typeof record.input === 'string' ? record.input.trim() : '';
+  const normalizedInput: 'select' | 'multiselect' | 'text' | 'mixed' | undefined =
+    input === 'select' || input === 'multiselect' || input === 'text' || input === 'mixed'
+      ? input
+      : undefined;
 
   const options = Array.isArray(record.options)
     ? record.options
-      .map((option) => normalizeClarificationOption(option))
-      .filter((option): option is NonNullable<ReturnType<typeof normalizeClarificationOption>> => Boolean(option))
+      .map((option) => normalizeHilFormOption(option))
+      .filter((option): option is NonNullable<ReturnType<typeof normalizeHilFormOption>> => Boolean(option))
     : [];
   const placeholder = typeof record.placeholder === 'string' ? record.placeholder.trim() : '';
 
@@ -369,12 +368,13 @@ function normalizeClarificationTab(tab: unknown) {
     id,
     label,
     question,
+    ...(normalizedInput ? {input: normalizedInput} : {}),
     options,
     ...(placeholder ? {placeholder} : {}),
   };
 }
 
-function normalizeClarificationOption(option: unknown) {
+function normalizeHilFormOption(option: unknown) {
   if (!option || typeof option !== 'object' || Array.isArray(option)) {
     return undefined;
   }
@@ -392,4 +392,25 @@ function normalizeClarificationOption(option: unknown) {
     label,
     ...(description ? {description} : {}),
   };
+}
+
+function toggleHilFormSelection(form: CliHilFormState, label: string): string[] {
+  const activeTab = form.tabs[form.activeTabIndex];
+  if (!activeTab) {
+    return [label];
+  }
+
+  const current = form.answers[activeTab.id];
+  const values = Array.isArray(current) ? [...current] : typeof current === 'string' && current.trim() ? [current] : [];
+  const index = values.indexOf(label);
+  if (index >= 0) {
+    values.splice(index, 1);
+    return values;
+  }
+  values.push(label);
+  return values;
+}
+
+function formatHilAnswerValue(value: CliHilAnswerValue): string {
+  return Array.isArray(value) ? value.join(', ') : value;
 }
