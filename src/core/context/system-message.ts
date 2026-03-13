@@ -80,7 +80,7 @@ export function readBaseSystemMessage(shared: unknown): BaseSystemMessageRuntime
   return normalized.length > 0 ? {systemMessage: normalized} : undefined;
 }
 
-export function createBaseSystemMessageRuntimeShared(systemMessage: string[]): Record<string, BaseSystemMessageRuntimeData> {
+function createBaseSystemMessageRuntimeShared(systemMessage: string[]): Record<string, BaseSystemMessageRuntimeData> {
   return {
     [BASE_SYSTEM_MESSAGE_KEY]: {
       systemMessage: [...systemMessage],
