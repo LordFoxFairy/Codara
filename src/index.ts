@@ -31,7 +31,14 @@ export type {
 export type {TaskRecord, TaskStore, TaskStatus, CreateTaskInput, UpdateTaskInput} from '@core/tasks';
 
 /** Session 相关类型 */
-export type {Session, SessionState, SessionStatus, SessionStore} from '@core/sessions';
+export type {
+  CodaraRuntimeEvent,
+  CodaraRuntimeEventListener,
+  Session,
+  SessionState,
+  SessionStatus,
+  SessionStore,
+} from '@core/sessions';
 
 // ============================================
 // 高级 API（Library 使用）
