@@ -95,6 +95,54 @@ describe('Codara slash commands', () => {
     }
   });
 
+  it('should import official skill plugins that already ship Codara-compatible skills', async () => {
+    const root = await mkdtemp(path.join(tmpdir(), 'codara-command-plugin-skill-creator-'));
+    const projectRoot = path.join(root, 'project');
+    const userHome = path.join(root, 'home');
+    const fixtureRoot = path.join(root, 'skill-creator-fixture');
+    const skillDir = path.join(fixtureRoot, 'skills', 'skill-creator');
+
+    await mkdir(skillDir, {recursive: true});
+    await Bun.write(path.join(skillDir, 'SKILL.md'), [
+      '---',
+      'name: skill-creator',
+      'description: Create Codara-compatible skills.',
+      '---',
+      '',
+      '# Skill Creator',
+      '',
+      'Imported fixture skill.',
+      '',
+    ].join('\n'));
+
+    const previousOverride = process.env.CODARA_PLUGIN_SKILL_CREATOR_SOURCE;
+    process.env.CODARA_PLUGIN_SKILL_CREATOR_SOURCE = fixtureRoot;
+
+    try {
+      const codara = createCodara({
+        cwd: projectRoot,
+        projectRoot,
+        userHome,
+        model: new EchoModel() as unknown as BaseChatModel,
+        skills: false,
+        builtinTools: false,
+      });
+
+      const result = await codara.executeCommand('/plugin install skill-creator@claude-plugins-official');
+      expect(result.ok).toBe(true);
+      expect(result.output).toContain('skill-creator');
+
+      const installed = await readFile(path.join(userHome, '.codara', 'skills', 'skill-creator', 'SKILL.md'), 'utf8');
+      expect(installed).toContain('name: skill-creator');
+    } finally {
+      if (previousOverride === undefined) {
+        delete process.env.CODARA_PLUGIN_SKILL_CREATOR_SOURCE;
+      } else {
+        process.env.CODARA_PLUGIN_SKILL_CREATOR_SOURCE = previousOverride;
+      }
+    }
+  });
+
   it('should translate supported plugin commands into Codara skill commands when the plugin ships commands without skills', async () => {
     const root = await mkdtemp(path.join(tmpdir(), 'codara-command-plugin-command-'));
     const projectRoot = path.join(root, 'project');

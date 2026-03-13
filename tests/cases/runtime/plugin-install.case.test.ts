@@ -84,4 +84,45 @@ describe('runtime plugin install cases', () => {
     const content = await readFile(installedSkill, 'utf8');
     expect(content).toContain('command-name: code-review');
   });
+
+  it('should import official skill-based plugins through the same install flow', async () => {
+    const root = await mkdtemp(path.join(tmpdir(), 'codara-case-plugin-skill-install-'));
+    const projectRoot = path.join(root, 'project');
+    const homeRoot = path.join(root, 'home');
+    const fixtureRoot = path.join(root, 'skill-creator-fixture');
+    const skillDir = path.join(fixtureRoot, 'skills', 'skill-creator');
+
+    await mkdir(path.join(projectRoot, '.codara'), {recursive: true});
+    await mkdir(skillDir, {recursive: true});
+    await mkdir(homeRoot, {recursive: true});
+    await Bun.write(path.join(skillDir, 'SKILL.md'), [
+      '---',
+      'name: skill-creator',
+      'description: Create Codara-compatible skills.',
+      '---',
+      '',
+      '# Skill Creator',
+      '',
+      'Imported fixture skill.',
+      '',
+    ].join('\n'));
+
+    const result = await runRealCliCase({
+      cwd: projectRoot,
+      prompt: '/plugin install skill-creator@claude-plugins-official',
+      scenario: 'plugin-install',
+      env: {
+        HOME: homeRoot,
+        CODARA_PLUGIN_SKILL_CREATOR_SOURCE: fixtureRoot,
+      },
+    });
+
+    expect(result.exitCode).toBe(0);
+    expect(result.output).toContain('Imported plugin skill-creator@claude-plugins-official');
+    expect(result.output).toContain('skill-creator');
+
+    const installedSkill = path.join(homeRoot, '.codara', 'skills', 'skill-creator', 'SKILL.md');
+    const content = await readFile(installedSkill, 'utf8');
+    expect(content).toContain('name: skill-creator');
+  });
 });

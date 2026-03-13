@@ -84,7 +84,7 @@ src/index.ts
   - `edit` 返回宿主 `open_file` 动作，打开项目 `.codara/settings.local.json`
 - `/plugin`
   - 当前支持 `install`
-  - 兼容 `superpowers@claude-plugins-official`、`code-review@claude-plugins-official` 这类 Claude 风格安装语法
+  - 兼容 `superpowers@claude-plugins-official`、`code-review@claude-plugins-official`、`skill-creator@claude-plugins-official` 这类 Claude 风格安装语法
   - 底层会把上游 `skills/*` 直接导入到 `~/.codara/skills`
   - 若插件只提供 `commands/*.md`，Codara 会把它们翻译成 skill-command 再导入
   - 导入完成后会刷新当前 session skill sources
