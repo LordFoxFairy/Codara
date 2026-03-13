@@ -41,7 +41,9 @@ command-aliases:
     expect(help.output).toContain('Run the architecture planning skill explicitly.');
     expect(help.output).toContain('Aliases: /arch');
     expect(help.output).toContain('Type: skill command');
+    expect(help.output).toContain('Execution: agent workflow');
     expect(help.output).toContain('Skill: architect');
+    expect(help.output).toContain('Runtime requirement: run this command in a Codara runtime that exposes the listed tools.');
 
     const result = await codara.executeCommand('/arch design a safer session model');
     expect(result.ok).toBe(true);
@@ -72,7 +74,10 @@ allowed-tools:
     const result = await codara.executeCommand('/shell-review inspect git history');
     expect(result.ok).toBe(false);
     expect(result.output).toContain('Cannot run /shell-review in this runtime.');
-    expect(result.output).toContain('Missing tools: bash');
+    expect(result.output).toContain('Reason: the current runtime does not satisfy this skill command\'s requirements.');
+    expect(result.output).toContain('Missing runtime tools: bash');
+    expect(result.output).toContain('Suggested fixes:');
+    expect(result.output).toContain('Use createCodaraRuntime(...) or enable the missing tools');
   });
 
   it('should refuse to run a skill command when a required shell binary is missing', async () => {
@@ -98,6 +103,8 @@ allowed-tools:
     expect(result.ok).toBe(false);
     expect(result.output).toContain('Cannot run /repo-review in this runtime.');
     expect(result.output).toContain('Missing shell commands in PATH: codara-missing-binary-please-do-not-install');
+    expect(result.output).toContain('Suggested fixes:');
+    expect(result.output).toContain('Install the missing shell commands and ensure they are available in PATH');
   });
 
   it('should refresh skill-derived commands when session sources are reloaded', async () => {

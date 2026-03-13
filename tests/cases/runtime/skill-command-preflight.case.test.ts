@@ -29,7 +29,9 @@ allowed-tools:
 
     expect(result.exitCode).toBe(0);
     expect(result.output).toContain('Cannot run /shell-review in this runtime.');
-    expect(result.output).toContain('Missing tools: bash');
+    expect(result.output).toContain('Reason: the current runtime does not satisfy this skill command');
+    expect(result.output).toContain('Missing runtime tools: bash');
+    expect(result.output).toContain('Suggested fixes:');
   });
 
   it('should stop a skill command in the real CLI when a required shell binary is missing', async () => {
@@ -57,5 +59,6 @@ allowed-tools:
     expect(result.exitCode).toBe(0);
     expect(result.output).toContain('Cannot run /repo-review in this runtime.');
     expect(result.output).toContain('Missing shell commands in PATH: codara-missing-binary-please-do-not-install');
+    expect(result.output).toContain('Suggested fixes:');
   });
 });
