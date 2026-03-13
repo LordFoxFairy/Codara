@@ -182,7 +182,7 @@ createCodara(...)
 
 ## Permission 与 HIL
 
-- `permissions/*`
+- `middleware/permission/*`
   - 负责 settings 文件、规则评估、`allow/ask/deny`、`always` 持久化
 - `middleware/hil.ts`
   - 只负责通用 pause / resume 协议
