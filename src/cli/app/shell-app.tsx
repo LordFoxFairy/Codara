@@ -3,6 +3,7 @@ import {Box, useApp} from 'ink';
 import type {Codara} from '@core';
 import {Footer} from '../components/chrome/footer';
 import {Header} from '../components/chrome/header';
+import {ActivityLine} from '../components/chrome/activity-line';
 import {HilPanel} from '../components/conversation/hil-panel';
 import {Transcript} from '../components/conversation/transcript';
 import {WelcomeState} from '../components/conversation/welcome-state';
@@ -99,10 +100,13 @@ export function CodaraCliApp(props: CodaraCliAppProps): React.JSX.Element {
         session={shell.sessionState}
         modelAlias={modelAlias}
         runState={shell.runState}
+        activeTurn={shell.activeTurn}
+        hilBusy={shell.hilReview?.busy}
       />
       {shell.hasConversation ? (
         <Transcript coreMessages={shell.coreMessages} notices={shell.notices} activeTurn={shell.activeTurn} />
       ) : <WelcomeState layoutMode={layoutMode} />}
+      <ActivityLine runState={shell.runState} activeTurn={shell.activeTurn} hilBusy={shell.hilReview?.busy} />
       {shell.hilReview ? <HilPanel review={shell.hilReview} /> : null}
       <PromptFrame
         terminalWidth={terminalWidth}
