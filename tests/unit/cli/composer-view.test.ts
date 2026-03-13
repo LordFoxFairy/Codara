@@ -1,4 +1,4 @@
-﻿import {describe, expect, test} from 'bun:test';
+import {describe, expect, test} from 'bun:test';
 import {buildComposerViewport} from '@/cli/components/prompt/composer-view';
 import {createComposerState} from '@/cli/composer/state';
 
@@ -10,7 +10,7 @@ describe('cli composer viewport', () => {
       {
         beforeCursor: '',
         afterCursor: '',
-        placeholder: 'Type a request',
+        placeholder: 'Try "fix lint errors"',
         isCursorLine: true,
       },
     ]);

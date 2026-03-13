@@ -43,6 +43,7 @@ export function resolveCliForegroundSurface(input: {
 export function CodaraCliApp(props: CodaraCliAppProps): React.JSX.Element {
   const {
     codara,
+    cwd,
     initialPrompt,
     modelAlias,
     startupMessage,
@@ -115,6 +116,7 @@ export function CodaraCliApp(props: CodaraCliAppProps): React.JSX.Element {
       <Header
         layoutMode={layoutMode}
         session={shell.sessionState}
+        cwd={cwd}
         modelAlias={modelAlias}
         runState={shell.runState}
         latestRuntimeEvent={shell.latestRuntimeEvent}
