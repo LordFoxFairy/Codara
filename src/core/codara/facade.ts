@@ -12,11 +12,19 @@ import {
   createHILMiddleware,
   createLoggingMiddleware,
 } from '@core/middleware';
+import {
+  createPermissionMiddleware,
+  ensurePermissionSettingsFile,
+} from '@core/permissions';
 import {ChatModelFactory, loadModelRoutingConfig, loadModelRoutingConfigFromPath, ModelRegistry, resolveCodaraPath, type ModelInfo, type ModelRoutingConfig} from '@core/provider';
 import {
   createCodaraGuidelinesSource,
   type GuidelinesOptions,
-} from '@core/sessions/guidelines';
+} from '@core/instructions/guidelines';
+import {
+  createCodaraPromptSource,
+  type PromptOptions,
+} from '@core/instructions/prompt';
 import {
   createCodaraSkillsSource,
   FileSystemSkillStore,
@@ -77,6 +85,7 @@ export interface CodaraOptions {
   builtinTools?: boolean;
   middleware?: BaseMiddleware[];
   guidelines?: boolean | GuidelinesOptions;
+  prompt?: boolean | PromptOptions;
   skills?: false | CodaraSkillOptions;
   summary?: false | SummarySettings;
   hil?: false | HILMiddlewareOptions;
@@ -134,13 +143,26 @@ export function createCodara(options: CodaraOptions = {}): Codara {
 
 export function createCodaraRuntime(options: CodaraRuntimeOptions = {}): Codara {
   const codaraPath = resolveCodaraRuntimePath(options);
+  ensurePermissionSettingsFile({
+    cwd: options.cwd,
+    projectRoot: options.projectRoot,
+    userHome: options.userHome,
+  });
   const catalog = !options.model && !options.catalog && !options.config
     ? loadModelRoutingConfigFromPath(codaraPath).then((config) => createCodaraModelCatalog({config}))
     : options.catalog;
   const logging = resolveRuntimeLoggingOptions(options);
+  const permissionMiddleware = options.hil === false ? [] : [createPermissionMiddleware({
+    ...(typeof options.hil === 'object' && options.hil !== null ? options.hil : {}),
+    cwd: options.cwd,
+    projectRoot: options.projectRoot,
+    userHome: options.userHome,
+  })];
 
   return createCodara({
     ...options,
+    middleware: [...(options.middleware ?? []), ...permissionMiddleware],
+    hil: false,
     ...(logging === false ? {logging: false} : {logging}),
     ...(catalog ? {catalog} : {}),
     ...(options.store ? {} : {store: new FileSessionStore({basePath: path.join(codaraPath, 'sessions')})}),
@@ -173,6 +195,12 @@ function assembleCodara(options: CodaraOptions, restoredState?: SessionState): C
       projectRoot: options.projectRoot,
       userHome: options.userHome,
       guidelines: options.guidelines,
+    }),
+    promptSource: createCodaraPromptSource({
+      cwd: options.cwd,
+      projectRoot: options.projectRoot,
+      userHome: options.userHome,
+      prompt: options.prompt,
     }),
     ...(skillsSource ? {skillsSource} : {}),
     tools: createCodaraTools(options),

@@ -233,7 +233,7 @@ type HILToolMessagePayload =
 推荐的 resume payload 协议：
 - `decision`：可选标准 review 决策，推荐使用 `approve | edit | reject`
 - `action`：选中的动作 id
-- `scope`：可选范围信息，由 skills / policy 层解释
+- `scope`：可选范围信息，由权限策略或其他业务层解释
 - `comment`：审批备注
 - `editedToolName` / `editedToolArgs`：编辑后继续执行
 
@@ -244,7 +244,7 @@ type HILToolMessagePayload =
 - `resumes` 只解析显式自有键；不会读取原型链上的 payload
 
 边界建议：
-- 权限模板、按钮文案、持久化范围等业务语义优先放在 skills 或外部审批服务中维护。
+- 权限模板、按钮文案、持久化范围等业务语义优先放在权限策略 runtime 或外部审批服务中维护。
 - HIL middleware 只负责 pause/resume 协议，不内置权限动作集合或 scope 语义。
 
 ```typescript
@@ -275,7 +275,7 @@ const hilMiddleware = createHILMiddleware({
     }
     return {decision: 'allow'};
   },
-  // 由外部注入恢复数据（可来自 skills、审批服务、UI 状态机）
+  // 由外部注入恢复数据（可来自权限策略、审批服务、UI 状态机）
   resolveResume: (pauseRequest, ctx) => {
     return (ctx.runtime.context as any).hil?.resumes?.[pauseRequest.id];
   },

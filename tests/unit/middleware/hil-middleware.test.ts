@@ -136,7 +136,7 @@ describe('createHILMiddleware', () => {
           resume: {
             decision: 'reject',
             comment: 'Rejected in review',
-            metadata: {skill: 'permission-policy'},
+            metadata: {permissionPolicy: {expression: 'Write(c.txt)'}},
           },
         },
       }),

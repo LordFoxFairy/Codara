@@ -66,7 +66,13 @@ export {
 } from '@core/tasks';
 export {
   createCodaraGuidelinesSource,
-} from '@core/sessions/guidelines';
+} from '@core/instructions/guidelines';
+export {
+  createCodaraPromptSource,
+} from '@core/instructions/prompt';
+export {
+  readBaseSystemMessage,
+} from '@core/instructions/system-message';
 export {
   createCodaraSkillsSource,
 } from '@core/skills';
@@ -85,9 +91,43 @@ export type {
   SummaryOptions,
 } from '@core/middleware';
 export type {
+  PermissionDecision,
+  PermissionEvaluationResult,
+  PermissionGrantScope,
+  PermissionMiddlewareOptions,
+  PermissionPolicyOptions,
+  PermissionRuntime,
+  PermissionRuntimeOptions,
+  PermissionRuleMatch,
+  PermissionSourceInfo,
+  PermissionValidationResult,
+} from '@core/permissions';
+export {
+  createPermissionMiddleware,
+  createPermissionRuntime,
+  ensurePermissionSettingsFile,
+  evaluatePermissionExpression,
+  evaluatePermissionToolCall,
+  formatPermissionExpression,
+  handlePermissionFallbackResume,
+  isPermissionPause,
+  persistAllowedPermission,
+  persistPermissionScope,
+  persistPermissionRule,
+  validatePermissionSettings,
+} from '@core/permissions';
+export type {
   GuidelinesOptions,
   GuidelinesSource,
-} from '@core/sessions/guidelines';
+} from '@core/instructions/guidelines';
+export type {
+  PromptOptions,
+  PromptSource,
+} from '@core/instructions/prompt';
+export type {
+  BaseSystemMessageBundle,
+  BaseSystemMessageRuntimeData,
+} from '@core/instructions/system-message';
 export type {SkillsSource} from '@core/skills';
 
 export type {AgentCheckpoint, AgentCheckpointer} from '@core/checkpoint';

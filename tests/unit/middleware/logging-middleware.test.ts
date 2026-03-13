@@ -199,7 +199,10 @@ describe('createLoggingMiddleware', () => {
               {id: 'deny', label: 'Deny'},
             ],
           },
-          metadata: {skill: 'permission-policy'},
+          metadata: {
+            codara: {actor: {agentType: 'subagent'}},
+            permissionPolicy: {expression: 'Bash(git status)'},
+          },
         },
       },
     });
@@ -226,7 +229,7 @@ describe('createLoggingMiddleware', () => {
       toolResultType: 'hil_pause',
       interactionDecision: 'ask',
       interactionChannel: 'permission-center',
-      interactionSkill: 'permission-policy',
+      interactionActorType: 'subagent',
       interactionActionIds: ['allow_once', 'always', 'deny'],
     });
   });

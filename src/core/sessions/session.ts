@@ -31,14 +31,10 @@ import {
   type SummaryOptions,
   type SummarySettings,
 } from '@core/middleware/summary';
-import type {GuidelinesSource} from '@core/sessions/guidelines';
-import {
-  formatSkillsList,
-  formatSkillsLocations,
-  SKILLS_SYSTEM_PROMPT,
-  type SkillsRuntimeData,
-  type SkillsSource,
-} from '@core/skills';
+import type {GuidelinesSource} from '@core/instructions/guidelines';
+import {type PromptSource} from '@core/instructions/prompt';
+import {type SkillsSource} from '@core/skills';
+import {buildBaseSystemMessage} from '@core/instructions/system-message';
 import type {ModelInfo} from '@core/provider';
 import {
   createSessionMetadata,
@@ -97,6 +93,7 @@ export interface CreateSessionOptions {
   model?: BaseChatModel | Promise<BaseChatModel>;
   modelCatalog?: SessionModelCatalog | Promise<SessionModelCatalog>;
   guidelinesSource?: GuidelinesSource;
+  promptSource?: PromptSource;
   skillsSource?: SkillsSource;
   store?: SessionStore;
   tools?: StructuredToolInterface[];
@@ -133,9 +130,7 @@ export interface Session {
 
 interface SessionSystemContext {
   systemMessage: string[];
-  runtimeShared?: {
-    skills: SkillsRuntimeData;
-  };
+  runtimeShared?: Record<string, unknown>;
 }
 
 export function createSession(options: CreateSessionOptions): Session {
@@ -216,7 +211,7 @@ export function createSession(options: CreateSessionOptions): Session {
       options.skillsSource?.reload();
     }
 
-    systemContext = await buildSessionSystemContext(options.guidelinesSource, options.skillsSource);
+    systemContext = await buildSessionSystemContext(options.promptSource, options.guidelinesSource, options.skillsSource);
     return systemContext;
   }
 
@@ -476,17 +471,11 @@ function resolveSessionId(
 }
 
 async function buildSessionSystemContext(
+  promptSource?: PromptSource,
   guidelinesSource?: GuidelinesSource,
   skillsSource?: SkillsSource,
 ): Promise<SessionSystemContext> {
-  const guidelinesMessage = await guidelinesSource?.getContent?.();
-  const skillsRuntime = await skillsSource?.getRuntime?.();
-
-  return {
-    systemMessage: [guidelinesMessage, skillsRuntime ? createSkillsSystemMessage(skillsRuntime) : undefined]
-      .filter((value): value is string => Boolean(value)),
-    ...(skillsRuntime ? {runtimeShared: {skills: skillsRuntime}} : {}),
-  };
+  return buildBaseSystemMessage(promptSource, guidelinesSource, skillsSource);
 }
 
 async function resolveSessionModel(
@@ -503,10 +492,4 @@ async function resolveSessionModel(
   const catalog = await options.modelCatalog;
   const modelRef = options.modelRef ?? 'default';
   return {model: await catalog.create(modelRef), modelInfo: catalog.getInfo(modelRef)};
-}
-
-function createSkillsSystemMessage(runtime: Pick<SkillsRuntimeData, 'sources' | 'discovered'>): string {
-  return SKILLS_SYSTEM_PROMPT
-    .replace('{skills_locations}', formatSkillsLocations(runtime.sources))
-    .replace('{skills_list}', formatSkillsList(runtime.discovered, runtime.sources));
 }

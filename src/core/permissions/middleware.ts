@@ -1,0 +1,52 @@
+import {createHILMiddleware, type BaseMiddleware, type HILMiddlewareOptions} from '@core/middleware';
+import {createPermissionRuntime, handlePermissionFallbackResume, type PermissionRuntimeOptions} from '@core/permissions/runtime';
+
+export interface PermissionMiddlewareOptions extends PermissionRuntimeOptions, HILMiddlewareOptions {}
+
+export function createPermissionMiddleware(options: PermissionMiddlewareOptions = {}): BaseMiddleware {
+  const {
+    cwd,
+    projectRoot,
+    userHome,
+    policyFiles,
+    settingsFile,
+    includeEditAction,
+    ...hilOptions
+  } = options;
+
+  const permissionRuntime = createPermissionRuntime({
+    cwd,
+    projectRoot,
+    userHome,
+    policyFiles,
+    settingsFile,
+    includeEditAction,
+  });
+  const fallbackResolveDecision = hilOptions.resolveDecision;
+  const fallbackHandleResume = hilOptions.handleResume;
+
+  return createHILMiddleware({
+    ...hilOptions,
+    resolveDecision: async (input) => {
+      const permissionDecision = await permissionRuntime.resolveToolDecision(input.context);
+      if (permissionDecision) {
+        return permissionDecision;
+      }
+
+      return fallbackResolveDecision ? fallbackResolveDecision(input) : undefined;
+    },
+    handleResume: async (request, resumePayload, context, handler) => {
+      if (permissionRuntime.isPermissionPause(request.metadata)) {
+        return permissionRuntime.handleResume(request.metadata, resumePayload, context, handler);
+      }
+
+      return handlePermissionFallbackResume(
+        fallbackHandleResume,
+        request,
+        resumePayload,
+        context,
+        handler,
+      );
+    },
+  });
+}
