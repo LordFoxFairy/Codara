@@ -26,6 +26,7 @@ import {
 } from '@core/tasks';
 import {createTaskTool} from '@core/tasks/task';
 import {FileSystemSkillStore} from '@core/skills';
+import {seedProjectSkillFixtures} from '../../helpers/project-skill-fixtures';
 
 export async function createCliRuntime(input: {
   cwd: string;
@@ -38,6 +39,7 @@ export async function createCliRuntime(input: {
 
   switch (scenario) {
     case 'task-skill-workflow':
+      await seedProjectSkillFixtures(input.cwd);
       await seedPermissions(input.cwd, ['Read(*)']);
       return {
         codara: createCodaraRuntime({
@@ -47,18 +49,19 @@ export async function createCliRuntime(input: {
           ...(input.sessionId ? {sessionId: input.sessionId} : {}),
           model: new SkillAwareScriptedModel(
             'basic-task-flow',
-            path.join(repoRoot, '.codara', 'skills', 'basic-task-flow', 'SKILL.md'),
-            path.join(repoRoot, '.codara', 'skills', 'basic-task-flow', 'references', 'checklist.md'),
+            path.join(input.cwd, '.codara', 'skills', 'basic-task-flow', 'SKILL.md'),
+            path.join(input.cwd, '.codara', 'skills', 'basic-task-flow', 'references', 'checklist.md'),
           ) as unknown as BaseChatModel,
           tools: [createReadFileTool()],
           builtinTools: false,
           skills: {
-            store: createRepoSkillStore(repoRoot),
+            store: createProjectSkillStore(input.cwd),
             subagentRoots: [path.join(repoRoot, '.codara', 'skills', 'builtin-agents', 'agents')],
           },
         }),
       };
     case 'task-skill-delegate': {
+      await seedProjectSkillFixtures(input.cwd);
       const store = createTaskFileStore({rootDir: path.join(input.cwd, '.codara', 'case-tasks')});
       return {
         codara: createCodaraRuntime({
@@ -93,10 +96,10 @@ export async function createCliRuntime(input: {
           ]) as unknown as BaseChatModel,
           builtinTools: false,
           skills: {
-            store: createRepoSkillStore(repoRoot),
+            store: createProjectSkillStore(input.cwd),
             subagentRoots: [path.join(repoRoot, '.codara', 'skills', 'builtin-agents', 'agents')],
           },
-          middleware: [createSkillsMiddleware({store: createRepoSkillStore(repoRoot)})],
+          middleware: [createSkillsMiddleware({store: createProjectSkillStore(input.cwd)})],
           tools: [
             createTaskCreateTool({store}),
             createTaskTool({
@@ -309,6 +312,13 @@ async function seedPermissions(projectRoot: string, rules: string[]): Promise<vo
 function createRepoSkillStore(repoRoot: string): FileSystemSkillStore {
   return new FileSystemSkillStore({
     sources: [path.join(repoRoot, '.codara', 'skills')],
+    cacheTtlMs: 0,
+  });
+}
+
+function createProjectSkillStore(projectRoot: string): FileSystemSkillStore {
+  return new FileSystemSkillStore({
+    sources: [path.join(projectRoot, '.codara', 'skills')],
     cacheTtlMs: 0,
   });
 }

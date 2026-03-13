@@ -1,5 +1,6 @@
 import {describe, expect, it} from 'bun:test'
-import {readFile} from 'node:fs/promises'
+import {mkdtemp, readFile} from 'node:fs/promises'
+import {tmpdir} from 'node:os'
 import path from 'node:path'
 import {AIMessage, HumanMessage, type BaseMessage, type ToolCall} from '@langchain/core/messages'
 import type {BaseChatModel} from '@langchain/core/language_models/chat_models'
@@ -9,6 +10,7 @@ import {z} from 'zod'
 import {createAgent} from '@core/agents'
 import {createMiddleware, createSkillsMiddleware} from '@core/middleware'
 import {FileSystemSkillStore} from '@core/skills'
+import {seedProjectSkillFixtures} from '../../helpers/project-skill-fixtures'
 
 const DEBUG_LOG = process.env.SKILLS_E2E_LOG === '1'
 
@@ -82,9 +84,11 @@ function stringifyMessage(content: unknown): string {
 
 describe('Skills task completion flow', () => {
   it('should complete task when skills middleware exposes skill context', async () => {
-    const projectSkillsRoot = path.join(process.cwd(), '.codara', 'skills')
-    const skillPath = path.join(projectSkillsRoot, 'basic-task-flow', 'SKILL.md')
-    const referencePath = path.join(projectSkillsRoot, 'basic-task-flow', 'references', 'checklist.md')
+    const projectRoot = await mkdtemp(path.join(tmpdir(), 'codara-task-skill-complete-'))
+    const fixture = await seedProjectSkillFixtures(projectRoot)
+    const projectSkillsRoot = fixture.skillsRoot
+    const skillPath = fixture.basicSkillPath
+    const referencePath = fixture.basicReferencePath
 
     const store = new FileSystemSkillStore({sources: [projectSkillsRoot], cacheTtlMs: 0})
     debugLog(`skills root: ${projectSkillsRoot}`)
