@@ -67,7 +67,9 @@ Writing todos takes time and tokens, use it when it is helpful for managing comp
 
 ## Important To-Do List Usage Notes to Remember
 - The \`write_todos\` tool should never be called multiple times in parallel.
-- Don't be afraid to revise the To-Do list as you go. New information may reveal new tasks that need to be done, or old tasks that are irrelevant.`;
+- Don't be afraid to revise the To-Do list as you go. New information may reveal new tasks that need to be done, or old tasks that are irrelevant.
+- Use \`write_todos\` for your local execution plan, \`Task\` for delegated fresh-context work, and \`TaskCreate\` / \`TaskUpdate\` / \`TaskList\` for shared coordination across agents.
+- Do not treat slash commands or permission approvals as substitutes for task tracking.`;
 
 export const TODO_TOOL_NAME = 'write_todos';
 

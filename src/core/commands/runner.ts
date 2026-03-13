@@ -15,6 +15,11 @@ export interface CodaraCommandRunner {
 export interface CreateCodaraCommandRunnerOptions {
   agent: CodaraCommandAgent;
   getDynamicCommands?: () => Promise<readonly CodaraCommandDefinition[]>;
+  environment?: {
+    cwd?: string;
+    projectRoot?: string;
+    userHome?: string;
+  };
 }
 
 export function createCodaraCommandRunner(options: CreateCodaraCommandRunnerOptions): CodaraCommandRunner {
@@ -41,7 +46,12 @@ export function createCodaraCommandRunner(options: CreateCodaraCommandRunnerOpti
         };
       }
 
-      return definition.execute({command, registry, agent: options.agent});
+      return definition.execute({
+        command,
+        registry,
+        agent: options.agent,
+        environment: options.environment ?? {},
+      });
     },
   };
 }
