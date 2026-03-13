@@ -1,14 +1,20 @@
+import {clearCommand} from './clear';
 import type {CodaraCommandDefinition} from '@core/commands/types';
 import {compactCommand} from './compact';
 import {helpCommand} from './help';
 import {memoryCommand} from './memory';
+import {permissionsCommand} from './permissions';
 import {reloadCommand} from './reload';
 import {resumeCommand} from './resume';
+import {statusCommand} from './status';
 
 export function createBuiltInCommands(): readonly CodaraCommandDefinition[] {
   return [
     helpCommand,
+    clearCommand,
+    statusCommand,
     memoryCommand,
+    permissionsCommand,
     resumeCommand,
     compactCommand,
     reloadCommand,

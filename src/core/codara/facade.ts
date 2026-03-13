@@ -249,6 +249,7 @@ function assembleCodara(options: CodaraOptions, restoredState?: SessionState): C
       cwd: options.cwd,
       projectRoot: options.projectRoot,
       userHome: options.userHome,
+      modelAlias: alias,
     },
     ...(skillsSource ? {getDynamicCommands: () => createSkillCodaraCommands(skillsSource)} : {}),
   });

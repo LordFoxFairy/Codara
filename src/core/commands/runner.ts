@@ -1,6 +1,7 @@
 import type {
-  CodaraCommandDefinition,
   CodaraCommandAgent,
+  CodaraCommandDefinition,
+  CodaraCommandEnvironment,
   CodaraCommandResult,
   CodaraCommandSpec,
   ParsedCodaraCommand,
@@ -15,11 +16,7 @@ export interface CodaraCommandRunner {
 export interface CreateCodaraCommandRunnerOptions {
   agent: CodaraCommandAgent;
   getDynamicCommands?: () => Promise<readonly CodaraCommandDefinition[]>;
-  environment?: {
-    cwd?: string;
-    projectRoot?: string;
-    userHome?: string;
-  };
+  environment?: CodaraCommandEnvironment;
 }
 
 export function createCodaraCommandRunner(options: CreateCodaraCommandRunnerOptions): CodaraCommandRunner {

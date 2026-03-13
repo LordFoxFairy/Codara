@@ -93,6 +93,7 @@ export {
   persistAllowedPermission,
   persistPermissionScope,
   persistPermissionRule,
+  resolvePermissionSettingsFile,
   validatePermissionSettings,
   type PermissionDecision,
   type PermissionEvaluationResult,

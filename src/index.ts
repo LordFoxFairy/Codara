@@ -81,6 +81,7 @@ export {
   persistAllowedPermission,
   persistPermissionScope,
   persistPermissionRule,
+  resolvePermissionSettingsFile,
   validatePermissionSettings,
 } from '@core/middleware';
 export {
