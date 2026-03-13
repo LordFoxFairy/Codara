@@ -35,6 +35,10 @@ import {
   type PromptSource,
 } from '@core/instructions/prompt';
 import {
+  createAutoMemoryRuntime,
+  type AutoMemoryRuntime,
+} from '@core/memory/auto-memory';
+import {
   createCodaraSkillsSource,
   FileSystemSkillStore,
   type SkillStore,
@@ -89,6 +93,14 @@ export interface CodaraSkillOptions {
   cacheTtlMs?: number;
 }
 
+export interface CodaraAutoMemoryOptions {
+  cwd?: string;
+  projectRoot?: string;
+  userHome?: string;
+  autoGlobal?: boolean;
+  rootDir?: string;
+}
+
 export interface CodaraOptions {
   id?: string;
   config?: ModelRoutingConfig;
@@ -114,6 +126,7 @@ export interface CodaraOptions {
   messages?: import('@core/agents').AgentInput;
   context?: Record<string, unknown>;
   values?: Record<string, unknown>;
+  autoMemory?: false | CodaraAutoMemoryOptions;
 }
 
 export interface CodaraRuntimeOptions extends CodaraOptions {
@@ -194,6 +207,9 @@ export function createCodaraRuntime(options: CodaraRuntimeOptions = {}): Codara 
     tools: runtimeTools,
     middleware: runtimeMiddlewares,
     hil: false,
+    autoMemory: options.autoMemory === false
+      ? false
+      : (typeof options.autoMemory === 'object' && options.autoMemory !== null ? options.autoMemory : {}),
     ...(logging === false ? {logging: false} : {logging}),
     ...(catalog ? {catalog} : {}),
     ...(options.store ? {} : {store: new FileSessionStore({basePath: path.join(codaraPath, 'sessions')})}),
@@ -207,6 +223,7 @@ export function createCodaraRuntime(options: CodaraRuntimeOptions = {}): Codara 
 function assembleCodara(options: CodaraOptions, restoredState?: SessionState): Codara {
   const skills = resolveCodaraSkills(options);
   const skillsSource = skills ? createCodaraSkillsSource(skills) : undefined;
+  const autoMemory = resolveCodaraAutoMemory(options);
   const alias = normalizeAlias(options.alias);
   const guidelinesSource = createCodaraGuidelinesSource({
     cwd: options.cwd,
@@ -239,6 +256,7 @@ function assembleCodara(options: CodaraOptions, restoredState?: SessionState): C
     guidelinesSource,
     promptSource,
     ...(skillsSource ? {skillsSource} : {}),
+    ...(autoMemory ? {autoMemory} : {}),
     tools,
     ...(options.handleToolErrors !== undefined ? {handleToolErrors: options.handleToolErrors} : {}),
     middleware: createCodaraMiddlewares(options),
@@ -307,6 +325,20 @@ function assembleCodara(options: CodaraOptions, restoredState?: SessionState): C
     listCommands: commands.listCommands,
     executeCommand,
   };
+}
+
+function resolveCodaraAutoMemory(options: CodaraOptions): AutoMemoryRuntime | undefined {
+  if (options.autoMemory === false || !options.autoMemory) {
+    return undefined;
+  }
+
+  return createAutoMemoryRuntime({
+    cwd: options.autoMemory.cwd ?? options.cwd,
+    projectRoot: options.autoMemory.projectRoot ?? options.projectRoot,
+    userHome: options.autoMemory.userHome ?? options.userHome,
+    autoGlobal: options.autoMemory.autoGlobal,
+    rootDir: options.autoMemory.rootDir,
+  });
 }
 
 export async function openCodaraSession(

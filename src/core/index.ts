@@ -7,6 +7,7 @@ export {
   openCodaraSession,
   openLatestCodaraSession,
   type Codara,
+  type CodaraAutoMemoryOptions,
   type CodaraRuntimeOptions,
   type CodaraOptions,
 } from '@core/codara';

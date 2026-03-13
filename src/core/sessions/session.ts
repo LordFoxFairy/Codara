@@ -34,6 +34,10 @@ import {
 import type {GuidelinesSource} from '@core/instructions/guidelines';
 import {type PromptSource} from '@core/instructions/prompt';
 import {type SkillsSource} from '@core/skills';
+import {
+  type AutoMemoryRuntime,
+  shouldRecordAutoMemoryTurn,
+} from '@core/memory/auto-memory';
 import {buildBaseSystemMessage} from '@core/instructions/system-message';
 import type {ModelInfo} from '@core/provider';
 import {
@@ -101,6 +105,7 @@ export interface CreateSessionOptions {
   guidelinesSource?: GuidelinesSource;
   promptSource?: PromptSource;
   skillsSource?: SkillsSource;
+  autoMemory?: AutoMemoryRuntime;
   store?: SessionStore;
   tools?: StructuredToolInterface[];
   handleToolErrors?: ToolErrorHandler;
@@ -234,12 +239,14 @@ export function createSession(options: CreateSessionOptions): Session {
       options.promptSource?.reload?.();
       options.guidelinesSource?.reload?.();
       options.skillsSource?.reload();
+      options.autoMemory?.source.reload();
     }
 
     return buildBaseSystemMessage(
       options.promptSource,
       options.guidelinesSource,
       options.skillsSource,
+      options.autoMemory?.source,
     );
   }
 
@@ -327,6 +334,7 @@ export function createSession(options: CreateSessionOptions): Session {
     const instance = await getAgent();
     const previousMessages = [...instance.getState().messages];
     const result = await operation(instance);
+    await recordAutoMemory(previousMessages, result.state.messages, result);
     await sync(result.state, {collectUsage: true, previousMessages});
     return result;
   }
@@ -360,6 +368,7 @@ export function createSession(options: CreateSessionOptions): Session {
       throw new Error('Stream finished without an AgentResult.');
     }
 
+    await recordAutoMemory(previousMessages, result.state.messages, result);
     await sync(result.state, {collectUsage: true, previousMessages});
     return result;
   }
@@ -368,6 +377,26 @@ export function createSession(options: CreateSessionOptions): Session {
     const next = await loadSessionSystemContext();
     context.systemMessage = [...next.systemMessage];
     context.runtime.shared = deepClone(next.runtimeShared ?? {});
+  }
+
+  async function recordAutoMemory(
+    previousMessages: readonly BaseMessage[],
+    nextMessages: readonly BaseMessage[],
+    result: AgentResult,
+  ): Promise<void> {
+    if (!options.autoMemory || !shouldRecordAutoMemoryTurn(result)) {
+      return;
+    }
+
+    try {
+      await options.autoMemory.recordTurn({
+        previousMessages,
+        nextMessages,
+        sessionId,
+      });
+    } catch {
+      // Auto memory is best-effort and should not break the turn lifecycle.
+    }
   }
 
   async function fork(optionsOverride: {id?: string; sessionId?: string; store?: SessionStore} = {}) {
