@@ -3,6 +3,8 @@ import {useInput, useStdin} from 'ink';
 interface UseHilInputOptions {
   active: boolean;
   disabled?: boolean;
+  onMoveLeft?: () => void;
+  onMoveRight?: () => void;
   onSelectPrevious: () => void;
   onSelectNext: () => void;
   onToggleFocus: () => void;
@@ -17,6 +19,8 @@ export function useHilInput(options: UseHilInputOptions): void {
   const {
     active,
     disabled = false,
+    onMoveLeft,
+    onMoveRight,
     onSelectPrevious,
     onSelectNext,
     onToggleFocus,
@@ -38,8 +42,18 @@ export function useHilInput(options: UseHilInputOptions): void {
       return;
     }
 
-    if (key.tab || key.leftArrow || key.rightArrow) {
+    if (key.tab) {
       onToggleFocus();
+      return;
+    }
+
+    if (key.leftArrow) {
+      (onMoveLeft ?? onToggleFocus)();
+      return;
+    }
+
+    if (key.rightArrow) {
+      (onMoveRight ?? onToggleFocus)();
       return;
     }
 

@@ -26,6 +26,27 @@ export interface CliHilReviewAction extends PauseUIActionOption {
   kind: 'primary' | 'secondary' | 'danger';
 }
 
+export interface CliHilClarificationOption {
+  id: string;
+  label: string;
+  description?: string;
+}
+
+export interface CliHilClarificationTab {
+  id: string;
+  label: string;
+  question: string;
+  options: CliHilClarificationOption[];
+  placeholder?: string;
+}
+
+export interface CliHilClarificationState {
+  summary?: string;
+  tabs: CliHilClarificationTab[];
+  activeTabIndex: number;
+  answers: Record<string, string>;
+}
+
 export interface CliHilReviewState {
   request: PauseRequest;
   actions: CliHilReviewAction[];
@@ -33,4 +54,5 @@ export interface CliHilReviewState {
   focus: CliHilFocus;
   draft: string;
   busy: boolean;
+  clarification?: CliHilClarificationState;
 }

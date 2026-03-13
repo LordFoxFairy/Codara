@@ -17,8 +17,11 @@ import {
 import type {CliComposerState} from '../composer/types';
 import {hasTranscriptContent} from '../transcript/model';
 import {
+  applyCliHilClarificationShortcut,
   buildCliHilResumePayload,
+  selectNextCliHilTab,
   selectNextCliHilAction,
+  selectPreviousCliHilTab,
   selectPreviousCliHilAction,
   syncCliHilReviewState,
   toggleCliHilFocus,
@@ -59,6 +62,8 @@ export interface CliController {
   moveCursorHome: () => void;
   moveCursorEnd: () => void;
   submitDraft: () => void;
+  moveHilLeft: () => void;
+  moveHilRight: () => void;
   selectPreviousHilAction: () => void;
   selectNextHilAction: () => void;
   toggleHilFocus: () => void;
@@ -300,13 +305,28 @@ export function useCliController(options: UseCliControllerOptions): CliControlle
     setHilReview((current) => current ? selectNextCliHilAction(current) : current);
   }, []);
 
+  const moveHilLeft = useCallback(() => {
+    setHilReview((current) => current?.clarification ? selectPreviousCliHilTab(current) : current ? toggleCliHilFocus(current) : current);
+  }, []);
+
+  const moveHilRight = useCallback(() => {
+    setHilReview((current) => current?.clarification ? selectNextCliHilTab(current) : current ? toggleCliHilFocus(current) : current);
+  }, []);
+
   const toggleHilFocus = useCallback(() => {
     setHilReview((current) => current ? toggleCliHilFocus(current) : current);
   }, []);
 
   const insertHilText = useCallback((input: string) => {
     setHilReview((current) => {
-      if (!current || current.focus !== 'input') {
+      if (!current) {
+        return current;
+      }
+      const shortcut = current.focus !== 'input' ? applyCliHilClarificationShortcut(current, input) : undefined;
+      if (shortcut) {
+        return shortcut;
+      }
+      if (current.focus !== 'input') {
         return current;
       }
       return updateCliHilDraft(current, current.draft + input);
@@ -409,6 +429,8 @@ export function useCliController(options: UseCliControllerOptions): CliControlle
     moveCursorHome,
     moveCursorEnd,
     submitDraft,
+    moveHilLeft,
+    moveHilRight,
     selectPreviousHilAction,
     selectNextHilAction,
     toggleHilFocus,
