@@ -163,10 +163,13 @@ createCodara(...)
 - slash commands 归属 `src/core/commands/`
 - 当前内建命令：
   - `/help`
+  - `/clear`
+  - `/status`
   - `/memory`
+  - `/permissions`
   - `/resume`
   - `/compact`
-- `/reload`
+  - `/reload`
   - 刷新 `AGENTS.md` source 与 skills discovery cache
 - skills 还可以通过 `command-name` 显式声明动态 slash commands
 - 命令来源会被正式区分为：

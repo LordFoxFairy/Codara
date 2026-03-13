@@ -19,7 +19,7 @@ AI 驱动的终端代码代理运行时与产品 facade。
 - 显式 session 打开与 checkpoint compact 宿主接口
 - `AGENTS.md` 投影注入
 - summary + context budget 上下文管理
-- 宿主级 slash commands（`/help`、`/memory`、`/resume`、`/compact`、`/reload`）
+- 宿主级 slash commands（`/help`、`/clear`、`/status`、`/memory`、`/permissions`、`/resume`、`/compact`、`/reload`）
 - `todo` agent 内部状态
 - `Task` / subagent 委派
 - `TaskCreate` / `TaskUpdate` / `TaskList` 共享协调层
@@ -68,11 +68,20 @@ src/index.ts
 
 - `/help`
   - 列出当前内建命令与由 skills 暴露的动态命令
+- `/clear`
+  - 清空当前 conversation state
+  - 保留当前 `sessionId`，直接进入下一轮新会话
+- `/status`
+  - 查看当前 runtime / session / context window / memory / permission 状态
 - `/memory`
   - 默认展示可选的 `AGENTS.md` scope
   - 支持 `show / project / global`
   - `project/global` 返回宿主 `open_file` 动作，便于 UI/CLI 打开目标文件
   - 编辑后配合 `/reload` 生效
+- `/permissions`
+  - 支持 `show / edit`
+  - `show` 汇总当前 permission policy source
+  - `edit` 返回宿主 `open_file` 动作，打开项目 `.codara/settings.local.json`
 - `/resume`
   - 通过 `sessionId` 恢复指定历史会话
   - permission/HIL 不走 slash command，走通用 HIL 面板或直接编辑 settings JSON
@@ -84,7 +93,7 @@ src/index.ts
   - 清空当前 session 的 `AGENTS.md` source cache
   - 同时刷新 skills discovery cache
 
-这些命令当前由 `src/core/codara/commands/` 管理，并通过 `createCodara()` 返回的 runtime surface 暴露。
+这些命令当前由 `src/core/commands/` 管理，并通过 `createCodara()` 返回的 runtime surface 暴露。
 
 默认 conversation lifecycle 会在接近输入窗口上限时自动 compact：
 - 默认 alias 为 `sonnet`

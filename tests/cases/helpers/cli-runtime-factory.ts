@@ -331,6 +331,18 @@ export async function createCliRuntime(input: {
           skills: false,
         }),
       };
+    case 'command-surface':
+      return {
+        codara: createCodaraRuntime({
+          cwd: input.cwd,
+          projectRoot: input.cwd,
+          codaraPath: path.join(input.cwd, '.codara'),
+          ...(input.sessionId ? {sessionId: input.sessionId} : {}),
+          model: new ScriptedModel([new AIMessage('COMMAND_SURFACE_UNUSED')]) as unknown as BaseChatModel,
+          builtinTools: false,
+          skills: false,
+        }),
+      };
     case 'default-runtime-workflow':
       return {
         codara: createCodaraRuntime({
