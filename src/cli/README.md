@@ -54,6 +54,10 @@
 
 ## 校验
 
+- `bun run check:fast`
+  - 日常 lint + typecheck 入口
+- `bun run check:cases`
+  - 优先用于 CLI / runtime 端到端验收
 - `bun run lint:cli`
   - 仅检查 `src/cli`
 - `bun run lint`
