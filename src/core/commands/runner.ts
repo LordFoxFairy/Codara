@@ -99,6 +99,7 @@ function toSpec(command: CodaraCommandDefinition): CodaraCommandSpec {
     usage: command.usage,
     description: command.description,
     source: command.source,
+    ...(command.help ? {help: command.help} : {}),
     ...(command.aliases?.length ? {aliases: [...command.aliases]} : {}),
   };
 }

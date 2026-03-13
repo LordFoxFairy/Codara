@@ -12,6 +12,9 @@ export const statusCommand: CodaraCommandDefinition = {
   usage: '/status',
   description: 'Show the current runtime, session, context window, memory, and permission status.',
   source: BUILTIN_SOURCE,
+  help: {
+    executionMode: 'runtime_command',
+  },
   async execute({command, agent, environment}) {
     const session = agent.getState();
     const state = await agent.hydrate();

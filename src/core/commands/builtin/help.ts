@@ -2,6 +2,8 @@ import path from 'node:path';
 import type {
   CodaraCommandDefinition,
   CodaraCommandEnvironment,
+  CodaraCommandExecutionMode,
+  CodaraCommandHelpMetadata,
   CodaraCommandSource,
   CodaraCommandSpec,
 } from '@core/commands/types';
@@ -31,6 +33,9 @@ export const helpCommand: CodaraCommandDefinition = {
   usage: '/help [command|page]',
   description: 'Show available Codara slash commands.',
   source: BUILTIN_SOURCE,
+  help: {
+    executionMode: 'runtime_command',
+  },
   async execute({command, registry, environment}) {
     const targetArg = normalizeHelpTarget(command.args[0]);
     if (!targetArg) {
@@ -100,6 +105,7 @@ function renderHelpIndex(
   return [
     `Codara commands (page ${pageIndex}/${pageCount})`,
     'Run /help <command> for details.',
+    'Skill commands run through the agent and may require runtime tools.',
     ...(pageCount > 1
       ? [
           pageIndex < pageCount
@@ -117,11 +123,13 @@ function renderHelpIndex(
 }
 
 function renderCommandDetails(command: CodaraCommandSpec, environment: CodaraCommandEnvironment): string {
+  const executionMode = formatExecutionMode(resolveCommandHelpMetadata(command).executionMode);
   const detailLines = [
     `/${command.name}`,
     command.description,
     `Usage: ${command.usage}`,
     `Type: ${formatCommandType(command.source)}`,
+    `Execution: ${executionMode}`,
   ];
 
   const scope = formatCommandScope(command.source, environment);
@@ -129,9 +137,18 @@ function renderCommandDetails(command: CodaraCommandSpec, environment: CodaraCom
     detailLines.push(`Scope: ${scope}`);
   }
 
+  const help = resolveCommandHelpMetadata(command);
+  if (help.allowedTools?.length) {
+    detailLines.push(`Allowed tools: ${help.allowedTools.join(', ')}`);
+  }
+  if (help.requiredShellCommands?.length) {
+    detailLines.push(`Required shell commands: ${help.requiredShellCommands.join(', ')}`);
+  }
+
   if (command.source.type === 'skill') {
     detailLines.push(`Skill: ${command.source.skillName}`);
     detailLines.push(`Path: ${command.source.skillPath}`);
+    detailLines.push('Runtime requirement: run this command in a Codara runtime that exposes the listed tools.');
   }
 
   if (command.aliases?.length) {
@@ -256,6 +273,29 @@ function summarizeUsage(usage: string): string {
   return match?.[0] ?? usage.trim();
 }
 
+function resolveCommandHelpMetadata(command: CodaraCommandSpec): CodaraCommandHelpMetadata {
+  if (command.help) {
+    return command.help;
+  }
+
+  return {
+    executionMode: command.source.type === 'skill' ? 'agent_workflow' : 'runtime_command',
+  };
+}
+
+function formatExecutionMode(mode: CodaraCommandExecutionMode): string {
+  switch (mode) {
+    case 'agent_workflow':
+      return 'agent workflow';
+    case 'host_action':
+      return 'host action';
+    case 'runtime_command':
+      return 'runtime command';
+    default:
+      return mode;
+  }
+}
+
 function formatCommandType(source: CodaraCommandSource): string {
   return source.type === 'builtin' ? 'built-in command' : 'skill command';
 }
@@ -269,25 +309,20 @@ function formatCommandScope(
   }
 
   const projectRoot = environment.projectRoot ?? environment.cwd;
-  if (projectRoot) {
-    const projectSkillsRoot = path.join(path.resolve(projectRoot), '.codara', 'skills');
-    if (isPathInside(source.skillPath, projectSkillsRoot)) {
-      return 'project';
-    }
+  const userHome = environment.userHome;
+
+  if (projectRoot && isPathInside(path.join(projectRoot, '.codara', 'skills'), source.skillPath)) {
+    return 'project';
   }
 
-  const userHome = environment.userHome;
-  if (userHome) {
-    const globalSkillsRoot = path.join(path.resolve(userHome), '.codara', 'skills');
-    if (isPathInside(source.skillPath, globalSkillsRoot)) {
-      return 'global';
-    }
+  if (userHome && isPathInside(path.join(userHome, '.codara', 'skills'), source.skillPath)) {
+    return 'global';
   }
 
   return 'external';
 }
 
-function isPathInside(candidatePath: string, rootPath: string): boolean {
-  const relative = path.relative(rootPath, candidatePath);
+function isPathInside(root: string, target: string): boolean {
+  const relative = path.relative(root, target);
   return relative === '' || (!relative.startsWith('..') && !path.isAbsolute(relative));
 }
