@@ -17,7 +17,6 @@ export function createPermissionMiddleware(options: PermissionMiddlewareOptions 
     settingsFile,
     includeEditAction,
     bashAnalysisModel,
-    analyzeBash,
     ...hilOptions
   } = options;
 
@@ -29,7 +28,6 @@ export function createPermissionMiddleware(options: PermissionMiddlewareOptions 
     settingsFile,
     includeEditAction,
     bashAnalysisModel,
-    analyzeBash,
   });
   const fallbackResolveDecision = hilOptions.resolveDecision;
   const fallbackHandleResume = hilOptions.handleResume;

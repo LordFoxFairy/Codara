@@ -10,15 +10,13 @@ export interface PermissionAnalysisModel {
   invoke(messages: [SystemMessage, HumanMessage]): Promise<{text?: string; content?: unknown}>;
 }
 
-export type PermissionBashAnalysisFn = (input: {
+export function createModelPermissionBashAnalysis(modelInput: {
+  model: PermissionAnalysisModel | Promise<PermissionAnalysisModel> | (() => Promise<PermissionAnalysisModel>);
+}): (input: {
   command: string;
   cwd?: string;
   projectRoot?: string;
-}) => Promise<PermissionBashAnalysis | undefined>;
-
-export function createModelPermissionBashAnalysis(modelInput: {
-  model: PermissionAnalysisModel | Promise<PermissionAnalysisModel> | (() => Promise<PermissionAnalysisModel>);
-}): PermissionBashAnalysisFn {
+}) => Promise<PermissionBashAnalysis | undefined> {
   return async (input) => {
     const model = await resolveClassifierModel(modelInput.model);
     const response = await model.invoke([
