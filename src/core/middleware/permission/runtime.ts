@@ -13,6 +13,7 @@ import {
 import type {ToolCallContext} from '@core/middleware/types';
 import {
   evaluatePermissionToolCall,
+  evaluatePermissionExpression,
   formatPermissionPathScopeExpression,
   formatPermissionToolScopeExpression,
   persistPermissionRule,
@@ -39,6 +40,7 @@ export interface PermissionRuntime {
 }
 
 const DEFAULT_PERMISSION_CHANNEL = 'permission-center';
+type PermissionEvaluation = NonNullable<Awaited<ReturnType<typeof evaluatePermissionToolCall>>>;
 
 export function createPermissionRuntime(options: PermissionRuntimeOptions = {}): PermissionRuntime {
   return {
@@ -56,12 +58,17 @@ async function resolvePermissionDecision(
   context: ToolCallContext,
   options: PermissionRuntimeOptions,
 ): Promise<HILDecision | undefined> {
-  const evaluation = await evaluatePermissionToolCall(context.toolCall, options);
-  if (!evaluation) {
+  const initialEvaluation = await evaluatePermissionToolCall(context.toolCall, options);
+  if (!initialEvaluation) {
     return undefined;
   }
 
-  const bashClassification = await classifyBashPermission(context, evaluation.decision, options);
+  const bashClassification = await classifyBashPermission(context, initialEvaluation.decision, options);
+  const evaluation = await reEvaluateClassifiedPermission(
+    initialEvaluation,
+    bashClassification,
+    options,
+  );
   const reason = describePermissionDecisionReason(evaluation, context, options);
   const metadata = {
     codara: {
@@ -426,6 +433,66 @@ async function classifyBashPermission(
   } catch {
     return undefined;
   }
+}
+
+async function reEvaluateClassifiedPermission(
+  evaluation: PermissionEvaluation,
+  bashClassification: PermissionBashClassification | undefined,
+  options: PermissionRuntimeOptions,
+): Promise<PermissionEvaluation> {
+  if (evaluation.decision !== 'ask' || !bashClassification) {
+    return evaluation;
+  }
+
+  const candidates = [
+    bashClassification.pathScopeExpression,
+    bashClassification.toolScopeExpression,
+  ].filter((value): value is string => typeof value === 'string' && value.trim().length > 0);
+
+  if (candidates.length === 0) {
+    return evaluation;
+  }
+
+  const reEvaluations = await Promise.all(
+    candidates.map((expression) => evaluatePermissionExpression(expression, options)),
+  );
+  const selected = selectClassifiedPermissionEvaluation(evaluation, reEvaluations);
+  return selected
+    ? {
+      ...selected,
+      input: evaluation.input,
+    }
+    : evaluation;
+}
+
+function selectClassifiedPermissionEvaluation(
+  original: PermissionEvaluation,
+  candidates: PermissionEvaluation[],
+): PermissionEvaluation | undefined {
+  const matchedDeny = candidates.find((candidate) => candidate.matched?.bucket === 'deny');
+  if (matchedDeny) {
+    return matchedDeny;
+  }
+
+  if (original.matched?.bucket === 'ask') {
+    return undefined;
+  }
+
+  const matchedAsk = candidates.find((candidate) => candidate.matched?.bucket === 'ask');
+  if (matchedAsk) {
+    return matchedAsk;
+  }
+
+  if (original.matched) {
+    return undefined;
+  }
+
+  const matchedAllow = candidates.find((candidate) => candidate.matched?.bucket === 'allow');
+  if (matchedAllow) {
+    return matchedAllow;
+  }
+
+  return undefined;
 }
 
 function readBashCommand(toolCall: ToolCallContext['toolCall']): string | undefined {

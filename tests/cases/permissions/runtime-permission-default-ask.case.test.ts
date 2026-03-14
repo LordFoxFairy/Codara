@@ -315,4 +315,31 @@ describe('case: runtime permission default ask', () => {
     expect(second.output).toContain('RUNTIME_PERMISSION_HEREDOC_PATH_OTHER_DONE');
     expect(second.output).not.toContain('Permission Review');
   });
+
+  it('should reuse existing directory approvals for complex bash writes through the internal classifier in the real CLI', async () => {
+    const root = await mkdtemp(path.join(tmpdir(), 'codara-case-permission-complex-path-cli-'));
+    const projectRoot = path.join(root, 'project');
+    const codaraPath = path.join(projectRoot, '.codara');
+    await mkdir(codaraPath, {recursive: true});
+    await writeFile(path.join(codaraPath, 'settings.local.json'), JSON.stringify({
+      permissions: {
+        rules: {
+          allow: ['Write(tmp/demo2/)'],
+          ask: [],
+          deny: [],
+        },
+      },
+    }, null, 2));
+
+    const result = await runRealCliCase({
+      cwd: projectRoot,
+      prompt: 'Run cat README.md | tee tmp/demo2/PLAN.md >/dev/null',
+      scenario: 'runtime-permission-complex-path',
+    });
+
+    expect(result.exitCode).toBe(0);
+    expect(result.output).toContain('RUNTIME_PERMISSION_COMPLEX_PATH_DONE');
+    expect(result.output).not.toContain('Permission Review');
+    expect(result.output).not.toContain('HIL action:');
+  });
 });
