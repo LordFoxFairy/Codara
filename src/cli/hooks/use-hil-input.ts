@@ -13,6 +13,7 @@ interface UseHilInputOptions {
   onBackspace: () => void;
   onSubmit: () => void;
   onExit: () => void;
+  onQuickAction?: (actionId: string) => void;
 }
 
 export function useHilInput(options: UseHilInputOptions): void {
@@ -29,6 +30,7 @@ export function useHilInput(options: UseHilInputOptions): void {
     onBackspace,
     onSubmit,
     onExit,
+    onQuickAction,
   } = options;
   const {isRawModeSupported} = useStdin();
 
@@ -40,6 +42,21 @@ export function useHilInput(options: UseHilInputOptions): void {
 
     if (disabled) {
       return;
+    }
+
+    if (!key.ctrl && !key.meta && onQuickAction) {
+      if (input === 'y') {
+        onQuickAction('allow_once');
+        return;
+      }
+      if (input === 'n') {
+        onQuickAction('deny');
+        return;
+      }
+      if (input === 'a') {
+        onQuickAction('dont_ask_again');
+        return;
+      }
     }
 
     if (key.tab) {
