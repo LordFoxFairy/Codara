@@ -6,7 +6,7 @@ import {
   HILReviewStatus,
   type HILReviewRequest,
   type HILReviewResult
-} from '@/core/hil/types';
+} from '@/core/middleware/hil/types';
 
 describe('HIL Types', () => {
   it('should create valid review request', () => {
