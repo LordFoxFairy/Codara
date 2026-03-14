@@ -20,8 +20,8 @@ describe('case: subagent permission default ask', () => {
     });
 
     expect(first.exitCode).toBe(0);
-    expect(first.output).toContain('HIL action: Always allow');
     expect(first.output).toContain('SUBAGENT_PERMISSION_PARENT_DONE');
+    expect(first.output).not.toContain('HIL action:');
 
     const settings = JSON.parse(await readFile(path.join(projectRoot, '.codara', 'settings.local.json'), 'utf8')) as {
       permissions?: {rules?: {allow?: string[]}};
@@ -37,5 +37,6 @@ describe('case: subagent permission default ask', () => {
     expect(second.exitCode).toBe(0);
     expect(second.output).toContain('SUBAGENT_PERMISSION_PARENT_DONE');
     expect(second.output).not.toContain('Permission Review');
+    expect(second.output).not.toContain('HIL action:');
   });
 });

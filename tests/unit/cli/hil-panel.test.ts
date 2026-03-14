@@ -145,4 +145,61 @@ describe('HIL panel model', () => {
     expect(model.actionDetail).toBeUndefined();
     expect(model.input).toBeUndefined();
   });
+
+  it('should describe file-edit permission reviews with file-specific wording', () => {
+    const review: CliHilReviewState = {
+      request: {
+        id: 'pause-3',
+        description: 'Permission review required for Write(tmp/demo2/PLAN.md)',
+        action: {
+          toolCallId: 'call_3',
+          toolName: 'write_file',
+          toolArgs: {file_path: 'tmp/demo2/PLAN.md'},
+        },
+        review: {
+          actionName: 'write_file',
+          allowedDecisions: ['approve', 'reject'],
+        },
+        runtime: {
+          runId: 'run-3',
+          turn: 1,
+          requestId: 'request-3',
+          toolIndex: 0,
+        },
+        channel: 'permission-center',
+        ui: {
+          modal: 'permission-review',
+          actions: [
+            {id: 'allow_once', label: 'Allow once', kind: 'primary'},
+            {id: 'always', label: 'Always allow this action', kind: 'secondary'},
+            {id: 'allow_tool', label: 'Allow this command type', kind: 'secondary'},
+            {id: 'edit', label: 'Edit and continue', kind: 'secondary', requiresToolEdit: true},
+            {id: 'deny', label: 'Deny', kind: 'danger'},
+          ],
+        },
+      },
+      actions: [
+        {id: 'allow_once', label: 'Allow once', kind: 'primary'},
+        {id: 'always', label: 'Always allow this action', kind: 'secondary'},
+        {id: 'allow_tool', label: 'Allow this command type', kind: 'secondary'},
+        {id: 'edit', label: 'Edit and continue', kind: 'secondary', requiresToolEdit: true},
+        {id: 'deny', label: 'Deny', kind: 'danger'},
+      ],
+      selectedActionIndex: 0,
+      focus: 'actions',
+      draft: '',
+      busy: false,
+    };
+
+    const model = describeHilPanel(review);
+
+    expect(model.title).toBe('File edit');
+    expect(model.summary).toEqual(['tmp/demo2/PLAN.md']);
+    expect(model.question).toBe('Do you want to make this edit to PLAN.md?');
+    expect(model.actions[0]?.label).toBe('Yes');
+    expect(model.actions[1]?.label).toBe('Yes, and always allow this edit');
+    expect(model.actions[2]?.label).toBe('Yes, and allow edits like this');
+    expect(model.actions[3]?.label).toBe('Amend edit');
+    expect(model.actions[4]?.label).toBe('No');
+  });
 });
