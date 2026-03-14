@@ -3,6 +3,7 @@ import {mkdir, mkdtemp, readFile, writeFile} from 'node:fs/promises';
 import path from 'node:path';
 import {tmpdir} from 'node:os';
 import {createCodara, FileSessionStore} from '@core';
+import {createCodaraGuidelinesSource} from '@core/context/instructions/guidelines';
 import type {BaseChatModel} from '@langchain/core/language_models/chat_models';
 import {AIMessage, HumanMessage, SystemMessage, ToolMessage, type BaseMessage, type ToolCall} from '@langchain/core/messages';
 import {tool} from '@langchain/core/tools';
@@ -246,6 +247,27 @@ describe('Codara session source lifecycle', () => {
     const text = String(result.state.messages[result.state.messages.length - 1]?.content);
 
     expect(text).toBe('visible:true');
+  });
+
+  it('should no-op when a file tool hits a subtree without deeper instruction files', async () => {
+    const root = await mkdtemp(path.join(tmpdir(), 'codara-session-noop-guidelines-'));
+    await writeFile(path.join(root, 'AGENTS.md'), '# root rule\nstay at root\n', 'utf8');
+    await mkdir(path.join(root, 'packages/plain'), {recursive: true});
+    await writeFile(path.join(root, 'packages/plain/file.ts'), 'export const plain = true;\n', 'utf8');
+
+    const guidelinesSource = createCodaraGuidelinesSource({cwd: root, projectRoot: root, userHome: root});
+
+    const bootstrap = await guidelinesSource.getBootstrapContent();
+    expect(bootstrap).toContain('stay at root');
+
+    const changed = await guidelinesSource.activateTarget({
+      path: path.join(root, 'packages/plain/file.ts'),
+      kind: 'file',
+    });
+    expect(changed).toBe(false);
+
+    const progressive = await guidelinesSource.getProgressiveContent();
+    expect(progressive).toBeUndefined();
   });
 
   it('should add deeper hidden handbook rules on the next turn after a file tool hits that subtree', async () => {
