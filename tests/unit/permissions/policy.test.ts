@@ -129,11 +129,45 @@ describe('permission policy defaults', () => {
     expect(expression).toBe('Write(tmp/)');
   });
 
+  it('should derive a directory-scoped permission expression for heredoc writes with redirection', async () => {
+    const projectRoot = await mkdtemp(path.join(tmpdir(), 'codara-permission-bash-heredoc-scope-'));
+
+    const expression = formatPermissionPathScopeExpression(
+      {
+        id: 'call_bash_heredoc_scope',
+        name: 'bash',
+        args: {
+          command: `cat <<'EOF' > tmp/demo2/PLAN.md\nhello\nEOF`,
+        },
+      },
+      {projectRoot, cwd: projectRoot},
+    );
+
+    expect(expression).toBe('Write(tmp/demo2/)');
+  });
+
   it('should avoid deriving path scope for complex bash commands', async () => {
     const projectRoot = await mkdtemp(path.join(tmpdir(), 'codara-permission-bash-complex-'));
 
     const expression = formatPermissionPathScopeExpression(
       {id: 'call_bash_complex_scope', name: 'bash', args: {command: 'mkdir tmp/demo2 && touch tmp/demo2/a.txt'}},
+      {projectRoot, cwd: projectRoot},
+    );
+
+    expect(expression).toBeUndefined();
+  });
+
+  it('should keep malformed heredoc bash commands conservative', async () => {
+    const projectRoot = await mkdtemp(path.join(tmpdir(), 'codara-permission-bash-heredoc-malformed-'));
+
+    const expression = formatPermissionPathScopeExpression(
+      {
+        id: 'call_bash_heredoc_malformed',
+        name: 'bash',
+        args: {
+          command: `cat <<'EOF' > tmp/demo2/PLAN.md\nhello`,
+        },
+      },
       {projectRoot, cwd: projectRoot},
     );
 
@@ -260,6 +294,62 @@ describe('permission policy defaults', () => {
     expect(evaluation?.matched?.rule).toBe('Bash(touch guarded.txt)');
   });
 
+  it('should allow explicit bash rules for heredoc commands after stripping the heredoc body', async () => {
+    const projectRoot = await mkdtemp(path.join(tmpdir(), 'codara-permission-bash-heredoc-allow-'));
+    await mkdir(path.join(projectRoot, '.codara'), {recursive: true});
+    await writeFile(path.join(projectRoot, '.codara', 'settings.local.json'), JSON.stringify({
+      permissions: {
+        rules: {
+          allow: ['Bash(cat)'],
+          ask: [],
+          deny: [],
+        },
+      },
+    }, null, 2));
+
+    const evaluation = await evaluatePermissionToolCall(
+      {
+        id: 'call_bash_heredoc_allow',
+        name: 'bash',
+        args: {
+          command: `cat <<'EOF' > tmp/demo2/PLAN.md\nhello\nEOF`,
+        },
+      },
+      {projectRoot, cwd: projectRoot},
+    );
+
+    expect(evaluation?.decision).toBe('allow');
+    expect(evaluation?.matched?.rule).toBe('Bash(cat)');
+  });
+
+  it('should still ask for heredoc write commands when only a broad bash command-type rule matches', async () => {
+    const projectRoot = await mkdtemp(path.join(tmpdir(), 'codara-permission-bash-heredoc-broad-rule-'));
+    await mkdir(path.join(projectRoot, '.codara'), {recursive: true});
+    await writeFile(path.join(projectRoot, '.codara', 'settings.local.json'), JSON.stringify({
+      permissions: {
+        rules: {
+          allow: ['Bash(cat *)'],
+          ask: [],
+          deny: [],
+        },
+      },
+    }, null, 2));
+
+    const evaluation = await evaluatePermissionToolCall(
+      {
+        id: 'call_bash_heredoc_broad_rule',
+        name: 'bash',
+        args: {
+          command: `cat <<'EOF' > tmp/demo2/PLAN.md\nhello\nEOF`,
+        },
+      },
+      {projectRoot, cwd: projectRoot},
+    );
+
+    expect(evaluation?.decision).toBe('ask');
+    expect(evaluation?.matched).toBeNull();
+  });
+
   it('should match exact bash allow rules when the command uses inline env wrappers', async () => {
     const projectRoot = await mkdtemp(path.join(tmpdir(), 'codara-permission-bash-env-allow-'));
     await mkdir(path.join(projectRoot, '.codara'), {recursive: true});
@@ -282,7 +372,7 @@ describe('permission policy defaults', () => {
     expect(evaluation?.matched?.rule).toBe('Bash(touch guarded.txt)');
   });
 
-  it('should match wildcard bash allow rules when the command only adds output redirections', async () => {
+  it('should still ask for redirection writes when only a broad bash command-type rule matches', async () => {
     const projectRoot = await mkdtemp(path.join(tmpdir(), 'codara-permission-bash-redirection-'));
     await mkdir(path.join(projectRoot, '.codara'), {recursive: true});
     await writeFile(path.join(projectRoot, '.codara', 'settings.local.json'), JSON.stringify({
@@ -300,8 +390,30 @@ describe('permission policy defaults', () => {
       {projectRoot, cwd: projectRoot},
     );
 
+    expect(evaluation?.decision).toBe('ask');
+    expect(evaluation?.matched).toBeNull();
+  });
+
+  it('should still honor explicit bash rules when the command only adds output redirections', async () => {
+    const projectRoot = await mkdtemp(path.join(tmpdir(), 'codara-permission-bash-redirection-explicit-'));
+    await mkdir(path.join(projectRoot, '.codara'), {recursive: true});
+    await writeFile(path.join(projectRoot, '.codara', 'settings.local.json'), JSON.stringify({
+      permissions: {
+        rules: {
+          allow: ['Bash(python script.py)'],
+          ask: [],
+          deny: [],
+        },
+      },
+    }, null, 2));
+
+    const evaluation = await evaluatePermissionToolCall(
+      {id: 'call_bash_redirection_explicit_allow', name: 'bash', args: {command: 'python script.py > output.txt 2>&1'}},
+      {projectRoot, cwd: projectRoot},
+    );
+
     expect(evaluation?.decision).toBe('allow');
-    expect(evaluation?.matched?.rule).toBe('Bash(python *)');
+    expect(evaluation?.matched?.rule).toBe('Bash(python script.py)');
   });
 
   it('should normalize git global options before matching bash allow rules', async () => {

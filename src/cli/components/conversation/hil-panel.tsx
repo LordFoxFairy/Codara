@@ -395,6 +395,7 @@ function describePermissionSummary(review: CliHilReviewState): string[] {
   const command = typeof args.command === 'string' ? args.command.trim() : '';
   const description = typeof args.description === 'string' ? args.description.trim() : '';
   const filePath = readPermissionFilePath(args);
+  const reason = readPermissionReason(review.request.metadata);
 
   if (kind === 'file-edit' && filePath) {
     lines.push(filePath);
@@ -411,6 +412,10 @@ function describePermissionSummary(review: CliHilReviewState): string[] {
     if (actor) {
       lines.push(actor);
     }
+  }
+
+  if (reason && !lines.includes(reason)) {
+    lines.push(reason);
   }
 
   return lines;
@@ -465,6 +470,20 @@ function readPermissionActor(metadata: unknown): string | undefined {
   }
 
   return agentType.trim() === 'subagent' ? 'Requested by a delegated subagent.' : undefined;
+}
+
+function readPermissionReason(metadata: unknown): string | undefined {
+  if (!metadata || typeof metadata !== 'object' || Array.isArray(metadata)) {
+    return undefined;
+  }
+
+  const policy = (metadata as Record<string, unknown>).permissionPolicy;
+  if (!policy || typeof policy !== 'object' || Array.isArray(policy)) {
+    return undefined;
+  }
+
+  const reason = (policy as Record<string, unknown>).reason;
+  return typeof reason === 'string' && reason.trim() ? reason.trim() : undefined;
 }
 
 function resolveActionColor(action: HilPanelActionLine): React.ComponentProps<typeof Text>['color'] {

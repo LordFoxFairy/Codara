@@ -5,6 +5,7 @@ import path from 'node:path';
 import type {ToolCall} from '@langchain/core/messages';
 import {
   bashSpecifierMatches,
+  extractBashWritePathOperands,
   formatBashToolScopeExpression,
   normalizeBashCommandForMatching,
 } from '@core/middleware/permission/bash';
@@ -687,16 +688,15 @@ function evaluateBashPermissionExpression(
     return {decision: 'ask', matched: {bucket: 'ask', ...directAsk}};
   }
 
-  if (pathDecision?.decision === 'ask' && pathDecision.matched) {
+  if (pathDecision?.decision === 'ask') {
+    if (directAllow && allowsBashPathBypass(directAllow.rule)) {
+      return {decision: 'allow', matched: {bucket: 'allow', ...directAllow}};
+    }
     return pathDecision;
   }
 
   if (directAllow) {
     return {decision: 'allow', matched: {bucket: 'allow', ...directAllow}};
-  }
-
-  if (pathDecision?.decision === 'ask') {
-    return pathDecision;
   }
 
   if (pathDecision?.decision === 'allow') {
@@ -755,6 +755,20 @@ function evaluateBashPathDecision(
   }
 
   return {decision: defaultDecision, matched: null};
+}
+
+function allowsBashPathBypass(rule: string): boolean {
+  const parsed = parseToolExpression(rule);
+  if (parsed.tool.trim().toLowerCase() !== 'bash') {
+    return false;
+  }
+
+  const specifier = parsed.specifier?.trim();
+  if (!specifier) {
+    return false;
+  }
+
+  return specifier === '*' || !specifier.includes('*');
 }
 
 function buildSourceList(
@@ -901,41 +915,67 @@ function analyzeBashPermissionPathTargets(
   options: PermissionPolicyOptions,
 ): BashPermissionPathTarget[] {
   const normalized = normalizeBashCommandForMatching(commandSpecifier);
-  if (!normalized || normalized.complex || normalized.hasRedirection) {
+  if (!normalized || normalized.complex) {
     return [];
   }
 
   const commandName = normalized.commandName;
   const args = normalized.args;
+  const targets: BashPermissionPathTarget[] = [];
   if (!commandName) {
     return [];
   }
 
   switch (commandName) {
     case 'mkdir':
-      return buildBashPathTargets(args, options, {
+      targets.push(...buildBashPathTargets(args, options, {
         tool: 'Write',
         mode: 'parent',
         directoryTargets: true,
         optionValueFlags: ['-m', '--mode'],
-      });
+      }));
+      break;
     case 'touch':
-      return buildBashPathTargets(args, options, {
+      targets.push(...buildBashPathTargets(args, options, {
         tool: 'Write',
         mode: 'parent',
         optionValueFlags: ['-a', '-m', '-c', '-r', '--reference', '-d', '--date', '-t'],
-      });
+      }));
+      break;
     case 'rm':
     case 'rmdir':
     case 'unlink':
-      return buildBashPathTargets(args, options, {
+      targets.push(...buildBashPathTargets(args, options, {
         tool: 'Write',
         mode: 'parent',
         directoryTargets: commandName === 'rmdir',
-      });
+      }));
+      break;
     default:
-      return [];
+      break;
   }
+
+  const redirectionTargets = extractBashWritePathOperands(commandSpecifier);
+  if (redirectionTargets.length > 0) {
+    targets.push(...buildBashPathTargets(redirectionTargets, options, {
+      tool: 'Write',
+      mode: 'parent',
+    }));
+  }
+
+  if (targets.length <= 1) {
+    return targets;
+  }
+
+  const seen = new Set<string>();
+  return targets.filter((target) => {
+    const key = `${target.tool}:${target.specifier}:${target.scopeSpecifier}`;
+    if (seen.has(key)) {
+      return false;
+    }
+    seen.add(key);
+    return true;
+  });
 }
 
 function buildBashPathTargets(

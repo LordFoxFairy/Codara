@@ -58,6 +58,7 @@ async function resolvePermissionDecision(
     return undefined;
   }
 
+  const reason = describePermissionDecisionReason(evaluation, context, options);
   const metadata = {
     codara: {
       actor: {
@@ -69,6 +70,7 @@ async function resolvePermissionDecision(
       decision: evaluation.decision,
       defaultDecision: evaluation.defaultDecision,
       matched: evaluation.matched,
+      reason,
       sources: evaluation.sources,
       policySummary: evaluation.policySummary,
     },
@@ -88,7 +90,7 @@ async function resolvePermissionDecision(
 
   return {
     decision: 'ask',
-    config: createPermissionInterruptConfig(evaluation.input, context, options, metadata),
+    config: createPermissionInterruptConfig(evaluation.input, context, options, metadata, reason),
     metadata,
   };
 }
@@ -98,6 +100,7 @@ function createPermissionInterruptConfig(
   context: ToolCallContext,
   options: PermissionRuntimeOptions,
   metadata: Record<string, unknown>,
+  reason: string | undefined,
 ): HILInterruptConfig {
   const permissionKind = resolvePermissionReviewKind(context.toolCall.name);
   const pathAction = buildPermissionPathAction(context, options);
@@ -138,7 +141,7 @@ function createPermissionInterruptConfig(
   ];
 
   return {
-    description: `${context.state.agentType === 'subagent' ? 'Delegated subagent permission review required' : 'Permission review required'} for ${expression}`,
+    description: reason ?? `${context.state.agentType === 'subagent' ? 'Delegated subagent permission review required' : 'Permission review required'} for ${expression}`,
     channel: DEFAULT_PERMISSION_CHANNEL,
     ui: {
       tab: 'Security',
@@ -147,6 +150,46 @@ function createPermissionInterruptConfig(
     },
     metadata,
   };
+}
+
+function describePermissionDecisionReason(
+  evaluation: Awaited<ReturnType<typeof evaluatePermissionToolCall>>,
+  context: ToolCallContext,
+  options: PermissionRuntimeOptions,
+): string | undefined {
+  if (!evaluation) {
+    return undefined;
+  }
+
+  if (evaluation.decision === 'deny') {
+    if (evaluation.matched?.rule) {
+      return `Denied because this action matches ${evaluation.matched.rule}.`;
+    }
+    return `Denied by permission policy for ${evaluation.input}.`;
+  }
+
+  if (evaluation.decision !== 'ask') {
+    return undefined;
+  }
+
+  if (evaluation.matched?.bucket === 'ask' && evaluation.matched.rule) {
+    return `Needs approval because it matches ${evaluation.matched.rule}.`;
+  }
+
+  const pathTarget = readPermissionPathScopeTarget(formatPermissionPathScopeExpression(context.toolCall, options));
+  if (pathTarget && pathTarget !== './') {
+    return `Needs approval because no allow rule covers access to ${pathTarget}.`;
+  }
+
+  const toolScope = formatPermissionToolScopeExpression(context.toolCall);
+  if (toolScope && toolScope !== 'Bash(*)') {
+    const target = readPermissionToolScopeTarget(toolScope);
+    if (target && target !== '*') {
+      return `Needs approval because no allow rule covers ${target}.`;
+    }
+  }
+
+  return 'Needs approval because no allow rule covers this action.';
 }
 
 async function handlePermissionResume(

@@ -368,6 +368,38 @@ export async function createCliRuntime(input: {
           skills: false,
         }),
       };
+    case 'runtime-permission-heredoc-path':
+      return {
+        codara: createCodaraRuntime({
+          cwd: input.cwd,
+          projectRoot: input.cwd,
+          codaraPath: path.join(input.cwd, '.codara'),
+          ...(input.sessionId ? {sessionId: input.sessionId} : {}),
+          model: new PermissionRuntimeCliModel(
+            `cat <<'EOF' > tmp/demo2/PLAN.md\nhello\nEOF`,
+            'RUNTIME_PERMISSION_HEREDOC_PATH_DONE',
+          ) as unknown as BaseChatModel,
+          tools: [createPermissionBashTool()],
+          builtinTools: false,
+          skills: false,
+        }),
+      };
+    case 'runtime-permission-heredoc-path-other':
+      return {
+        codara: createCodaraRuntime({
+          cwd: input.cwd,
+          projectRoot: input.cwd,
+          codaraPath: path.join(input.cwd, '.codara'),
+          ...(input.sessionId ? {sessionId: input.sessionId} : {}),
+          model: new PermissionRuntimeCliModel(
+            'touch tmp/demo2/README.md',
+            'RUNTIME_PERMISSION_HEREDOC_PATH_OTHER_DONE',
+          ) as unknown as BaseChatModel,
+          tools: [createPermissionBashTool()],
+          builtinTools: false,
+          skills: false,
+        }),
+      };
     case 'subagent-permission':
       return {
         codara: createCodaraRuntime({
