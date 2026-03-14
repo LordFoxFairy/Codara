@@ -29,8 +29,8 @@ export {
   type MiddlewareLogSink,
 } from '@core/middleware/logging';
 export {
-  createBudgetMiddleware,
-  type BudgetMiddlewareOptions,
+  type BudgetConfig,
+  type BudgetState,
 } from '@core/middleware/budget';
 export {
   applyHILResumeToolEdits,
@@ -83,28 +83,7 @@ export {
 } from '@core/middleware/interaction';
 export {
   createPermissionMiddleware,
-  createPermissionRuntime,
-  ensurePermissionSettingsFile,
-  evaluatePermissionExpression,
-  evaluatePermissionToolCall,
-  formatPermissionExpression,
-  handlePermissionFallbackResume,
-  isPermissionPause,
-  persistAllowedPermission,
-  persistPermissionScope,
-  persistPermissionRule,
-  resolvePermissionSettingsFile,
-  validatePermissionSettings,
-  type PermissionDecision,
-  type PermissionEvaluationResult,
-  type PermissionGrantScope,
   type PermissionMiddlewareOptions,
-  type PermissionPolicyOptions,
-  type PermissionRuntime,
-  type PermissionRuntimeOptions,
-  type PermissionRuleMatch,
-  type PermissionSourceInfo,
-  type PermissionValidationResult,
 } from '@core/middleware/permission';
 export {
   createWriteTodosTool,
