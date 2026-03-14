@@ -5,7 +5,7 @@ import {tmpdir} from 'node:os';
 import {createCodaraPromptSource} from '@core/context/instructions/prompt';
 
 describe('Codara handbook prompt source', () => {
-  it('loads only the startup-visible handbook chain before deeper paths are touched', async () => {
+  it('loads the unique global handbook and the project-root handbook before deeper paths are touched', async () => {
     const root = await mkdtemp(path.join(tmpdir(), 'codara-prompt-'));
     const userHome = path.join(root, 'home');
     const projectRoot = path.join(root, 'project');
@@ -28,7 +28,7 @@ describe('Codara handbook prompt source', () => {
     expect(content).toBeDefined();
     expect(content).toContain('# Global Handbook');
     expect(content).toContain('# Project Handbook');
-    expect(content).toContain('# Package Handbook');
+    expect(content).not.toContain('# Package Handbook');
     expect(content).not.toContain('# App Handbook');
   });
 
