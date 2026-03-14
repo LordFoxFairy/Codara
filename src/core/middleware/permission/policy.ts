@@ -3,6 +3,11 @@ import {mkdir, readFile, writeFile} from 'node:fs/promises';
 import os from 'node:os';
 import path from 'node:path';
 import type {ToolCall} from '@langchain/core/messages';
+import {
+  bashSpecifierMatches,
+  formatBashToolScopeExpression,
+  normalizeBashCommandForMatching,
+} from '@core/middleware/permission/bash';
 import {normalizeToolReferenceName} from '@core/tools/names';
 import {resolveWorkspaceRoot} from '@core/config/workspace';
 
@@ -471,12 +476,7 @@ function formatPermissionToolScopeExpression(toolCallOrExpression: ToolCall | st
     return 'Bash(*)';
   }
 
-  const firstToken = command.split(/\s+/)[0]?.trim();
-  if (!firstToken) {
-    return 'Bash(*)';
-  }
-
-  return `Bash(${firstToken} *)`;
+  return formatBashToolScopeExpression(command);
 }
 
 export function formatPermissionPathScopeExpression(
@@ -571,6 +571,10 @@ function specifierMatches(
   }
   if (callSpecifier == null) {
     return false;
+  }
+
+  if (call.tool.trim().toLowerCase() === 'bash' && rule.tool.trim().toLowerCase() === 'bash') {
+    return bashSpecifierMatches(callSpecifier, ruleSpecifier);
   }
 
   if (isPathScopedTool(call.tool) && isPathScopedTool(rule.tool)) {
@@ -896,18 +900,13 @@ function analyzeBashPermissionPathTargets(
   commandSpecifier: string,
   options: PermissionPolicyOptions,
 ): BashPermissionPathTarget[] {
-  const tokenized = tokenizeShellCommand(commandSpecifier);
-  if (tokenized.complex || tokenized.tokens.length === 0) {
+  const normalized = normalizeBashCommandForMatching(commandSpecifier);
+  if (!normalized || normalized.complex || normalized.hasRedirection) {
     return [];
   }
 
-  const commandTokens = stripLeadingShellEnvironment(tokenized.tokens);
-  if (commandTokens.length === 0) {
-    return [];
-  }
-
-  const commandName = path.basename(commandTokens[0] ?? '').trim().toLowerCase();
-  const args = commandTokens.slice(1);
+  const commandName = normalized.commandName;
+  const args = normalized.args;
   if (!commandName) {
     return [];
   }
@@ -1043,96 +1042,8 @@ function collectShellPathOperands(args: string[], optionValueFlags: Set<string>)
   return operands;
 }
 
-function stripLeadingShellEnvironment(tokens: string[]): string[] {
-  let index = 0;
-  while (index < tokens.length && isShellEnvAssignment(tokens[index])) {
-    index += 1;
-  }
-
-  if (tokens[index] === 'env') {
-    index += 1;
-    while (index < tokens.length && isShellEnvAssignment(tokens[index])) {
-      index += 1;
-    }
-  }
-
-  return tokens.slice(index);
-}
-
-function isShellEnvAssignment(token: string | undefined): boolean {
-  return Boolean(token && /^[A-Za-z_][A-Za-z0-9_]*=/.test(token));
-}
-
 function hasWildcardPathSyntax(value: string): boolean {
   return /[*?[\]{}]/.test(value);
-}
-
-function tokenizeShellCommand(command: string): {tokens: string[]; complex: boolean} {
-  if (!command.trim() || /[`]|[$][(]|[;&|<>]/.test(command)) {
-    return {tokens: [], complex: true};
-  }
-
-  const tokens: string[] = [];
-  let current = '';
-  let quote: '"' | '\'' | null = null;
-
-  for (let index = 0; index < command.length; index += 1) {
-    const character = command[index];
-
-    if (quote) {
-      if (character === quote) {
-        quote = null;
-        continue;
-      }
-
-      if (character === '\\' && quote === '"' && index + 1 < command.length) {
-        current += command[index + 1];
-        index += 1;
-        continue;
-      }
-
-      current += character;
-      continue;
-    }
-
-    if (character === '"' || character === '\'') {
-      quote = character;
-      continue;
-    }
-
-    if (character === '\\') {
-      if (command[index + 1] === '\n') {
-        index += 1;
-        continue;
-      }
-
-      if (index + 1 < command.length) {
-        current += command[index + 1];
-        index += 1;
-        continue;
-      }
-    }
-
-    if (/\s/.test(character)) {
-      if (current) {
-        tokens.push(current);
-        current = '';
-      }
-      continue;
-    }
-
-    current += character;
-  }
-
-  if (quote) {
-    return {tokens: [], complex: true};
-  }
-
-  if (current) {
-    tokens.push(current);
-  }
-
-  return {tokens, complex: false};
 }
 
 function addCodaraSources(target: PermissionSourceRecord[], options: PermissionPolicyOptions): void {

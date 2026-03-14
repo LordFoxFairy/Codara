@@ -61,6 +61,33 @@ describe('case: runtime permission default ask', () => {
     expect(result.output).not.toContain('HIL action:');
   });
 
+  it('should allow git subcommand rules even when the bash command uses global options', async () => {
+    const root = await mkdtemp(path.join(tmpdir(), 'codara-case-permission-runtime-git-option-cli-'));
+    const projectRoot = path.join(root, 'project');
+    const codaraPath = path.join(projectRoot, '.codara');
+    await mkdir(codaraPath, {recursive: true});
+    await writeFile(path.join(codaraPath, 'settings.local.json'), JSON.stringify({
+      permissions: {
+        rules: {
+          allow: ['Bash(git log *)'],
+          ask: [],
+          deny: [],
+        },
+      },
+    }, null, 2));
+
+    const result = await runRealCliCase({
+      cwd: projectRoot,
+      prompt: 'Run git -C ./tmp/repo log --oneline',
+      scenario: 'runtime-git-log-option',
+    });
+
+    expect(result.exitCode).toBe(0);
+    expect(result.output).toContain('RUNTIME_GIT_LOG_OPTION_DONE');
+    expect(result.output).not.toContain('Permission Review');
+    expect(result.output).not.toContain('HIL action:');
+  });
+
   it('should support trusting the whole project for later guarded commands', async () => {
     const root = await mkdtemp(path.join(tmpdir(), 'codara-case-permission-project-cli-'));
     const projectRoot = path.join(root, 'project');
