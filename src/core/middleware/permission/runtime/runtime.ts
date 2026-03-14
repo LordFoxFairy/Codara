@@ -30,8 +30,32 @@ export class PermissionRuntime {
       };
     }
 
-    // 2. 评估策略
+    // 2. 对于 Bash 命令，进行风险分析
+    if (toolCall.tool === 'Bash') {
+      const analysis = this.bashAnalyzer.analyze(toolCall.input);
+
+      // 高风险或严重风险命令自动拒绝
+      if (analysis.risk === 'critical') {
+        return {
+          input: expression,
+          decision: 'deny',
+          matched: { bucket: 'deny', rule: 'bash-risk-critical', scope: 'runtime' },
+          defaultDecision: 'ask',
+          sources: [],
+          policySummary: { deny: 1, ask: 0, allow: 0 },
+          metadata: { bashAnalysis: analysis }
+        };
+      }
+    }
+
+    // 3. 评估策略
     const evaluation = await this.policyEngine.evaluate(expression, options);
+
+    // 4. 对于 Bash 命令，附加分析结果
+    if (toolCall.tool === 'Bash') {
+      const analysis = this.bashAnalyzer.analyze(toolCall.input);
+      evaluation.metadata = { ...evaluation.metadata, bashAnalysis: analysis };
+    }
 
     return evaluation;
   }
