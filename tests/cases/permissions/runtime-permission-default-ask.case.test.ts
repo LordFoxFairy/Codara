@@ -280,4 +280,39 @@ describe('case: runtime permission default ask', () => {
     expect(second.output).toContain('RUNTIME_PERMISSION_MKDIR_PATH_OTHER_DONE');
     expect(second.output).not.toContain('Permission Review');
   });
+
+  it('should persist directory-scoped path approvals for heredoc redirection writes and reuse them for later sibling writes', async () => {
+    const root = await mkdtemp(path.join(tmpdir(), 'codara-case-permission-heredoc-path-cli-'));
+    const projectRoot = path.join(root, 'project');
+    const codaraPath = path.join(projectRoot, '.codara');
+    await mkdir(codaraPath, {recursive: true});
+
+    const first = await runRealCliCase({
+      cwd: projectRoot,
+      prompt: 'Write the plan through a heredoc',
+      scenario: 'runtime-permission-heredoc-path',
+      env: {
+        CODARA_CLI_HIL_AUTO_ACTIONS: 'allow_path',
+      },
+    });
+
+    expect(first.exitCode).toBe(0);
+    expect(first.output).toContain('RUNTIME_PERMISSION_HEREDOC_PATH_DONE');
+    expect(first.output).not.toContain('HIL action:');
+
+    const settings = JSON.parse(await readFile(path.join(codaraPath, 'settings.local.json'), 'utf8')) as {
+      permissions?: {rules?: {allow?: string[]}};
+    };
+    expect(settings.permissions?.rules?.allow).toContain('Write(tmp/demo2/)');
+
+    const second = await runRealCliCase({
+      cwd: projectRoot,
+      prompt: 'Touch another file under tmp/demo2',
+      scenario: 'runtime-permission-heredoc-path-other',
+    });
+
+    expect(second.exitCode).toBe(0);
+    expect(second.output).toContain('RUNTIME_PERMISSION_HEREDOC_PATH_OTHER_DONE');
+    expect(second.output).not.toContain('Permission Review');
+  });
 });

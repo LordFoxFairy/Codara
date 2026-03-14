@@ -138,6 +138,28 @@ describe('createPermissionMiddleware', () => {
     expect(actions.some((action) => action.id === 'allow_project')).toBeTrue();
   });
 
+  it('should attach a clear approval reason to permission pauses', async () => {
+    const projectRoot = await mkdtemp(path.join(tmpdir(), 'codara-permission-mw-reason-'));
+    ensurePermissionSettingsFile({projectRoot, cwd: projectRoot});
+    const middleware = createPermissionMiddleware({projectRoot, cwd: projectRoot});
+    const toolCall: ToolCall = {
+      id: 'call_permission_reason_1',
+      name: 'bash',
+      args: {command: 'cat <<\'EOF\' > tmp/demo2/PLAN.md\nhello\nEOF'},
+    };
+
+    const result = await middleware.wrapToolCall?.(createToolContext(toolCall), async () => {
+      return new ToolMessage({content: 'should-not-run', tool_call_id: 'call_permission_reason_1'});
+    });
+
+    const payload = parseHILToolMessagePayload(result?.content);
+    expect(payload?.type).toBe('hil_pause');
+    const reason = payload?.type === 'hil_pause'
+      ? (payload.request.metadata as {permissionPolicy?: {reason?: string}}).permissionPolicy?.reason
+      : undefined;
+    expect(reason).toContain('tmp/demo2/');
+  });
+
   it('should expose a smarter command-type action label for compound git bash commands', async () => {
     const projectRoot = await mkdtemp(path.join(tmpdir(), 'codara-permission-mw-bash-git-label-'));
     ensurePermissionSettingsFile({projectRoot, cwd: projectRoot});

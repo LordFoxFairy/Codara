@@ -9,6 +9,18 @@ export interface NormalizedBashCommand {
   hasRedirection: boolean;
 }
 
+interface PreparedShellCommand {
+  command: string;
+  complex: boolean;
+}
+
+interface ParsedHeredocMarker {
+  before: string;
+  after: string;
+  delimiter: string;
+  allowTabs: boolean;
+}
+
 const SHELL_CONTEXT_COMMANDS = new Set([
   '.',
   'alias',
@@ -100,6 +112,13 @@ export function bashSpecifierMatches(callSpecifier: string, ruleSpecifier: strin
     return false;
   }
 
+  if (rule.endsWith(' *')) {
+    const optionalPrefix = rule.slice(0, -2).trimEnd();
+    if (normalized.specifier === optionalPrefix) {
+      return true;
+    }
+  }
+
   return globToRegExp(rule).test(normalized.specifier);
 }
 
@@ -149,6 +168,25 @@ export function normalizeBashCommandForMatching(command: string): NormalizedBash
     complex: tokenized.complex,
     hasRedirection,
   };
+}
+
+export function extractBashWritePathOperands(command: string): string[] {
+  const tokenized = tokenizeShellCommand(command);
+  if (tokenized.tokens.length === 0 || tokenized.complex) {
+    return [];
+  }
+
+  const withoutEnv = stripLeadingShellEnvironment(tokenized.tokens);
+  if (withoutEnv.length === 0) {
+    return [];
+  }
+
+  const unwrapped = unwrapShellLauncherCommand(withoutEnv);
+  if (unwrapped) {
+    return extractBashWritePathOperands(unwrapped);
+  }
+
+  return collectShellWriteRedirectionOperands(withoutEnv);
 }
 
 function formatNormalizedBashToolScope(normalized: NormalizedBashCommand): string {
@@ -212,7 +250,8 @@ function unwrapLauncherCommandExpression(command: string): string | undefined {
 }
 
 function splitCompoundShellCommands(command: string): string[] {
-  if (!command.trim()) {
+  const prepared = prepareShellCommand(command);
+  if (prepared.complex || !prepared.command.trim()) {
     return [];
   }
 
@@ -220,8 +259,8 @@ function splitCompoundShellCommands(command: string): string[] {
   let current = '';
   let quote: '"' | '\'' | null = null;
 
-  for (let index = 0; index < command.length; index += 1) {
-    const character = command[index];
+  for (let index = 0; index < prepared.command.length; index += 1) {
+    const character = prepared.command[index];
 
     if (quote) {
       if (character === quote) {
@@ -230,9 +269,9 @@ function splitCompoundShellCommands(command: string): string[] {
         continue;
       }
 
-      if (character === '\\' && quote === '"' && index + 1 < command.length) {
+      if (character === '\\' && quote === '"' && index + 1 < prepared.command.length) {
         current += character;
-        current += command[index + 1];
+        current += prepared.command[index + 1];
         index += 1;
         continue;
       }
@@ -245,15 +284,15 @@ function splitCompoundShellCommands(command: string): string[] {
       return [];
     }
 
-    if (character === '$' && command[index + 1] === '(') {
+    if (character === '$' && prepared.command[index + 1] === '(') {
       return [];
     }
 
-    if (character === '<' && (command[index + 1] === '<' || command[index + 1] === '(')) {
+    if (character === '<' && prepared.command[index + 1] === '(') {
       return [];
     }
 
-    if (character === '>' && command[index + 1] === '(') {
+    if (character === '>' && prepared.command[index + 1] === '(') {
       return [];
     }
 
@@ -264,14 +303,9 @@ function splitCompoundShellCommands(command: string): string[] {
     }
 
     if (character === '\\') {
-      if (command[index + 1] === '\n') {
-        index += 1;
-        continue;
-      }
-
-      if (index + 1 < command.length) {
+      if (index + 1 < prepared.command.length) {
         current += character;
-        current += command[index + 1];
+        current += prepared.command[index + 1];
         index += 1;
         continue;
       }
@@ -290,20 +324,20 @@ function splitCompoundShellCommands(command: string): string[] {
     }
 
     if (character === '&') {
-      if (command[index + 1] === '&') {
+      if (prepared.command[index + 1] === '&') {
         pushShellSegment(segments, current);
         current = '';
         index += 1;
         continue;
       }
 
-      if (command[index - 1] !== '>' && command[index + 1] !== '>') {
+      if (prepared.command[index - 1] !== '>' && prepared.command[index + 1] !== '>') {
         return [];
       }
     }
 
     if (character === '|') {
-      if (command[index + 1] === '|') {
+      if (prepared.command[index + 1] === '|') {
         pushShellSegment(segments, current);
         current = '';
         index += 1;
@@ -329,6 +363,142 @@ function pushShellSegment(segments: string[], segment: string): void {
   if (normalized) {
     segments.push(normalized);
   }
+}
+
+function prepareShellCommand(command: string): PreparedShellCommand {
+  if (!command.trim()) {
+    return {command: '', complex: true};
+  }
+
+  const withoutContinuations = command.replace(/\\\n[ \t]*/g, ' ');
+  const stripped = stripShellHeredocBodies(withoutContinuations);
+  if (!stripped) {
+    return {command: '', complex: true};
+  }
+
+  return {
+    command: stripped,
+    complex: false,
+  };
+}
+
+function stripShellHeredocBodies(command: string): string | undefined {
+  const lines = command.split('\n');
+  const output: string[] = [];
+
+  for (let lineIndex = 0; lineIndex < lines.length; lineIndex += 1) {
+    const line = lines[lineIndex] ?? '';
+    const markerIndex = findHeredocMarkerIndex(line);
+    if (markerIndex < 0) {
+      output.push(line);
+      continue;
+    }
+
+    const marker = parseHeredocMarker(line, markerIndex);
+    if (!marker || findHeredocMarkerIndex(marker.after) >= 0) {
+      return undefined;
+    }
+
+    let terminatorIndex = lineIndex + 1;
+    let foundTerminator = false;
+    while (terminatorIndex < lines.length) {
+      const candidate = marker.allowTabs
+        ? (lines[terminatorIndex] ?? '').replace(/^\t+/, '')
+        : (lines[terminatorIndex] ?? '');
+      if (candidate === marker.delimiter) {
+        foundTerminator = true;
+        break;
+      }
+      terminatorIndex += 1;
+    }
+
+    if (!foundTerminator) {
+      return undefined;
+    }
+
+    output.push(`${marker.before}${marker.after}`.trimEnd());
+    lineIndex = terminatorIndex;
+  }
+
+  return output.join('\n');
+}
+
+function findHeredocMarkerIndex(line: string): number {
+  let quote: '"' | '\'' | null = null;
+
+  for (let index = 0; index < line.length; index += 1) {
+    const character = line[index];
+    if (quote) {
+      if (character === quote) {
+        quote = null;
+      } else if (character === '\\' && quote === '"' && index + 1 < line.length) {
+        index += 1;
+      }
+      continue;
+    }
+
+    if (character === '"' || character === '\'') {
+      quote = character;
+      continue;
+    }
+
+    if (character === '<' && line[index + 1] === '<') {
+      return index;
+    }
+  }
+
+  return -1;
+}
+
+function parseHeredocMarker(line: string, markerIndex: number): ParsedHeredocMarker | undefined {
+  let index = markerIndex + 2;
+  let allowTabs = false;
+
+  if (line[index] === '-') {
+    allowTabs = true;
+    index += 1;
+  }
+
+  if (line[index] === '<' || line[index] === '(') {
+    return undefined;
+  }
+
+  while (line[index] === ' ' || line[index] === '\t') {
+    index += 1;
+  }
+
+  if (index >= line.length) {
+    return undefined;
+  }
+
+  let delimiter = '';
+  if (line[index] === '"' || line[index] === '\'') {
+    const quote = line[index];
+    index += 1;
+    const end = line.indexOf(quote, index);
+    if (end < 0) {
+      return undefined;
+    }
+    delimiter = line.slice(index, end);
+    index = end + 1;
+  } else {
+    const start = index;
+    while (index < line.length && !/[\s;|&<>]/.test(line[index] ?? '')) {
+      index += 1;
+    }
+    delimiter = line.slice(start, index);
+  }
+
+  if (!delimiter) {
+    return undefined;
+  }
+
+  return {
+    before: line.slice(0, markerIndex),
+    after: line.slice(index),
+    delimiter,
+    allowTabs,
+  };
 }
 
 function stripLeadingShellEnvironment(tokens: string[]): string[] {
@@ -375,12 +545,71 @@ function stripShellRedirections(tokens: string[]): {tokens: string[]; hasRedirec
   return {tokens: normalized, hasRedirection};
 }
 
+function collectShellWriteRedirectionOperands(tokens: string[]): string[] {
+  const operands: string[] = [];
+  let skipNext = false;
+
+  for (let index = 0; index < tokens.length; index += 1) {
+    const token = tokens[index];
+    if (!token) {
+      continue;
+    }
+
+    if (skipNext) {
+      skipNext = false;
+      continue;
+    }
+
+    if (isStandaloneShellWriteRedirection(token)) {
+      const next = tokens[index + 1]?.trim();
+      if (next && !isShellDescriptorTarget(next)) {
+        operands.push(next);
+      }
+      skipNext = true;
+      continue;
+    }
+
+    const inlineTarget = readInlineShellWriteRedirectionTarget(token);
+    if (inlineTarget) {
+      operands.push(inlineTarget);
+    }
+  }
+
+  return operands;
+}
+
 function isStandaloneShellRedirection(token: string | undefined): boolean {
   return Boolean(token && /^(?:\d+)?(?:>>?|<)$/.test(token));
 }
 
 function isInlineShellRedirection(token: string | undefined): boolean {
   return Boolean(token && /^(?:\d+)?(?:>>?|<).+|^(?:&>>?|>&)\S*$|^\d+>&\d+$|^&>>?\S*$/.test(token));
+}
+
+function isStandaloneShellWriteRedirection(token: string | undefined): boolean {
+  return Boolean(token && /^(?:\d+)?>>?$|^&>>?$/.test(token));
+}
+
+function readInlineShellWriteRedirectionTarget(token: string | undefined): string | undefined {
+  if (!token) {
+    return undefined;
+  }
+
+  const match = token.match(/^(?:\d+)?(>>?|>|&>>?|&>)(.+)$/);
+  if (!match) {
+    return undefined;
+  }
+
+  const target = match[2]?.trim();
+  if (!target || isShellDescriptorTarget(target)) {
+    return undefined;
+  }
+
+  return target;
+}
+
+function isShellDescriptorTarget(token: string | undefined): boolean {
+  return Boolean(token && /^&\d+$/.test(token));
 }
 
 function isShellEnvAssignment(token: string | undefined): boolean {
@@ -488,7 +717,8 @@ function gitGlobalOptionValueArity(token: string): number {
 }
 
 function tokenizeShellCommand(command: string): {tokens: string[]; complex: boolean} {
-  if (!command.trim()) {
+  const prepared = prepareShellCommand(command);
+  if (prepared.complex || !prepared.command.trim()) {
     return {tokens: [], complex: true};
   }
 
@@ -496,8 +726,8 @@ function tokenizeShellCommand(command: string): {tokens: string[]; complex: bool
   let current = '';
   let quote: '"' | '\'' | null = null;
 
-  for (let index = 0; index < command.length; index += 1) {
-    const character = command[index];
+  for (let index = 0; index < prepared.command.length; index += 1) {
+    const character = prepared.command[index];
 
     if (quote) {
       if (character === quote) {
@@ -505,8 +735,8 @@ function tokenizeShellCommand(command: string): {tokens: string[]; complex: bool
         continue;
       }
 
-      if (character === '\\' && quote === '"' && index + 1 < command.length) {
-        current += command[index + 1];
+      if (character === '\\' && quote === '"' && index + 1 < prepared.command.length) {
+        current += prepared.command[index + 1];
         index += 1;
         continue;
       }
@@ -519,7 +749,7 @@ function tokenizeShellCommand(command: string): {tokens: string[]; complex: bool
       return {tokens: [], complex: true};
     }
 
-    if (character === '$' && command[index + 1] === '(') {
+    if (character === '$' && prepared.command[index + 1] === '(') {
       return {tokens: [], complex: true};
     }
 
@@ -529,20 +759,16 @@ function tokenizeShellCommand(command: string): {tokens: string[]; complex: bool
 
     if (
       character === '|'
-      || (
-        character === '&'
-        && command[index - 1] !== '>'
-        && command[index + 1] !== '>'
-      )
+      || (character === '&' && prepared.command[index - 1] !== '>' && prepared.command[index + 1] !== '>')
     ) {
       return {tokens: [], complex: true};
     }
 
-    if (character === '<' && (command[index + 1] === '<' || command[index + 1] === '(')) {
+    if (character === '<' && prepared.command[index + 1] === '(') {
       return {tokens: [], complex: true};
     }
 
-    if (character === '>' && command[index + 1] === '(') {
+    if (character === '>' && prepared.command[index + 1] === '(') {
       return {tokens: [], complex: true};
     }
 
@@ -552,13 +778,8 @@ function tokenizeShellCommand(command: string): {tokens: string[]; complex: bool
     }
 
     if (character === '\\') {
-      if (command[index + 1] === '\n') {
-        index += 1;
-        continue;
-      }
-
-      if (index + 1 < command.length) {
-        current += command[index + 1];
+      if (index + 1 < prepared.command.length) {
+        current += prepared.command[index + 1];
         index += 1;
         continue;
       }
