@@ -25,13 +25,11 @@ import {
   createModelPermissionBashAnalysis,
   type PermissionAnalysisModel,
   type PermissionBashAnalysis,
-  type PermissionBashAnalysisFn,
 } from '@core/middleware/permission/analysis';
 
 export interface PermissionRuntimeOptions extends PermissionPolicyOptions {
   includeEditAction?: boolean;
   bashAnalysisModel?: PermissionAnalysisModel | Promise<PermissionAnalysisModel> | (() => Promise<PermissionAnalysisModel>);
-  analyzeBash?: PermissionBashAnalysisFn;
 }
 
 export interface PermissionRuntime {
@@ -448,11 +446,11 @@ async function analyzeBashPermission(
 
 function resolvePermissionBashAnalysis(
   options: PermissionRuntimeOptions,
-): PermissionBashAnalysisFn | undefined {
-  if (options.analyzeBash) {
-    return options.analyzeBash;
-  }
-
+): ((input: {
+  command: string;
+  cwd?: string;
+  projectRoot?: string;
+}) => Promise<PermissionBashAnalysis | undefined>) | undefined {
   if (options.bashAnalysisModel) {
     return createModelPermissionBashAnalysis({model: options.bashAnalysisModel});
   }
