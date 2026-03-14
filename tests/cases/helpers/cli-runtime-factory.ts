@@ -261,6 +261,19 @@ export async function createCliRuntime(input: {
           skills: false,
         }),
       };
+    case 'runtime-git-log-option':
+      return {
+        codara: createCodaraRuntime({
+          cwd: input.cwd,
+          projectRoot: input.cwd,
+          codaraPath: path.join(input.cwd, '.codara'),
+          ...(input.sessionId ? {sessionId: input.sessionId} : {}),
+          model: new PermissionRuntimeCliModel('git -C ./tmp/repo log --oneline', 'RUNTIME_GIT_LOG_OPTION_DONE') as unknown as BaseChatModel,
+          tools: [createPermissionBashTool()],
+          builtinTools: false,
+          skills: false,
+        }),
+      };
     case 'runtime-write-permission':
       return {
         codara: createCodaraRuntime({

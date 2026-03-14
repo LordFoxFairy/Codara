@@ -259,4 +259,130 @@ describe('permission policy defaults', () => {
     expect(evaluation?.decision).toBe('allow');
     expect(evaluation?.matched?.rule).toBe('Bash(touch guarded.txt)');
   });
+
+  it('should match exact bash allow rules when the command uses inline env wrappers', async () => {
+    const projectRoot = await mkdtemp(path.join(tmpdir(), 'codara-permission-bash-env-allow-'));
+    await mkdir(path.join(projectRoot, '.codara'), {recursive: true});
+    await writeFile(path.join(projectRoot, '.codara', 'settings.local.json'), JSON.stringify({
+      permissions: {
+        rules: {
+          allow: ['Bash(touch guarded.txt)'],
+          ask: [],
+          deny: [],
+        },
+      },
+    }, null, 2));
+
+    const evaluation = await evaluatePermissionToolCall(
+      {id: 'call_bash_env_allow', name: 'bash', args: {command: 'FOO=bar env BAZ=qux touch guarded.txt'}},
+      {projectRoot, cwd: projectRoot},
+    );
+
+    expect(evaluation?.decision).toBe('allow');
+    expect(evaluation?.matched?.rule).toBe('Bash(touch guarded.txt)');
+  });
+
+  it('should match wildcard bash allow rules when the command only adds output redirections', async () => {
+    const projectRoot = await mkdtemp(path.join(tmpdir(), 'codara-permission-bash-redirection-'));
+    await mkdir(path.join(projectRoot, '.codara'), {recursive: true});
+    await writeFile(path.join(projectRoot, '.codara', 'settings.local.json'), JSON.stringify({
+      permissions: {
+        rules: {
+          allow: ['Bash(python *)'],
+          ask: [],
+          deny: [],
+        },
+      },
+    }, null, 2));
+
+    const evaluation = await evaluatePermissionToolCall(
+      {id: 'call_bash_redirection_allow', name: 'bash', args: {command: 'python script.py > output.txt 2>&1'}},
+      {projectRoot, cwd: projectRoot},
+    );
+
+    expect(evaluation?.decision).toBe('allow');
+    expect(evaluation?.matched?.rule).toBe('Bash(python *)');
+  });
+
+  it('should normalize git global options before matching bash allow rules', async () => {
+    const projectRoot = await mkdtemp(path.join(tmpdir(), 'codara-permission-bash-git-options-'));
+    await mkdir(path.join(projectRoot, '.codara'), {recursive: true});
+    await writeFile(path.join(projectRoot, '.codara', 'settings.local.json'), JSON.stringify({
+      permissions: {
+        rules: {
+          allow: ['Bash(git log *)'],
+          ask: [],
+          deny: [],
+        },
+      },
+    }, null, 2));
+
+    const evaluation = await evaluatePermissionToolCall(
+      {id: 'call_bash_git_options_allow', name: 'bash', args: {command: 'git -C ./tmp/repo log --oneline'}},
+      {projectRoot, cwd: projectRoot},
+    );
+
+    expect(evaluation?.decision).toBe('allow');
+    expect(evaluation?.matched?.rule).toBe('Bash(git log *)');
+  });
+
+  it('should normalize git global options when persisting command-type bash approvals', async () => {
+    const projectRoot = await mkdtemp(path.join(tmpdir(), 'codara-permission-bash-git-tool-scope-'));
+    ensurePermissionSettingsFile({projectRoot, cwd: projectRoot});
+
+    await persistPermissionScope(
+      {id: 'call_bash_git_tool_scope', name: 'bash', args: {command: 'git -C ./tmp/repo log --oneline'}},
+      'tool',
+      {projectRoot, cwd: projectRoot},
+    );
+
+    const content = JSON.parse(await readFile(path.join(projectRoot, '.codara', 'settings.local.json'), 'utf8')) as {
+      permissions?: {rules?: {allow?: string[]}};
+    };
+    expect(content.permissions?.rules?.allow).toContain('Bash(git log *)');
+  });
+
+  it('should not let wildcard bash allow rules match compound commands with shell operators', async () => {
+    const projectRoot = await mkdtemp(path.join(tmpdir(), 'codara-permission-bash-compound-'));
+    await mkdir(path.join(projectRoot, '.codara'), {recursive: true});
+    await writeFile(path.join(projectRoot, '.codara', 'settings.local.json'), JSON.stringify({
+      permissions: {
+        rules: {
+          allow: ['Bash(git *)'],
+          ask: [],
+          deny: [],
+        },
+      },
+    }, null, 2));
+
+    const evaluation = await evaluatePermissionToolCall(
+      {id: 'call_bash_compound_allow', name: 'bash', args: {command: 'git status && touch guarded.txt'}},
+      {projectRoot, cwd: projectRoot},
+    );
+
+    expect(evaluation?.decision).toBe('ask');
+    expect(evaluation?.matched).toBeNull();
+  });
+
+  it('should match exact bash allow rules when the command uses backslash-newline continuation', async () => {
+    const projectRoot = await mkdtemp(path.join(tmpdir(), 'codara-permission-bash-continuation-'));
+    await mkdir(path.join(projectRoot, '.codara'), {recursive: true});
+    await writeFile(path.join(projectRoot, '.codara', 'settings.local.json'), JSON.stringify({
+      permissions: {
+        rules: {
+          allow: ['Bash(touch guarded.txt)'],
+          ask: [],
+          deny: [],
+        },
+      },
+    }, null, 2));
+
+    const evaluation = await evaluatePermissionToolCall(
+      {id: 'call_bash_continuation_allow', name: 'bash', args: {command: 'touch \\\n  guarded.txt'}},
+      {projectRoot, cwd: projectRoot},
+    );
+
+    expect(evaluation?.decision).toBe('allow');
+    expect(evaluation?.matched?.rule).toBe('Bash(touch guarded.txt)');
+  });
 });
