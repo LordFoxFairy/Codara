@@ -29,8 +29,9 @@ interface HilPanelInputSection {
 
 export interface HilPanelModel {
   title: string;
-  badge: string;
+  badge?: string;
   tone: HilPanelTone;
+  chrome?: 'boxed' | 'plain';
   summary: string[];
   meta?: string;
   tabsLine?: string;
@@ -41,16 +42,16 @@ export interface HilPanelModel {
   input?: HilPanelInputSection;
   hint: string;
   status?: string;
+  actionDetail?: string;
 }
 
 export function HilPanel({review}: HilPanelProps): React.JSX.Element {
   const model = describeHilPanel(review);
-
-  return (
-    <Box marginTop={1} flexDirection="column" borderStyle="single" borderColor={model.tone} paddingX={1}>
+  const content = (
+    <>
       <Box>
         <Text color={model.tone}>{model.title}</Text>
-        <Text dimColor>{` · ${model.badge}`}</Text>
+        {model.badge ? <Text dimColor>{` · ${model.badge}`}</Text> : null}
       </Box>
 
       {model.summary.map((line, index) => (
@@ -88,14 +89,15 @@ export function HilPanel({review}: HilPanelProps): React.JSX.Element {
         ) : (
           <Box marginTop={model.options.length > 0 ? 1 : 0} flexDirection="column">
             {model.actions.map((action, index) => (
-              <Box key={`action-${index}`} flexDirection="column">
-                <Text color={resolveActionColor(action)}>{`${action.selected ? '›' : ' '} ${action.label}`}</Text>
-                {action.description ? <Text dimColor>{`  ${action.description}`}</Text> : null}
-              </Box>
+              <Text key={`action-${index}`} color={resolveActionColor(action)}>
+                {`${action.selected ? '❯' : ' '} ${index + 1}. ${action.label}`}
+              </Text>
             ))}
           </Box>
         )
       ) : null}
+
+      {model.actionDetail ? <Text dimColor>{model.actionDetail}</Text> : null}
 
       {model.input ? (
         <Box marginTop={1} flexDirection="column">
@@ -120,6 +122,20 @@ export function HilPanel({review}: HilPanelProps): React.JSX.Element {
         <Text dimColor>{model.hint}</Text>
         {model.status ? <Text color={model.tone}>{model.status}</Text> : null}
       </Box>
+    </>
+  );
+
+  if (model.chrome === 'plain') {
+    return (
+      <Box marginTop={1} flexDirection="column">
+        {content}
+      </Box>
+    );
+  }
+
+  return (
+    <Box marginTop={1} flexDirection="column" borderStyle="single" borderColor={model.tone} paddingX={1}>
+      {content}
     </Box>
   );
 }
@@ -133,27 +149,46 @@ export function describeHilPanel(review: CliHilReviewState): HilPanelModel {
   const tone = isPermissionReview(review) ? 'yellow' : 'cyan';
   const title = isPermissionReview(review) ? 'Permission Review' : 'Review Required';
   const badge = isPermissionReview(review) ? 'permission' : (review.request.channel || 'interaction');
+  const permissionTitle = isPermissionReview(review) ? describePermissionTitle(review) : title;
 
   return {
-    title,
-    badge,
+    title: permissionTitle,
+    ...(isPermissionReview(review) ? {} : {badge}),
     tone,
-    summary: [review.request.description],
-    ...(buildHilMeta(review) ? {meta: buildHilMeta(review)} : {}),
+    chrome: isPermissionReview(review) ? 'plain' : 'boxed',
+    summary: isPermissionReview(review)
+      ? describePermissionSummary(review)
+      : [review.request.description],
+    ...(isPermissionReview(review)
+      ? {}
+      : buildHilMeta(review)
+        ? {meta: buildHilMeta(review)}
+        : {}),
+    ...(isPermissionReview(review) ? {question: 'Do you want to proceed?'} : {}),
     options: [],
     actions: review.actions.map((action, index) => ({
-      label: describeActionLabel(action),
-      ...(action.description ? {description: action.description} : {}),
+      label: isPermissionReview(review) ? formatPermissionActionLabel(action) : describeActionLabel(action),
       selected: index === review.selectedActionIndex,
       kind: action.kind,
     })),
-    input: {
-      label: selectedAction?.requiresToolEdit ? 'Edited tool args JSON' : 'Note',
-      value: review.draft,
-      focused: review.focus === 'input',
-      style: 'box',
-    },
-    hint: 'Tab focus · Up/Down select · Enter submit · Shift+Enter newline',
+    ...(!isPermissionReview(review) && selectedAction?.description ? {actionDetail: selectedAction.description} : {}),
+    ...(selectedAction?.requiresToolEdit || review.focus === 'input' || review.draft.trim()
+      ? {
+          input: {
+            label: selectedAction?.requiresToolEdit ? 'Edited tool args JSON' : 'Note',
+            value: review.draft,
+            focused: review.focus === 'input',
+            style: 'box',
+          },
+        }
+      : {}),
+    hint: isPermissionReview(review)
+      ? selectedAction?.requiresToolEdit
+        ? 'Esc cancel · Up/Down select · Tab amend · Enter submit'
+        : 'Esc cancel · Up/Down select · Tab amend'
+      : selectedAction?.requiresToolEdit
+        ? 'Tab focus · Up/Down select · Enter submit · Shift+Enter newline'
+        : 'Tab focus · Up/Down select · Enter submit · Shift+Enter newline',
     ...(review.busy ? {status: 'Applying review decision...'} : {}),
   };
 }
@@ -280,6 +315,88 @@ function summarizeToolArgs(toolName: string, args: Record<string, unknown>): str
 function describeActionLabel(action: CliHilReviewAction): string {
   const scope = action.scope?.trim();
   return scope ? `${action.label} (${scope})` : action.label;
+}
+
+function formatPermissionActionLabel(action: CliHilReviewAction): string {
+  const normalized = action.id.trim().toLowerCase();
+  switch (normalized) {
+    case 'allow_once':
+    case 'approve':
+      return 'Yes';
+    case 'always':
+      return 'Yes, and always allow this action';
+    case 'allow_tool':
+      return 'Yes, and allow this command type';
+    case 'allow_project':
+      return 'Yes, and trust this project';
+    case 'edit':
+      return 'Amend and continue';
+    case 'deny':
+    case 'reject':
+      return 'No';
+    default:
+      return describeActionLabel(action);
+  }
+}
+
+function describePermissionTitle(review: CliHilReviewState): string {
+  const toolName = review.request.action.toolName.trim();
+  if (!toolName) {
+    return 'Tool review';
+  }
+
+  if (toolName.toLowerCase() === 'bash') {
+    return 'Bash command';
+  }
+
+  return `${toolName} action`;
+}
+
+function describePermissionSummary(review: CliHilReviewState): string[] {
+  const args = review.request.action.toolArgs;
+  const lines: string[] = [];
+  const command = typeof args.command === 'string' ? args.command.trim() : '';
+  const description = typeof args.description === 'string' ? args.description.trim() : '';
+
+  if (command) {
+    lines.push(command);
+  } else if (review.request.description.trim()) {
+    lines.push(review.request.description.trim());
+  }
+
+  if (description) {
+    lines.push(description);
+  } else {
+    const actor = readPermissionActor(review.request.metadata);
+    if (actor) {
+      lines.push(actor);
+    }
+  }
+
+  return lines;
+}
+
+function readPermissionActor(metadata: unknown): string | undefined {
+  if (!metadata || typeof metadata !== 'object' || Array.isArray(metadata)) {
+    return undefined;
+  }
+
+  const codara = (metadata as Record<string, unknown>).codara;
+  if (!codara || typeof codara !== 'object' || Array.isArray(codara)) {
+    return undefined;
+  }
+
+  const actor = (codara as Record<string, unknown>).actor;
+  if (!actor || typeof actor !== 'object' || Array.isArray(actor)) {
+    return undefined;
+  }
+
+  const agentType = (actor as Record<string, unknown>).agentType;
+  if (typeof agentType !== 'string' || !agentType.trim()) {
+    return undefined;
+  }
+
+  return agentType.trim() === 'subagent' ? 'Requested by a delegated subagent.' : undefined;
 }
 
 function resolveActionColor(action: HilPanelActionLine): React.ComponentProps<typeof Text>['color'] {
