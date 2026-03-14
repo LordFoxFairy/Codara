@@ -21,7 +21,6 @@ export {
 } from '@core/middleware/skills';
 export {
   createInstructionLoadingMiddleware,
-  type InstructionLoadingMiddlewareOptions,
 } from '@core/middleware/instruction-loading';
 export {
   createDailySessionFileLogSink,
