@@ -15,13 +15,18 @@ describe('case: generic HIL form UI', () => {
       prompt: 'Start planning',
       scenario: 'hil-form',
       env: {
-        CODARA_CLI_HIL_AUTO_ACTIONS: 'submit',
+        CODARA_CLI_HIL_AUTO_ACTIONS: JSON.stringify([{
+          action: 'submit',
+          answers: {
+            domain: 'SaaS product',
+            scope: 'MVP',
+          },
+        }]),
       },
     });
 
     expect(result.exitCode).toBe(0);
-    expect(result.output).toContain('HIL action: Submit');
-    expect(result.output).toContain('{"action":"submit","answers":{}}');
-    expect(result.output).toContain('HIL_FORM_DONE:empty');
+    expect(result.output).toContain('HIL_FORM_DONE:domain,scope');
+    expect(result.output).not.toContain('{"action":"submit","answers":{}}');
   });
 });
