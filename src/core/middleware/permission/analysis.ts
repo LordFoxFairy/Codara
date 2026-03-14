@@ -1,21 +1,24 @@
-import type {BaseChatModel} from '@langchain/core/language_models/chat_models';
 import {HumanMessage, SystemMessage} from '@langchain/core/messages';
 
-export interface PermissionBashClassification {
+export interface PermissionBashAnalysis {
   reason?: string;
   pathScopeExpression?: string;
   toolScopeExpression?: string;
 }
 
-export type PermissionBashClassifier = (input: {
+export interface PermissionAnalysisModel {
+  invoke(messages: [SystemMessage, HumanMessage]): Promise<{text?: string; content?: unknown}>;
+}
+
+export type PermissionBashAnalysisFn = (input: {
   command: string;
   cwd?: string;
   projectRoot?: string;
-}) => Promise<PermissionBashClassification | undefined>;
+}) => Promise<PermissionBashAnalysis | undefined>;
 
-export function createModelPermissionBashClassifier(modelInput: {
-  model: BaseChatModel | Promise<BaseChatModel> | (() => Promise<BaseChatModel>);
-}): PermissionBashClassifier {
+export function createModelPermissionBashAnalysis(modelInput: {
+  model: PermissionAnalysisModel | Promise<PermissionAnalysisModel> | (() => Promise<PermissionAnalysisModel>);
+}): PermissionBashAnalysisFn {
   return async (input) => {
     const model = await resolveClassifierModel(modelInput.model);
     const response = await model.invoke([
@@ -39,11 +42,11 @@ export function createModelPermissionBashClassifier(modelInput: {
       ].join('\n')),
     ]);
 
-    return sanitizeClassification(parseClassifierPayload(response.text));
+    return sanitizeClassification(parseClassifierPayload(readAnalysisResponseText(response)));
   };
 }
 
-function parseClassifierPayload(text: string): PermissionBashClassification | undefined {
+function parseClassifierPayload(text: string): PermissionBashAnalysis | undefined {
   const trimmed = text.trim();
   if (!trimmed) {
     return undefined;
@@ -64,8 +67,8 @@ function parseClassifierPayload(text: string): PermissionBashClassification | un
 }
 
 function sanitizeClassification(
-  value: PermissionBashClassification | undefined,
-): PermissionBashClassification | undefined {
+  value: PermissionBashAnalysis | undefined,
+): PermissionBashAnalysis | undefined {
   if (!value) {
     return undefined;
   }
@@ -86,12 +89,24 @@ function sanitizeClassification(
 }
 
 async function resolveClassifierModel(
-  input: BaseChatModel | Promise<BaseChatModel> | (() => Promise<BaseChatModel>),
-): Promise<BaseChatModel> {
+  input: PermissionAnalysisModel | Promise<PermissionAnalysisModel> | (() => Promise<PermissionAnalysisModel>),
+): Promise<PermissionAnalysisModel> {
   if (typeof input === 'function') {
     return input();
   }
   return await input;
+}
+
+function readAnalysisResponseText(response: {text?: string; content?: unknown}): string {
+  if (typeof response.text === 'string' && response.text.trim().length > 0) {
+    return response.text;
+  }
+
+  if (typeof response.content === 'string') {
+    return response.content;
+  }
+
+  return '';
 }
 
 function normalizePathScopeExpression(value: string | undefined): string | undefined {
