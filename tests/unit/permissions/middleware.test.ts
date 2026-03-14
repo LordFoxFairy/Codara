@@ -135,6 +135,7 @@ describe('createPermissionMiddleware', () => {
     expect(actions[1]?.id).toBe('allow_path');
     expect(actions[1]?.scope).toBe('path');
     expect(actions[1]?.label).toContain('tmp/');
+    expect(actions.some((action) => action.id === 'allow_tool')).toBeFalse();
     expect(actions.some((action) => action.id === 'allow_project')).toBeTrue();
   });
 
