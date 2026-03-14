@@ -1,6 +1,6 @@
 import type {BaseMessage} from '@langchain/core/messages';
 import type {AgentInputBudget} from '@core/agents/models/types';
-import type {ContextBudgetSnapshot} from '@core/middleware/budget-types';
+import type {ContextBudgetSnapshot} from '@core/middleware/budget/types';
 import {createMiddleware, type BaseMiddleware, type BeforeModelContext} from '@core/middleware/types';
 
 export interface ContextBudgetEstimateInput {
