@@ -408,6 +408,28 @@ describe('permission policy defaults', () => {
     expect(evaluation?.matched?.rule).toBe('Bash(*)');
   });
 
+  it('should match exact bash allow rules through shell launcher wrappers', async () => {
+    const projectRoot = await mkdtemp(path.join(tmpdir(), 'codara-permission-bash-wrapper-allow-'));
+    await mkdir(path.join(projectRoot, '.codara'), {recursive: true});
+    await writeFile(path.join(projectRoot, '.codara', 'settings.local.json'), JSON.stringify({
+      permissions: {
+        rules: {
+          allow: ['Bash(git status)'],
+          ask: [],
+          deny: [],
+        },
+      },
+    }, null, 2));
+
+    const evaluation = await evaluatePermissionToolCall(
+      {id: 'call_bash_wrapper_allow', name: 'bash', args: {command: 'bash -lc "git status"'}},
+      {projectRoot, cwd: projectRoot},
+    );
+
+    expect(evaluation?.decision).toBe('allow');
+    expect(evaluation?.matched?.rule).toBe('Bash(git status)');
+  });
+
   it('should persist a smarter tool-scope rule for compound git bash commands', async () => {
     const projectRoot = await mkdtemp(path.join(tmpdir(), 'codara-permission-bash-git-compound-scope-'));
     ensurePermissionSettingsFile({projectRoot, cwd: projectRoot});
@@ -422,5 +444,37 @@ describe('permission policy defaults', () => {
       permissions?: {rules?: {allow?: string[]}};
     };
     expect(content.permissions?.rules?.allow).toContain('Bash(git *)');
+  });
+
+  it('should persist smarter tool-scope rules for wrapped compound git bash commands', async () => {
+    const projectRoot = await mkdtemp(path.join(tmpdir(), 'codara-permission-bash-wrapper-compound-scope-'));
+    ensurePermissionSettingsFile({projectRoot, cwd: projectRoot});
+
+    await persistPermissionScope(
+      {id: 'call_bash_wrapper_compound_scope', name: 'bash', args: {command: 'bash -lc "cd ./tmp/repo && git fetch origin && git push origin main"'}},
+      'tool',
+      {projectRoot, cwd: projectRoot},
+    );
+
+    const content = JSON.parse(await readFile(path.join(projectRoot, '.codara', 'settings.local.json'), 'utf8')) as {
+      permissions?: {rules?: {allow?: string[]}};
+    };
+    expect(content.permissions?.rules?.allow).toContain('Bash(git *)');
+  });
+
+  it('should persist subcommand-scoped rules for repeated npm compound commands', async () => {
+    const projectRoot = await mkdtemp(path.join(tmpdir(), 'codara-permission-bash-npm-compound-scope-'));
+    ensurePermissionSettingsFile({projectRoot, cwd: projectRoot});
+
+    await persistPermissionScope(
+      {id: 'call_bash_npm_compound_scope', name: 'bash', args: {command: 'npm install lodash && npm install react'}},
+      'tool',
+      {projectRoot, cwd: projectRoot},
+    );
+
+    const content = JSON.parse(await readFile(path.join(projectRoot, '.codara', 'settings.local.json'), 'utf8')) as {
+      permissions?: {rules?: {allow?: string[]}};
+    };
+    expect(content.permissions?.rules?.allow).toContain('Bash(npm install *)');
   });
 });

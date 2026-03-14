@@ -261,6 +261,19 @@ export async function createCliRuntime(input: {
           skills: false,
         }),
       };
+    case 'runtime-git-status-wrapper':
+      return {
+        codara: createCodaraRuntime({
+          cwd: input.cwd,
+          projectRoot: input.cwd,
+          codaraPath: path.join(input.cwd, '.codara'),
+          ...(input.sessionId ? {sessionId: input.sessionId} : {}),
+          model: new PermissionRuntimeCliModel('bash -lc "git status"', 'RUNTIME_GIT_STATUS_WRAPPER_DONE') as unknown as BaseChatModel,
+          tools: [createPermissionBashTool()],
+          builtinTools: false,
+          skills: false,
+        }),
+      };
     case 'runtime-git-log-option':
       return {
         codara: createCodaraRuntime({

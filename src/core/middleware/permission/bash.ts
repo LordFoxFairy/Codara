@@ -36,6 +36,9 @@ const SHELL_CONTEXT_COMMANDS = new Set([
   'wait',
 ]);
 
+const SHELL_LAUNCHER_COMMANDS = new Set(['bash', 'sh', 'zsh']);
+const SUBCOMMAND_SCOPED_COMMANDS = new Set(['git', 'npm', 'pnpm', 'yarn', 'bun', 'python', 'python3']);
+
 export function formatBashToolScopeExpression(command: string): string {
   const normalized = normalizeBashCommandForMatching(command);
   if (normalized && !normalized.complex && normalized.tokens.length > 0) {
@@ -58,13 +61,11 @@ export function formatBashToolScopeExpression(command: string): string {
     return 'Bash(*)';
   }
 
-  if (commandName === 'git') {
-    const subcommands = candidates
-      .map((entry) => entry.args[0]?.trim())
-      .filter((entry): entry is string => Boolean(entry));
-    if (subcommands.length === candidates.length && new Set(subcommands).size === 1) {
-      return `Bash(git ${subcommands[0]} *)`;
-    }
+  const scopedPrefixes = candidates
+    .map((entry) => deriveBashCommandScopePrefix(entry))
+    .filter((entry): entry is string => Boolean(entry));
+  if (scopedPrefixes.length === candidates.length && new Set(scopedPrefixes).size === 1) {
+    return `Bash(${scopedPrefixes[0]} *)`;
   }
 
   return `Bash(${commandName} *)`;
@@ -118,6 +119,18 @@ export function normalizeBashCommandForMatching(command: string): NormalizedBash
     return undefined;
   }
 
+  const unwrapped = unwrapShellLauncherCommand(withoutRedirections);
+  if (unwrapped) {
+    const normalized = normalizeBashCommandForMatching(unwrapped);
+    return normalized
+      ? {
+        ...normalized,
+        complex: tokenized.complex || normalized.complex,
+        hasRedirection: hasRedirection || normalized.hasRedirection,
+      }
+      : undefined;
+  }
+
   const normalizedTokens = normalizeBashCommandTokens(withoutRedirections);
   if (normalizedTokens.length === 0) {
     return undefined;
@@ -139,17 +152,41 @@ export function normalizeBashCommandForMatching(command: string): NormalizedBash
 }
 
 function formatNormalizedBashToolScope(normalized: NormalizedBashCommand): string {
-  if (normalized.commandName === 'git') {
-    const subcommand = normalized.args[0]?.trim();
-    if (subcommand) {
-      return `Bash(git ${subcommand} *)`;
-    }
+  const scopedPrefix = deriveBashCommandScopePrefix(normalized);
+  if (scopedPrefix) {
+    return `Bash(${scopedPrefix} *)`;
   }
 
   return `Bash(${normalized.commandName} *)`;
 }
 
+function deriveBashCommandScopePrefix(normalized: NormalizedBashCommand): string | undefined {
+  if (!SUBCOMMAND_SCOPED_COMMANDS.has(normalized.commandName)) {
+    return undefined;
+  }
+
+  if (normalized.commandName === 'python' || normalized.commandName === 'python3') {
+    if (normalized.args[0] === '-m' && normalized.args[1]) {
+      return `${normalized.commandName} -m ${normalized.args[1]}`;
+    }
+
+    return undefined;
+  }
+
+  const firstNonFlag = normalized.args.find((token) => token && !token.startsWith('-'));
+  if (!firstNonFlag) {
+    return undefined;
+  }
+
+  return `${normalized.commandName} ${firstNonFlag}`;
+}
+
 function normalizeCompoundBashCommands(command: string): NormalizedBashCommand[] {
+  const unwrapped = unwrapLauncherCommandExpression(command);
+  if (unwrapped) {
+    return normalizeCompoundBashCommands(unwrapped);
+  }
+
   const segments = splitCompoundShellCommands(command);
   if (segments.length === 0) {
     return [];
@@ -158,6 +195,20 @@ function normalizeCompoundBashCommands(command: string): NormalizedBashCommand[]
   return segments
     .map((segment) => normalizeBashCommandForMatching(segment))
     .filter((entry): entry is NormalizedBashCommand => Boolean(entry && entry.tokens.length > 0));
+}
+
+function unwrapLauncherCommandExpression(command: string): string | undefined {
+  const tokenized = tokenizeShellCommand(command);
+  if (tokenized.tokens.length === 0) {
+    return undefined;
+  }
+
+  const withoutEnv = stripLeadingShellEnvironment(tokenized.tokens);
+  if (withoutEnv.length === 0) {
+    return undefined;
+  }
+
+  return unwrapShellLauncherCommand(withoutEnv);
 }
 
 function splitCompoundShellCommands(command: string): string[] {
@@ -352,6 +403,41 @@ function normalizeBashCommandTokens(tokens: string[]): string[] {
   }
 
   return [commandName, ...args];
+}
+
+function unwrapShellLauncherCommand(tokens: string[]): string | undefined {
+  const commandName = path.basename(tokens[0] ?? '').trim();
+  const normalized = commandName.toLowerCase();
+  if (!SHELL_LAUNCHER_COMMANDS.has(normalized)) {
+    return undefined;
+  }
+
+  const args = tokens.slice(1);
+  for (let index = 0; index < args.length; index += 1) {
+    const token = args[index]?.trim();
+    if (!token) {
+      continue;
+    }
+
+    if (token === '--') {
+      break;
+    }
+
+    if (!token.startsWith('-')) {
+      break;
+    }
+
+    if (token === '-c' || token === '-lc' || token === '-cl') {
+      const inlineValue = args[index + 1]?.trim();
+      if (!inlineValue) {
+        return undefined;
+      }
+
+      return inlineValue;
+    }
+  }
+
+  return undefined;
 }
 
 function normalizeGitArgs(args: string[]): string[] {

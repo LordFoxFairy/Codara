@@ -61,6 +61,23 @@ describe('case: runtime permission default ask', () => {
     expect(result.output).not.toContain('HIL action:');
   });
 
+  it('should allow wrapped read-only bash inspection commands through exact git rules', async () => {
+    const root = await mkdtemp(path.join(tmpdir(), 'codara-case-permission-runtime-read-wrapper-cli-'));
+    const projectRoot = path.join(root, 'project');
+    await mkdir(path.join(projectRoot, '.codara'), {recursive: true});
+
+    const result = await runRealCliCase({
+      cwd: projectRoot,
+      prompt: 'Run bash -lc "git status"',
+      scenario: 'runtime-git-status-wrapper',
+    });
+
+    expect(result.exitCode).toBe(0);
+    expect(result.output).toContain('RUNTIME_GIT_STATUS_WRAPPER_DONE');
+    expect(result.output).not.toContain('Permission Review');
+    expect(result.output).not.toContain('HIL action:');
+  });
+
   it('should allow git subcommand rules even when the bash command uses global options', async () => {
     const root = await mkdtemp(path.join(tmpdir(), 'codara-case-permission-runtime-git-option-cli-'));
     const projectRoot = path.join(root, 'project');
