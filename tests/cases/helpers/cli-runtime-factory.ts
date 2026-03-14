@@ -400,6 +400,22 @@ export async function createCliRuntime(input: {
           skills: false,
         }),
       };
+    case 'runtime-permission-complex-path':
+      return {
+        codara: createCodaraRuntime({
+          cwd: input.cwd,
+          projectRoot: input.cwd,
+          codaraPath: path.join(input.cwd, '.codara'),
+          ...(input.sessionId ? {sessionId: input.sessionId} : {}),
+          model: new PermissionRuntimeCliModel(
+            'cat README.md | tee tmp/demo2/PLAN.md >/dev/null',
+            'RUNTIME_PERMISSION_COMPLEX_PATH_DONE',
+          ) as unknown as BaseChatModel,
+          tools: [createPermissionBashTool()],
+          builtinTools: false,
+          skills: false,
+        }),
+      };
     case 'subagent-permission':
       return {
         codara: createCodaraRuntime({
@@ -707,6 +723,9 @@ class PermissionRuntimeCliModel {
 
   async invoke(messages: BaseMessage[]): Promise<AIMessage> {
     const text = messages.map((message) => stringifyMessage(message.content)).join('\n');
+    if (text.includes('Analyze this bash command for permission review.')) {
+      return new AIMessage(JSON.stringify(buildPermissionClassifierResponse(this.command)));
+    }
     if (text.includes(`executed:${this.command}`)) {
       return new AIMessage(this.doneMessage);
     }
@@ -720,6 +739,26 @@ class PermissionRuntimeCliModel {
   bindTools(): this {
     return this;
   }
+}
+
+function buildPermissionClassifierResponse(command: string): {
+  reason: string | null;
+  pathScopeExpression: string | null;
+  toolScopeExpression: string | null;
+} {
+  if (command.includes('tee tmp/demo2/PLAN.md')) {
+    return {
+      reason: 'Needs approval because this compound command writes under tmp/demo2/.',
+      pathScopeExpression: 'Write(tmp/demo2/)',
+      toolScopeExpression: null,
+    };
+  }
+
+  return {
+    reason: null,
+    pathScopeExpression: null,
+    toolScopeExpression: null,
+  };
 }
 
 class FilePermissionRuntimeCliModel {

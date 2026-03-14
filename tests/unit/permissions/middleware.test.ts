@@ -273,4 +273,79 @@ describe('createPermissionMiddleware', () => {
     };
     expect(content.permissions?.rules?.allow).toContain('Write(tmp/demo2/)');
   });
+
+  it('should allow complex bash writes when classifier output matches an existing path rule', async () => {
+    const projectRoot = await mkdtemp(path.join(tmpdir(), 'codara-permission-mw-classifier-allow-'));
+    ensurePermissionSettingsFile({projectRoot, cwd: projectRoot});
+    const settingsFile = path.join(projectRoot, '.codara', 'settings.local.json');
+    const content = JSON.parse(await readFile(settingsFile, 'utf8')) as {
+      permissions?: {rules?: {allow?: string[]}};
+    };
+    content.permissions ??= {};
+    content.permissions.rules ??= {};
+    content.permissions.rules.allow = [
+      ...(content.permissions.rules.allow ?? []),
+      'Write(tmp/demo2/)',
+    ];
+    await Bun.write(settingsFile, `${JSON.stringify(content, null, 2)}\n`);
+
+    const middleware = createPermissionMiddleware({
+      projectRoot,
+      cwd: projectRoot,
+      bashClassifier: async () => ({
+        pathScopeExpression: 'Write(tmp/demo2/)',
+      }),
+    });
+    const toolCall: ToolCall = {
+      id: 'call_permission_classifier_allow_1',
+      name: 'bash',
+      args: {command: 'cat README.md | tee tmp/demo2/PLAN.md >/dev/null'},
+    };
+
+    const result = await middleware.wrapToolCall?.(createToolContext(toolCall), async () => {
+      return new ToolMessage({content: 'continued', tool_call_id: 'call_permission_classifier_allow_1'});
+    });
+
+    expect(String(result?.content)).toBe('continued');
+  });
+
+  it('should keep classifier-derived path matches in ask when the normalized target is guarded', async () => {
+    const projectRoot = await mkdtemp(path.join(tmpdir(), 'codara-permission-mw-classifier-ask-'));
+    ensurePermissionSettingsFile({projectRoot, cwd: projectRoot});
+    const settingsFile = path.join(projectRoot, '.codara', 'settings.local.json');
+    await Bun.write(settingsFile, `${JSON.stringify({
+      permissions: {
+        rules: {
+          allow: [],
+          ask: ['Write(tmp/demo2/)'],
+          deny: [],
+        },
+      },
+    }, null, 2)}\n`);
+
+    const middleware = createPermissionMiddleware({
+      projectRoot,
+      cwd: projectRoot,
+      bashClassifier: async () => ({
+        pathScopeExpression: 'Write(tmp/demo2/)',
+      }),
+    });
+    const toolCall: ToolCall = {
+      id: 'call_permission_classifier_ask_1',
+      name: 'bash',
+      args: {command: 'cat README.md | tee tmp/demo2/PLAN.md >/dev/null'},
+    };
+
+    const result = await middleware.wrapToolCall?.(createToolContext(toolCall), async () => {
+      return new ToolMessage({content: 'should-not-run', tool_call_id: 'call_permission_classifier_ask_1'});
+    });
+
+    const payload = parseHILToolMessagePayload(result?.content);
+    expect(payload?.type).toBe('hil_pause');
+    expect(
+      payload?.type === 'hil_pause'
+        ? (payload.request.metadata as {permissionPolicy?: {matched?: {rule?: string}}}).permissionPolicy?.matched?.rule
+        : undefined,
+    ).toBe('Write(tmp/demo2/)');
+  });
 });

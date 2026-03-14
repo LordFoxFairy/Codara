@@ -680,15 +680,23 @@ function createRuntimePermissionBashClassifier(
   options: Pick<CodaraRuntimeOptions, 'alias' | 'config' | 'model'>,
   catalog?: CodaraModelCatalog | Promise<CodaraModelCatalog>,
 ) {
-  if (!catalog) {
-    return undefined;
+  if (options.model) {
+    return createModelPermissionBashClassifier({
+      model: typeof options.model === 'function'
+        ? options.model as () => Promise<BaseChatModel>
+        : options.model,
+    });
   }
 
-  return createModelPermissionBashClassifier({
-    model: () => createCodaraChatModel({
-      alias: options.alias,
-      config: options.config,
-      catalog,
-    }),
-  });
+  if (catalog) {
+    return createModelPermissionBashClassifier({
+      model: () => createCodaraChatModel({
+        alias: options.alias,
+        config: options.config,
+        catalog,
+      }),
+    });
+  }
+
+  return undefined;
 }
