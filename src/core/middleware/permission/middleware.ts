@@ -2,7 +2,7 @@ import {createHILMiddleware, type HILMiddlewareOptions} from '@core/middleware/h
 import type {BaseMiddleware} from '@core/middleware/types';
 import type {PermissionAnalysisModel} from '@core/middleware/permission/analysis';
 import {
-  createPermissionRuntimeInternal,
+  createPermissionRuntime,
   handlePermissionFallbackResume,
   type PermissionRuntimeOptions,
 } from '@core/middleware/permission/runtime';
@@ -28,7 +28,7 @@ export function createPermissionMiddlewareInternal(
     ...hilOptions
   } = options;
 
-  const permissionRuntime = createPermissionRuntimeInternal({
+  const permissionRuntime = createPermissionRuntime({
     cwd,
     projectRoot,
     userHome,
