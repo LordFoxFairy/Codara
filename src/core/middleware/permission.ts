@@ -6,7 +6,7 @@
 
 import { createHILMiddleware, type HILMiddlewareOptions } from '@core/middleware/hil';
 import type { BaseMiddleware } from '@core/middleware/types';
-import { PermissionMiddlewareAdapter } from '@core/permission/adapter';
+import { PermissionMiddlewareAdapter } from '@core/middleware/permission/adapter';
 
 export interface PermissionMiddlewareOptions extends HILMiddlewareOptions {
   cwd?: string;

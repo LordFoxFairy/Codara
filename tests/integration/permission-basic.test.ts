@@ -1,8 +1,8 @@
 // tests/integration/permission-basic.test.ts
 
 import { describe, it, expect } from 'vitest';
-import { PermissionRuntime } from '@/core/permission/runtime/runtime';
-import { PermissionPolicyEngine } from '@/core/permission/policy/engine';
+import { PermissionRuntime } from '@/core/middleware/permission/runtime/runtime';
+import { PermissionPolicyEngine } from '@/core/middleware/permission/policy/engine';
 
 describe('Permission System Integration', () => {
   it('should evaluate allow decision', async () => {

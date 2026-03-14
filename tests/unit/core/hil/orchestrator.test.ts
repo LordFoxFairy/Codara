@@ -1,12 +1,12 @@
 // tests/unit/core/hil/orchestrator.test.ts
 
 import { describe, it, expect, vi, beforeEach } from 'vitest';
-import { HILOrchestrator } from '@/core/hil/orchestrator';
+import { HILOrchestrator } from '@/core/middleware/hil/orchestrator';
 import {
   HILReviewType,
   HILReviewStatus,
   type HILReviewHandler
-} from '@/core/hil/types';
+} from '@/core/middleware/hil/types';
 
 describe('HILOrchestrator', () => {
   let orchestrator: HILOrchestrator;

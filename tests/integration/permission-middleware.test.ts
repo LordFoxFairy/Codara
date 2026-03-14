@@ -1,7 +1,7 @@
 // tests/integration/permission-middleware.test.ts
 
 import { describe, it, expect, vi } from 'vitest';
-import { PermissionMiddlewareAdapter } from '@/core/permission/adapter';
+import { PermissionMiddlewareAdapter } from '@/core/middleware/permission/adapter';
 import type { HILDecisionContext } from '@/core/middleware/hil';
 import type { ToolCallContext } from '@/core/middleware/types';
 
