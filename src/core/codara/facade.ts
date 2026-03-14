@@ -18,8 +18,8 @@ import {
 } from '@core/middleware';
 import {
   ensurePermissionSettingsFile,
+  createPermissionMiddleware,
 } from '@core/middleware/permission';
-import {createPermissionMiddlewareInternal} from '@core/middleware/permission/middleware';
 import {
   createSharedTaskMiddleware,
   createTaskFileStore,
@@ -569,12 +569,11 @@ function createRuntimeDefaultMiddlewares(input: {
   }
 
   if (input.options.hil !== false && !byName.has('PermissionMiddleware')) {
-    byName.set('PermissionMiddleware', createPermissionMiddlewareInternal({
+    byName.set('PermissionMiddleware', createPermissionMiddleware({
       ...(typeof input.options.hil === 'object' && input.options.hil !== null ? input.options.hil : {}),
       cwd: input.options.cwd,
       projectRoot: input.options.projectRoot,
       userHome: input.options.userHome,
-      bashAnalysisModel: createRuntimePermissionAnalysisModel(input.options, input.catalog),
     }));
   }
 
