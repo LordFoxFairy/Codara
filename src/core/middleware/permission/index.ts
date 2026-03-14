@@ -3,6 +3,10 @@ export {
   type PermissionMiddlewareOptions,
 } from '@core/middleware/permission/middleware';
 export {
+  createPermissionMiddlewareV2,
+  type PermissionMiddlewareV2Options,
+} from '@core/middleware/permission/middleware-v2';
+export {
   createPermissionRuntime,
   handlePermissionFallbackResume,
   isPermissionPause,

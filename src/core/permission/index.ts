@@ -9,3 +9,4 @@ export * from './policy/engine';
 export * from './policy/loader';
 export * from './policy/matcher';
 export * from './bash/analyzer';
+export * from './adapter';
