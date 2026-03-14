@@ -77,6 +77,7 @@ describe('auto memory runtime', () => {
     expect(topicContent).toContain('Fix lint errors in src/app.ts');
     expect(topicContent).toContain('## Outcome');
     expect(topicContent).toContain('fingerprint:');
+    expect(topicContent).toContain('area: general');
     expect(index).toContain('Updated ');
   });
 
@@ -116,6 +117,47 @@ describe('auto memory runtime', () => {
     expect(topicContent).toContain('Expanded the guidance with the final import-order expectations.');
     expect(topicContent).toContain('## Earlier Notes');
     expect(topicContent).toContain('Explained the lint workflow and updated src/app.ts conventions.');
+    const index = await readFile(path.join(rootDir, 'MEMORY.md'), 'utf8');
+    expect(index).toContain('## Active Areas');
+    expect(index).toContain('- src: 1 topic');
+  });
+
+  it('merges different prompts that work on the same area into one topic cluster', async () => {
+    const rootDir = await mkdtemp(path.join(tmpdir(), 'codara-auto-memory-area-'));
+    const runtime = createAutoMemoryRuntime({rootDir});
+
+    await runtime.recordTurn({
+      previousMessages: [],
+      nextMessages: [
+        new HumanMessage('Investigate the refund workflow'),
+        new AIMessage({
+          content: 'Reviewed the refund edge cases in payments.',
+          tool_calls: [{id: 'call_1', name: 'read_file', args: {file_path: 'src/payments/refund.ts'}}],
+        }),
+      ],
+      sessionId: 'session-payments-1',
+    });
+
+    await runtime.recordTurn({
+      previousMessages: [],
+      nextMessages: [
+        new HumanMessage('Update chargeback handling'),
+        new AIMessage({
+          content: 'Adjusted the chargeback notes in the same payments area.',
+          tool_calls: [{id: 'call_2', name: 'read_file', args: {file_path: 'src/payments/chargeback.ts'}}],
+        }),
+      ],
+      sessionId: 'session-payments-2',
+    });
+
+    const topicsDir = path.join(rootDir, 'topics');
+    const topics = await readdir(topicsDir);
+    expect(topics.length).toBe(1);
+
+    const topicContent = await readFile(path.join(topicsDir, topics[0]), 'utf8');
+    expect(topicContent).toContain('area: src/payments');
+    expect(topicContent).toContain('src/payments/refund.ts');
+    expect(topicContent).toContain('src/payments/chargeback.ts');
   });
 
   it('skips low-signal successful turns that do not produce meaningful memory', async () => {
