@@ -7,7 +7,7 @@ import {normalizeToolReferenceName} from '@core/tools/names';
 import {resolveWorkspaceRoot} from '@core/config/workspace';
 
 export type PermissionDecision = 'allow' | 'ask' | 'deny';
-export type PermissionGrantScope = 'exact' | 'tool' | 'project';
+export type PermissionGrantScope = 'exact' | 'path' | 'tool' | 'project';
 
 export interface PermissionRuleMatch {
   bucket: PermissionDecision;
@@ -115,6 +115,11 @@ interface MatchedRuleEntry {
   format: string | null;
 }
 
+interface CanonicalPathPattern {
+  value: string;
+  isDirectory: boolean;
+}
+
 export function formatPermissionExpression(toolCall: ToolCall): string | undefined {
   const toolName = normalizeToolReferenceName(toolCall.name ?? '');
   const args = normalizeArgs(toolCall.args);
@@ -123,11 +128,11 @@ export function formatPermissionExpression(toolCall: ToolCall): string | undefin
     case 'bash':
       return formatExpression('Bash', readOptionalString(args.command));
     case 'read_file':
-      return formatExpression('Read', readOptionalString(args.file_path));
+      return formatExpression('Read', readPermissionPathArg(toolName, args));
     case 'write_file':
-      return formatExpression('Write', readOptionalString(args.file_path));
+      return formatExpression('Write', readPermissionPathArg(toolName, args));
     case 'edit_file':
-      return formatExpression('Edit', readOptionalString(args.file_path));
+      return formatExpression('Edit', readPermissionPathArg(toolName, args));
     case 'fetch_url':
       return formatExpression('Fetch', readOptionalString(args.url));
     case 'web_search':
@@ -141,11 +146,42 @@ export function formatPermissionExpression(toolCall: ToolCall): string | undefin
   }
 }
 
+function formatCanonicalPermissionExpression(
+  toolCall: ToolCall,
+  options: PermissionPolicyOptions = {},
+): string | undefined {
+  const toolName = normalizeToolReferenceName(toolCall.name ?? '');
+  const args = normalizeArgs(toolCall.args);
+
+  switch (toolName) {
+    case 'read_file':
+      return formatExpression('Read', normalizePermissionPathSpecifier(
+        readPermissionPathArg(toolName, args),
+        resolveCallPathBase(options),
+        resolvePermissionProjectRoot(options),
+      )?.value);
+    case 'write_file':
+      return formatExpression('Write', normalizePermissionPathSpecifier(
+        readPermissionPathArg(toolName, args),
+        resolveCallPathBase(options),
+        resolvePermissionProjectRoot(options),
+      )?.value);
+    case 'edit_file':
+      return formatExpression('Edit', normalizePermissionPathSpecifier(
+        readPermissionPathArg(toolName, args),
+        resolveCallPathBase(options),
+        resolvePermissionProjectRoot(options),
+      )?.value);
+    default:
+      return formatPermissionExpression(toolCall);
+  }
+}
+
 export async function evaluatePermissionToolCall(
   toolCall: ToolCall,
   options: PermissionPolicyOptions = {},
 ): Promise<PermissionEvaluationResult | undefined> {
-  const expression = formatPermissionExpression(toolCall);
+  const expression = formatCanonicalPermissionExpression(toolCall, options);
   if (!expression) {
     return undefined;
   }
@@ -192,9 +228,9 @@ export async function evaluatePermissionExpression(
     }
   }
 
-  const matchedDeny = findMatch(call, mergedPolicy.deny);
-  const matchedAsk = matchedDeny ? null : findMatch(call, mergedPolicy.ask);
-  const matchedAllow = matchedDeny || matchedAsk ? null : findMatch(call, mergedPolicy.allow);
+  const matchedDeny = findMatch(call, mergedPolicy.deny, options);
+  const matchedAsk = matchedDeny ? null : findMatch(call, mergedPolicy.ask, options);
+  const matchedAllow = matchedDeny || matchedAsk ? null : findMatch(call, mergedPolicy.allow, options);
 
   let decision: PermissionDecision = mergedPolicy.defaultDecision ?? 'ask';
   let matched: PermissionRuleMatch | null = null;
@@ -258,9 +294,11 @@ export async function persistPermissionScope(
 
   const expression = scope === 'tool'
     ? formatPermissionToolScopeExpression(toolCallOrExpression)
+    : scope === 'path'
+      ? formatPermissionPathScopeExpression(toolCallOrExpression, options)
     : typeof toolCallOrExpression === 'string'
       ? toolCallOrExpression.trim()
-      : formatPermissionExpression(toolCallOrExpression);
+      : formatCanonicalPermissionExpression(toolCallOrExpression, options);
 
   if (!expression) {
     throw new Error('Unsupported permission expression');
@@ -277,7 +315,7 @@ export async function persistPermissionRule(
 ): Promise<{settingsFile: string; alreadyPresent: boolean; created: boolean}> {
   const expression = typeof toolCallOrExpression === 'string'
     ? toolCallOrExpression.trim()
-    : formatPermissionExpression(toolCallOrExpression);
+    : formatCanonicalPermissionExpression(toolCallOrExpression, options);
 
   if (!expression) {
     throw new Error('Unsupported permission expression');
@@ -424,8 +462,46 @@ function formatPermissionToolScopeExpression(toolCallOrExpression: ToolCall | st
   return `Bash(${firstToken} *)`;
 }
 
+export function formatPermissionPathScopeExpression(
+  toolCallOrExpression: ToolCall | string,
+  options: PermissionPolicyOptions = {},
+): string | undefined {
+  const expression = typeof toolCallOrExpression === 'string'
+    ? toolCallOrExpression.trim()
+    : formatCanonicalPermissionExpression(toolCallOrExpression, options);
+  if (!expression) {
+    return undefined;
+  }
+
+  const parsed = parseToolExpression(expression);
+  const tool = parsed.tool.trim();
+  if (!isPathScopedTool(tool)) {
+    return undefined;
+  }
+
+  const specifier = parsed.specifier?.trim();
+  if (!specifier || specifier === '*') {
+    return undefined;
+  }
+
+  const scopeSpecifier = derivePermissionPathScopeSpecifier(specifier);
+  if (!scopeSpecifier) {
+    return undefined;
+  }
+
+  return `${tool}(${scopeSpecifier})`;
+}
+
 function readOptionalString(value: unknown): string | undefined {
   return typeof value === 'string' && value.trim() ? value.trim() : undefined;
+}
+
+function readPermissionPathArg(toolName: string, args: Record<string, unknown>): string | undefined {
+  if (toolName === 'read_file') {
+    return readOptionalString(args.file_path) ?? readOptionalString(args.path);
+  }
+
+  return readOptionalString(args.file_path);
 }
 
 function parseToolExpression(input: string): ParsedToolExpression {
@@ -459,20 +535,36 @@ function toolMatches(callTool: string, ruleTool: string): boolean {
   return globToRegExp(ruleTool, true).test(callTool);
 }
 
-function specifierMatches(callSpecifier: string | null, ruleSpecifier: string | null): boolean {
+function specifierMatches(
+  call: ParsedToolExpression,
+  rule: ParsedToolExpression,
+  entry: MatchedRuleEntry,
+  options: PermissionPolicyOptions,
+): boolean {
+  const callSpecifier = call.specifier;
+  const ruleSpecifier = rule.specifier;
   if (ruleSpecifier == null) {
     return true;
   }
   if (callSpecifier == null) {
     return false;
   }
+
+  if (isPathScopedTool(call.tool) && isPathScopedTool(rule.tool)) {
+    return pathSpecifierMatches(callSpecifier, ruleSpecifier, entry, options);
+  }
+
   if (!ruleSpecifier.includes('*')) {
     return callSpecifier === ruleSpecifier;
   }
   return globToRegExp(ruleSpecifier).test(callSpecifier);
 }
 
-function findMatch(call: ParsedToolExpression, rules: MatchedRuleEntry[]): MatchedRuleEntry | null {
+function findMatch(
+  call: ParsedToolExpression,
+  rules: MatchedRuleEntry[],
+  options: PermissionPolicyOptions,
+): MatchedRuleEntry | null {
   for (const entry of rules) {
     const parsedRule = parseToolExpression(entry.rule);
     if (!parsedRule.tool) {
@@ -481,13 +573,46 @@ function findMatch(call: ParsedToolExpression, rules: MatchedRuleEntry[]): Match
     if (!toolMatches(call.tool, parsedRule.tool)) {
       continue;
     }
-    if (!specifierMatches(call.specifier, parsedRule.specifier)) {
+    if (!specifierMatches(call, parsedRule, entry, options)) {
       continue;
     }
     return entry;
   }
 
   return null;
+}
+
+function pathSpecifierMatches(
+  callSpecifier: string,
+  ruleSpecifier: string,
+  entry: MatchedRuleEntry,
+  options: PermissionPolicyOptions,
+): boolean {
+  const projectRoot = resolvePermissionProjectRoot(options);
+  const callPattern = normalizePermissionPathSpecifier(callSpecifier, resolveCallPathBase(options), projectRoot);
+  const rulePattern = normalizePermissionPathSpecifier(
+    ruleSpecifier,
+    resolveRulePathBase(entry.scope, entry.path, options),
+    projectRoot,
+  );
+  if (!callPattern || !rulePattern) {
+    return false;
+  }
+
+  if (rulePattern.value === '*') {
+    return true;
+  }
+
+  if (rulePattern.value.includes('*')) {
+    return globToRegExp(rulePattern.value).test(callPattern.value);
+  }
+
+  if (rulePattern.isDirectory) {
+    return callPattern.value === rulePattern.value
+      || callPattern.value.startsWith(rulePattern.value);
+  }
+
+  return callPattern.value === rulePattern.value;
 }
 
 function buildSourceList(
@@ -510,6 +635,102 @@ function buildSourceList(
     item.path = resolved;
     return true;
   });
+}
+
+function isPathScopedTool(toolName: string): boolean {
+  const normalized = toolName.trim().toLowerCase();
+  return normalized === 'read' || normalized === 'write' || normalized === 'edit';
+}
+
+function resolveCallPathBase(options: PermissionPolicyOptions): string {
+  return path.resolve(options.cwd ?? resolvePermissionProjectRoot(options));
+}
+
+function resolveRulePathBase(
+  scope: string,
+  settingsPath: string,
+  options: PermissionPolicyOptions,
+): string {
+  switch (scope) {
+    case 'codara_local':
+    case 'codara_project':
+      return resolvePermissionProjectRoot(options);
+    case 'codara_user':
+      return resolveUserHome(options);
+    default:
+      return path.dirname(settingsPath);
+  }
+}
+
+function normalizePermissionPathSpecifier(
+  specifier: string | undefined,
+  resolveFrom: string,
+  projectRoot: string,
+): CanonicalPathPattern | undefined {
+  const raw = specifier?.trim();
+  if (!raw) {
+    return undefined;
+  }
+
+  if (raw === '*') {
+    return {value: '*', isDirectory: false};
+  }
+
+  const isDirectory = raw.endsWith('/') || raw.endsWith('\\');
+  const resolved = path.isAbsolute(raw)
+    ? path.resolve(raw)
+    : path.resolve(resolveFrom, raw);
+
+  let canonical = canonicalizePermissionPath(resolved, projectRoot);
+  if (isDirectory) {
+    canonical = ensureDirectoryPattern(canonical);
+  }
+
+  return {
+    value: canonical,
+    isDirectory,
+  };
+}
+
+function canonicalizePermissionPath(targetPath: string, projectRoot: string): string {
+  const relative = path.relative(projectRoot, targetPath);
+  if (relative === '') {
+    return '.';
+  }
+
+  if (!relative.startsWith('..') && !path.isAbsolute(relative)) {
+    return toPosixPath(relative);
+  }
+
+  return toPosixPath(path.resolve(targetPath));
+}
+
+function derivePermissionPathScopeSpecifier(specifier: string): string | undefined {
+  const normalized = specifier.trim();
+  if (!normalized || normalized === '*') {
+    return undefined;
+  }
+
+  if (normalized.endsWith('/') || normalized.endsWith('\\')) {
+    return ensureDirectoryPattern(normalized.replace(/\\/g, '/'));
+  }
+
+  const value = normalized.replace(/\\/g, '/');
+  const directory = path.posix.dirname(value);
+  if (!directory || directory === '.') {
+    return './';
+  }
+
+  return ensureDirectoryPattern(directory);
+}
+
+function ensureDirectoryPattern(value: string): string {
+  const normalized = value === '.' ? './' : value;
+  return normalized.endsWith('/') ? normalized : `${normalized}/`;
+}
+
+function toPosixPath(value: string): string {
+  return value.replace(/\\/g, '/');
 }
 
 function addCodaraSources(target: PermissionSourceRecord[], options: PermissionPolicyOptions): void {

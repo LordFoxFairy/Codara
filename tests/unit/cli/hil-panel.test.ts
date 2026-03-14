@@ -171,8 +171,7 @@ describe('HIL panel model', () => {
           modal: 'permission-review',
           actions: [
             {id: 'allow_once', label: 'Allow once', kind: 'primary'},
-            {id: 'always', label: 'Always allow this action', kind: 'secondary'},
-            {id: 'allow_tool', label: 'Allow this command type', kind: 'secondary'},
+            {id: 'allow_path', label: 'Yes, and always allow access to tmp/demo2/ from this project', kind: 'secondary', scope: 'path'},
             {id: 'edit', label: 'Edit and continue', kind: 'secondary', requiresToolEdit: true},
             {id: 'deny', label: 'Deny', kind: 'danger'},
           ],
@@ -180,8 +179,7 @@ describe('HIL panel model', () => {
       },
       actions: [
         {id: 'allow_once', label: 'Allow once', kind: 'primary'},
-        {id: 'always', label: 'Always allow this action', kind: 'secondary'},
-        {id: 'allow_tool', label: 'Allow this command type', kind: 'secondary'},
+        {id: 'allow_path', label: 'Yes, and always allow access to tmp/demo2/ from this project', kind: 'secondary', scope: 'path'},
         {id: 'edit', label: 'Edit and continue', kind: 'secondary', requiresToolEdit: true},
         {id: 'deny', label: 'Deny', kind: 'danger'},
       ],
@@ -197,9 +195,8 @@ describe('HIL panel model', () => {
     expect(model.summary).toEqual(['tmp/demo2/PLAN.md']);
     expect(model.question).toBe('Do you want to make this edit to PLAN.md?');
     expect(model.actions[0]?.label).toBe('Yes');
-    expect(model.actions[1]?.label).toBe('Yes, and always allow this edit');
-    expect(model.actions[2]?.label).toBe('Yes, and allow edits like this');
-    expect(model.actions[3]?.label).toBe('Amend edit');
-    expect(model.actions[4]?.label).toBe('No');
+    expect(model.actions[1]?.label).toBe('Yes, and always allow access to tmp/demo2/ from this project');
+    expect(model.actions[2]?.label).toBe('Amend edit');
+    expect(model.actions[3]?.label).toBe('No');
   });
 });

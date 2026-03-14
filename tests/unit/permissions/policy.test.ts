@@ -4,6 +4,7 @@ import {tmpdir} from 'node:os';
 import path from 'node:path';
 import {type ToolCall} from '@langchain/core/messages';
 import {ensurePermissionSettingsFile, evaluatePermissionToolCall, persistPermissionScope} from '@core';
+import {formatPermissionPathScopeExpression} from '@core/middleware/permission/policy';
 
 describe('permission policy defaults', () => {
   it('should seed the settings skeleton with common read-only allow rules', async () => {
@@ -40,6 +41,61 @@ describe('permission policy defaults', () => {
     expect(evaluation?.matched).toBeNull();
   });
 
+  it('should match directory-scoped write rules against files inside that directory', async () => {
+    const projectRoot = await mkdtemp(path.join(tmpdir(), 'codara-permission-path-allow-'));
+    await mkdir(path.join(projectRoot, '.codara'), {recursive: true});
+    await writeFile(path.join(projectRoot, '.codara', 'settings.local.json'), JSON.stringify({
+      permissions: {
+        rules: {
+          allow: ['Write(tmp/demo2/)'],
+          ask: [],
+          deny: [],
+        },
+      },
+    }, null, 2));
+
+    const evaluation = await evaluatePermissionToolCall(
+      {id: 'call_write_dir_rule', name: 'write_file', args: {file_path: 'tmp/demo2/PLAN.md', content: 'hello'}},
+      {projectRoot, cwd: projectRoot},
+    );
+
+    expect(evaluation?.decision).toBe('allow');
+    expect(evaluation?.matched?.rule).toBe('Write(tmp/demo2/)');
+  });
+
+  it('should match directory-scoped read rules when read_file uses args.path', async () => {
+    const projectRoot = await mkdtemp(path.join(tmpdir(), 'codara-permission-read-path-'));
+    await mkdir(path.join(projectRoot, '.codara'), {recursive: true});
+    await writeFile(path.join(projectRoot, '.codara', 'settings.local.json'), JSON.stringify({
+      permissions: {
+        rules: {
+          allow: ['Read(docs/)'],
+          ask: [],
+          deny: [],
+        },
+      },
+    }, null, 2));
+
+    const evaluation = await evaluatePermissionToolCall(
+      {id: 'call_read_dir_rule', name: 'read_file', args: {path: 'docs/guide.md'}},
+      {projectRoot, cwd: projectRoot},
+    );
+
+    expect(evaluation?.decision).toBe('allow');
+    expect(evaluation?.matched?.rule).toBe('Read(docs/)');
+  });
+
+  it('should derive a directory-scoped permission expression for file edits', async () => {
+    const projectRoot = await mkdtemp(path.join(tmpdir(), 'codara-permission-path-scope-'));
+
+    const expression = formatPermissionPathScopeExpression(
+      {id: 'call_path_scope', name: 'write_file', args: {file_path: 'tmp/demo2/PLAN.md', content: 'hello'}},
+      {projectRoot, cwd: projectRoot},
+    );
+
+    expect(expression).toBe('Write(tmp/demo2/)');
+  });
+
   it('should persist command-type scope rules for bash approvals', async () => {
     const projectRoot = await mkdtemp(path.join(tmpdir(), 'codara-permission-tool-scope-'));
     ensurePermissionSettingsFile({projectRoot, cwd: projectRoot});
@@ -68,6 +124,22 @@ describe('permission policy defaults', () => {
       permissions?: {defaultDecision?: string};
     };
     expect(content.permissions?.defaultDecision).toBe('allow');
+  });
+
+  it('should persist path scope rules for file edits', async () => {
+    const projectRoot = await mkdtemp(path.join(tmpdir(), 'codara-permission-path-persist-'));
+    ensurePermissionSettingsFile({projectRoot, cwd: projectRoot});
+
+    await persistPermissionScope(
+      {id: 'call_path_persist', name: 'write_file', args: {file_path: 'tmp/demo2/PLAN.md', content: 'hello'}},
+      'path',
+      {projectRoot, cwd: projectRoot},
+    );
+
+    const content = JSON.parse(await readFile(path.join(projectRoot, '.codara', 'settings.local.json'), 'utf8')) as {
+      permissions?: {rules?: {allow?: string[]}};
+    };
+    expect(content.permissions?.rules?.allow).toContain('Write(tmp/demo2/)');
   });
 
   it('should allow unmatched guarded commands when permissions.defaultDecision=allow', async () => {
