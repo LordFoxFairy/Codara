@@ -2,7 +2,6 @@ import {ToolMessage} from '@langchain/core/messages';
 import {
   applyHILResumeToolEdits,
   parseHILResumeActionPayload,
-  type HILResumeActionPayload,
   type HILDecision,
   type HILInterruptConfig,
   type HILUIActionOption,
@@ -13,23 +12,13 @@ import {
 import type {ToolCallContext} from '@core/middleware/types';
 import {
   evaluatePermissionToolCall,
-  evaluatePermissionExpression,
-  formatPermissionPathScopeExpression,
-  formatPermissionToolScopeExpression,
+  formatPermissionExpression,
   persistPermissionRule,
-  persistPermissionScope,
-  type PermissionGrantScope,
   type PermissionPolicyOptions,
 } from '@core/middleware/permission/policy';
-import {
-  createModelPermissionBashAnalysis,
-  type PermissionAnalysisModel,
-  type PermissionBashAnalysis,
-} from '@core/middleware/permission/analysis';
+import {normalizeToolReferenceName} from '@core/tools/names';
 
-export interface PermissionRuntimeOptions extends PermissionPolicyOptions {
-  includeEditAction?: boolean;
-}
+export interface PermissionRuntimeOptions extends PermissionPolicyOptions {}
 
 export interface PermissionRuntime {
   resolveToolDecision(context: ToolCallContext): Promise<HILDecision | undefined>;
@@ -48,19 +37,92 @@ type PermissionRuntimeModelAwareOptions = PermissionRuntimeOptions & {
   bashAnalysisModel?: PermissionAnalysisModel | Promise<PermissionAnalysisModel> | (() => Promise<PermissionAnalysisModel>);
 };
 
-export function createPermissionRuntime(options: PermissionRuntimeOptions = {}): PermissionRuntime {
-  return createPermissionRuntimeInternal(options);
+/**
+ * 文件修改类工具（Edit/Write）的会话级记忆。
+ * 与 Claude Code 一致："Yes, don't ask again" 对文件工具仅当前会话生效，不持久化到文件。
+ */
+function isBashTool(toolName: string): boolean {
+  return normalizeToolReferenceName(toolName) === 'bash';
 }
 
-export function createPermissionRuntimeInternal(
-  options: PermissionRuntimeModelAwareOptions = {},
-): PermissionRuntime {
+/**
+ * 将精确的文件表达式转为目录级通配符。
+ * Edit(src/components/Header.tsx) → Edit(src/components/*)
+ * Write(package.json)             → Write(*)
+ */
+function toDirectoryScopeExpression(expression: string): string {
+  const openIndex = expression.indexOf('(');
+  if (openIndex < 0) {
+    return expression;
+  }
+
+  const toolName = expression.slice(0, openIndex);
+  const specifier = expression.slice(openIndex + 1, -1);
+  const lastSlash = specifier.lastIndexOf('/');
+
+  if (lastSlash < 0) {
+    return `${toolName}(*)`;
+  }
+
+  const directory = specifier.slice(0, lastSlash);
+  return `${toolName}(${directory}/*)`;
+}
+
+/**
+ * 检查表达式是否被会话级记忆覆盖。
+ * 支持目录级通配匹配：会话中存的 "Edit(src/components/*)" 可以匹配 "Edit(src/components/Button.tsx)"。
+ */
+function isSessionAllowed(expression: string, sessionAllowed: Set<string>): boolean {
+  if (sessionAllowed.has(expression)) {
+    return true;
+  }
+
+  const openIndex = expression.indexOf('(');
+  if (openIndex < 0) {
+    return false;
+  }
+
+  const toolName = expression.slice(0, openIndex);
+  const specifier = expression.slice(openIndex + 1, -1);
+
+  for (const rule of sessionAllowed) {
+    const ruleOpenIndex = rule.indexOf('(');
+    if (ruleOpenIndex < 0) {
+      continue;
+    }
+
+    const ruleTool = rule.slice(0, ruleOpenIndex);
+    if (ruleTool !== toolName) {
+      continue;
+    }
+
+    const ruleSpecifier = rule.slice(ruleOpenIndex + 1, -1);
+    if (ruleSpecifier === '*') {
+      return true;
+    }
+
+    if (ruleSpecifier.endsWith('/*')) {
+      const ruleDir = ruleSpecifier.slice(0, -2);
+      const specifierDir = specifier.slice(0, specifier.lastIndexOf('/'));
+      if (specifierDir === ruleDir) {
+        return true;
+      }
+    }
+  }
+
+  return false;
+}
+
+
+export function createPermissionRuntime(options: PermissionRuntimeOptions = {}): PermissionRuntime {
+  const sessionAllowedExpressions = new Set<string>();
+
   return {
     resolveToolDecision(context) {
-      return resolvePermissionDecision(context, options);
+      return resolvePermissionDecision(context, options, sessionAllowedExpressions);
     },
     handleResume(metadata, resumePayload, context, handler) {
-      return handlePermissionResume(metadata ?? {}, resumePayload, context, handler, options);
+      return handlePermissionResume(metadata ?? {}, resumePayload, context, handler, options, sessionAllowedExpressions);
     },
     isPermissionPause,
   };
@@ -68,20 +130,18 @@ export function createPermissionRuntimeInternal(
 
 async function resolvePermissionDecision(
   context: ToolCallContext,
-  options: PermissionRuntimeModelAwareOptions,
+  options: PermissionRuntimeOptions,
+  sessionAllowed: Set<string>,
 ): Promise<HILDecision | undefined> {
   const initialEvaluation = await evaluatePermissionToolCall(context.toolCall, options);
   if (!initialEvaluation) {
     return undefined;
   }
 
-  const bashAnalysis = await analyzeBashPermission(context, initialEvaluation.decision, options);
-  const evaluation = await reEvaluateAnalyzedPermission(
-    initialEvaluation,
-    bashAnalysis,
-    options,
-  );
-  const reason = describePermissionDecisionReason(evaluation, context, options);
+  if (isSessionAllowed(evaluation.input, sessionAllowed)) {
+    return {decision: 'allow'};
+  }
+
   const metadata = {
     codara: {
       actor: {
@@ -117,14 +177,7 @@ async function resolvePermissionDecision(
 
   return {
     decision: 'ask',
-    config: createPermissionInterruptConfig(
-      evaluation.input,
-      context,
-      options,
-      metadata,
-      bashAnalysis?.reason ?? reason,
-      bashAnalysis,
-    ),
+    config: createPermissionInterruptConfig(evaluation.input, context, metadata),
     metadata,
   };
 }
@@ -132,55 +185,30 @@ async function resolvePermissionDecision(
 function createPermissionInterruptConfig(
   expression: string,
   context: ToolCallContext,
-  options: PermissionRuntimeModelAwareOptions,
   metadata: Record<string, unknown>,
   reason: string | undefined,
   bashAnalysis?: PermissionBashAnalysis,
 ): HILInterruptConfig {
-  const permissionKind = resolvePermissionReviewKind(context.toolCall.name);
-  const pathAction = buildPermissionPathAction(context, options, bashAnalysis);
-  const toolAction = pathAction && permissionKind === 'command'
-    ? undefined
-    : buildPermissionToolAction(context.toolCall, bashAnalysis);
-  const genericApprovalActions = [
-    {
-      id: 'always',
-      label: 'Always allow this action',
-      kind: 'secondary' as const,
-      scope: 'exact',
-      description: 'Persist only this exact permission expression.',
-    },
-    ...(toolAction ? [toolAction] : []),
-    {
-      id: 'allow_project',
-      label: 'Trust this project',
-      kind: 'secondary' as const,
-      scope: 'project',
-      description: 'Set the project permission default to allow.',
-    },
-  ];
   const actions = [
     {
       id: 'allow_once',
-      label: 'Allow once',
+      label: 'Yes',
       kind: 'primary' as const,
-      description: 'Approve only this execution.',
     },
-    ...(pathAction ? [pathAction] : permissionKind === 'path' ? [] : genericApprovalActions),
-    ...(pathAction && permissionKind !== 'path'
-      ? genericApprovalActions.filter((action) => action.id !== 'always')
-      : []),
-    ...(options.includeEditAction === false ? [] : [{
-      id: 'edit',
-      label: 'Edit and continue',
+    {
+      id: 'dont_ask_again',
+      label: "Yes, don't ask again",
       kind: 'secondary' as const,
-      requiresToolEdit: true,
-    }]),
-    {id: 'deny', label: 'Deny', kind: 'danger' as const, requiresConfirmation: true},
+    },
+    {
+      id: 'deny',
+      label: 'No',
+      kind: 'danger' as const,
+    },
   ];
 
   return {
-    description: reason ?? `${context.state.agentType === 'subagent' ? 'Delegated subagent permission review required' : 'Permission review required'} for ${expression}`,
+    description: `${context.state.agentType === 'subagent' ? 'Subagent wants to run' : 'Codara wants to run'} ${expression}`,
     channel: DEFAULT_PERMISSION_CHANNEL,
     ui: {
       tab: 'Security',
@@ -232,41 +260,32 @@ function describePermissionDecisionReason(
 }
 
 async function handlePermissionResume(
-  metadata: Record<string, unknown>,
+  _metadata: Record<string, unknown>,
   resumePayload: HILResumePayload,
   context: ToolCallContext,
   handler: (request?: ToolCallContext) => Promise<ToolMessage>,
   options: PermissionRuntimeOptions,
+  sessionAllowed: Set<string>,
 ): Promise<ToolMessage> {
   const payload = parseHILResumeActionPayload(resumePayload);
   if (payload.action === 'deny' || payload.decision === 'reject') {
     return createPermissionDenyMessage(context, payload.comment, payload.metadata);
   }
 
-  const nextContext = applyHILResumeToolEdits(context, payload);
-  const grantScope = resolvePermissionGrantScope(payload);
-  if (grantScope) {
-    const suggestedRule = resolveSuggestedPermissionRule(metadata, grantScope);
-    if (suggestedRule) {
-      await persistPermissionRule(suggestedRule, 'allow', options);
-    } else {
-      await persistPermissionScope(nextContext.toolCall, grantScope, options);
+  if (payload.action === 'dont_ask_again') {
+    const expression = formatPermissionExpression(context.toolCall);
+    if (expression) {
+      if (isBashTool(context.toolCall.name)) {
+        // Bash: 精确命令持久化到 settings.local.json（跨会话）
+        await persistPermissionRule(expression, 'allow', options);
+      } else {
+        // Edit/Write 等: 目录级会话记忆，不持久化
+        sessionAllowed.add(toDirectoryScopeExpression(expression));
+      }
     }
   }
 
-  if (
-    payload.action === 'allow_once'
-    || payload.action === 'always'
-    || payload.action === 'edit'
-    || payload.decision === 'approve'
-    || payload.decision === 'edit'
-    || payload.action === 'allow'
-    || payload.action === undefined
-  ) {
-    return handler(nextContext);
-  }
-
-  return createPermissionDenyMessage(context, `Unsupported permission action: ${payload.action}`, metadata);
+  return handler(context);
 }
 
 export function handlePermissionFallbackResume(
@@ -323,274 +342,3 @@ export function isPermissionPause(metadata: unknown): boolean {
   return typeof (metadata as Record<string, unknown>).permissionPolicy === 'object';
 }
 
-type PermissionReviewKind = 'path' | 'command';
-
-function resolvePermissionReviewKind(toolName: string): PermissionReviewKind {
-  const normalized = toolName.trim().toLowerCase();
-  return normalized === 'read_file' || normalized === 'write_file' || normalized === 'edit_file'
-    ? 'path'
-    : 'command';
-}
-
-function buildPermissionPathAction(
-  context: ToolCallContext,
-  options: PermissionRuntimeOptions,
-  bashAnalysis?: PermissionBashAnalysis,
-): HILUIActionOption | undefined {
-  const expression = bashAnalysis?.pathScopeExpression ?? formatPermissionPathScopeExpression(context.toolCall, options);
-  const target = readPermissionPathScopeTarget(expression);
-  if (!target || target === './') {
-    return undefined;
-  }
-
-  const label = target
-    ? `Yes, and always allow access to ${target} from this project`
-    : 'Yes, and always allow access to this path from this project';
-
-  return {
-    id: 'allow_path',
-    label,
-    kind: 'secondary',
-    scope: 'path',
-    description: 'Persist a path rule for this project subtree.',
-  };
-}
-
-function buildPermissionToolAction(
-  toolCall: ToolCallContext['toolCall'],
-  bashAnalysis?: PermissionBashAnalysis,
-): HILUIActionOption {
-  const expression = bashAnalysis?.toolScopeExpression ?? formatPermissionToolScopeExpression(toolCall);
-
-  return {
-    id: 'allow_tool',
-    label: describePermissionToolScopeLabel(toolCall.name ?? '', expression),
-    kind: 'secondary',
-    scope: 'tool',
-    description: expression
-      ? `Persist a project rule for ${expression}.`
-      : 'Persist a wildcard rule for similar commands in this project.',
-  };
-}
-
-function describePermissionToolScopeLabel(toolName: string, expression: string | undefined): string {
-  if (toolName.trim().toLowerCase() !== 'bash') {
-    return 'Allow this command type';
-  }
-
-  if (!expression || expression === 'Bash(*)') {
-    return 'Yes, and allow bash commands in this project';
-  }
-
-  const target = readPermissionToolScopeTarget(expression);
-  if (!target || target === '*') {
-    return 'Yes, and allow bash commands in this project';
-  }
-
-  const normalized = target.replace(/\s+\*$/, '').trim();
-  if (!normalized) {
-    return 'Yes, and allow bash commands in this project';
-  }
-
-  return `Yes, and allow ${normalized} commands in this project`;
-}
-
-function resolvePermissionGrantScope(payload: HILResumeActionPayload): PermissionGrantScope | undefined {
-  const scope = payload.scope?.trim().toLowerCase();
-  if (scope === 'exact' || scope === 'path' || scope === 'tool' || scope === 'project') {
-    return scope;
-  }
-
-  const action = payload.action?.trim().toLowerCase();
-  if (action === 'always') {
-    return 'exact';
-  }
-  if (action === 'allow_path') {
-    return 'path';
-  }
-  if (action === 'allow_tool') {
-    return 'tool';
-  }
-  if (action === 'allow_project') {
-    return 'project';
-  }
-
-  if (payload.decision !== 'approve' && payload.decision !== 'edit') {
-    return undefined;
-  }
-
-  return undefined;
-}
-
-async function analyzeBashPermission(
-  context: ToolCallContext,
-  decision: 'allow' | 'ask' | 'deny',
-  options: PermissionRuntimeModelAwareOptions,
-): Promise<PermissionBashAnalysis | undefined> {
-  if (decision !== 'ask' || context.toolCall.name.trim().toLowerCase() !== 'bash') {
-    return undefined;
-  }
-
-  const command = readBashCommand(context.toolCall);
-  if (!command) {
-    return undefined;
-  }
-
-  const analyzeBash = resolvePermissionBashAnalysis(options);
-  if (!analyzeBash) {
-    return undefined;
-  }
-
-  try {
-    return await analyzeBash({
-      command,
-      cwd: options.cwd,
-      projectRoot: options.projectRoot,
-    });
-  } catch {
-    return undefined;
-  }
-}
-
-function resolvePermissionBashAnalysis(
-  options: PermissionRuntimeModelAwareOptions,
-): ((input: {
-  command: string;
-  cwd?: string;
-  projectRoot?: string;
-}) => Promise<PermissionBashAnalysis | undefined>) | undefined {
-  if (options.bashAnalysisModel) {
-    return createModelPermissionBashAnalysis({model: options.bashAnalysisModel});
-  }
-
-  return undefined;
-}
-
-async function reEvaluateAnalyzedPermission(
-  evaluation: PermissionEvaluation,
-  bashAnalysis: PermissionBashAnalysis | undefined,
-  options: PermissionRuntimeOptions,
-): Promise<PermissionEvaluation> {
-  if (evaluation.decision !== 'ask' || !bashAnalysis) {
-    return evaluation;
-  }
-
-  const candidates = [
-    bashAnalysis.pathScopeExpression,
-    bashAnalysis.toolScopeExpression,
-  ].filter((value): value is string => typeof value === 'string' && value.trim().length > 0);
-
-  if (candidates.length === 0) {
-    return evaluation;
-  }
-
-  const reEvaluations = await Promise.all(
-    candidates.map((expression) => evaluatePermissionExpression(expression, options)),
-  );
-  const selected = selectClassifiedPermissionEvaluation(evaluation, reEvaluations);
-  return selected
-    ? {
-      ...selected,
-      input: evaluation.input,
-    }
-    : evaluation;
-}
-
-function selectClassifiedPermissionEvaluation(
-  original: PermissionEvaluation,
-  candidates: PermissionEvaluation[],
-): PermissionEvaluation | undefined {
-  const matchedDeny = candidates.find((candidate) => candidate.matched?.bucket === 'deny');
-  if (matchedDeny) {
-    return matchedDeny;
-  }
-
-  if (original.matched?.bucket === 'ask') {
-    return undefined;
-  }
-
-  const matchedAsk = candidates.find((candidate) => candidate.matched?.bucket === 'ask');
-  if (matchedAsk) {
-    return matchedAsk;
-  }
-
-  if (original.matched) {
-    return undefined;
-  }
-
-  const matchedAllow = candidates.find((candidate) => candidate.matched?.bucket === 'allow');
-  if (matchedAllow) {
-    return matchedAllow;
-  }
-
-  return undefined;
-}
-
-function readBashCommand(toolCall: ToolCallContext['toolCall']): string | undefined {
-  const args = toolCall.args;
-  if (!args || typeof args !== 'object' || Array.isArray(args)) {
-    return undefined;
-  }
-
-  const command = (args as Record<string, unknown>).command;
-  return typeof command === 'string' && command.trim().length > 0 ? command.trim() : undefined;
-}
-
-function resolveSuggestedPermissionRule(
-  metadata: Record<string, unknown>,
-  scope: PermissionGrantScope,
-): string | undefined {
-  const suggestions = readPermissionSuggestions(metadata);
-  if (scope === 'path') {
-    return suggestions?.pathRule;
-  }
-  if (scope === 'tool') {
-    return suggestions?.toolRule;
-  }
-  return undefined;
-}
-
-function readPermissionSuggestions(
-  metadata: Record<string, unknown>,
-): {pathRule?: string; toolRule?: string} | undefined {
-  const permissionPolicy = metadata.permissionPolicy;
-  if (!permissionPolicy || typeof permissionPolicy !== 'object' || Array.isArray(permissionPolicy)) {
-    return undefined;
-  }
-
-  const suggestions = (permissionPolicy as Record<string, unknown>).suggestions;
-  if (!suggestions || typeof suggestions !== 'object' || Array.isArray(suggestions)) {
-    return undefined;
-  }
-
-  const pathRule = typeof (suggestions as Record<string, unknown>).pathRule === 'string'
-    ? (suggestions as Record<string, string>).pathRule.trim()
-    : undefined;
-  const toolRule = typeof (suggestions as Record<string, unknown>).toolRule === 'string'
-    ? (suggestions as Record<string, string>).toolRule.trim()
-    : undefined;
-
-  return pathRule || toolRule ? { ...(pathRule ? {pathRule} : {}), ...(toolRule ? {toolRule} : {}) } : undefined;
-}
-
-function readPermissionPathScopeTarget(expression: string | undefined): string | undefined {
-  if (!expression) {
-    return undefined;
-  }
-
-  const open = expression.indexOf('(');
-  if (open < 0 || !expression.endsWith(')')) {
-    return undefined;
-  }
-
-  const target = expression.slice(open + 1, -1).trim();
-  if (!target) {
-    return undefined;
-  }
-
-  return target;
-}
-
-function readPermissionToolScopeTarget(expression: string | undefined): string | undefined {
-  return readPermissionPathScopeTarget(expression);
-}

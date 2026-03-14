@@ -92,11 +92,11 @@ describe('HIL panel model', () => {
     expect(model.input?.style).toBe('inline');
   });
 
-  it('should describe permission reviews as a dedicated foreground panel', () => {
+  it('should describe permission reviews matching Claude Code: Yes / Yes dont ask again / No', () => {
     const review: CliHilReviewState = {
       request: {
         id: 'pause-2',
-        description: 'Permission review required for Bash(touch guarded.txt)',
+        description: 'Codara wants to run Bash(touch guarded.txt)',
         action: {
           toolCallId: 'call_2',
           toolName: 'Bash',
@@ -121,18 +121,18 @@ describe('HIL panel model', () => {
         ui: {
           modal: 'permission-review',
           actions: [
-            {id: 'approve', label: 'Approve once', kind: 'primary'},
-            {id: 'always', label: 'Always allow', kind: 'secondary', scope: 'project'},
-            {id: 'reject', label: 'Reject', kind: 'danger'},
+            {id: 'allow_once', label: 'Yes', kind: 'primary'},
+            {id: 'dont_ask_again', label: "Yes, don't ask again", kind: 'secondary'},
+            {id: 'deny', label: 'No', kind: 'danger'},
           ],
         },
       },
       actions: [
-        {id: 'approve', label: 'Approve once', kind: 'primary'},
-        {id: 'always', label: 'Always allow', kind: 'secondary', scope: 'project'},
-        {id: 'reject', label: 'Reject', kind: 'danger'},
+        {id: 'allow_once', label: 'Yes', kind: 'primary'},
+        {id: 'dont_ask_again', label: "Yes, don't ask again", kind: 'secondary'},
+        {id: 'deny', label: 'No', kind: 'danger'},
       ],
-      selectedActionIndex: 1,
+      selectedActionIndex: 0,
       focus: 'actions',
       draft: '',
       busy: false,
@@ -140,115 +140,14 @@ describe('HIL panel model', () => {
 
     const model = describeHilPanel(review);
 
-    expect(model.title).toBe('Bash command');
-    expect(model.badge).toBeUndefined();
-    expect(model.chrome).toBe('plain');
-    expect(model.summary).toContain('touch guarded.txt');
-    expect(model.summary).toContain('Needs approval because no allow rule covers touch guarded.txt.');
-    expect(model.question).toBe('Do you want to proceed?');
+    expect(model.title).toBe('Codara wants to run Bash(touch guarded.txt)');
+    expect(model.badge).toBe('permission');
+    expect(model.tone).toBe('yellow');
+    expect(model.actions).toHaveLength(3);
     expect(model.actions[0]?.label).toBe('Yes');
-    expect(model.actions[1]?.label).toBe('Yes, and always allow this action');
-    expect(model.actionDetail).toBeUndefined();
+    expect(model.actions[1]?.label).toBe("Yes, don't ask again");
+    expect(model.actions[2]?.label).toBe('No');
+    expect(model.compactActions).toBe(true);
     expect(model.input).toBeUndefined();
-  });
-
-  it('should describe file-edit permission reviews with file-specific wording', () => {
-    const review: CliHilReviewState = {
-      request: {
-        id: 'pause-3',
-        description: 'Permission review required for Write(tmp/demo2/PLAN.md)',
-        action: {
-          toolCallId: 'call_3',
-          toolName: 'write_file',
-          toolArgs: {file_path: 'tmp/demo2/PLAN.md'},
-        },
-        review: {
-          actionName: 'write_file',
-          allowedDecisions: ['approve', 'reject'],
-        },
-        runtime: {
-          runId: 'run-3',
-          turn: 1,
-          requestId: 'request-3',
-          toolIndex: 0,
-        },
-        channel: 'permission-center',
-        ui: {
-          modal: 'permission-review',
-          actions: [
-            {id: 'allow_once', label: 'Allow once', kind: 'primary'},
-            {id: 'allow_path', label: 'Yes, and always allow access to tmp/demo2/ from this project', kind: 'secondary', scope: 'path'},
-            {id: 'edit', label: 'Edit and continue', kind: 'secondary', requiresToolEdit: true},
-            {id: 'deny', label: 'Deny', kind: 'danger'},
-          ],
-        },
-      },
-      actions: [
-        {id: 'allow_once', label: 'Allow once', kind: 'primary'},
-        {id: 'allow_path', label: 'Yes, and always allow access to tmp/demo2/ from this project', kind: 'secondary', scope: 'path'},
-        {id: 'edit', label: 'Edit and continue', kind: 'secondary', requiresToolEdit: true},
-        {id: 'deny', label: 'Deny', kind: 'danger'},
-      ],
-      selectedActionIndex: 0,
-      focus: 'actions',
-      draft: '',
-      busy: false,
-    };
-
-    const model = describeHilPanel(review);
-
-    expect(model.title).toBe('File edit');
-    expect(model.summary).toEqual(['tmp/demo2/PLAN.md']);
-    expect(model.question).toBe('Do you want to make this edit to PLAN.md?');
-    expect(model.actions[0]?.label).toBe('Yes');
-    expect(model.actions[1]?.label).toBe('Yes, and always allow access to tmp/demo2/ from this project');
-    expect(model.actions[2]?.label).toBe('Amend edit');
-    expect(model.actions[3]?.label).toBe('No');
-  });
-
-  it('should preserve contextual allow-tool labels for bash permission reviews', () => {
-    const review: CliHilReviewState = {
-      request: {
-        id: 'pause-4',
-        description: 'Permission review required for Bash(cd ./tmp/repo && git fetch origin && git push origin main)',
-        action: {
-          toolCallId: 'call_4',
-          toolName: 'bash',
-          toolArgs: {command: 'cd ./tmp/repo && git fetch origin && git push origin main'},
-        },
-        review: {
-          actionName: 'bash',
-          allowedDecisions: ['approve', 'reject'],
-        },
-        runtime: {
-          runId: 'run-4',
-          turn: 1,
-          requestId: 'request-4',
-          toolIndex: 0,
-        },
-        channel: 'permission-center',
-        ui: {
-          modal: 'permission-review',
-          actions: [
-            {id: 'allow_once', label: 'Allow once', kind: 'primary'},
-            {id: 'allow_tool', label: 'Yes, and allow git commands in this project', kind: 'secondary', scope: 'tool'},
-            {id: 'deny', label: 'Deny', kind: 'danger'},
-          ],
-        },
-      },
-      actions: [
-        {id: 'allow_once', label: 'Allow once', kind: 'primary'},
-        {id: 'allow_tool', label: 'Yes, and allow git commands in this project', kind: 'secondary', scope: 'tool'},
-        {id: 'deny', label: 'Deny', kind: 'danger'},
-      ],
-      selectedActionIndex: 0,
-      focus: 'actions',
-      draft: '',
-      busy: false,
-    };
-
-    const model = describeHilPanel(review);
-
-    expect(model.actions[1]?.label).toBe('Yes, and allow git commands in this project');
   });
 });
