@@ -4,7 +4,7 @@ import type {Codara} from '@core';
 import {Footer} from '../components/chrome/footer';
 import {Header} from '../components/chrome/header';
 import {ActivityLine} from '../components/chrome/activity-line';
-import {HilPanel} from '../components/conversation/hil-panel';
+import {HilPanel, isPermissionReview} from '../components/conversation/hil-panel';
 import {Transcript} from '../components/conversation/transcript';
 import {WelcomeState} from '../components/conversation/welcome-state';
 import {PromptFrame} from '../components/prompt/prompt-frame';
@@ -93,6 +93,7 @@ export function CodaraCliApp(props: CodaraCliAppProps): React.JSX.Element {
     onBackspace: shell.backspaceHilInput,
     onSubmit: shell.submitHilAction,
     onExit: exit,
+    onQuickAction: isPermissionReview(shell.hilReview) ? shell.quickHilAction : undefined,
   });
 
   useEffect(() => {
@@ -121,18 +122,36 @@ export function CodaraCliApp(props: CodaraCliAppProps): React.JSX.Element {
         runState={shell.runState}
         latestRuntimeEvent={shell.latestRuntimeEvent}
       />
-      {foregroundSurface === 'hil' && shell.hilReview ? (
-        <HilPanel review={shell.hilReview} />
+      {foregroundSurface === 'transcript' || foregroundSurface === 'hil' ? (
+        <>
+          <Transcript
+            coreMessages={shell.coreMessages}
+            notices={shell.notices}
+            activeTurn={shell.activeTurn}
+            runtimeEvents={shell.runtimeEvents}
+          />
+          {foregroundSurface === 'hil' && shell.hilReview ? (
+            <HilPanel review={shell.hilReview} />
+          ) : (
+            <>
+              <ActivityLine
+                runState={shell.runState}
+                activeTurn={shell.activeTurn}
+                latestRuntimeEvent={shell.latestRuntimeEvent}
+              />
+              <PromptFrame
+                terminalWidth={terminalWidth}
+                composer={shell.composer}
+                cursorActivityVersion={shell.composerActivityVersion}
+                isRunning={shell.runState.status === 'running'}
+              />
+              <Footer layoutMode={layoutMode} />
+            </>
+          )}
+        </>
       ) : (
         <>
-          {foregroundSurface === 'transcript' ? (
-            <Transcript
-              coreMessages={shell.coreMessages}
-              notices={shell.notices}
-              activeTurn={shell.activeTurn}
-              runtimeEvents={shell.runtimeEvents}
-            />
-          ) : <WelcomeState layoutMode={layoutMode} />}
+          <WelcomeState layoutMode={layoutMode} />
           <ActivityLine
             runState={shell.runState}
             activeTurn={shell.activeTurn}
