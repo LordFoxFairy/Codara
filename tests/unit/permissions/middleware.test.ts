@@ -2,7 +2,7 @@ import {describe, expect, it} from 'bun:test';
 import {mkdtemp, readFile} from 'node:fs/promises';
 import {tmpdir} from 'node:os';
 import path from 'node:path';
-import {HumanMessage, ToolMessage, type BaseMessage, type ToolCall} from '@langchain/core/messages';
+import {AIMessage, HumanMessage, ToolMessage, type BaseMessage, type ToolCall} from '@langchain/core/messages';
 import {createPermissionMiddleware, ensurePermissionSettingsFile} from '@core';
 import {parseHILToolMessagePayload, type ToolCallContext} from '@core/middleware';
 
@@ -25,6 +25,24 @@ function createToolContext(toolCall: ToolCall, runtimeContext: Record<string, un
     toolCall,
     toolIndex: 0,
   };
+}
+
+class StaticPermissionAnalysisModel {
+  constructor(
+    private readonly payload: {
+      reason?: string | null;
+      pathScopeExpression?: string | null;
+      toolScopeExpression?: string | null;
+    },
+  ) {}
+
+  async invoke(): Promise<AIMessage> {
+    return new AIMessage(JSON.stringify({
+      reason: this.payload.reason ?? null,
+      pathScopeExpression: this.payload.pathScopeExpression ?? null,
+      toolScopeExpression: this.payload.toolScopeExpression ?? null,
+    }));
+  }
 }
 
 describe('createPermissionMiddleware', () => {
@@ -211,7 +229,7 @@ describe('createPermissionMiddleware', () => {
     const middleware = createPermissionMiddleware({
       projectRoot,
       cwd: projectRoot,
-      bashClassifier: async () => ({
+      bashAnalysisModel: new StaticPermissionAnalysisModel({
         reason: 'Needs approval because this compound command writes under tmp/demo2/.',
         pathScopeExpression: 'Write(tmp/demo2/)',
       }),
@@ -244,7 +262,7 @@ describe('createPermissionMiddleware', () => {
     const middleware = createPermissionMiddleware({
       projectRoot,
       cwd: projectRoot,
-      bashClassifier: async () => ({
+      bashAnalysisModel: new StaticPermissionAnalysisModel({
         pathScopeExpression: 'Write(tmp/demo2/)',
       }),
     });
@@ -292,7 +310,7 @@ describe('createPermissionMiddleware', () => {
     const middleware = createPermissionMiddleware({
       projectRoot,
       cwd: projectRoot,
-      bashClassifier: async () => ({
+      bashAnalysisModel: new StaticPermissionAnalysisModel({
         pathScopeExpression: 'Write(tmp/demo2/)',
       }),
     });
@@ -326,7 +344,7 @@ describe('createPermissionMiddleware', () => {
     const middleware = createPermissionMiddleware({
       projectRoot,
       cwd: projectRoot,
-      bashClassifier: async () => ({
+      bashAnalysisModel: new StaticPermissionAnalysisModel({
         pathScopeExpression: 'Write(tmp/demo2/)',
       }),
     });

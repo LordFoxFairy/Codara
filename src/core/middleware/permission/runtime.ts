@@ -21,11 +21,17 @@ import {
   type PermissionGrantScope,
   type PermissionPolicyOptions,
 } from '@core/middleware/permission/policy';
-import type {PermissionBashClassification, PermissionBashClassifier} from '@core/middleware/permission/classifier';
+import {
+  createModelPermissionBashAnalysis,
+  type PermissionAnalysisModel,
+  type PermissionBashAnalysis,
+  type PermissionBashAnalysisFn,
+} from '@core/middleware/permission/analysis';
 
 export interface PermissionRuntimeOptions extends PermissionPolicyOptions {
   includeEditAction?: boolean;
-  bashClassifier?: PermissionBashClassifier;
+  bashAnalysisModel?: PermissionAnalysisModel | Promise<PermissionAnalysisModel> | (() => Promise<PermissionAnalysisModel>);
+  analyzeBash?: PermissionBashAnalysisFn;
 }
 
 export interface PermissionRuntime {
@@ -63,10 +69,10 @@ async function resolvePermissionDecision(
     return undefined;
   }
 
-  const bashClassification = await classifyBashPermission(context, initialEvaluation.decision, options);
-  const evaluation = await reEvaluateClassifiedPermission(
+  const bashAnalysis = await analyzeBashPermission(context, initialEvaluation.decision, options);
+  const evaluation = await reEvaluateAnalyzedPermission(
     initialEvaluation,
-    bashClassification,
+    bashAnalysis,
     options,
   );
   const reason = describePermissionDecisionReason(evaluation, context, options);
@@ -81,12 +87,12 @@ async function resolvePermissionDecision(
       decision: evaluation.decision,
       defaultDecision: evaluation.defaultDecision,
       matched: evaluation.matched,
-      reason: bashClassification?.reason ?? reason,
+      reason: bashAnalysis?.reason ?? reason,
       sources: evaluation.sources,
       policySummary: evaluation.policySummary,
       suggestions: {
-        ...(bashClassification?.pathScopeExpression ? {pathRule: bashClassification.pathScopeExpression} : {}),
-        ...(bashClassification?.toolScopeExpression ? {toolRule: bashClassification.toolScopeExpression} : {}),
+        ...(bashAnalysis?.pathScopeExpression ? {pathRule: bashAnalysis.pathScopeExpression} : {}),
+        ...(bashAnalysis?.toolScopeExpression ? {toolRule: bashAnalysis.toolScopeExpression} : {}),
       },
     },
   } satisfies Record<string, unknown>;
@@ -110,8 +116,8 @@ async function resolvePermissionDecision(
       context,
       options,
       metadata,
-      bashClassification?.reason ?? reason,
-      bashClassification,
+      bashAnalysis?.reason ?? reason,
+      bashAnalysis,
     ),
     metadata,
   };
@@ -123,13 +129,13 @@ function createPermissionInterruptConfig(
   options: PermissionRuntimeOptions,
   metadata: Record<string, unknown>,
   reason: string | undefined,
-  bashClassification?: PermissionBashClassification,
+  bashAnalysis?: PermissionBashAnalysis,
 ): HILInterruptConfig {
   const permissionKind = resolvePermissionReviewKind(context.toolCall.name);
-  const pathAction = buildPermissionPathAction(context, options, bashClassification);
+  const pathAction = buildPermissionPathAction(context, options, bashAnalysis);
   const toolAction = pathAction && permissionKind === 'command'
     ? undefined
-    : buildPermissionToolAction(context.toolCall, bashClassification);
+    : buildPermissionToolAction(context.toolCall, bashAnalysis);
   const genericApprovalActions = [
     {
       id: 'always',
@@ -323,9 +329,9 @@ function resolvePermissionReviewKind(toolName: string): PermissionReviewKind {
 function buildPermissionPathAction(
   context: ToolCallContext,
   options: PermissionRuntimeOptions,
-  bashClassification?: PermissionBashClassification,
+  bashAnalysis?: PermissionBashAnalysis,
 ): HILUIActionOption | undefined {
-  const expression = bashClassification?.pathScopeExpression ?? formatPermissionPathScopeExpression(context.toolCall, options);
+  const expression = bashAnalysis?.pathScopeExpression ?? formatPermissionPathScopeExpression(context.toolCall, options);
   const target = readPermissionPathScopeTarget(expression);
   if (!target || target === './') {
     return undefined;
@@ -346,9 +352,9 @@ function buildPermissionPathAction(
 
 function buildPermissionToolAction(
   toolCall: ToolCallContext['toolCall'],
-  bashClassification?: PermissionBashClassification,
+  bashAnalysis?: PermissionBashAnalysis,
 ): HILUIActionOption {
-  const expression = bashClassification?.toolScopeExpression ?? formatPermissionToolScopeExpression(toolCall);
+  const expression = bashAnalysis?.toolScopeExpression ?? formatPermissionToolScopeExpression(toolCall);
 
   return {
     id: 'allow_tool',
@@ -410,12 +416,12 @@ function resolvePermissionGrantScope(payload: HILResumeActionPayload): Permissio
   return undefined;
 }
 
-async function classifyBashPermission(
+async function analyzeBashPermission(
   context: ToolCallContext,
   decision: 'allow' | 'ask' | 'deny',
   options: PermissionRuntimeOptions,
-): Promise<PermissionBashClassification | undefined> {
-  if (decision !== 'ask' || context.toolCall.name.trim().toLowerCase() !== 'bash' || !options.bashClassifier) {
+): Promise<PermissionBashAnalysis | undefined> {
+  if (decision !== 'ask' || context.toolCall.name.trim().toLowerCase() !== 'bash') {
     return undefined;
   }
 
@@ -424,8 +430,13 @@ async function classifyBashPermission(
     return undefined;
   }
 
+  const analyzeBash = resolvePermissionBashAnalysis(options);
+  if (!analyzeBash) {
+    return undefined;
+  }
+
   try {
-    return await options.bashClassifier({
+    return await analyzeBash({
       command,
       cwd: options.cwd,
       projectRoot: options.projectRoot,
@@ -435,18 +446,32 @@ async function classifyBashPermission(
   }
 }
 
-async function reEvaluateClassifiedPermission(
+function resolvePermissionBashAnalysis(
+  options: PermissionRuntimeOptions,
+): PermissionBashAnalysisFn | undefined {
+  if (options.analyzeBash) {
+    return options.analyzeBash;
+  }
+
+  if (options.bashAnalysisModel) {
+    return createModelPermissionBashAnalysis({model: options.bashAnalysisModel});
+  }
+
+  return undefined;
+}
+
+async function reEvaluateAnalyzedPermission(
   evaluation: PermissionEvaluation,
-  bashClassification: PermissionBashClassification | undefined,
+  bashAnalysis: PermissionBashAnalysis | undefined,
   options: PermissionRuntimeOptions,
 ): Promise<PermissionEvaluation> {
-  if (evaluation.decision !== 'ask' || !bashClassification) {
+  if (evaluation.decision !== 'ask' || !bashAnalysis) {
     return evaluation;
   }
 
   const candidates = [
-    bashClassification.pathScopeExpression,
-    bashClassification.toolScopeExpression,
+    bashAnalysis.pathScopeExpression,
+    bashAnalysis.toolScopeExpression,
   ].filter((value): value is string => typeof value === 'string' && value.trim().length > 0);
 
   if (candidates.length === 0) {

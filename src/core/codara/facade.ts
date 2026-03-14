@@ -20,7 +20,6 @@ import {
   createPermissionMiddleware,
   ensurePermissionSettingsFile,
 } from '@core/middleware/permission';
-import {createModelPermissionBashClassifier} from '@core/middleware/permission/classifier';
 import {
   createSharedTaskMiddleware,
   createTaskFileStore,
@@ -575,7 +574,7 @@ function createRuntimeDefaultMiddlewares(input: {
       cwd: input.options.cwd,
       projectRoot: input.options.projectRoot,
       userHome: input.options.userHome,
-      bashClassifier: createRuntimePermissionBashClassifier(input.options, input.catalog),
+      bashAnalysisModel: createRuntimePermissionAnalysisModel(input.options, input.catalog),
     }));
   }
 
@@ -629,7 +628,7 @@ function createDelegatedRuntimeMiddlewares(input: {
       cwd: input.options.cwd,
       projectRoot: input.options.projectRoot,
       userHome: input.options.userHome,
-      bashClassifier: createRuntimePermissionBashClassifier(input.options, input.catalog),
+      bashAnalysisModel: createRuntimePermissionAnalysisModel(input.options, input.catalog),
     }));
   }
 
@@ -676,25 +675,21 @@ function createInstructionContextPreparer(sources: {
   };
 }
 
-function createRuntimePermissionBashClassifier(
+function createRuntimePermissionAnalysisModel(
   options: Pick<CodaraRuntimeOptions, 'alias' | 'config' | 'model'>,
   catalog?: CodaraModelCatalog | Promise<CodaraModelCatalog>,
 ) {
   if (options.model) {
-    return createModelPermissionBashClassifier({
-      model: typeof options.model === 'function'
-        ? options.model as () => Promise<BaseChatModel>
-        : options.model,
-    });
+    return typeof options.model === 'function'
+      ? options.model as () => Promise<BaseChatModel>
+      : options.model;
   }
 
   if (catalog) {
-    return createModelPermissionBashClassifier({
-      model: () => createCodaraChatModel({
-        alias: options.alias,
-        config: options.config,
-        catalog,
-      }),
+    return () => createCodaraChatModel({
+      alias: options.alias,
+      config: options.config,
+      catalog,
     });
   }
 
