@@ -453,7 +453,7 @@ function formatExpression(label: string, specifier: string | undefined): string 
   return `${label}(${specifier?.trim() || '*'})`;
 }
 
-function formatPermissionToolScopeExpression(toolCallOrExpression: ToolCall | string): string | undefined {
+export function formatPermissionToolScopeExpression(toolCallOrExpression: ToolCall | string): string | undefined {
   const expression = typeof toolCallOrExpression === 'string'
     ? toolCallOrExpression.trim()
     : formatPermissionExpression(toolCallOrExpression);

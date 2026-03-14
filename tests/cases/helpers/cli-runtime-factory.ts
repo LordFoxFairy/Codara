@@ -274,6 +274,35 @@ export async function createCliRuntime(input: {
           skills: false,
         }),
       };
+    case 'runtime-git-compound':
+      return {
+        codara: createCodaraRuntime({
+          cwd: input.cwd,
+          projectRoot: input.cwd,
+          codaraPath: path.join(input.cwd, '.codara'),
+          ...(input.sessionId ? {sessionId: input.sessionId} : {}),
+          model: new PermissionRuntimeCliModel(
+            'cd ./tmp/repo && git fetch origin && git push origin main',
+            'RUNTIME_GIT_COMPOUND_DONE',
+          ) as unknown as BaseChatModel,
+          tools: [createPermissionBashTool()],
+          builtinTools: false,
+          skills: false,
+        }),
+      };
+    case 'runtime-git-push':
+      return {
+        codara: createCodaraRuntime({
+          cwd: input.cwd,
+          projectRoot: input.cwd,
+          codaraPath: path.join(input.cwd, '.codara'),
+          ...(input.sessionId ? {sessionId: input.sessionId} : {}),
+          model: new PermissionRuntimeCliModel('git push origin main', 'RUNTIME_GIT_PUSH_DONE') as unknown as BaseChatModel,
+          tools: [createPermissionBashTool()],
+          builtinTools: false,
+          skills: false,
+        }),
+      };
     case 'runtime-write-permission':
       return {
         codara: createCodaraRuntime({
