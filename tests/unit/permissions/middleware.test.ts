@@ -159,4 +159,26 @@ describe('createPermissionMiddleware', () => {
       : [];
     expect(actions.some((action) => action.id === 'allow_tool' && action.label.includes('git commands'))).toBeTrue();
   });
+
+  it('should expose the same smarter command-type label through shell launcher wrappers', async () => {
+    const projectRoot = await mkdtemp(path.join(tmpdir(), 'codara-permission-mw-bash-wrapper-label-'));
+    ensurePermissionSettingsFile({projectRoot, cwd: projectRoot});
+    const middleware = createPermissionMiddleware({projectRoot, cwd: projectRoot});
+    const toolCall: ToolCall = {
+      id: 'call_permission_bash_wrapper_label_1',
+      name: 'bash',
+      args: {command: 'bash -lc "cd ./tmp/repo && git fetch origin && git push origin main"'},
+    };
+
+    const result = await middleware.wrapToolCall?.(createToolContext(toolCall), async () => {
+      return new ToolMessage({content: 'should-not-run', tool_call_id: 'call_permission_bash_wrapper_label_1'});
+    });
+
+    const payload = parseHILToolMessagePayload(result?.content);
+    expect(payload?.type).toBe('hil_pause');
+    const actions = payload?.type === 'hil_pause'
+      ? payload.request.ui?.actions ?? []
+      : [];
+    expect(actions.some((action) => action.id === 'allow_tool' && action.label.includes('git commands'))).toBeTrue();
+  });
 });
