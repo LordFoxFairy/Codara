@@ -29,7 +29,6 @@ import {
 
 export interface PermissionRuntimeOptions extends PermissionPolicyOptions {
   includeEditAction?: boolean;
-  bashAnalysisModel?: PermissionAnalysisModel | Promise<PermissionAnalysisModel> | (() => Promise<PermissionAnalysisModel>);
 }
 
 export interface PermissionRuntime {
@@ -45,8 +44,17 @@ export interface PermissionRuntime {
 
 const DEFAULT_PERMISSION_CHANNEL = 'permission-center';
 type PermissionEvaluation = NonNullable<Awaited<ReturnType<typeof evaluatePermissionToolCall>>>;
+type PermissionRuntimeModelAwareOptions = PermissionRuntimeOptions & {
+  bashAnalysisModel?: PermissionAnalysisModel | Promise<PermissionAnalysisModel> | (() => Promise<PermissionAnalysisModel>);
+};
 
 export function createPermissionRuntime(options: PermissionRuntimeOptions = {}): PermissionRuntime {
+  return createPermissionRuntimeInternal(options);
+}
+
+export function createPermissionRuntimeInternal(
+  options: PermissionRuntimeModelAwareOptions = {},
+): PermissionRuntime {
   return {
     resolveToolDecision(context) {
       return resolvePermissionDecision(context, options);
@@ -60,7 +68,7 @@ export function createPermissionRuntime(options: PermissionRuntimeOptions = {}):
 
 async function resolvePermissionDecision(
   context: ToolCallContext,
-  options: PermissionRuntimeOptions,
+  options: PermissionRuntimeModelAwareOptions,
 ): Promise<HILDecision | undefined> {
   const initialEvaluation = await evaluatePermissionToolCall(context.toolCall, options);
   if (!initialEvaluation) {
@@ -124,7 +132,7 @@ async function resolvePermissionDecision(
 function createPermissionInterruptConfig(
   expression: string,
   context: ToolCallContext,
-  options: PermissionRuntimeOptions,
+  options: PermissionRuntimeModelAwareOptions,
   metadata: Record<string, unknown>,
   reason: string | undefined,
   bashAnalysis?: PermissionBashAnalysis,
@@ -417,7 +425,7 @@ function resolvePermissionGrantScope(payload: HILResumeActionPayload): Permissio
 async function analyzeBashPermission(
   context: ToolCallContext,
   decision: 'allow' | 'ask' | 'deny',
-  options: PermissionRuntimeOptions,
+  options: PermissionRuntimeModelAwareOptions,
 ): Promise<PermissionBashAnalysis | undefined> {
   if (decision !== 'ask' || context.toolCall.name.trim().toLowerCase() !== 'bash') {
     return undefined;
@@ -445,7 +453,7 @@ async function analyzeBashPermission(
 }
 
 function resolvePermissionBashAnalysis(
-  options: PermissionRuntimeOptions,
+  options: PermissionRuntimeModelAwareOptions,
 ): ((input: {
   command: string;
   cwd?: string;

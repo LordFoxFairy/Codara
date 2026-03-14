@@ -17,9 +17,9 @@ import {
   todoListMiddleware,
 } from '@core/middleware';
 import {
-  createPermissionMiddleware,
   ensurePermissionSettingsFile,
 } from '@core/middleware/permission';
+import {createPermissionMiddlewareInternal} from '@core/middleware/permission/middleware';
 import {
   createSharedTaskMiddleware,
   createTaskFileStore,
@@ -569,7 +569,7 @@ function createRuntimeDefaultMiddlewares(input: {
   }
 
   if (input.options.hil !== false && !byName.has('PermissionMiddleware')) {
-    byName.set('PermissionMiddleware', createPermissionMiddleware({
+    byName.set('PermissionMiddleware', createPermissionMiddlewareInternal({
       ...(typeof input.options.hil === 'object' && input.options.hil !== null ? input.options.hil : {}),
       cwd: input.options.cwd,
       projectRoot: input.options.projectRoot,
@@ -623,7 +623,7 @@ function createDelegatedRuntimeMiddlewares(input: {
     push(createInteractionMiddleware());
   }
   if (input.options.hil !== false && !seen.has('PermissionMiddleware')) {
-    push(createPermissionMiddleware({
+    push(createPermissionMiddlewareInternal({
       ...(typeof input.options.hil === 'object' && input.options.hil !== null ? input.options.hil : {}),
       cwd: input.options.cwd,
       projectRoot: input.options.projectRoot,
