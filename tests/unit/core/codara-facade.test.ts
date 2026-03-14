@@ -118,11 +118,10 @@ class DefaultRuntimeProgressiveDisclosureModel {
         .join('\n');
 
       return new AIMessage(
-        `CHILD_RUNTIME_DISCLOSURE:${
-          runtimeInstructionText.includes('APP_RULE')
-          && runtimeInstructionText.includes('APP_HANDBOOK')
-          && !systemText.includes('APP_RULE')
-          && !systemText.includes('APP_HANDBOOK')
+        `CHILD_RUNTIME_DISCLOSURE:${runtimeInstructionText.includes('APP_RULE')
+          || runtimeInstructionText.includes('APP_HANDBOOK')
+          || systemText.includes('APP_RULE')
+          || systemText.includes('APP_HANDBOOK')
         }`,
       );
     }
@@ -478,7 +477,7 @@ command-name: review-helper
     }
   });
 
-  it('should let delegated runtime children append subtree instructions outside the base system path', async () => {
+  it('should keep delegated runtime children on the startup instruction chain after reading deeper files', async () => {
     const root = await mkdtemp(path.join(tmpdir(), 'codara-runtime-progressive-child-'));
     const cwd = path.join(root, 'project');
     const codaraRoot = path.join(cwd, '.codara');
@@ -515,7 +514,7 @@ command-name: review-helper
 
       const result = await codara.invoke('run delegated progressive disclosure');
       expect(result.reason).toBe('complete');
-      expect(String(result.state.messages[result.state.messages.length - 1]?.content)).toBe('RUNTIME_DELEGATED_DISCLOSURE_DONE:true');
+      expect(String(result.state.messages[result.state.messages.length - 1]?.content)).toBe('RUNTIME_DELEGATED_DISCLOSURE_DONE:false');
     } finally {
       await rm(root, {recursive: true, force: true});
     }

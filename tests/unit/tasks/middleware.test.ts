@@ -9,8 +9,7 @@ import {z} from 'zod';
 import {createAgent} from '@core/agents';
 import {createCodaraGuidelinesSource} from '@core/context/instructions/guidelines';
 import {createCodaraPromptSource} from '@core/context/instructions/prompt';
-import {buildBaseSystemMessage, buildProgressiveInstructionMessages} from '@core/context/system-message';
-import {createInstructionLoadingMiddleware} from '@core/middleware';
+import {buildBaseSystemMessage} from '@core/context/system-message';
 import {
   createSharedTaskMiddleware,
   createTaskMemoryStore,
@@ -94,18 +93,9 @@ class ChildProgressiveDisclosureModel {
       .filter((message): message is SystemMessage => SystemMessage.isInstance(message))
       .map((message) => String(message.content))
       .join('\n');
-    const runtimeInstructionText = messages
-      .filter((message): message is HumanMessage => HumanMessage.isInstance(message))
-      .map((message) => String(message.content))
-      .join('\n');
 
     return new AIMessage(
-      `child_visible:${
-        runtimeInstructionText.includes('APP_RULE')
-        && runtimeInstructionText.includes('APP_HANDBOOK')
-        && !systemText.includes('APP_RULE')
-        && !systemText.includes('APP_HANDBOOK')
-      }`,
+      `child_visible:${systemText.includes('APP_RULE') || systemText.includes('APP_HANDBOOK')}`,
     );
   }
 
@@ -201,7 +191,7 @@ describe('tasks middlewares', () => {
     expect(readDelegatedAgentResult(toolMessage.artifact)?.summary).toBe('child middleware summary');
   });
 
-  it('should let delegated children refresh deeper instruction markdown through the same read_file middleware path', async () => {
+  it('should keep delegated children on the startup instruction chain even after read_file tool usage', async () => {
     const root = await mkdtemp(path.join(tmpdir(), 'codara-task-progressive-'));
     const projectRoot = path.join(root, 'project');
     const targetFile = path.join(projectRoot, 'packages', 'app', 'src', 'feature.ts');
@@ -217,13 +207,6 @@ describe('tasks middlewares', () => {
 
     const guidelinesSource = createCodaraGuidelinesSource({projectRoot, cwd: projectRoot});
     const promptSource = createCodaraPromptSource({projectRoot, cwd: projectRoot});
-    const instructionLoadingMiddleware = createInstructionLoadingMiddleware({
-      promptSource,
-      guidelinesSource,
-    });
-    if (!instructionLoadingMiddleware) {
-      throw new Error('Instruction middleware should always be created for prompt/guidelines sources.');
-    }
 
     const taskMiddleware = createTaskMiddleware({
       model: new ChildProgressiveDisclosureModel(targetFile) as unknown as BaseChatModel,
@@ -234,15 +217,11 @@ describe('tasks middlewares', () => {
           schema: z.object({path: z.string()}),
         }),
       ],
-      middleware: [instructionLoadingMiddleware],
       prepareContext: async (context) => {
         const next = await buildBaseSystemMessage(promptSource, guidelinesSource);
-        const runtimeInstructions = await buildProgressiveInstructionMessages(promptSource, guidelinesSource);
         context.systemMessage = [...next.systemMessage];
         context.runtime.shared = next.runtimeShared ? {...next.runtimeShared} : {};
-        context.messages = runtimeInstructions.length > 0
-          ? [...runtimeInstructions, ...context.state.messages]
-          : context.state.messages;
+        context.messages = context.state.messages;
       },
     });
     const parentModel = new ScriptedModel([
@@ -268,7 +247,7 @@ describe('tasks middlewares', () => {
     const toolMessage = result.state.messages.find((message) => ToolMessage.isInstance(message)) as ToolMessage;
 
     expect(result.reason).toBe('complete');
-    expect(String(toolMessage.content)).toContain('child_visible:true');
+    expect(String(toolMessage.content)).toContain('child_visible:false');
   });
 
   it('should expose shared task coordination tools as a dedicated middleware', async () => {

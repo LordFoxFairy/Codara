@@ -43,7 +43,6 @@ import {
 import {
   applyPreparedInstructionContext,
   buildBaseSystemMessage,
-  buildProgressiveInstructionMessages,
   type BaseSystemMessageBundle,
 } from '@core/context/system-message';
 import type {ModelInfo} from '@core/provider';
@@ -223,13 +222,6 @@ export function createSession(options: CreateSessionOptions): Session {
     return baseSystemContext;
   }
 
-  async function loadProgressiveInstructionMessages(): Promise<BaseMessage[]> {
-    return buildProgressiveInstructionMessages(
-      options.promptSource,
-      options.guidelinesSource,
-    );
-  }
-
   function requireAgent(): Agent {
     if (!agent) {
       throw new Error('Agent not initialized. Call invoke/stream first.');
@@ -357,8 +349,7 @@ export function createSession(options: CreateSessionOptions): Session {
 
   async function applySessionContext(context: import('@core/agents').AgentPreparationContext): Promise<void> {
     const next = await loadBaseInstructionContext();
-    const runtimeInstructionMessages = await loadProgressiveInstructionMessages();
-    applyPreparedInstructionContext(context, next, runtimeInstructionMessages);
+    applyPreparedInstructionContext(context, next);
   }
 
   async function recordAutoMemory(
@@ -433,11 +424,8 @@ export function createSession(options: CreateSessionOptions): Session {
     }
 
     const systemContext = await loadBaseInstructionContext();
-    const runtimeInstructionMessages = await loadProgressiveInstructionMessages();
     const compacted = await compactConversationWithSummary({
-      messages: runtimeInstructionMessages.length > 0
-        ? [...runtimeInstructionMessages, ...current.messages]
-        : current.messages,
+      messages: current.messages,
       context: current.context,
       values: current.values,
       systemMessage: systemContext.systemMessage,

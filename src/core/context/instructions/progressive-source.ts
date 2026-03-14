@@ -4,21 +4,13 @@ import path from 'node:path';
 import type {WorkspaceRootOptions} from '@core/config/workspace';
 import {resolveWorkspaceRoot} from '@core/config/workspace';
 
-export interface InstructionPathTarget {
-  path: string;
-  kind?: 'file' | 'directory';
-}
-
 export interface ProgressiveInstructionWorkspaceOptions extends WorkspaceRootOptions {
   userHome?: string;
 }
 
 export interface ProgressiveInstructionSource {
   getContent(): Promise<string | undefined>;
-  getBootstrapContent(): Promise<string | undefined>;
-  getProgressiveContent(): Promise<string | undefined>;
   reload(): void;
-  activateTarget(target: InstructionPathTarget): Promise<boolean>;
 }
 
 export interface ProgressiveInstructionSourceOptions extends ProgressiveInstructionWorkspaceOptions {
@@ -32,78 +24,30 @@ export interface ProgressiveInstructionSourceOptions extends ProgressiveInstruct
 
 export class SessionScopedProgressiveInstructionSource implements ProgressiveInstructionSource {
   private readonly userHome: string;
-  private readonly projectRoot: string;
-  private readonly cwd: string;
   private readonly startupFiles: string[];
-  private readonly activatedFiles = new Set<string>();
   private readonly fileCache = new Map<string, string | null>();
-  private renderedCaches = new Map<string, {key: string; content?: string}>();
+  private renderedCache?: {key: string; content?: string};
 
   constructor(private readonly options: ProgressiveInstructionSourceOptions) {
     this.userHome = path.resolve(options.userHome ?? homedir());
-    this.projectRoot = resolveWorkspaceRoot(options);
-    this.cwd = path.resolve(options.cwd ?? this.projectRoot);
+    const projectRoot = resolveWorkspaceRoot(options);
+    const cwd = path.resolve(options.cwd ?? projectRoot);
     this.startupFiles = discoverStartupFiles({
       userHome: this.userHome,
-      projectRoot: this.projectRoot,
-      cwd: this.cwd,
+      projectRoot,
+      cwd,
       globalFileName: options.globalFileName,
       projectFileResolver: options.projectFileResolver,
     });
   }
 
   async getContent(): Promise<string | undefined> {
-    return this.renderProjection('all', this.listFilePaths());
-  }
-
-  async getBootstrapContent(): Promise<string | undefined> {
-    return this.renderProjection('bootstrap', this.startupFiles);
-  }
-
-  async getProgressiveContent(): Promise<string | undefined> {
-    return this.renderProjection('progressive', sortProjectFiles([...this.activatedFiles], this.projectRoot));
+    return this.renderProjection(this.startupFiles);
   }
 
   reload(): void {
-    this.activatedFiles.clear();
     this.fileCache.clear();
-    this.renderedCaches.clear();
-  }
-
-  async activateTarget(target: InstructionPathTarget): Promise<boolean> {
-    const targetDirectory = resolveTargetDirectory(target, this.cwd);
-    if (!isInsideProjectRoot(this.projectRoot, targetDirectory)) {
-      return false;
-    }
-
-    let changed = false;
-    for (const filePath of discoverProjectFiles(targetDirectory, this.projectRoot, this.options.projectFileResolver)) {
-      if (this.startupFiles.includes(filePath) || this.activatedFiles.has(filePath)) {
-        continue;
-      }
-
-      const loaded = await this.loadFile(filePath);
-      if (!loaded) {
-        continue;
-      }
-
-      this.activatedFiles.add(filePath);
-      changed = true;
-    }
-
-    if (!changed) {
-      return false;
-    }
-
-    this.renderedCaches.clear();
-    return true;
-  }
-
-  private listFilePaths(): string[] {
-    return [
-      ...this.startupFiles,
-      ...sortProjectFiles([...this.activatedFiles], this.projectRoot),
-    ];
+    this.renderedCache = undefined;
   }
 
   private async primeFiles(filePaths: string[]): Promise<void> {
@@ -122,7 +66,7 @@ export class SessionScopedProgressiveInstructionSource implements ProgressiveIns
     return loaded;
   }
 
-  private async renderProjection(cacheName: string, filePaths: string[]): Promise<string | undefined> {
+  private async renderProjection(filePaths: string[]): Promise<string | undefined> {
     await this.primeFiles(filePaths);
     const files = filePaths
       .map((filePath) => {
@@ -132,13 +76,12 @@ export class SessionScopedProgressiveInstructionSource implements ProgressiveIns
       .filter((entry): entry is {filePath: string; content: string} => Boolean(entry));
 
     const cacheKey = files.map((entry) => `${entry.filePath}:${entry.content.length}`).join('\0');
-    const cached = this.renderedCaches.get(cacheName);
-    if (cached?.key === cacheKey) {
-      return cached.content;
+    if (this.renderedCache?.key === cacheKey) {
+      return this.renderedCache.content;
     }
 
     if (files.length === 0) {
-      this.renderedCaches.set(cacheName, {key: cacheKey, content: undefined});
+      this.renderedCache = {key: cacheKey, content: undefined};
       return undefined;
     }
 
@@ -161,7 +104,7 @@ export class SessionScopedProgressiveInstructionSource implements ProgressiveIns
       ...blocks,
     ].join('\n');
 
-    this.renderedCaches.set(cacheName, {key: cacheKey, content});
+    this.renderedCache = {key: cacheKey, content};
     return content;
   }
 }
@@ -290,23 +233,6 @@ function discoverProjectFiles(
   return files.reverse();
 }
 
-function resolveTargetDirectory(target: InstructionPathTarget, cwd: string): string {
-  const resolvedPath = path.resolve(cwd, target.path);
-  return target.kind === 'directory' ? resolvedPath : path.dirname(resolvedPath);
-}
-
-function sortProjectFiles(files: string[], projectRoot: string): string[] {
-  const root = path.resolve(projectRoot);
-  return [...files].sort((left, right) => {
-    const leftDepth = path.relative(root, path.dirname(left)).split(path.sep).filter(Boolean).length;
-    const rightDepth = path.relative(root, path.dirname(right)).split(path.sep).filter(Boolean).length;
-    if (leftDepth !== rightDepth) {
-      return leftDepth - rightDepth;
-    }
-    return left.localeCompare(right);
-  });
-}
-
 function uniqueResolvedPaths(filePaths: string[]): string[] {
   const seen = new Set<string>();
   const unique: string[] = [];
@@ -319,9 +245,4 @@ function uniqueResolvedPaths(filePaths: string[]): string[] {
     unique.push(resolved);
   }
   return unique;
-}
-
-function isInsideProjectRoot(projectRoot: string, targetDirectory: string): boolean {
-  const relative = path.relative(path.resolve(projectRoot), path.resolve(targetDirectory));
-  return relative === '' || (!relative.startsWith('..') && !path.isAbsolute(relative));
 }
