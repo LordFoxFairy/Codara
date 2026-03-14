@@ -81,6 +81,12 @@ export class SessionScopedProgressiveInstructionSource implements ProgressiveIns
       if (this.startupFiles.includes(filePath) || this.activatedFiles.has(filePath)) {
         continue;
       }
+
+      const loaded = await this.loadFile(filePath);
+      if (!loaded) {
+        continue;
+      }
+
       this.activatedFiles.add(filePath);
       changed = true;
     }
@@ -89,7 +95,6 @@ export class SessionScopedProgressiveInstructionSource implements ProgressiveIns
       return false;
     }
 
-    await this.primeFiles(this.listFilePaths());
     this.renderedCaches.clear();
     return true;
   }
@@ -103,11 +108,18 @@ export class SessionScopedProgressiveInstructionSource implements ProgressiveIns
 
   private async primeFiles(filePaths: string[]): Promise<void> {
     for (const filePath of filePaths) {
-      if (this.fileCache.has(filePath)) {
-        continue;
-      }
-      this.fileCache.set(filePath, await loadInstructionFile(filePath, this.options.maxImportDepth ?? 5));
+      await this.loadFile(filePath);
     }
+  }
+
+  private async loadFile(filePath: string): Promise<string | null> {
+    if (this.fileCache.has(filePath)) {
+      return this.fileCache.get(filePath) ?? null;
+    }
+
+    const loaded = await loadInstructionFile(filePath, this.options.maxImportDepth ?? 5);
+    this.fileCache.set(filePath, loaded);
+    return loaded;
   }
 
   private async renderProjection(cacheName: string, filePaths: string[]): Promise<string | undefined> {
