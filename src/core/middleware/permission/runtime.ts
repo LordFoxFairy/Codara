@@ -104,7 +104,9 @@ function createPermissionInterruptConfig(
 ): HILInterruptConfig {
   const permissionKind = resolvePermissionReviewKind(context.toolCall.name);
   const pathAction = buildPermissionPathAction(context, options);
-  const toolAction = buildPermissionToolAction(context.toolCall);
+  const toolAction = pathAction && permissionKind === 'command'
+    ? undefined
+    : buildPermissionToolAction(context.toolCall);
   const genericApprovalActions = [
     {
       id: 'always',
@@ -113,7 +115,7 @@ function createPermissionInterruptConfig(
       scope: 'exact',
       description: 'Persist only this exact permission expression.',
     },
-    toolAction,
+    ...(toolAction ? [toolAction] : []),
     {
       id: 'allow_project',
       label: 'Trust this project',
@@ -130,7 +132,9 @@ function createPermissionInterruptConfig(
       description: 'Approve only this execution.',
     },
     ...(pathAction ? [pathAction] : permissionKind === 'path' ? [] : genericApprovalActions),
-    ...(pathAction && permissionKind !== 'path' ? genericApprovalActions.slice(1) : []),
+    ...(pathAction && permissionKind !== 'path'
+      ? genericApprovalActions.filter((action) => action.id !== 'always')
+      : []),
     ...(options.includeEditAction === false ? [] : [{
       id: 'edit',
       label: 'Edit and continue',
