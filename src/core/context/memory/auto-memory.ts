@@ -43,6 +43,7 @@ interface AutoMemoryTopicRecord {
   summary: string;
   body: string;
   fingerprint: string;
+  area: string;
   toolNames: string[];
   touchedPaths: string[];
   createdAt: string;
@@ -151,6 +152,7 @@ async function upsertAutoMemoryTopic(rootDir: string, next: AutoMemoryTopicRecor
     slug: existing?.slug ?? next.slug,
     body: mergeTopicBodies(existing?.body, next.body),
     fingerprint: existing?.fingerprint ?? next.fingerprint,
+    area: existing?.area ?? next.area,
     toolNames: unique([...(existing?.toolNames ?? []), ...next.toolNames]),
     touchedPaths: unique([...(existing?.touchedPaths ?? []), ...next.touchedPaths]),
     createdAt: existing?.createdAt ?? next.createdAt,
@@ -179,6 +181,8 @@ async function rewriteMemoryIndex(rootDir: string): Promise<void> {
     'Loaded from the Codara auto memory index for this workspace.',
     'Detailed notes live under `topics/` and can be read directly when needed.',
     '',
+    ...renderActiveAreas(topics),
+    ...(topics.length > 0 ? [''] : []),
     '## Recent Topics',
     ...(topics.length > 0
       ? topics.flatMap((topic) => {
@@ -216,6 +220,7 @@ async function readAutoMemoryTopic(filePath: string): Promise<AutoMemoryTopicRec
   const title = readString(frontmatter.title);
   const summary = readString(frontmatter.summary);
   const fingerprint = readString(frontmatter.fingerprint) ?? normalizeSlug(path.basename(filePath, '.md'));
+  const area = readString(frontmatter.area) ?? 'general';
   const toolNames = readStringList(frontmatter.tool_names) ?? [];
   const touchedPaths = readStringList(frontmatter.touched_paths) ?? [];
   const createdAt = readString(frontmatter.created_at) ?? readString(frontmatter.createdAt);
@@ -230,6 +235,7 @@ async function readAutoMemoryTopic(filePath: string): Promise<AutoMemoryTopicRec
     summary,
     body: parsed.body.trim(),
     fingerprint,
+    area,
     toolNames,
     touchedPaths,
     createdAt,
@@ -243,6 +249,7 @@ function formatAutoMemoryTopic(topic: AutoMemoryTopicRecord): string {
     title: topic.title,
     summary: topic.summary,
     fingerprint: topic.fingerprint,
+    area: topic.area,
     tool_names: topic.toolNames,
     touched_paths: topic.touchedPaths,
     created_at: topic.createdAt,
@@ -294,7 +301,8 @@ function buildAutoMemoryTopic(input: AutoMemoryTurnInput): AutoMemoryTopicRecord
   const title = deriveTopicTitle(prompt, assistantText, touchedPaths);
   const slug = normalizeSlug(title);
   const summary = deriveTopicSummary(prompt, assistantText, toolNames, touchedPaths);
-  const fingerprint = deriveTopicFingerprint(prompt, assistantText, toolNames, touchedPaths);
+  const area = deriveTopicArea(touchedPaths);
+  const fingerprint = deriveTopicFingerprint(prompt, assistantText, toolNames, touchedPaths, area);
   const body = [
     ...(prompt ? ['## Prompt', prompt, ''] : []),
     ...(assistantText ? ['## Outcome', assistantText, ''] : []),
@@ -309,6 +317,7 @@ function buildAutoMemoryTopic(input: AutoMemoryTurnInput): AutoMemoryTopicRecord
     summary,
     body,
     fingerprint,
+    area,
     toolNames,
     touchedPaths,
     createdAt: timestamp,
@@ -344,13 +353,14 @@ function shouldPersistAutoMemory(
 }
 
 function deriveTopicTitle(prompt: string | undefined, assistantText: string, touchedPaths: string[]): string {
+  const area = deriveTopicArea(touchedPaths);
+  if (area !== 'general') {
+    return area.includes('/') ? `Work in ${area}` : `Work on ${area}`;
+  }
+
   const promptTitle = clampSentence(prompt);
   if (promptTitle) {
     return promptTitle;
-  }
-
-  if (touchedPaths.length > 0) {
-    return `Work on ${path.basename(touchedPaths[0])}`;
   }
 
   return clampSentence(assistantText) ?? 'Session learning';
@@ -379,15 +389,48 @@ function deriveTopicFingerprint(
   assistantText: string,
   toolNames: string[],
   touchedPaths: string[],
+  area: string,
 ): string {
   const key = [
-    normalizeFingerprintText(prompt ?? ''),
+    area === 'general' ? normalizeFingerprintText(prompt ?? '') : area.toLowerCase(),
     normalizeFingerprintText(deriveTopicTitle(prompt, assistantText, touchedPaths)),
     toolNames.map((name) => name.toLowerCase()).sort().join('|'),
-    touchedPaths.map((entry) => entry.toLowerCase()).sort().join('|'),
+    area === 'general' ? touchedPaths.map((entry) => entry.toLowerCase()).sort().join('|') : '',
   ].join('::');
 
   return createHash('sha1').update(key).digest('hex').slice(0, 16);
+}
+
+function deriveTopicArea(touchedPaths: string[]): string {
+  if (touchedPaths.length === 0) {
+    return 'general';
+  }
+
+  const normalized = touchedPaths
+    .map((entry) => entry.replace(/\\/g, '/').replace(/\/+$/g, ''))
+    .filter(Boolean);
+  if (normalized.length === 0) {
+    return 'general';
+  }
+
+  if (normalized.length === 1) {
+    const parent = path.posix.dirname(normalized[0]);
+    return parent !== '.' ? parent : normalized[0];
+  }
+
+  const prefix = commonPathPrefix(normalized);
+  if (prefix) {
+    return prefix;
+  }
+
+  const parentGroups = unique(
+    normalized.map((entry) => {
+      const parent = path.posix.dirname(entry);
+      return parent === '.' ? entry : parent;
+    }),
+  );
+
+  return parentGroups.length === 1 ? parentGroups[0] : normalized[0];
 }
 
 function collectToolPaths(toolCall: ToolCall): string[] {
@@ -439,6 +482,46 @@ async function resolveTopicPath(topicsDir: string, next: AutoMemoryTopicRecord):
   }
 
   return preferred;
+}
+
+function renderActiveAreas(topics: AutoMemoryTopicRecord[]): string[] {
+  if (topics.length === 0) {
+    return [];
+  }
+
+  const counts = new Map<string, {count: number; updatedAt: string}>();
+  for (const topic of topics) {
+    if (!topic.area || topic.area === 'general') {
+      continue;
+    }
+
+    const existing = counts.get(topic.area);
+    if (!existing) {
+      counts.set(topic.area, {count: 1, updatedAt: topic.updatedAt});
+      continue;
+    }
+
+    counts.set(topic.area, {
+      count: existing.count + 1,
+      updatedAt: existing.updatedAt > topic.updatedAt ? existing.updatedAt : topic.updatedAt,
+    });
+  }
+
+  const topAreas = [...counts.entries()]
+    .sort((left, right) => {
+      const countDelta = right[1].count - left[1].count;
+      return countDelta !== 0 ? countDelta : right[1].updatedAt.localeCompare(left[1].updatedAt);
+    })
+    .slice(0, 8);
+
+  if (topAreas.length === 0) {
+    return [];
+  }
+
+  return [
+    '## Active Areas',
+    ...topAreas.map(([area, info]) => `- ${area}: ${info.count} topic${info.count === 1 ? '' : 's'}`),
+  ];
 }
 
 function mergeTopicBodies(existing: string | undefined, next: string): string {
@@ -555,4 +638,22 @@ function readStringList(value: unknown): string[] | undefined {
 
 function unique(values: string[]): string[] {
   return [...new Set(values)];
+}
+
+function commonPathPrefix(entries: string[]): string | undefined {
+  if (entries.length < 2) {
+    return undefined;
+  }
+
+  const segments = entries.map((entry) => entry.split('/').filter(Boolean));
+  const prefix: string[] = [];
+  for (let index = 0; index < segments[0].length; index += 1) {
+    const candidate = segments[0][index];
+    if (!segments.every((parts) => parts[index] === candidate)) {
+      break;
+    }
+    prefix.push(candidate);
+  }
+
+  return prefix.length > 0 ? prefix.join('/') : undefined;
 }
