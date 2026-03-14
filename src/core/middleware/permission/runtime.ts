@@ -5,6 +5,7 @@ import {
   type HILResumeActionPayload,
   type HILDecision,
   type HILInterruptConfig,
+  type HILUIActionOption,
   type HILResumeHandler,
   type HILResumePayload,
   type HILToolMessagePayload,
@@ -12,6 +13,7 @@ import {
 import type {ToolCallContext} from '@core/middleware/types';
 import {
   evaluatePermissionToolCall,
+  formatPermissionPathScopeExpression,
   persistPermissionScope,
   type PermissionGrantScope,
   type PermissionPolicyOptions,
@@ -96,6 +98,10 @@ function createPermissionInterruptConfig(
   options: PermissionRuntimeOptions,
   metadata: Record<string, unknown>,
 ): HILInterruptConfig {
+  const permissionKind = resolvePermissionReviewKind(context.toolCall.name);
+  const pathAction = permissionKind === 'path'
+    ? buildPermissionPathAction(context, options)
+    : undefined;
   const actions = [
     {
       id: 'allow_once',
@@ -103,27 +109,29 @@ function createPermissionInterruptConfig(
       kind: 'primary' as const,
       description: 'Approve only this execution.',
     },
-    {
-      id: 'always',
-      label: 'Always allow this action',
-      kind: 'secondary' as const,
-      scope: 'exact',
-      description: 'Persist only this exact permission expression.',
-    },
-    {
-      id: 'allow_tool',
-      label: 'Allow this command type',
-      kind: 'secondary' as const,
-      scope: 'tool',
-      description: 'Persist a wildcard rule for similar commands in this project.',
-    },
-    {
-      id: 'allow_project',
-      label: 'Trust this project',
-      kind: 'secondary' as const,
-      scope: 'project',
-      description: 'Set the project permission default to allow.',
-    },
+    ...(pathAction ? [pathAction] : [
+      {
+        id: 'always',
+        label: 'Always allow this action',
+        kind: 'secondary' as const,
+        scope: 'exact',
+        description: 'Persist only this exact permission expression.',
+      },
+      {
+        id: 'allow_tool',
+        label: 'Allow this command type',
+        kind: 'secondary' as const,
+        scope: 'tool',
+        description: 'Persist a wildcard rule for similar commands in this project.',
+      },
+      {
+        id: 'allow_project',
+        label: 'Trust this project',
+        kind: 'secondary' as const,
+        scope: 'project',
+        description: 'Set the project permission default to allow.',
+      },
+    ]),
     ...(options.includeEditAction === false ? [] : [{
       id: 'edit',
       label: 'Edit and continue',
@@ -232,15 +240,46 @@ export function isPermissionPause(metadata: unknown): boolean {
   return typeof (metadata as Record<string, unknown>).permissionPolicy === 'object';
 }
 
+type PermissionReviewKind = 'path' | 'command';
+
+function resolvePermissionReviewKind(toolName: string): PermissionReviewKind {
+  const normalized = toolName.trim().toLowerCase();
+  return normalized === 'read_file' || normalized === 'write_file' || normalized === 'edit_file'
+    ? 'path'
+    : 'command';
+}
+
+function buildPermissionPathAction(
+  context: ToolCallContext,
+  options: PermissionRuntimeOptions,
+): HILUIActionOption {
+  const expression = formatPermissionPathScopeExpression(context.toolCall, options);
+  const target = readPermissionPathScopeTarget(expression);
+  const label = target
+    ? `Yes, and always allow access to ${target} from this project`
+    : 'Yes, and always allow access to this path from this project';
+
+  return {
+    id: 'allow_path',
+    label,
+    kind: 'secondary',
+    scope: 'path',
+    description: 'Persist a path rule for this project subtree.',
+  };
+}
+
 function resolvePermissionGrantScope(payload: HILResumeActionPayload): PermissionGrantScope | undefined {
   const scope = payload.scope?.trim().toLowerCase();
-  if (scope === 'exact' || scope === 'tool' || scope === 'project') {
+  if (scope === 'exact' || scope === 'path' || scope === 'tool' || scope === 'project') {
     return scope;
   }
 
   const action = payload.action?.trim().toLowerCase();
   if (action === 'always') {
     return 'exact';
+  }
+  if (action === 'allow_path') {
+    return 'path';
   }
   if (action === 'allow_tool') {
     return 'tool';
@@ -254,4 +293,22 @@ function resolvePermissionGrantScope(payload: HILResumeActionPayload): Permissio
   }
 
   return undefined;
+}
+
+function readPermissionPathScopeTarget(expression: string | undefined): string | undefined {
+  if (!expression) {
+    return undefined;
+  }
+
+  const open = expression.indexOf('(');
+  if (open < 0 || !expression.endsWith(')')) {
+    return undefined;
+  }
+
+  const target = expression.slice(open + 1, -1).trim();
+  if (!target) {
+    return undefined;
+  }
+
+  return target;
 }

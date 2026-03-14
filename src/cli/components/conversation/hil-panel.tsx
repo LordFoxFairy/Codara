@@ -353,6 +353,8 @@ function formatPermissionActionLabelForReview(
       return kind === 'file-edit'
         ? 'Yes, and allow edits like this'
         : 'Yes, and allow this command type';
+    case 'allow_path':
+      return action.label;
     case 'allow_project':
       return 'Yes, and trust this project';
     case 'edit':
