@@ -1,5 +1,5 @@
 import {describe, expect, it} from 'bun:test';
-import {mkdtemp} from 'node:fs/promises';
+import {mkdtemp, readFile} from 'node:fs/promises';
 import {tmpdir} from 'node:os';
 import path from 'node:path';
 import {HumanMessage, ToolMessage, type BaseMessage, type ToolCall} from '@langchain/core/messages';
@@ -203,5 +203,74 @@ describe('createPermissionMiddleware', () => {
       ? payload.request.ui?.actions ?? []
       : [];
     expect(actions.some((action) => action.id === 'allow_tool' && action.label.includes('git commands'))).toBeTrue();
+  });
+
+  it('should use classifier path suggestions for complex bash writes', async () => {
+    const projectRoot = await mkdtemp(path.join(tmpdir(), 'codara-permission-mw-classifier-path-'));
+    ensurePermissionSettingsFile({projectRoot, cwd: projectRoot});
+    const middleware = createPermissionMiddleware({
+      projectRoot,
+      cwd: projectRoot,
+      bashClassifier: async () => ({
+        reason: 'Needs approval because this compound command writes under tmp/demo2/.',
+        pathScopeExpression: 'Write(tmp/demo2/)',
+      }),
+    });
+    const toolCall: ToolCall = {
+      id: 'call_permission_classifier_path_1',
+      name: 'bash',
+      args: {command: 'cat README.md | tee tmp/demo2/PLAN.md >/dev/null'},
+    };
+
+    const result = await middleware.wrapToolCall?.(createToolContext(toolCall), async () => {
+      return new ToolMessage({content: 'should-not-run', tool_call_id: 'call_permission_classifier_path_1'});
+    });
+
+    const payload = parseHILToolMessagePayload(result?.content);
+    expect(payload?.type).toBe('hil_pause');
+    const actions = payload?.type === 'hil_pause'
+      ? payload.request.ui?.actions ?? []
+      : [];
+    const reason = payload?.type === 'hil_pause'
+      ? (payload.request.metadata as {permissionPolicy?: {reason?: string}}).permissionPolicy?.reason
+      : undefined;
+    expect(actions.some((action) => action.id === 'allow_path' && action.label.includes('tmp/demo2/'))).toBeTrue();
+    expect(reason).toContain('tmp/demo2/');
+  });
+
+  it('should persist classifier-suggested path scopes after approval', async () => {
+    const projectRoot = await mkdtemp(path.join(tmpdir(), 'codara-permission-mw-classifier-persist-'));
+    ensurePermissionSettingsFile({projectRoot, cwd: projectRoot});
+    const middleware = createPermissionMiddleware({
+      projectRoot,
+      cwd: projectRoot,
+      bashClassifier: async () => ({
+        pathScopeExpression: 'Write(tmp/demo2/)',
+      }),
+    });
+    const toolCall: ToolCall = {
+      id: 'call_permission_classifier_persist_1',
+      name: 'bash',
+      args: {command: 'cat README.md | tee tmp/demo2/PLAN.md >/dev/null'},
+    };
+
+    const result = await middleware.wrapToolCall?.(
+      createToolContext(toolCall, {
+        hil: {
+          resume: {
+            action: 'allow_path',
+            scope: 'path',
+            decision: 'approve',
+          },
+        },
+      }),
+      async () => new ToolMessage({content: 'continued', tool_call_id: 'call_permission_classifier_persist_1'}),
+    );
+
+    expect(String(result?.content)).toBe('continued');
+    const content = JSON.parse(await readFile(path.join(projectRoot, '.codara', 'settings.local.json'), 'utf8')) as {
+      permissions?: {rules?: {allow?: string[]}};
+    };
+    expect(content.permissions?.rules?.allow).toContain('Write(tmp/demo2/)');
   });
 });

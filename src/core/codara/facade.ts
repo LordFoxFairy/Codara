@@ -20,6 +20,7 @@ import {
   createPermissionMiddleware,
   ensurePermissionSettingsFile,
 } from '@core/middleware/permission';
+import {createModelPermissionBashClassifier} from '@core/middleware/permission/classifier';
 import {
   createSharedTaskMiddleware,
   createTaskFileStore,
@@ -559,6 +560,7 @@ function createRuntimeDefaultMiddlewares(input: {
       middleware: createDelegatedRuntimeMiddlewares({
         ...input,
         tools: input.runtimeTools,
+        catalog: input.catalog,
       }),
     }));
   }
@@ -573,6 +575,7 @@ function createRuntimeDefaultMiddlewares(input: {
       cwd: input.options.cwd,
       projectRoot: input.options.projectRoot,
       userHome: input.options.userHome,
+      bashClassifier: createRuntimePermissionBashClassifier(input.options, input.catalog),
     }));
   }
 
@@ -584,6 +587,7 @@ function createDelegatedRuntimeMiddlewares(input: {
   taskStore: TaskStore;
   logging: false | LoggingMiddlewareOptions;
   tools?: StructuredToolInterface[];
+  catalog?: CodaraModelCatalog | Promise<CodaraModelCatalog>;
 }): BaseMiddleware[] {
   const middlewares: BaseMiddleware[] = [];
   const callerMiddlewares = (input.options.middleware ?? [])
@@ -625,6 +629,7 @@ function createDelegatedRuntimeMiddlewares(input: {
       cwd: input.options.cwd,
       projectRoot: input.options.projectRoot,
       userHome: input.options.userHome,
+      bashClassifier: createRuntimePermissionBashClassifier(input.options, input.catalog),
     }));
   }
 
@@ -669,4 +674,21 @@ function createInstructionContextPreparer(sources: {
     const next = await buildBaseSystemMessage(sources.promptSource, sources.guidelinesSource);
     applyPreparedInstructionContext(context, next);
   };
+}
+
+function createRuntimePermissionBashClassifier(
+  options: Pick<CodaraRuntimeOptions, 'alias' | 'config' | 'model'>,
+  catalog?: CodaraModelCatalog | Promise<CodaraModelCatalog>,
+) {
+  if (!catalog) {
+    return undefined;
+  }
+
+  return createModelPermissionBashClassifier({
+    model: () => createCodaraChatModel({
+      alias: options.alias,
+      config: options.config,
+      catalog,
+    }),
+  });
 }

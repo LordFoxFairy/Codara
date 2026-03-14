@@ -15,13 +15,16 @@ import {
   evaluatePermissionToolCall,
   formatPermissionPathScopeExpression,
   formatPermissionToolScopeExpression,
+  persistPermissionRule,
   persistPermissionScope,
   type PermissionGrantScope,
   type PermissionPolicyOptions,
 } from '@core/middleware/permission/policy';
+import type {PermissionBashClassification, PermissionBashClassifier} from '@core/middleware/permission/classifier';
 
 export interface PermissionRuntimeOptions extends PermissionPolicyOptions {
   includeEditAction?: boolean;
+  bashClassifier?: PermissionBashClassifier;
 }
 
 export interface PermissionRuntime {
@@ -58,6 +61,7 @@ async function resolvePermissionDecision(
     return undefined;
   }
 
+  const bashClassification = await classifyBashPermission(context, evaluation.decision, options);
   const reason = describePermissionDecisionReason(evaluation, context, options);
   const metadata = {
     codara: {
@@ -70,9 +74,13 @@ async function resolvePermissionDecision(
       decision: evaluation.decision,
       defaultDecision: evaluation.defaultDecision,
       matched: evaluation.matched,
-      reason,
+      reason: bashClassification?.reason ?? reason,
       sources: evaluation.sources,
       policySummary: evaluation.policySummary,
+      suggestions: {
+        ...(bashClassification?.pathScopeExpression ? {pathRule: bashClassification.pathScopeExpression} : {}),
+        ...(bashClassification?.toolScopeExpression ? {toolRule: bashClassification.toolScopeExpression} : {}),
+      },
     },
   } satisfies Record<string, unknown>;
 
@@ -90,7 +98,14 @@ async function resolvePermissionDecision(
 
   return {
     decision: 'ask',
-    config: createPermissionInterruptConfig(evaluation.input, context, options, metadata, reason),
+    config: createPermissionInterruptConfig(
+      evaluation.input,
+      context,
+      options,
+      metadata,
+      bashClassification?.reason ?? reason,
+      bashClassification,
+    ),
     metadata,
   };
 }
@@ -101,12 +116,13 @@ function createPermissionInterruptConfig(
   options: PermissionRuntimeOptions,
   metadata: Record<string, unknown>,
   reason: string | undefined,
+  bashClassification?: PermissionBashClassification,
 ): HILInterruptConfig {
   const permissionKind = resolvePermissionReviewKind(context.toolCall.name);
-  const pathAction = buildPermissionPathAction(context, options);
+  const pathAction = buildPermissionPathAction(context, options, bashClassification);
   const toolAction = pathAction && permissionKind === 'command'
     ? undefined
-    : buildPermissionToolAction(context.toolCall);
+    : buildPermissionToolAction(context.toolCall, bashClassification);
   const genericApprovalActions = [
     {
       id: 'always',
@@ -211,7 +227,12 @@ async function handlePermissionResume(
   const nextContext = applyHILResumeToolEdits(context, payload);
   const grantScope = resolvePermissionGrantScope(payload);
   if (grantScope) {
-    await persistPermissionScope(nextContext.toolCall, grantScope, options);
+    const suggestedRule = resolveSuggestedPermissionRule(metadata, grantScope);
+    if (suggestedRule) {
+      await persistPermissionRule(suggestedRule, 'allow', options);
+    } else {
+      await persistPermissionScope(nextContext.toolCall, grantScope, options);
+    }
   }
 
   if (
@@ -295,8 +316,9 @@ function resolvePermissionReviewKind(toolName: string): PermissionReviewKind {
 function buildPermissionPathAction(
   context: ToolCallContext,
   options: PermissionRuntimeOptions,
+  bashClassification?: PermissionBashClassification,
 ): HILUIActionOption | undefined {
-  const expression = formatPermissionPathScopeExpression(context.toolCall, options);
+  const expression = bashClassification?.pathScopeExpression ?? formatPermissionPathScopeExpression(context.toolCall, options);
   const target = readPermissionPathScopeTarget(expression);
   if (!target || target === './') {
     return undefined;
@@ -315,8 +337,11 @@ function buildPermissionPathAction(
   };
 }
 
-function buildPermissionToolAction(toolCall: ToolCallContext['toolCall']): HILUIActionOption {
-  const expression = formatPermissionToolScopeExpression(toolCall);
+function buildPermissionToolAction(
+  toolCall: ToolCallContext['toolCall'],
+  bashClassification?: PermissionBashClassification,
+): HILUIActionOption {
+  const expression = bashClassification?.toolScopeExpression ?? formatPermissionToolScopeExpression(toolCall);
 
   return {
     id: 'allow_tool',
@@ -376,6 +401,78 @@ function resolvePermissionGrantScope(payload: HILResumeActionPayload): Permissio
   }
 
   return undefined;
+}
+
+async function classifyBashPermission(
+  context: ToolCallContext,
+  decision: 'allow' | 'ask' | 'deny',
+  options: PermissionRuntimeOptions,
+): Promise<PermissionBashClassification | undefined> {
+  if (decision !== 'ask' || context.toolCall.name.trim().toLowerCase() !== 'bash' || !options.bashClassifier) {
+    return undefined;
+  }
+
+  const command = readBashCommand(context.toolCall);
+  if (!command) {
+    return undefined;
+  }
+
+  try {
+    return await options.bashClassifier({
+      command,
+      cwd: options.cwd,
+      projectRoot: options.projectRoot,
+    });
+  } catch {
+    return undefined;
+  }
+}
+
+function readBashCommand(toolCall: ToolCallContext['toolCall']): string | undefined {
+  const args = toolCall.args;
+  if (!args || typeof args !== 'object' || Array.isArray(args)) {
+    return undefined;
+  }
+
+  const command = (args as Record<string, unknown>).command;
+  return typeof command === 'string' && command.trim().length > 0 ? command.trim() : undefined;
+}
+
+function resolveSuggestedPermissionRule(
+  metadata: Record<string, unknown>,
+  scope: PermissionGrantScope,
+): string | undefined {
+  const suggestions = readPermissionSuggestions(metadata);
+  if (scope === 'path') {
+    return suggestions?.pathRule;
+  }
+  if (scope === 'tool') {
+    return suggestions?.toolRule;
+  }
+  return undefined;
+}
+
+function readPermissionSuggestions(
+  metadata: Record<string, unknown>,
+): {pathRule?: string; toolRule?: string} | undefined {
+  const permissionPolicy = metadata.permissionPolicy;
+  if (!permissionPolicy || typeof permissionPolicy !== 'object' || Array.isArray(permissionPolicy)) {
+    return undefined;
+  }
+
+  const suggestions = (permissionPolicy as Record<string, unknown>).suggestions;
+  if (!suggestions || typeof suggestions !== 'object' || Array.isArray(suggestions)) {
+    return undefined;
+  }
+
+  const pathRule = typeof (suggestions as Record<string, unknown>).pathRule === 'string'
+    ? (suggestions as Record<string, string>).pathRule.trim()
+    : undefined;
+  const toolRule = typeof (suggestions as Record<string, unknown>).toolRule === 'string'
+    ? (suggestions as Record<string, string>).toolRule.trim()
+    : undefined;
+
+  return pathRule || toolRule ? { ...(pathRule ? {pathRule} : {}), ...(toolRule ? {toolRule} : {}) } : undefined;
 }
 
 function readPermissionPathScopeTarget(expression: string | undefined): string | undefined {
