@@ -3,7 +3,7 @@ import type {PromptSource} from '@core/context/instructions/prompt';
 import {parseHILToolMessagePayload} from '@core/middleware/hil';
 import {createMiddleware, type BaseMiddleware} from '@core/middleware/types';
 
-export interface InstructionLoadingMiddlewareOptions {
+interface InstructionLoadingMiddlewareOptions {
   promptSource?: Pick<PromptSource, 'activateTarget'>;
   guidelinesSource?: Pick<GuidelinesSource, 'activateTarget'>;
   name?: string;
@@ -19,13 +19,17 @@ export function createInstructionLoadingMiddleware(
   return createMiddleware({
     name: options.name?.trim() || 'InstructionLoadingMiddleware',
     async wrapToolCall(context, handler) {
-      const result = await handler(context);
-      if (context.toolCall.name !== 'read_file' || result.status === 'error' || parseHILToolMessagePayload(result.content)) {
-        return result;
+      if (context.toolCall.name !== 'read_file') {
+        return handler(context);
       }
 
       const filePath = readInstructionReadPath(context.toolCall.args);
       if (!filePath) {
+        return handler(context);
+      }
+
+      const result = await handler(context);
+      if (result.status === 'error' || parseHILToolMessagePayload(result.content)) {
         return result;
       }
 

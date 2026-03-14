@@ -131,6 +131,36 @@ describe('instruction loading middleware', () => {
 
     expect(hits).toEqual([]);
   });
+
+  it('passes non-read tools through without activating instruction sources', async () => {
+    let activated = false;
+    const middleware = createInstructionLoadingMiddleware({
+      guidelinesSource: {
+        activateTarget: async () => {
+          activated = true;
+          return true;
+        },
+      },
+    });
+    if (!middleware?.wrapToolCall) {
+      throw new Error('Instruction loading middleware should expose wrapToolCall.');
+    }
+
+    const result = await middleware.wrapToolCall(
+      createToolCallContext({
+        name: 'grep',
+        args: {pattern: 'TODO'},
+      }),
+      async () => new ToolMessage({
+        content: 'no matches',
+        tool_call_id: 'call_grep_1',
+        name: 'grep',
+      }),
+    );
+
+    expect(result.content).toBe('no matches');
+    expect(activated).toBe(false);
+  });
 });
 
 function createToolCallContext(toolCall: {
