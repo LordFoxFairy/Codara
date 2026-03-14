@@ -341,7 +341,15 @@ function mapActionToDecision(actionId: string): PauseReviewDecision | undefined 
   if (normalized === 'edit') {
     return 'edit';
   }
-  if (normalized === 'approve' || normalized === 'allow' || normalized === 'allow_once' || normalized === 'always') {
+  if (
+    normalized === 'approve'
+    || normalized === 'allow'
+    || normalized === 'allow_once'
+    || normalized === 'always'
+    || normalized === 'allow_path'
+    || normalized === 'allow_tool'
+    || normalized === 'allow_project'
+  ) {
     return 'approve';
   }
   return undefined;

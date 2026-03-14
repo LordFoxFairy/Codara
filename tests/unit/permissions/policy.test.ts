@@ -385,4 +385,42 @@ describe('permission policy defaults', () => {
     expect(evaluation?.decision).toBe('allow');
     expect(evaluation?.matched?.rule).toBe('Bash(touch guarded.txt)');
   });
+
+  it('should treat Bash(*) as an explicit allow for complex bash commands', async () => {
+    const projectRoot = await mkdtemp(path.join(tmpdir(), 'codara-permission-bash-any-'));
+    await mkdir(path.join(projectRoot, '.codara'), {recursive: true});
+    await writeFile(path.join(projectRoot, '.codara', 'settings.local.json'), JSON.stringify({
+      permissions: {
+        rules: {
+          allow: ['Bash(*)'],
+          ask: [],
+          deny: [],
+        },
+      },
+    }, null, 2));
+
+    const evaluation = await evaluatePermissionToolCall(
+      {id: 'call_bash_any_allow', name: 'bash', args: {command: 'git status && touch guarded.txt'}},
+      {projectRoot, cwd: projectRoot},
+    );
+
+    expect(evaluation?.decision).toBe('allow');
+    expect(evaluation?.matched?.rule).toBe('Bash(*)');
+  });
+
+  it('should persist a smarter tool-scope rule for compound git bash commands', async () => {
+    const projectRoot = await mkdtemp(path.join(tmpdir(), 'codara-permission-bash-git-compound-scope-'));
+    ensurePermissionSettingsFile({projectRoot, cwd: projectRoot});
+
+    await persistPermissionScope(
+      {id: 'call_bash_git_compound_scope', name: 'bash', args: {command: 'cd ./tmp/repo && git fetch origin && git push origin main'}},
+      'tool',
+      {projectRoot, cwd: projectRoot},
+    );
+
+    const content = JSON.parse(await readFile(path.join(projectRoot, '.codara', 'settings.local.json'), 'utf8')) as {
+      permissions?: {rules?: {allow?: string[]}};
+    };
+    expect(content.permissions?.rules?.allow).toContain('Bash(git *)');
+  });
 });

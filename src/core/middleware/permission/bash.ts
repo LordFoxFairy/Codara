@@ -9,20 +9,65 @@ export interface NormalizedBashCommand {
   hasRedirection: boolean;
 }
 
+const SHELL_CONTEXT_COMMANDS = new Set([
+  '.',
+  'alias',
+  'cd',
+  'dirs',
+  'eval',
+  'exec',
+  'export',
+  'false',
+  'hash',
+  'popd',
+  'printf',
+  'pushd',
+  'pwd',
+  'set',
+  'shift',
+  'source',
+  'test',
+  'true',
+  'type',
+  'ulimit',
+  'umask',
+  'unalias',
+  'unset',
+  'wait',
+]);
+
 export function formatBashToolScopeExpression(command: string): string {
   const normalized = normalizeBashCommandForMatching(command);
-  if (!normalized || normalized.tokens.length === 0) {
+  if (normalized && !normalized.complex && normalized.tokens.length > 0) {
+    return formatNormalizedBashToolScope(normalized);
+  }
+
+  const compoundCommands = normalizeCompoundBashCommands(command);
+  if (compoundCommands.length === 0) {
     return 'Bash(*)';
   }
 
-  if (normalized.commandName === 'git') {
-    const subcommand = normalized.args[0]?.trim();
-    if (subcommand) {
-      return `Bash(git ${subcommand} *)`;
+  const actionable = compoundCommands.filter((entry) => !SHELL_CONTEXT_COMMANDS.has(entry.commandName));
+  const candidates = actionable.length > 0 ? actionable : compoundCommands;
+  if (candidates.length === 1) {
+    return formatNormalizedBashToolScope(candidates[0]);
+  }
+
+  const commandName = candidates[0]?.commandName;
+  if (!commandName || !candidates.every((entry) => entry.commandName === commandName)) {
+    return 'Bash(*)';
+  }
+
+  if (commandName === 'git') {
+    const subcommands = candidates
+      .map((entry) => entry.args[0]?.trim())
+      .filter((entry): entry is string => Boolean(entry));
+    if (subcommands.length === candidates.length && new Set(subcommands).size === 1) {
+      return `Bash(git ${subcommands[0]} *)`;
     }
   }
 
-  return `Bash(${normalized.commandName} *)`;
+  return `Bash(${commandName} *)`;
 }
 
 export function bashSpecifierMatches(callSpecifier: string, ruleSpecifier: string): boolean {
@@ -43,6 +88,10 @@ export function bashSpecifierMatches(callSpecifier: string, ruleSpecifier: strin
     }
 
     return normalized.specifier === rule;
+  }
+
+  if (rule === '*') {
+    return raw.length > 0;
   }
 
   const normalized = normalizeBashCommandForMatching(raw);
@@ -87,6 +136,148 @@ export function normalizeBashCommandForMatching(command: string): NormalizedBash
     complex: tokenized.complex,
     hasRedirection,
   };
+}
+
+function formatNormalizedBashToolScope(normalized: NormalizedBashCommand): string {
+  if (normalized.commandName === 'git') {
+    const subcommand = normalized.args[0]?.trim();
+    if (subcommand) {
+      return `Bash(git ${subcommand} *)`;
+    }
+  }
+
+  return `Bash(${normalized.commandName} *)`;
+}
+
+function normalizeCompoundBashCommands(command: string): NormalizedBashCommand[] {
+  const segments = splitCompoundShellCommands(command);
+  if (segments.length === 0) {
+    return [];
+  }
+
+  return segments
+    .map((segment) => normalizeBashCommandForMatching(segment))
+    .filter((entry): entry is NormalizedBashCommand => Boolean(entry && entry.tokens.length > 0));
+}
+
+function splitCompoundShellCommands(command: string): string[] {
+  if (!command.trim()) {
+    return [];
+  }
+
+  const segments: string[] = [];
+  let current = '';
+  let quote: '"' | '\'' | null = null;
+
+  for (let index = 0; index < command.length; index += 1) {
+    const character = command[index];
+
+    if (quote) {
+      if (character === quote) {
+        quote = null;
+        current += character;
+        continue;
+      }
+
+      if (character === '\\' && quote === '"' && index + 1 < command.length) {
+        current += character;
+        current += command[index + 1];
+        index += 1;
+        continue;
+      }
+
+      current += character;
+      continue;
+    }
+
+    if (character === '`') {
+      return [];
+    }
+
+    if (character === '$' && command[index + 1] === '(') {
+      return [];
+    }
+
+    if (character === '<' && (command[index + 1] === '<' || command[index + 1] === '(')) {
+      return [];
+    }
+
+    if (character === '>' && command[index + 1] === '(') {
+      return [];
+    }
+
+    if (character === '"' || character === '\'') {
+      quote = character;
+      current += character;
+      continue;
+    }
+
+    if (character === '\\') {
+      if (command[index + 1] === '\n') {
+        index += 1;
+        continue;
+      }
+
+      if (index + 1 < command.length) {
+        current += character;
+        current += command[index + 1];
+        index += 1;
+        continue;
+      }
+    }
+
+    if (character === ';') {
+      pushShellSegment(segments, current);
+      current = '';
+      continue;
+    }
+
+    if (character === '\n') {
+      pushShellSegment(segments, current);
+      current = '';
+      continue;
+    }
+
+    if (character === '&') {
+      if (command[index + 1] === '&') {
+        pushShellSegment(segments, current);
+        current = '';
+        index += 1;
+        continue;
+      }
+
+      if (command[index - 1] !== '>' && command[index + 1] !== '>') {
+        return [];
+      }
+    }
+
+    if (character === '|') {
+      if (command[index + 1] === '|') {
+        pushShellSegment(segments, current);
+        current = '';
+        index += 1;
+        continue;
+      }
+
+      return [];
+    }
+
+    current += character;
+  }
+
+  if (quote) {
+    return [];
+  }
+
+  pushShellSegment(segments, current);
+  return segments;
+}
+
+function pushShellSegment(segments: string[], segment: string): void {
+  const normalized = segment.trim();
+  if (normalized) {
+    segments.push(normalized);
+  }
 }
 
 function stripLeadingShellEnvironment(tokens: string[]): string[] {

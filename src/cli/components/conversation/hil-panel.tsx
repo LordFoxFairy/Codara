@@ -350,6 +350,9 @@ function formatPermissionActionLabelForReview(
         ? 'Yes, and always allow this edit'
         : 'Yes, and always allow this action';
     case 'allow_tool':
+      if (action.label && action.label !== 'Allow this command type') {
+        return action.label;
+      }
       return kind === 'file-edit'
         ? 'Yes, and allow edits like this'
         : 'Yes, and allow this command type';

@@ -14,6 +14,7 @@ import type {ToolCallContext} from '@core/middleware/types';
 import {
   evaluatePermissionToolCall,
   formatPermissionPathScopeExpression,
+  formatPermissionToolScopeExpression,
   persistPermissionScope,
   type PermissionGrantScope,
   type PermissionPolicyOptions,
@@ -100,6 +101,7 @@ function createPermissionInterruptConfig(
 ): HILInterruptConfig {
   const permissionKind = resolvePermissionReviewKind(context.toolCall.name);
   const pathAction = buildPermissionPathAction(context, options);
+  const toolAction = buildPermissionToolAction(context.toolCall);
   const genericApprovalActions = [
     {
       id: 'always',
@@ -108,13 +110,7 @@ function createPermissionInterruptConfig(
       scope: 'exact',
       description: 'Persist only this exact permission expression.',
     },
-    {
-      id: 'allow_tool',
-      label: 'Allow this command type',
-      kind: 'secondary' as const,
-      scope: 'tool',
-      description: 'Persist a wildcard rule for similar commands in this project.',
-    },
+    toolAction,
     {
       id: 'allow_project',
       label: 'Trust this project',
@@ -272,6 +268,42 @@ function buildPermissionPathAction(
   };
 }
 
+function buildPermissionToolAction(toolCall: ToolCallContext['toolCall']): HILUIActionOption {
+  const expression = formatPermissionToolScopeExpression(toolCall);
+
+  return {
+    id: 'allow_tool',
+    label: describePermissionToolScopeLabel(toolCall.name ?? '', expression),
+    kind: 'secondary',
+    scope: 'tool',
+    description: expression
+      ? `Persist a project rule for ${expression}.`
+      : 'Persist a wildcard rule for similar commands in this project.',
+  };
+}
+
+function describePermissionToolScopeLabel(toolName: string, expression: string | undefined): string {
+  if (toolName.trim().toLowerCase() !== 'bash') {
+    return 'Allow this command type';
+  }
+
+  if (!expression || expression === 'Bash(*)') {
+    return 'Yes, and allow bash commands in this project';
+  }
+
+  const target = readPermissionToolScopeTarget(expression);
+  if (!target || target === '*') {
+    return 'Yes, and allow bash commands in this project';
+  }
+
+  const normalized = target.replace(/\s+\*$/, '').trim();
+  if (!normalized) {
+    return 'Yes, and allow bash commands in this project';
+  }
+
+  return `Yes, and allow ${normalized} commands in this project`;
+}
+
 function resolvePermissionGrantScope(payload: HILResumeActionPayload): PermissionGrantScope | undefined {
   const scope = payload.scope?.trim().toLowerCase();
   if (scope === 'exact' || scope === 'path' || scope === 'tool' || scope === 'project') {
@@ -315,4 +347,8 @@ function readPermissionPathScopeTarget(expression: string | undefined): string |
   }
 
   return target;
+}
+
+function readPermissionToolScopeTarget(expression: string | undefined): string | undefined {
+  return readPermissionPathScopeTarget(expression);
 }

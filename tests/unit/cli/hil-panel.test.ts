@@ -199,4 +199,50 @@ describe('HIL panel model', () => {
     expect(model.actions[2]?.label).toBe('Amend edit');
     expect(model.actions[3]?.label).toBe('No');
   });
+
+  it('should preserve contextual allow-tool labels for bash permission reviews', () => {
+    const review: CliHilReviewState = {
+      request: {
+        id: 'pause-4',
+        description: 'Permission review required for Bash(cd ./tmp/repo && git fetch origin && git push origin main)',
+        action: {
+          toolCallId: 'call_4',
+          toolName: 'bash',
+          toolArgs: {command: 'cd ./tmp/repo && git fetch origin && git push origin main'},
+        },
+        review: {
+          actionName: 'bash',
+          allowedDecisions: ['approve', 'reject'],
+        },
+        runtime: {
+          runId: 'run-4',
+          turn: 1,
+          requestId: 'request-4',
+          toolIndex: 0,
+        },
+        channel: 'permission-center',
+        ui: {
+          modal: 'permission-review',
+          actions: [
+            {id: 'allow_once', label: 'Allow once', kind: 'primary'},
+            {id: 'allow_tool', label: 'Yes, and allow git commands in this project', kind: 'secondary', scope: 'tool'},
+            {id: 'deny', label: 'Deny', kind: 'danger'},
+          ],
+        },
+      },
+      actions: [
+        {id: 'allow_once', label: 'Allow once', kind: 'primary'},
+        {id: 'allow_tool', label: 'Yes, and allow git commands in this project', kind: 'secondary', scope: 'tool'},
+        {id: 'deny', label: 'Deny', kind: 'danger'},
+      ],
+      selectedActionIndex: 0,
+      focus: 'actions',
+      draft: '',
+      busy: false,
+    };
+
+    const model = describeHilPanel(review);
+
+    expect(model.actions[1]?.label).toBe('Yes, and allow git commands in this project');
+  });
 });

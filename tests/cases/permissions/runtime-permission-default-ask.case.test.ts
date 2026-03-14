@@ -88,6 +88,42 @@ describe('case: runtime permission default ask', () => {
     expect(result.output).not.toContain('HIL action:');
   });
 
+  it('should persist smarter git command-type approvals for compound bash commands', async () => {
+    const root = await mkdtemp(path.join(tmpdir(), 'codara-case-permission-runtime-git-compound-cli-'));
+    const projectRoot = path.join(root, 'project');
+    const codaraPath = path.join(projectRoot, '.codara');
+    await mkdir(codaraPath, {recursive: true});
+
+    const first = await runRealCliCase({
+      cwd: projectRoot,
+      prompt: 'Run cd ./tmp/repo && git fetch origin && git push origin main',
+      scenario: 'runtime-git-compound',
+      env: {
+        CODARA_CLI_HIL_AUTO_ACTIONS: 'allow_tool',
+      },
+    });
+
+    expect(first.exitCode).toBe(0);
+    expect(first.output).toContain('RUNTIME_GIT_COMPOUND_DONE');
+    expect(first.output).not.toContain('HIL action:');
+
+    const settings = JSON.parse(await readFile(path.join(codaraPath, 'settings.local.json'), 'utf8')) as {
+      permissions?: {rules?: {allow?: string[]}};
+    };
+    expect(settings.permissions?.rules?.allow).toContain('Bash(git *)');
+
+    const second = await runRealCliCase({
+      cwd: projectRoot,
+      prompt: 'Run git push origin main',
+      scenario: 'runtime-git-push',
+    });
+
+    expect(second.exitCode).toBe(0);
+    expect(second.output).toContain('RUNTIME_GIT_PUSH_DONE');
+    expect(second.output).not.toContain('Permission Review');
+    expect(second.output).not.toContain('HIL action:');
+  });
+
   it('should support trusting the whole project for later guarded commands', async () => {
     const root = await mkdtemp(path.join(tmpdir(), 'codara-case-permission-project-cli-'));
     const projectRoot = path.join(root, 'project');

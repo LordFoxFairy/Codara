@@ -95,6 +95,55 @@ describe('cli hil review helpers', () => {
       },
     });
   });
+
+  it('should map permission allow_tool auto actions to approve resumes', () => {
+    const review: CliHilReviewState = {
+      request: {
+        id: 'pause-permission',
+        description: 'Permission review required for Bash(cd ./tmp/repo && git fetch origin && git push origin main)',
+        action: {
+          toolCallId: 'call_permission',
+          toolName: 'bash',
+          toolArgs: {command: 'cd ./tmp/repo && git fetch origin && git push origin main'},
+        },
+        review: {
+          actionName: 'bash',
+          allowedDecisions: ['approve', 'reject'],
+        },
+        runtime: {
+          runId: 'run-permission',
+          turn: 1,
+          requestId: 'req-permission',
+          toolIndex: 0,
+        },
+        channel: 'permission-center',
+        ui: {
+          actions: [
+            {id: 'allow_once', label: 'Allow once', kind: 'primary'},
+            {id: 'allow_tool', label: 'Yes, and allow git commands in this project', kind: 'secondary', scope: 'tool'},
+            {id: 'deny', label: 'Deny', kind: 'danger'},
+          ],
+        },
+      },
+      actions: [
+        {id: 'allow_once', label: 'Allow once', kind: 'primary'},
+        {id: 'allow_tool', label: 'Yes, and allow git commands in this project', kind: 'secondary', scope: 'tool'},
+        {id: 'deny', label: 'Deny', kind: 'danger'},
+      ],
+      selectedActionIndex: 0,
+      focus: 'actions',
+      draft: '',
+      busy: false,
+    };
+
+    const prepared = prepareCliHilSubmission(review, {action: 'allow_tool'});
+
+    expect(prepared.payload).toMatchObject({
+      action: 'allow_tool',
+      decision: 'approve',
+      scope: 'tool',
+    });
+  });
 });
 
 function createFormReview(): CliHilReviewState {
