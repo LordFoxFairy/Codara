@@ -398,7 +398,7 @@ export function useCliController(options: UseCliControllerOptions): CliControlle
       const selectedAction = autoAction
         ? prepared.review.actions.find((action) => action.id.toLowerCase() === autoAction.action.trim().toLowerCase())
         : prepared.review.actions[prepared.review.selectedActionIndex];
-      if (!prepared.review.form) {
+      if (!prepared.review.form && !isPermissionReview(prepared.review)) {
         appendNotice('system', `HIL action: ${selectedAction?.label ?? autoAction?.action ?? 'resume'}`);
       }
       const result = await codara.resumePause(prepared.payload);
@@ -482,4 +482,10 @@ export function useCliController(options: UseCliControllerOptions): CliControlle
       void submitHilAction();
     },
   };
+}
+
+function isPermissionReview(review: CliHilReviewState): boolean {
+  return review.request.ui?.modal === 'permission-review'
+    || review.request.channel === 'permission-center'
+    || review.request.description.toLowerCase().includes('permission review');
 }

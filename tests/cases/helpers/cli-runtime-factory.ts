@@ -261,6 +261,19 @@ export async function createCliRuntime(input: {
           skills: false,
         }),
       };
+    case 'runtime-write-permission':
+      return {
+        codara: createCodaraRuntime({
+          cwd: input.cwd,
+          projectRoot: input.cwd,
+          codaraPath: path.join(input.cwd, '.codara'),
+          ...(input.sessionId ? {sessionId: input.sessionId} : {}),
+          model: new FilePermissionRuntimeCliModel('tmp/demo2/PLAN.md', 'RUNTIME_WRITE_PERMISSION_DONE') as unknown as BaseChatModel,
+          tools: [createPermissionWriteTool()],
+          builtinTools: false,
+          skills: false,
+        }),
+      };
     case 'runtime-permission-other':
       return {
         codara: createCodaraRuntime({
@@ -596,6 +609,36 @@ class PermissionRuntimeCliModel {
   }
 }
 
+class FilePermissionRuntimeCliModel {
+  constructor(
+    private readonly filePath: string,
+    private readonly doneMessage: string,
+  ) {}
+
+  async invoke(messages: BaseMessage[]): Promise<AIMessage> {
+    const text = messages.map((message) => stringifyMessage(message.content)).join('\n');
+    if (text.includes(`written:${this.filePath}`)) {
+      return new AIMessage(this.doneMessage);
+    }
+
+    return new AIMessage({
+      content: '',
+      tool_calls: [{
+        id: 'call_runtime_write_permission',
+        name: 'write_file',
+        args: {
+          file_path: this.filePath,
+          content: '# Planned demo\n',
+        },
+      } as ToolCall],
+    });
+  }
+
+  bindTools(): this {
+    return this;
+  }
+}
+
 class HilFormCliModel {
   async invoke(messages: BaseMessage[]): Promise<AIMessage> {
     const askUserResult = messages
@@ -901,6 +944,20 @@ function createPermissionBashTool() {
       name: 'bash',
       description: 'Execute shell command',
       schema: z.object({command: z.string()}),
+    },
+  );
+}
+
+function createPermissionWriteTool() {
+  return tool(
+    async ({file_path: filePath, content}: {file_path: string; content: string}) => `written:${filePath}:${content.length}`,
+    {
+      name: 'write_file',
+      description: 'Write a file for permission runtime tests',
+      schema: z.object({
+        file_path: z.string(),
+        content: z.string(),
+      }),
     },
   );
 }

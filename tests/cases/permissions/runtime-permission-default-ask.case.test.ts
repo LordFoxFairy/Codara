@@ -22,8 +22,8 @@ describe('case: runtime permission default ask', () => {
     });
 
     expect(first.exitCode).toBe(0);
-    expect(first.output).toContain('HIL action: Always allow');
     expect(first.output).toContain('RUNTIME_PERMISSION_DONE');
+    expect(first.output).not.toContain('HIL action:');
 
     const settingsFile = path.join(codaraPath, 'settings.local.json');
     expect(existsSync(settingsFile)).toBeTrue();
@@ -41,6 +41,7 @@ describe('case: runtime permission default ask', () => {
     expect(second.exitCode).toBe(0);
     expect(second.output).toContain('RUNTIME_PERMISSION_DONE');
     expect(second.output).not.toContain('HIL Review');
+    expect(second.output).not.toContain('HIL action:');
   });
 
   it('should allow read-only bash inspection commands without HIL by default', async () => {
@@ -76,7 +77,7 @@ describe('case: runtime permission default ask', () => {
     });
 
     expect(first.exitCode).toBe(0);
-    expect(first.output).toContain('HIL action: Trust this project');
+    expect(first.output).not.toContain('HIL action:');
     const settings = JSON.parse(await readFile(path.join(codaraPath, 'settings.local.json'), 'utf8')) as {
       permissions?: {defaultDecision?: string};
     };
@@ -143,5 +144,25 @@ describe('case: runtime permission default ask', () => {
         },
       },
     });
+  });
+
+  it('should complete file-edit permission approvals without extra HIL action noise in the real CLI', async () => {
+    const root = await mkdtemp(path.join(tmpdir(), 'codara-case-permission-write-cli-'));
+    const projectRoot = path.join(root, 'project');
+    await mkdir(path.join(projectRoot, '.codara'), {recursive: true});
+
+    const result = await runRealCliCase({
+      cwd: projectRoot,
+      prompt: 'Write the plan file',
+      scenario: 'runtime-write-permission',
+      env: {
+        CODARA_CLI_HIL_AUTO_ACTIONS: 'allow_once',
+      },
+    });
+
+    expect(result.exitCode).toBe(0);
+    expect(result.output).toContain('Writing(tmp/demo2/PLAN.md)');
+    expect(result.output).not.toContain('HIL action:');
+    expect(result.output).toContain('RUNTIME_WRITE_PERMISSION_DONE');
   });
 });

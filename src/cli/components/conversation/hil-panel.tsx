@@ -1,5 +1,6 @@
 import React from 'react';
 import {Box, Text} from 'ink';
+import path from 'node:path';
 import type {CliHilReviewAction, CliHilReviewState} from '../../app/view-state';
 
 interface HilPanelProps {
@@ -150,6 +151,7 @@ export function describeHilPanel(review: CliHilReviewState): HilPanelModel {
   const title = isPermissionReview(review) ? 'Permission Review' : 'Review Required';
   const badge = isPermissionReview(review) ? 'permission' : (review.request.channel || 'interaction');
   const permissionTitle = isPermissionReview(review) ? describePermissionTitle(review) : title;
+  const permissionKind = isPermissionReview(review) ? resolvePermissionReviewKind(review) : 'tool';
 
   return {
     title: permissionTitle,
@@ -164,10 +166,12 @@ export function describeHilPanel(review: CliHilReviewState): HilPanelModel {
       : buildHilMeta(review)
         ? {meta: buildHilMeta(review)}
         : {}),
-    ...(isPermissionReview(review) ? {question: 'Do you want to proceed?'} : {}),
+    ...(isPermissionReview(review) ? {question: describePermissionQuestion(review)} : {}),
     options: [],
     actions: review.actions.map((action, index) => ({
-      label: isPermissionReview(review) ? formatPermissionActionLabel(action) : describeActionLabel(action),
+      label: isPermissionReview(review)
+        ? formatPermissionActionLabelForReview(action, permissionKind)
+        : describeActionLabel(action),
       selected: index === review.selectedActionIndex,
       kind: action.kind,
     })),
@@ -250,6 +254,8 @@ function describeHilFormPanel(review: CliHilReviewState): HilPanelModel {
   };
 }
 
+type PermissionReviewKind = 'bash' | 'file-edit' | 'tool';
+
 function compactSummaryLines(primary: string, secondary: string | undefined): string[] {
   const lines = [primary];
   if (secondary && secondary.trim() && secondary.trim() !== primary.trim()) {
@@ -262,6 +268,19 @@ function isPermissionReview(review: CliHilReviewState): boolean {
   return review.request.ui?.modal === 'permission-review'
     || review.request.channel === 'permission-center'
     || review.request.description.toLowerCase().includes('permission review');
+}
+
+function resolvePermissionReviewKind(review: CliHilReviewState): PermissionReviewKind {
+  const toolName = review.request.action.toolName.trim().toLowerCase();
+  if (toolName === 'bash') {
+    return 'bash';
+  }
+
+  if (toolName === 'write_file' || toolName === 'edit_file') {
+    return 'file-edit';
+  }
+
+  return 'tool';
 }
 
 function buildHilMeta(
@@ -317,20 +336,27 @@ function describeActionLabel(action: CliHilReviewAction): string {
   return scope ? `${action.label} (${scope})` : action.label;
 }
 
-function formatPermissionActionLabel(action: CliHilReviewAction): string {
+function formatPermissionActionLabelForReview(
+  action: CliHilReviewAction,
+  kind: PermissionReviewKind,
+): string {
   const normalized = action.id.trim().toLowerCase();
   switch (normalized) {
     case 'allow_once':
     case 'approve':
       return 'Yes';
     case 'always':
-      return 'Yes, and always allow this action';
+      return kind === 'file-edit'
+        ? 'Yes, and always allow this edit'
+        : 'Yes, and always allow this action';
     case 'allow_tool':
-      return 'Yes, and allow this command type';
+      return kind === 'file-edit'
+        ? 'Yes, and allow edits like this'
+        : 'Yes, and allow this command type';
     case 'allow_project':
       return 'Yes, and trust this project';
     case 'edit':
-      return 'Amend and continue';
+      return kind === 'file-edit' ? 'Amend edit' : 'Amend and continue';
     case 'deny':
     case 'reject':
       return 'No';
@@ -340,25 +366,34 @@ function formatPermissionActionLabel(action: CliHilReviewAction): string {
 }
 
 function describePermissionTitle(review: CliHilReviewState): string {
+  const kind = resolvePermissionReviewKind(review);
   const toolName = review.request.action.toolName.trim();
   if (!toolName) {
     return 'Tool review';
   }
 
-  if (toolName.toLowerCase() === 'bash') {
+  if (kind === 'bash') {
     return 'Bash command';
+  }
+
+  if (kind === 'file-edit') {
+    return 'File edit';
   }
 
   return `${toolName} action`;
 }
 
 function describePermissionSummary(review: CliHilReviewState): string[] {
+  const kind = resolvePermissionReviewKind(review);
   const args = review.request.action.toolArgs;
   const lines: string[] = [];
   const command = typeof args.command === 'string' ? args.command.trim() : '';
   const description = typeof args.description === 'string' ? args.description.trim() : '';
+  const filePath = readPermissionFilePath(args);
 
-  if (command) {
+  if (kind === 'file-edit' && filePath) {
+    lines.push(filePath);
+  } else if (command) {
     lines.push(command);
   } else if (review.request.description.trim()) {
     lines.push(review.request.description.trim());
@@ -374,6 +409,34 @@ function describePermissionSummary(review: CliHilReviewState): string[] {
   }
 
   return lines;
+}
+
+function describePermissionQuestion(review: CliHilReviewState): string {
+  const kind = resolvePermissionReviewKind(review);
+  if (kind !== 'file-edit') {
+    return 'Do you want to proceed?';
+  }
+
+  const filePath = readPermissionFilePath(review.request.action.toolArgs);
+  if (!filePath) {
+    return 'Do you want to make this edit?';
+  }
+
+  return `Do you want to make this edit to ${path.basename(filePath)}?`;
+}
+
+function readPermissionFilePath(args: Record<string, unknown>): string | undefined {
+  if (!args || typeof args !== 'object' || Array.isArray(args)) {
+    return undefined;
+  }
+
+  const filePath = typeof args.file_path === 'string'
+    ? args.file_path.trim()
+    : typeof args.path === 'string'
+      ? args.path.trim()
+      : '';
+
+  return filePath || undefined;
 }
 
 function readPermissionActor(metadata: unknown): string | undefined {
