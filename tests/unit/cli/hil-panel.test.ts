@@ -135,11 +135,14 @@ describe('HIL panel model', () => {
 
     const model = describeHilPanel(review);
 
-    expect(model.title).toBe('Permission Review');
-    expect(model.badge).toBe('permission');
-    expect(model.meta).toContain('Bash · touch guarded.txt');
-    expect(model.actions[1]?.label).toBe('Always allow (project)');
-    expect(model.input?.label).toBe('Note');
-    expect(model.input?.style).toBe('box');
+    expect(model.title).toBe('Bash command');
+    expect(model.badge).toBeUndefined();
+    expect(model.chrome).toBe('plain');
+    expect(model.summary).toContain('touch guarded.txt');
+    expect(model.question).toBe('Do you want to proceed?');
+    expect(model.actions[0]?.label).toBe('Yes');
+    expect(model.actions[1]?.label).toBe('Yes, and always allow this action');
+    expect(model.actionDetail).toBeUndefined();
+    expect(model.input).toBeUndefined();
   });
 });
