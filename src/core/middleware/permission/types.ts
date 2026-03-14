@@ -55,6 +55,7 @@ export interface PermissionEvaluationResult {
     ask: number;
     allow: number;
   };
+  metadata?: Record<string, unknown>;
 }
 
 /**
