@@ -46,6 +46,29 @@ export interface HilPanelModel {
 export function HilPanel({review}: HilPanelProps): React.JSX.Element {
   const model = describeHilPanel(review);
 
+  if (isPermissionReview(review)) {
+    return (
+      <Box flexDirection="column" paddingX={1}>
+        <Text color={model.tone} bold>{model.title}</Text>
+        {model.meta ? <Text dimColor wrap="truncate-end">{model.meta}</Text> : null}
+        <Box marginTop={1}>
+          <Text dimColor>{'  '}</Text>
+          <Text>
+            {model.actions.map((action, index) => (
+              <Text key={`action-${index}`}>
+                {index > 0 ? <Text dimColor>{'  '}</Text> : null}
+                <Text color={resolveActionColor(action)} bold={action.selected}>
+                  {formatPermissionShortcut(action)}
+                </Text>
+              </Text>
+            ))}
+          </Text>
+        </Box>
+        {model.status ? <Text color={model.tone}>{model.status}</Text> : null}
+      </Box>
+    );
+  }
+
   return (
     <Box marginTop={1} flexDirection="column" borderStyle="single" borderColor={model.tone} paddingX={1}>
       <Box>
@@ -129,10 +152,14 @@ export function describeHilPanel(review: CliHilReviewState): HilPanelModel {
     return describeHilFormPanel(review);
   }
 
+  if (isPermissionReview(review)) {
+    return describePermissionPanel(review);
+  }
+
   const selectedAction = review.actions[review.selectedActionIndex];
-  const tone = isPermissionReview(review) ? 'yellow' : 'cyan';
-  const title = isPermissionReview(review) ? 'Permission Review' : 'Review Required';
-  const badge = isPermissionReview(review) ? 'permission' : (review.request.channel || 'interaction');
+  const tone: HilPanelTone = 'cyan';
+  const title = 'Review Required';
+  const badge = review.request.channel || 'interaction';
 
   return {
     title,
@@ -156,6 +183,38 @@ export function describeHilPanel(review: CliHilReviewState): HilPanelModel {
     hint: 'Tab focus · Up/Down select · Enter submit · Shift+Enter newline',
     ...(review.busy ? {status: 'Applying review decision...'} : {}),
   };
+}
+
+function describePermissionPanel(review: CliHilReviewState): HilPanelModel {
+  return {
+    title: review.request.description,
+    badge: 'permission',
+    tone: 'yellow',
+    summary: [],
+    ...(buildHilMeta(review) ? {meta: buildHilMeta(review)} : {}),
+    options: [],
+    actions: review.actions.map((action, index) => ({
+      label: action.label,
+      selected: index === review.selectedActionIndex,
+      kind: action.kind,
+    })),
+    compactActions: true,
+    hint: '',
+    ...(review.busy ? {status: 'Running...'} : {}),
+  };
+}
+
+function formatPermissionShortcut(action: HilPanelActionLine): string {
+  switch (action.label) {
+    case 'Yes':
+      return '(y) Yes';
+    case "Yes, don't ask again":
+      return "(a) Yes, don't ask again";
+    case 'No':
+      return '(n) No';
+    default:
+      return action.label;
+  }
 }
 
 function describeHilFormPanel(review: CliHilReviewState): HilPanelModel {
@@ -223,7 +282,11 @@ function compactSummaryLines(primary: string, secondary: string | undefined): st
   return lines;
 }
 
-function isPermissionReview(review: CliHilReviewState): boolean {
+export function isPermissionReview(review: CliHilReviewState | undefined): boolean {
+  if (!review) {
+    return false;
+  }
+
   return review.request.ui?.modal === 'permission-review'
     || review.request.channel === 'permission-center'
     || review.request.description.toLowerCase().includes('permission review');

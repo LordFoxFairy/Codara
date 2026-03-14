@@ -92,11 +92,11 @@ describe('HIL panel model', () => {
     expect(model.input?.style).toBe('inline');
   });
 
-  it('should describe permission reviews as a dedicated foreground panel', () => {
+  it('should describe permission reviews matching Claude Code: Yes / Yes dont ask again / No', () => {
     const review: CliHilReviewState = {
       request: {
         id: 'pause-2',
-        description: 'Permission review required for Bash(touch guarded.txt)',
+        description: 'Codara wants to run Bash(touch guarded.txt)',
         action: {
           toolCallId: 'call_2',
           toolName: 'Bash',
@@ -116,18 +116,18 @@ describe('HIL panel model', () => {
         ui: {
           modal: 'permission-review',
           actions: [
-            {id: 'approve', label: 'Approve once', kind: 'primary'},
-            {id: 'always', label: 'Always allow', kind: 'secondary', scope: 'project'},
-            {id: 'reject', label: 'Reject', kind: 'danger'},
+            {id: 'allow_once', label: 'Yes', kind: 'primary'},
+            {id: 'dont_ask_again', label: "Yes, don't ask again", kind: 'secondary'},
+            {id: 'deny', label: 'No', kind: 'danger'},
           ],
         },
       },
       actions: [
-        {id: 'approve', label: 'Approve once', kind: 'primary'},
-        {id: 'always', label: 'Always allow', kind: 'secondary', scope: 'project'},
-        {id: 'reject', label: 'Reject', kind: 'danger'},
+        {id: 'allow_once', label: 'Yes', kind: 'primary'},
+        {id: 'dont_ask_again', label: "Yes, don't ask again", kind: 'secondary'},
+        {id: 'deny', label: 'No', kind: 'danger'},
       ],
-      selectedActionIndex: 1,
+      selectedActionIndex: 0,
       focus: 'actions',
       draft: '',
       busy: false,
@@ -135,11 +135,14 @@ describe('HIL panel model', () => {
 
     const model = describeHilPanel(review);
 
-    expect(model.title).toBe('Permission Review');
+    expect(model.title).toBe('Codara wants to run Bash(touch guarded.txt)');
     expect(model.badge).toBe('permission');
-    expect(model.meta).toContain('Bash · touch guarded.txt');
-    expect(model.actions[1]?.label).toBe('Always allow (project)');
-    expect(model.input?.label).toBe('Note');
-    expect(model.input?.style).toBe('box');
+    expect(model.tone).toBe('yellow');
+    expect(model.actions).toHaveLength(3);
+    expect(model.actions[0]?.label).toBe('Yes');
+    expect(model.actions[1]?.label).toBe("Yes, don't ask again");
+    expect(model.actions[2]?.label).toBe('No');
+    expect(model.compactActions).toBe(true);
+    expect(model.input).toBeUndefined();
   });
 });

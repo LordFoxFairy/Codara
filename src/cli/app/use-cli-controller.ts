@@ -73,6 +73,7 @@ export interface CliController {
   insertHilNewline: () => void;
   backspaceHilInput: () => void;
   submitHilAction: () => void;
+  quickHilAction: (actionId: string) => void;
 }
 
 export function useCliController(options: UseCliControllerOptions): CliController {
@@ -415,6 +416,10 @@ export function useCliController(options: UseCliControllerOptions): CliControlle
     }
   }, [appendNotice, codara, refreshCoreState, reportError]);
 
+  const quickHilAction = useCallback((actionId: string) => {
+    void submitHilAction({action: actionId});
+  }, [submitHilAction]);
+
   useEffect(() => {
     if (!hilReview || isRunningRef.current || autoActionsRef.current.length === 0) {
       return;
@@ -481,5 +486,6 @@ export function useCliController(options: UseCliControllerOptions): CliControlle
     submitHilAction: () => {
       void submitHilAction();
     },
+    quickHilAction,
   };
 }
