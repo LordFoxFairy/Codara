@@ -20,9 +20,6 @@ export {
   createSkillsMiddleware,
 } from '@core/middleware/skills';
 export {
-  createInstructionLoadingMiddleware,
-} from '@core/middleware/instruction-loading';
-export {
   createDailySessionFileLogSink,
   createLoggingMiddleware,
   type LoggingMiddlewareOptions,

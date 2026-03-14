@@ -5,7 +5,7 @@ import path from 'node:path';
 import {runRealCliCase} from '../helpers/real-cli';
 
 describe('runtime progressive disclosure cases', () => {
-  it('loads subtree AGENTS.md after the agent reads a file in that subtree through the real CLI path', async () => {
+  it('does not load subtree AGENTS.md just because the agent reads a deeper file through the real CLI path', async () => {
     const root = await mkdtemp(path.join(tmpdir(), 'codara-case-progressive-disclosure-'));
     const projectRoot = path.join(root, 'project');
     const targetFile = path.join(projectRoot, 'packages', 'app', 'src', 'feature.ts');
@@ -23,6 +23,6 @@ describe('runtime progressive disclosure cases', () => {
     });
 
     expect(result.exitCode).toBe(0);
-    expect(result.output).toContain('PROGRESSIVE_DISCLOSURE_DONE:true');
+    expect(result.output).toContain('PROGRESSIVE_DISCLOSURE_DONE:false');
   });
 });

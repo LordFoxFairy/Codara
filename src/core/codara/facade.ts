@@ -12,7 +12,6 @@ import {
   createBudgetMiddleware,
   createDailySessionFileLogSink,
   createHILMiddleware,
-  createInstructionLoadingMiddleware,
   createInteractionMiddleware,
   createLoggingMiddleware,
   todoListMiddleware,
@@ -61,7 +60,6 @@ import {createBuiltinTools} from '@core/tools';
 import {
   applyPreparedInstructionContext,
   buildBaseSystemMessage,
-  buildProgressiveInstructionMessages,
 } from '@core/context/system-message';
 
 export const DEFAULT_CODARA_MODEL_ALIAS = 'default';
@@ -281,10 +279,7 @@ function assembleCodara(
     ...(autoMemory ? {autoMemory} : {}),
     tools,
     ...(options.handleToolErrors !== undefined ? {handleToolErrors: options.handleToolErrors} : {}),
-    middleware: createCodaraMiddlewares(options, {
-      promptSource,
-      guidelinesSource,
-    }),
+    middleware: createCodaraMiddlewares(options),
     ...(options.summary ? {summary: options.summary} : {}),
     ...(options.inputBudget ? {inputBudget: options.inputBudget} : {}),
   });
@@ -408,22 +403,12 @@ export function createCodaraTools(options: CodaraToolsOptions = {}): StructuredT
 
 export function createCodaraMiddlewares(
   options: CodaraMiddlewareOptions = {},
-  sources?: {
-    promptSource?: Pick<PromptSource, 'activateTarget'>;
-    guidelinesSource?: Pick<GuidelinesSource, 'activateTarget'>;
-  },
 ): BaseMiddleware[] {
   const middlewares: BaseMiddleware[] = [];
   if (options.logging && options.logging.enabled !== false) {
     middlewares.push(createLoggingMiddleware(options.logging));
   }
   middlewares.push(...(options.middleware ?? []));
-  if (!middlewares.some((middleware) => middleware.name === 'InstructionLoadingMiddleware')) {
-    const instructionLoading = createInstructionLoadingMiddleware(sources ?? {});
-    if (instructionLoading) {
-      middlewares.push(instructionLoading);
-    }
-  }
   middlewares.push(createBudgetMiddleware());
   if (options.hil !== false) {
     middlewares.push(createHILMiddleware(options.hil ?? {}));
@@ -599,8 +584,6 @@ function createDelegatedRuntimeMiddlewares(input: {
   taskStore: TaskStore;
   logging: false | LoggingMiddlewareOptions;
   tools?: StructuredToolInterface[];
-  promptSource: PromptSource;
-  guidelinesSource: GuidelinesSource;
 }): BaseMiddleware[] {
   const middlewares: BaseMiddleware[] = [];
   const callerMiddlewares = (input.options.middleware ?? [])
@@ -625,16 +608,6 @@ function createDelegatedRuntimeMiddlewares(input: {
 
   for (const middleware of callerMiddlewares) {
     push(middleware);
-  }
-
-  if (!seen.has('InstructionLoadingMiddleware')) {
-    const instructionLoading = createInstructionLoadingMiddleware({
-      promptSource: input.promptSource,
-      guidelinesSource: input.guidelinesSource,
-    });
-    if (instructionLoading) {
-      push(instructionLoading);
-    }
   }
 
   if (!seen.has('todoListMiddleware') && !providedToolNames.has('write_todos')) {
@@ -694,7 +667,6 @@ function createInstructionContextPreparer(sources: {
 
   return async (context) => {
     const next = await buildBaseSystemMessage(sources.promptSource, sources.guidelinesSource);
-    const runtimeInstructions = await buildProgressiveInstructionMessages(sources.promptSource, sources.guidelinesSource);
-    applyPreparedInstructionContext(context, next, runtimeInstructions);
+    applyPreparedInstructionContext(context, next);
   };
 }

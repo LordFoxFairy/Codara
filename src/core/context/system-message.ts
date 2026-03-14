@@ -1,4 +1,4 @@
-import {HumanMessage, type BaseMessage} from '@langchain/core/messages';
+import type {BaseMessage} from '@langchain/core/messages';
 import type {GuidelinesSource} from '@core/context/instructions/guidelines';
 import type {PromptSource} from '@core/context/instructions/prompt';
 import type {AutoMemorySource} from '@core/context/memory/auto-memory';
@@ -32,16 +32,14 @@ export interface PreparedInstructionContextTarget {
   };
 }
 
-const PROGRESSIVE_INSTRUCTION_PREFIX = 'Additional active instructions for the current workspace subtree:';
-
 export async function buildBaseSystemMessage(
   promptSource?: PromptSource,
   guidelinesSource?: GuidelinesSource,
   skillsSource?: SkillsSource,
   autoMemorySource?: AutoMemorySource,
 ): Promise<BaseSystemMessageBundle> {
-  const promptMessage = await promptSource?.getBootstrapContent?.();
-  const guidelinesMessage = await guidelinesSource?.getBootstrapContent?.();
+  const promptMessage = await promptSource?.getContent?.();
+  const guidelinesMessage = await guidelinesSource?.getContent?.();
   const skillsRuntime = await skillsSource?.getRuntime?.();
   const autoMemoryMessage = await autoMemorySource?.getContent?.();
   const systemMessage = [
@@ -88,39 +86,20 @@ function createBaseSystemMessageRuntimeShared(systemMessage: string[]): Record<s
   };
 }
 
-export async function buildProgressiveInstructionMessages(
-  promptSource?: PromptSource,
-  guidelinesSource?: GuidelinesSource,
-): Promise<BaseMessage[]> {
-  const promptMessage = await promptSource?.getProgressiveContent?.();
-  const guidelinesMessage = await guidelinesSource?.getProgressiveContent?.();
-  return [
-    promptMessage ? createProgressiveInstructionMessage(promptMessage) : undefined,
-    guidelinesMessage ? createProgressiveInstructionMessage(guidelinesMessage) : undefined,
-  ].filter((message): message is BaseMessage => Boolean(message));
-}
-
 export function applyPreparedInstructionContext(
   target: PreparedInstructionContextTarget,
   base: BaseSystemMessageBundle,
-  progressiveMessages: BaseMessage[],
 ): void {
   target.systemMessage = [...base.systemMessage];
   target.runtime.shared = {
     ...(target.runtime.shared ?? {}),
     ...(base.runtimeShared ?? {}),
   };
-  target.messages = progressiveMessages.length > 0
-    ? [...progressiveMessages, ...target.state.messages]
-    : target.state.messages;
+  target.messages = target.state.messages;
 }
 
 function createSkillsSystemMessage(runtime: Pick<SkillsRuntimeData, 'sources' | 'discovered'>): string {
   return SKILLS_SYSTEM_PROMPT
     .replace('{skills_locations}', formatSkillsLocations(runtime.sources))
     .replace('{skills_list}', formatSkillsList(runtime.discovered, runtime.sources));
-}
-
-function createProgressiveInstructionMessage(content: string): BaseMessage {
-  return new HumanMessage([PROGRESSIVE_INSTRUCTION_PREFIX, '', content].join('\n'));
 }

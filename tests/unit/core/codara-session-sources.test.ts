@@ -220,7 +220,7 @@ describe('Codara session source lifecycle', () => {
     expect(thirdText).not.toContain('project handbook v1');
   });
 
-  it('should add deeper AGENTS.md rules on the next turn after a file tool hits that subtree', async () => {
+  it('should keep deeper AGENTS.md rules out of later turns when only a deeper file is read', async () => {
     const root = await mkdtemp(path.join(tmpdir(), 'codara-session-guidelines-disclosure-'));
     const userHome = path.join(root, 'home');
     const projectRoot = path.join(root, 'project');
@@ -246,7 +246,7 @@ describe('Codara session source lifecycle', () => {
     const result = await codara.invoke('inspect the feature file');
     const text = String(result.state.messages[result.state.messages.length - 1]?.content);
 
-    expect(text).toBe('visible:true');
+    expect(text).toBe('visible:false');
   });
 
   it('should no-op when a file tool hits a subtree without deeper instruction files', async () => {
@@ -257,20 +257,12 @@ describe('Codara session source lifecycle', () => {
 
     const guidelinesSource = createCodaraGuidelinesSource({cwd: root, projectRoot: root, userHome: root});
 
-    const bootstrap = await guidelinesSource.getBootstrapContent();
-    expect(bootstrap).toContain('stay at root');
-
-    const changed = await guidelinesSource.activateTarget({
-      path: path.join(root, 'packages/plain/file.ts'),
-      kind: 'file',
-    });
-    expect(changed).toBe(false);
-
-    const progressive = await guidelinesSource.getProgressiveContent();
-    expect(progressive).toBeUndefined();
+    const content = await guidelinesSource.getContent();
+    expect(content).toContain('stay at root');
+    expect(content).not.toContain('packages/plain');
   });
 
-  it('should add deeper hidden handbook rules on the next turn after a file tool hits that subtree', async () => {
+  it('should keep deeper hidden handbook rules out of later turns when only a deeper file is read', async () => {
     const root = await mkdtemp(path.join(tmpdir(), 'codara-session-prompt-disclosure-'));
     const userHome = path.join(root, 'home');
     const projectRoot = path.join(root, 'project');
@@ -298,7 +290,7 @@ describe('Codara session source lifecycle', () => {
     const result = await codara.invoke('inspect the feature file');
     const text = String(result.state.messages[result.state.messages.length - 1]?.content);
 
-    expect(text).toBe('visible:true');
+    expect(text).toBe('visible:false');
   });
 
   it('should reload skills projections for the same Codara session only after reloadSources is called', async () => {

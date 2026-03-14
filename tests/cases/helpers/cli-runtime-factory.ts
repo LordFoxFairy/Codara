@@ -667,7 +667,7 @@ class ProgressiveDisclosureCliModel {
       .map((message) => stringifyMessage(message.content))
       .join('\n');
 
-    return new AIMessage(`PROGRESSIVE_DISCLOSURE_DONE:${runtimeInstructionText.includes('APP_RULE') && !systemText.includes('APP_RULE')}`);
+    return new AIMessage(`PROGRESSIVE_DISCLOSURE_DONE:${runtimeInstructionText.includes('APP_RULE') || systemText.includes('APP_RULE')}`);
   }
 
   bindTools(_tools: StructuredToolInterface[]): this {
