@@ -76,6 +76,63 @@ describe('auto memory runtime', () => {
     expect(topicContent).toContain('## Prompt');
     expect(topicContent).toContain('Fix lint errors in src/app.ts');
     expect(topicContent).toContain('## Outcome');
+    expect(topicContent).toContain('fingerprint:');
+    expect(index).toContain('Updated ');
+  });
+
+  it('merges repeated similar memories into the same topic file', async () => {
+    const rootDir = await mkdtemp(path.join(tmpdir(), 'codara-auto-memory-merge-'));
+    const runtime = createAutoMemoryRuntime({rootDir});
+
+    await runtime.recordTurn({
+      previousMessages: [],
+      nextMessages: [
+        new HumanMessage('Document the lint workflow for src/app.ts'),
+        new AIMessage({
+          content: 'Explained the lint workflow and updated src/app.ts conventions.',
+          tool_calls: [{id: 'call_1', name: 'read_file', args: {file_path: 'src/app.ts'}}],
+        }),
+      ],
+      sessionId: 'session-one',
+    });
+
+    await runtime.recordTurn({
+      previousMessages: [],
+      nextMessages: [
+        new HumanMessage('Document the lint workflow for src/app.ts'),
+        new AIMessage({
+          content: 'Expanded the guidance with the final import-order expectations.',
+          tool_calls: [{id: 'call_2', name: 'read_file', args: {file_path: 'src/app.ts'}}],
+        }),
+      ],
+      sessionId: 'session-two',
+    });
+
+    const topicsDir = path.join(rootDir, 'topics');
+    const topics = await readdir(topicsDir);
+    expect(topics.length).toBe(1);
+
+    const topicContent = await readFile(path.join(topicsDir, topics[0]), 'utf8');
+    expect(topicContent).toContain('Expanded the guidance with the final import-order expectations.');
+    expect(topicContent).toContain('## Earlier Notes');
+    expect(topicContent).toContain('Explained the lint workflow and updated src/app.ts conventions.');
+  });
+
+  it('skips low-signal successful turns that do not produce meaningful memory', async () => {
+    const rootDir = await mkdtemp(path.join(tmpdir(), 'codara-auto-memory-low-signal-'));
+    const runtime = createAutoMemoryRuntime({rootDir});
+
+    const recorded = await runtime.recordTurn({
+      previousMessages: [],
+      nextMessages: [
+        new HumanMessage('thanks'),
+        new AIMessage('Done.'),
+      ],
+      sessionId: 'session-low-signal',
+    });
+
+    expect(recorded).toBe(false);
+    expect(existsSync(path.join(rootDir, 'MEMORY.md'))).toBe(false);
   });
 
   it('skips persistence for non-main, paused, or failed turns', async () => {

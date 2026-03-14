@@ -42,6 +42,9 @@ interface AutoMemoryTopicRecord {
   title: string;
   summary: string;
   body: string;
+  fingerprint: string;
+  toolNames: string[];
+  touchedPaths: string[];
   createdAt: string;
   updatedAt: string;
 }
@@ -140,11 +143,16 @@ class FileAutoMemorySource implements AutoMemorySource {
 async function upsertAutoMemoryTopic(rootDir: string, next: AutoMemoryTopicRecord): Promise<void> {
   const topicsDir = path.join(rootDir, TOPICS_DIR);
   await mkdir(topicsDir, {recursive: true});
-  const filePath = path.join(topicsDir, `${next.slug}.md`);
+  const filePath = await resolveTopicPath(topicsDir, next);
   const existing = await readAutoMemoryTopic(filePath);
 
   const topic: AutoMemoryTopicRecord = {
     ...next,
+    slug: existing?.slug ?? next.slug,
+    body: mergeTopicBodies(existing?.body, next.body),
+    fingerprint: existing?.fingerprint ?? next.fingerprint,
+    toolNames: unique([...(existing?.toolNames ?? []), ...next.toolNames]),
+    touchedPaths: unique([...(existing?.touchedPaths ?? []), ...next.touchedPaths]),
     createdAt: existing?.createdAt ?? next.createdAt,
   };
 
@@ -171,9 +179,19 @@ async function rewriteMemoryIndex(rootDir: string): Promise<void> {
     'Loaded from the Codara auto memory index for this workspace.',
     'Detailed notes live under `topics/` and can be read directly when needed.',
     '',
-    '## Topics',
+    '## Recent Topics',
     ...(topics.length > 0
-      ? topics.map((topic) => `- [${topic.title}](topics/${topic.slug}.md): ${topic.summary}`)
+      ? topics.flatMap((topic) => {
+        const meta = [
+          `Updated ${topic.updatedAt.slice(0, 10)}`,
+          ...(topic.toolNames.length > 0 ? [`Tools: ${topic.toolNames.join(', ')}`] : []),
+          ...(topic.touchedPaths.length > 0 ? [`Paths: ${topic.touchedPaths.slice(0, 2).join(', ')}`] : []),
+        ];
+        return [
+          `- [${topic.title}](topics/${topic.slug}.md): ${topic.summary}`,
+          `  ${meta.join(' · ')}`,
+        ];
+      })
       : ['- No stored memories yet.']),
   ];
 
@@ -197,6 +215,9 @@ async function readAutoMemoryTopic(filePath: string): Promise<AutoMemoryTopicRec
   const slug = readString(frontmatter.slug) ?? normalizeSlug(path.basename(filePath, '.md'));
   const title = readString(frontmatter.title);
   const summary = readString(frontmatter.summary);
+  const fingerprint = readString(frontmatter.fingerprint) ?? normalizeSlug(path.basename(filePath, '.md'));
+  const toolNames = readStringList(frontmatter.tool_names) ?? [];
+  const touchedPaths = readStringList(frontmatter.touched_paths) ?? [];
   const createdAt = readString(frontmatter.created_at) ?? readString(frontmatter.createdAt);
   const updatedAt = readString(frontmatter.updated_at) ?? readString(frontmatter.updatedAt);
   if (!title || !summary || !createdAt || !updatedAt) {
@@ -208,6 +229,9 @@ async function readAutoMemoryTopic(filePath: string): Promise<AutoMemoryTopicRec
     title,
     summary,
     body: parsed.body.trim(),
+    fingerprint,
+    toolNames,
+    touchedPaths,
     createdAt,
     updatedAt,
   };
@@ -218,6 +242,9 @@ function formatAutoMemoryTopic(topic: AutoMemoryTopicRecord): string {
     slug: topic.slug,
     title: topic.title,
     summary: topic.summary,
+    fingerprint: topic.fingerprint,
+    tool_names: topic.toolNames,
+    touched_paths: topic.touchedPaths,
     created_at: topic.createdAt,
     updated_at: topic.updatedAt,
   }).trimEnd();
@@ -267,6 +294,7 @@ function buildAutoMemoryTopic(input: AutoMemoryTurnInput): AutoMemoryTopicRecord
   const title = deriveTopicTitle(prompt, assistantText, touchedPaths);
   const slug = normalizeSlug(title);
   const summary = deriveTopicSummary(prompt, assistantText, toolNames, touchedPaths);
+  const fingerprint = deriveTopicFingerprint(prompt, assistantText, toolNames, touchedPaths);
   const body = [
     ...(prompt ? ['## Prompt', prompt, ''] : []),
     ...(assistantText ? ['## Outcome', assistantText, ''] : []),
@@ -280,6 +308,9 @@ function buildAutoMemoryTopic(input: AutoMemoryTurnInput): AutoMemoryTopicRecord
     title,
     summary,
     body,
+    fingerprint,
+    toolNames,
+    touchedPaths,
     createdAt: timestamp,
     updatedAt: timestamp,
   };
@@ -301,7 +332,15 @@ function shouldPersistAutoMemory(
     return false;
   }
 
-  return meaningfulAssistant.length >= 24 || toolNames.length > 0 || touchedPaths.length > 0 || Boolean(meaningfulPrompt);
+  if (toolNames.length > 0 || touchedPaths.length > 0) {
+    return true;
+  }
+
+  if (!meaningfulAssistant || isLowSignalAssistantReply(meaningfulAssistant)) {
+    return false;
+  }
+
+  return meaningfulAssistant.length >= 48 || (Boolean(meaningfulPrompt) && meaningfulAssistant.length >= 24);
 }
 
 function deriveTopicTitle(prompt: string | undefined, assistantText: string, touchedPaths: string[]): string {
@@ -335,6 +374,22 @@ function deriveTopicSummary(
   return 'Stored learning from a successful turn.';
 }
 
+function deriveTopicFingerprint(
+  prompt: string | undefined,
+  assistantText: string,
+  toolNames: string[],
+  touchedPaths: string[],
+): string {
+  const key = [
+    normalizeFingerprintText(prompt ?? ''),
+    normalizeFingerprintText(deriveTopicTitle(prompt, assistantText, touchedPaths)),
+    toolNames.map((name) => name.toLowerCase()).sort().join('|'),
+    touchedPaths.map((entry) => entry.toLowerCase()).sort().join('|'),
+  ].join('::');
+
+  return createHash('sha1').update(key).digest('hex').slice(0, 16);
+}
+
 function collectToolPaths(toolCall: ToolCall): string[] {
   const args = readRecord(toolCall.args);
   return unique([
@@ -364,6 +419,48 @@ function parseFrontmatterDocument(raw: string): {frontmatter: Record<string, unk
   }
 }
 
+async function resolveTopicPath(topicsDir: string, next: AutoMemoryTopicRecord): Promise<string> {
+  const preferred = path.join(topicsDir, `${next.slug}.md`);
+  const existingPreferred = await readAutoMemoryTopic(preferred);
+  if (existingPreferred?.fingerprint === next.fingerprint || !existsSync(preferred)) {
+    return preferred;
+  }
+
+  const names = existsSync(topicsDir) ? await readdir(topicsDir) : [];
+  for (const name of names) {
+    if (!name.endsWith('.md')) {
+      continue;
+    }
+
+    const candidate = await readAutoMemoryTopic(path.join(topicsDir, name));
+    if (candidate?.fingerprint === next.fingerprint) {
+      return path.join(topicsDir, name);
+    }
+  }
+
+  return preferred;
+}
+
+function mergeTopicBodies(existing: string | undefined, next: string): string {
+  const trimmedNext = next.trim();
+  if (!existing?.trim()) {
+    return trimmedNext;
+  }
+
+  const trimmedExisting = existing.trim();
+  if (trimmedExisting === trimmedNext || trimmedExisting.includes(trimmedNext)) {
+    return trimmedExisting;
+  }
+
+  return [
+    trimmedNext,
+    '',
+    '## Earlier Notes',
+    '',
+    clampText(trimmedExisting, 2500),
+  ].join('\n');
+}
+
 function createWorkspaceKey(projectRoot: string): string {
   const base = sanitizeSlug(path.basename(path.resolve(projectRoot))) || 'workspace';
   const digest = createHash('sha1').update(path.resolve(projectRoot)).digest('hex').slice(0, 12);
@@ -376,6 +473,19 @@ function normalizeAssistantMemoryText(value: string): string {
     return '';
   }
   return trimmed;
+}
+
+function isLowSignalAssistantReply(value: string): boolean {
+  const normalized = value.trim().toLowerCase();
+  return /^(done|completed|fixed|updated|noted|ok|okay|thanks|thank you|saved)\.?$/i.test(normalized);
+}
+
+function normalizeFingerprintText(value: string): string {
+  return value
+    .trim()
+    .toLowerCase()
+    .replace(/\s+/g, ' ')
+    .replace(/[`'"“”‘’]/g, '');
 }
 
 function normalizeMessageText(value: string): string {
@@ -430,6 +540,17 @@ function readRecord(value: unknown): Record<string, unknown> {
 
 function readString(value: unknown): string | undefined {
   return typeof value === 'string' && value.trim().length > 0 ? value.trim() : undefined;
+}
+
+function readStringList(value: unknown): string[] | undefined {
+  if (!Array.isArray(value)) {
+    return undefined;
+  }
+
+  const normalized = value
+    .map((entry) => readString(entry))
+    .filter((entry): entry is string => Boolean(entry));
+  return normalized.length > 0 ? normalized : [];
 }
 
 function unique(values: string[]): string[] {
