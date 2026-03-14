@@ -111,4 +111,30 @@ describe('createPermissionMiddleware', () => {
     expect(actions[1]?.scope).toBe('path');
     expect(actions[1]?.label).toContain('tmp/demo2/');
   });
+
+  it('should expose a directory-scoped allow action for bash mkdir commands', async () => {
+    const projectRoot = await mkdtemp(path.join(tmpdir(), 'codara-permission-mw-bash-path-'));
+    ensurePermissionSettingsFile({projectRoot, cwd: projectRoot});
+    const middleware = createPermissionMiddleware({projectRoot, cwd: projectRoot});
+    const toolCall: ToolCall = {
+      id: 'call_permission_bash_path_1',
+      name: 'bash',
+      args: {command: 'mkdir tmp/demo2'},
+    };
+
+    const result = await middleware.wrapToolCall?.(createToolContext(toolCall), async () => {
+      return new ToolMessage({content: 'should-not-run', tool_call_id: 'call_permission_bash_path_1'});
+    });
+
+    const payload = parseHILToolMessagePayload(result?.content);
+    expect(payload?.type).toBe('hil_pause');
+    const actions = payload?.type === 'hil_pause'
+      ? payload.request.ui?.actions ?? []
+      : [];
+    expect(actions[0]?.id).toBe('allow_once');
+    expect(actions[1]?.id).toBe('allow_path');
+    expect(actions[1]?.scope).toBe('path');
+    expect(actions[1]?.label).toContain('tmp/');
+    expect(actions.some((action) => action.id === 'allow_project')).toBeTrue();
+  });
 });

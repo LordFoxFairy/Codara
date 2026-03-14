@@ -85,6 +85,28 @@ describe('permission policy defaults', () => {
     expect(evaluation?.matched?.rule).toBe('Read(docs/)');
   });
 
+  it('should match directory-scoped write rules for bash mkdir commands', async () => {
+    const projectRoot = await mkdtemp(path.join(tmpdir(), 'codara-permission-bash-dir-allow-'));
+    await mkdir(path.join(projectRoot, '.codara'), {recursive: true});
+    await writeFile(path.join(projectRoot, '.codara', 'settings.local.json'), JSON.stringify({
+      permissions: {
+        rules: {
+          allow: ['Write(tmp/)'],
+          ask: [],
+          deny: [],
+        },
+      },
+    }, null, 2));
+
+    const evaluation = await evaluatePermissionToolCall(
+      {id: 'call_bash_dir_rule', name: 'bash', args: {command: 'mkdir tmp/demo2'}},
+      {projectRoot, cwd: projectRoot},
+    );
+
+    expect(evaluation?.decision).toBe('allow');
+    expect(evaluation?.matched?.rule).toBe('Write(tmp/)');
+  });
+
   it('should derive a directory-scoped permission expression for file edits', async () => {
     const projectRoot = await mkdtemp(path.join(tmpdir(), 'codara-permission-path-scope-'));
 
@@ -94,6 +116,28 @@ describe('permission policy defaults', () => {
     );
 
     expect(expression).toBe('Write(tmp/demo2/)');
+  });
+
+  it('should derive a directory-scoped permission expression for bash mkdir commands', async () => {
+    const projectRoot = await mkdtemp(path.join(tmpdir(), 'codara-permission-bash-path-scope-'));
+
+    const expression = formatPermissionPathScopeExpression(
+      {id: 'call_bash_path_scope', name: 'bash', args: {command: 'mkdir tmp/demo2'}},
+      {projectRoot, cwd: projectRoot},
+    );
+
+    expect(expression).toBe('Write(tmp/)');
+  });
+
+  it('should avoid deriving path scope for complex bash commands', async () => {
+    const projectRoot = await mkdtemp(path.join(tmpdir(), 'codara-permission-bash-complex-'));
+
+    const expression = formatPermissionPathScopeExpression(
+      {id: 'call_bash_complex_scope', name: 'bash', args: {command: 'mkdir tmp/demo2 && touch tmp/demo2/a.txt'}},
+      {projectRoot, cwd: projectRoot},
+    );
+
+    expect(expression).toBeUndefined();
   });
 
   it('should persist command-type scope rules for bash approvals', async () => {
@@ -192,5 +236,27 @@ describe('permission policy defaults', () => {
     expect(evaluation?.matched?.bucket).toBe('ask');
     expect(evaluation?.matched?.rule).toBe('Bash(touch *)');
     expect(evaluation?.defaultDecision).toBe('allow');
+  });
+
+  it('should honor exact bash allow rules even when bash path fallback would otherwise ask by default', async () => {
+    const projectRoot = await mkdtemp(path.join(tmpdir(), 'codara-permission-bash-exact-allow-'));
+    await mkdir(path.join(projectRoot, '.codara'), {recursive: true});
+    await writeFile(path.join(projectRoot, '.codara', 'settings.local.json'), JSON.stringify({
+      permissions: {
+        rules: {
+          allow: ['Bash(touch guarded.txt)'],
+          ask: [],
+          deny: [],
+        },
+      },
+    }, null, 2));
+
+    const evaluation = await evaluatePermissionToolCall(
+      {id: 'call_bash_exact_allow', name: 'bash', args: {command: 'touch guarded.txt'}},
+      {projectRoot, cwd: projectRoot},
+    );
+
+    expect(evaluation?.decision).toBe('allow');
+    expect(evaluation?.matched?.rule).toBe('Bash(touch guarded.txt)');
   });
 });

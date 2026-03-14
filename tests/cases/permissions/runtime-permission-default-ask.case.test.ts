@@ -165,4 +165,39 @@ describe('case: runtime permission default ask', () => {
     expect(result.output).not.toContain('HIL action:');
     expect(result.output).toContain('RUNTIME_WRITE_PERMISSION_DONE');
   });
+
+  it('should persist directory-scoped path approvals for bash mkdir commands and reuse them for sibling directories', async () => {
+    const root = await mkdtemp(path.join(tmpdir(), 'codara-case-permission-mkdir-path-cli-'));
+    const projectRoot = path.join(root, 'project');
+    const codaraPath = path.join(projectRoot, '.codara');
+    await mkdir(codaraPath, {recursive: true});
+
+    const first = await runRealCliCase({
+      cwd: projectRoot,
+      prompt: 'Run mkdir tmp/demo2',
+      scenario: 'runtime-permission-mkdir-path',
+      env: {
+        CODARA_CLI_HIL_AUTO_ACTIONS: 'allow_path',
+      },
+    });
+
+    expect(first.exitCode).toBe(0);
+    expect(first.output).toContain('RUNTIME_PERMISSION_MKDIR_PATH_DONE');
+    expect(first.output).not.toContain('HIL action:');
+
+    const settings = JSON.parse(await readFile(path.join(codaraPath, 'settings.local.json'), 'utf8')) as {
+      permissions?: {rules?: {allow?: string[]}};
+    };
+    expect(settings.permissions?.rules?.allow).toContain('Write(tmp/)');
+
+    const second = await runRealCliCase({
+      cwd: projectRoot,
+      prompt: 'Run mkdir tmp/demo3',
+      scenario: 'runtime-permission-mkdir-path-other',
+    });
+
+    expect(second.exitCode).toBe(0);
+    expect(second.output).toContain('RUNTIME_PERMISSION_MKDIR_PATH_OTHER_DONE');
+    expect(second.output).not.toContain('Permission Review');
+  });
 });

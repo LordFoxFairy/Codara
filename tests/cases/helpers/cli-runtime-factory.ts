@@ -287,6 +287,32 @@ export async function createCliRuntime(input: {
           skills: false,
         }),
       };
+    case 'runtime-permission-mkdir-path':
+      return {
+        codara: createCodaraRuntime({
+          cwd: input.cwd,
+          projectRoot: input.cwd,
+          codaraPath: path.join(input.cwd, '.codara'),
+          ...(input.sessionId ? {sessionId: input.sessionId} : {}),
+          model: new PermissionRuntimeCliModel('mkdir tmp/demo2', 'RUNTIME_PERMISSION_MKDIR_PATH_DONE') as unknown as BaseChatModel,
+          tools: [createPermissionBashTool()],
+          builtinTools: false,
+          skills: false,
+        }),
+      };
+    case 'runtime-permission-mkdir-path-other':
+      return {
+        codara: createCodaraRuntime({
+          cwd: input.cwd,
+          projectRoot: input.cwd,
+          codaraPath: path.join(input.cwd, '.codara'),
+          ...(input.sessionId ? {sessionId: input.sessionId} : {}),
+          model: new PermissionRuntimeCliModel('mkdir tmp/demo3', 'RUNTIME_PERMISSION_MKDIR_PATH_OTHER_DONE') as unknown as BaseChatModel,
+          tools: [createPermissionBashTool()],
+          builtinTools: false,
+          skills: false,
+        }),
+      };
     case 'subagent-permission':
       return {
         codara: createCodaraRuntime({

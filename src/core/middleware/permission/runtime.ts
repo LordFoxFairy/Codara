@@ -99,9 +99,30 @@ function createPermissionInterruptConfig(
   metadata: Record<string, unknown>,
 ): HILInterruptConfig {
   const permissionKind = resolvePermissionReviewKind(context.toolCall.name);
-  const pathAction = permissionKind === 'path'
-    ? buildPermissionPathAction(context, options)
-    : undefined;
+  const pathAction = buildPermissionPathAction(context, options);
+  const genericApprovalActions = [
+    {
+      id: 'always',
+      label: 'Always allow this action',
+      kind: 'secondary' as const,
+      scope: 'exact',
+      description: 'Persist only this exact permission expression.',
+    },
+    {
+      id: 'allow_tool',
+      label: 'Allow this command type',
+      kind: 'secondary' as const,
+      scope: 'tool',
+      description: 'Persist a wildcard rule for similar commands in this project.',
+    },
+    {
+      id: 'allow_project',
+      label: 'Trust this project',
+      kind: 'secondary' as const,
+      scope: 'project',
+      description: 'Set the project permission default to allow.',
+    },
+  ];
   const actions = [
     {
       id: 'allow_once',
@@ -109,29 +130,8 @@ function createPermissionInterruptConfig(
       kind: 'primary' as const,
       description: 'Approve only this execution.',
     },
-    ...(pathAction ? [pathAction] : [
-      {
-        id: 'always',
-        label: 'Always allow this action',
-        kind: 'secondary' as const,
-        scope: 'exact',
-        description: 'Persist only this exact permission expression.',
-      },
-      {
-        id: 'allow_tool',
-        label: 'Allow this command type',
-        kind: 'secondary' as const,
-        scope: 'tool',
-        description: 'Persist a wildcard rule for similar commands in this project.',
-      },
-      {
-        id: 'allow_project',
-        label: 'Trust this project',
-        kind: 'secondary' as const,
-        scope: 'project',
-        description: 'Set the project permission default to allow.',
-      },
-    ]),
+    ...(pathAction ? [pathAction] : permissionKind === 'path' ? [] : genericApprovalActions),
+    ...(pathAction && permissionKind !== 'path' ? genericApprovalActions.slice(1) : []),
     ...(options.includeEditAction === false ? [] : [{
       id: 'edit',
       label: 'Edit and continue',
@@ -252,9 +252,13 @@ function resolvePermissionReviewKind(toolName: string): PermissionReviewKind {
 function buildPermissionPathAction(
   context: ToolCallContext,
   options: PermissionRuntimeOptions,
-): HILUIActionOption {
+): HILUIActionOption | undefined {
   const expression = formatPermissionPathScopeExpression(context.toolCall, options);
   const target = readPermissionPathScopeTarget(expression);
+  if (!target || target === './') {
+    return undefined;
+  }
+
   const label = target
     ? `Yes, and always allow access to ${target} from this project`
     : 'Yes, and always allow access to this path from this project';

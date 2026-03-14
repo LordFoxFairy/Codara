@@ -120,6 +120,19 @@ interface CanonicalPathPattern {
   isDirectory: boolean;
 }
 
+interface BashPermissionPathTarget {
+  tool: 'Read' | 'Write' | 'Edit';
+  specifier: string;
+  scopeSpecifier: string;
+}
+
+interface MergedPermissionPolicy {
+  defaultDecision: PermissionDecision | null;
+  deny: MatchedRuleEntry[];
+  ask: MatchedRuleEntry[];
+  allow: MatchedRuleEntry[];
+}
+
 export function formatPermissionExpression(toolCall: ToolCall): string | undefined {
   const toolName = normalizeToolReferenceName(toolCall.name ?? '');
   const args = normalizeArgs(toolCall.args);
@@ -200,11 +213,11 @@ export async function evaluatePermissionExpression(
 
   const sources = await Promise.all(buildSourceList(options).map(loadSource));
   const loadedSources = sources.filter((item) => item.exists && item.policy != null);
-  const mergedPolicy = {
-    defaultDecision: null as PermissionDecision | null,
-    deny: [] as MatchedRuleEntry[],
-    ask: [] as MatchedRuleEntry[],
-    allow: [] as MatchedRuleEntry[],
+  const mergedPolicy: MergedPermissionPolicy = {
+    defaultDecision: null,
+    deny: [],
+    ask: [],
+    allow: [],
   };
 
   for (const source of loadedSources) {
@@ -228,22 +241,26 @@ export async function evaluatePermissionExpression(
     }
   }
 
-  const matchedDeny = findMatch(call, mergedPolicy.deny, options);
-  const matchedAsk = matchedDeny ? null : findMatch(call, mergedPolicy.ask, options);
-  const matchedAllow = matchedDeny || matchedAsk ? null : findMatch(call, mergedPolicy.allow, options);
-
   let decision: PermissionDecision = mergedPolicy.defaultDecision ?? 'ask';
   let matched: PermissionRuleMatch | null = null;
 
-  if (matchedDeny) {
-    decision = 'deny';
-    matched = {bucket: 'deny', ...matchedDeny};
-  } else if (matchedAsk) {
-    decision = 'ask';
-    matched = {bucket: 'ask', ...matchedAsk};
-  } else if (matchedAllow) {
-    decision = 'allow';
-    matched = {bucket: 'allow', ...matchedAllow};
+  if (call.tool.trim().toLowerCase() === 'bash') {
+    ({decision, matched} = evaluateBashPermissionExpression(call, mergedPolicy, options));
+  } else {
+    const matchedDeny = findMatch(call, mergedPolicy.deny, options);
+    const matchedAsk = matchedDeny ? null : findMatch(call, mergedPolicy.ask, options);
+    const matchedAllow = matchedDeny || matchedAsk ? null : findMatch(call, mergedPolicy.allow, options);
+
+    if (matchedDeny) {
+      decision = 'deny';
+      matched = {bucket: 'deny', ...matchedDeny};
+    } else if (matchedAsk) {
+      decision = 'ask';
+      matched = {bucket: 'ask', ...matchedAsk};
+    } else if (matchedAllow) {
+      decision = 'allow';
+      matched = {bucket: 'allow', ...matchedAllow};
+    }
   }
 
   return {
@@ -475,6 +492,11 @@ export function formatPermissionPathScopeExpression(
 
   const parsed = parseToolExpression(expression);
   const tool = parsed.tool.trim();
+  if (tool.toLowerCase() === 'bash') {
+    const bashTarget = deriveSingleBashPathScopeTarget(parsed.specifier, options);
+    return bashTarget ? `${bashTarget.tool}(${bashTarget.scopeSpecifier})` : undefined;
+  }
+
   if (!isPathScopedTool(tool)) {
     return undefined;
   }
@@ -540,6 +562,7 @@ function specifierMatches(
   rule: ParsedToolExpression,
   entry: MatchedRuleEntry,
   options: PermissionPolicyOptions,
+  matchMode: 'all' | 'direct' = 'all',
 ): boolean {
   const callSpecifier = call.specifier;
   const ruleSpecifier = rule.specifier;
@@ -554,6 +577,14 @@ function specifierMatches(
     return pathSpecifierMatches(callSpecifier, ruleSpecifier, entry, options);
   }
 
+  if (
+    matchMode === 'all'
+    && call.tool.trim().toLowerCase() === 'bash'
+    && isPathScopedTool(rule.tool)
+  ) {
+    return bashPathSpecifierMatches(callSpecifier, rule.tool, ruleSpecifier, entry, options);
+  }
+
   if (!ruleSpecifier.includes('*')) {
     return callSpecifier === ruleSpecifier;
   }
@@ -564,6 +595,7 @@ function findMatch(
   call: ParsedToolExpression,
   rules: MatchedRuleEntry[],
   options: PermissionPolicyOptions,
+  matchMode: 'all' | 'direct' = 'all',
 ): MatchedRuleEntry | null {
   for (const entry of rules) {
     const parsedRule = parseToolExpression(entry.rule);
@@ -573,7 +605,7 @@ function findMatch(
     if (!toolMatches(call.tool, parsedRule.tool)) {
       continue;
     }
-    if (!specifierMatches(call, parsedRule, entry, options)) {
+    if (!specifierMatches(call, parsedRule, entry, options, matchMode)) {
       continue;
     }
     return entry;
@@ -613,6 +645,112 @@ function pathSpecifierMatches(
   }
 
   return callPattern.value === rulePattern.value;
+}
+
+function bashPathSpecifierMatches(
+  commandSpecifier: string,
+  ruleTool: string,
+  ruleSpecifier: string,
+  entry: MatchedRuleEntry,
+  options: PermissionPolicyOptions,
+): boolean {
+  const targets = analyzeBashPermissionPathTargets(commandSpecifier, options);
+  return targets.some((target) => (
+    target.tool.toLowerCase() === ruleTool.trim().toLowerCase()
+    && pathSpecifierMatches(target.specifier, ruleSpecifier, entry, options)
+  ));
+}
+
+function evaluateBashPermissionExpression(
+  call: ParsedToolExpression,
+  policy: MergedPermissionPolicy,
+  options: PermissionPolicyOptions,
+): {decision: PermissionDecision; matched: PermissionRuleMatch | null} {
+  const directDeny = findMatch(call, policy.deny, options, 'direct');
+  if (directDeny) {
+    return {decision: 'deny', matched: {bucket: 'deny', ...directDeny}};
+  }
+
+  const directAsk = findMatch(call, policy.ask, options, 'direct');
+  const directAllow = directAsk ? null : findMatch(call, policy.allow, options, 'direct');
+  const pathDecision = evaluateBashPathDecision(call.specifier, policy, options);
+
+  if (pathDecision?.decision === 'deny') {
+    return pathDecision;
+  }
+
+  if (directAsk) {
+    return {decision: 'ask', matched: {bucket: 'ask', ...directAsk}};
+  }
+
+  if (pathDecision?.decision === 'ask' && pathDecision.matched) {
+    return pathDecision;
+  }
+
+  if (directAllow) {
+    return {decision: 'allow', matched: {bucket: 'allow', ...directAllow}};
+  }
+
+  if (pathDecision?.decision === 'ask') {
+    return pathDecision;
+  }
+
+  if (pathDecision?.decision === 'allow') {
+    return pathDecision;
+  }
+
+  return {
+    decision: policy.defaultDecision ?? 'ask',
+    matched: null,
+  };
+}
+
+function evaluateBashPathDecision(
+  commandSpecifier: string | null,
+  policy: MergedPermissionPolicy,
+  options: PermissionPolicyOptions,
+): {decision: PermissionDecision; matched: PermissionRuleMatch | null} | undefined {
+  if (!commandSpecifier) {
+    return undefined;
+  }
+
+  const targets = analyzeBashPermissionPathTargets(commandSpecifier, options);
+  if (targets.length === 0) {
+    return undefined;
+  }
+
+  const defaultDecision = policy.defaultDecision ?? 'ask';
+  let matchedAllow: MatchedRuleEntry | null = null;
+
+  for (const target of targets) {
+    const call: ParsedToolExpression = {tool: target.tool, specifier: target.specifier};
+
+    const matchedDeny = findMatch(call, policy.deny, options, 'direct');
+    if (matchedDeny) {
+      return {decision: 'deny', matched: {bucket: 'deny', ...matchedDeny}};
+    }
+
+    const matchedAsk = findMatch(call, policy.ask, options, 'direct');
+    if (matchedAsk) {
+      return {decision: 'ask', matched: {bucket: 'ask', ...matchedAsk}};
+    }
+
+    const allow = findMatch(call, policy.allow, options, 'direct');
+    if (allow) {
+      matchedAllow ??= allow;
+      continue;
+    }
+
+    if (defaultDecision !== 'allow') {
+      return {decision: defaultDecision, matched: null};
+    }
+  }
+
+  if (matchedAllow) {
+    return {decision: 'allow', matched: {bucket: 'allow', ...matchedAllow}};
+  }
+
+  return {decision: defaultDecision, matched: null};
 }
 
 function buildSourceList(
@@ -724,6 +862,11 @@ function derivePermissionPathScopeSpecifier(specifier: string): string | undefin
   return ensureDirectoryPattern(directory);
 }
 
+function deriveParentPermissionPathScopeSpecifier(specifier: string): string | undefined {
+  const normalized = specifier.endsWith('/') ? specifier.slice(0, -1) : specifier;
+  return derivePermissionPathScopeSpecifier(normalized);
+}
+
 function ensureDirectoryPattern(value: string): string {
   const normalized = value === '.' ? './' : value;
   return normalized.endsWith('/') ? normalized : `${normalized}/`;
@@ -731,6 +874,265 @@ function ensureDirectoryPattern(value: string): string {
 
 function toPosixPath(value: string): string {
   return value.replace(/\\/g, '/');
+}
+
+function deriveSingleBashPathScopeTarget(
+  commandSpecifier: string | null,
+  options: PermissionPolicyOptions,
+): BashPermissionPathTarget | undefined {
+  if (!commandSpecifier) {
+    return undefined;
+  }
+
+  const targets = analyzeBashPermissionPathTargets(commandSpecifier, options);
+  if (targets.length !== 1) {
+    return undefined;
+  }
+
+  return targets[0];
+}
+
+function analyzeBashPermissionPathTargets(
+  commandSpecifier: string,
+  options: PermissionPolicyOptions,
+): BashPermissionPathTarget[] {
+  const tokenized = tokenizeShellCommand(commandSpecifier);
+  if (tokenized.complex || tokenized.tokens.length === 0) {
+    return [];
+  }
+
+  const commandTokens = stripLeadingShellEnvironment(tokenized.tokens);
+  if (commandTokens.length === 0) {
+    return [];
+  }
+
+  const commandName = path.basename(commandTokens[0] ?? '').trim().toLowerCase();
+  const args = commandTokens.slice(1);
+  if (!commandName) {
+    return [];
+  }
+
+  switch (commandName) {
+    case 'mkdir':
+      return buildBashPathTargets(args, options, {
+        tool: 'Write',
+        mode: 'parent',
+        directoryTargets: true,
+        optionValueFlags: ['-m', '--mode'],
+      });
+    case 'touch':
+      return buildBashPathTargets(args, options, {
+        tool: 'Write',
+        mode: 'parent',
+        optionValueFlags: ['-a', '-m', '-c', '-r', '--reference', '-d', '--date', '-t'],
+      });
+    case 'rm':
+    case 'rmdir':
+    case 'unlink':
+      return buildBashPathTargets(args, options, {
+        tool: 'Write',
+        mode: 'parent',
+        directoryTargets: commandName === 'rmdir',
+      });
+    default:
+      return [];
+  }
+}
+
+function buildBashPathTargets(
+  args: string[],
+  options: PermissionPolicyOptions,
+  config: {
+    tool: BashPermissionPathTarget['tool'];
+    mode: 'self' | 'parent';
+    directoryTargets?: boolean;
+    optionValueFlags?: string[];
+  },
+): BashPermissionPathTarget[] {
+  const operands = collectShellPathOperands(args, new Set(config.optionValueFlags ?? []));
+  if (operands.length === 0) {
+    return [];
+  }
+
+  const resolveFrom = resolveCallPathBase(options);
+  const projectRoot = resolvePermissionProjectRoot(options);
+  const targets: BashPermissionPathTarget[] = [];
+  const seen = new Set<string>();
+
+  for (const operand of operands) {
+    const target = createBashPathTarget(operand, resolveFrom, projectRoot, config);
+    if (!target) {
+      continue;
+    }
+
+    const key = `${target.tool}:${target.specifier}:${target.scopeSpecifier}`;
+    if (seen.has(key)) {
+      continue;
+    }
+    seen.add(key);
+    targets.push(target);
+  }
+
+  return targets;
+}
+
+function createBashPathTarget(
+  operand: string,
+  resolveFrom: string,
+  projectRoot: string,
+  config: {
+    tool: BashPermissionPathTarget['tool'];
+    mode: 'self' | 'parent';
+    directoryTargets?: boolean;
+  },
+): BashPermissionPathTarget | undefined {
+  const raw = operand.trim();
+  if (!raw || raw === '--' || hasWildcardPathSyntax(raw) || raw.startsWith('$')) {
+    return undefined;
+  }
+
+  const resolved = path.isAbsolute(raw)
+    ? path.resolve(raw)
+    : path.resolve(resolveFrom, raw);
+
+  let specifier = canonicalizePermissionPath(resolved, projectRoot);
+  if (config.directoryTargets) {
+    specifier = ensureDirectoryPattern(specifier);
+  }
+
+  const scopeSpecifier = config.mode === 'self'
+    ? ensureDirectoryPattern(specifier)
+    : deriveParentPermissionPathScopeSpecifier(specifier);
+  if (!scopeSpecifier) {
+    return undefined;
+  }
+
+  return {
+    tool: config.tool,
+    specifier,
+    scopeSpecifier,
+  };
+}
+
+function collectShellPathOperands(args: string[], optionValueFlags: Set<string>): string[] {
+  const operands: string[] = [];
+  let skipNext = false;
+  let afterDoubleDash = false;
+
+  for (const token of args) {
+    if (skipNext) {
+      skipNext = false;
+      continue;
+    }
+
+    if (!afterDoubleDash && token === '--') {
+      afterDoubleDash = true;
+      continue;
+    }
+
+    if (!afterDoubleDash && token.startsWith('-')) {
+      if (optionValueFlags.has(token)) {
+        skipNext = true;
+      }
+      continue;
+    }
+
+    operands.push(token);
+  }
+
+  return operands;
+}
+
+function stripLeadingShellEnvironment(tokens: string[]): string[] {
+  let index = 0;
+  while (index < tokens.length && isShellEnvAssignment(tokens[index])) {
+    index += 1;
+  }
+
+  if (tokens[index] === 'env') {
+    index += 1;
+    while (index < tokens.length && isShellEnvAssignment(tokens[index])) {
+      index += 1;
+    }
+  }
+
+  return tokens.slice(index);
+}
+
+function isShellEnvAssignment(token: string | undefined): boolean {
+  return Boolean(token && /^[A-Za-z_][A-Za-z0-9_]*=/.test(token));
+}
+
+function hasWildcardPathSyntax(value: string): boolean {
+  return /[*?[\]{}]/.test(value);
+}
+
+function tokenizeShellCommand(command: string): {tokens: string[]; complex: boolean} {
+  if (!command.trim() || /[`]|[$][(]|[;&|<>]/.test(command)) {
+    return {tokens: [], complex: true};
+  }
+
+  const tokens: string[] = [];
+  let current = '';
+  let quote: '"' | '\'' | null = null;
+
+  for (let index = 0; index < command.length; index += 1) {
+    const character = command[index];
+
+    if (quote) {
+      if (character === quote) {
+        quote = null;
+        continue;
+      }
+
+      if (character === '\\' && quote === '"' && index + 1 < command.length) {
+        current += command[index + 1];
+        index += 1;
+        continue;
+      }
+
+      current += character;
+      continue;
+    }
+
+    if (character === '"' || character === '\'') {
+      quote = character;
+      continue;
+    }
+
+    if (character === '\\') {
+      if (command[index + 1] === '\n') {
+        index += 1;
+        continue;
+      }
+
+      if (index + 1 < command.length) {
+        current += command[index + 1];
+        index += 1;
+        continue;
+      }
+    }
+
+    if (/\s/.test(character)) {
+      if (current) {
+        tokens.push(current);
+        current = '';
+      }
+      continue;
+    }
+
+    current += character;
+  }
+
+  if (quote) {
+    return {tokens: [], complex: true};
+  }
+
+  if (current) {
+    tokens.push(current);
+  }
+
+  return {tokens, complex: false};
 }
 
 function addCodaraSources(target: PermissionSourceRecord[], options: PermissionPolicyOptions): void {
