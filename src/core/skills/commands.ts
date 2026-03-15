@@ -1,3 +1,4 @@
+import {readFile} from 'node:fs/promises';
 import type {SkillsRuntimeData} from '@core/skills/runtime';
 import type {SkillMetadata, SkillStore} from '@core/skills/types';
 import {normalizeDiscoveredSkills} from '@core/skills/metadata';
@@ -39,22 +40,28 @@ function discoverSkillCommandsFromMetadata(
   });
 }
 
-export function createSkillCommandInvocation(
+export async function createSkillCommandInvocation(
   command: SkillCommandDefinition,
   request: string,
-): SkillCommandInvocation {
+): Promise<SkillCommandInvocation> {
+  let fullContent: string;
+  try {
+    fullContent = await readFile(command.skill.path, 'utf8');
+  } catch {
+    fullContent = `(Could not read skill file: ${command.skill.path})`;
+  }
+
   return {
     commandName: command.name,
     skillName: command.skill.name,
     skillPath: command.skill.path,
     request,
     prompt: [
-      `Use the skill "${command.skill.name}" to handle this request.`,
-      `Read the skill instructions from: ${command.skill.path}`,
+      `<command-name>${command.name}</command-name>`,
+      fullContent,
       '',
-      'User request:',
-      request,
-    ].join('\n'),
+      ...(request ? [`User request: ${request}`] : []),
+    ].filter(Boolean).join('\n'),
   };
 }
 

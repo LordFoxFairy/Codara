@@ -72,7 +72,7 @@ function bindSkillCommand(command: SkillCommandDefinition): CodaraCommandDefinit
         };
       }
 
-      const invocation = createSkillCommandInvocation(command, parsed.argsText);
+      const invocation = await createSkillCommandInvocation(command, parsed.argsText);
       const result = await agent.invoke(invocation.prompt);
       return {
         ok: true,

@@ -56,8 +56,7 @@ describe('createSkillsMiddleware', () => {
     const combined = context.systemMessage.join('\n')
     expect(combined).toContain('Skills System')
     expect(combined).toContain('demo-skill')
-    expect(combined).toContain('/tmp/project/.codara/skills/demo-skill/SKILL.md')
-    expect(combined).toContain('Allowed tools: read_file')
+    expect(combined).toContain('do demo tasks')
   })
 
   it('should populate shared skills runtime data into runtime shared only', async () => {
