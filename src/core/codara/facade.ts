@@ -574,6 +574,7 @@ function createRuntimeDefaultMiddlewares(input: {
       cwd: input.options.cwd,
       projectRoot: input.options.projectRoot,
       userHome: input.options.userHome,
+      bashAnalysisModel: createRuntimePermissionAnalysisModel(input.options, input.catalog),
     }));
   }
 
@@ -622,7 +623,7 @@ function createDelegatedRuntimeMiddlewares(input: {
     push(createInteractionMiddleware());
   }
   if (input.options.hil !== false && !seen.has('PermissionMiddleware')) {
-    push(createPermissionMiddlewareInternal({
+    push(createPermissionMiddleware({
       ...(typeof input.options.hil === 'object' && input.options.hil !== null ? input.options.hil : {}),
       cwd: input.options.cwd,
       projectRoot: input.options.projectRoot,
