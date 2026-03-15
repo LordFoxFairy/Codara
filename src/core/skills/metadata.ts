@@ -60,7 +60,11 @@ export function normalizeDiscoveredSkills(skills: SkillMetadata[]): SkillMetadat
 export const SKILLS_SYSTEM_PROMPT = `
 ## Skills System
 
-You have access to a skills library that provides specialized capabilities and domain knowledge.
+Execute a skill within the main conversation.
+
+When users ask you to perform tasks, check if any of the available skills match. Skills provide specialized capabilities and domain knowledge.
+
+When users reference a "slash command" or "/<something>" (e.g., "/commit", "/debug"), they are referring to a skill.
 
 {skills_locations}
 
@@ -68,37 +72,10 @@ You have access to a skills library that provides specialized capabilities and d
 
 {skills_list}
 
-**How to Use Skills (Progressive Disclosure):**
-
-Skills follow a **progressive disclosure** pattern - you know they exist (name + description above), but you only read the full instructions when needed:
-
-1. **Recognize when a skill applies**: Check if the user's task matches any skill's description
-2. **Read the skill's full instructions**: The skill list above shows the exact path to use with read_file
-3. **Follow the skill's instructions**: SKILL.md contains step-by-step workflows, best practices, and examples
-4. **Access supporting files**: Skills may include scripts, configs, or reference docs - use absolute paths
-
-**When to Use Skills:**
-- When the user's request matches a skill's domain (e.g., "research X" -> web-research skill)
-- When you need specialized knowledge or structured workflows
-- When a skill provides proven patterns for complex tasks
-
-**Skills are Self-Documenting:**
-- Each SKILL.md tells you exactly what the skill does and how to use it
-- The skill list above shows the full path for each skill's SKILL.md file
-
-**Executing Skill Scripts:**
-Skills may contain Python scripts or other executable files. Always use absolute paths from the skill list.
-
-**Example Workflow:**
-
-User: "Can you research the latest developments in quantum computing?"
-
-1. Check available skills above -> See "web-research" skill with its full path
-2. Read the skill using the path shown in the list
-3. Follow the skill's research workflow (search -> organize -> synthesize)
-4. Use any helper scripts with absolute paths
-
-Remember: Skills are tools to make you more capable and consistent. When in doubt, check if a skill exists for the task!
+Important:
+- When a skill matches the user's request, read the skill's SKILL.md for full instructions BEFORE generating any other response
+- If you see a <command-name> tag in the current conversation turn, the skill has ALREADY been loaded — follow the instructions directly instead of reading the file again
+- Do not invoke a skill that is already running
 `
 
 export function formatSkillAnnotations(skill: SkillMetadata): string {
@@ -135,33 +112,13 @@ export function formatSkillsLocations(sources: string[]): string {
 
 export function formatSkillsList(skills: SkillMetadata[], sources: string[]): string {
   if (skills.length === 0) {
-    if (sources.length === 0) {
-      return '(No skills available yet. Add SKILL.md files to your configured skills directories.)'
-    }
-    const paths = sources.map((source) => `\`${source}\``).join(' or ')
-    return `(No skills available yet. You can create skills in ${paths})`
+    return sources.length > 0
+      ? `(No skills available yet. Add SKILL.md files to ${sources.map((s) => `\`${s}\``).join(' or ')})`
+      : '(No skills available yet.)'
   }
 
-  const lines: string[] = []
-  for (const skill of skills) {
-    const annotations = formatSkillAnnotations(skill)
-    let descLine = `- **${skill.name}**: ${skill.description}`
-    if (annotations) {
-      descLine += ` (${annotations})`
-    }
-    lines.push(descLine)
-
-    if (skill.allowedTools && skill.allowedTools.length > 0) {
-      lines.push(`  -> Allowed tools: ${skill.allowedTools.join(', ')}`)
-    }
-    if (skill.command) {
-      const aliases = skill.command.aliases?.length
-        ? ` (aliases: ${skill.command.aliases.map((alias) => `/${alias}`).join(', ')})`
-        : ''
-      lines.push(`  -> Command: /${skill.command.name}${aliases}`)
-    }
-    lines.push(`  -> Read \`${skill.path}\` for full instructions`)
-  }
-
-  return lines.join('\n')
+  return skills.map((skill) => {
+    const cmd = skill.command?.name ? ` (/${skill.command.name})` : ''
+    return `- ${skill.name}${cmd}: ${skill.description}`
+  }).join('\n')
 }
