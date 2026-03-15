@@ -11,7 +11,7 @@ export interface CliRunState {
 
 export interface CliNotice {
   id: string;
-  level: 'system' | 'warning' | 'error';
+  level: 'system' | 'warning' | 'error' | 'command';
   content: string;
 }
 

@@ -28,7 +28,7 @@ export interface UseCommandCompletionOutput {
   dismiss: () => void;
 }
 
-const MAX_VISIBLE_ITEMS = 8;
+const MAX_VISIBLE_ITEMS = 20;
 
 export function matchCommandPrefix(text: string): string | undefined {
   // Only match when the entire text is a single slash command (no spaces before the slash)

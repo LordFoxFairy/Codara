@@ -208,7 +208,7 @@ export function useCliController(options: UseCliControllerOptions): CliControlle
       return;
     }
 
-    appendNotice(result.ok ? 'system' : 'error', result.output || '(no output)');
+    appendNotice(result.ok ? 'command' : 'error', result.output || '(no output)');
     const nextAgentState = await refreshCoreState();
     setRunState(result.ok
       ? nextAgentState.status === 'paused' ? {status: 'paused'} : {status: 'done'}
