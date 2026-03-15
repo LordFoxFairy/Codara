@@ -16,8 +16,12 @@
     "baseUrl": ".",
     "paths": {
       "@/*": ["src/*"],
-      "@core": ["src/core"],
-      "@core/*": ["src/core/*"]
+      "@engine/*": ["src/engine/*"],
+      "@capability/*": ["src/capability/*"],
+      "@infra/*": ["src/infra/*"],
+      "@shared/*": ["src/shared/*"],
+      "@codara/*": ["src/codara/*"],
+      "@cli/*": ["src/cli/*"]
     }
   },
   "include": ["src"]
