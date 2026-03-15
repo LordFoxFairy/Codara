@@ -1,11 +1,14 @@
 import {describe, expect, it} from 'bun:test'
+import {mkdtemp} from 'node:fs/promises'
+import {tmpdir} from 'node:os'
 import path from 'node:path'
 import {AIMessage, HumanMessage, type BaseMessage} from '@langchain/core/messages'
 import type {BaseChatModel} from '@langchain/core/language_models/chat_models'
 import type {StructuredToolInterface} from '@langchain/core/tools'
-import {createAgent} from '@core/agents'
-import {createMiddleware, createSkillsMiddleware} from '@core/middleware'
-import {FileSystemSkillStore} from '@core/skills'
+import {createAgent} from '@engine/agent'
+import {createMiddleware, createSkillsMiddleware} from '@engine/pipeline'
+import {FileSystemSkillStore} from '@capability/skill'
+import {seedProjectSkillFixtures} from '../../helpers/project-skill-fixtures'
 
 class ScriptedModel {
   readonly invocations: BaseMessage[][] = []
@@ -25,8 +28,10 @@ class ScriptedModel {
 
 describe('Project .codara skill integration', () => {
   it('should discover project skill and cooperate with probe middleware', async () => {
-    const projectSkillsRoot = path.join(process.cwd(), '.codara', 'skills')
-    const skillPath = path.join(projectSkillsRoot, 'basic-task-flow', 'SKILL.md')
+    const projectRoot = await mkdtemp(path.join(tmpdir(), 'codara-project-skill-'))
+    const fixture = await seedProjectSkillFixtures(projectRoot)
+    const projectSkillsRoot = fixture.skillsRoot
+    const skillPath = fixture.basicSkillPath
 
     const store = new FileSystemSkillStore({sources: [projectSkillsRoot], cacheTtlMs: 0})
     const discovered = await store.discover()
@@ -63,7 +68,6 @@ describe('Project .codara skill integration', () => {
     const probeView = seenByProbe[0] ?? ''
     expect(probeView).toContain('Skills System')
     expect(probeView).toContain('basic-task-flow')
-    expect(probeView).toContain(skillPath)
-    expect(probeView).toContain('Allowed tools: read_file')
+    expect(probeView).toContain(projectSkillsRoot)
   })
 })

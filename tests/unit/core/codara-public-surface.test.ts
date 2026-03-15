@@ -1,5 +1,5 @@
 import {describe, expect, it} from 'bun:test';
-import * as codara from '@core/codara';
+import * as codara from '@codara/index';
 
 describe('Codara public surface', () => {
   it('should keep runtime planning helpers out of the public codara barrel', () => {
@@ -15,6 +15,7 @@ describe('Codara public surface', () => {
   });
 
   it('should keep codara assembly helpers and command runner out of the public codara barrel', () => {
+    expect('createCodaraAgent' in codara).toBe(false);
     expect('createCodaraTools' in codara).toBe(false);
     expect('createCodaraMiddlewares' in codara).toBe(false);
     expect('createCodaraCommandRunner' in codara).toBe(false);

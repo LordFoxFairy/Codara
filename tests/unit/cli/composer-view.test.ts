@@ -1,6 +1,6 @@
-﻿import {describe, expect, test} from 'bun:test';
-import {buildComposerViewport} from '@/cli/components/composer-view';
-import {createComposerState} from '@/cli/state/composer-state';
+import {describe, expect, test} from 'bun:test';
+import {buildComposerViewport} from '@/cli/components/prompt/composer-view';
+import {createComposerState} from '@/cli/composer/state';
 
 describe('cli composer viewport', () => {
   test('empty composer should keep placeholder line visible', () => {

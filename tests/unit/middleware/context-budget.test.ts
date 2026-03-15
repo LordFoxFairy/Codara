@@ -4,8 +4,8 @@ import {
   createContextBudgetSnapshot,
   estimateModelInputTokens,
   refreshContextBudget,
-} from '@core/middleware/budget';
-import type {BeforeModelContext} from '@core/middleware';
+} from '@engine/pipeline/budget';
+import type {BeforeModelContext} from '@engine/pipeline';
 
 describe('context budget middleware', () => {
   it('should create a budget snapshot from input budget and model input', () => {
@@ -36,7 +36,7 @@ describe('context budget middleware', () => {
       runtime: {context: {}},
       systemMessage: ['x'.repeat(200)],
       execution: {
-        threadId: 'thread-budget',
+        sessionId: 'session-budget',
         runId: 'run-budget',
         turn: 1,
         maxTurns: 5,
@@ -60,7 +60,7 @@ describe('context budget middleware', () => {
       runtime: {context: {}},
       systemMessage: ['base system'],
       execution: {
-        threadId: 'thread-refresh',
+        sessionId: 'session-refresh',
         runId: 'run-refresh',
         turn: 1,
         maxTurns: 5,

@@ -1,7 +1,7 @@
 import {describe, expect, it} from 'bun:test';
 import {AIMessage, HumanMessage, ToolMessage, type BaseMessage, type ToolCall} from '@langchain/core/messages';
-import type {BaseMiddleware} from '@core/middleware';
-import {MiddlewarePipeline} from '@core/middleware/pipeline';
+import type {BaseMiddleware} from '@engine/pipeline';
+import {MiddlewarePipeline} from '@engine/pipeline/pipeline';
 import {z} from 'zod';
 
 function createBaseContext() {
@@ -12,7 +12,7 @@ function createBaseContext() {
     runtime: {context: {}, runtimeContext: {}, shared: {}},
     systemMessage: [],
     execution: {
-      threadId: 'thread_1',
+      sessionId: 'thread_1',
       runId: 'run_1',
       turn: 1,
       maxTurns: 3,

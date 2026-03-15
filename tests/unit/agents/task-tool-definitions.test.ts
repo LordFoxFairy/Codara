@@ -6,10 +6,10 @@ import {AIMessage, type BaseMessage, type ToolCall} from '@langchain/core/messag
 import type {BaseChatModel} from '@langchain/core/language_models/chat_models';
 import {tool} from '@langchain/core/tools';
 import {z} from 'zod';
-import {createAgent} from '@core/agents';
-import {createHILMiddleware} from '@core/middleware';
-import {TASK_TOOL_NAME, createTaskTool} from '@core/tasks/task';
-import {FileSystemSkillStore} from '@core/skills';
+import {createAgent} from '@engine/agent';
+import {createHILMiddleware} from '@engine/pipeline';
+import {TASK_TOOL_NAME, createTaskTool} from '@capability/task/task';
+import {FileSystemSkillStore} from '@capability/skill';
 import {createAgentSkillsMiddleware, ChildSummaryModel, ScriptedModel} from './task-tool.fixtures';
 
 class GuardedSystemEchoModel {
@@ -29,7 +29,7 @@ class GuardedSystemEchoModel {
     }
 
     const systemText = messages
-      .filter((message) => message.getType() === 'system')
+      .filter((message) => message.type === 'system')
       .map((message) => String(message.content))
       .join('\n---\n');
     return new AIMessage(systemText);
@@ -210,7 +210,7 @@ You are a Researcher subagent.
       });
 
       const resumed = await parent.resume({decision: 'approve'});
-      const toolMessages = resumed.state.messages.filter((message) => message.getType() === 'tool');
+      const toolMessages = resumed.state.messages.filter((message) => message.type === 'tool');
       const finalToolMessage = toolMessages[toolMessages.length - 1];
 
       expect(resumed.reason).toBe('complete');

@@ -2,7 +2,7 @@ import {describe, expect, it} from 'bun:test';
 import {mkdtemp, rm} from 'node:fs/promises';
 import os from 'node:os';
 import path from 'node:path';
-import {createTaskFileStore, createTaskMemoryStore} from '@core/tasks';
+import {createTaskFileStore, createTaskMemoryStore} from '@capability/task';
 
 describe('task store', () => {
   it('应支持创建、列出和更新共享任务', async () => {

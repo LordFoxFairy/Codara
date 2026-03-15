@@ -1,6 +1,6 @@
 import {describe, expect, it} from 'bun:test';
 import {HumanMessage, ToolMessage, type BaseMessage, type ToolCall} from '@langchain/core/messages';
-import {createHILMiddleware, parseHILToolMessagePayload, type ToolCallContext} from '@core/middleware';
+import {createHILMiddleware, parseHILToolMessagePayload, type ToolCallContext} from '@engine/pipeline';
 
 function createToolContext(toolCall: ToolCall): ToolCallContext {
   const messages = [new HumanMessage('run')] as BaseMessage[];
@@ -10,7 +10,7 @@ function createToolContext(toolCall: ToolCall): ToolCallContext {
     runtime: {context: {}},
     systemMessage: [],
     execution: {
-      threadId: 'thread_hil_meta_1',
+      sessionId: 'thread_hil_meta_1',
       runId: 'run_hil_meta_1',
       turn: 1,
       maxTurns: 3,
@@ -42,7 +42,7 @@ describe('HIL request metadata', () => {
               {id: 'deny', label: 'Deny', kind: 'danger', requiresConfirmation: true},
             ],
           },
-          metadata: {skill: 'permission-policy'},
+          metadata: {permissionPolicy: {expression: 'Bash(git status)'}},
         },
       },
     });
@@ -63,7 +63,9 @@ describe('HIL request metadata', () => {
     expect(((request.ui as {actions?: Array<{id: string}>})?.actions ?? [])[0]?.id).toBe('allow_once');
     expect((request.review as {actionName?: string})?.actionName).toBe('bash');
     expect((request.review as {allowedDecisions?: string[]})?.allowedDecisions).toEqual(['approve', 'edit', 'reject']);
-    expect((request.metadata as Record<string, unknown>)?.skill).toBe('permission-policy');
+    expect((request.metadata as Record<string, unknown>)?.permissionPolicy).toEqual({
+      expression: 'Bash(git status)',
+    });
   });
 
   it('should allow custom review decisions in pause request', async () => {

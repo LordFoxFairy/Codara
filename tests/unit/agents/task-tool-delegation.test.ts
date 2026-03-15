@@ -3,10 +3,10 @@ import {AIMessage, ToolMessage, type ToolCall} from '@langchain/core/messages';
 import type {BaseChatModel} from '@langchain/core/language_models/chat_models';
 import {tool} from '@langchain/core/tools';
 import {z} from 'zod';
-import {createAgent} from '@core/agents';
-import {createHILMiddleware} from '@core/middleware';
-import {TASK_TOOL_NAME, createTaskTool} from '@core/tasks/task';
-import {readDelegatedAgentResult} from '@core/tasks/delegation';
+import {createAgent} from '@engine/agent';
+import {createHILMiddleware} from '@engine/pipeline';
+import {TASK_TOOL_NAME, createTaskTool} from '@capability/task/task';
+import {readDelegatedAgentResult} from '@capability/task/delegation';
 import {createBuiltinSubagentStore, createAgentSkillsMiddleware, ChildSummaryModel, ScriptedModel} from './task-tool.fixtures';
 
 describe('createTaskTool delegation', () => {
@@ -42,7 +42,7 @@ describe('createTaskTool delegation', () => {
     expect(String(toolMessage.content)).toContain('summary:\ntask_child_humans:1');
     expect(readDelegatedAgentResult(toolMessage.artifact)).toEqual({
       type: 'delegated_agent_result',
-      threadId: expect.any(String),
+      sessionId: expect.any(String),
       turns: 1,
       reason: 'complete',
       summary: 'task_child_humans:1',
@@ -110,7 +110,7 @@ describe('createTaskTool delegation', () => {
     expect(paused.state.pendingPause?.metadata).toMatchObject({
       codara: {
         delegatedSubagent: {
-          childThreadId: expect.any(String),
+          childSessionId: expect.any(String),
           parentToolName: TASK_TOOL_NAME,
         },
       },

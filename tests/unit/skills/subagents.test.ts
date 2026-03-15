@@ -2,11 +2,11 @@ import {describe, expect, it} from 'bun:test';
 import {mkdir, mkdtemp, rm, writeFile} from 'node:fs/promises';
 import os from 'node:os';
 import path from 'node:path';
-import {filterToolsByReferences} from '@core/tools';
+import {filterToolsByReferences} from '@capability/tool';
 import {tool} from '@langchain/core/tools';
 import {z} from 'zod';
-import {loadSkillsRuntimeData, resolveSubagentDefinition} from '@core/skills';
-import {FileSystemSkillStore} from '@core/skills';
+import {loadSkillsRuntimeData, resolveSubagentDefinition} from '@capability/skill';
+import {FileSystemSkillStore} from '@capability/skill';
 
 function createBuiltinSubagentStore() {
   return new FileSystemSkillStore({
@@ -122,6 +122,35 @@ You are a Researcher subagent.
       expect(researcher.hints?.middlewareNames).toEqual(['profile-tag']);
       expect(researcher.hints?.permissionMode).toBe('plan');
       expect(researcher.systemPrompt).toContain('Researcher subagent');
+    } finally {
+      await rm(root, {recursive: true, force: true});
+    }
+  });
+
+  it('应兼容无 frontmatter 的 Claude-style agent markdown', async () => {
+    const root = await mkdtemp(path.join(os.tmpdir(), 'codara-agent-frontmatterless-'));
+
+    try {
+      const skillDir = path.join(root, 'claude-imported-skill');
+      const agentsDir = path.join(skillDir, 'agents');
+      await mkdir(agentsDir, {recursive: true});
+      await writeFile(path.join(skillDir, 'SKILL.md'), `---
+name: claude-imported-skill
+description: imported skill with plain markdown agents
+---
+# Imported skill
+`, 'utf8');
+      await writeFile(path.join(agentsDir, 'analyzer.md'), `# Post-hoc Analyzer Agent
+
+Analyze blind comparison results and produce improvement suggestions.
+`, 'utf8');
+
+      const runtime = await loadSkillsRuntimeData(new FileSystemSkillStore({sources: [root], cacheTtlMs: 0}));
+      const analyzer = resolveSubagentDefinition(runtime, 'analyzer');
+
+      expect(analyzer.name).toBe('analyzer');
+      expect(analyzer.description).toBe('Post-hoc Analyzer Agent');
+      expect(analyzer.systemPrompt).toContain('Analyze blind comparison results');
     } finally {
       await rm(root, {recursive: true, force: true});
     }

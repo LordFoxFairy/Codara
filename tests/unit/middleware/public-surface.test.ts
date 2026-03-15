@@ -1,5 +1,5 @@
 import {describe, expect, it} from 'bun:test';
-import * as middleware from '@core/middleware';
+import * as middleware from '@engine/pipeline';
 
 describe('middleware public surface', () => {
   it('should expose first-class budget and summary middleware builders, but keep low-level helpers internal', () => {
