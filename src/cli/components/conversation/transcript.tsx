@@ -5,6 +5,7 @@ import {Box, Text} from 'ink';
 import type {CliActiveTurn, CliNotice} from '../../app/view-state';
 import {buildTranscriptItems, type ToolResultMeta, type TranscriptRole} from '../../transcript/model';
 import {DiffView} from './diff-view';
+import {MarkdownText} from './markdown-text';
 
 interface TranscriptProps {
   coreMessages: readonly BaseMessage[];
@@ -104,6 +105,15 @@ export function TranscriptBlock({role, content, renderHint}: {role: TranscriptRo
           <Text color={ROLE_COLOR_MAP[role]}>{prefix.text}</Text>
           <Text>{firstLine}</Text>
         </Box>
+      </Box>
+    );
+  }
+
+  // Assistant messages get markdown rendering
+  if (role === 'assistant') {
+    return (
+      <Box marginBottom={1} flexDirection="column">
+        <MarkdownText content={content} />
       </Box>
     );
   }
