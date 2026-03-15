@@ -265,6 +265,8 @@ export function useCliController(options: UseCliControllerOptions): CliControlle
 
       await runAgentPrompt(prompt);
     } catch (error) {
+      // Clear activeTurn so UI doesn't stay stuck in "waiting" state
+      setActiveTurn(undefined);
       reportError(error);
       await refreshCoreState().catch(() => undefined);
     } finally {

@@ -26,6 +26,12 @@ export class ChatModelFactory {
     /** 创建模型实例；alias 不存在时抛错。 */
     create(alias: string): Promise<BaseChatModel> {
         const modelInfo = this.registry.getByAlias(alias);
+        if (!modelInfo.apiKey) {
+            throw new Error(
+                `No API key configured for model "${alias}" (provider: ${modelInfo.type}). ` +
+                `Set the appropriate environment variable or configure it in .codara/model-metadata.json.`
+            );
+        }
         const initOptions = this.buildInitOptions(modelInfo);
         return initChatModel(modelInfo.model, initOptions);
     }
