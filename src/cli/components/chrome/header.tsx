@@ -59,9 +59,23 @@ export function Header(props: HeaderProps): React.JSX.Element {
   const {layoutMode} = props;
   const model = describeHeader(props);
 
+  if (layoutMode === 'minimal') {
+    return (
+      <Box flexDirection="column">
+        <Text color="blueBright" wrap="truncate-end">{model.title}</Text>
+        <Text dimColor wrap="truncate-end">{model.subtitle}</Text>
+      </Box>
+    );
+  }
+
   return (
-    <Box flexDirection={layoutMode === 'minimal' ? 'column' : 'row'}>
-      {layoutMode === 'minimal' ? null : <RobotMark />}
+    <Box
+      borderStyle="round"
+      borderColor="gray"
+      flexDirection="row"
+      paddingX={1}
+    >
+      <RobotMark />
       <Box flexDirection="column" flexGrow={1} flexShrink={1}>
         <Text color="blueBright" wrap="truncate-end">{model.title}</Text>
         <Text dimColor wrap="truncate-end">{model.subtitle}</Text>
