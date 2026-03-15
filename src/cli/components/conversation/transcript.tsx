@@ -4,6 +4,7 @@ import type {BaseMessage} from '@langchain/core/messages';
 import {Box, Text} from 'ink';
 import type {CliActiveTurn, CliNotice} from '../../app/view-state';
 import {buildTranscriptItems, type ToolResultMeta, type TranscriptRole} from '../../transcript/model';
+import {DiffView} from './diff-view';
 
 interface TranscriptProps {
   coreMessages: readonly BaseMessage[];
@@ -125,7 +126,7 @@ const EDIT_LINE_COLORS: Record<string, React.ComponentProps<typeof Text>['color'
 };
 
 function ToolResultBlock({meta}: {meta: ToolResultMeta}): React.JSX.Element {
-  const {icon, displayName, args, summaryLine, outputLines, totalOutputLines, status} = meta;
+  const {icon, displayName, args, summaryLine, outputLines, totalOutputLines, status, diffData} = meta;
   const header = args ? `${icon} ${displayName}(${args})` : `${icon} ${displayName}`;
   const hiddenLines = (totalOutputLines ?? 0) - (outputLines?.length ?? 0);
   const isEdit = meta.toolName === 'edit' || meta.toolName === 'edit_file';
@@ -138,7 +139,9 @@ function ToolResultBlock({meta}: {meta: ToolResultMeta}): React.JSX.Element {
           {'└ '}{summaryLine}
         </Text>
       </Box>
-      {outputLines && outputLines.length > 0 ? (
+      {diffData ? (
+        <DiffView diff={diffData} />
+      ) : outputLines && outputLines.length > 0 ? (
         <Box paddingLeft={5} flexDirection="column">
           {outputLines.map((line, index) => {
             const lineColor = isEdit ? EDIT_LINE_COLORS[line.charAt(0)] : undefined;
