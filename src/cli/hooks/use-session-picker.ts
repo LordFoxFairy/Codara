@@ -1,5 +1,5 @@
 import {useCallback, useEffect, useState} from 'react';
-import type {SessionState} from '@core';
+import type {SessionState} from '@/index';
 
 export interface SessionPickerItem {
   sessionId: string;

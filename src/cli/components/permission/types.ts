@@ -1,6 +1,6 @@
 // src/cli/components/permission/types.ts
 
-import type {PermissionEvaluationResult} from '@core/middleware/permission/types';
+import type {PermissionEvaluationResult} from '@engine/pipeline/permission/types';
 
 /** Stage of the permission UI flow */
 export type PermissionStage = 'prompt' | 'always-confirm' | 'reject-feedback';

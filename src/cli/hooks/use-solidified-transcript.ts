@@ -1,6 +1,6 @@
 import {useRef, useMemo} from 'react';
 import type {BaseMessage} from '@langchain/core/messages';
-import type {CodaraRuntimeEvent} from '@core';
+import type {CodaraRuntimeEvent} from '@/index';
 import type {CliActiveTurn, CliNotice} from '../app/view-state';
 import type {CliLayoutMode} from '../app/layout-mode';
 import type {RecentSession} from '../components/conversation/welcome-state';

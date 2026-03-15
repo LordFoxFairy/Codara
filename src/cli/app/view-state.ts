@@ -1,4 +1,4 @@
-import type {PauseRequest, PauseUIActionOption, PauseUIFormOption, PauseUIFormTab} from '@core/agents';
+import type {PauseRequest, PauseUIActionOption, PauseUIFormOption, PauseUIFormTab} from '@engine/agent';
 import type {PermissionStage} from '../components/permission/types';
 
 export type CliStatus = 'idle' | 'running' | 'paused' | 'done' | 'error';

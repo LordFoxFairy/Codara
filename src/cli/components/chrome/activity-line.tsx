@@ -1,6 +1,6 @@
 import React from 'react';
 import {Box, Text} from 'ink';
-import type {CodaraRuntimeEvent} from '@core';
+import type {CodaraRuntimeEvent} from '@/index';
 import type {CliActiveTurn, CliRunState} from '../../app/view-state';
 import {useStatusIndicator} from '../../hooks/use-status-indicator';
 

@@ -3,7 +3,7 @@ import {spawn} from 'node:child_process';
 import {pathToFileURL} from 'node:url';
 import React from 'react';
 import {render} from 'ink';
-import {createCodaraRuntime, DEFAULT_CODARA_MODEL_ALIAS, type Codara} from '@core';
+import {createCodaraRuntime, DEFAULT_CODARA_MODEL_ALIAS, type Codara} from '@/index';
 import type {CliHilAutoAction} from './app/hil-review';
 
 const {CodaraCliApp} = await import('./app/shell-app');

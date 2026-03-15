@@ -1,5 +1,5 @@
 import React from 'react';
-import type {CodaraRuntimeEvent} from '@core';
+import type {CodaraRuntimeEvent} from '@/index';
 import type {BaseMessage} from '@langchain/core/messages';
 import {Box, Text} from 'ink';
 import type {CliActiveTurn, CliNotice} from '../../app/view-state';
