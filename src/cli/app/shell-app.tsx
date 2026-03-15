@@ -9,7 +9,6 @@ import {HilPanel, isPermissionReview} from '../components/conversation/hil-panel
 import {SessionPicker} from '../components/conversation/session-picker';
 import {ActiveTranscript} from '../components/conversation/transcript';
 import {SolidifiedBlock} from '../components/conversation/solidified-block';
-import {deriveRecentSessions, type RecentSession} from '../components/conversation/welcome-state';
 import {TIPS} from '../hooks/use-rotating-tip';
 import {CompletionMenu} from '../components/prompt/completion-menu';
 import {PromptFrame} from '../components/prompt/prompt-frame';
@@ -102,14 +101,6 @@ export function CodaraCliApp(props: CodaraCliAppProps): React.JSX.Element {
   });
   // Freeze tip and initial terminal width at mount time (for Static welcome)
   const [frozenTip] = useState(() => TIPS[Math.floor(Math.random() * TIPS.length)]!);
-  const [frozenTerminalWidth] = useState(() => terminalWidth);
-  const [recentSessions, setRecentSessions] = useState<RecentSession[]>([]);
-  useEffect(() => {
-    codara.listSessions({sortBy: 'lastActivity', sortOrder: 'desc', limit: 5}).then(
-      (sessions) => setRecentSessions(deriveRecentSessions(sessions)),
-      () => {},
-    );
-  }, [codara]);
 
   // Session picker keyboard input — only when TTY supports raw mode
   useInput(
@@ -154,6 +145,8 @@ export function CodaraCliApp(props: CodaraCliAppProps): React.JSX.Element {
         const accepted = completion.accept();
         if (accepted) shell.replaceText(accepted);
         completion.dismiss();
+        // Accept + submit immediately (no second Enter needed)
+        setTimeout(() => shell.submitDraft(), 0);
         return;
       }
       shell.submitDraft();
@@ -202,7 +195,6 @@ export function CodaraCliApp(props: CodaraCliAppProps): React.JSX.Element {
     layoutMode,
     cwd,
     modelAlias,
-    recentSessions,
   });
 
   useEffect(() => {
@@ -222,7 +214,7 @@ export function CodaraCliApp(props: CodaraCliAppProps): React.JSX.Element {
   }, [autoExitOnSettledPrompt, exit, hasInitialPrompt, shell.hasConversation, shell.hilReview?.busy, shell.runState.status]);
 
   return (
-      <Box flexDirection="column" paddingX={1} paddingY={1}>
+      <Box flexDirection="column" paddingX={1}>
         {/* 固化区：渲染一次，永久留在滚动缓冲区 */}
         <Static items={solidifiedItems}>
           {(turn) => (
@@ -232,9 +224,7 @@ export function CodaraCliApp(props: CodaraCliAppProps): React.JSX.Element {
               layoutMode={layoutMode}
               cwd={cwd}
               modelAlias={modelAlias}
-              recentSessions={recentSessions}
               tip={frozenTip}
-              terminalWidth={frozenTerminalWidth}
             />
           )}
         </Static>
@@ -273,10 +263,10 @@ export function CodaraCliApp(props: CodaraCliAppProps): React.JSX.Element {
             )}
             <CompletionMenu completion={completion.completion} />
             <PromptFrame
-              terminalWidth={terminalWidth}
               composer={shell.composer}
               cursorActivityVersion={shell.composerActivityVersion}
               isRunning={shell.runState.status === 'running'}
+              placeholder={shell.hasConversation ? 'Reply to Codara...' : 'Ask Codara...'}
             />
             {shell.hasConversation && (
               <StatusBar

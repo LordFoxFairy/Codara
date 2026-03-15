@@ -121,52 +121,31 @@ describe('UI alignment with Claude Code', () => {
   });
 
   describe('StaticWelcome', () => {
-    it('should render welcome with RobotMark in wide mode', () => {
+    it('should render welcome box in wide mode with Claude Code style', () => {
       const {lastFrame} = render(
-        <StaticWelcome layoutMode="wide" cwd="/tmp/demo" modelAlias="sonnet" tip="Use /help to see commands" terminalWidth={120} />,
+        <StaticWelcome layoutMode="wide" cwd="/tmp/demo" modelAlias="sonnet" tip="Use /help to see commands" />,
       );
 
       const frame = lastFrame()!;
-      expect(frame).toContain('Welcome back!');
+      expect(frame).toContain('Welcome to Codara');
       expect(frame).toContain('sonnet');
       expect(frame).toContain('/tmp/demo');
+      expect(frame).toContain('/help for help');
+      expect(frame).toContain('Tip: Use /help to see commands');
+      // Should have round border
+      expect(frame).toContain('╭');
+      expect(frame).toContain('╰');
     });
 
     it('should render minimal welcome as single line', () => {
       const {lastFrame} = render(
-        <StaticWelcome layoutMode="minimal" modelAlias="default" tip="Use /help" terminalWidth={80} />,
+        <StaticWelcome layoutMode="minimal" modelAlias="default" tip="Use /help" />,
       );
 
       const frame = lastFrame()!;
       expect(frame).toContain('Codara');
       expect(frame).toContain('default');
-    });
-
-    it('should show recent sessions in wide mode', () => {
-      const recentSessions = [
-        {sessionId: '12345678-abcd-1234-5678-1234567890ab', title: 'Fix auth bug', timeAgo: '2h ago', messageCount: 8},
-        {sessionId: 'aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee', title: 'Add tests', timeAgo: '1d ago', messageCount: 15},
-      ];
-
-      const {lastFrame} = render(
-        <StaticWelcome layoutMode="wide" cwd="/tmp/demo" modelAlias="sonnet" recentSessions={recentSessions} tip="Use /help" terminalWidth={120} />,
-      );
-
-      const frame = lastFrame()!;
-      expect(frame).toContain('Recent activity');
-      expect(frame).toContain('Fix auth bug');
-      expect(frame).toContain('Add tests');
-      expect(frame).toContain('2h ago');
-      expect(frame).toContain('8 msgs');
-    });
-
-    it('should show "No recent activity" when no sessions', () => {
-      const {lastFrame} = render(
-        <StaticWelcome layoutMode="wide" cwd="/tmp/demo" modelAlias="sonnet" recentSessions={[]} tip="Use /help" terminalWidth={120} />,
-      );
-
-      const frame = lastFrame()!;
-      expect(frame).toContain('No recent activity');
+      expect(frame).toContain('/help for help');
     });
   });
 
