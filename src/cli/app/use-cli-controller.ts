@@ -70,6 +70,7 @@ export interface CliController {
   moveCursorHome: () => void;
   moveCursorEnd: () => void;
   submitDraft: () => void;
+  submitText: (text: string) => void;
   moveHilLeft: () => void;
   moveHilRight: () => void;
   selectPreviousHilAction: () => void;
@@ -356,6 +357,17 @@ export function useCliController(options: UseCliControllerOptions): CliControlle
     void submitPrompt(prompt);
   }, [composer.text, submitPrompt]);
 
+  const submitText = useCallback((text: string) => {
+    const prompt = text.trim();
+    if (!prompt) {
+      return;
+    }
+
+    setComposer(createComposerState());
+    setComposerActivityVersion((current) => current + 1);
+    void submitPrompt(prompt);
+  }, [submitPrompt]);
+
   const selectPreviousHilAction = useCallback(() => {
     setHilReview((current) => current ? selectPreviousCliHilAction(current) : current);
   }, []);
@@ -536,6 +548,7 @@ export function useCliController(options: UseCliControllerOptions): CliControlle
     moveCursorHome,
     moveCursorEnd,
     submitDraft,
+    submitText,
     taskPanelVisible,
     toggleTaskPanel,
     moveHilLeft,

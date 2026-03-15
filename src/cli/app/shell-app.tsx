@@ -143,10 +143,11 @@ export function CodaraCliApp(props: CodaraCliAppProps): React.JSX.Element {
     onSubmit: () => {
       if (completion.completion.visible) {
         const accepted = completion.accept();
-        if (accepted) shell.replaceText(accepted);
         completion.dismiss();
-        // Accept + submit immediately (no second Enter needed)
-        setTimeout(() => shell.submitDraft(), 0);
+        if (accepted) {
+          // Use submitText to bypass stale closure on composer.text
+          shell.submitText(accepted);
+        }
         return;
       }
       shell.submitDraft();
@@ -261,13 +262,13 @@ export function CodaraCliApp(props: CodaraCliAppProps): React.JSX.Element {
                 onCancel={sessionPicker.hide}
               />
             )}
-            <CompletionMenu completion={completion.completion} />
             <PromptFrame
               composer={shell.composer}
               cursorActivityVersion={shell.composerActivityVersion}
               isRunning={shell.runState.status === 'running'}
               placeholder={shell.hasConversation ? 'Reply to Codara...' : 'Ask Codara...'}
             />
+            <CompletionMenu completion={completion.completion} />
             {shell.hasConversation && (
               <StatusBar
                 layoutMode={layoutMode}
