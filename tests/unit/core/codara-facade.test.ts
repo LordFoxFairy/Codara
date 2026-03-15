@@ -322,7 +322,7 @@ command-name: review-helper
     }, null, 2));
 
     try {
-      const codara = createRuntimeForTest({
+      const codara = await createRuntimeForTest({
         cwd,
         model: new EchoModel() as unknown as BaseChatModel,
         skills: false,
@@ -354,7 +354,7 @@ command-name: review-helper
     }, null, 2));
 
     try {
-      const codara = createRuntimeForTest({
+      const codara = await createRuntimeForTest({
         cwd,
         model: new EchoModel() as unknown as BaseChatModel,
         skills: false,
@@ -416,7 +416,7 @@ command-name: review-helper
     }
 
     try {
-      const codara = createRuntimeForTest({
+      const codara = await createRuntimeForTest({
         cwd,
         model: new AskUserModel() as unknown as BaseChatModel,
         skills: false,
@@ -458,7 +458,7 @@ command-name: review-helper
     }, null, 2));
 
     try {
-      const codara = createRuntimeForTest({
+      const codara = await createRuntimeForTest({
         cwd,
         model: new DefaultRuntimeWorkflowModel() as unknown as BaseChatModel,
         skills: false,
@@ -498,7 +498,7 @@ command-name: review-helper
     }, null, 2));
 
     try {
-      const codara = createRuntimeForTest({
+      const codara = await createRuntimeForTest({
         cwd,
         model: new DefaultRuntimeProgressiveDisclosureModel(targetFile) as unknown as BaseChatModel,
         skills: false,

@@ -44,7 +44,7 @@ async function createCliRuntime(input: CliRuntimeFactoryInput): Promise<CliRunti
   const factoryModulePath = process.env.CODARA_CLI_RUNTIME_FACTORY?.trim();
   if (!factoryModulePath) {
     return {
-      codara: createCodaraRuntime({
+      codara: await createCodaraRuntime({
         cwd: input.cwd,
         ...(input.sessionId ? {sessionId: input.sessionId} : {}),
       }),

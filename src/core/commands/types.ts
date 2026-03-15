@@ -1,5 +1,6 @@
 import type {AgentResult, AgentState} from '@core/agents/models/agent';
 import type {CompactOptions} from '@core/checkpoint/types';
+import type {HookRegistry} from '@core/hooks/registry';
 
 export interface ParsedCodaraCommand {
   raw: string;
@@ -85,6 +86,7 @@ export interface CodaraCommandAgent {
   invoke(input: string): Promise<AgentResult>;
   reloadSources(): Promise<void>;
   reset(): Promise<void>;
+  hookRegistry?: HookRegistry;
 }
 
 export interface CodaraCommandEnvironment {

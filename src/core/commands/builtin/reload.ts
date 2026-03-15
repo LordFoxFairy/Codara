@@ -12,10 +12,16 @@ export const reloadCommand: CodaraCommandDefinition = {
   },
   async execute({command, agent}) {
     await agent.reloadSources();
+
+    // Reload hooks
+    if (agent.hookRegistry) {
+      await agent.hookRegistry.reload();
+    }
+
     return {
       ok: true,
       command: command.name,
-      output: 'Session source caches cleared. codara.md, AGENTS.md, and skills will be reloaded on the next model call.',
+      output: 'Session source caches cleared. codara.md, AGENTS.md, skills, and hooks will be reloaded on the next model call.',
     };
   },
 };

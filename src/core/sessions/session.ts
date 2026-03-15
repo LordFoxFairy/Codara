@@ -33,6 +33,7 @@ import {
   type SummaryOptions,
   type SummarySettings,
 } from '@core/middleware/summary';
+import type {SessionLifecycleHooks} from '@core/hooks/types';
 import type {GuidelinesSource} from '@core/context/instructions/guidelines';
 import {type PromptSource} from '@core/context/instructions/prompt';
 import {type SkillsSource} from '@core/skills';
@@ -88,6 +89,7 @@ export interface CreateSessionOptions {
   context?: Record<string, unknown>;
   values?: Record<string, unknown>;
   metadata?: Partial<SessionMetadata>;
+  lifecycle?: SessionLifecycleHooks;
 }
 
 export interface Session {
@@ -129,6 +131,59 @@ export function createSession(options: CreateSessionOptions): Session {
   let summaryOptions: Required<SummaryOptions> | undefined;
   let baseSystemContext: BaseSystemMessageBundle | undefined;
   const runtimeEvents = new RuntimeEventsController(sessionId);
+  const lifecycle = options.lifecycle;
+  let sessionStarted = false;
+
+  async function safeLifecycleCall<T>(fn: () => Promise<T>): Promise<T | undefined> {
+    try {
+      return await fn();
+    } catch {
+      // Lifecycle hooks are best-effort and should not break the session.
+    }
+  }
+
+  async function ensureSessionStartHook(): Promise<void> {
+    if (sessionStarted || !lifecycle) {
+      return;
+    }
+    sessionStarted = true;
+    await safeLifecycleCall(() =>
+      lifecycle.onSessionStart({
+        sessionId,
+        hookEvent: 'SessionStart',
+        timestamp: new Date().toISOString(),
+        cwd: process.cwd(),
+      }),
+    );
+  }
+
+  async function checkPromptVeto(input: AgentInput | undefined): Promise<AgentResult | undefined> {
+    if (!lifecycle || input == null) {
+      return undefined;
+    }
+    const prompt = extractPromptText(input);
+    if (!prompt) {
+      return undefined;
+    }
+    const result = await safeLifecycleCall(() =>
+      lifecycle.onUserPromptSubmit({
+        sessionId,
+        hookEvent: 'UserPromptSubmit',
+        timestamp: new Date().toISOString(),
+        userPrompt: prompt,
+      }),
+    );
+    if (result?.vetoed) {
+      const agentState = (await getAgent()).getState();
+      return {
+        reason: 'complete',
+        state: agentState,
+        turns: 0,
+        error: result.vetoReason ? new Error(result.vetoReason) : undefined,
+      };
+    }
+    return undefined;
+  }
 
   function state(): SessionState {
     return {sessionId, sessionStatus, createdAt, updatedAt, metadata};
@@ -424,6 +479,21 @@ export function createSession(options: CreateSessionOptions): Session {
       throw new Error('Agent is paused; resume(...) or reset() before compacting the conversation.');
     }
 
+    if (lifecycle) {
+      const preResult = await safeLifecycleCall(() =>
+        lifecycle.onPreCompact({
+          sessionId,
+          hookEvent: 'PreCompact',
+          timestamp: new Date().toISOString(),
+          messageCount: current.messages.length,
+        }),
+      );
+      if (preResult?.vetoed) {
+        runtimeEvents.summaryFinished(summaryEventId, 'done', 'Context compact skipped by hook');
+        return current;
+      }
+    }
+
     const systemContext = await loadBaseInstructionContext();
     const compacted = await compactConversationWithSummary({
       messages: current.messages,
@@ -453,6 +523,18 @@ export function createSession(options: CreateSessionOptions): Session {
     clearAgentCache();
     const next = (await getAgent()).getState();
     await sync(next);
+
+    if (lifecycle) {
+      await safeLifecycleCall(() =>
+        lifecycle.onPostCompact({
+          sessionId,
+          hookEvent: 'PostCompact',
+          timestamp: new Date().toISOString(),
+          messageCount: next.messages.length,
+        }),
+      );
+    }
+
     runtimeEvents.summaryFinished(summaryEventId, 'done', 'Context compacted');
     return next;
   }
@@ -499,10 +581,20 @@ export function createSession(options: CreateSessionOptions): Session {
     },
     async invoke(input, config) {
       ensureReady();
+      await ensureSessionStartHook();
+      const vetoResult = await checkPromptVeto(input);
+      if (vetoResult) {
+        return vetoResult;
+      }
       return run((instance) => instance.invoke(input, config));
     },
     async *stream(input, config) {
       ensureReady();
+      await ensureSessionStartHook();
+      const vetoResult = await checkPromptVeto(input);
+      if (vetoResult) {
+        return vetoResult;
+      }
       return yield* runStream((instance) => instance.stream(input, config));
     },
     async resumePause(payload, config) {
@@ -562,6 +654,16 @@ export function createSession(options: CreateSessionOptions): Session {
       if (sessionStatus === 'closed') {
         return;
       }
+      if (lifecycle) {
+        await safeLifecycleCall(() =>
+          lifecycle.onSessionEnd({
+            sessionId,
+            hookEvent: 'SessionEnd',
+            timestamp: new Date().toISOString(),
+            reason: 'user_exit',
+          }),
+        );
+      }
       if (!agent && !(await hasStoredCheckpoint())) {
         sessionStatus = 'closed';
         await persistSessionState();
@@ -599,6 +701,31 @@ function resolveSessionId(
 ): string {
   const restoredSessionId = restored?.sessionId?.trim();
   return restoredSessionId || input.id || input.sessionId || randomUUID();
+}
+
+function extractPromptText(input: AgentInput): string | undefined {
+  if (typeof input === 'string') {
+    return input.trim() || undefined;
+  }
+  if (input && typeof input === 'object' && 'messages' in input && Array.isArray(input.messages)) {
+    const last = input.messages[input.messages.length - 1];
+    if (last && typeof last.content === 'string') {
+      return last.content.trim() || undefined;
+    }
+  }
+  if (Array.isArray(input)) {
+    const last = input[input.length - 1];
+    if (last && typeof last.content === 'string') {
+      return last.content.trim() || undefined;
+    }
+  }
+  if (input && typeof input === 'object' && 'content' in input) {
+    const content = (input as BaseMessage).content;
+    if (typeof content === 'string') {
+      return content.trim() || undefined;
+    }
+  }
+  return undefined;
 }
 
 async function resolveSessionModel(

@@ -45,6 +45,7 @@ import {MiddlewarePipeline} from '@core/middleware/pipeline';
 import {deepClone} from '@core/shared/clone';
 import {formatErrorMessage} from './errors';
 import {parseHILToolMessagePayload} from '@core/middleware/hil';
+import type {AgentLifecycleHooks} from '@core/hooks/types';
 
 const DEFAULT_RECURSION_LIMIT = 25;
 const recordSchema = z.record(z.string(), z.unknown());
@@ -62,6 +63,7 @@ export interface AgentRuntime {
   systemMessage: string[];
   runtimeShared: MiddlewareRuntimeShared;
   prepareContext?: AgentContextPreparer;
+  lifecycle?: AgentLifecycleHooks;
 }
 
 export interface AgentRunContext {
@@ -533,13 +535,65 @@ async function runLoop(
   for (let turn = startTurn; turn <= run.maxTurns; turn += 1) {
     try {
       if ((await runAgentTurn(run, runtime, turn, stream)) === 'complete') {
+        // Invoke Stop hook — if vetoed, inject messages and continue loop
+        if (runtime.lifecycle) {
+          try {
+            const stopResult = await runtime.lifecycle.onStop({
+              hookEvent: 'Stop',
+              sessionId: run.state.sessionId,
+              reason: 'complete',
+              reachedMaxTurns: false,
+              turns: turn,
+              lastMessage: getLastAIMessagePreview(run.state.messages),
+              timestamp: new Date().toISOString(),
+            });
+            if (stopResult.vetoed) {
+              // Inject system messages and continue the loop
+              for (const msg of stopResult.systemMessages) {
+                run.state.messages.push(new HumanMessage({content: `[system] ${msg}`}));
+              }
+              continue;
+            }
+          } catch {
+            // Fail-open: if hook errors, allow stop
+          }
+        }
         return {reason: 'complete', state: run.state, turns: turn};
       }
     } catch (error) {
       return {reason: 'error', state: run.state, turns: turn, error: error instanceof Error ? error : new Error(String(error))};
     }
   }
+
+  // Max turns reached — also invoke Stop hook but don't veto (already at limit)
+  if (runtime.lifecycle) {
+    try {
+      await runtime.lifecycle.onStop({
+        hookEvent: 'Stop',
+        sessionId: run.state.sessionId,
+        reason: 'complete',
+        reachedMaxTurns: true,
+        turns: run.maxTurns,
+        lastMessage: getLastAIMessagePreview(run.state.messages),
+        timestamp: new Date().toISOString(),
+      });
+    } catch {
+      // Fail-open
+    }
+  }
+
   return {reason: 'max_turns', state: run.state, turns: run.maxTurns};
+}
+
+function getLastAIMessagePreview(messages: BaseMessage[]): string | undefined {
+  for (let i = messages.length - 1; i >= 0; i--) {
+    if (AIMessage.isInstance(messages[i])) {
+      const content = messages[i]!.content;
+      const text = typeof content === 'string' ? content : JSON.stringify(content);
+      return text.slice(0, 200);
+    }
+  }
+  return undefined;
 }
 
 export async function createTurnContext(
@@ -614,6 +668,7 @@ function buildRuntime(options: CreateAgentOptions): AgentRuntime {
     systemMessage: [...(options.systemMessage ?? [])],
     runtimeShared: deepClone(options.runtimeShared ?? {}),
     prepareContext: options.prepareContext,
+    lifecycle: options.lifecycle,
   };
 }
 

@@ -4,6 +4,7 @@ import type {StructuredToolInterface} from '@langchain/core/tools';
 import type {BaseMiddleware} from '@core/middleware/types';
 import type {AgentCheckpoint, AgentCheckpointer} from '@core/checkpoint/agent';
 import type {HILToolMessagePayload} from '@core/middleware/hil';
+import type {AgentLifecycleHooks} from '@core/hooks/types';
 import type {
   AgentExecutionMetadata,
   AgentInputBudget,
@@ -149,4 +150,5 @@ export interface CreateAgentOptions {
   runtimeShared?: Record<string, unknown>;
   inputBudget?: AgentInputBudget;
   prepareContext?: AgentContextPreparer;
+  lifecycle?: AgentLifecycleHooks;
 }
