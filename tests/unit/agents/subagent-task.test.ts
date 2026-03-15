@@ -5,7 +5,7 @@ import type {BaseChatModel} from '@langchain/core/language_models/chat_models';
 import type {StructuredToolInterface} from '@langchain/core/tools';
 import {
   createAgent,
-} from '@core/agents';
+} from '@engine/agent';
 import {
   createTaskCreateTool,
   createTaskListTool,
@@ -13,10 +13,10 @@ import {
   TASK_CREATE_TOOL_NAME,
   TASK_LIST_TOOL_NAME,
   TASK_TOOL_NAME,
-} from '@core/tasks';
-import {createSkillsMiddleware} from '@core/middleware';
-import {FileSystemSkillStore} from '@core/skills';
-import {createTaskTool} from '@core/tasks/task';
+} from '@capability/task';
+import {createSkillsMiddleware} from '@engine/pipeline';
+import {FileSystemSkillStore} from '@capability/skill';
+import {createTaskTool} from '@capability/task/task';
 
 function createBuiltinSubagentStore() {
   return new FileSystemSkillStore({

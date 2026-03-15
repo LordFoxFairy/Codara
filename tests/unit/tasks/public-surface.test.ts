@@ -1,5 +1,5 @@
 import {describe, expect, it} from 'bun:test';
-import * as tasks from '@core/tasks';
+import * as tasks from '@capability/task';
 
 describe('tasks public surface', () => {
   it('should keep TaskMiddleware as the public delegation entry', () => {

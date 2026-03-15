@@ -1,7 +1,7 @@
 import {describe, expect, it} from 'bun:test';
 import {AIMessage, HumanMessage, type BaseMessage} from '@langchain/core/messages';
-import {createMiddleware} from '@core/middleware';
-import {MiddlewarePipeline} from '@core/middleware/pipeline';
+import {createMiddleware} from '@engine/pipeline';
+import {MiddlewarePipeline} from '@engine/pipeline/pipeline';
 
 function createContext() {
   const messages = [new HumanMessage('hello')] as BaseMessage[];
@@ -11,7 +11,7 @@ function createContext() {
     runtime: {context: {}},
     systemMessage: [],
     execution: {
-      threadId: 'thread_style',
+      sessionId: 'thread_style',
       runId: 'run_style',
       turn: 1,
       maxTurns: 3,

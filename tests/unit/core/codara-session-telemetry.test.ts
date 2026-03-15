@@ -11,7 +11,7 @@ import {
   createCodara,
   FileSessionStore,
   openCodaraSession,
-} from '@core';
+} from '@/index';
 
 class UsageModel {
   async invoke(): Promise<AIMessage> {
@@ -109,7 +109,6 @@ describe('Codara session telemetry', () => {
     const original = createCodara({
       model: new UsageModel() as unknown as BaseChatModel,
       sessionId: 'telemetry-session',
-      threadId: 'telemetry-thread',
       store,
       checkpointer,
       skills: false,

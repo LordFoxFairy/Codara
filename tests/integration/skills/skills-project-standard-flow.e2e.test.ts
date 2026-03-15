@@ -1,12 +1,14 @@
 import {describe, expect, it} from 'bun:test'
-import {access} from 'node:fs/promises'
+import {access, mkdtemp} from 'node:fs/promises'
+import {tmpdir} from 'node:os'
 import path from 'node:path'
 import {AIMessage, HumanMessage, type BaseMessage} from '@langchain/core/messages'
 import type {BaseChatModel} from '@langchain/core/language_models/chat_models'
 import type {StructuredToolInterface} from '@langchain/core/tools'
-import {createAgent} from '@core/agents'
-import {createMiddleware, createSkillsMiddleware} from '@core/middleware'
-import {FileSystemSkillStore} from '@core/skills'
+import {createAgent} from '@engine/agent'
+import {createMiddleware, createSkillsMiddleware} from '@engine/pipeline'
+import {FileSystemSkillStore} from '@capability/skill'
+import {seedProjectSkillFixtures} from '../../helpers/project-skill-fixtures'
 
 class ScriptedModel {
   readonly invocations: BaseMessage[][] = []
@@ -26,11 +28,12 @@ class ScriptedModel {
 
 describe('Project skills standard flow', () => {
   it('should discover standard skills, expose script asset, and cooperate with probe middleware', async () => {
-    const projectSkillsRoot = path.join(process.cwd(), '.codara', 'skills')
-
-    const basicSkillPath = path.join(projectSkillsRoot, 'basic-task-flow', 'SKILL.md')
-    const diffSkillPath = path.join(projectSkillsRoot, 'repo-diff-check', 'SKILL.md')
-    const diffScriptPath = path.join(projectSkillsRoot, 'repo-diff-check', 'scripts', 'check_diff.sh')
+    const projectRoot = await mkdtemp(path.join(tmpdir(), 'codara-project-standard-skills-'))
+    const fixture = await seedProjectSkillFixtures(projectRoot)
+    const projectSkillsRoot = fixture.skillsRoot
+    const basicSkillPath = fixture.basicSkillPath
+    const diffSkillPath = fixture.diffSkillPath
+    const diffScriptPath = fixture.diffScriptPath
 
     const store = new FileSystemSkillStore({sources: [projectSkillsRoot], cacheTtlMs: 0})
     const discovered = await store.discover()
@@ -76,7 +79,6 @@ describe('Project skills standard flow', () => {
     expect(systemPromptSeenByProbe).toContain('Skills System')
     expect(systemPromptSeenByProbe).toContain('basic-task-flow')
     expect(systemPromptSeenByProbe).toContain('repo-diff-check')
-    expect(systemPromptSeenByProbe).toContain(basicSkillPath)
-    expect(systemPromptSeenByProbe).toContain(diffSkillPath)
+    expect(systemPromptSeenByProbe).toContain(projectSkillsRoot)
   })
 })

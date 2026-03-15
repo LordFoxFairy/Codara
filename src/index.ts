@@ -1,92 +1,156 @@
-/**
- * Codara - AI 驱动的代码助手
- * @module codara
- */
+/** Codara package root — public API surface. */
 
-// ============================================
-// 核心 API（CLI 和基础使用）
-// ============================================
-
-/** 创建或打开 Codara 会话（推荐入口） */
-export {createCodara, createCodaraAgent, openCodaraSession, openLatestCodaraSession} from '@core/codara';
-
-/** Codara 相关类型 */
-export type {
-  Codara,
-  CodaraOptions,
-} from '@core/codara';
-
-/** Agent 相关类型 */
-export type {
-  Agent,
-  AgentResult,
-  AgentInput,
-  AgentStreamOutput,
-  AgentInvokeConfig,
-  AgentStreamConfig,
-  AgentResumeConfig,
-  AgentResumeStreamConfig,
-} from '@core/agents';
-export type {TaskRecord, TaskStore, TaskStatus, CreateTaskInput, UpdateTaskInput} from '@core/tasks';
-
-/** Session 相关类型 */
-export type {Session, SessionState, SessionStatus, SessionStore} from '@core/sessions';
-
-// ============================================
-// 高级 API（Library 使用）
-// ============================================
-
-/** Agent 构建 */
-export {createAgent} from '@core/agents';
-
-/** Session 管理 */
-export {createSession, FileSessionStore} from '@core/sessions';
-
-/** Checkpoint 管理 */
 export {
-  createAgentMemoryCheckpointer,
-  createAgentFileCheckpointer,
-  InMemoryCheckpointer,
-  FileCheckpointer,
-} from '@core/checkpoint';
-
-/** Middleware */
+  createCodara,
+  createCodaraRuntime,
+  DEFAULT_CODARA_MODEL_ALIAS,
+  openCodaraSession,
+  openLatestCodaraSession,
+  type Codara,
+  type CodaraAutoMemoryOptions,
+  type CodaraRuntimeOptions,
+  type CodaraOptions,
+} from '@codara/index';
 export {
-  createMiddleware,
-  createBudgetMiddleware,
-  createSummaryMiddleware,
-  createSkillsMiddleware,
-  createHILMiddleware,
-  createLoggingMiddleware,
-} from '@core/middleware';
+  createAgent,
+  type Agent,
+  type AgentInput,
+  type AgentInvokeConfig,
+  type AgentResult,
+  type AgentResumeConfig,
+  type AgentResumeStreamConfig,
+  type AgentRuntimeContext,
+  type AgentRuntimeValues,
+  type AgentState,
+  type AgentStreamConfig,
+  type AgentStreamCustomChunk,
+  type AgentStreamOutput,
+  type AgentType,
+  type CreateAgentOptions,
+} from '@engine/agent';
 export {
+  TASK_TOOL_DESCRIPTION,
+  TASK_TOOL_NAME,
   createSharedTaskMiddleware,
   createTaskMiddleware,
-} from '@core/tasks';
+  type CreateSharedTaskMiddlewareOptions,
+  type CreateTaskMiddlewareOptions,
+} from '@capability/task';
+export {
+  createDailySessionFileLogSink,
+  createBudgetMiddleware,
+  createHILMiddleware,
+  createInteractionMiddleware,
+  createLoggingMiddleware,
+  createMiddleware,
+  createAskUserTool,
+  ASK_USER_TOOL_NAME,
+  parseAskUserResult,
+  createPermissionMiddleware,
+  createPermissionRuntime,
+  ensurePermissionSettingsFile,
+  evaluatePermissionExpression,
+  evaluatePermissionToolCall,
+  formatPermissionExpression,
+  handlePermissionFallbackResume,
+  isPermissionPause,
+  persistAllowedPermission,
+  persistPermissionScope,
+  persistPermissionRule,
+  resolvePermissionSettingsFile,
+  validatePermissionSettings,
+  createSummaryMiddleware,
+  createSkillsMiddleware,
+  type BaseMiddleware,
+  type AskUserInput,
+  type AskUserOption,
+  type AskUserQuestion,
+  type AskUserResult,
+  type BudgetMiddlewareOptions,
+  type ExecutionContextMetadata,
+  type InteractionMiddlewareOptions,
+  type HILMiddlewareOptions,
+  type HILResumePayload,
+  type LoggingMiddlewareOptions,
+  type MiddlewareLogRecord,
+  type SummarySettings,
+  type SummaryOptions,
+} from '@engine/pipeline';
+export {
+  FileCheckpointer,
+  InMemoryCheckpointer,
+  createAgentFileCheckpointer,
+  createAgentMemoryCheckpointer,
+  type AgentCheckpoint,
+  type AgentCheckpointer,
+} from '@infra/checkpoint';
 export {
   createCodaraGuidelinesSource,
-} from '@core/sessions/guidelines';
+  type GuidelinesOptions,
+  type GuidelinesSource,
+} from '@infra/context/instructions/guidelines';
+export {
+  createCodaraPromptSource,
+  type PromptOptions,
+  type PromptSource,
+} from '@infra/context/instructions/prompt';
+export {
+  readBaseSystemMessage,
+  type BaseSystemMessageBundle,
+  type BaseSystemMessageRuntimeData,
+} from '@infra/context/system-message';
+export {
+  createBuiltinTools,
+  createFetchTool,
+  createSearchTool,
+  filterToolsByReferences,
+  normalizeToolReferenceName,
+  type BuiltinToolOptions,
+} from '@capability/tool';
 export {
   createCodaraSkillsSource,
-} from '@core/skills';
-
-// ============================================
-// 类型导出（供高级用户使用）
-// ============================================
-
-export type {
-  BaseMiddleware,
-  BudgetMiddlewareOptions,
-  HILMiddlewareOptions,
-  LoggingMiddlewareOptions,
-  HILResumePayload,
-  SummarySettings,
-  SummaryOptions,
-} from '@core/middleware';
-export type {
-  GuidelinesOptions,
-  GuidelinesSource,
-} from '@core/sessions/guidelines';
-export type {SkillsSource} from '@core/skills';
-
-export type {AgentCheckpoint, AgentCheckpointer} from '@core/checkpoint';
+  FileSystemSkillStore,
+  getDefaultSkillSources,
+  loadSkillsRuntimeData,
+  type SkillMetadata,
+  type SkillStore,
+  type SkillsSource,
+  type SkillsRuntimeData,
+} from '@capability/skill';
+export {
+  createSession,
+  FileSessionStore,
+  type CodaraRuntimeEvent,
+  type CodaraRuntimeEventListener,
+  type Session,
+  type SessionStore,
+  type SessionState,
+  type SessionStatus,
+} from '@engine/session';
+export {
+  ChatModelFactory,
+  loadModelRoutingConfig,
+  ModelRegistry,
+  type ModelInfo,
+  type ModelRoutingConfig,
+} from '@infra/provider';
+export {
+  type HookEventType,
+  type HookDefinition,
+  type HookSource,
+  type HookEntry,
+  type HookContext,
+  type HookOutput,
+  type HookInterceptResult,
+  type HookNotifyResult,
+  type SessionLifecycleHooks,
+  type AgentLifecycleHooks,
+  type ToolLifecycleHooks,
+  type HookRegistry,
+  type HookExecutorFactory,
+  HOOK_EVENT_TYPES,
+  HookRegistryImpl,
+  HookPipeline,
+  ToolHooksMiddleware,
+  createHookExecutor,
+} from '@engine/hook';

@@ -1,49 +1,287 @@
-﻿import React from 'react';
-import {Box, useApp} from 'ink';
-import {DEFAULT_SESSION_META} from '../adapters/session-meta';
-import {Footer} from '../components/footer';
-import {Header} from '../components/header';
-import {PromptFrame} from '../components/prompt-frame';
-import {Transcript} from '../components/transcript';
-import {WelcomeState} from '../components/welcome-state';
+import React, {useCallback, useEffect, useState} from 'react';
+import {Box, Static, useApp, useInput} from 'ink';
+import type {Codara} from '@/index';
+import {Footer} from '../components/chrome/footer';
+import {StatusBar} from '../components/chrome/header';
+import {ActivityLine} from '../components/chrome/activity-line';
+import {TaskPanel} from '../components/chrome/task-panel';
+import {HilPanel, isPermissionReview} from '../components/conversation/hil-panel';
+import {SessionPicker} from '../components/conversation/session-picker';
+import {ActiveTranscript} from '../components/conversation/transcript';
+import {SolidifiedBlock} from '../components/conversation/solidified-block';
+import {TIPS} from '../hooks/use-rotating-tip';
+import {CompletionMenu} from '../components/prompt/completion-menu';
+import {PromptFrame} from '../components/prompt/prompt-frame';
+import type {CliHilAutoAction} from './hil-review';
 import {resolveCliLayoutMode} from './layout-mode';
+import {useCliController} from './use-cli-controller';
+import {useActiveTasks} from '../hooks/use-active-tasks';
+import {useCommandCompletion} from '../hooks/use-command-completion';
+import {useHilInput} from '../hooks/use-hil-input';
 import {usePromptInput} from '../hooks/use-prompt-input';
-import {useShellState} from '../hooks/use-shell-state';
+import {useSessionPicker} from '../hooks/use-session-picker';
+import {useSolidifiedTranscript} from '../hooks/use-solidified-transcript';
 import {useTerminalWidth} from '../hooks/use-terminal-width';
 
-export function CodaraCliApp(): React.JSX.Element {
+export interface CodaraCliAppProps {
+  codara: Codara;
+  cwd: string;
+  modelAlias: string;
+  initialPrompt?: string;
+  startupMessage?: string;
+  hilAutoActions?: CliHilAutoAction[];
+  autoExitOnSettledPrompt?: boolean;
+  reopenSession?: (sessionId: string) => Promise<void>;
+  openFile?: (targetPath: string) => Promise<boolean>;
+}
+
+export type CliForegroundSurface = 'hil' | 'transcript' | 'welcome';
+
+export function resolveCliForegroundSurface(input: {
+  hasHilReview: boolean;
+  hasConversation: boolean;
+}): CliForegroundSurface {
+  if (input.hasHilReview) {
+    return 'hil';
+  }
+
+  return input.hasConversation ? 'transcript' : 'welcome';
+}
+
+export function CodaraCliApp(props: CodaraCliAppProps): React.JSX.Element {
+  const {
+    codara,
+    cwd,
+    initialPrompt,
+    modelAlias,
+    startupMessage,
+    hilAutoActions,
+    autoExitOnSettledPrompt = false,
+    reopenSession,
+    openFile,
+  } = props;
   const {exit} = useApp();
-  const shell = useShellState();
+
+  // Session picker for /resume without args
+  const listSessionsForPicker = useCallback(
+    () => codara.listSessions({sortBy: 'lastActivity', sortOrder: 'desc', limit: 10}),
+    [codara],
+  );
+  const handleSessionPickerSelect = useCallback(
+    (sessionId: string) => {
+      if (reopenSession) {
+        void reopenSession(sessionId);
+      }
+    },
+    [reopenSession],
+  );
+  const sessionPicker = useSessionPicker({
+    listSessions: listSessionsForPicker,
+    onSelect: handleSessionPickerSelect,
+    onCancel: () => {},
+  });
+
+  const shell = useCliController({
+    codara,
+    initialPrompt,
+    startupMessage,
+    hilAutoActions,
+    reopenSession,
+    openFile,
+    onShowSessionPicker: sessionPicker.show,
+  });
   const terminalWidth = useTerminalWidth();
   const layoutMode = resolveCliLayoutMode(terminalWidth);
+  const activeTasks = useActiveTasks({runtimeEvents: shell.runtimeEvents});
+  const listCommands = React.useCallback(() => codara.listCommands(), [codara]);
+  const completion = useCommandCompletion({
+    text: shell.composer.text,
+    disabled: shell.runState.status === 'running',
+    listCommands,
+  });
+  // Freeze tip and initial terminal width at mount time (for Static welcome)
+  const [frozenTip] = useState(() => TIPS[Math.floor(Math.random() * TIPS.length)]!);
+
+  // Session picker keyboard input — only when TTY supports raw mode
+  useInput(
+    (_input, key) => {
+      if (!sessionPicker.state.visible) return;
+      if (key.escape) { sessionPicker.hide(); return; }
+      if (key.return) { sessionPicker.select(); return; }
+      if (key.upArrow) { sessionPicker.moveUp(); return; }
+      if (key.downArrow) { sessionPicker.moveDown(); return; }
+    },
+    {isActive: sessionPicker.state.visible && Boolean(process.stdin.isTTY)},
+  );
+
+  const hasInitialPrompt = Boolean(initialPrompt?.trim());
+  const hasHilReview = Boolean(shell.hilReview);
+  const foregroundSurface = resolveCliForegroundSurface({
+    hasHilReview,
+    hasConversation: shell.hasConversation,
+  });
 
   // 输入监听挂在组装层；展示组件不直接感知键盘事件。
   usePromptInput({
-    disabled: shell.runState.status === 'running',
+    interactive: !hasHilReview && !sessionPicker.state.visible && !(autoExitOnSettledPrompt && hasInitialPrompt),
+    disabled: hasHilReview || sessionPicker.state.visible || shell.runState.status === 'running',
     onInsertText: shell.insertText,
     onInsertNewline: shell.insertNewline,
     onBackspace: shell.backspace,
     onMoveCursorLeft: shell.moveCursorLeft,
     onMoveCursorRight: shell.moveCursorRight,
-    onMoveCursorUp: shell.moveCursorUp,
-    onMoveCursorDown: shell.moveCursorDown,
+    onMoveCursorUp: () => {
+      if (completion.completion.visible) { completion.moveUp(); return; }
+      shell.moveCursorUp();
+    },
+    onMoveCursorDown: () => {
+      if (completion.completion.visible) { completion.moveDown(); return; }
+      shell.moveCursorDown();
+    },
     onMoveCursorHome: shell.moveCursorHome,
     onMoveCursorEnd: shell.moveCursorEnd,
-    onSubmit: shell.submitDraft,
-    onExit: exit,
+    onSubmit: () => {
+      if (completion.completion.visible) {
+        const accepted = completion.accept();
+        completion.dismiss();
+        if (accepted) {
+          // Use submitText to bypass stale closure on composer.text
+          shell.submitText(accepted);
+        }
+        return;
+      }
+      shell.submitDraft();
+    },
+    onExit: () => {
+      if (completion.completion.visible) { completion.dismiss(); return; }
+      exit();
+    },
+    onToggleTaskPanel: shell.toggleTaskPanel,
+    onTab: () => {
+      if (completion.completion.visible) {
+        const accepted = completion.accept();
+        if (accepted) shell.replaceText(accepted);
+        completion.dismiss();
+        return;
+      }
+    },
   });
 
+  useHilInput({
+    active: hasHilReview,
+    disabled: shell.hilReview?.busy ?? false,
+    permissionStage: isPermissionReview(shell.hilReview) ? (shell.hilReview?.permissionStage ?? 'prompt') : undefined,
+    onMoveLeft: shell.moveHilLeft,
+    onMoveRight: shell.moveHilRight,
+    onSelectPrevious: shell.selectPreviousHilAction,
+    onSelectNext: shell.selectNextHilAction,
+    onToggleFocus: shell.toggleHilFocus,
+    onInsertText: shell.insertHilText,
+    onInsertNewline: shell.insertHilNewline,
+    onBackspace: shell.backspaceHilInput,
+    onSubmit: shell.submitHilAction,
+    onExit: exit,
+    onQuickAction: isPermissionReview(shell.hilReview) ? shell.quickHilAction : undefined,
+    onPermissionBack: shell.permissionBack,
+    onPermissionConfirm: shell.permissionConfirm,
+    onPermissionRejectSend: shell.permissionRejectSend,
+    onPermissionRejectSilent: shell.permissionRejectSilent,
+  });
+
+  const {solidifiedItems, activeItems} = useSolidifiedTranscript({
+    coreMessages: shell.coreMessages,
+    notices: shell.notices,
+    activeTurn: shell.activeTurn,
+    runtimeEvents: shell.runtimeEvents,
+    layoutMode,
+    cwd,
+    modelAlias,
+  });
+
+  useEffect(() => {
+    if (
+      !autoExitOnSettledPrompt
+      || !hasInitialPrompt
+      || !shell.hasConversation
+      || shell.runState.status === 'running'
+      || shell.runState.status === 'paused'
+      || shell.hilReview?.busy
+    ) {
+      return;
+    }
+
+    const timer = setTimeout(() => exit(), 50);
+    return () => clearTimeout(timer);
+  }, [autoExitOnSettledPrompt, exit, hasInitialPrompt, shell.hasConversation, shell.hilReview?.busy, shell.runState.status]);
+
   return (
-    <Box flexDirection="column" paddingX={1} paddingY={1}>
-      <Header cwd={process.cwd()} layoutMode={layoutMode} meta={DEFAULT_SESSION_META} runState={shell.runState} />
-      {shell.hasConversation ? <Transcript messages={shell.visibleMessages} /> : <WelcomeState layoutMode={layoutMode} />}
-      <PromptFrame
-        terminalWidth={terminalWidth}
-        composer={shell.composer}
-        cursorActivityVersion={shell.composerActivityVersion}
-        isRunning={shell.runState.status === 'running'}
-      />
-      <Footer layoutMode={layoutMode} />
-    </Box>
+      <Box flexDirection="column" paddingX={1}>
+        {/* 固化区：渲染一次，永久留在滚动缓冲区 */}
+        <Static items={solidifiedItems}>
+          {(turn) => (
+            <SolidifiedBlock
+              key={turn.id}
+              turn={turn}
+              layoutMode={layoutMode}
+              cwd={cwd}
+              modelAlias={modelAlias}
+              tip={frozenTip}
+            />
+          )}
+        </Static>
+
+        {/* 动态区 */}
+        {activeItems.length > 0 && <ActiveTranscript items={activeItems} />}
+
+        {/* Task Panel — ActiveTranscript 和 ActivityLine 之间 */}
+        {shell.hasConversation && activeTasks.hasActiveTasks && shell.taskPanelVisible && foregroundSurface !== 'hil' && (
+          <TaskPanel
+            tasks={activeTasks.tasks}
+            runningCount={activeTasks.runningCount}
+            doneCount={activeTasks.doneCount}
+            errorCount={activeTasks.errorCount}
+          />
+        )}
+
+        {/* HIL 或正常交互区 — 始终渲染 */}
+        {foregroundSurface === 'hil' && shell.hilReview ? (
+          <HilPanel review={shell.hilReview} />
+        ) : (
+          <>
+            <ActivityLine
+              runState={shell.runState}
+              activeTurn={shell.activeTurn}
+              latestRuntimeEvent={shell.latestRuntimeEvent}
+            />
+            {sessionPicker.state.visible && (
+              <SessionPicker
+                sessions={sessionPicker.state.sessions}
+                loading={sessionPicker.state.loading}
+                selectedIndex={sessionPicker.state.selectedIndex}
+                onSelect={handleSessionPickerSelect}
+                onCancel={sessionPicker.hide}
+              />
+            )}
+            <PromptFrame
+              composer={shell.composer}
+              cursorActivityVersion={shell.composerActivityVersion}
+              isRunning={shell.runState.status === 'running'}
+              placeholder={shell.hasConversation ? 'Reply to Codara...' : 'Ask Codara...'}
+            />
+            <CompletionMenu completion={completion.completion} />
+            {shell.hasConversation && (
+              <StatusBar
+                layoutMode={layoutMode}
+                session={shell.sessionState}
+                cwd={cwd}
+                modelAlias={modelAlias}
+                runState={shell.runState}
+                latestRuntimeEvent={shell.latestRuntimeEvent}
+              />
+            )}
+            <Footer layoutMode={layoutMode} />
+          </>
+        )}
+      </Box>
   );
 }

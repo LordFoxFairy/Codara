@@ -3,7 +3,7 @@ import {mkdtemp} from 'node:fs/promises';
 import {tmpdir} from 'node:os';
 import path from 'node:path';
 import type {BaseChatModel} from '@langchain/core/language_models/chat_models';
-import {createAgentMemoryCheckpointer, createCodara, FileSessionStore, openCodaraSession} from '@core';
+import {createAgentMemoryCheckpointer, createCodara, FileSessionStore, openCodaraSession} from '@/index';
 import {EchoModel} from './codara-fixtures';
 import {AIMessage} from '@langchain/core/messages';
 
@@ -25,7 +25,7 @@ class UsageModel {
 }
 
 describe('Codara session fork', () => {
-  it('should fork the current conversation into a new branch with a new thread id', async () => {
+  it('should fork the current conversation into a new branch with a new session id', async () => {
     const checkpointer = createAgentMemoryCheckpointer();
     const codara = createCodara({
       model: new EchoModel() as unknown as BaseChatModel,
@@ -41,9 +41,7 @@ describe('Codara session fork', () => {
     const fork = await codara.fork();
 
     expect(fork.getState().sessionId).not.toBe(sourceSession.sessionId);
-    expect(fork.getState().threadId).not.toBe(sourceSession.threadId);
     expect(fork.getState().metadata?.forkedFromSessionId).toBe(sourceSession.sessionId);
-    expect(fork.getState().metadata?.forkedFromThreadId).toBe(sourceSession.threadId);
     expect(fork.getAgentState().messages).toEqual(sourceAgentState.messages);
 
     await fork.invoke('branch');
@@ -81,7 +79,7 @@ describe('Codara session fork', () => {
     });
 
     expect(reopened.getAgentState().messages).toEqual(forkMessages);
-    expect((await checkpointer.getLatest(fork.getState().threadId))?.info.source).toBe('fork');
+    expect((await checkpointer.getLatest(fork.getState().sessionId))?.info.source).toBe('fork');
   });
 
   it('should not inherit cumulative parent usage telemetry into a forked session', async () => {

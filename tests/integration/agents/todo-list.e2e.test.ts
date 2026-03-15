@@ -1,8 +1,8 @@
 import {afterEach, describe, expect, it} from 'bun:test';
 import {HumanMessage, ToolMessage} from '@langchain/core/messages';
-import {createAgent} from '@core/agents';
-import {readTodoState, todoListMiddleware} from '@core/middleware/todo';
-import {ChatModelFactory, ModelRegistry, parseModelRoutingConfig} from '@core/provider';
+import {createAgent} from '@engine/agent';
+import {readTodoState, todoListMiddleware} from '@engine/pipeline/todo';
+import {ChatModelFactory, ModelRegistry, parseModelRoutingConfig} from '@infra/provider';
 import {createMockRoutingConfig, startMockOpenAIServer} from '../provider/mock-openai-server';
 
 describe('Todo List Middleware End-to-End', () => {

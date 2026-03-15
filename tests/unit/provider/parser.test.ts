@@ -1,5 +1,5 @@
 import {describe, expect, it} from "bun:test";
-import {parseModelRoutingConfig} from "@core/provider";
+import {parseModelRoutingConfig} from "@infra/provider";
 
 describe("parseModelRoutingConfig", () => {
     it("应正确解析有效配置", () => {

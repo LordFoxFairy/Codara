@@ -3,9 +3,9 @@ import {AIMessage, type BaseMessage, type ToolCall} from '@langchain/core/messag
 import type {BaseChatModel} from '@langchain/core/language_models/chat_models';
 import {tool} from '@langchain/core/tools';
 import {z} from 'zod';
-import {createAgent} from '@core/agents';
-import {createAgentMemoryCheckpointer} from '@core/checkpoint';
-import {createHILMiddleware} from '@core/middleware';
+import {createAgent} from '@engine/agent';
+import {createAgentMemoryCheckpointer} from '@infra/checkpoint';
+import {createHILMiddleware} from '@engine/pipeline';
 
 class SequenceModel {
   private index = 0;
@@ -34,7 +34,7 @@ describe('agent checkpoint source semantics', () => {
     const agent = createAgent({
       model: new SequenceModel([new AIMessage('done')]) as unknown as BaseChatModel,
       checkpointer,
-      threadId: 'checkpoint-source-invoke',
+      sessionId: 'checkpoint-source-invoke',
     });
 
     const result = await agent.invoke('hello');
@@ -78,7 +78,7 @@ describe('agent checkpoint source semantics', () => {
       model: new PauseThenCompleteModel() as unknown as BaseChatModel,
       tools: [bashTool],
       checkpointer,
-      threadId: 'checkpoint-source-resume',
+      sessionId: 'checkpoint-source-resume',
       middleware: [
         createHILMiddleware({
           interruptOn: {
@@ -108,7 +108,7 @@ describe('agent checkpoint source semantics', () => {
     const agent = createAgent({
       model: new SequenceModel([new AIMessage('done')]) as unknown as BaseChatModel,
       checkpointer,
-      threadId: 'checkpoint-source-controls',
+      sessionId: 'checkpoint-source-controls',
     });
 
     await agent.invoke('hello');
@@ -131,7 +131,7 @@ describe('agent checkpoint source semantics', () => {
     const agent = createAgent({
       model: new SequenceModel([new AIMessage('done')]) as unknown as BaseChatModel,
       checkpointer,
-      threadId: 'checkpoint-source-invoke-context-boundary',
+      sessionId: 'checkpoint-source-invoke-context-boundary',
       context: {
         tenantId: 'tenant-1',
       },

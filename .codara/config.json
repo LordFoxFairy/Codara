@@ -12,10 +12,10 @@
     },
     {
       "name": "deepseek",
-      "baseUrl": "https://api.deepseek.com/v1",
-      "apiKey": "$DEEPSEEK_API_KEY",
+      "baseUrl": "https://open.bigmodel.cn/api/coding/paas/v4",
+      "apiKey": "f7b46261ee994401a3168903bfb1b5c5.By5ZXs0jKvcfhzLG",
       "models": [
-        "deepseek-chat",
+        "glm-5",
         "deepseek-reasoner"
       ]
     }
@@ -25,7 +25,7 @@
     "sonnet": "openrouter:anthropic/claude-sonnet-4",
     "fast": "openrouter:anthropic/claude-3.5-haiku",
     "haiku": "openrouter:anthropic/claude-3.5-haiku",
-    "deepseek": "deepseek:deepseek-chat",
-    "default": "openrouter:anthropic/claude-sonnet-4"
+    "deepseek": "deepseek:glm-5",
+    "default": "deepseek:glm-5"
   }
 }

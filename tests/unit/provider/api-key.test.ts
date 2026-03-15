@@ -1,5 +1,5 @@
-import {describe, expect, it, beforeEach, afterEach} from "bun:test";
-import {expandApiKey} from "@core/provider";
+import {describe, expect, it, beforeEach, afterEach, mock} from "bun:test";
+import {expandApiKey} from "@infra/provider";
 
 describe("expandApiKey", () => {
     const originalEnv = process.env;
@@ -25,13 +25,26 @@ describe("expandApiKey", () => {
         expect(expandApiKey("$MISSING_VAR")).toBeUndefined();
     });
 
-    it("环境变量为空字符串时应抛出错误", () => {
+    it("环境变量为空字符串时应返回 undefined", () => {
         process.env.EMPTY_API_KEY = "   ";
-        expect(() => expandApiKey("$EMPTY_API_KEY")).toThrow('环境变量 "EMPTY_API_KEY" 不能为空字符串');
+        expect(expandApiKey("$EMPTY_API_KEY")).toBeUndefined();
     });
 
-    it("环境变量名为空时应抛出错误", () => {
-        expect(() => expandApiKey("$   ")).toThrow("apiKey 环境变量名不能为空");
+    it("环境变量名为空时应返回 undefined", () => {
+        expect(expandApiKey("$   ")).toBeUndefined();
+    });
+
+    it("环境变量名为空时应触发 warning", () => {
+        const onWarning = mock();
+        expect(expandApiKey("$   ", onWarning)).toBeUndefined();
+        expect(onWarning).toHaveBeenCalledWith("apiKey 环境变量名为空，已跳过");
+    });
+
+    it("环境变量为空字符串时应触发 warning", () => {
+        const onWarning = mock();
+        process.env.EMPTY_API_KEY = "   ";
+        expect(expandApiKey("$EMPTY_API_KEY", onWarning)).toBeUndefined();
+        expect(onWarning).toHaveBeenCalledWith('环境变量 "EMPTY_API_KEY" 为空字符串，已跳过');
     });
 
     it("空字符串应返回 undefined", () => {

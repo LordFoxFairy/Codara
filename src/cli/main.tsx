@@ -1,10 +1,191 @@
-﻿import React from 'react';
+﻿import path from 'node:path';
+import {spawn} from 'node:child_process';
+import {pathToFileURL} from 'node:url';
+import React from 'react';
 import {render} from 'ink';
-import {ensureCliCodaraPath} from './adapters/bootstrap-config';
-
-ensureCliCodaraPath();
+import {createCodaraRuntime, DEFAULT_CODARA_MODEL_ALIAS, type Codara} from '@/index';
+import type {CliHilAutoAction} from './app/hil-review';
 
 const {CodaraCliApp} = await import('./app/shell-app');
 
-render(<CodaraCliApp />);
+const cwd = process.env.CODARA_CLI_CWD?.trim() || process.cwd();
+const {initialPrompt, resumeSessionId} = parseCliArgs(process.argv.slice(2));
+const modelAlias = DEFAULT_CODARA_MODEL_ALIAS;
+const initialRuntime = await createCliRuntime({cwd, initialPrompt, modelAlias, sessionId: resumeSessionId});
+const autoExitOnSettledPrompt = process.env.CODARA_CLI_AUTO_EXIT_AFTER_INITIAL_PROMPT === '1';
+const hilAutoActions = readHilAutoActions(process.env.CODARA_CLI_HIL_AUTO_ACTIONS);
 
+render(
+  <CliRuntimeRoot
+    cwd={cwd}
+    initialPrompt={initialPrompt}
+    initialRuntime={initialRuntime}
+    modelAlias={modelAlias}
+    hilAutoActions={hilAutoActions}
+    autoExitOnSettledPrompt={autoExitOnSettledPrompt}
+    startupMessage={resumeSessionId ? `Resumed session ${resumeSessionId}.` : undefined}
+    openFile={openFileInHost}
+  />,
+);
+
+interface CliRuntimeFactoryInput {
+  cwd: string;
+  initialPrompt: string;
+  modelAlias: string;
+  sessionId?: string;
+}
+
+interface CliRuntimeFactoryResult {
+  codara: Codara;
+  modelAlias?: string;
+}
+
+async function createCliRuntime(input: CliRuntimeFactoryInput): Promise<CliRuntimeFactoryResult> {
+  const factoryModulePath = process.env.CODARA_CLI_RUNTIME_FACTORY?.trim();
+  if (!factoryModulePath) {
+    return {
+      codara: await createCodaraRuntime({
+        cwd: input.cwd,
+        ...(input.sessionId ? {sessionId: input.sessionId} : {}),
+      }),
+      modelAlias: input.modelAlias,
+    };
+  }
+
+  const moduleUrl = pathToFileURL(path.resolve(factoryModulePath)).href;
+  const module = await import(moduleUrl) as {
+    default?: (input: CliRuntimeFactoryInput) => Promise<CliRuntimeFactoryResult | Codara> | CliRuntimeFactoryResult | Codara;
+    createCliRuntime?: (input: CliRuntimeFactoryInput) => Promise<CliRuntimeFactoryResult | Codara> | CliRuntimeFactoryResult | Codara;
+  };
+  const factory = module.createCliRuntime ?? module.default;
+  if (!factory) {
+    throw new Error(`CLI runtime factory does not export default or createCliRuntime: ${factoryModulePath}`);
+  }
+
+  const result = await factory(input);
+  if (isCodara(result)) {
+    return {codara: result, modelAlias: input.modelAlias};
+  }
+
+  return {
+    codara: result.codara,
+    modelAlias: result.modelAlias?.trim() || input.modelAlias,
+  };
+}
+
+function isCodara(value: CliRuntimeFactoryResult | Codara): value is Codara {
+  return typeof value === 'object'
+    && value !== null
+    && 'invoke' in value
+    && typeof value.invoke === 'function'
+    && 'stream' in value
+    && typeof value.stream === 'function';
+}
+
+interface CliRuntimeRootProps {
+  cwd: string;
+  initialPrompt: string;
+  initialRuntime: CliRuntimeFactoryResult;
+  modelAlias: string;
+  hilAutoActions: CliHilAutoAction[];
+  autoExitOnSettledPrompt: boolean;
+  startupMessage?: string;
+  openFile: (targetPath: string) => Promise<boolean>;
+}
+
+function CliRuntimeRoot(props: CliRuntimeRootProps): React.JSX.Element {
+  const [runtime, setRuntime] = React.useState(props.initialRuntime);
+  const [startupMessage, setStartupMessage] = React.useState<string | undefined>(props.startupMessage);
+  const [appInitialPrompt, setAppInitialPrompt] = React.useState(props.initialPrompt);
+
+  const reopenSession = React.useCallback(async (sessionId: string) => {
+    const nextRuntime = await createCliRuntime({
+      cwd: props.cwd,
+      initialPrompt: '',
+      modelAlias: runtime.modelAlias ?? props.modelAlias,
+      sessionId,
+    });
+    setRuntime(nextRuntime);
+    setStartupMessage(`Reopened session ${sessionId}.`);
+    setAppInitialPrompt('');
+  }, [props.cwd, props.modelAlias, runtime.modelAlias]);
+
+  return (
+    <CodaraCliApp
+      key={runtime.codara.getState().sessionId}
+      codara={runtime.codara}
+      cwd={props.cwd}
+      modelAlias={runtime.modelAlias ?? props.modelAlias}
+      initialPrompt={appInitialPrompt}
+      startupMessage={startupMessage}
+      hilAutoActions={props.hilAutoActions}
+      autoExitOnSettledPrompt={props.autoExitOnSettledPrompt}
+      reopenSession={reopenSession}
+      openFile={props.openFile}
+    />
+  );
+}
+
+async function openFileInHost(targetPath: string): Promise<boolean> {
+  const editor = process.env.EDITOR?.trim();
+  if (!editor) {
+    return false;
+  }
+
+  return await new Promise<boolean>((resolve) => {
+    const child = spawn(editor, [targetPath], {
+      stdio: 'inherit',
+      shell: true,
+    });
+    child.on('error', () => resolve(false));
+    child.on('exit', (code) => resolve(code === 0));
+  });
+}
+
+function readHilAutoActions(raw: string | undefined): CliHilAutoAction[] {
+  const value = raw?.trim();
+  if (!value) {
+    return [];
+  }
+
+  if (value.startsWith('[')) {
+    const parsed = JSON.parse(value) as Array<string | CliHilAutoAction>;
+    return parsed.map(normalizeHilAutoAction);
+  }
+
+  return [normalizeHilAutoAction(value)];
+}
+
+function normalizeHilAutoAction(value: string | CliHilAutoAction): CliHilAutoAction {
+  if (typeof value === 'string') {
+    return {action: value};
+  }
+
+  return value;
+}
+
+interface ParsedCliArgs {
+  initialPrompt: string;
+  resumeSessionId?: string;
+}
+
+function parseCliArgs(argv: string[]): ParsedCliArgs {
+  const rest: string[] = [];
+  let resumeSessionId: string | undefined;
+
+  for (let i = 0; i < argv.length; i++) {
+    const arg = argv[i]!;
+    if ((arg === '--resume' || arg === '-r') && i + 1 < argv.length) {
+      resumeSessionId = argv[++i]!.trim();
+    } else if (arg.startsWith('--resume=')) {
+      resumeSessionId = arg.slice('--resume='.length).trim();
+    } else {
+      rest.push(arg);
+    }
+  }
+
+  return {
+    initialPrompt: rest.join(' ').trim(),
+    resumeSessionId: resumeSessionId || undefined,
+  };
+}

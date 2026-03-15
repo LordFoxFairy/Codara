@@ -1,7 +1,8 @@
-﻿import {useInput} from 'ink';
+﻿import {useInput, useStdin} from 'ink';
 import {resolvePromptInputAction} from './prompt-input-action';
 
 interface UsePromptInputOptions {
+  interactive?: boolean;
   disabled: boolean;
   onInsertText: (input: string) => void;
   onInsertNewline: () => void;
@@ -14,11 +15,14 @@ interface UsePromptInputOptions {
   onMoveCursorEnd: () => void;
   onSubmit: () => void;
   onExit: () => void;
+  onToggleTaskPanel?: () => void;
+  onTab?: () => void;
 }
 
 // 输入监听独立成 hook，避免展示组件和编辑动作混在一起。
 export function usePromptInput(options: UsePromptInputOptions): void {
   const {
+    interactive = true,
     disabled,
     onInsertText,
     onInsertNewline,
@@ -31,7 +35,10 @@ export function usePromptInput(options: UsePromptInputOptions): void {
     onMoveCursorEnd,
     onSubmit,
     onExit,
+    onToggleTaskPanel,
+    onTab,
   } = options;
+  const {isRawModeSupported} = useStdin();
 
   useInput((input, key) => {
     const action = resolvePromptInputAction(input, key);
@@ -41,7 +48,17 @@ export function usePromptInput(options: UsePromptInputOptions): void {
       return;
     }
 
+    if (action === 'toggle-task-panel') {
+      onToggleTaskPanel?.();
+      return;
+    }
+
     if (disabled) {
+      return;
+    }
+
+    if (action === 'tab') {
+      onTab?.();
       return;
     }
 
@@ -93,5 +110,5 @@ export function usePromptInput(options: UsePromptInputOptions): void {
     if (action === 'insert-text') {
       onInsertText(input);
     }
-  });
+  }, {isActive: interactive && isRawModeSupported});
 }

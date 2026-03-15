@@ -2,9 +2,18 @@ import {describe, expect, it} from 'bun:test';
 import {AIMessage, HumanMessage, ToolMessage, type BaseMessage, type ToolCall} from '@langchain/core/messages';
 import type {BaseChatModel} from '@langchain/core/language_models/chat_models';
 import type {StructuredToolInterface} from '@langchain/core/tools';
-import {createAgent} from '@core/agents';
-import {createHILMiddleware, createLoggingMiddleware, type MiddlewareLogRecord, type ToolCallContext} from '@core/middleware';
-import {MiddlewarePipeline} from '@core/middleware/pipeline';
+import {createAgent} from '@engine/agent';
+import {mkdtemp, readFile, rm} from 'node:fs/promises';
+import {tmpdir} from 'node:os';
+import path from 'node:path';
+import {
+  createDailySessionFileLogSink,
+  createHILMiddleware,
+  createLoggingMiddleware,
+  type MiddlewareLogRecord,
+  type ToolCallContext,
+} from '@engine/pipeline';
+import {MiddlewarePipeline} from '@engine/pipeline/pipeline';
 
 class FakeModel {
   private index = 0;
@@ -42,7 +51,7 @@ function createToolContext(toolCall: ToolCall, runtimeContext: Record<string, un
     runtime: {context: runtimeContext},
     systemMessage: [],
     execution: {
-      threadId: 'thread_log_1',
+      sessionId: 'thread_log_1',
       runId: 'run_log_1',
       turn: 1,
       maxTurns: 3,
@@ -93,17 +102,36 @@ describe('createLoggingMiddleware', () => {
     const wrapModelStart = logs.find((record) => record.stage === 'wrapModelCall' && record.event === 'stage_start');
     const wrapModelEnd = logs.find((record) => record.stage === 'wrapModelCall' && record.event === 'stage_end');
     const wrapToolEnd = logs.find((record) => record.stage === 'wrapToolCall' && record.event === 'stage_end');
+    const assistantTranscript = logs.find((record) => record.stage === 'assistantMessage' && record.event === 'stage_end');
+    const toolTranscript = logs.find((record) => record.stage === 'toolMessage' && record.event === 'stage_end');
 
     expect(wrapModelStart).toBeDefined();
     expect(wrapModelEnd).toBeDefined();
     expect(wrapModelEnd?.durationMs).toBeGreaterThanOrEqual(0);
+    expect(assistantTranscript?.messageType).toBe('assistant');
+    expect(assistantTranscript?.messageText).toBe('done');
 
     expect(wrapToolEnd?.toolName).toBe('echo');
     expect(wrapToolEnd?.toolCallId).toBe('call_log_1');
     expect(wrapToolEnd?.toolIndex).toBe(0);
+    expect(wrapToolEnd?.toolArgsText).toContain('"text":"ping"');
+    expect(wrapToolEnd?.toolContent).toBe('pong');
+    expect(wrapToolEnd?.toolArtifactType).toBe('string');
+    expect(toolTranscript?.toolName).toBe('echo');
+    expect(toolTranscript?.toolCallId).toBe('call_log_1');
+    expect(toolTranscript?.messageType).toBe('tool');
+    expect(toolTranscript?.messageText).toBe('pong');
+    expect(toolTranscript?.toolContent).toBe('pong');
+
+    const afterModelEnd = logs.find((record) => record.stage === 'afterModel' && record.event === 'stage_end');
+    expect(afterModelEnd?.responseToolCallCount).toBe(1);
+    expect(afterModelEnd?.responseToolNames).toEqual(['echo']);
 
     const afterAgentEndLogs = logs.filter((record) => record.stage === 'afterAgent' && record.event === 'stage_end');
     expect(afterAgentEndLogs.some((record) => record.resultReason === 'complete')).toBe(true);
+    const completedAfterAgent = afterAgentEndLogs.find((record) => record.resultReason === 'complete');
+    expect(completedAfterAgent?.messageCount).toBe(4);
+    expect(completedAfterAgent?.lastAssistantText).toBe('done');
   });
 
   it('should filter debug logs when level is info', async () => {
@@ -171,7 +199,10 @@ describe('createLoggingMiddleware', () => {
               {id: 'deny', label: 'Deny'},
             ],
           },
-          metadata: {skill: 'permission-policy'},
+          metadata: {
+            codara: {actor: {agentType: 'subagent'}},
+            permissionPolicy: {expression: 'Bash(git status)'},
+          },
         },
       },
     });
@@ -192,12 +223,47 @@ describe('createLoggingMiddleware', () => {
         && record.toolMetadata?.toolResultType === 'hil_pause';
     });
     expect(pauseLog).toBeDefined();
+    expect(pauseLog?.toolArgsText).toContain('"command":"git status"');
+    expect(pauseLog?.toolContent).toContain('"type":"hil_pause"');
     expect(pauseLog?.toolMetadata).toMatchObject({
       toolResultType: 'hil_pause',
       interactionDecision: 'ask',
       interactionChannel: 'permission-center',
-      interactionSkill: 'permission-policy',
+      interactionActorType: 'subagent',
       interactionActionIds: ['allow_once', 'always', 'deny'],
     });
+  });
+
+  it('should write JSONL records under <sessionId>/logs/YYYY-MM-DD.log', async () => {
+    const root = await mkdtemp(path.join(tmpdir(), 'codara-logging-sink-'));
+    const sink = createDailySessionFileLogSink({rootDir: root});
+    const timestamp = '2026-03-12T10:20:30.000Z';
+
+    try {
+      sink({
+        timestamp,
+        level: 'info',
+        middleware: 'LoggingMiddleware',
+        stage: 'wrapModelCall',
+        event: 'stage_end',
+        sessionId: 'nested/session-1',
+        runId: 'run-1',
+        turn: 1,
+        requestId: 'req-1',
+      });
+
+      const filePath = path.join(root, 'nested', 'session-1', 'logs', '2026-03-12.log');
+      const content = await readFile(filePath, 'utf8');
+      const lines = content.trim().split('\n');
+
+      expect(lines).toHaveLength(1);
+      expect(JSON.parse(lines[0] ?? '{}')).toMatchObject({
+        sessionId: 'nested/session-1',
+        runId: 'run-1',
+        requestId: 'req-1',
+      });
+    } finally {
+      await rm(root, {recursive: true, force: true});
+    }
   });
 });
