@@ -8,6 +8,12 @@ import {computeEditDiff, computeWriteDiff, type DiffData} from './diff-compute';
 
 export type TranscriptRole = 'system' | 'warning' | 'user' | 'assistant' | 'tool' | 'task' | 'hil' | 'command' | 'error';
 
+export interface SolidifiedItem {
+  id: string;
+  kind: 'welcome' | 'notice' | 'turn';
+  items: TranscriptItem[];
+}
+
 export interface ToolResultMeta {
   toolName: string;
   displayName: string;
@@ -80,6 +86,58 @@ export function buildTranscriptItems(input: BuildTranscriptItemsInput): Transcri
     .filter((item) => item.content)
     .slice(-(input.limit ?? DEFAULT_TRANSCRIPT_LIMIT));
 }
+
+/**
+ * Build transcript items from a range of coreMessages (for solidified/completed turns).
+ * No limit, no activeTurn, no runtimeEvents — just finalized messages.
+ */
+export function buildSolidifiedItemsFromRange(
+  coreMessages: readonly BaseMessage[],
+  startIndex: number,
+  endIndex: number,
+  toolLookup: Map<string, ToolCall>,
+): TranscriptItem[] {
+  const items: TranscriptItem[] = [];
+  for (let i = startIndex; i < endIndex; i++) {
+    const message = coreMessages[i];
+    if (!message) continue;
+    items.push(...buildCoreMessageItems(message, i, toolLookup, false));
+  }
+  return items.filter((item) => item.content);
+}
+
+/**
+ * Build transcript items for the active (streaming) portion — activeTurn + runtimeEvents only.
+ */
+export function buildActiveItems(input: {
+  activeTurn?: CliActiveTurn;
+  runtimeEvents?: readonly CodaraRuntimeEvent[];
+}): TranscriptItem[] {
+  const preferRuntimeSteps = (input.runtimeEvents?.length ?? 0) > 0 && input.activeTurn !== undefined;
+  const items: TranscriptItem[] = [
+    ...(input.activeTurn
+      ? [
+          {
+            id: `${input.activeTurn.id}-prompt`,
+            role: 'user' as const,
+            content: input.activeTurn.prompt,
+          },
+          {
+            id: `${input.activeTurn.id}-response`,
+            role: input.activeTurn.responseRole,
+            content: input.activeTurn.response,
+          },
+        ]
+      : []),
+    ...(preferRuntimeSteps ? buildRuntimeEventItems(input.runtimeEvents ?? []) : []),
+  ];
+  return items.filter((item) => item.content);
+}
+
+/**
+ * Create a tool-call lookup from all messages. Exposed for use by solidified transcript hook.
+ */
+export {createToolCallLookup};
 
 export function hasTranscriptContent(input: HasTranscriptContentInput): boolean {
   if (input.activeTurn) {
@@ -163,7 +221,7 @@ function buildRuntimeEventItems(events: readonly CodaraRuntimeEvent[]): Transcri
         const rawToolName = startEvent.detail ?? '';
         const toolMeta = buildToolMetaFromEvents(rawToolName, startEvent, event);
         const content = toolMeta
-          ? `${toolMeta.icon} ${toolMeta.displayName}(${toolMeta.args ?? ''})\n└ ${toolMeta.summaryLine}`
+          ? `${toolMeta.icon} ${toolMeta.displayName}(${toolMeta.args ?? ''})\n⎿ ${toolMeta.summaryLine}`
           : formatRuntimeEvent(event);
         items.push({
           id: startEvent.id,
@@ -219,7 +277,7 @@ function buildRuntimeEventItems(events: readonly CodaraRuntimeEvent[]): Transcri
       const rawToolName = startEvent.detail ?? '';
       const toolMeta = buildToolMetaRunning(rawToolName, startEvent);
       const content = toolMeta
-        ? `${toolMeta.icon} ${toolMeta.displayName}(${toolMeta.args ?? ''})\n└ ${toolMeta.summaryLine}`
+        ? `${toolMeta.icon} ${toolMeta.displayName}(${toolMeta.args ?? ''})\n⎿ ${toolMeta.summaryLine}`
         : formatRuntimeEvent(startEvent);
       items.push({
         id: startEvent.id,
@@ -533,7 +591,7 @@ function buildToolResultItems(
     id: messageId,
     role,
     content: toolMeta
-      ? `${toolMeta.icon} ${toolMeta.displayName}(${toolMeta.args ?? ''})\n└ ${toolMeta.summaryLine}`
+      ? `${toolMeta.icon} ${toolMeta.displayName}(${toolMeta.args ?? ''})\n⎿ ${toolMeta.summaryLine}`
       : formattedContent,
     renderHint: lineCount > 3 ? 'block' : 'inline',
     toolMeta,
