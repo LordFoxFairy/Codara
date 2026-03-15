@@ -133,8 +133,9 @@ const EDIT_LINE_COLORS: Record<string, React.ComponentProps<typeof Text>['color'
 };
 
 function ToolResultBlock({meta}: {meta: ToolResultMeta}): React.JSX.Element {
-  const {icon, displayName, args, summaryLine, outputLines, totalOutputLines, status, diffData} = meta;
-  const header = args ? `${icon} ${displayName}(${args})` : `${icon} ${displayName}`;
+  const {icon, displayName, args, summaryLine, outputLines, totalOutputLines, status, elapsed, diffData} = meta;
+  const elapsedSuffix = elapsed ? ` (${elapsed})` : '';
+  const header = args ? `${icon} ${displayName}(${args})${elapsedSuffix}` : `${icon} ${displayName}${elapsedSuffix}`;
   const hiddenLines = (totalOutputLines ?? 0) - (outputLines?.length ?? 0);
   const isEdit = meta.toolName === 'edit' || meta.toolName === 'edit_file';
 
@@ -159,7 +160,7 @@ function ToolResultBlock({meta}: {meta: ToolResultMeta}): React.JSX.Element {
             );
           })}
           {hiddenLines > 0 ? (
-            <Text dimColor>{`… +${hiddenLines} lines`}</Text>
+            <Text dimColor>{`… +${hiddenLines} lines (ctrl+o to expand)`}</Text>
           ) : null}
         </Box>
       ) : null}

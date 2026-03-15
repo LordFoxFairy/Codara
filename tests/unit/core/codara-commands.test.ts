@@ -506,7 +506,7 @@ describe('Codara slash commands', () => {
     });
   });
 
-  it('should reject /resume without a session id', async () => {
+  it('should show session picker when /resume is called without args', async () => {
     const codara = createCodara({
       model: new EchoModel() as unknown as BaseChatModel,
       skills: false,
@@ -514,8 +514,8 @@ describe('Codara slash commands', () => {
     });
 
     const result = await codara.executeCommand('/resume');
-    expect(result.ok).toBe(false);
-    expect(result.output).toContain('Usage: /resume <sessionId>');
+    expect(result.ok).toBe(true);
+    expect(result.action).toEqual({type: 'show_session_picker'});
   });
 
   it('should report when /resume targets the current session', async () => {

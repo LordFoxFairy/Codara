@@ -4,8 +4,8 @@ const BUILTIN_SOURCE = {type: 'builtin'} as const;
 
 export const resumeCommand: CodaraCommandDefinition = {
   name: 'resume',
-  usage: '/resume <sessionId>',
-  description: 'Reopen a stored conversation by sessionId.',
+  usage: '/resume [sessionId]',
+  description: 'Reopen a stored conversation. Without args, shows a session picker.',
   source: BUILTIN_SOURCE,
   help: {
     executionMode: 'host_action',
@@ -14,9 +14,12 @@ export const resumeCommand: CodaraCommandDefinition = {
     const sessionId = command.args[0]?.trim();
     if (!sessionId) {
       return {
-        ok: false,
+        ok: true,
         command: command.name,
-        output: 'Usage: /resume <sessionId>',
+        output: '',
+        action: {
+          type: 'show_session_picker',
+        },
       };
     }
 

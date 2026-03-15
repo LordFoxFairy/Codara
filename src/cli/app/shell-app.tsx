@@ -1,18 +1,24 @@
-import React, {useEffect} from 'react';
-import {Box, useApp} from 'ink';
+import React, {useCallback, useEffect, useState} from 'react';
+import {Box, useApp, useInput} from 'ink';
 import type {Codara} from '@core';
 import {Footer} from '../components/chrome/footer';
 import {StatusBar} from '../components/chrome/header';
 import {ActivityLine} from '../components/chrome/activity-line';
+import {TaskPanel} from '../components/chrome/task-panel';
 import {HilPanel, isPermissionReview} from '../components/conversation/hil-panel';
+import {SessionPicker} from '../components/conversation/session-picker';
 import {Transcript} from '../components/conversation/transcript';
-import {WelcomeState} from '../components/conversation/welcome-state';
+import {WelcomeState, deriveRecentSessions, type RecentSession} from '../components/conversation/welcome-state';
+import {CompletionMenu} from '../components/prompt/completion-menu';
 import {PromptFrame} from '../components/prompt/prompt-frame';
 import type {CliHilAutoAction} from './hil-review';
 import {resolveCliLayoutMode, type CliLayoutMode} from './layout-mode';
 import {useCliController} from './use-cli-controller';
+import {useActiveTasks} from '../hooks/use-active-tasks';
+import {useCommandCompletion} from '../hooks/use-command-completion';
 import {useHilInput} from '../hooks/use-hil-input';
 import {usePromptInput} from '../hooks/use-prompt-input';
+import {useSessionPicker} from '../hooks/use-session-picker';
 import {useTerminalWidth} from '../hooks/use-terminal-width';
 
 export interface CodaraCliAppProps {
@@ -53,9 +59,64 @@ export function CodaraCliApp(props: CodaraCliAppProps): React.JSX.Element {
     openFile,
   } = props;
   const {exit} = useApp();
-  const shell = useCliController({codara, initialPrompt, startupMessage, hilAutoActions, reopenSession, openFile});
+
+  // Session picker for /resume without args
+  const listSessionsForPicker = useCallback(
+    () => codara.listSessions({sortBy: 'lastActivity', sortOrder: 'desc', limit: 10}),
+    [codara],
+  );
+  const handleSessionPickerSelect = useCallback(
+    (sessionId: string) => {
+      if (reopenSession) {
+        void reopenSession(sessionId);
+      }
+    },
+    [reopenSession],
+  );
+  const sessionPicker = useSessionPicker({
+    listSessions: listSessionsForPicker,
+    onSelect: handleSessionPickerSelect,
+    onCancel: () => {},
+  });
+
+  const shell = useCliController({
+    codara,
+    initialPrompt,
+    startupMessage,
+    hilAutoActions,
+    reopenSession,
+    openFile,
+    onShowSessionPicker: sessionPicker.show,
+  });
   const terminalWidth = useTerminalWidth();
   const layoutMode = resolveCliLayoutMode(terminalWidth);
+  const activeTasks = useActiveTasks({runtimeEvents: shell.runtimeEvents});
+  const listCommands = React.useCallback(() => codara.listCommands(), [codara]);
+  const completion = useCommandCompletion({
+    text: shell.composer.text,
+    disabled: shell.runState.status === 'running',
+    listCommands,
+  });
+  const [recentSessions, setRecentSessions] = useState<RecentSession[]>([]);
+  useEffect(() => {
+    codara.listSessions({sortBy: 'lastActivity', sortOrder: 'desc', limit: 5}).then(
+      (sessions) => setRecentSessions(deriveRecentSessions(sessions)),
+      () => {},
+    );
+  }, [codara]);
+
+  // Session picker keyboard input — only when TTY supports raw mode
+  useInput(
+    (input, key) => {
+      if (!sessionPicker.state.visible) return;
+      if (key.escape) { sessionPicker.hide(); return; }
+      if (key.return) { sessionPicker.select(); return; }
+      if (key.upArrow) { sessionPicker.moveUp(); return; }
+      if (key.downArrow) { sessionPicker.moveDown(); return; }
+    },
+    {isActive: sessionPicker.state.visible && Boolean(process.stdin.isTTY)},
+  );
+
   const hasInitialPrompt = Boolean(initialPrompt?.trim());
   const hasHilReview = Boolean(shell.hilReview);
   const foregroundSurface = resolveCliForegroundSurface({
@@ -65,19 +126,45 @@ export function CodaraCliApp(props: CodaraCliAppProps): React.JSX.Element {
 
   // 输入监听挂在组装层；展示组件不直接感知键盘事件。
   usePromptInput({
-    interactive: !hasHilReview && !(autoExitOnSettledPrompt && hasInitialPrompt),
-    disabled: hasHilReview || shell.runState.status === 'running',
+    interactive: !hasHilReview && !sessionPicker.state.visible && !(autoExitOnSettledPrompt && hasInitialPrompt),
+    disabled: hasHilReview || sessionPicker.state.visible || shell.runState.status === 'running',
     onInsertText: shell.insertText,
     onInsertNewline: shell.insertNewline,
     onBackspace: shell.backspace,
     onMoveCursorLeft: shell.moveCursorLeft,
     onMoveCursorRight: shell.moveCursorRight,
-    onMoveCursorUp: shell.moveCursorUp,
-    onMoveCursorDown: shell.moveCursorDown,
+    onMoveCursorUp: () => {
+      if (completion.completion.visible) { completion.moveUp(); return; }
+      shell.moveCursorUp();
+    },
+    onMoveCursorDown: () => {
+      if (completion.completion.visible) { completion.moveDown(); return; }
+      shell.moveCursorDown();
+    },
     onMoveCursorHome: shell.moveCursorHome,
     onMoveCursorEnd: shell.moveCursorEnd,
-    onSubmit: shell.submitDraft,
-    onExit: exit,
+    onSubmit: () => {
+      if (completion.completion.visible) {
+        const accepted = completion.accept();
+        if (accepted) shell.replaceText(accepted);
+        completion.dismiss();
+        return;
+      }
+      shell.submitDraft();
+    },
+    onExit: () => {
+      if (completion.completion.visible) { completion.dismiss(); return; }
+      exit();
+    },
+    onToggleTaskPanel: shell.toggleTaskPanel,
+    onTab: () => {
+      if (completion.completion.visible) {
+        const accepted = completion.accept();
+        if (accepted) shell.replaceText(accepted);
+        completion.dismiss();
+        return;
+      }
+    },
   });
 
   useHilInput({
@@ -121,7 +208,7 @@ export function CodaraCliApp(props: CodaraCliAppProps): React.JSX.Element {
       <Box flexDirection="column" paddingX={1} paddingY={1}>
         {/* 活跃 welcome — 对话前展示 */}
         {!shell.hasConversation && (
-          <WelcomeState layoutMode={layoutMode} cwd={cwd} modelAlias={modelAlias} />
+          <WelcomeState layoutMode={layoutMode} cwd={cwd} modelAlias={modelAlias} recentSessions={recentSessions} />
         )}
 
         {/* 对话开始后显示轻量状态栏 */}
@@ -146,6 +233,16 @@ export function CodaraCliApp(props: CodaraCliAppProps): React.JSX.Element {
           />
         )}
 
+        {/* Task Panel — Transcript 和 ActivityLine 之间 */}
+        {shell.hasConversation && activeTasks.hasActiveTasks && shell.taskPanelVisible && foregroundSurface !== 'hil' && (
+          <TaskPanel
+            tasks={activeTasks.tasks}
+            runningCount={activeTasks.runningCount}
+            doneCount={activeTasks.doneCount}
+            errorCount={activeTasks.errorCount}
+          />
+        )}
+
         {/* HIL 或正常交互区 — 始终渲染 */}
         {foregroundSurface === 'hil' && shell.hilReview ? (
           <HilPanel review={shell.hilReview} />
@@ -156,6 +253,16 @@ export function CodaraCliApp(props: CodaraCliAppProps): React.JSX.Element {
               activeTurn={shell.activeTurn}
               latestRuntimeEvent={shell.latestRuntimeEvent}
             />
+            {sessionPicker.state.visible && (
+              <SessionPicker
+                sessions={sessionPicker.state.sessions}
+                loading={sessionPicker.state.loading}
+                selectedIndex={sessionPicker.state.selectedIndex}
+                onSelect={handleSessionPickerSelect}
+                onCancel={sessionPicker.hide}
+              />
+            )}
+            <CompletionMenu completion={completion.completion} />
             <PromptFrame
               terminalWidth={terminalWidth}
               composer={shell.composer}

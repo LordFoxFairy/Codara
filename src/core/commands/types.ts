@@ -46,6 +46,8 @@ export interface CodaraCommandResult {
   } | {
     type: 'resume_session';
     sessionId: string;
+  } | {
+    type: 'show_session_picker';
   };
 }
 

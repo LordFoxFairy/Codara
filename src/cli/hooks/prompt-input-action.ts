@@ -10,6 +10,8 @@ export type PromptInputAction =
   | 'move-end'
   | 'backspace'
   | 'insert-text'
+  | 'toggle-task-panel'
+  | 'tab'
   | 'noop';
 
 export interface PromptInputKey {
@@ -32,6 +34,14 @@ export interface PromptInputKey {
 export function resolvePromptInputAction(input: string, key: PromptInputKey): PromptInputAction {
   if ((key.ctrl && input === 'c') || key.escape) {
     return 'exit';
+  }
+
+  if (key.ctrl && input === 't') {
+    return 'toggle-task-panel';
+  }
+
+  if (input === '\t') {
+    return 'tab';
   }
 
   if ((key.shift && key.return) || (key.meta && key.return) || (key.ctrl && (input === 'j' || key.return))) {

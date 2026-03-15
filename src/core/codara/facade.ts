@@ -154,6 +154,7 @@ export type CodaraMiddlewareOptions = Pick<CodaraOptions, 'middleware' | 'hil' |
 export type Codara = Session & {
   listCommands(): Promise<readonly CodaraCommandSpec[]>;
   executeCommand(input: string): Promise<CodaraCommandResult>;
+  listSessions(options?: import('@core/sessions').SessionListOptions): Promise<SessionState[]>;
 };
 
 export async function createCodaraModelCatalog(
@@ -339,11 +340,20 @@ function assembleCodara(
     return result;
   };
 
+  const sessionStore = options.store;
+  const listSessions = async (listOptions?: import('@core/sessions').SessionListOptions): Promise<SessionState[]> => {
+    if (!sessionStore) {
+      return [];
+    }
+    return sessionStore.list(listOptions);
+  };
+
   return {
     ...session,
     subscribeRuntimeEvents,
     listCommands: commands.listCommands,
     executeCommand,
+    listSessions,
   };
 }
 
