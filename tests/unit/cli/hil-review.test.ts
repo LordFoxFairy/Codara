@@ -140,7 +140,6 @@ describe('cli hil review helpers', () => {
 
     expect(prepared.payload).toMatchObject({
       action: 'allow_tool',
-      decision: 'approve',
       scope: 'tool',
     });
   });

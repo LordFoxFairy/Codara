@@ -4,9 +4,8 @@ import type {CodaraRuntimeEvent, SessionState} from '@core';
 import type {CliLayoutMode} from '../../app/layout-mode';
 import type {CliRunState} from '../../app/view-state';
 import {describeStatusIndicator} from '../../hooks/use-status-indicator';
-import {RobotMark} from './robot-mark';
 
-interface HeaderProps {
+interface StatusBarProps {
   layoutMode: CliLayoutMode;
   session: SessionState;
   cwd: string;
@@ -15,16 +14,14 @@ interface HeaderProps {
   latestRuntimeEvent?: CodaraRuntimeEvent;
 }
 
-export interface HeaderModel {
-  title: string;
+export interface StatusBarModel {
   subtitle: string;
   pathLine?: string;
 }
 
-export function describeHeader(props: HeaderProps): HeaderModel {
+export function describeStatusBar(props: StatusBarProps): StatusBarModel {
   const {layoutMode, session, cwd, modelAlias, runState, latestRuntimeEvent} = props;
   const isMinimal = layoutMode === 'minimal';
-  const title = session.metadata?.title?.trim() || 'Codara';
   const messageCount = session.metadata?.messageCount ?? 0;
   const status = describeStatusIndicator({runState, latestRuntimeEvent});
   const contextWindow = session.metadata?.contextWindow;
@@ -34,7 +31,6 @@ export function describeHeader(props: HeaderProps): HeaderModel {
   const sessionLabel = shortenSessionId(session.sessionId);
 
   return {
-    title,
     subtitle: [
       modelAlias,
       sessionLabel,
@@ -55,32 +51,22 @@ function shortenSessionId(value: string): string {
   return `${trimmed.slice(0, 8)}…${trimmed.slice(-4)}`;
 }
 
-export function Header(props: HeaderProps): React.JSX.Element {
+export function StatusBar(props: StatusBarProps): React.JSX.Element {
   const {layoutMode} = props;
-  const model = describeHeader(props);
+  const model = describeStatusBar(props);
 
   if (layoutMode === 'minimal') {
     return (
       <Box flexDirection="column">
-        <Text color="blueBright" wrap="truncate-end">{model.title}</Text>
         <Text dimColor wrap="truncate-end">{model.subtitle}</Text>
       </Box>
     );
   }
 
   return (
-    <Box
-      borderStyle="round"
-      borderColor="gray"
-      flexDirection="row"
-      paddingX={1}
-    >
-      <RobotMark />
-      <Box flexDirection="column" flexGrow={1} flexShrink={1}>
-        <Text color="blueBright" wrap="truncate-end">{model.title}</Text>
-        <Text dimColor wrap="truncate-end">{model.subtitle}</Text>
-        {model.pathLine ? <Text dimColor wrap="truncate-middle">{model.pathLine}</Text> : null}
-      </Box>
+    <Box flexDirection="column" marginBottom={1}>
+      <Text dimColor wrap="truncate-end">{model.subtitle}</Text>
+      {model.pathLine ? <Text dimColor wrap="truncate-middle">{model.pathLine}</Text> : null}
     </Box>
   );
 }

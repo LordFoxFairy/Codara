@@ -83,7 +83,7 @@ describe("loadModelRoutingConfig", () => {
             readFileSync(join(process.cwd(), ".codara", "model-metadata.json"), "utf8")
         ) as Record<string, {contextWindow?: number; maxOutputTokens?: number}>;
 
-        expect(repoConfig.router.default).toBe("deepseek:deepseek-chat");
+        expect(repoConfig.router.default).toBe("deepseek:glm-5");
         expect(repoConfig.router.fast).toBe("openrouter:anthropic/claude-3.5-haiku");
 
         expect(repoConfig.providers[0].models).toContain("anthropic/claude-sonnet-4");

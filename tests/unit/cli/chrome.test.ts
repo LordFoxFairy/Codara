@@ -1,10 +1,10 @@
 import {describe, expect, it} from 'bun:test';
 import {describeFooter} from '../../../src/cli/components/chrome/footer';
-import {describeHeader} from '../../../src/cli/components/chrome/header';
+import {describeStatusBar} from '../../../src/cli/components/chrome/header';
 import type {CodaraRuntimeEvent, SessionState} from '@core';
 
 describe('CLI chrome', () => {
-  it('should keep the header compact and single-purpose', () => {
+  it('should keep the status bar compact and single-purpose', () => {
     const session: SessionState = {
       sessionId: '12345678-aaaa-bbbb-cccc-1234567890ab',
       sessionStatus: 'ready',
@@ -33,7 +33,7 @@ describe('CLI chrome', () => {
       label: 'Waiting for review',
     };
 
-    const model = describeHeader({
+    const model = describeStatusBar({
       layoutMode: 'wide',
       session,
       cwd: '/tmp/codara-demo',
@@ -42,7 +42,6 @@ describe('CLI chrome', () => {
       latestRuntimeEvent,
     });
 
-    expect(model.title).toBe('Permission task');
     expect(model.subtitle).toContain('sonnet');
     expect(model.subtitle).toContain('12345678…90ab');
     expect(model.subtitle).toContain('12 msgs');

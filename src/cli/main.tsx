@@ -9,9 +9,9 @@ import type {CliHilAutoAction} from './app/hil-review';
 const {CodaraCliApp} = await import('./app/shell-app');
 
 const cwd = process.env.CODARA_CLI_CWD?.trim() || process.cwd();
-const initialPrompt = process.argv.slice(2).join(' ').trim();
+const {initialPrompt, resumeSessionId} = parseCliArgs(process.argv.slice(2));
 const modelAlias = DEFAULT_CODARA_MODEL_ALIAS;
-const initialRuntime = await createCliRuntime({cwd, initialPrompt, modelAlias});
+const initialRuntime = await createCliRuntime({cwd, initialPrompt, modelAlias, sessionId: resumeSessionId});
 const autoExitOnSettledPrompt = process.env.CODARA_CLI_AUTO_EXIT_AFTER_INITIAL_PROMPT === '1';
 const hilAutoActions = readHilAutoActions(process.env.CODARA_CLI_HIL_AUTO_ACTIONS);
 
@@ -23,6 +23,7 @@ render(
     modelAlias={modelAlias}
     hilAutoActions={hilAutoActions}
     autoExitOnSettledPrompt={autoExitOnSettledPrompt}
+    startupMessage={resumeSessionId ? `Resumed session ${resumeSessionId}.` : undefined}
     openFile={openFileInHost}
   />,
 );
@@ -88,12 +89,13 @@ interface CliRuntimeRootProps {
   modelAlias: string;
   hilAutoActions: CliHilAutoAction[];
   autoExitOnSettledPrompt: boolean;
+  startupMessage?: string;
   openFile: (targetPath: string) => Promise<boolean>;
 }
 
 function CliRuntimeRoot(props: CliRuntimeRootProps): React.JSX.Element {
   const [runtime, setRuntime] = React.useState(props.initialRuntime);
-  const [startupMessage, setStartupMessage] = React.useState<string | undefined>();
+  const [startupMessage, setStartupMessage] = React.useState<string | undefined>(props.startupMessage);
   const [appInitialPrompt, setAppInitialPrompt] = React.useState(props.initialPrompt);
 
   const reopenSession = React.useCallback(async (sessionId: string) => {
@@ -160,4 +162,30 @@ function normalizeHilAutoAction(value: string | CliHilAutoAction): CliHilAutoAct
   }
 
   return value;
+}
+
+interface ParsedCliArgs {
+  initialPrompt: string;
+  resumeSessionId?: string;
+}
+
+function parseCliArgs(argv: string[]): ParsedCliArgs {
+  const rest: string[] = [];
+  let resumeSessionId: string | undefined;
+
+  for (let i = 0; i < argv.length; i++) {
+    const arg = argv[i]!;
+    if ((arg === '--resume' || arg === '-r') && i + 1 < argv.length) {
+      resumeSessionId = argv[++i]!.trim();
+    } else if (arg.startsWith('--resume=')) {
+      resumeSessionId = arg.slice('--resume='.length).trim();
+    } else {
+      rest.push(arg);
+    }
+  }
+
+  return {
+    initialPrompt: rest.join(' ').trim(),
+    resumeSessionId: resumeSessionId || undefined,
+  };
 }

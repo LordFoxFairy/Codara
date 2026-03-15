@@ -41,7 +41,7 @@ export function Transcript({coreMessages, notices, activeTurn, runtimeEvents}: T
   const items = buildTranscriptItems({coreMessages, notices, activeTurn, runtimeEvents});
 
   return (
-    <Box marginTop={1} flexDirection="column">
+    <Box flexDirection="column">
       {items.map((item) =>
         item.toolMeta ? (
           <ToolResultBlock key={item.id} meta={item.toolMeta} />
@@ -53,23 +53,30 @@ export function Transcript({coreMessages, notices, activeTurn, runtimeEvents}: T
   );
 }
 
+function getRolePrefix(role: TranscriptRole): { text: string; width: number } {
+  switch (role) {
+    case 'user': return { text: '> ', width: 2 };
+    case 'assistant': return { text: '', width: 0 };
+    default: return { text: `${ROLE_LABEL_MAP[role]} `, width: ROLE_LABEL_MAP[role].length + 1 };
+  }
+}
+
 function TranscriptBlock({role, content, renderHint}: {role: TranscriptRole; content: string; renderHint?: 'inline' | 'block'}): React.JSX.Element {
   const lines = content.split('\n');
-  const label = formatRoleLabel(role);
+  const prefix = getRolePrefix(role);
   const firstLine = lines[0] || '(empty)';
   const trailingLines = lines.slice(1);
   const isToolResult = role === 'tool' || role === 'task';
-
   // Tool results use └ tree connector style
   if (isToolResult && trailingLines.length > 0) {
     return (
       <Box marginBottom={1} flexDirection="column">
         <Box>
-          <Text color={ROLE_COLOR_MAP[role]}>{label}</Text>
+          <Text color={ROLE_COLOR_MAP[role]}>{prefix.text}</Text>
           <Text>{firstLine}</Text>
         </Box>
         {renderHint === 'block' ? (
-          <Box paddingLeft={label.length} flexDirection="column">
+          <Box paddingLeft={prefix.width} flexDirection="column">
             {trailingLines.map((line, index) => (
               <Text key={`${role}-${index}`} dimColor>
                 <Text color="gray">│ </Text>{line || ' '}
@@ -77,7 +84,7 @@ function TranscriptBlock({role, content, renderHint}: {role: TranscriptRole; con
             ))}
           </Box>
         ) : (
-          <Box paddingLeft={label.length} flexDirection="column">
+          <Box paddingLeft={prefix.width} flexDirection="column">
             {trailingLines.map((line, index) => (
               <Text key={`${role}-${index}`} dimColor>
                 {index === trailingLines.length - 1 ? '└ ' : '│ '}{line || ' '}
@@ -94,7 +101,7 @@ function TranscriptBlock({role, content, renderHint}: {role: TranscriptRole; con
     return (
       <Box marginBottom={1} flexDirection="column">
         <Box>
-          <Text color={ROLE_COLOR_MAP[role]}>{label}</Text>
+          <Text color={ROLE_COLOR_MAP[role]}>{prefix.text}</Text>
           <Text>{firstLine}</Text>
         </Box>
       </Box>
@@ -104,13 +111,13 @@ function TranscriptBlock({role, content, renderHint}: {role: TranscriptRole; con
   return (
     <Box marginBottom={1} flexDirection="column">
       <Box>
-        <Text color={ROLE_COLOR_MAP[role]}>{label}</Text>
+        <Text color={ROLE_COLOR_MAP[role]} bold={role === 'user'}>{prefix.text}</Text>
         <Text>{firstLine}</Text>
       </Box>
       {trailingLines.length > 0 ? (
-        <Box paddingLeft={label.length} flexDirection="column">
+        <Box paddingLeft={prefix.width} flexDirection="column">
           {trailingLines.map((line, index) => (
-            <Text key={`${role}-${index}`} dimColor>
+            <Text key={`${role}-${index}`}>
               {line || ' '}
             </Text>
           ))}
@@ -160,6 +167,3 @@ function ToolResultBlock({meta}: {meta: ToolResultMeta}): React.JSX.Element {
   );
 }
 
-function formatRoleLabel(role: TranscriptRole): string {
-  return `${ROLE_LABEL_MAP[role].padEnd(8)} `;
-}

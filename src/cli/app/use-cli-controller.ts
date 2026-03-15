@@ -221,13 +221,13 @@ export function useCliController(options: UseCliControllerOptions): CliControlle
       setActiveTurn((current) => current ? {...current, response: current.response + text} : current);
     }
 
-    const nextAgentState = await refreshCoreState();
-    if (!sawText && nextAgentState.status !== 'paused') {
+    if (!sawText) {
       setActiveTurn((current) => current ? {...current, response: '(no output)'} : current);
     }
 
-    setRunState(nextAgentState.status === 'paused' ? {status: 'paused'} : {status: 'done'});
     setActiveTurn(undefined);
+    const nextAgentState = await refreshCoreState();
+    setRunState(nextAgentState.status === 'paused' ? {status: 'paused'} : {status: 'done'});
   }, [codara, refreshCoreState]);
 
   const submitPrompt = useCallback(async (rawPrompt: string): Promise<void> => {

@@ -50,7 +50,7 @@ export const DEFAULT_TRANSCRIPT_LIMIT = 20;
 
 export function buildTranscriptItems(input: BuildTranscriptItemsInput): TranscriptItem[] {
   const toolLookup = createToolCallLookup(input.coreMessages);
-  const preferRuntimeSteps = (input.runtimeEvents?.length ?? 0) > 0;
+  const preferRuntimeSteps = (input.runtimeEvents?.length ?? 0) > 0 && input.activeTurn !== undefined;
   const items = [
     ...input.notices.map((notice) => ({
       id: notice.id,
@@ -72,7 +72,7 @@ export function buildTranscriptItems(input: BuildTranscriptItemsInput): Transcri
           },
         ]
       : []),
-    ...buildRuntimeEventItems(input.runtimeEvents ?? []),
+    ...(preferRuntimeSteps ? buildRuntimeEventItems(input.runtimeEvents ?? []) : []),
   ];
 
   return items
@@ -107,12 +107,17 @@ export function hasTranscriptContent(input: HasTranscriptContentInput): boolean 
 function buildRuntimeEventItems(events: readonly CodaraRuntimeEvent[]): TranscriptItem[] {
   const startEvents = new Map<string, CodaraRuntimeEvent>();
   const pairedEndIds = new Set<string>();
+  const taskToolIds = new Set<string>();
   const items: TranscriptItem[] = [];
 
-  // First pass: index start events by id
+  // First pass: index start events by id, identify Task tool calls
   for (const event of events) {
     if (event.phase === 'start') {
       startEvents.set(event.id, event);
+    }
+    // Task events have a parentId pointing to their parent tool event — mark those tool events
+    if (event.kind === 'task' && event.phase === 'start' && event.parentId) {
+      taskToolIds.add(event.parentId);
     }
   }
 
@@ -120,6 +125,33 @@ function buildRuntimeEventItems(events: readonly CodaraRuntimeEvent[]): Transcri
   for (const event of events) {
     if (event.kind === 'turn' || event.kind === 'model' || shouldHideRuntimeEvent(event)) {
       continue;
+    }
+
+    // Skip tool events that are the parent of a task event (task rendering replaces them)
+    if (event.kind === 'tool' && event.phase === 'end' && event.parentId && taskToolIds.has(event.parentId)) {
+      pairedEndIds.add(event.id);
+      continue;
+    }
+
+    // Task end event — pair with start, render Claude Code style
+    if (event.kind === 'task' && event.phase === 'end' && event.parentId) {
+      const startEvent = startEvents.get(event.parentId);
+      if (startEvent) {
+        pairedEndIds.add(event.id);
+        const taskName = extractTaskDisplayName(startEvent.label);
+        const elapsed = computeElapsedSeconds(startEvent.timestamp, event.timestamp);
+        const summary = event.status === 'error'
+          ? `Failed (${elapsed}s)`
+          : event.status === 'paused'
+            ? 'Waiting for review'
+            : `Done (${elapsed}s)`;
+        items.push({
+          id: startEvent.id,
+          role: 'task',
+          content: `⏺ ${taskName}\n  ⎿  ${summary}`,
+        });
+        continue;
+      }
     }
 
     // Tool end event — pair with start
@@ -143,8 +175,7 @@ function buildRuntimeEventItems(events: readonly CodaraRuntimeEvent[]): Transcri
     }
 
     // Skip start events that have been paired
-    if (event.phase === 'start' && event.kind === 'tool') {
-      // Will be rendered when the end event arrives; if no end event, show as running below
+    if (event.phase === 'start' && (event.kind === 'tool' || event.kind === 'task')) {
       continue;
     }
 
@@ -155,16 +186,35 @@ function buildRuntimeEventItems(events: readonly CodaraRuntimeEvent[]): Transcri
     });
   }
 
-  // Third pass: show unpaired tool start events as "running"
+  // Third pass: show unpaired start events as "running"
   for (const [id, startEvent] of startEvents) {
-    if (startEvent.kind !== 'tool' || shouldHideRuntimeEvent(startEvent)) {
+    if (shouldHideRuntimeEvent(startEvent)) {
       continue;
     }
-    // Check if this start event was paired with an end event
     const wasPaired = events.some(
-      (e) => e.phase === 'end' && e.parentId === id && e.kind === 'tool',
+      (e) => e.phase === 'end' && e.parentId === id && (e.kind === 'tool' || e.kind === 'task'),
     );
-    if (!wasPaired) {
+    if (wasPaired) {
+      continue;
+    }
+
+    // Unpaired task start → running task block
+    if (startEvent.kind === 'task') {
+      const taskName = extractTaskDisplayName(startEvent.label);
+      items.push({
+        id: startEvent.id,
+        role: 'task',
+        content: `⏺ ${taskName}\n  ⎿  Running…`,
+      });
+      continue;
+    }
+
+    // Unpaired tool start → skip if it's the parent of a running task (task rendering replaces it)
+    if (startEvent.kind === 'tool' && taskToolIds.has(id)) {
+      continue;
+    }
+
+    if (startEvent.kind === 'tool') {
       const rawToolName = startEvent.detail ?? '';
       const toolMeta = buildToolMetaRunning(rawToolName, startEvent);
       const content = toolMeta
@@ -180,6 +230,32 @@ function buildRuntimeEventItems(events: readonly CodaraRuntimeEvent[]): Transcri
   }
 
   return items;
+}
+
+function extractTaskDisplayName(label: string): string {
+  // "Delegating general-purpose: some long prompt\nwith newlines" → "general-purpose(some long prompt)"
+  const delegatingPrefix = 'Delegating ';
+  let text = label;
+  if (text.startsWith(delegatingPrefix)) {
+    text = text.slice(delegatingPrefix.length);
+  }
+  // Take only first line
+  const firstLine = text.split('\n')[0]!.trim();
+  // Split "type: description" → "type(description)"
+  const colonIndex = firstLine.indexOf(': ');
+  if (colonIndex > 0) {
+    const agentType = firstLine.slice(0, colonIndex);
+    const description = firstLine.slice(colonIndex + 2);
+    const shortDesc = description.length > 50 ? `${description.slice(0, 47)}...` : description;
+    return `${agentType}(${shortDesc})`;
+  }
+  return firstLine;
+}
+
+function computeElapsedSeconds(startTimestamp: string, endTimestamp: string): number {
+  const start = new Date(startTimestamp).getTime();
+  const end = new Date(endTimestamp).getTime();
+  return Math.round((end - start) / 1000);
 }
 
 const TOOL_META_MAX_LINES = 4;
@@ -257,6 +333,14 @@ function buildToolOutput(
       }
       const lines = truncateOutput(trimmed);
       return {summaryLine: lines.visible[0] ?? 'Done', outputLines: lines.visible.slice(1), totalOutputLines: lines.total};
+    }
+    case 'Task': {
+      if (!trimmed) {
+        return {summaryLine: 'Done'};
+      }
+      // Task delegation results are summaries of full subagent runs — show fully, no truncation
+      const taskLines = trimmed.split('\n');
+      return {summaryLine: taskLines[0] ?? 'Done', outputLines: taskLines.slice(1), totalOutputLines: taskLines.length};
     }
     default: {
       if (!trimmed) {
@@ -393,23 +477,8 @@ function buildAssistantItems(message: AIMessage, messageId: string, preferRuntim
     });
   }
 
-  if (preferRuntimeSteps) {
-    return items;
-  }
-
-  const toolCalls = Array.isArray(message.tool_calls) ? message.tool_calls : [];
-  if (toolCalls.length > 0) {
-    const visibleToolCalls = toolCalls.filter((toolCall) => !isInteractionToolName(toolCall.name));
-    if (visibleToolCalls.length === 0) {
-      return items;
-    }
-    items.push({
-      id: `${messageId}-tools`,
-      role: visibleToolCalls.every((toolCall) => isTaskToolName(toolCall.name)) ? 'task' : 'tool',
-      content: formatToolCallGroup(visibleToolCalls),
-    });
-  }
-
+  // Tool calls are rendered via ToolMessage results (buildToolResultItems)
+  // or via runtime events during streaming — no need to show them separately here.
   return items;
 }
 
