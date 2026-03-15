@@ -2,9 +2,10 @@ import {useEffect, useState} from 'react';
 import type {CodaraRuntimeEvent} from '@core';
 import type {CliActiveTurn, CliRunState} from '../app/view-state';
 
-const THINKING_FRAMES = ['✳ Thinking', '✳ Thinking.', '✳ Thinking..', '✳ Thinking...'];
-const RESPONDING_FRAMES = ['⏺ Responding', '⏺ Responding.', '⏺ Responding..', '⏺ Responding...'];
-const FRAME_INTERVAL_MS = 220;
+const BRAILLE_FRAMES = ['⠋', '⠙', '⠹', '⠸', '⠼', '⠴', '⠦', '⠧', '⠇', '⠏'] as const;
+const THINKING_FRAMES = BRAILLE_FRAMES.map((f) => `${f} Thinking...`);
+const RESPONDING_FRAMES = BRAILLE_FRAMES.map((f) => `${f} Responding...`);
+const FRAME_INTERVAL_MS = 80;
 
 export interface StatusIndicatorInput {
   runState: CliRunState;
@@ -59,8 +60,9 @@ export function describeStatusIndicator(input: StatusIndicatorInput, frame = 0):
       }
 
       if (activeEventLabel) {
+        const spinner = spinnerFrame(frame);
         return {
-          banner: `⏺ ${activeEventLabel}`,
+          banner: `${spinner} ${activeEventLabel}`,
           status: activeEventLabel,
           color: latestRuntimeEvent?.kind === 'command' || latestRuntimeEvent?.kind === 'summary'
             ? 'blueBright'
@@ -112,4 +114,8 @@ export function describeStatusIndicator(input: StatusIndicatorInput, frame = 0):
 function cycle(frames: readonly string[], frame: number): string {
   const normalized = ((frame % frames.length) + frames.length) % frames.length;
   return frames[normalized]!;
+}
+
+function spinnerFrame(frame: number): string {
+  return BRAILLE_FRAMES[((frame % BRAILLE_FRAMES.length) + BRAILLE_FRAMES.length) % BRAILLE_FRAMES.length]!;
 }

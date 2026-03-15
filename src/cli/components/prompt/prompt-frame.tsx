@@ -83,6 +83,7 @@ export function PromptFrame({
         );
       })}
       {viewport.hasOverflowBelow ? <Text dimColor>  ...</Text> : null}
+      <Text dimColor>{divider}</Text>
     </Box>
   );
 }

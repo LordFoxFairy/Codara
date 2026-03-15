@@ -11,6 +11,8 @@ export interface TranscriptItem {
   id: string;
   role: TranscriptRole;
   content: string;
+  /** Rendering hint: 'inline' for single-line, 'block' for multi-line with left border */
+  renderHint?: 'inline' | 'block';
 }
 
 export interface BuildTranscriptItemsInput {
@@ -238,11 +240,14 @@ function buildToolResultItems(
     return [];
   }
   const role: TranscriptRole = isTaskToolName(resolvedName) ? 'task' : 'tool';
+  const formattedContent = role === 'task' ? formatTaskResultText(text) : text;
+  const lineCount = formattedContent.split('\n').length;
 
   return [{
     id: messageId,
     role,
-    content: role === 'task' ? formatTaskResultText(text) : text,
+    content: formattedContent,
+    renderHint: lineCount > 3 ? 'block' : 'inline',
   }];
 }
 
@@ -308,13 +313,45 @@ function formatToolCallGroup(toolCalls: readonly ToolCall[]): string {
 
 function formatToolCall(toolCall: ToolCall): string {
   const name = toolCall.name || 'tool';
+  const icon = toolIcon(name);
   const summary = formatFriendlyToolSummary(name, toolCall.args);
   if (summary) {
-    return `${formatToolDisplayName(name)}(${summary})`;
+    return `${icon} ${formatToolDisplayName(name)}(${summary})`;
   }
 
   const args = formatToolCallArgs(name, toolCall.args);
-  return args ? `${formatToolDisplayName(name)}(${args})` : formatToolDisplayName(name);
+  return args ? `${icon} ${formatToolDisplayName(name)}(${args})` : `${icon} ${formatToolDisplayName(name)}`;
+}
+
+function toolIcon(toolName: string): string {
+  switch (toolName) {
+    case 'bash':
+      return '⚡';
+    case 'read_file':
+    case 'read':
+      return '→';
+    case 'write_file':
+    case 'write':
+      return '←';
+    case 'edit_file':
+    case 'edit':
+      return '●';
+    case 'glob':
+    case 'grep':
+      return '✱';
+    case 'fetch_url':
+    case 'fetch':
+      return '%';
+    case 'web_search':
+    case 'search':
+      return '◈';
+    case 'TaskCreate':
+    case 'TaskUpdate':
+    case 'TaskList':
+      return '│';
+    default:
+      return '⚙';
+  }
 }
 
 function formatToolCallArgs(toolName: string, args: unknown): string | undefined {

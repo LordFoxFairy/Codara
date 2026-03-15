@@ -42,17 +42,59 @@ export function Transcript({coreMessages, notices, activeTurn, runtimeEvents}: T
   return (
     <Box marginTop={1} flexDirection="column">
       {items.map((item) => (
-        <TranscriptBlock key={item.id} role={item.role} content={item.content} />
+        <TranscriptBlock key={item.id} role={item.role} content={item.content} renderHint={item.renderHint} />
       ))}
     </Box>
   );
 }
 
-function TranscriptBlock({role, content}: {role: TranscriptRole; content: string}): React.JSX.Element {
+function TranscriptBlock({role, content, renderHint}: {role: TranscriptRole; content: string; renderHint?: 'inline' | 'block'}): React.JSX.Element {
   const lines = content.split('\n');
   const label = formatRoleLabel(role);
   const firstLine = lines[0] || '(empty)';
   const trailingLines = lines.slice(1);
+  const isToolResult = role === 'tool' || role === 'task';
+
+  // Tool results use └ tree connector style
+  if (isToolResult && trailingLines.length > 0) {
+    return (
+      <Box marginBottom={1} flexDirection="column">
+        <Box>
+          <Text color={ROLE_COLOR_MAP[role]}>{label}</Text>
+          <Text>{firstLine}</Text>
+        </Box>
+        {renderHint === 'block' ? (
+          <Box paddingLeft={label.length} flexDirection="column">
+            {trailingLines.map((line, index) => (
+              <Text key={`${role}-${index}`} dimColor>
+                <Text color="gray">│ </Text>{line || ' '}
+              </Text>
+            ))}
+          </Box>
+        ) : (
+          <Box paddingLeft={label.length} flexDirection="column">
+            {trailingLines.map((line, index) => (
+              <Text key={`${role}-${index}`} dimColor>
+                {index === trailingLines.length - 1 ? '└ ' : '│ '}{line || ' '}
+              </Text>
+            ))}
+          </Box>
+        )}
+      </Box>
+    );
+  }
+
+  // Tool call headers (single line) get └ for result
+  if (isToolResult && trailingLines.length === 0) {
+    return (
+      <Box marginBottom={1} flexDirection="column">
+        <Box>
+          <Text color={ROLE_COLOR_MAP[role]}>{label}</Text>
+          <Text>{firstLine}</Text>
+        </Box>
+      </Box>
+    );
+  }
 
   return (
     <Box marginBottom={1} flexDirection="column">

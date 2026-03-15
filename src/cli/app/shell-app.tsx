@@ -1,5 +1,5 @@
-﻿import React, {useEffect} from 'react';
-import {Box, useApp} from 'ink';
+﻿import React, {useEffect, useRef} from 'react';
+import {Box, useApp, useStdout} from 'ink';
 import type {Codara} from '@core';
 import {Footer} from '../components/chrome/footer';
 import {Header} from '../components/chrome/header';
@@ -101,6 +101,18 @@ export function CodaraCliApp(props: CodaraCliAppProps): React.JSX.Element {
     onPermissionRejectSilent: shell.permissionRejectSilent,
   });
 
+  // 从 welcome 切换到 transcript 时清屏，避免布局跳跃残留
+  const {stdout} = useStdout();
+  const prevSurfaceRef = useRef(foregroundSurface);
+  useEffect(() => {
+    if (prevSurfaceRef.current === 'welcome' && foregroundSurface !== 'welcome') {
+      if (stdout.isTTY) {
+        process.stdout.write('\x1b[2J\x1b[3J\x1b[H');
+      }
+    }
+    prevSurfaceRef.current = foregroundSurface;
+  }, [foregroundSurface, stdout.isTTY]);
+
   useEffect(() => {
     if (
       !autoExitOnSettledPrompt
@@ -119,16 +131,32 @@ export function CodaraCliApp(props: CodaraCliAppProps): React.JSX.Element {
 
   return (
     <Box flexDirection="column" paddingX={1} paddingY={1}>
-      <Header
-        layoutMode={layoutMode}
-        session={shell.sessionState}
-        cwd={cwd}
-        modelAlias={modelAlias}
-        runState={shell.runState}
-        latestRuntimeEvent={shell.latestRuntimeEvent}
-      />
-      {foregroundSurface === 'transcript' || foregroundSurface === 'hil' ? (
+      {foregroundSurface === 'welcome' ? (
         <>
+          <WelcomeState layoutMode={layoutMode} cwd={cwd} modelAlias={modelAlias} />
+          <ActivityLine
+            runState={shell.runState}
+            activeTurn={shell.activeTurn}
+            latestRuntimeEvent={shell.latestRuntimeEvent}
+          />
+          <PromptFrame
+            terminalWidth={terminalWidth}
+            composer={shell.composer}
+            cursorActivityVersion={shell.composerActivityVersion}
+            isRunning={shell.runState.status === 'running'}
+          />
+          <Footer layoutMode={layoutMode} />
+        </>
+      ) : (
+        <>
+          <Header
+            layoutMode={layoutMode}
+            session={shell.sessionState}
+            cwd={cwd}
+            modelAlias={modelAlias}
+            runState={shell.runState}
+            latestRuntimeEvent={shell.latestRuntimeEvent}
+          />
           <Transcript
             coreMessages={shell.coreMessages}
             notices={shell.notices}
@@ -153,22 +181,6 @@ export function CodaraCliApp(props: CodaraCliAppProps): React.JSX.Element {
               <Footer layoutMode={layoutMode} />
             </>
           )}
-        </>
-      ) : (
-        <>
-          <WelcomeState layoutMode={layoutMode} />
-          <ActivityLine
-            runState={shell.runState}
-            activeTurn={shell.activeTurn}
-            latestRuntimeEvent={shell.latestRuntimeEvent}
-          />
-          <PromptFrame
-            terminalWidth={terminalWidth}
-            composer={shell.composer}
-            cursorActivityVersion={shell.composerActivityVersion}
-            isRunning={shell.runState.status === 'running'}
-          />
-          <Footer layoutMode={layoutMode} />
         </>
       )}
     </Box>
