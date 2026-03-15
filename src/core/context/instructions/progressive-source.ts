@@ -17,6 +17,7 @@ export interface ProgressiveInstructionSourceOptions extends ProgressiveInstruct
   title: string;
   lead: string;
   globalFileName?: string;
+  userProjectFiles?: string[];
   projectFileResolver(directory: string): string;
   blockTitle(filePath: string): string;
   maxImportDepth?: number;
@@ -37,6 +38,7 @@ export class SessionScopedProgressiveInstructionSource implements ProgressiveIns
       projectRoot,
       cwd,
       globalFileName: options.globalFileName,
+      userProjectFiles: options.userProjectFiles,
       projectFileResolver: options.projectFileResolver,
     });
   }
@@ -198,11 +200,15 @@ function discoverStartupFiles(input: {
   projectRoot: string;
   cwd: string;
   globalFileName?: string;
+  userProjectFiles?: string[];
   projectFileResolver(directory: string): string;
 }): string[] {
   const files: string[] = [];
   if (input.globalFileName) {
     files.push(path.join(input.userHome, '.codara', input.globalFileName));
+  }
+  if (input.userProjectFiles) {
+    files.push(...input.userProjectFiles);
   }
   files.push(...discoverProjectFiles(input.cwd, input.projectRoot, input.projectFileResolver));
   return uniqueResolvedPaths(files);
