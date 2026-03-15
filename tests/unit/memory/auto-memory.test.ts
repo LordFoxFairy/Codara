@@ -8,7 +8,7 @@ import {
   createAutoMemoryRuntime,
   resolveAutoMemoryRoot,
   shouldRecordAutoMemoryTurn,
-} from '@core/context/memory/auto-memory';
+} from '@infra/context/memory/auto-memory';
 
 describe('auto memory runtime', () => {
   it('resolves the memory root globally by default and lets project settings override user settings', async () => {
@@ -65,7 +65,7 @@ describe('auto memory runtime', () => {
     expect(existsSync(path.join(rootDir, 'MEMORY.md'))).toBe(true);
 
     const index = await readFile(path.join(rootDir, 'MEMORY.md'), 'utf8');
-    expect(index).toContain('# Auto Memory');
+    expect(index).toContain('# Codara');
     expect(index).toContain('Fix lint errors in src/app.ts');
 
     const topicsDir = path.join(rootDir, 'topics');
@@ -76,6 +76,105 @@ describe('auto memory runtime', () => {
     expect(topicContent).toContain('## Prompt');
     expect(topicContent).toContain('Fix lint errors in src/app.ts');
     expect(topicContent).toContain('## Outcome');
+    expect(topicContent).toContain('fingerprint:');
+    expect(topicContent).toContain('type: project');
+    expect(index).toContain('Updated ');
+  });
+
+  it('merges repeated similar memories into the same topic file', async () => {
+    const rootDir = await mkdtemp(path.join(tmpdir(), 'codara-auto-memory-merge-'));
+    const runtime = createAutoMemoryRuntime({rootDir});
+
+    await runtime.recordTurn({
+      previousMessages: [],
+      nextMessages: [
+        new HumanMessage('Document the lint workflow for src/app.ts'),
+        new AIMessage({
+          content: 'Explained the lint workflow and updated src/app.ts conventions.',
+          tool_calls: [{id: 'call_1', name: 'read_file', args: {file_path: 'src/app.ts'}}],
+        }),
+      ],
+      sessionId: 'session-one',
+    });
+
+    await runtime.recordTurn({
+      previousMessages: [],
+      nextMessages: [
+        new HumanMessage('Document the lint workflow for src/app.ts'),
+        new AIMessage({
+          content: 'Expanded the guidance with the final import-order expectations.',
+          tool_calls: [{id: 'call_2', name: 'read_file', args: {file_path: 'src/app.ts'}}],
+        }),
+      ],
+      sessionId: 'session-two',
+    });
+
+    const topicsDir = path.join(rootDir, 'topics');
+    const topics = await readdir(topicsDir);
+    expect(topics.length).toBe(1);
+
+    const topicContent = await readFile(path.join(topicsDir, topics[0]), 'utf8');
+    expect(topicContent).toContain('Expanded the guidance with the final import-order expectations.');
+    expect(topicContent).toContain('## Earlier Notes');
+    expect(topicContent).toContain('Explained the lint workflow and updated src/app.ts conventions.');
+    const index = await readFile(path.join(rootDir, 'MEMORY.md'), 'utf8');
+    expect(index).toContain('## Project');
+    expect(index).toContain('Work on src');
+  });
+
+  it('merges different prompts that work on the same area into one topic cluster', async () => {
+    const rootDir = await mkdtemp(path.join(tmpdir(), 'codara-auto-memory-area-'));
+    const runtime = createAutoMemoryRuntime({rootDir});
+
+    await runtime.recordTurn({
+      previousMessages: [],
+      nextMessages: [
+        new HumanMessage('Investigate the refund workflow'),
+        new AIMessage({
+          content: 'Reviewed the refund edge cases in payments.',
+          tool_calls: [{id: 'call_1', name: 'read_file', args: {file_path: 'src/payments/refund.ts'}}],
+        }),
+      ],
+      sessionId: 'session-payments-1',
+    });
+
+    await runtime.recordTurn({
+      previousMessages: [],
+      nextMessages: [
+        new HumanMessage('Update chargeback handling'),
+        new AIMessage({
+          content: 'Adjusted the chargeback notes in the same payments area.',
+          tool_calls: [{id: 'call_2', name: 'read_file', args: {file_path: 'src/payments/chargeback.ts'}}],
+        }),
+      ],
+      sessionId: 'session-payments-2',
+    });
+
+    const topicsDir = path.join(rootDir, 'topics');
+    const topics = await readdir(topicsDir);
+    expect(topics.length).toBe(1);
+
+    const topicContent = await readFile(path.join(topicsDir, topics[0]), 'utf8');
+    expect(topicContent).toContain('area: src/payments');
+    expect(topicContent).toContain('src/payments/refund.ts');
+    expect(topicContent).toContain('src/payments/chargeback.ts');
+  });
+
+  it('skips low-signal successful turns that do not produce meaningful memory', async () => {
+    const rootDir = await mkdtemp(path.join(tmpdir(), 'codara-auto-memory-low-signal-'));
+    const runtime = createAutoMemoryRuntime({rootDir});
+
+    const recorded = await runtime.recordTurn({
+      previousMessages: [],
+      nextMessages: [
+        new HumanMessage('thanks'),
+        new AIMessage('Done.'),
+      ],
+      sessionId: 'session-low-signal',
+    });
+
+    expect(recorded).toBe(false);
+    expect(existsSync(path.join(rootDir, 'MEMORY.md'))).toBe(false);
   });
 
   it('skips persistence for non-main, paused, or failed turns', async () => {

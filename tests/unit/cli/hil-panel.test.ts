@@ -102,6 +102,11 @@ describe('HIL panel model', () => {
           toolName: 'Bash',
           toolArgs: {command: 'touch guarded.txt'},
         },
+        metadata: {
+          permissionPolicy: {
+            reason: 'Needs approval because no allow rule covers touch guarded.txt.',
+          },
+        },
         review: {
           actionName: 'Bash',
           allowedDecisions: ['approve', 'reject'],
@@ -142,7 +147,7 @@ describe('HIL panel model', () => {
     expect(model.actions[0]?.label).toBe('Yes');
     expect(model.actions[1]?.label).toBe("Yes, don't ask again");
     expect(model.actions[2]?.label).toBe('No');
-    expect(model.compactActions).toBe(true);
+    expect(model.compactActions).toBeUndefined();
     expect(model.input).toBeUndefined();
   });
 });

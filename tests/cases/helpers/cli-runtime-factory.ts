@@ -10,14 +10,14 @@ import {
   ensurePermissionSettingsFile,
   persistPermissionRule,
   type Codara,
-} from '@core';
+} from '@/index';
 import {
   createAskUserTool,
   createInteractionMiddleware,
   createPermissionMiddleware,
   createSkillsMiddleware,
   parseAskUserResult,
-} from '@core/middleware';
+} from '@engine/pipeline';
 import {
   createSharedTaskMiddleware,
   createTaskCreateTool,
@@ -28,12 +28,12 @@ import {
   TASK_CREATE_TOOL_NAME,
   TASK_LIST_TOOL_NAME,
   TASK_TOOL_NAME,
-} from '@core/tasks';
-import {createTaskTool} from '@core/tasks/task';
-import {FileSystemSkillStore} from '@core/skills';
+} from '@capability/task';
+import {createTaskTool} from '@capability/task/task';
+import {FileSystemSkillStore} from '@capability/skill';
 import {seedProjectSkillFixtures} from '../../helpers/project-skill-fixtures';
 
-const createCliCaseRuntime = (options: Parameters<typeof createCodaraRuntime>[0]) => (
+const createCliCaseRuntime = async (options: Parameters<typeof createCodaraRuntime>[0]) => (
   createCodaraRuntime({
     ...options,
     autoMemory: false,
@@ -54,7 +54,7 @@ export async function createCliRuntime(input: {
       await seedProjectSkillFixtures(input.cwd);
       await seedPermissions(input.cwd, ['Read(*)']);
       return {
-        codara: createCliCaseRuntime({
+        codara: await createCliCaseRuntime({
           cwd: input.cwd,
           projectRoot: input.cwd,
           codaraPath: path.join(input.cwd, '.codara'),
@@ -76,7 +76,7 @@ export async function createCliRuntime(input: {
       await seedProjectSkillFixtures(input.cwd);
       const store = createTaskFileStore({rootDir: path.join(input.cwd, '.codara', 'case-tasks')});
       return {
-        codara: createCliCaseRuntime({
+        codara: await createCliCaseRuntime({
           cwd: input.cwd,
           projectRoot: input.cwd,
           codaraPath: path.join(input.cwd, '.codara'),
@@ -124,7 +124,7 @@ export async function createCliRuntime(input: {
     }
     case 'prompt-manual-inheritance':
       return {
-        codara: createCodaraRuntime({
+        codara: await createCodaraRuntime({
           cwd: input.cwd,
           projectRoot: input.cwd,
           codaraPath: path.join(input.cwd, '.codara'),
@@ -150,7 +150,7 @@ export async function createCliRuntime(input: {
       const store = createTaskFileStore({rootDir: path.join(input.cwd, '.codara', 'case-tasks')});
       const childModel = new CoordinatedSubagentModel();
       return {
-        codara: createCodaraRuntime({
+        codara: await createCodaraRuntime({
           cwd: input.cwd,
           projectRoot: input.cwd,
           codaraPath: path.join(input.cwd, '.codara'),
@@ -237,7 +237,7 @@ export async function createCliRuntime(input: {
     }
     case 'runtime-permission':
       return {
-        codara: createCodaraRuntime({
+        codara: await createCodaraRuntime({
           cwd: input.cwd,
           projectRoot: input.cwd,
           codaraPath: path.join(input.cwd, '.codara'),
@@ -250,7 +250,7 @@ export async function createCliRuntime(input: {
       };
     case 'runtime-git-status':
       return {
-        codara: createCodaraRuntime({
+        codara: await createCodaraRuntime({
           cwd: input.cwd,
           projectRoot: input.cwd,
           codaraPath: path.join(input.cwd, '.codara'),
@@ -261,9 +261,77 @@ export async function createCliRuntime(input: {
           skills: false,
         }),
       };
+    case 'runtime-git-status-wrapper':
+      return {
+        codara: await createCodaraRuntime({
+          cwd: input.cwd,
+          projectRoot: input.cwd,
+          codaraPath: path.join(input.cwd, '.codara'),
+          ...(input.sessionId ? {sessionId: input.sessionId} : {}),
+          model: new PermissionRuntimeCliModel('bash -lc "git status"', 'RUNTIME_GIT_STATUS_WRAPPER_DONE') as unknown as BaseChatModel,
+          tools: [createPermissionBashTool()],
+          builtinTools: false,
+          skills: false,
+        }),
+      };
+    case 'runtime-git-log-option':
+      return {
+        codara: await createCodaraRuntime({
+          cwd: input.cwd,
+          projectRoot: input.cwd,
+          codaraPath: path.join(input.cwd, '.codara'),
+          ...(input.sessionId ? {sessionId: input.sessionId} : {}),
+          model: new PermissionRuntimeCliModel('git -C ./tmp/repo log --oneline', 'RUNTIME_GIT_LOG_OPTION_DONE') as unknown as BaseChatModel,
+          tools: [createPermissionBashTool()],
+          builtinTools: false,
+          skills: false,
+        }),
+      };
+    case 'runtime-git-compound':
+      return {
+        codara: await createCodaraRuntime({
+          cwd: input.cwd,
+          projectRoot: input.cwd,
+          codaraPath: path.join(input.cwd, '.codara'),
+          ...(input.sessionId ? {sessionId: input.sessionId} : {}),
+          model: new PermissionRuntimeCliModel(
+            'cd ./tmp/repo && git fetch origin && git push origin main',
+            'RUNTIME_GIT_COMPOUND_DONE',
+          ) as unknown as BaseChatModel,
+          tools: [createPermissionBashTool()],
+          builtinTools: false,
+          skills: false,
+        }),
+      };
+    case 'runtime-git-push':
+      return {
+        codara: await createCodaraRuntime({
+          cwd: input.cwd,
+          projectRoot: input.cwd,
+          codaraPath: path.join(input.cwd, '.codara'),
+          ...(input.sessionId ? {sessionId: input.sessionId} : {}),
+          model: new PermissionRuntimeCliModel('git push origin main', 'RUNTIME_GIT_PUSH_DONE') as unknown as BaseChatModel,
+          tools: [createPermissionBashTool()],
+          builtinTools: false,
+          skills: false,
+        }),
+      };
+    case 'runtime-write-permission':
+      return {
+        codara: await createCodaraRuntime({
+          cwd: input.cwd,
+          projectRoot: input.cwd,
+          codaraPath: path.join(input.cwd, '.codara'),
+          ...(input.sessionId ? {sessionId: input.sessionId} : {}),
+          model: new FilePermissionRuntimeCliModel('tmp/demo2/PLAN.md', 'RUNTIME_WRITE_PERMISSION_DONE') as unknown as BaseChatModel,
+          tools: [createPermissionWriteTool()],
+          builtinTools: false,
+          skills: false,
+        }),
+      };
     case 'runtime-permission-other':
       return {
-        codara: createCodaraRuntime({
+        codara: await createCodaraRuntime({
           cwd: input.cwd,
           projectRoot: input.cwd,
           codaraPath: path.join(input.cwd, '.codara'),
@@ -274,9 +342,83 @@ export async function createCliRuntime(input: {
           skills: false,
         }),
       };
+    case 'runtime-permission-mkdir-path':
+      return {
+        codara: await createCodaraRuntime({
+          cwd: input.cwd,
+          projectRoot: input.cwd,
+          codaraPath: path.join(input.cwd, '.codara'),
+          ...(input.sessionId ? {sessionId: input.sessionId} : {}),
+          model: new PermissionRuntimeCliModel('mkdir tmp/demo2', 'RUNTIME_PERMISSION_MKDIR_PATH_DONE') as unknown as BaseChatModel,
+          tools: [createPermissionBashTool()],
+          builtinTools: false,
+          skills: false,
+        }),
+      };
+    case 'runtime-permission-mkdir-path-other':
+      return {
+        codara: await createCodaraRuntime({
+          cwd: input.cwd,
+          projectRoot: input.cwd,
+          codaraPath: path.join(input.cwd, '.codara'),
+          ...(input.sessionId ? {sessionId: input.sessionId} : {}),
+          model: new PermissionRuntimeCliModel('mkdir tmp/demo3', 'RUNTIME_PERMISSION_MKDIR_PATH_OTHER_DONE') as unknown as BaseChatModel,
+          tools: [createPermissionBashTool()],
+          builtinTools: false,
+          skills: false,
+        }),
+      };
+    case 'runtime-permission-heredoc-path':
+      return {
+        codara: await createCodaraRuntime({
+          cwd: input.cwd,
+          projectRoot: input.cwd,
+          codaraPath: path.join(input.cwd, '.codara'),
+          ...(input.sessionId ? {sessionId: input.sessionId} : {}),
+          model: new PermissionRuntimeCliModel(
+            `cat <<'EOF' > tmp/demo2/PLAN.md\nhello\nEOF`,
+            'RUNTIME_PERMISSION_HEREDOC_PATH_DONE',
+          ) as unknown as BaseChatModel,
+          tools: [createPermissionBashTool()],
+          builtinTools: false,
+          skills: false,
+        }),
+      };
+    case 'runtime-permission-heredoc-path-other':
+      return {
+        codara: await createCodaraRuntime({
+          cwd: input.cwd,
+          projectRoot: input.cwd,
+          codaraPath: path.join(input.cwd, '.codara'),
+          ...(input.sessionId ? {sessionId: input.sessionId} : {}),
+          model: new PermissionRuntimeCliModel(
+            'touch tmp/demo2/README.md',
+            'RUNTIME_PERMISSION_HEREDOC_PATH_OTHER_DONE',
+          ) as unknown as BaseChatModel,
+          tools: [createPermissionBashTool()],
+          builtinTools: false,
+          skills: false,
+        }),
+      };
+    case 'runtime-permission-complex-path':
+      return {
+        codara: await createCodaraRuntime({
+          cwd: input.cwd,
+          projectRoot: input.cwd,
+          codaraPath: path.join(input.cwd, '.codara'),
+          ...(input.sessionId ? {sessionId: input.sessionId} : {}),
+          model: new PermissionRuntimeCliModel(
+            'cat README.md | tee tmp/demo2/PLAN.md >/dev/null',
+            'RUNTIME_PERMISSION_COMPLEX_PATH_DONE',
+          ) as unknown as BaseChatModel,
+          tools: [createPermissionBashTool()],
+          builtinTools: false,
+          skills: false,
+        }),
+      };
     case 'subagent-permission':
       return {
-        codara: createCodaraRuntime({
+        codara: await createCodaraRuntime({
           cwd: input.cwd,
           projectRoot: input.cwd,
           codaraPath: path.join(input.cwd, '.codara'),
@@ -299,7 +441,7 @@ export async function createCliRuntime(input: {
       };
     case 'runtime-permission-repair':
       return {
-        codara: createCodaraRuntime({
+        codara: await createCodaraRuntime({
           cwd: input.cwd,
           projectRoot: input.cwd,
           codaraPath: path.join(input.cwd, '.codara'),
@@ -311,7 +453,7 @@ export async function createCliRuntime(input: {
       };
     case 'hil-form':
       return {
-        codara: createCodaraRuntime({
+        codara: await createCodaraRuntime({
           cwd: input.cwd,
           projectRoot: input.cwd,
           codaraPath: path.join(input.cwd, '.codara'),
@@ -328,7 +470,7 @@ export async function createCliRuntime(input: {
       };
     case 'memory-project':
       return {
-        codara: createCodaraRuntime({
+        codara: await createCodaraRuntime({
           cwd: input.cwd,
           projectRoot: input.cwd,
           codaraPath: path.join(input.cwd, '.codara'),
@@ -340,7 +482,7 @@ export async function createCliRuntime(input: {
       };
     case 'progressive-disclosure':
       return {
-        codara: createCodaraRuntime({
+        codara: await createCodaraRuntime({
           cwd: input.cwd,
           projectRoot: input.cwd,
           codaraPath: path.join(input.cwd, '.codara'),
@@ -353,7 +495,7 @@ export async function createCliRuntime(input: {
       };
     case 'command-surface':
       return {
-        codara: createCodaraRuntime({
+        codara: await createCodaraRuntime({
           cwd: input.cwd,
           projectRoot: input.cwd,
           codaraPath: path.join(input.cwd, '.codara'),
@@ -365,7 +507,7 @@ export async function createCliRuntime(input: {
       };
     case 'command-surface-skill-help':
       return {
-        codara: createCodaraRuntime({
+        codara: await createCodaraRuntime({
           cwd: input.cwd,
           projectRoot: input.cwd,
           codaraPath: path.join(input.cwd, '.codara'),
@@ -379,7 +521,7 @@ export async function createCliRuntime(input: {
       };
     case 'plugin-install':
       return {
-        codara: createCodaraRuntime({
+        codara: await createCodaraRuntime({
           cwd: input.cwd,
           projectRoot: input.cwd,
           codaraPath: path.join(input.cwd, '.codara'),
@@ -391,7 +533,7 @@ export async function createCliRuntime(input: {
       };
     case 'skill-command-preflight-missing-tool':
       return {
-        codara: createCodaraRuntime({
+        codara: await createCodaraRuntime({
           cwd: input.cwd,
           projectRoot: input.cwd,
           codaraPath: path.join(input.cwd, '.codara'),
@@ -405,7 +547,7 @@ export async function createCliRuntime(input: {
       };
     case 'skill-command-preflight-missing-binary':
       return {
-        codara: createCodaraRuntime({
+        codara: await createCodaraRuntime({
           cwd: input.cwd,
           projectRoot: input.cwd,
           codaraPath: path.join(input.cwd, '.codara'),
@@ -419,7 +561,7 @@ export async function createCliRuntime(input: {
       };
     case 'default-runtime-workflow':
       return {
-        codara: createCodaraRuntime({
+        codara: await createCodaraRuntime({
           cwd: input.cwd,
           projectRoot: input.cwd,
           codaraPath: path.join(input.cwd, '.codara'),
@@ -541,7 +683,7 @@ class ProgressiveDisclosureCliModel {
       .map((message) => stringifyMessage(message.content))
       .join('\n');
 
-    return new AIMessage(`PROGRESSIVE_DISCLOSURE_DONE:${runtimeInstructionText.includes('APP_RULE') && !systemText.includes('APP_RULE')}`);
+    return new AIMessage(`PROGRESSIVE_DISCLOSURE_DONE:${runtimeInstructionText.includes('APP_RULE') || systemText.includes('APP_RULE')}`);
   }
 
   bindTools(_tools: StructuredToolInterface[]): this {
@@ -581,6 +723,9 @@ class PermissionRuntimeCliModel {
 
   async invoke(messages: BaseMessage[]): Promise<AIMessage> {
     const text = messages.map((message) => stringifyMessage(message.content)).join('\n');
+    if (text.includes('Analyze this bash command for permission review.')) {
+      return new AIMessage(JSON.stringify(buildPermissionClassifierResponse(this.command)));
+    }
     if (text.includes(`executed:${this.command}`)) {
       return new AIMessage(this.doneMessage);
     }
@@ -588,6 +733,56 @@ class PermissionRuntimeCliModel {
     return new AIMessage({
       content: '',
       tool_calls: [{id: 'call_runtime_permission', name: 'bash', args: {command: this.command}} as ToolCall],
+    });
+  }
+
+  bindTools(): this {
+    return this;
+  }
+}
+
+function buildPermissionClassifierResponse(command: string): {
+  reason: string | null;
+  pathScopeExpression: string | null;
+  toolScopeExpression: string | null;
+} {
+  if (command.includes('tee tmp/demo2/PLAN.md')) {
+    return {
+      reason: 'Needs approval because this compound command writes under tmp/demo2/.',
+      pathScopeExpression: 'Write(tmp/demo2/)',
+      toolScopeExpression: null,
+    };
+  }
+
+  return {
+    reason: null,
+    pathScopeExpression: null,
+    toolScopeExpression: null,
+  };
+}
+
+class FilePermissionRuntimeCliModel {
+  constructor(
+    private readonly filePath: string,
+    private readonly doneMessage: string,
+  ) {}
+
+  async invoke(messages: BaseMessage[]): Promise<AIMessage> {
+    const text = messages.map((message) => stringifyMessage(message.content)).join('\n');
+    if (text.includes(`written:${this.filePath}`)) {
+      return new AIMessage(this.doneMessage);
+    }
+
+    return new AIMessage({
+      content: '',
+      tool_calls: [{
+        id: 'call_runtime_write_permission',
+        name: 'write_file',
+        args: {
+          file_path: this.filePath,
+          content: '# Planned demo\n',
+        },
+      } as ToolCall],
     });
   }
 
@@ -901,6 +1096,20 @@ function createPermissionBashTool() {
       name: 'bash',
       description: 'Execute shell command',
       schema: z.object({command: z.string()}),
+    },
+  );
+}
+
+function createPermissionWriteTool() {
+  return tool(
+    async ({file_path: filePath, content}: {file_path: string; content: string}) => `written:${filePath}:${content.length}`,
+    {
+      name: 'write_file',
+      description: 'Write a file for permission runtime tests',
+      schema: z.object({
+        file_path: z.string(),
+        content: z.string(),
+      }),
     },
   );
 }

@@ -6,7 +6,7 @@ interface HilPanelProps {
   review: CliHilReviewState;
 }
 
-type HilPanelTone = 'yellow' | 'cyan' | 'magenta';
+type HilPanelTone = 'yellow' | 'cyan' | 'magenta' | 'red';
 
 interface HilPanelOptionLine {
   label: string;
@@ -29,8 +29,9 @@ interface HilPanelInputSection {
 
 export interface HilPanelModel {
   title: string;
-  badge: string;
+  badge?: string;
   tone: HilPanelTone;
+  chrome?: 'boxed' | 'plain';
   summary: string[];
   meta?: string;
   tabsLine?: string;
@@ -41,6 +42,7 @@ export interface HilPanelModel {
   input?: HilPanelInputSection;
   hint: string;
   status?: string;
+  actionDetail?: string;
 }
 
 export function HilPanel({review}: HilPanelProps): React.JSX.Element {
@@ -51,19 +53,30 @@ export function HilPanel({review}: HilPanelProps): React.JSX.Element {
       <Box flexDirection="column" paddingX={1}>
         <Text color={model.tone} bold>{model.title}</Text>
         {model.meta ? <Text dimColor wrap="truncate-end">{model.meta}</Text> : null}
-        <Box marginTop={1}>
-          <Text dimColor>{'  '}</Text>
-          <Text>
+        {model.summary.length > 0 ? (
+          <Box flexDirection="column">
+            {model.summary.map((line, index) => (
+              <Text key={`summary-${index}`}>{line}</Text>
+            ))}
+          </Box>
+        ) : null}
+        {model.options.length > 0 ? (
+          <Box flexDirection="column" paddingLeft={1}>
+            {model.options.map((option, index) => (
+              <Text key={`option-${index}`} dimColor>{option.label}</Text>
+            ))}
+          </Box>
+        ) : null}
+        {model.actions.length > 0 ? (
+          <Box marginTop={1} flexDirection="column">
             {model.actions.map((action, index) => (
-              <Text key={`action-${index}`}>
-                {index > 0 ? <Text dimColor>{'  '}</Text> : null}
-                <Text color={resolveActionColor(action)} bold={action.selected}>
-                  {formatPermissionShortcut(action)}
-                </Text>
+              <Text key={`action-${index}`} color={resolveActionColor(action)}>
+                {`${action.selected ? '❯' : ' '} ${formatPermissionShortcut(action)}`}
               </Text>
             ))}
-          </Text>
-        </Box>
+          </Box>
+        ) : null}
+        {model.hint ? <Text dimColor>{model.hint}</Text> : null}
         {model.status ? <Text color={model.tone}>{model.status}</Text> : null}
       </Box>
     );
@@ -73,7 +86,7 @@ export function HilPanel({review}: HilPanelProps): React.JSX.Element {
     <Box marginTop={1} flexDirection="column" borderStyle="single" borderColor={model.tone} paddingX={1}>
       <Box>
         <Text color={model.tone}>{model.title}</Text>
-        <Text dimColor>{` · ${model.badge}`}</Text>
+        {model.badge ? <Text dimColor>{` · ${model.badge}`}</Text> : null}
       </Box>
 
       {model.summary.map((line, index) => (
@@ -111,14 +124,15 @@ export function HilPanel({review}: HilPanelProps): React.JSX.Element {
         ) : (
           <Box marginTop={model.options.length > 0 ? 1 : 0} flexDirection="column">
             {model.actions.map((action, index) => (
-              <Box key={`action-${index}`} flexDirection="column">
-                <Text color={resolveActionColor(action)}>{`${action.selected ? '›' : ' '} ${action.label}`}</Text>
-                {action.description ? <Text dimColor>{`  ${action.description}`}</Text> : null}
-              </Box>
+              <Text key={`action-${index}`} color={resolveActionColor(action)}>
+                {`${action.selected ? '❯' : ' '} ${index + 1}. ${action.label}`}
+              </Text>
             ))}
           </Box>
         )
       ) : null}
+
+      {model.actionDetail ? <Text dimColor>{model.actionDetail}</Text> : null}
 
       {model.input ? (
         <Box marginTop={1} flexDirection="column">
@@ -170,22 +184,73 @@ export function describeHilPanel(review: CliHilReviewState): HilPanelModel {
     options: [],
     actions: review.actions.map((action, index) => ({
       label: describeActionLabel(action),
-      ...(action.description ? {description: action.description} : {}),
       selected: index === review.selectedActionIndex,
       kind: action.kind,
     })),
-    input: {
-      label: selectedAction?.requiresToolEdit ? 'Edited tool args JSON' : 'Note',
-      value: review.draft,
-      focused: review.focus === 'input',
-      style: 'box',
-    },
-    hint: 'Tab focus · Up/Down select · Enter submit · Shift+Enter newline',
+    ...(selectedAction?.description ? {actionDetail: selectedAction.description} : {}),
+    ...(selectedAction?.requiresToolEdit || review.focus === 'input' || review.draft.trim()
+      ? {
+          input: {
+            label: selectedAction?.requiresToolEdit ? 'Edited tool args JSON' : 'Note',
+            value: review.draft,
+            focused: review.focus === 'input',
+            style: 'box',
+          },
+        }
+      : {}),
+    hint: selectedAction?.requiresToolEdit
+      ? 'Tab focus · Up/Down select · Enter submit · Shift+Enter newline'
+      : 'Tab focus · Up/Down select · Enter submit · Shift+Enter newline',
     ...(review.busy ? {status: 'Applying review decision...'} : {}),
   };
 }
 
 function describePermissionPanel(review: CliHilReviewState): HilPanelModel {
+  const stage = review.permissionStage ?? 'prompt';
+
+  // Stage 2: Always-confirm — Claude Code style: show all patterns, Confirm/Cancel
+  if (stage === 'always-confirm') {
+    const patterns = review.permissionAlwaysPatterns ?? [];
+    return {
+      title: 'Always allow',
+      badge: 'permission',
+      tone: 'cyan',
+      summary: patterns.length === 1 && patterns[0] === '*'
+        ? ['This will allow the permission until Codara is restarted.']
+        : ['This will allow the following patterns until Codara is restarted'],
+      options: patterns.length === 1 && patterns[0] === '*'
+        ? []
+        : patterns.map((pattern) => ({label: `- ${pattern}`})),
+      actions: [
+        {label: 'Confirm', selected: review.selectedActionIndex === 0, kind: 'primary' as const},
+        {label: 'Cancel', selected: review.selectedActionIndex === 1, kind: 'secondary' as const},
+      ],
+      hint: 'Enter confirm · Esc cancel',
+      ...(review.busy ? {status: 'Running...'} : {}),
+    };
+  }
+
+  // Stage 3: Reject-feedback — show text input
+  if (stage === 'reject-feedback') {
+    return {
+      title: 'Rejection feedback (optional):',
+      badge: 'permission',
+      tone: 'red',
+      summary: [],
+      options: [],
+      actions: [],
+      input: {
+        label: 'Reason',
+        value: review.draft,
+        focused: true,
+        style: 'inline',
+      },
+      hint: 'Enter send · Esc reject silently',
+      ...(review.busy ? {status: 'Running...'} : {}),
+    };
+  }
+
+  // Stage 1: Main prompt
   return {
     title: review.request.description,
     badge: 'permission',
@@ -198,20 +263,19 @@ function describePermissionPanel(review: CliHilReviewState): HilPanelModel {
       selected: index === review.selectedActionIndex,
       kind: action.kind,
     })),
-    compactActions: true,
-    hint: '',
+    hint: 'Up/Down select · Enter confirm',
     ...(review.busy ? {status: 'Running...'} : {}),
   };
 }
 
 function formatPermissionShortcut(action: HilPanelActionLine): string {
   switch (action.label) {
-    case 'Yes':
-      return '(y) Yes';
-    case "Yes, don't ask again":
-      return "(a) Yes, don't ask again";
-    case 'No':
-      return '(n) No';
+    case 'Allow once':
+      return '(y) Allow once';
+    case 'Allow always':
+      return '(a) Allow always';
+    case 'Reject':
+      return '(n) Reject';
     default:
       return action.label;
   }

@@ -11,8 +11,8 @@ import {
   createCodaraRuntime,
   createInteractionMiddleware,
   createSession,
-} from '@core';
-import {createAutoMemoryRuntime, resolveAutoMemoryRoot} from '@core/context/memory/auto-memory';
+} from '@/index';
+import {createAutoMemoryRuntime, resolveAutoMemoryRoot} from '@infra/context/memory/auto-memory';
 
 describe('runtime auto memory cases', () => {
   it('writes global auto memory after a successful main-agent turn by default', async () => {
@@ -21,7 +21,7 @@ describe('runtime auto memory cases', () => {
     const projectRoot = path.join(root, 'project');
     await mkdir(path.join(projectRoot, '.codara'), {recursive: true});
 
-    const codara = createCodaraRuntime({
+    const codara = await createCodaraRuntime({
       cwd: projectRoot,
       projectRoot,
       userHome,
@@ -50,7 +50,7 @@ describe('runtime auto memory cases', () => {
       'utf8',
     );
 
-    const codara = createCodaraRuntime({
+    const codara = await createCodaraRuntime({
       cwd: projectRoot,
       projectRoot,
       userHome,
@@ -74,7 +74,7 @@ describe('runtime auto memory cases', () => {
     const projectRoot = path.join(root, 'project');
     await mkdir(path.join(projectRoot, '.codara'), {recursive: true});
 
-    const codara = createCodaraRuntime({
+    const codara = await createCodaraRuntime({
       cwd: projectRoot,
       projectRoot,
       userHome,
@@ -100,7 +100,7 @@ describe('runtime auto memory cases', () => {
     const projectRoot = path.join(root, 'project');
     await mkdir(path.join(projectRoot, '.codara'), {recursive: true});
 
-    const codara = createCodaraRuntime({
+    const codara = await createCodaraRuntime({
       cwd: projectRoot,
       projectRoot,
       userHome,
@@ -123,7 +123,7 @@ describe('runtime auto memory cases', () => {
     const projectRoot = path.join(root, 'project');
     await mkdir(path.join(projectRoot, '.codara'), {recursive: true});
 
-    const codara = createCodaraRuntime({
+    const codara = await createCodaraRuntime({
       cwd: projectRoot,
       projectRoot,
       userHome,

@@ -18,7 +18,7 @@ import {
   createGrepTool,
   createReadTool,
   createWriteTool,
-} from '@core/tools';
+} from '@capability/tool';
 
 describe('builtin tools', () => {
   it('should create all builtin tools with stable names', () => {

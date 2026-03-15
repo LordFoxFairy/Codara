@@ -2,7 +2,7 @@ import {describe, expect, it} from 'bun:test';
 import {mkdir, mkdtemp, writeFile} from 'node:fs/promises';
 import path from 'node:path';
 import {tmpdir} from 'node:os';
-import {createCodaraGuidelinesSource} from '@core/context/instructions/guidelines';
+import {createCodaraGuidelinesSource} from '@infra/context/instructions/guidelines';
 
 describe('AGENTS guidelines', () => {
   it('loads only the startup-visible AGENTS chain before deeper paths are touched', async () => {
@@ -30,29 +30,23 @@ describe('AGENTS guidelines', () => {
     expect(content).not.toContain('# App Rules');
   });
 
-  it('loads deeper subtree AGENTS after a matching file path is activated', async () => {
+  it('does not load deeper subtree AGENTS just because a deeper file exists', async () => {
     const root = await mkdtemp(path.join(tmpdir(), 'codara-guidelines-'));
     const userHome = path.join(root, 'home');
     const projectRoot = path.join(root, 'project');
     const cwd = projectRoot;
     const deeperDir = path.join(projectRoot, 'packages', 'app');
-    const targetFile = path.join(deeperDir, 'src', 'feature.ts');
 
     await mkdir(path.join(userHome, '.codara'), {recursive: true});
     await mkdir(path.join(projectRoot, '.git'), {recursive: true});
-    await mkdir(path.dirname(targetFile), {recursive: true});
+    await mkdir(path.join(deeperDir, 'src'), {recursive: true});
     await writeFile(path.join(projectRoot, 'AGENTS.md'), '# Project Rules', 'utf8');
     await writeFile(path.join(deeperDir, 'AGENTS.md'), '# App Rules', 'utf8');
-    await writeFile(targetFile, 'export const feature = true;\n', 'utf8');
-
     const guidelinesSource = createCodaraGuidelinesSource({userHome, cwd});
-    expect(await guidelinesSource?.getContent()).not.toContain('# App Rules');
-
-    await guidelinesSource?.activateTarget?.({path: targetFile, kind: 'file'});
     const content = await guidelinesSource?.getContent();
 
     expect(content).toContain('# Project Rules');
-    expect(content).toContain('# App Rules');
+    expect(content).not.toContain('# App Rules');
   });
 
   it('expands @path imports up to the fixed depth limit', async () => {

@@ -1,5 +1,5 @@
 import React from 'react';
-import {Box, Text} from 'ink';
+import {Text} from 'ink';
 import type {CliLayoutMode} from '../../app/layout-mode';
 
 interface FooterProps {
@@ -11,15 +11,13 @@ export function describeFooter(layoutMode: CliLayoutMode): string {
     return 'Enter send  ·  ? shortcuts  ·  Ctrl+C exit';
   }
 
-  return 'Enter send  ·  Ctrl+C exit  ·  ? shortcuts  ·  tab thinking';
+  return 'Enter send  ·  Ctrl+C exit  ·  / commands  ·  Ctrl+T tasks';
 }
 
 export function Footer({layoutMode}: FooterProps): React.JSX.Element {
   return (
-    <Box marginTop={1}>
-      <Text dimColor wrap="truncate-end">
-        {describeFooter(layoutMode)}
-      </Text>
-    </Box>
+    <Text dimColor wrap="truncate-end">
+      {describeFooter(layoutMode)}
+    </Text>
   );
 }

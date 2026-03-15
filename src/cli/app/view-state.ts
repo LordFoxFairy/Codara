@@ -1,4 +1,5 @@
-import type {PauseRequest, PauseUIActionOption, PauseUIFormOption, PauseUIFormTab} from '@core/agents';
+import type {PauseRequest, PauseUIActionOption, PauseUIFormOption, PauseUIFormTab} from '@engine/agent';
+import type {PermissionStage} from '../components/permission/types';
 
 export type CliStatus = 'idle' | 'running' | 'paused' | 'done' | 'error';
 export type CliHilAnswerValue = string | string[];
@@ -10,7 +11,7 @@ export interface CliRunState {
 
 export interface CliNotice {
   id: string;
-  level: 'system' | 'warning' | 'error';
+  level: 'system' | 'warning' | 'error' | 'command';
   content: string;
 }
 
@@ -49,4 +50,8 @@ export interface CliHilReviewState {
   busy: boolean;
   validationMessage?: string;
   form?: CliHilFormState;
+  /** Permission three-stage flow state */
+  permissionStage?: PermissionStage;
+  /** Always-pattern candidates for permission stage 2 */
+  permissionAlwaysPatterns?: string[];
 }

@@ -1,5 +1,5 @@
 import {describe, expect, it} from 'bun:test';
-import * as codara from '@core/codara';
+import * as codara from '@codara/index';
 
 describe('Codara public surface', () => {
   it('should keep runtime planning helpers out of the public codara barrel', () => {

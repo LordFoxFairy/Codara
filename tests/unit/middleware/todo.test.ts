@@ -1,10 +1,10 @@
 import {describe, expect, it} from 'bun:test';
 import {AIMessage, HumanMessage, ToolMessage, type BaseMessage} from '@langchain/core/messages';
 import type {BaseChatModel} from '@langchain/core/language_models/chat_models';
-import {createAgent} from '@core/agents';
-import {createAgentMemoryCheckpointer} from '@core/checkpoint';
-import {MiddlewarePipeline} from '@core/middleware/pipeline';
-import {readTodoState, todoListMiddleware, TODO_TOOL_NAME} from '@core/middleware/todo';
+import {createAgent} from '@engine/agent';
+import {createAgentMemoryCheckpointer} from '@infra/checkpoint';
+import {MiddlewarePipeline} from '@engine/pipeline/pipeline';
+import {readTodoState, todoListMiddleware, TODO_TOOL_NAME} from '@engine/pipeline/todo';
 
 class TodoTestModel {
   readonly boundToolNames: string[] = [];

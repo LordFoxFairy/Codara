@@ -5,10 +5,10 @@ import type {CliComposerState} from '../../composer/types';
 import {buildComposerViewport} from './composer-view';
 
 interface PromptFrameProps {
-  terminalWidth: number;
   composer: CliComposerState;
   cursorActivityVersion: number;
   isRunning: boolean;
+  placeholder?: string;
 }
 
 interface CursorRenderParts {
@@ -16,18 +16,6 @@ interface CursorRenderParts {
   cursorCell: string;
   afterCursor: string;
   dimColor: boolean;
-}
-
-function createDividerWidth(terminalWidth: number): number {
-  return Math.max(20, terminalWidth - 2);
-}
-
-function createDivider(terminalWidth: number): string {
-  return '\u2500'.repeat(createDividerWidth(terminalWidth));
-}
-
-function createPromptPrefix(index: number): string {
-  return index === 0 ? '\u203a ' : '  ';
 }
 
 function buildCursorRenderParts(
@@ -48,26 +36,24 @@ function buildCursorRenderParts(
 }
 
 export function PromptFrame({
-  terminalWidth,
   composer,
   cursorActivityVersion,
   isRunning,
+  placeholder,
 }: PromptFrameProps): React.JSX.Element {
-  const divider = createDivider(terminalWidth);
   const showCursor = useBlinkingCursor(!isRunning, cursorActivityVersion);
-  const viewport = buildComposerViewport(composer);
+  const viewport = buildComposerViewport(composer, undefined, placeholder);
 
   return (
-    <Box marginTop={1} flexDirection="column">
-      <Text dimColor>{divider}</Text>
+    <Box flexDirection="column">
       {viewport.hasOverflowAbove ? <Text dimColor>  ...</Text> : null}
       {viewport.lines.map((line, index) => {
         const renderParts = buildCursorRenderParts(line.beforeCursor, line.afterCursor, line.placeholder);
         const plainText = `${line.beforeCursor}${line.afterCursor}${line.placeholder ?? ''}`;
 
         return (
-          <Box key={`${index}-${line.beforeCursor.length}-${line.afterCursor.length}-${line.isCursorLine ? 1 : 0}`}>
-            <Text color="greenBright">{createPromptPrefix(index)}</Text>
+          <Box key={`prompt-line-${index}`}>
+            <Text color="greenBright" bold>{index === 0 ? '> ' : '  '}</Text>
             <Box flexGrow={1} flexShrink={1}>
               {line.isCursorLine ? (
                 <Text wrap="truncate-end" dimColor={renderParts.dimColor}>

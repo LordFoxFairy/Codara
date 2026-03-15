@@ -2,8 +2,8 @@ import {afterEach, describe, expect, it} from 'bun:test';
 import {HumanMessage, ToolMessage} from '@langchain/core/messages';
 import {tool} from '@langchain/core/tools';
 import {z} from 'zod';
-import {createAgent} from '@core/agents';
-import {ChatModelFactory, ModelRegistry, parseModelRoutingConfig} from '@core/provider';
+import {createAgent} from '@engine/agent';
+import {ChatModelFactory, ModelRegistry, parseModelRoutingConfig} from '@infra/provider';
 import {createMockRoutingConfig, startMockOpenAIServer} from '../provider/mock-openai-server';
 
 describe('Agent Loop End-to-End', () => {

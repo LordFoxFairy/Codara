@@ -1,8 +1,11 @@
 import {useInput, useStdin} from 'ink';
+import type {PermissionStage} from '../components/permission/types';
 
 interface UseHilInputOptions {
   active: boolean;
   disabled?: boolean;
+  /** Current permission stage (undefined = not a permission review) */
+  permissionStage?: PermissionStage;
   onMoveLeft?: () => void;
   onMoveRight?: () => void;
   onSelectPrevious: () => void;
@@ -14,12 +17,18 @@ interface UseHilInputOptions {
   onSubmit: () => void;
   onExit: () => void;
   onQuickAction?: (actionId: string) => void;
+  /** Permission stage transitions */
+  onPermissionBack?: () => void;
+  onPermissionConfirm?: () => void;
+  onPermissionRejectSend?: () => void;
+  onPermissionRejectSilent?: () => void;
 }
 
 export function useHilInput(options: UseHilInputOptions): void {
   const {
     active,
     disabled = false,
+    permissionStage,
     onMoveLeft,
     onMoveRight,
     onSelectPrevious,
@@ -31,11 +40,16 @@ export function useHilInput(options: UseHilInputOptions): void {
     onSubmit,
     onExit,
     onQuickAction,
+    onPermissionBack,
+    onPermissionConfirm,
+    onPermissionRejectSend,
+    onPermissionRejectSilent,
   } = options;
   const {isRawModeSupported} = useStdin();
 
   useInput((input, key) => {
-    if ((key.ctrl && input === 'c') || key.escape) {
+    // Ctrl+C always exits
+    if (key.ctrl && input === 'c') {
       onExit();
       return;
     }
@@ -44,6 +58,46 @@ export function useHilInput(options: UseHilInputOptions): void {
       return;
     }
 
+    // ── Permission stage 2: always-confirm (Claude Code style: Confirm/Cancel) ──
+    if (permissionStage === 'always-confirm') {
+      if (key.escape) {
+        onPermissionBack?.();
+        return;
+      }
+      if (key.return || input === '\r' || input === '\n') {
+        onPermissionConfirm?.();
+        return;
+      }
+      return;
+    }
+
+    // ── Permission stage 3: reject-feedback ──
+    if (permissionStage === 'reject-feedback') {
+      if (key.escape) {
+        onPermissionRejectSilent?.();
+        return;
+      }
+      if (key.return || input === '\r' || input === '\n') {
+        onPermissionRejectSend?.();
+        return;
+      }
+      if (key.backspace || input === '\b' || (key.delete && !key.ctrl && !key.meta && !key.shift) || (key.ctrl && input === 'h')) {
+        onBackspace();
+        return;
+      }
+      if (!key.ctrl && !key.meta && input) {
+        onInsertText(input);
+      }
+      return;
+    }
+
+    // ── Permission stage 1 (prompt) or general Esc ──
+    if (key.escape) {
+      onExit();
+      return;
+    }
+
+    // Quick actions for permission prompt stage
     if (!key.ctrl && !key.meta && onQuickAction) {
       if (input === 'y') {
         onQuickAction('allow_once');

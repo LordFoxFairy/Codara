@@ -10,8 +10,8 @@ import {
 } from '@langchain/core/messages';
 import type {BaseChatModel} from '@langchain/core/language_models/chat_models';
 import type {StructuredToolInterface} from '@langchain/core/tools';
-import {createAgent} from '@core/agents';
-import {createHILMiddleware, createMiddleware, type BaseMiddleware} from '@core/middleware';
+import {createAgent} from '@engine/agent';
+import {createHILMiddleware, createMiddleware, type BaseMiddleware} from '@engine/pipeline';
 import {z} from 'zod';
 
 class FakeModel {

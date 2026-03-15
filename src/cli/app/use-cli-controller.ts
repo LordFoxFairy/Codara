@@ -1,6 +1,6 @@
 import {randomUUID} from 'node:crypto';
 import {useCallback, useEffect, useMemo, useRef, useState} from 'react';
-import type {Codara, CodaraRuntimeEvent, SessionState} from '@core';
+import type {Codara, CodaraRuntimeEvent, SessionState} from '@/index';
 import {AIMessageChunk, type BaseMessage} from '@langchain/core/messages';
 import {
   backspaceComposerText,
@@ -13,6 +13,7 @@ import {
   moveComposerCursorLeft,
   moveComposerCursorRight,
   moveComposerCursorUp,
+  replaceComposerText,
 } from '../composer/state';
 import type {CliComposerState} from '../composer/types';
 import {hasTranscriptContent} from '../transcript/model';
@@ -26,6 +27,7 @@ import {
   syncCliHilReviewState,
   toggleCliHilFocus,
   updateCliHilDraft,
+  setPermissionStage,
   type CliHilAutoAction,
 } from './hil-review';
 import type {CliActiveTurn, CliHilReviewState, CliNotice, CliRunState} from './view-state';
@@ -40,6 +42,7 @@ export interface UseCliControllerOptions {
   hilAutoActions?: CliHilAutoAction[];
   reopenSession?: (sessionId: string) => Promise<void>;
   openFile?: (targetPath: string) => Promise<boolean>;
+  onShowSessionPicker?: () => void;
 }
 
 export interface CliController {
@@ -54,7 +57,10 @@ export interface CliController {
   hasConversation: boolean;
   runState: CliRunState;
   sessionState: SessionState;
+  taskPanelVisible: boolean;
+  toggleTaskPanel: () => void;
   insertText: (input: string) => void;
+  replaceText: (text: string) => void;
   insertNewline: () => void;
   backspace: () => void;
   moveCursorLeft: () => void;
@@ -64,6 +70,7 @@ export interface CliController {
   moveCursorHome: () => void;
   moveCursorEnd: () => void;
   submitDraft: () => void;
+  submitText: (text: string) => void;
   moveHilLeft: () => void;
   moveHilRight: () => void;
   selectPreviousHilAction: () => void;
@@ -74,6 +81,10 @@ export interface CliController {
   backspaceHilInput: () => void;
   submitHilAction: () => void;
   quickHilAction: (actionId: string) => void;
+  permissionBack: () => void;
+  permissionConfirm: () => void;
+  permissionRejectSend: () => void;
+  permissionRejectSilent: () => void;
 }
 
 export function useCliController(options: UseCliControllerOptions): CliController {
@@ -84,6 +95,7 @@ export function useCliController(options: UseCliControllerOptions): CliControlle
     hilAutoActions = [],
     reopenSession,
     openFile,
+    onShowSessionPicker,
   } = options;
   const initialNotices = useMemo<CliNotice[]>(
     () => startupMessage.trim()
@@ -105,6 +117,7 @@ export function useCliController(options: UseCliControllerOptions): CliControlle
   const [runtimeEvents, setRuntimeEvents] = useState<readonly CodaraRuntimeEvent[]>([]);
   const [runState, setRunState] = useState<CliRunState>({status: 'idle'});
   const [sessionState, setSessionState] = useState<SessionState>(() => codara.getState());
+  const [taskPanelVisible, setTaskPanelVisible] = useState(true);
   const isRunningRef = useRef(false);
   const initialPromptSentRef = useRef(false);
   const hilReviewRef = useRef<CliHilReviewState | undefined>(undefined);
@@ -157,6 +170,16 @@ export function useCliController(options: UseCliControllerOptions): CliControlle
   const runSlashCommand = useCallback(async (prompt: string) => {
     const result = await codara.executeCommand(prompt);
 
+    if (result.action?.type === 'show_session_picker') {
+      if (onShowSessionPicker) {
+        onShowSessionPicker();
+      } else {
+        appendNotice('error', 'Session picker is not available in this CLI runtime.');
+      }
+      setRunState({status: 'done'});
+      return;
+    }
+
     if (result.action?.type === 'resume_session') {
       appendNotice(result.ok ? 'system' : 'error', result.output || '(no output)');
       if (!result.ok) {
@@ -185,12 +208,12 @@ export function useCliController(options: UseCliControllerOptions): CliControlle
       return;
     }
 
-    appendNotice(result.ok ? 'system' : 'error', result.output || '(no output)');
+    appendNotice(result.ok ? 'command' : 'error', result.output || '(no output)');
     const nextAgentState = await refreshCoreState();
     setRunState(result.ok
       ? nextAgentState.status === 'paused' ? {status: 'paused'} : {status: 'done'}
       : {status: 'error', error: result.output});
-  }, [appendNotice, codara, openFile, refreshCoreState, reopenSession, sessionState.sessionId]);
+  }, [appendNotice, codara, onShowSessionPicker, openFile, refreshCoreState, reopenSession, sessionState.sessionId]);
 
   const runAgentPrompt = useCallback(async (prompt: string) => {
     setActiveTurn({
@@ -216,13 +239,13 @@ export function useCliController(options: UseCliControllerOptions): CliControlle
       setActiveTurn((current) => current ? {...current, response: current.response + text} : current);
     }
 
-    const nextAgentState = await refreshCoreState();
-    if (!sawText && nextAgentState.status !== 'paused') {
+    if (!sawText) {
       setActiveTurn((current) => current ? {...current, response: '(no output)'} : current);
     }
 
-    setRunState(nextAgentState.status === 'paused' ? {status: 'paused'} : {status: 'done'});
     setActiveTurn(undefined);
+    const nextAgentState = await refreshCoreState();
+    setRunState(nextAgentState.status === 'paused' ? {status: 'paused'} : {status: 'done'});
   }, [codara, refreshCoreState]);
 
   const submitPrompt = useCallback(async (rawPrompt: string): Promise<void> => {
@@ -243,6 +266,8 @@ export function useCliController(options: UseCliControllerOptions): CliControlle
 
       await runAgentPrompt(prompt);
     } catch (error) {
+      // Clear activeTurn so UI doesn't stay stuck in "waiting" state
+      setActiveTurn(undefined);
       reportError(error);
       await refreshCoreState().catch(() => undefined);
     } finally {
@@ -281,6 +306,10 @@ export function useCliController(options: UseCliControllerOptions): CliControlle
     applyComposerChange((current) => insertComposerText(current, input));
   }, [applyComposerChange]);
 
+  const replaceText = useCallback((text: string) => {
+    applyComposerChange((current) => replaceComposerText(current, text));
+  }, [applyComposerChange]);
+
   const insertNewline = useCallback(() => {
     applyComposerChange((current) => insertComposerNewline(current));
   }, [applyComposerChange]);
@@ -313,6 +342,10 @@ export function useCliController(options: UseCliControllerOptions): CliControlle
     applyComposerChange((current) => moveComposerCursorEnd(current));
   }, [applyComposerChange]);
 
+  const toggleTaskPanel = useCallback(() => {
+    setTaskPanelVisible(current => !current);
+  }, []);
+
   const submitDraft = useCallback(() => {
     const prompt = composer.text.trim();
     if (!prompt) {
@@ -323,6 +356,17 @@ export function useCliController(options: UseCliControllerOptions): CliControlle
     setComposerActivityVersion((current) => current + 1);
     void submitPrompt(prompt);
   }, [composer.text, submitPrompt]);
+
+  const submitText = useCallback((text: string) => {
+    const prompt = text.trim();
+    if (!prompt) {
+      return;
+    }
+
+    setComposer(createComposerState());
+    setComposerActivityVersion((current) => current + 1);
+    void submitPrompt(prompt);
+  }, [submitPrompt]);
 
   const selectPreviousHilAction = useCallback(() => {
     setHilReview((current) => current ? selectPreviousCliHilAction(current) : current);
@@ -399,7 +443,7 @@ export function useCliController(options: UseCliControllerOptions): CliControlle
       const selectedAction = autoAction
         ? prepared.review.actions.find((action) => action.id.toLowerCase() === autoAction.action.trim().toLowerCase())
         : prepared.review.actions[prepared.review.selectedActionIndex];
-      if (!prepared.review.form) {
+      if (!prepared.review.form && !isPermissionReview(prepared.review)) {
         appendNotice('system', `HIL action: ${selectedAction?.label ?? autoAction?.action ?? 'resume'}`);
       }
       const result = await codara.resumePause(prepared.payload);
@@ -417,7 +461,35 @@ export function useCliController(options: UseCliControllerOptions): CliControlle
   }, [appendNotice, codara, refreshCoreState, reportError]);
 
   const quickHilAction = useCallback((actionId: string) => {
+    // Three-stage permission flow: intercept dont_ask_again and deny
+    if (actionId === 'dont_ask_again') {
+      setHilReview((current) => current ? setPermissionStage(current, 'always-confirm') : current);
+      return;
+    }
+    if (actionId === 'deny') {
+      setHilReview((current) => current ? setPermissionStage(current, 'reject-feedback') : current);
+      return;
+    }
     void submitHilAction({action: actionId});
+  }, [submitHilAction]);
+
+  const permissionBack = useCallback(() => {
+    setHilReview((current) => current ? setPermissionStage(current, 'prompt') : current);
+  }, []);
+
+  const permissionConfirm = useCallback(() => {
+    // Claude Code style: confirm adds all patterns to session memory
+    void submitHilAction({action: 'dont_ask_again'});
+  }, [submitHilAction]);
+
+  const permissionRejectSend = useCallback(() => {
+    const review = hilReviewRef.current;
+    if (!review) return;
+    void submitHilAction({action: 'deny', comment: review.draft.trim() || undefined});
+  }, [submitHilAction]);
+
+  const permissionRejectSilent = useCallback(() => {
+    void submitHilAction({action: 'deny'});
   }, [submitHilAction]);
 
   useEffect(() => {
@@ -466,6 +538,7 @@ export function useCliController(options: UseCliControllerOptions): CliControlle
     runState,
     sessionState,
     insertText,
+    replaceText,
     insertNewline,
     backspace,
     moveCursorLeft,
@@ -475,6 +548,9 @@ export function useCliController(options: UseCliControllerOptions): CliControlle
     moveCursorHome,
     moveCursorEnd,
     submitDraft,
+    submitText,
+    taskPanelVisible,
+    toggleTaskPanel,
     moveHilLeft,
     moveHilRight,
     selectPreviousHilAction,
@@ -487,5 +563,15 @@ export function useCliController(options: UseCliControllerOptions): CliControlle
       void submitHilAction();
     },
     quickHilAction,
+    permissionBack,
+    permissionConfirm,
+    permissionRejectSend,
+    permissionRejectSilent,
   };
+}
+
+function isPermissionReview(review: CliHilReviewState): boolean {
+  return review.request.ui?.modal === 'permission-review'
+    || review.request.channel === 'permission-center'
+    || review.request.description.toLowerCase().includes('permission review');
 }

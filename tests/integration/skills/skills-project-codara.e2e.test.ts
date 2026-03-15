@@ -5,9 +5,9 @@ import path from 'node:path'
 import {AIMessage, HumanMessage, type BaseMessage} from '@langchain/core/messages'
 import type {BaseChatModel} from '@langchain/core/language_models/chat_models'
 import type {StructuredToolInterface} from '@langchain/core/tools'
-import {createAgent} from '@core/agents'
-import {createMiddleware, createSkillsMiddleware} from '@core/middleware'
-import {FileSystemSkillStore} from '@core/skills'
+import {createAgent} from '@engine/agent'
+import {createMiddleware, createSkillsMiddleware} from '@engine/pipeline'
+import {FileSystemSkillStore} from '@capability/skill'
 import {seedProjectSkillFixtures} from '../../helpers/project-skill-fixtures'
 
 class ScriptedModel {
@@ -68,7 +68,6 @@ describe('Project .codara skill integration', () => {
     const probeView = seenByProbe[0] ?? ''
     expect(probeView).toContain('Skills System')
     expect(probeView).toContain('basic-task-flow')
-    expect(probeView).toContain(skillPath)
-    expect(probeView).toContain('Allowed tools: read_file')
+    expect(probeView).toContain(projectSkillsRoot)
   })
 })

@@ -11,7 +11,7 @@ import {
   createCodara,
   FileSessionStore,
   openCodaraSession,
-} from '@core';
+} from '@/index';
 
 class UsageModel {
   async invoke(): Promise<AIMessage> {
