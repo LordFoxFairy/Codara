@@ -1,15 +1,15 @@
 import {createHILMiddleware, type HILMiddlewareOptions} from '@core/middleware/hil';
 import type {BaseMiddleware} from '@core/middleware/types';
-import type {PermissionAnalysisModel} from '@core/middleware/permission/analysis';
 import {
   createPermissionRuntime,
   handlePermissionFallbackResume,
   type PermissionRuntimeOptions,
 } from '@core/middleware/permission/runtime';
 
-export interface PermissionMiddlewareOptions extends PermissionRuntimeOptions, HILMiddlewareOptions {
-  bashAnalysisModel?: PermissionAnalysisModel | Promise<PermissionAnalysisModel> | (() => Promise<PermissionAnalysisModel>);
-}
+export interface PermissionMiddlewareOptions extends PermissionRuntimeOptions, HILMiddlewareOptions {}
+
+/** @internal Test-only alias for createPermissionMiddleware with direct bashAnalysisModel support. */
+export const createPermissionMiddlewareInternal = createPermissionMiddleware;
 
 export function createPermissionMiddleware(
   options: PermissionMiddlewareOptions = {},
@@ -20,6 +20,7 @@ export function createPermissionMiddleware(
     userHome,
     policyFiles,
     settingsFile,
+    bashAnalysisModel,
     ...hilOptions
   } = options;
 
@@ -29,6 +30,7 @@ export function createPermissionMiddleware(
     userHome,
     policyFiles,
     settingsFile,
+    bashAnalysisModel,
   });
   const fallbackResolveDecision = hilOptions.resolveDecision;
   const fallbackHandleResume = hilOptions.handleResume;

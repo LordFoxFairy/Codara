@@ -19,7 +19,10 @@
       "Bash(git clean:*)",
       "Bash(npm install:*)",
       "Bash(ls:*)",
-      "Bash(bun run:*)"
+      "Bash(bun run:*)",
+      "Bash(grep:*)",
+      "Bash(find:*)",
+      "Bash(wc:*)"
     ]
   }
 }

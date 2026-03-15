@@ -26,6 +26,7 @@ import {
   syncCliHilReviewState,
   toggleCliHilFocus,
   updateCliHilDraft,
+  setPermissionStage,
   type CliHilAutoAction,
 } from './hil-review';
 import type {CliActiveTurn, CliHilReviewState, CliNotice, CliRunState} from './view-state';
@@ -74,6 +75,10 @@ export interface CliController {
   backspaceHilInput: () => void;
   submitHilAction: () => void;
   quickHilAction: (actionId: string) => void;
+  permissionBack: () => void;
+  permissionConfirm: () => void;
+  permissionRejectSend: () => void;
+  permissionRejectSilent: () => void;
 }
 
 export function useCliController(options: UseCliControllerOptions): CliController {
@@ -417,7 +422,35 @@ export function useCliController(options: UseCliControllerOptions): CliControlle
   }, [appendNotice, codara, refreshCoreState, reportError]);
 
   const quickHilAction = useCallback((actionId: string) => {
+    // Three-stage permission flow: intercept dont_ask_again and deny
+    if (actionId === 'dont_ask_again') {
+      setHilReview((current) => current ? setPermissionStage(current, 'always-confirm') : current);
+      return;
+    }
+    if (actionId === 'deny') {
+      setHilReview((current) => current ? setPermissionStage(current, 'reject-feedback') : current);
+      return;
+    }
     void submitHilAction({action: actionId});
+  }, [submitHilAction]);
+
+  const permissionBack = useCallback(() => {
+    setHilReview((current) => current ? setPermissionStage(current, 'prompt') : current);
+  }, []);
+
+  const permissionConfirm = useCallback(() => {
+    // Claude Code style: confirm adds all patterns to session memory
+    void submitHilAction({action: 'dont_ask_again'});
+  }, [submitHilAction]);
+
+  const permissionRejectSend = useCallback(() => {
+    const review = hilReviewRef.current;
+    if (!review) return;
+    void submitHilAction({action: 'deny', comment: review.draft.trim() || undefined});
+  }, [submitHilAction]);
+
+  const permissionRejectSilent = useCallback(() => {
+    void submitHilAction({action: 'deny'});
   }, [submitHilAction]);
 
   useEffect(() => {
@@ -487,6 +520,10 @@ export function useCliController(options: UseCliControllerOptions): CliControlle
       void submitHilAction();
     },
     quickHilAction,
+    permissionBack,
+    permissionConfirm,
+    permissionRejectSend,
+    permissionRejectSilent,
   };
 }
 

@@ -83,6 +83,7 @@ export function CodaraCliApp(props: CodaraCliAppProps): React.JSX.Element {
   useHilInput({
     active: hasHilReview,
     disabled: shell.hilReview?.busy ?? false,
+    permissionStage: isPermissionReview(shell.hilReview) ? (shell.hilReview?.permissionStage ?? 'prompt') : undefined,
     onMoveLeft: shell.moveHilLeft,
     onMoveRight: shell.moveHilRight,
     onSelectPrevious: shell.selectPreviousHilAction,
@@ -94,6 +95,10 @@ export function CodaraCliApp(props: CodaraCliAppProps): React.JSX.Element {
     onSubmit: shell.submitHilAction,
     onExit: exit,
     onQuickAction: isPermissionReview(shell.hilReview) ? shell.quickHilAction : undefined,
+    onPermissionBack: shell.permissionBack,
+    onPermissionConfirm: shell.permissionConfirm,
+    onPermissionRejectSend: shell.permissionRejectSend,
+    onPermissionRejectSilent: shell.permissionRejectSilent,
   });
 
   useEffect(() => {

@@ -1,13 +1,12 @@
 import React from 'react';
 import {Box, Text} from 'ink';
-import path from 'node:path';
 import type {CliHilReviewAction, CliHilReviewState} from '../../app/view-state';
 
 interface HilPanelProps {
   review: CliHilReviewState;
 }
 
-type HilPanelTone = 'yellow' | 'cyan' | 'magenta';
+type HilPanelTone = 'yellow' | 'cyan' | 'magenta' | 'red';
 
 interface HilPanelOptionLine {
   label: string;
@@ -54,19 +53,30 @@ export function HilPanel({review}: HilPanelProps): React.JSX.Element {
       <Box flexDirection="column" paddingX={1}>
         <Text color={model.tone} bold>{model.title}</Text>
         {model.meta ? <Text dimColor wrap="truncate-end">{model.meta}</Text> : null}
-        <Box marginTop={1}>
-          <Text dimColor>{'  '}</Text>
-          <Text>
+        {model.summary.length > 0 ? (
+          <Box flexDirection="column">
+            {model.summary.map((line, index) => (
+              <Text key={`summary-${index}`}>{line}</Text>
+            ))}
+          </Box>
+        ) : null}
+        {model.options.length > 0 ? (
+          <Box flexDirection="column" paddingLeft={1}>
+            {model.options.map((option, index) => (
+              <Text key={`option-${index}`} dimColor>{option.label}</Text>
+            ))}
+          </Box>
+        ) : null}
+        {model.actions.length > 0 ? (
+          <Box marginTop={1} flexDirection="column">
             {model.actions.map((action, index) => (
-              <Text key={`action-${index}`}>
-                {index > 0 ? <Text dimColor>{'  '}</Text> : null}
-                <Text color={resolveActionColor(action)} bold={action.selected}>
-                  {formatPermissionShortcut(action)}
-                </Text>
+              <Text key={`action-${index}`} color={resolveActionColor(action)}>
+                {`${action.selected ? '❯' : ' '} ${formatPermissionShortcut(action)}`}
               </Text>
             ))}
-          </Text>
-        </Box>
+          </Box>
+        ) : null}
+        {model.hint ? <Text dimColor>{model.hint}</Text> : null}
         {model.status ? <Text color={model.tone}>{model.status}</Text> : null}
       </Box>
     );
@@ -149,20 +159,6 @@ export function HilPanel({review}: HilPanelProps): React.JSX.Element {
       </Box>
     </Box>
   );
-
-  if (model.chrome === 'plain') {
-    return (
-      <Box marginTop={1} flexDirection="column">
-        {content}
-      </Box>
-    );
-  }
-
-  return (
-    <Box marginTop={1} flexDirection="column" borderStyle="single" borderColor={model.tone} paddingX={1}>
-      {content}
-    </Box>
-  );
 }
 
 export function describeHilPanel(review: CliHilReviewState): HilPanelModel {
@@ -180,28 +176,18 @@ export function describeHilPanel(review: CliHilReviewState): HilPanelModel {
   const badge = review.request.channel || 'interaction';
 
   return {
-    title: permissionTitle,
-    ...(isPermissionReview(review) ? {} : {badge}),
+    title,
+    badge,
     tone,
-    chrome: isPermissionReview(review) ? 'plain' : 'boxed',
-    summary: isPermissionReview(review)
-      ? describePermissionSummary(review)
-      : [review.request.description],
-    ...(isPermissionReview(review)
-      ? {}
-      : buildHilMeta(review)
-        ? {meta: buildHilMeta(review)}
-        : {}),
-    ...(isPermissionReview(review) ? {question: describePermissionQuestion(review)} : {}),
+    summary: [review.request.description],
+    ...(buildHilMeta(review) ? {meta: buildHilMeta(review)} : {}),
     options: [],
     actions: review.actions.map((action, index) => ({
-      label: isPermissionReview(review)
-        ? formatPermissionActionLabelForReview(action, permissionKind)
-        : describeActionLabel(action),
+      label: describeActionLabel(action),
       selected: index === review.selectedActionIndex,
       kind: action.kind,
     })),
-    ...(!isPermissionReview(review) && selectedAction?.description ? {actionDetail: selectedAction.description} : {}),
+    ...(selectedAction?.description ? {actionDetail: selectedAction.description} : {}),
     ...(selectedAction?.requiresToolEdit || review.focus === 'input' || review.draft.trim()
       ? {
           input: {
@@ -212,18 +198,59 @@ export function describeHilPanel(review: CliHilReviewState): HilPanelModel {
           },
         }
       : {}),
-    hint: isPermissionReview(review)
-      ? selectedAction?.requiresToolEdit
-        ? 'Esc cancel · Up/Down select · Tab amend · Enter submit'
-        : 'Esc cancel · Up/Down select · Tab amend'
-      : selectedAction?.requiresToolEdit
-        ? 'Tab focus · Up/Down select · Enter submit · Shift+Enter newline'
-        : 'Tab focus · Up/Down select · Enter submit · Shift+Enter newline',
+    hint: selectedAction?.requiresToolEdit
+      ? 'Tab focus · Up/Down select · Enter submit · Shift+Enter newline'
+      : 'Tab focus · Up/Down select · Enter submit · Shift+Enter newline',
     ...(review.busy ? {status: 'Applying review decision...'} : {}),
   };
 }
 
 function describePermissionPanel(review: CliHilReviewState): HilPanelModel {
+  const stage = review.permissionStage ?? 'prompt';
+
+  // Stage 2: Always-confirm — Claude Code style: show all patterns, Confirm/Cancel
+  if (stage === 'always-confirm') {
+    const patterns = review.permissionAlwaysPatterns ?? [];
+    return {
+      title: 'Always allow',
+      badge: 'permission',
+      tone: 'cyan',
+      summary: patterns.length === 1 && patterns[0] === '*'
+        ? ['This will allow the permission until Codara is restarted.']
+        : ['This will allow the following patterns until Codara is restarted'],
+      options: patterns.length === 1 && patterns[0] === '*'
+        ? []
+        : patterns.map((pattern) => ({label: `- ${pattern}`})),
+      actions: [
+        {label: 'Confirm', selected: review.selectedActionIndex === 0, kind: 'primary' as const},
+        {label: 'Cancel', selected: review.selectedActionIndex === 1, kind: 'secondary' as const},
+      ],
+      hint: 'Enter confirm · Esc cancel',
+      ...(review.busy ? {status: 'Running...'} : {}),
+    };
+  }
+
+  // Stage 3: Reject-feedback — show text input
+  if (stage === 'reject-feedback') {
+    return {
+      title: 'Rejection feedback (optional):',
+      badge: 'permission',
+      tone: 'red',
+      summary: [],
+      options: [],
+      actions: [],
+      input: {
+        label: 'Reason',
+        value: review.draft,
+        focused: true,
+        style: 'inline',
+      },
+      hint: 'Enter send · Esc reject silently',
+      ...(review.busy ? {status: 'Running...'} : {}),
+    };
+  }
+
+  // Stage 1: Main prompt
   return {
     title: review.request.description,
     badge: 'permission',
@@ -236,20 +263,19 @@ function describePermissionPanel(review: CliHilReviewState): HilPanelModel {
       selected: index === review.selectedActionIndex,
       kind: action.kind,
     })),
-    compactActions: true,
-    hint: '',
+    hint: 'Up/Down select · Enter confirm',
     ...(review.busy ? {status: 'Running...'} : {}),
   };
 }
 
 function formatPermissionShortcut(action: HilPanelActionLine): string {
   switch (action.label) {
-    case 'Yes':
-      return '(y) Yes';
-    case "Yes, don't ask again":
-      return "(a) Yes, don't ask again";
-    case 'No':
-      return '(n) No';
+    case 'Allow once':
+      return '(y) Allow once';
+    case 'Allow always':
+      return '(a) Allow always';
+    case 'Reject':
+      return '(n) Reject';
     default:
       return action.label;
   }
@@ -312,8 +338,6 @@ function describeHilFormPanel(review: CliHilReviewState): HilPanelModel {
   };
 }
 
-type PermissionReviewKind = 'bash' | 'file-edit' | 'tool';
-
 function compactSummaryLines(primary: string, secondary: string | undefined): string[] {
   const lines = [primary];
   if (secondary && secondary.trim() && secondary.trim() !== primary.trim()) {
@@ -330,19 +354,6 @@ export function isPermissionReview(review: CliHilReviewState | undefined): boole
   return review.request.ui?.modal === 'permission-review'
     || review.request.channel === 'permission-center'
     || review.request.description.toLowerCase().includes('permission review');
-}
-
-function resolvePermissionReviewKind(review: CliHilReviewState): PermissionReviewKind {
-  const toolName = review.request.action.toolName.trim().toLowerCase();
-  if (toolName === 'bash') {
-    return 'bash';
-  }
-
-  if (toolName === 'write_file' || toolName === 'edit_file') {
-    return 'file-edit';
-  }
-
-  return 'tool';
 }
 
 function buildHilMeta(
@@ -396,156 +407,6 @@ function summarizeToolArgs(toolName: string, args: Record<string, unknown>): str
 function describeActionLabel(action: CliHilReviewAction): string {
   const scope = action.scope?.trim();
   return scope ? `${action.label} (${scope})` : action.label;
-}
-
-function formatPermissionActionLabelForReview(
-  action: CliHilReviewAction,
-  kind: PermissionReviewKind,
-): string {
-  const normalized = action.id.trim().toLowerCase();
-  switch (normalized) {
-    case 'allow_once':
-    case 'approve':
-      return 'Yes';
-    case 'always':
-      return kind === 'file-edit'
-        ? 'Yes, and always allow this edit'
-        : 'Yes, and always allow this action';
-    case 'allow_tool':
-      if (action.label && action.label !== 'Allow this command type') {
-        return action.label;
-      }
-      return kind === 'file-edit'
-        ? 'Yes, and allow edits like this'
-        : 'Yes, and allow this command type';
-    case 'allow_path':
-      return action.label;
-    case 'allow_project':
-      return 'Yes, and trust this project';
-    case 'edit':
-      return kind === 'file-edit' ? 'Amend edit' : 'Amend and continue';
-    case 'deny':
-    case 'reject':
-      return 'No';
-    default:
-      return describeActionLabel(action);
-  }
-}
-
-function describePermissionTitle(review: CliHilReviewState): string {
-  const kind = resolvePermissionReviewKind(review);
-  const toolName = review.request.action.toolName.trim();
-  if (!toolName) {
-    return 'Tool review';
-  }
-
-  if (kind === 'bash') {
-    return 'Bash command';
-  }
-
-  if (kind === 'file-edit') {
-    return 'File edit';
-  }
-
-  return `${toolName} action`;
-}
-
-function describePermissionSummary(review: CliHilReviewState): string[] {
-  const kind = resolvePermissionReviewKind(review);
-  const args = review.request.action.toolArgs;
-  const lines: string[] = [];
-  const command = typeof args.command === 'string' ? args.command.trim() : '';
-  const description = typeof args.description === 'string' ? args.description.trim() : '';
-  const filePath = readPermissionFilePath(args);
-  const reason = readPermissionReason(review.request.metadata);
-
-  if (kind === 'file-edit' && filePath) {
-    lines.push(filePath);
-  } else if (command) {
-    lines.push(command);
-  } else if (review.request.description.trim()) {
-    lines.push(review.request.description.trim());
-  }
-
-  if (description) {
-    lines.push(description);
-  } else {
-    const actor = readPermissionActor(review.request.metadata);
-    if (actor) {
-      lines.push(actor);
-    }
-  }
-
-  if (reason && !lines.includes(reason)) {
-    lines.push(reason);
-  }
-
-  return lines;
-}
-
-function describePermissionQuestion(review: CliHilReviewState): string {
-  const kind = resolvePermissionReviewKind(review);
-  if (kind !== 'file-edit') {
-    return 'Do you want to proceed?';
-  }
-
-  const filePath = readPermissionFilePath(review.request.action.toolArgs);
-  if (!filePath) {
-    return 'Do you want to make this edit?';
-  }
-
-  return `Do you want to make this edit to ${path.basename(filePath)}?`;
-}
-
-function readPermissionFilePath(args: Record<string, unknown>): string | undefined {
-  if (!args || typeof args !== 'object' || Array.isArray(args)) {
-    return undefined;
-  }
-
-  const filePath = typeof args.file_path === 'string'
-    ? args.file_path.trim()
-    : typeof args.path === 'string'
-      ? args.path.trim()
-      : '';
-
-  return filePath || undefined;
-}
-
-function readPermissionActor(metadata: unknown): string | undefined {
-  if (!metadata || typeof metadata !== 'object' || Array.isArray(metadata)) {
-    return undefined;
-  }
-
-  const codara = (metadata as Record<string, unknown>).codara;
-  if (!codara || typeof codara !== 'object' || Array.isArray(codara)) {
-    return undefined;
-  }
-
-  const actor = (codara as Record<string, unknown>).actor;
-  if (!actor || typeof actor !== 'object' || Array.isArray(actor)) {
-    return undefined;
-  }
-
-  const agentType = (actor as Record<string, unknown>).agentType;
-  if (typeof agentType !== 'string' || !agentType.trim()) {
-    return undefined;
-  }
-
-  return agentType.trim() === 'subagent' ? 'Requested by a delegated subagent.' : undefined;
-}
-
-function readPermissionReason(metadata: unknown): string | undefined {
-  if (!metadata || typeof metadata !== 'object' || Array.isArray(metadata)) {
-    return undefined;
-  }
-
-  const policy = (metadata as Record<string, unknown>).permissionPolicy;
-  if (!policy || typeof policy !== 'object' || Array.isArray(policy)) {
-    return undefined;
-  }
-
-  const reason = (policy as Record<string, unknown>).reason;
-  return typeof reason === 'string' && reason.trim() ? reason.trim() : undefined;
 }
 
 function resolveActionColor(action: HilPanelActionLine): React.ComponentProps<typeof Text>['color'] {

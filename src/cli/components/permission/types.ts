@@ -1,21 +1,26 @@
 // src/cli/components/permission/types.ts
 
-import type { ToolCall, PermissionEvaluationResult } from '@core/middleware/permission/types';
+import type {PermissionEvaluationResult} from '@core/middleware/permission/types';
 
-export interface PermissionViewProps {
-  toolCall: ToolCall;
+/** Stage of the permission UI flow */
+export type PermissionStage = 'prompt' | 'always-confirm' | 'reject-feedback';
+
+/** Props for the main PermissionPanel */
+export interface PermissionPanelProps {
+  /** Tool name (e.g. 'Bash', 'Edit') */
+  toolName: string;
+  /** Tool arguments */
+  toolArgs: Record<string, unknown>;
+  /** Permission evaluation result */
   evaluation: PermissionEvaluationResult;
-  onAction: (actionId: string) => void;
+  /** Suggested "always" patterns for the user to choose from */
+  alwaysPatterns?: string[];
+  /** Callback when user makes a decision */
+  onReply: (reply: PermissionUIReply) => void;
 }
 
-export interface BashAnalysisResult {
-  command: string;
-  normalized: string;
-  risk: 'low' | 'medium' | 'high' | 'critical';
-  operations: string[];
-  complexity: {
-    hasSubshell: boolean;
-    hasPipe: boolean;
-    hasRedirect: boolean;
-  };
-}
+/** Reply from the permission UI */
+export type PermissionUIReply =
+  | { type: 'once' }
+  | { type: 'always'; pattern: string }
+  | { type: 'reject'; message?: string };

@@ -12,13 +12,18 @@ import {
 import type {ToolCallContext} from '@core/middleware/types';
 import {
   evaluatePermissionToolCall,
+  evaluatePermissionExpression,
   formatPermissionExpression,
-  persistPermissionRule,
-  type PermissionPolicyOptions,
 } from '@core/middleware/permission/policy';
+import type {PermissionPolicyOptions} from '@core/middleware/permission/types';
 import {normalizeToolReferenceName} from '@core/tools/names';
+import type {PermissionBashAnalysis, PermissionAnalysisModel} from '@core/middleware/permission/analysis';
+import {createModelPermissionBashAnalysis} from '@core/middleware/permission/analysis';
+import {extractBashAlwaysPatterns, extractBashWritePathOperands} from '@core/middleware/permission/bash';
 
-export interface PermissionRuntimeOptions extends PermissionPolicyOptions {}
+export interface PermissionRuntimeOptions extends PermissionPolicyOptions {
+  bashAnalysisModel?: PermissionAnalysisModel | Promise<PermissionAnalysisModel> | (() => Promise<PermissionAnalysisModel>);
+}
 
 export interface PermissionRuntime {
   resolveToolDecision(context: ToolCallContext): Promise<HILDecision | undefined>;
@@ -32,97 +37,111 @@ export interface PermissionRuntime {
 }
 
 const DEFAULT_PERMISSION_CHANNEL = 'permission-center';
-type PermissionEvaluation = NonNullable<Awaited<ReturnType<typeof evaluatePermissionToolCall>>>;
-type PermissionRuntimeModelAwareOptions = PermissionRuntimeOptions & {
-  bashAnalysisModel?: PermissionAnalysisModel | Promise<PermissionAnalysisModel> | (() => Promise<PermissionAnalysisModel>);
-};
 
-/**
- * 文件修改类工具（Edit/Write）的会话级记忆。
- * 与 Claude Code 一致："Yes, don't ask again" 对文件工具仅当前会话生效，不持久化到文件。
- */
 function isBashTool(toolName: string): boolean {
   return normalizeToolReferenceName(toolName) === 'bash';
 }
 
 /**
- * 将精确的文件表达式转为目录级通配符。
+ * Convert file expression to directory-level wildcard for session memory.
  * Edit(src/components/Header.tsx) → Edit(src/components/*)
- * Write(package.json)             → Write(*)
  */
 function toDirectoryScopeExpression(expression: string): string {
   const openIndex = expression.indexOf('(');
-  if (openIndex < 0) {
-    return expression;
-  }
+  if (openIndex < 0) return expression;
 
   const toolName = expression.slice(0, openIndex);
   const specifier = expression.slice(openIndex + 1, -1);
   const lastSlash = specifier.lastIndexOf('/');
 
-  if (lastSlash < 0) {
-    return `${toolName}(*)`;
-  }
-
-  const directory = specifier.slice(0, lastSlash);
-  return `${toolName}(${directory}/*)`;
+  if (lastSlash < 0) return `${toolName}(*)`;
+  return `${toolName}(${specifier.slice(0, lastSlash)}/*)`;
 }
 
 /**
- * 检查表达式是否被会话级记忆覆盖。
- * 支持目录级通配匹配：会话中存的 "Edit(src/components/*)" 可以匹配 "Edit(src/components/Button.tsx)"。
+ * Check if expression is covered by session memory (supports directory wildcards).
  */
 function isSessionAllowed(expression: string, sessionAllowed: Set<string>): boolean {
-  if (sessionAllowed.has(expression)) {
-    return true;
-  }
+  if (sessionAllowed.has(expression)) return true;
 
   const openIndex = expression.indexOf('(');
-  if (openIndex < 0) {
-    return false;
-  }
+  if (openIndex < 0) return false;
 
   const toolName = expression.slice(0, openIndex);
   const specifier = expression.slice(openIndex + 1, -1);
 
   for (const rule of sessionAllowed) {
     const ruleOpenIndex = rule.indexOf('(');
-    if (ruleOpenIndex < 0) {
-      continue;
-    }
+    if (ruleOpenIndex < 0) continue;
 
     const ruleTool = rule.slice(0, ruleOpenIndex);
-    if (ruleTool !== toolName) {
-      continue;
-    }
+    if (ruleTool !== toolName) continue;
 
     const ruleSpecifier = rule.slice(ruleOpenIndex + 1, -1);
-    if (ruleSpecifier === '*') {
-      return true;
-    }
+    if (ruleSpecifier === '*') return true;
 
     if (ruleSpecifier.endsWith('/*')) {
       const ruleDir = ruleSpecifier.slice(0, -2);
       const specifierDir = specifier.slice(0, specifier.lastIndexOf('/'));
-      if (specifierDir === ruleDir) {
-        return true;
-      }
+      if (specifierDir === ruleDir) return true;
     }
   }
 
   return false;
 }
 
+/**
+ * Generate "always" pattern suggestions for a tool call expression.
+ * For Bash: uses BashArity to suggest escalating patterns.
+ * For file tools: suggests directory-level patterns.
+ */
+function generateAlwaysPatterns(expression: string): string[] {
+  const openIndex = expression.indexOf('(');
+  if (openIndex < 0) return [expression];
+
+  const toolName = expression.slice(0, openIndex);
+  const specifier = expression.slice(openIndex + 1, -1);
+  const toolNorm = toolName.trim().toLowerCase();
+
+  if (toolNorm === 'bash') {
+    return extractBashAlwaysPatterns(specifier).map(p => `Bash(${p})`);
+  }
+
+  // File tools: suggest directory-level → tool-level
+  if (toolNorm === 'edit' || toolNorm === 'write' || toolNorm === 'read') {
+    const patterns: string[] = [];
+    const dirExpr = toDirectoryScopeExpression(expression);
+    if (dirExpr !== expression) {
+      patterns.push(dirExpr);
+    }
+    patterns.push(`${toolName}(*)`);
+    return patterns;
+  }
+
+  return [`${toolName}(*)`];
+}
+
+/** Pending request waiting for user approval */
+interface PendingPermissionRequest {
+  context: ToolCallContext;
+  expression: string;
+}
 
 export function createPermissionRuntime(options: PermissionRuntimeOptions = {}): PermissionRuntime {
   const sessionAllowedExpressions = new Set<string>();
+  const pendingRequests = new Map<string, PendingPermissionRequest>();
+
+  // Create bash analysis function if model is provided
+  const bashAnalyze = options.bashAnalysisModel
+    ? createModelPermissionBashAnalysis({model: options.bashAnalysisModel})
+    : undefined;
 
   return {
-    resolveToolDecision(context) {
-      return resolvePermissionDecision(context, options, sessionAllowedExpressions);
+    async resolveToolDecision(context) {
+      return resolvePermissionDecision(context, options, sessionAllowedExpressions, bashAnalyze, pendingRequests);
     },
     handleResume(metadata, resumePayload, context, handler) {
-      return handlePermissionResume(metadata ?? {}, resumePayload, context, handler, options, sessionAllowedExpressions);
+      return handlePermissionResume(metadata ?? {}, resumePayload, context, handler, options, sessionAllowedExpressions, pendingRequests);
     },
     isPermissionPause,
   };
@@ -132,15 +151,62 @@ async function resolvePermissionDecision(
   context: ToolCallContext,
   options: PermissionRuntimeOptions,
   sessionAllowed: Set<string>,
+  bashAnalyze: ((input: {command: string; cwd?: string; projectRoot?: string}) => Promise<PermissionBashAnalysis | undefined>) | undefined,
+  pendingRequests: Map<string, PendingPermissionRequest>,
 ): Promise<HILDecision | undefined> {
-  const initialEvaluation = await evaluatePermissionToolCall(context.toolCall, options);
-  if (!initialEvaluation) {
-    return undefined;
-  }
+  const evaluation = await evaluatePermissionToolCall(context.toolCall, options);
+  if (!evaluation) return undefined;
 
+  // Check session memory first
   if (isSessionAllowed(evaluation.input, sessionAllowed)) {
     return {decision: 'allow'};
   }
+
+  if (evaluation.decision === 'allow') {
+    return {decision: 'allow'};
+  }
+
+  // Run bash analysis for bash commands
+  let bashAnalysis: PermissionBashAnalysis | undefined;
+  let reason: string | undefined;
+  if (isBashTool(context.toolCall.name)) {
+    const args = context.toolCall.args as Record<string, unknown>;
+    const command = typeof args?.command === 'string' ? args.command : '';
+    if (command) {
+      if (bashAnalyze) {
+        bashAnalysis = await bashAnalyze({
+          command,
+          cwd: options.cwd,
+          projectRoot: options.projectRoot,
+        }).catch(() => undefined);
+        reason = bashAnalysis?.reason;
+      }
+
+      // Fallback: generate reason from extracted write paths
+      if (!reason) {
+        const writePaths = extractBashWritePathOperands(command);
+        if (writePaths.length > 0) {
+          const pathList = writePaths.map(p => p.endsWith('/') ? p : `${p}/`).join(', ');
+          reason = `Writes to ${pathList}`;
+        }
+      }
+    }
+  }
+
+  // Re-evaluate classifier's pathScopeExpression against existing rules (cross-tool matching)
+  let classifierMatch: {bucket: string; rule: string; scope: string; path: string; format: null} | null = null;
+  if (bashAnalysis?.pathScopeExpression) {
+    const crossEval = await evaluatePermissionExpression(bashAnalysis.pathScopeExpression, options);
+    if (crossEval.decision === 'allow') {
+      return {decision: 'allow'};
+    }
+    if (crossEval.matched) {
+      classifierMatch = {...crossEval.matched, format: null};
+    }
+  }
+
+  // Generate suggested "always" patterns
+  const alwaysPatterns = generateAlwaysPatterns(evaluation.input);
 
   const metadata = {
     codara: {
@@ -152,20 +218,23 @@ async function resolvePermissionDecision(
       expression: evaluation.input,
       decision: evaluation.decision,
       defaultDecision: evaluation.defaultDecision,
-      matched: evaluation.matched,
-      reason: bashAnalysis?.reason ?? reason,
+      matched: classifierMatch ?? (evaluation.matchedRule ? {
+        bucket: evaluation.matchedRule.action,
+        rule: `${evaluation.matchedRule.permission}(${evaluation.matchedRule.pattern})`,
+        scope: evaluation.matchedRule.source.scope,
+        path: evaluation.matchedRule.source.path,
+        format: null,
+      } : null),
+      reason,
       sources: evaluation.sources,
-      policySummary: evaluation.policySummary,
+      ruleSummary: evaluation.ruleSummary,
+      alwaysPatterns,
       suggestions: {
         ...(bashAnalysis?.pathScopeExpression ? {pathRule: bashAnalysis.pathScopeExpression} : {}),
         ...(bashAnalysis?.toolScopeExpression ? {toolRule: bashAnalysis.toolScopeExpression} : {}),
       },
     },
   } satisfies Record<string, unknown>;
-
-  if (evaluation.decision === 'allow') {
-    return {decision: 'allow'};
-  }
 
   if (evaluation.decision === 'deny') {
     return {
@@ -175,9 +244,13 @@ async function resolvePermissionDecision(
     };
   }
 
+  // Store as pending for auto-resolve cascade
+  const requestKey = context.toolCall.id || `tool_${context.toolIndex}`;
+  pendingRequests.set(requestKey, {context, expression: evaluation.input});
+
   return {
     decision: 'ask',
-    config: createPermissionInterruptConfig(evaluation.input, context, metadata),
+    config: createPermissionInterruptConfig(evaluation.input, context, metadata, reason, alwaysPatterns, options, bashAnalysis),
     metadata,
   };
 }
@@ -186,25 +259,16 @@ function createPermissionInterruptConfig(
   expression: string,
   context: ToolCallContext,
   metadata: Record<string, unknown>,
-  reason: string | undefined,
-  bashAnalysis?: PermissionBashAnalysis,
+  _reason: string | undefined,
+  _alwaysPatterns: string[],
+  _options: PermissionRuntimeOptions,
+  _bashAnalysis: PermissionBashAnalysis | undefined,
 ): HILInterruptConfig {
-  const actions = [
-    {
-      id: 'allow_once',
-      label: 'Yes',
-      kind: 'primary' as const,
-    },
-    {
-      id: 'dont_ask_again',
-      label: "Yes, don't ask again",
-      kind: 'secondary' as const,
-    },
-    {
-      id: 'deny',
-      label: 'No',
-      kind: 'danger' as const,
-    },
+  // Claude Code style: three actions only — once, always, reject
+  const actions: HILUIActionOption[] = [
+    {id: 'allow_once', label: 'Allow once', kind: 'primary'},
+    {id: 'dont_ask_again', label: 'Allow always', kind: 'secondary'},
+    {id: 'deny', label: 'Reject', kind: 'danger'},
   ];
 
   return {
@@ -219,44 +283,12 @@ function createPermissionInterruptConfig(
   };
 }
 
-function describePermissionDecisionReason(
-  evaluation: Awaited<ReturnType<typeof evaluatePermissionToolCall>>,
-  context: ToolCallContext,
-  options: PermissionRuntimeOptions,
-): string | undefined {
-  if (!evaluation) {
-    return undefined;
-  }
 
-  if (evaluation.decision === 'deny') {
-    if (evaluation.matched?.rule) {
-      return `Denied because this action matches ${evaluation.matched.rule}.`;
-    }
-    return `Denied by permission policy for ${evaluation.input}.`;
-  }
-
-  if (evaluation.decision !== 'ask') {
-    return undefined;
-  }
-
-  if (evaluation.matched?.bucket === 'ask' && evaluation.matched.rule) {
-    return `Needs approval because it matches ${evaluation.matched.rule}.`;
-  }
-
-  const pathTarget = readPermissionPathScopeTarget(formatPermissionPathScopeExpression(context.toolCall, options));
-  if (pathTarget && pathTarget !== './') {
-    return `Needs approval because no allow rule covers access to ${pathTarget}.`;
-  }
-
-  const toolScope = formatPermissionToolScopeExpression(context.toolCall);
-  if (toolScope && toolScope !== 'Bash(*)') {
-    const target = readPermissionToolScopeTarget(toolScope);
-    if (target && target !== '*') {
-      return `Needs approval because no allow rule covers ${target}.`;
-    }
-  }
-
-  return 'Needs approval because no allow rule covers this action.';
+function extractAlwaysPatterns(metadata: Record<string, unknown>): string[] {
+  const policy = metadata.permissionPolicy;
+  if (!policy || typeof policy !== 'object' || Array.isArray(policy)) return [];
+  const patterns = (policy as Record<string, unknown>).alwaysPatterns;
+  return Array.isArray(patterns) ? patterns.filter((p): p is string => typeof p === 'string') : [];
 }
 
 async function handlePermissionResume(
@@ -266,26 +298,71 @@ async function handlePermissionResume(
   handler: (request?: ToolCallContext) => Promise<ToolMessage>,
   options: PermissionRuntimeOptions,
   sessionAllowed: Set<string>,
+  pendingRequests: Map<string, PendingPermissionRequest>,
 ): Promise<ToolMessage> {
   const payload = parseHILResumeActionPayload(resumePayload);
+
+  // Handle reject
   if (payload.action === 'deny' || payload.decision === 'reject') {
+    const requestKey = context.toolCall.id || `tool_${context.toolIndex}`;
+    pendingRequests.delete(requestKey);
     return createPermissionDenyMessage(context, payload.comment, payload.metadata);
   }
 
-  if (payload.action === 'dont_ask_again') {
-    const expression = formatPermissionExpression(context.toolCall);
-    if (expression) {
-      if (isBashTool(context.toolCall.name)) {
-        // Bash: 精确命令持久化到 settings.local.json（跨会话）
-        await persistPermissionRule(expression, 'allow', options);
-      } else {
-        // Edit/Write 等: 目录级会话记忆，不持久化
-        sessionAllowed.add(toDirectoryScopeExpression(expression));
+  // Handle "always" — Claude Code style: add ALL always patterns to session memory
+  if (payload.action === 'dont_ask_again' || payload.action === 'always') {
+    const alwaysPatterns = extractAlwaysPatterns(_metadata);
+    if (alwaysPatterns.length > 0) {
+      for (const pattern of alwaysPatterns) {
+        sessionAllowed.add(pattern);
       }
+    } else {
+      // Fallback: use the expression itself
+      const expression = formatPermissionExpression(context.toolCall);
+      if (expression) {
+        sessionAllowed.add(expression);
+      }
+    }
+
+    await autoResolvePendingRequests(options, sessionAllowed, pendingRequests);
+  }
+
+  // Clean up pending
+  const requestKey = context.toolCall.id || `tool_${context.toolIndex}`;
+  pendingRequests.delete(requestKey);
+
+  return handler(context);
+}
+
+/**
+ * Auto-resolve cascade: after a new "always" rule is added,
+ * re-evaluate all pending requests. If any now resolve to "allow",
+ * they're automatically approved (OpenCode-style).
+ */
+async function autoResolvePendingRequests(
+  options: PermissionRuntimeOptions,
+  sessionAllowed: Set<string>,
+  pendingRequests: Map<string, PendingPermissionRequest>,
+): Promise<void> {
+  const toRemove: string[] = [];
+
+  for (const [key, pending] of pendingRequests) {
+    // Check session memory
+    if (isSessionAllowed(pending.expression, sessionAllowed)) {
+      toRemove.push(key);
+      continue;
+    }
+
+    // Re-evaluate against updated rules
+    const evaluation = await evaluatePermissionToolCall(pending.context.toolCall, options);
+    if (evaluation?.decision === 'allow') {
+      toRemove.push(key);
     }
   }
 
-  return handler(context);
+  for (const key of toRemove) {
+    pendingRequests.delete(key);
+  }
 }
 
 export function handlePermissionFallbackResume(
@@ -338,7 +415,5 @@ export function isPermissionPause(metadata: unknown): boolean {
   if (!metadata || typeof metadata !== 'object' || Array.isArray(metadata)) {
     return false;
   }
-
   return typeof (metadata as Record<string, unknown>).permissionPolicy === 'object';
 }
-
