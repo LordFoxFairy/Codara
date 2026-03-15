@@ -66,17 +66,90 @@ export async function installPluginSkills(
   spec: string,
   environment: PluginInstallEnvironment = {},
 ): Promise<PluginInstallResult> {
+  // Support both known plugins (name@source) and generic git URLs
+  if (isGitUrl(spec)) {
+    return installFromGitUrl(spec, environment);
+  }
+
   const parsed = parsePluginSpec(spec);
   const definition = SUPPORTED_PLUGINS.find((plugin) =>
     plugin.name === parsed.name && plugin.sources.includes(parsed.source),
   );
   if (!definition) {
     throw new Error([
-      `Unsupported plugin: ${spec}`,
-      `Supported plugin specs: ${listSupportedPluginSpecs().join(', ')}`,
+      `Unknown plugin: ${spec}`,
+      'Supported formats:',
+      `  /plugin install <plugin>@<source>  (known: ${listSupportedPluginSpecs().join(', ')})`,
+      '  /plugin install <git-url>          (any repo with skills/ directory)',
     ].join('\n'));
   }
 
+  return installFromDefinition(definition, parsed.source, environment);
+}
+
+async function installFromGitUrl(
+  url: string,
+  environment: PluginInstallEnvironment,
+): Promise<PluginInstallResult> {
+  const pluginName = derivePluginNameFromUrl(url);
+  const destinationRoot = await resolvePluginDestinationRoot(environment);
+
+  const tempRoot = await mkdtemp(path.join(tmpdir(), `codara-plugin-${pluginName}-`));
+  const repoDir = path.join(tempRoot, 'repo');
+
+  try {
+    await runGitClone(url, repoDir);
+    await mkdir(destinationRoot, {recursive: true});
+
+    const installedSkills: string[] = [];
+    const skippedSkills: string[] = [];
+
+    // Auto-detect skills: try skills/, then root
+    const skillsRoot = existsSync(path.join(repoDir, 'skills'))
+      ? path.join(repoDir, 'skills')
+      : repoDir;
+
+    const skillNames = await listSkillDirectories(skillsRoot);
+    for (const skillName of skillNames) {
+      const fromDir = path.join(skillsRoot, skillName);
+      const toDir = path.join(destinationRoot, skillName);
+      if (existsSync(toDir)) {
+        skippedSkills.push(skillName);
+        continue;
+      }
+
+      await cp(fromDir, toDir, {recursive: true});
+      installedSkills.push(skillName);
+    }
+
+    // Auto-detect commands: try commands/
+    if (existsSync(path.join(repoDir, 'commands'))) {
+      const importedCommands = await importPluginCommandsAsSkills({
+        pluginName,
+        commandsRoot: path.join(repoDir, 'commands'),
+        destinationRoot,
+      });
+      installedSkills.push(...importedCommands.installedSkills);
+      skippedSkills.push(...importedCommands.skippedSkills);
+    }
+
+    return {
+      plugin: pluginName,
+      source: url,
+      destinationRoot,
+      installedSkills,
+      skippedSkills,
+    };
+  } finally {
+    await rm(tempRoot, {recursive: true, force: true});
+  }
+}
+
+async function installFromDefinition(
+  definition: SupportedPluginDefinition,
+  source: string,
+  environment: PluginInstallEnvironment,
+): Promise<PluginInstallResult> {
   const destinationRoot = await resolvePluginDestinationRoot(environment);
   const sourceRoot = await materializePluginSource(definition);
 
@@ -116,7 +189,7 @@ export async function installPluginSkills(
 
     return {
       plugin: definition.name,
-      source: parsed.source,
+      source,
       destinationRoot,
       installedSkills,
       skippedSkills,
@@ -126,6 +199,15 @@ export async function installPluginSkills(
       await sourceRoot.cleanup();
     }
   }
+}
+
+function isGitUrl(spec: string): boolean {
+  return spec.startsWith('https://') || spec.startsWith('git@') || spec.startsWith('http://') || spec.endsWith('.git');
+}
+
+function derivePluginNameFromUrl(url: string): string {
+  const basename = url.replace(/\.git$/, '').split('/').pop() ?? 'plugin';
+  return basename.toLowerCase().replace(/[^a-z0-9-]/g, '-').replace(/-+/g, '-').replace(/^-|-$/g, '') || 'plugin';
 }
 
 async function resolvePluginDestinationRoot(environment: PluginInstallEnvironment): Promise<string> {

@@ -5,8 +5,8 @@ const BUILTIN_SOURCE = {type: 'builtin'} as const;
 
 export const pluginCommand: CodaraCommandDefinition = {
   name: 'plugin',
-  usage: '/plugin install <plugin>@<source>',
-  description: 'Install a supported Claude-style plugin by importing its skills into Codara.',
+  usage: '/plugin install <plugin>@<source> | <git-url>',
+  description: 'Install skills from a known plugin or any git repository.',
   source: BUILTIN_SOURCE,
   help: {
     executionMode: 'runtime_command',
@@ -19,7 +19,9 @@ export const pluginCommand: CodaraCommandDefinition = {
         command: command.name,
         output: [
           'Usage: /plugin install <plugin>@<source>',
-          `Supported plugin specs: ${listSupportedPluginSpecs().join(', ')}`,
+          '       /plugin install <git-url>',
+          `Known plugins: ${listSupportedPluginSpecs().join(', ')}`,
+          'Or install from any git repo with a skills/ directory.',
         ].join('\n'),
       };
     }
@@ -29,7 +31,7 @@ export const pluginCommand: CodaraCommandDefinition = {
       return {
         ok: false,
         command: command.name,
-        output: 'Usage: /plugin install <plugin>@<source>',
+        output: 'Usage: /plugin install <plugin>@<source> or <git-url>',
       };
     }
 
