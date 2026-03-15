@@ -4,6 +4,7 @@ import {parseAskUserResult} from '@core/middleware';
 import {parseHILToolMessagePayload} from '@core/middleware/hil';
 import {readMessageText} from '@core/shared/messages';
 import type {CliActiveTurn, CliNotice} from '../app/view-state';
+import {computeEditDiff, computeWriteDiff, type DiffData} from './diff-compute';
 
 export type TranscriptRole = 'system' | 'warning' | 'user' | 'assistant' | 'tool' | 'task' | 'hil' | 'command' | 'error';
 
@@ -16,6 +17,7 @@ export interface ToolResultMeta {
   summaryLine: string;
   outputLines?: string[];
   totalOutputLines?: number;
+  diffData?: DiffData;
 }
 
 export interface TranscriptItem {
@@ -471,7 +473,49 @@ function buildToolMetaFromCoreMessage(
   const status = message.status === 'error' ? 'error' : 'done';
   const {summaryLine, outputLines, totalOutputLines} = buildToolOutput(rawToolName, status as 'done' | 'error', text);
 
-  return {toolName: rawToolName, displayName, icon, args, status: status as 'done' | 'error', summaryLine, outputLines, totalOutputLines};
+  // Compute diff data for edit/write tools when tool args are available
+  const diffData = toolCall ? tryComputeDiff(rawToolName, toolCall.args) : undefined;
+
+  return {toolName: rawToolName, displayName, icon, args, status: status as 'done' | 'error', summaryLine, outputLines, totalOutputLines, diffData};
+}
+
+function tryComputeDiff(toolName: string, toolArgs: unknown): DiffData | undefined {
+  try {
+    if (!toolArgs || typeof toolArgs !== 'object' || Array.isArray(toolArgs)) {
+      return undefined;
+    }
+
+    const record = toolArgs as Record<string, unknown>;
+    const filePath = asString(record.file_path) || asString(record.path);
+    if (!filePath) {
+      return undefined;
+    }
+
+    switch (toolName) {
+      case 'edit':
+      case 'edit_file': {
+        const oldString = asString(record.old_string);
+        const newString = asString(record.new_string);
+        if (oldString !== undefined && newString !== undefined) {
+          return computeEditDiff(filePath, oldString, newString);
+        }
+        return undefined;
+      }
+      case 'write':
+      case 'write_file': {
+        const content = asString(record.content);
+        if (content !== undefined) {
+          return computeWriteDiff(filePath, content);
+        }
+        return undefined;
+      }
+      default:
+        return undefined;
+    }
+  } catch {
+    // Diff computation failed — graceful degradation
+    return undefined;
+  }
 }
 
 function shouldHideRuntimeEvent(event: CodaraRuntimeEvent): boolean {
