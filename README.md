@@ -2,9 +2,9 @@
 
 ![Bun](https://img.shields.io/badge/runtime-Bun-black)
 ![TypeScript](https://img.shields.io/badge/language-TypeScript-3178c6)
-[![Core Docs](https://img.shields.io/badge/docs-core-black)](./src/core/README.md)
+[![Engine Docs](https://img.shields.io/badge/docs-engine-black)](./src/engine/README.md)
 [![CLI Docs](https://img.shields.io/badge/docs-cli-black)](./src/cli/README.md)
-[![Tasks Docs](https://img.shields.io/badge/docs-tasks-black)](./src/core/tasks/README.md)
+[![Tasks Docs](https://img.shields.io/badge/docs-tasks-black)](./src/capability/task/README.md)
 
 Codara 是一个终端优先的代码代理 runtime。它把 session、skills、tasks、permission 和 CLI 工作流收敛到同一套运行时里，用来支撑真实编码流程，而不是只做聊天式 agent demo。
 
@@ -38,7 +38,7 @@ bun run check:fast
 
 Codara 的核心取向很直接：
 
-- 以 `src/core` 为主线，把 runtime 能力留在 core，而不是散落到 CLI 和脚本层
+- 以四层洋葱架构（engine → capability → infra → shared）组织 runtime，职责清晰分离
 - 用统一的 session/runtime 边界承载 commands、skills、tasks、permissions 和 interaction
 - 用真实工作流驱动演进，而不是只围绕局部接口做演示
 
@@ -46,9 +46,9 @@ Codara 的核心取向很直接：
 
 ## 文档入口
 
-- [Core Guide](./src/core/README.md)：核心运行时、session、middleware、skills、tasks 的整体说明
+- [Engine Guide](./src/engine/README.md)：核心运行时、session、pipeline、hooks 的整体说明
 - [CLI Guide](./src/cli/README.md)：终端入口、界面行为和 CLI 集成说明
-- [Tasks Guide](./src/core/tasks/README.md)：`src/core/tasks` 下的 Task、shared tasks 和 subagent 机制
+- [Tasks Guide](./src/capability/task/README.md)：Task、shared tasks 和 subagent 机制
 
 ## 开发说明
 
