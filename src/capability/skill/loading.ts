@@ -21,7 +21,9 @@ const KNOWN_FRONTMATTER_KEYS = new Set([
   'command-usage',
   'commandUsage',
   'command-aliases',
-  'commandAliases'
+  'commandAliases',
+  'user-invocable',
+  'userInvocable'
 ])
 
 export interface MarkdownFrontmatterDocument {
