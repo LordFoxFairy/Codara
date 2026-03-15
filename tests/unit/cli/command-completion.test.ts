@@ -65,13 +65,13 @@ describe('filterCommands', () => {
     expect(filterCommands(commands, 'xyz')).toHaveLength(0);
   });
 
-  it('limits to 8 results', () => {
-    const many: CompletionItem[] = Array.from({length: 20}, (_, i) => ({
+  it('limits to MAX_VISIBLE_ITEMS results', () => {
+    const many: CompletionItem[] = Array.from({length: 30}, (_, i) => ({
       name: `cmd-${i}`,
       description: `Command ${i}`,
       sourceLabel: 'builtin',
     }));
-    expect(filterCommands(many, '').length).toBeLessThanOrEqual(8);
+    expect(filterCommands(many, '').length).toBeLessThanOrEqual(20);
   });
 });
 

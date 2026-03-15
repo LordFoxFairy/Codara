@@ -58,6 +58,7 @@ function getRolePrefix(role: TranscriptRole): { text: string; width: number } {
   switch (role) {
     case 'user': return { text: '> ', width: 2 };
     case 'assistant': return { text: '', width: 0 };
+    case 'command': return { text: '', width: 0 };
     default: return { text: `${ROLE_LABEL_MAP[role]} `, width: ROLE_LABEL_MAP[role].length + 1 };
   }
 }
