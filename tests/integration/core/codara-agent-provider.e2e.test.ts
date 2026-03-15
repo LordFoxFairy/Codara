@@ -1,7 +1,7 @@
 import {describe, expect, it} from 'bun:test';
 import type {BaseChatModel} from '@langchain/core/language_models/chat_models';
 import {AIMessage, AIMessageChunk, type BaseMessage} from '@langchain/core/messages';
-import {createCodara, type MiddlewareLogRecord} from '@core';
+import {createCodara, type MiddlewareLogRecord} from '@/index';
 
 class InvokeOnceModel {
   bindTools(): this {

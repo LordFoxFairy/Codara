@@ -4,8 +4,8 @@ import type {BaseChatModel} from '@langchain/core/language_models/chat_models';
 import type {StructuredToolInterface} from '@langchain/core/tools';
 import {tool} from '@langchain/core/tools';
 import {z} from 'zod';
-import {createAgent} from '@core/agents';
-import {createHILMiddleware, type HILPauseRequest} from '@core/middleware';
+import {createAgent} from '@engine/agent';
+import {createHILMiddleware, type HILPauseRequest} from '@engine/pipeline';
 
 class MultiToolPauseModel {
   private step = 0;

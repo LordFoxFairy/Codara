@@ -4,8 +4,8 @@ import {describe, it, expect} from 'bun:test';
 import {mkdir, mkdtemp, writeFile} from 'node:fs/promises';
 import {tmpdir} from 'node:os';
 import path from 'node:path';
-import {ensurePermissionSettingsFile, evaluatePermissionToolCall} from '@core';
-import {evaluatePermissionExpression} from '@core/middleware/permission/policy';
+import {ensurePermissionSettingsFile, evaluatePermissionToolCall} from '@/index';
+import {evaluatePermissionExpression} from '@engine/pipeline/permission/policy';
 
 describe('Permission System Integration', () => {
   it('should evaluate allow decision from default rules', async () => {

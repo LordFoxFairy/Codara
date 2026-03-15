@@ -1,6 +1,6 @@
 import {describe, expect, test} from 'bun:test';
-import {ToolHooksMiddleware} from '@core/hooks/middleware';
-import type {ToolLifecycleHooks, HookInterceptResult, HookNotifyResult, ToolUseContext, ToolResultContext} from '@core/hooks/types';
+import {ToolHooksMiddleware} from '@engine/hook/middleware';
+import type {ToolLifecycleHooks, HookInterceptResult, HookNotifyResult, ToolUseContext, ToolResultContext} from '@engine/hook/types';
 import {ToolMessage} from '@langchain/core/messages';
 
 function createMockLifecycle(overrides: Partial<ToolLifecycleHooks> = {}): ToolLifecycleHooks {

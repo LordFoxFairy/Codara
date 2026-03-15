@@ -1,5 +1,5 @@
 import {describe, expect, it} from 'bun:test';
-import type {CodaraRuntimeEvent} from '@core';
+import type {CodaraRuntimeEvent} from '@/index';
 import {deriveActiveTasks, extractTaskName} from '../../../src/cli/hooks/use-active-tasks';
 
 function createEvent(overrides: Partial<CodaraRuntimeEvent>): CodaraRuntimeEvent {

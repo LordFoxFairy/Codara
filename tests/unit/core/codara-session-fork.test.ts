@@ -3,7 +3,7 @@ import {mkdtemp} from 'node:fs/promises';
 import {tmpdir} from 'node:os';
 import path from 'node:path';
 import type {BaseChatModel} from '@langchain/core/language_models/chat_models';
-import {createAgentMemoryCheckpointer, createCodara, FileSessionStore, openCodaraSession} from '@core';
+import {createAgentMemoryCheckpointer, createCodara, FileSessionStore, openCodaraSession} from '@/index';
 import {EchoModel} from './codara-fixtures';
 import {AIMessage} from '@langchain/core/messages';
 

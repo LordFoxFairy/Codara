@@ -1,6 +1,6 @@
 import {describe, expect, it} from 'bun:test';
 import {AIMessage, HumanMessage, ToolMessage} from '@langchain/core/messages';
-import {readLatestVisibleMessageText, readVisibleMessageText} from '../../../src/core/shared/messages';
+import {readLatestVisibleMessageText, readVisibleMessageText} from '@shared/messages';
 
 describe('shared message helpers', () => {
   it('should hide HIL pause payloads from visible message text', () => {

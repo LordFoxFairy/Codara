@@ -2,13 +2,13 @@ import {describe, expect, it} from 'bun:test';
 import {mkdir, mkdtemp, readFile, writeFile} from 'node:fs/promises';
 import path from 'node:path';
 import {tmpdir} from 'node:os';
-import {createCodara, FileSessionStore} from '@core';
-import {createCodaraGuidelinesSource} from '@core/context/instructions/guidelines';
+import {createCodara, FileSessionStore} from '@/index';
+import {createCodaraGuidelinesSource} from '@infra/context/instructions/guidelines';
 import type {BaseChatModel} from '@langchain/core/language_models/chat_models';
 import {AIMessage, HumanMessage, SystemMessage, ToolMessage, type BaseMessage, type ToolCall} from '@langchain/core/messages';
 import {tool} from '@langchain/core/tools';
 import {z} from 'zod';
-import type {SkillMetadata, SkillStore} from '@core/skills/types';
+import type {SkillMetadata, SkillStore} from '@capability/skill/types';
 import {SystemEchoModel} from './codara-fixtures';
 
 describe('Codara session source lifecycle', () => {

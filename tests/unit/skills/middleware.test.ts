@@ -3,12 +3,12 @@ import {mkdir, mkdtemp, writeFile} from 'node:fs/promises'
 import {tmpdir} from 'node:os'
 import path from 'node:path'
 import {HumanMessage, type BaseMessage} from '@langchain/core/messages'
-import {createSkillsMiddleware} from '@core/middleware'
+import {createSkillsMiddleware} from '@engine/pipeline'
 import {
   FileSystemSkillStore,
   type SkillMetadata,
   type SkillStore
-} from '@core/skills'
+} from '@capability/skill'
 
 function createBaseContext(runId: string) {
   const messages: BaseMessage[] = [new HumanMessage('hello')]

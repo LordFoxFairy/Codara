@@ -1,5 +1,5 @@
 import {describe, expect, it} from 'bun:test';
-import {createAgentMemoryCheckpointer, createCodara, createCodaraRuntime} from '@core';
+import {createAgentMemoryCheckpointer, createCodara, createCodaraRuntime} from '@/index';
 import type {BaseChatModel} from '@langchain/core/language_models/chat_models';
 import {AIMessage, AIMessageChunk, HumanMessage, SystemMessage, ToolMessage, type BaseMessage, type ToolCall} from '@langchain/core/messages';
 import {tool} from '@langchain/core/tools';

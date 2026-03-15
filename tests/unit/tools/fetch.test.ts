@@ -1,5 +1,5 @@
 import {afterEach, describe, expect, it} from 'bun:test';
-import {createFetchTool} from '@core/tools';
+import {createFetchTool} from '@capability/tool';
 
 const originalFetch = globalThis.fetch;
 type FetchImpl = (url: URL | RequestInfo, options?: RequestInit | BunFetchRequestInit) => Promise<Response>;

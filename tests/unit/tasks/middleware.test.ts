@@ -6,10 +6,10 @@ import {AIMessage, HumanMessage, SystemMessage, ToolMessage, type BaseMessage, t
 import type {BaseChatModel} from '@langchain/core/language_models/chat_models';
 import {tool, type StructuredToolInterface} from '@langchain/core/tools';
 import {z} from 'zod';
-import {createAgent} from '@core/agents';
-import {createCodaraGuidelinesSource} from '@core/context/instructions/guidelines';
-import {createCodaraPromptSource} from '@core/context/instructions/prompt';
-import {buildBaseSystemMessage} from '@core/context/system-message';
+import {createAgent} from '@engine/agent';
+import {createCodaraGuidelinesSource} from '@infra/context/instructions/guidelines';
+import {createCodaraPromptSource} from '@infra/context/instructions/prompt';
+import {buildBaseSystemMessage} from '@infra/context/system-message';
 import {
   createSharedTaskMiddleware,
   createTaskMemoryStore,
@@ -17,10 +17,10 @@ import {
   TASK_CREATE_TOOL_NAME,
   TASK_LIST_TOOL_NAME,
   TASK_TOOL_NAME,
-} from '@core/tasks';
+} from '@capability/task';
 import {
   readDelegatedAgentResult,
-} from '@core/tasks/delegation';
+} from '@capability/task/delegation';
 import {createAgentSkillsMiddleware, createBuiltinSubagentStore} from '../agents/task-tool.fixtures';
 
 class ScriptedModel {

@@ -1,6 +1,6 @@
 import {describe, expect, it} from 'bun:test';
 import {HumanMessage} from '@langchain/core/messages';
-import type {AgentResult} from '@core/agents';
+import type {AgentResult} from '@engine/agent';
 import {
   applyAgentStateSnapshot,
   cloneAgentState,
@@ -11,8 +11,8 @@ import {
   toCheckpointInfo,
   toCheckpointState,
   type MutableAgentState,
-} from '@core/agents';
-import type {AgentCheckpoint} from '@core/checkpoint';
+} from '@engine/agent';
+import type {AgentCheckpoint} from '@infra/checkpoint';
 
 describe('agent checkpoint state helpers', () => {
   it('should convert runtime state into public and checkpoint snapshots without sharing mutable references', () => {

@@ -3,8 +3,8 @@ import {AIMessage, HumanMessage, ToolMessage, type BaseMessage} from '@langchain
 import type {BaseChatModel} from '@langchain/core/language_models/chat_models';
 import {tool} from '@langchain/core/tools';
 import {z} from 'zod';
-import {createAgent} from '@core/agents';
-import {createMiddleware} from '@core/middleware';
+import {createAgent} from '@engine/agent';
+import {createMiddleware} from '@engine/pipeline';
 
 class ScriptedModel {
   private index = 0;

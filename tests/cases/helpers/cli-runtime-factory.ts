@@ -10,14 +10,14 @@ import {
   ensurePermissionSettingsFile,
   persistPermissionRule,
   type Codara,
-} from '@core';
+} from '@/index';
 import {
   createAskUserTool,
   createInteractionMiddleware,
   createPermissionMiddleware,
   createSkillsMiddleware,
   parseAskUserResult,
-} from '@core/middleware';
+} from '@engine/pipeline';
 import {
   createSharedTaskMiddleware,
   createTaskCreateTool,
@@ -28,12 +28,12 @@ import {
   TASK_CREATE_TOOL_NAME,
   TASK_LIST_TOOL_NAME,
   TASK_TOOL_NAME,
-} from '@core/tasks';
-import {createTaskTool} from '@core/tasks/task';
-import {FileSystemSkillStore} from '@core/skills';
+} from '@capability/task';
+import {createTaskTool} from '@capability/task/task';
+import {FileSystemSkillStore} from '@capability/skill';
 import {seedProjectSkillFixtures} from '../../helpers/project-skill-fixtures';
 
-const createCliCaseRuntime = (options: Parameters<typeof createCodaraRuntime>[0]) => (
+const createCliCaseRuntime = async (options: Parameters<typeof createCodaraRuntime>[0]) => (
   createCodaraRuntime({
     ...options,
     autoMemory: false,
@@ -54,7 +54,7 @@ export async function createCliRuntime(input: {
       await seedProjectSkillFixtures(input.cwd);
       await seedPermissions(input.cwd, ['Read(*)']);
       return {
-        codara: createCliCaseRuntime({
+        codara: await createCliCaseRuntime({
           cwd: input.cwd,
           projectRoot: input.cwd,
           codaraPath: path.join(input.cwd, '.codara'),
@@ -76,7 +76,7 @@ export async function createCliRuntime(input: {
       await seedProjectSkillFixtures(input.cwd);
       const store = createTaskFileStore({rootDir: path.join(input.cwd, '.codara', 'case-tasks')});
       return {
-        codara: createCliCaseRuntime({
+        codara: await createCliCaseRuntime({
           cwd: input.cwd,
           projectRoot: input.cwd,
           codaraPath: path.join(input.cwd, '.codara'),
@@ -124,7 +124,7 @@ export async function createCliRuntime(input: {
     }
     case 'prompt-manual-inheritance':
       return {
-        codara: createCodaraRuntime({
+        codara: await createCodaraRuntime({
           cwd: input.cwd,
           projectRoot: input.cwd,
           codaraPath: path.join(input.cwd, '.codara'),
@@ -150,7 +150,7 @@ export async function createCliRuntime(input: {
       const store = createTaskFileStore({rootDir: path.join(input.cwd, '.codara', 'case-tasks')});
       const childModel = new CoordinatedSubagentModel();
       return {
-        codara: createCodaraRuntime({
+        codara: await createCodaraRuntime({
           cwd: input.cwd,
           projectRoot: input.cwd,
           codaraPath: path.join(input.cwd, '.codara'),
@@ -237,7 +237,7 @@ export async function createCliRuntime(input: {
     }
     case 'runtime-permission':
       return {
-        codara: createCodaraRuntime({
+        codara: await createCodaraRuntime({
           cwd: input.cwd,
           projectRoot: input.cwd,
           codaraPath: path.join(input.cwd, '.codara'),
@@ -250,7 +250,7 @@ export async function createCliRuntime(input: {
       };
     case 'runtime-git-status':
       return {
-        codara: createCodaraRuntime({
+        codara: await createCodaraRuntime({
           cwd: input.cwd,
           projectRoot: input.cwd,
           codaraPath: path.join(input.cwd, '.codara'),
@@ -263,7 +263,7 @@ export async function createCliRuntime(input: {
       };
     case 'runtime-git-status-wrapper':
       return {
-        codara: createCodaraRuntime({
+        codara: await createCodaraRuntime({
           cwd: input.cwd,
           projectRoot: input.cwd,
           codaraPath: path.join(input.cwd, '.codara'),
@@ -276,7 +276,7 @@ export async function createCliRuntime(input: {
       };
     case 'runtime-git-log-option':
       return {
-        codara: createCodaraRuntime({
+        codara: await createCodaraRuntime({
           cwd: input.cwd,
           projectRoot: input.cwd,
           codaraPath: path.join(input.cwd, '.codara'),
@@ -289,7 +289,7 @@ export async function createCliRuntime(input: {
       };
     case 'runtime-git-compound':
       return {
-        codara: createCodaraRuntime({
+        codara: await createCodaraRuntime({
           cwd: input.cwd,
           projectRoot: input.cwd,
           codaraPath: path.join(input.cwd, '.codara'),
@@ -305,7 +305,7 @@ export async function createCliRuntime(input: {
       };
     case 'runtime-git-push':
       return {
-        codara: createCodaraRuntime({
+        codara: await createCodaraRuntime({
           cwd: input.cwd,
           projectRoot: input.cwd,
           codaraPath: path.join(input.cwd, '.codara'),
@@ -318,7 +318,7 @@ export async function createCliRuntime(input: {
       };
     case 'runtime-write-permission':
       return {
-        codara: createCodaraRuntime({
+        codara: await createCodaraRuntime({
           cwd: input.cwd,
           projectRoot: input.cwd,
           codaraPath: path.join(input.cwd, '.codara'),
@@ -331,7 +331,7 @@ export async function createCliRuntime(input: {
       };
     case 'runtime-permission-other':
       return {
-        codara: createCodaraRuntime({
+        codara: await createCodaraRuntime({
           cwd: input.cwd,
           projectRoot: input.cwd,
           codaraPath: path.join(input.cwd, '.codara'),
@@ -344,7 +344,7 @@ export async function createCliRuntime(input: {
       };
     case 'runtime-permission-mkdir-path':
       return {
-        codara: createCodaraRuntime({
+        codara: await createCodaraRuntime({
           cwd: input.cwd,
           projectRoot: input.cwd,
           codaraPath: path.join(input.cwd, '.codara'),
@@ -357,7 +357,7 @@ export async function createCliRuntime(input: {
       };
     case 'runtime-permission-mkdir-path-other':
       return {
-        codara: createCodaraRuntime({
+        codara: await createCodaraRuntime({
           cwd: input.cwd,
           projectRoot: input.cwd,
           codaraPath: path.join(input.cwd, '.codara'),
@@ -370,7 +370,7 @@ export async function createCliRuntime(input: {
       };
     case 'runtime-permission-heredoc-path':
       return {
-        codara: createCodaraRuntime({
+        codara: await createCodaraRuntime({
           cwd: input.cwd,
           projectRoot: input.cwd,
           codaraPath: path.join(input.cwd, '.codara'),
@@ -386,7 +386,7 @@ export async function createCliRuntime(input: {
       };
     case 'runtime-permission-heredoc-path-other':
       return {
-        codara: createCodaraRuntime({
+        codara: await createCodaraRuntime({
           cwd: input.cwd,
           projectRoot: input.cwd,
           codaraPath: path.join(input.cwd, '.codara'),
@@ -402,7 +402,7 @@ export async function createCliRuntime(input: {
       };
     case 'runtime-permission-complex-path':
       return {
-        codara: createCodaraRuntime({
+        codara: await createCodaraRuntime({
           cwd: input.cwd,
           projectRoot: input.cwd,
           codaraPath: path.join(input.cwd, '.codara'),
@@ -418,7 +418,7 @@ export async function createCliRuntime(input: {
       };
     case 'subagent-permission':
       return {
-        codara: createCodaraRuntime({
+        codara: await createCodaraRuntime({
           cwd: input.cwd,
           projectRoot: input.cwd,
           codaraPath: path.join(input.cwd, '.codara'),
@@ -441,7 +441,7 @@ export async function createCliRuntime(input: {
       };
     case 'runtime-permission-repair':
       return {
-        codara: createCodaraRuntime({
+        codara: await createCodaraRuntime({
           cwd: input.cwd,
           projectRoot: input.cwd,
           codaraPath: path.join(input.cwd, '.codara'),
@@ -453,7 +453,7 @@ export async function createCliRuntime(input: {
       };
     case 'hil-form':
       return {
-        codara: createCodaraRuntime({
+        codara: await createCodaraRuntime({
           cwd: input.cwd,
           projectRoot: input.cwd,
           codaraPath: path.join(input.cwd, '.codara'),
@@ -470,7 +470,7 @@ export async function createCliRuntime(input: {
       };
     case 'memory-project':
       return {
-        codara: createCodaraRuntime({
+        codara: await createCodaraRuntime({
           cwd: input.cwd,
           projectRoot: input.cwd,
           codaraPath: path.join(input.cwd, '.codara'),
@@ -482,7 +482,7 @@ export async function createCliRuntime(input: {
       };
     case 'progressive-disclosure':
       return {
-        codara: createCodaraRuntime({
+        codara: await createCodaraRuntime({
           cwd: input.cwd,
           projectRoot: input.cwd,
           codaraPath: path.join(input.cwd, '.codara'),
@@ -495,7 +495,7 @@ export async function createCliRuntime(input: {
       };
     case 'command-surface':
       return {
-        codara: createCodaraRuntime({
+        codara: await createCodaraRuntime({
           cwd: input.cwd,
           projectRoot: input.cwd,
           codaraPath: path.join(input.cwd, '.codara'),
@@ -507,7 +507,7 @@ export async function createCliRuntime(input: {
       };
     case 'command-surface-skill-help':
       return {
-        codara: createCodaraRuntime({
+        codara: await createCodaraRuntime({
           cwd: input.cwd,
           projectRoot: input.cwd,
           codaraPath: path.join(input.cwd, '.codara'),
@@ -521,7 +521,7 @@ export async function createCliRuntime(input: {
       };
     case 'plugin-install':
       return {
-        codara: createCodaraRuntime({
+        codara: await createCodaraRuntime({
           cwd: input.cwd,
           projectRoot: input.cwd,
           codaraPath: path.join(input.cwd, '.codara'),
@@ -533,7 +533,7 @@ export async function createCliRuntime(input: {
       };
     case 'skill-command-preflight-missing-tool':
       return {
-        codara: createCodaraRuntime({
+        codara: await createCodaraRuntime({
           cwd: input.cwd,
           projectRoot: input.cwd,
           codaraPath: path.join(input.cwd, '.codara'),
@@ -547,7 +547,7 @@ export async function createCliRuntime(input: {
       };
     case 'skill-command-preflight-missing-binary':
       return {
-        codara: createCodaraRuntime({
+        codara: await createCodaraRuntime({
           cwd: input.cwd,
           projectRoot: input.cwd,
           codaraPath: path.join(input.cwd, '.codara'),
@@ -561,7 +561,7 @@ export async function createCliRuntime(input: {
       };
     case 'default-runtime-workflow':
       return {
-        codara: createCodaraRuntime({
+        codara: await createCodaraRuntime({
           cwd: input.cwd,
           projectRoot: input.cwd,
           codaraPath: path.join(input.cwd, '.codara'),
