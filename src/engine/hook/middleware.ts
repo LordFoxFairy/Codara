@@ -1,6 +1,6 @@
 import {ToolMessage} from '@langchain/core/messages';
 import type {BaseMiddleware, ToolCallContext, ToolCallHandler} from '@engine/pipeline/types';
-import type {ToolLifecycleHooks, ToolUseContext, ToolResultContext} from '@engine/hook/types';
+import type {ToolLifecycleHooks} from '@engine/hook/types';
 
 export class ToolHooksMiddleware implements BaseMiddleware {
   readonly name = 'ToolHooksMiddleware';

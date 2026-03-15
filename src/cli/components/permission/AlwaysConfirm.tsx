@@ -17,8 +17,8 @@ interface AlwaysConfirmProps {
 export const AlwaysConfirm: React.FC<AlwaysConfirmProps> = ({
   patterns,
   selectedIndex,
-  onConfirm,
-  onBack,
+  onConfirm: _onConfirm,
+  onBack: _onBack,
 }) => {
   return (
     <Box flexDirection="column" paddingX={1}>

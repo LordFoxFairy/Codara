@@ -194,7 +194,7 @@ function pathSpecifierMatches(
 
 function bashPathSpecifierMatches(
   command: string,
-  ruleTool: string,
+  _ruleTool: string,
   ruleSpecifier: string,
   options: PermissionPolicyOptions,
 ): boolean {

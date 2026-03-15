@@ -15,8 +15,8 @@ interface RejectFeedbackProps {
  */
 export const RejectFeedback: React.FC<RejectFeedbackProps> = ({
   feedback,
-  onSend,
-  onRejectSilently,
+  onSend: _onSend,
+  onRejectSilently: _onRejectSilently,
 }) => {
   return (
     <Box flexDirection="column" paddingX={1}>
