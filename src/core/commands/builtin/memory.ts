@@ -2,6 +2,7 @@ import {existsSync} from 'node:fs';
 import {homedir} from 'node:os';
 import path from 'node:path';
 import {resolveWorkspaceRoot} from '@core/config/workspace';
+import {createWorkspaceKey} from '@core/config/workspace-key';
 import type {CodaraCommandDefinition} from '@core/commands/types';
 
 const BUILTIN_SOURCE = {type: 'builtin'} as const;
@@ -9,7 +10,7 @@ const MEMORY_FILE_NAME = 'AGENTS.md';
 
 export const memoryCommand: CodaraCommandDefinition = {
   name: 'memory',
-  usage: '/memory [show|project|global]',
+  usage: '/memory [show|project|user|global]',
   description: 'Inspect or open the current AGENTS.md memory scopes for this runtime.',
   source: BUILTIN_SOURCE,
   help: {
@@ -25,14 +26,15 @@ export const memoryCommand: CodaraCommandDefinition = {
         command: command.name,
         output: [
           'Memory scopes:',
-          formatMemoryScope('project', files.project),
           formatMemoryScope('global', files.global),
-          'Use /memory project or /memory global to open a file in the host shell.',
+          formatMemoryScope('user', files.user),
+          formatMemoryScope('project', files.project),
+          'Use /memory project, /memory user, or /memory global to open a file in the host shell.',
         ].join('\n'),
       };
     }
 
-    if (target === 'project' || target === 'global') {
+    if (target === 'project' || target === 'global' || target === 'user') {
       const filePath = files[target];
       return {
         ok: true,
@@ -48,7 +50,7 @@ export const memoryCommand: CodaraCommandDefinition = {
     return {
       ok: false,
       command: command.name,
-      output: 'Usage: /memory [show|project|global]',
+      output: 'Usage: /memory [show|project|user|global]',
     };
   },
 };
@@ -57,19 +59,21 @@ function resolveMemoryFiles(environment: {
   cwd?: string;
   projectRoot?: string;
   userHome?: string;
-}): {project: string; global: string} {
+}): {project: string; user: string; global: string} {
   const projectRoot = resolveWorkspaceRoot({
     cwd: environment.cwd,
     projectRoot: environment.projectRoot,
   });
   const userHome = environment.userHome ?? homedir();
+  const workspaceKey = createWorkspaceKey(projectRoot);
 
   return {
     project: path.join(projectRoot, MEMORY_FILE_NAME),
+    user: path.join(userHome, '.codara', 'projects', workspaceKey, MEMORY_FILE_NAME),
     global: path.join(userHome, '.codara', MEMORY_FILE_NAME),
   };
 }
 
-function formatMemoryScope(scope: 'project' | 'global', filePath: string): string {
+function formatMemoryScope(scope: string, filePath: string): string {
   return `- ${scope}: ${filePath}${existsSync(filePath) ? '' : ' (missing)'}`;
 }
