@@ -1,6 +1,6 @@
 import {useEffect, useState} from 'react';
 
-const TIPS = [
+export const TIPS = [
   'Type / to see available commands',
   'Use Shift+Enter for multi-line input',
   'Press Ctrl+C to interrupt',
