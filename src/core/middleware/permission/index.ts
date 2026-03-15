@@ -1,12 +1,29 @@
-// src/core/permission/index.ts
-
-export * from './types';
-export * from './utils';
-export * from './handler';
-export * from './runtime/runtime';
-export * from './runtime/session-memory';
-export * from './policy/engine';
-export * from './policy/loader';
-export * from './policy/matcher';
-export * from './bash/analyzer';
-export * from './adapter';
+export {
+  createPermissionMiddleware,
+  type PermissionMiddlewareOptions,
+} from '@core/middleware/permission/middleware';
+export {
+  createPermissionRuntime,
+  handlePermissionFallbackResume,
+  isPermissionPause,
+  type PermissionRuntime,
+  type PermissionRuntimeOptions,
+} from '@core/middleware/permission/runtime';
+export {
+  ensurePermissionSettingsFile,
+  evaluatePermissionExpression,
+  evaluatePermissionToolCall,
+  formatPermissionExpression,
+  persistAllowedPermission,
+  persistPermissionScope,
+  persistPermissionRule,
+  resolvePermissionSettingsFile,
+  validatePermissionSettings,
+  type PermissionDecision,
+  type PermissionEvaluationResult,
+  type PermissionGrantScope,
+  type PermissionPolicyOptions,
+  type PermissionRuleMatch,
+  type PermissionSourceInfo,
+  type PermissionValidationResult,
+} from '@core/middleware/permission/policy';

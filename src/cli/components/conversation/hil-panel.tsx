@@ -147,7 +147,7 @@ export function HilPanel({review}: HilPanelProps): React.JSX.Element {
         <Text dimColor>{model.hint}</Text>
         {model.status ? <Text color={model.tone}>{model.status}</Text> : null}
       </Box>
-    </>
+    </Box>
   );
 
   if (model.chrome === 'plain') {
