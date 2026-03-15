@@ -211,12 +211,13 @@ export function createSession(options: CreateSessionOptions): Session {
       options.guidelinesSource?.reload?.();
       options.skillsSource?.reload();
       options.autoMemory?.source.reload();
-      baseSystemContext = await buildBaseSystemMessage(
-        options.promptSource,
-        options.guidelinesSource,
-        options.skillsSource,
-        options.autoMemory?.source,
-      );
+      baseSystemContext = await buildBaseSystemMessage({
+        promptSource: options.promptSource,
+        guidelinesSource: options.guidelinesSource,
+        skillsSource: options.skillsSource,
+        autoMemorySource: options.autoMemory?.source,
+        memoryRootDir: options.autoMemory?.rootDir,
+      });
     }
 
     return baseSystemContext;
