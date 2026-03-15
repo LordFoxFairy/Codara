@@ -1,5 +1,5 @@
 import {useEffect, useState} from 'react';
-import type {CodaraRuntimeEvent} from '@core';
+import type {CodaraRuntimeEvent} from '@/index';
 import type {CliActiveTurn, CliRunState} from '../app/view-state';
 
 const BRAILLE_FRAMES = ['⠋', '⠙', '⠹', '⠸', '⠼', '⠴', '⠦', '⠧', '⠇', '⠏'] as const;

@@ -1,8 +1,8 @@
 import {AIMessage, HumanMessage, SystemMessage, ToolMessage, type BaseMessage, type ToolCall} from '@langchain/core/messages';
-import type {CodaraRuntimeEvent} from '@core';
-import {parseAskUserResult} from '@core/middleware';
-import {parseHILToolMessagePayload} from '@core/middleware/hil';
-import {readMessageText} from '@core/shared/messages';
+import type {CodaraRuntimeEvent} from '@/index';
+import {parseAskUserResult} from '@engine/pipeline';
+import {parseHILToolMessagePayload} from '@engine/pipeline/hil';
+import {readMessageText} from '@shared/messages';
 import type {CliActiveTurn, CliNotice} from '../app/view-state';
 import {computeEditDiff, computeWriteDiff, type DiffData} from './diff-compute';
 

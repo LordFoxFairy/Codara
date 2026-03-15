@@ -1,5 +1,5 @@
 import {useEffect, useMemo, useState} from 'react';
-import type {CodaraRuntimeEvent} from '@core';
+import type {CodaraRuntimeEvent} from '@/index';
 
 export interface ActiveTask {
   id: string;

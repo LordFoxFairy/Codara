@@ -1,6 +1,6 @@
 import React from 'react';
 import {Box, Text} from 'ink';
-import type {SessionState} from '@core';
+import type {SessionState} from '@/index';
 import type {CliLayoutMode} from '../../app/layout-mode';
 import {RobotMark} from '../chrome/robot-mark';
 
