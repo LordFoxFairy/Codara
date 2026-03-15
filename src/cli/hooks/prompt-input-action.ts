@@ -1,4 +1,4 @@
-﻿export type PromptInputAction =
+export type PromptInputAction =
   | 'exit'
   | 'insert-newline'
   | 'submit'

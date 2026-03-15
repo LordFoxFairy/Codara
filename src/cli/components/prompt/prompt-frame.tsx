@@ -66,7 +66,7 @@ export function PromptFrame({
         const plainText = `${line.beforeCursor}${line.afterCursor}${line.placeholder ?? ''}`;
 
         return (
-          <Box key={`${index}-${line.beforeCursor.length}-${line.afterCursor.length}-${line.isCursorLine ? 1 : 0}`}>
+          <Box key={`prompt-line-${index}`}>
             <Text color="greenBright">{createPromptPrefix(index)}</Text>
             <Box flexGrow={1} flexShrink={1}>
               {line.isCursorLine ? (

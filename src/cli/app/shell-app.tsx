@@ -1,15 +1,15 @@
-﻿import React, {useEffect, useRef} from 'react';
-import {Box, useApp, useStdout} from 'ink';
+import React, {useEffect} from 'react';
+import {Box, useApp} from 'ink';
 import type {Codara} from '@core';
 import {Footer} from '../components/chrome/footer';
-import {Header} from '../components/chrome/header';
+import {StatusBar} from '../components/chrome/header';
 import {ActivityLine} from '../components/chrome/activity-line';
 import {HilPanel, isPermissionReview} from '../components/conversation/hil-panel';
 import {Transcript} from '../components/conversation/transcript';
 import {WelcomeState} from '../components/conversation/welcome-state';
 import {PromptFrame} from '../components/prompt/prompt-frame';
 import type {CliHilAutoAction} from './hil-review';
-import {resolveCliLayoutMode} from './layout-mode';
+import {resolveCliLayoutMode, type CliLayoutMode} from './layout-mode';
 import {useCliController} from './use-cli-controller';
 import {useHilInput} from '../hooks/use-hil-input';
 import {usePromptInput} from '../hooks/use-prompt-input';
@@ -101,18 +101,6 @@ export function CodaraCliApp(props: CodaraCliAppProps): React.JSX.Element {
     onPermissionRejectSilent: shell.permissionRejectSilent,
   });
 
-  // 从 welcome 切换到 transcript 时清屏，避免布局跳跃残留
-  const {stdout} = useStdout();
-  const prevSurfaceRef = useRef(foregroundSurface);
-  useEffect(() => {
-    if (prevSurfaceRef.current === 'welcome' && foregroundSurface !== 'welcome') {
-      if (stdout.isTTY) {
-        process.stdout.write('\x1b[2J\x1b[3J\x1b[H');
-      }
-    }
-    prevSurfaceRef.current = foregroundSurface;
-  }, [foregroundSurface, stdout.isTTY]);
-
   useEffect(() => {
     if (
       !autoExitOnSettledPrompt
@@ -130,26 +118,15 @@ export function CodaraCliApp(props: CodaraCliAppProps): React.JSX.Element {
   }, [autoExitOnSettledPrompt, exit, hasInitialPrompt, shell.hasConversation, shell.hilReview?.busy, shell.runState.status]);
 
   return (
-    <Box flexDirection="column" paddingX={1} paddingY={1}>
-      {foregroundSurface === 'welcome' ? (
-        <>
+      <Box flexDirection="column" paddingX={1} paddingY={1}>
+        {/* 活跃 welcome — 对话前展示 */}
+        {!shell.hasConversation && (
           <WelcomeState layoutMode={layoutMode} cwd={cwd} modelAlias={modelAlias} />
-          <ActivityLine
-            runState={shell.runState}
-            activeTurn={shell.activeTurn}
-            latestRuntimeEvent={shell.latestRuntimeEvent}
-          />
-          <PromptFrame
-            terminalWidth={terminalWidth}
-            composer={shell.composer}
-            cursorActivityVersion={shell.composerActivityVersion}
-            isRunning={shell.runState.status === 'running'}
-          />
-          <Footer layoutMode={layoutMode} />
-        </>
-      ) : (
-        <>
-          <Header
+        )}
+
+        {/* 对话开始后显示轻量状态栏 */}
+        {shell.hasConversation && (
+          <StatusBar
             layoutMode={layoutMode}
             session={shell.sessionState}
             cwd={cwd}
@@ -157,32 +134,37 @@ export function CodaraCliApp(props: CodaraCliAppProps): React.JSX.Element {
             runState={shell.runState}
             latestRuntimeEvent={shell.latestRuntimeEvent}
           />
+        )}
+
+        {/* Transcript 只在有对话时渲染 */}
+        {shell.hasConversation && (
           <Transcript
             coreMessages={shell.coreMessages}
             notices={shell.notices}
             activeTurn={shell.activeTurn}
             runtimeEvents={shell.runtimeEvents}
           />
-          {foregroundSurface === 'hil' && shell.hilReview ? (
-            <HilPanel review={shell.hilReview} />
-          ) : (
-            <>
-              <ActivityLine
-                runState={shell.runState}
-                activeTurn={shell.activeTurn}
-                latestRuntimeEvent={shell.latestRuntimeEvent}
-              />
-              <PromptFrame
-                terminalWidth={terminalWidth}
-                composer={shell.composer}
-                cursorActivityVersion={shell.composerActivityVersion}
-                isRunning={shell.runState.status === 'running'}
-              />
-              <Footer layoutMode={layoutMode} />
-            </>
-          )}
-        </>
-      )}
-    </Box>
+        )}
+
+        {/* HIL 或正常交互区 — 始终渲染 */}
+        {foregroundSurface === 'hil' && shell.hilReview ? (
+          <HilPanel review={shell.hilReview} />
+        ) : (
+          <>
+            <ActivityLine
+              runState={shell.runState}
+              activeTurn={shell.activeTurn}
+              latestRuntimeEvent={shell.latestRuntimeEvent}
+            />
+            <PromptFrame
+              terminalWidth={terminalWidth}
+              composer={shell.composer}
+              cursorActivityVersion={shell.composerActivityVersion}
+              isRunning={shell.runState.status === 'running'}
+            />
+            <Footer layoutMode={layoutMode} />
+          </>
+        )}
+      </Box>
   );
 }

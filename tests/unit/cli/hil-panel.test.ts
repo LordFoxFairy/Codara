@@ -147,7 +147,7 @@ describe('HIL panel model', () => {
     expect(model.actions[0]?.label).toBe('Yes');
     expect(model.actions[1]?.label).toBe("Yes, don't ask again");
     expect(model.actions[2]?.label).toBe('No');
-    expect(model.compactActions).toBe(true);
+    expect(model.compactActions).toBeUndefined();
     expect(model.input).toBeUndefined();
   });
 });

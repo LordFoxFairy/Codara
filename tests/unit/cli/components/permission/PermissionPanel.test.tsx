@@ -1,15 +1,16 @@
 // tests/unit/cli/components/permission/PermissionPanel.test.tsx
 
-import { describe, it, expect } from 'vitest';
+import { describe, it, expect } from 'bun:test';
 import { render } from 'ink-testing-library';
 import React from 'react';
 import { PermissionPanel } from '@/cli/components/permission/PermissionPanel';
 
 describe('PermissionPanel', () => {
-  it('should render QuickView by default', () => {
+  it('should render tool call display in prompt stage', () => {
     const { lastFrame } = render(
       <PermissionPanel
-        toolCall={{ tool: 'Edit', input: 'src/index.ts' }}
+        toolName="Edit"
+        toolArgs={{ file_path: 'src/index.ts' }}
         evaluation={{
           input: 'Edit(src/index.ts)',
           decision: 'ask',
@@ -18,7 +19,7 @@ describe('PermissionPanel', () => {
           sources: [],
           policySummary: { deny: 0, ask: 0, allow: 0 }
         }}
-        onAction={() => {}}
+        onReply={() => {}}
       />
     );
 
