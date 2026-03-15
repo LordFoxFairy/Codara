@@ -2,6 +2,7 @@ import {clearCommand} from './clear';
 import type {CodaraCommandDefinition} from '@core/commands/types';
 import {compactCommand} from './compact';
 import {helpCommand} from './help';
+import {hooksCommand} from './hooks';
 import {memoryCommand} from './memory';
 import {permissionsCommand} from './permissions';
 import {pluginCommand} from './plugin';
@@ -20,5 +21,6 @@ export function createBuiltInCommands(): readonly CodaraCommandDefinition[] {
     resumeCommand,
     compactCommand,
     reloadCommand,
+    hooksCommand,
   ];
 }

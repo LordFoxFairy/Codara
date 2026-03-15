@@ -61,6 +61,8 @@ import {
   applyPreparedInstructionContext,
   buildBaseSystemMessage,
 } from '@core/context/system-message';
+import {HookRegistryImpl, HookPipeline, ToolHooksMiddleware, createHookExecutor} from '@core/hooks';
+import type {HookSource, HookRegistry, SessionLifecycleHooks, AgentLifecycleHooks} from '@core/hooks';
 
 export const DEFAULT_CODARA_MODEL_ALIAS = 'default';
 const DEFAULT_RUNTIME_FILE_LOGGING_ENABLED = true;
@@ -176,7 +178,7 @@ export function createCodara(options: CodaraOptions = {}): Codara {
   return assembleCodara(options);
 }
 
-export function createCodaraRuntime(options: CodaraRuntimeOptions = {}): Codara {
+export async function createCodaraRuntime(options: CodaraRuntimeOptions = {}): Promise<Codara> {
   const codaraPath = resolveCodaraRuntimePath(options);
   const projectRoot = resolveWorkspaceRoot({
     cwd: options.cwd,
@@ -210,6 +212,21 @@ export function createCodaraRuntime(options: CodaraRuntimeOptions = {}): Codara 
     cwd: options.cwd,
     tools: mergeRuntimeTools(options.tools, runtimeInteractionTools),
   });
+  // ── Hooks System Assembly ──
+  const hookSources: HookSource[] = [];
+  const projectHooksPath = path.join(codaraPath, 'hooks.json');
+  hookSources.push({kind: 'project', path: projectHooksPath});
+  const userHome = options.userHome ?? process.env.HOME ?? '';
+  if (userHome) {
+    const userHooksPath = path.join(userHome, '.codara', 'hooks.json');
+    hookSources.push({kind: 'user', path: userHooksPath});
+  }
+  const hookRegistry = new HookRegistryImpl();
+  await hookRegistry.load(hookSources);
+  const hookPipeline = new HookPipeline(hookRegistry, {
+    createStrategy: (hook) => createHookExecutor(hook, {projectRoot: codaraPath}),
+  });
+
   const runtimeMiddlewares = createRuntimeDefaultMiddlewares({
     options,
     runtimeTools,
@@ -218,6 +235,7 @@ export function createCodaraRuntime(options: CodaraRuntimeOptions = {}): Codara 
     catalog,
     promptSource,
     guidelinesSource,
+    hookPipeline,
   });
 
   return assembleCodara({
@@ -235,7 +253,7 @@ export function createCodaraRuntime(options: CodaraRuntimeOptions = {}): Codara 
       checkpointer: createAgentFileCheckpointer({rootDir: path.join(codaraPath, 'sessions')}),
     }),
     restore: options.restore ?? 'latest',
-  }, undefined, {promptSource, guidelinesSource});
+  }, undefined, {promptSource, guidelinesSource, hookPipeline, hookRegistry});
 }
 
 function assembleCodara(
@@ -244,6 +262,8 @@ function assembleCodara(
   preloadedSources?: {
     promptSource?: PromptSource;
     guidelinesSource?: GuidelinesSource;
+    hookPipeline?: HookPipeline;
+    hookRegistry?: HookRegistry;
   },
 ): Codara {
   const skills = resolveCodaraSkills(options);
@@ -283,6 +303,7 @@ function assembleCodara(
     middleware: createCodaraMiddlewares(options),
     ...(options.summary ? {summary: options.summary} : {}),
     ...(options.inputBudget ? {inputBudget: options.inputBudget} : {}),
+    ...(preloadedSources?.hookPipeline ? {lifecycle: preloadedSources.hookPipeline as SessionLifecycleHooks & AgentLifecycleHooks} : {}),
   });
 
   const commands = createCodaraCommandRunner({
@@ -535,6 +556,7 @@ function createRuntimeDefaultMiddlewares(input: {
   catalog?: CodaraModelCatalog | Promise<CodaraModelCatalog>;
   promptSource: PromptSource;
   guidelinesSource: GuidelinesSource;
+  hookPipeline?: HookPipeline;
 }): BaseMiddleware[] {
   const callerMiddlewares = input.options.middleware ?? [];
   const byName = new Map<string, BaseMiddleware>();
@@ -586,6 +608,11 @@ function createRuntimeDefaultMiddlewares(input: {
       userHome: input.options.userHome,
       bashAnalysisModel: createRuntimePermissionAnalysisModel(input.options, input.catalog),
     }));
+  }
+
+  // Add ToolHooksMiddleware after Permission (last in the chain)
+  if (input.hookPipeline) {
+    byName.set('ToolHooksMiddleware', new ToolHooksMiddleware(input.hookPipeline));
   }
 
   return [...byName.values()];

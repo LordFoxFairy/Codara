@@ -65,6 +65,7 @@ describe('Codara slash commands', () => {
       {name: 'resume', source: 'builtin'},
       {name: 'compact', source: 'builtin'},
       {name: 'reload', source: 'builtin'},
+      {name: 'hooks', source: 'builtin'},
     ]);
   });
 
@@ -475,7 +476,7 @@ describe('Codara slash commands', () => {
     const root = await mkdtemp(path.join(tmpdir(), 'codara-command-resume-'));
     const projectRoot = path.join(root, 'project');
     const codaraPath = path.join(projectRoot, '.codara');
-    const current = createRuntimeForTest({
+    const current = await createRuntimeForTest({
       cwd: projectRoot,
       projectRoot,
       codaraPath,
@@ -484,7 +485,7 @@ describe('Codara slash commands', () => {
       builtinTools: false,
       skills: false,
     });
-    const target = createRuntimeForTest({
+    const target = await createRuntimeForTest({
       cwd: projectRoot,
       projectRoot,
       codaraPath,

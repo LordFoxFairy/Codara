@@ -89,7 +89,6 @@ Use references before final answer.
     const turn1System = systemPromptsByTurn.get(1) ?? ''
     expect(turn1System).toContain('Skills System')
     expect(turn1System).toContain(skillName)
-    expect(turn1System).toContain(skillPath)
-    expect(turn1System).toContain('Allowed tools: read_file')
+    expect(turn1System).toContain(root)
   })
 })

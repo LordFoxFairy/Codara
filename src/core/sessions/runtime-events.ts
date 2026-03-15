@@ -9,7 +9,7 @@ import {
 import {parseHILToolMessagePayload} from '@core/middleware/hil';
 import {readDelegatedAgentResult} from '@core/tasks/delegation';
 
-export type CodaraRuntimeEventKind = 'turn' | 'model' | 'tool' | 'task' | 'hil' | 'command' | 'summary';
+export type CodaraRuntimeEventKind = 'turn' | 'model' | 'tool' | 'task' | 'hil' | 'command' | 'summary' | 'hook';
 export type CodaraRuntimeEventPhase = 'start' | 'update' | 'end';
 export type CodaraRuntimeEventStatus = 'running' | 'done' | 'paused' | 'error';
 

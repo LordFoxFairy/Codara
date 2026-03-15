@@ -3,7 +3,7 @@ import React from 'react';
 import {render} from 'ink-testing-library';
 import {StatusBar} from '../../../src/cli/components/chrome/header';
 import {Transcript} from '../../../src/cli/components/conversation/transcript';
-import {WelcomeState, deriveRecentSessions} from '../../../src/cli/components/conversation/welcome-state';
+import {StaticWelcome, deriveRecentSessions} from '../../../src/cli/components/conversation/welcome-state';
 import {SessionPicker} from '../../../src/cli/components/conversation/session-picker';
 import {resolveCliForegroundSurface} from '../../../src/cli/app/shell-app';
 import {HumanMessage, AIMessage} from '@langchain/core/messages';
@@ -120,10 +120,10 @@ describe('UI alignment with Claude Code', () => {
     });
   });
 
-  describe('WelcomeState', () => {
+  describe('StaticWelcome', () => {
     it('should render welcome with RobotMark in wide mode', () => {
       const {lastFrame} = render(
-        <WelcomeState layoutMode="wide" cwd="/tmp/demo" modelAlias="sonnet" />,
+        <StaticWelcome layoutMode="wide" cwd="/tmp/demo" modelAlias="sonnet" tip="Use /help to see commands" terminalWidth={120} />,
       );
 
       const frame = lastFrame()!;
@@ -134,7 +134,7 @@ describe('UI alignment with Claude Code', () => {
 
     it('should render minimal welcome as single line', () => {
       const {lastFrame} = render(
-        <WelcomeState layoutMode="minimal" modelAlias="default" />,
+        <StaticWelcome layoutMode="minimal" modelAlias="default" tip="Use /help" terminalWidth={80} />,
       );
 
       const frame = lastFrame()!;
@@ -149,7 +149,7 @@ describe('UI alignment with Claude Code', () => {
       ];
 
       const {lastFrame} = render(
-        <WelcomeState layoutMode="wide" cwd="/tmp/demo" modelAlias="sonnet" recentSessions={recentSessions} />,
+        <StaticWelcome layoutMode="wide" cwd="/tmp/demo" modelAlias="sonnet" recentSessions={recentSessions} tip="Use /help" terminalWidth={120} />,
       );
 
       const frame = lastFrame()!;
@@ -162,7 +162,7 @@ describe('UI alignment with Claude Code', () => {
 
     it('should show "No recent activity" when no sessions', () => {
       const {lastFrame} = render(
-        <WelcomeState layoutMode="wide" cwd="/tmp/demo" modelAlias="sonnet" recentSessions={[]} />,
+        <StaticWelcome layoutMode="wide" cwd="/tmp/demo" modelAlias="sonnet" recentSessions={[]} tip="Use /help" terminalWidth={120} />,
       );
 
       const frame = lastFrame()!;

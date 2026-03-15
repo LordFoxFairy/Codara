@@ -134,3 +134,23 @@ export {
   type ModelInfo,
   type ModelRoutingConfig,
 } from '@core/provider';
+export {
+  type HookEventType,
+  type HookDefinition,
+  type HookSource,
+  type HookEntry,
+  type HookContext,
+  type HookOutput,
+  type HookInterceptResult,
+  type HookNotifyResult,
+  type SessionLifecycleHooks,
+  type AgentLifecycleHooks,
+  type ToolLifecycleHooks,
+  type HookRegistry,
+  type HookExecutorFactory,
+  HOOK_EVENT_TYPES,
+  HookRegistryImpl,
+  HookPipeline,
+  ToolHooksMiddleware,
+  createHookExecutor,
+} from '@core/hooks';

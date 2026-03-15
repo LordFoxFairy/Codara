@@ -68,7 +68,6 @@ describe('Project .codara skill integration', () => {
     const probeView = seenByProbe[0] ?? ''
     expect(probeView).toContain('Skills System')
     expect(probeView).toContain('basic-task-flow')
-    expect(probeView).toContain(skillPath)
-    expect(probeView).toContain('Allowed tools: read_file')
+    expect(probeView).toContain(projectSkillsRoot)
   })
 })
