@@ -2,7 +2,7 @@ import {describe, expect, it} from 'bun:test';
 import {mkdir, mkdtemp, writeFile} from 'node:fs/promises';
 import path from 'node:path';
 import {tmpdir} from 'node:os';
-import {createCodaraGuidelinesSource} from '@core/context/instructions/guidelines';
+import {createCodaraGuidelinesSource} from '@infra/context/instructions/guidelines';
 
 describe('AGENTS guidelines', () => {
   it('loads only the startup-visible AGENTS chain before deeper paths are touched', async () => {

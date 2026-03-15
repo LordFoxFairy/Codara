@@ -2,7 +2,7 @@ import {describe, expect, it} from 'bun:test';
 import {AIMessage, HumanMessage, ToolMessage, type BaseMessage, type ToolCall} from '@langchain/core/messages';
 import type {BaseChatModel} from '@langchain/core/language_models/chat_models';
 import type {StructuredToolInterface} from '@langchain/core/tools';
-import {createAgent} from '@core/agents';
+import {createAgent} from '@engine/agent';
 import {mkdtemp, readFile, rm} from 'node:fs/promises';
 import {tmpdir} from 'node:os';
 import path from 'node:path';
@@ -12,8 +12,8 @@ import {
   createLoggingMiddleware,
   type MiddlewareLogRecord,
   type ToolCallContext,
-} from '@core/middleware';
-import {MiddlewarePipeline} from '@core/middleware/pipeline';
+} from '@engine/pipeline';
+import {MiddlewarePipeline} from '@engine/pipeline/pipeline';
 
 class FakeModel {
   private index = 0;

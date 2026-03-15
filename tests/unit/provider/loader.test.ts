@@ -1,5 +1,5 @@
 import {describe, expect, it, beforeEach, afterEach} from "bun:test";
-import {loadModelRoutingConfig} from "@core/provider";
+import {loadModelRoutingConfig} from "@infra/provider";
 import {readFileSync, writeFileSync, mkdirSync, mkdtempSync, rmSync} from "fs";
 import {join} from "path";
 import {tmpdir} from "os";

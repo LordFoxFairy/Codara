@@ -4,7 +4,7 @@ import type {
   AgentStopContext,
   SubagentStopContext,
   HookInterceptResult,
-} from '@core/hooks/types';
+} from '@engine/hook/types';
 
 function createTrackingAgentLifecycle(stopBehavior: 'allow' | 'deny' = 'allow') {
   const calls: {method: string; ctx: any}[] = [];

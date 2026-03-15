@@ -1,11 +1,11 @@
 import {describe, expect, it} from 'bun:test';
 import {AIMessage, HumanMessage, SystemMessage, type BaseMessage} from '@langchain/core/messages';
 import type {BaseChatModel} from '@langchain/core/language_models/chat_models';
-import {createAgent} from '@core/agents';
-import {createAgentMemoryCheckpointer} from '@core/checkpoint';
-import {createBudgetMiddleware, type ModelCallContext} from '@core/middleware';
-import {MiddlewarePipeline} from '@core/middleware/pipeline';
-import {createSummaryMiddleware} from '@core/middleware/summary';
+import {createAgent} from '@engine/agent';
+import {createAgentMemoryCheckpointer} from '@infra/checkpoint';
+import {createBudgetMiddleware, type ModelCallContext} from '@engine/pipeline';
+import {MiddlewarePipeline} from '@engine/pipeline/pipeline';
+import {createSummaryMiddleware} from '@engine/pipeline/summary';
 
 class FakeModel {
   constructor(private readonly responses: AIMessage[]) {}

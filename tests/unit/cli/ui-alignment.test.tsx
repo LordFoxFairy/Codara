@@ -7,7 +7,7 @@ import {StaticWelcome, deriveRecentSessions} from '../../../src/cli/components/c
 import {SessionPicker} from '../../../src/cli/components/conversation/session-picker';
 import {resolveCliForegroundSurface} from '../../../src/cli/app/shell-app';
 import {HumanMessage, AIMessage} from '@langchain/core/messages';
-import type {SessionState} from '@core';
+import type {SessionState} from '@/index';
 import type {SessionPickerItem} from '../../../src/cli/hooks/use-session-picker';
 
 describe('UI alignment with Claude Code', () => {

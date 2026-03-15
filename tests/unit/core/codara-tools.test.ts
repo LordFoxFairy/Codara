@@ -1,6 +1,6 @@
 import {describe, expect, it} from 'bun:test';
 import type {StructuredToolInterface} from '@langchain/core/tools';
-import {createCodaraTools} from '@core/codara/facade';
+import {createCodaraTools} from '@codara/facade';
 
 describe('Codara tools', () => {
   it('should include builtin tools by default', () => {

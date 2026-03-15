@@ -18,7 +18,7 @@ import {
   createCodara,
   type AgentStreamCustomChunk,
   type MiddlewareLogRecord,
-} from '@core';
+} from '@/index';
 
 class CodaraFacadeModel {
   readonly invocations: BaseMessage[][] = [];

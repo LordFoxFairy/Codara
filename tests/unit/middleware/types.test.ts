@@ -1,5 +1,5 @@
 import {describe, expect, it} from 'bun:test';
-import {createMiddleware} from '@core/middleware';
+import {createMiddleware} from '@engine/pipeline';
 
 describe('createMiddleware', () => {
   it('should normalize name and freeze middleware object', () => {

@@ -1,5 +1,5 @@
 import {afterEach, beforeEach, describe, expect, it, mock} from 'bun:test';
-import {createSearchTool} from '@core/tools';
+import {createSearchTool} from '@capability/tool';
 
 describe('SearchTool', () => {
   const originalFetch = globalThis.fetch;

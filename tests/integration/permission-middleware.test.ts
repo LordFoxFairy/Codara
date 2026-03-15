@@ -5,8 +5,8 @@ import {mkdtemp} from 'node:fs/promises';
 import {tmpdir} from 'node:os';
 import path from 'node:path';
 import {HumanMessage, ToolMessage, type BaseMessage, type ToolCall} from '@langchain/core/messages';
-import {createPermissionMiddleware, ensurePermissionSettingsFile} from '@core';
-import {parseHILToolMessagePayload, type ToolCallContext} from '@core/middleware';
+import {createPermissionMiddleware, ensurePermissionSettingsFile} from '@/index';
+import {parseHILToolMessagePayload, type ToolCallContext} from '@engine/pipeline';
 
 function createToolContext(toolCall: ToolCall, runtimeContext: Record<string, unknown> = {}): ToolCallContext {
   const messages = [new HumanMessage('run')] as BaseMessage[];

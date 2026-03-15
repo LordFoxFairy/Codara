@@ -2,7 +2,7 @@ import {describe, expect, it} from 'bun:test';
 import {access, mkdtemp} from 'node:fs/promises';
 import os from 'node:os';
 import path from 'node:path';
-import {FileCheckpointer, InMemoryCheckpointer} from '@core/checkpoint';
+import {FileCheckpointer, InMemoryCheckpointer} from '@infra/checkpoint';
 
 interface TestState {
   counter: number;

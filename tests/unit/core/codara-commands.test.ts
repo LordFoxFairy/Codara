@@ -4,7 +4,7 @@ import {tmpdir} from 'node:os';
 import path from 'node:path';
 import type {BaseChatModel} from '@langchain/core/language_models/chat_models';
 import type {BaseMessage} from '@langchain/core/messages';
-import {createCodara, createCodaraRuntime} from '@core';
+import {createCodara, createCodaraRuntime} from '@/index';
 import {EchoModel, SystemEchoModel} from './codara-fixtures';
 
 const createRuntimeForTest = (options: Parameters<typeof createCodaraRuntime>[0]) => (

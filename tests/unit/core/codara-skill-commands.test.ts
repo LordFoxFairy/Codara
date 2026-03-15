@@ -3,7 +3,7 @@ import {mkdir, mkdtemp, writeFile} from 'node:fs/promises';
 import {tmpdir} from 'node:os';
 import path from 'node:path';
 import type {BaseChatModel} from '@langchain/core/language_models/chat_models';
-import {createCodara} from '@core';
+import {createCodara} from '@/index';
 import {EchoModel} from './codara-fixtures';
 
 describe('Codara skill commands', () => {

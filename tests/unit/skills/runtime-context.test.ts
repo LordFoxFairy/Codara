@@ -4,10 +4,10 @@ import os from 'node:os';
 import path from 'node:path';
 import {AIMessage} from '@langchain/core/messages';
 import type {BaseChatModel} from '@langchain/core/language_models/chat_models';
-import {createAgent} from '@core/agents';
-import {createAgentMemoryCheckpointer} from '@core/checkpoint';
-import {createSkillsMiddleware} from '@core/middleware';
-import {FileSystemSkillStore} from '@core/skills';
+import {createAgent} from '@engine/agent';
+import {createAgentMemoryCheckpointer} from '@infra/checkpoint';
+import {createSkillsMiddleware} from '@engine/pipeline';
+import {FileSystemSkillStore} from '@capability/skill';
 
 class SingleResponseModel {
   async invoke() {

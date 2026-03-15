@@ -3,8 +3,8 @@ import {AIMessage, type ToolCall} from '@langchain/core/messages';
 import type {BaseChatModel} from '@langchain/core/language_models/chat_models';
 import {tool} from '@langchain/core/tools';
 import {z} from 'zod';
-import {createAgent} from '@core/agents';
-import {TASK_TOOL_NAME, createTaskTool} from '@core/tasks/task';
+import {createAgent} from '@engine/agent';
+import {TASK_TOOL_NAME, createTaskTool} from '@capability/task/task';
 import {createBuiltinSubagentStore, createAgentSkillsMiddleware, ChildSummaryModel, ScriptedModel} from './task-tool.fixtures';
 
 describe('createTaskTool filtering', () => {

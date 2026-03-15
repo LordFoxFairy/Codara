@@ -3,8 +3,8 @@ import {mkdir, mkdtemp, readFile, writeFile} from 'node:fs/promises';
 import {tmpdir} from 'node:os';
 import path from 'node:path';
 import {type ToolCall} from '@langchain/core/messages';
-import {ensurePermissionSettingsFile, evaluatePermissionToolCall, persistPermissionScope} from '@core';
-import {formatPermissionPathScopeExpression} from '@core/middleware/permission/policy';
+import {ensurePermissionSettingsFile, evaluatePermissionToolCall, persistPermissionScope} from '@/index';
+import {formatPermissionPathScopeExpression} from '@engine/pipeline/permission/policy';
 
 describe('permission policy defaults', () => {
   it('should seed the settings skeleton with common read-only allow rules', async () => {

@@ -1,9 +1,9 @@
 import {describe, expect, it} from 'bun:test';
 import {AIMessage, HumanMessage, type BaseMessage} from '@langchain/core/messages';
-import type {ModelCallContext} from '@core/middleware';
-import {createBudgetMiddleware} from '@core/middleware';
-import {MiddlewarePipeline} from '@core/middleware/pipeline';
-import {createSummaryMiddleware} from '@core/middleware/summary';
+import type {ModelCallContext} from '@engine/pipeline';
+import {createBudgetMiddleware} from '@engine/pipeline';
+import {MiddlewarePipeline} from '@engine/pipeline/pipeline';
+import {createSummaryMiddleware} from '@engine/pipeline/summary';
 
 describe('budget and summary middleware', () => {
   function readSummaryMessage(messages: BaseMessage[]): BaseMessage | undefined {

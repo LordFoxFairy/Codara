@@ -7,7 +7,7 @@ describe('core docs contracts', () => {
   it('should keep the root README focused on top-level docs entry points', async () => {
     const readme = await readFile(path.join(repoRoot, 'README.md'), 'utf8');
 
-    expect(readme).toContain('Core Docs');
+    expect(readme).toContain('Engine Docs');
     expect(readme).toContain('CLI Docs');
     expect(readme).toContain('Tasks Docs');
     expect(readme).toContain('bun install');
@@ -17,11 +17,11 @@ describe('core docs contracts', () => {
 
   it('should keep the documented tasking and architecture references pointed at real files', async () => {
     const readme = await readFile(path.join(repoRoot, 'README.md'), 'utf8');
-    const coreReadme = await readFile(path.join(repoRoot, 'src/core/README.md'), 'utf8');
+    const engineReadme = await readFile(path.join(repoRoot, 'src/engine/README.md'), 'utf8');
 
-    expect(readme).toContain('src/core/tasks');
+    expect(readme).toContain('capability/task');
     expect(readme).not.toContain('src/core/tasking');
-    expect(coreReadme).toContain('src/core/tasks/README.md');
-    expect(coreReadme).not.toContain('docs/subagent-task-architecture.md');
+    expect(engineReadme).toContain('agent/');
+    expect(engineReadme).toContain('session/');
   });
 });

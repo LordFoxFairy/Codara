@@ -1,7 +1,7 @@
 import {describe, expect, it} from 'bun:test';
 import {describeFooter} from '../../../src/cli/components/chrome/footer';
 import {describeStatusBar} from '../../../src/cli/components/chrome/header';
-import type {CodaraRuntimeEvent, SessionState} from '@core';
+import type {CodaraRuntimeEvent, SessionState} from '@/index';
 
 describe('CLI chrome', () => {
   it('should keep the status bar compact and single-purpose', () => {
