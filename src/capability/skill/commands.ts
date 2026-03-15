@@ -65,16 +65,26 @@ export async function createSkillCommandInvocation(
   };
 }
 
+function isUserInvocable(skill: SkillMetadata): boolean {
+  const flag = skill.frontmatter?.['user-invocable'] ?? skill.extensions?.['user-invocable'];
+  if (flag === false || flag === 'false') return false;
+  return true;
+}
+
 function toSkillCommandDefinition(skill: SkillMetadata): SkillCommandDefinition | undefined {
-  if (!skill.command?.name) {
+  // Skip non-user-invocable skills
+  if (!isUserInvocable(skill)) {
     return undefined;
   }
 
+  // Use explicit command-name if available, otherwise fall back to skill name
+  const commandName = skill.command?.name ?? skill.name;
+
   return {
-    name: skill.command.name,
-    description: skill.command.description ?? skill.description,
-    usage: skill.command.usage ?? `/${skill.command.name} <request>`,
-    ...(skill.command.aliases?.length ? {aliases: skill.command.aliases} : {}),
+    name: commandName,
+    description: skill.command?.description ?? skill.description,
+    usage: skill.command?.usage ?? `/${commandName} [args]`,
+    ...(skill.command?.aliases?.length ? {aliases: skill.command.aliases} : {}),
     skill,
   };
 }

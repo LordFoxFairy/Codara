@@ -12,12 +12,12 @@ export function CompletionMenu({completion}: CompletionMenuProps): React.JSX.Ele
   }
 
   return (
-    <Box flexDirection="column" marginBottom={0}>
+    <Box flexDirection="column" borderStyle="single" borderColor="gray" paddingX={1}>
       {completion.items.map((item, index) => {
         const selected = index === completion.selectedIndex;
         return (
           <Box key={item.name} gap={1}>
-            <Text color={selected ? 'greenBright' : undefined} bold={selected}>
+            <Text color={selected ? 'greenBright' : 'gray'} bold={selected}>
               {selected ? '>' : ' '} /{item.name}
             </Text>
             <Text dimColor>({item.sourceLabel})</Text>
@@ -25,7 +25,7 @@ export function CompletionMenu({completion}: CompletionMenuProps): React.JSX.Ele
           </Box>
         );
       })}
-      <Text dimColor>Enter to select · Tab to complete · Esc to cancel</Text>
+      <Text dimColor>Enter select · Tab complete · Esc cancel</Text>
     </Box>
   );
 }

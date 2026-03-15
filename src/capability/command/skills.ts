@@ -41,28 +41,6 @@ function bindSkillCommand(command: SkillCommandDefinition): CodaraCommandDefinit
     },
     ...(command.aliases?.length ? {aliases: command.aliases} : {}),
     async execute({command: parsed, agent}) {
-      if (!parsed.argsText.trim()) {
-        return {
-          ok: false,
-          command: parsed.name,
-          output: [
-            `/${command.name}`,
-            command.description,
-            `Usage: ${command.usage}`,
-            'Execution: agent workflow',
-            `Skill: ${command.skill.name}`,
-            `Path: ${command.skill.path}`,
-            ...(requirements.allowedTools.length > 0
-              ? [`Allowed tools: ${requirements.allowedTools.join(', ')}`]
-              : []),
-            ...(requirements.requiredShellCommands.length > 0
-              ? [`Required shell commands: ${requirements.requiredShellCommands.join(', ')}`]
-              : []),
-            'Runtime requirement: run this command in a Codara runtime that exposes the listed tools.',
-          ].join('\n'),
-        };
-      }
-
       const preflight = runSkillCommandPreflight(requirements, agent.getAvailableToolNames());
       if (!preflight.ok) {
         return {
