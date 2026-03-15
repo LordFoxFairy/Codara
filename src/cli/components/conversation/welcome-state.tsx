@@ -1,19 +1,54 @@
 import React from 'react';
 import {Box, Text} from 'ink';
+import type {SessionState} from '@core';
 import type {CliLayoutMode} from '../../app/layout-mode';
 import {RobotMark} from '../chrome/robot-mark';
 import {useRotatingTip} from '../../hooks/use-rotating-tip';
 import {useTerminalWidth} from '../../hooks/use-terminal-width';
 
+export interface RecentSession {
+  sessionId: string;
+  title?: string;
+  timeAgo: string;
+  messageCount: number;
+}
+
 interface WelcomeStateProps {
   layoutMode: CliLayoutMode;
   cwd?: string;
   modelAlias?: string;
+  recentSessions?: RecentSession[];
 }
 
 const VERSION = '0.1.0';
 
-export function WelcomeState({layoutMode, cwd, modelAlias}: WelcomeStateProps): React.JSX.Element {
+export function deriveRecentSessions(sessions: SessionState[], now = Date.now()): RecentSession[] {
+  return sessions.slice(0, 5).map((s) => ({
+    sessionId: s.sessionId,
+    title: s.metadata?.title,
+    timeAgo: formatTimeAgo(s.metadata?.lastActivity ?? s.updatedAt, now),
+    messageCount: s.metadata?.messageCount ?? 0,
+  }));
+}
+
+function formatTimeAgo(timestamp: string, now: number): string {
+  const diff = now - new Date(timestamp).getTime();
+  const minutes = Math.floor(diff / 60000);
+  if (minutes < 1) return 'just now';
+  if (minutes < 60) return `${minutes}m ago`;
+  const hours = Math.floor(minutes / 60);
+  if (hours < 24) return `${hours}h ago`;
+  const days = Math.floor(hours / 24);
+  if (days < 7) return `${days}d ago`;
+  return `${Math.floor(days / 7)}w ago`;
+}
+
+function truncateSessionId(sessionId: string): string {
+  if (sessionId.length <= 12) return sessionId;
+  return `${sessionId.slice(0, 8)}…${sessionId.slice(-4)}`;
+}
+
+export function WelcomeState({layoutMode, cwd, modelAlias, recentSessions}: WelcomeStateProps): React.JSX.Element {
   if (layoutMode === 'minimal') {
     return (
       <Box marginTop={1}>
@@ -26,7 +61,7 @@ export function WelcomeState({layoutMode, cwd, modelAlias}: WelcomeStateProps): 
     return <CompactWelcome cwd={cwd} modelAlias={modelAlias} />;
   }
 
-  return <WideWelcome cwd={cwd} modelAlias={modelAlias} />;
+  return <WideWelcome cwd={cwd} modelAlias={modelAlias} recentSessions={recentSessions} />;
 }
 
 function CompactWelcome({cwd, modelAlias}: {cwd?: string; modelAlias?: string}): React.JSX.Element {
@@ -58,18 +93,17 @@ function CompactWelcome({cwd, modelAlias}: {cwd?: string; modelAlias?: string}):
   );
 }
 
-function WideWelcome({cwd, modelAlias}: {cwd?: string; modelAlias?: string}): React.JSX.Element {
+function WideWelcome({cwd, modelAlias, recentSessions}: {cwd?: string; modelAlias?: string; recentSessions?: RecentSession[]}): React.JSX.Element {
   const tip = useRotatingTip();
+  const hasRecent = recentSessions && recentSessions.length > 0;
 
   return (
     <Box flexDirection="column">
-      {/* Outer box: Ink handles all borders, corners, and sizing automatically */}
       <Box
         borderStyle="round"
         borderColor="gray"
         flexDirection="row"
       >
-        {/* Left column — borderRight creates the middle │ divider */}
         <Box
           flexDirection="column"
           width="42%"
@@ -91,13 +125,23 @@ function WideWelcome({cwd, modelAlias}: {cwd?: string; modelAlias?: string}): Re
           {cwd ? <Text dimColor wrap="truncate-end">{cwd}</Text> : null}
         </Box>
 
-        {/* Right column */}
         <Box flexDirection="column" flexGrow={1} paddingY={1} paddingX={1}>
           <Text color="yellow" bold>Tips for getting started</Text>
           <Text dimColor wrap="truncate-end">{tip}</Text>
           <Box marginTop={1} flexDirection="column">
             <Text color="yellow" bold>Recent activity</Text>
-            <Text dimColor>No recent activity</Text>
+            {hasRecent ? (
+              recentSessions.map((s) => (
+                <Box key={s.sessionId} gap={1}>
+                  <Text dimColor>{truncateSessionId(s.sessionId)}</Text>
+                  <Text wrap="truncate-end">{s.title || 'Untitled'}</Text>
+                  <Text dimColor>{s.messageCount} msgs</Text>
+                  <Text dimColor>{s.timeAgo}</Text>
+                </Box>
+              ))
+            ) : (
+              <Text dimColor>No recent activity</Text>
+            )}
           </Box>
         </Box>
       </Box>

@@ -215,6 +215,88 @@ describe('cli transcript model', () => {
     expect(items[0]?.content).toContain('Delegated task completed');
   });
 
+  test('should include elapsed time in tool meta when paired start/end events exist', () => {
+    const startTime = '2026-03-16T10:00:00.000Z';
+    const endTime = '2026-03-16T10:00:00.053Z'; // 53ms later
+    const items = buildTranscriptItems({
+      notices: [],
+      coreMessages: [],
+      activeTurn: {
+        id: 'turn-elapsed',
+        prompt: 'run it',
+        response: '',
+        responseRole: 'assistant',
+      },
+      runtimeEvents: [
+        {
+          id: 'evt_bash_start',
+          sessionId: 'session-1',
+          timestamp: startTime,
+          kind: 'tool',
+          phase: 'start',
+          status: 'running',
+          label: 'Bash(ls)',
+          detail: 'bash',
+        },
+        {
+          id: 'evt_bash_end',
+          sessionId: 'session-1',
+          timestamp: endTime,
+          kind: 'tool',
+          phase: 'end',
+          status: 'done',
+          label: 'Bash completed',
+          detail: 'file1.ts\nfile2.ts',
+          parentId: 'evt_bash_start',
+        },
+      ],
+    });
+
+    const toolItem = items.find((i) => i.toolMeta?.toolName === 'bash');
+    expect(toolItem?.toolMeta?.elapsed).toBe('53ms');
+  });
+
+  test('should format elapsed as seconds for longer tool calls', () => {
+    const startTime = '2026-03-16T10:00:00.000Z';
+    const endTime = '2026-03-16T10:00:02.500Z'; // 2.5s later
+    const items = buildTranscriptItems({
+      notices: [],
+      coreMessages: [],
+      activeTurn: {
+        id: 'turn-elapsed-s',
+        prompt: 'run it',
+        response: '',
+        responseRole: 'assistant',
+      },
+      runtimeEvents: [
+        {
+          id: 'evt_read_start',
+          sessionId: 'session-1',
+          timestamp: startTime,
+          kind: 'tool',
+          phase: 'start',
+          status: 'running',
+          label: 'Read(/tmp/file.ts)',
+          detail: 'read',
+        },
+        {
+          id: 'evt_read_end',
+          sessionId: 'session-1',
+          timestamp: endTime,
+          kind: 'tool',
+          phase: 'end',
+          status: 'done',
+          label: 'Read completed',
+          detail: 'contents here',
+          parentId: 'evt_read_start',
+        },
+      ],
+    });
+
+    const toolItem = items.find((i) => i.toolMeta?.toolName === 'read');
+    expect(toolItem?.toolMeta?.elapsed).toBe('2.5s');
+  });
+
   test('should surface runtime events during streaming (activeTurn present)', () => {
     const items = buildTranscriptItems({
       notices: [],

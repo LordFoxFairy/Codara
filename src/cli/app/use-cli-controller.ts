@@ -13,6 +13,7 @@ import {
   moveComposerCursorLeft,
   moveComposerCursorRight,
   moveComposerCursorUp,
+  replaceComposerText,
 } from '../composer/state';
 import type {CliComposerState} from '../composer/types';
 import {hasTranscriptContent} from '../transcript/model';
@@ -41,6 +42,7 @@ export interface UseCliControllerOptions {
   hilAutoActions?: CliHilAutoAction[];
   reopenSession?: (sessionId: string) => Promise<void>;
   openFile?: (targetPath: string) => Promise<boolean>;
+  onShowSessionPicker?: () => void;
 }
 
 export interface CliController {
@@ -55,7 +57,10 @@ export interface CliController {
   hasConversation: boolean;
   runState: CliRunState;
   sessionState: SessionState;
+  taskPanelVisible: boolean;
+  toggleTaskPanel: () => void;
   insertText: (input: string) => void;
+  replaceText: (text: string) => void;
   insertNewline: () => void;
   backspace: () => void;
   moveCursorLeft: () => void;
@@ -89,6 +94,7 @@ export function useCliController(options: UseCliControllerOptions): CliControlle
     hilAutoActions = [],
     reopenSession,
     openFile,
+    onShowSessionPicker,
   } = options;
   const initialNotices = useMemo<CliNotice[]>(
     () => startupMessage.trim()
@@ -110,6 +116,7 @@ export function useCliController(options: UseCliControllerOptions): CliControlle
   const [runtimeEvents, setRuntimeEvents] = useState<readonly CodaraRuntimeEvent[]>([]);
   const [runState, setRunState] = useState<CliRunState>({status: 'idle'});
   const [sessionState, setSessionState] = useState<SessionState>(() => codara.getState());
+  const [taskPanelVisible, setTaskPanelVisible] = useState(true);
   const isRunningRef = useRef(false);
   const initialPromptSentRef = useRef(false);
   const hilReviewRef = useRef<CliHilReviewState | undefined>(undefined);
@@ -162,6 +169,16 @@ export function useCliController(options: UseCliControllerOptions): CliControlle
   const runSlashCommand = useCallback(async (prompt: string) => {
     const result = await codara.executeCommand(prompt);
 
+    if (result.action?.type === 'show_session_picker') {
+      if (onShowSessionPicker) {
+        onShowSessionPicker();
+      } else {
+        appendNotice('error', 'Session picker is not available in this CLI runtime.');
+      }
+      setRunState({status: 'done'});
+      return;
+    }
+
     if (result.action?.type === 'resume_session') {
       appendNotice(result.ok ? 'system' : 'error', result.output || '(no output)');
       if (!result.ok) {
@@ -195,7 +212,7 @@ export function useCliController(options: UseCliControllerOptions): CliControlle
     setRunState(result.ok
       ? nextAgentState.status === 'paused' ? {status: 'paused'} : {status: 'done'}
       : {status: 'error', error: result.output});
-  }, [appendNotice, codara, openFile, refreshCoreState, reopenSession, sessionState.sessionId]);
+  }, [appendNotice, codara, onShowSessionPicker, openFile, refreshCoreState, reopenSession, sessionState.sessionId]);
 
   const runAgentPrompt = useCallback(async (prompt: string) => {
     setActiveTurn({
@@ -286,6 +303,10 @@ export function useCliController(options: UseCliControllerOptions): CliControlle
     applyComposerChange((current) => insertComposerText(current, input));
   }, [applyComposerChange]);
 
+  const replaceText = useCallback((text: string) => {
+    applyComposerChange((current) => replaceComposerText(current, text));
+  }, [applyComposerChange]);
+
   const insertNewline = useCallback(() => {
     applyComposerChange((current) => insertComposerNewline(current));
   }, [applyComposerChange]);
@@ -317,6 +338,10 @@ export function useCliController(options: UseCliControllerOptions): CliControlle
   const moveCursorEnd = useCallback(() => {
     applyComposerChange((current) => moveComposerCursorEnd(current));
   }, [applyComposerChange]);
+
+  const toggleTaskPanel = useCallback(() => {
+    setTaskPanelVisible(current => !current);
+  }, []);
 
   const submitDraft = useCallback(() => {
     const prompt = composer.text.trim();
@@ -499,6 +524,7 @@ export function useCliController(options: UseCliControllerOptions): CliControlle
     runState,
     sessionState,
     insertText,
+    replaceText,
     insertNewline,
     backspace,
     moveCursorLeft,
@@ -508,6 +534,8 @@ export function useCliController(options: UseCliControllerOptions): CliControlle
     moveCursorHome,
     moveCursorEnd,
     submitDraft,
+    taskPanelVisible,
+    toggleTaskPanel,
     moveHilLeft,
     moveHilRight,
     selectPreviousHilAction,

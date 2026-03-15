@@ -14,6 +14,7 @@ export interface ToolResultMeta {
   icon: string;
   args?: string;
   status: 'running' | 'done' | 'error';
+  elapsed?: string;
   summaryLine: string;
   outputLines?: string[];
   totalOutputLines?: number;
@@ -258,6 +259,15 @@ function computeElapsedSeconds(startTimestamp: string, endTimestamp: string): nu
   return Math.round((end - start) / 1000);
 }
 
+function formatElapsed(startTimestamp: string, endTimestamp: string): string {
+  const ms = new Date(endTimestamp).getTime() - new Date(startTimestamp).getTime();
+  if (ms < 1000) {
+    return `${Math.max(0, ms)}ms`;
+  }
+  const seconds = ms / 1000;
+  return seconds < 10 ? `${seconds.toFixed(1)}s` : `${Math.round(seconds)}s`;
+}
+
 const TOOL_META_MAX_LINES = 4;
 
 function buildToolMetaFromEvents(
@@ -275,7 +285,9 @@ function buildToolMetaFromEvents(
   const status = endEvent.status === 'error' ? 'error' : 'done';
   const {summaryLine, outputLines, totalOutputLines} = buildToolOutput(rawToolName, status, endEvent.detail);
 
-  return {toolName: rawToolName, displayName, icon, args, status, summaryLine, outputLines, totalOutputLines};
+  const elapsed = formatElapsed(startEvent.timestamp, endEvent.timestamp);
+
+  return {toolName: rawToolName, displayName, icon, args, status, elapsed, summaryLine, outputLines, totalOutputLines};
 }
 
 function buildToolMetaRunning(rawToolName: string, startEvent: CodaraRuntimeEvent): ToolResultMeta | undefined {

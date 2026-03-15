@@ -11,7 +11,7 @@ export function describeFooter(layoutMode: CliLayoutMode): string {
     return 'Enter send  ·  ? shortcuts  ·  Ctrl+C exit';
   }
 
-  return 'Enter send  ·  Ctrl+C exit  ·  ? shortcuts  ·  tab thinking';
+  return 'Enter send  ·  Ctrl+C exit  ·  / commands  ·  Ctrl+T tasks';
 }
 
 export function Footer({layoutMode}: FooterProps): React.JSX.Element {
