@@ -3,7 +3,7 @@ import type {CodaraRuntimeEvent} from '@core';
 import type {BaseMessage} from '@langchain/core/messages';
 import {Box, Text} from 'ink';
 import type {CliActiveTurn, CliNotice} from '../../app/view-state';
-import {buildTranscriptItems, type TranscriptRole} from '../../transcript/model';
+import {buildTranscriptItems, type ToolResultMeta, type TranscriptRole} from '../../transcript/model';
 
 interface TranscriptProps {
   coreMessages: readonly BaseMessage[];
@@ -41,9 +41,13 @@ export function Transcript({coreMessages, notices, activeTurn, runtimeEvents}: T
 
   return (
     <Box marginTop={1} flexDirection="column">
-      {items.map((item) => (
-        <TranscriptBlock key={item.id} role={item.role} content={item.content} renderHint={item.renderHint} />
-      ))}
+      {items.map((item) =>
+        item.toolMeta ? (
+          <ToolResultBlock key={item.id} meta={item.toolMeta} />
+        ) : (
+          <TranscriptBlock key={item.id} role={item.role} content={item.content} renderHint={item.renderHint} />
+        ),
+      )}
     </Box>
   );
 }
@@ -109,6 +113,44 @@ function TranscriptBlock({role, content, renderHint}: {role: TranscriptRole; con
               {line || ' '}
             </Text>
           ))}
+        </Box>
+      ) : null}
+    </Box>
+  );
+}
+
+const EDIT_LINE_COLORS: Record<string, React.ComponentProps<typeof Text>['color']> = {
+  '+': 'green',
+  '-': 'red',
+};
+
+function ToolResultBlock({meta}: {meta: ToolResultMeta}): React.JSX.Element {
+  const {icon, displayName, args, summaryLine, outputLines, totalOutputLines, status} = meta;
+  const header = args ? `${icon} ${displayName}(${args})` : `${icon} ${displayName}`;
+  const hiddenLines = (totalOutputLines ?? 0) - (outputLines?.length ?? 0);
+  const isEdit = meta.toolName === 'edit' || meta.toolName === 'edit_file';
+
+  return (
+    <Box marginBottom={1} flexDirection="column">
+      <Text bold>{header}</Text>
+      <Box paddingLeft={2}>
+        <Text dimColor color={status === 'error' ? 'red' : undefined}>
+          {'└ '}{summaryLine}
+        </Text>
+      </Box>
+      {outputLines && outputLines.length > 0 ? (
+        <Box paddingLeft={5} flexDirection="column">
+          {outputLines.map((line, index) => {
+            const lineColor = isEdit ? EDIT_LINE_COLORS[line.charAt(0)] : undefined;
+            return (
+              <Text key={index} dimColor color={lineColor}>
+                {line}
+              </Text>
+            );
+          })}
+          {hiddenLines > 0 ? (
+            <Text dimColor>{`… +${hiddenLines} lines`}</Text>
+          ) : null}
         </Box>
       ) : null}
     </Box>
