@@ -1,5 +1,5 @@
 import React, {useCallback, useEffect, useState} from 'react';
-import {Box, useApp, useInput} from 'ink';
+import {Box, Static, useApp, useInput} from 'ink';
 import type {Codara} from '@core';
 import {Footer} from '../components/chrome/footer';
 import {StatusBar} from '../components/chrome/header';
@@ -7,8 +7,9 @@ import {ActivityLine} from '../components/chrome/activity-line';
 import {TaskPanel} from '../components/chrome/task-panel';
 import {HilPanel, isPermissionReview} from '../components/conversation/hil-panel';
 import {SessionPicker} from '../components/conversation/session-picker';
-import {Transcript} from '../components/conversation/transcript';
-import {WelcomeState, deriveRecentSessions, type RecentSession} from '../components/conversation/welcome-state';
+import {ActiveTranscript} from '../components/conversation/transcript';
+import {SolidifiedBlock} from '../components/conversation/solidified-block';
+import {deriveRecentSessions, type RecentSession} from '../components/conversation/welcome-state';
 import {CompletionMenu} from '../components/prompt/completion-menu';
 import {PromptFrame} from '../components/prompt/prompt-frame';
 import type {CliHilAutoAction} from './hil-review';
@@ -19,6 +20,7 @@ import {useCommandCompletion} from '../hooks/use-command-completion';
 import {useHilInput} from '../hooks/use-hil-input';
 import {usePromptInput} from '../hooks/use-prompt-input';
 import {useSessionPicker} from '../hooks/use-session-picker';
+import {useSolidifiedTranscript} from '../hooks/use-solidified-transcript';
 import {useTerminalWidth} from '../hooks/use-terminal-width';
 
 export interface CodaraCliAppProps {
@@ -188,6 +190,17 @@ export function CodaraCliApp(props: CodaraCliAppProps): React.JSX.Element {
     onPermissionRejectSilent: shell.permissionRejectSilent,
   });
 
+  const {solidifiedItems, activeItems} = useSolidifiedTranscript({
+    coreMessages: shell.coreMessages,
+    notices: shell.notices,
+    activeTurn: shell.activeTurn,
+    runtimeEvents: shell.runtimeEvents,
+    layoutMode,
+    cwd,
+    modelAlias,
+    recentSessions,
+  });
+
   useEffect(() => {
     if (
       !autoExitOnSettledPrompt
@@ -206,12 +219,21 @@ export function CodaraCliApp(props: CodaraCliAppProps): React.JSX.Element {
 
   return (
       <Box flexDirection="column" paddingX={1} paddingY={1}>
-        {/* 活跃 welcome — 对话前展示 */}
-        {!shell.hasConversation && (
-          <WelcomeState layoutMode={layoutMode} cwd={cwd} modelAlias={modelAlias} recentSessions={recentSessions} />
-        )}
+        {/* 固化区：渲染一次，永久留在滚动缓冲区 */}
+        <Static items={solidifiedItems}>
+          {(turn) => (
+            <SolidifiedBlock
+              key={turn.id}
+              turn={turn}
+              layoutMode={layoutMode}
+              cwd={cwd}
+              modelAlias={modelAlias}
+              recentSessions={recentSessions}
+            />
+          )}
+        </Static>
 
-        {/* 对话开始后显示轻量状态栏 */}
+        {/* 动态区 */}
         {shell.hasConversation && (
           <StatusBar
             layoutMode={layoutMode}
@@ -223,17 +245,9 @@ export function CodaraCliApp(props: CodaraCliAppProps): React.JSX.Element {
           />
         )}
 
-        {/* Transcript 只在有对话时渲染 */}
-        {shell.hasConversation && (
-          <Transcript
-            coreMessages={shell.coreMessages}
-            notices={shell.notices}
-            activeTurn={shell.activeTurn}
-            runtimeEvents={shell.runtimeEvents}
-          />
-        )}
+        {activeItems.length > 0 && <ActiveTranscript items={activeItems} />}
 
-        {/* Task Panel — Transcript 和 ActivityLine 之间 */}
+        {/* Task Panel — ActiveTranscript 和 ActivityLine 之间 */}
         {shell.hasConversation && activeTasks.hasActiveTasks && shell.taskPanelVisible && foregroundSurface !== 'hil' && (
           <TaskPanel
             tasks={activeTasks.tasks}

@@ -61,13 +61,13 @@ function getRolePrefix(role: TranscriptRole): { text: string; width: number } {
   }
 }
 
-function TranscriptBlock({role, content, renderHint}: {role: TranscriptRole; content: string; renderHint?: 'inline' | 'block'}): React.JSX.Element {
+export function TranscriptBlock({role, content, renderHint}: {role: TranscriptRole; content: string; renderHint?: 'inline' | 'block'}): React.JSX.Element {
   const lines = content.split('\n');
   const prefix = getRolePrefix(role);
   const firstLine = lines[0] || '(empty)';
   const trailingLines = lines.slice(1);
   const isToolResult = role === 'tool' || role === 'task';
-  // Tool results use └ tree connector style
+  // Tool results use ⎿ tree connector style
   if (isToolResult && trailingLines.length > 0) {
     return (
       <Box marginBottom={1} flexDirection="column">
@@ -87,7 +87,7 @@ function TranscriptBlock({role, content, renderHint}: {role: TranscriptRole; con
           <Box paddingLeft={prefix.width} flexDirection="column">
             {trailingLines.map((line, index) => (
               <Text key={`${role}-${index}`} dimColor>
-                {index === trailingLines.length - 1 ? '└ ' : '│ '}{line || ' '}
+                {index === trailingLines.length - 1 ? '⎿ ' : '│ '}{line || ' '}
               </Text>
             ))}
           </Box>
@@ -96,7 +96,7 @@ function TranscriptBlock({role, content, renderHint}: {role: TranscriptRole; con
     );
   }
 
-  // Tool call headers (single line) get └ for result
+  // Tool call headers (single line) get ⎿ for result
   if (isToolResult && trailingLines.length === 0) {
     return (
       <Box marginBottom={1} flexDirection="column">
@@ -132,7 +132,7 @@ const EDIT_LINE_COLORS: Record<string, React.ComponentProps<typeof Text>['color'
   '-': 'red',
 };
 
-function ToolResultBlock({meta}: {meta: ToolResultMeta}): React.JSX.Element {
+export function ToolResultBlock({meta}: {meta: ToolResultMeta}): React.JSX.Element {
   const {icon, displayName, args, summaryLine, outputLines, totalOutputLines, status, elapsed, diffData} = meta;
   const elapsedSuffix = elapsed ? ` (${elapsed})` : '';
   const header = args ? `${icon} ${displayName}(${args})${elapsedSuffix}` : `${icon} ${displayName}${elapsedSuffix}`;
@@ -144,7 +144,7 @@ function ToolResultBlock({meta}: {meta: ToolResultMeta}): React.JSX.Element {
       <Text bold>{header}</Text>
       <Box paddingLeft={2}>
         <Text dimColor color={status === 'error' ? 'red' : undefined}>
-          {'└ '}{summaryLine}
+          {'⎿ '}{summaryLine}
         </Text>
       </Box>
       {diffData ? (
@@ -168,3 +168,17 @@ function ToolResultBlock({meta}: {meta: ToolResultMeta}): React.JSX.Element {
   );
 }
 
+/** Renders pre-filtered active (streaming) transcript items. */
+export function ActiveTranscript({items}: {items: import('../../transcript/model').TranscriptItem[]}): React.JSX.Element {
+  return (
+    <Box flexDirection="column">
+      {items.map((item) =>
+        item.toolMeta ? (
+          <ToolResultBlock key={item.id} meta={item.toolMeta} />
+        ) : (
+          <TranscriptBlock key={item.id} role={item.role} content={item.content} renderHint={item.renderHint} />
+        ),
+      )}
+    </Box>
+  );
+}
