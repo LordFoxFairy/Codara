@@ -1,47 +1,83 @@
 // tests/integration/permission-basic.test.ts
 
-import { describe, it, expect } from 'vitest';
-import { PermissionRuntime } from '@/core/middleware/permission/runtime/runtime';
-import { PermissionPolicyEngine } from '@/core/middleware/permission/policy/engine';
+import {describe, it, expect} from 'bun:test';
+import {mkdir, mkdtemp, writeFile} from 'node:fs/promises';
+import {tmpdir} from 'node:os';
+import path from 'node:path';
+import {ensurePermissionSettingsFile, evaluatePermissionToolCall} from '@core';
+import {evaluatePermissionExpression} from '@core/middleware/permission/policy';
 
 describe('Permission System Integration', () => {
-  it('should evaluate allow decision', async () => {
-    const engine = new PermissionPolicyEngine();
+  it('should evaluate allow decision from default rules', async () => {
+    const projectRoot = await mkdtemp(path.join(tmpdir(), 'codara-perm-basic-allow-'));
+    ensurePermissionSettingsFile({projectRoot, cwd: projectRoot});
 
-    const result = await engine.evaluate('Read(src/index.ts)', {
-      policies: [{
-        rules: { allow: ['Read(*)'], ask: [], deny: [] },
-        defaultDecision: 'ask'
-      }]
+    const result = await evaluatePermissionToolCall(
+      {id: 'call_read_1', name: 'read_file', args: {file_path: 'src/index.ts'}},
+      {projectRoot, cwd: projectRoot},
+    );
+
+    expect(result?.decision).toBe('allow');
+    expect(result?.matched).toBeDefined();
+    expect(result?.matched?.rule).toBe('Read(*)');
+  });
+
+  it('should evaluate expression strings directly', async () => {
+    const projectRoot = await mkdtemp(path.join(tmpdir(), 'codara-perm-basic-expr-'));
+    await mkdir(path.join(projectRoot, '.codara'), {recursive: true});
+    await writeFile(path.join(projectRoot, '.codara', 'settings.local.json'), JSON.stringify({
+      permissions: {
+        rules: {
+          allow: ['Read(*)'],
+          ask: [],
+          deny: [],
+        },
+      },
+    }, null, 2));
+
+    const result = await evaluatePermissionExpression('Read(src/index.ts)', {
+      projectRoot,
+      cwd: projectRoot,
     });
 
     expect(result.decision).toBe('allow');
-    expect(result.matched).toBeDefined();
+    expect(result.matched?.rule).toBe('Read(*)');
   });
 
-  it('should use session memory', () => {
-    const runtime = new PermissionRuntime();
-
-    runtime.addSessionMemory('Edit(src/components/*)');
-
-    const allowed = runtime.isSessionAllowed('Edit(src/components/Header.tsx)');
-    expect(allowed).toBe(true);
-  });
-
-  it('should respect deny rules', async () => {
-    const engine = new PermissionPolicyEngine();
-
-    const result = await engine.evaluate('Bash(rm -rf /)', {
-      policies: [{
+  it('should respect deny rules with last-match-wins', async () => {
+    const projectRoot = await mkdtemp(path.join(tmpdir(), 'codara-perm-basic-deny-'));
+    await mkdir(path.join(projectRoot, '.codara'), {recursive: true});
+    await writeFile(path.join(projectRoot, '.codara', 'settings.local.json'), JSON.stringify({
+      permissions: {
         rules: {
-          deny: ['Bash(rm -rf /)'],
+          allow: ['Bash(*)'],
           ask: [],
-          allow: ['Bash(*)']
+          deny: ['Bash(rm -rf /)'],
         },
-        defaultDecision: 'ask'
-      }]
-    });
+      },
+    }, null, 2));
 
-    expect(result.decision).toBe('deny');
+    const result = await evaluatePermissionToolCall(
+      {id: 'call_bash_deny', name: 'bash', args: {command: 'rm -rf /'}},
+      {projectRoot, cwd: projectRoot},
+    );
+
+    // Last-match-wins: deny rule comes after allow, so deny wins
+    expect(result?.decision).toBe('deny');
+    expect(result?.matched?.bucket).toBe('deny');
+  });
+
+  it('should default to ask when no rules match', async () => {
+    const projectRoot = await mkdtemp(path.join(tmpdir(), 'codara-perm-basic-default-'));
+    ensurePermissionSettingsFile({projectRoot, cwd: projectRoot});
+
+    const result = await evaluatePermissionToolCall(
+      {id: 'call_bash_default', name: 'bash', args: {command: 'touch new-file.txt'}},
+      {projectRoot, cwd: projectRoot},
+    );
+
+    expect(result?.decision).toBe('ask');
+    expect(result?.matched).toBeNull();
+    expect(result?.defaultDecision).toBe('ask');
   });
 });

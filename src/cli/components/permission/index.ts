@@ -1,7 +1,7 @@
 // src/cli/components/permission/index.ts
 
-export { QuickView } from './QuickView';
-export { DetailedView } from './DetailedView';
-export { EditView } from './EditView';
-export { PermissionPanel } from './PermissionPanel';
-export type { PermissionViewProps, BashAnalysisResult } from './types';
+export {PermissionPanel} from './PermissionPanel';
+export {ToolCallDisplay} from './ToolCallDisplay';
+export {AlwaysConfirm} from './AlwaysConfirm';
+export {RejectFeedback} from './RejectFeedback';
+export type {PermissionPanelProps, PermissionStage, PermissionUIReply} from './types';

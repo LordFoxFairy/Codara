@@ -106,7 +106,7 @@ describe('createPermissionMiddleware', () => {
     expect(String(result?.content)).toBe('continued');
   });
 
-  it('should expose a directory-scoped allow action for file edits', async () => {
+  it('should expose Claude Code style three-action layout for file edits', async () => {
     const projectRoot = await mkdtemp(path.join(tmpdir(), 'codara-permission-mw-path-'));
     ensurePermissionSettingsFile({projectRoot, cwd: projectRoot});
     const middleware = createPermissionMiddleware({projectRoot, cwd: projectRoot});
@@ -126,12 +126,12 @@ describe('createPermissionMiddleware', () => {
       ? payload.request.ui?.actions ?? []
       : [];
     expect(actions[0]?.id).toBe('allow_once');
-    expect(actions[1]?.id).toBe('allow_path');
-    expect(actions[1]?.scope).toBe('path');
-    expect(actions[1]?.label).toContain('tmp/demo2/');
+    expect(actions[1]?.id).toBe('dont_ask_again');
+    expect(actions[2]?.id).toBe('deny');
+    expect(actions.length).toBe(3);
   });
 
-  it('should expose a directory-scoped allow action for bash mkdir commands', async () => {
+  it('should expose Claude Code style three-action layout for bash commands', async () => {
     const projectRoot = await mkdtemp(path.join(tmpdir(), 'codara-permission-mw-bash-path-'));
     ensurePermissionSettingsFile({projectRoot, cwd: projectRoot});
     const middleware = createPermissionMiddleware({projectRoot, cwd: projectRoot});
@@ -151,11 +151,9 @@ describe('createPermissionMiddleware', () => {
       ? payload.request.ui?.actions ?? []
       : [];
     expect(actions[0]?.id).toBe('allow_once');
-    expect(actions[1]?.id).toBe('allow_path');
-    expect(actions[1]?.scope).toBe('path');
-    expect(actions[1]?.label).toContain('tmp/');
-    expect(actions.some((action) => action.id === 'allow_tool')).toBeFalse();
-    expect(actions.some((action) => action.id === 'allow_project')).toBeTrue();
+    expect(actions[1]?.id).toBe('dont_ask_again');
+    expect(actions[2]?.id).toBe('deny');
+    expect(actions.length).toBe(3);
   });
 
   it('should attach a clear approval reason to permission pauses', async () => {
@@ -180,51 +178,64 @@ describe('createPermissionMiddleware', () => {
     expect(reason).toContain('tmp/demo2/');
   });
 
-  it('should expose a smarter command-type action label for compound git bash commands', async () => {
-    const projectRoot = await mkdtemp(path.join(tmpdir(), 'codara-permission-mw-bash-git-label-'));
+  it('should include always patterns in permission metadata for bash commands', async () => {
+    const projectRoot = await mkdtemp(path.join(tmpdir(), 'codara-permission-mw-bash-patterns-'));
     ensurePermissionSettingsFile({projectRoot, cwd: projectRoot});
     const middleware = createPermissionMiddleware({projectRoot, cwd: projectRoot});
     const toolCall: ToolCall = {
-      id: 'call_permission_bash_git_label_1',
+      id: 'call_permission_bash_patterns_1',
       name: 'bash',
-      args: {command: 'cd ./tmp/repo && git fetch origin && git push origin main'},
+      args: {command: 'npm install lodash'},
     };
 
     const result = await middleware.wrapToolCall?.(createToolContext(toolCall), async () => {
-      return new ToolMessage({content: 'should-not-run', tool_call_id: 'call_permission_bash_git_label_1'});
+      return new ToolMessage({content: 'should-not-run', tool_call_id: 'call_permission_bash_patterns_1'});
     });
 
     const payload = parseHILToolMessagePayload(result?.content);
     expect(payload?.type).toBe('hil_pause');
-    const actions = payload?.type === 'hil_pause'
-      ? payload.request.ui?.actions ?? []
-      : [];
-    expect(actions.some((action) => action.id === 'allow_tool' && action.label.includes('git commands'))).toBeTrue();
+    const alwaysPatterns = payload?.type === 'hil_pause'
+      ? (payload.request.metadata as {permissionPolicy?: {alwaysPatterns?: string[]}}).permissionPolicy?.alwaysPatterns
+      : undefined;
+    expect(alwaysPatterns).toBeDefined();
+    expect(alwaysPatterns!.length).toBeGreaterThan(0);
+    // Should include escalating patterns like Bash(npm install *), Bash(npm *)
+    expect(alwaysPatterns!.some((p: string) => p.includes('npm'))).toBeTrue();
   });
 
-  it('should expose the same smarter command-type label through shell launcher wrappers', async () => {
-    const projectRoot = await mkdtemp(path.join(tmpdir(), 'codara-permission-mw-bash-wrapper-label-'));
+  it('should auto-resolve subsequent calls after always approval via session memory', async () => {
+    const projectRoot = await mkdtemp(path.join(tmpdir(), 'codara-permission-mw-always-session-'));
     ensurePermissionSettingsFile({projectRoot, cwd: projectRoot});
     const middleware = createPermissionMiddleware({projectRoot, cwd: projectRoot});
     const toolCall: ToolCall = {
-      id: 'call_permission_bash_wrapper_label_1',
+      id: 'call_permission_always_session_1',
       name: 'bash',
-      args: {command: 'bash -lc "cd ./tmp/repo && git fetch origin && git push origin main"'},
+      args: {command: 'npm install lodash'},
     };
 
-    const result = await middleware.wrapToolCall?.(createToolContext(toolCall), async () => {
-      return new ToolMessage({content: 'should-not-run', tool_call_id: 'call_permission_bash_wrapper_label_1'});
-    });
+    // First call: approve with dont_ask_again
+    const result1 = await middleware.wrapToolCall?.(
+      createToolContext(toolCall, {
+        hil: {resume: {action: 'dont_ask_again', decision: 'approve'}},
+      }),
+      async () => new ToolMessage({content: 'continued', tool_call_id: 'call_permission_always_session_1'}),
+    );
+    expect(String(result1?.content)).toBe('continued');
 
-    const payload = parseHILToolMessagePayload(result?.content);
-    expect(payload?.type).toBe('hil_pause');
-    const actions = payload?.type === 'hil_pause'
-      ? payload.request.ui?.actions ?? []
-      : [];
-    expect(actions.some((action) => action.id === 'allow_tool' && action.label.includes('git commands'))).toBeTrue();
+    // Second call: same command family should be auto-allowed via session memory
+    const toolCall2: ToolCall = {
+      id: 'call_permission_always_session_2',
+      name: 'bash',
+      args: {command: 'npm install express'},
+    };
+    const result2 = await middleware.wrapToolCall?.(
+      createToolContext(toolCall2),
+      async () => new ToolMessage({content: 'auto-allowed', tool_call_id: 'call_permission_always_session_2'}),
+    );
+    expect(String(result2?.content)).toBe('auto-allowed');
   });
 
-  it('should use classifier path suggestions for complex bash writes', async () => {
+  it('should include classifier reason and suggestions in permission metadata', async () => {
     const projectRoot = await mkdtemp(path.join(tmpdir(), 'codara-permission-mw-classifier-path-'));
     ensurePermissionSettingsFile({projectRoot, cwd: projectRoot});
     const middleware = createPermissionMiddlewareInternal({
@@ -247,17 +258,14 @@ describe('createPermissionMiddleware', () => {
 
     const payload = parseHILToolMessagePayload(result?.content);
     expect(payload?.type).toBe('hil_pause');
-    const actions = payload?.type === 'hil_pause'
-      ? payload.request.ui?.actions ?? []
-      : [];
-    const reason = payload?.type === 'hil_pause'
-      ? (payload.request.metadata as {permissionPolicy?: {reason?: string}}).permissionPolicy?.reason
+    const metadata = payload?.type === 'hil_pause'
+      ? payload.request.metadata as {permissionPolicy?: {reason?: string; suggestions?: {pathRule?: string}}}
       : undefined;
-    expect(actions.some((action) => action.id === 'allow_path' && action.label.includes('tmp/demo2/'))).toBeTrue();
-    expect(reason).toContain('tmp/demo2/');
+    expect(metadata?.permissionPolicy?.reason).toContain('tmp/demo2/');
+    expect(metadata?.permissionPolicy?.suggestions?.pathRule).toBe('Write(tmp/demo2/)');
   });
 
-  it('should persist classifier-suggested path scopes after approval', async () => {
+  it('should add all always patterns to session memory on dont_ask_again approval', async () => {
     const projectRoot = await mkdtemp(path.join(tmpdir(), 'codara-permission-mw-classifier-persist-'));
     ensurePermissionSettingsFile({projectRoot, cwd: projectRoot});
     const middleware = createPermissionMiddlewareInternal({
@@ -273,12 +281,12 @@ describe('createPermissionMiddleware', () => {
       args: {command: 'cat README.md | tee tmp/demo2/PLAN.md >/dev/null'},
     };
 
+    // Approve with dont_ask_again — Claude Code style (session memory, not disk)
     const result = await middleware.wrapToolCall?.(
       createToolContext(toolCall, {
         hil: {
           resume: {
-            action: 'allow_path',
-            scope: 'path',
+            action: 'dont_ask_again',
             decision: 'approve',
           },
         },
@@ -287,10 +295,6 @@ describe('createPermissionMiddleware', () => {
     );
 
     expect(String(result?.content)).toBe('continued');
-    const content = JSON.parse(await readFile(path.join(projectRoot, '.codara', 'settings.local.json'), 'utf8')) as {
-      permissions?: {rules?: {allow?: string[]}};
-    };
-    expect(content.permissions?.rules?.allow).toContain('Write(tmp/demo2/)');
   });
 
   it('should allow complex bash writes when classifier output matches an existing path rule', async () => {

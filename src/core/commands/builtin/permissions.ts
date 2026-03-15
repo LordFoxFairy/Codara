@@ -54,8 +54,7 @@ export const permissionsCommand: CodaraCommandDefinition = {
 };
 
 function formatPermissionSourceResult(result: Awaited<ReturnType<typeof validatePermissionSettings>>[number]): string {
-  const summary = `allow=${result.policySummary.allow}, ask=${result.policySummary.ask}, deny=${result.policySummary.deny}`;
-  const format = result.format ?? 'missing';
+  const summary = `rules=${result.ruleCount}`;
   const suffix = result.errors.length > 0 ? ` | errors: ${result.errors.join('; ')}` : '';
-  return `- ${result.scope}: ${result.path} | status=${result.status} | format=${format} | ${summary}${suffix}`;
+  return `- ${result.scope}: ${result.path} | status=${result.status} | ${summary}${suffix}`;
 }
