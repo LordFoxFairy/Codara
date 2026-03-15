@@ -65,7 +65,7 @@ describe('auto memory runtime', () => {
     expect(existsSync(path.join(rootDir, 'MEMORY.md'))).toBe(true);
 
     const index = await readFile(path.join(rootDir, 'MEMORY.md'), 'utf8');
-    expect(index).toContain('# Auto Memory');
+    expect(index).toContain('# Codara');
     expect(index).toContain('Fix lint errors in src/app.ts');
 
     const topicsDir = path.join(rootDir, 'topics');
@@ -77,7 +77,7 @@ describe('auto memory runtime', () => {
     expect(topicContent).toContain('Fix lint errors in src/app.ts');
     expect(topicContent).toContain('## Outcome');
     expect(topicContent).toContain('fingerprint:');
-    expect(topicContent).toContain('area: general');
+    expect(topicContent).toContain('type: project');
     expect(index).toContain('Updated ');
   });
 
@@ -118,8 +118,8 @@ describe('auto memory runtime', () => {
     expect(topicContent).toContain('## Earlier Notes');
     expect(topicContent).toContain('Explained the lint workflow and updated src/app.ts conventions.');
     const index = await readFile(path.join(rootDir, 'MEMORY.md'), 'utf8');
-    expect(index).toContain('## Active Areas');
-    expect(index).toContain('- src: 1 topic');
+    expect(index).toContain('## Project');
+    expect(index).toContain('Work on src');
   });
 
   it('merges different prompts that work on the same area into one topic cluster', async () => {

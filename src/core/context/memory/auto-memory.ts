@@ -7,6 +7,7 @@ import yaml from 'yaml';
 import {AIMessage, HumanMessage, type BaseMessage, type ToolCall} from '@langchain/core/messages';
 import type {AgentResult} from '@core/agents/models/agent';
 import {resolveWorkspaceRoot, type WorkspaceRootOptions} from '@core/config/workspace';
+import {createWorkspaceKey, sanitizeSlug} from '@core/config/workspace-key';
 import {resolveAutoMemoryGlobal} from '@core/config/settings';
 
 const MEMORY_INDEX_FILE = 'MEMORY.md';
@@ -37,10 +38,13 @@ export interface AutoMemoryTurnInput {
   sessionId: string;
 }
 
+export type MemoryType = 'user' | 'feedback' | 'project' | 'reference';
+
 interface AutoMemoryTopicRecord {
   slug: string;
-  title: string;
-  summary: string;
+  name: string;
+  description: string;
+  type: MemoryType;
   body: string;
   fingerprint: string;
   area: string;
@@ -150,6 +154,9 @@ async function upsertAutoMemoryTopic(rootDir: string, next: AutoMemoryTopicRecor
   const topic: AutoMemoryTopicRecord = {
     ...next,
     slug: existing?.slug ?? next.slug,
+    name: next.name,
+    description: next.description,
+    type: next.type,
     body: mergeTopicBodies(existing?.body, next.body),
     fingerprint: existing?.fingerprint ?? next.fingerprint,
     area: existing?.area ?? next.area,
@@ -176,27 +183,9 @@ async function rewriteMemoryIndex(rootDir: string): Promise<void> {
     .sort((left, right) => right.updatedAt.localeCompare(left.updatedAt));
 
   const lines = [
-    '# Auto Memory',
+    '# Codara 项目记忆',
     '',
-    'Loaded from the Codara auto memory index for this workspace.',
-    'Detailed notes live under `topics/` and can be read directly when needed.',
-    '',
-    ...renderActiveAreas(topics),
-    ...(topics.length > 0 ? [''] : []),
-    '## Recent Topics',
-    ...(topics.length > 0
-      ? topics.flatMap((topic) => {
-        const meta = [
-          `Updated ${topic.updatedAt.slice(0, 10)}`,
-          ...(topic.toolNames.length > 0 ? [`Tools: ${topic.toolNames.join(', ')}`] : []),
-          ...(topic.touchedPaths.length > 0 ? [`Paths: ${topic.touchedPaths.slice(0, 2).join(', ')}`] : []),
-        ];
-        return [
-          `- [${topic.title}](topics/${topic.slug}.md): ${topic.summary}`,
-          `  ${meta.join(' · ')}`,
-        ];
-      })
-      : ['- No stored memories yet.']),
+    ...renderMemoryByType(topics),
   ];
 
   await writeFile(path.join(rootDir, MEMORY_INDEX_FILE), `${lines.join('\n')}\n`, 'utf8');
@@ -217,22 +206,25 @@ async function readAutoMemoryTopic(filePath: string): Promise<AutoMemoryTopicRec
 
   const frontmatter = parsed.frontmatter;
   const slug = readString(frontmatter.slug) ?? normalizeSlug(path.basename(filePath, '.md'));
-  const title = readString(frontmatter.title);
-  const summary = readString(frontmatter.summary);
+  // Support both new (name/description/type) and old (title/summary) formats
+  const name = readString(frontmatter.name) ?? readString(frontmatter.title);
+  const description = readString(frontmatter.description) ?? readString(frontmatter.summary);
+  const type = readMemoryType(frontmatter.type) ?? 'project';
   const fingerprint = readString(frontmatter.fingerprint) ?? normalizeSlug(path.basename(filePath, '.md'));
   const area = readString(frontmatter.area) ?? 'general';
   const toolNames = readStringList(frontmatter.tool_names) ?? [];
   const touchedPaths = readStringList(frontmatter.touched_paths) ?? [];
   const createdAt = readString(frontmatter.created_at) ?? readString(frontmatter.createdAt);
   const updatedAt = readString(frontmatter.updated_at) ?? readString(frontmatter.updatedAt);
-  if (!title || !summary || !createdAt || !updatedAt) {
+  if (!name || !description || !createdAt || !updatedAt) {
     return undefined;
   }
 
   return {
     slug,
-    title,
-    summary,
+    name,
+    description,
+    type,
     body: parsed.body.trim(),
     fingerprint,
     area,
@@ -245,9 +237,9 @@ async function readAutoMemoryTopic(filePath: string): Promise<AutoMemoryTopicRec
 
 function formatAutoMemoryTopic(topic: AutoMemoryTopicRecord): string {
   const frontmatter = yaml.stringify({
-    slug: topic.slug,
-    title: topic.title,
-    summary: topic.summary,
+    name: topic.name,
+    description: topic.description,
+    type: topic.type,
     fingerprint: topic.fingerprint,
     area: topic.area,
     tool_names: topic.toolNames,
@@ -260,8 +252,6 @@ function formatAutoMemoryTopic(topic: AutoMemoryTopicRecord): string {
     '---',
     frontmatter,
     '---',
-    '',
-    `# ${topic.title}`,
     '',
     topic.body.trim(),
     '',
@@ -298,23 +288,25 @@ function buildAutoMemoryTopic(input: AutoMemoryTurnInput): AutoMemoryTopicRecord
   }
 
   const timestamp = new Date().toISOString();
-  const title = deriveTopicTitle(prompt, assistantText, touchedPaths);
-  const slug = normalizeSlug(title);
-  const summary = deriveTopicSummary(prompt, assistantText, toolNames, touchedPaths);
+  const name = deriveTopicTitle(prompt, assistantText, touchedPaths);
+  const slug = normalizeSlug(name);
+  const description = deriveTopicSummary(prompt, assistantText, toolNames, touchedPaths);
+  const type = inferMemoryType(prompt, assistantText);
   const area = deriveTopicArea(touchedPaths);
   const fingerprint = deriveTopicFingerprint(prompt, assistantText, toolNames, touchedPaths, area);
   const body = [
     ...(prompt ? ['## Prompt', prompt, ''] : []),
     ...(assistantText ? ['## Outcome', assistantText, ''] : []),
-    ...(toolNames.length > 0 ? ['## Tool Activity', ...toolNames.map((name) => `- ${name}`), ''] : []),
+    ...(toolNames.length > 0 ? ['## Tool Activity', ...toolNames.map((n) => `- ${n}`), ''] : []),
     ...(touchedPaths.length > 0 ? ['## Touched Paths', ...touchedPaths.map((entry) => `- ${entry}`), ''] : []),
     `Recorded for session \`${input.sessionId}\` at ${timestamp}.`,
   ].join('\n').trim();
 
   return {
     slug,
-    title,
-    summary,
+    name,
+    description,
+    type,
     body,
     fingerprint,
     area,
@@ -484,44 +476,72 @@ async function resolveTopicPath(topicsDir: string, next: AutoMemoryTopicRecord):
   return preferred;
 }
 
-function renderActiveAreas(topics: AutoMemoryTopicRecord[]): string[] {
+const MEMORY_TYPE_ORDER: MemoryType[] = ['user', 'feedback', 'project', 'reference'];
+const MEMORY_TYPE_LABELS: Record<MemoryType, string> = {
+  user: 'User',
+  feedback: 'Feedback',
+  project: 'Project',
+  reference: 'Reference',
+};
+
+function renderMemoryByType(topics: AutoMemoryTopicRecord[]): string[] {
   if (topics.length === 0) {
-    return [];
+    return ['No stored memories yet.'];
   }
 
-  const counts = new Map<string, {count: number; updatedAt: string}>();
+  const grouped = new Map<MemoryType, AutoMemoryTopicRecord[]>();
   for (const topic of topics) {
-    if (!topic.area || topic.area === 'general') {
+    const list = grouped.get(topic.type) ?? [];
+    list.push(topic);
+    grouped.set(topic.type, list);
+  }
+
+  const lines: string[] = [];
+  for (const type of MEMORY_TYPE_ORDER) {
+    const group = grouped.get(type);
+    if (!group || group.length === 0) {
       continue;
     }
 
-    const existing = counts.get(topic.area);
-    if (!existing) {
-      counts.set(topic.area, {count: 1, updatedAt: topic.updatedAt});
-      continue;
+    lines.push(`## ${MEMORY_TYPE_LABELS[type]}`);
+    for (const topic of group) {
+      lines.push(`- [${topic.name}](topics/${topic.slug}.md) — ${topic.description}`);
     }
-
-    counts.set(topic.area, {
-      count: existing.count + 1,
-      updatedAt: existing.updatedAt > topic.updatedAt ? existing.updatedAt : topic.updatedAt,
-    });
+    lines.push('');
   }
 
-  const topAreas = [...counts.entries()]
-    .sort((left, right) => {
-      const countDelta = right[1].count - left[1].count;
-      return countDelta !== 0 ? countDelta : right[1].updatedAt.localeCompare(left[1].updatedAt);
-    })
-    .slice(0, 8);
+  return lines;
+}
 
-  if (topAreas.length === 0) {
-    return [];
+function inferMemoryType(prompt: string | undefined, assistantText: string): MemoryType {
+  const combined = `${prompt ?? ''} ${assistantText}`.toLowerCase();
+
+  if (/\b(don'?t|stop|instead|no not|不要|改为|应该|别|rather than)\b/.test(combined)) {
+    return 'feedback';
   }
 
-  return [
-    '## Active Areas',
-    ...topAreas.map(([area, info]) => `- ${area}: ${info.count} topic${info.count === 1 ? '' : 's'}`),
-  ];
+  if (/\b(i am|i'm|i prefer|i usually|my role|我是|我偏好|我习惯)\b/.test(combined)) {
+    return 'user';
+  }
+
+  if (/\b(https?:\/\/|linear|jira|slack|grafana|confluence|notion)\b/.test(combined)) {
+    return 'reference';
+  }
+
+  return 'project';
+}
+
+function readMemoryType(value: unknown): MemoryType | undefined {
+  if (typeof value !== 'string') {
+    return undefined;
+  }
+
+  const normalized = value.trim().toLowerCase();
+  if (MEMORY_TYPE_ORDER.includes(normalized as MemoryType)) {
+    return normalized as MemoryType;
+  }
+
+  return undefined;
 }
 
 function mergeTopicBodies(existing: string | undefined, next: string): string {
@@ -542,12 +562,6 @@ function mergeTopicBodies(existing: string | undefined, next: string): string {
     '',
     clampText(trimmedExisting, 2500),
   ].join('\n');
-}
-
-function createWorkspaceKey(projectRoot: string): string {
-  const base = sanitizeSlug(path.basename(path.resolve(projectRoot))) || 'workspace';
-  const digest = createHash('sha1').update(path.resolve(projectRoot)).digest('hex').slice(0, 12);
-  return `${base}-${digest}`;
 }
 
 function normalizeAssistantMemoryText(value: string): string {
@@ -602,17 +616,6 @@ function clampText(value: string, limit: number): string {
 function normalizeSlug(value: string): string {
   const normalized = sanitizeSlug(value);
   return normalized || 'session-learning';
-}
-
-function sanitizeSlug(value: string): string {
-  return value
-    .trim()
-    .toLowerCase()
-    .replace(/[`'"“”‘’]/g, '')
-    .replace(/[^a-z0-9]+/g, '-')
-    .replace(/-+/g, '-')
-    .replace(/^-|-$/g, '')
-    .slice(0, 80);
 }
 
 function readRecord(value: unknown): Record<string, unknown> {
