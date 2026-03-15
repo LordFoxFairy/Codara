@@ -15,14 +15,14 @@ export interface ComposerViewport {
   hasOverflowBelow: boolean;
 }
 
-function buildComposerLines(composer: CliComposerState): {lines: ComposerRenderLine[]; cursorLineIndex: number} {
+function buildComposerLines(composer: CliComposerState, placeholder?: string): {lines: ComposerRenderLine[]; cursorLineIndex: number} {
   if (!composer.text) {
     return {
       lines: [
         {
           beforeCursor: '',
           afterCursor: '',
-          placeholder: 'Try "fix lint errors"',
+          placeholder: placeholder ?? 'Try "fix lint errors"',
           isCursorLine: true,
         },
       ],
@@ -73,12 +73,12 @@ function resolveViewportStart(cursorLineIndex: number, lineCount: number, limit:
   return Math.max(0, Math.min(centeredStart, lineCount - limit));
 }
 
-// 多行输入只保留有限窗口，避免输入区无限增高把欢迎页和消息流顶乱。
 export function buildComposerViewport(
   composer: CliComposerState,
-  lineLimit = COMPOSER_VIEWPORT_LINE_LIMIT
+  lineLimit = COMPOSER_VIEWPORT_LINE_LIMIT,
+  placeholder?: string
 ): ComposerViewport {
-  const {lines, cursorLineIndex} = buildComposerLines(composer);
+  const {lines, cursorLineIndex} = buildComposerLines(composer, placeholder);
   const viewportStart = resolveViewportStart(cursorLineIndex, lines.length, lineLimit);
   const viewportEnd = Math.min(lines.length, viewportStart + lineLimit);
 

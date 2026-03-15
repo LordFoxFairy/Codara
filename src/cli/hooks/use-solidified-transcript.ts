@@ -3,7 +3,6 @@ import type {BaseMessage} from '@langchain/core/messages';
 import type {CodaraRuntimeEvent} from '@/index';
 import type {CliActiveTurn, CliNotice} from '../app/view-state';
 import type {CliLayoutMode} from '../app/layout-mode';
-import type {RecentSession} from '../components/conversation/welcome-state';
 import {
   type SolidifiedItem,
   type TranscriptItem,
@@ -20,7 +19,6 @@ export interface UseSolidifiedTranscriptInput {
   layoutMode: CliLayoutMode;
   cwd?: string;
   modelAlias?: string;
-  recentSessions?: RecentSession[];
 }
 
 export interface UseSolidifiedTranscriptOutput {
@@ -29,7 +27,7 @@ export interface UseSolidifiedTranscriptOutput {
 }
 
 export function useSolidifiedTranscript(input: UseSolidifiedTranscriptInput): UseSolidifiedTranscriptOutput {
-  const {coreMessages, notices, activeTurn, runtimeEvents, layoutMode, cwd, modelAlias, recentSessions} = input;
+  const {coreMessages, notices, activeTurn, runtimeEvents} = input;
 
   // Instance-level ID counter (replaces module-level nextSolidId)
   const idCounterRef = useRef(0);
