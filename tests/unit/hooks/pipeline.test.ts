@@ -1,7 +1,7 @@
 import {describe, expect, test} from 'bun:test';
 import {HookPipeline} from '@engine/hook/pipeline';
 import type {HookRegistry} from '@engine/hook/registry';
-import type {HookEntry, HookOutput, HookDefinition, HookContextBase, ToolUseContext} from '@engine/hook/types';
+import type {HookDefinition, HookEntry, HookOutput, ToolUseContext} from '@engine/hook/types';
 import type {HookExecutionStrategy} from '@engine/hook/executor';
 
 // Mock registry

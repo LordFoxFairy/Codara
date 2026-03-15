@@ -9,7 +9,6 @@ import type {ToolCall} from '@langchain/core/messages';
 import type {
   PermissionAction,
   PermissionPolicyOptions,
-  PermissionRule,
   PermissionValidationResult,
 } from '../types';
 import {formatPermissionExpression, parseExpression} from './evaluate';

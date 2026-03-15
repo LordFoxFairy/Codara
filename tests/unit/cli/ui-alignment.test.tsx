@@ -1,5 +1,4 @@
 import {describe, expect, it} from 'bun:test';
-import React from 'react';
 import {render} from 'ink-testing-library';
 import {StatusBar} from '../../../src/cli/components/chrome/header';
 import {Transcript} from '../../../src/cli/components/conversation/transcript';

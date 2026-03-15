@@ -5,7 +5,7 @@ import {Box, Text} from 'ink';
 import {ToolCallDisplay} from './ToolCallDisplay';
 import {AlwaysConfirm} from './AlwaysConfirm';
 import {RejectFeedback} from './RejectFeedback';
-import type {PermissionPanelProps, PermissionStage, PermissionUIReply} from './types';
+import type {PermissionPanelProps, PermissionStage} from './types';
 
 /**
  * Three-stage permission panel.
@@ -17,32 +17,13 @@ import type {PermissionPanelProps, PermissionStage, PermissionUIReply} from './t
 export const PermissionPanel: React.FC<PermissionPanelProps> = ({
   toolName,
   toolArgs,
-  evaluation,
+  evaluation: _evaluation,
   alwaysPatterns = [],
   onReply,
 }) => {
   const [stage, setStage] = useState<PermissionStage>('prompt');
-  const [selectedPatternIndex, setSelectedPatternIndex] = useState(0);
-  const [rejectFeedback, setRejectFeedback] = useState('');
-
-  const handleAction = (actionId: string) => {
-    switch (actionId) {
-      case 'y':
-        onReply({type: 'once'});
-        break;
-      case 'a':
-        if (alwaysPatterns.length > 0) {
-          setStage('always-confirm');
-        } else {
-          // No patterns to choose from, just allow always with default
-          onReply({type: 'always', pattern: '*'});
-        }
-        break;
-      case 'n':
-        setStage('reject-feedback');
-        break;
-    }
-  };
+  const [selectedPatternIndex] = useState(0);
+  const [rejectFeedback] = useState('');
 
   if (stage === 'always-confirm') {
     return (

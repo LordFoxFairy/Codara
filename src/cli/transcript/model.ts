@@ -536,7 +536,7 @@ function buildCoreMessageItems(
   }] : [];
 }
 
-function buildAssistantItems(message: AIMessage, messageId: string, preferRuntimeSteps: boolean): TranscriptItem[] {
+function buildAssistantItems(message: AIMessage, messageId: string, _preferRuntimeSteps: boolean): TranscriptItem[] {
   const items: TranscriptItem[] = [];
   const text = readMessageText(message);
   if (text) {
@@ -709,26 +709,6 @@ function resolveToolMessageName(message: ToolMessage, toolLookup: Map<string, To
   return toolLookup.get(toolCallId)?.name;
 }
 
-function formatToolCallGroup(toolCalls: readonly ToolCall[]): string {
-  if (toolCalls.length === 1) {
-    return formatToolCall(toolCalls[0] as ToolCall);
-  }
-
-  return toolCalls.map((toolCall) => `- ${formatToolCall(toolCall)}`).join('\n');
-}
-
-function formatToolCall(toolCall: ToolCall): string {
-  const name = toolCall.name || 'tool';
-  const icon = toolIcon(name);
-  const summary = formatFriendlyToolSummary(name, toolCall.args);
-  if (summary) {
-    return `${icon} ${formatToolDisplayName(name)}(${summary})`;
-  }
-
-  const args = formatToolCallArgs(name, toolCall.args);
-  return args ? `${icon} ${formatToolDisplayName(name)}(${args})` : `${icon} ${formatToolDisplayName(name)}`;
-}
-
 function toolIcon(toolName: string): string {
   switch (toolName) {
     case 'bash':
@@ -758,21 +738,6 @@ function toolIcon(toolName: string): string {
     default:
       return '⚙';
   }
-}
-
-function formatToolCallArgs(toolName: string, args: unknown): string | undefined {
-  if (!args || typeof args !== 'object' || Array.isArray(args)) {
-    return serializeValue(args);
-  }
-
-  const record = args as Record<string, unknown>;
-  if (isTaskToolName(toolName)) {
-    const orderedEntries = Object.entries(record)
-      .filter(([, value]) => value !== undefined && value !== null && value !== '');
-    return orderedEntries.map(([key, value]) => `${key}: ${serializeValue(value)}`).join(' | ');
-  }
-
-  return serializeObject(record);
 }
 
 function formatFriendlyToolSummary(toolName: string, args: unknown): string | undefined {
@@ -823,14 +788,6 @@ function formatTaskResultText(content: string): string {
       return [first, ...rest.map((part) => `  ${part}`)].join('\n');
     })
     .join('\n');
-}
-
-function serializeObject(value: Record<string, unknown>): string | undefined {
-  const entries = Object.entries(value)
-    .filter(([, entryValue]) => entryValue !== undefined)
-    .map(([key, entryValue]) => `${key}: ${serializeValue(entryValue)}`);
-
-  return entries.length > 0 ? entries.join(' | ') : undefined;
 }
 
 function serializeValue(value: unknown): string | undefined {

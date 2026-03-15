@@ -13,7 +13,7 @@ import {TIPS} from '../hooks/use-rotating-tip';
 import {CompletionMenu} from '../components/prompt/completion-menu';
 import {PromptFrame} from '../components/prompt/prompt-frame';
 import type {CliHilAutoAction} from './hil-review';
-import {resolveCliLayoutMode, type CliLayoutMode} from './layout-mode';
+import {resolveCliLayoutMode} from './layout-mode';
 import {useCliController} from './use-cli-controller';
 import {useActiveTasks} from '../hooks/use-active-tasks';
 import {useCommandCompletion} from '../hooks/use-command-completion';
@@ -104,7 +104,7 @@ export function CodaraCliApp(props: CodaraCliAppProps): React.JSX.Element {
 
   // Session picker keyboard input — only when TTY supports raw mode
   useInput(
-    (input, key) => {
+    (_input, key) => {
       if (!sessionPicker.state.visible) return;
       if (key.escape) { sessionPicker.hide(); return; }
       if (key.return) { sessionPicker.select(); return; }
