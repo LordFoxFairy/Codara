@@ -28,11 +28,11 @@ export interface UseSolidifiedTranscriptOutput {
   activeItems: TranscriptItem[];
 }
 
-let nextSolidId = 0;
-
 export function useSolidifiedTranscript(input: UseSolidifiedTranscriptInput): UseSolidifiedTranscriptOutput {
   const {coreMessages, notices, activeTurn, runtimeEvents, layoutMode, cwd, modelAlias, recentSessions} = input;
 
+  // Instance-level ID counter (replaces module-level nextSolidId)
+  const idCounterRef = useRef(0);
   // Track how many coreMessages have been solidified
   const lastSolidifiedCountRef = useRef(0);
   // Track how many notices have been solidified
@@ -48,7 +48,7 @@ export function useSolidifiedTranscript(input: UseSolidifiedTranscriptInput): Us
     solidifiedItemsRef.current = [
       ...solidifiedItemsRef.current,
       {
-        id: `solid-welcome-${nextSolidId++}`,
+        id: `solid-welcome-${idCounterRef.current++}`,
         kind: 'welcome',
         items: [],
       },
@@ -68,7 +68,7 @@ export function useSolidifiedTranscript(input: UseSolidifiedTranscriptInput): Us
       solidifiedItemsRef.current = [
         ...solidifiedItemsRef.current,
         {
-          id: `solid-notice-${nextSolidId++}`,
+          id: `solid-notice-${idCounterRef.current++}`,
           kind: 'notice',
           items: filteredNoticeItems,
         },
@@ -90,7 +90,7 @@ export function useSolidifiedTranscript(input: UseSolidifiedTranscriptInput): Us
       solidifiedItemsRef.current = [
         ...solidifiedItemsRef.current,
         {
-          id: `solid-turn-${nextSolidId++}`,
+          id: `solid-turn-${idCounterRef.current++}`,
           kind: 'turn',
           items: newItems,
         },

@@ -10,6 +10,7 @@ import {SessionPicker} from '../components/conversation/session-picker';
 import {ActiveTranscript} from '../components/conversation/transcript';
 import {SolidifiedBlock} from '../components/conversation/solidified-block';
 import {deriveRecentSessions, type RecentSession} from '../components/conversation/welcome-state';
+import {TIPS} from '../hooks/use-rotating-tip';
 import {CompletionMenu} from '../components/prompt/completion-menu';
 import {PromptFrame} from '../components/prompt/prompt-frame';
 import type {CliHilAutoAction} from './hil-review';
@@ -99,6 +100,9 @@ export function CodaraCliApp(props: CodaraCliAppProps): React.JSX.Element {
     disabled: shell.runState.status === 'running',
     listCommands,
   });
+  // Freeze tip and initial terminal width at mount time (for Static welcome)
+  const [frozenTip] = useState(() => TIPS[Math.floor(Math.random() * TIPS.length)]!);
+  const [frozenTerminalWidth] = useState(() => terminalWidth);
   const [recentSessions, setRecentSessions] = useState<RecentSession[]>([]);
   useEffect(() => {
     codara.listSessions({sortBy: 'lastActivity', sortOrder: 'desc', limit: 5}).then(
@@ -229,22 +233,13 @@ export function CodaraCliApp(props: CodaraCliAppProps): React.JSX.Element {
               cwd={cwd}
               modelAlias={modelAlias}
               recentSessions={recentSessions}
+              tip={frozenTip}
+              terminalWidth={frozenTerminalWidth}
             />
           )}
         </Static>
 
         {/* 动态区 */}
-        {shell.hasConversation && (
-          <StatusBar
-            layoutMode={layoutMode}
-            session={shell.sessionState}
-            cwd={cwd}
-            modelAlias={modelAlias}
-            runState={shell.runState}
-            latestRuntimeEvent={shell.latestRuntimeEvent}
-          />
-        )}
-
         {activeItems.length > 0 && <ActiveTranscript items={activeItems} />}
 
         {/* Task Panel — ActiveTranscript 和 ActivityLine 之间 */}
@@ -283,6 +278,16 @@ export function CodaraCliApp(props: CodaraCliAppProps): React.JSX.Element {
               cursorActivityVersion={shell.composerActivityVersion}
               isRunning={shell.runState.status === 'running'}
             />
+            {shell.hasConversation && (
+              <StatusBar
+                layoutMode={layoutMode}
+                session={shell.sessionState}
+                cwd={cwd}
+                modelAlias={modelAlias}
+                runState={shell.runState}
+                latestRuntimeEvent={shell.latestRuntimeEvent}
+              />
+            )}
             <Footer layoutMode={layoutMode} />
           </>
         )}
