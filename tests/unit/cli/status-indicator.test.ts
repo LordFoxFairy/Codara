@@ -3,10 +3,10 @@ import {describeStatusIndicator} from '../../../src/cli/hooks/use-status-indicat
 
 describe('cli status indicator', () => {
   it('should describe the running state as thinking before text starts streaming', () => {
-    expect(describeStatusIndicator({runState: {status: 'running'}}, 0).banner).toBe('✳ Thinking');
-    expect(describeStatusIndicator({runState: {status: 'running'}}, 1).banner).toBe('✳ Thinking.');
-    expect(describeStatusIndicator({runState: {status: 'running'}}, 2).banner).toBe('✳ Thinking..');
-    expect(describeStatusIndicator({runState: {status: 'running'}}, 3).banner).toBe('✳ Thinking...');
+    expect(describeStatusIndicator({runState: {status: 'running'}}, 0).banner).toBe('⠋ Thinking...');
+    expect(describeStatusIndicator({runState: {status: 'running'}}, 1).banner).toBe('⠙ Thinking...');
+    expect(describeStatusIndicator({runState: {status: 'running'}}, 2).banner).toBe('⠹ Thinking...');
+    expect(describeStatusIndicator({runState: {status: 'running'}}, 3).banner).toBe('⠸ Thinking...');
   });
 
   it('should switch to responding once reply text is streaming', () => {
@@ -18,7 +18,7 @@ describe('cli status indicator', () => {
         response: 'partial',
         responseRole: 'assistant',
       },
-    }, 0).banner).toBe('⏺ Responding');
+    }, 0).banner).toBe('⠋ Responding...');
   });
 
   it('should describe paused, done, idle, and error states with product-facing text', () => {
@@ -54,6 +54,6 @@ describe('cli status indicator', () => {
         status: 'running',
         label: 'Running /reload',
       },
-    }).banner).toBe('⏺ Running /reload');
+    }).banner).toBe('⠋ Running /reload');
   });
 });

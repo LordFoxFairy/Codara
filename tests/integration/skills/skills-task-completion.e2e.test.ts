@@ -7,9 +7,9 @@ import type {BaseChatModel} from '@langchain/core/language_models/chat_models'
 import type {StructuredToolInterface} from '@langchain/core/tools'
 import {tool} from '@langchain/core/tools'
 import {z} from 'zod'
-import {createAgent} from '@core/agents'
-import {createMiddleware, createSkillsMiddleware} from '@core/middleware'
-import {FileSystemSkillStore} from '@core/skills'
+import {createAgent} from '@engine/agent'
+import {createMiddleware, createSkillsMiddleware} from '@engine/pipeline'
+import {FileSystemSkillStore} from '@capability/skill'
 import {seedProjectSkillFixtures} from '../../helpers/project-skill-fixtures'
 
 const DEBUG_LOG = process.env.SKILLS_E2E_LOG === '1'
@@ -27,6 +27,7 @@ class SkillAwareScriptedModel {
 
   constructor(
     private readonly skillName: string,
+    private readonly skillsRoot: string,
     private readonly skillPath: string,
     private readonly referencePath: string
   ) {}
@@ -41,7 +42,7 @@ class SkillAwareScriptedModel {
 
     if (this.step === 0) {
       // Prove skills middleware is effective: without injected skill context, model refuses workflow.
-      if (!joined.includes(this.skillName) || !joined.includes(this.skillPath)) {
+      if (!joined.includes(this.skillName) || !joined.includes(this.skillsRoot)) {
         debugLog('skills context missing in model prompt')
         return new AIMessage('SKILL_NOT_VISIBLE')
       }
@@ -95,7 +96,7 @@ describe('Skills task completion flow', () => {
     debugLog(`skill path: ${skillPath}`)
     debugLog(`reference path: ${referencePath}`)
 
-    const model = new SkillAwareScriptedModel('basic-task-flow', skillPath, referencePath)
+    const model = new SkillAwareScriptedModel('basic-task-flow', projectSkillsRoot, skillPath, referencePath)
 
     const readFileTool = tool(
       async ({path: targetPath}: {path: string}) => {

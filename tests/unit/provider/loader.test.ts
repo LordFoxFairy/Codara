@@ -1,5 +1,5 @@
 import {describe, expect, it, beforeEach, afterEach} from "bun:test";
-import {loadModelRoutingConfig} from "@core/provider";
+import {loadModelRoutingConfig} from "@infra/provider";
 import {readFileSync, writeFileSync, mkdirSync, mkdtempSync, rmSync} from "fs";
 import {join} from "path";
 import {tmpdir} from "os";
@@ -83,7 +83,7 @@ describe("loadModelRoutingConfig", () => {
             readFileSync(join(process.cwd(), ".codara", "model-metadata.json"), "utf8")
         ) as Record<string, {contextWindow?: number; maxOutputTokens?: number}>;
 
-        expect(repoConfig.router.default).toBe("deepseek:deepseek-chat");
+        expect(repoConfig.router.default).toBe("deepseek:glm-5");
         expect(repoConfig.router.fast).toBe("openrouter:anthropic/claude-3.5-haiku");
 
         expect(repoConfig.providers[0].models).toContain("anthropic/claude-sonnet-4");

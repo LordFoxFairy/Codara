@@ -4,7 +4,7 @@ import {tmpdir} from 'node:os';
 import path from 'node:path';
 import type {BaseChatModel} from '@langchain/core/language_models/chat_models';
 import type {BaseMessage} from '@langchain/core/messages';
-import {createCodara, createCodaraRuntime} from '@core';
+import {createCodara, createCodaraRuntime} from '@/index';
 import {EchoModel, SystemEchoModel} from './codara-fixtures';
 
 const createRuntimeForTest = (options: Parameters<typeof createCodaraRuntime>[0]) => (
@@ -65,6 +65,7 @@ describe('Codara slash commands', () => {
       {name: 'resume', source: 'builtin'},
       {name: 'compact', source: 'builtin'},
       {name: 'reload', source: 'builtin'},
+      {name: 'hooks', source: 'builtin'},
     ]);
   });
 
@@ -475,7 +476,7 @@ describe('Codara slash commands', () => {
     const root = await mkdtemp(path.join(tmpdir(), 'codara-command-resume-'));
     const projectRoot = path.join(root, 'project');
     const codaraPath = path.join(projectRoot, '.codara');
-    const current = createRuntimeForTest({
+    const current = await createRuntimeForTest({
       cwd: projectRoot,
       projectRoot,
       codaraPath,
@@ -484,7 +485,7 @@ describe('Codara slash commands', () => {
       builtinTools: false,
       skills: false,
     });
-    const target = createRuntimeForTest({
+    const target = await createRuntimeForTest({
       cwd: projectRoot,
       projectRoot,
       codaraPath,
@@ -506,7 +507,7 @@ describe('Codara slash commands', () => {
     });
   });
 
-  it('should reject /resume without a session id', async () => {
+  it('should show session picker when /resume is called without args', async () => {
     const codara = createCodara({
       model: new EchoModel() as unknown as BaseChatModel,
       skills: false,
@@ -514,8 +515,8 @@ describe('Codara slash commands', () => {
     });
 
     const result = await codara.executeCommand('/resume');
-    expect(result.ok).toBe(false);
-    expect(result.output).toContain('Usage: /resume <sessionId>');
+    expect(result.ok).toBe(true);
+    expect(result.action).toEqual({type: 'show_session_picker'});
   });
 
   it('should report when /resume targets the current session', async () => {

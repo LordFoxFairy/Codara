@@ -1,4 +1,5 @@
-import type {PauseRequest, PauseReviewDecision, ResumePayload} from '@core/agents';
+import type {PauseRequest, PauseReviewDecision, ResumePayload} from '@engine/agent';
+import type {PermissionStage} from '../components/permission/types';
 import type {
   CliHilAnswerValue,
   CliHilFormState,
@@ -341,7 +342,13 @@ function mapActionToDecision(actionId: string): PauseReviewDecision | undefined 
   if (normalized === 'edit') {
     return 'edit';
   }
-  if (normalized === 'approve' || normalized === 'allow' || normalized === 'allow_once' || normalized === 'always') {
+  if (
+    normalized === 'approve'
+    || normalized === 'allow'
+    || normalized === 'allow_once'
+    || normalized === 'always'
+    || normalized === 'dont_ask_again'
+  ) {
     return 'approve';
   }
   return undefined;
@@ -543,3 +550,47 @@ function normalizeAnswerEntry(key: string, value: CliHilAnswerValue): Array<[str
   const normalized = value.filter((entry) => entry.trim().length > 0);
   return normalized.length > 0 ? [[normalizedKey, normalized]] : [];
 }
+
+// ── Permission three-stage flow ──────────────────────────────────────
+
+/** Read alwaysPatterns from permission pause metadata. */
+export function readPermissionAlwaysPatterns(metadata: unknown): string[] {
+  if (!metadata || typeof metadata !== 'object' || Array.isArray(metadata)) return [];
+  const policy = (metadata as Record<string, unknown>).permissionPolicy;
+  if (!policy || typeof policy !== 'object' || Array.isArray(policy)) return [];
+  const patterns = (policy as Record<string, unknown>).alwaysPatterns;
+  return Array.isArray(patterns) ? patterns.filter((p): p is string => typeof p === 'string') : [];
+}
+
+/** Check if the current review is a permission review. */
+export function isPermissionReviewState(review: CliHilReviewState): boolean {
+  return review.request.ui?.modal === 'permission-review'
+    || review.request.channel === 'permission-center';
+}
+
+/** Transition to a permission stage. */
+export function setPermissionStage(current: CliHilReviewState, stage: PermissionStage): CliHilReviewState {
+  if (stage === 'always-confirm') {
+    const patterns = current.permissionAlwaysPatterns ?? readPermissionAlwaysPatterns(current.request.metadata);
+    return {
+      ...current,
+      permissionStage: stage,
+      permissionAlwaysPatterns: patterns,
+    };
+  }
+
+  if (stage === 'reject-feedback') {
+    return {
+      ...current,
+      permissionStage: stage,
+      draft: '',
+    };
+  }
+
+  // Back to prompt
+  return {
+    ...current,
+    permissionStage: 'prompt',
+  };
+}
+

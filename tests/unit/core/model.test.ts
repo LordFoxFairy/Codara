@@ -4,10 +4,10 @@ import {
   createMiddleware,
   createAgentMemoryCheckpointer,
   type ModelRoutingConfig,
-} from '@core';
-import {createCodaraChatModel, createCodaraModelCatalog} from '@core/codara';
+} from '@/index';
+import {createCodaraChatModel, createCodaraModelCatalog} from '@codara/index';
 import type {BaseChatModel} from '@langchain/core/language_models/chat_models';
-import type {BeforeModelContext} from '@core/middleware';
+import type {BeforeModelContext} from '@engine/pipeline';
 import {EchoModel} from './codara-fixtures';
 
 const baseConfig: ModelRoutingConfig = {

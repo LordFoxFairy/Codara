@@ -1,10 +1,9 @@
 import {useEffect, useState} from 'react';
-import type {CodaraRuntimeEvent} from '@core';
+import type {CodaraRuntimeEvent} from '@/index';
 import type {CliActiveTurn, CliRunState} from '../app/view-state';
 
-const THINKING_FRAMES = ['✳ Thinking', '✳ Thinking.', '✳ Thinking..', '✳ Thinking...'];
-const RESPONDING_FRAMES = ['⏺ Responding', '⏺ Responding.', '⏺ Responding..', '⏺ Responding...'];
-const FRAME_INTERVAL_MS = 220;
+const BRAILLE_FRAMES = ['⠋', '⠙', '⠹', '⠸', '⠼', '⠴', '⠦', '⠧', '⠇', '⠏'] as const;
+export const SPINNER_INTERVAL_MS = 80;
 
 export interface StatusIndicatorInput {
   runState: CliRunState;
@@ -18,6 +17,11 @@ export interface StatusIndicatorModel {
   color: 'yellow' | 'blueBright' | 'green' | 'gray' | 'red';
 }
 
+function buildSpinnerBanner(label: string, frame: number): string {
+  const spinner = BRAILLE_FRAMES[((frame % BRAILLE_FRAMES.length) + BRAILLE_FRAMES.length) % BRAILLE_FRAMES.length];
+  return `${spinner} ${label}`;
+}
+
 export function useStatusIndicator(input: StatusIndicatorInput): StatusIndicatorModel {
   const [frame, setFrame] = useState(0);
 
@@ -28,7 +32,7 @@ export function useStatusIndicator(input: StatusIndicatorInput): StatusIndicator
 
     const timer = setInterval(() => {
       setFrame((current) => current + 1);
-    }, FRAME_INTERVAL_MS);
+    }, SPINNER_INTERVAL_MS);
 
     return () => clearInterval(timer);
   }, [input.runState.status]);
@@ -45,14 +49,14 @@ export function describeStatusIndicator(input: StatusIndicatorInput, frame = 0):
       if (latestRuntimeEvent?.kind === 'model') {
         if (activeTurn?.response.trim()) {
           return {
-            banner: cycle(RESPONDING_FRAMES, frame),
+            banner: buildSpinnerBanner('Responding...', frame),
             status: 'Responding',
             color: 'green',
           };
         }
 
         return {
-          banner: cycle(THINKING_FRAMES, frame),
+          banner: buildSpinnerBanner('Thinking...', frame),
           status: 'Thinking',
           color: 'yellow',
         };
@@ -60,7 +64,7 @@ export function describeStatusIndicator(input: StatusIndicatorInput, frame = 0):
 
       if (activeEventLabel) {
         return {
-          banner: `⏺ ${activeEventLabel}`,
+          banner: buildSpinnerBanner(activeEventLabel, frame),
           status: activeEventLabel,
           color: latestRuntimeEvent?.kind === 'command' || latestRuntimeEvent?.kind === 'summary'
             ? 'blueBright'
@@ -70,14 +74,14 @@ export function describeStatusIndicator(input: StatusIndicatorInput, frame = 0):
 
       if (activeTurn?.response.trim()) {
         return {
-          banner: cycle(RESPONDING_FRAMES, frame),
+          banner: buildSpinnerBanner('Responding...', frame),
           status: 'Responding',
           color: 'green',
         };
       }
 
       return {
-        banner: cycle(THINKING_FRAMES, frame),
+        banner: buildSpinnerBanner('Thinking...', frame),
         status: 'Thinking',
         color: 'yellow',
       };
@@ -107,9 +111,4 @@ export function describeStatusIndicator(input: StatusIndicatorInput, frame = 0):
         color: 'gray',
       };
   }
-}
-
-function cycle(frames: readonly string[], frame: number): string {
-  const normalized = ((frame % frames.length) + frames.length) % frames.length;
-  return frames[normalized]!;
 }

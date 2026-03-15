@@ -8,7 +8,7 @@ import {
   FileSessionStore,
   openCodaraSession,
   openLatestCodaraSession,
-} from '@core';
+} from '@/index';
 import type {BaseChatModel} from '@langchain/core/language_models/chat_models';
 import {AIMessage, HumanMessage, SystemMessage, type BaseMessage} from '@langchain/core/messages';
 import {EchoModel, SystemEchoModel} from './codara-fixtures';

@@ -3,11 +3,11 @@ import {AIMessage, HumanMessage, ToolMessage, type BaseMessage, type ToolCall} f
 import type {BaseChatModel} from '@langchain/core/language_models/chat_models';
 import {tool, type StructuredToolInterface} from '@langchain/core/tools';
 import {z} from 'zod';
-import {createAgent} from '@core/agents';
-import {createHILMiddleware, createMiddleware} from '@core/middleware';
-import {createAgentMemoryCheckpointer} from '@core/checkpoint';
-import {readDelegatedAgentResult} from '@core/tasks/delegation';
-import {TASK_TOOL_NAME, createTaskTool} from '@core/tasks/task';
+import {createAgent} from '@engine/agent';
+import {createHILMiddleware, createMiddleware} from '@engine/pipeline';
+import {createAgentMemoryCheckpointer} from '@infra/checkpoint';
+import {readDelegatedAgentResult} from '@capability/task/delegation';
+import {TASK_TOOL_NAME, createTaskTool} from '@capability/task/task';
 
 class ScriptedModel {
   private index = 0;

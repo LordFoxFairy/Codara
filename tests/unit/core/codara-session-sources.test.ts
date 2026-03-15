@@ -2,12 +2,13 @@ import {describe, expect, it} from 'bun:test';
 import {mkdir, mkdtemp, readFile, writeFile} from 'node:fs/promises';
 import path from 'node:path';
 import {tmpdir} from 'node:os';
-import {createCodara, FileSessionStore} from '@core';
+import {createCodara, FileSessionStore} from '@/index';
+import {createCodaraGuidelinesSource} from '@infra/context/instructions/guidelines';
 import type {BaseChatModel} from '@langchain/core/language_models/chat_models';
 import {AIMessage, HumanMessage, SystemMessage, ToolMessage, type BaseMessage, type ToolCall} from '@langchain/core/messages';
 import {tool} from '@langchain/core/tools';
 import {z} from 'zod';
-import type {SkillMetadata, SkillStore} from '@core/skills/types';
+import type {SkillMetadata, SkillStore} from '@capability/skill/types';
 import {SystemEchoModel} from './codara-fixtures';
 
 describe('Codara session source lifecycle', () => {
@@ -219,7 +220,7 @@ describe('Codara session source lifecycle', () => {
     expect(thirdText).not.toContain('project handbook v1');
   });
 
-  it('should add deeper AGENTS.md rules on the next turn after a file tool hits that subtree', async () => {
+  it('should keep deeper AGENTS.md rules out of later turns when only a deeper file is read', async () => {
     const root = await mkdtemp(path.join(tmpdir(), 'codara-session-guidelines-disclosure-'));
     const userHome = path.join(root, 'home');
     const projectRoot = path.join(root, 'project');
@@ -245,10 +246,23 @@ describe('Codara session source lifecycle', () => {
     const result = await codara.invoke('inspect the feature file');
     const text = String(result.state.messages[result.state.messages.length - 1]?.content);
 
-    expect(text).toBe('visible:true');
+    expect(text).toBe('visible:false');
   });
 
-  it('should add deeper hidden handbook rules on the next turn after a file tool hits that subtree', async () => {
+  it('should no-op when a file tool hits a subtree without deeper instruction files', async () => {
+    const root = await mkdtemp(path.join(tmpdir(), 'codara-session-noop-guidelines-'));
+    await writeFile(path.join(root, 'AGENTS.md'), '# root rule\nstay at root\n', 'utf8');
+    await mkdir(path.join(root, 'packages/plain'), {recursive: true});
+    await writeFile(path.join(root, 'packages/plain/file.ts'), 'export const plain = true;\n', 'utf8');
+
+    const guidelinesSource = createCodaraGuidelinesSource({cwd: root, projectRoot: root, userHome: root});
+
+    const content = await guidelinesSource.getContent();
+    expect(content).toContain('stay at root');
+    expect(content).not.toContain('packages/plain');
+  });
+
+  it('should keep deeper hidden handbook rules out of later turns when only a deeper file is read', async () => {
     const root = await mkdtemp(path.join(tmpdir(), 'codara-session-prompt-disclosure-'));
     const userHome = path.join(root, 'home');
     const projectRoot = path.join(root, 'project');
@@ -276,7 +290,7 @@ describe('Codara session source lifecycle', () => {
     const result = await codara.invoke('inspect the feature file');
     const text = String(result.state.messages[result.state.messages.length - 1]?.content);
 
-    expect(text).toBe('visible:true');
+    expect(text).toBe('visible:false');
   });
 
   it('should reload skills projections for the same Codara session only after reloadSources is called', async () => {

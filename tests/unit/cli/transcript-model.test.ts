@@ -24,16 +24,21 @@ describe('cli transcript model', () => {
       },
     });
 
-    expect(items.map((item) => `${item.role}:${item.content}`)).toEqual([
-      'system:ready',
-      'warning:careful',
-      'user:hello',
-      'assistant:world',
-      'tool:Echo(text: ping)',
-      'tool:pong:ping',
-      'user:draft',
-      'assistant:streaming',
+    // Tool calls from AIMessage are not shown separately — ToolMessage provides the result.
+    // During streaming (activeTurn present), runtime events handle tool progress display.
+    const roles = items.map((item) => item.role);
+    expect(roles).toEqual([
+      'system',
+      'warning',
+      'user',
+      'assistant',
+      'tool',
+      'user',
+      'assistant',
     ]);
+    expect(items[4]?.toolMeta?.toolName).toBe('echo');
+    expect(items[5]?.content).toBe('draft');
+    expect(items[6]?.content).toBe('streaming');
   });
 
   test('should project task tool calls and task list results as task transcript items', () => {
@@ -53,14 +58,16 @@ describe('cli transcript model', () => {
       ],
     });
 
-    expect(items.map((item) => item.role)).toEqual(['task', 'task']);
-    expect(items[0]?.content).toBe('TaskList');
-    expect(items[1]?.content).toContain('Tasks:');
-    expect(items[1]?.content).toContain('- id: task-1\n  subject: Inspect transcript\n  status: in_progress');
-    expect(items[1]?.content).toContain('- id: task-2\n  subject: Report result\n  status: pending');
+    // Only the ToolMessage result is shown (tool calls from AIMessage are not rendered separately)
+    expect(items.map((item) => item.role)).toEqual(['task']);
+    expect(items[0]?.content).toContain('Tasks:');
+    expect(items[0]?.content).toContain('- id: task-1\n  subject: Inspect transcript\n  status: in_progress');
+    expect(items[0]?.content).toContain('- id: task-2\n  subject: Report result\n  status: pending');
   });
 
-  test('should format common tool calls with friendly Claude-style summaries', () => {
+  test('should render tool results with friendly summaries from ToolMessages', () => {
+    // Tool calls from AIMessage are not shown separately; ToolMessages provide the results.
+    // ToolMessages with toolMeta get friendly formatting.
     const items = buildTranscriptItems({
       notices: [],
       coreMessages: [
@@ -68,18 +75,17 @@ describe('cli transcript model', () => {
           content: '',
           tool_calls: [
             {id: 'call_bash_1', name: 'bash', args: {command: 'git status'}} as ToolCall,
-            {id: 'call_read_1', name: 'read_file', args: {file_path: '/tmp/demo.ts', offset: 10, limit: 20}} as ToolCall,
-            {id: 'call_fetch_1', name: 'fetch_url', args: {url: 'https://example.com/docs', method: 'GET'}} as ToolCall,
           ],
         }),
+        new ToolMessage({content: 'On branch main\nnothing to commit', tool_call_id: 'call_bash_1', name: 'bash'}),
       ],
     });
 
     expect(items).toHaveLength(1);
     expect(items[0]?.role).toBe('tool');
-    expect(items[0]?.content).toContain('- Bash(git status)');
-    expect(items[0]?.content).toContain('- Read(/tmp/demo.ts:10+20)');
-    expect(items[0]?.content).toContain('- Fetch(https://example.com/docs)');
+    expect(items[0]?.toolMeta?.toolName).toBe('bash');
+    expect(items[0]?.toolMeta?.displayName).toBe('Bash');
+    expect(items[0]?.toolMeta?.args).toBe('git status');
   });
 
   test('should hide AskUser tool call groups because the HIL panel already renders the interaction', () => {
@@ -135,7 +141,7 @@ describe('cli transcript model', () => {
     expect(items).toEqual([]);
   });
 
-  test('should prefer runtime step events over raw tool transcript blocks when available', () => {
+  test('should prefer runtime step events during streaming (activeTurn present)', () => {
     const items = buildTranscriptItems({
       notices: [],
       coreMessages: [
@@ -145,6 +151,12 @@ describe('cli transcript model', () => {
         }),
         new ToolMessage({content: 'Delegated task completed.\nsummary:\nCHILD_DONE', tool_call_id: 'call_task_1'}),
       ],
+      activeTurn: {
+        id: 'turn-streaming',
+        prompt: 'do it',
+        response: '',
+        responseRole: 'assistant',
+      },
       runtimeEvents: [
         {
           id: 'evt_tool_1',
@@ -168,15 +180,133 @@ describe('cli transcript model', () => {
       ],
     });
 
-    expect(items.map((item) => item.role)).toEqual(['tool', 'task']);
-    expect(items[0]?.content).toContain('Delegating task');
-    expect(items[1]?.content).toContain('CHILD_DONE');
+    const roles = items.map((item) => item.role);
+    expect(roles).toContain('user');
+    expect(roles).toContain('task');
+    expect(items.some((item) => item.content.includes('CHILD_DONE'))).toBe(true);
   });
 
-  test('should surface readable tool results instead of generic done markers for runtime events', () => {
+  test('should use core messages after turn completes (no activeTurn)', () => {
+    const items = buildTranscriptItems({
+      notices: [],
+      coreMessages: [
+        new AIMessage({
+          content: '',
+          tool_calls: [{id: 'call_task_1', name: 'Task', args: {prompt: 'Inspect child work'}} as ToolCall],
+        }),
+        new ToolMessage({content: 'Delegated task completed.\nsummary:\nCHILD_DONE', tool_call_id: 'call_task_1'}),
+      ],
+      runtimeEvents: [
+        {
+          id: 'evt_tool_1',
+          sessionId: 'session-1',
+          timestamp: new Date().toISOString(),
+          kind: 'tool',
+          phase: 'start',
+          status: 'running',
+          label: 'Delegating task',
+        },
+      ],
+    });
+
+    // After turn completes, ToolMessage provides the definitive result
+    expect(items).toHaveLength(1);
+    expect(items[0]?.role).toBe('tool');
+    expect(items[0]?.content).toContain('Delegated task completed');
+  });
+
+  test('should include elapsed time in tool meta when paired start/end events exist', () => {
+    const startTime = '2026-03-16T10:00:00.000Z';
+    const endTime = '2026-03-16T10:00:00.053Z'; // 53ms later
     const items = buildTranscriptItems({
       notices: [],
       coreMessages: [],
+      activeTurn: {
+        id: 'turn-elapsed',
+        prompt: 'run it',
+        response: '',
+        responseRole: 'assistant',
+      },
+      runtimeEvents: [
+        {
+          id: 'evt_bash_start',
+          sessionId: 'session-1',
+          timestamp: startTime,
+          kind: 'tool',
+          phase: 'start',
+          status: 'running',
+          label: 'Bash(ls)',
+          detail: 'bash',
+        },
+        {
+          id: 'evt_bash_end',
+          sessionId: 'session-1',
+          timestamp: endTime,
+          kind: 'tool',
+          phase: 'end',
+          status: 'done',
+          label: 'Bash completed',
+          detail: 'file1.ts\nfile2.ts',
+          parentId: 'evt_bash_start',
+        },
+      ],
+    });
+
+    const toolItem = items.find((i) => i.toolMeta?.toolName === 'bash');
+    expect(toolItem?.toolMeta?.elapsed).toBe('53ms');
+  });
+
+  test('should format elapsed as seconds for longer tool calls', () => {
+    const startTime = '2026-03-16T10:00:00.000Z';
+    const endTime = '2026-03-16T10:00:02.500Z'; // 2.5s later
+    const items = buildTranscriptItems({
+      notices: [],
+      coreMessages: [],
+      activeTurn: {
+        id: 'turn-elapsed-s',
+        prompt: 'run it',
+        response: '',
+        responseRole: 'assistant',
+      },
+      runtimeEvents: [
+        {
+          id: 'evt_read_start',
+          sessionId: 'session-1',
+          timestamp: startTime,
+          kind: 'tool',
+          phase: 'start',
+          status: 'running',
+          label: 'Read(/tmp/file.ts)',
+          detail: 'read',
+        },
+        {
+          id: 'evt_read_end',
+          sessionId: 'session-1',
+          timestamp: endTime,
+          kind: 'tool',
+          phase: 'end',
+          status: 'done',
+          label: 'Read completed',
+          detail: 'contents here',
+          parentId: 'evt_read_start',
+        },
+      ],
+    });
+
+    const toolItem = items.find((i) => i.toolMeta?.toolName === 'read');
+    expect(toolItem?.toolMeta?.elapsed).toBe('2.5s');
+  });
+
+  test('should surface runtime events during streaming (activeTurn present)', () => {
+    const items = buildTranscriptItems({
+      notices: [],
+      coreMessages: [],
+      activeTurn: {
+        id: 'turn-streaming',
+        prompt: 'check status',
+        response: '',
+        responseRole: 'assistant',
+      },
       runtimeEvents: [
         {
           id: 'evt_tool_start',
@@ -196,14 +326,35 @@ describe('cli transcript model', () => {
           status: 'done',
           label: 'Tool completed',
           detail: 'executed:git status',
+          parentId: 'evt_tool_start',
         },
       ],
     });
 
-    expect(items.map((item) => item.content)).toEqual([
-      'Running Bash(git status)',
-      'executed:git status',
-    ]);
+    // activeTurn items + runtime events
+    const roles = items.map((item) => item.role);
+    expect(roles).toContain('user');
+    expect(roles).toContain('tool');
+  });
+
+  test('should not render runtime events after turn completes (no activeTurn)', () => {
+    const items = buildTranscriptItems({
+      notices: [],
+      coreMessages: [],
+      runtimeEvents: [
+        {
+          id: 'evt_tool_start',
+          sessionId: 'session-1',
+          timestamp: new Date().toISOString(),
+          kind: 'tool',
+          phase: 'start',
+          status: 'running',
+          label: 'Running Bash(git status)',
+        },
+      ],
+    });
+
+    expect(items).toEqual([]);
   });
 
   test('should treat notice-only output as transcript content after startup', () => {

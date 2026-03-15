@@ -4,13 +4,13 @@ import type {BaseChatModel} from '@langchain/core/language_models/chat_models';
 import type {StructuredToolInterface} from '@langchain/core/tools';
 import {tool} from '@langchain/core/tools';
 import {z} from 'zod';
-import {createAgent} from '@core/agents';
+import {createAgent} from '@engine/agent';
 import {
   applyHILResumeToolEdits,
   createHILMiddleware,
   parseHILResumeActionPayload,
   type HILPauseRequest,
-} from '@core/middleware';
+} from '@engine/pipeline';
 
 class PermissionInteractionModel {
   readonly invocations: BaseMessage[][] = [];

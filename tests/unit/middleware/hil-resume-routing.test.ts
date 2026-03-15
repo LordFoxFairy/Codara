@@ -1,6 +1,6 @@
 import {describe, expect, it} from 'bun:test';
 import {HumanMessage, ToolMessage, type BaseMessage, type ToolCall} from '@langchain/core/messages';
-import {createHILMiddleware, type ToolCallContext} from '@core/middleware';
+import {createHILMiddleware, type ToolCallContext} from '@engine/pipeline';
 
 function createToolContext(toolCall: ToolCall, runtimeContext: Record<string, unknown>): ToolCallContext {
   const messages = [new HumanMessage('run')] as BaseMessage[];

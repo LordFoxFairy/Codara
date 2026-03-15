@@ -22,6 +22,13 @@ export function insertComposerText(state: CliComposerState, input: string): CliC
   };
 }
 
+export function replaceComposerText(_state: CliComposerState, newText: string): CliComposerState {
+  return {
+    text: newText,
+    cursorOffset: newText.length,
+  };
+}
+
 export function insertComposerNewline(state: CliComposerState): CliComposerState {
   return insertComposerText(state, '\n');
 }

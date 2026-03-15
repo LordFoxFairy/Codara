@@ -1,5 +1,5 @@
 import {describe, expect, it} from 'bun:test';
-import * as core from '@core';
+import * as core from '@/index';
 import * as api from '../../../src/index';
 
 describe('core public APIs', () => {

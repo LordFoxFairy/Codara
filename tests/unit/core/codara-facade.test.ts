@@ -1,5 +1,5 @@
 import {describe, expect, it} from 'bun:test';
-import {createAgentMemoryCheckpointer, createCodara, createCodaraRuntime} from '@core';
+import {createAgentMemoryCheckpointer, createCodara, createCodaraRuntime} from '@/index';
 import type {BaseChatModel} from '@langchain/core/language_models/chat_models';
 import {AIMessage, AIMessageChunk, HumanMessage, SystemMessage, ToolMessage, type BaseMessage, type ToolCall} from '@langchain/core/messages';
 import {tool} from '@langchain/core/tools';
@@ -118,11 +118,10 @@ class DefaultRuntimeProgressiveDisclosureModel {
         .join('\n');
 
       return new AIMessage(
-        `CHILD_RUNTIME_DISCLOSURE:${
-          runtimeInstructionText.includes('APP_RULE')
-          && runtimeInstructionText.includes('APP_HANDBOOK')
-          && !systemText.includes('APP_RULE')
-          && !systemText.includes('APP_HANDBOOK')
+        `CHILD_RUNTIME_DISCLOSURE:${runtimeInstructionText.includes('APP_RULE')
+          || runtimeInstructionText.includes('APP_HANDBOOK')
+          || systemText.includes('APP_RULE')
+          || systemText.includes('APP_HANDBOOK')
         }`,
       );
     }
@@ -323,7 +322,7 @@ command-name: review-helper
     }, null, 2));
 
     try {
-      const codara = createRuntimeForTest({
+      const codara = await createRuntimeForTest({
         cwd,
         model: new EchoModel() as unknown as BaseChatModel,
         skills: false,
@@ -355,7 +354,7 @@ command-name: review-helper
     }, null, 2));
 
     try {
-      const codara = createRuntimeForTest({
+      const codara = await createRuntimeForTest({
         cwd,
         model: new EchoModel() as unknown as BaseChatModel,
         skills: false,
@@ -417,7 +416,7 @@ command-name: review-helper
     }
 
     try {
-      const codara = createRuntimeForTest({
+      const codara = await createRuntimeForTest({
         cwd,
         model: new AskUserModel() as unknown as BaseChatModel,
         skills: false,
@@ -459,7 +458,7 @@ command-name: review-helper
     }, null, 2));
 
     try {
-      const codara = createRuntimeForTest({
+      const codara = await createRuntimeForTest({
         cwd,
         model: new DefaultRuntimeWorkflowModel() as unknown as BaseChatModel,
         skills: false,
@@ -478,7 +477,7 @@ command-name: review-helper
     }
   });
 
-  it('should let delegated runtime children append subtree instructions outside the base system path', async () => {
+  it('should keep delegated runtime children on the startup instruction chain after reading deeper files', async () => {
     const root = await mkdtemp(path.join(tmpdir(), 'codara-runtime-progressive-child-'));
     const cwd = path.join(root, 'project');
     const codaraRoot = path.join(cwd, '.codara');
@@ -499,7 +498,7 @@ command-name: review-helper
     }, null, 2));
 
     try {
-      const codara = createRuntimeForTest({
+      const codara = await createRuntimeForTest({
         cwd,
         model: new DefaultRuntimeProgressiveDisclosureModel(targetFile) as unknown as BaseChatModel,
         skills: false,
@@ -515,7 +514,7 @@ command-name: review-helper
 
       const result = await codara.invoke('run delegated progressive disclosure');
       expect(result.reason).toBe('complete');
-      expect(String(result.state.messages[result.state.messages.length - 1]?.content)).toBe('RUNTIME_DELEGATED_DISCLOSURE_DONE:true');
+      expect(String(result.state.messages[result.state.messages.length - 1]?.content)).toBe('RUNTIME_DELEGATED_DISCLOSURE_DONE:false');
     } finally {
       await rm(root, {recursive: true, force: true});
     }
