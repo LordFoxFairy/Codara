@@ -319,6 +319,7 @@ export class RuntimeEventsController {
           phase: 'start',
           status: 'running',
           label: formatToolLabel(context),
+          detail: context.toolCall.name,
           parentId: this.turnRoots.get(turnKey(context)),
         });
 

@@ -7,12 +7,25 @@ import type {CliActiveTurn, CliNotice} from '../app/view-state';
 
 export type TranscriptRole = 'system' | 'warning' | 'user' | 'assistant' | 'tool' | 'task' | 'hil' | 'command' | 'error';
 
+export interface ToolResultMeta {
+  toolName: string;
+  displayName: string;
+  icon: string;
+  args?: string;
+  status: 'running' | 'done' | 'error';
+  summaryLine: string;
+  outputLines?: string[];
+  totalOutputLines?: number;
+}
+
 export interface TranscriptItem {
   id: string;
   role: TranscriptRole;
   content: string;
   /** Rendering hint: 'inline' for single-line, 'block' for multi-line with left border */
   renderHint?: 'inline' | 'block';
+  /** Structured tool result metadata for enhanced rendering */
+  toolMeta?: ToolResultMeta;
 }
 
 export interface BuildTranscriptItemsInput {
@@ -90,17 +103,202 @@ export function hasTranscriptContent(input: HasTranscriptContentInput): boolean 
 }
 
 function buildRuntimeEventItems(events: readonly CodaraRuntimeEvent[]): TranscriptItem[] {
-  return events.map((event) => {
+  const startEvents = new Map<string, CodaraRuntimeEvent>();
+  const pairedEndIds = new Set<string>();
+  const items: TranscriptItem[] = [];
+
+  // First pass: index start events by id
+  for (const event of events) {
+    if (event.phase === 'start') {
+      startEvents.set(event.id, event);
+    }
+  }
+
+  // Second pass: pair end events with start events, build items
+  for (const event of events) {
     if (event.kind === 'turn' || event.kind === 'model' || shouldHideRuntimeEvent(event)) {
-      return undefined;
+      continue;
     }
 
-    return {
+    // Tool end event — pair with start
+    if (event.kind === 'tool' && event.phase === 'end' && event.parentId) {
+      const startEvent = startEvents.get(event.parentId);
+      if (startEvent) {
+        pairedEndIds.add(event.id);
+        const rawToolName = startEvent.detail ?? '';
+        const toolMeta = buildToolMetaFromEvents(rawToolName, startEvent, event);
+        const content = toolMeta
+          ? `${toolMeta.icon} ${toolMeta.displayName}(${toolMeta.args ?? ''})\n└ ${toolMeta.summaryLine}`
+          : formatRuntimeEvent(event);
+        items.push({
+          id: startEvent.id,
+          role: mapRuntimeEventRole(event.kind),
+          content,
+          toolMeta: toolMeta ?? undefined,
+        });
+        continue;
+      }
+    }
+
+    // Skip start events that have been paired
+    if (event.phase === 'start' && event.kind === 'tool') {
+      // Will be rendered when the end event arrives; if no end event, show as running below
+      continue;
+    }
+
+    items.push({
       id: event.id,
       role: mapRuntimeEventRole(event.kind),
       content: formatRuntimeEvent(event),
+    });
+  }
+
+  // Third pass: show unpaired tool start events as "running"
+  for (const [id, startEvent] of startEvents) {
+    if (startEvent.kind !== 'tool' || shouldHideRuntimeEvent(startEvent)) {
+      continue;
+    }
+    // Check if this start event was paired with an end event
+    const wasPaired = events.some(
+      (e) => e.phase === 'end' && e.parentId === id && e.kind === 'tool',
+    );
+    if (!wasPaired) {
+      const rawToolName = startEvent.detail ?? '';
+      const toolMeta = buildToolMetaRunning(rawToolName, startEvent);
+      const content = toolMeta
+        ? `${toolMeta.icon} ${toolMeta.displayName}(${toolMeta.args ?? ''})\n└ ${toolMeta.summaryLine}`
+        : formatRuntimeEvent(startEvent);
+      items.push({
+        id: startEvent.id,
+        role: 'tool',
+        content,
+        toolMeta: toolMeta ?? undefined,
+      });
+    }
+  }
+
+  return items;
+}
+
+const TOOL_META_MAX_LINES = 4;
+
+function buildToolMetaFromEvents(
+  rawToolName: string,
+  startEvent: CodaraRuntimeEvent,
+  endEvent: CodaraRuntimeEvent,
+): ToolResultMeta | undefined {
+  if (!rawToolName) {
+    return undefined;
+  }
+
+  const icon = toolIcon(rawToolName);
+  const displayName = formatToolDisplayName(rawToolName);
+  const args = parseToolCallArgs(startEvent.label);
+  const status = endEvent.status === 'error' ? 'error' : 'done';
+  const {summaryLine, outputLines, totalOutputLines} = buildToolOutput(rawToolName, status, endEvent.detail);
+
+  return {toolName: rawToolName, displayName, icon, args, status, summaryLine, outputLines, totalOutputLines};
+}
+
+function buildToolMetaRunning(rawToolName: string, startEvent: CodaraRuntimeEvent): ToolResultMeta | undefined {
+  if (!rawToolName) {
+    return undefined;
+  }
+
+  const icon = toolIcon(rawToolName);
+  const displayName = formatToolDisplayName(rawToolName);
+  const args = parseToolCallArgs(startEvent.label);
+
+  return {toolName: rawToolName, displayName, icon, args, status: 'running', summaryLine: '…'};
+}
+
+function parseToolCallArgs(label: string): string | undefined {
+  const match = label.match(/^[^(]+\((.+)\)$/s);
+  return match?.[1]?.trim() || undefined;
+}
+
+function buildToolOutput(
+  toolName: string,
+  status: 'done' | 'error',
+  detail?: string,
+): {summaryLine: string; outputLines?: string[]; totalOutputLines?: number} {
+  if (status === 'error') {
+    const lines = truncateOutput(detail);
+    return {
+      summaryLine: 'Error',
+      outputLines: lines.visible,
+      totalOutputLines: lines.total,
     };
-  }).filter((item): item is TranscriptItem => Boolean(item));
+  }
+
+  const trimmed = detail?.trim() ?? '';
+
+  switch (toolName) {
+    case 'write_file':
+    case 'write': {
+      const lines = truncateOutput(trimmed);
+      const lineCount = lines.total;
+      const fileMatch = trimmed.match(/^Wrote \d+ lines? to (.+)/);
+      const summaryLine = fileMatch
+        ? `Wrote ${lineCount} lines to ${fileMatch[1]}`
+        : `Wrote ${lineCount} lines`;
+      return {summaryLine, outputLines: lines.visible, totalOutputLines: lines.total};
+    }
+    case 'edit_file':
+    case 'edit': {
+      const lines = truncateOutput(trimmed);
+      return {summaryLine: buildEditSummary(trimmed), outputLines: lines.visible, totalOutputLines: lines.total};
+    }
+    case 'bash': {
+      if (!trimmed) {
+        return {summaryLine: 'Done'};
+      }
+      const lines = truncateOutput(trimmed);
+      return {summaryLine: lines.visible[0] ?? 'Done', outputLines: lines.visible.slice(1), totalOutputLines: lines.total};
+    }
+    default: {
+      if (!trimmed) {
+        return {summaryLine: 'Done'};
+      }
+      const lines = truncateOutput(trimmed);
+      return {summaryLine: lines.visible[0] ?? 'Done', outputLines: lines.visible.slice(1), totalOutputLines: lines.total};
+    }
+  }
+}
+
+function buildEditSummary(detail: string): string {
+  const lines = detail.split('\n');
+  let added = 0;
+  let removed = 0;
+  for (const line of lines) {
+    if (line.startsWith('+') && !line.startsWith('+++')) {
+      added++;
+    }
+    if (line.startsWith('-') && !line.startsWith('---')) {
+      removed++;
+    }
+  }
+  if (added === 0 && removed === 0) {
+    return 'Edited';
+  }
+  const parts: string[] = [];
+  if (added > 0) {
+    parts.push(`Added ${added} line${added === 1 ? '' : 's'}`);
+  }
+  if (removed > 0) {
+    parts.push(`removed ${removed} line${removed === 1 ? '' : 's'}`);
+  }
+  return parts.join(', ');
+}
+
+function truncateOutput(detail?: string, maxLines: number = TOOL_META_MAX_LINES): {visible: string[]; total: number} {
+  if (!detail?.trim()) {
+    return {visible: [], total: 0};
+  }
+  const allLines = detail.trim().split('\n');
+  const total = allLines.length;
+  const visible = allLines.slice(0, maxLines);
+  return {visible, total};
 }
 
 function mapRuntimeEventRole(kind: CodaraRuntimeEvent['kind']): TranscriptRole {
@@ -243,12 +441,37 @@ function buildToolResultItems(
   const formattedContent = role === 'task' ? formatTaskResultText(text) : text;
   const lineCount = formattedContent.split('\n').length;
 
+  // Build toolMeta for non-task tool results
+  const toolMeta = resolvedName && !isTaskToolName(resolvedName)
+    ? buildToolMetaFromCoreMessage(resolvedName, message, toolLookup, text)
+    : undefined;
+
   return [{
     id: messageId,
     role,
-    content: formattedContent,
+    content: toolMeta
+      ? `${toolMeta.icon} ${toolMeta.displayName}(${toolMeta.args ?? ''})\n└ ${toolMeta.summaryLine}`
+      : formattedContent,
     renderHint: lineCount > 3 ? 'block' : 'inline',
+    toolMeta,
   }];
+}
+
+function buildToolMetaFromCoreMessage(
+  rawToolName: string,
+  message: ToolMessage,
+  toolLookup: Map<string, ToolCall>,
+  text: string,
+): ToolResultMeta {
+  const icon = toolIcon(rawToolName);
+  const displayName = formatToolDisplayName(rawToolName);
+  const toolCallId = typeof message.tool_call_id === 'string' ? message.tool_call_id.trim() : '';
+  const toolCall = toolCallId ? toolLookup.get(toolCallId) : undefined;
+  const args = toolCall ? formatFriendlyToolSummary(rawToolName, toolCall.args) : undefined;
+  const status = message.status === 'error' ? 'error' : 'done';
+  const {summaryLine, outputLines, totalOutputLines} = buildToolOutput(rawToolName, status as 'done' | 'error', text);
+
+  return {toolName: rawToolName, displayName, icon, args, status: status as 'done' | 'error', summaryLine, outputLines, totalOutputLines};
 }
 
 function shouldHideRuntimeEvent(event: CodaraRuntimeEvent): boolean {
