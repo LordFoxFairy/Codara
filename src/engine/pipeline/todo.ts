@@ -6,7 +6,7 @@ import type {AgentRuntimeValues} from '@engine/agent/models/types';
 import {createMiddleware, type BaseMiddleware, type AfterModelContext} from '@engine/pipeline/types';
 
 /**
- * Ported from LangChain JS todoListMiddleware.
+ * Ported from LangChain JS todo list middleware.
  */
 export const WRITE_TODOS_DESCRIPTION = `Use this tool to create and manage a structured task list for your current work session. This helps you track progress, organize complex tasks, and demonstrate thoroughness to the user.
 It also helps the user understand the progress of the task and overall progress of their requests.
@@ -117,11 +117,11 @@ export function createWriteTodosTool(options?: Pick<TodoListMiddlewareOptions, '
   );
 }
 
-export function todoListMiddleware(options?: TodoListMiddlewareOptions): BaseMiddleware {
+export function createTodoListMiddleware(options?: TodoListMiddlewareOptions): BaseMiddleware {
   const writeTodos = createWriteTodosTool(options);
 
   return createMiddleware({
-    name: 'todoListMiddleware',
+    name: 'TodoListMiddleware',
     stateSchema: TodoStateSchema,
     tools: [writeTodos],
     wrapModelCall: (request, handler) => {
