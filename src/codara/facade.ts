@@ -474,7 +474,7 @@ export function createCodaraTools(options: CodaraToolsOptions = {}): StructuredT
   }
 
   const byName = new Map<string, StructuredToolInterface>();
-  for (const tool of createBuiltinTools({cwd: options.cwd})) {
+  for (const tool of createBuiltinTools({cwd: options.cwd, extended: true})) {
     byName.set(tool.name, tool);
   }
   for (const tool of options.tools ?? []) {
