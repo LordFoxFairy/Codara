@@ -24,7 +24,7 @@ import {
   putManualCheckpoint,
   type AgentCheckpointer,
 } from '@infra/checkpoint/agent';
-import type {BaseMiddleware} from '@engine/pipeline/types';
+import {MIDDLEWARE_NAMES, type BaseMiddleware} from '@engine/pipeline/types';
 import {
   compactConversationWithSummary,
   createModelSummaryGenerator,
@@ -335,7 +335,7 @@ export function createSession(options: CreateSessionOptions): Session {
       runtimeEvents.createMiddleware(),
       ...(options.middleware ?? []),
     ];
-    if (!summary || middlewares.some((middleware) => middleware.name === 'SummaryMiddleware')) {
+    if (!summary || middlewares.some((middleware) => middleware.name === MIDDLEWARE_NAMES.Summary)) {
       return middlewares.length > 0 ? middlewares : undefined;
     }
 
@@ -344,7 +344,7 @@ export function createSession(options: CreateSessionOptions): Session {
       return middlewares.length > 0 ? middlewares : undefined;
     }
 
-    const hilIndex = middlewares.findIndex((middleware) => middleware.name === 'HumanInTheLoopMiddleware');
+    const hilIndex = middlewares.findIndex((middleware) => middleware.name === MIDDLEWARE_NAMES.HIL);
     if (hilIndex < 0) {
       middlewares.push(summaryMiddleware);
       return middlewares;
