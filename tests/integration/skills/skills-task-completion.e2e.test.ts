@@ -9,7 +9,7 @@ import {tool} from '@langchain/core/tools'
 import {z} from 'zod'
 import {createAgent} from '@engine/agent'
 import {createMiddleware, createSkillsMiddleware} from '@engine/pipeline'
-import {FileSystemSkillStore} from '@capability/skill'
+import {FileSystemSkillStore, loadSkillsRuntimeData} from '@capability/skill'
 import {seedProjectSkillFixtures} from '../../helpers/project-skill-fixtures'
 
 const DEBUG_LOG = process.env.SKILLS_E2E_LOG === '1'
@@ -127,7 +127,7 @@ describe('Skills task completion flow', () => {
     const runner = createAgent({
       model: model as unknown as BaseChatModel,
       tools: [readFileTool],
-      middleware: [createSkillsMiddleware({store}), probeMiddleware]
+      middleware: [createSkillsMiddleware({store, loadRuntime: loadSkillsRuntimeData}), probeMiddleware]
     })
 
     const result = await runner.invoke({

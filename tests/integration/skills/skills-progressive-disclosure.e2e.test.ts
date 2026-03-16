@@ -7,7 +7,7 @@ import type {BaseChatModel} from '@langchain/core/language_models/chat_models'
 import type {StructuredToolInterface} from '@langchain/core/tools'
 import {createAgent} from '@engine/agent'
 import {createMiddleware, createSkillsMiddleware} from '@engine/pipeline'
-import {FileSystemSkillStore} from '@capability/skill'
+import {FileSystemSkillStore, loadSkillsRuntimeData} from '@capability/skill'
 
 class ScriptedModel {
   readonly invocations: BaseMessage[][] = []
@@ -75,7 +75,7 @@ Use references before final answer.
     const runner = createAgent({
       model: scriptedModel as unknown as BaseChatModel,
       tools: [],
-      middleware: [createSkillsMiddleware({store}), probeMiddleware]
+      middleware: [createSkillsMiddleware({store, loadRuntime: loadSkillsRuntimeData}), probeMiddleware]
     })
 
     const result = await runner.invoke({

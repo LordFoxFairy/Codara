@@ -36,7 +36,7 @@ import {
 import type {SessionLifecycleHooks} from '@engine/hook/types';
 import type {GuidelinesSource} from '@infra/context/instructions/guidelines';
 import {type PromptSource} from '@infra/context/instructions/prompt';
-import {type SkillsSource} from '@capability/skill';
+import type {SkillsSource} from '@infra/context/skill-contracts';
 import {
   type AutoMemoryRuntime,
   shouldRecordAutoMemoryTurn,
@@ -52,7 +52,7 @@ import {
   deriveSessionInputBudget,
   forkSessionMetadata,
   syncSessionMetadata,
-} from '@shared/session-metadata';
+} from './session-metadata';
 import type {SessionStore} from './store';
 import {
   RuntimeEventsController,

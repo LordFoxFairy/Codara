@@ -19,20 +19,13 @@ import type {ExecutionContextMetadata} from '@engine/pipeline/types';
 import type {AgentCheckpointer} from '@infra/checkpoint/agent';
 import {deepClone} from '@shared/clone';
 import {readLatestAssistantText} from '@shared/messages';
+import type {DelegatedAgentResult} from '@shared/delegation-result';
+export {readDelegatedAgentResult, type DelegatedAgentResult} from '@shared/delegation-result';
 
 export type DelegatedAgentModelResolver =
   | BaseChatModel
   | Promise<BaseChatModel>
   | (() => BaseChatModel | Promise<BaseChatModel>);
-
-const delegatedAgentResultSchema = z.object({
-  type: z.literal('delegated_agent_result'),
-  sessionId: z.string(),
-  turns: z.number(),
-  reason: z.enum(['complete', 'error', 'max_turns']),
-  summary: z.string().optional(),
-  errorMessage: z.string().optional(),
-});
 
 const parentExecutionSchema = z.object({
   sessionId: z.string().trim().min(1),
@@ -75,15 +68,6 @@ export interface DelegatedAgentOptions {
   systemMessages?: string[];
   systemPrompt?: string;
   blockedToolNames?: string[];
-}
-
-export interface DelegatedAgentResult {
-  type: 'delegated_agent_result';
-  sessionId: string;
-  turns: number;
-  reason: 'complete' | 'error' | 'max_turns';
-  summary?: string;
-  errorMessage?: string;
 }
 
 interface DelegatedPauseMetadata {
@@ -172,10 +156,7 @@ export function markDelegationTool<TTool extends StructuredToolInterface>(tool: 
   return tool;
 }
 
-export function readDelegatedAgentResult(value: unknown): DelegatedAgentResult | undefined {
-  const parsed = delegatedAgentResultSchema.safeParse(value);
-  return parsed.success ? parsed.data : undefined;
-}
+// readDelegatedAgentResult is re-exported from @shared/delegation-result above.
 
 export function readDelegatedParentRuntimeMetadata(
   configurable: unknown,
