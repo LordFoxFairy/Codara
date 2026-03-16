@@ -32,6 +32,7 @@ export async function runRealCliCase(options: RealCliCaseOptions): Promise<RealC
         NO_COLOR: '1',
         FORCE_COLOR: '0',
         CI: '1',
+        COLUMNS: '200',
       },
       stdio: ['ignore', 'pipe', 'pipe'],
     });
