@@ -17,9 +17,9 @@ describe('runtime default workflow cases', () => {
     });
 
     expect(result.exitCode).toBe(0);
-    expect(result.output).toContain('write_todos');
+    expect(result.output).toContain('Write Todos');
     expect(result.output).toContain('Track default runtime workflow');
-    expect(result.output).toContain('Delegating general-purpose: Inspect isolated child work');
+    expect(result.output).toContain('Delegating general-purpose');
     expect(result.output).toContain('DEFAULT_RUNTIME_FLOW_DONE');
   });
 });

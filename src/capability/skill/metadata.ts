@@ -119,6 +119,7 @@ export function formatSkillsList(skills: SkillMetadata[], sources: string[]): st
 
   return skills.map((skill) => {
     const cmd = skill.command?.name ? ` (/${skill.command.name})` : ''
-    return `- ${skill.name}${cmd}: ${skill.description}`
+    const loc = skill.path ? `\n  Path: ${skill.path}` : ''
+    return `- ${skill.name}${cmd}: ${skill.description}${loc}`
   }).join('\n')
 }

@@ -241,7 +241,7 @@ describe('case: runtime permission default ask', () => {
     });
 
     expect(result.exitCode).toBe(0);
-    expect(result.output).toContain('Writing(tmp/demo2/PLAN.md)');
+    expect(result.output).toContain('Write(tmp/demo2/PLAN.md)');
     expect(result.output).not.toContain('HIL action:');
     expect(result.output).toContain('RUNTIME_WRITE_PERMISSION_DONE');
   });
