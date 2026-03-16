@@ -12,7 +12,6 @@ import {
   type Codara,
 } from '@/index';
 import {
-  createAskUserTool,
   createAskUserQuestionMiddleware,
   createPermissionMiddleware,
   createSkillsMiddleware,
@@ -459,7 +458,6 @@ export async function createCliRuntime(input: {
           codaraPath: path.join(input.cwd, '.codara'),
           ...(input.sessionId ? {sessionId: input.sessionId} : {}),
           model: new HilFormCliModel() as unknown as BaseChatModel,
-          tools: [createAskUserTool()],
           builtinTools: false,
           skills: false,
           hil: false,

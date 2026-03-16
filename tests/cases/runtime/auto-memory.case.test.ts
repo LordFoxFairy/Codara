@@ -7,7 +7,6 @@ import {AIMessage, type BaseMessage, type ToolCall} from '@langchain/core/messag
 import type {BaseChatModel} from '@langchain/core/language_models/chat_models';
 import {
   createAgentMemoryCheckpointer,
-  createAskUserTool,
   createCodaraRuntime,
   createAskUserQuestionMiddleware,
   createSession,
@@ -80,7 +79,6 @@ describe('runtime auto memory cases', () => {
       userHome,
       codaraPath: path.join(projectRoot, '.codara'),
       model: new AskUserModel() as unknown as BaseChatModel,
-      tools: [createAskUserTool()],
       middleware: [createAskUserQuestionMiddleware()],
       builtinTools: false,
       skills: false,

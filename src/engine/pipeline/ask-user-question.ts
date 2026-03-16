@@ -3,6 +3,7 @@ import {tool} from '@langchain/core/tools';
 import {z} from 'zod';
 import type {PauseUIActionOption} from '@engine/agent/models/types';
 import {createHILMiddleware, parseHILResumeActionPayload, type HILMiddlewareOptions} from '@engine/pipeline/hil';
+import {createMiddleware} from '@engine/pipeline/types';
 
 const ASK_USER_TOOL_NAME = 'AskUserQuestion';
 const DEFAULT_CHANNEL = 'interaction-center';
@@ -63,8 +64,9 @@ export function createAskUserTool() {
 
 export function createAskUserQuestionMiddleware(options: AskUserQuestionMiddlewareOptions = {}) {
   const askUserToolName = options.askUserToolName?.trim() || ASK_USER_TOOL_NAME;
+  const askUserTool = createAskUserTool();
 
-  return createHILMiddleware({
+  const hilMiddleware = createHILMiddleware({
     ...options,
     name: options.name?.trim() || 'AskUserQuestionMiddleware',
     resolveDecision: async (input) => {
@@ -118,6 +120,13 @@ export function createAskUserQuestionMiddleware(options: AskUserQuestionMiddlewa
         tool_call_id: request.action.toolCallId,
       });
     },
+  });
+
+  // Compose: HIL middleware handles wrapToolCall, we inject the AskUserQuestion tool
+  return createMiddleware({
+    name: hilMiddleware.name,
+    tools: [askUserTool],
+    wrapToolCall: hilMiddleware.wrapToolCall,
   });
 }
 
