@@ -100,6 +100,14 @@ export function CodaraCliApp(props: CodaraCliAppProps): React.JSX.Element {
     disabled: shell.runState.status === 'running',
     listCommands,
   });
+  const mcpStatus = React.useMemo(() => {
+    const statuses = codara.getMcpStatus();
+    if (statuses.length === 0) return undefined;
+    return {
+      connected: statuses.filter((s) => s.status === 'connected').length,
+      total: statuses.length,
+    };
+  }, [codara]);
   // Freeze tip and initial terminal width at mount time (for Static welcome)
   const [frozenTip] = useState(() => TIPS[Math.floor(Math.random() * TIPS.length)]!);
 
@@ -273,6 +281,7 @@ export function CodaraCliApp(props: CodaraCliAppProps): React.JSX.Element {
                 modelAlias={modelAlias}
                 runState={shell.runState}
                 latestRuntimeEvent={shell.latestRuntimeEvent}
+                mcpStatus={mcpStatus}
               />
             )}
             <Footer layoutMode={layoutMode} hasCommandOutput={Boolean(shell.commandOutput)} />

@@ -66,6 +66,7 @@ describe('Codara slash commands', () => {
       {name: 'compact', source: 'builtin'},
       {name: 'reload', source: 'builtin'},
       {name: 'hooks', source: 'builtin'},
+      {name: 'mcp', source: 'builtin'},
     ]);
   });
 
