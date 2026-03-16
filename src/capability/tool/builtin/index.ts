@@ -8,6 +8,7 @@ import {createGrepTool, GrepTool} from '@capability/tool/builtin/grep';
 import {createFetchTool, FetchTool} from '@capability/tool/builtin/fetch';
 import {createSearchTool, SearchTool} from '@capability/tool/builtin/search';
 import {createDiagnosticsTool, DiagnosticsTool} from '@capability/tool/builtin/diagnostics';
+import {createMultiEditTool, MultiEditTool} from '@capability/tool/builtin/multi-edit';
 import {createNotebookReadTool, NotebookReadTool} from '@capability/tool/builtin/notebook';
 
 export {BashTool, createBashTool};
@@ -20,6 +21,7 @@ export {FetchTool, createFetchTool};
 export {SearchTool, createSearchTool};
 export {DiagnosticsTool, createDiagnosticsTool};
 export {NotebookReadTool, createNotebookReadTool};
+export {MultiEditTool, createMultiEditTool};
 
 /**
  * 内置工具配置选项。
@@ -44,5 +46,6 @@ export function createBuiltinTools(options: BuiltinToolOptions = {}): Structured
     createSearchTool(),
     createDiagnosticsTool(cwd),
     createNotebookReadTool(),
+    createMultiEditTool(),
   ];
 }
