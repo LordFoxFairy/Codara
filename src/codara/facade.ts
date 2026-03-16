@@ -65,7 +65,7 @@ import {
 } from '@infra/context/system-message';
 import {HookRegistryImpl, HookPipeline, createToolHooksMiddleware, createHookExecutor} from '@engine/hook';
 import type {HookSource, HookRegistry, SessionLifecycleHooks, AgentLifecycleHooks} from '@engine/hook';
-import {loadMcpConfig, createMcpManager, createMcpLangChainTools, type McpConfig, type McpManager} from '@engine/mcp';
+import {loadMcpConfig, createMcpManager, createMcpLangChainTools, type McpClientInfo, type McpConfig, type McpManager} from '@engine/mcp';
 
 export const DEFAULT_CODARA_MODEL_ALIAS = 'default';
 const DEFAULT_RUNTIME_FILE_LOGGING_ENABLED = true;
@@ -162,6 +162,7 @@ export type Codara = Session & {
   listCommands(): Promise<readonly CodaraCommandSpec[]>;
   executeCommand(input: string): Promise<CodaraCommandResult>;
   listSessions(options?: import('@engine/session').SessionListOptions): Promise<SessionState[]>;
+  getMcpStatus(): McpClientInfo[];
 };
 
 export async function createCodaraModelCatalog(
@@ -274,7 +275,7 @@ export async function createCodaraRuntime(options: CodaraRuntimeOptions = {}): P
       checkpointer: createAgentFileCheckpointer({rootDir: path.join(codaraPath, 'sessions')}),
     }),
     restore: options.restore ?? 'latest',
-  }, undefined, {promptSource, guidelinesSource, hookPipeline, hookRegistry});
+  }, undefined, {promptSource, guidelinesSource, hookPipeline, hookRegistry, mcpManager});
 }
 
 function assembleCodara(
@@ -285,6 +286,7 @@ function assembleCodara(
     guidelinesSource?: GuidelinesSource;
     hookPipeline?: HookPipeline;
     hookRegistry?: HookRegistry;
+    mcpManager?: McpManager;
   },
 ): Codara {
   const skills = resolveCodaraSkills(options);
@@ -327,9 +329,17 @@ function assembleCodara(
     ...(preloadedSources?.hookPipeline ? {lifecycle: preloadedSources.hookPipeline as SessionLifecycleHooks & AgentLifecycleHooks} : {}),
   });
 
-  // Wrap session with hookRegistry for commands that need it (/reload, /hooks)
-  const commandAgent = preloadedSources?.hookRegistry
-    ? Object.create(session, {hookRegistry: {value: preloadedSources.hookRegistry, writable: false}})
+  // Wrap session with extra properties for commands that need it (/reload, /hooks, /mcp)
+  const mcpManager = preloadedSources?.mcpManager;
+  const extraProps: Record<string, PropertyDescriptor> = {};
+  if (preloadedSources?.hookRegistry) {
+    extraProps.hookRegistry = {value: preloadedSources.hookRegistry, writable: false};
+  }
+  if (mcpManager) {
+    extraProps.getMcpStatus = {value: () => mcpManager.status(), writable: false};
+  }
+  const commandAgent = Object.keys(extraProps).length > 0
+    ? Object.create(session, extraProps)
     : session;
 
   const commands = createCodaraCommandRunner({
@@ -395,12 +405,23 @@ function assembleCodara(
     return sessionStore.list(listOptions);
   };
 
+  const getMcpStatus = (): McpClientInfo[] => mcpManager?.status() ?? [];
+
+  const dispose = async (): Promise<void> => {
+    await session.dispose();
+    if (mcpManager) {
+      await mcpManager.dispose();
+    }
+  };
+
   return {
     ...session,
     subscribeRuntimeEvents,
     listCommands: commands.listCommands,
     executeCommand,
     listSessions,
+    getMcpStatus,
+    dispose,
   };
 }
 

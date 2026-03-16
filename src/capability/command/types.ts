@@ -87,6 +87,7 @@ export interface CodaraCommandAgent {
   reloadSources(): Promise<void>;
   reset(): Promise<void>;
   hookRegistry?: HookRegistry;
+  getMcpStatus?(): import('@engine/mcp').McpClientInfo[];
 }
 
 export interface CodaraCommandEnvironment {
