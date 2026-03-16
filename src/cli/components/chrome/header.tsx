@@ -52,15 +52,13 @@ export function describeStatusBar(props: StatusBarProps): StatusBarModel {
     }
   }
 
-  // Context window usage: always show, default 0k/0k 0% when no data
+  // Context window usage: only show when data is available
   if (contextWindow) {
     const used = formatTokenCount(contextWindow.estimatedInputTokens);
     const cap = formatTokenCount(contextWindow.availableInputTokens);
     const pct = Math.round(contextWindow.usagePercent);
     const prefix = contextWindow.overBudget ? '⚠ ' : '';
     segments.push(`${prefix}${used}/${cap} ${pct}% ctx`);
-  } else {
-    segments.push('0k/0k 0% ctx');
   }
 
   // Token consumption: ↓prompt ↑completion (total)
