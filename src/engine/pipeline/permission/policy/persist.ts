@@ -104,7 +104,7 @@ export async function persistPermissionScope(
   const expression = scope === 'tool'
     ? formatToolScopeExpression(toolCallOrExpression)
     : scope === 'path'
-      ? formatPathScopeExpression(toolCallOrExpression)
+      ? formatPermissionPathScopeExpression(toolCallOrExpression) ?? formatPathScopeExpression(toolCallOrExpression)
       : typeof toolCallOrExpression === 'string'
         ? toolCallOrExpression.trim()
         : formatPermissionExpression(toolCallOrExpression);

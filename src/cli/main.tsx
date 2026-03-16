@@ -158,7 +158,19 @@ function readHilAutoActions(raw: string | undefined): CliHilAutoAction[] {
 
 function normalizeHilAutoAction(value: string | CliHilAutoAction): CliHilAutoAction {
   if (typeof value === 'string') {
-    return {action: value};
+    switch (value) {
+      case 'always':
+      case 'dont_ask_again':
+        return {action: 'dont_ask_again'};
+      case 'allow_tool':
+        return {action: 'dont_ask_again', scope: 'tool'};
+      case 'allow_project':
+        return {action: 'dont_ask_again', scope: 'project'};
+      case 'allow_path':
+        return {action: 'dont_ask_again', scope: 'path'};
+      default:
+        return {action: value};
+    }
   }
 
   return value;
