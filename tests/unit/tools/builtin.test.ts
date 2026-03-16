@@ -32,8 +32,9 @@ describe('builtin tools', () => {
       'grep',
       'fetch_url',
       'web_search',
+      'get_diagnostics',
     ]);
-    expect(tools.length).toBe(8);
+    expect(tools.length).toBe(9);
   });
 
   it('should export class-based tools', () => {

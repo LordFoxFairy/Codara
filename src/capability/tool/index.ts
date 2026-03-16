@@ -17,6 +17,8 @@ export {
   createSearchTool,
   WriteTool,
   createWriteTool,
+  DiagnosticsTool,
+  createDiagnosticsTool,
   createBuiltinTools,
   type BuiltinToolOptions,
 } from '@capability/tool/builtin';
