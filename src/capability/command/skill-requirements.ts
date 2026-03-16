@@ -1,4 +1,5 @@
 import {spawnSync} from 'node:child_process';
+import {parseToolCallReference} from '@capability/skill/parsing';
 import {normalizeToolReferenceName} from '@capability/tool';
 
 export interface SkillCommandRequirements {
@@ -64,19 +65,18 @@ export function parseAllowedToolReference(
     return undefined;
   }
 
-  const callMatch = trimmed.match(/^([A-Za-z0-9_-]+)\((.*)\)$/);
-  if (!callMatch) {
+  const callRef = parseToolCallReference(trimmed);
+  if (!callRef) {
     const normalized = normalizeToolReferenceName(trimmed);
     return normalized ? {toolName: normalized} : undefined;
   }
 
-  const toolName = normalizeToolReferenceName(callMatch[1] ?? '');
+  const toolName = normalizeToolReferenceName(callRef.toolName);
   if (!toolName) {
     return undefined;
   }
 
-  const body = callMatch[2]?.trim() ?? '';
-  const shellCommand = toolName === 'bash' ? extractShellCommandName(body) : undefined;
+  const shellCommand = toolName === 'bash' ? extractShellCommandName(callRef.specifier) : undefined;
 
   return {
     toolName,
