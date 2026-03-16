@@ -5,7 +5,7 @@ import {tmpdir} from 'node:os';
 import {createCodaraGuidelinesSource} from '@infra/context/instructions/guidelines';
 
 describe('AGENTS guidelines', () => {
-  it('loads only the startup-visible AGENTS chain before deeper paths are touched', async () => {
+  it('init loads only global + user-project + project root (not subdirectories)', async () => {
     const root = await mkdtemp(path.join(tmpdir(), 'codara-guidelines-'));
     const userHome = path.join(root, 'home');
     const projectRoot = path.join(root, 'project');
@@ -26,8 +26,61 @@ describe('AGENTS guidelines', () => {
     expect(content).toBeDefined();
     expect(content).toContain('# Global Rules');
     expect(content).toContain('# Project Rules');
-    expect(content).toContain('# Package Rules');
+    // Subdirectory files NOT loaded at init — loaded lazily via resolve()
+    expect(content).not.toContain('# Package Rules');
     expect(content).not.toContain('# App Rules');
+  });
+
+  it('resolve() lazily discovers subdirectory AGENTS.md when touching files', async () => {
+    const root = await mkdtemp(path.join(tmpdir(), 'codara-guidelines-'));
+    const userHome = path.join(root, 'home');
+    const projectRoot = path.join(root, 'project');
+    const packagesDir = path.join(projectRoot, 'packages');
+    const appDir = path.join(packagesDir, 'app');
+
+    await mkdir(path.join(userHome, '.codara'), {recursive: true});
+    await mkdir(path.join(projectRoot, '.git'), {recursive: true});
+    await mkdir(appDir, {recursive: true});
+    await writeFile(path.join(projectRoot, 'AGENTS.md'), '# Project Rules', 'utf8');
+    await writeFile(path.join(packagesDir, 'AGENTS.md'), '# Package Rules', 'utf8');
+    await writeFile(path.join(appDir, 'AGENTS.md'), '# App Rules', 'utf8');
+
+    const guidelinesSource = createCodaraGuidelinesSource({userHome, cwd: projectRoot});
+
+    // Init: only root
+    const initContent = await guidelinesSource.getContent();
+    expect(initContent).toContain('# Project Rules');
+    expect(initContent).not.toContain('# Package Rules');
+
+    // Resolve: when agent reads a file in packages/app/
+    const resolved = await guidelinesSource.resolve(path.join(appDir, 'index.ts'));
+    expect(resolved).toBeDefined();
+    expect(resolved).toContain('# Package Rules');
+    expect(resolved).toContain('# App Rules');
+    // Project root already loaded at init, not re-injected
+    expect(resolved).not.toContain('# Project Rules');
+  });
+
+  it('resolve() deduplicates — same file not injected twice', async () => {
+    const root = await mkdtemp(path.join(tmpdir(), 'codara-guidelines-'));
+    const projectRoot = path.join(root, 'project');
+    const packagesDir = path.join(projectRoot, 'packages');
+
+    await mkdir(path.join(projectRoot, '.git'), {recursive: true});
+    await mkdir(packagesDir, {recursive: true});
+    await writeFile(path.join(projectRoot, 'AGENTS.md'), '# Project Rules', 'utf8');
+    await writeFile(path.join(packagesDir, 'AGENTS.md'), '# Package Rules', 'utf8');
+
+    const guidelinesSource = createCodaraGuidelinesSource({projectRoot});
+    await guidelinesSource.getContent();
+
+    // First resolve — discovers packages/AGENTS.md
+    const first = await guidelinesSource.resolve(path.join(packagesDir, 'foo.ts'));
+    expect(first).toContain('# Package Rules');
+
+    // Second resolve — already injected, returns undefined
+    const second = await guidelinesSource.resolve(path.join(packagesDir, 'bar.ts'));
+    expect(second).toBeUndefined();
   });
 
   it('does not load deeper subtree AGENTS just because a deeper file exists', async () => {
