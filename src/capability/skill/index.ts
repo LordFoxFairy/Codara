@@ -16,6 +16,7 @@ export {
   skillsMetadataReducer,
 } from '@capability/skill/metadata';
 export {
+  DEFAULT_SUBAGENT_TYPE,
   loadSkillsRuntimeData,
   readSkillsRuntimeData,
   resolveSubagentDefinition,
