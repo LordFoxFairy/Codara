@@ -259,6 +259,47 @@ describe('createTodoListMiddleware', () => {
     expect(readTodoState(secondAgent.getState().values).todos).toEqual([]);
   });
 
+  it('should order system messages: base → static prompt → dynamic snapshot (prompt caching stability)', async () => {
+    const seenSystemMessages: string[][] = [];
+    const pipeline = new MiddlewarePipeline([createTodoListMiddleware()]);
+    const messages = [new HumanMessage('Continue')] as BaseMessage[];
+    const baseSystem = 'You are a helpful assistant.';
+
+    await pipeline.wrapModelCall(
+      {
+        state: {
+          messages,
+          context: {},
+          values: {
+            todos: [{content: 'Step 1', status: 'in_progress'}],
+          },
+        },
+        messages,
+        runtime: {context: {}},
+        systemMessage: [baseSystem],
+        execution: {
+          sessionId: 'thread_cache',
+          runId: 'run_cache',
+          turn: 1,
+          maxTurns: 3,
+          requestId: 'req_cache',
+        },
+      },
+      async (request) => {
+        seenSystemMessages.push([...(request?.systemMessage ?? [])]);
+        return new AIMessage('ok');
+      }
+    );
+
+    expect(seenSystemMessages).toHaveLength(1);
+    const msgs = seenSystemMessages[0]!;
+    // Order: [0] base → [1] static todo prompt → [2] dynamic snapshot
+    expect(msgs[0]).toBe(baseSystem);
+    expect(msgs[1]).toContain('## `write_todos`');
+    expect(msgs[2]).toContain('## Current To-Do List');
+    expect(msgs[2]).toContain('[in_progress] Step 1');
+  });
+
   it('should reject invalid seeded todo state', () => {
     expect(() => createAgent({
       model: createTodoModel([new AIMessage('done')]),
