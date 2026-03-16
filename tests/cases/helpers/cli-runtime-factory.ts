@@ -805,7 +805,7 @@ class HilFormCliModel {
       content: '',
       tool_calls: [{
         id: 'call_hil_form',
-        name: 'AskUser',
+        name: 'AskUserQuestion',
         args: {
           summary: 'A few structured inputs are missing before the agent can continue.',
           tab: 'Brief Intake',

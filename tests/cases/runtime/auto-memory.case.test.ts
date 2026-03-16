@@ -212,7 +212,7 @@ class AskUserModel {
       content: '',
       tool_calls: [{
         id: 'call_auto_memory_ask',
-        name: 'AskUser',
+        name: 'AskUserQuestion',
         args: {
           summary: 'Need one clarification before continuing.',
           questions: [
