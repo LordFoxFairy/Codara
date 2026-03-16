@@ -330,9 +330,13 @@ async function handlePermissionResume(
     if (expression) {
       const scope = payload.scope as 'exact' | 'path' | 'tool' | 'project' | undefined;
       if (scope && scope !== 'exact') {
-        await persistPermissionScope(expression, scope, options).catch(() => {});
+        await persistPermissionScope(expression, scope, options).catch((e) => {
+          console.warn('[permissions] Failed to persist scope:', e instanceof Error ? e.message : String(e));
+        });
       } else {
-        await persistPermissionRule(expression, 'allow', options).catch(() => {});
+        await persistPermissionRule(expression, 'allow', options).catch((e) => {
+          console.warn('[permissions] Failed to persist rule:', e instanceof Error ? e.message : String(e));
+        });
       }
     }
 

@@ -109,12 +109,11 @@ export class PromptExecutionStrategy implements HookExecutionStrategy {
       const expandedPrompt = this.expandPrompt(hook.prompt, context);
       const model = this.createModel();
 
-      const response = await Promise.race([
+      const response = await raceWithTimeout(
         model.invoke([new HumanMessage(expandedPrompt)]),
-        new Promise<never>((_, reject) =>
-          setTimeout(() => reject(new Error('Prompt hook timed out')), hook.timeout ?? 10000),
-        ),
-      ]);
+        hook.timeout ?? 10000,
+        'Prompt hook timed out',
+      );
 
       const text = typeof response.content === 'string'
         ? response.content
@@ -159,6 +158,15 @@ export class PromptExecutionStrategy implements HookExecutionStrategy {
       return EMPTY_OUTPUT;
     }
   }
+}
+
+/** Race a promise against a timeout, cleaning up the timer on completion. */
+function raceWithTimeout<T>(promise: Promise<T>, ms: number, message: string): Promise<T> {
+  let timer: ReturnType<typeof setTimeout>;
+  const timeout = new Promise<never>((_, reject) => {
+    timer = setTimeout(() => reject(new Error(message)), ms);
+  });
+  return Promise.race([promise, timeout]).finally(() => clearTimeout(timer));
 }
 
 // ── Factory ──
