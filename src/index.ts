@@ -151,6 +151,6 @@ export {
   HOOK_EVENT_TYPES,
   HookRegistryImpl,
   HookPipeline,
-  ToolHooksMiddleware,
+  createToolHooksMiddleware,
   createHookExecutor,
 } from '@engine/hook';

@@ -1,5 +1,3 @@
-// src/core/middleware/budget.ts
-
 import type {BaseMessage} from '@langchain/core/messages';
 import type {AgentInputBudget} from '@engine/agent/models/types';
 import {createMiddleware, type BaseMiddleware, type BeforeModelContext} from '@engine/pipeline/types';

@@ -12,6 +12,7 @@ export {
   type MiddlewareRuntimeShared,
   type ModelCallContext,
   type ModelCallHandler,
+  MIDDLEWARE_NAMES,
   readExecutionMetadata,
   type ToolCallContext,
   type ToolCallHandler,
@@ -33,9 +34,12 @@ export {
   type BudgetMiddlewareOptions,
 } from '@engine/pipeline/budget';
 export {
+  createGuidelinesMiddleware,
+  type GuidelinesMiddlewareOptions,
+} from '@engine/pipeline/guidelines';
+export {
   applyHILResumeToolEdits,
   createHILMiddleware,
-  humanInTheLoopMiddleware,
   parseHILResumeActionPayload,
   parseHILToolMessagePayload,
   type HILActionDescriptor,
@@ -114,7 +118,7 @@ export {
   TodoSchema,
   TodoStateSchema,
   TodoStatusSchema,
-  todoListMiddleware,
+  createTodoListMiddleware,
   WRITE_TODOS_DESCRIPTION,
   type TodoListMiddlewareOptions,
   type TodoMiddlewareState,

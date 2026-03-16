@@ -204,7 +204,6 @@ export function createHILMiddleware(options: HILMiddlewareOptions = {}) {
 }
 
 /** `createHILMiddleware` 的语义化别名。 */
-export const humanInTheLoopMiddleware = createHILMiddleware;
 
 function resolveEffectiveConfig(options: HILMiddlewareOptions, runtimeContext: unknown): HILEffectiveConfig {
   const hil = readHILContext(runtimeContext);
