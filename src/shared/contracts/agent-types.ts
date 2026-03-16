@@ -22,6 +22,8 @@ export interface AgentExecutionMetadata {
   turn: number;
   maxTurns: number;
   requestId: string;
+  /** 当前委托深度（0 = 主 agent，每次 delegation +1）。 */
+  delegationDepth?: number;
 }
 
 export interface PauseActionDescriptor {
