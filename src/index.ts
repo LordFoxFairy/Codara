@@ -154,3 +154,22 @@ export {
   createToolHooksMiddleware,
   createHookExecutor,
 } from '@engine/hook';
+export {
+  createMcpManager,
+  createMcpLangChainTools,
+  loadMcpConfig,
+  McpClient,
+  McpConfigSchema,
+  namespacedToolName,
+  parseNamespacedToolName,
+  routeMcpToolCall,
+  sanitizeToolName,
+  type McpClientInfo,
+  type McpClientStatus,
+  type McpConfig,
+  type McpLocalServerConfig,
+  type McpManager,
+  type McpRemoteServerConfig,
+  type McpServerConfig,
+  type McpToolDefinition,
+} from '@engine/mcp';

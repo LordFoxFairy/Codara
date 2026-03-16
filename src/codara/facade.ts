@@ -65,6 +65,7 @@ import {
 } from '@infra/context/system-message';
 import {HookRegistryImpl, HookPipeline, createToolHooksMiddleware, createHookExecutor} from '@engine/hook';
 import type {HookSource, HookRegistry, SessionLifecycleHooks, AgentLifecycleHooks} from '@engine/hook';
+import {loadMcpConfig, createMcpManager, createMcpLangChainTools, type McpConfig, type McpManager} from '@engine/mcp';
 
 export const DEFAULT_CODARA_MODEL_ALIAS = 'default';
 const DEFAULT_RUNTIME_FILE_LOGGING_ENABLED = true;
@@ -136,6 +137,8 @@ export interface CodaraOptions {
   context?: Record<string, unknown>;
   values?: Record<string, unknown>;
   autoMemory?: false | CodaraAutoMemoryOptions;
+  /** MCP server configuration. `false` to disable, omit for auto-detection from .codara/mcp.json. */
+  mcp?: false | McpConfig;
 }
 
 export interface CodaraRuntimeOptions extends CodaraOptions {
@@ -208,7 +211,7 @@ export async function createCodaraRuntime(options: CodaraRuntimeOptions = {}): P
     ? loadModelRoutingConfigFromPath(codaraPath).then((config) => createCodaraModelCatalog({config}))
     : options.catalog;
   const logging = resolveRuntimeLoggingOptions(options);
-  const runtimeTools = createCodaraTools({
+  const runtimeTools: StructuredToolInterface[] = createCodaraTools({
     builtinTools: options.builtinTools,
     cwd: options.cwd,
     tools: options.tools,
@@ -227,6 +230,22 @@ export async function createCodaraRuntime(options: CodaraRuntimeOptions = {}): P
   const hookPipeline = new HookPipeline(hookRegistry, {
     createStrategy: (hook) => createHookExecutor(hook, {projectRoot: codaraPath}),
   });
+
+  // ── MCP Assembly ──
+  let mcpManager: McpManager | undefined;
+  if (options.mcp !== false) {
+    const mcpConfig = options.mcp ?? await loadMcpConfig({
+      projectRoot,
+      userHome: options.userHome,
+    });
+    if (Object.keys(mcpConfig.mcpServers).length > 0) {
+      mcpManager = createMcpManager(mcpConfig);
+      await mcpManager.init();
+      // Inject MCP tools into the runtime tool set
+      const mcpTools = createMcpLangChainTools(mcpManager);
+      runtimeTools.push(...mcpTools);
+    }
+  }
 
   const runtimeMiddlewares = createRuntimeDefaultMiddlewares({
     options,
