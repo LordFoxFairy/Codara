@@ -5,6 +5,7 @@ import {helpCommand} from './help';
 import {hooksCommand} from './hooks';
 import {mcpCommand} from './mcp';
 import {memoryCommand} from './memory';
+import {modelCommand} from './model';
 import {permissionsCommand} from './permissions';
 import {pluginCommand} from './plugin';
 import {reloadCommand} from './reload';
@@ -16,6 +17,7 @@ export function createBuiltInCommands(): readonly CodaraCommandDefinition[] {
     helpCommand,
     clearCommand,
     statusCommand,
+    modelCommand,
     memoryCommand,
     permissionsCommand,
     pluginCommand,

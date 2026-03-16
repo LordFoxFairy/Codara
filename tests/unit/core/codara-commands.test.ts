@@ -34,7 +34,7 @@ describe('Codara slash commands', () => {
     expect(result.output).toContain('Built-in commands:');
     expect(result.output).toContain('/help');
     expect(result.output).toContain('/clear');
-    expect(result.output).toContain('/resume');
+    expect(result.output).toContain('/model');
     expect(result.output).not.toContain('/compact');
     expect(result.output).not.toContain('/reload');
 
@@ -59,6 +59,7 @@ describe('Codara slash commands', () => {
       {name: 'help', source: 'builtin'},
       {name: 'clear', source: 'builtin'},
       {name: 'status', source: 'builtin'},
+      {name: 'model', source: 'builtin'},
       {name: 'memory', source: 'builtin'},
       {name: 'permissions', source: 'builtin'},
       {name: 'plugin', source: 'builtin'},
