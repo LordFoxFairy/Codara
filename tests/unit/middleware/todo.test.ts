@@ -4,7 +4,7 @@ import type {BaseChatModel} from '@langchain/core/language_models/chat_models';
 import {createAgent} from '@engine/agent';
 import {createAgentMemoryCheckpointer} from '@infra/checkpoint';
 import {MiddlewarePipeline} from '@engine/pipeline/pipeline';
-import {readTodoState, todoListMiddleware, TODO_TOOL_NAME} from '@engine/pipeline/todo';
+import {readTodoState, createTodoListMiddleware, TODO_TOOL_NAME} from '@engine/pipeline/todo';
 
 class TodoTestModel {
   readonly boundToolNames: string[] = [];
@@ -29,7 +29,7 @@ class TodoTestModel {
   }
 }
 
-describe('todoListMiddleware', () => {
+describe('createTodoListMiddleware', () => {
   it('should register write_todos and persist todos in state.values', async () => {
     const model = new TodoTestModel([
       new AIMessage({
@@ -53,7 +53,7 @@ describe('todoListMiddleware', () => {
 
     const agent = createAgent({
       model,
-      middleware: [todoListMiddleware()],
+      middleware: [createTodoListMiddleware()],
     });
 
     const result = await agent.invoke({messages: [new HumanMessage('Implement todos')]});
@@ -68,7 +68,7 @@ describe('todoListMiddleware', () => {
   });
 
   it('should reject parallel write_todos calls through afterModel updates', async () => {
-    const middleware = todoListMiddleware();
+    const middleware = createTodoListMiddleware();
     const pipeline = new MiddlewarePipeline([middleware]);
     const messages = [new HumanMessage('Hello')] as BaseMessage[];
 
@@ -100,7 +100,7 @@ describe('todoListMiddleware', () => {
 
   it('should inject the current todo snapshot into model system messages', async () => {
     const seenSystemMessages: string[][] = [];
-    const pipeline = new MiddlewarePipeline([todoListMiddleware()]);
+    const pipeline = new MiddlewarePipeline([createTodoListMiddleware()]);
     const messages = [new HumanMessage('Continue the task')] as BaseMessage[];
 
     await pipeline.wrapModelCall(
@@ -162,7 +162,7 @@ describe('todoListMiddleware', () => {
       ]),
       checkpointer,
       sessionId: 'todo-session',
-      middleware: [todoListMiddleware()],
+      middleware: [createTodoListMiddleware()],
     });
 
     const result = await agent.invoke({messages: [new HumanMessage('Implement todos')]});
@@ -181,7 +181,7 @@ describe('todoListMiddleware', () => {
       checkpointer,
       sessionId: 'todo-session',
       checkpoint: restoredCheckpoint,
-      middleware: [todoListMiddleware()],
+      middleware: [createTodoListMiddleware()],
     });
 
     expect(readTodoState(restored.getState().values).todos).toEqual([
@@ -211,7 +211,7 @@ describe('todoListMiddleware', () => {
         }),
         new AIMessage('done'),
       ]),
-      middleware: [todoListMiddleware()],
+      middleware: [createTodoListMiddleware()],
     });
 
     await agent.invoke({messages: [new HumanMessage('Implement todos')]});
@@ -243,12 +243,12 @@ describe('todoListMiddleware', () => {
         }),
         new AIMessage('done'),
       ]),
-      middleware: [todoListMiddleware()],
+      middleware: [createTodoListMiddleware()],
     });
 
     const secondAgent = createAgent({
       model: createTodoModel([new AIMessage('done')]),
-      middleware: [todoListMiddleware()],
+      middleware: [createTodoListMiddleware()],
     });
 
     await firstAgent.invoke({messages: [new HumanMessage('Implement todos')]});
@@ -262,11 +262,11 @@ describe('todoListMiddleware', () => {
   it('should reject invalid seeded todo state', () => {
     expect(() => createAgent({
       model: createTodoModel([new AIMessage('done')]),
-      middleware: [todoListMiddleware()],
+      middleware: [createTodoListMiddleware()],
       values: {
         todos: 'invalid',
       } as unknown as Record<string, unknown>,
-    })).toThrow('Middleware "todoListMiddleware" state validation failed');
+    })).toThrow('Middleware "TodoListMiddleware" state validation failed');
   });
 });
 
