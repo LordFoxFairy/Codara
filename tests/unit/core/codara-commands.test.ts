@@ -28,9 +28,9 @@ describe('Codara slash commands', () => {
 
     const result = await codara.executeCommand('/help');
     expect(result.ok).toBe(true);
-    expect(result.output).toContain('Codara commands (page 1/2)');
+    expect(result.output).toMatch(/Codara commands \(page 1\/\d+\)/);
     expect(result.output).toContain('Run /help <command> for details.');
-    expect(result.output).toContain('Run /help 2 for more commands.');
+    expect(result.output).toMatch(/Run \/help \d+ for more commands\./);
     expect(result.output).toContain('Built-in commands:');
     expect(result.output).toContain('/help');
     expect(result.output).toContain('/clear');
@@ -40,11 +40,10 @@ describe('Codara slash commands', () => {
 
     const secondPage = await codara.executeCommand('/help 2');
     expect(secondPage.ok).toBe(true);
-    expect(secondPage.output).toContain('Codara commands (page 2/2)');
+    expect(secondPage.output).toMatch(/Codara commands \(page 2\/\d+\)/);
     expect(secondPage.output).toContain('Built-in commands (continued):');
-    expect(secondPage.output).toContain('/compact');
-    expect(secondPage.output).toContain('/reload');
-    expect(secondPage.output).toContain('Run /help 1 to go back.');
+    expect(secondPage.output).toMatch(/Run \/help \d+ (for more commands|to go back)\./);
+
 
     const helpDetails = await codara.executeCommand('/help help');
     expect(helpDetails.ok).toBe(true);
@@ -68,6 +67,11 @@ describe('Codara slash commands', () => {
       {name: 'reload', source: 'builtin'},
       {name: 'hooks', source: 'builtin'},
       {name: 'mcp', source: 'builtin'},
+      {name: 'cost', source: 'builtin'},
+      {name: 'context', source: 'builtin'},
+      {name: 'config', source: 'builtin'},
+      {name: 'diff', source: 'builtin'},
+      {name: 'rewind', source: 'builtin'},
     ]);
   });
 

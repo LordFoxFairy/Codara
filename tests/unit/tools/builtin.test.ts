@@ -34,8 +34,9 @@ describe('builtin tools', () => {
       'web_search',
       'get_diagnostics',
       'notebook_read',
+      'multi_edit',
     ]);
-    expect(tools.length).toBe(10);
+    expect(tools.length).toBe(11);
   });
 
   it('should export class-based tools', () => {
