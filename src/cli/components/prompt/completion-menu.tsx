@@ -29,8 +29,14 @@ export function CompletionMenu({completion}: CompletionMenuProps): React.JSX.Ele
   const hasMoreBelow = viewEnd < total;
 
   return (
-    <Box flexDirection="column" paddingX={1}>
-      {hasMoreAbove && <Text dimColor>  ↑ {viewStart} more</Text>}
+    <Box flexDirection="column" borderStyle="round" borderColor="gray" paddingX={1}>
+      {/* Title bar */}
+      <Box justifyContent="space-between">
+        <Text bold color="cyan">Commands</Text>
+        <Text dimColor>tab accept  esc close</Text>
+      </Box>
+
+      {hasMoreAbove && <Text dimColor>↑ {viewStart} more</Text>}
       {visibleItems.map((item, index) => {
         const realIndex = viewStart + index;
         const selected = realIndex === selectedIndex;
@@ -45,7 +51,7 @@ export function CompletionMenu({completion}: CompletionMenuProps): React.JSX.Ele
           </Box>
         );
       })}
-      {hasMoreBelow && <Text dimColor>  ↓ {total - viewEnd} more</Text>}
+      {hasMoreBelow && <Text dimColor>↓ {total - viewEnd} more</Text>}
     </Box>
   );
 }

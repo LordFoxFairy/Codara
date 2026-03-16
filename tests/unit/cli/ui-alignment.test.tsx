@@ -203,16 +203,18 @@ describe('UI alignment with Claude Code', () => {
           sessions={sessions}
           loading={false}
           selectedIndex={0}
+          onMoveUp={() => {}}
+          onMoveDown={() => {}}
           onSelect={() => {}}
           onCancel={() => {}}
         />,
       );
 
       const frame = lastFrame()!;
-      expect(frame).toContain('Select a session to resume');
+      expect(frame).toContain('Resume Session');
       expect(frame).toContain('Fix bug');
       expect(frame).toContain('Add feature');
-      expect(frame).toContain('❯');
+      expect(frame).toContain('›');
       expect(frame).toContain('navigate');
     });
 
@@ -222,6 +224,8 @@ describe('UI alignment with Claude Code', () => {
           sessions={[]}
           loading={true}
           selectedIndex={0}
+          onMoveUp={() => {}}
+          onMoveDown={() => {}}
           onSelect={() => {}}
           onCancel={() => {}}
         />,
@@ -237,6 +241,8 @@ describe('UI alignment with Claude Code', () => {
           sessions={[]}
           loading={false}
           selectedIndex={0}
+          onMoveUp={() => {}}
+          onMoveDown={() => {}}
           onSelect={() => {}}
           onCancel={() => {}}
         />,

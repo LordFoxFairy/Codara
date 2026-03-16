@@ -32,8 +32,8 @@ export function SessionPicker({
 
   if (loading) {
     return (
-      <Box flexDirection="column" marginBottom={1}>
-        <Text color="cyan" bold>Select a session to resume</Text>
+      <Box flexDirection="column" borderStyle="round" borderColor="gray" paddingX={1}>
+        <Text color="cyan" bold>Resume Session</Text>
         <Text dimColor>Loading sessions…</Text>
       </Box>
     );
@@ -41,50 +41,51 @@ export function SessionPicker({
 
   if (sessions.length === 0) {
     return (
-      <Box flexDirection="column" marginBottom={1}>
-        <Text color="cyan" bold>Select a session to resume</Text>
-        <Text dimColor>No sessions found.</Text>
-        <Text dimColor>Press Esc to cancel.</Text>
+      <Box flexDirection="column" borderStyle="round" borderColor="gray" paddingX={1}>
+        <Text color="cyan" bold>Resume Session</Text>
+        <Text dimColor>No sessions found. Press Esc to cancel.</Text>
       </Box>
     );
   }
 
   return (
-    <Box flexDirection="column" marginBottom={1}>
-      <Text color="cyan" bold>Select a session to resume</Text>
-      <Box flexDirection="column" marginTop={1}>
-        {sessions.map((session, index) => {
-          const selected = index === selectedIndex;
-          const pointer = selected ? '❯' : ' ';
-          const statsSegments: string[] = [];
-          statsSegments.push(`${session.messageCount} msgs`);
-          if (session.totalTokens) {
-            statsSegments.push(`${formatTokenCount(session.totalTokens)} tok`);
-          }
-          statsSegments.push(session.timeAgo);
-          const stats = statsSegments.join(' · ');
-
-          return (
-            <Box key={session.sessionId} flexDirection="column">
-              <Box gap={1}>
-                <Text color={selected ? 'greenBright' : undefined} bold={selected}>
-                  {pointer}
-                </Text>
-                <Text color={selected ? 'white' : undefined} bold={selected} wrap="truncate-end">
-                  {session.title}
-                </Text>
-                <Text dimColor>{stats}</Text>
-              </Box>
-              {selected && session.subtitle && (
-                <Box paddingLeft={3}>
-                  <Text dimColor wrap="truncate-end">⎿ {session.subtitle}</Text>
-                </Box>
-              )}
-            </Box>
-          );
-        })}
+    <Box flexDirection="column" borderStyle="round" borderColor="gray" paddingX={1}>
+      {/* Title bar */}
+      <Box justifyContent="space-between">
+        <Text bold color="cyan">Resume Session</Text>
+        <Text dimColor>↑↓ navigate  enter select  esc cancel</Text>
       </Box>
-      <Text dimColor>↑↓ navigate · Enter select · Esc cancel</Text>
+
+      {sessions.map((session, index) => {
+        const selected = index === selectedIndex;
+        const pointer = selected ? '›' : ' ';
+        const statsSegments: string[] = [];
+        statsSegments.push(`${session.messageCount} msgs`);
+        if (session.totalTokens) {
+          statsSegments.push(`${formatTokenCount(session.totalTokens)} tok`);
+        }
+        statsSegments.push(session.timeAgo);
+        const stats = statsSegments.join(' · ');
+
+        return (
+          <Box key={session.sessionId} flexDirection="column">
+            <Box gap={1}>
+              <Text color={selected ? 'greenBright' : undefined} bold={selected}>
+                {pointer}
+              </Text>
+              <Text color={selected ? 'white' : undefined} bold={selected} wrap="truncate-end">
+                {session.title}
+              </Text>
+              <Text dimColor>{stats}</Text>
+            </Box>
+            {selected && session.subtitle && (
+              <Box paddingLeft={3}>
+                <Text dimColor wrap="truncate-end">⎿ {session.subtitle}</Text>
+              </Box>
+            )}
+          </Box>
+        );
+      })}
     </Box>
   );
 }

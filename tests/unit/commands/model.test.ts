@@ -41,9 +41,13 @@ describe('/model command', () => {
         modelAliases: ['sonnet', 'opus', 'haiku'],
       }));
       expect(result.ok).toBe(true);
-      expect(result.output).toContain('* sonnet (active)');
+      expect(result.output).toContain('sonnet (active)');
       expect(result.output).toContain('opus');
       expect(result.output).toContain('haiku');
+      // Numbered list format
+      expect(result.output).toContain('1.');
+      expect(result.output).toContain('2.');
+      expect(result.output).toContain('3.');
     });
   });
 

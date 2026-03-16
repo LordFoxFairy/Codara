@@ -8,13 +8,10 @@ export interface CommandOutputPanelProps {
 }
 
 /**
- * Non-modal command output panel — shows above the prompt, never blocks input.
+ * Floating command output panel — visually distinct from chat.
  *
- * Design principles (inspired by Claude Code):
- * - Lightweight: single-line top/bottom border, no heavy box
- * - Scrollable: ↑↓ when prompt is empty, position indicator when overflow
- * - Non-blocking: prompt stays visible underneath
- * - Dismissible: Esc closes, next submit auto-clears
+ * Renders as a bordered window that overlays the conversation area.
+ * Esc to dismiss, ↑↓ to scroll when content overflows.
  */
 export const MAX_COMMAND_OUTPUT_LINES = 20;
 
@@ -37,26 +34,32 @@ export function CommandOutputPanel({content, commandName, scrollOffset}: Command
     ? `${clampedOffset + 1}–${Math.min(clampedOffset + MAX_COMMAND_OUTPUT_LINES, total)}/${total}`
     : undefined;
 
+  // Hints for the footer bar
+  const hints: string[] = [];
+  if (hasOverflow) hints.push('↑↓ scroll');
+  hints.push('esc close');
+
   return (
-    <Box flexDirection="column" marginBottom={1}>
-      {/* Header line */}
-      <Box>
-        <Text dimColor bold>{label}</Text>
-        {posLabel && <Text dimColor>  {posLabel}</Text>}
-        <Text dimColor>  esc close</Text>
-        {hasOverflow && <Text dimColor>  ↑↓ scroll</Text>}
+    <Box flexDirection="column" borderStyle="round" borderColor="gray" paddingX={1}>
+      {/* Title bar */}
+      <Box justifyContent="space-between">
+        <Text bold color="cyan">{label}</Text>
+        <Box>
+          {posLabel && <Text dimColor>{posLabel}  </Text>}
+          <Text dimColor>{hints.join('  ')}</Text>
+        </Box>
       </Box>
 
       {/* Scroll-up indicator */}
-      {hasAbove && <Text dimColor>{'  ↑ …'}</Text>}
+      {hasAbove && <Text dimColor>{'↑ …'}</Text>}
 
       {/* Content */}
       {visibleLines.map((line, index) => (
-        <Text key={clampedOffset + index} wrap="truncate-end">{'  '}{line || ' '}</Text>
+        <Text key={clampedOffset + index} wrap="truncate-end">{line || ' '}</Text>
       ))}
 
       {/* Scroll-down indicator */}
-      {hasBelow && <Text dimColor>{'  ↓ …'}</Text>}
+      {hasBelow && <Text dimColor>{'↓ …'}</Text>}
     </Box>
   );
 }
