@@ -17,6 +17,7 @@ describe('Codara tools', () => {
       'web_search',
       'get_diagnostics',
       'notebook_read',
+      'multi_edit',
     ]);
   });
 
