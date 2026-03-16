@@ -19,6 +19,8 @@ export {
 } from '@engine/pipeline/types';
 export {
   createSkillsMiddleware,
+  type SkillsMiddlewareOptions,
+  type SkillsRuntimeDataLoader,
 } from '@engine/pipeline/skills';
 export {
   createDailySessionFileLogSink,
