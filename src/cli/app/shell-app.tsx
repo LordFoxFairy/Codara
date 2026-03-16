@@ -1,6 +1,7 @@
 import React, {useCallback, useEffect, useState} from 'react';
 import {Box, Static, useApp, useInput} from 'ink';
 import type {Codara} from '@/index';
+import {CommandOutputPanel} from '../components/chrome/command-output-panel';
 import {Footer} from '../components/chrome/footer';
 import {StatusBar} from '../components/chrome/header';
 import {ActivityLine} from '../components/chrome/activity-line';
@@ -154,6 +155,7 @@ export function CodaraCliApp(props: CodaraCliAppProps): React.JSX.Element {
     },
     onExit: () => {
       if (completion.completion.visible) { completion.dismiss(); return; }
+      if (shell.commandOutput) { shell.dismissCommandOutput(); return; }
       exit();
     },
     onToggleTaskPanel: shell.toggleTaskPanel,
@@ -269,6 +271,9 @@ export function CodaraCliApp(props: CodaraCliAppProps): React.JSX.Element {
               placeholder={shell.hasConversation ? 'Reply to Codara...' : 'Ask Codara...'}
             />
             <CompletionMenu completion={completion.completion} />
+            {shell.commandOutput && (
+              <CommandOutputPanel content={shell.commandOutput} />
+            )}
             {shell.hasConversation && (
               <StatusBar
                 layoutMode={layoutMode}
