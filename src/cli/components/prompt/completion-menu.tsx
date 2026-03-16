@@ -3,6 +3,7 @@ import {Box, Text} from 'ink';
 import type {CommandCompletionState} from '../../hooks/use-command-completion';
 
 const VIEWPORT_SIZE = 10;
+const NAME_COL_WIDTH = 24;
 
 interface CompletionMenuProps {
   completion: CommandCompletionState;
@@ -28,23 +29,23 @@ export function CompletionMenu({completion}: CompletionMenuProps): React.JSX.Ele
   const hasMoreBelow = viewEnd < total;
 
   return (
-    <Box flexDirection="column" borderStyle="single" borderColor="gray" paddingX={1}>
+    <Box flexDirection="column" paddingX={1}>
       {hasMoreAbove && <Text dimColor>  ↑ {viewStart} more</Text>}
       {visibleItems.map((item, index) => {
         const realIndex = viewStart + index;
         const selected = realIndex === selectedIndex;
+        const nameText = `/${item.name}`;
+        const padded = nameText.padEnd(NAME_COL_WIDTH);
         return (
-          <Box key={item.name} gap={1}>
-            <Text color={selected ? 'greenBright' : 'gray'} bold={selected}>
-              {selected ? '>' : ' '} /{item.name}
+          <Box key={item.name}>
+            <Text color={selected ? 'greenBright' : undefined} bold={selected}>
+              {selected ? '› ' : '  '}{padded}
             </Text>
-            <Text dimColor>({item.sourceLabel})</Text>
             <Text dimColor wrap="truncate-end">{item.description}</Text>
           </Box>
         );
       })}
       {hasMoreBelow && <Text dimColor>  ↓ {total - viewEnd} more</Text>}
-      <Text dimColor>Enter select · Tab complete · Esc cancel</Text>
     </Box>
   );
 }
