@@ -14,10 +14,16 @@ interface ActivityLineProps {
 
 import {formatTokenCount} from '../../utils/format';
 
-export function ActivityLine({runState, activeTurn, latestRuntimeEvent, sessionMetadata}: ActivityLineProps): React.JSX.Element | null {
+/**
+ * Activity indicator line. Always renders a single line to prevent layout shifts.
+ * Shows spinner/status when active, empty line when idle.
+ */
+export function ActivityLine({runState, activeTurn, latestRuntimeEvent, sessionMetadata}: ActivityLineProps): React.JSX.Element {
   const status = useStatusIndicator({runState, activeTurn, latestRuntimeEvent});
+
   if (!status.banner) {
-    return null;
+    // Render empty stable-height line to prevent layout jump
+    return <Box height={1}><Text> </Text></Box>;
   }
 
   const lastTokens = sessionMetadata?.usage?.lastTotalTokens;
@@ -26,7 +32,7 @@ export function ActivityLine({runState, activeTurn, latestRuntimeEvent, sessionM
     : '';
 
   return (
-    <Box>
+    <Box height={1}>
       <Text color={status.color}>{status.banner}{tokenSuffix}</Text>
     </Box>
   );
