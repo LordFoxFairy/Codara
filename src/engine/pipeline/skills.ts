@@ -20,9 +20,13 @@ export interface SkillsMiddlewareOptions {
 /**
  * Skills middleware: discover skills via store and inject into system prompt.
  *
- * @deprecated The runtime now injects skills through the session's SkillsSource
- * context preparer instead of middleware. This export is kept for external consumers
- * but is not used by the default Codara runtime.
+ * The default Codara runtime injects skills through the session's SkillsSource
+ * via `buildBaseSystemMessage()` instead of this middleware. Both approaches
+ * produce the same result: metadata-only injection with progressive disclosure
+ * (the model reads the full SKILL.md via Read tool when needed).
+ *
+ * This middleware is available for external consumers who want middleware-based
+ * skills injection instead of the source-based approach.
  */
 export function createSkillsMiddleware(options: SkillsMiddlewareOptions) {
   const store = options.store

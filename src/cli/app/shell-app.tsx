@@ -272,7 +272,7 @@ export function CodaraCliApp(props: CodaraCliAppProps): React.JSX.Element {
             />
             <CompletionMenu completion={completion.completion} />
             {shell.commandOutput && (
-              <CommandOutputPanel content={shell.commandOutput} />
+              <CommandOutputPanel content={shell.commandOutput.content} commandName={shell.commandOutput.commandName} />
             )}
             {shell.hasConversation && (
               <StatusBar
