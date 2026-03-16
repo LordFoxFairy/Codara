@@ -52,10 +52,10 @@ export function describeStatusBar(props: StatusBarProps): StatusBarModel {
     }
   }
 
-  // Context window usage: only show when data is available
+  // Context window usage: show full contextWindow as denominator (not available-after-output-reserve)
   if (contextWindow) {
     const used = formatTokenCount(contextWindow.estimatedInputTokens);
-    const cap = formatTokenCount(contextWindow.availableInputTokens);
+    const cap = formatTokenCount(contextWindow.maxInputTokens);
     const pct = Math.round(contextWindow.usagePercent);
     const prefix = contextWindow.overBudget ? '⚠ ' : '';
     segments.push(`${prefix}${used}/${cap} ${pct}% ctx`);

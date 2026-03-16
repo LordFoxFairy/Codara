@@ -34,7 +34,7 @@ export const WELL_KNOWN_CONTEXT_WINDOWS: Record<string, {contextWindow: number; 
   'gemini-2.5-pro': {contextWindow: 1_000_000, maxOutputTokens: 65_536},
   'gemini-2.5-flash': {contextWindow: 1_000_000, maxOutputTokens: 65_536},
   // GLM
-  'glm-5': {contextWindow: 128_000, maxOutputTokens: 8_192},
+  'glm-5': {contextWindow: 256_000, maxOutputTokens: 8_192},
 };
 
 /**
