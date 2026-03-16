@@ -1,5 +1,5 @@
 import {randomUUID} from 'node:crypto';
-import {mkdir, readFile, rm, writeFile} from 'node:fs/promises';
+import {mkdir, readFile, rename, rm, writeFile} from 'node:fs/promises';
 import path from 'node:path';
 import type {
   CheckpointRecord,
@@ -123,20 +123,30 @@ export class FileCheckpointer<TState = unknown, TInfo = unknown>
 }
 
 async function readJsonFile<T>(filePath: string): Promise<T | undefined> {
+  let raw: string;
   try {
-    const raw = await readFile(filePath, 'utf8');
-    return JSON.parse(raw) as T;
+    raw = await readFile(filePath, 'utf8');
   } catch (error) {
     if (isFileMissing(error)) {
       return undefined;
     }
     throw error;
   }
+
+  try {
+    return JSON.parse(raw) as T;
+  } catch {
+    // Corrupted JSON — treat as missing rather than crashing the session
+    return undefined;
+  }
 }
 
 async function writeJsonFile(filePath: string, value: unknown): Promise<void> {
   await mkdir(path.dirname(filePath), {recursive: true});
-  await writeFile(filePath, `${JSON.stringify(value, null, 2)}\n`, 'utf8');
+  // Atomic write: write to temp file, then rename to target
+  const tmpPath = `${filePath}.${randomUUID().slice(0, 8)}.tmp`;
+  await writeFile(tmpPath, `${JSON.stringify(value, null, 2)}\n`, 'utf8');
+  await rename(tmpPath, filePath);
 }
 
 function isFileMissing(error: unknown): boolean {

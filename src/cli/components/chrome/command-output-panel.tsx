@@ -3,14 +3,16 @@ import {Box, Text} from 'ink';
 
 export interface CommandOutputPanelProps {
   content: string;
+  commandName?: string;
 }
 
 /**
  * Floating panel that displays slash-command output below the chat input.
  * Separated from conversation — not persisted in checkpoints.
  */
-export function CommandOutputPanel({content}: CommandOutputPanelProps): React.JSX.Element {
+export function CommandOutputPanel({content, commandName}: CommandOutputPanelProps): React.JSX.Element {
   const lines = content.split('\n');
+  const label = commandName ? `/${commandName}` : 'command output';
 
   return (
     <Box
@@ -21,7 +23,7 @@ export function CommandOutputPanel({content}: CommandOutputPanelProps): React.JS
       marginTop={1}
     >
       <Box marginBottom={lines.length > 1 ? 1 : 0}>
-        <Text dimColor bold>command output</Text>
+        <Text dimColor bold>{label}</Text>
       </Box>
       {lines.map((line, index) => (
         <Text key={index}>{line || ' '}</Text>

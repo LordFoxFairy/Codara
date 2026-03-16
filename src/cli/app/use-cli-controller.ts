@@ -49,7 +49,7 @@ export interface CliController {
   composer: CliComposerState;
   composerActivityVersion: number;
   notices: CliNotice[];
-  commandOutput?: string;
+  commandOutput?: {content: string; commandName?: string};
   dismissCommandOutput: () => void;
   activeTurn?: CliActiveTurn;
   hilReview?: CliHilReviewState;
@@ -120,7 +120,7 @@ export function useCliController(options: UseCliControllerOptions): CliControlle
   const [runState, setRunState] = useState<CliRunState>({status: 'idle'});
   const [sessionState, setSessionState] = useState<SessionState>(() => codara.getState());
   const [taskPanelVisible, setTaskPanelVisible] = useState(true);
-  const [commandOutput, setCommandOutput] = useState<string | undefined>();
+  const [commandOutput, setCommandOutput] = useState<{content: string; commandName?: string} | undefined>();
   const isRunningRef = useRef(false);
   const initialPromptSentRef = useRef(false);
   const hilReviewRef = useRef<CliHilReviewState | undefined>(undefined);
@@ -212,7 +212,7 @@ export function useCliController(options: UseCliControllerOptions): CliControlle
     }
 
     if (result.ok) {
-      setCommandOutput(result.output || '(no output)');
+      setCommandOutput({content: result.output || '(no output)', commandName: result.command});
     } else {
       appendNotice('error', result.output || '(no output)');
     }

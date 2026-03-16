@@ -171,7 +171,12 @@ async function upsertAutoMemoryTopic(rootDir: string, next: AutoMemoryTopicRecor
 async function rewriteMemoryIndex(rootDir: string): Promise<void> {
   const topicsDir = path.join(rootDir, TOPICS_DIR);
   await mkdir(topicsDir, {recursive: true});
-  const names = existsSync(topicsDir) ? await readdir(topicsDir) : [];
+  let names: string[];
+  try {
+    names = await readdir(topicsDir);
+  } catch {
+    names = [];
+  }
   const topics = (
     await Promise.all(
       names
@@ -461,7 +466,12 @@ async function resolveTopicPath(topicsDir: string, next: AutoMemoryTopicRecord):
     return preferred;
   }
 
-  const names = existsSync(topicsDir) ? await readdir(topicsDir) : [];
+  let names: string[];
+  try {
+    names = await readdir(topicsDir);
+  } catch {
+    names = [];
+  }
   for (const name of names) {
     if (!name.endsWith('.md')) {
       continue;
