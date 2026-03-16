@@ -10,11 +10,11 @@ describe('HIL panel model', () => {
         description: 'Collect the missing brief details before planning starts.',
         action: {
           toolCallId: 'call_1',
-          toolName: 'AskUser',
+          toolName: 'AskUserQuestion',
           toolArgs: {summary: 'A few structured inputs are missing before the agent can continue.'},
         },
         review: {
-          actionName: 'AskUser',
+          actionName: 'AskUserQuestion',
           allowedDecisions: ['approve'],
         },
         runtime: {

@@ -82,7 +82,7 @@ function formatToolSummary(toolName: string, args: unknown): string | undefined 
     case 'TaskCreate':
     case 'TaskUpdate':
       return readString(record.subject) ?? readString(record.taskId);
-    case 'AskUser':
+    case 'AskUserQuestion':
       return readString(record.summary)
         ? `summary: ${readString(record.summary)}`
         : undefined;
@@ -118,8 +118,8 @@ function formatToolDisplayName(toolName: string): string {
       return 'Updating task';
     case 'TaskList':
       return 'Listing tasks';
-    case 'AskUser':
-      return 'AskUser';
+    case 'AskUserQuestion':
+      return 'AskUserQuestion';
     default:
       return toolName;
   }

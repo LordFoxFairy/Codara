@@ -666,7 +666,7 @@ function shouldHideRuntimeEvent(event: CodaraRuntimeEvent): boolean {
     return false;
   }
 
-  if (event.label.includes('AskUser')) {
+  if (event.label.includes('AskUserQuestion')) {
     return true;
   }
 
@@ -773,7 +773,7 @@ function formatFriendlyToolSummary(toolName: string, args: unknown): string | un
 }
 
 function isInteractionToolName(toolName: string | undefined): boolean {
-  return (toolName || '').trim() === 'AskUser';
+  return (toolName || '').trim() === 'AskUserQuestion';
 }
 
 function formatTaskResultText(content: string): string {

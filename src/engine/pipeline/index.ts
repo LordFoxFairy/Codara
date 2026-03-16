@@ -80,7 +80,7 @@ export {
   type AskUserQuestion,
   type AskUserResult,
   type InteractionMiddlewareOptions,
-} from '@engine/pipeline/interaction';
+} from '@engine/pipeline/ask-user-question';
 export {
   createPermissionMiddleware,
   createPermissionRuntime,
