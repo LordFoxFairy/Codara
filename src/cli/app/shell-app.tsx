@@ -266,12 +266,14 @@ export function CodaraCliApp(props: CodaraCliAppProps): React.JSX.Element {
             {shell.commandOutput && (
               <CommandOutputPanel content={shell.commandOutput.content} commandName={shell.commandOutput.commandName} scrollOffset={shell.commandOutput.scrollOffset} />
             )}
-            <PromptFrame
-              composer={shell.composer}
-              cursorActivityVersion={shell.composerActivityVersion}
-              isRunning={shell.runState.status === 'running'}
-              placeholder={shell.hasConversation ? 'Reply to Codara...' : 'Ask Codara...'}
-            />
+            {!shell.commandOutput && (
+              <PromptFrame
+                composer={shell.composer}
+                cursorActivityVersion={shell.composerActivityVersion}
+                isRunning={shell.runState.status === 'running'}
+                placeholder={shell.hasConversation ? 'Reply to Codara...' : 'Ask Codara...'}
+              />
+            )}
             <CompletionMenu completion={completion.completion} />
             {shell.hasConversation && (
               <StatusBar
