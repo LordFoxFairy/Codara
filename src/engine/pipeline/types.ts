@@ -83,6 +83,8 @@ export type ToolCallHandler = (request?: ToolCallContext) => Promise<ToolMessage
 
 export interface BaseMiddleware {
   name: string;
+  /** 声明此 middleware 依赖的其他 middleware（按 name）。注册时校验顺序。 */
+  dependsOn?: readonly string[];
   /** 可选持久 state schema（用于 middleware state 默认值和校验）。 */
   stateSchema?: z.ZodType;
   /** 可选 context 校验器（例如 zod schema）。 */
