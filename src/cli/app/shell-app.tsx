@@ -266,7 +266,7 @@ export function CodaraCliApp(props: CodaraCliAppProps): React.JSX.Element {
             {shell.commandOutput && (
               <CommandOutputPanel content={shell.commandOutput.content} commandName={shell.commandOutput.commandName} scrollOffset={shell.commandOutput.scrollOffset} />
             )}
-            {!shell.commandOutput && (
+            {!shell.commandOutput && !completion.completion.visible && (
               <PromptFrame
                 composer={shell.composer}
                 cursorActivityVersion={shell.composerActivityVersion}
