@@ -107,6 +107,8 @@ export class ModelRegistry {
             apiKey,
             ...(typeof contextWindow === "number" ? {contextWindow} : {}),
             ...(typeof maxOutputTokens === "number" ? {maxOutputTokens} : {}),
+            ...(modelMetadata?.thinking ? {thinking: modelMetadata.thinking} : {}),
+            ...(modelMetadata?.effortLevel ? {effortLevel: modelMetadata.effortLevel} : {}),
         };
     }
 }
