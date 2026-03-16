@@ -1,6 +1,10 @@
 import {clearCommand} from './clear';
 import type {CodaraCommandDefinition} from '@capability/command/types';
 import {compactCommand} from './compact';
+import {configCommand} from './config';
+import {contextCommand} from './context';
+import {costCommand} from './cost';
+import {diffCommand} from './diff';
 import {helpCommand} from './help';
 import {hooksCommand} from './hooks';
 import {mcpCommand} from './mcp';
@@ -10,6 +14,7 @@ import {permissionsCommand} from './permissions';
 import {pluginCommand} from './plugin';
 import {reloadCommand} from './reload';
 import {resumeCommand} from './resume';
+import {rewindCommand} from './rewind';
 import {statusCommand} from './status';
 
 export function createBuiltInCommands(): readonly CodaraCommandDefinition[] {
@@ -26,5 +31,10 @@ export function createBuiltInCommands(): readonly CodaraCommandDefinition[] {
     reloadCommand,
     hooksCommand,
     mcpCommand,
+    costCommand,
+    contextCommand,
+    configCommand,
+    diffCommand,
+    rewindCommand,
   ];
 }
