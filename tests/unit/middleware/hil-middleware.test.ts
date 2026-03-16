@@ -3,7 +3,6 @@ import {HumanMessage, ToolMessage, type BaseMessage, type ToolCall} from '@langc
 import {
   applyHILResumeToolEdits,
   createHILMiddleware,
-  humanInTheLoopMiddleware,
   parseHILToolMessagePayload,
   parseHILResumeActionPayload,
   type ToolCallContext,
@@ -51,10 +50,6 @@ function parsePauseMessageContent(content: unknown): ParsedPauseMessage {
 }
 
 describe('createHILMiddleware', () => {
-  it('should export langchain-style alias', () => {
-    expect(humanInTheLoopMiddleware).toBe(createHILMiddleware);
-  });
-
   it('should pass through when interruptOn is not configured', async () => {
     const middleware = createHILMiddleware();
     const toolCall: ToolCall = {id: 'call_auto_1', name: 'write_file', args: {path: 'a.txt'}};

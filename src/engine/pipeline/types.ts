@@ -134,3 +134,19 @@ export function createMiddleware(config: BaseMiddleware): BaseMiddleware {
 export function readExecutionMetadata(context: BaseExecutionContext): ExecutionContextMetadata {
   return context.execution;
 }
+
+/** Well-known middleware names used for dedup and ordering across the runtime. */
+export const MIDDLEWARE_NAMES = {
+  Guidelines: 'GuidelinesMiddleware',
+  Skills: 'SkillsMiddleware',
+  Budget: 'BudgetMiddleware',
+  Summary: 'SummaryMiddleware',
+  HIL: 'HumanInTheLoopMiddleware',
+  AskUserQuestion: 'AskUserQuestionMiddleware',
+  Permission: 'PermissionMiddleware',
+  Logging: 'LoggingMiddleware',
+  Task: 'TaskMiddleware',
+  SharedTask: 'SharedTaskMiddleware',
+  TodoList: 'TodoListMiddleware',
+  ToolHooks: 'ToolHooksMiddleware',
+} as const;
