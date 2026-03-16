@@ -8,14 +8,15 @@ import {createAgentFileCheckpointer} from '@infra/checkpoint';
 import type {BaseMiddleware, HILMiddlewareOptions, LoggingMiddlewareOptions} from '@engine/pipeline';
 import type {SummarySettings} from '@engine/pipeline/summary';
 import {
-  createAskUserTool,
   createBudgetMiddleware,
   createDailySessionFileLogSink,
+  createGuidelinesMiddleware,
   createHILMiddleware,
   createAskUserQuestionMiddleware,
   createLoggingMiddleware,
   createSkillsMiddleware,
-  todoListMiddleware,
+  MIDDLEWARE_NAMES,
+  createTodoListMiddleware,
 } from '@engine/pipeline';
 import {
   ensurePermissionSettingsFile,
@@ -62,7 +63,7 @@ import {
   applyPreparedInstructionContext,
   buildBaseSystemMessage,
 } from '@infra/context/system-message';
-import {HookRegistryImpl, HookPipeline, ToolHooksMiddleware, createHookExecutor} from '@engine/hook';
+import {HookRegistryImpl, HookPipeline, createToolHooksMiddleware, createHookExecutor} from '@engine/hook';
 import type {HookSource, HookRegistry, SessionLifecycleHooks, AgentLifecycleHooks} from '@engine/hook';
 
 export const DEFAULT_CODARA_MODEL_ALIAS = 'default';
@@ -207,11 +208,10 @@ export async function createCodaraRuntime(options: CodaraRuntimeOptions = {}): P
     ? loadModelRoutingConfigFromPath(codaraPath).then((config) => createCodaraModelCatalog({config}))
     : options.catalog;
   const logging = resolveRuntimeLoggingOptions(options);
-  const runtimeInteractionTools = options.hil === false ? [] : [createAskUserTool()];
   const runtimeTools = createCodaraTools({
     builtinTools: options.builtinTools,
     cwd: options.cwd,
-    tools: mergeRuntimeTools(options.tools, runtimeInteractionTools),
+    tools: options.tools,
   });
   // ── Hooks System Assembly ──
   const hookSources: HookSource[] = [];
@@ -452,7 +452,7 @@ export function createCodaraMiddlewares(
   }
   // SkillsMiddleware — Skill tool for progressive disclosure.
   // Reads runtime from shared context (injected by SkillsSource via buildBaseSystemMessage).
-  if (!options.middleware?.some((m) => m.name === 'SkillsMiddleware')) {
+  if (!options.middleware?.some((m) => m.name === MIDDLEWARE_NAMES.Skills)) {
     middlewares.push(createSkillsMiddleware());
   }
   middlewares.push(...(options.middleware ?? []));
@@ -505,26 +505,6 @@ function normalizeAlias(alias: string | undefined): string {
   return alias?.trim() || DEFAULT_CODARA_MODEL_ALIAS;
 }
 
-function mergeRuntimeTools(
-  callerTools: StructuredToolInterface[] | undefined,
-  runtimeTools: StructuredToolInterface[],
-): StructuredToolInterface[] | undefined {
-  if (runtimeTools.length === 0) {
-    return callerTools;
-  }
-
-  const byName = new Map<string, StructuredToolInterface>();
-  for (const tool of callerTools ?? []) {
-    byName.set(tool.name, tool);
-  }
-  for (const tool of runtimeTools) {
-    if (!byName.has(tool.name)) {
-      byName.set(tool.name, tool);
-    }
-  }
-
-  return [...byName.values()];
-}
 
 function resolveCodaraRuntimePath(options: Pick<CodaraRuntimeOptions, 'codaraPath' | 'cwd' | 'projectRoot'>): string {
   if (options.codaraPath?.trim()) {
@@ -584,16 +564,24 @@ function createRuntimeDefaultMiddlewares(input: {
     byName.set(middleware.name, middleware);
   }
 
-  if (!byName.has('todoListMiddleware') && !providedToolNames.has('write_todos')) {
-    byName.set('todoListMiddleware', todoListMiddleware());
+  // GuidelinesMiddleware — lazy loading of subdirectory AGENTS.md / codara.md
+  if (!byName.has(MIDDLEWARE_NAMES.Guidelines)) {
+    byName.set(MIDDLEWARE_NAMES.Guidelines, createGuidelinesMiddleware({
+      guidelinesSource: input.guidelinesSource,
+      promptSource: input.promptSource,
+    }));
   }
 
-  if (!byName.has('SharedTaskMiddleware') && !hasSharedTaskTools(providedToolNames)) {
-    byName.set('SharedTaskMiddleware', createSharedTaskMiddleware({store: input.taskStore}));
+  if (!byName.has(MIDDLEWARE_NAMES.TodoList) && !providedToolNames.has('write_todos')) {
+    byName.set(MIDDLEWARE_NAMES.TodoList, createTodoListMiddleware());
   }
 
-  if (!byName.has('TaskMiddleware') && !providedToolNames.has('Task')) {
-    byName.set('TaskMiddleware', createTaskMiddleware({
+  if (!byName.has(MIDDLEWARE_NAMES.SharedTask) && !hasSharedTaskTools(providedToolNames)) {
+    byName.set(MIDDLEWARE_NAMES.SharedTask, createSharedTaskMiddleware({store: input.taskStore}));
+  }
+
+  if (!byName.has(MIDDLEWARE_NAMES.Task) && !providedToolNames.has('Task')) {
+    byName.set(MIDDLEWARE_NAMES.Task, createTaskMiddleware({
       model: input.options.model ?? (() => createCodaraChatModel({
         alias: input.options.alias,
         config: input.options.config,
@@ -612,12 +600,12 @@ function createRuntimeDefaultMiddlewares(input: {
     }));
   }
 
-  if (input.options.hil !== false && !byName.has('AskUserQuestionMiddleware')) {
-    byName.set('AskUserQuestionMiddleware', createAskUserQuestionMiddleware());
+  if (input.options.hil !== false && !byName.has(MIDDLEWARE_NAMES.AskUserQuestion)) {
+    byName.set(MIDDLEWARE_NAMES.AskUserQuestion, createAskUserQuestionMiddleware());
   }
 
-  if (input.options.hil !== false && !byName.has('PermissionMiddleware')) {
-    byName.set('PermissionMiddleware', createPermissionMiddleware({
+  if (input.options.hil !== false && !byName.has(MIDDLEWARE_NAMES.Permission)) {
+    byName.set(MIDDLEWARE_NAMES.Permission, createPermissionMiddleware({
       ...(typeof input.options.hil === 'object' && input.options.hil !== null ? input.options.hil : {}),
       cwd: input.options.cwd,
       projectRoot: input.options.projectRoot,
@@ -628,7 +616,7 @@ function createRuntimeDefaultMiddlewares(input: {
 
   // Add ToolHooksMiddleware after Permission (last in the chain)
   if (input.hookPipeline) {
-    byName.set('ToolHooksMiddleware', new ToolHooksMiddleware(input.hookPipeline));
+    byName.set(MIDDLEWARE_NAMES.ToolHooks, createToolHooksMiddleware(input.hookPipeline));
   }
 
   return [...byName.values()];
@@ -643,7 +631,7 @@ function createDelegatedRuntimeMiddlewares(input: {
 }): BaseMiddleware[] {
   const middlewares: BaseMiddleware[] = [];
   const callerMiddlewares = (input.options.middleware ?? [])
-    .filter((middleware) => middleware.name !== 'TaskMiddleware');
+    .filter((middleware) => middleware.name !== MIDDLEWARE_NAMES.Task);
   const providedToolNames = collectProvidedToolNames({
     tools: input.tools,
     middlewares: callerMiddlewares,
@@ -666,16 +654,16 @@ function createDelegatedRuntimeMiddlewares(input: {
     push(middleware);
   }
 
-  if (!seen.has('todoListMiddleware') && !providedToolNames.has('write_todos')) {
-    push(todoListMiddleware());
+  if (!seen.has(MIDDLEWARE_NAMES.TodoList) && !providedToolNames.has('write_todos')) {
+    push(createTodoListMiddleware());
   }
-  if (!seen.has('SharedTaskMiddleware') && !hasSharedTaskTools(providedToolNames)) {
+  if (!seen.has(MIDDLEWARE_NAMES.SharedTask) && !hasSharedTaskTools(providedToolNames)) {
     push(createSharedTaskMiddleware({store: input.taskStore}));
   }
-  if (input.options.hil !== false && !seen.has('AskUserQuestionMiddleware')) {
+  if (input.options.hil !== false && !seen.has(MIDDLEWARE_NAMES.AskUserQuestion)) {
     push(createAskUserQuestionMiddleware());
   }
-  if (input.options.hil !== false && !seen.has('PermissionMiddleware')) {
+  if (input.options.hil !== false && !seen.has(MIDDLEWARE_NAMES.Permission)) {
     push(createPermissionMiddleware({
       ...(typeof input.options.hil === 'object' && input.options.hil !== null ? input.options.hil : {}),
       cwd: input.options.cwd,
