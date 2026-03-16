@@ -15,44 +15,71 @@ import {
   readSkillsRuntimeData,
   type SkillsRuntimeData,
 } from '@capability/skill/runtime'
-import type {SkillsSource} from '@capability/skill'
 import type {SkillStore} from '@capability/skill/types'
 import type {SkillMetadata} from '@capability/skill/types'
 
 export interface SkillsMiddlewareOptions {
+  /** Only needed for standalone usage (tests). Production reads from runtime shared. */
   store?: SkillStore
-  source?: SkillsSource
   subagentRoots?: string[]
 }
 
 /**
- * Skills middleware: discover skills, inject metadata into system prompt,
- * and provide a `Skill` tool for progressive disclosure.
+ * Skills middleware: provide the `Skill` tool for progressive disclosure.
  *
- * The `Skill` tool lets the model load the full SKILL.md content on demand,
- * matching Claude Code's behavior. This guarantees complete skill loading
- * at the code level (not dependent on the model using Read correctly).
+ * Production path: `buildBaseSystemMessage` already injects skill metadata
+ * and runtime into `context.runtime.shared`. This middleware reads it and
+ * only adds the Skill tool.
  *
- * When used alongside SkillsSource (which pre-injects metadata via
- * `buildBaseSystemMessage`), the middleware detects existing runtime data
- * and skips redundant system prompt injection — only the Skill tool is added.
+ * Standalone path (tests): pass `store` to let the middleware discover,
+ * inject system prompt, and provide the Skill tool.
  */
-export function createSkillsMiddleware(options: SkillsMiddlewareOptions) {
-  const store = options.store
-  const source = options.source
-
-  // Mutable reference populated in beforeModel, read by the Skill tool handler.
+export function createSkillsMiddleware(options: SkillsMiddlewareOptions = {}) {
   let cachedRuntime: SkillsRuntimeData | undefined
 
-  const skillTool = tool(
+  const skillTool = createSkillTool(() => cachedRuntime)
+
+  return createMiddleware({
+    name: 'SkillsMiddleware',
+    tools: [skillTool],
+
+    async beforeModel(context: ModelCallContext) {
+      // Production: runtime already in shared from SkillsSource + buildBaseSystemMessage
+      const existing = readSkillsRuntimeData(context.runtime.shared)
+      if (existing) {
+        cachedRuntime = existing
+        return undefined
+      }
+
+      // Standalone: load from store and inject system prompt
+      if (!options.store) {
+        return undefined
+      }
+      const runtime = await loadSkillsRuntimeData(options.store, options.subagentRoots ?? [])
+      cachedRuntime = runtime
+      context.systemMessage.push(
+        SKILLS_SYSTEM_PROMPT
+          .replace('{skills_locations}', formatSkillsLocations(runtime.sources))
+          .replace('{skills_list}', formatSkillsList(runtime.discovered, runtime.sources)),
+      )
+      return {runtimeShared: {skills: runtime}}
+    },
+  })
+}
+
+// ── Skill tool ──────────────────────────────────────────────────────────
+
+function createSkillTool(getRuntime: () => SkillsRuntimeData | undefined) {
+  return tool(
     async ({skill: skillName, args: skillArgs}) => {
-      if (!cachedRuntime) {
+      const runtime = getRuntime()
+      if (!runtime) {
         return 'Skills system not initialized yet. Try again after the first model turn.'
       }
 
-      const match = findSkill(cachedRuntime.discovered, skillName)
+      const match = findSkill(runtime.discovered, skillName)
       if (!match) {
-        const available = cachedRuntime.discovered.map((s) => s.name).join(', ')
+        const available = runtime.discovered.map((s) => s.name).join(', ')
         return `Skill "${skillName}" not found. Available skills: ${available || '(none)'}`
       }
 
@@ -63,11 +90,7 @@ export function createSkillsMiddleware(options: SkillsMiddlewareOptions) {
         return `Could not read skill file: ${match.path}`
       }
 
-      // Wrap with <command-name> tag so the model knows the skill is loaded
-      const parts = [
-        `<command-name>${match.command?.name ?? match.name}</command-name>`,
-        fullContent,
-      ]
+      const parts = [`<command-name>${match.command?.name ?? match.name}</command-name>`, fullContent]
       if (skillArgs) {
         parts.push('', `User request: ${skillArgs}`)
       }
@@ -103,47 +126,6 @@ export function createSkillsMiddleware(options: SkillsMiddlewareOptions) {
       }),
     },
   )
-
-  return createMiddleware({
-    name: 'SkillsMiddleware',
-    tools: [skillTool],
-
-    async beforeModel(context: ModelCallContext) {
-      const existingRuntime = readSkillsRuntimeData(context.runtime.shared)
-      const runtime = existingRuntime ?? await loadRuntime()
-      cachedRuntime = runtime
-
-      // Skip system prompt injection if SkillsSource already handled it
-      // (existingRuntime set means buildBaseSystemMessage already injected metadata).
-      if (!existingRuntime) {
-        const skills = runtime.discovered
-        const sources = runtime.sources
-        const skillsSection = SKILLS_SYSTEM_PROMPT
-          .replace('{skills_locations}', formatSkillsLocations(sources))
-          .replace('{skills_list}', formatSkillsList(skills, sources))
-        context.systemMessage.push(skillsSection)
-      }
-
-      if (existingRuntime) {
-        return undefined
-      }
-      return {
-        runtimeShared: {
-          skills: runtime
-        }
-      }
-    },
-  })
-
-  async function loadRuntime() {
-    if (source) {
-      return source.getRuntime()
-    }
-    if (!store) {
-      throw new Error('SkillsMiddleware requires either a skills store or a skills source')
-    }
-    return loadSkillsRuntimeData(store, options.subagentRoots ?? [])
-  }
 }
 
 function findSkill(discovered: SkillMetadata[], name: string): SkillMetadata | undefined {
