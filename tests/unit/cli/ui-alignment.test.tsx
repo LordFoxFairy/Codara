@@ -212,8 +212,8 @@ describe('UI alignment with Claude Code', () => {
       expect(frame).toContain('Select a session to resume');
       expect(frame).toContain('Fix bug');
       expect(frame).toContain('Add feature');
-      expect(frame).toContain('>');
-      expect(frame).toContain('Arrow keys to navigate');
+      expect(frame).toContain('❯');
+      expect(frame).toContain('navigate');
     });
 
     it('should show loading state', () => {
@@ -228,7 +228,7 @@ describe('UI alignment with Claude Code', () => {
       );
 
       const frame = lastFrame()!;
-      expect(frame).toContain('Loading sessions...');
+      expect(frame).toContain('Loading sessions');
     });
 
     it('should show empty state', () => {

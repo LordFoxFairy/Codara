@@ -170,7 +170,7 @@ export function MarkdownText({content, paddingLeft = 0}: MarkdownTextProps): Rea
           return (
             <Box key={index} flexDirection="column" paddingLeft={2} marginY={0}>
               {codeLines.map((codeLine, ci) => (
-                <Text key={ci} color="gray">{codeLine}</Text>
+                <Text key={ci} color="gray" wrap="truncate-end">{codeLine}</Text>
               ))}
             </Box>
           );

@@ -11,6 +11,7 @@ export type PromptInputAction =
   | 'backspace'
   | 'insert-text'
   | 'toggle-task-panel'
+  | 'toggle-expand'
   | 'tab'
   | 'noop';
 
@@ -38,6 +39,10 @@ export function resolvePromptInputAction(input: string, key: PromptInputKey): Pr
 
   if (key.ctrl && input === 't') {
     return 'toggle-task-panel';
+  }
+
+  if (key.ctrl && input === 'o') {
+    return 'toggle-expand';
   }
 
   if (input === '\t') {

@@ -49,8 +49,9 @@ export interface CliController {
   composer: CliComposerState;
   composerActivityVersion: number;
   notices: CliNotice[];
-  commandOutput?: {content: string; commandName?: string};
+  commandOutput?: {content: string; commandName?: string; scrollOffset: number};
   dismissCommandOutput: () => void;
+  scrollCommandOutput: (delta: number) => void;
   activeTurn?: CliActiveTurn;
   hilReview?: CliHilReviewState;
   coreMessages: readonly BaseMessage[];
@@ -61,6 +62,8 @@ export interface CliController {
   sessionState: SessionState;
   taskPanelVisible: boolean;
   toggleTaskPanel: () => void;
+  expandedAll: boolean;
+  toggleExpand: () => void;
   insertText: (input: string) => void;
   replaceText: (text: string) => void;
   insertNewline: () => void;
@@ -120,7 +123,8 @@ export function useCliController(options: UseCliControllerOptions): CliControlle
   const [runState, setRunState] = useState<CliRunState>({status: 'idle'});
   const [sessionState, setSessionState] = useState<SessionState>(() => codara.getState());
   const [taskPanelVisible, setTaskPanelVisible] = useState(true);
-  const [commandOutput, setCommandOutput] = useState<{content: string; commandName?: string} | undefined>();
+  const [expandedAll, setExpandedAll] = useState(false);
+  const [commandOutput, setCommandOutput] = useState<{content: string; commandName?: string; scrollOffset: number} | undefined>();
   const isRunningRef = useRef(false);
   const initialPromptSentRef = useRef(false);
   const hilReviewRef = useRef<CliHilReviewState | undefined>(undefined);
@@ -212,7 +216,7 @@ export function useCliController(options: UseCliControllerOptions): CliControlle
     }
 
     if (result.ok) {
-      setCommandOutput({content: result.output || '(no output)', commandName: result.command});
+      setCommandOutput({content: result.output || '(no output)', commandName: result.command, scrollOffset: 0});
     } else {
       appendNotice('error', result.output || '(no output)');
     }
@@ -315,7 +319,7 @@ export function useCliController(options: UseCliControllerOptions): CliControlle
   }, [applyComposerChange]);
 
   const replaceText = useCallback((text: string) => {
-    applyComposerChange((current) => replaceComposerText(current, text));
+    applyComposerChange(() => replaceComposerText(text));
   }, [applyComposerChange]);
 
   const insertNewline = useCallback(() => {
@@ -354,8 +358,23 @@ export function useCliController(options: UseCliControllerOptions): CliControlle
     setTaskPanelVisible(current => !current);
   }, []);
 
+  const toggleExpand = useCallback(() => {
+    setExpandedAll(current => !current);
+  }, []);
+
   const dismissCommandOutput = useCallback(() => {
     setCommandOutput(undefined);
+  }, []);
+
+  const scrollCommandOutput = useCallback((delta: number) => {
+    setCommandOutput((current) => {
+      if (!current) return current;
+      const totalLines = current.content.split('\n').length;
+      const maxOffset = Math.max(0, totalLines - 20);
+      const nextOffset = Math.max(0, Math.min(maxOffset, current.scrollOffset + delta));
+      if (nextOffset === current.scrollOffset) return current;
+      return {...current, scrollOffset: nextOffset};
+    });
   }, []);
 
   const submitDraft = useCallback(() => {
@@ -543,6 +562,7 @@ export function useCliController(options: UseCliControllerOptions): CliControlle
     notices,
     commandOutput,
     dismissCommandOutput,
+    scrollCommandOutput,
     activeTurn,
     hilReview,
     coreMessages,
@@ -565,6 +585,8 @@ export function useCliController(options: UseCliControllerOptions): CliControlle
     submitText,
     taskPanelVisible,
     toggleTaskPanel,
+    expandedAll,
+    toggleExpand,
     moveHilLeft,
     moveHilRight,
     selectPreviousHilAction,
