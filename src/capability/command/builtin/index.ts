@@ -3,6 +3,7 @@ import type {CodaraCommandDefinition} from '@capability/command/types';
 import {compactCommand} from './compact';
 import {helpCommand} from './help';
 import {hooksCommand} from './hooks';
+import {mcpCommand} from './mcp';
 import {memoryCommand} from './memory';
 import {permissionsCommand} from './permissions';
 import {pluginCommand} from './plugin';
@@ -22,5 +23,6 @@ export function createBuiltInCommands(): readonly CodaraCommandDefinition[] {
     compactCommand,
     reloadCommand,
     hooksCommand,
+    mcpCommand,
   ];
 }
