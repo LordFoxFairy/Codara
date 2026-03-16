@@ -3,7 +3,7 @@ import type {AgentInputBudget, AgentState} from '@engine/agent/models/agent';
 import {estimateModelInputTokens} from '@engine/pipeline/budget';
 import type {ModelInfo} from '@infra/provider';
 import {readLatestVisibleMessageText, readMessageText} from '@shared/messages';
-import type {SessionMetadata} from '@engine/session/types';
+import type {SessionMetadata} from './types';
 
 export function createSessionMetadata(
   createdAt: string,

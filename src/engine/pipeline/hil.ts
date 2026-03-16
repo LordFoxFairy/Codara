@@ -8,7 +8,7 @@ import type {
   PauseUIActionOption,
   PauseUIConfig,
   ResumePayload,
-} from '@engine/agent/models/types';
+} from '@shared/contracts/agent-types';
 
 export type HILActionDescriptor = PauseActionDescriptor;
 export type HILPauseRequest = PauseRequest;

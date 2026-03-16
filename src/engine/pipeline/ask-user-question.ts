@@ -1,7 +1,7 @@
 import {ToolMessage} from '@langchain/core/messages';
 import {tool} from '@langchain/core/tools';
 import {z} from 'zod';
-import type {PauseUIActionOption} from '@engine/agent/models/types';
+import type {PauseUIActionOption} from '@shared/contracts/agent-types';
 import {createHILMiddleware, parseHILResumeActionPayload, type HILMiddlewareOptions} from '@engine/pipeline/hil';
 import {createMiddleware} from '@engine/pipeline/types';
 

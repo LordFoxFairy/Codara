@@ -4,7 +4,7 @@ import type {
   AgentInputBudget,
   AgentRuntimeContext,
   AgentRuntimeValues,
-} from '@engine/agent/models/types';
+} from '@shared/contracts/agent-types';
 import {estimateModelInputTokens} from '@engine/pipeline/budget';
 import {
   createMiddleware,

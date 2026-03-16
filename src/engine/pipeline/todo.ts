@@ -2,7 +2,7 @@ import {ToolMessage} from '@langchain/core/messages';
 import {tool} from '@langchain/core/tools';
 import {z} from 'zod';
 import {Command} from '@engine/agent/models/command';
-import type {AgentRuntimeValues} from '@engine/agent/models/types';
+import type {AgentRuntimeValues} from '@shared/contracts/agent-types';
 import {createMiddleware, type BaseMiddleware, type AfterModelContext} from '@engine/pipeline/types';
 
 /**
