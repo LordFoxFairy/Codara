@@ -60,12 +60,11 @@ export class McpClient {
         {capabilities: {}},
       );
 
-      await Promise.race([
+      await raceWithTimeout(
         this.client.connect(this.transport),
-        new Promise<never>((_, reject) =>
-          setTimeout(() => reject(new Error(`MCP server "${this.name}" connection timed out after ${connectTimeout}ms`)), connectTimeout),
-        ),
-      ]);
+        connectTimeout,
+        `MCP server "${this.name}" connection timed out after ${connectTimeout}ms`,
+      );
       await this.discoverTools();
       this._status = 'connected';
       this._lastError = undefined;
@@ -87,12 +86,11 @@ export class McpClient {
     }
 
     const timeout = this.config.timeout ?? DEFAULT_MCP_TIMEOUT;
-    const result = await Promise.race([
+    const result = await raceWithTimeout(
       this.client.callTool({name: toolName, arguments: args}),
-      new Promise<never>((_, reject) =>
-        setTimeout(() => reject(new Error(`MCP tool call "${toolName}" timed out after ${timeout}ms`)), timeout),
-      ),
-    ]);
+      timeout,
+      `MCP tool call "${toolName}" timed out after ${timeout}ms`,
+    );
 
     return result;
   }
@@ -133,4 +131,13 @@ export class McpClient {
       this._tools = [];
     }
   }
+}
+
+/** Race a promise against a timeout, cleaning up the timer on completion. */
+function raceWithTimeout<T>(promise: Promise<T>, ms: number, message: string): Promise<T> {
+  let timer: ReturnType<typeof setTimeout>;
+  const timeout = new Promise<never>((_, reject) => {
+    timer = setTimeout(() => reject(new Error(message)), ms);
+  });
+  return Promise.race([promise, timeout]).finally(() => clearTimeout(timer));
 }
