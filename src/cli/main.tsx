@@ -124,6 +124,9 @@ function CliRuntimeRoot(props: CliRuntimeRootProps): React.JSX.Element {
   const [appInitialPrompt, setAppInitialPrompt] = React.useState(props.initialPrompt);
 
   const reopenSession = React.useCallback(async (sessionId: string) => {
+    // Clear terminal before switching — Ink's <Static> content is permanently
+    // in the scrollback buffer and can't be removed by React re-render.
+    process.stdout.write('\x1b[2J\x1b[H');
     const nextRuntime = await createCliRuntime({
       cwd: props.cwd,
       initialPrompt: '',
@@ -131,7 +134,7 @@ function CliRuntimeRoot(props: CliRuntimeRootProps): React.JSX.Element {
       sessionId,
     });
     setRuntime(nextRuntime);
-    setStartupMessage(`Reopened session ${sessionId}.`);
+    setStartupMessage(`Resumed session ${sessionId.slice(0, 8)}…`);
     setAppInitialPrompt('');
   }, [props.cwd, props.modelAlias, runtime.modelAlias]);
 
