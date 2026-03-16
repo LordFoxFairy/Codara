@@ -36,13 +36,12 @@ describe('Basic Integration: Model + Agent + Tools', () => {
       cwd: process.cwd(),
     });
 
-    expect(tools.length).toBe(9);
+    expect(tools.length).toBe(8);
     expect(tools.map((t) => t.name)).toEqual([
       'bash',
       'read_file',
       'write_file',
       'edit_file',
-      'multi_edit',
       'glob',
       'grep',
       'fetch_url',

@@ -28,13 +28,12 @@ describe('builtin tools', () => {
       'read_file',
       'write_file',
       'edit_file',
-      'multi_edit',
       'glob',
       'grep',
       'fetch_url',
       'web_search',
     ]);
-    expect(tools.length).toBe(9);
+    expect(tools.length).toBe(8);
   });
 
   it('should export class-based tools', () => {

@@ -3,21 +3,19 @@ import {BashTool, createBashTool} from '@capability/tool/builtin/bash';
 import {createReadTool, ReadTool} from '@capability/tool/builtin/read';
 import {createWriteTool, WriteTool} from '@capability/tool/builtin/write';
 import {createEditTool, EditTool} from '@capability/tool/builtin/edit';
-import {createMultiEditTool, MultiEditTool} from '@capability/tool/builtin/multi-edit';
 import {createGlobTool, GlobTool} from '@capability/tool/builtin/glob';
 import {createGrepTool, GrepTool} from '@capability/tool/builtin/grep';
 import {createFetchTool, FetchTool} from '@capability/tool/builtin/fetch';
 import {createSearchTool, SearchTool} from '@capability/tool/builtin/search';
 
 // 扩展工具 — 不在核心 createBuiltinTools() 中，需要显式引入
-import {createDiagnosticsTool, DiagnosticsTool} from '@capability/tool/builtin/diagnostics';
-import {createNotebookReadTool, NotebookReadTool} from '@capability/tool/builtin/notebook';
+import {createDiagnosticsTool, DiagnosticsTool} from '@capability/tool/extended/diagnostics';
+import {createNotebookReadTool, NotebookReadTool} from '@capability/tool/extended/notebook';
 
 export {BashTool, createBashTool};
 export {ReadTool, createReadTool};
 export {WriteTool, createWriteTool};
 export {EditTool, createEditTool};
-export {MultiEditTool, createMultiEditTool};
 export {GlobTool, createGlobTool};
 export {GrepTool, createGrepTool};
 export {FetchTool, createFetchTool};
@@ -46,7 +44,6 @@ export function createBuiltinTools(options: BuiltinToolOptions = {}): Structured
     createReadTool(),
     createWriteTool(),
     createEditTool(),
-    createMultiEditTool(),
     createGlobTool(cwd),
     createGrepTool(cwd),
     createFetchTool(),

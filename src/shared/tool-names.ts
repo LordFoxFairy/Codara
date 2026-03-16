@@ -18,8 +18,6 @@ const TOOL_REFERENCE_ALIASES: Record<string, string> = {
   get_diagnostics: 'get_diagnostics',
   notebook: 'notebook_read',
   notebook_read: 'notebook_read',
-  multi_edit: 'multi_edit',
-  multiedit: 'multi_edit',
 };
 
 export function normalizeToolReferenceName(value: string): string {
