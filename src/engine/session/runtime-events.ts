@@ -7,7 +7,7 @@ import {
   type ToolCallContext,
 } from '@engine/pipeline/types';
 import {parseHILToolMessagePayload} from '@engine/pipeline/hil';
-import {readDelegatedAgentResult} from '@capability/task/delegation';
+import {readDelegatedAgentResult} from '@shared/delegation-result';
 
 export type CodaraRuntimeEventKind = 'turn' | 'model' | 'tool' | 'task' | 'hil' | 'command' | 'summary' | 'hook';
 export type CodaraRuntimeEventPhase = 'start' | 'update' | 'end';

@@ -5,7 +5,7 @@
  * If no rule matches, the default decision ('ask') is used.
  */
 import type {ToolCall} from '@langchain/core/messages';
-import {normalizeToolReferenceName} from '@capability/tool/names';
+import {normalizeToolReferenceName} from '@shared/tool-names';
 import {
   bashSpecifierMatches,
   extractBashWritePathOperands,

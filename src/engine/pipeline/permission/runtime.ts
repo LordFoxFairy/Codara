@@ -17,7 +17,7 @@ import {
 } from '@engine/pipeline/permission/policy';
 import {persistPermissionRule, persistPermissionScope} from '@engine/pipeline/permission/policy/persist';
 import type {PermissionPolicyOptions} from '@engine/pipeline/permission/types';
-import {normalizeToolReferenceName} from '@capability/tool/names';
+import {normalizeToolReferenceName} from '@shared/tool-names';
 import type {PermissionBashAnalysis, PermissionAnalysisModel} from '@engine/pipeline/permission/analysis';
 import {createModelPermissionBashAnalysis} from '@engine/pipeline/permission/analysis';
 import {extractBashAlwaysPatterns, extractBashWritePathOperands} from '@engine/pipeline/permission/bash';

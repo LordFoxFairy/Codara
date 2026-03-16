@@ -9,19 +9,20 @@ import {
   SKILLS_SYSTEM_PROMPT,
   formatSkillsList,
   formatSkillsLocations,
-} from '@capability/skill/metadata'
-import {
-  loadSkillsRuntimeData,
   readSkillsRuntimeData,
   type SkillsRuntimeData,
-} from '@capability/skill/runtime'
-import type {SkillStore} from '@capability/skill/types'
-import type {SkillMetadata} from '@capability/skill/types'
+  type SkillMetadata,
+  type SkillStore,
+} from '@infra/context/skill-contracts'
+
+export type SkillsRuntimeDataLoader = (store: SkillStore, subagentRoots: string[]) => Promise<SkillsRuntimeData>
 
 export interface SkillsMiddlewareOptions {
   /** Only needed for standalone usage (tests). Production reads from runtime shared. */
   store?: SkillStore
   subagentRoots?: string[]
+  /** Injected loader for standalone mode. Avoids engine → capability import. */
+  loadRuntime?: SkillsRuntimeDataLoader
 }
 
 /**
@@ -52,10 +53,10 @@ export function createSkillsMiddleware(options: SkillsMiddlewareOptions = {}) {
       }
 
       // Standalone: load from store and inject system prompt
-      if (!options.store) {
+      if (!options.store || !options.loadRuntime) {
         return undefined
       }
-      const runtime = await loadSkillsRuntimeData(options.store, options.subagentRoots ?? [])
+      const runtime = await options.loadRuntime(options.store, options.subagentRoots ?? [])
       cachedRuntime = runtime
       context.systemMessage.push(
         SKILLS_SYSTEM_PROMPT

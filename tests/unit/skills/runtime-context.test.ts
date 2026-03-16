@@ -7,7 +7,7 @@ import type {BaseChatModel} from '@langchain/core/language_models/chat_models';
 import {createAgent} from '@engine/agent';
 import {createAgentMemoryCheckpointer} from '@infra/checkpoint';
 import {createSkillsMiddleware} from '@engine/pipeline';
-import {FileSystemSkillStore} from '@capability/skill';
+import {FileSystemSkillStore, loadSkillsRuntimeData} from '@capability/skill';
 
 class SingleResponseModel {
   async invoke() {
@@ -56,6 +56,7 @@ You are a Reviewer subagent.
         middleware: [
           createSkillsMiddleware({
             store: new FileSystemSkillStore({sources: [root], cacheTtlMs: 0}),
+            loadRuntime: loadSkillsRuntimeData,
           }),
         ],
       });
