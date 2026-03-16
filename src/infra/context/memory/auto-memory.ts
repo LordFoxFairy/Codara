@@ -9,6 +9,7 @@ import type {AgentResult} from '@engine/agent/models/agent';
 import {resolveWorkspaceRoot, type WorkspaceRootOptions} from '@infra/config/workspace';
 import {createWorkspaceKey, sanitizeSlug} from '@infra/config/workspace-key';
 import {resolveAutoMemoryGlobal} from '@infra/config/settings';
+import {evictMemoryFiles} from '@infra/context/memory/eviction';
 
 const MEMORY_INDEX_FILE = 'MEMORY.md';
 const TOPICS_DIR = 'topics';
@@ -69,6 +70,7 @@ export function createAutoMemoryRuntime(options: AutoMemoryRuntimeOptions): Auto
 
       await upsertAutoMemoryTopic(rootDir, entry);
       await rewriteMemoryIndex(rootDir);
+      await evictMemoryFiles(path.join(rootDir, TOPICS_DIR)).catch(() => {});
       source.reload();
       return true;
     },
