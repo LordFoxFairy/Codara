@@ -93,6 +93,9 @@ export class ChatModelFactory {
                     budget_tokens: thinking.budgetTokens,
                 };
             }
+
+            // Anthropic Prompt Caching — 自动对最后一条消息启用缓存。
+            initOptions.cache_control = {type: "ephemeral"};
         }
 
         return initOptions;
