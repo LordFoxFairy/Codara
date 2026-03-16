@@ -7,6 +7,7 @@ import type {
   CompactOptions,
   PutCheckpointInput,
 } from '@infra/checkpoint/types';
+import {acquireSessionLock, releaseSessionLock} from '@infra/checkpoint/lock';
 
 interface JsonCodec<T> {
   serialize(value: T): unknown;
@@ -69,20 +70,26 @@ export class FileCheckpointer<TState = unknown, TInfo = unknown>
   }
 
   async put(input: PutCheckpointInput<TState, TInfo>): Promise<CheckpointRecord<TState, TInfo>> {
-    const checkpointId = randomUUID();
-    const record: CheckpointRecord<TState, TInfo> = {
-      ref: {
-        sessionId: input.sessionId,
-        checkpointId,
-      },
-      state: input.state,
-      info: input.info,
-    };
+    const lockDir = path.join(this.rootDir, '.locks');
+    await acquireSessionLock(lockDir, input.sessionId);
+    try {
+      const checkpointId = randomUUID();
+      const record: CheckpointRecord<TState, TInfo> = {
+        ref: {
+          sessionId: input.sessionId,
+          checkpointId,
+        },
+        state: input.state,
+        info: input.info,
+      };
 
-    await mkdir(this.checkpointsDir(input.sessionId), {recursive: true});
-    await writeJsonFile(this.latestCheckpointPath(input.sessionId), this.encodeRecord(record));
+      await mkdir(this.checkpointsDir(input.sessionId), {recursive: true});
+      await writeJsonFile(this.latestCheckpointPath(input.sessionId), this.encodeRecord(record));
 
-    return this.decodeRecord(this.encodeRecord(record));
+      return this.decodeRecord(this.encodeRecord(record));
+    } finally {
+      await releaseSessionLock(lockDir, input.sessionId);
+    }
   }
 
   async list(sessionId: string): Promise<Array<CheckpointRecord<TState, TInfo>>> {
