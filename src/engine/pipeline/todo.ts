@@ -124,6 +124,13 @@ export function createTodoListMiddleware(options?: TodoListMiddlewareOptions): B
     name: 'TodoListMiddleware',
     stateSchema: TodoStateSchema,
     tools: [writeTodos],
+    /**
+     * PROMPT CACHING NOTE:
+     * System message ordering is intentionally: base → static todo prompt → dynamic snapshot.
+     * The static prefix (base system + todo prompt) remains stable across turns, enabling
+     * LLM provider prompt caching. Only the dynamic todo snapshot at the end changes per turn.
+     * Do NOT reorder these — it would break cache prefix stability.
+     */
     wrapModelCall: (request, handler) => {
       const todoState = readTodoState(request.state.values);
       const nextSystemMessages = request.systemMessage.concat(options?.systemPrompt ?? TODO_LIST_MIDDLEWARE_SYSTEM_PROMPT);
