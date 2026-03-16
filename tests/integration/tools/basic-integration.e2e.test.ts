@@ -36,7 +36,7 @@ describe('Basic Integration: Model + Agent + Tools', () => {
       cwd: process.cwd(),
     });
 
-    expect(tools.length).toBe(8);
+    expect(tools.length).toBe(10);
     expect(tools.map((t) => t.name)).toEqual([
       'bash',
       'read_file',
@@ -46,6 +46,8 @@ describe('Basic Integration: Model + Agent + Tools', () => {
       'grep',
       'fetch_url',
       'web_search',
+      'get_diagnostics',
+      'notebook_read',
     ]);
 
     const globTool = tools.find((tool) => tool.name === 'glob');
