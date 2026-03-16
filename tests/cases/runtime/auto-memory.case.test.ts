@@ -9,7 +9,7 @@ import {
   createAgentMemoryCheckpointer,
   createAskUserTool,
   createCodaraRuntime,
-  createInteractionMiddleware,
+  createAskUserQuestionMiddleware,
   createSession,
 } from '@/index';
 import {createAutoMemoryRuntime, resolveAutoMemoryRoot} from '@infra/context/memory/auto-memory';
@@ -81,7 +81,7 @@ describe('runtime auto memory cases', () => {
       codaraPath: path.join(projectRoot, '.codara'),
       model: new AskUserModel() as unknown as BaseChatModel,
       tools: [createAskUserTool()],
-      middleware: [createInteractionMiddleware()],
+      middleware: [createAskUserQuestionMiddleware()],
       builtinTools: false,
       skills: false,
       hil: false,

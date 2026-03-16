@@ -46,7 +46,7 @@ export interface AskUserResult {
   comment?: string;
 }
 
-export interface InteractionMiddlewareOptions extends Omit<HILMiddlewareOptions, 'interruptOn'> {
+export interface AskUserQuestionMiddlewareOptions extends Omit<HILMiddlewareOptions, 'interruptOn'> {
   askUserToolName?: string;
 }
 
@@ -61,12 +61,12 @@ export function createAskUserTool() {
   );
 }
 
-export function createInteractionMiddleware(options: InteractionMiddlewareOptions = {}) {
+export function createAskUserQuestionMiddleware(options: AskUserQuestionMiddlewareOptions = {}) {
   const askUserToolName = options.askUserToolName?.trim() || ASK_USER_TOOL_NAME;
 
   return createHILMiddleware({
     ...options,
-    name: options.name?.trim() || 'InteractionMiddleware',
+    name: options.name?.trim() || 'AskUserQuestionMiddleware',
     resolveDecision: async (input) => {
       if (input.context.toolCall.name !== askUserToolName) {
         return options.resolveDecision?.(input);
