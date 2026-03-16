@@ -14,6 +14,7 @@ import {
   createHILMiddleware,
   createInteractionMiddleware,
   createLoggingMiddleware,
+  createSkillsMiddleware,
   todoListMiddleware,
 } from '@engine/pipeline';
 import {
@@ -151,7 +152,9 @@ export type CreateCodaraChatModelOptions =
 
 export type CodaraToolsOptions = Pick<CodaraOptions, 'builtinTools' | 'cwd' | 'tools'>;
 
-export type CodaraMiddlewareOptions = Pick<CodaraOptions, 'middleware' | 'hil' | 'logging'>;
+export type CodaraMiddlewareOptions = Pick<CodaraOptions, 'middleware' | 'hil' | 'logging'> & {
+  skillsSource?: import('@capability/skill').SkillsSource;
+};
 
 export type Codara = Session & {
   listCommands(): Promise<readonly CodaraCommandSpec[]>;
@@ -301,7 +304,7 @@ function assembleCodara(
     ...(autoMemory ? {autoMemory} : {}),
     tools,
     ...(options.handleToolErrors !== undefined ? {handleToolErrors: options.handleToolErrors} : {}),
-    middleware: createCodaraMiddlewares(options),
+    middleware: createCodaraMiddlewares({...options, skillsSource}),
     ...(options.summary ? {summary: options.summary} : {}),
     ...(options.inputBudget ? {inputBudget: options.inputBudget} : {}),
     ...(preloadedSources?.hookPipeline ? {lifecycle: preloadedSources.hookPipeline as SessionLifecycleHooks & AgentLifecycleHooks} : {}),
@@ -448,6 +451,14 @@ export function createCodaraMiddlewares(
   const middlewares: BaseMiddleware[] = [];
   if (options.logging && options.logging.enabled !== false) {
     middlewares.push(createLoggingMiddleware(options.logging));
+  }
+  // SkillsMiddleware provides the Skill tool for progressive disclosure.
+  // When SkillsSource already injected metadata via buildBaseSystemMessage,
+  // the middleware detects this and only adds the tool (no duplicate prompt).
+  // Skip if user-provided middleware already includes one (e.g., tests).
+  const hasUserSkillsMiddleware = options.middleware?.some((m) => m.name === 'SkillsMiddleware');
+  if (options.skillsSource && !hasUserSkillsMiddleware) {
+    middlewares.push(createSkillsMiddleware({source: options.skillsSource}));
   }
   middlewares.push(...(options.middleware ?? []));
   middlewares.push(createBudgetMiddleware());
