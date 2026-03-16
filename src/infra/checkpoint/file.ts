@@ -48,7 +48,13 @@ export class FileCheckpointer<TState = unknown, TInfo = unknown>
 
   async getLatest(sessionId: string): Promise<CheckpointRecord<TState, TInfo> | undefined> {
     const record = await readJsonFile<PersistedCheckpointRecord>(this.latestCheckpointPath(sessionId));
-    return record ? this.decodeRecord(record) : undefined;
+    if (!record) return undefined;
+    try {
+      return this.decodeRecord(record);
+    } catch {
+      // Corrupted checkpoint state — treat as missing to allow session recovery
+      return undefined;
+    }
   }
 
   async get(ref: {

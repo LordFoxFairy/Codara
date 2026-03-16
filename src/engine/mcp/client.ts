@@ -52,6 +52,7 @@ export class McpClient {
     if (this._status === 'disabled') return;
 
     this._status = 'connecting';
+    const connectTimeout = this.config.timeout ?? DEFAULT_MCP_TIMEOUT;
     try {
       this.transport = await this.createTransport();
       this.client = new Client(
@@ -59,13 +60,19 @@ export class McpClient {
         {capabilities: {}},
       );
 
-      await this.client.connect(this.transport);
+      await Promise.race([
+        this.client.connect(this.transport),
+        new Promise<never>((_, reject) =>
+          setTimeout(() => reject(new Error(`MCP server "${this.name}" connection timed out after ${connectTimeout}ms`)), connectTimeout),
+        ),
+      ]);
       await this.discoverTools();
       this._status = 'connected';
       this._lastError = undefined;
     } catch (error) {
       this._status = 'failed';
       this._lastError = error instanceof Error ? error.message : String(error);
+      try { await this.client?.close(); } catch { /* best effort cleanup */ }
       this.client = undefined;
       this.transport = undefined;
     }

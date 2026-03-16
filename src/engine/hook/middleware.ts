@@ -48,8 +48,8 @@ export function createToolHooksMiddleware(lifecycle: ToolLifecycleHooks): BaseMi
       const result = await handler(context);
       const durationMs = Date.now() - startMs;
 
-      // 3. PostToolUse — notify (fire-and-forget)
-      void lifecycle.onPostToolUse({
+      // 3. PostToolUse — notify (fire-and-forget, errors absorbed)
+      lifecycle.onPostToolUse({
         hookEvent: 'PostToolUse',
         sessionId: context.execution.sessionId,
         toolName: context.toolCall.name,
@@ -57,7 +57,7 @@ export function createToolHooksMiddleware(lifecycle: ToolLifecycleHooks): BaseMi
         toolResult: truncateForHook(String(result.content), 2000),
         durationMs,
         timestamp: new Date().toISOString(),
-      });
+      }).catch(() => { /* PostToolUse hooks are best-effort */ });
 
       return result;
     },
