@@ -2,7 +2,7 @@ import {describe, expect, it} from 'bun:test';
 import path from 'node:path';
 import {mkdtemp, writeFile} from 'node:fs/promises';
 import {tmpdir} from 'node:os';
-import {parseNotebook} from '@capability/tool/builtin/notebook';
+import {parseNotebook} from '@capability/tool/extended/notebook';
 import {createNotebookReadTool} from '@capability/tool';
 
 describe('parseNotebook', () => {

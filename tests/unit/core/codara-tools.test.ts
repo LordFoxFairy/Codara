@@ -11,7 +11,6 @@ describe('Codara tools', () => {
       'read_file',
       'write_file',
       'edit_file',
-      'multi_edit',
       'glob',
       'grep',
       'fetch_url',
