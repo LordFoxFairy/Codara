@@ -49,6 +49,8 @@ export interface CliController {
   composer: CliComposerState;
   composerActivityVersion: number;
   notices: CliNotice[];
+  commandOutput?: string;
+  dismissCommandOutput: () => void;
   activeTurn?: CliActiveTurn;
   hilReview?: CliHilReviewState;
   coreMessages: readonly BaseMessage[];
@@ -118,6 +120,7 @@ export function useCliController(options: UseCliControllerOptions): CliControlle
   const [runState, setRunState] = useState<CliRunState>({status: 'idle'});
   const [sessionState, setSessionState] = useState<SessionState>(() => codara.getState());
   const [taskPanelVisible, setTaskPanelVisible] = useState(true);
+  const [commandOutput, setCommandOutput] = useState<string | undefined>();
   const isRunningRef = useRef(false);
   const initialPromptSentRef = useRef(false);
   const hilReviewRef = useRef<CliHilReviewState | undefined>(undefined);
@@ -208,7 +211,11 @@ export function useCliController(options: UseCliControllerOptions): CliControlle
       return;
     }
 
-    appendNotice(result.ok ? 'command' : 'error', result.output || '(no output)');
+    if (result.ok) {
+      setCommandOutput(result.output || '(no output)');
+    } else {
+      appendNotice('error', result.output || '(no output)');
+    }
     const nextAgentState = await refreshCoreState();
     setRunState(result.ok
       ? nextAgentState.status === 'paused' ? {status: 'paused'} : {status: 'done'}
@@ -257,6 +264,7 @@ export function useCliController(options: UseCliControllerOptions): CliControlle
     isRunningRef.current = true;
     setRunState({status: 'running'});
     setRuntimeEvents([]);
+    setCommandOutput(undefined);
 
     try {
       if (prompt.startsWith('/')) {
@@ -344,6 +352,10 @@ export function useCliController(options: UseCliControllerOptions): CliControlle
 
   const toggleTaskPanel = useCallback(() => {
     setTaskPanelVisible(current => !current);
+  }, []);
+
+  const dismissCommandOutput = useCallback(() => {
+    setCommandOutput(undefined);
   }, []);
 
   const submitDraft = useCallback(() => {
@@ -529,6 +541,8 @@ export function useCliController(options: UseCliControllerOptions): CliControlle
     composer,
     composerActivityVersion,
     notices,
+    commandOutput,
+    dismissCommandOutput,
     activeTurn,
     hilReview,
     coreMessages,
