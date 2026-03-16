@@ -12,7 +12,7 @@ import {
   createBudgetMiddleware,
   createDailySessionFileLogSink,
   createHILMiddleware,
-  createInteractionMiddleware,
+  createAskUserQuestionMiddleware,
   createLoggingMiddleware,
   createSkillsMiddleware,
   todoListMiddleware,
@@ -612,8 +612,8 @@ function createRuntimeDefaultMiddlewares(input: {
     }));
   }
 
-  if (input.options.hil !== false && !byName.has('InteractionMiddleware')) {
-    byName.set('InteractionMiddleware', createInteractionMiddleware());
+  if (input.options.hil !== false && !byName.has('AskUserQuestionMiddleware')) {
+    byName.set('AskUserQuestionMiddleware', createAskUserQuestionMiddleware());
   }
 
   if (input.options.hil !== false && !byName.has('PermissionMiddleware')) {
@@ -672,8 +672,8 @@ function createDelegatedRuntimeMiddlewares(input: {
   if (!seen.has('SharedTaskMiddleware') && !hasSharedTaskTools(providedToolNames)) {
     push(createSharedTaskMiddleware({store: input.taskStore}));
   }
-  if (input.options.hil !== false && !seen.has('InteractionMiddleware')) {
-    push(createInteractionMiddleware());
+  if (input.options.hil !== false && !seen.has('AskUserQuestionMiddleware')) {
+    push(createAskUserQuestionMiddleware());
   }
   if (input.options.hil !== false && !seen.has('PermissionMiddleware')) {
     push(createPermissionMiddleware({

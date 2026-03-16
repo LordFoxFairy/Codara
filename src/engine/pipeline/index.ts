@@ -73,13 +73,13 @@ export {
   ASK_USER_TOOL_NAME,
   AskUserSchema,
   createAskUserTool,
-  createInteractionMiddleware,
+  createAskUserQuestionMiddleware,
   parseAskUserResult,
   type AskUserInput,
   type AskUserOption,
   type AskUserQuestion,
   type AskUserResult,
-  type InteractionMiddlewareOptions,
+  type AskUserQuestionMiddlewareOptions,
 } from '@engine/pipeline/ask-user-question';
 export {
   createPermissionMiddleware,

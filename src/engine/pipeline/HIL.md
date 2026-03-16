@@ -14,7 +14,7 @@ HIL is not a permission-specific feature and it is not a clarification-specific 
 
 HIL does not own business policy. Permission, requirement clarification, edit-review, or future approval flows plug into the same protocol.
 
-When an agent needs structured user input, prefer an intent-level entry such as `AskUser` instead of having the agent author raw HIL payloads directly. Middleware can translate that intent into the shared HIL pause contract.
+When an agent needs structured user input, prefer an intent-level entry such as `AskUserQuestion` instead of having the agent author raw HIL payloads directly. Middleware can translate that intent into the shared HIL pause contract.
 
 ## Stable UI Shapes
 

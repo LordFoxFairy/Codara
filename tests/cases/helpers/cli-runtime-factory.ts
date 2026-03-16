@@ -13,7 +13,7 @@ import {
 } from '@/index';
 import {
   createAskUserTool,
-  createInteractionMiddleware,
+  createAskUserQuestionMiddleware,
   createPermissionMiddleware,
   createSkillsMiddleware,
   parseAskUserResult,
@@ -464,7 +464,7 @@ export async function createCliRuntime(input: {
           skills: false,
           hil: false,
           middleware: [
-            createInteractionMiddleware(),
+            createAskUserQuestionMiddleware(),
           ],
         }),
       };
