@@ -1,29 +1,54 @@
-﻿import path from 'node:path';
+import path from 'node:path';
 import {spawn} from 'node:child_process';
 import {pathToFileURL} from 'node:url';
 import React from 'react';
 import {render} from 'ink';
 import {createCodaraRuntime, DEFAULT_CODARA_MODEL_ALIAS, type Codara} from '@/index';
 import type {CliHilAutoAction} from './app/hil-review';
+import {parseCliArgs} from '@cli/cli-args';
+import {runHeadless} from '@cli/headless';
 
 const {CodaraCliApp} = await import('./app/shell-app');
 
 const cwd = process.env.CODARA_CLI_CWD?.trim() || process.cwd();
-const {initialPrompt, resumeSessionId} = parseCliArgs(process.argv.slice(2));
+const cliArgs = parseCliArgs(process.argv.slice(2));
 const modelAlias = DEFAULT_CODARA_MODEL_ALIAS;
-const initialRuntime = await createCliRuntime({cwd, initialPrompt, modelAlias, sessionId: resumeSessionId});
+
+// Headless 模式：-p "prompt" 时直接执行并退出
+if (cliArgs.headlessPrompt) {
+  const {codara} = await createCliRuntime({
+    cwd,
+    initialPrompt: cliArgs.headlessPrompt,
+    modelAlias,
+    sessionId: cliArgs.resumeSessionId,
+  });
+  await runHeadless({
+    codara,
+    prompt: cliArgs.headlessPrompt,
+    outputFormat: cliArgs.outputFormat,
+  });
+  process.exit(0);
+}
+
+// 交互模式
+const initialRuntime = await createCliRuntime({
+  cwd,
+  initialPrompt: cliArgs.initialPrompt,
+  modelAlias,
+  sessionId: cliArgs.resumeSessionId,
+});
 const autoExitOnSettledPrompt = process.env.CODARA_CLI_AUTO_EXIT_AFTER_INITIAL_PROMPT === '1';
 const hilAutoActions = readHilAutoActions(process.env.CODARA_CLI_HIL_AUTO_ACTIONS);
 
 render(
   <CliRuntimeRoot
     cwd={cwd}
-    initialPrompt={initialPrompt}
+    initialPrompt={cliArgs.initialPrompt}
     initialRuntime={initialRuntime}
     modelAlias={modelAlias}
     hilAutoActions={hilAutoActions}
     autoExitOnSettledPrompt={autoExitOnSettledPrompt}
-    startupMessage={resumeSessionId ? `Resumed session ${resumeSessionId}.` : undefined}
+    startupMessage={cliArgs.resumeSessionId ? `Resumed session ${cliArgs.resumeSessionId}.` : undefined}
     openFile={openFileInHost}
   />,
 );
@@ -174,30 +199,4 @@ function normalizeHilAutoAction(value: string | CliHilAutoAction): CliHilAutoAct
   }
 
   return value;
-}
-
-interface ParsedCliArgs {
-  initialPrompt: string;
-  resumeSessionId?: string;
-}
-
-function parseCliArgs(argv: string[]): ParsedCliArgs {
-  const rest: string[] = [];
-  let resumeSessionId: string | undefined;
-
-  for (let i = 0; i < argv.length; i++) {
-    const arg = argv[i]!;
-    if ((arg === '--resume' || arg === '-r') && i + 1 < argv.length) {
-      resumeSessionId = argv[++i]!.trim();
-    } else if (arg.startsWith('--resume=')) {
-      resumeSessionId = arg.slice('--resume='.length).trim();
-    } else {
-      rest.push(arg);
-    }
-  }
-
-  return {
-    initialPrompt: rest.join(' ').trim(),
-    resumeSessionId: resumeSessionId || undefined,
-  };
 }
