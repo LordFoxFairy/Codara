@@ -89,7 +89,7 @@ function HunkBlock({hunk, isNewFile}: {hunk: StructuredPatchHunk; isNewFile: boo
     return (
       <Box key={index}>
         <Text dimColor>{`${leftNo} ${rightNo} `}</Text>
-        <Text color={lineColor}>{`${displayPrefix}${content}`}</Text>
+        <Text color={lineColor} wrap="truncate-end">{`${displayPrefix}${content}`}</Text>
       </Box>
     );
   });

@@ -14,6 +14,8 @@ const delegatedAgentResultSchema = z.object({
   reason: z.enum(['complete', 'error', 'max_turns']),
   summary: z.string().optional(),
   errorMessage: z.string().optional(),
+  toolUseCount: z.number().optional(),
+  totalTokens: z.number().optional(),
 });
 
 export interface DelegatedAgentResult {
@@ -23,6 +25,8 @@ export interface DelegatedAgentResult {
   reason: 'complete' | 'error' | 'max_turns';
   summary?: string;
   errorMessage?: string;
+  toolUseCount?: number;
+  totalTokens?: number;
 }
 
 export function readDelegatedAgentResult(value: unknown): DelegatedAgentResult | undefined {

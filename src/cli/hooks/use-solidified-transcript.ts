@@ -2,7 +2,6 @@ import {useRef, useMemo} from 'react';
 import type {BaseMessage} from '@langchain/core/messages';
 import type {CodaraRuntimeEvent} from '@/index';
 import type {CliActiveTurn, CliNotice} from '../app/view-state';
-import type {CliLayoutMode} from '../app/layout-mode';
 import {
   type SolidifiedItem,
   type TranscriptItem,
@@ -16,9 +15,6 @@ export interface UseSolidifiedTranscriptInput {
   notices: readonly CliNotice[];
   activeTurn?: CliActiveTurn;
   runtimeEvents?: readonly CodaraRuntimeEvent[];
-  layoutMode: CliLayoutMode;
-  cwd?: string;
-  modelAlias?: string;
 }
 
 export interface UseSolidifiedTranscriptOutput {

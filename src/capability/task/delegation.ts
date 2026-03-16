@@ -1,4 +1,4 @@
-import {HumanMessage, ToolMessage, type BaseMessage} from '@langchain/core/messages';
+import {AIMessage, HumanMessage, ToolMessage, type BaseMessage} from '@langchain/core/messages';
 import type {BaseChatModel} from '@langchain/core/language_models/chat_models';
 import type {StructuredToolInterface} from '@langchain/core/tools';
 import {z} from 'zod';
@@ -315,6 +315,8 @@ function createDelegatedAgentResult(
   messages: BaseMessage[],
 ): DelegatedAgentResult {
   const summary = readLatestAssistantSummary(messages);
+  const toolUseCount = messages.filter((m) => ToolMessage.isInstance(m)).length;
+  const totalTokens = sumChildTokens(messages);
 
   return {
     type: 'delegated_agent_result',
@@ -323,7 +325,22 @@ function createDelegatedAgentResult(
     reason,
     ...(summary ? {summary} : {}),
     ...(error?.message ? {errorMessage: error.message} : {}),
+    ...(toolUseCount > 0 ? {toolUseCount} : {}),
+    ...(totalTokens > 0 ? {totalTokens} : {}),
   };
+}
+
+function sumChildTokens(messages: BaseMessage[]): number {
+  let total = 0;
+  for (const m of messages) {
+    if (!AIMessage.isInstance(m) || !m.usage_metadata) continue;
+    const meta = m.usage_metadata as Record<string, unknown>;
+    const t = typeof meta.total_tokens === 'number' ? meta.total_tokens : 0;
+    const input = typeof meta.input_tokens === 'number' ? meta.input_tokens : 0;
+    const output = typeof meta.output_tokens === 'number' ? meta.output_tokens : 0;
+    total += t > 0 ? t : input + output;
+  }
+  return total;
 }
 
 function createDelegatedAgentToolMessage(result: DelegatedAgentResult): ToolMessage {

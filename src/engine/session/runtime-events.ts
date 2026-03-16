@@ -435,11 +435,31 @@ function summarizeToolMessage(message: ToolMessage): string | undefined {
 
 function summarizeDelegatedTask(message: ToolMessage): string | undefined {
   const delegated = readDelegatedAgentResult(message.artifact);
-  if (delegated?.summary?.trim()) {
-    return delegated.summary.trim();
+  if (!delegated) {
+    return summarizeToolMessage(message);
   }
 
-  return summarizeToolMessage(message);
+  const parts: string[] = [];
+  if (delegated.summary?.trim()) {
+    parts.push(delegated.summary.trim());
+  }
+  const statParts: string[] = [];
+  if (delegated.toolUseCount && delegated.toolUseCount > 0) {
+    statParts.push(`${delegated.toolUseCount} tool uses`);
+  }
+  if (delegated.totalTokens && delegated.totalTokens > 0) {
+    statParts.push(`${formatDelegatedTokens(delegated.totalTokens)} tokens`);
+  }
+  if (statParts.length > 0) {
+    parts.push(statParts.join(' · '));
+  }
+  return parts.join('\n') || summarizeToolMessage(message);
+}
+
+function formatDelegatedTokens(n: number): string {
+  if (n >= 1000000) return `${(n / 1000000).toFixed(1)}M`;
+  if (n >= 1000) return `${(n / 1000).toFixed(1)}k`;
+  return String(n);
 }
 
 function formatTaskStartLabel(args: unknown): string {

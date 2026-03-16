@@ -4,6 +4,7 @@ import {parseAskUserResult} from '@engine/pipeline';
 import {parseHILToolMessagePayload} from '@engine/pipeline/hil';
 import {readMessageText} from '@shared/messages';
 import type {CliActiveTurn, CliNotice} from '../app/view-state';
+import {formatTokenCount} from '../utils/format';
 import {computeEditDiff, computeWriteDiff, type DiffData} from './diff-compute';
 
 export type TranscriptRole = 'system' | 'warning' | 'user' | 'assistant' | 'tool' | 'task' | 'hil' | 'command' | 'error';
@@ -23,6 +24,7 @@ export interface ToolResultMeta {
   elapsed?: string;
   summaryLine: string;
   outputLines?: string[];
+  allOutputLines?: string[];
   totalOutputLines?: number;
   diffData?: DiffData;
 }
@@ -35,6 +37,8 @@ export interface TranscriptItem {
   renderHint?: 'inline' | 'block';
   /** Structured tool result metadata for enhanced rendering */
   toolMeta?: ToolResultMeta;
+  /** Token usage annotation for this turn (e.g. "↓12.3k ↑2.1k") */
+  tokenAnnotation?: string;
 }
 
 export interface BuildTranscriptItemsInput {
@@ -203,7 +207,7 @@ function buildRuntimeEventItems(events: readonly CodaraRuntimeEvent[]): Transcri
           ? `Failed (${elapsed}s)`
           : event.status === 'paused'
             ? 'Waiting for review'
-            : `Done (${elapsed}s)`;
+            : formatTaskDoneSummary(elapsed, event.detail);
         items.push({
           id: startEvent.id,
           role: 'task',
@@ -317,6 +321,19 @@ function computeElapsedSeconds(startTimestamp: string, endTimestamp: string): nu
   return Math.round((end - start) / 1000);
 }
 
+function formatTaskDoneSummary(elapsed: number, detail?: string): string {
+  const parts: string[] = [];
+  // Parse stats from detail (format: "summary\nN tool uses · Xk tokens")
+  if (detail) {
+    const toolUseMatch = detail.match(/(\d+)\s+tool uses?/);
+    const tokenMatch = detail.match(/([\d.]+[kKmM]?)\s+tokens?/);
+    if (toolUseMatch) parts.push(`${toolUseMatch[1]} tool uses`);
+    if (tokenMatch) parts.push(`${tokenMatch[1]} tokens`);
+  }
+  parts.push(`${elapsed}s`);
+  return `Done (${parts.join(' · ')})`;
+}
+
 function formatElapsed(startTimestamp: string, endTimestamp: string): string {
   const ms = new Date(endTimestamp).getTime() - new Date(startTimestamp).getTime();
   if (ms < 1000) {
@@ -341,11 +358,11 @@ function buildToolMetaFromEvents(
   const displayName = formatToolDisplayName(rawToolName);
   const args = parseToolCallArgs(startEvent.label);
   const status = endEvent.status === 'error' ? 'error' : 'done';
-  const {summaryLine, outputLines, totalOutputLines} = buildToolOutput(rawToolName, status, endEvent.detail);
+  const {summaryLine, outputLines, allOutputLines, totalOutputLines} = buildToolOutput(rawToolName, status, endEvent.detail);
 
   const elapsed = formatElapsed(startEvent.timestamp, endEvent.timestamp);
 
-  return {toolName: rawToolName, displayName, icon, args, status, elapsed, summaryLine, outputLines, totalOutputLines};
+  return {toolName: rawToolName, displayName, icon, args, status, elapsed, summaryLine, outputLines, allOutputLines, totalOutputLines};
 }
 
 function buildToolMetaRunning(rawToolName: string, startEvent: CodaraRuntimeEvent): ToolResultMeta | undefined {
@@ -369,12 +386,13 @@ function buildToolOutput(
   toolName: string,
   status: 'done' | 'error',
   detail?: string,
-): {summaryLine: string; outputLines?: string[]; totalOutputLines?: number} {
+): {summaryLine: string; outputLines?: string[]; allOutputLines?: string[]; totalOutputLines?: number} {
   if (status === 'error') {
     const lines = truncateOutput(detail);
     return {
       summaryLine: 'Error',
       outputLines: lines.visible,
+      allOutputLines: lines.all,
       totalOutputLines: lines.total,
     };
   }
@@ -390,34 +408,33 @@ function buildToolOutput(
       const summaryLine = fileMatch
         ? `Wrote ${lineCount} lines to ${fileMatch[1]}`
         : `Wrote ${lineCount} lines`;
-      return {summaryLine, outputLines: lines.visible, totalOutputLines: lines.total};
+      return {summaryLine, outputLines: lines.visible, allOutputLines: lines.all, totalOutputLines: lines.total};
     }
     case 'edit_file':
     case 'edit': {
       const lines = truncateOutput(trimmed);
-      return {summaryLine: buildEditSummary(trimmed), outputLines: lines.visible, totalOutputLines: lines.total};
+      return {summaryLine: buildEditSummary(trimmed), outputLines: lines.visible, allOutputLines: lines.all, totalOutputLines: lines.total};
     }
     case 'bash': {
       if (!trimmed) {
         return {summaryLine: 'Done'};
       }
       const lines = truncateOutput(trimmed);
-      return {summaryLine: lines.visible[0] ?? 'Done', outputLines: lines.visible.slice(1), totalOutputLines: lines.total};
+      return {summaryLine: lines.visible[0] ?? 'Done', outputLines: lines.visible.slice(1), allOutputLines: lines.all.slice(1), totalOutputLines: lines.total};
     }
     case 'Task': {
       if (!trimmed) {
         return {summaryLine: 'Done'};
       }
-      // Task delegation results are summaries of full subagent runs — show fully, no truncation
       const taskLines = trimmed.split('\n');
-      return {summaryLine: taskLines[0] ?? 'Done', outputLines: taskLines.slice(1), totalOutputLines: taskLines.length};
+      return {summaryLine: taskLines[0] ?? 'Done', outputLines: taskLines.slice(1), allOutputLines: taskLines.slice(1), totalOutputLines: taskLines.length};
     }
     default: {
       if (!trimmed) {
         return {summaryLine: 'Done'};
       }
       const lines = truncateOutput(trimmed);
-      return {summaryLine: lines.visible[0] ?? 'Done', outputLines: lines.visible.slice(1), totalOutputLines: lines.total};
+      return {summaryLine: lines.visible[0] ?? 'Done', outputLines: lines.visible.slice(1), allOutputLines: lines.all.slice(1), totalOutputLines: lines.total};
     }
   }
 }
@@ -447,14 +464,14 @@ function buildEditSummary(detail: string): string {
   return parts.join(', ');
 }
 
-function truncateOutput(detail?: string, maxLines: number = TOOL_META_MAX_LINES): {visible: string[]; total: number} {
+function truncateOutput(detail?: string, maxLines: number = TOOL_META_MAX_LINES): {visible: string[]; all: string[]; total: number} {
   if (!detail?.trim()) {
-    return {visible: [], total: 0};
+    return {visible: [], all: [], total: 0};
   }
   const allLines = detail.trim().split('\n');
   const total = allLines.length;
   const visible = allLines.slice(0, maxLines);
-  return {visible, total};
+  return {visible, all: allLines, total};
 }
 
 function mapRuntimeEventRole(kind: CodaraRuntimeEvent['kind']): TranscriptRole {
@@ -518,7 +535,7 @@ function buildCoreMessageItems(
   const messageId = String(message.id ?? `${message.type}-${index}`);
 
   if (AIMessage.isInstance(message)) {
-    return buildAssistantItems(message, messageId, preferRuntimeSteps);
+    return buildAssistantItems(message, messageId);
   }
 
   if (ToolMessage.isInstance(message)) {
@@ -536,7 +553,7 @@ function buildCoreMessageItems(
   }] : [];
 }
 
-function buildAssistantItems(message: AIMessage, messageId: string, _preferRuntimeSteps: boolean): TranscriptItem[] {
+function buildAssistantItems(message: AIMessage, messageId: string): TranscriptItem[] {
   const items: TranscriptItem[] = [];
   const text = readMessageText(message);
   if (text) {
@@ -544,12 +561,27 @@ function buildAssistantItems(message: AIMessage, messageId: string, _preferRunti
       id: messageId,
       role: 'assistant',
       content: text,
+      tokenAnnotation: readTokenAnnotation(message),
     });
   }
 
   // Tool calls are rendered via ToolMessage results (buildToolResultItems)
   // or via runtime events during streaming — no need to show them separately here.
   return items;
+}
+
+function readTokenAnnotation(message: AIMessage): string | undefined {
+  const meta = message.usage_metadata as Record<string, unknown> | undefined;
+  if (!meta) return undefined;
+
+  const input = (typeof meta.input_tokens === 'number' ? meta.input_tokens : 0)
+    || (typeof meta.prompt_tokens === 'number' ? meta.prompt_tokens : 0);
+  const output = (typeof meta.output_tokens === 'number' ? meta.output_tokens : 0)
+    || (typeof meta.completion_tokens === 'number' ? meta.completion_tokens : 0);
+
+  if (input === 0 && output === 0) return undefined;
+
+  return `↓${formatTokenCount(input)} ↑${formatTokenCount(output)}`;
 }
 
 function buildToolResultItems(
@@ -610,12 +642,12 @@ function buildToolMetaFromCoreMessage(
   const toolCall = toolCallId ? toolLookup.get(toolCallId) : undefined;
   const args = toolCall ? formatFriendlyToolSummary(rawToolName, toolCall.args) : undefined;
   const status = message.status === 'error' ? 'error' : 'done';
-  const {summaryLine, outputLines, totalOutputLines} = buildToolOutput(rawToolName, status as 'done' | 'error', text);
+  const {summaryLine, outputLines, allOutputLines, totalOutputLines} = buildToolOutput(rawToolName, status as 'done' | 'error', text);
 
   // Compute diff data for edit/write tools when tool args are available
   const diffData = toolCall ? tryComputeDiff(rawToolName, toolCall.args) : undefined;
 
-  return {toolName: rawToolName, displayName, icon, args, status: status as 'done' | 'error', summaryLine, outputLines, totalOutputLines, diffData};
+  return {toolName: rawToolName, displayName, icon, args, status: status as 'done' | 'error', summaryLine, outputLines, allOutputLines, totalOutputLines, diffData};
 }
 
 function tryComputeDiff(toolName: string, toolArgs: unknown): DiffData | undefined {

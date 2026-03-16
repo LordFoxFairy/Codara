@@ -19,25 +19,49 @@ export interface StatusBarModel {
   pathLine?: string;
 }
 
+import {formatTokenCount} from '../../utils/format';
+
+
 export function describeStatusBar(props: StatusBarProps): StatusBarModel {
   const {layoutMode, session, cwd, modelAlias, runState, latestRuntimeEvent} = props;
   const isMinimal = layoutMode === 'minimal';
   const messageCount = session.metadata?.messageCount ?? 0;
   const status = describeStatusIndicator({runState, latestRuntimeEvent});
   const contextWindow = session.metadata?.contextWindow;
-  const contextUsage = contextWindow
-    ? `${Math.round(contextWindow.usagePercent)}%`
-    : 'n/a';
-  const sessionLabel = shortenSessionId(session.sessionId);
+  const usage = session.metadata?.usage;
+
+  const segments: string[] = [modelAlias];
+
+  if (!isMinimal) {
+    segments.push(shortenSessionId(session.sessionId));
+    segments.push(`${messageCount} msgs`);
+  }
+
+  // Context window usage: always show, default 0k/0k 0% when no data
+  if (contextWindow) {
+    const used = formatTokenCount(contextWindow.estimatedInputTokens);
+    const cap = formatTokenCount(contextWindow.availableInputTokens);
+    const pct = Math.round(contextWindow.usagePercent);
+    const prefix = contextWindow.overBudget ? '⚠ ' : '';
+    segments.push(`${prefix}${used}/${cap} ${pct}% ctx`);
+  } else {
+    segments.push('0k/0k 0% ctx');
+  }
+
+  // Token consumption: ↓prompt ↑completion (total)
+  if (usage && usage.totalTokens > 0) {
+    const total = formatTokenCount(usage.totalTokens);
+    if (isMinimal) {
+      segments.push(`${total} tok`);
+    } else {
+      segments.push(`↓${formatTokenCount(usage.promptTokens)} ↑${formatTokenCount(usage.completionTokens)} (${total})`);
+    }
+  }
+
+  segments.push(status.status.toLowerCase());
 
   return {
-    subtitle: [
-      modelAlias,
-      sessionLabel,
-      ...(!isMinimal ? [`${messageCount} msgs`] : []),
-      `${contextUsage} ctx`,
-      status.status.toLowerCase(),
-    ].join('  ·  '),
+    subtitle: segments.join('  ·  '),
     ...(!isMinimal ? {pathLine: cwd} : {}),
   };
 }
