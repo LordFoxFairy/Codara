@@ -246,6 +246,7 @@ export async function createCodaraRuntime(options: CodaraRuntimeOptions = {}): P
     autoMemory: options.autoMemory === false
       ? false
       : (typeof options.autoMemory === 'object' && options.autoMemory !== null ? options.autoMemory : {}),
+    summary: options.summary === false ? false : (options.summary ?? {}),
     ...(logging === false ? {logging: false} : {logging}),
     ...(catalog ? {catalog} : {}),
     ...(options.store ? {} : {store: new FileSessionStore({basePath: path.join(codaraPath, 'sessions')})}),
@@ -379,16 +380,20 @@ function assembleCodara(
 }
 
 function resolveCodaraAutoMemory(options: CodaraOptions): AutoMemoryRuntime | undefined {
-  if (options.autoMemory === false || !options.autoMemory) {
+  if (options.autoMemory === false) {
     return undefined;
   }
 
+  const memOpts = typeof options.autoMemory === 'object' && options.autoMemory !== null
+    ? options.autoMemory
+    : {};
+
   return createAutoMemoryRuntime({
-    cwd: options.autoMemory.cwd ?? options.cwd,
-    projectRoot: options.autoMemory.projectRoot ?? options.projectRoot,
-    userHome: options.autoMemory.userHome ?? options.userHome,
-    autoGlobal: options.autoMemory.autoGlobal,
-    rootDir: options.autoMemory.rootDir,
+    cwd: memOpts.cwd ?? options.cwd,
+    projectRoot: memOpts.projectRoot ?? options.projectRoot,
+    userHome: memOpts.userHome ?? options.userHome,
+    autoGlobal: memOpts.autoGlobal,
+    rootDir: memOpts.rootDir,
   });
 }
 
