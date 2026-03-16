@@ -1,14 +1,13 @@
 import {readdir, readFile, stat} from 'node:fs/promises'
 import {homedir} from 'node:os'
 import path from 'node:path'
-import {parseSkillMetadataFromContent} from '@capability/skill/loading'
+import {MAX_SKILL_FILE_SIZE, parseSkillMetadataFromContent} from '@capability/skill/loading'
 import {skillsMetadataReducer} from '@capability/skill/metadata'
 import type {SkillMetadata, SkillStore} from '@capability/skill/types'
 import {resolveWorkspaceRoot} from '@infra/config/workspace'
 
 const DEFAULT_CACHE_TTL_MS = 5_000
 const SKILL_FILE_NAME = 'SKILL.md'
-const MAX_SKILL_FILE_SIZE = 1024 * 1024 // 1MB - skill files should be concise
 
 interface SkillCacheEntry {
   expiresAt: number
@@ -64,8 +63,8 @@ export class FileSystemSkillStore implements SkillStore {
             continue
           }
           sourceSkills.push(metadata)
-        } catch {
-          // Skip unreadable/invalid skill files.
+        } catch (error) {
+          console.warn(`[Skills] Failed to load ${skillPath}:`, error instanceof Error ? error.message : error);
         }
       }
       mergedSkills = skillsMetadataReducer(mergedSkills, sourceSkills)
