@@ -66,6 +66,8 @@ describe("ModelRegistry", () => {
       alias: "sonnet",
       baseUrl: "https://openrouter.ai/api/v1",
       apiKey: "sk-openrouter-test",
+      contextWindow: 200_000,
+      maxOutputTokens: 16_000,
     });
 
     const opus = registry.getByAlias("opus");

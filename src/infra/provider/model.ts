@@ -4,13 +4,20 @@
  * 键为模型 ID（不区分 provider）。
  */
 export const WELL_KNOWN_CONTEXT_WINDOWS: Record<string, {contextWindow: number; maxOutputTokens?: number}> = {
-  // Anthropic
+  // Anthropic — dated IDs
   'claude-opus-4-20250514': {contextWindow: 200_000, maxOutputTokens: 32_000},
   'claude-sonnet-4-20250514': {contextWindow: 200_000, maxOutputTokens: 16_000},
   'claude-3-5-haiku-20241022': {contextWindow: 200_000, maxOutputTokens: 8_192},
   'claude-3-7-sonnet-20250219': {contextWindow: 200_000, maxOutputTokens: 64_000},
+  // Anthropic — short aliases
   'claude-sonnet-4-0': {contextWindow: 200_000, maxOutputTokens: 16_000},
   'claude-opus-4-0': {contextWindow: 200_000, maxOutputTokens: 32_000},
+  'claude-opus-4': {contextWindow: 200_000, maxOutputTokens: 32_000},
+  'claude-sonnet-4': {contextWindow: 200_000, maxOutputTokens: 16_000},
+  'claude-3.5-haiku': {contextWindow: 200_000, maxOutputTokens: 8_192},
+  'claude-3-5-haiku': {contextWindow: 200_000, maxOutputTokens: 8_192},
+  'claude-3.7-sonnet': {contextWindow: 200_000, maxOutputTokens: 64_000},
+  'claude-3-7-sonnet': {contextWindow: 200_000, maxOutputTokens: 64_000},
   // OpenAI
   'gpt-4o': {contextWindow: 128_000, maxOutputTokens: 16_384},
   'gpt-4o-mini': {contextWindow: 128_000, maxOutputTokens: 16_384},
@@ -26,7 +33,31 @@ export const WELL_KNOWN_CONTEXT_WINDOWS: Record<string, {contextWindow: number; 
   // Google
   'gemini-2.5-pro': {contextWindow: 1_000_000, maxOutputTokens: 65_536},
   'gemini-2.5-flash': {contextWindow: 1_000_000, maxOutputTokens: 65_536},
+  // GLM
+  'glm-5': {contextWindow: 128_000, maxOutputTokens: 8_192},
 };
+
+/**
+ * 查找 well-known 模型的上下文窗口。
+ * 支持 OpenRouter 风格的 provider 前缀（如 `anthropic/claude-opus-4`）。
+ */
+export function lookupWellKnownContextWindow(
+  modelId: string,
+): {contextWindow: number; maxOutputTokens?: number} | undefined {
+  // 1. 精确匹配
+  const exact = WELL_KNOWN_CONTEXT_WINDOWS[modelId];
+  if (exact) return exact;
+
+  // 2. 去掉 provider 前缀再匹配（OpenRouter: "anthropic/claude-opus-4" → "claude-opus-4"）
+  const slashIndex = modelId.indexOf('/');
+  if (slashIndex >= 0) {
+    const bare = modelId.slice(slashIndex + 1);
+    const stripped = WELL_KNOWN_CONTEXT_WINDOWS[bare];
+    if (stripped) return stripped;
+  }
+
+  return undefined;
+}
 
 /**
  * Extended Thinking 配置。

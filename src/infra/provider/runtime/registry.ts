@@ -1,5 +1,5 @@
 import type {ModelInfo, ModelMetadataConfig, ModelRoutingConfig, ProviderConfig, RouterRule} from "@infra/provider/model";
-import {WELL_KNOWN_CONTEXT_WINDOWS} from "@infra/provider/model";
+import {lookupWellKnownContextWindow} from "@infra/provider/model";
 import {expandApiKey} from "@infra/provider/runtime/api-key";
 
 /** 模型注册表与别名索引。 */
@@ -86,7 +86,7 @@ export class ModelRegistry {
         }
 
         const modelMetadata = this.modelMetadata[rule.model];
-        const wellKnown = WELL_KNOWN_CONTEXT_WINDOWS[rule.model];
+        const wellKnown = lookupWellKnownContextWindow(rule.model);
         const apiKey = expandApiKey(provider.apiKey, (message) => {
             console.warn(`Provider "${provider.name}" apiKey 配置无效：${message}`);
         });

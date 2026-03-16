@@ -1,5 +1,6 @@
 export {
   WELL_KNOWN_CONTEXT_WINDOWS,
+  lookupWellKnownContextWindow,
 } from '@infra/provider/model';
 export type {
   EffortLevel,
