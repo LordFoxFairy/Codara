@@ -3,28 +3,18 @@ import path from 'node:path';
 import {z} from 'zod';
 import {parseMarkdownDocument} from '@capability/skill/loading';
 import {normalizeDiscoveredSkills} from '@capability/skill/metadata';
-import type {SkillMetadata, SkillStore} from '@capability/skill/types';
+import type {SkillMetadata, SkillStore} from '@infra/context/skill-contracts';
+import type {SubagentDefinition} from '@infra/context/skill-contracts';
 
-const subagentHintsSchema = z.object({
-  model: z.string().trim().min(1).optional(),
-  middlewareNames: z.array(z.string().trim().min(1)).optional(),
-  permissionMode: z.string().trim().min(1).optional(),
-});
-
-const subagentDefinitionSchema = z.object({
-  name: z.string().trim().min(1),
-  description: z.string().trim().min(1),
-  systemPrompt: z.string(),
-  tools: z.array(z.string()).optional(),
-  maxTurns: z.number().optional(),
-  hints: subagentHintsSchema.optional(),
-});
-
-const skillsRuntimeDataSchema = z.object({
-  discovered: z.array(z.custom<SkillMetadata>(() => true)),
-  sources: z.array(z.string()),
-  subagentDefinitions: z.record(z.string(), subagentDefinitionSchema),
-});
+// Re-export contracts so existing consumers continue to work
+export {
+  DEFAULT_SUBAGENT_TYPE,
+  readSkillsRuntimeData,
+  resolveSubagentDefinition,
+  type SkillsRuntimeData,
+  type SubagentDefinition,
+  type SubagentDefinitionHints,
+} from '@infra/context/skill-contracts';
 
 const subagentFrontmatterSchema = z.object({
   name: z.string().trim().min(1).optional(),
@@ -36,40 +26,10 @@ const subagentFrontmatterSchema = z.object({
   max_turns: z.number().optional(),
 }).loose();
 
-export interface SubagentDefinition {
-  name: string;
-  description: string;
-  systemPrompt: string;
-  tools?: string[];
-  maxTurns?: number;
-  /** Non-authoritative metadata from agent markdown. These do not auto-mutate child runtime. */
-  hints?: SubagentDefinitionHints;
-}
-
-export interface SubagentDefinitionHints {
-  model?: string;
-  middlewareNames?: string[];
-  permissionMode?: string;
-}
-
-export interface SkillsRuntimeData {
-  sources: string[];
-  discovered: SkillMetadata[];
-  subagentDefinitions: Record<string, SubagentDefinition>;
-}
-
-export const DEFAULT_SUBAGENT_TYPE = 'general-purpose';
-
-const DEFAULT_SUBAGENT_DEFINITION: SubagentDefinition = {
-  name: DEFAULT_SUBAGENT_TYPE,
-  description: 'General-purpose delegate',
-  systemPrompt: '',
-};
-
 export async function loadSkillsRuntimeData(
   store: SkillStore,
   subagentRoots: string[] = []
-): Promise<SkillsRuntimeData> {
+): Promise<import('@infra/context/skill-contracts').SkillsRuntimeData> {
   const discovered = normalizeDiscoveredSkills(await store.discover());
   const sources = store.listSources?.() ?? [];
   const subagentDefinitions = await loadSubagentDefinitions(discovered, subagentRoots);
@@ -79,34 +39,6 @@ export async function loadSkillsRuntimeData(
     discovered,
     subagentDefinitions,
   };
-}
-
-const runtimeSharedSchema = z.object({
-  skills: z.unknown().optional(),
-}).loose();
-
-export function readSkillsRuntimeData(shared: unknown): SkillsRuntimeData | undefined {
-  const runtime = runtimeSharedSchema.safeParse(shared);
-  const parsed = skillsRuntimeDataSchema.safeParse(runtime.success ? runtime.data.skills : undefined);
-  return parsed.success ? parsed.data : undefined;
-}
-
-export function resolveSubagentDefinition(
-  runtime: SkillsRuntimeData | undefined,
-  subagentType: string | undefined
-): SubagentDefinition {
-  const definitionName = normalizeDefinitionName(subagentType);
-  const definition = runtime?.subagentDefinitions?.[definitionName];
-
-  if (definition) {
-    return definition;
-  }
-
-  if (definitionName === DEFAULT_SUBAGENT_TYPE) {
-    return DEFAULT_SUBAGENT_DEFINITION;
-  }
-
-  throw new Error(`Unknown subagent_type "${definitionName}"`);
 }
 
 async function loadSubagentDefinitions(
@@ -232,9 +164,4 @@ function readStringList(value: unknown): string[] {
   }
 
   return [];
-}
-
-function normalizeDefinitionName(value: string | undefined): string {
-  const normalized = value?.trim();
-  return normalized || DEFAULT_SUBAGENT_TYPE;
 }

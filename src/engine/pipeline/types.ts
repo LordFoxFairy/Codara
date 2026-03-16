@@ -15,21 +15,16 @@ import type {
   AgentRuntimeContext,
   AgentRuntimeValues,
   AgentType,
-} from '@engine/agent/models/types';
+} from '@shared/contracts/agent-types';
+import type {
+  ContextBudgetSnapshot,
+  ExecutionContextMetadata,
+} from '@shared/contracts/execution';
 import type {AgentStateUpdate} from '@engine/agent/models/command';
-import type {ContextBudgetSnapshot} from '@engine/pipeline/budget';
+
+export type {ExecutionContextMetadata} from '@shared/contracts/execution';
 
 export type MiddlewareRuntimeShared = Record<string, unknown>;
-
-export interface ExecutionContextMetadata {
-  sessionId: string;
-  runId: string;
-  turn: number;
-  maxTurns: number;
-  requestId: string;
-  toolIndex?: number;
-  toolCallId?: string;
-}
 
 export interface MiddlewareRuntimeContext {
   /** 有效业务上下文（持久化 + 临时合并后的结果，不包含执行元数据）。 */
