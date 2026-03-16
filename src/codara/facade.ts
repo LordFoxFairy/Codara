@@ -307,8 +307,13 @@ function assembleCodara(
     ...(preloadedSources?.hookPipeline ? {lifecycle: preloadedSources.hookPipeline as SessionLifecycleHooks & AgentLifecycleHooks} : {}),
   });
 
+  // Wrap session with hookRegistry for commands that need it (/reload, /hooks)
+  const commandAgent = preloadedSources?.hookRegistry
+    ? Object.create(session, {hookRegistry: {value: preloadedSources.hookRegistry, writable: false}})
+    : session;
+
   const commands = createCodaraCommandRunner({
-    agent: session,
+    agent: commandAgent,
     environment: {
       cwd: options.cwd,
       projectRoot: options.projectRoot,

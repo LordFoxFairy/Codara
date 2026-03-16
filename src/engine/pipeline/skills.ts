@@ -18,13 +18,11 @@ export interface SkillsMiddlewareOptions {
 }
 
 /**
- * Deepagents-style skills middleware:
- * - discover skills via store on model call
- * - inject skills system section in beforeModel
+ * Skills middleware: discover skills via store and inject into system prompt.
  *
- * Note:
- * - middleware does not keep run-level cache
- * - caching responsibility is delegated to store implementation
+ * @deprecated The runtime now injects skills through the session's SkillsSource
+ * context preparer instead of middleware. This export is kept for external consumers
+ * but is not used by the default Codara runtime.
  */
 export function createSkillsMiddleware(options: SkillsMiddlewareOptions) {
   const store = options.store
