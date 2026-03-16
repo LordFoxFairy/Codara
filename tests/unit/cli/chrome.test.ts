@@ -50,6 +50,66 @@ describe('CLI chrome', () => {
     expect(model.pathLine).toBe('/tmp/codara-demo');
   });
 
+  it('should show MCP indicator when all servers connected', () => {
+    const session: SessionState = {
+      sessionId: 'test-session',
+      sessionStatus: 'ready',
+      createdAt: new Date().toISOString(),
+      updatedAt: new Date().toISOString(),
+    };
+
+    const model = describeStatusBar({
+      layoutMode: 'wide',
+      session,
+      cwd: '/tmp',
+      modelAlias: 'default',
+      runState: {status: 'idle'},
+      mcpStatus: {connected: 3, total: 3},
+    });
+
+    expect(model.subtitle).toContain('MCP:3');
+    expect(model.subtitle).not.toContain('MCP:3/3');
+  });
+
+  it('should show MCP indicator with partial connections', () => {
+    const session: SessionState = {
+      sessionId: 'test-session',
+      sessionStatus: 'ready',
+      createdAt: new Date().toISOString(),
+      updatedAt: new Date().toISOString(),
+    };
+
+    const model = describeStatusBar({
+      layoutMode: 'wide',
+      session,
+      cwd: '/tmp',
+      modelAlias: 'default',
+      runState: {status: 'idle'},
+      mcpStatus: {connected: 2, total: 3},
+    });
+
+    expect(model.subtitle).toContain('MCP:2/3');
+  });
+
+  it('should not show MCP indicator when no servers configured', () => {
+    const session: SessionState = {
+      sessionId: 'test-session',
+      sessionStatus: 'ready',
+      createdAt: new Date().toISOString(),
+      updatedAt: new Date().toISOString(),
+    };
+
+    const model = describeStatusBar({
+      layoutMode: 'wide',
+      session,
+      cwd: '/tmp',
+      modelAlias: 'default',
+      runState: {status: 'idle'},
+    });
+
+    expect(model.subtitle).not.toContain('MCP');
+  });
+
   it('should keep the footer to a single compact hint line', () => {
     expect(describeFooter('wide')).toBe('Enter send  ·  Ctrl+C exit  ·  / commands  ·  Ctrl+T tasks  ·  Ctrl+O expand');
     expect(describeFooter('minimal')).toBe('Enter send  ·  ? shortcuts  ·  Ctrl+C exit');

@@ -5,6 +5,11 @@ import type {CliLayoutMode} from '../../app/layout-mode';
 import type {CliRunState} from '../../app/view-state';
 import {describeStatusIndicator} from '../../hooks/use-status-indicator';
 
+export interface McpStatusSummary {
+  connected: number;
+  total: number;
+}
+
 interface StatusBarProps {
   layoutMode: CliLayoutMode;
   session: SessionState;
@@ -12,6 +17,7 @@ interface StatusBarProps {
   modelAlias: string;
   runState: CliRunState;
   latestRuntimeEvent?: CodaraRuntimeEvent;
+  mcpStatus?: McpStatusSummary;
 }
 
 export interface StatusBarModel {
@@ -23,7 +29,7 @@ import {formatTokenCount} from '../../utils/format';
 
 
 export function describeStatusBar(props: StatusBarProps): StatusBarModel {
-  const {layoutMode, session, cwd, modelAlias, runState, latestRuntimeEvent} = props;
+  const {layoutMode, session, cwd, modelAlias, runState, latestRuntimeEvent, mcpStatus} = props;
   const isMinimal = layoutMode === 'minimal';
   const messageCount = session.metadata?.messageCount ?? 0;
   const status = describeStatusIndicator({runState, latestRuntimeEvent});
@@ -35,6 +41,15 @@ export function describeStatusBar(props: StatusBarProps): StatusBarModel {
   if (!isMinimal) {
     segments.push(shortenSessionId(session.sessionId));
     segments.push(`${messageCount} msgs`);
+  }
+
+  // MCP indicator: show when servers are configured
+  if (mcpStatus && mcpStatus.total > 0) {
+    if (mcpStatus.connected === mcpStatus.total) {
+      segments.push(`MCP:${mcpStatus.total}`);
+    } else {
+      segments.push(`MCP:${mcpStatus.connected}/${mcpStatus.total}`);
+    }
   }
 
   // Context window usage: always show, default 0k/0k 0% when no data
