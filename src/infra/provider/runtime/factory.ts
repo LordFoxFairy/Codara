@@ -1,5 +1,6 @@
 import {initChatModel} from "langchain/chat_models/universal";
 import type {BaseChatModel} from "@langchain/core/language_models/chat_models";
+import type {EffortLevel, ThinkingConfig} from "@infra/provider/model";
 import {ModelRegistry} from "@infra/provider/runtime/registry";
 
 /**
@@ -17,6 +18,33 @@ export interface ChatModelInitOptions {
     configuration?: Record<string, unknown>;
     anthropicApiUrl?: string;
     [key: string]: unknown;
+}
+
+/** Effort Level → thinking budget 映射。 */
+const EFFORT_BUDGET: Record<EffortLevel, number> = {
+    low: 2_000,
+    medium: 10_000,
+    high: 30_000,
+};
+
+/**
+ * 解析最终的 ThinkingConfig：显式 thinking 优先，
+ * 否则根据 effortLevel 自动映射（仅 Anthropic）。
+ */
+export function resolveThinkingConfig(
+    thinking?: ThinkingConfig,
+    effortLevel?: EffortLevel,
+): ThinkingConfig | undefined {
+    if (thinking) {
+        return thinking;
+    }
+    if (effortLevel) {
+        return {
+            type: "enabled",
+            budgetTokens: EFFORT_BUDGET[effortLevel],
+        };
+    }
+    return undefined;
 }
 
 /** 按别名创建聊天模型。 */
@@ -54,6 +82,17 @@ export class ChatModelFactory {
                 ...currentConfig,
                 baseURL: currentConfig.baseURL ?? modelInfo.baseUrl,
             };
+        }
+
+        // Anthropic Extended Thinking 支持。
+        if (modelInfo.type === "anthropic") {
+            const thinking = resolveThinkingConfig(modelInfo.thinking, modelInfo.effortLevel);
+            if (thinking?.type === "enabled" && thinking.budgetTokens) {
+                initOptions.thinking = {
+                    type: "enabled",
+                    budget_tokens: thinking.budgetTokens,
+                };
+            }
         }
 
         return initOptions;

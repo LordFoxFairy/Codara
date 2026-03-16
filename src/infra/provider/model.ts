@@ -28,9 +28,28 @@ export const WELL_KNOWN_CONTEXT_WINDOWS: Record<string, {contextWindow: number; 
   'gemini-2.5-flash': {contextWindow: 1_000_000, maxOutputTokens: 65_536},
 };
 
+/**
+ * Extended Thinking 配置。
+ */
+export interface ThinkingConfig {
+    /** 是否启用 thinking。 */
+    type: 'enabled' | 'disabled';
+    /** thinking token 预算（仅 type='enabled' 时生效）。 */
+    budgetTokens?: number;
+}
+
+/**
+ * Effort Level — 控制 thinking budget 的简化配置。
+ */
+export type EffortLevel = 'low' | 'medium' | 'high';
+
 export interface ModelMetadataConfig {
     contextWindow?: number;
     maxOutputTokens?: number;
+    /** Extended Thinking 配置。 */
+    thinking?: ThinkingConfig;
+    /** Effort Level — 当没有显式 thinking 配置时，映射到 thinking budget。 */
+    effortLevel?: EffortLevel;
 }
 
 /**
@@ -92,4 +111,8 @@ export interface ModelInfo {
     contextWindow?: number;
     /** 可选最大输出 token。 */
     maxOutputTokens?: number;
+    /** Extended Thinking 配置。 */
+    thinking?: ThinkingConfig;
+    /** Effort Level。 */
+    effortLevel?: EffortLevel;
 }

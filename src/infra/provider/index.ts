@@ -2,11 +2,13 @@ export {
   WELL_KNOWN_CONTEXT_WINDOWS,
 } from '@infra/provider/model';
 export type {
+  EffortLevel,
   ModelInfo,
   ModelMetadataConfig,
   ModelRoutingConfig,
   ProviderConfig,
   RouterRule,
+  ThinkingConfig,
 } from '@infra/provider/model';
 export {
   resolveCodaraPath,
