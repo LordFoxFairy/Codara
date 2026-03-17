@@ -10,7 +10,7 @@ import type {
   ToolErrorHandler,
 } from './models/agent';
 import type {BaseMiddleware, MiddlewareRuntimeShared} from '@engine/pipeline/types';
-import type {AgentCheckpointer, AgentCheckpoint} from '@infra/checkpoint/agent';
+import type {AgentCheckpointer, AgentCheckpoint} from '@engine/checkpoint/agent';
 import type {AgentLifecycleHooks} from '@engine/hook/types';
 import {createAgent} from './run/agent-loop';
 

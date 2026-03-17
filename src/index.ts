@@ -87,7 +87,7 @@ export {
   createAgentMemoryCheckpointer,
   type AgentCheckpoint,
   type AgentCheckpointer,
-} from '@infra/checkpoint';
+} from '@engine/checkpoint';
 export {
   createCodaraGuidelinesSource,
   type GuidelinesOptions,
@@ -110,7 +110,7 @@ export {
   filterToolsByReferences,
   normalizeToolReferenceName,
   type BuiltinToolOptions,
-} from '@capability/tool';
+} from '@engine/tool';
 export {
   createCodaraSkillsSource,
   FileSystemSkillStore,

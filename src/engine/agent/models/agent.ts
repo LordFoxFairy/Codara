@@ -2,7 +2,7 @@ import type {AIMessage, AIMessageChunk, BaseMessage, ToolCall, ToolMessage} from
 import type {BaseChatModel} from '@langchain/core/language_models/chat_models';
 import type {StructuredToolInterface} from '@langchain/core/tools';
 import type {BaseMiddleware} from '@engine/pipeline/types';
-import type {AgentCheckpoint, AgentCheckpointer} from '@infra/checkpoint/agent';
+import type {AgentCheckpoint, AgentCheckpointer} from '@engine/checkpoint/agent';
 import type {HILToolMessagePayload} from '@engine/pipeline/hil';
 import type {AgentLifecycleHooks} from '@engine/hook/types';
 import type {

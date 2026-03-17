@@ -4,7 +4,7 @@ import type {
   Checkpointer,
   CompactOptions,
   PutCheckpointInput,
-} from '@infra/checkpoint/types';
+} from '@engine/checkpoint/types';
 import {deepClone} from '@shared/clone';
 
 interface MemoryCodec<T> {

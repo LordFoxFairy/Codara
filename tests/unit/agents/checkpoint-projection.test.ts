@@ -12,7 +12,7 @@ import {
   toCheckpointState,
   type MutableAgentState,
 } from '@engine/agent';
-import type {AgentCheckpoint} from '@infra/checkpoint';
+import type {AgentCheckpoint} from '@engine/checkpoint';
 
 describe('agent checkpoint state helpers', () => {
   it('should convert runtime state into public and checkpoint snapshots without sharing mutable references', () => {

@@ -13,7 +13,7 @@ import path from 'node:path';
 import {CodaraBus} from '../bus/bus';
 import type {BusRequest, BusEvent, ClientId} from '../bus/types';
 import {createSSEResponse, jsonResponse, errorResponse, corsHeaders, type SSEEvent} from './sse';
-import {createAgentFileCheckpointer} from '../infra/checkpoint/agent';
+import {createAgentFileCheckpointer} from '../engine/checkpoint/agent';
 import {resolveCodaraPath} from '../infra/provider/config/loader';
 import {resolveWorkspaceRoot} from '../infra/config/workspace';
 import {createTeamsApiHandler} from './teams-api';

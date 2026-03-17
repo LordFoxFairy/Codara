@@ -39,7 +39,7 @@ import {
   createAgentMemoryCheckpointer,
   type AgentCheckpoint,
   type AgentCheckpointInfo,
-} from '@infra/checkpoint/agent';
+} from '@engine/checkpoint/agent';
 import type {BaseExecutionContext, MiddlewareRuntimeShared} from '@engine/pipeline/types';
 import {MiddlewarePipeline} from '@engine/pipeline/pipeline';
 import {deepClone} from '@shared/clone';

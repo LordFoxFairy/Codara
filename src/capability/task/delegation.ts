@@ -17,7 +17,7 @@ import {resolveModel} from '@engine/agent/bootstrap';
 import type {BaseMiddleware} from '@engine/pipeline/types';
 import type {HILToolMessagePayload} from '@engine/pipeline/hil';
 import type {ExecutionContextMetadata} from '@engine/pipeline/types';
-import type {AgentCheckpointer} from '@infra/checkpoint/agent';
+import type {AgentCheckpointer} from '@engine/checkpoint/agent';
 import {deepClone} from '@shared/clone';
 import {readLatestAssistantText} from '@shared/messages';
 import type {DelegatedAgentResult} from '@shared/delegation-result';

@@ -14,8 +14,8 @@ import {
   type SubagentDefinition,
 } from '@infra/context/skill-contracts';
 import {readBaseSystemMessage} from '@infra/context/system-message';
-import {filterToolsByReferences} from '@capability/tool';
-import {createAgentMemoryCheckpointer} from '@infra/checkpoint/agent';
+import {filterToolsByReferences} from '@engine/tool';
+import {createAgentMemoryCheckpointer} from '@engine/checkpoint/agent';
 
 export const TASK_TOOL_NAME = 'Task';
 

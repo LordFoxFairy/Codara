@@ -2,7 +2,7 @@ import {describe, expect, it} from 'bun:test';
 import {AIMessage, HumanMessage, SystemMessage, type BaseMessage} from '@langchain/core/messages';
 import type {BaseChatModel} from '@langchain/core/language_models/chat_models';
 import {createAgent} from '@engine/agent';
-import {createAgentMemoryCheckpointer} from '@infra/checkpoint';
+import {createAgentMemoryCheckpointer} from '@engine/checkpoint';
 import {createBudgetMiddleware, type ModelCallContext} from '@engine/pipeline';
 import {MiddlewarePipeline} from '@engine/pipeline/pipeline';
 import {createSummaryMiddleware} from '@engine/pipeline/summary';

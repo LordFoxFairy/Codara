@@ -3,8 +3,8 @@ import path from 'node:path';
 import type {BaseChatModel} from '@langchain/core/language_models/chat_models';
 import type {StructuredToolInterface} from '@langchain/core/tools';
 import type {AgentContextPreparer} from '@engine/agent';
-import type {AgentCheckpointer} from '@infra/checkpoint';
-import {createAgentFileCheckpointer} from '@infra/checkpoint';
+import type {AgentCheckpointer} from '@engine/checkpoint';
+import {createAgentFileCheckpointer} from '@engine/checkpoint';
 import type {BaseMiddleware, HILMiddlewareOptions, LoggingMiddlewareOptions} from '@engine/pipeline';
 import type {SummarySettings} from '@engine/pipeline/summary';
 import {
@@ -58,7 +58,7 @@ import {
   type SessionStore,
 } from '@engine/session';
 import {resolveWorkspaceRoot} from '@infra/config/workspace';
-import {createBuiltinTools} from '@capability/tool';
+import {createBuiltinTools} from '@engine/tool';
 import {
   applyPreparedInstructionContext,
   buildBaseSystemMessage,

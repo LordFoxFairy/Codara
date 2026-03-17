@@ -17,13 +17,13 @@ import type {
   ToolErrorHandler,
 } from '@engine/agent/models/agent';
 import {createAgent, normalizeAgentInput} from '@engine/agent/run/agent-loop';
-import type {CompactOptions} from '@infra/checkpoint/types';
+import type {CompactOptions} from '@engine/checkpoint/types';
 import {
   createAgentMemoryCheckpointer,
   putForkCheckpoint,
   putManualCheckpoint,
   type AgentCheckpointer,
-} from '@infra/checkpoint/agent';
+} from '@engine/checkpoint/agent';
 import {MIDDLEWARE_NAMES, type BaseMiddleware} from '@engine/pipeline/types';
 import {
   compactConversationWithSummary,
