@@ -1,14 +1,13 @@
-import { join } from 'node:path';
 import { randomUUID } from 'node:crypto';
 import type { Team, TeamMember, MemberRole } from '@capability/team/types';
 import { TeamRegistry } from '@capability/team/team-registry';
 import { LocalTransport } from '@capability/team/transport/local-transport';
-import { TeamEventEmitter, type TeamBusEvent } from '@capability/team/events';
+import type { TeamTransport } from '@capability/team/transport/types';
+import type { TeamBusEvent } from '@capability/team/events';
 import { MemberRunner } from '@capability/team/runtime/member-runner';
 import type { MemberSession, MemberSessionOptions } from '@capability/team/runtime/member-runner';
 import { createMemberWorktree, cleanupTeamWorktrees, listTeamWorktrees } from '@capability/team/worktree/team-worktree';
 import { mergeBranch, type MergeResult } from '@capability/team/worktree/merge-coordinator';
-import type { SharedState } from '@capability/team/state/shared-state';
 import { TeamPersistence } from '@capability/team/persistence/team-persistence';
 import type { TeamMessage } from '@capability/team/types';
 import type { CodaraRuntimeEvent, CodaraRuntimeEventPhase, CodaraRuntimeEventStatus } from '@engine/session/runtime-events';
@@ -18,29 +17,25 @@ import type { CodaraRuntimeEvent, CodaraRuntimeEventPhase, CodaraRuntimeEventSta
 export interface TeamRuntimeOptions {
   registry: TeamRegistry;
   projectRoot: string;
-  /** Directory for team data (persistence, logs). */
-  teamsDir?: string;
+  /** Agent session factory — created externally (e.g. via bootstrapAgent). */
+  agentFactory?: (member: TeamMember) => MemberSession;
+  /** Legacy alias for agentFactory — accepts MemberSessionOptions instead of TeamMember. */
   createSession?: (options: MemberSessionOptions) => MemberSession;
-  /** Optional persistence — when provided, team/member state auto-saves on changes. */
-  persistence?: TeamPersistence;
-  /** Optional shared state — when provided, team status changes are reflected for cross-team visibility. */
-  sharedState?: SharedState;
-  /**
-   * Direct callback for team runtime events.
-   * When provided, TeamRuntime maps internal TeamBusEvents to CodaraRuntimeEvents
-   * and delivers them through this callback — no EventBridge or monkey-patching needed.
-   */
+  /** Direct callback for runtime events — no EventEmitter or Bridge needed. */
   onTeamEvent?: (event: CodaraRuntimeEvent) => void;
-  /** Session ID (or getter) used when constructing CodaraRuntimeEvents. Required when onTeamEvent is provided. */
+  /** Session ID (or getter) used when constructing CodaraRuntimeEvents. */
   sessionId?: string | (() => string);
+  /** Optional persistence — team/member state auto-saves on changes. */
+  persistence?: TeamPersistence;
+  /** Optional transport — defaults to LocalTransport per team. */
+  transport?: TeamTransport;
 }
 
 // ─── TeamRuntime ────────────────────────────────────────────────────
 
 export class TeamRuntime {
   private runners = new Map<string, MemberRunner>();          // memberId -> runner
-  private transports = new Map<string, LocalTransport>();     // teamId -> transport
-  private emitters = new Map<string, TeamEventEmitter>();     // teamId -> emitter
+  private transports = new Map<string, TeamTransport>();      // teamId -> transport
   private teamMessages = new Map<string, TeamMessage[]>();    // teamId -> in-memory message buffer
   private healthTimers = new Map<string, ReturnType<typeof setInterval>>(); // teamId -> health check timer
 
@@ -67,15 +62,26 @@ export class TeamRuntime {
     this.sessionIdGetter = sessionId;
   }
 
-  // ── Runtime Event Mapping ─────────────────────────────────────────
+  // ── Domain Event Emission ───────────────────────────────────────────
 
   /**
-   * Maps a TeamBusEvent to a CodaraRuntimeEvent and delivers it via the
-   * onTeamEvent callback.  This replaces TeamEventBridge — the mapping
-   * logic lives inside TeamRuntime so no external bridge or monkey-patching
-   * is required.
+   * Emit a domain event from tools or internal lifecycle.
+   * Maps TeamBusEvent → CodaraRuntimeEvent and delivers via onTeamEvent callback.
+   * This replaces TeamEventEmitter — tools call this instead of emitter.emit().
    */
+  emitDomainEvent(teamId: string, event: TeamBusEvent): void {
+    this.emitTeamEvent(teamId, event);
+  }
+
+  // ── Runtime Event Mapping ─────────────────────────────────────────
+
   private emitTeamEvent(teamId: string, event: TeamBusEvent): void {
+    // Notify domain event subscribers (SSE, etc.)
+    for (const listener of this.eventSubscribers) {
+      try { listener(teamId, event); } catch { /* swallow */ }
+    }
+
+    // Map to runtime event and deliver via callback
     if (!this.onTeamEventCallback || !this.sessionIdGetter) return;
     const sessionId = typeof this.sessionIdGetter === 'function' ? this.sessionIdGetter() : this.sessionIdGetter;
 
@@ -286,7 +292,7 @@ export class TeamRuntime {
   }
 
   /**
-   * Start a team: create transport and emitter.
+   * Start a team: create transport.
    *
    * The main Codara agent acts as the team leader (like Claude Code).
    * No separate leader session is spawned — the main agent coordinates
@@ -297,10 +303,8 @@ export class TeamRuntime {
     const team = registry.getTeam(teamId);
     if (!team) throw new Error(`Team ${teamId} not found`);
 
-    const transport = new LocalTransport();
-    const emitter = new TeamEventEmitter();
+    const transport = this.options.transport ?? new LocalTransport();
     this.transports.set(teamId, transport);
-    this.emitters.set(teamId, emitter);
 
     // In-memory message buffer — persisted as part of TeamSnapshot
     if (!this.teamMessages.has(teamId)) {
@@ -309,9 +313,7 @@ export class TeamRuntime {
 
     registry.updateTeamStatus(teamId, 'running');
     this.persistTeam(teamId);
-    this.syncSharedState(teamId, 'running');
     const runningEvent: TeamBusEvent = { type: 'team.running', data: { teamId } };
-    emitter.emit(runningEvent);
     this.emitTeamEvent(teamId, runningEvent);
 
     // Periodic health check — detects deadlocks in the job board
@@ -328,8 +330,7 @@ export class TeamRuntime {
     if (!team) throw new Error(`Team ${teamId} not found`);
 
     const transport = this.transports.get(teamId);
-    const emitter = this.emitters.get(teamId);
-    if (!transport || !emitter) throw new Error(`Team ${teamId} not started`);
+    if (!transport) throw new Error(`Team ${teamId} not started`);
 
     const member = this.buildMember(teamId, name, role, model);
 
@@ -342,15 +343,19 @@ export class TeamRuntime {
     }
 
     registry.registerMember(teamId, member);
-    transport.registerMember(member.memberId);
+    if ('registerMember' in transport) {
+      (transport as LocalTransport).registerMember(member.memberId);
+    }
     this.persistMember(member);
 
     const joinedEvent: TeamBusEvent = {
       type: 'member.joined',
       data: { teamId, memberId: member.memberId, name, role, mode: 'local' },
     };
-    emitter.emit(joinedEvent);
     this.emitTeamEvent(teamId, joinedEvent);
+
+    // Create an emitEvent callback scoped to this team for the tool context
+    const emitEvent = (event: TeamBusEvent) => this.emitTeamEvent(teamId, event);
 
     const runner = new MemberRunner({
       member,
@@ -360,7 +365,7 @@ export class TeamRuntime {
       maxDepth: team.config.maxDepth,
       registry,
       transport,
-      emitter,
+      emitEvent,
       projectRoot: this.options.projectRoot,
       createSession: this.options.createSession,
     });
@@ -368,12 +373,14 @@ export class TeamRuntime {
     this.runners.set(member.memberId, runner);
 
     // Wire inbox-driven wake: when transport delivers a message, wake the runner
-    transport.subscribe(member.memberId, (msg) => {
-      runner.wake();
-      // Buffer message in memory (persisted as part of TeamSnapshot)
-      const msgs = this.teamMessages.get(teamId);
-      if (msgs) msgs.push(msg);
-    });
+    if ('subscribe' in transport) {
+      (transport as LocalTransport).subscribe(member.memberId, (msg) => {
+        runner.wake();
+        // Buffer message in memory (persisted as part of TeamSnapshot)
+        const msgs = this.teamMessages.get(teamId);
+        if (msgs) msgs.push(msg);
+      });
+    }
 
     runner.start().catch(err => this.handleMemberCrash(teamId, member.memberId, err));
 
@@ -383,7 +390,6 @@ export class TeamRuntime {
   /** Graceful shutdown of a team. */
   async shutdownTeam(teamId: string): Promise<void> {
     const { registry } = this.options;
-    const emitter = this.emitters.get(teamId);
 
     // Cascade: shut down sub-teams first (depth-first)
     const subTeams = this.getSubTeams(teamId);
@@ -434,13 +440,11 @@ export class TeamRuntime {
 
     registry.updateTeamStatus(teamId, 'completed');
     this.persistTeam(teamId);
-    this.syncSharedState(teamId, 'completed');
 
     const summary = failedMerges.length > 0
       ? `Team shutdown complete. ${failedMerges.length} merge(s) had conflicts.`
       : 'Team shutdown complete. All branches merged.';
     const completedEvent: TeamBusEvent = { type: 'team.completed', data: { teamId, summary } };
-    emitter?.emit(completedEvent);
     this.emitTeamEvent(teamId, completedEvent);
 
     // Cleanup worktrees (best-effort — only after merge attempts)
@@ -455,7 +459,6 @@ export class TeamRuntime {
     this.healthTimers.delete(teamId);
 
     this.transports.delete(teamId);
-    this.emitters.delete(teamId);
     this.teamMessages.delete(teamId);
   }
 
@@ -479,9 +482,7 @@ export class TeamRuntime {
     }
     this.options.registry.updateTeamStatus(teamId, 'failed');
     this.persistTeam(teamId);
-    this.syncSharedState(teamId, 'failed');
     const failedEvent: TeamBusEvent = { type: 'team.failed', data: { teamId, error: 'Killed by user' } };
-    this.emitters.get(teamId)?.emit(failedEvent);
     this.emitTeamEvent(teamId, failedEvent);
 
     const killTimer = this.healthTimers.get(teamId);
@@ -489,7 +490,6 @@ export class TeamRuntime {
     this.healthTimers.delete(teamId);
 
     this.transports.delete(teamId);
-    this.emitters.delete(teamId);
     this.teamMessages.delete(teamId);
   }
 
@@ -503,9 +503,7 @@ export class TeamRuntime {
     }
     this.options.registry.updateTeamStatus(teamId, 'paused');
     this.persistTeam(teamId);
-    this.syncSharedState(teamId, 'paused');
     const pausedEvent: TeamBusEvent = { type: 'team.paused', data: { teamId, reason: 'User requested' } };
-    this.emitters.get(teamId)?.emit(pausedEvent);
     this.emitTeamEvent(teamId, pausedEvent);
 
     // Pause health check — no point checking a paused team
@@ -524,9 +522,7 @@ export class TeamRuntime {
     }
     this.options.registry.updateTeamStatus(teamId, 'running');
     this.persistTeam(teamId);
-    this.syncSharedState(teamId, 'running');
     const resumeEvent: TeamBusEvent = { type: 'team.running', data: { teamId } };
-    this.emitters.get(teamId)?.emit(resumeEvent);
     this.emitTeamEvent(teamId, resumeEvent);
 
     // Restart health check timer
@@ -540,16 +536,32 @@ export class TeamRuntime {
     return this.runners.get(memberId);
   }
 
-  getTransport(teamId: string): LocalTransport | undefined {
+  getTransport(teamId: string): TeamTransport | undefined {
     return this.transports.get(teamId);
-  }
-
-  getEmitter(teamId: string): TeamEventEmitter | undefined {
-    return this.emitters.get(teamId);
   }
 
   getTeamMessages(teamId: string): TeamMessage[] {
     return this.teamMessages.get(teamId) ?? [];
+  }
+
+  /**
+   * Subscribe to all team domain events.
+   * Returns an unsubscribe function.
+   * Used by SSE endpoints that need to stream events to clients.
+   */
+  private eventSubscribers = new Set<(teamId: string, event: TeamBusEvent) => void>();
+
+  subscribeDomainEvents(listener: (teamId: string, event: TeamBusEvent) => void): () => void {
+    this.eventSubscribers.add(listener);
+    return () => { this.eventSubscribers.delete(listener); };
+  }
+
+  /**
+   * Create an emitEvent callback scoped to a team.
+   * Tools use this to emit domain events without needing a TeamEventEmitter.
+   */
+  createEmitEvent(teamId: string): (event: TeamBusEvent) => void {
+    return (event: TeamBusEvent) => this.emitTeamEvent(teamId, event);
   }
 
   // ── Persistence ─────────────────────────────────────────────────
@@ -571,18 +583,6 @@ export class TeamRuntime {
   private persistMember(member: TeamMember): void {
     // Member persistence is now part of the team snapshot — trigger a full team save.
     this.persistTeam(member.teamId);
-  }
-
-  /** Update shared state with current team status and job summary. */
-  private syncSharedState(teamId: string, status: string): void {
-    const { sharedState, registry } = this.options;
-    if (!sharedState) return;
-    const board = registry.getJobBoard(teamId);
-    const progress = board.getProgress();
-    sharedState.updateTeamState(teamId, {
-      status,
-      jobsSummary: {total: progress.total, done: progress.done, failed: 0},
-    });
   }
 
   // ── Private ──────────────────────────────────────────────────────
@@ -609,8 +609,6 @@ export class TeamRuntime {
             'All remaining jobs are blocked — no progress path exists. Consider cancelling blocked jobs or adding new unblocked ones.',
         },
       };
-      const emitter = this.emitters.get(teamId);
-      emitter?.emit(deadlockEvent);
       this.emitTeamEvent(teamId, deadlockEvent);
     }
   }
@@ -620,13 +618,10 @@ export class TeamRuntime {
     const member = registry.getMember(memberId);
     if (!member) return;
 
-    const emitter = this.emitters.get(teamId);
-
     if (member.role === 'leader') {
       // Leader crash -> pause entire team
       this.pauseTeam(teamId);
       const crashEvent: TeamBusEvent = { type: 'team.paused', data: { teamId, reason: `Leader crashed: ${error}` } };
-      emitter?.emit(crashEvent);
       this.emitTeamEvent(teamId, crashEvent);
     } else {
       // Worker crash -> release their job, emit event
@@ -638,7 +633,6 @@ export class TeamRuntime {
         type: 'member.failed',
         data: { teamId, memberId, error: String(error) },
       };
-      emitter?.emit(failEvent);
       this.emitTeamEvent(teamId, failEvent);
     }
   }

@@ -21,11 +21,11 @@ function buildClaimJob(ctx: TeamToolContext) {
         status: 'working',
       });
 
-      ctx.emitter.emit({
+      ctx.emitEvent({
         type: 'job.claimed',
         data: {teamId: ctx.teamId, jobId, memberId: ctx.memberId},
       });
-      ctx.emitter.emit({
+      ctx.emitEvent({
         type: 'member.working',
         data: {teamId: ctx.teamId, memberId: ctx.memberId, jobId},
       });
@@ -78,7 +78,7 @@ function buildSubmitJob(ctx: TeamToolContext) {
         await ctx.transport.send(leader.memberId, msg);
       }
 
-      ctx.emitter.emit({
+      ctx.emitEvent({
         type: 'job.submitted',
         data: {teamId: ctx.teamId, jobId, memberId: ctx.memberId},
       });

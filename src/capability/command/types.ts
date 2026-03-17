@@ -3,8 +3,6 @@ import type {CompactOptions} from '@engine/checkpoint/types';
 import type {HookRegistry} from '@engine/hook/registry';
 import type {TeamRegistry} from '@capability/team/team-registry';
 import type {TeamRuntime} from '@capability/team/runtime/team-runtime';
-import type {RemotePool} from '@capability/team/remote-pool';
-
 export interface ParsedCodaraCommand {
   raw: string;
   name: string;
@@ -98,7 +96,6 @@ export interface CodaraCommandAgent {
   getMcpStatus?(): import('@engine/mcp').McpClientInfo[];
   teamRegistry?: TeamRegistry;
   teamRuntime?: TeamRuntime;
-  remotePool?: RemotePool;
 }
 
 export interface CodaraCommandEnvironment {

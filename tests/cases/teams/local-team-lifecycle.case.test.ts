@@ -14,9 +14,6 @@ import {describe, test, expect, beforeEach, afterEach} from 'bun:test';
 
 import {TeamRegistry} from '@capability/team/team-registry';
 import {TeamRuntime} from '@capability/team/runtime/team-runtime';
-import {TeamEventBridge} from '@capability/team/bridge/team-event-bridge';
-import {TeamEventEmitter} from '@capability/team/events';
-import type {TeamBusEvent} from '@capability/team/events';
 import {MemorySharedState} from '@capability/team/state/memory-shared-state';
 import {createConversationTeamTools} from '@capability/team/tools/conversation-tools';
 import type {CodaraRuntimeEvent} from '@engine/session/runtime-events';
@@ -35,43 +32,6 @@ function createTestRuntime(projectRoot = '/tmp/test-teams') {
     }),
   });
   return {registry, runtime};
-}
-
-function createBridge(sessionId = 'test-session') {
-  const events: CodaraRuntimeEvent[] = [];
-  const bridge = new TeamEventBridge({
-    sessionId,
-    onRuntimeEvent: (event) => events.push(event),
-  });
-  return {bridge, events};
-}
-
-function patchRuntimeWithBridge(
-  runtime: TeamRuntime,
-  bridge: TeamEventBridge,
-) {
-  const originalStart = runtime.startTeam.bind(runtime);
-  runtime.startTeam = async (teamId: string) => {
-    await originalStart(teamId);
-    const emitter = runtime.getEmitter(teamId);
-    if (emitter) {
-      bridge.attachTeam(teamId, emitter);
-      // Replay team.running event (emitted inside startTeam before bridge attachment)
-      emitter.emit({type: 'team.running', data: {teamId}});
-    }
-  };
-
-  const originalShutdown = runtime.shutdownTeam.bind(runtime);
-  runtime.shutdownTeam = async (teamId: string) => {
-    await originalShutdown(teamId);
-    bridge.detachTeam(teamId);
-  };
-
-  const originalKill = runtime.killTeam.bind(runtime);
-  runtime.killTeam = async (teamId: string) => {
-    await originalKill(teamId);
-    bridge.detachTeam(teamId);
-  };
 }
 
 // ─── 1. Team Lifecycle: create → start → shutdown ────────────────────
@@ -162,112 +122,7 @@ describe('Teams Case: Local Team Lifecycle', () => {
   });
 });
 
-// ─── 2. Event Bridge ─────────────────────────────────────────────────
-
-describe('Teams Case: Event Bridge', () => {
-  let registry: TeamRegistry;
-  let runtime: TeamRuntime;
-  let bridge: TeamEventBridge;
-  let events: CodaraRuntimeEvent[];
-
-  beforeEach(() => {
-    ({registry, runtime} = createTestRuntime());
-    ({bridge, events} = createBridge());
-    patchRuntimeWithBridge(runtime, bridge);
-  });
-
-  test('team start emits runtime event with kind=team, phase=start', async () => {
-    const team = registry.createTeam({name: 'bridge-test', goal: 'Test bridging'});
-    await runtime.startTeam(team.teamId);
-
-    const startEvent = events.find(e => e.kind === 'team' && e.phase === 'start');
-    expect(startEvent).toBeDefined();
-    expect(startEvent!.status).toBe('running');
-    expect(startEvent!.label).toContain(team.teamId);
-  });
-
-  test('team shutdown emits runtime event with phase=end, status=done', async () => {
-    const team = registry.createTeam({name: 'bridge-shutdown', goal: 'Test shutdown'});
-    await runtime.startTeam(team.teamId);
-    events.length = 0; // clear start events
-
-    await runtime.shutdownTeam(team.teamId);
-
-    const endEvent = events.find(e => e.kind === 'team' && e.phase === 'end');
-    expect(endEvent).toBeDefined();
-    expect(endEvent!.status).toBe('done');
-  });
-
-  test('team kill emits runtime event with phase=end, status=error', async () => {
-    const team = registry.createTeam({name: 'bridge-kill', goal: 'Test kill'});
-    await runtime.startTeam(team.teamId);
-    events.length = 0;
-
-    await runtime.killTeam(team.teamId);
-
-    const endEvent = events.find(e => e.kind === 'team' && e.phase === 'end');
-    expect(endEvent).toBeDefined();
-    expect(endEvent!.status).toBe('error');
-  });
-
-  test('team pause emits runtime event with phase=update, status=paused', async () => {
-    const team = registry.createTeam({name: 'bridge-pause', goal: 'Test pause'});
-    await runtime.startTeam(team.teamId);
-    events.length = 0;
-
-    runtime.pauseTeam(team.teamId);
-
-    const pauseEvent = events.find(e => e.kind === 'team' && e.phase === 'update' && e.status === 'paused');
-    expect(pauseEvent).toBeDefined();
-  });
-
-  test('start/end events have matching parentId', async () => {
-    const team = registry.createTeam({name: 'bridge-pair', goal: 'Test pairing'});
-    await runtime.startTeam(team.teamId);
-    const startEvent = events.find(e => e.kind === 'team' && e.phase === 'start')!;
-
-    await runtime.shutdownTeam(team.teamId);
-    const endEvent = events.find(e => e.kind === 'team' && e.phase === 'end')!;
-
-    expect(endEvent.parentId).toBe(startEvent.id);
-  });
-
-  test('bridge detaches on shutdown — no events after detach', async () => {
-    const team = registry.createTeam({name: 'bridge-detach', goal: 'Test detach'});
-    await runtime.startTeam(team.teamId);
-    await runtime.shutdownTeam(team.teamId);
-
-    const countAfterShutdown = events.length;
-
-    // Creating another team — events should NOT be emitted for the old team
-    // (it's already detached). Only new team events appear.
-    const team2 = registry.createTeam({name: 'bridge-new', goal: 'New team'});
-    await runtime.startTeam(team2.teamId);
-
-    // New events are only from team2
-    const newEvents = events.slice(countAfterShutdown);
-    const oldTeamEvents = newEvents.filter(e => e.label?.includes(team.teamId));
-    expect(oldTeamEvents).toHaveLength(0);
-
-    await runtime.shutdownTeam(team2.teamId);
-  });
-
-  test('detachAll stops all event forwarding', async () => {
-    const team = registry.createTeam({name: 'detach-all', goal: 'Test detach all'});
-    await runtime.startTeam(team.teamId);
-    bridge.detachAll();
-
-    const countBefore = events.length;
-    // Manually emit — should not appear in events
-    runtime.getEmitter(team.teamId)?.emit({type: 'team.paused', data: {teamId: team.teamId, reason: 'test'}});
-
-    // Wait a tick for any async delivery
-    await new Promise(r => setTimeout(r, 10));
-    expect(events.length).toBe(countBefore);
-  });
-});
-
-// ─── 3. Conversation Tools ───────────────────────────────────────────
+// ─── 2. Conversation Tools ───────────────────────────────────────────
 
 describe('Teams Case: Conversation Tools', () => {
   let registry: TeamRegistry;
@@ -557,27 +412,6 @@ describe('Teams Case: Resource Cleanup', () => {
     expect(runtime.getEmitter(team.teamId)).toBeUndefined();
   });
 
-  test('bridge + runtime combo: no dangling subscriptions after lifecycle', async () => {
-    const {registry, runtime} = createTestRuntime();
-    const {bridge, events} = createBridge();
-    patchRuntimeWithBridge(runtime, bridge);
-
-    // Create and destroy 3 teams
-    for (let i = 0; i < 3; i++) {
-      const team = registry.createTeam({name: `cycle-${i}`, goal: `Cycle ${i}`});
-      await runtime.startTeam(team.teamId);
-      await runtime.shutdownTeam(team.teamId);
-    }
-
-    const teamEventCount = events.filter(e => e.kind === 'team').length;
-    expect(teamEventCount).toBeGreaterThan(0);
-
-    // After all teams shutdown and bridge detached, no new events should appear
-    const countAfter = events.length;
-    // Simulate: nothing else can emit since all emitters are cleaned up
-    await new Promise(r => setTimeout(r, 50));
-    expect(events.length).toBe(countAfter);
-  });
 });
 
 // ─── 6. SharedState ──────────────────────────────────────────────────

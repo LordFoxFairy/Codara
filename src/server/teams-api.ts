@@ -25,7 +25,8 @@ interface TeamRegistryLike {
 /** Subset of TeamRuntime used by the HTTP API. */
 interface TeamRuntimeLike {
   getTransport(teamId: string): {send(channel: string, msg: unknown): Promise<void>} | undefined;
-  getEmitter(teamId: string): {subscribe(fn: (event: {type: string; data: {teamId?: string}}) => void): () => void} | undefined;
+  /** Subscribe to all domain events. Returns unsubscribe function. */
+  subscribeDomainEvents(listener: (teamId: string, event: {type: string; data: Record<string, unknown>}) => void): () => void;
   pauseTeam(teamId: string): void;
   resumeTeam(teamId: string): void;
   killTeam(teamId: string): Promise<void>;
@@ -326,13 +327,13 @@ export function createTeamsApiHandler(deps: TeamsApiDependencies = {}) {
  * Create an SSE response that streams team events.
  *
  * When `teamId` is provided, events are filtered to that team only.
- * Subscribes to the TeamEventEmitter from the runtime; if no runtime
+ * Subscribes to TeamRuntime.subscribeDomainEvents; if no runtime
  * is available, keeps the connection alive with periodic heartbeats.
  */
 // WeakMap to associate SSE cleanup functions with their ReadableStreamDefaultController instances.
 const sseCleanupMap = new WeakMap<object, () => void>();
 
-function createTeamSSEResponse(deps: TeamsApiDependencies, teamId?: string): Response {
+function createTeamSSEResponse(deps: TeamsApiDependencies, filterTeamId?: string): Response {
   const encoder = new TextEncoder();
 
   const stream = new ReadableStream<Uint8Array>({
@@ -345,59 +346,19 @@ function createTeamSSEResponse(deps: TeamsApiDependencies, teamId?: string): Res
 
       const runtime = deps.getTeamRuntime?.();
 
-      if (runtime && teamId) {
-        // Subscribe to a specific team's emitter.
-        const emitter = runtime.getEmitter(teamId);
-        if (emitter) {
-          const unsub = emitter.subscribe((event: {type: string; data: {teamId?: string}}) => {
-            try {
-              const sse: SSEEvent = {event: event.type, data: event.data};
-              controller.enqueue(encoder.encode(formatSSE(sse)));
-            } catch {
-              // Stream closed by client — cleanup will happen via cancel().
-            }
-          });
-          unsubscribers.push(unsub);
-        }
-      } else if (runtime) {
-        // Global fan-out: subscribe to all current team emitters.
-        // Also poll for new teams periodically.
-        const subscribedTeams = new Set<string>();
-
-        const subscribeToTeam = (tid: string) => {
-          if (subscribedTeams.has(tid)) return;
-          const emitter = runtime.getEmitter(tid);
-          if (!emitter) return;
-          subscribedTeams.add(tid);
-          const unsub = emitter.subscribe((event: {type: string; data: {teamId?: string}}) => {
-            try {
-              const sse: SSEEvent = {event: event.type, data: event.data};
-              controller.enqueue(encoder.encode(formatSSE(sse)));
-            } catch {
-              // Stream closed.
-            }
-          });
-          unsubscribers.push(unsub);
-        };
-
-        // Subscribe to all currently known teams.
-        const registry = deps.getTeamRegistry?.();
-        if (registry) {
-          for (const team of registry.listTeams()) {
-            subscribeToTeam(team.teamId);
+      if (runtime) {
+        // Subscribe to all domain events via the centralized callback.
+        const unsub = runtime.subscribeDomainEvents((eventTeamId, event) => {
+          // Filter by teamId if requested
+          if (filterTeamId && eventTeamId !== filterTeamId) return;
+          try {
+            const sse: SSEEvent = {event: event.type, data: event.data as Record<string, unknown>};
+            controller.enqueue(encoder.encode(formatSSE(sse)));
+          } catch {
+            // Stream closed by client — cleanup will happen via cancel().
           }
-        }
-
-        // Re-scan for new teams every 5 seconds.
-        const scanInterval = setInterval(() => {
-          const reg = deps.getTeamRegistry?.();
-          if (reg) {
-            for (const team of reg.listTeams()) {
-              subscribeToTeam(team.teamId);
-            }
-          }
-        }, 5_000);
-        unsubscribers.push(() => clearInterval(scanInterval));
+        });
+        unsubscribers.push(unsub);
       }
 
       // Heartbeat every 30 s to keep proxies / load-balancers from closing the connection.

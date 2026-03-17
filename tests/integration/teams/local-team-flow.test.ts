@@ -8,9 +8,6 @@ import {JobBoard} from '@capability/team/job-board';
 import {LocalTransport} from '@capability/team/transport/local-transport';
 import {TeamEventEmitter} from '@capability/team/events';
 import type {TeamBusEvent} from '@capability/team/events';
-import {TeamStore} from '@capability/team/persistence/team-store';
-import {JobBoardStore} from '@capability/team/persistence/job-board-store';
-import {MemberStore} from '@capability/team/persistence/member-store';
 import {createLeaderTools} from '@capability/team/tools/leader-tools';
 import {createWorkerTools} from '@capability/team/tools/worker-tools';
 import type {TeamMember} from '@capability/team/types';
@@ -568,121 +565,7 @@ describe('Leader Tools Integration', () => {
   });
 });
 
-// ─── 6. Persistence Round Trip ──────────────────────────────────────
-
-describe('Persistence Round Trip', () => {
-  let tmpDir: string;
-
-  beforeEach(() => {
-    tmpDir = mkdtempSync(join(tmpdir(), 'codara-team-test-'));
-  });
-
-  afterEach(() => {
-    rmSync(tmpDir, {recursive: true, force: true});
-  });
-
-  test('save and load team via TeamStore', () => {
-    const registry = new TeamRegistry();
-    const team = registry.createTeam({name: 'persist-team', goal: 'Persistence test'});
-
-    const store = new TeamStore(tmpDir);
-    store.save(team);
-
-    const loaded = store.load(team.teamId);
-    expect(loaded).toBeDefined();
-    expect(loaded!.teamId).toBe(team.teamId);
-    expect(loaded!.name).toBe('persist-team');
-    expect(loaded!.goal).toBe('Persistence test');
-    expect(loaded!.status).toBe('created');
-  });
-
-  test('save and load job board via JobBoardStore', () => {
-    const board = new JobBoard('team_persist');
-    const [jobA] = board.planJobs([{title: 'A', description: 'First task'}]);
-    board.planJobs([{title: 'B', description: 'Second task', blockedBy: [jobA.id]}]);
-
-    const store = new JobBoardStore(tmpDir);
-    store.save(board);
-
-    const loaded = store.load('team_persist');
-    expect(loaded).toBeDefined();
-    expect(loaded!.getAllJobs()).toHaveLength(2);
-
-    const loadedA = loaded!.getJob(jobA.id)!;
-    expect(loadedA.title).toBe('A');
-    expect(loadedA.status).toBe('ready');
-  });
-
-  test('save and load members via MemberStore', () => {
-    const teamId = 'team_members';
-    const m1 = makeMember(teamId, {name: 'alice', role: 'leader'});
-    const m2 = makeMember(teamId, {name: 'bob', role: 'worker'});
-
-    const store = new MemberStore(tmpDir);
-    store.save(m1);
-    store.save(m2);
-
-    const loaded1 = store.load(teamId, m1.memberId);
-    expect(loaded1).toBeDefined();
-    expect(loaded1!.name).toBe('alice');
-    expect(loaded1!.role).toBe('leader');
-
-    const allMembers = store.loadByTeam(teamId);
-    expect(allMembers).toHaveLength(2);
-    expect(allMembers.map((m) => m.name).sort()).toEqual(['alice', 'bob']);
-  });
-
-  test('save registry index and reload', () => {
-    const registry = new TeamRegistry();
-    const t1 = registry.createTeam({name: 'team-a', goal: 'A'});
-    const t2 = registry.createTeam({name: 'team-b', goal: 'B'});
-
-    const store = new TeamStore(tmpDir);
-    store.saveRegistry([t1, t2]);
-
-    const entries = store.loadRegistry();
-    expect(entries).toHaveLength(2);
-    expect(entries.map((e) => e.name).sort()).toEqual(['team-a', 'team-b']);
-  });
-
-  test('full round trip: team + members + jobs', () => {
-    const registry = new TeamRegistry();
-    const team = registry.createTeam({name: 'full-roundtrip', goal: 'Full test'});
-    const teamId = team.teamId;
-
-    const leader = makeMember(teamId, {role: 'leader', name: 'leader-rt'});
-    const worker = makeMember(teamId, {role: 'worker', name: 'worker-rt'});
-    registry.registerMember(teamId, leader);
-    registry.registerMember(teamId, worker);
-
-    const board = registry.getJobBoard(teamId);
-    const [jobA] = board.planJobs([{title: 'Task A', description: 'Do A'}]);
-    board.planJobs([{title: 'Task B', description: 'Do B', blockedBy: [jobA.id]}]);
-
-    // Save everything
-    const teamStore = new TeamStore(tmpDir);
-    const jobStore = new JobBoardStore(tmpDir);
-    const memberStore = new MemberStore(tmpDir);
-
-    teamStore.save(team);
-    jobStore.save(board);
-    memberStore.save(leader);
-    memberStore.save(worker);
-
-    // Load and verify
-    const loadedTeam = teamStore.load(teamId)!;
-    expect(loadedTeam.name).toBe('full-roundtrip');
-
-    const loadedBoard = jobStore.load(teamId)!;
-    expect(loadedBoard.getAllJobs()).toHaveLength(2);
-
-    const loadedMembers = memberStore.loadByTeam(teamId);
-    expect(loadedMembers).toHaveLength(2);
-    expect(loadedMembers.map((m) => m.role).sort()).toEqual(['leader', 'worker']);
-  });
-});
-
-// ─── 7. Events ──────────────────────────────────────────────────────
+// ─── 6. Events ──────────────────────────────────────────────────────
 
 describe('Events', () => {
   let emitter: TeamEventEmitter;

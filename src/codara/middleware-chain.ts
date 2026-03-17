@@ -1,3 +1,4 @@
+import path from 'node:path';
 import type {BaseChatModel} from '@langchain/core/language_models/chat_models';
 import type {StructuredToolInterface} from '@langchain/core/tools';
 import type {AgentContextPreparer} from '@engine/agent';
@@ -11,6 +12,7 @@ import {
   createSkillsMiddleware,
   MIDDLEWARE_NAMES,
   createTodoListMiddleware,
+  createDailySessionFileLogSink,
 } from '@engine/pipeline';
 import {
   createPermissionMiddleware,
@@ -28,8 +30,88 @@ import {
   applyPreparedInstructionContext,
   buildBaseSystemMessage,
 } from '@infra/context/system-message';
-import type {CodaraMiddlewareOptions, CodaraRuntimeOptions} from './facade';
+import {createBuiltinTools} from '@engine/tool';
+import {FileSystemSkillStore, type SkillStore} from '@capability/skill';
+import {resolveWorkspaceRoot} from '@infra/config/workspace';
+import type {CodaraMiddlewareOptions, CodaraRuntimeOptions, CodaraOptions} from './facade';
 import {createCodaraChatModel, type CodaraModelCatalog} from './facade';
+
+// ── Tool Assembly ──
+
+export type CodaraToolsOptions = Pick<CodaraOptions, 'builtinTools' | 'cwd' | 'tools'>;
+
+export function createCodaraTools(options: CodaraToolsOptions = {}): StructuredToolInterface[] {
+  if (options.builtinTools === false) {
+    return [...(options.tools ?? [])];
+  }
+
+  const byName = new Map<string, StructuredToolInterface>();
+  for (const tool of createBuiltinTools({cwd: options.cwd, extended: true})) {
+    byName.set(tool.name, tool);
+  }
+  for (const tool of options.tools ?? []) {
+    byName.set(tool.name, tool);
+  }
+  return [...byName.values()];
+}
+
+// ── Skill Resolution ──
+
+export function resolveCodaraSkills(
+  options: Pick<CodaraOptions, 'skills' | 'cwd' | 'projectRoot' | 'userHome'>,
+): {store: SkillStore; subagentRoots: string[]} | undefined {
+  if (options.skills === false) {
+    return undefined;
+  }
+  if (options.skills?.store) {
+    return {store: options.skills.store, subagentRoots: options.skills.subagentRoots ?? []};
+  }
+  return {
+    store: new FileSystemSkillStore({
+      ...(options.skills?.sources ? {sources: options.skills.sources} : {}),
+      ...((options.skills?.projectRoot || options.projectRoot || options.skills?.cwd || options.cwd)
+        ? {
+            projectRoot: resolveWorkspaceRoot({
+              projectRoot: options.skills?.projectRoot ?? options.projectRoot,
+              cwd: options.skills?.cwd ?? options.cwd,
+            }),
+          }
+        : {}),
+      ...((options.skills?.cwd || options.cwd) ? {cwd: options.skills?.cwd ?? options.cwd} : {}),
+      ...((options.skills?.userHome || options.userHome) ? {userHome: options.skills?.userHome ?? options.userHome} : {}),
+      ...(typeof options.skills?.cacheTtlMs === 'number' ? {cacheTtlMs: options.skills.cacheTtlMs} : {}),
+      ...(options.skills?.claudeSkillsCompat ? {claudeSkillsCompat: true} : {}),
+    }),
+    subagentRoots: options.skills?.subagentRoots ?? [],
+  };
+}
+
+// ── Runtime Logging Resolution ──
+
+const DEFAULT_RUNTIME_FILE_LOGGING_ENABLED = true;
+
+export function resolveRuntimeLoggingOptions(
+  options: Pick<CodaraRuntimeOptions, 'logging' | 'cwd' | 'projectRoot'>,
+): false | LoggingMiddlewareOptions {
+  if (!DEFAULT_RUNTIME_FILE_LOGGING_ENABLED || options.logging === false || options.logging?.enabled === false) {
+    return false;
+  }
+
+  const projectRoot = resolveWorkspaceRoot({
+    cwd: options.cwd,
+    projectRoot: options.projectRoot,
+  });
+  const rootDir = path.join(projectRoot, '.codara', 'sessions');
+  const provided = options.logging ?? {};
+
+  return {
+    ...provided,
+    enabled: true,
+    logger: provided.logger ?? createDailySessionFileLogSink({rootDir}),
+  };
+}
+
+// ── Middleware Assembly ──
 
 export function createCodaraMiddlewares(
   options: CodaraMiddlewareOptions = {},

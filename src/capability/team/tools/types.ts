@@ -1,12 +1,13 @@
 import type {TeamRegistry} from '@capability/team/team-registry';
 import type {TeamTransport} from '@capability/team/transport/types';
-import type {TeamEventEmitter} from '@capability/team/events';
+import type {TeamBusEvent} from '@capability/team/events';
 
 export interface TeamToolContext {
   teamId: string;
   memberId: string;
   registry: TeamRegistry;
   transport: TeamTransport;
-  emitter: TeamEventEmitter;
+  /** Emit a domain event — routed through TeamRuntime to the onTeamEvent callback. */
+  emitEvent: (event: TeamBusEvent) => void;
   projectRoot: string;
 }

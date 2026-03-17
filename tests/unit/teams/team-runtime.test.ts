@@ -21,13 +21,19 @@ function createMockSession(behavior?: {
 
 let registry: TeamRegistry;
 let runtime: TeamRuntime;
+let domainEvents: { teamId: string; event: TeamBusEvent }[];
 
 function setup(sessionFactory?: typeof createMockSession) {
   registry = new TeamRegistry();
+  domainEvents = [];
   runtime = new TeamRuntime({
     registry,
     projectRoot: '/tmp/test',
     createSession: sessionFactory ?? (() => createMockSession()),
+  });
+  // Subscribe to domain events for test assertions
+  runtime.subscribeDomainEvents((teamId, event) => {
+    domainEvents.push({ teamId, event });
   });
 }
 
@@ -62,28 +68,20 @@ describe('TeamRuntime', () => {
     const members = registry.getMembersByTeam(team.teamId);
     expect(members.length).toBe(0);
 
-    // Transport and emitter should exist
+    // Transport should exist
     expect(runtime.getTransport(team.teamId)).toBeDefined();
-    expect(runtime.getEmitter(team.teamId)).toBeDefined();
   });
 
   test('startTeam throws for non-existent team', async () => {
     await expect(runtime.startTeam('nonexistent')).rejects.toThrow('not found');
   });
 
-  test('startTeam emits team.running event', async () => {
+  test('startTeam emits team.running event via subscribeDomainEvents', async () => {
     const team = createTestTeam();
     await runtime.startTeam(team.teamId);
 
-    const emitter = runtime.getEmitter(team.teamId);
-    expect(emitter).toBeDefined();
-
-    // Verify the emitter was created (event was already emitted during startTeam)
-    const events: TeamBusEvent[] = [];
-    emitter!.subscribe(e => events.push(e));
-
-    // The team.running event was already emitted before we subscribed,
-    // but we can verify the team is in running state
+    const runningEvents = domainEvents.filter(e => e.event.type === 'team.running');
+    expect(runningEvents.length).toBe(1);
     expect(registry.getTeam(team.teamId)?.status).toBe('running');
   });
 
@@ -91,17 +89,13 @@ describe('TeamRuntime', () => {
     const team = createTestTeam();
     await runtime.startTeam(team.teamId);
 
-    const emitter = runtime.getEmitter(team.teamId)!;
-    const events: TeamBusEvent[] = [];
-    emitter.subscribe(e => events.push(e));
-
     const worker = await runtime.spawnMember(team.teamId, 'worker-1', 'worker');
 
     expect(worker.name).toBe('worker-1');
     expect(worker.role).toBe('worker');
     expect(worker.teamId).toBe(team.teamId);
 
-    const joinedEvents = events.filter(e => e.type === 'member.joined');
+    const joinedEvents = domainEvents.filter(e => e.event.type === 'member.joined');
     expect(joinedEvents.length).toBe(1);
 
     // Cleanup
@@ -184,10 +178,6 @@ describe('TeamRuntime', () => {
     const team = createTestTeam();
     await runtime.startTeam(team.teamId);
 
-    const emitter = runtime.getEmitter(team.teamId)!;
-    const events: TeamBusEvent[] = [];
-    emitter.subscribe(e => events.push(e));
-
     // Spawn a worker that will crash
     const worker = await runtime.spawnMember(team.teamId, 'crash-worker', 'worker');
     const transport = runtime.getTransport(team.teamId)!;
@@ -206,7 +196,7 @@ describe('TeamRuntime', () => {
     runtime.getRunner(worker.memberId)?.wake();
     await new Promise(r => setTimeout(r, 100));
 
-    const failEvents = events.filter(e => e.type === 'member.failed');
+    const failEvents = domainEvents.filter(e => e.event.type === 'member.failed');
     expect(failEvents.length).toBeGreaterThanOrEqual(1);
 
     await runtime.shutdownTeam(team.teamId);
@@ -252,12 +242,12 @@ describe('TeamRuntime', () => {
     await runtime.shutdownTeam(team.teamId);
   });
 
-  test('getEmitter returns emitter for team', async () => {
+  test('subscribeDomainEvents receives events', async () => {
     const team = createTestTeam();
     await runtime.startTeam(team.teamId);
 
-    expect(runtime.getEmitter(team.teamId)).toBeDefined();
-    expect(runtime.getEmitter('nonexistent')).toBeUndefined();
+    const teamEvents = domainEvents.filter(e => e.teamId === team.teamId);
+    expect(teamEvents.length).toBeGreaterThan(0);
 
     await runtime.shutdownTeam(team.teamId);
   });
@@ -297,18 +287,17 @@ describe('TeamRuntime', () => {
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     (registry as any).jobBoards.set(team.teamId, deadlockedBoard);
 
-    const emitter = runtime.getEmitter(team.teamId)!;
-    const events: TeamBusEvent[] = [];
-    emitter.subscribe(e => events.push(e));
+    // Clear events so we only see the health check result
+    domainEvents.length = 0;
 
     // Directly invoke the private health check (avoids waiting 5s in tests)
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     (runtime as any).checkTeamHealth(team.teamId);
 
-    const deadlockEvents = events.filter(e => e.type === 'team.deadlock');
+    const deadlockEvents = domainEvents.filter(e => e.event.type === 'team.deadlock');
     expect(deadlockEvents.length).toBe(1);
-    expect(deadlockEvents[0]!.data.teamId).toBe(team.teamId);
-    expect(deadlockEvents[0]!.data.message).toContain('blocked');
+    expect(deadlockEvents[0]!.event.data.teamId).toBe(team.teamId);
+    expect((deadlockEvents[0]!.event.data as any).message).toContain('blocked');
 
     await runtime.shutdownTeam(team.teamId);
   });
@@ -321,15 +310,14 @@ describe('TeamRuntime', () => {
     const jobBoard = registry.getJobBoard(team.teamId);
     jobBoard.planJobs([{ title: 'Normal job', description: 'Do something' }]);
 
-    const emitter = runtime.getEmitter(team.teamId)!;
-    const events: TeamBusEvent[] = [];
-    emitter.subscribe(e => events.push(e));
+    // Clear events
+    domainEvents.length = 0;
 
     // Directly invoke the private health check
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     (runtime as any).checkTeamHealth(team.teamId);
 
-    const deadlockEvents = events.filter(e => e.type === 'team.deadlock');
+    const deadlockEvents = domainEvents.filter(e => e.event.type === 'team.deadlock');
     expect(deadlockEvents.length).toBe(0);
 
     await runtime.shutdownTeam(team.teamId);
@@ -373,15 +361,14 @@ describe('TeamRuntime', () => {
     // Pause team — health check should be a no-op for non-running teams
     runtime.pauseTeam(team.teamId);
 
-    const emitter = runtime.getEmitter(team.teamId)!;
-    const events: TeamBusEvent[] = [];
-    emitter.subscribe(e => events.push(e));
+    // Clear events
+    domainEvents.length = 0;
 
     // Directly invoke health check — should skip because team is paused
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     (runtime as any).checkTeamHealth(team.teamId);
 
-    const deadlockEvents = events.filter(e => e.type === 'team.deadlock');
+    const deadlockEvents = domainEvents.filter(e => e.event.type === 'team.deadlock');
     expect(deadlockEvents.length).toBe(0);
 
     runtime.resumeTeam(team.teamId);

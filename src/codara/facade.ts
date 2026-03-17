@@ -2,38 +2,48 @@ import {existsSync} from 'node:fs';
 import path from 'node:path';
 import type {BaseChatModel} from '@langchain/core/language_models/chat_models';
 import type {StructuredToolInterface} from '@langchain/core/tools';
-import type {AgentCheckpointer} from '@engine/checkpoint';
 import {createAgentFileCheckpointer} from '@engine/checkpoint';
-import type {BaseMiddleware, HILMiddlewareOptions, LoggingMiddlewareOptions} from '@engine/pipeline';
-import type {SummarySettings} from '@engine/pipeline/summary';
-import {createDailySessionFileLogSink} from '@engine/pipeline';
 import {ensurePermissionSettingsFile} from '@engine/pipeline/permission';
-import {createTaskFileStore, type TaskStore} from '@capability/task';
+import {createTaskFileStore} from '@capability/task';
 import {ChatModelFactory, loadModelRoutingConfig, loadModelRoutingConfigFromPath, ModelRegistry, resolveCodaraPath, type ModelInfo, type ModelRoutingConfig} from '@infra/provider';
 import {createCodaraGuidelinesSource, type GuidelinesSource} from '@infra/context/instructions/guidelines';
 import {createCodaraPromptSource, type PromptSource} from '@infra/context/instructions/prompt';
 import {createAutoMemoryRuntime, type AutoMemoryRuntime} from '@infra/context/memory/auto-memory';
-import {createCodaraSkillsSource, FileSystemSkillStore, type SkillStore} from '@capability/skill';
+import {createCodaraSkillsSource} from '@capability/skill';
 import {createSkillCodaraCommands} from '@capability/command/skills';
-import {createCodaraCommandRunner, type CodaraCommandResult, type CodaraCommandSpec} from '@capability/command';
+import {createCodaraCommandRunner, type CodaraCommandResult} from '@capability/command';
 import {
   createSession, FileSessionStore,
   type CodaraRuntimeEvent, type CodaraRuntimeEventListener,
-  type Session, type SessionState, type SessionStore,
+  type SessionState, type SessionStore,
 } from '@engine/session';
 import {resolveWorkspaceRoot} from '@infra/config/workspace';
-import {createBuiltinTools} from '@engine/tool';
 import {HookRegistryImpl, HookPipeline, createHookExecutor} from '@engine/hook';
 import type {HookSource, HookRegistry, SessionLifecycleHooks, AgentLifecycleHooks} from '@engine/hook';
-import {loadMcpConfig, createMcpManager, createMcpLangChainTools, type McpClientInfo, type McpConfig, type McpManager} from '@engine/mcp';
+import {loadMcpConfig, createMcpManager, createMcpLangChainTools, type McpManager} from '@engine/mcp';
 import type {TeamRegistry} from '@capability/team/team-registry';
 import type {TeamRuntime} from '@capability/team/runtime/team-runtime';
-import type {RemotePool} from '@capability/team/remote-pool';
-import {createCodaraMiddlewares, createRuntimeDefaultMiddlewares} from './middleware-chain';
+import {createCodaraMiddlewares, createRuntimeDefaultMiddlewares, createCodaraTools, resolveCodaraSkills, resolveRuntimeLoggingOptions} from './middleware-chain';
 import {assembleTeamSystem, getTeamSummaries, getTeamDetail} from './team-assembly';
+import type {
+  Codara, CodaraOptions, CodaraRuntimeOptions,
+  CreateCodaraModelCatalogOptions, CreateCodaraChatModelOptions,
+} from './types';
+
+// Re-export all types from types.ts for backward compatibility
+export type {
+  Codara, CodaraOptions, CodaraRuntimeOptions, CodaraAutoMemoryOptions,
+  CodaraSkillOptions, CodaraMiddlewareOptions,
+  CreateCodaraModelCatalogOptions, CreateCodaraChatModelOptions,
+  TeamQuerySummary, TeamQueryMember, TeamQueryJob, TeamQueryDetail,
+} from './types';
+
+// Re-export from middleware-chain (tests import from @codara/facade)
+export {createCodaraMiddlewares, createCodaraTools, type CodaraToolsOptions} from './middleware-chain';
 
 export const DEFAULT_CODARA_MODEL_ALIAS = 'default';
-const DEFAULT_RUNTIME_FILE_LOGGING_ENABLED = true;
+
+// ── Model Catalog ──
 
 export class CodaraModelCatalog {
   constructor(
@@ -58,116 +68,7 @@ export class CodaraModelCatalog {
   }
 }
 
-export interface CodaraSkillOptions {
-  store?: SkillStore;
-  sources?: string[];
-  subagentRoots?: string[];
-  cwd?: string;
-  projectRoot?: string;
-  userHome?: string;
-  cacheTtlMs?: number;
-  /** 启用后额外扫描 ~/.claude/skills/（Claude Code 兼容），默认关闭。 */
-  claudeSkillsCompat?: boolean;
-}
-
-export interface CodaraAutoMemoryOptions {
-  cwd?: string;
-  projectRoot?: string;
-  userHome?: string;
-  autoGlobal?: boolean;
-  rootDir?: string;
-}
-
-export interface CodaraOptions {
-  id?: string;
-  config?: ModelRoutingConfig;
-  alias?: string;
-  model?: BaseChatModel | Promise<BaseChatModel>;
-  catalog?: CodaraModelCatalog | Promise<CodaraModelCatalog>;
-  cwd?: string;
-  projectRoot?: string;
-  userHome?: string;
-  tools?: StructuredToolInterface[];
-  builtinTools?: boolean;
-  middleware?: BaseMiddleware[];
-  skills?: false | CodaraSkillOptions;
-  summary?: false | SummarySettings;
-  hil?: false | HILMiddlewareOptions;
-  logging?: false | LoggingMiddlewareOptions;
-  sessionId?: string;
-  restore?: 'latest' | 'never';
-  store?: SessionStore;
-  checkpointer?: AgentCheckpointer;
-  handleToolErrors?: boolean;
-  inputBudget?: import('@engine/agent').AgentInputBudget;
-  messages?: import('@engine/agent').AgentInput;
-  context?: Record<string, unknown>;
-  values?: Record<string, unknown>;
-  autoMemory?: false | CodaraAutoMemoryOptions;
-  /** MCP server configuration. `false` to disable, omit for auto-detection from .codara/mcp.json. */
-  mcp?: false | McpConfig;
-}
-
-export interface CodaraRuntimeOptions extends CodaraOptions {
-  codaraPath?: string;
-  taskStore?: TaskStore;
-}
-
-export type CreateCodaraModelCatalogOptions = Pick<CodaraOptions, 'config'>;
-
-export type CreateCodaraChatModelOptions =
-  Pick<CodaraOptions, 'alias' | 'config'>
-  & {
-    catalog?: CodaraModelCatalog | Promise<CodaraModelCatalog>;
-  };
-
-export type CodaraToolsOptions = Pick<CodaraOptions, 'builtinTools' | 'cwd' | 'tools'>;
-
-export type CodaraMiddlewareOptions = Pick<CodaraOptions, 'middleware' | 'hil' | 'logging'>;
-
-export interface TeamQuerySummary {
-  teamId: string;
-  name: string;
-  status: string;
-  goal: string;
-  memberCount: number;
-  jobProgress: { done: number; total: number };
-}
-
-export interface TeamQueryMember {
-  memberId: string;
-  name: string;
-  role: string;
-  status: string;
-  model?: string;
-  currentJobId?: string;
-}
-
-export interface TeamQueryJob {
-  id: string;
-  title: string;
-  status: string;
-  assignee?: string;
-  blockedBy: string[];
-}
-
-export interface TeamQueryDetail {
-  teamId: string;
-  name: string;
-  status: string;
-  goal: string;
-  members: TeamQueryMember[];
-  jobs: TeamQueryJob[];
-}
-
-export type Codara = Session & {
-  listCommands(): Promise<readonly CodaraCommandSpec[]>;
-  executeCommand(input: string): Promise<CodaraCommandResult>;
-  listSessions(options?: import('@engine/session').SessionListOptions): Promise<SessionState[]>;
-  getMcpStatus(): McpClientInfo[];
-  getTeamSummaries(): TeamQuerySummary[];
-  getTeamDetail(teamId: string): TeamQueryDetail | undefined;
-};
+// ── Model Factory Functions ──
 
 export async function createCodaraModelCatalog(
   options: CreateCodaraModelCatalogOptions = {},
@@ -184,96 +85,76 @@ export async function createCodaraChatModel(
   return catalog.create(options.alias);
 }
 
+// ── Public Entry Points ──
+
 export function createCodara(options: CodaraOptions = {}): Codara {
   return assembleCodara(options);
 }
 
 export async function createCodaraRuntime(options: CodaraRuntimeOptions = {}): Promise<Codara> {
   const codaraPath = resolveCodaraRuntimePath(options);
-  const projectRoot = resolveWorkspaceRoot({
-    cwd: options.cwd,
-    projectRoot: options.projectRoot,
-  });
+  const projectRoot = resolveWorkspaceRoot({cwd: options.cwd, projectRoot: options.projectRoot});
+
+  // 1. Infrastructure
   const guidelinesSource = createCodaraGuidelinesSource({
-    cwd: options.cwd,
-    projectRoot: options.projectRoot,
-    userHome: options.userHome,
+    cwd: options.cwd, projectRoot: options.projectRoot, userHome: options.userHome,
   });
   const promptSource = createCodaraPromptSource({
-    cwd: options.cwd,
-    projectRoot: options.projectRoot,
-    userHome: options.userHome,
+    cwd: options.cwd, projectRoot: options.projectRoot, userHome: options.userHome,
   });
   const taskStore = options.taskStore ?? createTaskFileStore({
     rootDir: path.join(projectRoot, '.codara', 'tasks'),
   });
   ensurePermissionSettingsFile({
-    cwd: options.cwd,
-    projectRoot: options.projectRoot,
-    userHome: options.userHome,
+    cwd: options.cwd, projectRoot: options.projectRoot, userHome: options.userHome,
   });
+
+  // 2. Model catalog
   const catalog = !options.model && !options.catalog && !options.config
     ? loadModelRoutingConfigFromPath(codaraPath).then((config) => createCodaraModelCatalog({config}))
     : options.catalog;
+
+  // 3. Logging + tools
   const logging = resolveRuntimeLoggingOptions(options);
   const runtimeTools: StructuredToolInterface[] = createCodaraTools({
-    builtinTools: options.builtinTools,
-    cwd: options.cwd,
-    tools: options.tools,
+    builtinTools: options.builtinTools, cwd: options.cwd, tools: options.tools,
   });
 
-  // ── Hooks System Assembly ──
-  const hookSources: HookSource[] = [];
-  const projectHooksPath = path.join(codaraPath, 'hooks.json');
-  hookSources.push({kind: 'project', path: projectHooksPath});
+  // 4. Hooks
+  const hookSources: HookSource[] = [{kind: 'project', path: path.join(codaraPath, 'hooks.json')}];
   const userHome = options.userHome ?? process.env.HOME ?? '';
-  if (userHome) {
-    const userHooksPath = path.join(userHome, '.codara', 'hooks.json');
-    hookSources.push({kind: 'user', path: userHooksPath});
-  }
+  if (userHome) hookSources.push({kind: 'user', path: path.join(userHome, '.codara', 'hooks.json')});
   const hookRegistry = new HookRegistryImpl();
   await hookRegistry.load(hookSources);
   const hookPipeline = new HookPipeline(hookRegistry, {
     createStrategy: (hook) => createHookExecutor(hook, {projectRoot: codaraPath}),
   });
 
-  // ── MCP Assembly ──
+  // 5. MCP
   let mcpManager: McpManager | undefined;
   if (options.mcp !== false) {
-    const mcpConfig = options.mcp ?? await loadMcpConfig({
-      projectRoot,
-      userHome: options.userHome,
-    });
+    const mcpConfig = options.mcp ?? await loadMcpConfig({projectRoot, userHome: options.userHome});
     if (Object.keys(mcpConfig.mcpServers).length > 0) {
       mcpManager = createMcpManager(mcpConfig);
       await mcpManager.init();
-      const mcpTools = createMcpLangChainTools(mcpManager);
-      runtimeTools.push(...mcpTools);
+      runtimeTools.push(...createMcpLangChainTools(mcpManager));
     }
   }
 
-  // ── Team System Assembly ──
+  // 6. Team system
   const teamSystem = await assembleTeamSystem({options, codaraPath, projectRoot, catalog});
   for (const t of teamSystem.teamTools) runtimeTools.push(t);
 
+  // 7. Middleware chain
   const runtimeMiddlewares = createRuntimeDefaultMiddlewares({
-    options,
-    runtimeTools,
-    taskStore,
-    logging,
-    catalog,
-    promptSource,
-    guidelinesSource,
-    hookPipeline,
+    options, runtimeTools, taskStore, logging, catalog, promptSource, guidelinesSource, hookPipeline,
   });
 
+  // 8. Assemble facade
   return assembleCodara({
     ...options,
-    tools: runtimeTools,
-    middleware: runtimeMiddlewares,
-    hil: false,
-    autoMemory: options.autoMemory === false
-      ? false
+    tools: runtimeTools, middleware: runtimeMiddlewares, hil: false,
+    autoMemory: options.autoMemory === false ? false
       : (typeof options.autoMemory === 'object' && options.autoMemory !== null ? options.autoMemory : {}),
     summary: options.summary === false ? false : (options.summary ?? {}),
     ...(logging === false ? {logging: false} : {logging}),
@@ -285,24 +166,40 @@ export async function createCodaraRuntime(options: CodaraRuntimeOptions = {}): P
     restore: options.restore ?? 'latest',
   }, undefined, {
     promptSource, guidelinesSource, hookPipeline, hookRegistry, mcpManager,
-    teamRegistry: teamSystem.teamRegistry,
-    teamRuntime: teamSystem.teamRuntime,
-    remotePool: teamSystem.remotePool,
+    teamRegistry: teamSystem.teamRegistry, teamRuntime: teamSystem.teamRuntime,
   });
 }
 
-function assembleCodara(
+// ── Session Openers ──
+
+export async function openCodaraSession(
+  options: CodaraOptions & {sessionId: string; store: SessionStore},
+): Promise<Codara> {
+  const sessionState = await options.store.get(options.sessionId);
+  if (!sessionState) throw new Error(`Session not found: ${options.sessionId}`);
+  return reopenCodaraSession(options, sessionState);
+}
+
+export async function openLatestCodaraSession(
+  options: CodaraOptions & {store: SessionStore},
+): Promise<Codara> {
+  const sessions = await options.store.list({
+    includeArchived: true, sortBy: 'updatedAt', sortOrder: 'desc',
+  });
+  const latest = sessions.find((s) => s.sessionStatus !== 'closed') ?? sessions[0];
+  if (!latest) throw new Error('No sessions found');
+  return reopenCodaraSession(options, latest);
+}
+
+// ── Core Assembly ──
+
+export function assembleCodara(
   options: CodaraOptions,
   restoredState?: SessionState,
   preloadedSources?: {
-    promptSource?: PromptSource;
-    guidelinesSource?: GuidelinesSource;
-    hookPipeline?: HookPipeline;
-    hookRegistry?: HookRegistry;
-    mcpManager?: McpManager;
-    teamRegistry?: TeamRegistry;
-    teamRuntime?: TeamRuntime;
-    remotePool?: RemotePool;
+    promptSource?: PromptSource; guidelinesSource?: GuidelinesSource;
+    hookPipeline?: HookPipeline; hookRegistry?: HookRegistry;
+    mcpManager?: McpManager; teamRegistry?: TeamRegistry; teamRuntime?: TeamRuntime;
   },
 ): Codara {
   const skills = resolveCodaraSkills(options);
@@ -310,31 +207,22 @@ function assembleCodara(
   const autoMemory = resolveCodaraAutoMemory(options);
   const alias = normalizeAlias(options.alias);
   const guidelinesSource = preloadedSources?.guidelinesSource ?? createCodaraGuidelinesSource({
-    cwd: options.cwd,
-    projectRoot: options.projectRoot,
-    userHome: options.userHome,
+    cwd: options.cwd, projectRoot: options.projectRoot, userHome: options.userHome,
   });
   const promptSource = preloadedSources?.promptSource ?? createCodaraPromptSource({
-    cwd: options.cwd,
-    projectRoot: options.projectRoot,
-    userHome: options.userHome,
+    cwd: options.cwd, projectRoot: options.projectRoot, userHome: options.userHome,
   });
+
   const tools = createCodaraTools(options);
   const session = createSession({
     ...(restoredState ? {state: restoredState} : {}),
-    id: options.id,
-    sessionId: options.sessionId,
-    store: options.store,
-    checkpointer: options.checkpointer,
-    restore: options.restore,
-    messages: options.messages,
-    context: options.context,
-    values: options.values,
+    id: options.id, sessionId: options.sessionId, store: options.store,
+    checkpointer: options.checkpointer, restore: options.restore,
+    messages: options.messages, context: options.context, values: options.values,
     modelRef: alias,
     ...(options.model ? {model: options.model} : {}),
     ...(!options.model ? {modelCatalog: options.catalog ?? createCodaraModelCatalog({config: options.config})} : {}),
-    guidelinesSource,
-    promptSource,
+    guidelinesSource, promptSource,
     ...(skillsSource ? {skillsSource} : {}),
     ...(autoMemory ? {autoMemory} : {}),
     tools,
@@ -345,221 +233,83 @@ function assembleCodara(
     ...(preloadedSources?.hookPipeline ? {lifecycle: preloadedSources.hookPipeline as SessionLifecycleHooks & AgentLifecycleHooks} : {}),
   });
 
-  // Wrap session with extra properties for commands that need it (/reload, /hooks, /mcp)
+  // Extra properties for commands (/reload, /hooks, /mcp)
   const mcpManager = preloadedSources?.mcpManager;
   const extraProps: Record<string, PropertyDescriptor> = {};
-  if (preloadedSources?.hookRegistry) {
-    extraProps.hookRegistry = {value: preloadedSources.hookRegistry, writable: false};
-  }
-  if (mcpManager) {
-    extraProps.getMcpStatus = {value: () => mcpManager.status(), writable: false};
-  }
-  if (preloadedSources?.teamRegistry) {
-    extraProps.teamRegistry = {value: preloadedSources.teamRegistry, writable: false};
-  }
-  if (preloadedSources?.teamRuntime) {
-    extraProps.teamRuntime = {value: preloadedSources.teamRuntime, writable: false};
-  }
-  if (preloadedSources?.remotePool) {
-    extraProps.remotePool = {value: preloadedSources.remotePool, writable: false};
-  }
-  const commandAgent = Object.keys(extraProps).length > 0
-    ? Object.create(session, extraProps)
-    : session;
+  if (preloadedSources?.hookRegistry) extraProps.hookRegistry = {value: preloadedSources.hookRegistry, writable: false};
+  if (mcpManager) extraProps.getMcpStatus = {value: () => mcpManager.status(), writable: false};
+  if (preloadedSources?.teamRegistry) extraProps.teamRegistry = {value: preloadedSources.teamRegistry, writable: false};
+  if (preloadedSources?.teamRuntime) extraProps.teamRuntime = {value: preloadedSources.teamRuntime, writable: false};
+  const commandAgent = Object.keys(extraProps).length > 0 ? Object.create(session, extraProps) : session;
 
   const commands = createCodaraCommandRunner({
     agent: commandAgent,
-    environment: {
-      cwd: options.cwd,
-      projectRoot: options.projectRoot,
-      userHome: options.userHome,
-      modelAlias: alias,
-    },
+    environment: {cwd: options.cwd, projectRoot: options.projectRoot, userHome: options.userHome, modelAlias: alias},
     ...(skillsSource ? {getDynamicCommands: () => createSkillCodaraCommands(skillsSource)} : {}),
   });
 
+  // Command event relay
   const commandEventListeners = new Set<CodaraRuntimeEventListener>();
   const subscribeRuntimeEvents = (listener: CodaraRuntimeEventListener) => {
     const unsubscribeSession = session.subscribeRuntimeEvents(listener);
     commandEventListeners.add(listener);
-    return () => {
-      unsubscribeSession();
-      commandEventListeners.delete(listener);
-    };
+    return () => { unsubscribeSession(); commandEventListeners.delete(listener); };
   };
-
   const emitCommandEvent = (input: Omit<CodaraRuntimeEvent, 'sessionId' | 'timestamp'>) => {
     const event: CodaraRuntimeEvent = {
-      ...input,
-      sessionId: session.getState().sessionId,
-      timestamp: new Date().toISOString(),
+      ...input, sessionId: session.getState().sessionId, timestamp: new Date().toISOString(),
     };
-    for (const listener of commandEventListeners) {
-      listener(event);
-    }
+    for (const listener of commandEventListeners) listener(event);
   };
-
   const executeCommand = async (input: string): Promise<CodaraCommandResult> => {
-    const commandEventId = `command:${Date.now()}:${Math.random().toString(36).slice(2, 8)}`;
-    emitCommandEvent({
-      id: commandEventId,
-      kind: 'command',
-      phase: 'start',
-      status: 'running',
-      label: `Running ${input.trim()}`,
-    });
-
+    const id = `command:${Date.now()}:${Math.random().toString(36).slice(2, 8)}`;
+    emitCommandEvent({id, kind: 'command', phase: 'start', status: 'running', label: `Running ${input.trim()}`});
     const result = await commands.executeCommand(input);
     emitCommandEvent({
       id: `command:end:${Date.now()}:${Math.random().toString(36).slice(2, 8)}`,
-      kind: 'command',
-      phase: 'end',
-      status: result.ok ? 'done' : 'error',
+      kind: 'command', phase: 'end', status: result.ok ? 'done' : 'error',
       label: result.ok ? `Completed ${input.trim()}` : `Failed ${input.trim()}`,
-      detail: summarizeCommandResult(result),
-      parentId: commandEventId,
+      detail: result.output.trim() || undefined, parentId: id,
     });
     return result;
   };
 
-  const sessionStore = options.store;
-  const listSessions = async (listOptions?: import('@engine/session').SessionListOptions): Promise<SessionState[]> => {
-    if (!sessionStore) {
-      return [];
-    }
-    return sessionStore.list(listOptions);
-  };
-
-  const getMcpStatus = (): McpClientInfo[] => mcpManager?.status() ?? [];
-
-  // ── Team Event Callback ──
-  // Wire TeamRuntime's onTeamEvent callback so team events flow directly
-  // into the runtime event stream.
-  const teamRuntime = preloadedSources?.teamRuntime;
-  if (teamRuntime) {
-    teamRuntime.setOnTeamEvent(
-      (event) => {
-        for (const listener of commandEventListeners) {
-          listener(event);
-        }
-      },
+  // Wire team events into runtime event stream
+  if (preloadedSources?.teamRuntime) {
+    preloadedSources.teamRuntime.setOnTeamEvent(
+      (event) => { for (const listener of commandEventListeners) listener(event); },
       () => session.getState().sessionId,
     );
   }
 
   const dispose = async (): Promise<void> => {
     await session.dispose();
-    if (mcpManager) {
-      await mcpManager.dispose();
-    }
+    if (mcpManager) await mcpManager.dispose();
   };
 
   return {
-    ...session,
-    subscribeRuntimeEvents,
-    listCommands: commands.listCommands,
-    executeCommand,
-    listSessions,
-    getMcpStatus,
+    ...session, subscribeRuntimeEvents, listCommands: commands.listCommands, executeCommand,
+    listSessions: async (opts?: import('@engine/session').SessionListOptions) => options.store ? options.store.list(opts) : [],
+    getMcpStatus: () => mcpManager?.status() ?? [],
     getTeamSummaries: () => getTeamSummaries(preloadedSources?.teamRegistry),
     getTeamDetail: (teamId: string) => getTeamDetail(preloadedSources?.teamRegistry, teamId),
     dispose,
   };
 }
 
+// ── Private Helpers ──
+
 function resolveCodaraAutoMemory(options: CodaraOptions): AutoMemoryRuntime | undefined {
-  if (options.autoMemory === false) {
-    return undefined;
-  }
-
-  const memOpts = typeof options.autoMemory === 'object' && options.autoMemory !== null
-    ? options.autoMemory
-    : {};
-
+  if (options.autoMemory === false) return undefined;
+  const memOpts = typeof options.autoMemory === 'object' && options.autoMemory !== null ? options.autoMemory : {};
   return createAutoMemoryRuntime({
-    cwd: memOpts.cwd ?? options.cwd,
-    projectRoot: memOpts.projectRoot ?? options.projectRoot,
-    userHome: memOpts.userHome ?? options.userHome,
-    autoGlobal: memOpts.autoGlobal,
-    rootDir: memOpts.rootDir,
+    cwd: memOpts.cwd ?? options.cwd, projectRoot: memOpts.projectRoot ?? options.projectRoot,
+    userHome: memOpts.userHome ?? options.userHome, autoGlobal: memOpts.autoGlobal, rootDir: memOpts.rootDir,
   });
-}
-
-export async function openCodaraSession(
-  options: CodaraOptions & {sessionId: string; store: SessionStore},
-): Promise<Codara> {
-  const sessionState = await options.store.get(options.sessionId);
-  if (!sessionState) {
-    throw new Error(`Session not found: ${options.sessionId}`);
-  }
-  return reopenCodaraSession(options, sessionState);
-}
-
-export async function openLatestCodaraSession(
-  options: CodaraOptions & {store: SessionStore},
-): Promise<Codara> {
-  const sessions = await options.store.list({
-    includeArchived: true,
-    sortBy: 'updatedAt',
-    sortOrder: 'desc',
-  });
-  const latest = sessions.find((session) => session.sessionStatus !== 'closed') ?? sessions[0];
-  if (!latest) {
-    throw new Error('No sessions found');
-  }
-  return reopenCodaraSession(options, latest);
-}
-
-export function createCodaraTools(options: CodaraToolsOptions = {}): StructuredToolInterface[] {
-  if (options.builtinTools === false) {
-    return [...(options.tools ?? [])];
-  }
-
-  const byName = new Map<string, StructuredToolInterface>();
-  for (const tool of createBuiltinTools({cwd: options.cwd, extended: true})) {
-    byName.set(tool.name, tool);
-  }
-  for (const tool of options.tools ?? []) {
-    byName.set(tool.name, tool);
-  }
-  return [...byName.values()];
-}
-
-function resolveCodaraSkills(
-  options: Pick<CodaraOptions, 'skills' | 'cwd' | 'projectRoot' | 'userHome'>,
-): {store: SkillStore; subagentRoots: string[]} | undefined {
-  if (options.skills === false) {
-    return undefined;
-  }
-  if (options.skills?.store) {
-    return {store: options.skills.store, subagentRoots: options.skills.subagentRoots ?? []};
-  }
-  return {
-    store: new FileSystemSkillStore({
-      ...(options.skills?.sources ? {sources: options.skills.sources} : {}),
-      ...((options.skills?.projectRoot || options.projectRoot || options.skills?.cwd || options.cwd)
-        ? {
-            projectRoot: resolveWorkspaceRoot({
-              projectRoot: options.skills?.projectRoot ?? options.projectRoot,
-              cwd: options.skills?.cwd ?? options.cwd,
-            }),
-          }
-        : {}),
-      ...((options.skills?.cwd || options.cwd) ? {cwd: options.skills?.cwd ?? options.cwd} : {}),
-      ...((options.skills?.userHome || options.userHome) ? {userHome: options.skills?.userHome ?? options.userHome} : {}),
-      ...(typeof options.skills?.cacheTtlMs === 'number' ? {cacheTtlMs: options.skills.cacheTtlMs} : {}),
-      ...(options.skills?.claudeSkillsCompat ? {claudeSkillsCompat: true} : {}),
-    }),
-    subagentRoots: options.skills?.subagentRoots ?? [],
-  };
 }
 
 async function reopenCodaraSession(options: CodaraOptions, state: SessionState): Promise<Codara> {
-  const codara = assembleCodara({
-    ...options,
-    sessionId: state.sessionId,
-    restore: 'latest',
-  }, state);
+  const codara = assembleCodara({...options, sessionId: state.sessionId, restore: 'latest'}, state);
   await codara.hydrate();
   return codara;
 }
@@ -569,44 +319,9 @@ function normalizeAlias(alias: string | undefined): string {
 }
 
 function resolveCodaraRuntimePath(options: Pick<CodaraRuntimeOptions, 'codaraPath' | 'cwd' | 'projectRoot'>): string {
-  if (options.codaraPath?.trim()) {
-    return path.resolve(options.codaraPath.trim());
-  }
-
-  const projectRoot = resolveWorkspaceRoot({
-    cwd: options.cwd,
-    projectRoot: options.projectRoot,
-  });
+  if (options.codaraPath?.trim()) return path.resolve(options.codaraPath.trim());
+  const projectRoot = resolveWorkspaceRoot({cwd: options.cwd, projectRoot: options.projectRoot});
   const projectCodaraPath = path.join(projectRoot, '.codara');
-  if (existsSync(path.join(projectCodaraPath, 'config.json'))) {
-    return projectCodaraPath;
-  }
-
+  if (existsSync(path.join(projectCodaraPath, 'config.json'))) return projectCodaraPath;
   return path.resolve(resolveCodaraPath());
-}
-
-function resolveRuntimeLoggingOptions(
-  options: Pick<CodaraRuntimeOptions, 'logging' | 'cwd' | 'projectRoot'>,
-): false | LoggingMiddlewareOptions {
-  if (!DEFAULT_RUNTIME_FILE_LOGGING_ENABLED || options.logging === false || options.logging?.enabled === false) {
-    return false;
-  }
-
-  const projectRoot = resolveWorkspaceRoot({
-    cwd: options.cwd,
-    projectRoot: options.projectRoot,
-  });
-  const rootDir = path.join(projectRoot, '.codara', 'sessions');
-  const provided = options.logging ?? {};
-
-  return {
-    ...provided,
-    enabled: true,
-    logger: provided.logger ?? createDailySessionFileLogSink({rootDir}),
-  };
-}
-
-function summarizeCommandResult(result: CodaraCommandResult): string | undefined {
-  const output = result.output.trim();
-  return output || undefined;
 }

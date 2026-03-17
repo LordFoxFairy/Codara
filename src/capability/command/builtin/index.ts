@@ -13,10 +13,8 @@ import {modelCommand} from './model';
 import {permissionsCommand} from './permissions';
 import {pluginCommand} from './plugin';
 import {reloadCommand} from './reload';
-import {remoteCommand} from './remote';
 import {resumeCommand} from './resume';
 import {rewindCommand} from './rewind';
-import {serveCommand} from './serve';
 import {statusCommand} from './status';
 import {teamCommand} from './team';
 
@@ -40,7 +38,5 @@ export function createBuiltInCommands(): readonly CodaraCommandDefinition[] {
     diffCommand,
     rewindCommand,
     teamCommand,
-    remoteCommand,
-    serveCommand,
   ];
 }
