@@ -101,6 +101,8 @@ export interface CodaraSkillOptions {
   projectRoot?: string;
   userHome?: string;
   cacheTtlMs?: number;
+  /** 启用后额外扫描 ~/.claude/skills/（Claude Code 兼容），默认关闭。 */
+  claudeSkillsCompat?: boolean;
 }
 
 export interface CodaraAutoMemoryOptions {
@@ -526,6 +528,7 @@ function resolveCodaraSkills(
       ...((options.skills?.cwd || options.cwd) ? {cwd: options.skills?.cwd ?? options.cwd} : {}),
       ...((options.skills?.userHome || options.userHome) ? {userHome: options.skills?.userHome ?? options.userHome} : {}),
       ...(typeof options.skills?.cacheTtlMs === 'number' ? {cacheTtlMs: options.skills.cacheTtlMs} : {}),
+      ...(options.skills?.claudeSkillsCompat ? {claudeSkillsCompat: true} : {}),
     }),
     subagentRoots: options.skills?.subagentRoots ?? [],
   };

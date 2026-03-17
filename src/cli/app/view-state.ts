@@ -20,6 +20,8 @@ export interface CliActiveTurn {
   prompt: string;
   response: string;
   responseRole: 'assistant' | 'system';
+  /** Accumulated thinking/reasoning text (Extended Thinking). */
+  thinking?: string;
 }
 
 export type CliHilFocus = 'actions' | 'input';

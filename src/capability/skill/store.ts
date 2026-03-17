@@ -24,13 +24,14 @@ export class FileSystemSkillStore implements SkillStore {
   private cache: SkillCacheEntry | null = null
 
   constructor(
-    options: {sources?: string[]; userHome?: string; projectRoot?: string; cacheTtlMs?: number} = {}
+    options: {sources?: string[]; userHome?: string; projectRoot?: string; cacheTtlMs?: number; claudeSkillsCompat?: boolean} = {}
   ) {
     this.sources = options.sources && options.sources.length > 0
       ? options.sources
       : getDefaultSkillSources({
           userHome: options.userHome,
-          projectRoot: options.projectRoot
+          projectRoot: options.projectRoot,
+          claudeSkillsCompat: options.claudeSkillsCompat,
         })
     this.cacheTtlMs = options.cacheTtlMs ?? DEFAULT_CACHE_TTL_MS
   }
@@ -88,13 +89,20 @@ export class FileSystemSkillStore implements SkillStore {
   }
 }
 
-export function getDefaultSkillSources(params: {userHome?: string; projectRoot?: string; cwd?: string} = {}): string[] {
+export function getDefaultSkillSources(params: {
+  userHome?: string;
+  projectRoot?: string;
+  cwd?: string;
+  /** 启用后额外扫描 ~/.claude/skills/（Claude Code 兼容），默认关闭。 */
+  claudeSkillsCompat?: boolean;
+} = {}): string[] {
   const userHome = params.userHome ?? homedir()
   const projectRoot = resolveWorkspaceRoot({
     projectRoot: params.projectRoot,
     cwd: params.cwd,
   })
   return [
+    ...(params.claudeSkillsCompat ? [path.join(userHome, '.claude', 'skills')] : []),
     path.join(userHome, '.codara', 'skills'),
     path.join(projectRoot, '.codara', 'skills')
   ]
