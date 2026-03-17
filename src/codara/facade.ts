@@ -2,80 +2,35 @@ import {existsSync} from 'node:fs';
 import path from 'node:path';
 import type {BaseChatModel} from '@langchain/core/language_models/chat_models';
 import type {StructuredToolInterface} from '@langchain/core/tools';
-import type {AgentContextPreparer} from '@engine/agent';
 import type {AgentCheckpointer} from '@engine/checkpoint';
 import {createAgentFileCheckpointer} from '@engine/checkpoint';
 import type {BaseMiddleware, HILMiddlewareOptions, LoggingMiddlewareOptions} from '@engine/pipeline';
 import type {SummarySettings} from '@engine/pipeline/summary';
-import {
-  createBudgetMiddleware,
-  createDailySessionFileLogSink,
-  createGuidelinesMiddleware,
-  createHILMiddleware,
-  createAskUserQuestionMiddleware,
-  createLoggingMiddleware,
-  createSkillsMiddleware,
-  MIDDLEWARE_NAMES,
-  createTodoListMiddleware,
-} from '@engine/pipeline';
-import {
-  ensurePermissionSettingsFile,
-  createPermissionMiddleware,
-} from '@engine/pipeline/permission';
-import {
-  createSharedTaskMiddleware,
-  createTaskFileStore,
-  createTaskMiddleware,
-  type TaskStore,
-} from '@capability/task';
+import {createDailySessionFileLogSink} from '@engine/pipeline';
+import {ensurePermissionSettingsFile} from '@engine/pipeline/permission';
+import {createTaskFileStore, type TaskStore} from '@capability/task';
 import {ChatModelFactory, loadModelRoutingConfig, loadModelRoutingConfigFromPath, ModelRegistry, resolveCodaraPath, type ModelInfo, type ModelRoutingConfig} from '@infra/provider';
-import {
-  createCodaraGuidelinesSource,
-  type GuidelinesSource,
-} from '@infra/context/instructions/guidelines';
-import {
-  createCodaraPromptSource,
-  type PromptSource,
-} from '@infra/context/instructions/prompt';
-import {
-  createAutoMemoryRuntime,
-  type AutoMemoryRuntime,
-} from '@infra/context/memory/auto-memory';
-import {
-  createCodaraSkillsSource,
-  FileSystemSkillStore,
-  type SkillStore,
-} from '@capability/skill';
+import {createCodaraGuidelinesSource, type GuidelinesSource} from '@infra/context/instructions/guidelines';
+import {createCodaraPromptSource, type PromptSource} from '@infra/context/instructions/prompt';
+import {createAutoMemoryRuntime, type AutoMemoryRuntime} from '@infra/context/memory/auto-memory';
+import {createCodaraSkillsSource, FileSystemSkillStore, type SkillStore} from '@capability/skill';
 import {createSkillCodaraCommands} from '@capability/command/skills';
 import {createCodaraCommandRunner, type CodaraCommandResult, type CodaraCommandSpec} from '@capability/command';
 import {
-  createSession,
-  FileSessionStore,
-  type CodaraRuntimeEvent,
-  type CodaraRuntimeEventListener,
-  type Session,
-  type SessionState,
-  type SessionStore,
+  createSession, FileSessionStore,
+  type CodaraRuntimeEvent, type CodaraRuntimeEventListener,
+  type Session, type SessionState, type SessionStore,
 } from '@engine/session';
 import {resolveWorkspaceRoot} from '@infra/config/workspace';
 import {createBuiltinTools} from '@engine/tool';
-import {
-  applyPreparedInstructionContext,
-  buildBaseSystemMessage,
-} from '@infra/context/system-message';
-import {HookRegistryImpl, HookPipeline, createToolHooksMiddleware, createHookExecutor} from '@engine/hook';
+import {HookRegistryImpl, HookPipeline, createHookExecutor} from '@engine/hook';
 import type {HookSource, HookRegistry, SessionLifecycleHooks, AgentLifecycleHooks} from '@engine/hook';
 import {loadMcpConfig, createMcpManager, createMcpLangChainTools, type McpClientInfo, type McpConfig, type McpManager} from '@engine/mcp';
-import {TeamRegistry} from '@capability/team/team-registry';
-import {TeamRuntime} from '@capability/team/runtime/team-runtime';
-import {RemotePool} from '@capability/team/remote-pool';
-import {createConversationTeamTools} from '@capability/team/tools/conversation-tools';
-import {MemorySharedState} from '@capability/team/state/memory-shared-state';
-import {getToolsForRole} from '@capability/team/tools/tool-filter';
-import {createTeamContextMiddleware} from '@capability/team/middleware/team-context';
-import type {MemberSession, MemberSessionOptions} from '@capability/team/runtime/member-runner';
-import {createAgent} from '@engine/agent/run/agent-loop';
-import {TeamPersistence} from '@capability/team/persistence/team-persistence';
+import type {TeamRegistry} from '@capability/team/team-registry';
+import type {TeamRuntime} from '@capability/team/runtime/team-runtime';
+import type {RemotePool} from '@capability/team/remote-pool';
+import {createCodaraMiddlewares, createRuntimeDefaultMiddlewares} from './middleware-chain';
+import {assembleTeamSystem, getTeamSummaries, getTeamDetail} from './team-assembly';
 
 export const DEFAULT_CODARA_MODEL_ALIAS = 'default';
 const DEFAULT_RUNTIME_FILE_LOGGING_ENABLED = true;
@@ -266,6 +221,7 @@ export async function createCodaraRuntime(options: CodaraRuntimeOptions = {}): P
     cwd: options.cwd,
     tools: options.tools,
   });
+
   // ── Hooks System Assembly ──
   const hookSources: HookSource[] = [];
   const projectHooksPath = path.join(codaraPath, 'hooks.json');
@@ -291,129 +247,14 @@ export async function createCodaraRuntime(options: CodaraRuntimeOptions = {}): P
     if (Object.keys(mcpConfig.mcpServers).length > 0) {
       mcpManager = createMcpManager(mcpConfig);
       await mcpManager.init();
-      // Inject MCP tools into the runtime tool set
       const mcpTools = createMcpLangChainTools(mcpManager);
       runtimeTools.push(...mcpTools);
     }
   }
 
   // ── Team System Assembly ──
-  const teamRegistry = new TeamRegistry();
-  const sharedState = new MemorySharedState();
-
-  // Session factory: creates real agent sessions for team members.
-  // Uses createAgent directly (same pattern as Task delegation) so we can
-  // pass runtimeShared.teamContext for TeamContextMiddleware to read.
-  const teamSessionFactory = (memberOptions: MemberSessionOptions): MemberSession => {
-    const teamToolContext = {
-      teamId: memberOptions.teamId,
-      memberId: memberOptions.memberId,
-      registry: teamRegistry,
-      transport: teamRuntime.getTransport(memberOptions.teamId)!,
-      emitter: teamRuntime.getEmitter(memberOptions.teamId)!,
-      projectRoot,
-    };
-
-    // Role-based tool injection:
-    // - Leader: only coordination tools (plan_jobs, assign, review, etc.)
-    // - Worker: dev tools (bash, read, write...) + worker team tools (claim, submit...)
-    const baseDevTools = createBuiltinTools({
-      cwd: memberOptions.worktreePath ?? options.cwd,
-      extended: true,
-    });
-    const memberTools = getToolsForRole(memberOptions.role, teamToolContext, baseDevTools);
-
-    // Middleware: team context injection + standard context budget
-    // Budget enforcement uses the standard BudgetMiddleware from engine/pipeline.
-    // Filesystem isolation relies on worktree + PermissionMiddleware, not a custom PathGuard.
-    const memberMiddleware: BaseMiddleware[] = [
-      createTeamContextMiddleware(),
-      createBudgetMiddleware(),
-    ];
-
-    // Resolve model lazily — reuse the same catalog as the main agent
-    let agentReady: ReturnType<typeof createAgent> | undefined;
-
-    const ensureAgent = async () => {
-      if (agentReady) return agentReady;
-
-      const model = catalog
-        ? await (await catalog).create()
-        : options.model
-          ? await Promise.resolve(options.model)
-          : (() => { throw new Error('No model available for team worker'); })();
-
-      agentReady = createAgent({
-        model,
-        agentType: 'subagent',
-        tools: memberTools,
-        middleware: memberMiddleware,
-        systemMessage: memberOptions.systemMessage.length > 0
-          ? memberOptions.systemMessage
-          : undefined,
-        runtimeShared: memberOptions.runtimeShared,
-      });
-      return agentReady;
-    };
-
-    // Adapt Agent → MemberSession interface
-    return {
-      async invoke(input?: string) {
-        try {
-          const agent = await ensureAgent();
-          const result = await agent.invoke(input ?? undefined);
-          if (result.reason === 'error') {
-            return {reason: 'error' as const, error: result.error};
-          }
-          return {reason: 'complete' as const};
-        } catch (err) {
-          return {reason: 'error' as const, error: err instanceof Error ? err : new Error(String(err))};
-        }
-      },
-      async dispose() {
-        // Agent doesn't have explicit dispose; release reference
-        agentReady = undefined;
-      },
-    };
-  };
-
-  const teamPersistence = new TeamPersistence(codaraPath);
-
-  const teamRuntime = new TeamRuntime({
-    registry: teamRegistry,
-    projectRoot,
-    teamsDir: path.join(codaraPath, 'teams'),
-    createSession: teamSessionFactory,
-    persistence: teamPersistence,
-  });
-  // Recover persisted teams into registry (best-effort)
-  try {
-    const savedSnapshots = teamPersistence.list();
-    for (const summary of savedSnapshots) {
-      const snapshot = teamPersistence.load(summary.teamId);
-      if (snapshot && (snapshot.team.status === 'running' || snapshot.team.status === 'paused')) {
-        // Mark as paused — user must explicitly resume
-        snapshot.team.status = 'paused';
-        teamRegistry.restoreTeam(snapshot.team);
-        for (const m of snapshot.members) {
-          teamRegistry.restoreMember(m);
-        }
-        if (snapshot.jobs.length > 0) {
-          const board = TeamPersistence.restoreJobBoard(summary.teamId, snapshot.jobs);
-          teamRegistry.restoreJobBoard(summary.teamId, board);
-        }
-      }
-    }
-  } catch {
-    // Recovery is best-effort — fresh start if it fails
-  }
-
-  const remotePool = new RemotePool(codaraPath);
-  await remotePool.load();
-
-  // Add conversation-driven team tools
-  const teamTools = createConversationTeamTools({registry: teamRegistry, runtime: teamRuntime, sharedState});
-  for (const t of teamTools) runtimeTools.push(t);
+  const teamSystem = await assembleTeamSystem({options, codaraPath, projectRoot, catalog});
+  for (const t of teamSystem.teamTools) runtimeTools.push(t);
 
   const runtimeMiddlewares = createRuntimeDefaultMiddlewares({
     options,
@@ -442,7 +283,12 @@ export async function createCodaraRuntime(options: CodaraRuntimeOptions = {}): P
       checkpointer: createAgentFileCheckpointer({rootDir: path.join(codaraPath, 'sessions')}),
     }),
     restore: options.restore ?? 'latest',
-  }, undefined, {promptSource, guidelinesSource, hookPipeline, hookRegistry, mcpManager, teamRegistry, teamRuntime, remotePool});
+  }, undefined, {
+    promptSource, guidelinesSource, hookPipeline, hookRegistry, mcpManager,
+    teamRegistry: teamSystem.teamRegistry,
+    teamRuntime: teamSystem.teamRuntime,
+    remotePool: teamSystem.remotePool,
+  });
 }
 
 function assembleCodara(
@@ -588,7 +434,7 @@ function assembleCodara(
 
   // ── Team Event Callback ──
   // Wire TeamRuntime's onTeamEvent callback so team events flow directly
-  // into the runtime event stream — no EventBridge or monkey-patching needed.
+  // into the runtime event stream.
   const teamRuntime = preloadedSources?.teamRuntime;
   if (teamRuntime) {
     teamRuntime.setOnTeamEvent(
@@ -600,55 +446,6 @@ function assembleCodara(
       () => session.getState().sessionId,
     );
   }
-
-  const getTeamSummaries = (): TeamQuerySummary[] => {
-    const registry = preloadedSources?.teamRegistry;
-    if (!registry) return [];
-    return registry.listTeams().map(t => {
-      const board = registry.getJobBoard(t.teamId);
-      const progress = board.getProgress();
-      const members = registry.getMembersByTeam(t.teamId);
-      return {
-        teamId: t.teamId,
-        name: t.name,
-        status: t.status,
-        goal: t.goal,
-        memberCount: members.length,
-        jobProgress: { done: progress.done, total: progress.total },
-      };
-    });
-  };
-
-  const getTeamDetail = (teamId: string): TeamQueryDetail | undefined => {
-    const registry = preloadedSources?.teamRegistry;
-    if (!registry) return undefined;
-    const team = registry.getTeam(teamId) ?? registry.getTeamByName(teamId);
-    if (!team) return undefined;
-    const members = registry.getMembersByTeam(team.teamId);
-    const board = registry.getJobBoard(team.teamId);
-    const jobs = board.getAllJobs();
-    return {
-      teamId: team.teamId,
-      name: team.name,
-      status: team.status,
-      goal: team.goal,
-      members: members.map(m => ({
-        memberId: m.memberId,
-        name: m.name,
-        role: m.role,
-        status: m.status,
-        model: m.model,
-        currentJobId: m.currentJobId,
-      })),
-      jobs: jobs.map(j => ({
-        id: j.id,
-        title: j.title,
-        status: j.status,
-        assignee: j.assignee,
-        blockedBy: j.blockedBy,
-      })),
-    };
-  };
 
   const dispose = async (): Promise<void> => {
     await session.dispose();
@@ -664,8 +461,8 @@ function assembleCodara(
     executeCommand,
     listSessions,
     getMcpStatus,
-    getTeamSummaries,
-    getTeamDetail,
+    getTeamSummaries: () => getTeamSummaries(preloadedSources?.teamRegistry),
+    getTeamDetail: (teamId: string) => getTeamDetail(preloadedSources?.teamRegistry, teamId),
     dispose,
   };
 }
@@ -728,26 +525,6 @@ export function createCodaraTools(options: CodaraToolsOptions = {}): StructuredT
   return [...byName.values()];
 }
 
-export function createCodaraMiddlewares(
-  options: CodaraMiddlewareOptions = {},
-): BaseMiddleware[] {
-  const middlewares: BaseMiddleware[] = [];
-  if (options.logging) {
-    middlewares.push(createLoggingMiddleware(options.logging as LoggingMiddlewareOptions));
-  }
-  // SkillsMiddleware — Skill tool for progressive disclosure.
-  // Reads runtime from shared context (injected by SkillsSource via buildBaseSystemMessage).
-  if (!options.middleware?.some((m) => m.name === MIDDLEWARE_NAMES.Skills)) {
-    middlewares.push(createSkillsMiddleware());
-  }
-  middlewares.push(...(options.middleware ?? []));
-  middlewares.push(createBudgetMiddleware());
-  if (options.hil !== false) {
-    middlewares.push(createHILMiddleware(options.hil ?? {}));
-  }
-  return middlewares;
-}
-
 function resolveCodaraSkills(
   options: Pick<CodaraOptions, 'skills' | 'cwd' | 'projectRoot' | 'userHome'>,
 ): {store: SkillStore; subagentRoots: string[]} | undefined {
@@ -791,7 +568,6 @@ function normalizeAlias(alias: string | undefined): string {
   return alias?.trim() || DEFAULT_CODARA_MODEL_ALIAS;
 }
 
-
 function resolveCodaraRuntimePath(options: Pick<CodaraRuntimeOptions, 'codaraPath' | 'cwd' | 'projectRoot'>): string {
   if (options.codaraPath?.trim()) {
     return path.resolve(options.codaraPath.trim());
@@ -830,196 +606,7 @@ function resolveRuntimeLoggingOptions(
   };
 }
 
-function createRuntimeDefaultMiddlewares(input: {
-  options: CodaraRuntimeOptions;
-  runtimeTools: StructuredToolInterface[];
-  taskStore: TaskStore;
-  logging: false | LoggingMiddlewareOptions;
-  catalog?: CodaraModelCatalog | Promise<CodaraModelCatalog>;
-  promptSource: PromptSource;
-  guidelinesSource: GuidelinesSource;
-  hookPipeline?: HookPipeline;
-}): BaseMiddleware[] {
-  const callerMiddlewares = input.options.middleware ?? [];
-  const byName = new Map<string, BaseMiddleware>();
-  const providedToolNames = collectProvidedToolNames({
-    tools: input.options.tools,
-    middlewares: callerMiddlewares,
-  });
-  for (const middleware of callerMiddlewares) {
-    byName.set(middleware.name, middleware);
-  }
-
-  // GuidelinesMiddleware — lazy loading of subdirectory AGENTS.md / codara.md
-  if (!byName.has(MIDDLEWARE_NAMES.Guidelines)) {
-    byName.set(MIDDLEWARE_NAMES.Guidelines, createGuidelinesMiddleware({
-      guidelinesSource: input.guidelinesSource,
-      promptSource: input.promptSource,
-    }));
-  }
-
-  if (!byName.has(MIDDLEWARE_NAMES.TodoList) && !providedToolNames.has('write_todos')) {
-    byName.set(MIDDLEWARE_NAMES.TodoList, createTodoListMiddleware());
-  }
-
-  if (!byName.has(MIDDLEWARE_NAMES.SharedTask) && !hasSharedTaskTools(providedToolNames)) {
-    byName.set(MIDDLEWARE_NAMES.SharedTask, createSharedTaskMiddleware({store: input.taskStore}));
-  }
-
-  if (!byName.has(MIDDLEWARE_NAMES.Task) && !providedToolNames.has('Task')) {
-    byName.set(MIDDLEWARE_NAMES.Task, createTaskMiddleware({
-      model: input.options.model ?? (() => createCodaraChatModel({
-        alias: input.options.alias,
-        config: input.options.config,
-        ...(input.catalog ? {catalog: input.catalog} : {}),
-      })),
-      tools: input.runtimeTools,
-      prepareContext: createInstructionContextPreparer({
-        promptSource: input.promptSource,
-        guidelinesSource: input.guidelinesSource,
-      }),
-      middleware: createDelegatedRuntimeMiddlewares({
-        ...input,
-        tools: input.runtimeTools,
-        catalog: input.catalog,
-      }),
-      ...(input.hookPipeline ? {lifecycle: input.hookPipeline} : {}),
-    }));
-  }
-
-  if (input.options.hil !== false && !byName.has(MIDDLEWARE_NAMES.AskUserQuestion)) {
-    byName.set(MIDDLEWARE_NAMES.AskUserQuestion, createAskUserQuestionMiddleware());
-  }
-
-  if (input.options.hil !== false && !byName.has(MIDDLEWARE_NAMES.Permission)) {
-    byName.set(MIDDLEWARE_NAMES.Permission, createPermissionMiddleware({
-      ...(typeof input.options.hil === 'object' && input.options.hil !== null ? input.options.hil : {}),
-      cwd: input.options.cwd,
-      projectRoot: input.options.projectRoot,
-      userHome: input.options.userHome,
-      bashAnalysisModel: createRuntimePermissionAnalysisModel(input.options, input.catalog),
-    }));
-  }
-
-  // Add ToolHooksMiddleware after Permission (last in the chain)
-  if (input.hookPipeline) {
-    byName.set(MIDDLEWARE_NAMES.ToolHooks, createToolHooksMiddleware(input.hookPipeline));
-  }
-
-  return [...byName.values()];
-}
-
-function createDelegatedRuntimeMiddlewares(input: {
-  options: CodaraRuntimeOptions;
-  taskStore: TaskStore;
-  logging: false | LoggingMiddlewareOptions;
-  tools?: StructuredToolInterface[];
-  catalog?: CodaraModelCatalog | Promise<CodaraModelCatalog>;
-}): BaseMiddleware[] {
-  const middlewares: BaseMiddleware[] = [];
-  const callerMiddlewares = (input.options.middleware ?? [])
-    .filter((middleware) => middleware.name !== MIDDLEWARE_NAMES.Task);
-  const providedToolNames = collectProvidedToolNames({
-    tools: input.tools,
-    middlewares: callerMiddlewares,
-  });
-
-  const seen = new Set<string>();
-  const push = (middleware: BaseMiddleware) => {
-    if (seen.has(middleware.name)) {
-      return;
-    }
-    seen.add(middleware.name);
-    middlewares.push(middleware);
-  };
-
-  if (input.logging && input.logging.enabled !== false) {
-    push(createLoggingMiddleware(input.logging));
-  }
-
-  for (const middleware of callerMiddlewares) {
-    push(middleware);
-  }
-
-  if (!seen.has(MIDDLEWARE_NAMES.TodoList) && !providedToolNames.has('write_todos')) {
-    push(createTodoListMiddleware());
-  }
-  if (!seen.has(MIDDLEWARE_NAMES.SharedTask) && !hasSharedTaskTools(providedToolNames)) {
-    push(createSharedTaskMiddleware({store: input.taskStore}));
-  }
-  if (input.options.hil !== false && !seen.has(MIDDLEWARE_NAMES.AskUserQuestion)) {
-    push(createAskUserQuestionMiddleware());
-  }
-  if (input.options.hil !== false && !seen.has(MIDDLEWARE_NAMES.Permission)) {
-    push(createPermissionMiddleware({
-      ...(typeof input.options.hil === 'object' && input.options.hil !== null ? input.options.hil : {}),
-      cwd: input.options.cwd,
-      projectRoot: input.options.projectRoot,
-      userHome: input.options.userHome,
-      bashAnalysisModel: createRuntimePermissionAnalysisModel(input.options, input.catalog),
-    }));
-  }
-
-  push(createBudgetMiddleware());
-  return middlewares;
-}
-
-function collectProvidedToolNames(input: {
-  tools?: StructuredToolInterface[];
-  middlewares?: BaseMiddleware[];
-}): Set<string> {
-  const names = new Set<string>();
-  for (const tool of input.tools ?? []) {
-    names.add(tool.name);
-  }
-  for (const middleware of input.middlewares ?? []) {
-    for (const tool of middleware.tools ?? []) {
-      names.add(tool.name);
-    }
-  }
-  return names;
-}
-
-function hasSharedTaskTools(toolNames: ReadonlySet<string>): boolean {
-  return toolNames.has('TaskCreate') || toolNames.has('TaskUpdate') || toolNames.has('TaskList');
-}
-
 function summarizeCommandResult(result: CodaraCommandResult): string | undefined {
   const output = result.output.trim();
   return output || undefined;
-}
-
-function createInstructionContextPreparer(sources: {
-  promptSource?: PromptSource;
-  guidelinesSource?: GuidelinesSource;
-}): AgentContextPreparer | undefined {
-  if (!sources.promptSource && !sources.guidelinesSource) {
-    return undefined;
-  }
-
-  return async (context) => {
-    const next = await buildBaseSystemMessage(sources.promptSource, sources.guidelinesSource);
-    applyPreparedInstructionContext(context, next);
-  };
-}
-
-function createRuntimePermissionAnalysisModel(
-  options: Pick<CodaraRuntimeOptions, 'alias' | 'config' | 'model'>,
-  catalog?: CodaraModelCatalog | Promise<CodaraModelCatalog>,
-) {
-  if (options.model) {
-    return typeof options.model === 'function'
-      ? options.model as () => Promise<BaseChatModel>
-      : options.model;
-  }
-
-  if (catalog) {
-    return () => createCodaraChatModel({
-      alias: options.alias,
-      config: options.config,
-      catalog,
-    });
-  }
-
-  return undefined;
 }
