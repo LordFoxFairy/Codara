@@ -3,7 +3,6 @@ import type {StructuredToolInterface} from '@langchain/core/tools';
 import {z} from 'zod';
 import type {Team, TeamMessage} from '@capability/team/coordination/types';
 import {SECURITY_DEFAULTS} from '@capability/team/coordination/types';
-import {mergeBranch} from '@infra/git/merge';
 import type {TeamToolContext} from './types';
 
 // ─── Inline security guards (depth-control.ts removed) ──────────────
@@ -32,7 +31,6 @@ export function createLeaderTools(ctx: TeamToolContext): StructuredToolInterface
     createTeamSpawnMemberTool(ctx),
     createTeamAssignJobTool(ctx),
     createTeamReviewJobTool(ctx),
-    createTeamMergeBranchTool(ctx),
     createTeamSendMessageTool(ctx),
     createTeamBroadcastTool(ctx),
     createTeamCreateSubteamTool(ctx),
@@ -307,28 +305,7 @@ function createTeamReviewJobTool(ctx: TeamToolContext): StructuredToolInterface 
   );
 }
 
-// ─── 9. team_merge_branch ───────────────────────────────────────────
-
-function createTeamMergeBranchTool(ctx: TeamToolContext): StructuredToolInterface {
-  return tool(
-    async (input) => {
-      const leader = ctx.registry.getMember(ctx.memberId);
-      const targetBranch = leader?.worktreePath ?? 'main';
-      const result = await mergeBranch(input.sourceBranch, targetBranch, ctx.projectRoot, input.message);
-      return JSON.stringify(result);
-    },
-    {
-      name: 'team_merge_branch',
-      description: 'Merge a source branch into the leader\'s branch.',
-      schema: z.object({
-        sourceBranch: z.string(),
-        message: z.string().optional(),
-      }),
-    },
-  );
-}
-
-// ─── 10. team_send_message ──────────────────────────────────────────
+// ─── 9. team_send_message ──────────────────────────────────────────
 
 function createTeamSendMessageTool(ctx: TeamToolContext): StructuredToolInterface {
   return tool(

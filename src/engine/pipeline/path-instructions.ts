@@ -1,43 +1,47 @@
 import {ToolMessage} from '@langchain/core/messages';
-import {createMiddleware, type BaseMiddleware, type ToolCallContext, type ToolCallHandler} from '@engine/pipeline/types';
+import {
+  createMiddleware,
+  MIDDLEWARE_NAMES,
+  type BaseMiddleware,
+  type ToolCallContext,
+  type ToolCallHandler,
+} from '@engine/pipeline/types';
 import type {ProgressiveInstructionSource} from '@infra/context/instructions/progressive-source';
 
-/** Tools that access files and may trigger guideline discovery. */
+/** Tools that access files and may trigger path-scoped instruction projection. */
 const FILE_TOOL_NAMES = new Set(['read_file', 'edit_file', 'write_file', 'grep', 'glob']);
 
-export interface GuidelinesMiddlewareOptions {
+export interface PathInstructionsMiddlewareOptions {
   guidelinesSource?: ProgressiveInstructionSource;
   promptSource?: ProgressiveInstructionSource;
 }
 
 /**
- * GuidelinesMiddleware — lazy loading of subdirectory AGENTS.md / codara.md.
+ * Dynamic context bridge for path-scoped instructions.
  *
- * When file tools (read, edit, write, grep, glob) access files,
- * this middleware resolves nearby instruction files and appends
- * them as <system-reminder> to the tool result.
- *
- * Matches Claude Code's InstructionPrompt.resolve() behavior.
+ * This middleware resolves nearby AGENTS.md / codara.md content after file
+ * access and projects it back into the current turn as <system-reminder>.
+ * It runs inside the unified pipeline chain, but it is not a permission or
+ * security policy owner.
  */
-export function createGuidelinesMiddleware(options: GuidelinesMiddlewareOptions): BaseMiddleware {
+export function createPathInstructionsMiddleware(
+  options: PathInstructionsMiddlewareOptions,
+): BaseMiddleware {
   return createMiddleware({
-    name: 'GuidelinesMiddleware',
+    name: MIDDLEWARE_NAMES.PathInstructions,
 
     async wrapToolCall(context: ToolCallContext, handler: ToolCallHandler): Promise<ToolMessage> {
       const result = await handler(context);
 
-      // Only process file-related tools
       if (!FILE_TOOL_NAMES.has(context.toolCall.name)) {
         return result;
       }
 
-      // Extract file path from tool args
       const filePath = extractFilePath(context.toolCall.name, context.toolCall.args);
       if (!filePath) {
         return result;
       }
 
-      // Resolve nearby instruction files (AGENTS.md, codara.md)
       const reminders: string[] = [];
       if (options.guidelinesSource) {
         const resolved = await options.guidelinesSource.resolve(filePath);
@@ -56,7 +60,6 @@ export function createGuidelinesMiddleware(options: GuidelinesMiddlewareOptions)
         return result;
       }
 
-      // Append as <system-reminder> to tool result (like Claude Code)
       const reminder = `\n<system-reminder>\n${reminders.join('\n')}\n</system-reminder>`;
       const content = typeof result.content === 'string'
         ? result.content + reminder

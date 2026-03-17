@@ -123,6 +123,6 @@ describe('Codara middleware stack', () => {
     const middlewares = createCodaraMiddlewares({});
     const names = new Set(middlewares.map((middleware) => middleware.name));
 
-    expect(names.has('GuidelinesMiddleware')).toBe(false);
+    expect(names.has('PathInstructionsMiddleware')).toBe(false);
   });
 });

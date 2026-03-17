@@ -36,9 +36,9 @@ export {
   type BudgetMiddlewareOptions,
 } from '@engine/pipeline/budget';
 export {
-  createGuidelinesMiddleware,
-  type GuidelinesMiddlewareOptions,
-} from '@engine/pipeline/guidelines';
+  createPathInstructionsMiddleware,
+  type PathInstructionsMiddlewareOptions,
+} from '@engine/pipeline/path-instructions';
 export {
   applyHILResumeToolEdits,
   createHILMiddleware,

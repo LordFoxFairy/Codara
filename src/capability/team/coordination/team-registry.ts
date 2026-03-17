@@ -295,7 +295,6 @@ export class TeamRegistry {
   private resolveConfig(partial?: Partial<TeamConfig>): TeamConfig {
     return TeamConfigSchema.parse({
       modelCascade: {},
-      worktreeStrategy: 'per-agent',
       ...partial,
     });
   }

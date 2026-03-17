@@ -67,6 +67,7 @@ export {
   createLoggingMiddleware,
   createMiddleware,
   createAskUserTool,
+  createPathInstructionsMiddleware,
   ASK_USER_TOOL_NAME,
   parseAskUserResult,
   createPermissionMiddleware,
@@ -96,6 +97,7 @@ export {
   type HILResumePayload,
   type LoggingMiddlewareOptions,
   type MiddlewareLogRecord,
+  type PathInstructionsMiddlewareOptions,
   type SummarySettings,
   type SummaryOptions,
 } from '@engine/pipeline';

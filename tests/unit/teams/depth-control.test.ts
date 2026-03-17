@@ -21,7 +21,6 @@ const baseConfig: Team['config'] = {
   allowSubTeams: true,
   maxMembers: 10,
   modelCascade: {},
-  worktreeStrategy: 'per-agent',
   autoShutdown: true,
 };
 

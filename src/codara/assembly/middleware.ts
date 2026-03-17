@@ -10,9 +10,9 @@ import {
   createAskUserQuestionMiddleware,
   createBudgetMiddleware,
   createDailySessionFileLogSink,
-  createGuidelinesMiddleware,
   createHILMiddleware,
   createLoggingMiddleware,
+  createPathInstructionsMiddleware,
   createSkillsMiddleware,
   createTodoListMiddleware,
   MIDDLEWARE_NAMES,
@@ -30,7 +30,6 @@ import type {PromptSource} from '@infra/context/prompts/prompt-source';
 import {resolveWorkspaceRoot} from '@infra/config/workspace';
 import type {
   CodaraMiddlewareOptions,
-  CodaraOptions,
   CodaraRuntimeOptions,
 } from '../types';
 import {createInstructionContextPreparer} from './context';
@@ -101,10 +100,10 @@ export function createRuntimeDefaultMiddlewares(input: {
     byName.set(middleware.name, middleware);
   }
 
-  if (!byName.has(MIDDLEWARE_NAMES.Guidelines)) {
+  if (!byName.has(MIDDLEWARE_NAMES.PathInstructions)) {
     byName.set(
-      MIDDLEWARE_NAMES.Guidelines,
-      createGuidelinesMiddleware({
+      MIDDLEWARE_NAMES.PathInstructions,
+      createPathInstructionsMiddleware({
         guidelinesSource: input.guidelinesSource,
         promptSource: input.promptSource,
       }),

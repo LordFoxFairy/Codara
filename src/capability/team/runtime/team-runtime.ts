@@ -1,13 +1,11 @@
 import { randomUUID } from 'node:crypto';
-import type { Team, TeamMember, MemberRole } from '@capability/team/coordination/types';
+import type { TeamMember, MemberRole } from '@capability/team/coordination/types';
 import { TeamRegistry } from '@capability/team/coordination/team-registry';
 import { LocalTransport } from '@capability/team/transport/local-transport';
 import type { TeamTransport } from '@capability/team/transport/types';
 import type { TeamBusEvent } from '@capability/team/coordination/events';
 import { MemberRunner } from '@capability/team/runtime/member-runner';
 import type { MemberSession, MemberSessionOptions } from '@capability/team/runtime/member-runner';
-import { createMemberWorktree, cleanupTeamWorktrees, listTeamWorktrees } from '@infra/worktree/team-worktree';
-import { mergeBranch, type MergeResult } from '@infra/git/merge';
 import { TeamPersistence } from '@capability/team/persistence/team-persistence';
 import type { TeamMessage } from '@capability/team/coordination/types';
 import type { CodaraRuntimeEvent, CodaraRuntimeEventPhase, CodaraRuntimeEventStatus } from '@engine/events/runtime-events';
@@ -334,14 +332,6 @@ export class TeamRuntime {
 
     const member = this.buildMember(teamId, name, role, model);
 
-    // Create git worktree for member isolation (best-effort — team still works without it)
-    try {
-      const worktreePath = await createMemberWorktree(teamId, name, this.options.projectRoot);
-      member.worktreePath = worktreePath;
-    } catch {
-      // Worktree creation may fail (not a git repo, etc.) — continue without it
-    }
-
     registry.registerMember(teamId, member);
     if ('registerMember' in transport) {
       (transport as LocalTransport).registerMember(member.memberId);
@@ -434,25 +424,12 @@ export class TeamRuntime {
 
     registry.updateTeamStatus(teamId, 'completing');
 
-    // Merge worktree branches back to the base branch (best-effort)
-    const mergeResults = await this.mergeTeamWorktrees(teamId);
-    const failedMerges = mergeResults.filter(r => !r.success);
-
     registry.updateTeamStatus(teamId, 'completed');
     this.persistTeam(teamId);
 
-    const summary = failedMerges.length > 0
-      ? `Team shutdown complete. ${failedMerges.length} merge(s) had conflicts.`
-      : 'Team shutdown complete. All branches merged.';
+    const summary = 'Team shutdown complete.';
     const completedEvent: TeamBusEvent = { type: 'team.completed', data: { teamId, summary } };
     this.emitTeamEvent(teamId, completedEvent);
-
-    // Cleanup worktrees (best-effort — only after merge attempts)
-    try {
-      await cleanupTeamWorktrees(teamId, this.options.projectRoot);
-    } catch {
-      // Worktree cleanup may fail — not critical
-    }
 
     const shutdownTimer = this.healthTimers.get(teamId);
     if (shutdownTimer) clearInterval(shutdownTimer);
@@ -635,30 +612,6 @@ export class TeamRuntime {
       };
       this.emitTeamEvent(teamId, failEvent);
     }
-  }
-
-  /** Merge all worktree branches for a team back to the current branch. */
-  private async mergeTeamWorktrees(teamId: string): Promise<MergeResult[]> {
-    const results: MergeResult[] = [];
-    try {
-      const worktrees = await listTeamWorktrees(teamId, this.options.projectRoot);
-      for (const wt of worktrees) {
-        try {
-          const result = await mergeBranch(
-            wt.branchName,
-            'HEAD',
-            this.options.projectRoot,
-            `merge: team ${teamId} member ${wt.memberName}`,
-          );
-          results.push(result);
-        } catch {
-          results.push({success: false, sourceBranch: wt.branchName, targetBranch: 'HEAD', error: 'merge failed'});
-        }
-      }
-    } catch {
-      // listTeamWorktrees may fail if no worktrees exist
-    }
-    return results;
   }
 
   private waitForTermination(runner: MemberRunner): Promise<void> {

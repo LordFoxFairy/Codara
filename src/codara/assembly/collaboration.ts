@@ -50,7 +50,7 @@ export async function assembleTeamSystem(input: TeamSystemAssemblyInput): Promis
     };
 
     const baseDevTools = createBuiltinTools({
-      cwd: memberOptions.worktreePath ?? options.cwd,
+      cwd: options.cwd,
       extended: true,
     });
     const memberTools = getToolsForRole(memberOptions.role, teamToolContext, baseDevTools);

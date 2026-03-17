@@ -94,7 +94,6 @@ export interface MemberSessionOptions {
   middleware: unknown[];
   systemMessage: string[];
   runtimeShared: Record<string, unknown>;
-  worktreePath?: string;
 }
 
 export interface MemberInvokeResult {
@@ -240,7 +239,6 @@ export class MemberRunner {
       middleware: [],
       systemMessage: [],
       runtimeShared: { teamContext: this.buildTeamContext() },
-      worktreePath: member.worktreePath,
     };
   }
 
@@ -253,7 +251,6 @@ export class MemberRunner {
       role: member.role,
       teamName: this.options.teamName,
       goal: this.options.goal,
-      worktreePath: member.worktreePath,
       depth: this.options.depth,
       maxDepth: this.options.maxDepth,
       drainInbox: async () => {
@@ -280,7 +277,6 @@ export class MemberRunner {
           teamName: this.options.teamName,
           memberName: member.name,
           goal: this.options.goal,
-          worktreePath: member.worktreePath,
         });
     }
   }

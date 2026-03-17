@@ -18,7 +18,6 @@ export interface TeamRuntimeContext {
   role: 'leader' | 'worker' | 'reviewer'
   teamName: string
   goal: string
-  worktreePath?: string
   depth: number
   maxDepth: number
   drainInbox: () => Promise<string[]>

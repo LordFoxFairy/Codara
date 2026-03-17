@@ -45,7 +45,7 @@ function buildOptions(overrides?: Partial<MemberRunnerOptions>): MemberRunnerOpt
   const team = registry.createTeam({
     name: 'test-team',
     goal: 'test goal',
-    config: { maxDepth: 2, allowSubTeams: true, maxMembers: 10, modelCascade: {}, worktreeStrategy: 'per-agent', autoShutdown: true },
+    config: { maxDepth: 2, allowSubTeams: true, maxMembers: 10, modelCascade: {}, autoShutdown: true },
   });
   const transport = new LocalTransport();
   const emitter = new TeamEventEmitter();

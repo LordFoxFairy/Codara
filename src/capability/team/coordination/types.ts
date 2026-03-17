@@ -77,7 +77,6 @@ export const TeamConfigSchema = z.object({
   allowSubTeams: z.boolean().default(true),
   maxMembers: z.number().default(10),
   modelCascade: ModelCascadeSchema,
-  worktreeStrategy: z.literal('per-agent'),
   autoShutdown: z.boolean().default(true),
   budget: TeamBudgetConfigSchema.optional(),
 });
@@ -117,7 +116,6 @@ export const TeamMemberSchema = z.object({
   status: MemberStatusSchema,
   model: z.string().optional(),
   sessionId: z.string(),
-  worktreePath: z.string().optional(),
   currentJobId: z.string().optional(),
   joinedAt: z.string(),
   lastHeartbeat: z.string().optional(),

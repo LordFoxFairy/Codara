@@ -46,7 +46,6 @@ function createTestTeam() {
       allowSubTeams: true,
       maxMembers: 10,
       modelCascade: {},
-      worktreeStrategy: 'per-agent',
       autoShutdown: true,
     },
   });

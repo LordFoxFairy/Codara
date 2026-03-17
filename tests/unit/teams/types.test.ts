@@ -137,7 +137,6 @@ describe('ModelCascadeSchema', () => {
 describe('TeamConfigSchema', () => {
   const minimal = {
     modelCascade: {},
-    worktreeStrategy: 'per-agent' as const,
   };
 
   test('applies defaults', () => {
@@ -164,11 +163,7 @@ describe('TeamConfigSchema', () => {
   });
 
   test('rejects missing modelCascade', () => {
-    expect(() => TeamConfigSchema.parse({worktreeStrategy: 'per-agent'})).toThrow();
-  });
-
-  test('rejects invalid worktreeStrategy', () => {
-    expect(() => TeamConfigSchema.parse({...minimal, worktreeStrategy: 'shared'})).toThrow();
+    expect(() => TeamConfigSchema.parse({})).toThrow();
   });
 
   test('accepts optional budget', () => {
@@ -191,7 +186,6 @@ describe('TeamSchema', () => {
     depth: 0,
     config: {
       modelCascade: {leader: 'claude-opus-4-6'},
-      worktreeStrategy: 'per-agent' as const,
     },
     createdAt: '2026-03-17T00:00:00Z',
   };
@@ -262,7 +256,6 @@ describe('TeamMemberSchema', () => {
     const result = TeamMemberSchema.parse(validMember);
     expect(result.memberId).toBe('member-1');
     expect(result.model).toBeUndefined();
-    expect(result.worktreePath).toBeUndefined();
   });
 
   test('rejects invalid role', () => {
