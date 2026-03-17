@@ -71,13 +71,13 @@ describe('Leader Tools', () => {
 
   // ── createLeaderTools ───────────────────────────────────────────
 
-  test('returns 12 tools', () => {
-    expect(tools).toHaveLength(12);
+  test('returns 11 tools', () => {
+    expect(tools).toHaveLength(11);
   });
 
   test('all tools have unique names', () => {
     const names = tools.map((t) => t.name);
-    expect(new Set(names).size).toBe(12);
+    expect(new Set(names).size).toBe(11);
   });
 
   // ── team_plan_jobs ──────────────────────────────────────────────
@@ -404,19 +404,4 @@ describe('Leader Tools', () => {
     });
   });
 
-  // ── team_create_subteam ─────────────────────────────────────────
-
-  describe('team_create_subteam', () => {
-    test('creates a sub-team', async () => {
-      const subteamTool = findTool(tools, 'team_create_subteam');
-      const result = parse(await subteamTool.invoke({name: 'sub-alpha', goal: 'Handle frontend'}));
-
-      expect(result.name).toBe('sub-alpha');
-      expect(result.parentTeamId).toBe(team.teamId);
-      expect(result.depth).toBe(1);
-
-      const created = events.filter((e) => e.type === 'team.created');
-      expect(created).toHaveLength(1);
-    });
-  });
 });

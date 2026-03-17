@@ -41,8 +41,8 @@ describe('TeamRegistry', () => {
       expect(team.depth).toBe(0);
       expect(team.rootTeamId).toBe(team.teamId);
       expect(team.createdBy).toBe('user');
-      expect(team.config.maxDepth).toBe(2);
-      expect(team.config.allowSubTeams).toBe(true);
+      expect(team.config.maxDepth).toBe(1);
+      expect(team.config.allowSubTeams).toBe(false);
       expect(team.config.maxMembers).toBe(10);
       expect(team.config.autoShutdown).toBe(true);
     });
@@ -405,7 +405,7 @@ describe('TeamRegistry', () => {
 
   describe('createSubTeam', () => {
     test('sets correct depth, parent, and root', () => {
-      const parent = registry.createTeam({name: 'Root', goal: 'G'});
+      const parent = registry.createTeam({name: 'Root', goal: 'G', config: {allowSubTeams: true, maxDepth: 2}});
       const child = registry.createSubTeam(parent.teamId, {
         name: 'Child',
         goal: 'Sub-G',
@@ -423,7 +423,7 @@ describe('TeamRegistry', () => {
       const parent = registry.createTeam({
         name: 'Root',
         goal: 'G',
-        config: {maxMembers: 5},
+        config: {maxMembers: 5, allowSubTeams: true, maxDepth: 2},
       });
       const child = registry.createSubTeam(parent.teamId, {
         name: 'Child',
@@ -435,7 +435,7 @@ describe('TeamRegistry', () => {
     });
 
     test('overrides config with input', () => {
-      const parent = registry.createTeam({name: 'Root', goal: 'G'});
+      const parent = registry.createTeam({name: 'Root', goal: 'G', config: {allowSubTeams: true, maxDepth: 2}});
       const child = registry.createSubTeam(parent.teamId, {
         name: 'Child',
         goal: 'Sub-G',
@@ -447,7 +447,7 @@ describe('TeamRegistry', () => {
     });
 
     test('validates depth limit', () => {
-      const root = registry.createTeam({name: 'Root', goal: 'G', config: {maxDepth: 1}});
+      const root = registry.createTeam({name: 'Root', goal: 'G', config: {maxDepth: 1, allowSubTeams: true}});
       const child = registry.createSubTeam(root.teamId, {
         name: 'L1',
         goal: 'G',
@@ -480,7 +480,7 @@ describe('TeamRegistry', () => {
     });
 
     test('validates name uniqueness', () => {
-      const parent = registry.createTeam({name: 'Root', goal: 'G'});
+      const parent = registry.createTeam({name: 'Root', goal: 'G', config: {allowSubTeams: true, maxDepth: 2}});
       registry.createSubTeam(parent.teamId, {name: 'Child', goal: 'G', createdBy: 'a'});
 
       expect(() =>
@@ -495,7 +495,7 @@ describe('TeamRegistry', () => {
     });
 
     test('preserves rootTeamId through multiple levels', () => {
-      const root = registry.createTeam({name: 'Root', goal: 'G'});
+      const root = registry.createTeam({name: 'Root', goal: 'G', config: {allowSubTeams: true, maxDepth: 3}});
       const l1 = registry.createSubTeam(root.teamId, {name: 'L1', goal: 'G', createdBy: 'a'});
       const l2 = registry.createSubTeam(l1.teamId, {name: 'L2', goal: 'G', createdBy: 'a'});
 

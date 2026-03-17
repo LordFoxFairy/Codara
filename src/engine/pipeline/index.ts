@@ -67,7 +67,6 @@ export {
   type HILReviewRequest,
   type HILToolMessagePayload,
   type HILUIActionOption,
-  type HILUIConfig,
 } from '@engine/pipeline/hil';
 export {
   createSummaryMiddleware,

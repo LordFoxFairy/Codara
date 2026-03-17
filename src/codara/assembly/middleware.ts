@@ -3,7 +3,6 @@ import type {BaseChatModel} from '@langchain/core/language_models/chat_models';
 import type {StructuredToolInterface} from '@langchain/core/tools';
 import type {
   BaseMiddleware,
-  HILMiddlewareOptions,
   LoggingMiddlewareOptions,
 } from '@engine/pipeline';
 import {
@@ -64,7 +63,6 @@ export function resolveRuntimeLoggingOptions(
     logger: provided.logger ?? createDailySessionFileLogSink({rootDir}),
   };
 }
-
 export function createCodaraMiddlewares(
   options: CodaraMiddlewareOptions = {},
 ): BaseMiddleware[] {
@@ -91,7 +89,7 @@ export function createRuntimeDefaultMiddlewares(input: {
   catalog?: CodaraModelCatalog | Promise<CodaraModelCatalog>;
   promptSource: PromptSource;
   guidelinesSource: GuidelinesSource;
-  hookPipeline?: HookPipeline;
+  hookPipeline?: HookPipeline
   teamRegistry?: TeamRegistry;
   teamRuntime?: TeamRuntime;
   teamSharedState?: SharedState;
@@ -149,9 +147,9 @@ export function createRuntimeDefaultMiddlewares(input: {
     input.teamRegistry &&
     input.teamRuntime &&
     input.teamSharedState &&
-    !byName.has('TeamMiddleware')
+    !byName.has(MIDDLEWARE_NAMES.Team)
   ) {
-    byName.set('TeamMiddleware', createTeamMiddleware({
+    byName.set(MIDDLEWARE_NAMES.Team, createTeamMiddleware({
       teamType: 'leader',
       registry: input.teamRegistry,
       runtime: input.teamRuntime,
@@ -197,7 +195,7 @@ function createDelegatedRuntimeMiddlewares(input: {
 }): BaseMiddleware[] {
   const middlewares: BaseMiddleware[] = [];
   const callerMiddlewares = (input.options.middleware ?? [])
-    .filter((middleware) => middleware.name !== MIDDLEWARE_NAMES.Task);
+    .filter((middleware) => middleware.name !== MIDDLEWARE_NAMES.Task && middleware.name !== MIDDLEWARE_NAMES.Team);
   const providedToolNames = collectProvidedToolNames({
     tools: input.tools,
     middlewares: callerMiddlewares,
@@ -276,5 +274,3 @@ function createRuntimePermissionAnalysisModel(
 
   return undefined;
 }
-
-export type CodaraHilOptions = HILMiddlewareOptions;

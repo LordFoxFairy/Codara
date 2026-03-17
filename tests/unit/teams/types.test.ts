@@ -140,8 +140,8 @@ describe('TeamConfigSchema', () => {
 
   test('applies defaults', () => {
     const result = TeamConfigSchema.parse(minimal);
-    expect(result.maxDepth).toBe(2);
-    expect(result.allowSubTeams).toBe(true);
+    expect(result.maxDepth).toBe(1);
+    expect(result.allowSubTeams).toBe(false);
     expect(result.maxMembers).toBe(10);
     expect(result.autoShutdown).toBe(true);
     expect(result.budget).toBeUndefined();
@@ -393,7 +393,7 @@ describe('TeamMessageSchema', () => {
 
 describe('Constants', () => {
   test('SECURITY_DEFAULTS', () => {
-    expect(SECURITY_DEFAULTS.maxTeamDepth).toBe(2);
+    expect(SECURITY_DEFAULTS.maxTeamDepth).toBe(1);
     expect(SECURITY_DEFAULTS.maxTotalAgents).toBe(20);
     expect(SECURITY_DEFAULTS.maxMembersPerTeam).toBe(10);
   });

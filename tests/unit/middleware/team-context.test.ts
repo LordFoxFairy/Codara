@@ -33,7 +33,7 @@ function createMockTeamContext(overrides?: Partial<TeamRuntimeContext>): TeamRun
     teamName: 'test-team',
     goal: 'implement feature X',
     depth: 0,
-    maxDepth: 2,
+    maxDepth: 1,
     drainInbox: async () => [],
     getProtocol: () => '# Worker Protocol\nYou are a worker.',
     ...overrides,

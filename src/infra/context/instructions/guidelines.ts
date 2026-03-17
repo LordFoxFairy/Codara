@@ -10,10 +10,9 @@ import {
 
 const AGENTS_FILE_NAME = 'AGENTS.md';
 
-export type GuidelinesOptions = ProgressiveInstructionWorkspaceOptions;
 export type GuidelinesSource = ProgressiveInstructionSource;
 
-export function createCodaraGuidelinesSource(options: GuidelinesOptions = {}): GuidelinesSource {
+export function createCodaraGuidelinesSource(options: ProgressiveInstructionWorkspaceOptions = {}): GuidelinesSource {
   const projectRoot = resolveWorkspaceRoot(options);
   const userHome = path.resolve(options.userHome ?? homedir());
   const workspaceKey = createWorkspaceKey(projectRoot);

@@ -21,7 +21,6 @@ export {
   type TaskToolOptions,
 } from '@capability/task/tools';
 export {
-  TASK_MIDDLEWARE_SYSTEM_PROMPT,
   TASK_TOOL_DESCRIPTION,
   TASK_TOOL_NAME,
   createTaskMiddleware,

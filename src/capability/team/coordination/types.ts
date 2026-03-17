@@ -73,8 +73,8 @@ export const ModelCascadeSchema = z.object({
 export type ModelCascade = z.infer<typeof ModelCascadeSchema>;
 
 export const TeamConfigSchema = z.object({
-  maxDepth: z.number().default(2),
-  allowSubTeams: z.boolean().default(true),
+  maxDepth: z.number().default(1),
+  allowSubTeams: z.boolean().default(false),
   maxMembers: z.number().default(10),
   modelCascade: ModelCascadeSchema,
   autoShutdown: z.boolean().default(true),
@@ -199,7 +199,7 @@ export interface RetentionPolicy {
 // ─── Constants ───────────────────────────────────────────────────────
 
 export const SECURITY_DEFAULTS = {
-  maxTeamDepth: 2,
+  maxTeamDepth: 1,
   maxTotalAgents: 20,
   maxMembersPerTeam: 10,
 } as const;

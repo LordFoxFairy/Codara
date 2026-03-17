@@ -152,7 +152,6 @@ describe('tasks middlewares', () => {
     const result = await agent.invoke([new HumanMessage('show tasks prompt')]);
     const lastAi = result.state.messages[result.state.messages.length - 1] as AIMessage;
 
-    expect(String(lastAi.content)).toContain('Task Delegation');
     expect(String(lastAi.content)).toContain('Available Subagents');
     expect(String(lastAi.content)).toContain('general-purpose');
     expect(String(lastAi.content)).toContain('Explore');

@@ -76,6 +76,7 @@ export function createTaskTool(options: CreateTaskToolOptions): StructuredToolIn
         toolName: TASK_TOOL_NAME,
         parentExecution: delegated.parentExecution,
         ...(delegated.resume ? {resume: delegated.resume} : {}),
+        delegationDepth: 0,
         profileTools: resolveDefinitionTools(options.tools ?? [], profile),
         profileSystemPrompt: profile.systemPrompt,
       });
@@ -88,23 +89,6 @@ export function createTaskTool(options: CreateTaskToolOptions): StructuredToolIn
   ));
 }
 
-export const TASK_MIDDLEWARE_SYSTEM_PROMPT = `## Task Delegation
-
-You can delegate focused work to a dedicated subagent with the \`Task\` tool.
-Use it when a sub-problem deserves a fresh context window and a concise summary back to the current agent.
-
-Workflow guidance:
-- for non-trivial work, first use \`write_todos\` to make the active plan visible
-- use \`Task\` only when the work benefits from a fresh context window or a specialist delegate
-- keep cross-agent coordination in \`TaskCreate\` / \`TaskUpdate\` / \`TaskList\`
-- do not use slash commands or permission reviews as a task coordination mechanism
-
-When using \`Task\`:
-- choose the best available \`subagent_type\` when one fits
-- omit \`subagent_type\` to use the default general-purpose delegate
-- use \`TaskCreate\` / \`TaskUpdate\` / \`TaskList\` for shared coordination, not \`Task\`
-`;
-
 export function createTaskMiddleware(options: CreateTaskMiddlewareOptions): BaseMiddleware {
   return createMiddleware({
     name: options.name?.trim() || 'TaskMiddleware',
@@ -113,7 +97,6 @@ export function createTaskMiddleware(options: CreateTaskMiddlewareOptions): Base
       ...(options.store ? createTaskTools({store: options.store}) : []),
     ],
     beforeModel(context) {
-      context.systemMessage.push(TASK_MIDDLEWARE_SYSTEM_PROMPT);
       const runtime = readSkillsRuntimeData(context.runtime.shared);
       const definitions = formatAvailableSubagents(runtime);
       if (definitions) {

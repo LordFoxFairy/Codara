@@ -1,13 +1,9 @@
 import {tool} from '@langchain/core/tools';
 import type {StructuredToolInterface} from '@langchain/core/tools';
 import {z} from 'zod';
-import type {Team, TeamMessage} from '@capability/team/coordination/types';
+import type {TeamMessage} from '@capability/team/coordination/types';
 import {SECURITY_DEFAULTS} from '@capability/team/coordination/types';
 import type {TeamToolContext} from '@capability/team/surface/types';
-
-function canCreateSubTeam(team: Team): boolean {
-  return team.config.allowSubTeams && team.depth < team.config.maxDepth;
-}
 
 function canSpawnMember(
   teamMemberCount: number,
@@ -29,7 +25,6 @@ export function createLeaderTools(ctx: TeamToolContext): StructuredToolInterface
     createTeamReviewJobTool(ctx),
     createTeamSendMessageTool(ctx),
     createTeamBroadcastTool(ctx),
-    createTeamCreateSubteamTool(ctx),
     createTeamReportTool(ctx),
     createTeamShutdownTool(ctx),
   ];
@@ -327,40 +322,6 @@ function createTeamBroadcastTool(ctx: TeamToolContext): StructuredToolInterface 
       description: 'Broadcast a message to all team members.',
       schema: z.object({
         content: z.string(),
-      }),
-    },
-  );
-}
-
-function createTeamCreateSubteamTool(ctx: TeamToolContext): StructuredToolInterface {
-  return tool(
-    async (input) => {
-      const team = ctx.registry.getTeam(ctx.teamId);
-      if (!team) return JSON.stringify({error: `Team not found: ${ctx.teamId}`});
-      if (!canCreateSubTeam(team)) {
-        return JSON.stringify({error: 'Cannot create sub-team: depth limit reached or sub-teams disabled'});
-      }
-      const subTeam = ctx.registry.createSubTeam(ctx.teamId, {
-        name: input.name,
-        goal: input.goal,
-        config: input.config as Record<string, unknown> | undefined,
-        createdBy: ctx.memberId,
-      });
-
-      ctx.emitEvent({
-        type: 'team.created',
-        data: {teamId: subTeam.teamId, name: subTeam.name, goal: subTeam.goal, depth: subTeam.depth},
-      });
-
-      return JSON.stringify(subTeam);
-    },
-    {
-      name: 'team_create_subteam',
-      description: 'Create a nested sub-team under the current team.',
-      schema: z.object({
-        name: z.string(),
-        goal: z.string(),
-        config: z.record(z.string(), z.unknown()).optional(),
       }),
     },
   );

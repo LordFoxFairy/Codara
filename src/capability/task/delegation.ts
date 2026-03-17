@@ -120,7 +120,7 @@ interface ParentPauseContext {
   maxTurns?: number;
 }
 
-export const MAX_DELEGATION_DEPTH = 5;
+export const MAX_DELEGATION_DEPTH = 1;
 
 /**
  * 校验委托深度是否在允许范围内。

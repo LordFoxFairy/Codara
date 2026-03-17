@@ -15,7 +15,6 @@ export type HILPauseRequest = PauseRequest;
 export type HILReviewDecision = PauseReviewDecision;
 export type HILReviewRequest = PauseReviewRequest;
 export type HILUIActionOption = PauseUIActionOption;
-export type HILUIConfig = PauseUIConfig;
 export type HILResumePayload = ResumePayload;
 
 export type HILToolMessagePayload =

@@ -10,10 +10,9 @@ import {
 
 const HANDBOOK_FILE_NAME = 'codara.md';
 
-export type PromptOptions = ProgressiveInstructionWorkspaceOptions;
 export type PromptSource = ProgressiveInstructionSource;
 
-export function createCodaraPromptSource(options: PromptOptions = {}): PromptSource {
+export function createCodaraPromptSource(options: ProgressiveInstructionWorkspaceOptions = {}): PromptSource {
   const projectRoot = resolveWorkspaceRoot(options);
   const userHome = path.resolve(options.userHome ?? homedir());
   const workspaceKey = createWorkspaceKey(projectRoot);

@@ -109,12 +109,10 @@ export {
 } from '@engine/checkpoint';
 export {
   createCodaraGuidelinesSource,
-  type GuidelinesOptions,
   type GuidelinesSource,
 } from '@infra/context/instructions/guidelines';
 export {
   createCodaraPromptSource,
-  type PromptOptions,
   type PromptSource,
 } from '@infra/context/prompts/prompt-source';
 export {
