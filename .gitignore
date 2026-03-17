@@ -49,6 +49,7 @@ docs/
 coverage/
 
 .codara/sessions
+.worktrees/
 
 # Lock files (uncomment the ones you don't use)
 # package-lock.json
