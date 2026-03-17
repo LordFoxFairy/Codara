@@ -6,8 +6,8 @@
   "build": {
     "frontendDist": "../dist-desktop",
     "devUrl": "http://localhost:5173",
-    "beforeDevCommand": "",
-    "beforeBuildCommand": ""
+    "beforeDevCommand": "bun run dev:vite",
+    "beforeBuildCommand": "bun run build:desktop"
   },
   "app": {
     "title": "Codara",
@@ -23,7 +23,7 @@
       }
     ],
     "security": {
-      "csp": "default-src 'self'; connect-src 'self' http://localhost:23981; style-src 'self' 'unsafe-inline'; script-src 'self'"
+      "csp": "default-src 'self'; connect-src 'self' http://localhost:23981 ws://localhost:23981; style-src 'self' 'unsafe-inline'; script-src 'self'"
     }
   },
   "plugins": {

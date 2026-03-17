@@ -52,8 +52,13 @@
   "private": true,
   "scripts": {
     "dev": "bun --watch src/cli/main.tsx",
+    "cli": "bun --watch src/cli/main.tsx",
     "dev:once": "bun src/cli/main.tsx",
+    "dev:server": "bun --watch src/server/index.ts",
+    "dev:vite": "vite --config src/desktop/vite.config.ts",
+    "desktop": "cargo tauri dev --config src-tauri/tauri.conf.json",
     "build": "rm -rf dist && tsc -p tsconfig.json && tsc-alias -p tsconfig.json --resolve-full-paths --resolve-full-extension .js",
+    "build:desktop": "vite build --config src/desktop/vite.config.ts && cargo tauri build --config src-tauri/tauri.conf.json",
     "check": "bun run check:fast && bun test",
     "check:cases": "bun run check:fast && bun run test:cases",
     "check:fast": "bun run lint && bun run typecheck",
