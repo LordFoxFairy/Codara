@@ -11,60 +11,171 @@ export const teamCommand: CodaraCommandDefinition = {
   help: {
     executionMode: 'runtime_command',
   },
-  async execute({command}) {
+  async execute({command, agent}) {
     const sub = command.args[0]?.toLowerCase();
     const args = command.args.slice(1);
+
+    const registry = agent.teamRegistry;
+    const runtime = agent.teamRuntime;
+
+    if (!registry || !runtime) {
+      return err(command.name, 'Team system not initialized. TeamRegistry/TeamRuntime not available.');
+    }
 
     switch (sub) {
       case 'create': {
         const goal = args.join(' ');
         if (!goal) return err(command.name, 'Usage: /team create <goal>');
-        return ok(command.name, `Team creation initiated. Goal: "${goal}"\n(TeamRuntime integration pending)`);
+        try {
+          const name = `team-${Date.now().toString(36)}`;
+          const team = registry.createTeam({name, goal});
+          await runtime.startTeam(team.teamId);
+          return ok(command.name, `Team created and started.\n  ID: ${team.teamId}\n  Name: ${team.name}\n  Goal: ${goal}\n  Status: running`);
+        } catch (e) {
+          return err(command.name, `Failed to create team: ${e instanceof Error ? e.message : String(e)}`);
+        }
       }
-      case 'list':
-        return ok(command.name, 'No active teams.\n\nUse /team create <goal> to start a team.');
+      case 'list': {
+        const teams = registry.listTeams();
+        if (teams.length === 0) {
+          return ok(command.name, 'No active teams.\n\nUse /team create <goal> to start a team.');
+        }
+        const header = 'ID                Name              Status      Goal';
+        const separator = '─'.repeat(72);
+        const rows = teams.map(t => {
+          const id = t.teamId.padEnd(18);
+          const name = t.name.padEnd(18);
+          const status = t.status.padEnd(12);
+          return `${id}${name}${status}${t.goal}`;
+        });
+        return ok(command.name, [header, separator, ...rows].join('\n'));
+      }
       case 'status': {
         const name = args[0];
         if (!name) return err(command.name, 'Usage: /team status <name>');
-        return ok(command.name, `Team "${name}" status: (TeamRuntime integration pending)`);
+        const team = registry.getTeamByName(name) ?? registry.getTeam(name);
+        if (!team) return err(command.name, `Team "${name}" not found.`);
+        const members = registry.getMembersByTeam(team.teamId);
+        const jobBoard = registry.getJobBoard(team.teamId);
+        const jobs = jobBoard.getAllJobs();
+        const lines = [
+          `Team: ${team.name} (${team.teamId})`,
+          `Status: ${team.status}`,
+          `Goal: ${team.goal}`,
+          `Depth: ${team.depth}`,
+          `Created: ${team.createdAt}`,
+          '',
+          `Members (${members.length}):`,
+          ...members.map(m => `  ${m.role.padEnd(8)} ${m.name.padEnd(16)} ${m.status.padEnd(14)} ${m.memberId}`),
+          '',
+          `Jobs (${jobs.length}):`,
+          ...jobs.map(j => `  [${j.status.padEnd(12)}] ${j.title} (${j.id})`),
+        ];
+        return ok(command.name, lines.join('\n'));
       }
       case 'pause': {
         const name = args[0];
         if (!name) return err(command.name, 'Usage: /team pause <name>');
-        return ok(command.name, `Team "${name}" paused.`);
+        const team = registry.getTeamByName(name) ?? registry.getTeam(name);
+        if (!team) return err(command.name, `Team "${name}" not found.`);
+        try {
+          runtime.pauseTeam(team.teamId);
+          return ok(command.name, `Team "${team.name}" paused.`);
+        } catch (e) {
+          return err(command.name, `Failed to pause team: ${e instanceof Error ? e.message : String(e)}`);
+        }
       }
       case 'resume': {
         const name = args[0];
         if (!name) return err(command.name, 'Usage: /team resume <name>');
-        return ok(command.name, `Team "${name}" resumed.`);
+        const team = registry.getTeamByName(name) ?? registry.getTeam(name);
+        if (!team) return err(command.name, `Team "${name}" not found.`);
+        try {
+          runtime.resumeTeam(team.teamId);
+          return ok(command.name, `Team "${team.name}" resumed.`);
+        } catch (e) {
+          return err(command.name, `Failed to resume team: ${e instanceof Error ? e.message : String(e)}`);
+        }
       }
       case 'kill': {
         const name = args[0];
         if (!name) return err(command.name, 'Usage: /team kill <name>');
-        return ok(command.name, `Team "${name}" killed.`);
+        const team = registry.getTeamByName(name) ?? registry.getTeam(name);
+        if (!team) return err(command.name, `Team "${name}" not found.`);
+        try {
+          await runtime.killTeam(team.teamId);
+          return ok(command.name, `Team "${team.name}" killed.`);
+        } catch (e) {
+          return err(command.name, `Failed to kill team: ${e instanceof Error ? e.message : String(e)}`);
+        }
       }
       case 'finish': {
         const name = args[0];
         if (!name) return err(command.name, 'Usage: /team finish <name>');
-        return ok(command.name, `Team "${name}" finishing...`);
+        const team = registry.getTeamByName(name) ?? registry.getTeam(name);
+        if (!team) return err(command.name, `Team "${name}" not found.`);
+        try {
+          await runtime.shutdownTeam(team.teamId);
+          return ok(command.name, `Team "${team.name}" shutdown complete.`);
+        } catch (e) {
+          return err(command.name, `Failed to finish team: ${e instanceof Error ? e.message : String(e)}`);
+        }
       }
       case 'enter': {
         const name = args[0];
         if (!name) return err(command.name, 'Usage: /team enter <name>');
-        return ok(command.name, `Entered team "${name}". Type messages to interact.`);
+        const team = registry.getTeamByName(name) ?? registry.getTeam(name);
+        if (!team) return err(command.name, `Team "${name}" not found.`);
+        return {
+          ok: true,
+          command: command.name,
+          output: `Entered team "${team.name}". Type messages to interact.`,
+          action: {type: 'enter_team', teamId: team.teamId},
+        };
       }
       case 'leave':
-        return ok(command.name, 'Left team view. Back to global dashboard.');
+        return {
+          ok: true,
+          command: command.name,
+          output: 'Left team view. Back to global dashboard.',
+          action: {type: 'leave_team'},
+        };
       case 'message': {
         const name = args[0];
         const msg = args.slice(1).join(' ');
         if (!name || !msg) return err(command.name, 'Usage: /team message <name> <message>');
-        return ok(command.name, `Message sent to team "${name}".`);
+        const team = registry.getTeamByName(name) ?? registry.getTeam(name);
+        if (!team) return err(command.name, `Team "${name}" not found.`);
+        const transport = runtime.getTransport(team.teamId);
+        if (!transport) return err(command.name, `Team "${name}" transport not available.`);
+        try {
+          await transport.send('broadcast', {
+            id: `msg_${crypto.randomUUID().slice(0, 8)}`,
+            from: 'user',
+            to: 'broadcast',
+            teamId: team.teamId,
+            type: 'message',
+            content: msg,
+            timestamp: new Date().toISOString(),
+            read: false,
+          });
+          return ok(command.name, `Message sent to team "${team.name}".`);
+        } catch (e) {
+          return err(command.name, `Failed to send message: ${e instanceof Error ? e.message : String(e)}`);
+        }
       }
       case 'assign': {
         const [name, jobId, memberId] = args;
         if (!name || !jobId || !memberId) return err(command.name, 'Usage: /team assign <name> <jobId> <memberId>');
-        return ok(command.name, `Job ${jobId} assigned to ${memberId} in team "${name}".`);
+        const team = registry.getTeamByName(name) ?? registry.getTeam(name);
+        if (!team) return err(command.name, `Team "${name}" not found.`);
+        const jobBoard = registry.getJobBoard(team.teamId);
+        try {
+          jobBoard.claimJob(jobId, memberId);
+          return ok(command.name, `Job ${jobId} assigned to ${memberId} in team "${team.name}".`);
+        } catch (e) {
+          return err(command.name, `Failed to assign job: ${e instanceof Error ? e.message : String(e)}`);
+        }
       }
       default:
         return err(command.name, [

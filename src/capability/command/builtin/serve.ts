@@ -1,3 +1,4 @@
+import {CodaraA2AServer} from '@capability/team/a2a-server';
 import type {CodaraCommandDefinition, CodaraCommandResult} from '@capability/command/types';
 
 const BUILTIN_SOURCE = {type: 'builtin'} as const;
@@ -19,13 +20,25 @@ export const serveCommand: CodaraCommandDefinition = {
       return err(command.name, 'Invalid port number. Use a value between 1 and 65535.');
     }
 
-    return ok(command.name, [
-      `A2A Server starting on port ${port}...`,
-      `Agent Card: http://localhost:${port}/.well-known/agent-card.json`,
-      `JSON-RPC: http://localhost:${port}/`,
-      '',
-      '(Full server integration pending — this is a command scaffold)',
-    ].join('\n'));
+    try {
+      const server = new CodaraA2AServer({port});
+      const card = server.getAgentCard();
+
+      // Start Bun HTTP server
+      const httpServer = Bun.serve({
+        port,
+        fetch: (req) => server.handleRequest(req),
+      });
+
+      return ok(command.name, [
+        `A2A Server started on port ${httpServer.port}.`,
+        `Agent: ${card.name}`,
+        `Agent Card: http://localhost:${httpServer.port}/.well-known/agent-card.json`,
+        `JSON-RPC: http://localhost:${httpServer.port}/`,
+      ].join('\n'));
+    } catch (e) {
+      return err(command.name, `Failed to start A2A server: ${e instanceof Error ? e.message : String(e)}`);
+    }
   },
 };
 

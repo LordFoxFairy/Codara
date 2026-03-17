@@ -43,6 +43,7 @@ export type {
 // Tools
 export { createLeaderTools } from './tools/leader-tools.js';
 export { createWorkerTools } from './tools/worker-tools.js';
+export { createConversationTeamTools } from './tools/conversation-tools.js';
 export { getToolsForRole, isTeamTool } from './tools/tool-filter.js';
 export type { TeamToolContext } from './tools/types.js';
 

@@ -66,6 +66,11 @@ import {
 import {HookRegistryImpl, HookPipeline, createToolHooksMiddleware, createHookExecutor} from '@engine/hook';
 import type {HookSource, HookRegistry, SessionLifecycleHooks, AgentLifecycleHooks} from '@engine/hook';
 import {loadMcpConfig, createMcpManager, createMcpLangChainTools, type McpClientInfo, type McpConfig, type McpManager} from '@engine/mcp';
+import {TeamRegistry} from '@capability/team/team-registry';
+import {TeamRuntime} from '@capability/team/runtime/team-runtime';
+import {RemotePool} from '@capability/team/remote-pool';
+import {createConversationTeamTools} from '@capability/team/tools/conversation-tools';
+import {MemorySharedState} from '@capability/team/state/memory-shared-state';
 
 export const DEFAULT_CODARA_MODEL_ALIAS = 'default';
 const DEFAULT_RUNTIME_FILE_LOGGING_ENABLED = true;
@@ -250,6 +255,17 @@ export async function createCodaraRuntime(options: CodaraRuntimeOptions = {}): P
     }
   }
 
+  // ── Team System Assembly ──
+  const teamRegistry = new TeamRegistry();
+  const teamRuntime = new TeamRuntime({registry: teamRegistry, projectRoot});
+  const remotePool = new RemotePool(codaraPath);
+  await remotePool.load();
+  const sharedState = new MemorySharedState();
+
+  // Add conversation-driven team tools
+  const teamTools = createConversationTeamTools({registry: teamRegistry, runtime: teamRuntime, sharedState});
+  for (const t of teamTools) runtimeTools.push(t);
+
   const runtimeMiddlewares = createRuntimeDefaultMiddlewares({
     options,
     runtimeTools,
@@ -277,7 +293,7 @@ export async function createCodaraRuntime(options: CodaraRuntimeOptions = {}): P
       checkpointer: createAgentFileCheckpointer({rootDir: path.join(codaraPath, 'sessions')}),
     }),
     restore: options.restore ?? 'latest',
-  }, undefined, {promptSource, guidelinesSource, hookPipeline, hookRegistry, mcpManager});
+  }, undefined, {promptSource, guidelinesSource, hookPipeline, hookRegistry, mcpManager, teamRegistry, teamRuntime, remotePool});
 }
 
 function assembleCodara(
@@ -289,6 +305,9 @@ function assembleCodara(
     hookPipeline?: HookPipeline;
     hookRegistry?: HookRegistry;
     mcpManager?: McpManager;
+    teamRegistry?: TeamRegistry;
+    teamRuntime?: TeamRuntime;
+    remotePool?: RemotePool;
   },
 ): Codara {
   const skills = resolveCodaraSkills(options);
@@ -339,6 +358,15 @@ function assembleCodara(
   }
   if (mcpManager) {
     extraProps.getMcpStatus = {value: () => mcpManager.status(), writable: false};
+  }
+  if (preloadedSources?.teamRegistry) {
+    extraProps.teamRegistry = {value: preloadedSources.teamRegistry, writable: false};
+  }
+  if (preloadedSources?.teamRuntime) {
+    extraProps.teamRuntime = {value: preloadedSources.teamRuntime, writable: false};
+  }
+  if (preloadedSources?.remotePool) {
+    extraProps.remotePool = {value: preloadedSources.remotePool, writable: false};
   }
   const commandAgent = Object.keys(extraProps).length > 0
     ? Object.create(session, extraProps)
