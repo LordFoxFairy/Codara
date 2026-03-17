@@ -146,4 +146,5 @@ export const MIDDLEWARE_NAMES = {
   SharedTask: 'SharedTaskMiddleware',
   TodoList: 'TodoListMiddleware',
   ToolHooks: 'ToolHooksMiddleware',
+  PlanMode: 'PlanModeMiddleware',
 } as const;
