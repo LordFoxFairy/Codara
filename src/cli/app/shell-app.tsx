@@ -100,12 +100,14 @@ export function CodaraCliApp(props: CodaraCliAppProps): React.JSX.Element {
   const activeTasks = useActiveTasks({runtimeEvents: shell.runtimeEvents});
   const activeTeams = useActiveTeams({runtimeEvents: shell.runtimeEvents});
 
-  // Build team member map from the facade for TeamPanel inline display
+  // Build team member map from the facade for TeamPanel inline display.
+  // ActiveTeam.teamId is the runtime event root UUID, not the registry ID.
+  // Look up by team name (getTeamDetail falls back to getTeamByName).
   const teamMembers = React.useMemo(() => {
     if (!activeTeams.hasActiveTeams) return undefined;
     const map = new Map<string, Array<{name: string; role: string; status: string}>>();
     for (const team of activeTeams.activeTeams) {
-      const detail = codara.getTeamDetail(team.teamId);
+      const detail = codara.getTeamDetail(team.name);
       if (detail && detail.members.length > 0) {
         map.set(team.teamId, detail.members.map(m => ({name: m.name, role: m.role, status: m.status})));
       }
