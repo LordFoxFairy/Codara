@@ -1,15 +1,15 @@
 import type {StructuredToolInterface} from '@langchain/core/tools';
-import {BashTool, createBashTool} from '@capability/tool/builtin/bash';
-import {createReadTool, ReadTool} from '@capability/tool/builtin/read';
-import {createWriteTool, WriteTool} from '@capability/tool/builtin/write';
-import {createEditTool, EditTool} from '@capability/tool/builtin/edit';
-import {createGlobTool, GlobTool} from '@capability/tool/builtin/glob';
-import {createGrepTool, GrepTool} from '@capability/tool/builtin/grep';
-import {createFetchTool, FetchTool} from '@capability/tool/builtin/fetch';
-import {createSearchTool, SearchTool} from '@capability/tool/builtin/search';
+import {BashTool, createBashTool} from '@engine/tool/builtin/bash';
+import {createReadTool, ReadTool} from '@engine/tool/builtin/read';
+import {createWriteTool, WriteTool} from '@engine/tool/builtin/write';
+import {createEditTool, EditTool} from '@engine/tool/builtin/edit';
+import {createGlobTool, GlobTool} from '@engine/tool/builtin/glob';
+import {createGrepTool, GrepTool} from '@engine/tool/builtin/grep';
+import {createFetchTool, FetchTool} from '@engine/tool/builtin/fetch';
+import {createSearchTool, SearchTool} from '@engine/tool/builtin/search';
 
 // 扩展工具 — 不在核心 createBuiltinTools() 中，需要显式引入
-import {createNotebookReadTool, NotebookReadTool} from '@capability/tool/extended/notebook';
+import {createNotebookReadTool, NotebookReadTool} from '@engine/tool/extended/notebook';
 
 export {BashTool, createBashTool};
 export {ReadTool, createReadTool};

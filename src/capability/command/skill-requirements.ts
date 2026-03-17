@@ -1,6 +1,6 @@
 import {spawnSync} from 'node:child_process';
 import {parseToolCallReference} from '@capability/skill/parsing';
-import {normalizeToolReferenceName} from '@capability/tool';
+import {normalizeToolReferenceName} from '@engine/tool';
 
 export interface SkillCommandRequirements {
   allowedTools: string[];

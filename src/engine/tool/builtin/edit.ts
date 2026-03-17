@@ -1,7 +1,7 @@
 import {readFile, writeFile, stat} from 'node:fs/promises';
 import {StructuredTool} from '@langchain/core/tools';
 import {z} from 'zod';
-import {validatePath, formatError, countLines, countOccurrences, getErrorCode, getErrorMessage} from '@capability/tool/utils';
+import {validatePath, formatError, countLines, countOccurrences, getErrorCode, getErrorMessage} from '@engine/tool/utils';
 
 const MAX_FILE_SIZE = 10 * 1024 * 1024; // 10MB - consistent with read tool
 

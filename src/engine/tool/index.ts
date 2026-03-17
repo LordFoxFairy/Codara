@@ -21,8 +21,8 @@ export {
   createNotebookReadTool,
   createBuiltinTools,
   type BuiltinToolOptions,
-} from '@capability/tool/builtin';
-export {filterToolsByReferences, normalizeToolReferenceName} from '@capability/tool/names';
+} from '@engine/tool/builtin';
+export {filterToolsByReferences, normalizeToolReferenceName} from '@engine/tool/names';
 export {
   countLines,
   countOccurrences,
@@ -32,4 +32,4 @@ export {
   getErrorMessage,
   isNodeError,
   validatePath,
-} from '@capability/tool/utils';
+} from '@engine/tool/utils';

@@ -3,7 +3,7 @@ import {promisify} from 'node:util';
 import path from 'node:path';
 import {StructuredTool} from '@langchain/core/tools';
 import {z} from 'zod';
-import {formatError, formatNoResults} from '@capability/tool/utils';
+import {formatError, formatNoResults} from '@engine/tool/utils';
 
 const DEFAULT_TIMEOUT = 30_000;
 const MAX_OUTPUT_CHARS = 500_000;

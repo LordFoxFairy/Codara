@@ -1,7 +1,7 @@
 import {readFile, stat} from 'node:fs/promises';
 import {StructuredTool} from '@langchain/core/tools';
 import {z} from 'zod';
-import {validatePath, formatError, getErrorCode, getErrorMessage} from '@capability/tool/utils';
+import {validatePath, formatError, getErrorCode, getErrorMessage} from '@engine/tool/utils';
 
 const DEFAULT_LIMIT = 2000;
 const MAX_LIMIT = 5000;
