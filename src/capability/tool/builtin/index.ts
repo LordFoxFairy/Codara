@@ -9,7 +9,6 @@ import {createFetchTool, FetchTool} from '@capability/tool/builtin/fetch';
 import {createSearchTool, SearchTool} from '@capability/tool/builtin/search';
 
 // 扩展工具 — 不在核心 createBuiltinTools() 中，需要显式引入
-import {createDiagnosticsTool, DiagnosticsTool} from '@capability/tool/extended/diagnostics';
 import {createNotebookReadTool, NotebookReadTool} from '@capability/tool/extended/notebook';
 
 export {BashTool, createBashTool};
@@ -22,7 +21,6 @@ export {FetchTool, createFetchTool};
 export {SearchTool, createSearchTool};
 
 // 扩展工具导出
-export {DiagnosticsTool, createDiagnosticsTool};
 export {NotebookReadTool, createNotebookReadTool};
 
 /**
@@ -31,7 +29,7 @@ export {NotebookReadTool, createNotebookReadTool};
 export interface BuiltinToolOptions {
   /** 默认工作目录，用于 Bash、Glob、Grep。 */
   cwd?: string;
-  /** 是否包含扩展工具（diagnostics, notebook_read）。默认 false。 */
+  /** 是否包含扩展工具（notebook_read）。默认 false。 */
   extended?: boolean;
 }
 
@@ -52,7 +50,6 @@ export function createBuiltinTools(options: BuiltinToolOptions = {}): Structured
 
   if (options.extended) {
     core.push(
-      createDiagnosticsTool(cwd),
       createNotebookReadTool(),
     );
   }

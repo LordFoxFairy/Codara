@@ -17,8 +17,6 @@ export {
   createSearchTool,
   WriteTool,
   createWriteTool,
-  DiagnosticsTool,
-  createDiagnosticsTool,
   NotebookReadTool,
   createNotebookReadTool,
   createBuiltinTools,
