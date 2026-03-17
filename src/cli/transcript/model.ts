@@ -195,6 +195,36 @@ function buildRuntimeEventItems(events: readonly CodaraRuntimeEvent[]): Transcri
     }
   }
 
+  // Inject team event items early so they appear before tool/task items in the stream
+  for (const event of events) {
+    if (event.kind !== 'team') continue;
+
+    if (event.phase === 'end' && event.parentId) {
+      const startEvent = startEvents.get(event.parentId);
+      if (startEvent) {
+        pairedEndIds.add(event.id);
+        const teamName = extractTeamDisplayName(startEvent.label);
+        const elapsed = computeElapsedSeconds(startEvent.timestamp, event.timestamp);
+        const summary = event.status === 'error'
+          ? `Failed (${elapsed}s)`
+          : event.status === 'paused'
+            ? 'Paused'
+            : formatTeamDoneSummary(elapsed, event.detail);
+        items.push({
+          id: activeId(startEvent.id),
+          role: 'task',
+          content: `⏺ Team "${teamName}"\n  ⎿  ${summary}`,
+        });
+        continue;
+      }
+    }
+
+    if (event.phase === 'start') {
+      // Will be rendered in third pass (unpaired start events)
+      continue;
+    }
+  }
+
   // Second pass: pair end events with start events, build items
   for (const event of events) {
     if (event.kind === 'turn' || event.kind === 'model' || shouldHideRuntimeEvent(event)) {
@@ -248,8 +278,13 @@ function buildRuntimeEventItems(events: readonly CodaraRuntimeEvent[]): Transcri
       }
     }
 
-    // Skip start events that have been paired
-    if (event.phase === 'start' && (event.kind === 'tool' || event.kind === 'task')) {
+    // Skip start events that have been paired, and team events (handled separately)
+    if (event.phase === 'start' && (event.kind === 'tool' || event.kind === 'task' || event.kind === 'team')) {
+      continue;
+    }
+
+    // Skip team end events (already handled in the team-specific pass above)
+    if (event.kind === 'team' && event.phase === 'end') {
       continue;
     }
 
@@ -266,9 +301,20 @@ function buildRuntimeEventItems(events: readonly CodaraRuntimeEvent[]): Transcri
       continue;
     }
     const wasPaired = events.some(
-      (e) => e.phase === 'end' && e.parentId === id && (e.kind === 'tool' || e.kind === 'task'),
+      (e) => e.phase === 'end' && e.parentId === id && (e.kind === 'tool' || e.kind === 'task' || e.kind === 'team'),
     );
     if (wasPaired) {
+      continue;
+    }
+
+    // Unpaired team start → running team block
+    if (startEvent.kind === 'team') {
+      const teamName = extractTeamDisplayName(startEvent.label);
+      items.push({
+        id: activeId(startEvent.id),
+        role: 'task',
+        content: `⏺ Team "${teamName}"\n  ⎿  Running…`,
+      });
       continue;
     }
 
@@ -324,6 +370,31 @@ function extractTaskDisplayName(label: string): string {
     return `${agentType}(${shortDesc})`;
   }
   return firstLine;
+}
+
+function extractTeamDisplayName(label: string): string {
+  // "Team frontend-refactor: Implement the frontend" → "frontend-refactor"
+  const match = label.match(/^Team\s+([^:]+?)(?::\s+.*)?$/);
+  if (match?.[1]) {
+    return match[1].trim().slice(0, 40);
+  }
+  return label.slice(0, 40);
+}
+
+function formatTeamDoneSummary(elapsed: number, detail?: string): string {
+  const parts: string[] = [];
+  if (detail) {
+    const doneMatch = detail.match(/done:(\d+)/);
+    const totalMatch = detail.match(/total:(\d+)/);
+    const tokenMatch = detail.match(/([\d.]+[kKmM]?)\s+tokens?/);
+    if (doneMatch && totalMatch) parts.push(`${doneMatch[1]}/${totalMatch[1]} jobs`);
+    if (tokenMatch) parts.push(`${tokenMatch[1]} tokens`);
+  }
+  const minutes = Math.floor(elapsed / 60);
+  const seconds = elapsed % 60;
+  const timeStr = minutes > 0 ? `${minutes}m ${seconds}s` : `${seconds}s`;
+  parts.push(timeStr);
+  return `Done (${parts.join(' · ')})`;
 }
 
 function computeElapsedSeconds(startTimestamp: string, endTimestamp: string): number {

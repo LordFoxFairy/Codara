@@ -6,6 +6,7 @@ import {Footer} from '../components/chrome/footer';
 import {StatusBar} from '../components/chrome/header';
 import {ActivityLine} from '../components/chrome/activity-line';
 import {TaskPanel} from '../components/chrome/task-panel';
+import {TeamPanel} from '../components/chrome/team-panel';
 import {HilPanel, isPermissionReview} from '../components/conversation/hil-panel';
 import {SessionPicker} from '../components/conversation/session-picker';
 import {ActiveTranscript} from '../components/conversation/transcript';
@@ -19,6 +20,7 @@ import type {CliHilAutoAction} from './hil-review';
 import {resolveCliLayoutMode} from './layout-mode';
 import {useCliController} from './use-cli-controller';
 import {useActiveTasks} from '../hooks/use-active-tasks';
+import {useActiveTeams} from '../hooks/use-active-teams';
 import {useCommandCompletion} from '../hooks/use-command-completion';
 import {useHilInput} from '../hooks/use-hil-input';
 import {usePromptInput} from '../hooks/use-prompt-input';
@@ -96,6 +98,7 @@ export function CodaraCliApp(props: CodaraCliAppProps): React.JSX.Element {
   const terminalWidth = useTerminalWidth();
   const layoutMode = resolveCliLayoutMode(terminalWidth);
   const activeTasks = useActiveTasks({runtimeEvents: shell.runtimeEvents});
+  const activeTeams = useActiveTeams({runtimeEvents: shell.runtimeEvents});
   const listCommands = React.useCallback(() => codara.listCommands(), [codara]);
   const completion = useCommandCompletion({
     text: shell.composer.text,
@@ -243,6 +246,16 @@ export function CodaraCliApp(props: CodaraCliAppProps): React.JSX.Element {
           />
         )}
 
+        {/* Team Panel — shows active team status inline */}
+        {shell.hasConversation && activeTeams.hasActiveTeams && shell.taskPanelVisible && foregroundSurface !== 'hil' && (
+          <TeamPanel
+            teams={activeTeams.activeTeams}
+            runningCount={activeTeams.runningCount}
+            doneCount={activeTeams.doneCount}
+            errorCount={activeTeams.errorCount}
+          />
+        )}
+
         {/* Team Dashboard / Detail View */}
         {shell.teamDashboardState.teams.length > 0 && !shell.teamDashboardState.activeTeamId && (
           <TeamDashboard teams={shell.teamDashboardState.teams} />
@@ -294,6 +307,7 @@ export function CodaraCliApp(props: CodaraCliAppProps): React.JSX.Element {
                 runState={shell.runState}
                 latestRuntimeEvent={shell.latestRuntimeEvent}
                 mcpStatus={mcpStatus}
+                activeTeamCount={activeTeams.runningCount > 0 ? activeTeams.runningCount : undefined}
               />
             )}
             <Footer layoutMode={layoutMode} hasCommandOutput={Boolean(shell.commandOutput)} />
