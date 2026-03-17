@@ -241,6 +241,14 @@ export function useCliController(options: UseCliControllerOptions): CliControlle
         continue;
       }
 
+      // Extract thinking blocks (Extended Thinking / reasoning)
+      const thinkingText = extractThinkingText(chunk);
+      if (thinkingText) {
+        setActiveTurn((current) => current
+          ? {...current, thinking: (current.thinking ?? '') + thinkingText}
+          : current);
+      }
+
       const text = chunk.text;
       if (!text) {
         continue;
@@ -610,4 +618,26 @@ function isPermissionReview(review: CliHilReviewState): boolean {
   return review.request.ui?.modal === 'permission-review'
     || review.request.channel === 'permission-center'
     || review.request.description.toLowerCase().includes('permission review');
+}
+
+/**
+ * Extract thinking/reasoning text from an AIMessageChunk.
+ * Anthropic Extended Thinking emits content blocks with type "thinking".
+ */
+function extractThinkingText(chunk: AIMessageChunk): string | undefined {
+  const content = chunk.content;
+  if (!Array.isArray(content)) {
+    return undefined;
+  }
+
+  let thinking = '';
+  for (const block of content) {
+    if (typeof block === 'object' && block !== null && 'type' in block) {
+      const typed = block as {type: string; thinking?: string; text?: string};
+      if (typed.type === 'thinking' && typed.thinking) {
+        thinking += typed.thinking;
+      }
+    }
+  }
+  return thinking || undefined;
 }

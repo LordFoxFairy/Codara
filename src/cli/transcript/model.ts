@@ -118,6 +118,13 @@ export function buildActiveItems(input: {
   runtimeEvents?: readonly CodaraRuntimeEvent[];
 }): TranscriptItem[] {
   const preferRuntimeSteps = (input.runtimeEvents?.length ?? 0) > 0 && input.activeTurn !== undefined;
+  const thinkingItem = input.activeTurn?.thinking
+    ? [{
+        id: `${input.activeTurn.id}-thinking`,
+        role: 'system' as const,
+        content: `💭 Thinking…\n${input.activeTurn.thinking.slice(-200)}`,
+      }]
+    : [];
   const items: TranscriptItem[] = [
     ...(input.activeTurn
       ? [
@@ -126,6 +133,7 @@ export function buildActiveItems(input: {
             role: 'user' as const,
             content: input.activeTurn.prompt,
           },
+          ...thinkingItem,
           {
             id: `${input.activeTurn.id}-response`,
             role: input.activeTurn.responseRole,
@@ -172,6 +180,9 @@ function buildRuntimeEventItems(events: readonly CodaraRuntimeEvent[]): Transcri
   const pairedEndIds = new Set<string>();
   const taskToolIds = new Set<string>();
   const items: TranscriptItem[] = [];
+  // Prefix IDs to avoid collisions with solidified transcript items
+  // (runtime events share IDs with coreMessages that may already be rendered)
+  const activeId = (id: string) => `active-${id}`;
 
   // First pass: index start events by id, identify Task tool calls
   for (const event of events) {
@@ -209,7 +220,7 @@ function buildRuntimeEventItems(events: readonly CodaraRuntimeEvent[]): Transcri
             ? 'Waiting for review'
             : formatTaskDoneSummary(elapsed, event.detail);
         items.push({
-          id: startEvent.id,
+          id: activeId(startEvent.id),
           role: 'task',
           content: `⏺ ${taskName}\n  ⎿  ${summary}`,
         });
@@ -228,7 +239,7 @@ function buildRuntimeEventItems(events: readonly CodaraRuntimeEvent[]): Transcri
           ? `${toolMeta.icon} ${toolMeta.displayName}(${toolMeta.args ?? ''})\n⎿ ${toolMeta.summaryLine}`
           : formatRuntimeEvent(event);
         items.push({
-          id: startEvent.id,
+          id: activeId(startEvent.id),
           role: mapRuntimeEventRole(event.kind),
           content,
           toolMeta: toolMeta ?? undefined,
@@ -243,7 +254,7 @@ function buildRuntimeEventItems(events: readonly CodaraRuntimeEvent[]): Transcri
     }
 
     items.push({
-      id: event.id,
+      id: activeId(event.id),
       role: mapRuntimeEventRole(event.kind),
       content: formatRuntimeEvent(event),
     });
@@ -265,7 +276,7 @@ function buildRuntimeEventItems(events: readonly CodaraRuntimeEvent[]): Transcri
     if (startEvent.kind === 'task') {
       const taskName = extractTaskDisplayName(startEvent.label);
       items.push({
-        id: startEvent.id,
+        id: activeId(startEvent.id),
         role: 'task',
         content: `⏺ ${taskName}\n  ⎿  Running…`,
       });
@@ -284,7 +295,7 @@ function buildRuntimeEventItems(events: readonly CodaraRuntimeEvent[]): Transcri
         ? `${toolMeta.icon} ${toolMeta.displayName}(${toolMeta.args ?? ''})\n⎿ ${toolMeta.summaryLine}`
         : formatRuntimeEvent(startEvent);
       items.push({
-        id: startEvent.id,
+        id: activeId(startEvent.id),
         role: 'tool',
         content,
         toolMeta: toolMeta ?? undefined,
