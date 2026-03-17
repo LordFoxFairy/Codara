@@ -1,9 +1,9 @@
 import {describe, test, expect, beforeEach} from 'bun:test';
-import {TeamRegistry} from '@capability/team/team-registry';
+import {TeamRegistry} from '@capability/team/coordination/team-registry';
 import {LocalTransport} from '@capability/team/transport/local-transport';
-import {TeamEventEmitter} from '@capability/team/events';
-import type {TeamBusEvent} from '@capability/team/events';
-import type {TeamMember} from '@capability/team/types';
+import {TeamEventEmitter} from '@capability/team/coordination/events';
+import type {TeamBusEvent} from '@capability/team/coordination/events';
+import type {TeamMember} from '@capability/team/coordination/types';
 import {createWorkerTools} from '@capability/team/tools/worker-tools';
 import type {TeamToolContext} from '@capability/team/tools/types';
 
@@ -43,7 +43,14 @@ describe('Worker Tools', () => {
     transport.registerMember(leaderId);
     transport.registerMember(workerId);
 
-    ctx = {teamId, memberId: workerId, registry, transport, emitter, projectRoot: '/tmp/test'};
+    ctx = {
+      teamId,
+      memberId: workerId,
+      registry,
+      transport,
+      emitEvent: (event) => emitter.emit(event),
+      projectRoot: '/tmp/test',
+    };
   });
 
   // ── createWorkerTools ───────────────────────────────────────────

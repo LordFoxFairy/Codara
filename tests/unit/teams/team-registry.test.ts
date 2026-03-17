@@ -1,7 +1,7 @@
 import {describe, expect, test, beforeEach} from 'bun:test';
-import {TeamRegistry, TeamRegistryError} from '@capability/team/team-registry';
-import {SECURITY_DEFAULTS} from '@capability/team/types';
-import type {TeamMember, TeamStatus} from '@capability/team/types';
+import {TeamRegistry, TeamRegistryError} from '@capability/team/coordination/team-registry';
+import {SECURITY_DEFAULTS} from '@capability/team/coordination/types';
+import type {TeamMember, TeamStatus} from '@capability/team/coordination/types';
 
 // ─── Helpers ─────────────────────────────────────────────────────────
 

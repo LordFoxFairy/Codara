@@ -1,6 +1,6 @@
 import {describe, expect, test} from 'bun:test';
-import {JobBoard, JobBoardError} from '@capability/team/job-board';
-import type {JobResult} from '@capability/team/types';
+import {JobBoard, JobBoardError} from '@capability/team/coordination/job-board';
+import type {JobResult} from '@capability/team/coordination/types';
 
 const result: JobResult = {
   summary: 'Done',

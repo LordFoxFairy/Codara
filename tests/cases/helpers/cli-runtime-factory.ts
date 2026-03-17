@@ -28,7 +28,7 @@ import {
   TASK_LIST_TOOL_NAME,
   TASK_TOOL_NAME,
 } from '@capability/task';
-import {createTaskTool} from '@capability/task/task';
+import {createTaskTool} from '@capability/task/tools/task-middleware';
 import {FileSystemSkillStore, loadSkillsRuntimeData} from '@capability/skill';
 import {seedProjectSkillFixtures} from '../../helpers/project-skill-fixtures';
 

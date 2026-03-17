@@ -20,7 +20,7 @@ import {
   MESSAGE_LIMITS,
   MODEL_PRICING,
   DEFAULT_RETENTION,
-} from '@capability/team/types';
+} from '@capability/team/coordination/types';
 
 // ─── Enum Schemas ────────────────────────────────────────────────────
 

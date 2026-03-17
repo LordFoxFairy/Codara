@@ -1,6 +1,6 @@
 import {describe, test, expect} from 'bun:test';
-import {TeamEventEmitter, isTeamEvent} from '@/capability/team/events.js';
-import type {TeamBusEvent} from '@/capability/team/events.js';
+import {TeamEventEmitter, isTeamEvent} from '@capability/team/coordination/events';
+import type {TeamBusEvent} from '@capability/team/coordination/events';
 
 describe('TeamEventEmitter', () => {
   const sampleEvent: TeamBusEvent = {

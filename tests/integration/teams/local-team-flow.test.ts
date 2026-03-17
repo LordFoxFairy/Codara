@@ -3,14 +3,14 @@ import {mkdtempSync, rmSync} from 'node:fs';
 import {join} from 'node:path';
 import {tmpdir} from 'node:os';
 
-import {TeamRegistry} from '@capability/team/team-registry';
-import {JobBoard} from '@capability/team/job-board';
+import {TeamRegistry} from '@capability/team/coordination/team-registry';
+import {JobBoard} from '@capability/team/coordination/job-board';
 import {LocalTransport} from '@capability/team/transport/local-transport';
-import {TeamEventEmitter} from '@capability/team/events';
-import type {TeamBusEvent} from '@capability/team/events';
+import {TeamEventEmitter} from '@capability/team/coordination/events';
+import type {TeamBusEvent} from '@capability/team/coordination/events';
 import {createLeaderTools} from '@capability/team/tools/leader-tools';
 import {createWorkerTools} from '@capability/team/tools/worker-tools';
-import type {TeamMember} from '@capability/team/types';
+import type {TeamMember} from '@capability/team/coordination/types';
 import type {TeamToolContext} from '@capability/team/tools/types';
 
 // ─── Helpers ──────────────────────────────────────────────────────────
@@ -44,7 +44,7 @@ function makeToolContext(
     memberId,
     registry,
     transport,
-    emitter,
+    emitEvent: (event) => emitter.emit(event),
     projectRoot: '/tmp/test-project',
   };
 }

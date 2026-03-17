@@ -16,7 +16,7 @@ import {
 } from '@capability/task';
 import {createSkillsMiddleware} from '@engine/pipeline';
 import {FileSystemSkillStore, loadSkillsRuntimeData} from '@capability/skill';
-import {createTaskTool} from '@capability/task/task';
+import {createTaskTool} from '@capability/task/tools/task-middleware';
 
 function createBuiltinSubagentStore() {
   return new FileSystemSkillStore({

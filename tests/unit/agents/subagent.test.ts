@@ -6,8 +6,8 @@ import {z} from 'zod';
 import {createAgent} from '@engine/agent';
 import {createHILMiddleware, createMiddleware} from '@engine/pipeline';
 import {createAgentMemoryCheckpointer} from '@engine/checkpoint';
-import {readDelegatedAgentResult} from '@capability/task/delegation';
-import {TASK_TOOL_NAME, createTaskTool} from '@capability/task/task';
+import {readDelegatedAgentResult} from '@capability/task/delegation/runtime';
+import {TASK_TOOL_NAME, createTaskTool} from '@capability/task/tools/task-middleware';
 
 class ScriptedModel {
   private index = 0;

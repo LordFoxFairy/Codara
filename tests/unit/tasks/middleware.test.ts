@@ -8,8 +8,8 @@ import {tool, type StructuredToolInterface} from '@langchain/core/tools';
 import {z} from 'zod';
 import {createAgent} from '@engine/agent';
 import {createCodaraGuidelinesSource} from '@infra/context/instructions/guidelines';
-import {createCodaraPromptSource} from '@infra/context/instructions/prompt';
-import {buildBaseSystemMessage} from '@infra/context/system-message';
+import {createCodaraPromptSource} from '@infra/context/prompts/prompt-source';
+import {buildBaseSystemMessage} from '@infra/context/session-bundle/base-system-message';
 import {
   createSharedTaskMiddleware,
   createTaskMemoryStore,
@@ -20,7 +20,7 @@ import {
 } from '@capability/task';
 import {
   readDelegatedAgentResult,
-} from '@capability/task/delegation';
+} from '@capability/task/delegation/runtime';
 import {createAgentSkillsMiddleware, createBuiltinSubagentStore} from '../agents/task-tool.fixtures';
 
 class ScriptedModel {

@@ -1,10 +1,11 @@
 import { describe, test, expect, beforeEach } from 'bun:test';
 import { MemberRunner } from '@capability/team/runtime/member-runner';
 import type { MemberRunnerOptions, MemberSession } from '@capability/team/runtime/member-runner';
-import { TeamRegistry } from '@capability/team/team-registry';
+import { TeamRegistry } from '@capability/team/coordination/team-registry';
 import { LocalTransport } from '@capability/team/transport/local-transport';
-import { TeamEventEmitter } from '@capability/team/events';
-import type { TeamMember, TeamBusEvent } from '@capability/team/types';
+import { TeamEventEmitter } from '@capability/team/coordination/events';
+import type { TeamBusEvent } from '@capability/team/coordination/events';
+import type { TeamMember } from '@capability/team/coordination/types';
 
 // ─── Helpers ────────────────────────────────────────────────────────
 
@@ -62,7 +63,7 @@ function buildOptions(overrides?: Partial<MemberRunnerOptions>): MemberRunnerOpt
     maxDepth: 2,
     registry,
     transport,
-    emitter,
+    emitEvent: (event) => emitter.emit(event),
     projectRoot: '/tmp/test',
     ...overrides,
   };
@@ -88,7 +89,7 @@ describe('MemberRunner', () => {
   test('start() updates member status to idle and emits event', async () => {
     const opts = buildOptions();
     const events: TeamBusEvent[] = [];
-    opts.emitter.subscribe(e => events.push(e));
+    opts.emitEvent = (event) => events.push(event);
 
     const runner = new MemberRunner(opts);
     const startPromise = runner.start();
@@ -133,7 +134,7 @@ describe('MemberRunner', () => {
   test('wake() unblocks idle member', async () => {
     const opts = buildOptions();
     const events: TeamBusEvent[] = [];
-    opts.emitter.subscribe(e => events.push(e));
+    opts.emitEvent = (event) => events.push(event);
 
     const runner = new MemberRunner(opts);
     const startPromise = runner.start();
@@ -156,7 +157,7 @@ describe('MemberRunner', () => {
   test('pause() sets paused status and emits event', async () => {
     const opts = buildOptions();
     const events: TeamBusEvent[] = [];
-    opts.emitter.subscribe(e => events.push(e));
+    opts.emitEvent = (event) => events.push(event);
 
     const runner = new MemberRunner(opts);
     const startPromise = runner.start();
@@ -200,7 +201,7 @@ describe('MemberRunner', () => {
     opts.createSession = () => mockSession;
 
     const events: TeamBusEvent[] = [];
-    opts.emitter.subscribe(e => events.push(e));
+    opts.emitEvent = (event) => events.push(event);
 
     // Send a message so the runner enters the processing path
     await opts.transport.send(opts.member.memberId, {
@@ -254,7 +255,7 @@ describe('MemberRunner', () => {
   test('member.left event is emitted on graceful shutdown', async () => {
     const opts = buildOptions();
     const events: TeamBusEvent[] = [];
-    opts.emitter.subscribe(e => events.push(e));
+    opts.emitEvent = (event) => events.push(event);
 
     const runner = new MemberRunner(opts);
     const startPromise = runner.start();

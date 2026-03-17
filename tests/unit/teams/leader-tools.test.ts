@@ -1,12 +1,12 @@
 import {describe, test, expect, beforeEach} from 'bun:test';
 import type {StructuredToolInterface} from '@langchain/core/tools';
-import {TeamRegistry} from '@capability/team/team-registry';
+import {TeamRegistry} from '@capability/team/coordination/team-registry';
 import {LocalTransport} from '@capability/team/transport/local-transport';
-import {TeamEventEmitter} from '@capability/team/events';
-import type {TeamBusEvent} from '@capability/team/events';
-import type {Team, TeamMember} from '@capability/team/types';
+import {TeamEventEmitter} from '@capability/team/coordination/events';
+import type {TeamBusEvent} from '@capability/team/coordination/events';
+import type {Team, TeamMember} from '@capability/team/coordination/types';
 import {createLeaderTools} from '@capability/team/tools/leader-tools';
-import type {TeamToolContext} from '@capability/team/tools/leader-tools';
+import type {TeamToolContext} from '@capability/team/tools/types';
 
 // ─── Helpers ────────────────────────────────────────────────────────
 
@@ -62,7 +62,7 @@ describe('Leader Tools', () => {
       memberId: leader.memberId,
       registry,
       transport,
-      emitter,
+      emitEvent: (event) => emitter.emit(event),
       projectRoot: '/tmp/test',
     };
 
@@ -71,13 +71,13 @@ describe('Leader Tools', () => {
 
   // ── createLeaderTools ───────────────────────────────────────────
 
-  test('returns 13 tools', () => {
-    expect(tools).toHaveLength(13);
+  test('returns 12 tools', () => {
+    expect(tools).toHaveLength(12);
   });
 
   test('all tools have unique names', () => {
     const names = tools.map((t) => t.name);
-    expect(new Set(names).size).toBe(13);
+    expect(new Set(names).size).toBe(12);
   });
 
   // ── team_plan_jobs ──────────────────────────────────────────────

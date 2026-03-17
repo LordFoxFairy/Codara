@@ -1,12 +1,12 @@
 import {describe, test, expect, beforeEach} from 'bun:test';
 import {z} from 'zod';
-import {TeamRegistry} from '@capability/team/team-registry';
+import {TeamRegistry} from '@capability/team/coordination/team-registry';
 import {LocalTransport} from '@capability/team/transport/local-transport';
-import {TeamEventEmitter} from '@capability/team/events';
+import {TeamEventEmitter} from '@capability/team/coordination/events';
 import {getToolsForRole, isTeamTool} from '@capability/team/tools/tool-filter';
 import {createWorkerTools} from '@capability/team/tools/worker-tools';
 import type {TeamToolContext} from '@capability/team/tools/types';
-import type {TeamMember} from '@capability/team/types';
+import type {TeamMember} from '@capability/team/coordination/types';
 
 // ─── Mock base tools ────────────────────────────────────────────────
 
@@ -56,7 +56,7 @@ describe('Tool Filter', () => {
       memberId: 'worker-1',
       registry,
       transport,
-      emitter,
+      emitEvent: (event) => emitter.emit(event),
       projectRoot: '/tmp/test',
     };
   });

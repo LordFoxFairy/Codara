@@ -1,8 +1,8 @@
 import { describe, test, expect, beforeEach } from 'bun:test';
 import { TeamRuntime } from '@capability/team/runtime/team-runtime';
-import { TeamRegistry } from '@capability/team/team-registry';
-import { JobBoard } from '@capability/team/job-board';
-import type { TeamBusEvent } from '@capability/team/events';
+import { TeamRegistry } from '@capability/team/coordination/team-registry';
+import { JobBoard } from '@capability/team/coordination/job-board';
+import type { TeamBusEvent } from '@capability/team/coordination/events';
 import type { MemberSession } from '@capability/team/runtime/member-runner';
 
 // ─── Helpers ────────────────────────────────────────────────────────

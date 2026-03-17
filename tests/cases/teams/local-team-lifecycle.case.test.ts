@@ -12,7 +12,7 @@
  */
 import {describe, test, expect, beforeEach, afterEach} from 'bun:test';
 
-import {TeamRegistry} from '@capability/team/team-registry';
+import {TeamRegistry} from '@capability/team/coordination/team-registry';
 import {TeamRuntime} from '@capability/team/runtime/team-runtime';
 import {MemorySharedState} from '@capability/team/state/memory-shared-state';
 import {createConversationTeamTools} from '@capability/team/tools/conversation-tools';
@@ -55,17 +55,15 @@ describe('Teams Case: Local Team Lifecycle', () => {
     const members = registry.getMembersByTeam(team.teamId);
     expect(members).toHaveLength(0);
 
-    // Verify transport and emitter exist
+    // Verify transport exists
     expect(runtime.getTransport(team.teamId)).toBeDefined();
-    expect(runtime.getEmitter(team.teamId)).toBeDefined();
 
     // Shutdown
     await runtime.shutdownTeam(team.teamId);
     expect(registry.getTeam(team.teamId)?.status).toBe('completed');
 
-    // Verify transport and emitter cleaned up
+    // Verify transport cleaned up
     expect(runtime.getTransport(team.teamId)).toBeUndefined();
-    expect(runtime.getEmitter(team.teamId)).toBeUndefined();
   });
 
   test('kill team cleans up resources', async () => {
@@ -77,7 +75,6 @@ describe('Teams Case: Local Team Lifecycle', () => {
 
     // Resources cleaned
     expect(runtime.getTransport(team.teamId)).toBeUndefined();
-    expect(runtime.getEmitter(team.teamId)).toBeUndefined();
   });
 
   test('pause and resume team', async () => {
@@ -394,9 +391,8 @@ describe('Teams Case: Resource Cleanup', () => {
       expect(runtime.getRunner(m.memberId)).toBeUndefined();
     }
 
-    // Transport and emitter cleaned up
+    // Transport cleaned up
     expect(runtime.getTransport(team.teamId)).toBeUndefined();
-    expect(runtime.getEmitter(team.teamId)).toBeUndefined();
   });
 
   test('kill cleans up all resources', async () => {
@@ -409,7 +405,6 @@ describe('Teams Case: Resource Cleanup', () => {
     await runtime.killTeam(team.teamId);
 
     expect(runtime.getTransport(team.teamId)).toBeUndefined();
-    expect(runtime.getEmitter(team.teamId)).toBeUndefined();
   });
 
 });

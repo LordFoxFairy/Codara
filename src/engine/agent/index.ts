@@ -59,6 +59,7 @@ export {
   type AgentStateUpdate,
 } from '@engine/agent/models/command';
 export {
+  createAgent,
   createRunContext,
   injectResumePayload,
   normalizeAgentInput,
