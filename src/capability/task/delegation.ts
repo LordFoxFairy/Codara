@@ -13,6 +13,7 @@ import {
   type ToolErrorHandler,
 } from '@engine/agent/models/agent';
 import {createAgent} from '@engine/agent/run/agent-loop';
+import {resolveModel} from '@engine/agent/bootstrap';
 import type {BaseMiddleware} from '@engine/pipeline/types';
 import type {HILToolMessagePayload} from '@engine/pipeline/hil';
 import type {ExecutionContextMetadata} from '@engine/pipeline/types';
@@ -217,7 +218,7 @@ async function buildDelegatedChildOptions(
   const mergedContext = mergeRuntimeContext(options.context, input.profileContext);
 
   return {
-    model: await resolveDelegatedModel(input.profileModel ?? options.model),
+    model: await resolveModel(input.profileModel ?? options.model),
     agentType: 'subagent',
     ...(mergeDelegatedSystemMessages(options.systemMessages, input.profileSystemPrompt, options.systemPrompt).length > 0
       ? {systemMessage: mergeDelegatedSystemMessages(options.systemMessages, input.profileSystemPrompt, options.systemPrompt)}
@@ -308,14 +309,6 @@ function mergeRuntimeContext(
     ...(baseContext ? deepClone(baseContext) : {}),
     ...(profileContext ? deepClone(profileContext) : {}),
   };
-}
-
-async function resolveDelegatedModel(model: DelegatedAgentModelResolver): Promise<BaseChatModel> {
-  if (typeof model === 'function') {
-    return await model();
-  }
-
-  return await model;
 }
 
 function isDelegationTool(tool: StructuredToolInterface | undefined): boolean {

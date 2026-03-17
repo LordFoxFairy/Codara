@@ -67,3 +67,9 @@ export {
   type AgentRunContext,
   type AgentRuntime,
 } from '@engine/agent/run/agent-loop';
+export {
+  bootstrapAgent,
+  resolveModel,
+  type BootstrapAgentOptions,
+  type ModelResolver,
+} from '@engine/agent/bootstrap';
