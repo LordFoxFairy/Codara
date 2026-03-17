@@ -203,17 +203,19 @@ describe('UI alignment with Claude Code', () => {
           sessions={sessions}
           loading={false}
           selectedIndex={0}
+          onMoveUp={() => {}}
+          onMoveDown={() => {}}
           onSelect={() => {}}
           onCancel={() => {}}
         />,
       );
 
       const frame = lastFrame()!;
-      expect(frame).toContain('Select a session to resume');
+      expect(frame).toContain('Resume Session');
       expect(frame).toContain('Fix bug');
       expect(frame).toContain('Add feature');
-      expect(frame).toContain('>');
-      expect(frame).toContain('Arrow keys to navigate');
+      expect(frame).toContain('›');
+      expect(frame).toContain('navigate');
     });
 
     it('should show loading state', () => {
@@ -222,13 +224,15 @@ describe('UI alignment with Claude Code', () => {
           sessions={[]}
           loading={true}
           selectedIndex={0}
+          onMoveUp={() => {}}
+          onMoveDown={() => {}}
           onSelect={() => {}}
           onCancel={() => {}}
         />,
       );
 
       const frame = lastFrame()!;
-      expect(frame).toContain('Loading sessions...');
+      expect(frame).toContain('Loading sessions');
     });
 
     it('should show empty state', () => {
@@ -237,6 +241,8 @@ describe('UI alignment with Claude Code', () => {
           sessions={[]}
           loading={false}
           selectedIndex={0}
+          onMoveUp={() => {}}
+          onMoveDown={() => {}}
           onSelect={() => {}}
           onCancel={() => {}}
         />,

@@ -14,11 +14,11 @@ describe('cli hil review helpers', () => {
       description: 'Collect details',
       action: {
         toolCallId: 'call_1',
-        toolName: 'AskUser',
+        toolName: 'AskUserQuestion',
         toolArgs: {},
       },
       review: {
-        actionName: 'AskUser',
+        actionName: 'AskUserQuestion',
         allowedDecisions: ['approve'],
       },
       runtime: {
@@ -152,11 +152,11 @@ function createFormReview(): CliHilReviewState {
       description: 'Collect missing requirements.',
       action: {
         toolCallId: 'call_form',
-        toolName: 'AskUser',
+        toolName: 'AskUserQuestion',
         toolArgs: {},
       },
       review: {
-        actionName: 'AskUser',
+        actionName: 'AskUserQuestion',
         allowedDecisions: ['approve'],
       },
       runtime: {

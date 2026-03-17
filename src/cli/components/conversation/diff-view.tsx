@@ -2,6 +2,7 @@ import React from 'react';
 import {Box, Text} from 'ink';
 import type {DiffData} from '../../transcript/diff-compute';
 import type {StructuredPatchHunk} from 'diff';
+import {theme} from '../../utils/theme';
 
 // ── Constants ──────────────────────────────────────────────────────────
 
@@ -21,9 +22,9 @@ export function DiffView({diff}: DiffViewProps): React.JSX.Element {
       {/* Stats */}
       <Box paddingLeft={2}>
         <Text dimColor>{'  '}</Text>
-        <Text color="green" bold>{`+${additions}`}</Text>
+        <Text color={theme.diff.addition} bold>{`+${additions}`}</Text>
         <Text dimColor>{' / '}</Text>
-        <Text color="red" bold>{`-${deletions}`}</Text>
+        <Text color={theme.diff.deletion} bold>{`-${deletions}`}</Text>
         {isNewFile ? <Text dimColor>{' (new file)'}</Text> : null}
       </Box>
 
@@ -83,20 +84,20 @@ function HunkBlock({hunk, isNewFile}: {hunk: StructuredPatchHunk; isNewFile: boo
       newLineNo++;
     }
 
-    const lineColor = prefix === '+' ? 'green' : prefix === '-' ? 'red' : undefined;
+    const lineColor = prefix === '+' ? theme.diff.addition : prefix === '-' ? theme.diff.deletion : undefined;
     const displayPrefix = prefix === '+' ? '+' : prefix === '-' ? '-' : ' ';
 
     return (
       <Box key={index}>
         <Text dimColor>{`${leftNo} ${rightNo} `}</Text>
-        <Text color={lineColor}>{`${displayPrefix}${content}`}</Text>
+        <Text color={lineColor} wrap="truncate-end">{`${displayPrefix}${content}`}</Text>
       </Box>
     );
   });
 
   return (
     <Box flexDirection="column" paddingLeft={4}>
-      <Text color="cyan">{`@@ -${hunk.oldStart},${hunk.oldLines} +${hunk.newStart},${hunk.newLines} @@`}</Text>
+      <Text color={theme.diff.hunkHeader}>{`@@ -${hunk.oldStart},${hunk.oldLines} +${hunk.newStart},${hunk.newLines} @@`}</Text>
       {renderedLines}
       {hiddenNewFileLines > 0 ? (
         <Text dimColor>{`… +${hiddenNewFileLines} lines`}</Text>

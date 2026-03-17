@@ -1,6 +1,6 @@
 # Agents
 
-`src/core/agents/index.ts` 是唯一对外入口。
+`src/engine/agent/index.ts` 是唯一对外入口。
 
 根目录只保留：
 - `index.ts`：公开 API
@@ -9,7 +9,7 @@
 其余实现按两个具体目录收口：
 
 ```text
-agents/
+agent/
   index.ts
   README.md
   models/

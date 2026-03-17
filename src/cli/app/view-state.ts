@@ -20,6 +20,10 @@ export interface CliActiveTurn {
   prompt: string;
   response: string;
   responseRole: 'assistant' | 'system';
+  /** Accumulated thinking/reasoning text (Extended Thinking). */
+  thinking?: string;
+  /** Real-time token counts from streaming chunks. */
+  streamingTokens?: { input: number; output: number };
 }
 
 export type CliHilFocus = 'actions' | 'input';

@@ -401,7 +401,7 @@ command-name: review-helper
           content: '',
           tool_calls: [{
             id: 'call_runtime_ask_user',
-            name: 'AskUser',
+            name: 'AskUserQuestion',
             args: {
               summary: 'Need one critical product answer before planning continues.',
               questions: [{id: 'domain', label: 'Domain', question: 'Which domain?'}],
@@ -426,7 +426,7 @@ command-name: review-helper
       const paused = await codara.invoke('plan this product');
       expect(paused.reason).toBe('complete');
       expect(paused.state.status).toBe('paused');
-      expect(paused.state.pendingPause?.action.toolName).toBe('AskUser');
+      expect(paused.state.pendingPause?.action.toolName).toBe('AskUserQuestion');
       expect(paused.state.pendingPause?.ui?.form?.tabs[0]?.label).toBe('Domain');
 
       const resumed = await codara.resumePause({

@@ -38,7 +38,7 @@ export function useTerminalWidth(): number {
         timerRef.current = null;
         // 清屏：清除可见区域 + scrollback 缓冲区，让下一帧在干净画布上绘制
         if (stdout.isTTY) {
-          process.stdout.write('\x1b[2J\x1b[3J\x1b[H');
+          process.stdout.write('\x1b[2J\x1b[H');
         }
         // 更新 state 触发 React 重渲染
         setTerminalWidth(readTerminalWidth(stdout.columns));

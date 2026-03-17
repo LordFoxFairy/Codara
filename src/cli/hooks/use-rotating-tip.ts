@@ -1,5 +1,4 @@
-import {useEffect, useState} from 'react';
-
+/** Tips shown in the welcome screen. Randomly picked at mount time. */
 export const TIPS = [
   'Type / to see available commands',
   'Use Shift+Enter for multi-line input',
@@ -8,18 +7,3 @@ export const TIPS = [
   'Use /resume to continue a previous session',
   'Try "how does <filepath> work?"',
 ];
-
-const TIP_INTERVAL_MS = 8000;
-
-export function useRotatingTip(): string {
-  const [index, setIndex] = useState(() => Math.floor(Math.random() * TIPS.length));
-
-  useEffect(() => {
-    const timer = setInterval(() => {
-      setIndex(current => (current + 1) % TIPS.length);
-    }, TIP_INTERVAL_MS);
-    return () => clearInterval(timer);
-  }, []);
-
-  return TIPS[index]!;
-}

@@ -15,21 +15,16 @@ import type {
   AgentRuntimeContext,
   AgentRuntimeValues,
   AgentType,
-} from '@engine/agent/models/types';
+} from '@shared/contracts/agent-types';
+import type {
+  ContextBudgetSnapshot,
+  ExecutionContextMetadata,
+} from '@shared/contracts/execution';
 import type {AgentStateUpdate} from '@engine/agent/models/command';
-import type {ContextBudgetSnapshot} from '@engine/pipeline/budget';
+
+export type {ExecutionContextMetadata} from '@shared/contracts/execution';
 
 export type MiddlewareRuntimeShared = Record<string, unknown>;
-
-export interface ExecutionContextMetadata {
-  sessionId: string;
-  runId: string;
-  turn: number;
-  maxTurns: number;
-  requestId: string;
-  toolIndex?: number;
-  toolCallId?: string;
-}
 
 export interface MiddlewareRuntimeContext {
   /** 有效业务上下文（持久化 + 临时合并后的结果，不包含执行元数据）。 */
@@ -88,6 +83,8 @@ export type ToolCallHandler = (request?: ToolCallContext) => Promise<ToolMessage
 
 export interface BaseMiddleware {
   name: string;
+  /** 声明此 middleware 依赖的其他 middleware（按 name）。注册时校验顺序。 */
+  dependsOn?: readonly string[];
   /** 可选持久 state schema（用于 middleware state 默认值和校验）。 */
   stateSchema?: z.ZodType;
   /** 可选 context 校验器（例如 zod schema）。 */
@@ -134,3 +131,19 @@ export function createMiddleware(config: BaseMiddleware): BaseMiddleware {
 export function readExecutionMetadata(context: BaseExecutionContext): ExecutionContextMetadata {
   return context.execution;
 }
+
+/** Well-known middleware names used for dedup and ordering across the runtime. */
+export const MIDDLEWARE_NAMES = {
+  Guidelines: 'GuidelinesMiddleware',
+  Skills: 'SkillsMiddleware',
+  Budget: 'BudgetMiddleware',
+  Summary: 'SummaryMiddleware',
+  HIL: 'HumanInTheLoopMiddleware',
+  AskUserQuestion: 'AskUserQuestionMiddleware',
+  Permission: 'PermissionMiddleware',
+  Logging: 'LoggingMiddleware',
+  Task: 'TaskMiddleware',
+  SharedTask: 'SharedTaskMiddleware',
+  TodoList: 'TodoListMiddleware',
+  ToolHooks: 'ToolHooksMiddleware',
+} as const;

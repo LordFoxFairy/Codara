@@ -1,5 +1,5 @@
 import {randomUUID} from 'node:crypto';
-import {mkdir, readFile, rm, writeFile} from 'node:fs/promises';
+import {mkdir, readFile, rename, rm, writeFile} from 'node:fs/promises';
 import path from 'node:path';
 import type {
   CheckpointRecord,
@@ -7,6 +7,7 @@ import type {
   CompactOptions,
   PutCheckpointInput,
 } from '@infra/checkpoint/types';
+import {acquireSessionLock, releaseSessionLock} from '@infra/checkpoint/lock';
 
 interface JsonCodec<T> {
   serialize(value: T): unknown;
@@ -48,7 +49,13 @@ export class FileCheckpointer<TState = unknown, TInfo = unknown>
 
   async getLatest(sessionId: string): Promise<CheckpointRecord<TState, TInfo> | undefined> {
     const record = await readJsonFile<PersistedCheckpointRecord>(this.latestCheckpointPath(sessionId));
-    return record ? this.decodeRecord(record) : undefined;
+    if (!record) return undefined;
+    try {
+      return this.decodeRecord(record);
+    } catch {
+      // Corrupted checkpoint state — treat as missing to allow session recovery
+      return undefined;
+    }
   }
 
   async get(ref: {
@@ -63,20 +70,26 @@ export class FileCheckpointer<TState = unknown, TInfo = unknown>
   }
 
   async put(input: PutCheckpointInput<TState, TInfo>): Promise<CheckpointRecord<TState, TInfo>> {
-    const checkpointId = randomUUID();
-    const record: CheckpointRecord<TState, TInfo> = {
-      ref: {
-        sessionId: input.sessionId,
-        checkpointId,
-      },
-      state: input.state,
-      info: input.info,
-    };
+    const lockDir = path.join(this.rootDir, '.locks');
+    await acquireSessionLock(lockDir, input.sessionId);
+    try {
+      const checkpointId = randomUUID();
+      const record: CheckpointRecord<TState, TInfo> = {
+        ref: {
+          sessionId: input.sessionId,
+          checkpointId,
+        },
+        state: input.state,
+        info: input.info,
+      };
 
-    await mkdir(this.checkpointsDir(input.sessionId), {recursive: true});
-    await writeJsonFile(this.latestCheckpointPath(input.sessionId), this.encodeRecord(record));
+      await mkdir(this.checkpointsDir(input.sessionId), {recursive: true});
+      await writeJsonFile(this.latestCheckpointPath(input.sessionId), this.encodeRecord(record));
 
-    return this.decodeRecord(this.encodeRecord(record));
+      return this.decodeRecord(this.encodeRecord(record));
+    } finally {
+      await releaseSessionLock(lockDir, input.sessionId);
+    }
   }
 
   async list(sessionId: string): Promise<Array<CheckpointRecord<TState, TInfo>>> {
@@ -123,20 +136,30 @@ export class FileCheckpointer<TState = unknown, TInfo = unknown>
 }
 
 async function readJsonFile<T>(filePath: string): Promise<T | undefined> {
+  let raw: string;
   try {
-    const raw = await readFile(filePath, 'utf8');
-    return JSON.parse(raw) as T;
+    raw = await readFile(filePath, 'utf8');
   } catch (error) {
     if (isFileMissing(error)) {
       return undefined;
     }
     throw error;
   }
+
+  try {
+    return JSON.parse(raw) as T;
+  } catch {
+    // Corrupted JSON — treat as missing rather than crashing the session
+    return undefined;
+  }
 }
 
 async function writeJsonFile(filePath: string, value: unknown): Promise<void> {
   await mkdir(path.dirname(filePath), {recursive: true});
-  await writeFile(filePath, `${JSON.stringify(value, null, 2)}\n`, 'utf8');
+  // Atomic write: write to temp file, then rename to target
+  const tmpPath = `${filePath}.${randomUUID().slice(0, 8)}.tmp`;
+  await writeFile(tmpPath, `${JSON.stringify(value, null, 2)}\n`, 'utf8');
+  await rename(tmpPath, filePath);
 }
 
 function isFileMissing(error: unknown): boolean {

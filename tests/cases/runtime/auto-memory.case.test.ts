@@ -7,9 +7,8 @@ import {AIMessage, type BaseMessage, type ToolCall} from '@langchain/core/messag
 import type {BaseChatModel} from '@langchain/core/language_models/chat_models';
 import {
   createAgentMemoryCheckpointer,
-  createAskUserTool,
   createCodaraRuntime,
-  createInteractionMiddleware,
+  createAskUserQuestionMiddleware,
   createSession,
 } from '@/index';
 import {createAutoMemoryRuntime, resolveAutoMemoryRoot} from '@infra/context/memory/auto-memory';
@@ -80,8 +79,7 @@ describe('runtime auto memory cases', () => {
       userHome,
       codaraPath: path.join(projectRoot, '.codara'),
       model: new AskUserModel() as unknown as BaseChatModel,
-      tools: [createAskUserTool()],
-      middleware: [createInteractionMiddleware()],
+      middleware: [createAskUserQuestionMiddleware()],
       builtinTools: false,
       skills: false,
       hil: false,
@@ -212,7 +210,7 @@ class AskUserModel {
       content: '',
       tool_calls: [{
         id: 'call_auto_memory_ask',
-        name: 'AskUser',
+        name: 'AskUserQuestion',
         args: {
           summary: 'Need one clarification before continuing.',
           questions: [

@@ -9,7 +9,10 @@ export interface ProgressiveInstructionWorkspaceOptions extends WorkspaceRootOpt
 }
 
 export interface ProgressiveInstructionSource {
+  /** Init: load root-level files (global + user-project + project root). */
   getContent(): Promise<string | undefined>;
+  /** Agent loop: resolve nearby instruction files for a given file path. Returns new files not yet in systemPaths. */
+  resolve(filePath: string): Promise<string | undefined>;
   reload(): void;
 }
 
@@ -25,18 +28,20 @@ export interface ProgressiveInstructionSourceOptions extends ProgressiveInstruct
 
 export class SessionScopedProgressiveInstructionSource implements ProgressiveInstructionSource {
   private readonly userHome: string;
+  private readonly projectRoot: string;
   private readonly startupFiles: string[];
   private readonly fileCache = new Map<string, string | null>();
   private renderedCache?: {key: string; content?: string};
+  /** Track which files have been injected (init + resolve) to prevent duplicates. */
+  private readonly injectedFiles = new Set<string>();
 
   constructor(private readonly options: ProgressiveInstructionSourceOptions) {
     this.userHome = path.resolve(options.userHome ?? homedir());
-    const projectRoot = resolveWorkspaceRoot(options);
-    const cwd = path.resolve(options.cwd ?? projectRoot);
-    this.startupFiles = discoverStartupFiles({
+    this.projectRoot = resolveWorkspaceRoot(options);
+    // Init: only global + user-project + project root (no subdirectory walk)
+    this.startupFiles = discoverRootFiles({
       userHome: this.userHome,
-      projectRoot,
-      cwd,
+      projectRoot: this.projectRoot,
       globalFileName: options.globalFileName,
       userProjectFiles: options.userProjectFiles,
       projectFileResolver: options.projectFileResolver,
@@ -44,18 +49,46 @@ export class SessionScopedProgressiveInstructionSource implements ProgressiveIns
   }
 
   async getContent(): Promise<string | undefined> {
-    return this.renderProjection(this.startupFiles);
+    const rendered = await this.renderProjection(this.startupFiles);
+    // Mark startup files as injected
+    for (const filePath of this.startupFiles) {
+      this.injectedFiles.add(path.resolve(filePath));
+    }
+    return rendered;
+  }
+
+  async resolve(filePath: string): Promise<string | undefined> {
+    const targetDir = path.dirname(path.resolve(filePath));
+    const candidates = discoverAncestorFiles(
+      targetDir,
+      this.projectRoot,
+      this.options.projectFileResolver,
+    );
+
+    // Filter out already-injected files
+    const newFiles = candidates.filter((f) => !this.injectedFiles.has(path.resolve(f)));
+    if (newFiles.length === 0) {
+      return undefined;
+    }
+
+    // Load and render new files
+    const blocks: string[] = [];
+    for (const file of newFiles) {
+      const content = await this.loadFile(file);
+      if (!content) continue;
+
+      this.injectedFiles.add(path.resolve(file));
+      blocks.push(`Instructions from: ${file}`);
+      blocks.push(content);
+    }
+
+    return blocks.length > 0 ? blocks.join('\n') : undefined;
   }
 
   reload(): void {
     this.fileCache.clear();
     this.renderedCache = undefined;
-  }
-
-  private async primeFiles(filePaths: string[]): Promise<void> {
-    for (const filePath of filePaths) {
-      await this.loadFile(filePath);
-    }
+    this.injectedFiles.clear();
   }
 
   private async loadFile(filePath: string): Promise<string | null> {
@@ -69,7 +102,10 @@ export class SessionScopedProgressiveInstructionSource implements ProgressiveIns
   }
 
   private async renderProjection(filePaths: string[]): Promise<string | undefined> {
-    await this.primeFiles(filePaths);
+    for (const filePath of filePaths) {
+      await this.loadFile(filePath);
+    }
+
     const files = filePaths
       .map((filePath) => {
         const content = this.fileCache.get(filePath);
@@ -110,6 +146,8 @@ export class SessionScopedProgressiveInstructionSource implements ProgressiveIns
     return content;
   }
 }
+
+// ── File loading ──────────────────────────────────────────────────────
 
 async function loadInstructionFile(filePath: string, maxImportDepth: number): Promise<string | null> {
   const absolutePath = path.resolve(filePath);
@@ -195,10 +233,15 @@ function resolveImportPath(ownerFilePath: string, spec: string): string | undefi
   return undefined;
 }
 
-function discoverStartupFiles(input: {
+// ── Discovery ──────────────────────────────────────────────────────────
+
+/**
+ * Init discovery: global + user-project + project ROOT only.
+ * No subdirectory walk — those are resolved lazily during agent loop.
+ */
+function discoverRootFiles(input: {
   userHome: string;
   projectRoot: string;
-  cwd: string;
   globalFileName?: string;
   userProjectFiles?: string[];
   projectFileResolver(directory: string): string;
@@ -210,11 +253,17 @@ function discoverStartupFiles(input: {
   if (input.userProjectFiles) {
     files.push(...input.userProjectFiles);
   }
-  files.push(...discoverProjectFiles(input.cwd, input.projectRoot, input.projectFileResolver));
+  // Only project root, not subdirectory walk
+  files.push(input.projectFileResolver(input.projectRoot));
   return uniqueResolvedPaths(files);
 }
 
-function discoverProjectFiles(
+/**
+ * Lazy discovery: walk from targetDir up to projectRoot,
+ * collecting instruction files at each level.
+ * Returns files from root to target (natural reading order).
+ */
+function discoverAncestorFiles(
   targetDirectory: string,
   projectRoot: string,
   projectFileResolver: (directory: string) => string,

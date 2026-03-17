@@ -8,13 +8,15 @@ import {createAgentFileCheckpointer} from '@infra/checkpoint';
 import type {BaseMiddleware, HILMiddlewareOptions, LoggingMiddlewareOptions} from '@engine/pipeline';
 import type {SummarySettings} from '@engine/pipeline/summary';
 import {
-  createAskUserTool,
   createBudgetMiddleware,
   createDailySessionFileLogSink,
+  createGuidelinesMiddleware,
   createHILMiddleware,
-  createInteractionMiddleware,
+  createAskUserQuestionMiddleware,
   createLoggingMiddleware,
-  todoListMiddleware,
+  createSkillsMiddleware,
+  MIDDLEWARE_NAMES,
+  createTodoListMiddleware,
 } from '@engine/pipeline';
 import {
   ensurePermissionSettingsFile,
@@ -61,8 +63,9 @@ import {
   applyPreparedInstructionContext,
   buildBaseSystemMessage,
 } from '@infra/context/system-message';
-import {HookRegistryImpl, HookPipeline, ToolHooksMiddleware, createHookExecutor} from '@engine/hook';
+import {HookRegistryImpl, HookPipeline, createToolHooksMiddleware, createHookExecutor} from '@engine/hook';
 import type {HookSource, HookRegistry, SessionLifecycleHooks, AgentLifecycleHooks} from '@engine/hook';
+import {loadMcpConfig, createMcpManager, createMcpLangChainTools, type McpClientInfo, type McpConfig, type McpManager} from '@engine/mcp';
 
 export const DEFAULT_CODARA_MODEL_ALIAS = 'default';
 const DEFAULT_RUNTIME_FILE_LOGGING_ENABLED = true;
@@ -98,6 +101,8 @@ export interface CodaraSkillOptions {
   projectRoot?: string;
   userHome?: string;
   cacheTtlMs?: number;
+  /** 启用后额外扫描 ~/.claude/skills/（Claude Code 兼容），默认关闭。 */
+  claudeSkillsCompat?: boolean;
 }
 
 export interface CodaraAutoMemoryOptions {
@@ -134,6 +139,8 @@ export interface CodaraOptions {
   context?: Record<string, unknown>;
   values?: Record<string, unknown>;
   autoMemory?: false | CodaraAutoMemoryOptions;
+  /** MCP server configuration. `false` to disable, omit for auto-detection from .codara/mcp.json. */
+  mcp?: false | McpConfig;
 }
 
 export interface CodaraRuntimeOptions extends CodaraOptions {
@@ -157,6 +164,7 @@ export type Codara = Session & {
   listCommands(): Promise<readonly CodaraCommandSpec[]>;
   executeCommand(input: string): Promise<CodaraCommandResult>;
   listSessions(options?: import('@engine/session').SessionListOptions): Promise<SessionState[]>;
+  getMcpStatus(): McpClientInfo[];
 };
 
 export async function createCodaraModelCatalog(
@@ -206,11 +214,10 @@ export async function createCodaraRuntime(options: CodaraRuntimeOptions = {}): P
     ? loadModelRoutingConfigFromPath(codaraPath).then((config) => createCodaraModelCatalog({config}))
     : options.catalog;
   const logging = resolveRuntimeLoggingOptions(options);
-  const runtimeInteractionTools = options.hil === false ? [] : [createAskUserTool()];
-  const runtimeTools = createCodaraTools({
+  const runtimeTools: StructuredToolInterface[] = createCodaraTools({
     builtinTools: options.builtinTools,
     cwd: options.cwd,
-    tools: mergeRuntimeTools(options.tools, runtimeInteractionTools),
+    tools: options.tools,
   });
   // ── Hooks System Assembly ──
   const hookSources: HookSource[] = [];
@@ -226,6 +233,22 @@ export async function createCodaraRuntime(options: CodaraRuntimeOptions = {}): P
   const hookPipeline = new HookPipeline(hookRegistry, {
     createStrategy: (hook) => createHookExecutor(hook, {projectRoot: codaraPath}),
   });
+
+  // ── MCP Assembly ──
+  let mcpManager: McpManager | undefined;
+  if (options.mcp !== false) {
+    const mcpConfig = options.mcp ?? await loadMcpConfig({
+      projectRoot,
+      userHome: options.userHome,
+    });
+    if (Object.keys(mcpConfig.mcpServers).length > 0) {
+      mcpManager = createMcpManager(mcpConfig);
+      await mcpManager.init();
+      // Inject MCP tools into the runtime tool set
+      const mcpTools = createMcpLangChainTools(mcpManager);
+      runtimeTools.push(...mcpTools);
+    }
+  }
 
   const runtimeMiddlewares = createRuntimeDefaultMiddlewares({
     options,
@@ -246,6 +269,7 @@ export async function createCodaraRuntime(options: CodaraRuntimeOptions = {}): P
     autoMemory: options.autoMemory === false
       ? false
       : (typeof options.autoMemory === 'object' && options.autoMemory !== null ? options.autoMemory : {}),
+    summary: options.summary === false ? false : (options.summary ?? {}),
     ...(logging === false ? {logging: false} : {logging}),
     ...(catalog ? {catalog} : {}),
     ...(options.store ? {} : {store: new FileSessionStore({basePath: path.join(codaraPath, 'sessions')})}),
@@ -253,7 +277,7 @@ export async function createCodaraRuntime(options: CodaraRuntimeOptions = {}): P
       checkpointer: createAgentFileCheckpointer({rootDir: path.join(codaraPath, 'sessions')}),
     }),
     restore: options.restore ?? 'latest',
-  }, undefined, {promptSource, guidelinesSource, hookPipeline, hookRegistry});
+  }, undefined, {promptSource, guidelinesSource, hookPipeline, hookRegistry, mcpManager});
 }
 
 function assembleCodara(
@@ -264,6 +288,7 @@ function assembleCodara(
     guidelinesSource?: GuidelinesSource;
     hookPipeline?: HookPipeline;
     hookRegistry?: HookRegistry;
+    mcpManager?: McpManager;
   },
 ): Codara {
   const skills = resolveCodaraSkills(options);
@@ -306,8 +331,21 @@ function assembleCodara(
     ...(preloadedSources?.hookPipeline ? {lifecycle: preloadedSources.hookPipeline as SessionLifecycleHooks & AgentLifecycleHooks} : {}),
   });
 
+  // Wrap session with extra properties for commands that need it (/reload, /hooks, /mcp)
+  const mcpManager = preloadedSources?.mcpManager;
+  const extraProps: Record<string, PropertyDescriptor> = {};
+  if (preloadedSources?.hookRegistry) {
+    extraProps.hookRegistry = {value: preloadedSources.hookRegistry, writable: false};
+  }
+  if (mcpManager) {
+    extraProps.getMcpStatus = {value: () => mcpManager.status(), writable: false};
+  }
+  const commandAgent = Object.keys(extraProps).length > 0
+    ? Object.create(session, extraProps)
+    : session;
+
   const commands = createCodaraCommandRunner({
-    agent: session,
+    agent: commandAgent,
     environment: {
       cwd: options.cwd,
       projectRoot: options.projectRoot,
@@ -369,26 +407,41 @@ function assembleCodara(
     return sessionStore.list(listOptions);
   };
 
+  const getMcpStatus = (): McpClientInfo[] => mcpManager?.status() ?? [];
+
+  const dispose = async (): Promise<void> => {
+    await session.dispose();
+    if (mcpManager) {
+      await mcpManager.dispose();
+    }
+  };
+
   return {
     ...session,
     subscribeRuntimeEvents,
     listCommands: commands.listCommands,
     executeCommand,
     listSessions,
+    getMcpStatus,
+    dispose,
   };
 }
 
 function resolveCodaraAutoMemory(options: CodaraOptions): AutoMemoryRuntime | undefined {
-  if (options.autoMemory === false || !options.autoMemory) {
+  if (options.autoMemory === false) {
     return undefined;
   }
 
+  const memOpts = typeof options.autoMemory === 'object' && options.autoMemory !== null
+    ? options.autoMemory
+    : {};
+
   return createAutoMemoryRuntime({
-    cwd: options.autoMemory.cwd ?? options.cwd,
-    projectRoot: options.autoMemory.projectRoot ?? options.projectRoot,
-    userHome: options.autoMemory.userHome ?? options.userHome,
-    autoGlobal: options.autoMemory.autoGlobal,
-    rootDir: options.autoMemory.rootDir,
+    cwd: memOpts.cwd ?? options.cwd,
+    projectRoot: memOpts.projectRoot ?? options.projectRoot,
+    userHome: memOpts.userHome ?? options.userHome,
+    autoGlobal: memOpts.autoGlobal,
+    rootDir: memOpts.rootDir,
   });
 }
 
@@ -423,7 +476,7 @@ export function createCodaraTools(options: CodaraToolsOptions = {}): StructuredT
   }
 
   const byName = new Map<string, StructuredToolInterface>();
-  for (const tool of createBuiltinTools({cwd: options.cwd})) {
+  for (const tool of createBuiltinTools({cwd: options.cwd, extended: true})) {
     byName.set(tool.name, tool);
   }
   for (const tool of options.tools ?? []) {
@@ -436,8 +489,13 @@ export function createCodaraMiddlewares(
   options: CodaraMiddlewareOptions = {},
 ): BaseMiddleware[] {
   const middlewares: BaseMiddleware[] = [];
-  if (options.logging && options.logging.enabled !== false) {
-    middlewares.push(createLoggingMiddleware(options.logging));
+  if (options.logging) {
+    middlewares.push(createLoggingMiddleware(options.logging as LoggingMiddlewareOptions));
+  }
+  // SkillsMiddleware — Skill tool for progressive disclosure.
+  // Reads runtime from shared context (injected by SkillsSource via buildBaseSystemMessage).
+  if (!options.middleware?.some((m) => m.name === MIDDLEWARE_NAMES.Skills)) {
+    middlewares.push(createSkillsMiddleware());
   }
   middlewares.push(...(options.middleware ?? []));
   middlewares.push(createBudgetMiddleware());
@@ -470,6 +528,7 @@ function resolveCodaraSkills(
       ...((options.skills?.cwd || options.cwd) ? {cwd: options.skills?.cwd ?? options.cwd} : {}),
       ...((options.skills?.userHome || options.userHome) ? {userHome: options.skills?.userHome ?? options.userHome} : {}),
       ...(typeof options.skills?.cacheTtlMs === 'number' ? {cacheTtlMs: options.skills.cacheTtlMs} : {}),
+      ...(options.skills?.claudeSkillsCompat ? {claudeSkillsCompat: true} : {}),
     }),
     subagentRoots: options.skills?.subagentRoots ?? [],
   };
@@ -489,26 +548,6 @@ function normalizeAlias(alias: string | undefined): string {
   return alias?.trim() || DEFAULT_CODARA_MODEL_ALIAS;
 }
 
-function mergeRuntimeTools(
-  callerTools: StructuredToolInterface[] | undefined,
-  runtimeTools: StructuredToolInterface[],
-): StructuredToolInterface[] | undefined {
-  if (runtimeTools.length === 0) {
-    return callerTools;
-  }
-
-  const byName = new Map<string, StructuredToolInterface>();
-  for (const tool of callerTools ?? []) {
-    byName.set(tool.name, tool);
-  }
-  for (const tool of runtimeTools) {
-    if (!byName.has(tool.name)) {
-      byName.set(tool.name, tool);
-    }
-  }
-
-  return [...byName.values()];
-}
 
 function resolveCodaraRuntimePath(options: Pick<CodaraRuntimeOptions, 'codaraPath' | 'cwd' | 'projectRoot'>): string {
   if (options.codaraPath?.trim()) {
@@ -568,16 +607,24 @@ function createRuntimeDefaultMiddlewares(input: {
     byName.set(middleware.name, middleware);
   }
 
-  if (!byName.has('todoListMiddleware') && !providedToolNames.has('write_todos')) {
-    byName.set('todoListMiddleware', todoListMiddleware());
+  // GuidelinesMiddleware — lazy loading of subdirectory AGENTS.md / codara.md
+  if (!byName.has(MIDDLEWARE_NAMES.Guidelines)) {
+    byName.set(MIDDLEWARE_NAMES.Guidelines, createGuidelinesMiddleware({
+      guidelinesSource: input.guidelinesSource,
+      promptSource: input.promptSource,
+    }));
   }
 
-  if (!byName.has('SharedTaskMiddleware') && !hasSharedTaskTools(providedToolNames)) {
-    byName.set('SharedTaskMiddleware', createSharedTaskMiddleware({store: input.taskStore}));
+  if (!byName.has(MIDDLEWARE_NAMES.TodoList) && !providedToolNames.has('write_todos')) {
+    byName.set(MIDDLEWARE_NAMES.TodoList, createTodoListMiddleware());
   }
 
-  if (!byName.has('TaskMiddleware') && !providedToolNames.has('Task')) {
-    byName.set('TaskMiddleware', createTaskMiddleware({
+  if (!byName.has(MIDDLEWARE_NAMES.SharedTask) && !hasSharedTaskTools(providedToolNames)) {
+    byName.set(MIDDLEWARE_NAMES.SharedTask, createSharedTaskMiddleware({store: input.taskStore}));
+  }
+
+  if (!byName.has(MIDDLEWARE_NAMES.Task) && !providedToolNames.has('Task')) {
+    byName.set(MIDDLEWARE_NAMES.Task, createTaskMiddleware({
       model: input.options.model ?? (() => createCodaraChatModel({
         alias: input.options.alias,
         config: input.options.config,
@@ -596,12 +643,12 @@ function createRuntimeDefaultMiddlewares(input: {
     }));
   }
 
-  if (input.options.hil !== false && !byName.has('InteractionMiddleware')) {
-    byName.set('InteractionMiddleware', createInteractionMiddleware());
+  if (input.options.hil !== false && !byName.has(MIDDLEWARE_NAMES.AskUserQuestion)) {
+    byName.set(MIDDLEWARE_NAMES.AskUserQuestion, createAskUserQuestionMiddleware());
   }
 
-  if (input.options.hil !== false && !byName.has('PermissionMiddleware')) {
-    byName.set('PermissionMiddleware', createPermissionMiddleware({
+  if (input.options.hil !== false && !byName.has(MIDDLEWARE_NAMES.Permission)) {
+    byName.set(MIDDLEWARE_NAMES.Permission, createPermissionMiddleware({
       ...(typeof input.options.hil === 'object' && input.options.hil !== null ? input.options.hil : {}),
       cwd: input.options.cwd,
       projectRoot: input.options.projectRoot,
@@ -612,7 +659,7 @@ function createRuntimeDefaultMiddlewares(input: {
 
   // Add ToolHooksMiddleware after Permission (last in the chain)
   if (input.hookPipeline) {
-    byName.set('ToolHooksMiddleware', new ToolHooksMiddleware(input.hookPipeline));
+    byName.set(MIDDLEWARE_NAMES.ToolHooks, createToolHooksMiddleware(input.hookPipeline));
   }
 
   return [...byName.values()];
@@ -627,7 +674,7 @@ function createDelegatedRuntimeMiddlewares(input: {
 }): BaseMiddleware[] {
   const middlewares: BaseMiddleware[] = [];
   const callerMiddlewares = (input.options.middleware ?? [])
-    .filter((middleware) => middleware.name !== 'TaskMiddleware');
+    .filter((middleware) => middleware.name !== MIDDLEWARE_NAMES.Task);
   const providedToolNames = collectProvidedToolNames({
     tools: input.tools,
     middlewares: callerMiddlewares,
@@ -650,16 +697,16 @@ function createDelegatedRuntimeMiddlewares(input: {
     push(middleware);
   }
 
-  if (!seen.has('todoListMiddleware') && !providedToolNames.has('write_todos')) {
-    push(todoListMiddleware());
+  if (!seen.has(MIDDLEWARE_NAMES.TodoList) && !providedToolNames.has('write_todos')) {
+    push(createTodoListMiddleware());
   }
-  if (!seen.has('SharedTaskMiddleware') && !hasSharedTaskTools(providedToolNames)) {
+  if (!seen.has(MIDDLEWARE_NAMES.SharedTask) && !hasSharedTaskTools(providedToolNames)) {
     push(createSharedTaskMiddleware({store: input.taskStore}));
   }
-  if (input.options.hil !== false && !seen.has('InteractionMiddleware')) {
-    push(createInteractionMiddleware());
+  if (input.options.hil !== false && !seen.has(MIDDLEWARE_NAMES.AskUserQuestion)) {
+    push(createAskUserQuestionMiddleware());
   }
-  if (input.options.hil !== false && !seen.has('PermissionMiddleware')) {
+  if (input.options.hil !== false && !seen.has(MIDDLEWARE_NAMES.Permission)) {
     push(createPermissionMiddleware({
       ...(typeof input.options.hil === 'object' && input.options.hil !== null ? input.options.hil : {}),
       cwd: input.options.cwd,

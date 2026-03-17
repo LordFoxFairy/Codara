@@ -5,6 +5,11 @@ import type {CliLayoutMode} from '../../app/layout-mode';
 import type {CliRunState} from '../../app/view-state';
 import {describeStatusIndicator} from '../../hooks/use-status-indicator';
 
+export interface McpStatusSummary {
+  connected: number;
+  total: number;
+}
+
 interface StatusBarProps {
   layoutMode: CliLayoutMode;
   session: SessionState;
@@ -12,6 +17,7 @@ interface StatusBarProps {
   modelAlias: string;
   runState: CliRunState;
   latestRuntimeEvent?: CodaraRuntimeEvent;
+  mcpStatus?: McpStatusSummary;
 }
 
 export interface StatusBarModel {
@@ -19,25 +25,56 @@ export interface StatusBarModel {
   pathLine?: string;
 }
 
+import {formatTokenCount} from '../../utils/format';
+
+
 export function describeStatusBar(props: StatusBarProps): StatusBarModel {
-  const {layoutMode, session, cwd, modelAlias, runState, latestRuntimeEvent} = props;
+  const {layoutMode, session, cwd, modelAlias, runState, latestRuntimeEvent, mcpStatus} = props;
   const isMinimal = layoutMode === 'minimal';
   const messageCount = session.metadata?.messageCount ?? 0;
   const status = describeStatusIndicator({runState, latestRuntimeEvent});
   const contextWindow = session.metadata?.contextWindow;
-  const contextUsage = contextWindow
-    ? `${Math.round(contextWindow.usagePercent)}%`
-    : 'n/a';
-  const sessionLabel = shortenSessionId(session.sessionId);
+  const usage = session.metadata?.usage;
+
+  const segments: string[] = [modelAlias];
+
+  if (!isMinimal) {
+    segments.push(shortenSessionId(session.sessionId));
+    segments.push(`${messageCount} msgs`);
+  }
+
+  // MCP indicator: show when servers are configured
+  if (mcpStatus && mcpStatus.total > 0) {
+    if (mcpStatus.connected === mcpStatus.total) {
+      segments.push(`MCP:${mcpStatus.total}`);
+    } else {
+      segments.push(`MCP:${mcpStatus.connected}/${mcpStatus.total}`);
+    }
+  }
+
+  // Context window usage: show full contextWindow as denominator (not available-after-output-reserve)
+  if (contextWindow) {
+    const used = formatTokenCount(contextWindow.estimatedInputTokens);
+    const cap = formatTokenCount(contextWindow.maxInputTokens);
+    const pct = Math.round(contextWindow.usagePercent);
+    const prefix = contextWindow.overBudget ? '⚠ ' : '';
+    segments.push(`${prefix}${used}/${cap} ${pct}% ctx`);
+  }
+
+  // Token consumption: ↓prompt ↑completion (total)
+  if (usage && usage.totalTokens > 0) {
+    const total = formatTokenCount(usage.totalTokens);
+    if (isMinimal) {
+      segments.push(`${total} tok`);
+    } else {
+      segments.push(`↓${formatTokenCount(usage.promptTokens)} ↑${formatTokenCount(usage.completionTokens)} (${total})`);
+    }
+  }
+
+  segments.push(status.status.toLowerCase());
 
   return {
-    subtitle: [
-      modelAlias,
-      sessionLabel,
-      ...(!isMinimal ? [`${messageCount} msgs`] : []),
-      `${contextUsage} ctx`,
-      status.status.toLowerCase(),
-    ].join('  ·  '),
+    subtitle: segments.join('  ·  '),
     ...(!isMinimal ? {pathLine: cwd} : {}),
   };
 }

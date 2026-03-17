@@ -8,7 +8,7 @@ import {
   SKILLS_SYSTEM_PROMPT,
   type SkillsRuntimeData,
   type SkillsSource,
-} from '@capability/skill';
+} from '@infra/context/skill-contracts';
 
 const BASE_SYSTEM_MESSAGE_KEY = 'codaraSystemMessage';
 

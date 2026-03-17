@@ -1,10 +1,13 @@
 import {useCallback, useEffect, useState} from 'react';
 import type {SessionState} from '@/index';
+import {formatTimeAgo} from '../utils/format';
 
 export interface SessionPickerItem {
   sessionId: string;
   title: string;
+  subtitle?: string;
   messageCount: number;
+  totalTokens?: number;
   timeAgo: string;
   truncatedId: string;
 }
@@ -38,27 +41,30 @@ function truncateId(id: string): string {
   return `${id.slice(0, 8)}…${id.slice(-4)}`;
 }
 
-function formatTimeAgo(timestamp: string, now: number): string {
-  const diff = now - new Date(timestamp).getTime();
-  const minutes = Math.floor(diff / 60000);
-  if (minutes < 1) return 'just now';
-  if (minutes < 60) return `${minutes}m ago`;
-  const hours = Math.floor(minutes / 60);
-  if (hours < 24) return `${hours}h ago`;
-  const days = Math.floor(hours / 24);
-  if (days < 7) return `${days}d ago`;
-  return `${Math.floor(days / 7)}w ago`;
-}
-
 function derivePickerItems(sessions: SessionState[]): SessionPickerItem[] {
   const now = Date.now();
-  return sessions.slice(0, MAX_SESSIONS).map((s) => ({
-    sessionId: s.sessionId,
-    title: s.metadata?.title || 'Untitled',
-    messageCount: s.metadata?.messageCount ?? 0,
-    timeAgo: formatTimeAgo(s.metadata?.lastActivity ?? s.updatedAt, now),
-    truncatedId: truncateId(s.sessionId),
-  }));
+  return sessions
+    .slice(0, MAX_SESSIONS)
+    .filter((s) => {
+      const count = s.metadata?.messageCount ?? 0;
+      const title = s.metadata?.title;
+      return count > 0 || Boolean(title);
+    })
+    .map((s) => {
+      const title = s.metadata?.title || s.metadata?.lastMessage?.slice(0, 60) || 'Untitled';
+      const subtitle = s.metadata?.title && s.metadata.lastMessage
+        ? s.metadata.lastMessage.slice(0, 50)
+        : undefined;
+      return {
+        sessionId: s.sessionId,
+        title,
+        subtitle,
+        messageCount: s.metadata?.messageCount ?? 0,
+        totalTokens: s.metadata?.usage?.totalTokens,
+        timeAgo: formatTimeAgo(s.metadata?.lastActivity ?? s.updatedAt, now),
+        truncatedId: truncateId(s.sessionId),
+      };
+    });
 }
 
 export function useSessionPicker(input: UseSessionPickerInput): UseSessionPickerOutput {

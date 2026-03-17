@@ -1,6 +1,6 @@
 import {describe, expect, it} from 'bun:test';
 import {HumanMessage, ToolMessage, type BaseMessage, type ToolCall} from '@langchain/core/messages';
-import {ASK_USER_TOOL_NAME, createInteractionMiddleware, parseAskUserResult, parseHILToolMessagePayload, type ToolCallContext} from '@engine/pipeline';
+import {ASK_USER_TOOL_NAME, createAskUserQuestionMiddleware, parseAskUserResult, parseHILToolMessagePayload, type ToolCallContext} from '@engine/pipeline';
 
 function createToolContext(toolCall: ToolCall, runtimeContext: Record<string, unknown> = {}): ToolCallContext {
   const messages = [new HumanMessage('run')] as BaseMessage[];
@@ -23,9 +23,9 @@ function createToolContext(toolCall: ToolCall, runtimeContext: Record<string, un
   };
 }
 
-describe('createInteractionMiddleware', () => {
+describe('createAskUserQuestionMiddleware', () => {
   it('should pause AskUser tool calls with generic form UI metadata', async () => {
-    const middleware = createInteractionMiddleware();
+    const middleware = createAskUserQuestionMiddleware();
     const toolCall: ToolCall = {
       id: 'call_interaction_pause_1',
       name: ASK_USER_TOOL_NAME,
@@ -55,7 +55,7 @@ describe('createInteractionMiddleware', () => {
   });
 
   it('should convert a resumed AskUser pause into a structured tool result', async () => {
-    const middleware = createInteractionMiddleware();
+    const middleware = createAskUserQuestionMiddleware();
     const toolCall: ToolCall = {
       id: 'call_interaction_resume_1',
       name: ASK_USER_TOOL_NAME,
@@ -93,7 +93,7 @@ describe('createInteractionMiddleware', () => {
   });
 
   it('should preserve multi-select answers in the AskUser result payload', async () => {
-    const middleware = createInteractionMiddleware();
+    const middleware = createAskUserQuestionMiddleware();
     const toolCall: ToolCall = {
       id: 'call_interaction_resume_2',
       name: ASK_USER_TOOL_NAME,

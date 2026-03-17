@@ -49,6 +49,9 @@ export interface CliController {
   composer: CliComposerState;
   composerActivityVersion: number;
   notices: CliNotice[];
+  commandOutput?: {content: string; commandName?: string; scrollOffset: number};
+  dismissCommandOutput: () => void;
+  scrollCommandOutput: (delta: number) => void;
   activeTurn?: CliActiveTurn;
   hilReview?: CliHilReviewState;
   coreMessages: readonly BaseMessage[];
@@ -59,6 +62,8 @@ export interface CliController {
   sessionState: SessionState;
   taskPanelVisible: boolean;
   toggleTaskPanel: () => void;
+  expandedAll: boolean;
+  toggleExpand: () => void;
   insertText: (input: string) => void;
   replaceText: (text: string) => void;
   insertNewline: () => void;
@@ -118,6 +123,8 @@ export function useCliController(options: UseCliControllerOptions): CliControlle
   const [runState, setRunState] = useState<CliRunState>({status: 'idle'});
   const [sessionState, setSessionState] = useState<SessionState>(() => codara.getState());
   const [taskPanelVisible, setTaskPanelVisible] = useState(true);
+  const [expandedAll, setExpandedAll] = useState(false);
+  const [commandOutput, setCommandOutput] = useState<{content: string; commandName?: string; scrollOffset: number} | undefined>();
   const isRunningRef = useRef(false);
   const initialPromptSentRef = useRef(false);
   const hilReviewRef = useRef<CliHilReviewState | undefined>(undefined);
@@ -208,7 +215,11 @@ export function useCliController(options: UseCliControllerOptions): CliControlle
       return;
     }
 
-    appendNotice(result.ok ? 'command' : 'error', result.output || '(no output)');
+    if (result.ok) {
+      setCommandOutput({content: result.output || '(no output)', commandName: result.command, scrollOffset: 0});
+    } else {
+      appendNotice('error', result.output || '(no output)');
+    }
     const nextAgentState = await refreshCoreState();
     setRunState(result.ok
       ? nextAgentState.status === 'paused' ? {status: 'paused'} : {status: 'done'}
@@ -228,6 +239,34 @@ export function useCliController(options: UseCliControllerOptions): CliControlle
     for await (const chunk of codara.stream(prompt, {streamMode: 'messages'})) {
       if (!AIMessageChunk.isInstance(chunk)) {
         continue;
+      }
+
+      // Extract thinking blocks (Extended Thinking / reasoning)
+      const thinkingText = extractThinkingText(chunk);
+      if (thinkingText) {
+        setActiveTurn((current) => current
+          ? {...current, thinking: (current.thinking ?? '') + thinkingText}
+          : current);
+      }
+
+      // Accumulate streaming token counts from usage_metadata
+      const usageMeta = chunk.usage_metadata as Record<string, unknown> | undefined;
+      if (usageMeta) {
+        const inputDelta = typeof usageMeta.input_tokens === 'number' ? usageMeta.input_tokens : 0;
+        const outputDelta = typeof usageMeta.output_tokens === 'number' ? usageMeta.output_tokens : 0;
+        if (inputDelta > 0 || outputDelta > 0) {
+          setActiveTurn((current) => {
+            if (!current) return current;
+            const prev = current.streamingTokens ?? {input: 0, output: 0};
+            return {
+              ...current,
+              streamingTokens: {
+                input: Math.max(prev.input, inputDelta),
+                output: Math.max(prev.output, outputDelta),
+              },
+            };
+          });
+        }
       }
 
       const text = chunk.text;
@@ -257,6 +296,7 @@ export function useCliController(options: UseCliControllerOptions): CliControlle
     isRunningRef.current = true;
     setRunState({status: 'running'});
     setRuntimeEvents([]);
+    setCommandOutput(undefined);
 
     try {
       if (prompt.startsWith('/')) {
@@ -307,7 +347,7 @@ export function useCliController(options: UseCliControllerOptions): CliControlle
   }, [applyComposerChange]);
 
   const replaceText = useCallback((text: string) => {
-    applyComposerChange((current) => replaceComposerText(current, text));
+    applyComposerChange(() => replaceComposerText(text));
   }, [applyComposerChange]);
 
   const insertNewline = useCallback(() => {
@@ -344,6 +384,25 @@ export function useCliController(options: UseCliControllerOptions): CliControlle
 
   const toggleTaskPanel = useCallback(() => {
     setTaskPanelVisible(current => !current);
+  }, []);
+
+  const toggleExpand = useCallback(() => {
+    setExpandedAll(current => !current);
+  }, []);
+
+  const dismissCommandOutput = useCallback(() => {
+    setCommandOutput(undefined);
+  }, []);
+
+  const scrollCommandOutput = useCallback((delta: number) => {
+    setCommandOutput((current) => {
+      if (!current) return current;
+      const totalLines = current.content.split('\n').length;
+      const maxOffset = Math.max(0, totalLines - 20);
+      const nextOffset = Math.max(0, Math.min(maxOffset, current.scrollOffset + delta));
+      if (nextOffset === current.scrollOffset) return current;
+      return {...current, scrollOffset: nextOffset};
+    });
   }, []);
 
   const submitDraft = useCallback(() => {
@@ -529,6 +588,9 @@ export function useCliController(options: UseCliControllerOptions): CliControlle
     composer,
     composerActivityVersion,
     notices,
+    commandOutput,
+    dismissCommandOutput,
+    scrollCommandOutput,
     activeTurn,
     hilReview,
     coreMessages,
@@ -551,6 +613,8 @@ export function useCliController(options: UseCliControllerOptions): CliControlle
     submitText,
     taskPanelVisible,
     toggleTaskPanel,
+    expandedAll,
+    toggleExpand,
     moveHilLeft,
     moveHilRight,
     selectPreviousHilAction,
@@ -574,4 +638,26 @@ function isPermissionReview(review: CliHilReviewState): boolean {
   return review.request.ui?.modal === 'permission-review'
     || review.request.channel === 'permission-center'
     || review.request.description.toLowerCase().includes('permission review');
+}
+
+/**
+ * Extract thinking/reasoning text from an AIMessageChunk.
+ * Anthropic Extended Thinking emits content blocks with type "thinking".
+ */
+function extractThinkingText(chunk: AIMessageChunk): string | undefined {
+  const content = chunk.content;
+  if (!Array.isArray(content)) {
+    return undefined;
+  }
+
+  let thinking = '';
+  for (const block of content) {
+    if (typeof block === 'object' && block !== null && 'type' in block) {
+      const typed = block as {type: string; thinking?: string; text?: string};
+      if (typed.type === 'thinking' && typed.thinking) {
+        thinking += typed.thinking;
+      }
+    }
+  }
+  return thinking || undefined;
 }

@@ -87,6 +87,7 @@ export interface CodaraCommandAgent {
   reloadSources(): Promise<void>;
   reset(): Promise<void>;
   hookRegistry?: HookRegistry;
+  getMcpStatus?(): import('@engine/mcp').McpClientInfo[];
 }
 
 export interface CodaraCommandEnvironment {
@@ -94,6 +95,10 @@ export interface CodaraCommandEnvironment {
   projectRoot?: string;
   userHome?: string;
   modelAlias?: string;
+  /** 可用的模型别名列表（用于 /model 命令）。 */
+  modelAliases?: string[];
+  /** 切换模型的回调（用于 /model 命令）。 */
+  onModelSwitch?: (alias: string) => Promise<void> | void;
 }
 
 export interface CodaraCommandContext {

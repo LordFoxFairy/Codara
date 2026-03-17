@@ -12,7 +12,7 @@ import {
   resolveSubagentDefinition,
   type SkillsRuntimeData,
   type SubagentDefinition,
-} from '@capability/skill/runtime';
+} from '@infra/context/skill-contracts';
 import {readBaseSystemMessage} from '@infra/context/system-message';
 import {filterToolsByReferences} from '@capability/tool';
 import {createAgentMemoryCheckpointer} from '@infra/checkpoint/agent';

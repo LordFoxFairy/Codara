@@ -12,8 +12,7 @@ import {
   type Codara,
 } from '@/index';
 import {
-  createAskUserTool,
-  createInteractionMiddleware,
+  createAskUserQuestionMiddleware,
   createPermissionMiddleware,
   createSkillsMiddleware,
   parseAskUserResult,
@@ -30,7 +29,7 @@ import {
   TASK_TOOL_NAME,
 } from '@capability/task';
 import {createTaskTool} from '@capability/task/task';
-import {FileSystemSkillStore} from '@capability/skill';
+import {FileSystemSkillStore, loadSkillsRuntimeData} from '@capability/skill';
 import {seedProjectSkillFixtures} from '../../helpers/project-skill-fixtures';
 
 const createCliCaseRuntime = async (options: Parameters<typeof createCodaraRuntime>[0]) => (
@@ -111,7 +110,7 @@ export async function createCliRuntime(input: {
             store: createProjectSkillStore(input.cwd),
             subagentRoots: [path.join(repoRoot, '.codara', 'skills', 'builtin-agents', 'agents')],
           },
-          middleware: [createSkillsMiddleware({store: createProjectSkillStore(input.cwd)})],
+          middleware: [createSkillsMiddleware({store: createProjectSkillStore(input.cwd), loadRuntime: loadSkillsRuntimeData})],
           tools: [
             createTaskCreateTool({store}),
             createTaskTool({
@@ -202,7 +201,7 @@ export async function createCliRuntime(input: {
             subagentRoots: [path.join(repoRoot, '.codara', 'skills', 'builtin-agents', 'agents')],
           },
           middleware: [
-            createSkillsMiddleware({store: createRepoSkillStore(repoRoot)}),
+            createSkillsMiddleware({store: createRepoSkillStore(repoRoot), loadRuntime: loadSkillsRuntimeData}),
             createSharedTaskMiddleware({store}),
             createTaskMiddleware({
               model: childModel as unknown as BaseChatModel,
@@ -429,7 +428,7 @@ export async function createCliRuntime(input: {
             store: createRepoSkillStore(repoRoot),
             subagentRoots: [path.join(repoRoot, '.codara', 'skills', 'builtin-agents', 'agents')],
           },
-          middleware: [createSkillsMiddleware({store: createRepoSkillStore(repoRoot)})],
+          middleware: [createSkillsMiddleware({store: createRepoSkillStore(repoRoot), loadRuntime: loadSkillsRuntimeData})],
           tools: [
             createTaskTool({
               model: new ChildPermissionCliModel() as unknown as BaseChatModel,
@@ -459,12 +458,11 @@ export async function createCliRuntime(input: {
           codaraPath: path.join(input.cwd, '.codara'),
           ...(input.sessionId ? {sessionId: input.sessionId} : {}),
           model: new HilFormCliModel() as unknown as BaseChatModel,
-          tools: [createAskUserTool()],
           builtinTools: false,
           skills: false,
           hil: false,
           middleware: [
-            createInteractionMiddleware(),
+            createAskUserQuestionMiddleware(),
           ],
         }),
       };
@@ -805,7 +803,7 @@ class HilFormCliModel {
       content: '',
       tool_calls: [{
         id: 'call_hil_form',
-        name: 'AskUser',
+        name: 'AskUserQuestion',
         args: {
           summary: 'A few structured inputs are missing before the agent can continue.',
           tab: 'Brief Intake',

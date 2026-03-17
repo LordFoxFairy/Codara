@@ -1,10 +1,11 @@
 import {ToolMessage} from '@langchain/core/messages';
 import {tool} from '@langchain/core/tools';
 import {z} from 'zod';
-import type {PauseUIActionOption} from '@engine/agent/models/types';
+import type {PauseUIActionOption} from '@shared/contracts/agent-types';
 import {createHILMiddleware, parseHILResumeActionPayload, type HILMiddlewareOptions} from '@engine/pipeline/hil';
+import {createMiddleware} from '@engine/pipeline/types';
 
-const ASK_USER_TOOL_NAME = 'AskUser';
+const ASK_USER_TOOL_NAME = 'AskUserQuestion';
 const DEFAULT_CHANNEL = 'interaction-center';
 const DEFAULT_TAB_LABEL = 'User Input';
 const DEFAULT_SUBMIT_LABEL = 'Submit';
@@ -46,27 +47,28 @@ export interface AskUserResult {
   comment?: string;
 }
 
-export interface InteractionMiddlewareOptions extends Omit<HILMiddlewareOptions, 'interruptOn'> {
+export interface AskUserQuestionMiddlewareOptions extends Omit<HILMiddlewareOptions, 'interruptOn'> {
   askUserToolName?: string;
 }
 
 export function createAskUserTool() {
   return tool(
-    async () => 'AskUser requires interaction middleware to pause and collect user input.',
+    async () => 'AskUserQuestion requires interaction middleware to pause and collect user input.',
     {
       name: ASK_USER_TOOL_NAME,
-      description: 'Request structured user input before the agent continues. Use this when key requirements, scope, priorities, or constraints are missing and proceeding would force guesses, weak plans, or wasted work. Prefer AskUser before reading files, planning architecture, or running exploratory steps when a small number of concrete user answers would materially change the next action. If clarification is needed, call AskUser directly instead of only saying that you will ask questions.',
+      description: 'Request structured user input before the agent continues. Use this when key requirements, scope, priorities, or constraints are missing and proceeding would force guesses, weak plans, or wasted work. Prefer AskUserQuestion before reading files, planning architecture, or running exploratory steps when a small number of concrete user answers would materially change the next action. If clarification is needed, call AskUserQuestion directly instead of only saying that you will ask questions.',
       schema: AskUserSchema,
     },
   );
 }
 
-export function createInteractionMiddleware(options: InteractionMiddlewareOptions = {}) {
+export function createAskUserQuestionMiddleware(options: AskUserQuestionMiddlewareOptions = {}) {
   const askUserToolName = options.askUserToolName?.trim() || ASK_USER_TOOL_NAME;
+  const askUserTool = createAskUserTool();
 
-  return createHILMiddleware({
+  const hilMiddleware = createHILMiddleware({
     ...options,
-    name: options.name?.trim() || 'InteractionMiddleware',
+    name: options.name?.trim() || 'AskUserQuestionMiddleware',
     resolveDecision: async (input) => {
       if (input.context.toolCall.name !== askUserToolName) {
         return options.resolveDecision?.(input);
@@ -118,6 +120,13 @@ export function createInteractionMiddleware(options: InteractionMiddlewareOption
         tool_call_id: request.action.toolCallId,
       });
     },
+  });
+
+  // Compose: HIL middleware handles wrapToolCall, we inject the AskUserQuestion tool
+  return createMiddleware({
+    name: hilMiddleware.name,
+    tools: [askUserTool],
+    wrapToolCall: hilMiddleware.wrapToolCall,
   });
 }
 

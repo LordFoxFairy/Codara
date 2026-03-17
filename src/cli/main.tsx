@@ -1,29 +1,54 @@
-﻿import path from 'node:path';
+import path from 'node:path';
 import {spawn} from 'node:child_process';
 import {pathToFileURL} from 'node:url';
 import React from 'react';
 import {render} from 'ink';
 import {createCodaraRuntime, DEFAULT_CODARA_MODEL_ALIAS, type Codara} from '@/index';
 import type {CliHilAutoAction} from './app/hil-review';
+import {parseCliArgs} from '@cli/cli-args';
+import {runHeadless} from '@cli/headless';
 
 const {CodaraCliApp} = await import('./app/shell-app');
 
 const cwd = process.env.CODARA_CLI_CWD?.trim() || process.cwd();
-const {initialPrompt, resumeSessionId} = parseCliArgs(process.argv.slice(2));
+const cliArgs = parseCliArgs(process.argv.slice(2));
 const modelAlias = DEFAULT_CODARA_MODEL_ALIAS;
-const initialRuntime = await createCliRuntime({cwd, initialPrompt, modelAlias, sessionId: resumeSessionId});
+
+// Headless 模式：-p "prompt" 时直接执行并退出
+if (cliArgs.headlessPrompt) {
+  const {codara} = await createCliRuntime({
+    cwd,
+    initialPrompt: cliArgs.headlessPrompt,
+    modelAlias,
+    sessionId: cliArgs.resumeSessionId,
+  });
+  await runHeadless({
+    codara,
+    prompt: cliArgs.headlessPrompt,
+    outputFormat: cliArgs.outputFormat,
+  });
+  process.exit(0);
+}
+
+// 交互模式
+const initialRuntime = await createCliRuntime({
+  cwd,
+  initialPrompt: cliArgs.initialPrompt,
+  modelAlias,
+  sessionId: cliArgs.resumeSessionId,
+});
 const autoExitOnSettledPrompt = process.env.CODARA_CLI_AUTO_EXIT_AFTER_INITIAL_PROMPT === '1';
 const hilAutoActions = readHilAutoActions(process.env.CODARA_CLI_HIL_AUTO_ACTIONS);
 
 render(
   <CliRuntimeRoot
     cwd={cwd}
-    initialPrompt={initialPrompt}
+    initialPrompt={cliArgs.initialPrompt}
     initialRuntime={initialRuntime}
     modelAlias={modelAlias}
     hilAutoActions={hilAutoActions}
     autoExitOnSettledPrompt={autoExitOnSettledPrompt}
-    startupMessage={resumeSessionId ? `Resumed session ${resumeSessionId}.` : undefined}
+    startupMessage={cliArgs.resumeSessionId ? `Resumed session ${cliArgs.resumeSessionId}.` : undefined}
     openFile={openFileInHost}
   />,
 );
@@ -99,6 +124,9 @@ function CliRuntimeRoot(props: CliRuntimeRootProps): React.JSX.Element {
   const [appInitialPrompt, setAppInitialPrompt] = React.useState(props.initialPrompt);
 
   const reopenSession = React.useCallback(async (sessionId: string) => {
+    // Clear terminal before switching — Ink's <Static> content is permanently
+    // in the scrollback buffer and can't be removed by React re-render.
+    process.stdout.write('\x1b[2J\x1b[H');
     const nextRuntime = await createCliRuntime({
       cwd: props.cwd,
       initialPrompt: '',
@@ -106,7 +134,7 @@ function CliRuntimeRoot(props: CliRuntimeRootProps): React.JSX.Element {
       sessionId,
     });
     setRuntime(nextRuntime);
-    setStartupMessage(`Reopened session ${sessionId}.`);
+    setStartupMessage(`Resumed session ${sessionId.slice(0, 8)}…`);
     setAppInitialPrompt('');
   }, [props.cwd, props.modelAlias, runtime.modelAlias]);
 
@@ -158,34 +186,20 @@ function readHilAutoActions(raw: string | undefined): CliHilAutoAction[] {
 
 function normalizeHilAutoAction(value: string | CliHilAutoAction): CliHilAutoAction {
   if (typeof value === 'string') {
-    return {action: value};
-  }
-
-  return value;
-}
-
-interface ParsedCliArgs {
-  initialPrompt: string;
-  resumeSessionId?: string;
-}
-
-function parseCliArgs(argv: string[]): ParsedCliArgs {
-  const rest: string[] = [];
-  let resumeSessionId: string | undefined;
-
-  for (let i = 0; i < argv.length; i++) {
-    const arg = argv[i]!;
-    if ((arg === '--resume' || arg === '-r') && i + 1 < argv.length) {
-      resumeSessionId = argv[++i]!.trim();
-    } else if (arg.startsWith('--resume=')) {
-      resumeSessionId = arg.slice('--resume='.length).trim();
-    } else {
-      rest.push(arg);
+    switch (value) {
+      case 'always':
+      case 'dont_ask_again':
+        return {action: 'dont_ask_again'};
+      case 'allow_tool':
+        return {action: 'dont_ask_again', scope: 'tool'};
+      case 'allow_project':
+        return {action: 'dont_ask_again', scope: 'project'};
+      case 'allow_path':
+        return {action: 'dont_ask_again', scope: 'path'};
+      default:
+        return {action: value};
     }
   }
 
-  return {
-    initialPrompt: rest.join(' ').trim(),
-    resumeSessionId: resumeSessionId || undefined,
-  };
+  return value;
 }

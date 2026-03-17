@@ -104,8 +104,9 @@ export class HookPipeline implements SessionLifecycleHooks, AgentLifecycleHooks,
           result.vetoReason = output.systemMessage ?? `Denied by hook [${entry.source.kind}]`;
           break;
         }
-      } catch {
-        // Fail-open: treat as pass
+      } catch (error) {
+        // Fail-open: treat as pass, but log the failure for diagnostics
+        console.warn(`[hooks] Hook "${this.hookLabel(entry)}" failed during ${eventType}:`, error instanceof Error ? error.message : String(error));
         this.emitEvent?.(this.hookLabel(entry), 'end');
       }
     }

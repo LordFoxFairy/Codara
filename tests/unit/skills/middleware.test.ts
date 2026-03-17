@@ -6,6 +6,7 @@ import {HumanMessage, type BaseMessage} from '@langchain/core/messages'
 import {createSkillsMiddleware} from '@engine/pipeline'
 import {
   FileSystemSkillStore,
+  loadSkillsRuntimeData,
   type SkillMetadata,
   type SkillStore
 } from '@capability/skill'
@@ -48,7 +49,7 @@ describe('createSkillsMiddleware', () => {
         allowedTools: ['read_file']
       }
     ])
-    const middleware = createSkillsMiddleware({store})
+    const middleware = createSkillsMiddleware({store, loadRuntime: loadSkillsRuntimeData})
     const context = createBaseContext('run_prompt')
 
     await middleware.beforeModel?.(context)
@@ -88,7 +89,7 @@ You are a Reviewer subagent.
     )
 
     const store = new FileSystemSkillStore({sources: [root], cacheTtlMs: 0})
-    const middleware = createSkillsMiddleware({store})
+    const middleware = createSkillsMiddleware({store, loadRuntime: loadSkillsRuntimeData})
     const context = createBaseContext('run_shared_runtime')
 
     const update = await middleware.beforeModel?.(context)
@@ -119,7 +120,7 @@ custom-threshold: 0.8
     const discovered = await store.discover()
     expect(discovered[0]?.extensions?.['custom-threshold']).toBe(0.8)
 
-    const middleware = createSkillsMiddleware({store})
+    const middleware = createSkillsMiddleware({store, loadRuntime: loadSkillsRuntimeData})
     const context = createBaseContext('run_real_store')
 
     await middleware.beforeModel?.(context)
@@ -145,7 +146,7 @@ custom-threshold: 0.8
       }
     }
 
-    const middleware = createSkillsMiddleware({store})
+    const middleware = createSkillsMiddleware({store, loadRuntime: loadSkillsRuntimeData})
     const runId = 'run_store_cache'
     const context = createBaseContext(runId)
 

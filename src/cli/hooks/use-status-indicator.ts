@@ -1,6 +1,7 @@
 import {useEffect, useState} from 'react';
 import type {CodaraRuntimeEvent} from '@/index';
 import type {CliActiveTurn, CliRunState} from '../app/view-state';
+import {theme} from '../utils/theme';
 
 const BRAILLE_FRAMES = ['⠋', '⠙', '⠹', '⠸', '⠼', '⠴', '⠦', '⠧', '⠇', '⠏'] as const;
 export const SPINNER_INTERVAL_MS = 80;
@@ -14,7 +15,7 @@ export interface StatusIndicatorInput {
 export interface StatusIndicatorModel {
   banner?: string;
   status: string;
-  color: 'yellow' | 'blueBright' | 'green' | 'gray' | 'red';
+  color: string;
 }
 
 function buildSpinnerBanner(label: string, frame: number): string {
@@ -51,14 +52,14 @@ export function describeStatusIndicator(input: StatusIndicatorInput, frame = 0):
           return {
             banner: buildSpinnerBanner('Responding...', frame),
             status: 'Responding',
-            color: 'green',
+            color: theme.status.responding,
           };
         }
 
         return {
           banner: buildSpinnerBanner('Thinking...', frame),
           status: 'Thinking',
-          color: 'yellow',
+          color: theme.status.thinking,
         };
       }
 
@@ -67,8 +68,8 @@ export function describeStatusIndicator(input: StatusIndicatorInput, frame = 0):
           banner: buildSpinnerBanner(activeEventLabel, frame),
           status: activeEventLabel,
           color: latestRuntimeEvent?.kind === 'command' || latestRuntimeEvent?.kind === 'summary'
-            ? 'blueBright'
-            : 'yellow',
+            ? theme.status.paused
+            : theme.status.running,
         };
       }
 
@@ -76,14 +77,14 @@ export function describeStatusIndicator(input: StatusIndicatorInput, frame = 0):
         return {
           banner: buildSpinnerBanner('Responding...', frame),
           status: 'Responding',
-          color: 'green',
+          color: theme.status.responding,
         };
       }
 
       return {
         banner: buildSpinnerBanner('Thinking...', frame),
         status: 'Thinking',
-        color: 'yellow',
+        color: theme.status.thinking,
       };
     case 'paused':
       return {
@@ -91,24 +92,24 @@ export function describeStatusIndicator(input: StatusIndicatorInput, frame = 0):
           ? `⏺ ${latestRuntimeEvent.label.trim()}`
           : '⏺ Waiting for input',
         status: latestRuntimeEvent?.label?.trim() || 'Waiting',
-        color: 'blueBright',
+        color: theme.status.paused,
       };
     case 'done':
       return {
         status: 'Ready',
-        color: 'green',
+        color: theme.status.done,
       };
     case 'error':
       return {
         banner: '✕ Review the latest error',
         status: 'Error',
-        color: 'red',
+        color: theme.status.error,
       };
     case 'idle':
     default:
       return {
         status: 'Ready',
-        color: 'gray',
+        color: theme.status.idle,
       };
   }
 }

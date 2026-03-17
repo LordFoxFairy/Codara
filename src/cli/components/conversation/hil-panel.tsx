@@ -378,7 +378,7 @@ function describeTool(review: CliHilReviewState, options: {hideAskUser?: boolean
     return undefined;
   }
 
-  if (toolName === 'AskUser') {
+  if (toolName === 'AskUserQuestion') {
     return options.hideAskUser ? undefined : 'Structured input requested';
   }
 

@@ -1,5 +1,5 @@
 import {describe, expect, it, beforeEach, afterEach, mock, spyOn} from "bun:test";
-import {ModelRegistry} from "@infra/provider";
+import {ModelRegistry, WELL_KNOWN_CONTEXT_WINDOWS} from "@infra/provider";
 import type {ModelRoutingConfig} from "@infra/provider";
 
 describe("ModelRegistry", () => {
@@ -66,6 +66,8 @@ describe("ModelRegistry", () => {
       alias: "sonnet",
       baseUrl: "https://openrouter.ai/api/v1",
       apiKey: "sk-openrouter-test",
+      contextWindow: 200_000,
+      maxOutputTokens: 16_000,
     });
 
     const opus = registry.getByAlias("opus");
@@ -206,6 +208,95 @@ describe("ModelRegistry", () => {
     };
 
     expect(() => new ModelRegistry(invalidConfig)).toThrow('路由规则 "default" 重复定义');
+  });
+
+  it("should use well-known defaults when modelMetadata is empty", () => {
+    const config: ModelRoutingConfig = {
+      providers: [
+        {
+          name: "openai",
+          apiKey: "$OPENROUTER_API_KEY",
+          models: ["gpt-4o"],
+        },
+      ],
+      routerRules: [
+        {
+          alias: "default",
+          provider: "openai",
+          model: "gpt-4o",
+          target: "openai:gpt-4o",
+        },
+      ],
+      modelMetadata: {},
+    };
+
+    const registry = new ModelRegistry(config);
+    const info = registry.getByAlias("default");
+
+    expect(info.contextWindow).toBe(128_000);
+    expect(info.maxOutputTokens).toBe(16_384);
+  });
+
+  it("should prefer explicit modelMetadata over well-known defaults", () => {
+    const config: ModelRoutingConfig = {
+      providers: [
+        {
+          name: "openai",
+          apiKey: "$OPENROUTER_API_KEY",
+          models: ["gpt-4o"],
+        },
+      ],
+      routerRules: [
+        {
+          alias: "default",
+          provider: "openai",
+          model: "gpt-4o",
+          target: "openai:gpt-4o",
+        },
+      ],
+      modelMetadata: {
+        "gpt-4o": {contextWindow: 256_000, maxOutputTokens: 32_000},
+      },
+    };
+
+    const registry = new ModelRegistry(config);
+    const info = registry.getByAlias("default");
+
+    expect(info.contextWindow).toBe(256_000);
+    expect(info.maxOutputTokens).toBe(32_000);
+  });
+
+  it("should not set contextWindow for unknown models without metadata", () => {
+    const config: ModelRoutingConfig = {
+      providers: [
+        {
+          name: "custom",
+          apiKey: "$OPENROUTER_API_KEY",
+          models: ["custom-model-v1"],
+        },
+      ],
+      routerRules: [
+        {
+          alias: "custom",
+          provider: "custom",
+          model: "custom-model-v1",
+          target: "custom:custom-model-v1",
+        },
+      ],
+      modelMetadata: {},
+    };
+
+    const registry = new ModelRegistry(config);
+    const info = registry.getByAlias("custom");
+
+    expect(info.contextWindow).toBeUndefined();
+    expect(info.maxOutputTokens).toBeUndefined();
+  });
+
+  it("WELL_KNOWN_CONTEXT_WINDOWS should contain major models", () => {
+    expect(WELL_KNOWN_CONTEXT_WINDOWS["gpt-4o"]).toBeDefined();
+    expect(WELL_KNOWN_CONTEXT_WINDOWS["deepseek-chat"]).toBeDefined();
+    expect(WELL_KNOWN_CONTEXT_WINDOWS["o1"]).toBeDefined();
   });
 
 });

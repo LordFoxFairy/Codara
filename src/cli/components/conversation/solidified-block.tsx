@@ -24,7 +24,7 @@ export function SolidifiedBlock({turn, layoutMode, cwd, modelAlias, tip}: Solidi
         item.toolMeta ? (
           <ToolResultBlock key={item.id} meta={item.toolMeta} />
         ) : (
-          <TranscriptBlock key={item.id} role={item.role} content={item.content} renderHint={item.renderHint} />
+          <TranscriptBlock key={item.id} role={item.role} content={item.content} renderHint={item.renderHint} tokenAnnotation={item.tokenAnnotation} />
         ),
       )}
     </Box>
