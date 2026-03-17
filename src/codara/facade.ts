@@ -453,13 +453,16 @@ function assembleCodara(
       },
     });
 
-    // Patch startTeam to auto-attach
+    // Patch startTeam to auto-attach and replay the start event
+    // (team.running is emitted inside startTeam before the bridge can attach)
     const originalStartTeam = teamRuntime.startTeam.bind(teamRuntime);
     teamRuntime.startTeam = async (teamId: string): Promise<void> => {
       await originalStartTeam(teamId);
       const emitter = teamRuntime.getEmitter(teamId);
       if (emitter) {
         teamEventBridge!.attachTeam(teamId, emitter);
+        // Replay the team.running event that was emitted before bridge attachment
+        emitter.emit({type: 'team.running', data: {teamId}});
       }
     };
 
