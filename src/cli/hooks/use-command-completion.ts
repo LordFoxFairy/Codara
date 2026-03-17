@@ -37,12 +37,17 @@ export function matchCommandPrefix(text: string): string | undefined {
 }
 
 export function filterCommands(commands: readonly CompletionItem[], prefix: string): CompletionItem[] {
-  if (!prefix) return commands.slice(0, MAX_VISIBLE_ITEMS);
+  // No prefix → only show built-in commands (skip skill clutter)
+  if (!prefix) {
+    return commands.filter(cmd => cmd.sourceLabel === 'builtin').slice(0, MAX_VISIBLE_ITEMS);
+  }
 
+  // With prefix → search all commands, but prioritize built-in over skill
   const lower = prefix.toLowerCase();
-  return commands
-    .filter(cmd => cmd.name.toLowerCase().includes(lower))
-    .slice(0, MAX_VISIBLE_ITEMS);
+  const matched = commands.filter(cmd => cmd.name.toLowerCase().includes(lower));
+  const builtins = matched.filter(cmd => cmd.sourceLabel === 'builtin');
+  const skills = matched.filter(cmd => cmd.sourceLabel !== 'builtin');
+  return [...builtins, ...skills].slice(0, MAX_VISIBLE_ITEMS);
 }
 
 function formatSourceLabel(source: CodaraCommandSpec['source']): string {

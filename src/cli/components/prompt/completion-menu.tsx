@@ -3,7 +3,7 @@ import {Box, Text} from 'ink';
 import type {CommandCompletionState} from '../../hooks/use-command-completion';
 
 const VIEWPORT_SIZE = 10;
-const NAME_COL_WIDTH = 24;
+const NAME_COL_WIDTH = 26;
 
 interface CompletionMenuProps {
   completion: CommandCompletionState;
@@ -41,7 +41,11 @@ export function CompletionMenu({completion}: CompletionMenuProps): React.JSX.Ele
         const realIndex = viewStart + index;
         const selected = realIndex === selectedIndex;
         const nameText = `/${item.name}`;
-        const padded = nameText.padEnd(NAME_COL_WIDTH);
+        // Truncate long command names (e.g. skill names)
+        const displayName = nameText.length > NAME_COL_WIDTH - 1
+          ? nameText.slice(0, NAME_COL_WIDTH - 2) + '…'
+          : nameText;
+        const padded = displayName.padEnd(NAME_COL_WIDTH);
         return (
           <Box key={item.name}>
             <Text color={selected ? 'greenBright' : undefined} bold={selected}>
