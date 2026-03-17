@@ -1,6 +1,86 @@
+/**
+ * 内置 well-known 模型默认 contextWindow / maxOutputTokens。
+ * 当用户配置中未提供 modelMetadata 时，使用此表作为 fallback。
+ * 键为模型 ID（不区分 provider）。
+ */
+export const WELL_KNOWN_CONTEXT_WINDOWS: Record<string, {contextWindow: number; maxOutputTokens?: number}> = {
+  // Anthropic — dated IDs
+  'claude-opus-4-20250514': {contextWindow: 200_000, maxOutputTokens: 32_000},
+  'claude-sonnet-4-20250514': {contextWindow: 200_000, maxOutputTokens: 16_000},
+  'claude-3-5-haiku-20241022': {contextWindow: 200_000, maxOutputTokens: 8_192},
+  'claude-3-7-sonnet-20250219': {contextWindow: 200_000, maxOutputTokens: 64_000},
+  // Anthropic — short aliases
+  'claude-sonnet-4-0': {contextWindow: 200_000, maxOutputTokens: 16_000},
+  'claude-opus-4-0': {contextWindow: 200_000, maxOutputTokens: 32_000},
+  'claude-opus-4': {contextWindow: 200_000, maxOutputTokens: 32_000},
+  'claude-sonnet-4': {contextWindow: 200_000, maxOutputTokens: 16_000},
+  'claude-3.5-haiku': {contextWindow: 200_000, maxOutputTokens: 8_192},
+  'claude-3-5-haiku': {contextWindow: 200_000, maxOutputTokens: 8_192},
+  'claude-3.7-sonnet': {contextWindow: 200_000, maxOutputTokens: 64_000},
+  'claude-3-7-sonnet': {contextWindow: 200_000, maxOutputTokens: 64_000},
+  // OpenAI
+  'gpt-4o': {contextWindow: 128_000, maxOutputTokens: 16_384},
+  'gpt-4o-mini': {contextWindow: 128_000, maxOutputTokens: 16_384},
+  'gpt-4-turbo': {contextWindow: 128_000, maxOutputTokens: 4_096},
+  'o1': {contextWindow: 200_000, maxOutputTokens: 100_000},
+  'o1-mini': {contextWindow: 128_000, maxOutputTokens: 65_536},
+  'o3': {contextWindow: 200_000, maxOutputTokens: 100_000},
+  'o3-mini': {contextWindow: 200_000, maxOutputTokens: 100_000},
+  'o4-mini': {contextWindow: 200_000, maxOutputTokens: 100_000},
+  // DeepSeek
+  'deepseek-chat': {contextWindow: 64_000, maxOutputTokens: 8_192},
+  'deepseek-reasoner': {contextWindow: 64_000, maxOutputTokens: 8_192},
+  // Google
+  'gemini-2.5-pro': {contextWindow: 1_000_000, maxOutputTokens: 65_536},
+  'gemini-2.5-flash': {contextWindow: 1_000_000, maxOutputTokens: 65_536},
+  // GLM
+  'glm-5': {contextWindow: 256_000, maxOutputTokens: 8_192},
+};
+
+/**
+ * 查找 well-known 模型的上下文窗口。
+ * 支持 OpenRouter 风格的 provider 前缀（如 `anthropic/claude-opus-4`）。
+ */
+export function lookupWellKnownContextWindow(
+  modelId: string,
+): {contextWindow: number; maxOutputTokens?: number} | undefined {
+  // 1. 精确匹配
+  const exact = WELL_KNOWN_CONTEXT_WINDOWS[modelId];
+  if (exact) return exact;
+
+  // 2. 去掉 provider 前缀再匹配（OpenRouter: "anthropic/claude-opus-4" → "claude-opus-4"）
+  const slashIndex = modelId.indexOf('/');
+  if (slashIndex >= 0) {
+    const bare = modelId.slice(slashIndex + 1);
+    const stripped = WELL_KNOWN_CONTEXT_WINDOWS[bare];
+    if (stripped) return stripped;
+  }
+
+  return undefined;
+}
+
+/**
+ * Extended Thinking 配置。
+ */
+export interface ThinkingConfig {
+    /** 是否启用 thinking。 */
+    type: 'enabled' | 'disabled';
+    /** thinking token 预算（仅 type='enabled' 时生效）。 */
+    budgetTokens?: number;
+}
+
+/**
+ * Effort Level — 控制 thinking budget 的简化配置。
+ */
+export type EffortLevel = 'low' | 'medium' | 'high';
+
 export interface ModelMetadataConfig {
     contextWindow?: number;
     maxOutputTokens?: number;
+    /** Extended Thinking 配置。 */
+    thinking?: ThinkingConfig;
+    /** Effort Level — 当没有显式 thinking 配置时，映射到 thinking budget。 */
+    effortLevel?: EffortLevel;
 }
 
 /**
@@ -62,4 +142,8 @@ export interface ModelInfo {
     contextWindow?: number;
     /** 可选最大输出 token。 */
     maxOutputTokens?: number;
+    /** Extended Thinking 配置。 */
+    thinking?: ThinkingConfig;
+    /** Effort Level。 */
+    effortLevel?: EffortLevel;
 }

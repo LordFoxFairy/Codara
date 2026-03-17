@@ -1,4 +1,5 @@
 import type {ModelInfo, ModelMetadataConfig, ModelRoutingConfig, ProviderConfig, RouterRule} from "@infra/provider/model";
+import {lookupWellKnownContextWindow} from "@infra/provider/model";
 import {expandApiKey} from "@infra/provider/runtime/api-key";
 
 /** 模型注册表与别名索引。 */
@@ -85,9 +86,17 @@ export class ModelRegistry {
         }
 
         const modelMetadata = this.modelMetadata[rule.model];
+        const wellKnown = lookupWellKnownContextWindow(rule.model);
         const apiKey = expandApiKey(provider.apiKey, (message) => {
             console.warn(`Provider "${provider.name}" apiKey 配置无效：${message}`);
         });
+
+        const contextWindow = typeof modelMetadata?.contextWindow === "number"
+            ? modelMetadata.contextWindow
+            : wellKnown?.contextWindow;
+        const maxOutputTokens = typeof modelMetadata?.maxOutputTokens === "number"
+            ? modelMetadata.maxOutputTokens
+            : wellKnown?.maxOutputTokens;
 
         return {
             provider: provider.name,
@@ -96,8 +105,10 @@ export class ModelRegistry {
             alias: rule.alias,
             baseUrl: provider.baseUrl,
             apiKey,
-            ...(typeof modelMetadata?.contextWindow === "number" ? {contextWindow: modelMetadata.contextWindow} : {}),
-            ...(typeof modelMetadata?.maxOutputTokens === "number" ? {maxOutputTokens: modelMetadata.maxOutputTokens} : {}),
+            ...(typeof contextWindow === "number" ? {contextWindow} : {}),
+            ...(typeof maxOutputTokens === "number" ? {maxOutputTokens} : {}),
+            ...(modelMetadata?.thinking ? {thinking: modelMetadata.thinking} : {}),
+            ...(modelMetadata?.effortLevel ? {effortLevel: modelMetadata.effortLevel} : {}),
         };
     }
 }

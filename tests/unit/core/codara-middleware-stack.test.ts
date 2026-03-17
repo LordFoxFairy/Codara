@@ -7,6 +7,7 @@ describe('Codara middleware stack', () => {
     const middlewares = createCodaraMiddlewares({});
 
     expect(middlewares.map((middleware) => middleware.name)).toEqual([
+      'SkillsMiddleware',
       'BudgetMiddleware',
       'HumanInTheLoopMiddleware',
     ]);
@@ -25,6 +26,7 @@ describe('Codara middleware stack', () => {
 
     expect(middlewares.map((middleware) => middleware.name)).toEqual([
       'LoggingMiddleware',
+      'SkillsMiddleware',
       'CustomMiddleware',
       'BudgetMiddleware',
       'HumanInTheLoopMiddleware',
@@ -42,6 +44,7 @@ describe('Codara middleware stack', () => {
     });
 
     expect(middlewares.map((middleware) => middleware.name)).toEqual([
+      'SkillsMiddleware',
       'AliasMiddleware',
       'BudgetMiddleware',
       'HumanInTheLoopMiddleware',
@@ -62,6 +65,7 @@ describe('Codara middleware stack', () => {
     });
 
     expect(middlewares.map((middleware) => middleware.name)).toEqual([
+      'SkillsMiddleware',
       'CustomPromptMiddleware',
       'BudgetMiddleware',
       'HumanInTheLoopMiddleware',
@@ -101,12 +105,24 @@ describe('Codara middleware stack', () => {
     expect(byName.get('HumanInTheLoopMiddleware')?.afterAgent).toBeUndefined();
   });
 
-  it('should not leak source-driven prompt injection back into the default runtime stack', () => {
+  it('should skip SkillsMiddleware when caller already provides one', () => {
+    const callerSkills = createMiddleware({
+      name: 'SkillsMiddleware',
+      beforeModel: () => undefined,
+    });
+
+    const middlewares = createCodaraMiddlewares({
+      middleware: [callerSkills],
+    });
+
+    const skillsCount = middlewares.filter((m) => m.name === 'SkillsMiddleware').length;
+    expect(skillsCount).toBe(1);
+  });
+
+  it('should not include source-driven prompt middleware in the default stack', () => {
     const middlewares = createCodaraMiddlewares({});
     const names = new Set(middlewares.map((middleware) => middleware.name));
 
     expect(names.has('GuidelinesMiddleware')).toBe(false);
-    expect(names.has('SkillsMiddleware')).toBe(false);
   });
-
 });

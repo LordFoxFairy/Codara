@@ -9,6 +9,7 @@ import type {AgentResult} from '@engine/agent/models/agent';
 import {resolveWorkspaceRoot, type WorkspaceRootOptions} from '@infra/config/workspace';
 import {createWorkspaceKey, sanitizeSlug} from '@infra/config/workspace-key';
 import {resolveAutoMemoryGlobal} from '@infra/config/settings';
+import {evictMemoryFiles} from '@infra/context/memory/eviction';
 
 const MEMORY_INDEX_FILE = 'MEMORY.md';
 const TOPICS_DIR = 'topics';
@@ -69,6 +70,7 @@ export function createAutoMemoryRuntime(options: AutoMemoryRuntimeOptions): Auto
 
       await upsertAutoMemoryTopic(rootDir, entry);
       await rewriteMemoryIndex(rootDir);
+      await evictMemoryFiles(path.join(rootDir, TOPICS_DIR)).catch(() => {});
       source.reload();
       return true;
     },
@@ -171,7 +173,12 @@ async function upsertAutoMemoryTopic(rootDir: string, next: AutoMemoryTopicRecor
 async function rewriteMemoryIndex(rootDir: string): Promise<void> {
   const topicsDir = path.join(rootDir, TOPICS_DIR);
   await mkdir(topicsDir, {recursive: true});
-  const names = existsSync(topicsDir) ? await readdir(topicsDir) : [];
+  let names: string[];
+  try {
+    names = await readdir(topicsDir);
+  } catch {
+    names = [];
+  }
   const topics = (
     await Promise.all(
       names
@@ -461,7 +468,12 @@ async function resolveTopicPath(topicsDir: string, next: AutoMemoryTopicRecord):
     return preferred;
   }
 
-  const names = existsSync(topicsDir) ? await readdir(topicsDir) : [];
+  let names: string[];
+  try {
+    names = await readdir(topicsDir);
+  } catch {
+    names = [];
+  }
   for (const name of names) {
     if (!name.endsWith('.md')) {
       continue;

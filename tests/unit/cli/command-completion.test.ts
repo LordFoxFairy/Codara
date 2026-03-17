@@ -41,8 +41,18 @@ describe('filterCommands', () => {
     {name: 'debug', description: 'Debug systematically', sourceLabel: 'superpowers'},
   ];
 
-  it('returns all commands for empty prefix', () => {
-    expect(filterCommands(commands, '')).toHaveLength(5);
+  it('returns only builtin commands for empty prefix', () => {
+    const result = filterCommands(commands, '');
+    expect(result).toHaveLength(3);
+    expect(result.every(cmd => cmd.sourceLabel === 'builtin')).toBe(true);
+  });
+
+  it('returns all matching commands (including skills) when prefix is provided', () => {
+    // Prefix search covers both builtin and skill commands
+    const result = filterCommands(commands, 'brain');
+    expect(result).toHaveLength(1);
+    expect(result[0]!.name).toBe('brainstorm');
+    expect(result[0]!.sourceLabel).toBe('superpowers');
   });
 
   it('filters by prefix', () => {

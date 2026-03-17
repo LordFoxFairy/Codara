@@ -9,6 +9,8 @@ export interface ActiveTask {
   endedAt?: number;
   elapsed: number;
   detail?: string;
+  toolUseCount?: number;
+  totalTokens?: string;
 }
 
 export interface UseActiveTasksInput {
@@ -69,6 +71,10 @@ export function deriveActiveTasks(
       continue;
     }
 
+    const detail = endEvent?.detail ?? startEvent.detail;
+    const toolUseMatch = detail?.match(/(\d+)\s+tool uses?/);
+    const tokenMatch = detail?.match(/([\d.]+[kKmM]?)\s+tokens?/);
+
     tasks.push({
       id,
       name: extractTaskName(startEvent.label),
@@ -76,7 +82,9 @@ export function deriveActiveTasks(
       startedAt,
       endedAt,
       elapsed: (endedAt ?? now) - startedAt,
-      detail: endEvent?.detail ?? startEvent.detail,
+      detail,
+      ...(toolUseMatch ? {toolUseCount: Number(toolUseMatch[1])} : {}),
+      ...(tokenMatch ? {totalTokens: tokenMatch[1]} : {}),
     });
   }
 

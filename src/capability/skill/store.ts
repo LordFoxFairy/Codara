@@ -1,14 +1,13 @@
 import {readdir, readFile, stat} from 'node:fs/promises'
 import {homedir} from 'node:os'
 import path from 'node:path'
-import {parseSkillMetadataFromContent} from '@capability/skill/loading'
+import {MAX_SKILL_FILE_SIZE, parseSkillMetadataFromContent} from '@capability/skill/loading'
 import {skillsMetadataReducer} from '@capability/skill/metadata'
 import type {SkillMetadata, SkillStore} from '@capability/skill/types'
 import {resolveWorkspaceRoot} from '@infra/config/workspace'
 
 const DEFAULT_CACHE_TTL_MS = 5_000
 const SKILL_FILE_NAME = 'SKILL.md'
-const MAX_SKILL_FILE_SIZE = 1024 * 1024 // 1MB - skill files should be concise
 
 interface SkillCacheEntry {
   expiresAt: number
@@ -25,13 +24,14 @@ export class FileSystemSkillStore implements SkillStore {
   private cache: SkillCacheEntry | null = null
 
   constructor(
-    options: {sources?: string[]; userHome?: string; projectRoot?: string; cacheTtlMs?: number} = {}
+    options: {sources?: string[]; userHome?: string; projectRoot?: string; cacheTtlMs?: number; claudeSkillsCompat?: boolean} = {}
   ) {
     this.sources = options.sources && options.sources.length > 0
       ? options.sources
       : getDefaultSkillSources({
           userHome: options.userHome,
-          projectRoot: options.projectRoot
+          projectRoot: options.projectRoot,
+          claudeSkillsCompat: options.claudeSkillsCompat,
         })
     this.cacheTtlMs = options.cacheTtlMs ?? DEFAULT_CACHE_TTL_MS
   }
@@ -64,8 +64,8 @@ export class FileSystemSkillStore implements SkillStore {
             continue
           }
           sourceSkills.push(metadata)
-        } catch {
-          // Skip unreadable/invalid skill files.
+        } catch (error) {
+          console.warn(`[Skills] Failed to load ${skillPath}:`, error instanceof Error ? error.message : error);
         }
       }
       mergedSkills = skillsMetadataReducer(mergedSkills, sourceSkills)
@@ -89,13 +89,20 @@ export class FileSystemSkillStore implements SkillStore {
   }
 }
 
-export function getDefaultSkillSources(params: {userHome?: string; projectRoot?: string; cwd?: string} = {}): string[] {
+export function getDefaultSkillSources(params: {
+  userHome?: string;
+  projectRoot?: string;
+  cwd?: string;
+  /** 启用后额外扫描 ~/.claude/skills/（Claude Code 兼容），默认关闭。 */
+  claudeSkillsCompat?: boolean;
+} = {}): string[] {
   const userHome = params.userHome ?? homedir()
   const projectRoot = resolveWorkspaceRoot({
     projectRoot: params.projectRoot,
     cwd: params.cwd,
   })
   return [
+    ...(params.claudeSkillsCompat ? [path.join(userHome, '.claude', 'skills')] : []),
     path.join(userHome, '.codara', 'skills'),
     path.join(projectRoot, '.codara', 'skills')
   ]

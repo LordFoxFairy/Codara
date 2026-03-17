@@ -2,6 +2,8 @@ import React from 'react';
 import {Box, Text} from 'ink';
 import type {SessionState} from '@/index';
 import type {CliLayoutMode} from '../../app/layout-mode';
+import {formatTimeAgo} from '../../utils/format';
+import {theme} from '../../utils/theme';
 
 export interface RecentSession {
   sessionId: string;
@@ -19,18 +21,6 @@ export function deriveRecentSessions(sessions: SessionState[], now = Date.now())
     timeAgo: formatTimeAgo(s.metadata?.lastActivity ?? s.updatedAt, now),
     messageCount: s.metadata?.messageCount ?? 0,
   }));
-}
-
-function formatTimeAgo(timestamp: string, now: number): string {
-  const diff = now - new Date(timestamp).getTime();
-  const minutes = Math.floor(diff / 60000);
-  if (minutes < 1) return 'just now';
-  if (minutes < 60) return `${minutes}m ago`;
-  const hours = Math.floor(minutes / 60);
-  if (hours < 24) return `${hours}h ago`;
-  const days = Math.floor(hours / 24);
-  if (days < 7) return `${days}d ago`;
-  return `${Math.floor(days / 7)}w ago`;
 }
 
 /* ── Static variants: pure render, no hooks ── */
@@ -51,7 +41,7 @@ export function StaticWelcome({layoutMode, cwd, modelAlias, tip}: StaticWelcomeP
 
   return (
     <Box flexDirection="column">
-      <Box borderStyle="round" borderColor="gray" flexDirection="column" paddingX={1}>
+      <Box borderStyle="round" borderColor={theme.chrome.border} flexDirection="column" paddingX={1}>
         <Text bold>{'\u2733'} Welcome to Codara v{VERSION}</Text>
         <Text> </Text>
         <Text dimColor>  /help for help</Text>

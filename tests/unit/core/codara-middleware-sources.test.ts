@@ -14,16 +14,14 @@ describe('Codara middleware source integration', () => {
     const root = await mkdtemp(path.join(tmpdir(), 'codara-workspace-'));
     const userHome = path.join(root, 'home');
     const projectRoot = path.join(root, 'project');
-    const nestedCwd = path.join(projectRoot, 'packages', 'app');
     await mkdir(path.join(userHome, '.codara'), {recursive: true});
     await mkdir(path.join(projectRoot, '.git'), {recursive: true});  // Mark as git root
-    await mkdir(nestedCwd, {recursive: true});
-    // Create AGENTS.md at the cwd level (nearest to where we're running)
-    await writeFile(path.join(nestedCwd, 'AGENTS.md'), 'project rule', 'utf8');
+    // Init loads only project root AGENTS.md (subdirectory files are lazy-loaded via resolve)
+    await writeFile(path.join(projectRoot, 'AGENTS.md'), 'project rule', 'utf8');
 
     const codara = createCodara({
       model: new SystemEchoModel() as unknown as BaseChatModel,
-      cwd: nestedCwd,
+      projectRoot,
       userHome,
       skills: false,
       builtinTools: false,

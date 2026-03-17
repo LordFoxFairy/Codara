@@ -1,7 +1,8 @@
 import yaml from 'yaml'
 import type {SkillCommandMetadata, SkillMetadata} from '@capability/skill/types'
+import {splitAllowedToolTokens} from '@capability/skill/parsing'
 
-export const MAX_SKILL_FILE_SIZE = 10 * 1024 * 1024
+export const MAX_SKILL_FILE_SIZE = 1024 * 1024 // 1MB - skill files should be concise
 export const MAX_SKILL_NAME_LENGTH = 64
 export const MAX_SKILL_DESCRIPTION_LENGTH = 1024
 export const MAX_SKILL_COMPATIBILITY_LENGTH = 500
@@ -268,7 +269,7 @@ function parseAllowedTools(rawTools: unknown): string[] {
     return []
   }
 
-  const tokens = splitAllowedTools(text)
+  const tokens = splitAllowedToolTokens(text)
   return dedupe(tokens.map((token) => token.trim()).filter(Boolean))
 }
 
@@ -305,45 +306,6 @@ function normalizeCommandName(value: string | null): string | undefined {
   }
 
   return normalized
-}
-
-function splitAllowedTools(raw: string): string[] {
-  const tools: string[] = []
-  let current = ''
-  let depth = 0
-
-  for (const char of raw) {
-    if (char === '(') {
-      depth += 1
-      current += char
-      continue
-    }
-
-    if (char === ')') {
-      depth = Math.max(depth - 1, 0)
-      current += char
-      continue
-    }
-
-    const isSeparator = (char === ',' || /\s/.test(char)) && depth === 0
-    if (isSeparator) {
-      const token = current.trim()
-      if (token) {
-        tools.push(token)
-      }
-      current = ''
-      continue
-    }
-
-    current += char
-  }
-
-  const last = current.trim()
-  if (last) {
-    tools.push(last)
-  }
-
-  return tools
 }
 
 function dedupe(values: string[]): string[] {

@@ -1,5 +1,13 @@
 import {z} from 'zod'
-import type {SkillMetadata} from '@capability/skill/types'
+import type {SkillMetadata} from '@infra/context/skill-contracts'
+
+// Re-export contracts so existing consumers continue to work
+export {
+  SKILLS_SYSTEM_PROMPT,
+  formatSkillAnnotations,
+  formatSkillsList,
+  formatSkillsLocations,
+} from '@infra/context/skill-contracts';
 
 export const SkillMetadataEntrySchema = z.object({
   name: z.string(),
@@ -55,70 +63,4 @@ export function normalizeDiscoveredSkills(skills: SkillMetadata[]): SkillMetadat
     }
   }
   return normalized
-}
-
-export const SKILLS_SYSTEM_PROMPT = `
-## Skills System
-
-Execute a skill within the main conversation.
-
-When users ask you to perform tasks, check if any of the available skills match. Skills provide specialized capabilities and domain knowledge.
-
-When users reference a "slash command" or "/<something>" (e.g., "/commit", "/debug"), they are referring to a skill.
-
-{skills_locations}
-
-**Available Skills:**
-
-{skills_list}
-
-Important:
-- When a skill matches the user's request, read the skill's SKILL.md for full instructions BEFORE generating any other response
-- If you see a <command-name> tag in the current conversation turn, the skill has ALREADY been loaded — follow the instructions directly instead of reading the file again
-- Do not invoke a skill that is already running
-`
-
-export function formatSkillAnnotations(skill: SkillMetadata): string {
-  const parts: string[] = []
-  if (skill.license) {
-    parts.push(`License: ${skill.license}`)
-  }
-  if (skill.compatibility) {
-    parts.push(`Compatibility: ${skill.compatibility}`)
-  }
-  return parts.join(', ')
-}
-
-export function formatSkillsLocations(sources: string[]): string {
-  if (sources.length === 0) {
-    return '**Skills Sources:** None configured'
-  }
-
-  const lines: string[] = []
-  for (let i = 0; i < sources.length; i += 1) {
-    const sourcePath = sources[i]
-    const name =
-      sourcePath
-        .replace(/[/\\]$/, '')
-        .split(/[/\\]/)
-        .filter(Boolean)
-        .pop()
-        ?.replace(/^./, (char) => char.toUpperCase()) ?? 'Skills'
-    const suffix = i === sources.length - 1 ? ' (higher priority)' : ''
-    lines.push(`**${name} Skills**: \`${sourcePath}\`${suffix}`)
-  }
-  return lines.join('\n')
-}
-
-export function formatSkillsList(skills: SkillMetadata[], sources: string[]): string {
-  if (skills.length === 0) {
-    return sources.length > 0
-      ? `(No skills available yet. Add SKILL.md files to ${sources.map((s) => `\`${s}\``).join(' or ')})`
-      : '(No skills available yet.)'
-  }
-
-  return skills.map((skill) => {
-    const cmd = skill.command?.name ? ` (/${skill.command.name})` : ''
-    return `- ${skill.name}${cmd}: ${skill.description}`
-  }).join('\n')
 }

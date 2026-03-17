@@ -8,7 +8,7 @@ import type {
   PauseUIActionOption,
   PauseUIConfig,
   ResumePayload,
-} from '@engine/agent/models/types';
+} from '@shared/contracts/agent-types';
 
 export type HILActionDescriptor = PauseActionDescriptor;
 export type HILPauseRequest = PauseRequest;
@@ -204,7 +204,6 @@ export function createHILMiddleware(options: HILMiddlewareOptions = {}) {
 }
 
 /** `createHILMiddleware` 的语义化别名。 */
-export const humanInTheLoopMiddleware = createHILMiddleware;
 
 function resolveEffectiveConfig(options: HILMiddlewareOptions, runtimeContext: unknown): HILEffectiveConfig {
   const hil = readHILContext(runtimeContext);

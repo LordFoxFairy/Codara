@@ -5,14 +5,13 @@
  * If no rule matches, the default decision ('ask') is used.
  */
 import type {ToolCall} from '@langchain/core/messages';
-import {normalizeToolReferenceName} from '@capability/tool/names';
+import {normalizeToolReferenceName} from '@shared/tool-names';
 import {
   bashSpecifierMatches,
   extractBashWritePathOperands,
   normalizeBashCommandForMatching,
 } from '@engine/pipeline/permission/bash';
 import type {
-  PermissionAction,
   PermissionEvaluationResult,
   PermissionPolicyOptions,
   PermissionRuleEntry,
@@ -74,19 +73,6 @@ function toRuleMatch(entry: PermissionRuleEntry | null): PermissionRuleMatch | n
     path: entry.source.path,
     format: null,
   };
-}
-
-/**
- * Core evaluation: find the last matching rule (last-match-wins).
- */
-export function evaluatePermission(
-  permission: string,
-  pattern: string,
-  rules: PermissionRuleEntry[],
-  options: PermissionPolicyOptions = {},
-): PermissionAction | undefined {
-  const matched = findLastMatch(permission, pattern, rules, options);
-  return matched?.action;
 }
 
 /**

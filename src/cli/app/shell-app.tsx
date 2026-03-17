@@ -1,6 +1,7 @@
 import React, {useCallback, useEffect, useState} from 'react';
-import {Box, Static, useApp, useInput} from 'ink';
+import {Box, Static, useApp} from 'ink';
 import type {Codara} from '@/index';
+import {CommandOutputPanel} from '../components/chrome/command-output-panel';
 import {Footer} from '../components/chrome/footer';
 import {StatusBar} from '../components/chrome/header';
 import {ActivityLine} from '../components/chrome/activity-line';
@@ -99,20 +100,16 @@ export function CodaraCliApp(props: CodaraCliAppProps): React.JSX.Element {
     disabled: shell.runState.status === 'running',
     listCommands,
   });
+  const mcpStatus = React.useMemo(() => {
+    const statuses = codara.getMcpStatus();
+    if (statuses.length === 0) return undefined;
+    return {
+      connected: statuses.filter((s) => s.status === 'connected').length,
+      total: statuses.length,
+    };
+  }, [codara]);
   // Freeze tip and initial terminal width at mount time (for Static welcome)
   const [frozenTip] = useState(() => TIPS[Math.floor(Math.random() * TIPS.length)]!);
-
-  // Session picker keyboard input — only when TTY supports raw mode
-  useInput(
-    (_input, key) => {
-      if (!sessionPicker.state.visible) return;
-      if (key.escape) { sessionPicker.hide(); return; }
-      if (key.return) { sessionPicker.select(); return; }
-      if (key.upArrow) { sessionPicker.moveUp(); return; }
-      if (key.downArrow) { sessionPicker.moveDown(); return; }
-    },
-    {isActive: sessionPicker.state.visible && Boolean(process.stdin.isTTY)},
-  );
 
   const hasInitialPrompt = Boolean(initialPrompt?.trim());
   const hasHilReview = Boolean(shell.hilReview);
@@ -131,10 +128,12 @@ export function CodaraCliApp(props: CodaraCliAppProps): React.JSX.Element {
     onMoveCursorLeft: shell.moveCursorLeft,
     onMoveCursorRight: shell.moveCursorRight,
     onMoveCursorUp: () => {
+      if (shell.commandOutput && !shell.composer.text.trim()) { shell.scrollCommandOutput(-1); return; }
       if (completion.completion.visible) { completion.moveUp(); return; }
       shell.moveCursorUp();
     },
     onMoveCursorDown: () => {
+      if (shell.commandOutput && !shell.composer.text.trim()) { shell.scrollCommandOutput(1); return; }
       if (completion.completion.visible) { completion.moveDown(); return; }
       shell.moveCursorDown();
     },
@@ -154,9 +153,11 @@ export function CodaraCliApp(props: CodaraCliAppProps): React.JSX.Element {
     },
     onExit: () => {
       if (completion.completion.visible) { completion.dismiss(); return; }
+      if (shell.commandOutput) { shell.dismissCommandOutput(); return; }
       exit();
     },
     onToggleTaskPanel: shell.toggleTaskPanel,
+    onToggleExpand: shell.toggleExpand,
     onTab: () => {
       if (completion.completion.visible) {
         const accepted = completion.accept();
@@ -193,9 +194,6 @@ export function CodaraCliApp(props: CodaraCliAppProps): React.JSX.Element {
     notices: shell.notices,
     activeTurn: shell.activeTurn,
     runtimeEvents: shell.runtimeEvents,
-    layoutMode,
-    cwd,
-    modelAlias,
   });
 
   useEffect(() => {
@@ -231,7 +229,7 @@ export function CodaraCliApp(props: CodaraCliAppProps): React.JSX.Element {
         </Static>
 
         {/* 动态区 */}
-        {activeItems.length > 0 && <ActiveTranscript items={activeItems} />}
+        {activeItems.length > 0 && <ActiveTranscript items={activeItems} expandedAll={shell.expandedAll} />}
 
         {/* Task Panel — ActiveTranscript 和 ActivityLine 之间 */}
         {shell.hasConversation && activeTasks.hasActiveTasks && shell.taskPanelVisible && foregroundSurface !== 'hil' && (
@@ -252,22 +250,30 @@ export function CodaraCliApp(props: CodaraCliAppProps): React.JSX.Element {
               runState={shell.runState}
               activeTurn={shell.activeTurn}
               latestRuntimeEvent={shell.latestRuntimeEvent}
+              sessionMetadata={shell.sessionState.metadata}
             />
             {sessionPicker.state.visible && (
               <SessionPicker
                 sessions={sessionPicker.state.sessions}
                 loading={sessionPicker.state.loading}
                 selectedIndex={sessionPicker.state.selectedIndex}
-                onSelect={handleSessionPickerSelect}
+                onMoveUp={sessionPicker.moveUp}
+                onMoveDown={sessionPicker.moveDown}
+                onSelect={sessionPicker.select}
                 onCancel={sessionPicker.hide}
               />
             )}
-            <PromptFrame
-              composer={shell.composer}
-              cursorActivityVersion={shell.composerActivityVersion}
-              isRunning={shell.runState.status === 'running'}
-              placeholder={shell.hasConversation ? 'Reply to Codara...' : 'Ask Codara...'}
-            />
+            {shell.commandOutput && (
+              <CommandOutputPanel content={shell.commandOutput.content} commandName={shell.commandOutput.commandName} scrollOffset={shell.commandOutput.scrollOffset} />
+            )}
+            {!shell.commandOutput && !completion.completion.visible && (
+              <PromptFrame
+                composer={shell.composer}
+                cursorActivityVersion={shell.composerActivityVersion}
+                isRunning={shell.runState.status === 'running'}
+                placeholder={shell.hasConversation ? 'Reply to Codara...' : 'Ask Codara...'}
+              />
+            )}
             <CompletionMenu completion={completion.completion} />
             {shell.hasConversation && (
               <StatusBar
@@ -277,9 +283,10 @@ export function CodaraCliApp(props: CodaraCliAppProps): React.JSX.Element {
                 modelAlias={modelAlias}
                 runState={shell.runState}
                 latestRuntimeEvent={shell.latestRuntimeEvent}
+                mcpStatus={mcpStatus}
               />
             )}
-            <Footer layoutMode={layoutMode} />
+            <Footer layoutMode={layoutMode} hasCommandOutput={Boolean(shell.commandOutput)} />
           </>
         )}
       </Box>

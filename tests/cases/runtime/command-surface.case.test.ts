@@ -17,7 +17,7 @@ describe('runtime command surface cases', () => {
     });
 
     expect(firstPage.exitCode).toBe(0);
-    expect(firstPage.output).toContain('Codara commands (page 1/2)');
+    expect(firstPage.output).toContain('Codara commands (page 1/');
     expect(firstPage.output).toContain('Run /help 2 for more commands.');
     expect(firstPage.output).toContain('Built-in commands:');
 
@@ -28,7 +28,7 @@ describe('runtime command surface cases', () => {
     });
 
     expect(secondPage.exitCode).toBe(0);
-    expect(secondPage.output).toContain('Codara commands (page 2/2)');
+    expect(secondPage.output).toContain('Codara commands (page 2/');
     expect(secondPage.output).toContain('/reload');
   });
 

@@ -20,7 +20,6 @@ export {
 export {
   evaluatePermissionToolCall,
   evaluatePermissionExpression,
-  evaluatePermission,
   formatPermissionExpression,
   parseExpression,
 } from './evaluate';

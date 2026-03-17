@@ -15,8 +15,9 @@ import {
   evaluatePermissionExpression,
   formatPermissionExpression,
 } from '@engine/pipeline/permission/policy';
+import {persistPermissionRule, persistPermissionScope} from '@engine/pipeline/permission/policy/persist';
 import type {PermissionPolicyOptions} from '@engine/pipeline/permission/types';
-import {normalizeToolReferenceName} from '@capability/tool/names';
+import {normalizeToolReferenceName} from '@shared/tool-names';
 import type {PermissionBashAnalysis, PermissionAnalysisModel} from '@engine/pipeline/permission/analysis';
 import {createModelPermissionBashAnalysis} from '@engine/pipeline/permission/analysis';
 import {extractBashAlwaysPatterns, extractBashWritePathOperands} from '@engine/pipeline/permission/bash';
@@ -321,6 +322,21 @@ async function handlePermissionResume(
       const expression = formatPermissionExpression(context.toolCall);
       if (expression) {
         sessionAllowed.add(expression);
+      }
+    }
+
+    // Persist to disk based on scope
+    const expression = formatPermissionExpression(context.toolCall);
+    if (expression) {
+      const scope = payload.scope as 'exact' | 'path' | 'tool' | 'project' | undefined;
+      if (scope && scope !== 'exact') {
+        await persistPermissionScope(expression, scope, options).catch((e) => {
+          console.warn('[permissions] Failed to persist scope:', e instanceof Error ? e.message : String(e));
+        });
+      } else {
+        await persistPermissionRule(expression, 'allow', options).catch((e) => {
+          console.warn('[permissions] Failed to persist rule:', e instanceof Error ? e.message : String(e));
+        });
       }
     }
 

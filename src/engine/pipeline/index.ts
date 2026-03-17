@@ -12,12 +12,15 @@ export {
   type MiddlewareRuntimeShared,
   type ModelCallContext,
   type ModelCallHandler,
+  MIDDLEWARE_NAMES,
   readExecutionMetadata,
   type ToolCallContext,
   type ToolCallHandler,
 } from '@engine/pipeline/types';
 export {
   createSkillsMiddleware,
+  type SkillsMiddlewareOptions,
+  type SkillsRuntimeDataLoader,
 } from '@engine/pipeline/skills';
 export {
   createDailySessionFileLogSink,
@@ -33,9 +36,12 @@ export {
   type BudgetMiddlewareOptions,
 } from '@engine/pipeline/budget';
 export {
+  createGuidelinesMiddleware,
+  type GuidelinesMiddlewareOptions,
+} from '@engine/pipeline/guidelines';
+export {
   applyHILResumeToolEdits,
   createHILMiddleware,
-  humanInTheLoopMiddleware,
   parseHILResumeActionPayload,
   parseHILToolMessagePayload,
   type HILActionDescriptor,
@@ -73,14 +79,14 @@ export {
   ASK_USER_TOOL_NAME,
   AskUserSchema,
   createAskUserTool,
-  createInteractionMiddleware,
+  createAskUserQuestionMiddleware,
   parseAskUserResult,
   type AskUserInput,
   type AskUserOption,
   type AskUserQuestion,
   type AskUserResult,
-  type InteractionMiddlewareOptions,
-} from '@engine/pipeline/interaction';
+  type AskUserQuestionMiddlewareOptions,
+} from '@engine/pipeline/ask-user-question';
 export {
   createPermissionMiddleware,
   createPermissionRuntime,
@@ -114,7 +120,7 @@ export {
   TodoSchema,
   TodoStateSchema,
   TodoStatusSchema,
-  todoListMiddleware,
+  createTodoListMiddleware,
   WRITE_TODOS_DESCRIPTION,
   type TodoListMiddlewareOptions,
   type TodoMiddlewareState,

@@ -11,7 +11,7 @@ import type {AIMessage, ToolMessage} from '@langchain/core/messages';
 import type {StructuredToolInterface} from '@langchain/core/tools';
 import {z} from 'zod';
 import {applyAgentStateUpdate} from '@engine/agent/models/command';
-import type {AgentRuntimeContext} from '@engine/agent/models/types';
+import type {AgentRuntimeContext} from '@shared/contracts/agent-types';
 import {
   type AfterAgentContext,
   type AfterModelContext,
@@ -34,6 +34,7 @@ export class MiddlewarePipeline {
   constructor(middlewares: BaseMiddleware[] = []) {
     const normalized = middlewares.map((middleware) => createMiddleware(middleware));
     assertNoDuplicateNames(normalized);
+    assertDependencyOrder(normalized);
     this.middlewares = Object.freeze(normalized);
   }
 
@@ -201,6 +202,28 @@ function assertNoDuplicateNames(middlewares: ReadonlyArray<BaseMiddleware>): voi
       throw new Error(`Duplicate middleware name: ${middleware.name}`);
     }
     seen.add(middleware.name);
+  }
+}
+
+function assertDependencyOrder(middlewares: ReadonlyArray<BaseMiddleware>): void {
+  const registered = new Set<string>();
+  for (const mw of middlewares) {
+    if (mw.dependsOn) {
+      for (const dep of mw.dependsOn) {
+        if (!registered.has(dep)) {
+          const isRegisteredLater = middlewares.some((m) => m.name === dep);
+          if (isRegisteredLater) {
+            throw new Error(
+              `Middleware "${mw.name}" depends on "${dep}" which must be registered before it.`
+            );
+          }
+          throw new Error(
+            `Middleware "${mw.name}" depends on "${dep}" which is not registered.`
+          );
+        }
+      }
+    }
+    registered.add(mw.name);
   }
 }
 

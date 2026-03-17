@@ -1,5 +1,5 @@
 import {describe, expect, test} from 'bun:test';
-import {ToolHooksMiddleware} from '@engine/hook/middleware';
+import {createToolHooksMiddleware} from '@engine/hook/middleware';
 import type {ToolLifecycleHooks, ToolResultContext} from '@engine/hook/types';
 import {ToolMessage} from '@langchain/core/messages';
 
@@ -26,7 +26,7 @@ function createMockToolCallContext(toolName = 'Bash', args: Record<string, unkno
 describe('ToolHooksMiddleware', () => {
   test('passes through when PreToolUse allows', async () => {
     const lifecycle = createMockLifecycle();
-    const mw = new ToolHooksMiddleware(lifecycle);
+    const mw = createToolHooksMiddleware(lifecycle);
 
     const ctx = createMockToolCallContext();
     const handler = async () => new ToolMessage({content: 'result', tool_call_id: 'tc1'});
@@ -39,7 +39,7 @@ describe('ToolHooksMiddleware', () => {
     const lifecycle = createMockLifecycle({
       onPreToolUse: async () => ({vetoed: true, vetoReason: 'Blocked by hook', systemMessages: []}),
     });
-    const mw = new ToolHooksMiddleware(lifecycle);
+    const mw = createToolHooksMiddleware(lifecycle);
 
     const ctx = createMockToolCallContext();
     const handler = async () => new ToolMessage({content: 'should not reach', tool_call_id: 'tc1'});
@@ -57,7 +57,7 @@ describe('ToolHooksMiddleware', () => {
         systemMessages: [],
       }),
     });
-    const mw = new ToolHooksMiddleware(lifecycle);
+    const mw = createToolHooksMiddleware(lifecycle);
 
     const ctx = createMockToolCallContext('Bash', {command: 'ls'});
     const handler = async (c: any) => {
@@ -76,7 +76,7 @@ describe('ToolHooksMiddleware', () => {
         systemMessages: ['Remember to check tests'],
       }),
     });
-    const mw = new ToolHooksMiddleware(lifecycle);
+    const mw = createToolHooksMiddleware(lifecycle);
 
     const ctx = createMockToolCallContext();
     const handler = async () => new ToolMessage({content: 'ok', tool_call_id: 'tc1'});
@@ -95,7 +95,7 @@ describe('ToolHooksMiddleware', () => {
         return {systemMessages: []};
       },
     });
-    const mw = new ToolHooksMiddleware(lifecycle);
+    const mw = createToolHooksMiddleware(lifecycle);
 
     const ctx = createMockToolCallContext();
     const handler = async () => new ToolMessage({content: 'done', tool_call_id: 'tc1'});

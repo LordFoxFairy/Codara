@@ -1,16 +1,9 @@
-// src/core/middleware/budget.ts
-
 import type {BaseMessage} from '@langchain/core/messages';
-import type {AgentInputBudget} from '@engine/agent/models/types';
+import type {AgentInputBudget} from '@shared/contracts/agent-types';
+import type {ContextBudgetSnapshot} from '@shared/contracts/execution';
 import {createMiddleware, type BaseMiddleware, type BeforeModelContext} from '@engine/pipeline/types';
 
-export interface ContextBudgetSnapshot {
-  maxInputTokens: number;
-  reservedTokens: number;
-  availableInputTokens: number;
-  estimatedInputTokens: number;
-  overBudget: boolean;
-}
+export type {ContextBudgetSnapshot} from '@shared/contracts/execution';
 
 export interface ContextBudgetEstimateInput {
   systemMessage: string[];
@@ -79,8 +72,17 @@ export function estimateModelInputTokens(input: ContextBudgetEstimateInput): num
   return systemTokens + messageTokens;
 }
 
+/**
+ * CJK 字符范围正则 — 匹配中日韩统一汉字及常用符号。
+ * CJK 字符通常 1-2 tokens/字，ASCII 约 0.25 tokens/字。
+ */
+const CJK_REGEX = /[\u2E80-\u9FFF\uF900-\uFAFF\uFE30-\uFE4F]/g;
+
 function estimateTextTokens(text: string): number {
-  return Math.max(1, Math.ceil(text.length / 4));
+  const cjkCount = (text.match(CJK_REGEX) ?? []).length;
+  const asciiLength = text.length - cjkCount;
+  // ASCII: ~4 chars/token; CJK: ~1.5 chars/token
+  return Math.max(1, Math.ceil(asciiLength / 4 + cjkCount * 1.5));
 }
 
 function serializeMessageContent(message: BaseMessage): string {

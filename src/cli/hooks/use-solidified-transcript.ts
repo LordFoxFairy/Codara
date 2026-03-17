@@ -2,7 +2,6 @@ import {useRef, useMemo} from 'react';
 import type {BaseMessage} from '@langchain/core/messages';
 import type {CodaraRuntimeEvent} from '@/index';
 import type {CliActiveTurn, CliNotice} from '../app/view-state';
-import type {CliLayoutMode} from '../app/layout-mode';
 import {
   type SolidifiedItem,
   type TranscriptItem,
@@ -16,9 +15,6 @@ export interface UseSolidifiedTranscriptInput {
   notices: readonly CliNotice[];
   activeTurn?: CliActiveTurn;
   runtimeEvents?: readonly CodaraRuntimeEvent[];
-  layoutMode: CliLayoutMode;
-  cwd?: string;
-  modelAlias?: string;
 }
 
 export interface UseSolidifiedTranscriptOutput {
@@ -26,10 +22,26 @@ export interface UseSolidifiedTranscriptOutput {
   activeItems: TranscriptItem[];
 }
 
+/**
+ * Manages the solidified/active transcript split.
+ *
+ * Key behavior: the latest completed turn stays in the active (visible) area
+ * until a NEW turn starts. This prevents all messages from immediately
+ * scrolling into the scrollback buffer after each response.
+ *
+ * Flow:
+ * 1. User sends prompt → activeTurn is created
+ * 2. At that point, solidify all PRIOR coreMessages (push to Static/scrollback)
+ * 3. Streaming happens → activeTurn shows prompt + response in active area
+ * 4. Streaming ends → activeTurn cleared, coreMessages updated
+ * 5. The just-completed turn's messages are NOT solidified yet — they become
+ *    "trailing active items" built from coreMessages[lastSolidified..end]
+ * 6. Next turn starts → go to step 1, solidify previous turn
+ */
 export function useSolidifiedTranscript(input: UseSolidifiedTranscriptInput): UseSolidifiedTranscriptOutput {
   const {coreMessages, notices, activeTurn, runtimeEvents} = input;
 
-  // Instance-level ID counter (replaces module-level nextSolidId)
+  // Instance-level ID counter
   const idCounterRef = useRef(0);
   // Track how many coreMessages have been solidified
   const lastSolidifiedCountRef = useRef(0);
@@ -39,6 +51,8 @@ export function useSolidifiedTranscript(input: UseSolidifiedTranscriptInput): Us
   const solidifiedItemsRef = useRef<SolidifiedItem[]>([]);
   // Whether welcome has been emitted
   const welcomeEmittedRef = useRef(false);
+  // Track previous activeTurn to detect transition
+  const prevActiveTurnRef = useRef<CliActiveTurn | undefined>(undefined);
 
   // Emit welcome item on first render
   if (!welcomeEmittedRef.current) {
@@ -53,7 +67,7 @@ export function useSolidifiedTranscript(input: UseSolidifiedTranscriptInput): Us
     ];
   }
 
-  // Solidify new notices
+  // Solidify new notices (always immediate — notices don't need to stay active)
   if (notices.length > lastSolidifiedNoticeCountRef.current) {
     const newNotices = notices.slice(lastSolidifiedNoticeCountRef.current);
     const noticeItems: TranscriptItem[] = newNotices.map((notice) => ({
@@ -75,8 +89,12 @@ export function useSolidifiedTranscript(input: UseSolidifiedTranscriptInput): Us
     lastSolidifiedNoticeCountRef.current = notices.length;
   }
 
-  // Solidify completed coreMessages (new messages beyond what we've already solidified)
-  if (coreMessages.length > lastSolidifiedCountRef.current) {
+  // Solidify coreMessages — but ONLY when a new turn starts (activeTurn transitions from undefined → defined).
+  // This keeps the latest completed turn visible in the active area.
+  const newTurnStarted = activeTurn !== undefined && prevActiveTurnRef.current === undefined;
+  prevActiveTurnRef.current = activeTurn;
+
+  if (newTurnStarted && coreMessages.length > lastSolidifiedCountRef.current) {
     const toolLookup = createToolCallLookup(coreMessages);
     const newItems = buildSolidifiedItemsFromRange(
       coreMessages,
@@ -97,11 +115,26 @@ export function useSolidifiedTranscript(input: UseSolidifiedTranscriptInput): Us
     lastSolidifiedCountRef.current = coreMessages.length;
   }
 
-  // Build active items from activeTurn + runtimeEvents
-  const activeItems = useMemo(
-    () => buildActiveItems({activeTurn, runtimeEvents}),
-    [activeTurn, runtimeEvents],
-  );
+  // Build active items: activeTurn (if streaming) + un-solidified coreMessages + runtime events
+  const solidifiedCount = lastSolidifiedCountRef.current;
+  const activeItems = useMemo(() => {
+    // Un-solidified coreMessages (the latest completed turn that hasn't been pushed to Static yet)
+    const trailingItems: TranscriptItem[] = [];
+    if (solidifiedCount < coreMessages.length) {
+      const toolLookup = createToolCallLookup(coreMessages);
+      trailingItems.push(...buildSolidifiedItemsFromRange(
+        coreMessages,
+        solidifiedCount,
+        coreMessages.length,
+        toolLookup,
+      ));
+    }
+
+    // Current streaming turn + runtime events
+    const streamingItems = buildActiveItems({activeTurn, runtimeEvents});
+
+    return [...trailingItems, ...streamingItems];
+  }, [activeTurn, coreMessages, runtimeEvents, solidifiedCount]);
 
   return {
     solidifiedItems: solidifiedItemsRef.current,

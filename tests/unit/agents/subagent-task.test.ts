@@ -15,7 +15,7 @@ import {
   TASK_TOOL_NAME,
 } from '@capability/task';
 import {createSkillsMiddleware} from '@engine/pipeline';
-import {FileSystemSkillStore} from '@capability/skill';
+import {FileSystemSkillStore, loadSkillsRuntimeData} from '@capability/skill';
 import {createTaskTool} from '@capability/task/task';
 
 function createBuiltinSubagentStore() {
@@ -157,7 +157,7 @@ describe('task delegation + task store', () => {
 
     const parent = createAgent({
       model: parentModel,
-      middleware: [createSkillsMiddleware({store: createBuiltinSubagentStore()})],
+      middleware: [createSkillsMiddleware({store: createBuiltinSubagentStore(), loadRuntime: loadSkillsRuntimeData})],
       tools: [taskCreateTool, taskTool],
     });
 

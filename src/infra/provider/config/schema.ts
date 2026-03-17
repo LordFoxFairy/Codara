@@ -2,9 +2,18 @@ import {z} from "zod";
 
 const ModelIdSchema = z.string().min(1);
 
+const ThinkingConfigSchema = z.object({
+    type: z.enum(['enabled', 'disabled']),
+    budgetTokens: z.number().int().positive().optional(),
+});
+
+const EffortLevelSchema = z.enum(['low', 'medium', 'high']);
+
 const ModelMetadataSchema = z.object({
     contextWindow: z.number().int().positive().optional(),
     maxOutputTokens: z.number().int().positive().optional(),
+    thinking: ThinkingConfigSchema.optional(),
+    effortLevel: EffortLevelSchema.optional(),
 });
 
 export const ProviderSchema = z.object({

@@ -3,7 +3,7 @@
 ## 目录结构
 
 ```text
-src/core/skills/
+src/capability/skill/
   source.ts      # session-scoped SkillsSource
   store.ts       # 文件系统技能发现（source layering + cache）
   loading.ts     # SKILL.md frontmatter 解析与校验
@@ -23,7 +23,7 @@ src/core/skills/
 
 2. 扩展方式
 - skills 只做 skills 本职，不内建二次扩展框架。
-- 若要审计/风控/观测，请在 `middleware/*` 里追加独立 middleware，不把扩展逻辑塞回 skills source 核心。
+- 若要审计/风控/观测，请在 `engine/pipeline/*` 里追加独立 middleware，不把扩展逻辑塞回 skills source 核心。
 - 若要暴露手动入口，优先通过显式的 command 元数据接入 Codara commands，而不是再开一条平行触发系统。
 
 3. allowed-tools 语义
@@ -38,7 +38,7 @@ src/core/skills/
 ## 当前边界
 
 1. 已支持
-- deepagents 风格 skills prompt 注入由 `middleware/skills.ts` 提供。
+- deepagents 风格 skills prompt 注入由 `engine/pipeline/skills.ts` 提供。
 - source layering（后 source 覆盖前 source）。
 - 技能缓存策略下放到 `store`（例如 `FileSystemSkillStore` 的 TTL 缓存）。
 - `allowed-tools` 元数据在 prompt 中展示。

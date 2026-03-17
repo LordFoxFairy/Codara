@@ -2,7 +2,7 @@
 
 ## 概述
 
-`@core/middleware` 提供与 Agent loop 对齐的 6 个 hooks，用于注入日志、conversation context、工具拦截等横切逻辑。
+`@engine/pipeline` 提供与 Agent loop 对齐的 6 个 hooks，用于注入日志、conversation context、工具拦截等横切逻辑。
 
 生命周期顺序固定为：
 
@@ -13,8 +13,8 @@
 ## 快速开始
 
 ```typescript
-import {createAgent} from '@core/agents';
-import {createLoggingMiddleware} from '@core/middleware';
+import {createAgent} from '@engine/agent';
+import {createLoggingMiddleware} from '@engine/pipeline';
 
 const loggingMiddleware = createLoggingMiddleware({
   level: 'info',
@@ -49,7 +49,7 @@ const agent = createAgent({
 ### 示例：User Context Middleware
 
 ```typescript
-import {createMiddleware} from '@core/middleware';
+import {createMiddleware} from '@engine/pipeline';
 import {z} from 'zod';
 
 const contextSchema = z.object({
@@ -95,7 +95,7 @@ const result = await agent.invoke(
 - `systemMessage`：可在 `beforeModel` 或 `wrapModelCall` 中追加系统消息
 - `execution.runId`、`execution.turn`、`execution.maxTurns`、`execution.requestId`
 - `inputBudget`：本轮调用的输入预算配置
-- `budget`：当前 turn 的输入预算快照（默认由 `ConversationContextMiddleware` 维护）
+- `budget`：当前 turn 的输入预算快照（默认由 `BudgetMiddleware` 维护）
 
 特有字段：
 
@@ -109,14 +109,17 @@ Codara 默认 runtime 只把下面几类模块当成一等 middleware stage：
 
 - `LoggingMiddleware`
 - caller middlewares
-- `ConversationContextMiddleware`
+- `BudgetMiddleware`
+- `SummaryMiddleware`
 - `HumanInTheLoopMiddleware`
 
 其中：
 
-- `conversation/*`
-
-不再属于 middleware 子目录。它们已经提升为平级 conversation 小域；`middleware/conversation.ts` 只保留 `ConversationContextMiddleware` 这个公开 builder。
+- `GuidelinesMiddleware` — wrapToolCall 拦截文件工具，按需注入子目录 AGENTS.md/codara.md
+- `SkillsMiddleware` — 技能上下文注入
+- `PermissionMiddleware` — deny→ask→allow 权限策略
+- `TodoListMiddleware` — write_todos 工具
+- `ToolHooksMiddleware` — 生命周期 hooks 集成
 
 ### 默认主链职责矩阵
 
@@ -127,11 +130,14 @@ Codara 默认 runtime 只把下面几类模块当成一等 middleware stage：
 - caller middleware
   - hook scope: user-defined
   - role: custom runtime rewrites that should still participate in later conversation budgeting/compaction
-- `ConversationContextMiddleware`
+- `BudgetMiddleware`
   - hook scope: `beforeModel`
   - role:
     - refresh budget snapshot for the current model request
     - optionally compact old conversation messages before the current model request
+- `SummaryMiddleware`
+  - hook scope: `beforeModel`
+  - role: auto-compact when context exceeds budget
 - `HumanInTheLoopMiddleware`
   - hook scope: `wrapToolCall`
   - role: pause/resume interception only
@@ -149,23 +155,8 @@ source-driven system layers 现在走另一条链：
 
 因此：
 
-- `GuidelinesMiddleware`
-- `SkillsMiddleware`
-
-保留为高级手动扩展，不再属于 Codara 默认产品路径。
-
-request-preparation slice 的职责应固定理解为：
-
-- model input assembly
-  - directly owned by `agents/agent-loop.ts`
-- `middleware/conversation`
-  - transient budget snapshot / heuristic
-  - summary compaction helper over `messages`
-  - default pre-model middleware stage
-
-目录上现在固定分为：
-- `middleware/conversation.ts`
-  - 单文件 owner，包含 builder、预算和摘要逻辑
+- `GuidelinesMiddleware` — wrapToolCall 阶段按需加载子目录指令文件
+- `SkillsMiddleware` — beforeModel 阶段注入技能上下文
 
 ## 典型模式
 
@@ -190,9 +181,7 @@ const loggingMiddleware = createLoggingMiddleware({
 
 ### 内置 HIL Middleware（Human-in-the-Loop）
 
-`createHILMiddleware(options)` 提供通用“暂停-恢复”拦截能力（不内置审批决策语义）：
-
-更完整的协议说明见 [HIL.md](/Users/nako/WebstormProjects/github/thefoxfairy/Codara/src/core/middleware/HIL.md)。
+`createHILMiddleware(options)` 提供通用"暂停-恢复"拦截能力（不内置审批决策语义）：
 
 - `interruptOn[toolName] = true`：命中后进入 pause，返回结构化 `hil_pause` 消息
 - `interruptOn[toolName] = false` 或未配置：自动放行
@@ -200,98 +189,22 @@ const loggingMiddleware = createLoggingMiddleware({
 - `resolveDecision`：外部可返回 `allow | ask | deny`，将策略层与协议层彻底解耦
 - `resolveResume` / `handleResume`：由外部实现审批、编辑、拒绝、多页/tab 流程
 
-LangChain/LangGraph 对齐点：
-- pause request 内置 `review.actionName` 与 `review.allowedDecisions`
-- `allowedDecisions` 默认是 `approve | edit | reject`
-- `ui.actions` 仍是可选的展示层，不替代 review contract
-
-推荐的 `ui.actions` 结构：
-- `id`：动作标识，由上层交互模板定义
-- `label`：前端显示文案
-- `kind`：`primary | secondary | danger`
-- `requiresConfirmation` / `requiresToolEdit`：声明交互要求
-
-推荐的 review contract：
-- `review.actionName`：当前待审核工具名
-- `review.allowedDecisions`：允许的标准决策集合，推荐使用 `approve | edit | reject`
-
-默认 `hil_pause` / `hil_deny` 消息是结构化 JSON；终端或宿主层可复用
-- `parseHILToolMessagePayload(...)`
-来解析默认协议，而不是各处手写 `JSON.parse`
-
-默认 tool payload contract：
-
 ```typescript
-type HILToolMessagePayload =
-  | {type: 'hil_pause'; request: HILPauseRequest}
-  | {
-      type: 'hil_deny';
-      reason: string;
-      metadata: Record<string, unknown>;
-      action: {toolCallId: string; toolName: string};
-    };
-```
-
-推荐的 resume payload 协议：
-- `decision`：可选标准 review 决策，推荐使用 `approve | edit | reject`
-- `action`：选中的动作 id
-- `scope`：可选范围信息，由权限策略或其他业务层解释
-- `comment`：审批备注
-- `editedToolName` / `editedToolArgs`：编辑后继续执行
-
-默认恢复行为：
-- `decision = reject`：返回结构化 `hil_deny`
-- `editedToolName` / `editedToolArgs`：自动按通用 edit 语义继续执行
-- 若只提供自定义 `action`，则由上层 `handleResume` 解释
-- `resumes` 只解析显式自有键；不会读取原型链上的 payload
-
-边界建议：
-- 权限模板、按钮文案、持久化范围等业务语义优先放在权限策略 runtime 或外部审批服务中维护。
-- HIL middleware 只负责 pause/resume 协议，不内置权限动作集合或 scope 语义。
-
-```typescript
-import {createHILMiddleware} from '@core/middleware';
+import {createHILMiddleware} from '@engine/pipeline';
 import {ToolMessage} from '@langchain/core/messages';
 
-const approvalUiTemplate = {
-  tab: 'security',
-  actions: [
-    {id: 'primary', label: 'Primary action', kind: 'primary'},
-    {id: 'edit', label: 'Edit and continue', requiresToolEdit: true},
-    {id: 'reject', label: 'Reject', kind: 'danger', requiresConfirmation: true}
-  ]
-};
-
 const hilMiddleware = createHILMiddleware({
-  // 也可只配置 interruptOn；这里演示外部决策模式
   resolveDecision: async ({context}) => {
     if (context.toolCall.name === 'write_file') {
       return {
         decision: 'ask',
         config: {
           description: '写文件前需要人工介入',
-          channel: 'ops-review',
-          ui: approvalUiTemplate
         }
       };
     }
     return {decision: 'allow'};
   },
-  // 由外部注入恢复数据（可来自权限策略、审批服务、UI 状态机）
-  resolveResume: (pauseRequest, ctx) => {
-    return (ctx.runtime.context as any).hil?.resumes?.[pauseRequest.id];
-  },
-  // 外部可覆盖默认恢复行为；默认实现已支持 reject 和通用 edit 语义
-  handleResume: async (pauseRequest, resumePayload, ctx, next) => {
-    const payload = parseHILResumeActionPayload(resumePayload);
-    if (payload.decision === 'reject') {
-      return new ToolMessage({
-        content: 'Denied by external policy',
-        tool_call_id: pauseRequest.action.toolCallId
-      });
-    }
-    return next(applyHILResumeToolEdits(ctx, payload));
-  }
 });
 ```
 
@@ -341,8 +254,8 @@ const toolInterceptor = createMiddleware({
 
 - `before* / after*`：按注册顺序执行。
 - `wrap*`：洋葱模型，外层包裹内层。
-- 允许“顺序重试”式多次 `handler(request)` 调用。
-- 禁止“并发重入”调用 `handler`，并发会抛错。
+- 允许"顺序重试"式多次 `handler(request)` 调用。
+- 禁止"并发重入"调用 `handler`，并发会抛错。
 
 ## Context 校验
 
@@ -376,17 +289,20 @@ pipeline.validateContext(context); // 可选手动校验
 ## 文件结构
 
 ```
-src/core/middleware/
+src/engine/pipeline/
 ├── index.ts
 ├── types.ts
 ├── pipeline.ts
-├── execution.ts
+├── guidelines.ts
 ├── skills.ts
 ├── logging.ts
+├── budget.ts
+├── summary.ts
 ├── hil.ts
+├── ask-user-question.ts
+├── permission/
+│   ├── evaluate.ts
+│   └── ...
+├── todo.ts
 └── README.md
 ```
-
-## 相关文档
-
-- [hooks 规范](../../../docs/04-hooks.md)

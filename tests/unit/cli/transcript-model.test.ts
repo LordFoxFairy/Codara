@@ -95,7 +95,7 @@ describe('cli transcript model', () => {
         new AIMessage({
           content: 'Need a little more information before I continue.',
           tool_calls: [
-            {id: 'call_ask_1', name: 'AskUser', args: {summary: 'Clarify the brief'}} as ToolCall,
+            {id: 'call_ask_1', name: 'AskUserQuestion', args: {summary: 'Clarify the brief'}} as ToolCall,
           ],
         }),
       ],
@@ -113,7 +113,7 @@ describe('cli transcript model', () => {
         new ToolMessage({
           content: '{"action":"submit","answers":{"language":"Python"}}',
           tool_call_id: 'call_ask_result',
-          name: 'AskUser',
+          name: 'AskUserQuestion',
         }),
       ],
       runtimeEvents: [

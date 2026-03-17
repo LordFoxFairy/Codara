@@ -3,7 +3,8 @@ import {Box, Text} from 'ink';
 
 /**
  * Simple terminal markdown renderer for Ink.
- * Handles: **bold**, `code`, ```code blocks```, # headings
+ * Handles: **bold**, *italic*, `code`, ```code blocks```, # headings,
+ * - unordered lists, 1. ordered lists, > blockquotes, --- horizontal rules
  */
 
 interface MarkdownTextProps {
@@ -14,6 +15,7 @@ interface MarkdownTextProps {
 interface InlineSegment {
   text: string;
   bold?: boolean;
+  italic?: boolean;
   code?: boolean;
 }
 
@@ -28,6 +30,16 @@ function parseInlineMarkdown(line: string): InlineSegment[] {
       if (boldMatch[1]) segments.push({text: boldMatch[1]});
       segments.push({text: boldMatch[2]!, bold: true});
       remaining = boldMatch[3]!;
+      continue;
+    }
+
+    // Match *italic* (underscore variant intentionally omitted — too fragile
+    // inside identifiers like SOME_CONSTANT_NAME)
+    const italicMatch = remaining.match(/^(.*?)\*([^*]+?)\*(.*)/s);
+    if (italicMatch) {
+      if (italicMatch[1]) segments.push({text: italicMatch[1]});
+      segments.push({text: italicMatch[2]!, italic: true});
+      remaining = italicMatch[3]!;
       continue;
     }
 
@@ -53,6 +65,7 @@ function InlineLine({segments}: {segments: InlineSegment[]}): React.JSX.Element 
     <Text>
       {segments.map((seg, i) => {
         if (seg.bold) return <Text key={i} bold>{seg.text}</Text>;
+        if (seg.italic) return <Text key={i} italic>{seg.text}</Text>;
         if (seg.code) return <Text key={i} color="cyan">{seg.text}</Text>;
         return <Text key={i}>{seg.text}</Text>;
       })}
@@ -61,10 +74,12 @@ function InlineLine({segments}: {segments: InlineSegment[]}): React.JSX.Element 
 }
 
 interface ParsedBlock {
-  kind: 'heading' | 'code' | 'text';
+  kind: 'heading' | 'code' | 'text' | 'list-item' | 'blockquote' | 'hr';
   content: string;
   lang?: string;
   level?: number;
+  ordered?: boolean;
+  bullet?: string;
 }
 
 function parseBlocks(content: string): ParsedBlock[] {
@@ -97,6 +112,37 @@ function parseBlocks(content: string): ParsedBlock[] {
       continue;
     }
 
+    // Horizontal rule: --- or *** or ___
+    if (/^[-*_]{3,}\s*$/.test(line)) {
+      blocks.push({kind: 'hr', content: ''});
+      i++;
+      continue;
+    }
+
+    // Unordered list item: - item or * item
+    const ulMatch = line.match(/^(\s*)[*-]\s+(.*)/);
+    if (ulMatch) {
+      blocks.push({kind: 'list-item', content: ulMatch[2]!, bullet: '•', ordered: false});
+      i++;
+      continue;
+    }
+
+    // Ordered list item: 1. item
+    const olMatch = line.match(/^(\s*)\d+\.\s+(.*)/);
+    if (olMatch) {
+      blocks.push({kind: 'list-item', content: olMatch[2]!, bullet: `${blocks.filter(b => b.kind === 'list-item' && b.ordered).length + 1}.`, ordered: true});
+      i++;
+      continue;
+    }
+
+    // Blockquote: > text
+    const bqMatch = line.match(/^>\s?(.*)/);
+    if (bqMatch) {
+      blocks.push({kind: 'blockquote', content: bqMatch[1]!});
+      i++;
+      continue;
+    }
+
     // Regular text line
     blocks.push({kind: 'text', content: line});
     i++;
@@ -124,8 +170,32 @@ export function MarkdownText({content, paddingLeft = 0}: MarkdownTextProps): Rea
           return (
             <Box key={index} flexDirection="column" paddingLeft={2} marginY={0}>
               {codeLines.map((codeLine, ci) => (
-                <Text key={ci} color="gray">{codeLine}</Text>
+                <Text key={ci} color="gray" wrap="truncate-end">{codeLine}</Text>
               ))}
+            </Box>
+          );
+        }
+
+        if (block.kind === 'hr') {
+          return <Text key={index} dimColor>{'─'.repeat(40)}</Text>;
+        }
+
+        if (block.kind === 'list-item') {
+          const segments = parseInlineMarkdown(block.content);
+          return (
+            <Box key={index} paddingLeft={2}>
+              <Text>{block.bullet} </Text>
+              <InlineLine segments={segments} />
+            </Box>
+          );
+        }
+
+        if (block.kind === 'blockquote') {
+          const segments = parseInlineMarkdown(block.content);
+          return (
+            <Box key={index} paddingLeft={1}>
+              <Text dimColor>│ </Text>
+              <InlineLine segments={segments} />
             </Box>
           );
         }

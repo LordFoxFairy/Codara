@@ -24,7 +24,7 @@ import {
   putManualCheckpoint,
   type AgentCheckpointer,
 } from '@infra/checkpoint/agent';
-import type {BaseMiddleware} from '@engine/pipeline/types';
+import {MIDDLEWARE_NAMES, type BaseMiddleware} from '@engine/pipeline/types';
 import {
   compactConversationWithSummary,
   createModelSummaryGenerator,
@@ -36,7 +36,7 @@ import {
 import type {SessionLifecycleHooks} from '@engine/hook/types';
 import type {GuidelinesSource} from '@infra/context/instructions/guidelines';
 import {type PromptSource} from '@infra/context/instructions/prompt';
-import {type SkillsSource} from '@capability/skill';
+import type {SkillsSource} from '@infra/context/skill-contracts';
 import {
   type AutoMemoryRuntime,
   shouldRecordAutoMemoryTurn,
@@ -52,7 +52,7 @@ import {
   deriveSessionInputBudget,
   forkSessionMetadata,
   syncSessionMetadata,
-} from '@shared/session-metadata';
+} from './session-metadata';
 import type {SessionStore} from './store';
 import {
   RuntimeEventsController,
@@ -335,7 +335,7 @@ export function createSession(options: CreateSessionOptions): Session {
       runtimeEvents.createMiddleware(),
       ...(options.middleware ?? []),
     ];
-    if (!summary || middlewares.some((middleware) => middleware.name === 'SummaryMiddleware')) {
+    if (!summary || middlewares.some((middleware) => middleware.name === MIDDLEWARE_NAMES.Summary)) {
       return middlewares.length > 0 ? middlewares : undefined;
     }
 
@@ -344,7 +344,7 @@ export function createSession(options: CreateSessionOptions): Session {
       return middlewares.length > 0 ? middlewares : undefined;
     }
 
-    const hilIndex = middlewares.findIndex((middleware) => middleware.name === 'HumanInTheLoopMiddleware');
+    const hilIndex = middlewares.findIndex((middleware) => middleware.name === MIDDLEWARE_NAMES.HIL);
     if (hilIndex < 0) {
       middlewares.push(summaryMiddleware);
       return middlewares;

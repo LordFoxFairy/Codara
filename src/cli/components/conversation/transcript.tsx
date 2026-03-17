@@ -4,6 +4,7 @@ import type {BaseMessage} from '@langchain/core/messages';
 import {Box, Text} from 'ink';
 import type {CliActiveTurn, CliNotice} from '../../app/view-state';
 import {buildTranscriptItems, type ToolResultMeta, type TranscriptRole} from '../../transcript/model';
+import {theme} from '../../utils/theme';
 import {DiffView} from './diff-view';
 import {MarkdownText} from './markdown-text';
 
@@ -26,17 +27,7 @@ const ROLE_LABEL_MAP: Record<TranscriptRole, string> = {
   error: 'error',
 };
 
-const ROLE_COLOR_MAP: Record<TranscriptRole, React.ComponentProps<typeof Text>['color']> = {
-  system: 'cyan',
-  warning: 'yellow',
-  user: 'green',
-  assistant: 'magenta',
-  tool: 'blueBright',
-  task: 'yellowBright',
-  hil: 'cyanBright',
-  command: 'cyan',
-  error: 'red',
-};
+const ROLE_COLOR_MAP: Record<TranscriptRole, React.ComponentProps<typeof Text>['color']> = theme.role;
 
 export function Transcript({coreMessages, notices, activeTurn, runtimeEvents}: TranscriptProps): React.JSX.Element {
   const items = buildTranscriptItems({coreMessages, notices, activeTurn, runtimeEvents});
@@ -47,7 +38,7 @@ export function Transcript({coreMessages, notices, activeTurn, runtimeEvents}: T
         item.toolMeta ? (
           <ToolResultBlock key={item.id} meta={item.toolMeta} />
         ) : (
-          <TranscriptBlock key={item.id} role={item.role} content={item.content} renderHint={item.renderHint} />
+          <TranscriptBlock key={item.id} role={item.role} content={item.content} renderHint={item.renderHint} tokenAnnotation={item.tokenAnnotation} />
         ),
       )}
     </Box>
@@ -63,7 +54,7 @@ function getRolePrefix(role: TranscriptRole): { text: string; width: number } {
   }
 }
 
-export function TranscriptBlock({role, content, renderHint}: {role: TranscriptRole; content: string; renderHint?: 'inline' | 'block'}): React.JSX.Element {
+export function TranscriptBlock({role, content, renderHint, tokenAnnotation}: {role: TranscriptRole; content: string; renderHint?: 'inline' | 'block'; tokenAnnotation?: string}): React.JSX.Element {
   const lines = content.split('\n');
   const prefix = getRolePrefix(role);
   const firstLine = lines[0] || '(empty)';
@@ -81,7 +72,7 @@ export function TranscriptBlock({role, content, renderHint}: {role: TranscriptRo
           <Box paddingLeft={prefix.width} flexDirection="column">
             {trailingLines.map((line, index) => (
               <Text key={`${role}-${index}`} dimColor>
-                <Text color="gray">│ </Text>{line || ' '}
+                {'│ '}{line || ' '}
               </Text>
             ))}
           </Box>
@@ -115,6 +106,7 @@ export function TranscriptBlock({role, content, renderHint}: {role: TranscriptRo
     return (
       <Box marginBottom={1} flexDirection="column">
         <MarkdownText content={content} />
+        {tokenAnnotation && <Text dimColor>  {tokenAnnotation}</Text>}
       </Box>
     );
   }
@@ -123,12 +115,12 @@ export function TranscriptBlock({role, content, renderHint}: {role: TranscriptRo
     <Box marginBottom={1} flexDirection="column">
       <Box>
         <Text color={ROLE_COLOR_MAP[role]} bold={role === 'user'}>{prefix.text}</Text>
-        <Text>{firstLine}</Text>
+        <Text wrap="truncate-end">{firstLine}</Text>
       </Box>
       {trailingLines.length > 0 ? (
         <Box paddingLeft={prefix.width} flexDirection="column">
           {trailingLines.map((line, index) => (
-            <Text key={`${role}-${index}`}>
+            <Text key={`${role}-${index}`} wrap="truncate-end">
               {line || ' '}
             </Text>
           ))}
@@ -139,15 +131,16 @@ export function TranscriptBlock({role, content, renderHint}: {role: TranscriptRo
 }
 
 const EDIT_LINE_COLORS: Record<string, React.ComponentProps<typeof Text>['color']> = {
-  '+': 'green',
-  '-': 'red',
+  '+': theme.diff.addition,
+  '-': theme.diff.deletion,
 };
 
-export function ToolResultBlock({meta}: {meta: ToolResultMeta}): React.JSX.Element {
-  const {icon, displayName, args, summaryLine, outputLines, totalOutputLines, status, elapsed, diffData} = meta;
+export function ToolResultBlock({meta, expanded = false}: {meta: ToolResultMeta; expanded?: boolean}): React.JSX.Element {
+  const {icon, displayName, args, summaryLine, outputLines, allOutputLines, totalOutputLines, status, elapsed, diffData} = meta;
   const elapsedSuffix = elapsed ? ` (${elapsed})` : '';
   const header = args ? `${icon} ${displayName}(${args})${elapsedSuffix}` : `${icon} ${displayName}${elapsedSuffix}`;
-  const hiddenLines = (totalOutputLines ?? 0) - (outputLines?.length ?? 0);
+  const visibleLines = expanded && allOutputLines?.length ? allOutputLines : outputLines;
+  const hiddenLines = expanded ? 0 : (totalOutputLines ?? 0) - (outputLines?.length ?? 0);
   const isEdit = meta.toolName === 'edit' || meta.toolName === 'edit_file';
 
   return (
@@ -160,18 +153,20 @@ export function ToolResultBlock({meta}: {meta: ToolResultMeta}): React.JSX.Eleme
       </Box>
       {diffData ? (
         <DiffView diff={diffData} />
-      ) : outputLines && outputLines.length > 0 ? (
+      ) : visibleLines && visibleLines.length > 0 ? (
         <Box paddingLeft={5} flexDirection="column">
-          {outputLines.map((line, index) => {
+          {visibleLines.map((line, index) => {
             const lineColor = isEdit ? EDIT_LINE_COLORS[line.charAt(0)] : undefined;
             return (
-              <Text key={index} dimColor color={lineColor}>
+              <Text key={index} dimColor color={lineColor} wrap="truncate-end">
                 {line}
               </Text>
             );
           })}
           {hiddenLines > 0 ? (
             <Text dimColor>{`… +${hiddenLines} lines (ctrl+o to expand)`}</Text>
+          ) : expanded && (totalOutputLines ?? 0) > (outputLines?.length ?? 0) ? (
+            <Text dimColor>{'(ctrl+o to collapse)'}</Text>
           ) : null}
         </Box>
       ) : null}
@@ -180,14 +175,14 @@ export function ToolResultBlock({meta}: {meta: ToolResultMeta}): React.JSX.Eleme
 }
 
 /** Renders pre-filtered active (streaming) transcript items. */
-export function ActiveTranscript({items}: {items: import('../../transcript/model').TranscriptItem[]}): React.JSX.Element {
+export function ActiveTranscript({items, expandedAll = false}: {items: import('../../transcript/model').TranscriptItem[]; expandedAll?: boolean}): React.JSX.Element {
   return (
     <Box flexDirection="column">
       {items.map((item) =>
         item.toolMeta ? (
-          <ToolResultBlock key={item.id} meta={item.toolMeta} />
+          <ToolResultBlock key={item.id} meta={item.toolMeta} expanded={expandedAll} />
         ) : (
-          <TranscriptBlock key={item.id} role={item.role} content={item.content} renderHint={item.renderHint} />
+          <TranscriptBlock key={item.id} role={item.role} content={item.content} renderHint={item.renderHint} tokenAnnotation={item.tokenAnnotation} />
         ),
       )}
     </Box>

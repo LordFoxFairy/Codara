@@ -1,4 +1,4 @@
-import {HumanMessage, ToolMessage, type BaseMessage} from '@langchain/core/messages';
+import {AIMessage, HumanMessage, ToolMessage, type BaseMessage} from '@langchain/core/messages';
 import type {BaseChatModel} from '@langchain/core/language_models/chat_models';
 import type {StructuredToolInterface} from '@langchain/core/tools';
 import {z} from 'zod';
@@ -19,20 +19,13 @@ import type {ExecutionContextMetadata} from '@engine/pipeline/types';
 import type {AgentCheckpointer} from '@infra/checkpoint/agent';
 import {deepClone} from '@shared/clone';
 import {readLatestAssistantText} from '@shared/messages';
+import type {DelegatedAgentResult} from '@shared/delegation-result';
+export {readDelegatedAgentResult, type DelegatedAgentResult} from '@shared/delegation-result';
 
 export type DelegatedAgentModelResolver =
   | BaseChatModel
   | Promise<BaseChatModel>
   | (() => BaseChatModel | Promise<BaseChatModel>);
-
-const delegatedAgentResultSchema = z.object({
-  type: z.literal('delegated_agent_result'),
-  sessionId: z.string(),
-  turns: z.number(),
-  reason: z.enum(['complete', 'error', 'max_turns']),
-  summary: z.string().optional(),
-  errorMessage: z.string().optional(),
-});
 
 const parentExecutionSchema = z.object({
   sessionId: z.string().trim().min(1),
@@ -77,15 +70,6 @@ export interface DelegatedAgentOptions {
   blockedToolNames?: string[];
 }
 
-export interface DelegatedAgentResult {
-  type: 'delegated_agent_result';
-  sessionId: string;
-  turns: number;
-  reason: 'complete' | 'error' | 'max_turns';
-  summary?: string;
-  errorMessage?: string;
-}
-
 interface DelegatedPauseMetadata {
   childSessionId: string;
   parentToolName: string;
@@ -123,6 +107,8 @@ interface DelegatedChildInput {
   profileTools?: StructuredToolInterface[];
   profileSystemPrompt?: string;
   resume?: DelegatedResumeState;
+  /** 当前委托深度（0 = 主 agent）。 */
+  delegationDepth?: number;
 }
 
 interface ParentPauseContext {
@@ -132,12 +118,29 @@ interface ParentPauseContext {
   maxTurns?: number;
 }
 
+export const MAX_DELEGATION_DEPTH = 5;
+
+/**
+ * 校验委托深度是否在允许范围内。
+ * @throws 超过 MAX_DELEGATION_DEPTH 时抛出错误。
+ */
+export function assertDelegationDepth(depth: number | undefined): void {
+  const effective = depth ?? 0;
+  if (effective >= MAX_DELEGATION_DEPTH) {
+    throw new Error(
+      `Delegation depth limit reached (${effective}/${MAX_DELEGATION_DEPTH}). ` +
+      'Subagents cannot delegate further to prevent infinite recursion.',
+    );
+  }
+}
+
 const DELEGATION_TOOL = Symbol.for('codara.tasks.delegation.tool');
 
 export async function runDelegatedAgent(
   options: DelegatedAgentOptions,
   input: DelegatedChildInput,
 ): Promise<ToolMessage> {
+  assertDelegationDepth(input.delegationDepth);
   const childOptions = await buildDelegatedChildOptions(options, input);
   const result = await runDelegatedChild(childOptions, input);
 
@@ -172,10 +175,7 @@ export function markDelegationTool<TTool extends StructuredToolInterface>(tool: 
   return tool;
 }
 
-export function readDelegatedAgentResult(value: unknown): DelegatedAgentResult | undefined {
-  const parsed = delegatedAgentResultSchema.safeParse(value);
-  return parsed.success ? parsed.data : undefined;
-}
+// readDelegatedAgentResult is re-exported from @shared/delegation-result above.
 
 export function readDelegatedParentRuntimeMetadata(
   configurable: unknown,
@@ -334,6 +334,8 @@ function createDelegatedAgentResult(
   messages: BaseMessage[],
 ): DelegatedAgentResult {
   const summary = readLatestAssistantSummary(messages);
+  const toolUseCount = messages.filter((m) => ToolMessage.isInstance(m)).length;
+  const totalTokens = sumChildTokens(messages);
 
   return {
     type: 'delegated_agent_result',
@@ -342,7 +344,22 @@ function createDelegatedAgentResult(
     reason,
     ...(summary ? {summary} : {}),
     ...(error?.message ? {errorMessage: error.message} : {}),
+    ...(toolUseCount > 0 ? {toolUseCount} : {}),
+    ...(totalTokens > 0 ? {totalTokens} : {}),
   };
+}
+
+function sumChildTokens(messages: BaseMessage[]): number {
+  let total = 0;
+  for (const m of messages) {
+    if (!AIMessage.isInstance(m) || !m.usage_metadata) continue;
+    const meta = m.usage_metadata as Record<string, unknown>;
+    const t = typeof meta.total_tokens === 'number' ? meta.total_tokens : 0;
+    const input = typeof meta.input_tokens === 'number' ? meta.input_tokens : 0;
+    const output = typeof meta.output_tokens === 'number' ? meta.output_tokens : 0;
+    total += t > 0 ? t : input + output;
+  }
+  return total;
 }
 
 function createDelegatedAgentToolMessage(result: DelegatedAgentResult): ToolMessage {
