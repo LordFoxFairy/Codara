@@ -1,6 +1,6 @@
 import {randomUUID} from 'node:crypto';
 import {useCallback, useEffect, useMemo, useRef, useState} from 'react';
-import type {Codara, CodaraRuntimeEvent, SessionState} from '@/index';
+import type {Codara, CodaraRuntimeEvent, SessionState, TeamQuerySummary, TeamQueryDetail} from '@/index';
 import {AIMessageChunk, type BaseMessage} from '@langchain/core/messages';
 import {
   backspaceComposerText,
@@ -147,8 +147,53 @@ export function useCliController(options: UseCliControllerOptions): CliControlle
     setRuntimeEvents([]);
     return codara.subscribeRuntimeEvents((event) => {
       setRuntimeEvents((current) => [...current, event].slice(-40));
+      // Auto-refresh team dashboard when team events arrive
+      if (event.kind === 'team') {
+        const summaries = codara.getTeamSummaries();
+        setTeamDashboardState(prev => ({
+          ...prev,
+          teams: summaries.map((s: TeamQuerySummary) => ({
+            teamId: s.teamId,
+            name: s.name,
+            status: s.status,
+            progress: s.jobProgress,
+            memberCount: s.memberCount,
+            tokenUsage: 0,
+            health: 'healthy' as const,
+            lastActivity: new Date().toISOString(),
+          })),
+        }));
+      }
     });
   }, [codara]);
+
+  useEffect(() => {
+    const activeTeamId = teamDashboardState.activeTeamId;
+    if (!activeTeamId) return;
+    // Refresh detail state whenever runtime events change (contains team events)
+    const detail: TeamQueryDetail | undefined = codara.getTeamDetail(activeTeamId);
+    if (detail) {
+      setTeamDetailState(prev => prev ? {
+        ...prev,
+        status: detail.status,
+        members: detail.members.map(m => ({
+          memberId: m.memberId,
+          name: m.name,
+          role: m.role,
+          status: m.status,
+          model: m.model,
+          tokens: 0,
+        })),
+        jobs: detail.jobs.map(j => ({
+          id: j.id,
+          title: j.title,
+          status: j.status,
+          assignee: j.assignee,
+          blockedBy: j.blockedBy,
+        })),
+      } : prev);
+    }
+  }, [codara, teamDashboardState.activeTeamId, runtimeEvents]);
 
   const appendNotice = useCallback((level: CliNotice['level'], content: string) => {
     const message = content.trim();
@@ -184,7 +229,34 @@ export function useCliController(options: UseCliControllerOptions): CliControlle
 
   const enterTeam = useCallback((teamId: string) => {
     setTeamDashboardState(prev => ({ ...prev, activeTeamId: teamId, viewMode: 'observe' as const }));
-  }, []);
+    const detail: TeamQueryDetail | undefined = codara.getTeamDetail(teamId);
+    if (detail) {
+      setTeamDetailState({
+        teamId: detail.teamId,
+        teamName: detail.name,
+        goal: detail.goal,
+        status: detail.status,
+        members: detail.members.map(m => ({
+          memberId: m.memberId,
+          name: m.name,
+          role: m.role,
+          status: m.status,
+          model: m.model,
+          tokens: 0,
+        })),
+        jobs: detail.jobs.map(j => ({
+          id: j.id,
+          title: j.title,
+          status: j.status,
+          assignee: j.assignee,
+          blockedBy: j.blockedBy,
+        })),
+        activity: [],
+        tokenUsage: 0,
+        estimatedCost: 0,
+      });
+    }
+  }, [codara]);
 
   const leaveTeam = useCallback(() => {
     setTeamDashboardState(prev => ({ ...prev, activeTeamId: undefined, viewMode: 'dashboard' as const }));
@@ -446,10 +518,25 @@ export function useCliController(options: UseCliControllerOptions): CliControlle
       return;
     }
 
+    // Check for @team mention shorthand: "@team-name rest of message"
+    const teamMentionMatch = prompt.match(/^@(\S+)\s+([\s\S]*)/);
+    if (teamMentionMatch) {
+      const teamName = teamMentionMatch[1]!;
+      const message = teamMentionMatch[2]!;
+      const teams = codara.getTeamSummaries();
+      const matchedTeam = teams.find(t => t.name === teamName);
+      if (matchedTeam) {
+        setComposer(createComposerState());
+        setComposerActivityVersion((current) => current + 1);
+        void runSlashCommand(`/team message ${teamName} ${message}`);
+        return;
+      }
+    }
+
     setComposer(createComposerState());
     setComposerActivityVersion((current) => current + 1);
     void submitPrompt(prompt);
-  }, [composer.text, submitPrompt]);
+  }, [codara, composer.text, runSlashCommand, submitPrompt]);
 
   const submitText = useCallback((text: string) => {
     const prompt = text.trim();

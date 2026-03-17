@@ -166,11 +166,48 @@ export type CodaraToolsOptions = Pick<CodaraOptions, 'builtinTools' | 'cwd' | 't
 
 export type CodaraMiddlewareOptions = Pick<CodaraOptions, 'middleware' | 'hil' | 'logging'>;
 
+export interface TeamQuerySummary {
+  teamId: string;
+  name: string;
+  status: string;
+  goal: string;
+  memberCount: number;
+  jobProgress: { done: number; total: number };
+}
+
+export interface TeamQueryMember {
+  memberId: string;
+  name: string;
+  role: string;
+  status: string;
+  model?: string;
+  currentJobId?: string;
+}
+
+export interface TeamQueryJob {
+  id: string;
+  title: string;
+  status: string;
+  assignee?: string;
+  blockedBy: string[];
+}
+
+export interface TeamQueryDetail {
+  teamId: string;
+  name: string;
+  status: string;
+  goal: string;
+  members: TeamQueryMember[];
+  jobs: TeamQueryJob[];
+}
+
 export type Codara = Session & {
   listCommands(): Promise<readonly CodaraCommandSpec[]>;
   executeCommand(input: string): Promise<CodaraCommandResult>;
   listSessions(options?: import('@engine/session').SessionListOptions): Promise<SessionState[]>;
   getMcpStatus(): McpClientInfo[];
+  getTeamSummaries(): TeamQuerySummary[];
+  getTeamDetail(teamId: string): TeamQueryDetail | undefined;
 };
 
 export async function createCodaraModelCatalog(
@@ -481,6 +518,55 @@ function assembleCodara(
     };
   }
 
+  const getTeamSummaries = (): TeamQuerySummary[] => {
+    const registry = preloadedSources?.teamRegistry;
+    if (!registry) return [];
+    return registry.listTeams().map(t => {
+      const board = registry.getJobBoard(t.teamId);
+      const progress = board.getProgress();
+      const members = registry.getMembersByTeam(t.teamId);
+      return {
+        teamId: t.teamId,
+        name: t.name,
+        status: t.status,
+        goal: t.goal,
+        memberCount: members.length,
+        jobProgress: { done: progress.done, total: progress.total },
+      };
+    });
+  };
+
+  const getTeamDetail = (teamId: string): TeamQueryDetail | undefined => {
+    const registry = preloadedSources?.teamRegistry;
+    if (!registry) return undefined;
+    const team = registry.getTeam(teamId) ?? registry.getTeamByName(teamId);
+    if (!team) return undefined;
+    const members = registry.getMembersByTeam(team.teamId);
+    const board = registry.getJobBoard(team.teamId);
+    const jobs = board.getAllJobs();
+    return {
+      teamId: team.teamId,
+      name: team.name,
+      status: team.status,
+      goal: team.goal,
+      members: members.map(m => ({
+        memberId: m.memberId,
+        name: m.name,
+        role: m.role,
+        status: m.status,
+        model: m.model,
+        currentJobId: m.currentJobId,
+      })),
+      jobs: jobs.map(j => ({
+        id: j.id,
+        title: j.title,
+        status: j.status,
+        assignee: j.assignee,
+        blockedBy: j.blockedBy,
+      })),
+    };
+  };
+
   const dispose = async (): Promise<void> => {
     teamEventBridge?.detachAll();
     await session.dispose();
@@ -496,6 +582,8 @@ function assembleCodara(
     executeCommand,
     listSessions,
     getMcpStatus,
+    getTeamSummaries,
+    getTeamDetail,
     dispose,
   };
 }

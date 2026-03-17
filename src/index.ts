@@ -10,6 +10,10 @@ export {
   type CodaraAutoMemoryOptions,
   type CodaraRuntimeOptions,
   type CodaraOptions,
+  type TeamQuerySummary,
+  type TeamQueryMember,
+  type TeamQueryJob,
+  type TeamQueryDetail,
 } from '@codara/index';
 export {
   createAgent,
