@@ -31,6 +31,8 @@ import {
   type CliHilAutoAction,
 } from './hil-review';
 import type {CliActiveTurn, CliHilReviewState, CliNotice, CliRunState} from './view-state';
+import type {TeamDashboardState} from '../hooks/use-team-dashboard';
+import type {TeamDetailState} from '../hooks/use-team-detail';
 
 const STARTUP_MESSAGE = '';
 const HIL_AUTO_ACTION_DELAY_MS = 30;
@@ -90,6 +92,10 @@ export interface CliController {
   permissionConfirm: () => void;
   permissionRejectSend: () => void;
   permissionRejectSilent: () => void;
+  teamDashboardState: TeamDashboardState;
+  teamDetailState?: TeamDetailState;
+  enterTeam: (teamId: string) => void;
+  leaveTeam: () => void;
 }
 
 export function useCliController(options: UseCliControllerOptions): CliController {
@@ -125,6 +131,8 @@ export function useCliController(options: UseCliControllerOptions): CliControlle
   const [taskPanelVisible, setTaskPanelVisible] = useState(true);
   const [expandedAll, setExpandedAll] = useState(false);
   const [commandOutput, setCommandOutput] = useState<{content: string; commandName?: string; scrollOffset: number} | undefined>();
+  const [teamDashboardState, setTeamDashboardState] = useState<TeamDashboardState>({ teams: [], viewMode: 'dashboard' });
+  const [teamDetailState, setTeamDetailState] = useState<TeamDetailState | undefined>();
   const isRunningRef = useRef(false);
   const initialPromptSentRef = useRef(false);
   const hilReviewRef = useRef<CliHilReviewState | undefined>(undefined);
@@ -174,6 +182,15 @@ export function useCliController(options: UseCliControllerOptions): CliControlle
     return nextAgentState;
   }, [codara]);
 
+  const enterTeam = useCallback((teamId: string) => {
+    setTeamDashboardState(prev => ({ ...prev, activeTeamId: teamId, viewMode: 'observe' as const }));
+  }, []);
+
+  const leaveTeam = useCallback(() => {
+    setTeamDashboardState(prev => ({ ...prev, activeTeamId: undefined, viewMode: 'dashboard' as const }));
+    setTeamDetailState(undefined);
+  }, []);
+
   const runSlashCommand = useCallback(async (prompt: string) => {
     const result = await codara.executeCommand(prompt);
 
@@ -215,6 +232,24 @@ export function useCliController(options: UseCliControllerOptions): CliControlle
       return;
     }
 
+    if (result.action?.type === 'enter_team') {
+      enterTeam(result.action.teamId);
+      if (result.ok) {
+        appendNotice('system', result.output || `Entered team ${result.action.teamId}`);
+      } else {
+        appendNotice('error', result.output || '(no output)');
+      }
+      setRunState(result.ok ? {status: 'done'} : {status: 'error', error: result.output});
+      return;
+    }
+
+    if (result.action?.type === 'leave_team') {
+      leaveTeam();
+      appendNotice('system', result.output || 'Left team view.');
+      setRunState({status: 'done'});
+      return;
+    }
+
     if (result.ok) {
       setCommandOutput({content: result.output || '(no output)', commandName: result.command, scrollOffset: 0});
     } else {
@@ -224,7 +259,7 @@ export function useCliController(options: UseCliControllerOptions): CliControlle
     setRunState(result.ok
       ? nextAgentState.status === 'paused' ? {status: 'paused'} : {status: 'done'}
       : {status: 'error', error: result.output});
-  }, [appendNotice, codara, onShowSessionPicker, openFile, refreshCoreState, reopenSession, sessionState.sessionId]);
+  }, [appendNotice, codara, enterTeam, leaveTeam, onShowSessionPicker, openFile, refreshCoreState, reopenSession, sessionState.sessionId]);
 
   const runAgentPrompt = useCallback(async (prompt: string) => {
     setActiveTurn({
@@ -631,6 +666,10 @@ export function useCliController(options: UseCliControllerOptions): CliControlle
     permissionConfirm,
     permissionRejectSend,
     permissionRejectSilent,
+    teamDashboardState,
+    teamDetailState,
+    enterTeam,
+    leaveTeam,
   };
 }
 

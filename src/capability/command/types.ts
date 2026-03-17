@@ -1,6 +1,9 @@
 import type {AgentResult, AgentState} from '@engine/agent/models/agent';
 import type {CompactOptions} from '@infra/checkpoint/types';
 import type {HookRegistry} from '@engine/hook/registry';
+import type {TeamRegistry} from '@capability/team/team-registry';
+import type {TeamRuntime} from '@capability/team/runtime/team-runtime';
+import type {RemotePool} from '@capability/team/remote-pool';
 
 export interface ParsedCodaraCommand {
   raw: string;
@@ -49,6 +52,11 @@ export interface CodaraCommandResult {
     sessionId: string;
   } | {
     type: 'show_session_picker';
+  } | {
+    type: 'enter_team';
+    teamId: string;
+  } | {
+    type: 'leave_team';
   };
 }
 
@@ -88,6 +96,9 @@ export interface CodaraCommandAgent {
   reset(): Promise<void>;
   hookRegistry?: HookRegistry;
   getMcpStatus?(): import('@engine/mcp').McpClientInfo[];
+  teamRegistry?: TeamRegistry;
+  teamRuntime?: TeamRuntime;
+  remotePool?: RemotePool;
 }
 
 export interface CodaraCommandEnvironment {

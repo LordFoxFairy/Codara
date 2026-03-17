@@ -10,6 +10,8 @@ import {HilPanel, isPermissionReview} from '../components/conversation/hil-panel
 import {SessionPicker} from '../components/conversation/session-picker';
 import {ActiveTranscript} from '../components/conversation/transcript';
 import {SolidifiedBlock} from '../components/conversation/solidified-block';
+import {TeamDashboard} from '../components/teams/team-dashboard';
+import {TeamDetailView} from '../components/teams/team-detail-view';
 import {TIPS} from '../hooks/use-rotating-tip';
 import {CompletionMenu} from '../components/prompt/completion-menu';
 import {PromptFrame} from '../components/prompt/prompt-frame';
@@ -239,6 +241,14 @@ export function CodaraCliApp(props: CodaraCliAppProps): React.JSX.Element {
             doneCount={activeTasks.doneCount}
             errorCount={activeTasks.errorCount}
           />
+        )}
+
+        {/* Team Dashboard / Detail View */}
+        {shell.teamDashboardState.teams.length > 0 && !shell.teamDashboardState.activeTeamId && (
+          <TeamDashboard teams={shell.teamDashboardState.teams} />
+        )}
+        {shell.teamDashboardState.activeTeamId && shell.teamDetailState && (
+          <TeamDetailView state={shell.teamDetailState} />
         )}
 
         {/* HIL 或正常交互区 — 始终渲染 */}
