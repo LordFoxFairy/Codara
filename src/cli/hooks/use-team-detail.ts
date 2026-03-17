@@ -7,6 +7,7 @@ export interface TeamMemberInfo {
   status: string;
   model?: string;
   tokens: number;
+  currentJobId?: string;
 }
 
 export interface TeamJobInfo {
