@@ -1,10 +1,8 @@
 import { useMemo } from "react";
 import {
   MessageSquare,
-  BarChart3,
   Zap,
   FolderClock,
-  Cpu,
   Settings,
   Bug,
   ScrollText,
@@ -279,38 +277,21 @@ export function Sidebar({
       <SectionHeader label="Control" />
       <div className="px-2">
         <NavItem
-          icon={BarChart3}
-          label="Overview"
-          active={activePage === "debug"}
-          onClick={() => onNavigate("debug")}
-        />
-        <NavItem
           icon={FolderClock}
           label="Sessions"
           active={activePage === "sessions"}
           onClick={() => onNavigate("sessions")}
         />
-      </div>
-
-      {/* ── Agent ── */}
-      <SectionHeader label="Agent" />
-      <div className="px-2">
         <NavItem
           icon={Zap}
           label="Skills"
           active={activePage === "skills"}
           onClick={() => onNavigate("skills")}
         />
-        <NavItem
-          icon={Cpu}
-          label="Nodes"
-          active={activePage === "config"}
-          onClick={() => onNavigate("config")}
-        />
       </div>
 
-      {/* ── Settings ── */}
-      <SectionHeader label="Settings" />
+      {/* ── System ── */}
+      <SectionHeader label="System" />
       <div className="px-2">
         <NavItem
           icon={Settings}
@@ -330,11 +311,6 @@ export function Sidebar({
           active={activePage === "logs"}
           onClick={() => onNavigate("logs")}
         />
-      </div>
-
-      {/* ── Resources ── */}
-      <SectionHeader label="Resources" />
-      <div className="px-2 pb-3">
         <NavItem
           icon={FileText}
           label="Docs"
