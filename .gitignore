@@ -3,7 +3,13 @@ node_modules/
 
 # Build output
 dist/
+dist-desktop/
 out-tsc/
+
+# Tauri build artifacts
+src-tauri/target/
+src-tauri/gen/
+src-tauri/Cargo.lock
 
 # Logs
 *.log
