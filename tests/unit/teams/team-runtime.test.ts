@@ -1,6 +1,7 @@
 import { describe, test, expect, beforeEach } from 'bun:test';
 import { TeamRuntime } from '@capability/team/runtime/team-runtime';
 import { TeamRegistry } from '@capability/team/team-registry';
+import { JobBoard } from '@capability/team/job-board';
 import type { TeamBusEvent } from '@capability/team/events';
 import type { MemberSession } from '@capability/team/runtime/member-runner';
 
@@ -259,5 +260,216 @@ describe('TeamRuntime', () => {
     expect(runtime.getEmitter('nonexistent')).toBeUndefined();
 
     await runtime.shutdownTeam(team.teamId);
+  });
+
+  test('health check emits team.deadlock when job board is deadlocked', async () => {
+    const team = createTestTeam();
+    await runtime.startTeam(team.teamId);
+
+    // Inject a deadlocked job board: circular dependency X blocks Y, Y blocks X
+    const deadlockedBoard = JobBoard.fromJSON({
+      teamId: team.teamId,
+      jobs: [
+        {
+          id: 'x',
+          teamId: team.teamId,
+          title: 'X',
+          description: '',
+          status: 'planned',
+          blockedBy: ['y'],
+          blocks: ['y'],
+          priority: 0,
+          createdAt: new Date().toISOString(),
+        },
+        {
+          id: 'y',
+          teamId: team.teamId,
+          title: 'Y',
+          description: '',
+          status: 'planned',
+          blockedBy: ['x'],
+          blocks: ['x'],
+          priority: 0,
+          createdAt: new Date().toISOString(),
+        },
+      ],
+    });
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    (registry as any).jobBoards.set(team.teamId, deadlockedBoard);
+
+    const emitter = runtime.getEmitter(team.teamId)!;
+    const events: TeamBusEvent[] = [];
+    emitter.subscribe(e => events.push(e));
+
+    // Directly invoke the private health check (avoids waiting 5s in tests)
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    (runtime as any).checkTeamHealth(team.teamId);
+
+    const deadlockEvents = events.filter(e => e.type === 'team.deadlock');
+    expect(deadlockEvents.length).toBe(1);
+    expect(deadlockEvents[0]!.data.teamId).toBe(team.teamId);
+    expect(deadlockEvents[0]!.data.message).toContain('blocked');
+
+    await runtime.shutdownTeam(team.teamId);
+  });
+
+  test('health check does not emit when no deadlock exists', async () => {
+    const team = createTestTeam();
+    await runtime.startTeam(team.teamId);
+
+    // Add a normal (non-blocked) job
+    const jobBoard = registry.getJobBoard(team.teamId);
+    jobBoard.planJobs([{ title: 'Normal job', description: 'Do something' }]);
+
+    const emitter = runtime.getEmitter(team.teamId)!;
+    const events: TeamBusEvent[] = [];
+    emitter.subscribe(e => events.push(e));
+
+    // Directly invoke the private health check
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    (runtime as any).checkTeamHealth(team.teamId);
+
+    const deadlockEvents = events.filter(e => e.type === 'team.deadlock');
+    expect(deadlockEvents.length).toBe(0);
+
+    await runtime.shutdownTeam(team.teamId);
+  });
+
+  test('health check skips non-running teams', async () => {
+    const team = createTestTeam();
+    await runtime.startTeam(team.teamId);
+
+    // Inject deadlocked board
+    const deadlockedBoard = JobBoard.fromJSON({
+      teamId: team.teamId,
+      jobs: [
+        {
+          id: 'a',
+          teamId: team.teamId,
+          title: 'A',
+          description: '',
+          status: 'planned',
+          blockedBy: ['b'],
+          blocks: ['b'],
+          priority: 0,
+          createdAt: new Date().toISOString(),
+        },
+        {
+          id: 'b',
+          teamId: team.teamId,
+          title: 'B',
+          description: '',
+          status: 'planned',
+          blockedBy: ['a'],
+          blocks: ['a'],
+          priority: 0,
+          createdAt: new Date().toISOString(),
+        },
+      ],
+    });
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    (registry as any).jobBoards.set(team.teamId, deadlockedBoard);
+
+    // Pause team — health check should be a no-op for non-running teams
+    runtime.pauseTeam(team.teamId);
+
+    const emitter = runtime.getEmitter(team.teamId)!;
+    const events: TeamBusEvent[] = [];
+    emitter.subscribe(e => events.push(e));
+
+    // Directly invoke health check — should skip because team is paused
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    (runtime as any).checkTeamHealth(team.teamId);
+
+    const deadlockEvents = events.filter(e => e.type === 'team.deadlock');
+    expect(deadlockEvents.length).toBe(0);
+
+    runtime.resumeTeam(team.teamId);
+    await runtime.shutdownTeam(team.teamId);
+  });
+
+  test('health timer is cleared on shutdown (no timer leak)', async () => {
+    const team = createTestTeam();
+    await runtime.startTeam(team.teamId);
+
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    expect((runtime as any).healthTimers.has(team.teamId)).toBe(true);
+
+    await runtime.shutdownTeam(team.teamId);
+
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    expect((runtime as any).healthTimers.has(team.teamId)).toBe(false);
+  });
+
+  test('health timer is cleared on killTeam (no timer leak)', async () => {
+    const team = createTestTeam();
+    await runtime.startTeam(team.teamId);
+
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    expect((runtime as any).healthTimers.has(team.teamId)).toBe(true);
+
+    await runtime.killTeam(team.teamId);
+
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    expect((runtime as any).healthTimers.has(team.teamId)).toBe(false);
+  });
+
+  test('pauseTeam clears health timer, resumeTeam restarts it', async () => {
+    const team = createTestTeam();
+    await runtime.startTeam(team.teamId);
+
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const runtimeAny = runtime as any;
+    expect(runtimeAny.healthTimers.has(team.teamId)).toBe(true);
+
+    runtime.pauseTeam(team.teamId);
+    expect(runtimeAny.healthTimers.has(team.teamId)).toBe(false);
+
+    runtime.resumeTeam(team.teamId);
+    expect(runtimeAny.healthTimers.has(team.teamId)).toBe(true);
+
+    await runtime.shutdownTeam(team.teamId);
+  });
+
+  test('shutdownTeam cascades to sub-teams', async () => {
+    const parent = createTestTeam();
+    await runtime.startTeam(parent.teamId);
+
+    const subTeam = registry.createSubTeam(parent.teamId, {
+      name: 'sub',
+      goal: 'sub goal',
+      createdBy: 'test',
+    });
+    await runtime.startTeam(subTeam.teamId);
+
+    expect(registry.getTeam(parent.teamId)?.status).toBe('running');
+    expect(registry.getTeam(subTeam.teamId)?.status).toBe('running');
+
+    // Shutdown parent — should cascade to sub-team first
+    await runtime.shutdownTeam(parent.teamId);
+
+    expect(registry.getTeam(subTeam.teamId)?.status).toBe('completed');
+    expect(registry.getTeam(parent.teamId)?.status).toBe('completed');
+  });
+
+  test('killTeam cascades to sub-teams', async () => {
+    const parent = createTestTeam();
+    await runtime.startTeam(parent.teamId);
+
+    const subTeam = registry.createSubTeam(parent.teamId, {
+      name: 'sub',
+      goal: 'sub goal',
+      createdBy: 'test',
+    });
+    await runtime.startTeam(subTeam.teamId);
+
+    expect(registry.getTeam(parent.teamId)?.status).toBe('running');
+    expect(registry.getTeam(subTeam.teamId)?.status).toBe('running');
+
+    // Kill parent — should cascade to sub-team first
+    await runtime.killTeam(parent.teamId);
+
+    expect(registry.getTeam(subTeam.teamId)?.status).toBe('failed');
+    expect(registry.getTeam(parent.teamId)?.status).toBe('failed');
   });
 });

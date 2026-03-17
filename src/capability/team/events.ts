@@ -39,12 +39,16 @@ export type TeamBudgetEvent =
   | { type: 'team.budget.warning'; data: { teamId: string; usedPercent: number; remaining: number } }
   | { type: 'team.budget.exceeded'; data: { teamId: string; action: 'pause' | 'warn' | 'shutdown' } };
 
+export type TeamHealthEvent =
+  | { type: 'team.deadlock'; data: { teamId: string; message: string } };
+
 export type TeamBusEvent =
   | TeamLifecycleEvent
   | MemberLifecycleEvent
   | JobLifecycleEvent
   | TeamMessageEvent
-  | TeamBudgetEvent;
+  | TeamBudgetEvent
+  | TeamHealthEvent;
 
 // ── TeamEventEmitter ────────────────────────────────────────────────
 

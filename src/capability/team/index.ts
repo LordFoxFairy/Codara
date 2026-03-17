@@ -38,6 +38,7 @@ export type {
   JobLifecycleEvent,
   TeamMessageEvent,
   TeamBudgetEvent,
+  TeamHealthEvent,
 } from './events.js';
 
 // Tools

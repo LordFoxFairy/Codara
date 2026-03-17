@@ -39,6 +39,7 @@ export class TeamRuntime {
   private emitters = new Map<string, TeamEventEmitter>();     // teamId -> emitter
   private budgetTrackers = new Map<string, TeamBudgetTracker>(); // teamId -> tracker
   private messageLogs = new Map<string, MessageLog>();        // teamId -> message log
+  private healthTimers = new Map<string, ReturnType<typeof setInterval>>(); // teamId -> health check timer
 
   constructor(private readonly options: TeamRuntimeOptions) {}
 
@@ -70,6 +71,12 @@ export class TeamRuntime {
     registry.updateTeamStatus(teamId, 'running');
     this.persistTeam(teamId);
     emitter.emit({ type: 'team.running', data: { teamId } });
+
+    // Periodic health check — detects deadlocks in the job board
+    const healthTimer = setInterval(() => {
+      this.checkTeamHealth(teamId);
+    }, 5_000);
+    this.healthTimers.set(teamId, healthTimer);
   }
 
   /** Spawn a new member in a running team. */
@@ -134,6 +141,15 @@ export class TeamRuntime {
     const { registry } = this.options;
     const emitter = this.emitters.get(teamId);
 
+    // Cascade: shut down sub-teams first (depth-first)
+    const subTeams = this.getSubTeams(teamId);
+    for (const subTeamId of subTeams) {
+      const subTeam = registry.getTeam(subTeamId);
+      if (subTeam && subTeam.status !== 'completed' && subTeam.status !== 'failed' && subTeam.status !== 'archived') {
+        await this.shutdownTeam(subTeamId);
+      }
+    }
+
     // Request shutdown for all runners belonging to this team
     for (const [memberId, runner] of this.runners) {
       const member = registry.getMember(memberId);
@@ -187,6 +203,10 @@ export class TeamRuntime {
       // Worktree cleanup may fail — not critical
     }
 
+    const shutdownTimer = this.healthTimers.get(teamId);
+    if (shutdownTimer) clearInterval(shutdownTimer);
+    this.healthTimers.delete(teamId);
+
     this.transports.delete(teamId);
     this.emitters.delete(teamId);
     this.budgetTrackers.delete(teamId);
@@ -195,6 +215,15 @@ export class TeamRuntime {
 
   /** Force-kill a team. */
   async killTeam(teamId: string): Promise<void> {
+    // Cascade: kill sub-teams first
+    const subTeams = this.getSubTeams(teamId);
+    for (const subTeamId of subTeams) {
+      const subTeam = this.options.registry.getTeam(subTeamId);
+      if (subTeam && subTeam.status !== 'completed' && subTeam.status !== 'failed' && subTeam.status !== 'archived') {
+        await this.killTeam(subTeamId);
+      }
+    }
+
     for (const [memberId, runner] of [...this.runners]) {
       const member = this.options.registry.getMember(memberId);
       if (member?.teamId === teamId) {
@@ -205,6 +234,10 @@ export class TeamRuntime {
     this.options.registry.updateTeamStatus(teamId, 'failed');
     this.persistTeam(teamId);
     this.emitters.get(teamId)?.emit({ type: 'team.failed', data: { teamId, error: 'Killed by user' } });
+
+    const killTimer = this.healthTimers.get(teamId);
+    if (killTimer) clearInterval(killTimer);
+    this.healthTimers.delete(teamId);
 
     this.transports.delete(teamId);
     this.emitters.delete(teamId);
@@ -223,6 +256,11 @@ export class TeamRuntime {
     this.options.registry.updateTeamStatus(teamId, 'paused');
     this.persistTeam(teamId);
     this.emitters.get(teamId)?.emit({ type: 'team.paused', data: { teamId, reason: 'User requested' } });
+
+    // Pause health check — no point checking a paused team
+    const pauseTimer = this.healthTimers.get(teamId);
+    if (pauseTimer) clearInterval(pauseTimer);
+    this.healthTimers.delete(teamId);
   }
 
   /** Resume all members of a paused team. */
@@ -236,6 +274,12 @@ export class TeamRuntime {
     this.options.registry.updateTeamStatus(teamId, 'running');
     this.persistTeam(teamId);
     this.emitters.get(teamId)?.emit({ type: 'team.running', data: { teamId } });
+
+    // Restart health check timer
+    const healthTimer = setInterval(() => {
+      this.checkTeamHealth(teamId);
+    }, 5_000);
+    this.healthTimers.set(teamId, healthTimer);
   }
 
   getRunner(memberId: string): MemberRunner | undefined {
@@ -280,6 +324,32 @@ export class TeamRuntime {
   }
 
   // ── Private ──────────────────────────────────────────────────────
+
+  /** Find direct sub-teams of a given team. */
+  private getSubTeams(teamId: string): string[] {
+    return this.options.registry.listTeams()
+      .filter(t => t.parentTeamId === teamId)
+      .map(t => t.teamId);
+  }
+
+  private checkTeamHealth(teamId: string): void {
+    const { registry } = this.options;
+    const team = registry.getTeam(teamId);
+    if (!team || team.status !== 'running') return;
+
+    const jobBoard = registry.getJobBoard(teamId);
+    if (jobBoard.detectDeadlock()) {
+      const emitter = this.emitters.get(teamId);
+      emitter?.emit({
+        type: 'team.deadlock',
+        data: {
+          teamId,
+          message:
+            'All remaining jobs are blocked — no progress path exists. Consider cancelling blocked jobs or adding new unblocked ones.',
+        },
+      });
+    }
+  }
 
   private handleMemberCrash(teamId: string, memberId: string, error: unknown): void {
     const { registry } = this.options;

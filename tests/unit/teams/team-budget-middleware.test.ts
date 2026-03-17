@@ -88,6 +88,104 @@ describe('TeamBudgetMiddleware', () => {
     expect(onAction.mock.calls[0]![0].action).toBe('exceeded');
   });
 
+  test('beforeModel blocks when team budget exceeded', async () => {
+    const tracker = new TeamBudgetTracker({
+      teamMaxTokens: 100,
+      onBudgetExceeded: 'shutdown',
+    });
+    const onAction = mock(() => {});
+
+    const mw = createTeamBudgetMiddleware({
+      tracker,
+      memberId: 'm1',
+      model: 'claude-sonnet-4-6',
+      onBudgetAction: onAction,
+    });
+
+    // Exhaust team budget via afterModel first
+    await mw.afterModel!(makeContext(80, 30));
+
+    // Now beforeModel should detect exceeded and set shared flag
+    const shared: Record<string, unknown> = {};
+    const beforeCtx = {
+      state: {messages: []},
+      messages: [],
+      runtime: {context: {}, shared},
+      systemMessage: [],
+      execution: {} as never,
+    } as never;
+
+    mw.beforeModel!(beforeCtx);
+
+    // Verify shared flag was set
+    expect(shared['__teamBudgetExceeded']).toBe('team');
+    // onBudgetAction should have been called (once from afterModel exceeded, once from beforeModel)
+    expect(onAction.mock.calls.some((c: unknown[]) => (c[0] as {action: string}).action === 'exceeded')).toBe(true);
+
+    // wrapModelCall should short-circuit without calling handler
+    const handler = mock(async () => new AIMessage('should not be called'));
+    const wrapCtx = {
+      state: {messages: []},
+      messages: [],
+      runtime: {context: {}, shared},
+      systemMessage: [],
+      execution: {} as never,
+    } as never;
+
+    const result = await mw.wrapModelCall!(wrapCtx, handler);
+    expect(handler).not.toHaveBeenCalled();
+    expect(typeof result.content === 'string' && result.content).toContain('Team budget exceeded');
+  });
+
+  test('beforeModel blocks when member budget exceeded', async () => {
+    const tracker = new TeamBudgetTracker({
+      memberMaxTokens: 100,
+      onBudgetExceeded: 'warn_leader',
+    });
+    const onAction = mock(() => {});
+    const onMemberExceeded = mock(() => {});
+
+    const mw = createTeamBudgetMiddleware({
+      tracker,
+      memberId: 'm1',
+      model: 'claude-sonnet-4-6',
+      onBudgetAction: onAction,
+      onMemberBudgetExceeded: onMemberExceeded,
+    });
+
+    // Exhaust member budget
+    await mw.afterModel!(makeContext(60, 50));
+
+    // beforeModel should detect member budget exceeded
+    const shared: Record<string, unknown> = {};
+    const beforeCtx = {
+      state: {messages: []},
+      messages: [],
+      runtime: {context: {}, shared},
+      systemMessage: [],
+      execution: {} as never,
+    } as never;
+
+    mw.beforeModel!(beforeCtx);
+
+    expect(shared['__teamBudgetExceeded']).toBe('member');
+    expect(onMemberExceeded).toHaveBeenCalledWith('m1');
+
+    // wrapModelCall should short-circuit
+    const handler = mock(async () => new AIMessage('should not be called'));
+    const wrapCtx = {
+      state: {messages: []},
+      messages: [],
+      runtime: {context: {}, shared},
+      systemMessage: [],
+      execution: {} as never,
+    } as never;
+
+    const result = await mw.wrapModelCall!(wrapCtx, handler);
+    expect(handler).not.toHaveBeenCalled();
+    expect(typeof result.content === 'string' && result.content).toContain('Member budget exceeded');
+  });
+
   test('skips when no usage metadata', async () => {
     const tracker = new TeamBudgetTracker();
     const mw = createTeamBudgetMiddleware({
