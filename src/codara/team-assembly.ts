@@ -116,7 +116,6 @@ export async function assembleTeamSystem(input: TeamSystemAssemblyInput): Promis
   teamRuntime = new TeamRuntime({
     registry: teamRegistry,
     projectRoot,
-    teamsDir: path.join(codaraPath, 'teams'),
     createSession: teamSessionFactory,
     persistence: teamPersistence,
   });
