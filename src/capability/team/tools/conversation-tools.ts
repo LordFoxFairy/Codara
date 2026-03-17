@@ -28,6 +28,9 @@ export function createConversationTeamTools(deps: {
     sendMessageTool(deps),
     listTeamsTool(deps),
     teamStatusTool(deps),
+    planJobsTool(deps),
+    assignJobTool(deps),
+    reviewJobTool(deps),
     shutdownTeamTool(deps),
   ];
 }
@@ -198,6 +201,163 @@ function teamStatusTool(deps: {
       description: 'Get detailed status of a team including members and jobs',
       schema: z.object({
         teamId: z.string().describe('The team ID or name'),
+      }),
+    },
+  );
+}
+
+function planJobsTool(deps: {
+  registry: TeamRegistry;
+}): StructuredToolInterface {
+  return tool(
+    async (input) => {
+      try {
+        const team = deps.registry.getTeam(input.teamId) ?? deps.registry.getTeamByName(input.teamId);
+        if (!team) return JSON.stringify({error: `Team "${input.teamId}" not found`});
+        const board = deps.registry.getJobBoard(team.teamId);
+        const created = board.planJobs(input.jobs);
+        return JSON.stringify({
+          planned: created.length,
+          jobs: created.map((j) => ({id: j.id, title: j.title, status: j.status})),
+        });
+      } catch (e) {
+        return JSON.stringify({error: e instanceof Error ? e.message : String(e)});
+      }
+    },
+    {
+      name: 'plan_jobs',
+      description:
+        'Plan work items on the team job board. Each job can have dependencies (blockedBy) to create execution order. Workers claim and work on jobs independently.',
+      schema: z.object({
+        teamId: z.string().describe('The team ID or name'),
+        jobs: z.array(z.object({
+          title: z.string().describe('Short title for the job'),
+          description: z.string().describe('Detailed description of what needs to be done'),
+          priority: z.number().default(0).describe('Higher = more important'),
+          blockedBy: z.array(z.string()).optional().describe('Job IDs that must complete before this one'),
+        })).describe('Jobs to plan'),
+      }),
+    },
+  );
+}
+
+function assignJobTool(deps: {
+  registry: TeamRegistry;
+  runtime: TeamRuntime;
+}): StructuredToolInterface {
+  return tool(
+    async (input) => {
+      try {
+        const team = deps.registry.getTeam(input.teamId) ?? deps.registry.getTeamByName(input.teamId);
+        if (!team) return JSON.stringify({error: `Team "${input.teamId}" not found`});
+        const board = deps.registry.getJobBoard(team.teamId);
+        const claimed = board.claimJob(input.jobId, input.memberId);
+        if (!claimed) {
+          return JSON.stringify({error: `Cannot assign job ${input.jobId} — not ready or member already busy`});
+        }
+        deps.registry.updateMember(team.teamId, input.memberId, {
+          currentJobId: input.jobId,
+          status: 'working',
+        });
+        // Notify the member via transport
+        const transport = deps.runtime.getTransport(team.teamId);
+        if (transport) {
+          await transport.send(input.memberId, {
+            id: `msg_${crypto.randomUUID().slice(0, 8)}`,
+            from: 'leader',
+            to: input.memberId,
+            teamId: team.teamId,
+            type: 'job_assigned',
+            content: `You have been assigned job: ${input.jobId}`,
+            metadata: {jobId: input.jobId},
+            timestamp: new Date().toISOString(),
+            read: false,
+          });
+        }
+        return JSON.stringify({assigned: true, jobId: input.jobId, memberId: input.memberId});
+      } catch (e) {
+        return JSON.stringify({error: e instanceof Error ? e.message : String(e)});
+      }
+    },
+    {
+      name: 'assign_job',
+      description:
+        'Assign a ready job to a specific team member. The member will be notified and start working on it.',
+      schema: z.object({
+        teamId: z.string().describe('The team ID or name'),
+        jobId: z.string().describe('The job ID to assign'),
+        memberId: z.string().describe('The member ID to assign the job to'),
+      }),
+    },
+  );
+}
+
+function reviewJobTool(deps: {
+  registry: TeamRegistry;
+  runtime: TeamRuntime;
+}): StructuredToolInterface {
+  return tool(
+    async (input) => {
+      try {
+        const team = deps.registry.getTeam(input.teamId) ?? deps.registry.getTeamByName(input.teamId);
+        if (!team) return JSON.stringify({error: `Team "${input.teamId}" not found`});
+        const board = deps.registry.getJobBoard(team.teamId);
+        const job = board.getJob(input.jobId);
+        if (!job) return JSON.stringify({error: `Job ${input.jobId} not found`});
+
+        if (input.approved) {
+          board.completeJob(input.jobId, 'leader');
+          // Notify assignee
+          if (job.assignee) {
+            const transport = deps.runtime.getTransport(team.teamId);
+            if (transport) {
+              await transport.send(job.assignee, {
+                id: `msg_${crypto.randomUUID().slice(0, 8)}`,
+                from: 'leader',
+                to: job.assignee,
+                teamId: team.teamId,
+                type: 'job_reviewed',
+                content: input.feedback ?? 'Job approved.',
+                metadata: {jobId: input.jobId, approved: true},
+                timestamp: new Date().toISOString(),
+                read: false,
+              });
+            }
+          }
+          return JSON.stringify({reviewed: true, approved: true, jobId: input.jobId});
+        } else {
+          board.rejectJob(input.jobId, input.feedback ?? 'Rejected');
+          if (job.assignee) {
+            const transport = deps.runtime.getTransport(team.teamId);
+            if (transport) {
+              await transport.send(job.assignee, {
+                id: `msg_${crypto.randomUUID().slice(0, 8)}`,
+                from: 'leader',
+                to: job.assignee,
+                teamId: team.teamId,
+                type: 'job_reviewed',
+                content: input.feedback ?? 'Job rejected — rework needed.',
+                metadata: {jobId: input.jobId, approved: false},
+                timestamp: new Date().toISOString(),
+                read: false,
+              });
+            }
+          }
+          return JSON.stringify({reviewed: true, approved: false, jobId: input.jobId});
+        }
+      } catch (e) {
+        return JSON.stringify({error: e instanceof Error ? e.message : String(e)});
+      }
+    },
+    {
+      name: 'review_job',
+      description:
+        'Review a submitted job — approve to complete it, or reject to send it back for rework.',
+      schema: z.object({
+        teamId: z.string().describe('The team ID or name'),
+        jobId: z.string().describe('The job ID to review'),
+        approved: z.boolean().describe('Whether to approve or reject the job'),
+        feedback: z.string().optional().describe('Feedback for the worker'),
       }),
     },
   );
