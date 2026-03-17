@@ -1,32 +1,58 @@
 /**
  * Team API routes for the Desktop client.
  *
- * Thin HTTP layer over TeamRegistry / TeamRuntime / RemotePool.
+ * Thin HTTP layer — accepts query/action interfaces instead of
+ * importing capability internals directly.
  * Returns `null` for unmatched routes so the main router can fall through.
  */
 
 import {jsonResponse, errorResponse, formatSSE, corsHeaders} from './sse';
 import type {SSEEvent} from './sse';
-import type {TeamRegistry} from '@capability/team/team-registry';
-import type {TeamRuntime} from '@capability/team/runtime/team-runtime';
-import type {RemotePool, RemoteAgentConfig} from '@capability/team/remote-pool';
-import type {TeamStatus} from '@capability/team/types';
+
+// ── Local structural interfaces ──────────────────────────────────────
+// Declared here so the server layer never imports from @capability/.
+// These are structural types — any object with matching shape satisfies them.
+
+/** Subset of TeamRegistry used by the HTTP API. */
+interface TeamRegistryLike {
+  listTeams(filter?: {status?: string}): Array<{teamId: string; name: string; status: string; goal: string; [k: string]: unknown}>;
+  getTeam(teamId: string): {teamId: string; name: string; status: string; goal: string; [k: string]: unknown} | undefined;
+  createTeam(opts: {name: string; goal: string; config?: Record<string, unknown>}): unknown;
+  getJobBoard(teamId: string): {getAllJobs(): unknown[]; getProgress(): {done: number; total: number}};
+  getMembersByTeam(teamId: string): Array<{memberId: string; name: string; role: string; status: string; [k: string]: unknown}>;
+}
+
+/** Subset of TeamRuntime used by the HTTP API. */
+interface TeamRuntimeLike {
+  getTransport(teamId: string): {send(channel: string, msg: unknown): Promise<void>} | undefined;
+  getEmitter(teamId: string): {subscribe(fn: (event: {type: string; data: {teamId?: string}}) => void): () => void} | undefined;
+  pauseTeam(teamId: string): void;
+  resumeTeam(teamId: string): void;
+  killTeam(teamId: string): Promise<void>;
+}
+
+/** Subset of RemotePool used by the HTTP API. */
+interface RemotePoolLike {
+  listRemotes(): unknown[];
+  addRemote(config: {name: string; url: string; capabilities?: string[]}): Promise<void>;
+  removeRemote(name: string): Promise<void>;
+}
 
 // ── Dependency injection ─────────────────────────────────────────────
 
 export interface TeamsApiDependencies {
   /** Resolve team registry instance (lazy — may not be available yet). */
-  getTeamRegistry?: () => TeamRegistry;
+  getTeamRegistry?: () => TeamRegistryLike;
   /** Resolve team runtime instance. */
-  getTeamRuntime?: () => TeamRuntime;
+  getTeamRuntime?: () => TeamRuntimeLike;
   /** Resolve remote agent pool instance. */
-  getRemotePool?: () => RemotePool;
+  getRemotePool?: () => RemotePoolLike;
 }
 
 // ── Helpers ──────────────────────────────────────────────────────────
 
 /** Guard: return 503 if registry is not available. */
-function requireRegistry(deps: TeamsApiDependencies): TeamRegistry | Response {
+function requireRegistry(deps: TeamsApiDependencies): TeamRegistryLike | Response {
   const registry = deps.getTeamRegistry?.();
   if (!registry) {
     return errorResponse('Team system not initialized', 503);
@@ -58,8 +84,7 @@ export function createTeamsApiHandler(deps: TeamsApiDependencies = {}) {
       if (isResponse(registry)) return registry;
 
       const statusParam = url.searchParams.get('status') ?? undefined;
-      const status = statusParam as TeamStatus | undefined;
-      const teams = registry.listTeams(status ? {status} : undefined);
+      const teams = registry.listTeams(statusParam ? {status: statusParam} : undefined);
       return jsonResponse({teams});
     }
 
@@ -261,7 +286,7 @@ export function createTeamsApiHandler(deps: TeamsApiDependencies = {}) {
         return errorResponse('Missing required fields: name, url');
       }
 
-      const remoteConfig: RemoteAgentConfig = {
+      const remoteConfig = {
         name: body.name,
         url: body.url,
         ...(body.capabilities ? {capabilities: body.capabilities} : {}),
