@@ -109,7 +109,7 @@ export function CodaraCliApp(props: CodaraCliAppProps): React.JSX.Element {
     for (const team of activeTeams.activeTeams) {
       const detail = codara.getTeamDetail(team.name);
       if (detail && detail.members.length > 0) {
-        map.set(team.teamId, detail.members.map(m => ({name: m.name, role: m.role, status: m.status})));
+        map.set(team.teamId, detail.members.map(m => ({name: m.name, role: m.role, status: m.status, currentJobId: m.currentJobId})));
       }
     }
     return map.size > 0 ? map : undefined;

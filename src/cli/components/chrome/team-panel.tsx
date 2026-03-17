@@ -17,6 +17,7 @@ export interface TeamMemberInfo {
   name: string;
   role: string;
   status: string;
+  currentJobId?: string;
 }
 
 interface TeamPanelProps {
@@ -96,6 +97,13 @@ function memberRoleIcon(role: string): string {
   return role === 'leader' ? '♚' : '♟';
 }
 
+/** Derive display status: leader with active job → coordinating. */
+function deriveDisplayStatus(member: TeamMemberInfo): string {
+  if (member.role === 'leader' && member.currentJobId) return 'coordinating';
+  if (member.currentJobId) return 'working';
+  return member.status;
+}
+
 /** Color for member activity status. */
 function memberStatusColor(status: string): string {
   switch (status) {
@@ -109,21 +117,23 @@ function memberStatusColor(status: string): string {
 
 function MemberPair({members}: {members: TeamMemberInfo[]}): React.JSX.Element {
   const [left, right] = members;
+  const leftStatus = left ? deriveDisplayStatus(left) : '';
+  const rightStatus = right ? deriveDisplayStatus(right) : '';
   return (
     <Box gap={2}>
       <Text>{'  '}</Text>
       {left && (
         <Box gap={1}>
-          <Text color={memberStatusColor(left.status)}>{memberRoleIcon(left.role)}</Text>
+          <Text color={memberStatusColor(leftStatus)}>{memberRoleIcon(left.role)}</Text>
           <Text dimColor>{left.name.slice(0, 12).padEnd(12)}</Text>
-          <Text color={memberStatusColor(left.status)}>{left.status.slice(0, 12).padEnd(12)}</Text>
+          <Text color={memberStatusColor(leftStatus)}>{leftStatus.slice(0, 12).padEnd(12)}</Text>
         </Box>
       )}
       {right && (
         <Box gap={1}>
-          <Text color={memberStatusColor(right.status)}>{memberRoleIcon(right.role)}</Text>
+          <Text color={memberStatusColor(rightStatus)}>{memberRoleIcon(right.role)}</Text>
           <Text dimColor>{right.name.slice(0, 12).padEnd(12)}</Text>
-          <Text color={memberStatusColor(right.status)}>{right.status.slice(0, 12)}</Text>
+          <Text color={memberStatusColor(rightStatus)}>{rightStatus.slice(0, 12)}</Text>
         </Box>
       )}
     </Box>

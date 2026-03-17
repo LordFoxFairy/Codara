@@ -531,12 +531,20 @@ export function useCliController(options: UseCliControllerOptions): CliControlle
         void runSlashCommand(`/team message ${teamName} ${message}`);
         return;
       }
+      // Team not found — show error with available team names
+      const available = teams.map(t => t.name);
+      if (available.length > 0) {
+        appendNotice('error', `Team "${teamName}" not found. Available: ${available.join(', ')}`);
+      } else {
+        appendNotice('error', `Team "${teamName}" not found. No active teams.`);
+      }
+      return;
     }
 
     setComposer(createComposerState());
     setComposerActivityVersion((current) => current + 1);
     void submitPrompt(prompt);
-  }, [codara, composer.text, runSlashCommand, submitPrompt]);
+  }, [appendNotice, codara, composer.text, runSlashCommand, submitPrompt]);
 
   const submitText = useCallback((text: string) => {
     const prompt = text.trim();

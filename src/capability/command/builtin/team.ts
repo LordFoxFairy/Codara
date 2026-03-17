@@ -178,7 +178,7 @@ export const teamCommand: CodaraCommandDefinition = {
         }
       }
       default:
-        return err(command.name, [
+        return ok(command.name, [
           'Agent Teams — multi-agent collaboration.',
           '',
           'Usage:',
