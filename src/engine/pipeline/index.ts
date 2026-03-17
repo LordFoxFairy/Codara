@@ -125,11 +125,3 @@ export {
   type TodoListMiddlewareOptions,
   type TodoMiddlewareState,
 } from '@engine/pipeline/todo';
-// TeamContextMiddleware moved to @capability/team/middleware/team-context
-// Re-export for backward compatibility during transition
-export {
-  createTeamContextMiddleware,
-  readTeamContext,
-  TEAM_CONTEXT_MIDDLEWARE_NAME,
-  type TeamRuntimeContext,
-} from '@capability/team/middleware/team-context';
