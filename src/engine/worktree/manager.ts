@@ -5,16 +5,28 @@
  * 通过 `git worktree add` / `git worktree remove` 管理生命周期。
  */
 
-import {execSync} from 'node:child_process';
+import {spawnSync} from 'node:child_process';
+
+const SAFE_NAME_RE = /^[a-zA-Z0-9._\-\/]+$/;
+
+function assertSafeName(value: string, label: string): void {
+  if (!SAFE_NAME_RE.test(value)) {
+    throw new Error(`Invalid ${label}: contains disallowed characters`);
+  }
+}
+
+function git(args: string[], cwd: string, timeoutMs = 30_000): string {
+  const result = spawnSync('git', args, {cwd, stdio: 'pipe', timeout: timeoutMs, encoding: 'utf-8'});
+  if (result.status !== 0) {
+    throw new Error(result.stderr?.trim() || `git ${args[0]} failed with exit code ${result.status}`);
+  }
+  return result.stdout ?? '';
+}
 
 /** 检测指定目录是否为 Git 仓库（或 worktree）。 */
 export function isGitRepo(cwd: string): boolean {
   try {
-    execSync('git rev-parse --is-inside-work-tree', {
-      cwd,
-      stdio: 'pipe',
-      timeout: 5_000,
-    });
+    git(['rev-parse', '--is-inside-work-tree'], cwd, 5_000);
     return true;
   } catch {
     return false;
@@ -45,15 +57,15 @@ export interface CreateWorktreeResult {
  */
 export function createWorktree(options: CreateWorktreeOptions): CreateWorktreeResult {
   const {repoRoot, sessionId, baseBranch} = options;
+
+  assertSafeName(sessionId, 'sessionId');
+  if (baseBranch) assertSafeName(baseBranch, 'baseBranch');
+
   const branch = `codara/worktree-${sessionId}`;
   const worktreePath = `${repoRoot}/.codara/worktrees/${sessionId}`;
   const base = baseBranch ?? 'HEAD';
 
-  execSync(`git worktree add -b "${branch}" "${worktreePath}" "${base}"`, {
-    cwd: repoRoot,
-    stdio: 'pipe',
-    timeout: 30_000,
-  });
+  git(['worktree', 'add', '-b', branch, worktreePath, base], repoRoot);
 
   return {worktreePath, branch};
 }
@@ -73,19 +85,12 @@ export interface RemoveWorktreeOptions {
 export function removeWorktree(options: RemoveWorktreeOptions): void {
   const {repoRoot, worktreePath, branch} = options;
 
-  execSync(`git worktree remove "${worktreePath}" --force`, {
-    cwd: repoRoot,
-    stdio: 'pipe',
-    timeout: 30_000,
-  });
+  git(['worktree', 'remove', worktreePath, '--force'], repoRoot);
 
   if (branch) {
+    assertSafeName(branch, 'branch');
     try {
-      execSync(`git branch -D "${branch}"`, {
-        cwd: repoRoot,
-        stdio: 'pipe',
-        timeout: 10_000,
-      });
+      git(['branch', '-D', branch], repoRoot, 10_000);
     } catch {
       // 分支可能已不存在，忽略
     }
@@ -97,12 +102,7 @@ export function removeWorktree(options: RemoveWorktreeOptions): void {
  */
 export function hasWorktreeChanges(worktreePath: string): boolean {
   try {
-    const output = execSync('git status --porcelain', {
-      cwd: worktreePath,
-      stdio: 'pipe',
-      timeout: 10_000,
-      encoding: 'utf-8',
-    });
+    const output = git(['status', '--porcelain'], worktreePath, 10_000);
     return output.trim().length > 0;
   } catch {
     return false;

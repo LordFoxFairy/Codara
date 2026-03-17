@@ -56,11 +56,20 @@ function parseFrontmatter(raw: string): {globs: string[]; content: string} {
   return {globs, content};
 }
 
-function minimatchLite(path: string, pattern: string): boolean {
+function minimatchLite(filePath: string, pattern: string): boolean {
+  // Reject overly complex patterns to avoid ReDoS
+  if (pattern.length > 200) return false;
+
   const regex = pattern
-    .replace(/\./g, '\\.')
+    .replace(/[.+^${}()|[\]\\]/g, '\\$&')  // escape regex meta chars (except * and ?)
+    .replace(/\\\.\\\.\\/g, '\\.\\.\\/')    // un-escape literal ../
     .replace(/\*\*/g, '<<DOUBLESTAR>>')
     .replace(/\*/g, '[^/]*')
-    .replace(/<<DOUBLESTAR>>/g, '.*');
-  return new RegExp(`^${regex}$`).test(path);
+    .replace(/\?/g, '[^/]')
+    .replace(/<<DOUBLESTAR>>/g, '(?:[^/]+/)*[^/]*');  // non-backtracking doublestar
+  try {
+    return new RegExp(`^${regex}$`).test(filePath);
+  } catch {
+    return false;
+  }
 }

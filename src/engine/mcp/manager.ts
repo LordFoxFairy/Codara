@@ -1,6 +1,6 @@
 import {McpClient} from './client';
 import type {McpClientInfo, McpConfig, McpManager, McpServerConfig, McpToolDefinition} from './types';
-import {namespacedToolName, parseNamespacedToolName} from './types';
+import {namespacedToolName, parseNamespacedToolName, sanitizeToolName} from './types';
 
 /**
  * Create an MCP manager that handles multiple server connections.
@@ -10,12 +10,16 @@ import {namespacedToolName, parseNamespacedToolName} from './types';
  * - Failure isolation: one server failing doesn't block others
  * - Tool namespacing: `mcp_{server}__{tool}` prevents name collisions
  * - Graceful cleanup: dispose() closes all connections + kills child processes
+ *
+ * Clients are keyed by sanitized server name so that `routeMcpToolCall`
+ * (which parses sanitized names from namespaced tool names) can look them up directly.
  */
 export function createMcpManager(config: McpConfig): McpManager {
   const clients = new Map<string, McpClient>();
 
   for (const [name, serverConfig] of Object.entries(config.mcpServers)) {
-    clients.set(name, new McpClient(name, serverConfig as McpServerConfig));
+    const sanitizedKey = sanitizeToolName(name);
+    clients.set(sanitizedKey, new McpClient(name, serverConfig as McpServerConfig));
   }
 
   return {
@@ -30,12 +34,13 @@ export function createMcpManager(config: McpConfig): McpManager {
 
     getTools(): McpToolDefinition[] {
       const tools: McpToolDefinition[] = [];
-      for (const [serverName, client] of clients) {
+      for (const [_key, client] of clients) {
         if (client.status !== 'connected') continue;
+        const displayName = client.name;
         for (const tool of client.tools) {
           tools.push({
-            name: namespacedToolName(serverName, tool.name),
-            description: tool.description ? `[${serverName}] ${tool.description}` : `[${serverName}] ${tool.name}`,
+            name: namespacedToolName(displayName, tool.name),
+            description: tool.description ? `[${displayName}] ${tool.description}` : `[${displayName}] ${tool.name}`,
             inputSchema: tool.inputSchema,
           });
         }
