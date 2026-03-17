@@ -1,30 +1,40 @@
 import {existsSync} from 'node:fs';
 import path from 'node:path';
-import type {BaseChatModel} from '@langchain/core/language_models/chat_models';
 import type {StructuredToolInterface} from '@langchain/core/tools';
 import {createAgentFileCheckpointer} from '@engine/checkpoint';
 import {ensurePermissionSettingsFile} from '@engine/pipeline/permission';
-import {createTaskFileStore} from '@capability/task';
-import {ChatModelFactory, loadModelRoutingConfig, loadModelRoutingConfigFromPath, ModelRegistry, resolveCodaraPath, type ModelInfo, type ModelRoutingConfig} from '@infra/provider';
+import {createTaskFileStore} from '@capability/task/shared/store';
+import {loadModelRoutingConfigFromPath, resolveCodaraPath, type ModelRoutingConfig} from '@infra/provider';
 import {createCodaraGuidelinesSource, type GuidelinesSource} from '@infra/context/instructions/guidelines';
-import {createCodaraPromptSource, type PromptSource} from '@infra/context/instructions/prompt';
-import {createAutoMemoryRuntime, type AutoMemoryRuntime} from '@infra/context/memory/auto-memory';
+import {createCodaraPromptSource, type PromptSource} from '@infra/context/prompts/prompt-source';
 import {createCodaraSkillsSource} from '@capability/skill';
-import {createSkillCodaraCommands} from '@capability/command/skills';
+import {createSkillCodaraCommands} from '@capability/command/runtime/skill-commands';
 import {createCodaraCommandRunner, type CodaraCommandResult} from '@capability/command';
 import {
   createSession, FileSessionStore,
-  type CodaraRuntimeEvent, type CodaraRuntimeEventListener,
   type SessionState, type SessionStore,
 } from '@engine/session';
+import type {CodaraRuntimeEvent, CodaraRuntimeEventListener} from '@engine/events';
 import {resolveWorkspaceRoot} from '@infra/config/workspace';
 import {HookRegistryImpl, HookPipeline, createHookExecutor} from '@engine/hook';
 import type {HookSource, HookRegistry, SessionLifecycleHooks, AgentLifecycleHooks} from '@engine/hook';
 import {loadMcpConfig, createMcpManager, createMcpLangChainTools, type McpManager} from '@engine/mcp';
-import type {TeamRegistry} from '@capability/team/team-registry';
+import type {TeamRegistry} from '@capability/team/coordination/team-registry';
 import type {TeamRuntime} from '@capability/team/runtime/team-runtime';
-import {createCodaraMiddlewares, createRuntimeDefaultMiddlewares, createCodaraTools, resolveCodaraSkills, resolveRuntimeLoggingOptions} from './middleware-chain';
-import {assembleTeamSystem, getTeamSummaries, getTeamDetail} from './team-assembly';
+import {
+  createCodaraMiddlewares,
+  createRuntimeDefaultMiddlewares,
+  resolveRuntimeLoggingOptions,
+} from './assembly/middleware';
+import {assembleTeamSystem, getTeamSummaries, getTeamDetail} from './assembly/collaboration';
+import {
+  CodaraModelCatalog,
+  createCodaraChatModel,
+  createCodaraModelCatalog,
+  DEFAULT_CODARA_MODEL_ALIAS,
+} from './assembly/runtime';
+import {createCodaraTools, type CodaraToolsOptions} from './assembly/tools';
+import {resolveCodaraAutoMemory, resolveCodaraSkills} from './assembly/context';
 import type {
   Codara, CodaraOptions, CodaraRuntimeOptions,
   CreateCodaraModelCatalogOptions, CreateCodaraChatModelOptions,
@@ -38,52 +48,14 @@ export type {
   TeamQuerySummary, TeamQueryMember, TeamQueryJob, TeamQueryDetail,
 } from './types';
 
-// Re-export from middleware-chain (tests import from @codara/facade)
-export {createCodaraMiddlewares, createCodaraTools, type CodaraToolsOptions} from './middleware-chain';
-
-export const DEFAULT_CODARA_MODEL_ALIAS = 'default';
-
-// ── Model Catalog ──
-
-export class CodaraModelCatalog {
-  constructor(
-    private readonly registry: ModelRegistry,
-    private readonly factory: ChatModelFactory,
-  ) {}
-
-  create(alias = DEFAULT_CODARA_MODEL_ALIAS): Promise<BaseChatModel> {
-    return this.factory.create(normalizeAlias(alias));
-  }
-
-  getInfo(alias = DEFAULT_CODARA_MODEL_ALIAS): ModelInfo {
-    return this.registry.getByAlias(normalizeAlias(alias));
-  }
-
-  hasAlias(alias: string): boolean {
-    return this.registry.hasAlias(normalizeAlias(alias));
-  }
-
-  getAliases(): string[] {
-    return this.registry.getAliases();
-  }
-}
-
-// ── Model Factory Functions ──
-
-export async function createCodaraModelCatalog(
-  options: CreateCodaraModelCatalogOptions = {},
-): Promise<CodaraModelCatalog> {
-  const config = options.config ?? (await loadModelRoutingConfig());
-  const registry = new ModelRegistry(config);
-  return new CodaraModelCatalog(registry, new ChatModelFactory(registry));
-}
-
-export async function createCodaraChatModel(
-  options: CreateCodaraChatModelOptions = {},
-): Promise<BaseChatModel> {
-  const catalog = await (options.catalog ?? createCodaraModelCatalog(options));
-  return catalog.create(options.alias);
-}
+export {createCodaraMiddlewares} from './assembly/middleware';
+export {createCodaraTools, type CodaraToolsOptions} from './assembly/tools';
+export {
+  CodaraModelCatalog,
+  createCodaraChatModel,
+  createCodaraModelCatalog,
+  DEFAULT_CODARA_MODEL_ALIAS,
+} from './assembly/runtime';
 
 // ── Public Entry Points ──
 
@@ -295,17 +267,6 @@ export function assembleCodara(
     getTeamDetail: (teamId: string) => getTeamDetail(preloadedSources?.teamRegistry, teamId),
     dispose,
   };
-}
-
-// ── Private Helpers ──
-
-function resolveCodaraAutoMemory(options: CodaraOptions): AutoMemoryRuntime | undefined {
-  if (options.autoMemory === false) return undefined;
-  const memOpts = typeof options.autoMemory === 'object' && options.autoMemory !== null ? options.autoMemory : {};
-  return createAutoMemoryRuntime({
-    cwd: memOpts.cwd ?? options.cwd, projectRoot: memOpts.projectRoot ?? options.projectRoot,
-    userHome: memOpts.userHome ?? options.userHome, autoGlobal: memOpts.autoGlobal, rootDir: memOpts.rootDir,
-  });
 }
 
 async function reopenCodaraSession(options: CodaraOptions, state: SessionState): Promise<Codara> {

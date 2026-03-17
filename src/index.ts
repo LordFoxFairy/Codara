@@ -38,10 +38,26 @@ export {
 export {
   TASK_TOOL_DESCRIPTION,
   TASK_TOOL_NAME,
+  TASK_CREATE_TOOL_NAME,
+  TASK_LIST_TOOL_NAME,
+  TASK_UPDATE_TOOL_NAME,
   createSharedTaskMiddleware,
+  createTaskCreateTool,
+  createTaskFileStore,
+  createTaskListTool,
+  createTaskMemoryStore,
   createTaskMiddleware,
+  createTaskTools,
+  createTaskUpdateTool,
   type CreateSharedTaskMiddlewareOptions,
+  type CreateTaskInput,
   type CreateTaskMiddlewareOptions,
+  type TaskFileStoreOptions,
+  type TaskRecord,
+  type TaskStatus,
+  type TaskStore,
+  type TaskToolOptions,
+  type UpdateTaskInput,
 } from '@capability/task';
 export {
   createDailySessionFileLogSink,
@@ -100,12 +116,25 @@ export {
   createCodaraPromptSource,
   type PromptOptions,
   type PromptSource,
-} from '@infra/context/instructions/prompt';
+} from '@infra/context/prompts/prompt-source';
 export {
   readBaseSystemMessage,
   type BaseSystemMessageBundle,
   type BaseSystemMessageRuntimeData,
-} from '@infra/context/system-message';
+} from '@infra/context/session-bundle/base-system-message';
+export {
+  type SkillMetadata,
+  type SkillStore,
+  type SkillsSource,
+  type SubagentDefinitionHints,
+  type SkillsRuntimeData,
+  type SubagentDefinition,
+} from '@infra/context/skills/contracts';
+export {
+  DEFAULT_SUBAGENT_TYPE,
+  readSkillsRuntimeData,
+  resolveSubagentDefinition,
+} from '@infra/context/skills/runtime-shared';
 export {
   createBuiltinTools,
   createFetchTool,
@@ -119,21 +148,19 @@ export {
   FileSystemSkillStore,
   getDefaultSkillSources,
   loadSkillsRuntimeData,
-  type SkillMetadata,
-  type SkillStore,
-  type SkillsSource,
-  type SkillsRuntimeData,
 } from '@capability/skill';
 export {
   createSession,
   FileSessionStore,
-  type CodaraRuntimeEvent,
-  type CodaraRuntimeEventListener,
   type Session,
   type SessionStore,
   type SessionState,
   type SessionStatus,
 } from '@engine/session';
+export {
+  type CodaraRuntimeEvent,
+  type CodaraRuntimeEventListener,
+} from '@engine/events';
 export {
   ChatModelFactory,
   loadModelRoutingConfig,
@@ -158,7 +185,7 @@ export {
   HOOK_EVENT_TYPES,
   HookRegistryImpl,
   HookPipeline,
-  createToolHooksMiddleware,
+  createToolHooksBridge,
   createHookExecutor,
 } from '@engine/hook';
 export {

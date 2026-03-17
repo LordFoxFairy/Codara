@@ -9,7 +9,7 @@ import type {SkillStore} from '@capability/skill';
 import type {CodaraCommandResult, CodaraCommandSpec} from '@capability/command';
 import type {Session, SessionState, SessionStore} from '@engine/session';
 import type {McpClientInfo, McpConfig} from '@engine/mcp';
-import type {CodaraModelCatalog} from './facade';
+import type {CodaraModelCatalog} from './assembly/runtime';
 
 // ── Skill & Memory Options ──
 
