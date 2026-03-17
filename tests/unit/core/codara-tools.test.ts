@@ -15,7 +15,6 @@ describe('Codara tools', () => {
       'grep',
       'fetch_url',
       'web_search',
-      'get_diagnostics',
       'notebook_read',
     ]);
   });
