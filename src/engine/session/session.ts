@@ -36,8 +36,8 @@ import {
 } from '@engine/pipeline/summary';
 import type {SessionLifecycleHooks} from '@engine/hook/types';
 import type {GuidelinesSource} from '@infra/context/instructions/guidelines';
-import {type PromptSource} from '@infra/context/instructions/prompt';
-import type {SkillsSource} from '@infra/context/skill-contracts';
+import {type PromptSource} from '@infra/context/prompts/prompt-source';
+import type {SkillsSource} from '@infra/context/skills/contracts';
 import {
   type AutoMemoryRuntime,
   shouldRecordAutoMemoryTurn,
@@ -46,21 +46,21 @@ import {
   applyPreparedInstructionContext,
   buildBaseSystemMessage,
   type BaseSystemMessageBundle,
-} from '@infra/context/system-message';
+} from '@infra/context/session-bundle/base-system-message';
 import type {ModelInfo} from '@infra/provider';
 import {
   createSessionMetadata,
   deriveSessionInputBudget,
   forkSessionMetadata,
   syncSessionMetadata,
-} from './session-metadata';
+} from './metadata';
 import type {SessionStore} from './store';
 import {
   RuntimeEventsController,
   type CodaraRuntimeEventListener,
-} from './runtime-events';
+} from '@engine/events/runtime-events';
 import type {SessionMetadata, SessionState, SessionStatus} from './types';
-export type {CodaraRuntimeEvent, CodaraRuntimeEventListener} from './runtime-events';
+export type {CodaraRuntimeEvent, CodaraRuntimeEventListener} from '@engine/events/runtime-events';
 
 export interface SessionModelCatalog {
   create(modelRef?: string): Promise<BaseChatModel>;

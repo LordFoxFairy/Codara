@@ -145,7 +145,7 @@ export function useCliController(options: UseCliControllerOptions): CliControlle
 
   useEffect(() => {
     setRuntimeEvents([]);
-    return codara.subscribeRuntimeEvents((event) => {
+    return codara.subscribeRuntimeEvents((event: CodaraRuntimeEvent) => {
       setRuntimeEvents((current) => [...current, event].slice(-40));
       // Auto-refresh team dashboard when team events arrive
       if (event.kind === 'team') {

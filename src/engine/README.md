@@ -4,7 +4,8 @@
 
 它负责：
 - `agent/` — agent 模型定义、agent loop 执行、流式输出
-- `session/` — session 生命周期、状态存储、runtime events
+- `session/` — session 生命周期、状态存储
+- `events/` — runtime events 与事件桥接能力
 - `pipeline/` — middleware 管道（permission、HIL、budget、logging、skills、summary 等）
 - `hook/` — 9 种 hook 事件、registry、executor、pipeline
 

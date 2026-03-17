@@ -6,14 +6,16 @@ import {
   type ModelCallContext
 } from '@engine/pipeline/types'
 import {
-  SKILLS_SYSTEM_PROMPT,
-  formatSkillsList,
-  formatSkillsLocations,
-  readSkillsRuntimeData,
   type SkillsRuntimeData,
   type SkillMetadata,
   type SkillStore,
-} from '@infra/context/skill-contracts'
+} from '@infra/context/skills/contracts'
+import {readSkillsRuntimeData} from '@infra/context/skills/runtime-shared'
+import {
+  SKILLS_SYSTEM_PROMPT,
+  formatSkillsList,
+  formatSkillsLocations,
+} from '@infra/context/prompts/skills-system-prompt'
 
 export type SkillsRuntimeDataLoader = (store: SkillStore, subagentRoots: string[]) => Promise<SkillsRuntimeData>
 
