@@ -26,10 +26,19 @@ export function ActivityLine({runState, activeTurn, latestRuntimeEvent, sessionM
     return <Box height={1}><Text> </Text></Box>;
   }
 
-  const lastTokens = sessionMetadata?.usage?.lastTotalTokens;
-  const tokenSuffix = lastTokens && lastTokens > 0 && runState.status === 'running'
-    ? ` (last call: ${formatTokenCount(lastTokens)} tok)`
-    : '';
+  // Show real-time streaming tokens if available, else last-call tokens
+  const streaming = activeTurn?.streamingTokens;
+  let tokenSuffix = '';
+  if (runState.status === 'running') {
+    if (streaming && (streaming.input > 0 || streaming.output > 0)) {
+      tokenSuffix = ` (↓${formatTokenCount(streaming.input)} ↑${formatTokenCount(streaming.output)})`;
+    } else {
+      const lastTokens = sessionMetadata?.usage?.lastTotalTokens;
+      if (lastTokens && lastTokens > 0) {
+        tokenSuffix = ` (last: ${formatTokenCount(lastTokens)} tok)`;
+      }
+    }
+  }
 
   return (
     <Box height={1}>

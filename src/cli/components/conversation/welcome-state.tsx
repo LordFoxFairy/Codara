@@ -3,6 +3,7 @@ import {Box, Text} from 'ink';
 import type {SessionState} from '@/index';
 import type {CliLayoutMode} from '../../app/layout-mode';
 import {formatTimeAgo} from '../../utils/format';
+import {theme} from '../../utils/theme';
 
 export interface RecentSession {
   sessionId: string;
@@ -40,7 +41,7 @@ export function StaticWelcome({layoutMode, cwd, modelAlias, tip}: StaticWelcomeP
 
   return (
     <Box flexDirection="column">
-      <Box borderStyle="round" borderColor="gray" flexDirection="column" paddingX={1}>
+      <Box borderStyle="round" borderColor={theme.chrome.border} flexDirection="column" paddingX={1}>
         <Text bold>{'\u2733'} Welcome to Codara v{VERSION}</Text>
         <Text> </Text>
         <Text dimColor>  /help for help</Text>

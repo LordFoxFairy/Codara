@@ -2,6 +2,7 @@ import React from 'react';
 import {Box, Text, useInput} from 'ink';
 import type {SessionPickerItem} from '../../hooks/use-session-picker';
 import {formatTokenCount} from '../../utils/format';
+import {theme} from '../../utils/theme';
 
 export interface SessionPickerProps {
   sessions: SessionPickerItem[];
@@ -32,7 +33,7 @@ export function SessionPicker({
 
   if (loading) {
     return (
-      <Box flexDirection="column" borderStyle="round" borderColor="gray" paddingX={1}>
+      <Box flexDirection="column" borderStyle="round" borderColor={theme.chrome.border} paddingX={1}>
         <Text color="cyan" bold>Resume Session</Text>
         <Text dimColor>Loading sessions…</Text>
       </Box>
@@ -41,7 +42,7 @@ export function SessionPicker({
 
   if (sessions.length === 0) {
     return (
-      <Box flexDirection="column" borderStyle="round" borderColor="gray" paddingX={1}>
+      <Box flexDirection="column" borderStyle="round" borderColor={theme.chrome.border} paddingX={1}>
         <Text color="cyan" bold>Resume Session</Text>
         <Text dimColor>No sessions found. Press Esc to cancel.</Text>
       </Box>
@@ -49,7 +50,7 @@ export function SessionPicker({
   }
 
   return (
-    <Box flexDirection="column" borderStyle="round" borderColor="gray" paddingX={1}>
+    <Box flexDirection="column" borderStyle="round" borderColor={theme.chrome.border} paddingX={1}>
       {/* Title bar */}
       <Box justifyContent="space-between">
         <Text bold color="cyan">Resume Session</Text>
