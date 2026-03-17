@@ -1,6 +1,7 @@
 import React from 'react';
 import {Box, Text} from 'ink';
 import type {CommandCompletionState} from '../../hooks/use-command-completion';
+import {theme} from '../../utils/theme';
 
 const VIEWPORT_SIZE = 10;
 const NAME_COL_WIDTH = 26;
@@ -29,10 +30,10 @@ export function CompletionMenu({completion}: CompletionMenuProps): React.JSX.Ele
   const hasMoreBelow = viewEnd < total;
 
   return (
-    <Box flexDirection="column" borderStyle="round" borderColor="gray" paddingX={1}>
+    <Box flexDirection="column" borderStyle="round" borderColor={theme.chrome.border} paddingX={1}>
       {/* Title bar */}
       <Box justifyContent="space-between">
-        <Text bold color="cyan">Commands</Text>
+        <Text bold color={theme.interactive.title}>Commands</Text>
         <Text dimColor>tab accept  esc close</Text>
       </Box>
 
@@ -48,7 +49,7 @@ export function CompletionMenu({completion}: CompletionMenuProps): React.JSX.Ele
         const padded = displayName.padEnd(NAME_COL_WIDTH);
         return (
           <Box key={item.name}>
-            <Text color={selected ? 'greenBright' : undefined} bold={selected}>
+            <Text color={selected ? theme.interactive.selection : undefined} bold={selected}>
               {selected ? '› ' : '  '}{padded}
             </Text>
             <Text dimColor wrap="truncate-end">{item.description}</Text>

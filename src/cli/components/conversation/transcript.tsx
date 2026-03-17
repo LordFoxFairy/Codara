@@ -4,6 +4,7 @@ import type {BaseMessage} from '@langchain/core/messages';
 import {Box, Text} from 'ink';
 import type {CliActiveTurn, CliNotice} from '../../app/view-state';
 import {buildTranscriptItems, type ToolResultMeta, type TranscriptRole} from '../../transcript/model';
+import {theme} from '../../utils/theme';
 import {DiffView} from './diff-view';
 import {MarkdownText} from './markdown-text';
 
@@ -26,17 +27,7 @@ const ROLE_LABEL_MAP: Record<TranscriptRole, string> = {
   error: 'error',
 };
 
-const ROLE_COLOR_MAP: Record<TranscriptRole, React.ComponentProps<typeof Text>['color']> = {
-  system: 'cyan',
-  warning: 'yellow',
-  user: 'green',
-  assistant: 'magenta',
-  tool: 'blueBright',
-  task: 'yellowBright',
-  hil: 'cyanBright',
-  command: 'cyan',
-  error: 'red',
-};
+const ROLE_COLOR_MAP: Record<TranscriptRole, React.ComponentProps<typeof Text>['color']> = theme.role;
 
 export function Transcript({coreMessages, notices, activeTurn, runtimeEvents}: TranscriptProps): React.JSX.Element {
   const items = buildTranscriptItems({coreMessages, notices, activeTurn, runtimeEvents});
@@ -140,8 +131,8 @@ export function TranscriptBlock({role, content, renderHint, tokenAnnotation}: {r
 }
 
 const EDIT_LINE_COLORS: Record<string, React.ComponentProps<typeof Text>['color']> = {
-  '+': 'green',
-  '-': 'red',
+  '+': theme.diff.addition,
+  '-': theme.diff.deletion,
 };
 
 export function ToolResultBlock({meta, expanded = false}: {meta: ToolResultMeta; expanded?: boolean}): React.JSX.Element {

@@ -1,5 +1,6 @@
 import React from 'react';
 import {Box, Text} from 'ink';
+import {theme} from '../../utils/theme';
 
 export interface CommandOutputPanelProps {
   content: string;
@@ -40,7 +41,7 @@ export function CommandOutputPanel({content, commandName, scrollOffset}: Command
   hints.push('esc close');
 
   return (
-    <Box flexDirection="column" borderStyle="round" borderColor="gray" paddingX={1}>
+    <Box flexDirection="column" borderStyle="round" borderColor={theme.chrome.border} paddingX={1}>
       {/* Title bar */}
       <Box justifyContent="space-between">
         <Text bold color="cyan">{label}</Text>

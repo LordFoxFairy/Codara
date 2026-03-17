@@ -249,6 +249,26 @@ export function useCliController(options: UseCliControllerOptions): CliControlle
           : current);
       }
 
+      // Accumulate streaming token counts from usage_metadata
+      const usageMeta = chunk.usage_metadata as Record<string, unknown> | undefined;
+      if (usageMeta) {
+        const inputDelta = typeof usageMeta.input_tokens === 'number' ? usageMeta.input_tokens : 0;
+        const outputDelta = typeof usageMeta.output_tokens === 'number' ? usageMeta.output_tokens : 0;
+        if (inputDelta > 0 || outputDelta > 0) {
+          setActiveTurn((current) => {
+            if (!current) return current;
+            const prev = current.streamingTokens ?? {input: 0, output: 0};
+            return {
+              ...current,
+              streamingTokens: {
+                input: Math.max(prev.input, inputDelta),
+                output: Math.max(prev.output, outputDelta),
+              },
+            };
+          });
+        }
+      }
+
       const text = chunk.text;
       if (!text) {
         continue;
