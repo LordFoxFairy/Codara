@@ -4,7 +4,7 @@ const BUILTIN_SOURCE = {type: 'builtin'} as const;
 
 export const teamCommand: CodaraCommandDefinition = {
   name: 'team',
-  usage: '/team <create|list|status|health|jobs|pause|resume|kill|finish|enter|leave|message|assign>',
+  usage: '/team <create|list|status|health|jobs|pause|resume|kill|finish|enter|leave|message|logs|assign>',
   description: 'Manage Codara Agent Teams — create, monitor, and control multi-agent teams.',
   source: BUILTIN_SOURCE,
   aliases: ['t'],
@@ -169,38 +169,16 @@ export const teamCommand: CodaraCommandDefinition = {
         if (!name) return err(command.name, 'Usage: /team logs <name> [count]');
         const team = registry.getTeamByName(name) ?? registry.getTeam(name);
         if (!team) return err(command.name, `Team "${name}" not found.`);
-        const msgLog = runtime.getMessageLog(team.teamId);
-        if (!msgLog || !msgLog.exists()) return ok(command.name, 'No message log available for this team.');
+        const allMessages = runtime.getTeamMessages(team.teamId);
+        if (allMessages.length === 0) return ok(command.name, 'No messages available for this team.');
         const count = parseInt(args[1] ?? '20', 10);
-        const recent = msgLog.readRecent(count);
+        const recent = allMessages.slice(-count);
         if (recent.length === 0) return ok(command.name, 'No messages in team log.');
         const lines = recent.map(m => {
           const time = m.timestamp.slice(11, 19);
           return `[${time}] ${m.from} → ${m.to}: ${m.content.slice(0, 100)}${m.content.length > 100 ? '…' : ''}`;
         });
         return ok(command.name, `Team "${team.name}" messages (last ${recent.length}):\n${lines.join('\n')}`);
-      }
-      case 'budget': {
-        const name = args[0];
-        if (!name) return err(command.name, 'Usage: /team budget <name>');
-        const team = registry.getTeamByName(name) ?? registry.getTeam(name);
-        if (!team) return err(command.name, `Team "${name}" not found.`);
-        const tracker = runtime.getBudgetTracker(team.teamId);
-        if (!tracker) return ok(command.name, 'No budget tracker active for this team.');
-        const usage = tracker.getUsage();
-        const check = tracker.checkBudget();
-        const lines = [
-          `Team Budget: ${team.name}`,
-          `  Total tokens: ${usage.totalTokens.toLocaleString()} (↓${usage.totalInputTokens.toLocaleString()} ↑${usage.totalOutputTokens.toLocaleString()})`,
-          `  Estimated cost: $${usage.estimatedCost.toFixed(4)}`,
-          `  Budget used: ${check.usedPercent}% (${check.action === 'none' ? 'OK' : check.action.toUpperCase()})`,
-          '',
-          'By member:',
-        ];
-        for (const [, m] of usage.byMember) {
-          lines.push(`  ${m.memberId}: ${(m.inputTokens + m.outputTokens).toLocaleString()} tokens (${m.turns} turns, model: ${m.model})`);
-        }
-        return ok(command.name, lines.join('\n'));
       }
       case 'assign': {
         const [name, jobId, memberId] = args;
@@ -223,7 +201,6 @@ export const teamCommand: CodaraCommandDefinition = {
         const jobBoard = registry.getJobBoard(team.teamId);
         const deadlocked = jobBoard.detectDeadlock();
         const progress = jobBoard.getProgress();
-        const tracker = runtime.getBudgetTracker(team.teamId);
         const members = registry.getMembersByTeam(team.teamId);
         const idleMembers = members.filter(m => m.status === 'idle');
         const workingMembers = members.filter(m => m.status === 'working');
@@ -235,10 +212,6 @@ export const teamCommand: CodaraCommandDefinition = {
           '',
           `Members: ${members.length} total (${workingMembers.length} working, ${idleMembers.length} idle)`,
         ];
-        if (tracker) {
-          const check = tracker.checkBudget();
-          lines.push(`Budget: ${check.usedPercent}% used (${check.action === 'none' ? 'OK' : check.action.toUpperCase()})`);
-        }
         return ok(command.name, lines.join('\n'));
       }
       case 'jobs': {
@@ -267,7 +240,7 @@ export const teamCommand: CodaraCommandDefinition = {
           '  /team create <goal>              Create a new team',
           '  /team list                       List all teams',
           '  /team status <name>              Show team details',
-          '  /team health <name>              Show team health (deadlock, budget)',
+          '  /team health <name>              Show team health (deadlock, members)',
           '  /team jobs <name>                Show job board',
           '  /team pause <name>               Pause a team',
           '  /team resume <name>              Resume a paused team',

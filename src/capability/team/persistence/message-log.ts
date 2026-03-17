@@ -3,6 +3,7 @@ import {dirname} from 'node:path';
 
 import type {TeamMessage} from '@capability/team/types';
 
+/** @deprecated Use {@link import('./team-persistence').TeamPersistence} instead. */
 export class MessageLog {
   constructor(private readonly path: string) {}
 

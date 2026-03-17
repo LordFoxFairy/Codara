@@ -13,7 +13,6 @@ export type { TeamTransport, Unsubscribe } from './transport/types.js';
 export { LocalTransport } from './transport/local-transport.js';
 export { A2ATransport } from './transport/a2a-transport.js';
 export type { A2AConnectionConfig } from './transport/a2a-transport.js';
-export { TransportRouter } from './transport/transport-router.js';
 
 // Runtime
 export { MemberRunner } from './runtime/member-runner.js';
@@ -55,24 +54,19 @@ export { buildWorkerProtocol } from './protocol/worker-protocol.js';
 export type { WorkerPromptContext } from './protocol/worker-protocol.js';
 
 // Persistence
+export { TeamPersistence } from './persistence/team-persistence.js';
+export type { TeamSnapshot, TeamSummary } from './persistence/team-persistence.js';
+/** @deprecated Use TeamPersistence instead. */
 export { MessageLog } from './persistence/message-log.js';
+/** @deprecated Use TeamPersistence instead. */
 export { TeamStore } from './persistence/team-store.js';
+/** @deprecated Use TeamPersistence instead. */
 export { JobBoardStore } from './persistence/job-board-store.js';
+/** @deprecated Use TeamPersistence instead. */
 export { MemberStore } from './persistence/member-store.js';
 
 // Security
 export { canCreateSubTeam, canSpawnMember } from './security/depth-control.js';
-export { isAllowedPath } from './security/path-guard.js';
-export { createPathGuardMiddleware, PATH_GUARD_MIDDLEWARE_NAME } from './security/path-guard-middleware.js';
-export { validateRemoteArtifact, DEFAULT_ARTIFACT_SECURITY } from './security/artifact-validator.js';
-export type { ArtifactValidationResult, ArtifactSecurityConfig } from './security/artifact-validator.js';
-
-// Budget
-export { TeamBudgetTracker } from './budget/budget-tracker.js';
-export type { BudgetAction, BudgetCheckResult } from './budget/budget-tracker.js';
-export { calculateCost, formatTokenCount, formatCost } from './budget/cost-calculator.js';
-export { createTeamBudgetMiddleware, TEAM_BUDGET_MIDDLEWARE_NAME } from './budget/team-budget-middleware.js';
-export type { TeamBudgetMiddlewareOptions } from './budget/team-budget-middleware.js';
 
 // Worktree
 export { createMemberWorktree, removeMemberWorktree, listTeamWorktrees, cleanupTeamWorktrees } from './worktree/team-worktree.js';
@@ -91,8 +85,6 @@ export type { AgentCard, A2AServerConfig } from './a2a-server.js';
 // SharedState
 export type { SharedState, SharedStateEntry } from './state/shared-state.js';
 export { MemorySharedState } from './state/memory-shared-state.js';
-export { RedisSharedState } from './state/redis-shared-state.js';
-export type { RedisSharedStateConfig } from './state/redis-shared-state.js';
 export { createSharedState, DEFAULT_SHARED_STATE_CONFIG } from './state/index.js';
 export type { SharedStateConfig } from './state/index.js';
 

@@ -71,16 +71,11 @@ import {TeamRuntime} from '@capability/team/runtime/team-runtime';
 import {RemotePool} from '@capability/team/remote-pool';
 import {createConversationTeamTools} from '@capability/team/tools/conversation-tools';
 import {MemorySharedState} from '@capability/team/state/memory-shared-state';
-import {TeamEventBridge} from '@capability/team/bridge/team-event-bridge';
 import {getToolsForRole} from '@capability/team/tools/tool-filter';
 import {createTeamContextMiddleware} from '@capability/team/middleware/team-context';
 import type {MemberSession, MemberSessionOptions} from '@capability/team/runtime/member-runner';
 import {createAgent} from '@engine/agent/run/agent-loop';
-import {TeamStore} from '@capability/team/persistence/team-store';
-import {MemberStore} from '@capability/team/persistence/member-store';
-import {JobBoardStore} from '@capability/team/persistence/job-board-store';
-import {createTeamBudgetMiddleware} from '@capability/team/budget/team-budget-middleware';
-import {createPathGuardMiddleware} from '@capability/team/security/path-guard-middleware';
+import {TeamPersistence} from '@capability/team/persistence/team-persistence';
 
 export const DEFAULT_CODARA_MODEL_ALIAS = 'default';
 const DEFAULT_RUNTIME_FILE_LOGGING_ENABLED = true;
@@ -328,46 +323,13 @@ export async function createCodaraRuntime(options: CodaraRuntimeOptions = {}): P
     });
     const memberTools = getToolsForRole(memberOptions.role, teamToolContext, baseDevTools);
 
-    // Middleware: team context injection + context budget + team budget tracking + path guard
+    // Middleware: team context injection + standard context budget
+    // Budget enforcement uses the standard BudgetMiddleware from engine/pipeline.
+    // Filesystem isolation relies on worktree + PermissionMiddleware, not a custom PathGuard.
     const memberMiddleware: BaseMiddleware[] = [
       createTeamContextMiddleware(),
       createBudgetMiddleware(),
     ];
-
-    // Filesystem isolation: workers with worktrees can only access their own workspace
-    if (memberOptions.worktreePath && memberOptions.role === 'worker') {
-      memberMiddleware.push(createPathGuardMiddleware(memberOptions.worktreePath));
-    }
-
-    // Wire team-level budget tracker (records actual LLM token costs)
-    const budgetTracker = teamRuntime.getBudgetTracker(memberOptions.teamId);
-    if (budgetTracker) {
-      memberMiddleware.push(createTeamBudgetMiddleware({
-        tracker: budgetTracker,
-        memberId: memberOptions.memberId,
-        model: 'claude-sonnet-4-6', // default; overridden when model resolves
-        onBudgetAction: (result) => {
-          const emitter = teamRuntime.getEmitter(memberOptions.teamId);
-          if (result.action === 'exceeded') {
-            const policy = budgetTracker.getExceededPolicy();
-            emitter?.emit({
-              type: 'team.budget.exceeded',
-              data: {teamId: memberOptions.teamId, action: policy === 'warn_leader' ? 'warn' : policy},
-            });
-            if (policy === 'pause') {
-              teamRuntime.pauseTeam(memberOptions.teamId);
-            } else if (policy === 'shutdown') {
-              teamRuntime.shutdownTeam(memberOptions.teamId).catch(() => {});
-            }
-          } else if (result.action === 'warning') {
-            emitter?.emit({
-              type: 'team.budget.warning',
-              data: {teamId: memberOptions.teamId, usedPercent: result.usedPercent, remaining: result.remaining},
-            });
-          }
-        },
-      }));
-    }
 
     // Resolve model lazily — reuse the same catalog as the main agent
     let agentReady: ReturnType<typeof createAgent> | undefined;
@@ -415,36 +377,30 @@ export async function createCodaraRuntime(options: CodaraRuntimeOptions = {}): P
     };
   };
 
-  const teamsDir = path.join(codaraPath, 'teams');
-  const teamStore = new TeamStore(teamsDir);
-  const memberStore = new MemberStore(teamsDir);
-  const jobBoardStore = new JobBoardStore(teamsDir);
+  const teamPersistence = new TeamPersistence(codaraPath);
 
   const teamRuntime = new TeamRuntime({
     registry: teamRegistry,
     projectRoot,
-    teamsDir,
+    teamsDir: path.join(codaraPath, 'teams'),
     createSession: teamSessionFactory,
-    persistence: { teamStore, memberStore, jobBoardStore },
+    persistence: teamPersistence,
   });
   // Recover persisted teams into registry (best-effort)
   try {
-    const savedTeams = teamStore.loadRegistry();
-    for (const entry of savedTeams) {
-      const fullTeam = teamStore.load(entry.teamId);
-      if (fullTeam && (fullTeam.status === 'running' || fullTeam.status === 'paused')) {
+    const savedSnapshots = teamPersistence.list();
+    for (const summary of savedSnapshots) {
+      const snapshot = teamPersistence.load(summary.teamId);
+      if (snapshot && (snapshot.team.status === 'running' || snapshot.team.status === 'paused')) {
         // Mark as paused — user must explicitly resume
-        fullTeam.status = 'paused';
-        teamRegistry.restoreTeam(fullTeam);
-        // Restore members
-        const savedMembers = memberStore.loadByTeam(entry.teamId);
-        for (const m of savedMembers) {
+        snapshot.team.status = 'paused';
+        teamRegistry.restoreTeam(snapshot.team);
+        for (const m of snapshot.members) {
           teamRegistry.restoreMember(m);
         }
-        // Restore job board
-        const savedBoard = jobBoardStore.load(entry.teamId);
-        if (savedBoard) {
-          teamRegistry.restoreJobBoard(entry.teamId, savedBoard);
+        if (snapshot.jobs.length > 0) {
+          const board = TeamPersistence.restoreJobBoard(summary.teamId, snapshot.jobs);
+          teamRegistry.restoreJobBoard(summary.teamId, board);
         }
       }
     }
@@ -630,47 +586,19 @@ function assembleCodara(
 
   const getMcpStatus = (): McpClientInfo[] => mcpManager?.status() ?? [];
 
-  // ── Team Event Bridge ──
-  // Bridge TeamEventEmitter events into the main runtime event stream.
-  // The bridge is only created when a TeamRuntime is present (i.e. createCodaraRuntime path).
+  // ── Team Event Callback ──
+  // Wire TeamRuntime's onTeamEvent callback so team events flow directly
+  // into the runtime event stream — no EventBridge or monkey-patching needed.
   const teamRuntime = preloadedSources?.teamRuntime;
-  let teamEventBridge: TeamEventBridge | undefined;
   if (teamRuntime) {
-    teamEventBridge = new TeamEventBridge({
-      sessionId: session.getState().sessionId,
-      onRuntimeEvent: (event) => {
+    teamRuntime.setOnTeamEvent(
+      (event) => {
         for (const listener of commandEventListeners) {
           listener(event);
         }
       },
-    });
-
-    // Patch startTeam to auto-attach and replay the start event
-    // (team.running is emitted inside startTeam before the bridge can attach)
-    const originalStartTeam = teamRuntime.startTeam.bind(teamRuntime);
-    teamRuntime.startTeam = async (teamId: string): Promise<void> => {
-      await originalStartTeam(teamId);
-      const emitter = teamRuntime.getEmitter(teamId);
-      if (emitter) {
-        teamEventBridge!.attachTeam(teamId, emitter);
-        // Replay the team.running event that was emitted before bridge attachment
-        emitter.emit({type: 'team.running', data: {teamId}});
-      }
-    };
-
-    // Patch shutdownTeam to auto-detach
-    const originalShutdownTeam = teamRuntime.shutdownTeam.bind(teamRuntime);
-    teamRuntime.shutdownTeam = async (teamId: string): Promise<void> => {
-      await originalShutdownTeam(teamId);
-      teamEventBridge!.detachTeam(teamId);
-    };
-
-    // Patch killTeam to auto-detach
-    const originalKillTeam = teamRuntime.killTeam.bind(teamRuntime);
-    teamRuntime.killTeam = async (teamId: string): Promise<void> => {
-      await originalKillTeam(teamId);
-      teamEventBridge!.detachTeam(teamId);
-    };
+      () => session.getState().sessionId,
+    );
   }
 
   const getTeamSummaries = (): TeamQuerySummary[] => {
@@ -723,7 +651,6 @@ function assembleCodara(
   };
 
   const dispose = async (): Promise<void> => {
-    teamEventBridge?.detachAll();
     await session.dispose();
     if (mcpManager) {
       await mcpManager.dispose();

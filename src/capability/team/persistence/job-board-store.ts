@@ -3,6 +3,7 @@ import {join} from 'node:path';
 
 import {JobBoard} from '@capability/team/job-board';
 
+/** @deprecated Use {@link import('./team-persistence').TeamPersistence} instead. */
 export class JobBoardStore {
   constructor(private readonly baseDir: string) {}
 

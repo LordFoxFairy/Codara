@@ -1,26 +1,19 @@
 import { join } from 'node:path';
+import { randomUUID } from 'node:crypto';
 import type { Team, TeamMember, MemberRole } from '@capability/team/types';
 import { TeamRegistry } from '@capability/team/team-registry';
 import { LocalTransport } from '@capability/team/transport/local-transport';
-import { TeamEventEmitter } from '@capability/team/events';
+import { TeamEventEmitter, type TeamBusEvent } from '@capability/team/events';
 import { MemberRunner } from '@capability/team/runtime/member-runner';
 import type { MemberSession, MemberSessionOptions } from '@capability/team/runtime/member-runner';
 import { createMemberWorktree, cleanupTeamWorktrees, listTeamWorktrees } from '@capability/team/worktree/team-worktree';
 import { mergeBranch, type MergeResult } from '@capability/team/worktree/merge-coordinator';
-import type { TeamStore } from '@capability/team/persistence/team-store';
-import type { MemberStore } from '@capability/team/persistence/member-store';
-import type { JobBoardStore } from '@capability/team/persistence/job-board-store';
 import type { SharedState } from '@capability/team/state/shared-state';
-import { TeamBudgetTracker } from '@capability/team/budget/budget-tracker';
-import { MessageLog } from '@capability/team/persistence/message-log';
+import { TeamPersistence } from '@capability/team/persistence/team-persistence';
+import type { TeamMessage } from '@capability/team/types';
+import type { CodaraRuntimeEvent, CodaraRuntimeEventPhase, CodaraRuntimeEventStatus } from '@engine/session/runtime-events';
 
 // ─── Types ──────────────────────────────────────────────────────────
-
-export interface TeamRuntimePersistence {
-  teamStore: TeamStore;
-  memberStore: MemberStore;
-  jobBoardStore: JobBoardStore;
-}
 
 export interface TeamRuntimeOptions {
   registry: TeamRegistry;
@@ -29,9 +22,17 @@ export interface TeamRuntimeOptions {
   teamsDir?: string;
   createSession?: (options: MemberSessionOptions) => MemberSession;
   /** Optional persistence — when provided, team/member state auto-saves on changes. */
-  persistence?: TeamRuntimePersistence;
+  persistence?: TeamPersistence;
   /** Optional shared state — when provided, team status changes are reflected for cross-team visibility. */
   sharedState?: SharedState;
+  /**
+   * Direct callback for team runtime events.
+   * When provided, TeamRuntime maps internal TeamBusEvents to CodaraRuntimeEvents
+   * and delivers them through this callback — no EventBridge or monkey-patching needed.
+   */
+  onTeamEvent?: (event: CodaraRuntimeEvent) => void;
+  /** Session ID (or getter) used when constructing CodaraRuntimeEvents. Required when onTeamEvent is provided. */
+  sessionId?: string | (() => string);
 }
 
 // ─── TeamRuntime ────────────────────────────────────────────────────
@@ -40,11 +41,249 @@ export class TeamRuntime {
   private runners = new Map<string, MemberRunner>();          // memberId -> runner
   private transports = new Map<string, LocalTransport>();     // teamId -> transport
   private emitters = new Map<string, TeamEventEmitter>();     // teamId -> emitter
-  private budgetTrackers = new Map<string, TeamBudgetTracker>(); // teamId -> tracker
-  private messageLogs = new Map<string, MessageLog>();        // teamId -> message log
+  private teamMessages = new Map<string, TeamMessage[]>();    // teamId -> in-memory message buffer
   private healthTimers = new Map<string, ReturnType<typeof setInterval>>(); // teamId -> health check timer
 
-  constructor(private readonly options: TeamRuntimeOptions) {}
+  /** Root event IDs per team — for pairing start/end runtime events. */
+  private readonly teamRootIds = new Map<string, string>();
+  /** Cached metadata per team — for enriching runtime events. */
+  private readonly teamMeta = new Map<string, { name: string; goal: string; memberCount: number; jobTotal: number; jobDone: number }>();
+
+  /** Mutable callback — can be set after construction via setOnTeamEvent(). */
+  private onTeamEventCallback?: (event: CodaraRuntimeEvent) => void;
+  private sessionIdGetter?: string | (() => string);
+
+  constructor(private readonly options: TeamRuntimeOptions) {
+    this.onTeamEventCallback = options.onTeamEvent;
+    this.sessionIdGetter = options.sessionId;
+  }
+
+  /**
+   * Set the team event callback and session ID after construction.
+   * This allows the callback to be wired after the session is created.
+   */
+  setOnTeamEvent(callback: (event: CodaraRuntimeEvent) => void, sessionId: string | (() => string)): void {
+    this.onTeamEventCallback = callback;
+    this.sessionIdGetter = sessionId;
+  }
+
+  // ── Runtime Event Mapping ─────────────────────────────────────────
+
+  /**
+   * Maps a TeamBusEvent to a CodaraRuntimeEvent and delivers it via the
+   * onTeamEvent callback.  This replaces TeamEventBridge — the mapping
+   * logic lives inside TeamRuntime so no external bridge or monkey-patching
+   * is required.
+   */
+  private emitTeamEvent(teamId: string, event: TeamBusEvent): void {
+    if (!this.onTeamEventCallback || !this.sessionIdGetter) return;
+    const sessionId = typeof this.sessionIdGetter === 'function' ? this.sessionIdGetter() : this.sessionIdGetter;
+
+    const runtimeEvent = this.mapBusEventToRuntimeEvent(teamId, event, sessionId);
+    if (runtimeEvent) {
+      this.onTeamEventCallback(runtimeEvent);
+    }
+  }
+
+  private makeRuntimeEvent(
+    sessionId: string,
+    input: { id?: string; kind: 'team'; phase: CodaraRuntimeEventPhase; status: CodaraRuntimeEventStatus; label: string; detail?: string; parentId?: string },
+  ): CodaraRuntimeEvent {
+    return {
+      id: input.id ?? randomUUID(),
+      sessionId,
+      timestamp: new Date().toISOString(),
+      kind: input.kind,
+      phase: input.phase,
+      status: input.status,
+      label: input.label,
+      ...(input.detail ? { detail: input.detail } : {}),
+      ...(input.parentId ? { parentId: input.parentId } : {}),
+    };
+  }
+
+  private mapBusEventToRuntimeEvent(teamId: string, event: TeamBusEvent, sessionId: string): CodaraRuntimeEvent | null {
+    switch (event.type) {
+      case 'team.created': {
+        this.teamMeta.set(teamId, {
+          name: event.data.name,
+          goal: event.data.goal,
+          memberCount: 0,
+          jobTotal: 0,
+          jobDone: 0,
+        });
+        return null;
+      }
+
+      case 'team.running': {
+        const rootId = randomUUID();
+        this.teamRootIds.set(teamId, rootId);
+        const meta = this.teamMeta.get(teamId);
+        const name = meta?.name ?? teamId;
+        const goal = meta?.goal ?? '';
+        const label = goal ? `Team ${name}: ${goal}` : `Team ${name}`;
+        return this.makeRuntimeEvent(sessionId, {
+          id: rootId,
+          kind: 'team',
+          phase: 'start',
+          status: 'running',
+          label,
+          detail: `memberCount:0 jobTotal:0`,
+        });
+      }
+
+      case 'team.paused': {
+        const parentId = this.teamRootIds.get(teamId);
+        return this.makeRuntimeEvent(sessionId, {
+          kind: 'team',
+          phase: 'update',
+          status: 'paused',
+          label: `Team ${teamId} paused`,
+          detail: event.data.reason,
+          ...(parentId ? { parentId } : {}),
+        });
+      }
+
+      case 'team.completing': {
+        const parentId = this.teamRootIds.get(teamId);
+        return this.makeRuntimeEvent(sessionId, {
+          kind: 'team',
+          phase: 'update',
+          status: 'running',
+          label: `Team ${teamId} completing`,
+          ...(parentId ? { parentId } : {}),
+        });
+      }
+
+      case 'team.completed': {
+        const parentId = this.teamRootIds.get(teamId);
+        const meta = this.teamMeta.get(teamId);
+        const donePart = `done:${meta?.jobDone ?? 0}`;
+        const totalPart = `total:${meta?.jobTotal ?? 0}`;
+        const membersPart = `members:${meta?.memberCount ?? 0}`;
+        const summaryPart = event.data.summary ? `summary:${event.data.summary}` : '';
+        const detailParts = [donePart, totalPart, membersPart, summaryPart].filter(Boolean);
+        const ev = this.makeRuntimeEvent(sessionId, {
+          kind: 'team',
+          phase: 'end',
+          status: 'done',
+          label: `Team ${teamId} completed`,
+          detail: detailParts.join(' ') || undefined,
+          ...(parentId ? { parentId } : {}),
+        });
+        this.teamRootIds.delete(teamId);
+        return ev;
+      }
+
+      case 'team.failed': {
+        const parentId = this.teamRootIds.get(teamId);
+        const meta = this.teamMeta.get(teamId);
+        const donePart = `done:${meta?.jobDone ?? 0}`;
+        const totalPart = `total:${meta?.jobTotal ?? 0}`;
+        const errorPart = event.data.error ? `error:${event.data.error}` : '';
+        const detailParts = [donePart, totalPart, errorPart].filter(Boolean);
+        const ev = this.makeRuntimeEvent(sessionId, {
+          kind: 'team',
+          phase: 'end',
+          status: 'error',
+          label: `Team ${teamId} failed`,
+          detail: detailParts.join(' ') || undefined,
+          ...(parentId ? { parentId } : {}),
+        });
+        this.teamRootIds.delete(teamId);
+        return ev;
+      }
+
+      case 'team.archived':
+        return null;
+
+      case 'member.joined': {
+        const parentId = this.teamRootIds.get(teamId);
+        const meta = this.teamMeta.get(teamId);
+        if (meta) meta.memberCount++;
+        return this.makeRuntimeEvent(sessionId, {
+          kind: 'team',
+          phase: 'update',
+          status: 'running',
+          label: `${event.data.name} joined as ${event.data.role}`,
+          detail: event.data.memberId,
+          ...(parentId ? { parentId } : {}),
+        });
+      }
+
+      case 'member.disconnected':
+      case 'member.failed': {
+        const parentId = this.teamRootIds.get(teamId);
+        const reason = 'error' in event.data ? event.data.error : event.data.reason;
+        return this.makeRuntimeEvent(sessionId, {
+          kind: 'team',
+          phase: 'update',
+          status: 'error',
+          label: `Member ${event.data.memberId} ${event.type === 'member.failed' ? 'failed' : 'disconnected'}`,
+          detail: reason || undefined,
+          ...(parentId ? { parentId } : {}),
+        });
+      }
+
+      case 'job.done': {
+        const parentId = this.teamRootIds.get(teamId);
+        const meta = this.teamMeta.get(teamId);
+        if (meta) meta.jobDone++;
+        return this.makeRuntimeEvent(sessionId, {
+          kind: 'team',
+          phase: 'update',
+          status: 'done',
+          label: `Job ${event.data.jobId} completed`,
+          detail: event.data.jobId,
+          ...(parentId ? { parentId } : {}),
+        });
+      }
+
+      case 'job.failed': {
+        const parentId = this.teamRootIds.get(teamId);
+        return this.makeRuntimeEvent(sessionId, {
+          kind: 'team',
+          phase: 'update',
+          status: 'error',
+          label: `Job ${event.data.jobId} failed`,
+          detail: event.data.error || undefined,
+          ...(parentId ? { parentId } : {}),
+        });
+      }
+
+      case 'team.deadlock': {
+        const parentId = this.teamRootIds.get(teamId);
+        return this.makeRuntimeEvent(sessionId, {
+          kind: 'team',
+          phase: 'update',
+          status: 'error',
+          label: `Team ${teamId} deadlock detected`,
+          detail: event.data.message,
+          ...(parentId ? { parentId } : {}),
+        });
+      }
+
+      case 'team.budget.exceeded': {
+        const parentId = this.teamRootIds.get(teamId);
+        return this.makeRuntimeEvent(sessionId, {
+          kind: 'team',
+          phase: 'update',
+          status: 'error',
+          label: `Team ${teamId} budget exceeded`,
+          detail: `action: ${event.data.action}`,
+          ...(parentId ? { parentId } : {}),
+        });
+      }
+
+      default: {
+        if (event.type === 'job.created') {
+          const meta = this.teamMeta.get(teamId);
+          if (meta) meta.jobTotal++;
+        }
+        return null;
+      }
+    }
+  }
 
   /**
    * Start a team: create transport and emitter.
@@ -60,21 +299,20 @@ export class TeamRuntime {
 
     const transport = new LocalTransport();
     const emitter = new TeamEventEmitter();
-    const budgetTracker = new TeamBudgetTracker(team.config.budget);
     this.transports.set(teamId, transport);
     this.emitters.set(teamId, emitter);
-    this.budgetTrackers.set(teamId, budgetTracker);
 
-    // Message log — persists all team messages to JSONL for replay/audit
-    if (this.options.teamsDir) {
-      const logPath = join(this.options.teamsDir, teamId, 'messages.jsonl');
-      this.messageLogs.set(teamId, new MessageLog(logPath));
+    // In-memory message buffer — persisted as part of TeamSnapshot
+    if (!this.teamMessages.has(teamId)) {
+      this.teamMessages.set(teamId, []);
     }
 
     registry.updateTeamStatus(teamId, 'running');
     this.persistTeam(teamId);
     this.syncSharedState(teamId, 'running');
-    emitter.emit({ type: 'team.running', data: { teamId } });
+    const runningEvent: TeamBusEvent = { type: 'team.running', data: { teamId } };
+    emitter.emit(runningEvent);
+    this.emitTeamEvent(teamId, runningEvent);
 
     // Periodic health check — detects deadlocks in the job board
     const healthTimer = setInterval(() => {
@@ -107,10 +345,12 @@ export class TeamRuntime {
     transport.registerMember(member.memberId);
     this.persistMember(member);
 
-    emitter.emit({
+    const joinedEvent: TeamBusEvent = {
       type: 'member.joined',
       data: { teamId, memberId: member.memberId, name, role, mode: 'local' },
-    });
+    };
+    emitter.emit(joinedEvent);
+    this.emitTeamEvent(teamId, joinedEvent);
 
     const runner = new MemberRunner({
       member,
@@ -130,9 +370,9 @@ export class TeamRuntime {
     // Wire inbox-driven wake: when transport delivers a message, wake the runner
     transport.subscribe(member.memberId, (msg) => {
       runner.wake();
-      // Persist message to log (best-effort)
-      const log = this.messageLogs.get(teamId);
-      if (log) { try { log.append(msg); } catch { /* best-effort */ } }
+      // Buffer message in memory (persisted as part of TeamSnapshot)
+      const msgs = this.teamMessages.get(teamId);
+      if (msgs) msgs.push(msg);
     });
 
     runner.start().catch(err => this.handleMemberCrash(teamId, member.memberId, err));
@@ -199,7 +439,9 @@ export class TeamRuntime {
     const summary = failedMerges.length > 0
       ? `Team shutdown complete. ${failedMerges.length} merge(s) had conflicts.`
       : 'Team shutdown complete. All branches merged.';
-    emitter?.emit({ type: 'team.completed', data: { teamId, summary } });
+    const completedEvent: TeamBusEvent = { type: 'team.completed', data: { teamId, summary } };
+    emitter?.emit(completedEvent);
+    this.emitTeamEvent(teamId, completedEvent);
 
     // Cleanup worktrees (best-effort — only after merge attempts)
     try {
@@ -214,8 +456,7 @@ export class TeamRuntime {
 
     this.transports.delete(teamId);
     this.emitters.delete(teamId);
-    this.budgetTrackers.delete(teamId);
-    this.messageLogs.delete(teamId);
+    this.teamMessages.delete(teamId);
   }
 
   /** Force-kill a team. */
@@ -239,7 +480,9 @@ export class TeamRuntime {
     this.options.registry.updateTeamStatus(teamId, 'failed');
     this.persistTeam(teamId);
     this.syncSharedState(teamId, 'failed');
-    this.emitters.get(teamId)?.emit({ type: 'team.failed', data: { teamId, error: 'Killed by user' } });
+    const failedEvent: TeamBusEvent = { type: 'team.failed', data: { teamId, error: 'Killed by user' } };
+    this.emitters.get(teamId)?.emit(failedEvent);
+    this.emitTeamEvent(teamId, failedEvent);
 
     const killTimer = this.healthTimers.get(teamId);
     if (killTimer) clearInterval(killTimer);
@@ -247,8 +490,7 @@ export class TeamRuntime {
 
     this.transports.delete(teamId);
     this.emitters.delete(teamId);
-    this.budgetTrackers.delete(teamId);
-    this.messageLogs.delete(teamId);
+    this.teamMessages.delete(teamId);
   }
 
   /** Pause all members of a team. */
@@ -262,7 +504,9 @@ export class TeamRuntime {
     this.options.registry.updateTeamStatus(teamId, 'paused');
     this.persistTeam(teamId);
     this.syncSharedState(teamId, 'paused');
-    this.emitters.get(teamId)?.emit({ type: 'team.paused', data: { teamId, reason: 'User requested' } });
+    const pausedEvent: TeamBusEvent = { type: 'team.paused', data: { teamId, reason: 'User requested' } };
+    this.emitters.get(teamId)?.emit(pausedEvent);
+    this.emitTeamEvent(teamId, pausedEvent);
 
     // Pause health check — no point checking a paused team
     const pauseTimer = this.healthTimers.get(teamId);
@@ -281,7 +525,9 @@ export class TeamRuntime {
     this.options.registry.updateTeamStatus(teamId, 'running');
     this.persistTeam(teamId);
     this.syncSharedState(teamId, 'running');
-    this.emitters.get(teamId)?.emit({ type: 'team.running', data: { teamId } });
+    const resumeEvent: TeamBusEvent = { type: 'team.running', data: { teamId } };
+    this.emitters.get(teamId)?.emit(resumeEvent);
+    this.emitTeamEvent(teamId, resumeEvent);
 
     // Restart health check timer
     const healthTimer = setInterval(() => {
@@ -302,12 +548,8 @@ export class TeamRuntime {
     return this.emitters.get(teamId);
   }
 
-  getBudgetTracker(teamId: string): TeamBudgetTracker | undefined {
-    return this.budgetTrackers.get(teamId);
-  }
-
-  getMessageLog(teamId: string): MessageLog | undefined {
-    return this.messageLogs.get(teamId);
+  getTeamMessages(teamId: string): TeamMessage[] {
+    return this.teamMessages.get(teamId) ?? [];
   }
 
   // ── Persistence ─────────────────────────────────────────────────
@@ -316,19 +558,19 @@ export class TeamRuntime {
     const { persistence, registry } = this.options;
     if (!persistence) return;
     const team = registry.getTeam(teamId);
-    if (team) {
-      try { persistence.teamStore.save(team); } catch { /* best-effort */ }
-    }
-    try { persistence.teamStore.saveRegistry(registry.listTeams()); } catch { /* best-effort */ }
-    // Also persist the job board state
-    const board = registry.getJobBoard(teamId);
-    try { persistence.jobBoardStore.save(board); } catch { /* best-effort */ }
+    if (!team) return;
+    try {
+      const members = registry.getMembersByTeam(teamId);
+      const board = registry.getJobBoard(teamId);
+      const messages = this.teamMessages.get(teamId) ?? [];
+      const snapshot = TeamPersistence.buildSnapshot(team, members, board, messages);
+      persistence.save(teamId, snapshot);
+    } catch { /* best-effort */ }
   }
 
   private persistMember(member: TeamMember): void {
-    const { persistence } = this.options;
-    if (!persistence) return;
-    try { persistence.memberStore.save(member); } catch { /* best-effort */ }
+    // Member persistence is now part of the team snapshot — trigger a full team save.
+    this.persistTeam(member.teamId);
   }
 
   /** Update shared state with current team status and job summary. */
@@ -359,15 +601,17 @@ export class TeamRuntime {
 
     const jobBoard = registry.getJobBoard(teamId);
     if (jobBoard.detectDeadlock()) {
-      const emitter = this.emitters.get(teamId);
-      emitter?.emit({
+      const deadlockEvent: TeamBusEvent = {
         type: 'team.deadlock',
         data: {
           teamId,
           message:
             'All remaining jobs are blocked — no progress path exists. Consider cancelling blocked jobs or adding new unblocked ones.',
         },
-      });
+      };
+      const emitter = this.emitters.get(teamId);
+      emitter?.emit(deadlockEvent);
+      this.emitTeamEvent(teamId, deadlockEvent);
     }
   }
 
@@ -381,17 +625,21 @@ export class TeamRuntime {
     if (member.role === 'leader') {
       // Leader crash -> pause entire team
       this.pauseTeam(teamId);
-      emitter?.emit({ type: 'team.paused', data: { teamId, reason: `Leader crashed: ${error}` } });
+      const crashEvent: TeamBusEvent = { type: 'team.paused', data: { teamId, reason: `Leader crashed: ${error}` } };
+      emitter?.emit(crashEvent);
+      this.emitTeamEvent(teamId, crashEvent);
     } else {
       // Worker crash -> release their job, emit event
       const jobBoard = registry.getJobBoard(teamId);
       if (member.currentJobId && jobBoard) {
         try { jobBoard.releaseJob(member.currentJobId); } catch { /* job may not be releasable */ }
       }
-      emitter?.emit({
+      const failEvent: TeamBusEvent = {
         type: 'member.failed',
         data: { teamId, memberId, error: String(error) },
-      });
+      };
+      emitter?.emit(failEvent);
+      this.emitTeamEvent(teamId, failEvent);
     }
   }
 

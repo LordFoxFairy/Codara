@@ -4,6 +4,7 @@ import {join} from 'node:path';
 import {TeamMemberSchema} from '@capability/team/types';
 import type {TeamMember} from '@capability/team/types';
 
+/** @deprecated Use {@link import('./team-persistence').TeamPersistence} instead. */
 export class MemberStore {
   constructor(private readonly baseDir: string) {}
 
