@@ -423,8 +423,9 @@ export function createSession(options: CreateSessionOptions): Session {
         nextMessages,
         sessionId,
       });
-    } catch {
+    } catch (error) {
       // Auto memory is best-effort and should not break the turn lifecycle.
+      console.warn('[session] Auto-memory recording failed:', error instanceof Error ? error.message : String(error));
     }
   }
 

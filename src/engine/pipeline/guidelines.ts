@@ -60,7 +60,9 @@ export function createGuidelinesMiddleware(options: GuidelinesMiddlewareOptions)
       const reminder = `\n<system-reminder>\n${reminders.join('\n')}\n</system-reminder>`;
       const content = typeof result.content === 'string'
         ? result.content + reminder
-        : String(result.content) + reminder;
+        : Array.isArray(result.content)
+          ? [...result.content, {type: 'text' as const, text: reminder}]
+          : String(result.content) + reminder;
 
       return new ToolMessage({
         content,
