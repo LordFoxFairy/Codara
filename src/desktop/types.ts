@@ -17,6 +17,7 @@ export interface Session {
   title: string;
   createdAt: string;
   updatedAt: string;
+  messageCount: number;
 }
 
 export interface PauseRequest {

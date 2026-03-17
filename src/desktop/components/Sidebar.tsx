@@ -1,138 +1,40 @@
-import { useState } from "react";
+import { useMemo } from "react";
+import {
+  MessageSquare,
+  BarChart3,
+  Zap,
+  FolderClock,
+  Cpu,
+  Settings,
+  Bug,
+  ScrollText,
+  FileText,
+  Hash,
+} from "lucide-react";
 import type { Session } from "../types";
+
+/* ── Types ──────────────────────────────────────────────────────── */
+
+type NavPage = "chat" | "sessions" | "skills" | "config" | "debug" | "logs" | "docs";
 
 interface SidebarProps {
   sessions: Session[];
   currentSessionId: string | null;
   onSelectSession: (id: string) => void;
-  onNewChat: () => void;
   loading: boolean;
+  collapsed: boolean;
+  activePage: NavPage;
+  onNavigate: (page: NavPage) => void;
 }
 
-export function Sidebar({
-  sessions,
-  currentSessionId,
-  onSelectSession,
-  onNewChat,
-  loading,
-}: SidebarProps) {
-  const [collapsed, setCollapsed] = useState(false);
+/* ── Constants ──────────────────────────────────────────────────── */
 
-  if (collapsed) {
-    return (
-      <div className="flex h-full w-12 flex-col items-center border-r border-gray-800 bg-gray-950 py-3">
-        <button
-          onClick={() => setCollapsed(false)}
-          className="rounded-lg p-2 text-gray-400 transition-colors hover:bg-gray-800 hover:text-gray-200"
-          title="Expand sidebar"
-        >
-          <svg
-            className="h-5 w-5"
-            fill="none"
-            viewBox="0 0 24 24"
-            stroke="currentColor"
-          >
-            <path
-              strokeLinecap="round"
-              strokeLinejoin="round"
-              strokeWidth={1.5}
-              d="M13 5l7 7-7 7M5 5l7 7-7 7"
-            />
-          </svg>
-        </button>
-      </div>
-    );
-  }
+const ICON_SIZE = 18;
+const ICON_STROKE = 1.75;
 
-  return (
-    <div className="flex h-full w-64 flex-col border-r border-gray-800 bg-gray-950">
-      {/* Header */}
-      <div className="flex items-center justify-between border-b border-gray-800 px-4 py-3">
-        <span className="text-sm font-semibold tracking-wide text-gray-300">
-          Codara
-        </span>
-        <button
-          onClick={() => setCollapsed(true)}
-          className="rounded-lg p-1.5 text-gray-500 transition-colors hover:bg-gray-800 hover:text-gray-300"
-          title="Collapse sidebar"
-        >
-          <svg
-            className="h-4 w-4"
-            fill="none"
-            viewBox="0 0 24 24"
-            stroke="currentColor"
-          >
-            <path
-              strokeLinecap="round"
-              strokeLinejoin="round"
-              strokeWidth={1.5}
-              d="M11 19l-7-7 7-7M19 19l-7-7 7-7"
-            />
-          </svg>
-        </button>
-      </div>
+/* ── Helpers ────────────────────────────────────────────────────── */
 
-      {/* New Chat Button */}
-      <div className="p-3">
-        <button
-          onClick={onNewChat}
-          className="flex w-full items-center justify-center gap-2 rounded-lg border border-gray-700 px-3 py-2 text-sm text-gray-300 transition-colors hover:border-gray-600 hover:bg-gray-800/50"
-        >
-          <svg
-            className="h-4 w-4"
-            fill="none"
-            viewBox="0 0 24 24"
-            stroke="currentColor"
-          >
-            <path
-              strokeLinecap="round"
-              strokeLinejoin="round"
-              strokeWidth={2}
-              d="M12 4v16m8-8H4"
-            />
-          </svg>
-          New Chat
-        </button>
-      </div>
-
-      {/* Session List */}
-      <div className="flex-1 overflow-y-auto px-2 pb-2">
-        {loading ? (
-          <div className="px-3 py-8 text-center text-sm text-gray-600">
-            Loading...
-          </div>
-        ) : sessions.length === 0 ? (
-          <div className="px-3 py-8 text-center text-sm text-gray-600">
-            No conversations yet
-          </div>
-        ) : (
-          <div className="space-y-0.5">
-            {sessions.map((session) => (
-              <button
-                key={session.id}
-                onClick={() => onSelectSession(session.id)}
-                className={`w-full rounded-lg px-3 py-2.5 text-left transition-colors ${
-                  currentSessionId === session.id
-                    ? "bg-gray-800 text-gray-100"
-                    : "text-gray-400 hover:bg-gray-800/50 hover:text-gray-300"
-                }`}
-              >
-                <div className="truncate text-sm">
-                  {session.title || "New Chat"}
-                </div>
-                <div className="mt-0.5 text-xs text-gray-600">
-                  {formatDate(session.updatedAt || session.createdAt)}
-                </div>
-              </button>
-            ))}
-          </div>
-        )}
-      </div>
-    </div>
-  );
-}
-
-function formatDate(dateStr: string): string {
+function formatRelativeTime(dateStr: string): string {
   try {
     const date = new Date(dateStr);
     const now = new Date();
@@ -140,13 +42,298 @@ function formatDate(dateStr: string): string {
     const diffMins = Math.floor(diffMs / 60_000);
     const diffHours = Math.floor(diffMs / 3_600_000);
     const diffDays = Math.floor(diffMs / 86_400_000);
-
     if (diffMins < 1) return "Just now";
     if (diffMins < 60) return `${diffMins}m ago`;
     if (diffHours < 24) return `${diffHours}h ago`;
     if (diffDays < 7) return `${diffDays}d ago`;
-    return date.toLocaleDateString();
+    return date.toLocaleDateString("en-US", { month: "short", day: "numeric" });
   } catch {
     return "";
   }
 }
+
+/* ── Sub-components ─────────────────────────────────────────────── */
+
+function SectionHeader({ label }: { label: string }) {
+  return (
+    <div className="flex items-center justify-between px-3 pt-5 pb-1 first:pt-3">
+      <span className="select-none text-[11px] font-medium uppercase tracking-wider text-[var(--color-text-tertiary)]">
+        {label}
+      </span>
+      <span className="text-[var(--color-text-tertiary)] opacity-40">—</span>
+    </div>
+  );
+}
+
+function NavItem({
+  icon: Icon,
+  label,
+  active = false,
+  onClick,
+}: {
+  icon: React.ComponentType<{ size?: number; strokeWidth?: number; className?: string }>;
+  label: string;
+  active?: boolean;
+  onClick?: () => void;
+}) {
+  return (
+    <button
+      onClick={onClick}
+      className={[
+        "group flex w-full items-center gap-3 rounded-lg px-3 py-[7px] text-left text-[13px] transition-all duration-150",
+        active
+          ? "bg-[var(--color-accent-light)] font-medium text-[var(--color-accent)]"
+          : "text-[var(--color-text-secondary)] hover:bg-[var(--color-surface-hover)] hover:text-[var(--color-text-primary)]",
+      ].join(" ")}
+    >
+      <Icon
+        size={ICON_SIZE}
+        strokeWidth={ICON_STROKE}
+        className={[
+          "shrink-0 transition-colors",
+          active
+            ? "text-[var(--color-accent)]"
+            : "text-[var(--color-text-tertiary)] group-hover:text-[var(--color-text-secondary)]",
+        ].join(" ")}
+      />
+      <span className="truncate">{label}</span>
+    </button>
+  );
+}
+
+/* ── Collapsed ──────────────────────────────────────────────────── */
+
+function CollapsedSidebar({
+  activePage,
+  onNavigate,
+  sessions,
+  currentSessionId,
+  onSelectSession,
+}: Pick<SidebarProps, "activePage" | "onNavigate" | "sessions" | "currentSessionId" | "onSelectSession">) {
+  return (
+    <aside className="flex h-full w-[52px] flex-col items-center border-r border-[var(--color-border)] bg-[var(--color-surface-alt)] py-2 transition-all duration-300">
+      {/* Chat */}
+      <IconBtn
+        icon={MessageSquare}
+        active={activePage === "chat"}
+        onClick={() => onNavigate("chat")}
+        title="Chat"
+      />
+
+      {/* Session icons when on chat page */}
+      {activePage === "chat" && sessions.length > 0 && (
+        <>
+          <div className="mx-auto my-1.5 w-5 border-t border-[var(--color-border-subtle)]" />
+          <div className="flex flex-1 flex-col items-center gap-0.5 overflow-y-auto">
+            {sessions.slice(0, 8).map((s) => (
+              <IconBtn
+                key={s.id}
+                icon={Hash}
+                active={currentSessionId === s.id}
+                onClick={() => onSelectSession(s.id)}
+                title={s.title || "New Chat"}
+              />
+            ))}
+          </div>
+        </>
+      )}
+
+      {/* Bottom nav icons */}
+      <div className="mt-auto flex flex-col items-center gap-0.5 pt-2">
+        <IconBtn icon={FolderClock} active={activePage === "sessions"} onClick={() => onNavigate("sessions")} title="Sessions" />
+        <IconBtn icon={Zap} active={activePage === "skills"} onClick={() => onNavigate("skills")} title="Skills" />
+        <IconBtn icon={Settings} active={activePage === "config"} onClick={() => onNavigate("config")} title="Config" />
+      </div>
+    </aside>
+  );
+}
+
+function IconBtn({
+  icon: Icon,
+  active,
+  onClick,
+  title,
+}: {
+  icon: React.ComponentType<{ size?: number; strokeWidth?: number; className?: string }>;
+  active: boolean;
+  onClick: () => void;
+  title: string;
+}) {
+  return (
+    <button
+      onClick={onClick}
+      className={[
+        "rounded-lg p-2 transition-colors",
+        active
+          ? "bg-[var(--color-accent-light)] text-[var(--color-accent)]"
+          : "text-[var(--color-text-tertiary)] hover:bg-[var(--color-surface-hover)] hover:text-[var(--color-text-secondary)]",
+      ].join(" ")}
+      title={title}
+    >
+      <Icon size={ICON_SIZE} strokeWidth={ICON_STROKE} />
+    </button>
+  );
+}
+
+/* ── Main Sidebar ───────────────────────────────────────────────── */
+
+export function Sidebar({
+  sessions,
+  currentSessionId,
+  onSelectSession,
+  loading,
+  collapsed,
+  activePage,
+  onNavigate,
+}: SidebarProps) {
+  const sortedSessions = useMemo(
+    () =>
+      [...sessions].sort(
+        (a, b) =>
+          new Date(b.updatedAt || b.createdAt).getTime() -
+          new Date(a.updatedAt || a.createdAt).getTime(),
+      ),
+    [sessions],
+  );
+
+  if (collapsed) {
+    return (
+      <CollapsedSidebar
+        activePage={activePage}
+        onNavigate={onNavigate}
+        sessions={sortedSessions}
+        currentSessionId={currentSessionId}
+        onSelectSession={onSelectSession}
+      />
+    );
+  }
+
+  return (
+    <aside className="flex h-full w-[220px] flex-col border-r border-[var(--color-border)] bg-[var(--color-surface-alt)] transition-all duration-300">
+      {/* ── Chat ── */}
+      <SectionHeader label="Chat" />
+      <div className="px-2">
+        <NavItem
+          icon={MessageSquare}
+          label="Chat"
+          active={activePage === "chat"}
+          onClick={() => onNavigate("chat")}
+        />
+      </div>
+
+      {/* Session list (only when on Chat page) */}
+      {activePage === "chat" && (
+        <div className="flex min-h-0 flex-col">
+          <div className="max-h-[40vh] overflow-y-auto px-2 pt-1 pb-2">
+            {loading ? (
+              <div className="space-y-1 px-1 pt-1">
+                {[1, 2, 3].map((i) => (
+                  <div key={i} className="h-[42px] animate-pulse rounded-lg bg-[var(--color-surface-hover)]" />
+                ))}
+              </div>
+            ) : sortedSessions.length === 0 ? (
+              <div className="px-3 py-6 text-center text-[11px] text-[var(--color-text-tertiary)] opacity-60">
+                No conversations yet
+              </div>
+            ) : (
+              <div className="space-y-px">
+                {sortedSessions.map((session) => {
+                  const isActive = currentSessionId === session.id;
+                  return (
+                    <button
+                      key={session.id}
+                      onClick={() => onSelectSession(session.id)}
+                      className={[
+                        "group flex w-full items-center gap-2.5 rounded-lg px-3 py-[6px] text-left transition-all duration-150",
+                        isActive
+                          ? "bg-[var(--color-surface-elevated)] font-medium text-[var(--color-text-primary)] shadow-[var(--shadow-xs)]"
+                          : "text-[var(--color-text-secondary)] hover:bg-[var(--color-surface-hover)]",
+                      ].join(" ")}
+                    >
+                      <Hash
+                        size={14}
+                        strokeWidth={1.75}
+                        className={isActive ? "text-[var(--color-accent)]" : "text-[var(--color-text-tertiary)] opacity-60"}
+                      />
+                      <div className="min-w-0 flex-1">
+                        <div className="truncate text-[12px] leading-snug">
+                          {session.title || "New Chat"}
+                        </div>
+                        <div className="truncate text-[10px] text-[var(--color-text-tertiary)] opacity-60">
+                          {session.messageCount > 0 ? `${session.messageCount} msgs` : "Empty"} · {formatRelativeTime(session.updatedAt || session.createdAt)}
+                        </div>
+                      </div>
+                    </button>
+                  );
+                })}
+              </div>
+            )}
+          </div>
+        </div>
+      )}
+
+      {/* Spacer pushes bottom sections down */}
+      <div className="flex-1" />
+
+      {/* ── Control ── */}
+      <SectionHeader label="Control" />
+      <div className="px-2">
+        <NavItem icon={BarChart3} label="Overview" />
+        <NavItem
+          icon={FolderClock}
+          label="Sessions"
+          active={activePage === "sessions"}
+          onClick={() => onNavigate("sessions")}
+        />
+      </div>
+
+      {/* ── Agent ── */}
+      <SectionHeader label="Agent" />
+      <div className="px-2">
+        <NavItem
+          icon={Zap}
+          label="Skills"
+          active={activePage === "skills"}
+          onClick={() => onNavigate("skills")}
+        />
+        <NavItem icon={Cpu} label="Nodes" />
+      </div>
+
+      {/* ── Settings ── */}
+      <SectionHeader label="Settings" />
+      <div className="px-2">
+        <NavItem
+          icon={Settings}
+          label="Config"
+          active={activePage === "config"}
+          onClick={() => onNavigate("config")}
+        />
+        <NavItem
+          icon={Bug}
+          label="Debug"
+          active={activePage === "debug"}
+          onClick={() => onNavigate("debug")}
+        />
+        <NavItem
+          icon={ScrollText}
+          label="Logs"
+          active={activePage === "logs"}
+          onClick={() => onNavigate("logs")}
+        />
+      </div>
+
+      {/* ── Resources ── */}
+      <SectionHeader label="Resources" />
+      <div className="px-2 pb-3">
+        <NavItem
+          icon={FileText}
+          label="Docs"
+          active={activePage === "docs"}
+          onClick={() => onNavigate("docs")}
+        />
+      </div>
+    </aside>
+  );
+}
+
+export type { NavPage };
