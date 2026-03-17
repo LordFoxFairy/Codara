@@ -16,7 +16,8 @@ import type {
   ResumePayload,
   ToolErrorHandler,
 } from '@engine/agent/models/agent';
-import {createAgent, normalizeAgentInput} from '@engine/agent/run/agent-loop';
+import {normalizeAgentInput} from '@engine/agent/run/agent-loop';
+import {bootstrapAgent} from '@engine/agent/bootstrap';
 import type {CompactOptions} from '@engine/checkpoint/types';
 import {
   createAgentMemoryCheckpointer,
@@ -312,8 +313,9 @@ export function createSession(options: CreateSessionOptions): Session {
       ? resolveSummaryOptions(options.summary, createModelSummaryGenerator(modelSelection.model))
       : undefined;
 
-    return createAgent({
+    return bootstrapAgent({
       model: modelSelection.model,
+      agentType: 'main',
       tools: options.tools,
       handleToolErrors: options.handleToolErrors,
       middleware: buildSessionMiddleware(summaryOptions),

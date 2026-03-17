@@ -25,7 +25,7 @@ export type ModelResolver =
 
 export interface BootstrapAgentOptions {
   model: ModelResolver;
-  agentType: AgentType;
+  agentType?: AgentType;
   tools?: StructuredToolInterface[];
   middleware?: BaseMiddleware[];
   systemMessage?: string[];

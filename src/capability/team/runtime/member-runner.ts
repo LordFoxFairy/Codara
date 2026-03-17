@@ -1,10 +1,64 @@
 import type { TeamMember, TeamMessage, MemberRole } from '@capability/team/types';
 import type { TeamTransport } from '@capability/team/transport/types';
-import type { TeamEventEmitter } from '@capability/team/events';
+import type { TeamBusEvent } from '@capability/team/events';
 import type { TeamRegistry } from '@capability/team/team-registry';
 import { buildLeaderProtocol } from '@capability/team/protocol/leader-protocol';
 import { buildWorkerProtocol } from '@capability/team/protocol/worker-protocol';
-import { prepareInboxInjection } from '@capability/team/runtime/message-injector';
+
+// ─── Inbox Helpers (inlined from former message-injector.ts) ─────────
+
+function sortInbox(messages: TeamMessage[]): TeamMessage[] {
+  return [...messages].sort((a, b) => {
+    if (a.from === 'user' && b.from !== 'user') return -1;
+    if (b.from === 'user' && a.from !== 'user') return 1;
+    return a.timestamp.localeCompare(b.timestamp);
+  });
+}
+
+function formatTeamMessage(msg: TeamMessage): string {
+  switch (msg.type) {
+    case 'job_assigned':
+      return `You have been assigned a job: ${msg.content}`;
+    case 'job_submitted':
+      return `Job submitted for review: ${msg.content}`;
+    case 'job_reviewed': {
+      const meta = msg.metadata as { approved?: boolean; feedback?: string } | undefined;
+      if (meta?.approved) return `Job approved: ${msg.content}`;
+      return `Job rejected. Feedback: ${meta?.feedback ?? msg.content}`;
+    }
+    case 'job_completed':
+      return `Job completed: ${msg.content}`;
+    case 'question':
+      return `Question from ${msg.from}: ${msg.content}`;
+    case 'answer':
+      return `Answer from ${msg.from}: ${msg.content}`;
+    case 'shutdown_request':
+      return 'Team is shutting down. Finish current work and stop.';
+    case 'shutdown_response':
+      return `${msg.from} acknowledged shutdown.`;
+    case 'status_update':
+      return `Status update from ${msg.from}: ${msg.content}`;
+    case 'merge_conflict':
+      return `Merge conflict: ${msg.content}`;
+    case 'merge_request':
+      return `Merge request: ${msg.content}`;
+    case 'code_review':
+      return `Code review from ${msg.from}: ${msg.content}`;
+    case 'heartbeat':
+      return `Heartbeat from ${msg.from}`;
+    case 'message':
+    default:
+      return msg.content;
+  }
+}
+
+function prepareInboxInjection(messages: TeamMessage[]): string[] {
+  const sorted = sortInbox(messages);
+  return sorted.map(msg => {
+    const formatted = formatTeamMessage(msg);
+    return `[Team Message from ${msg.from}] (${msg.type})\n${formatted}`;
+  });
+}
 
 // ─── Types ──────────────────────────────────────────────────────────
 
@@ -18,7 +72,8 @@ export interface MemberRunnerOptions {
   maxDepth: number;
   registry: TeamRegistry;
   transport: TeamTransport;
-  emitter: TeamEventEmitter;
+  /** Domain event callback — replaces TeamEventEmitter dependency. */
+  emitEvent: (event: TeamBusEvent) => void;
   projectRoot: string;
   /** Session factory — injected for testability. */
   createSession?: (options: MemberSessionOptions) => MemberSession;
@@ -70,10 +125,10 @@ export class MemberRunner {
     }
 
     this.status = 'running';
-    const { member, registry, emitter } = this.options;
+    const { member, registry, emitEvent } = this.options;
 
     registry.updateMember(member.teamId, member.memberId, { status: 'idle' });
-    emitter.emit({ type: 'member.idle', data: { teamId: member.teamId, memberId: member.memberId } });
+    emitEvent({ type: 'member.idle', data: { teamId: member.teamId, memberId: member.memberId } });
 
     try {
       if (this.options.createSession) {
@@ -84,7 +139,7 @@ export class MemberRunner {
     } catch (err) {
       this.status = 'terminated';
       registry.updateMember(member.teamId, member.memberId, { status: 'terminated' });
-      emitter.emit({
+      emitEvent({
         type: 'member.failed',
         data: { teamId: member.teamId, memberId: member.memberId, error: String(err) },
       });
@@ -109,9 +164,9 @@ export class MemberRunner {
   /** Pause the member. */
   pause(): void {
     this.status = 'paused';
-    const { member, registry, emitter } = this.options;
+    const { member, registry, emitEvent } = this.options;
     registry.updateMember(member.teamId, member.memberId, { status: 'paused' });
-    emitter.emit({ type: 'member.paused', data: { teamId: member.teamId, memberId: member.memberId } });
+    emitEvent({ type: 'member.paused', data: { teamId: member.teamId, memberId: member.memberId } });
   }
 
   /** Resume from paused state. */
@@ -125,7 +180,7 @@ export class MemberRunner {
   // ── Private ──────────────────────────────────────────────────────
 
   private async runLoop(): Promise<void> {
-    const { member, transport, registry, emitter } = this.options;
+    const { member, transport, registry, emitEvent } = this.options;
 
     while (!this.shutdownRequested) {
       // Check for pending work without draining — messages are drained
@@ -136,7 +191,7 @@ export class MemberRunner {
       if (!hasPending && !hasClaimed) {
         this.status = 'idle';
         registry.updateMember(member.teamId, member.memberId, { status: 'idle' });
-        emitter.emit({ type: 'member.idle', data: { teamId: member.teamId, memberId: member.memberId } });
+        emitEvent({ type: 'member.idle', data: { teamId: member.teamId, memberId: member.memberId } });
 
         await this.waitForWake();
         if (this.shutdownRequested) break;
@@ -158,7 +213,7 @@ export class MemberRunner {
     // Graceful shutdown
     this.status = 'terminated';
     registry.updateMember(member.teamId, member.memberId, { status: 'terminated' });
-    emitter.emit({
+    emitEvent({
       type: 'member.left',
       data: { teamId: member.teamId, memberId: member.memberId, reason: 'shutdown' },
     });

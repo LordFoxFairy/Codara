@@ -16,7 +16,10 @@ export {
   type TeamQueryDetail,
 } from '@codara/index';
 export {
-  createAgent,
+  bootstrapAgent,
+  type BootstrapAgentOptions,
+  type ModelResolver,
+  resolveModel,
   type Agent,
   type AgentInput,
   type AgentInvokeConfig,

@@ -7,13 +7,12 @@ import {
   type AgentRuntimeContext,
   type AgentContextPreparer,
   type AgentRuntimeValues,
-  type CreateAgentOptions,
   type PauseRequest,
   type ResumePayload,
   type ToolErrorHandler,
 } from '@engine/agent/models/agent';
-import {createAgent} from '@engine/agent/run/agent-loop';
-import {resolveModel} from '@engine/agent/bootstrap';
+import type {BootstrapAgentOptions} from '@engine/agent/bootstrap';
+import {bootstrapAgent, resolveModel} from '@engine/agent/bootstrap';
 import type {BaseMiddleware} from '@engine/pipeline/types';
 import type {HILToolMessagePayload} from '@engine/pipeline/hil';
 import type {ExecutionContextMetadata} from '@engine/pipeline/types';
@@ -232,7 +231,7 @@ function createDelegatedAgentInput(prompt: string): BaseMessage[] {
 async function buildDelegatedChildOptions(
   options: DelegatedAgentOptions,
   input: DelegatedChildInput,
-): Promise<CreateAgentOptions> {
+): Promise<BootstrapAgentOptions> {
   const mergedContext = mergeRuntimeContext(options.context, input.profileContext);
 
   return {
@@ -257,14 +256,14 @@ async function buildDelegatedChildOptions(
 }
 
 async function runDelegatedChild(
-  childOptions: CreateAgentOptions,
+  childOptions: BootstrapAgentOptions,
   input: DelegatedChildInput,
 ) {
   if (input.resume) {
     return resumeDelegatedChild(childOptions, input.resume, input.maxTurns);
   }
 
-  const child = createAgent(childOptions);
+  const child = await bootstrapAgent(childOptions);
   const messages = createDelegatedAgentInput(input.prompt);
   return child.invoke(
     {messages},
@@ -282,12 +281,12 @@ function resolveDelegatedAgentTools(
 }
 
 async function resumeDelegatedChild(
-  childOptions: CreateAgentOptions,
+  childOptions: BootstrapAgentOptions,
   resume: DelegatedResumeState,
   maxTurns: number | undefined,
 ) {
   const checkpoint = await childOptions.checkpointer?.getLatest(resume.childSessionId);
-  const child = createAgent({
+  const child = await bootstrapAgent({
     ...childOptions,
     sessionId: resume.childSessionId,
     ...(checkpoint ? {checkpoint} : {}),

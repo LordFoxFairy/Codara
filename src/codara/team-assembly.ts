@@ -4,13 +4,12 @@ import type {BaseMiddleware} from '@engine/pipeline';
 import {createBudgetMiddleware} from '@engine/pipeline';
 import {TeamRegistry} from '@capability/team/team-registry';
 import {TeamRuntime} from '@capability/team/runtime/team-runtime';
-import {RemotePool} from '@capability/team/remote-pool';
 import {createConversationTeamTools} from '@capability/team/tools/conversation-tools';
 import {MemorySharedState} from '@capability/team/state/memory-shared-state';
 import {getToolsForRole} from '@capability/team/tools/tool-filter';
 import {createTeamContextMiddleware} from '@capability/team/middleware/team-context';
 import type {MemberSession, MemberSessionOptions} from '@capability/team/runtime/member-runner';
-import {createAgent} from '@engine/agent/run/agent-loop';
+import {bootstrapAgent} from '@engine/agent/bootstrap';
 import {TeamPersistence} from '@capability/team/persistence/team-persistence';
 import {createBuiltinTools} from '@engine/tool';
 import type {CodaraRuntimeOptions, CodaraModelCatalog, TeamQuerySummary, TeamQueryDetail} from './facade';
@@ -25,7 +24,6 @@ export interface TeamSystemAssemblyInput {
 export interface TeamSystemAssemblyResult {
   teamRegistry: TeamRegistry;
   teamRuntime: TeamRuntime;
-  remotePool: RemotePool;
   sharedState: MemorySharedState;
   teamTools: StructuredToolInterface[];
 }
@@ -46,7 +44,7 @@ export async function assembleTeamSystem(input: TeamSystemAssemblyInput): Promis
       memberId: memberOptions.memberId,
       registry: teamRegistry,
       transport: teamRuntime.getTransport(memberOptions.teamId)!,
-      emitter: teamRuntime.getEmitter(memberOptions.teamId)!,
+      emitEvent: teamRuntime.createEmitEvent(memberOptions.teamId),
       projectRoot,
     };
 
@@ -68,7 +66,7 @@ export async function assembleTeamSystem(input: TeamSystemAssemblyInput): Promis
     ];
 
     // Resolve model lazily — reuse the same catalog as the main agent
-    let agentReady: ReturnType<typeof createAgent> | undefined;
+    let agentReady: import('@engine/agent/models/agent').Agent | undefined;
 
     const ensureAgent = async () => {
       if (agentReady) return agentReady;
@@ -79,7 +77,7 @@ export async function assembleTeamSystem(input: TeamSystemAssemblyInput): Promis
           ? await Promise.resolve(options.model)
           : (() => { throw new Error('No model available for team worker'); })();
 
-      agentReady = createAgent({
+      agentReady = await bootstrapAgent({
         model,
         agentType: 'subagent',
         tools: memberTools,
@@ -145,13 +143,10 @@ export async function assembleTeamSystem(input: TeamSystemAssemblyInput): Promis
     // Recovery is best-effort - fresh start if it fails
   }
 
-  const remotePool = new RemotePool(codaraPath);
-  await remotePool.load();
-
   // Add conversation-driven team tools
   const teamTools = createConversationTeamTools({registry: teamRegistry, runtime: teamRuntime, sharedState});
 
-  return {teamRegistry, teamRuntime, remotePool, sharedState, teamTools};
+  return {teamRegistry, teamRuntime, sharedState, teamTools};
 }
 
 export function getTeamSummaries(registry: TeamRegistry | undefined): TeamQuerySummary[] {
