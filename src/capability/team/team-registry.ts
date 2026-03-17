@@ -257,6 +257,11 @@ export class TeamRegistry {
     }
   }
 
+  /** Restore a previously persisted job board without validation. */
+  restoreJobBoard(teamId: string, board: JobBoard): void {
+    this.jobBoards.set(teamId, board);
+  }
+
   /** Restore a previously persisted member without validation. */
   restoreMember(member: TeamMember): void {
     const teamMembers = this.members.get(member.teamId) ?? [];

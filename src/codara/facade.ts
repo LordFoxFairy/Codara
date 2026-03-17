@@ -78,6 +78,7 @@ import type {MemberSession, MemberSessionOptions} from '@capability/team/runtime
 import {createAgent} from '@engine/agent/run/agent-loop';
 import {TeamStore} from '@capability/team/persistence/team-store';
 import {MemberStore} from '@capability/team/persistence/member-store';
+import {JobBoardStore} from '@capability/team/persistence/job-board-store';
 import {createTeamBudgetMiddleware} from '@capability/team/budget/team-budget-middleware';
 import {createPathGuardMiddleware} from '@capability/team/security/path-guard-middleware';
 
@@ -417,12 +418,14 @@ export async function createCodaraRuntime(options: CodaraRuntimeOptions = {}): P
   const teamsDir = path.join(codaraPath, 'teams');
   const teamStore = new TeamStore(teamsDir);
   const memberStore = new MemberStore(teamsDir);
+  const jobBoardStore = new JobBoardStore(teamsDir);
 
   const teamRuntime = new TeamRuntime({
     registry: teamRegistry,
     projectRoot,
+    teamsDir,
     createSession: teamSessionFactory,
-    persistence: { teamStore, memberStore },
+    persistence: { teamStore, memberStore, jobBoardStore },
   });
   // Recover persisted teams into registry (best-effort)
   try {
@@ -437,6 +440,11 @@ export async function createCodaraRuntime(options: CodaraRuntimeOptions = {}): P
         const savedMembers = memberStore.loadByTeam(entry.teamId);
         for (const m of savedMembers) {
           teamRegistry.restoreMember(m);
+        }
+        // Restore job board
+        const savedBoard = jobBoardStore.load(entry.teamId);
+        if (savedBoard) {
+          teamRegistry.restoreJobBoard(entry.teamId, savedBoard);
         }
       }
     }

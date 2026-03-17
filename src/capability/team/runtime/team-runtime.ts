@@ -1,3 +1,4 @@
+import { join } from 'node:path';
 import type { Team, TeamMember, MemberRole } from '@capability/team/types';
 import { TeamRegistry } from '@capability/team/team-registry';
 import { LocalTransport } from '@capability/team/transport/local-transport';
@@ -8,18 +9,23 @@ import { createMemberWorktree, cleanupTeamWorktrees, listTeamWorktrees } from '@
 import { mergeBranch, type MergeResult } from '@capability/team/worktree/merge-coordinator';
 import type { TeamStore } from '@capability/team/persistence/team-store';
 import type { MemberStore } from '@capability/team/persistence/member-store';
+import type { JobBoardStore } from '@capability/team/persistence/job-board-store';
 import { TeamBudgetTracker } from '@capability/team/budget/budget-tracker';
+import { MessageLog } from '@capability/team/persistence/message-log';
 
 // ─── Types ──────────────────────────────────────────────────────────
 
 export interface TeamRuntimePersistence {
   teamStore: TeamStore;
   memberStore: MemberStore;
+  jobBoardStore: JobBoardStore;
 }
 
 export interface TeamRuntimeOptions {
   registry: TeamRegistry;
   projectRoot: string;
+  /** Directory for team data (persistence, logs). */
+  teamsDir?: string;
   createSession?: (options: MemberSessionOptions) => MemberSession;
   /** Optional persistence — when provided, team/member state auto-saves on changes. */
   persistence?: TeamRuntimePersistence;
@@ -32,6 +38,7 @@ export class TeamRuntime {
   private transports = new Map<string, LocalTransport>();     // teamId -> transport
   private emitters = new Map<string, TeamEventEmitter>();     // teamId -> emitter
   private budgetTrackers = new Map<string, TeamBudgetTracker>(); // teamId -> tracker
+  private messageLogs = new Map<string, MessageLog>();        // teamId -> message log
 
   constructor(private readonly options: TeamRuntimeOptions) {}
 
@@ -53,6 +60,12 @@ export class TeamRuntime {
     this.transports.set(teamId, transport);
     this.emitters.set(teamId, emitter);
     this.budgetTrackers.set(teamId, budgetTracker);
+
+    // Message log — persists all team messages to JSONL for replay/audit
+    if (this.options.teamsDir) {
+      const logPath = join(this.options.teamsDir, teamId, 'messages.jsonl');
+      this.messageLogs.set(teamId, new MessageLog(logPath));
+    }
 
     registry.updateTeamStatus(teamId, 'running');
     this.persistTeam(teamId);
@@ -104,7 +117,12 @@ export class TeamRuntime {
     this.runners.set(member.memberId, runner);
 
     // Wire inbox-driven wake: when transport delivers a message, wake the runner
-    transport.subscribe(member.memberId, () => runner.wake());
+    transport.subscribe(member.memberId, (msg) => {
+      runner.wake();
+      // Persist message to log (best-effort)
+      const log = this.messageLogs.get(teamId);
+      if (log) { try { log.append(msg); } catch { /* best-effort */ } }
+    });
 
     runner.start().catch(err => this.handleMemberCrash(teamId, member.memberId, err));
 
@@ -172,6 +190,7 @@ export class TeamRuntime {
     this.transports.delete(teamId);
     this.emitters.delete(teamId);
     this.budgetTrackers.delete(teamId);
+    this.messageLogs.delete(teamId);
   }
 
   /** Force-kill a team. */
@@ -190,6 +209,7 @@ export class TeamRuntime {
     this.transports.delete(teamId);
     this.emitters.delete(teamId);
     this.budgetTrackers.delete(teamId);
+    this.messageLogs.delete(teamId);
   }
 
   /** Pause all members of a team. */
@@ -234,6 +254,10 @@ export class TeamRuntime {
     return this.budgetTrackers.get(teamId);
   }
 
+  getMessageLog(teamId: string): MessageLog | undefined {
+    return this.messageLogs.get(teamId);
+  }
+
   // ── Persistence ─────────────────────────────────────────────────
 
   private persistTeam(teamId: string): void {
@@ -244,6 +268,9 @@ export class TeamRuntime {
       try { persistence.teamStore.save(team); } catch { /* best-effort */ }
     }
     try { persistence.teamStore.saveRegistry(registry.listTeams()); } catch { /* best-effort */ }
+    // Also persist the job board state
+    const board = registry.getJobBoard(teamId);
+    try { persistence.jobBoardStore.save(board); } catch { /* best-effort */ }
   }
 
   private persistMember(member: TeamMember): void {
