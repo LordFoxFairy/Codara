@@ -121,10 +121,12 @@ export class TeamRuntime {
       const member = registry.getMember(memberId);
       if (member?.teamId === teamId) {
         const remaining = Math.max(0, deadline - Date.now());
+        let timerId: ReturnType<typeof setTimeout>;
         await Promise.race([
           this.waitForTermination(runner),
-          new Promise<void>(r => setTimeout(r, remaining)),
+          new Promise<void>(r => { timerId = setTimeout(r, remaining); }),
         ]);
+        clearTimeout(timerId!);
       }
     }
 
@@ -139,6 +141,9 @@ export class TeamRuntime {
     registry.updateTeamStatus(teamId, 'completing');
     registry.updateTeamStatus(teamId, 'completed');
     emitter?.emit({ type: 'team.completed', data: { teamId, summary: 'Team shutdown complete' } });
+
+    this.transports.delete(teamId);
+    this.emitters.delete(teamId);
   }
 
   /** Force-kill a team. */
@@ -152,6 +157,9 @@ export class TeamRuntime {
     }
     this.options.registry.updateTeamStatus(teamId, 'failed');
     this.emitters.get(teamId)?.emit({ type: 'team.failed', data: { teamId, error: 'Killed by user' } });
+
+    this.transports.delete(teamId);
+    this.emitters.delete(teamId);
   }
 
   /** Pause all members of a team. */

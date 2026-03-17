@@ -442,8 +442,9 @@ function assembleCodara(
   // Bridge TeamEventEmitter events into the main runtime event stream.
   // The bridge is only created when a TeamRuntime is present (i.e. createCodaraRuntime path).
   const teamRuntime = preloadedSources?.teamRuntime;
+  let teamEventBridge: TeamEventBridge | undefined;
   if (teamRuntime) {
-    const bridge = new TeamEventBridge({
+    teamEventBridge = new TeamEventBridge({
       sessionId: session.getState().sessionId,
       onRuntimeEvent: (event) => {
         for (const listener of commandEventListeners) {
@@ -452,18 +453,33 @@ function assembleCodara(
       },
     });
 
-    // Patch startTeam to auto-attach the new team's emitter to the bridge
+    // Patch startTeam to auto-attach
     const originalStartTeam = teamRuntime.startTeam.bind(teamRuntime);
     teamRuntime.startTeam = async (teamId: string): Promise<void> => {
       await originalStartTeam(teamId);
       const emitter = teamRuntime.getEmitter(teamId);
       if (emitter) {
-        bridge.attachTeam(teamId, emitter);
+        teamEventBridge!.attachTeam(teamId, emitter);
       }
+    };
+
+    // Patch shutdownTeam to auto-detach
+    const originalShutdownTeam = teamRuntime.shutdownTeam.bind(teamRuntime);
+    teamRuntime.shutdownTeam = async (teamId: string): Promise<void> => {
+      await originalShutdownTeam(teamId);
+      teamEventBridge!.detachTeam(teamId);
+    };
+
+    // Patch killTeam to auto-detach
+    const originalKillTeam = teamRuntime.killTeam.bind(teamRuntime);
+    teamRuntime.killTeam = async (teamId: string): Promise<void> => {
+      await originalKillTeam(teamId);
+      teamEventBridge!.detachTeam(teamId);
     };
   }
 
   const dispose = async (): Promise<void> => {
+    teamEventBridge?.detachAll();
     await session.dispose();
     if (mcpManager) {
       await mcpManager.dispose();

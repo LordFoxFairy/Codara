@@ -7,22 +7,26 @@
 
 import {jsonResponse, errorResponse, formatSSE, corsHeaders} from './sse';
 import type {SSEEvent} from './sse';
+import type {TeamRegistry} from '@capability/team/team-registry';
+import type {TeamRuntime} from '@capability/team/runtime/team-runtime';
+import type {RemotePool, RemoteAgentConfig} from '@capability/team/remote-pool';
+import type {TeamStatus} from '@capability/team/types';
 
 // ── Dependency injection ─────────────────────────────────────────────
 
 export interface TeamsApiDependencies {
   /** Resolve team registry instance (lazy — may not be available yet). */
-  getTeamRegistry?: () => any;
+  getTeamRegistry?: () => TeamRegistry;
   /** Resolve team runtime instance. */
-  getTeamRuntime?: () => any;
+  getTeamRuntime?: () => TeamRuntime;
   /** Resolve remote agent pool instance. */
-  getRemotePool?: () => any;
+  getRemotePool?: () => RemotePool;
 }
 
 // ── Helpers ──────────────────────────────────────────────────────────
 
 /** Guard: return 503 if registry is not available. */
-function requireRegistry(deps: TeamsApiDependencies): any | Response {
+function requireRegistry(deps: TeamsApiDependencies): TeamRegistry | Response {
   const registry = deps.getTeamRegistry?.();
   if (!registry) {
     return errorResponse('Team system not initialized', 503);
@@ -53,7 +57,8 @@ export function createTeamsApiHandler(deps: TeamsApiDependencies = {}) {
       const registry = requireRegistry(deps);
       if (isResponse(registry)) return registry;
 
-      const status = url.searchParams.get('status') ?? undefined;
+      const statusParam = url.searchParams.get('status') ?? undefined;
+      const status = statusParam as TeamStatus | undefined;
       const teams = registry.listTeams(status ? {status} : undefined);
       return jsonResponse({teams});
     }
@@ -137,9 +142,14 @@ export function createTeamsApiHandler(deps: TeamsApiDependencies = {}) {
 
       try {
         await transport.send('broadcast', {
+          id: crypto.randomUUID(),
           from: body.from ?? 'user',
+          to: 'broadcast',
+          teamId,
+          type: 'message',
           content: body.content ?? '',
           timestamp: new Date().toISOString(),
+          read: false,
         });
         return jsonResponse({ok: true, teamId});
       } catch (err) {
@@ -251,8 +261,14 @@ export function createTeamsApiHandler(deps: TeamsApiDependencies = {}) {
         return errorResponse('Missing required fields: name, url');
       }
 
+      const remoteConfig: RemoteAgentConfig = {
+        name: body.name,
+        url: body.url,
+        ...(body.capabilities ? {capabilities: body.capabilities} : {}),
+      };
+
       try {
-        await pool.addRemote(body);
+        await pool.addRemote(remoteConfig);
         return jsonResponse({ok: true, name: body.name}, 201);
       } catch (err) {
         return errorResponse(err instanceof Error ? err.message : String(err), 409);
@@ -288,6 +304,9 @@ export function createTeamsApiHandler(deps: TeamsApiDependencies = {}) {
  * Subscribes to the TeamEventEmitter from the runtime; if no runtime
  * is available, keeps the connection alive with periodic heartbeats.
  */
+// WeakMap to associate SSE cleanup functions with their ReadableStreamDefaultController instances.
+const sseCleanupMap = new WeakMap<object, () => void>();
+
 function createTeamSSEResponse(deps: TeamsApiDependencies, teamId?: string): Response {
   const encoder = new TextEncoder();
 
@@ -365,16 +384,16 @@ function createTeamSSEResponse(deps: TeamsApiDependencies, teamId?: string): Res
         }
       }, 30_000);
 
-      // Store cleanup function on the controller for the cancel() callback.
-      (controller as any).__teamSSECleanup = () => {
+      // Store cleanup function keyed on the controller for the cancel() callback.
+      sseCleanupMap.set(controller, () => {
         clearInterval(heartbeat);
         for (const unsub of unsubscribers) {
           unsub();
         }
-      };
+      });
     },
     cancel(controller) {
-      (controller as any)?.__teamSSECleanup?.();
+      sseCleanupMap.get(controller)?.();
     },
   });
 
