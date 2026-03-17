@@ -9,7 +9,7 @@
  * Topology:
  *   [Local Codara Instance]  ←─ A2ATransport ─→  [Remote Codara Instance]
  *
- * Intra-team messaging (leader ↔ local workers) uses LocalTransport / TransportRouter.
+ * Intra-team messaging (leader ↔ local workers) uses LocalTransport.
  */
 
 export interface A2AConnectionConfig {

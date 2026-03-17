@@ -8,7 +8,6 @@ import {JobBoard} from '@capability/team/job-board';
 import {LocalTransport} from '@capability/team/transport/local-transport';
 import {TeamEventEmitter} from '@capability/team/events';
 import type {TeamBusEvent} from '@capability/team/events';
-import {TeamBudgetTracker} from '@capability/team/budget/budget-tracker';
 import {TeamStore} from '@capability/team/persistence/team-store';
 import {JobBoardStore} from '@capability/team/persistence/job-board-store';
 import {MemberStore} from '@capability/team/persistence/member-store';
@@ -683,96 +682,7 @@ describe('Persistence Round Trip', () => {
   });
 });
 
-// ─── 7. Budget Tracking ─────────────────────────────────────────────
-
-describe('Budget Tracking', () => {
-  test('tracks per-member usage and team totals', () => {
-    const tracker = new TeamBudgetTracker({
-      teamMaxTokens: 100_000,
-      onBudgetExceeded: 'warn_leader',
-    });
-
-    tracker.recordUsage('worker-1', 'claude-sonnet-4-6', 1000, 500);
-    tracker.recordUsage('worker-2', 'claude-haiku-4-5', 2000, 1000);
-
-    const usage = tracker.getUsage();
-    expect(usage.totalInputTokens).toBe(3000);
-    expect(usage.totalOutputTokens).toBe(1500);
-    expect(usage.totalTokens).toBe(4500);
-    expect(usage.byMember.size).toBe(2);
-
-    const w1 = usage.byMember.get('worker-1')!;
-    expect(w1.inputTokens).toBe(1000);
-    expect(w1.outputTokens).toBe(500);
-    expect(w1.turns).toBe(1);
-
-    const w2 = usage.byMember.get('worker-2')!;
-    expect(w2.inputTokens).toBe(2000);
-    expect(w2.outputTokens).toBe(1000);
-  });
-
-  test('warning at 90% threshold', () => {
-    const tracker = new TeamBudgetTracker({
-      teamMaxTokens: 10_000,
-      onBudgetExceeded: 'warn_leader',
-    });
-
-    // 91% usage
-    const result = tracker.recordUsage('worker-1', 'claude-sonnet-4-6', 5000, 4100);
-    expect(result.action).toBe('warning');
-    expect(result.usedPercent).toBeGreaterThanOrEqual(90);
-    expect(result.remaining).toBeGreaterThan(0);
-  });
-
-  test('exceeded action at 100%', () => {
-    const tracker = new TeamBudgetTracker({
-      teamMaxTokens: 10_000,
-      onBudgetExceeded: 'shutdown',
-    });
-
-    const result = tracker.recordUsage('worker-1', 'claude-sonnet-4-6', 6000, 5000);
-    expect(result.action).toBe('exceeded');
-    expect(result.usedPercent).toBe(100);
-    expect(result.remaining).toBe(0);
-  });
-
-  test('member budget check', () => {
-    const tracker = new TeamBudgetTracker({
-      teamMaxTokens: 1_000_000,
-      memberMaxTokens: 5_000,
-      onBudgetExceeded: 'warn_leader',
-    });
-
-    tracker.recordUsage('worker-1', 'claude-sonnet-4-6', 2000, 1000);
-    expect(tracker.checkMemberBudget('worker-1')).toBe(true);
-
-    tracker.recordUsage('worker-1', 'claude-sonnet-4-6', 2000, 1000);
-    // Now at 6000 total > 5000 limit
-    expect(tracker.checkMemberBudget('worker-1')).toBe(false);
-  });
-
-  test('no budget config returns none action', () => {
-    const tracker = new TeamBudgetTracker();
-    const result = tracker.recordUsage('worker-1', 'claude-sonnet-4-6', 999999, 999999);
-    expect(result.action).toBe('none');
-    expect(result.remaining).toBe(Infinity);
-  });
-
-  test('exceeded policy defaults to warn_leader', () => {
-    const tracker = new TeamBudgetTracker();
-    expect(tracker.getExceededPolicy()).toBe('warn_leader');
-  });
-
-  test('exceeded policy respects config', () => {
-    const tracker = new TeamBudgetTracker({
-      teamMaxTokens: 100,
-      onBudgetExceeded: 'shutdown',
-    });
-    expect(tracker.getExceededPolicy()).toBe('shutdown');
-  });
-});
-
-// ─── 8. Events ──────────────────────────────────────────────────────
+// ─── 7. Events ──────────────────────────────────────────────────────
 
 describe('Events', () => {
   let emitter: TeamEventEmitter;

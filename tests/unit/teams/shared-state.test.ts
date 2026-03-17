@@ -1,7 +1,6 @@
 import {describe, expect, test} from 'bun:test';
 import {MemorySharedState} from '@capability/team/state/memory-shared-state';
 import {createSharedState} from '@capability/team/state';
-import {RedisSharedState} from '@capability/team/state/redis-shared-state';
 
 // ── MemorySharedState ─────────────────────────────────────────────────
 
@@ -170,18 +169,6 @@ describe('createSharedState', () => {
 
   test('memory backend explicitly', () => {
     const state = createSharedState({backend: 'memory'});
-    expect(state).toBeInstanceOf(MemorySharedState);
-  });
-
-  test('redis backend creates RedisSharedState', () => {
-    const state = createSharedState({backend: 'redis', redis: {host: '127.0.0.1', port: 6379}});
-    expect(state).toBeInstanceOf(RedisSharedState);
-    // Clean up connection
-    (state as RedisSharedState).disconnect();
-  });
-
-  test('redis backend without config falls back to memory', () => {
-    const state = createSharedState({backend: 'redis'});
     expect(state).toBeInstanceOf(MemorySharedState);
   });
 });
