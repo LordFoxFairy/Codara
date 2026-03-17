@@ -190,6 +190,13 @@ export function useCodara({ sessionId }: UseCodaraOptions) {
     setStatus("idle");
   }, []);
 
+  const restoreMessages = useCallback((restored: Message[]) => {
+    setMessages(restored);
+    setError(null);
+    setPauseRequest(null);
+    setStatus("idle");
+  }, []);
+
   return {
     messages,
     status,
@@ -200,6 +207,7 @@ export function useCodara({ sessionId }: UseCodaraOptions) {
     stopStreaming,
     resumePause,
     clearMessages,
+    restoreMessages,
   };
 }
 

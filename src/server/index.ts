@@ -9,9 +9,13 @@
  *   - WebSocket (CLI --connect, agents) — ws://localhost:23981/ws
  */
 
+import path from 'node:path';
 import {CodaraBus} from '../bus/bus';
 import type {BusRequest, BusEvent, ClientId} from '../bus/types';
 import {createSSEResponse, jsonResponse, errorResponse, corsHeaders, type SSEEvent} from './sse';
+import {createAgentFileCheckpointer} from '../infra/checkpoint/agent';
+import {resolveCodaraPath} from '../infra/provider/config/loader';
+import {resolveWorkspaceRoot} from '../infra/config/workspace';
 
 // ── Configuration ────────────────────────────────────────────────────
 
@@ -278,6 +282,80 @@ async function handleExecuteCommand(req: Request): Promise<Response> {
   }
 }
 
+/** Resolve the sessions directory from project root or home .codara. */
+function resolveSessionsDir(): string {
+  const projectRoot = resolveWorkspaceRoot();
+  const projectPath = path.join(projectRoot, '.codara', 'sessions');
+  try {
+    const stat = Bun.file(projectPath).size;
+    if (stat !== undefined) return projectPath;
+  } catch { /* fallback */ }
+  return path.join(resolveCodaraPath(), 'sessions');
+}
+
+let _checkpointer: ReturnType<typeof createAgentFileCheckpointer> | undefined;
+function getCheckpointer() {
+  if (!_checkpointer) {
+    _checkpointer = createAgentFileCheckpointer({rootDir: resolveSessionsDir()});
+  }
+  return _checkpointer;
+}
+
+/**
+ * GET /api/sessions/:id/messages — retrieve conversation history from checkpoint.
+ * Returns messages in a simplified format for the desktop frontend.
+ */
+async function handleSessionMessages(sessionId: string): Promise<Response> {
+  try {
+    const checkpointer = getCheckpointer();
+    const checkpoint = await checkpointer.getLatest(sessionId);
+
+    if (!checkpoint) {
+      return jsonResponse({messages: []});
+    }
+
+    // Convert LangChain BaseMessage[] to simple frontend-friendly format.
+    const messages = checkpoint.state.messages.map((msg, i) => {
+      const role = msg.getType() === 'human' ? 'user' as const : 'assistant' as const;
+      let content = '';
+      if (typeof msg.content === 'string') {
+        content = msg.content;
+      } else if (Array.isArray(msg.content)) {
+        content = msg.content
+          .filter((b): b is {type: 'text'; text: string} =>
+            typeof b === 'object' && b !== null && 'type' in b && b.type === 'text')
+          .map(b => b.text)
+          .join('');
+      }
+
+      // Extract thinking from content blocks
+      let thinking = '';
+      if (Array.isArray(msg.content)) {
+        thinking = msg.content
+          .filter((b): b is {type: 'thinking'; thinking: string} =>
+            typeof b === 'object' && b !== null && 'type' in b && b.type === 'thinking')
+          .map(b => b.thinking)
+          .join('');
+      }
+
+      return {
+        id: `hist_${sessionId.slice(0, 8)}_${i}`,
+        role,
+        content,
+        ...(thinking ? {thinking} : {}),
+        timestamp: Date.parse(checkpoint.info.createdAt) || Date.now(),
+      };
+    }).filter(m => m.role === 'user' || m.role === 'assistant');
+
+    return jsonResponse({messages});
+  } catch (err) {
+    return errorResponse(
+      `Failed to load messages: ${err instanceof Error ? err.message : String(err)}`,
+      500,
+    );
+  }
+}
+
 async function handleStatus(_req: Request): Promise<Response> {
   const busInstance = await getBus();
   const clientId = busInstance.registerClient({name: 'http-json', type: 'desktop'});
@@ -347,7 +425,7 @@ interface WSClientState {
 function route(req: Request, server: ReturnType<typeof Bun.serve>): Promise<Response> | Response {
   const url = new URL(req.url);
   const method = req.method.toUpperCase();
-  const path = url.pathname;
+  const pathname = url.pathname;
 
   // Handle CORS preflight.
   if (method === 'OPTIONS') {
@@ -355,7 +433,7 @@ function route(req: Request, server: ReturnType<typeof Bun.serve>): Promise<Resp
   }
 
   // WebSocket upgrade.
-  if (path === '/ws') {
+  if (pathname === '/ws') {
     const upgraded = server.upgrade(req, {data: {}});
     if (upgraded) {
       // Bun returns true on successful upgrade; the Response is handled internally.
@@ -365,12 +443,18 @@ function route(req: Request, server: ReturnType<typeof Bun.serve>): Promise<Resp
   }
 
   // HTTP+SSE routes.
-  if (method === 'POST' && path === '/api/chat') return handleChat(req);
-  if (method === 'POST' && path === '/api/resume') return handleResume(req);
-  if (method === 'GET' && path === '/api/sessions') return handleListSessions(req);
-  if (method === 'POST' && path === '/api/sessions') return handleCreateSession(req);
-  if (method === 'POST' && path === '/api/commands') return handleExecuteCommand(req);
-  if (method === 'GET' && path === '/api/status') return handleStatus(req);
+  if (method === 'POST' && pathname === '/api/chat') return handleChat(req);
+  if (method === 'POST' && pathname === '/api/resume') return handleResume(req);
+  if (method === 'GET' && pathname === '/api/sessions') return handleListSessions(req);
+  if (method === 'POST' && pathname === '/api/sessions') return handleCreateSession(req);
+  if (method === 'POST' && pathname === '/api/commands') return handleExecuteCommand(req);
+  if (method === 'GET' && pathname === '/api/status') return handleStatus(req);
+
+  // Session messages: GET /api/sessions/:id/messages
+  const sessionsMatch = pathname.match(/^\/api\/sessions\/([^/]+)\/messages$/);
+  if (method === 'GET' && sessionsMatch) {
+    return handleSessionMessages(sessionsMatch[1]);
+  }
 
   return errorResponse('Not Found', 404);
 }
@@ -379,6 +463,7 @@ function route(req: Request, server: ReturnType<typeof Bun.serve>): Promise<Resp
 
 const server = Bun.serve<WSClientState>({
   port: PORT,
+  idleTimeout: 255, // max value — SSE streams need long-lived connections
 
   fetch(req, server) {
     return route(req, server);
