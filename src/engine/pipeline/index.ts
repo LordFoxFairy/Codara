@@ -125,3 +125,9 @@ export {
   type TodoListMiddlewareOptions,
   type TodoMiddlewareState,
 } from '@engine/pipeline/todo';
+export {
+  createTeamContextMiddleware,
+  readTeamContext,
+  TEAM_CONTEXT_MIDDLEWARE_NAME,
+  type TeamRuntimeContext,
+} from '@engine/pipeline/team-context';
