@@ -11,6 +11,14 @@ export interface TeamEventBridgeOptions {
 
 // ─── TeamEventBridge ──────────────────────────────────────────────────────────
 
+interface TeamMeta {
+  name: string;
+  goal: string;
+  memberCount: number;
+  jobTotal: number;
+  jobDone: number;
+}
+
 /**
  * Bridges TeamEventEmitter events into the main agent's CodaraRuntimeEvent stream.
  *
@@ -20,6 +28,7 @@ export interface TeamEventBridgeOptions {
 export class TeamEventBridge {
   private readonly unsubscribes = new Map<string, () => void>();
   private readonly teamRootIds = new Map<string, string>();
+  private readonly teamMeta = new Map<string, TeamMeta>();
 
   constructor(private readonly options: TeamEventBridgeOptions) {}
 
@@ -42,6 +51,7 @@ export class TeamEventBridge {
     this.unsubscribes.get(teamId)?.();
     this.unsubscribes.delete(teamId);
     this.teamRootIds.delete(teamId);
+    this.teamMeta.delete(teamId);
   }
 
   /** Detach all teams. */
@@ -71,17 +81,34 @@ export class TeamEventBridge {
 
   private mapToRuntimeEvent(teamId: string, event: TeamBusEvent): CodaraRuntimeEvent | null {
     switch (event.type) {
+      case 'team.created': {
+        // Cache name/goal for use when team.running fires
+        this.teamMeta.set(teamId, {
+          name: event.data.name,
+          goal: event.data.goal,
+          memberCount: 0,
+          jobTotal: 0,
+          jobDone: 0,
+        });
+        return null; // No direct UI representation — rendered when team.running fires
+      }
+
       case 'team.running': {
         // Start event — create and remember a root ID for pairing
         const rootId = randomUUID();
         this.teamRootIds.set(teamId, rootId);
+        const meta = this.teamMeta.get(teamId);
+        const name = meta?.name ?? teamId;
+        const goal = meta?.goal ?? '';
+        // label: "Team <name>: <goal>" for parsing in model.ts
+        const label = goal ? `Team ${name}: ${goal}` : `Team ${name}`;
         return this.makeEvent({
           id: rootId,
           kind: 'team',
           phase: 'start',
           status: 'running',
-          label: `Team ${teamId} started`,
-          detail: teamId,
+          label,
+          detail: `memberCount:0 jobTotal:0`,
         });
       }
 
@@ -110,12 +137,19 @@ export class TeamEventBridge {
 
       case 'team.completed': {
         const parentId = this.teamRootIds.get(teamId);
+        const meta = this.teamMeta.get(teamId);
+        // detail format: "done:<n> total:<n> members:<n> summary:<text>"
+        const donePart = `done:${meta?.jobDone ?? 0}`;
+        const totalPart = `total:${meta?.jobTotal ?? 0}`;
+        const membersPart = `members:${meta?.memberCount ?? 0}`;
+        const summaryPart = event.data.summary ? `summary:${event.data.summary}` : '';
+        const detailParts = [donePart, totalPart, membersPart, summaryPart].filter(Boolean);
         const ev = this.makeEvent({
           kind: 'team',
           phase: 'end',
           status: 'done',
           label: `Team ${teamId} completed`,
-          detail: event.data.summary || undefined,
+          detail: detailParts.join(' ') || undefined,
           ...(parentId ? {parentId} : {}),
         });
         this.teamRootIds.delete(teamId);
@@ -124,12 +158,18 @@ export class TeamEventBridge {
 
       case 'team.failed': {
         const parentId = this.teamRootIds.get(teamId);
+        const meta = this.teamMeta.get(teamId);
+        // detail format: "done:<n> total:<n> error:<reason>"
+        const donePart = `done:${meta?.jobDone ?? 0}`;
+        const totalPart = `total:${meta?.jobTotal ?? 0}`;
+        const errorPart = event.data.error ? `error:${event.data.error}` : '';
+        const detailParts = [donePart, totalPart, errorPart].filter(Boolean);
         const ev = this.makeEvent({
           kind: 'team',
           phase: 'end',
           status: 'error',
           label: `Team ${teamId} failed`,
-          detail: event.data.error || undefined,
+          detail: detailParts.join(' ') || undefined,
           ...(parentId ? {parentId} : {}),
         });
         this.teamRootIds.delete(teamId);
@@ -142,6 +182,10 @@ export class TeamEventBridge {
 
       case 'member.joined': {
         const parentId = this.teamRootIds.get(teamId);
+        const meta = this.teamMeta.get(teamId);
+        if (meta) {
+          meta.memberCount++;
+        }
         return this.makeEvent({
           kind: 'team',
           phase: 'update',
@@ -168,6 +212,10 @@ export class TeamEventBridge {
 
       case 'job.done': {
         const parentId = this.teamRootIds.get(teamId);
+        const meta = this.teamMeta.get(teamId);
+        if (meta) {
+          meta.jobDone++;
+        }
         return this.makeEvent({
           kind: 'team',
           phase: 'update',
@@ -202,11 +250,19 @@ export class TeamEventBridge {
         });
       }
 
-      default:
-        // team.created, team.message, member.idle, member.working, member.paused,
-        // member.left, job.created, job.ready, job.claimed, job.in_progress,
+      default: {
+        // Track job.created for total job count (used in end event stats)
+        if (event.type === 'job.created') {
+          const meta = this.teamMeta.get(teamId);
+          if (meta) {
+            meta.jobTotal++;
+          }
+        }
+        // team.message, member.idle, member.working, member.paused,
+        // member.left, job.ready, job.claimed, job.in_progress,
         // job.submitted, job.reviewed, team.budget.warning — no UI representation
         return null;
+      }
     }
   }
 }

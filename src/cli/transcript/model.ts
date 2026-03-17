@@ -206,7 +206,7 @@ function buildRuntimeEventItems(events: readonly CodaraRuntimeEvent[]): Transcri
         const teamName = extractTeamDisplayName(startEvent.label);
         const elapsed = computeElapsedSeconds(startEvent.timestamp, event.timestamp);
         const summary = event.status === 'error'
-          ? `Failed (${elapsed}s)`
+          ? formatTeamFailedSummary(elapsed, event.detail)
           : event.status === 'paused'
             ? 'Paused'
             : formatTeamDoneSummary(elapsed, event.detail);
@@ -222,6 +222,20 @@ function buildRuntimeEventItems(events: readonly CodaraRuntimeEvent[]): Transcri
     if (event.phase === 'start') {
       // Will be rendered in third pass (unpaired start events)
       continue;
+    }
+
+    // Team update events — selectively show key milestones as sub-items
+    if (event.phase === 'update' && event.parentId) {
+      const label = event.label;
+      const isJoinedEvent = label.includes('joined as');
+      const isJobDoneEvent = label.includes('Job') && label.includes('completed');
+      if (isJoinedEvent || isJobDoneEvent) {
+        items.push({
+          id: activeId(event.id),
+          role: 'task',
+          content: `  ⎿  ${label}`,
+        });
+      }
     }
   }
 
@@ -310,10 +324,21 @@ function buildRuntimeEventItems(events: readonly CodaraRuntimeEvent[]): Transcri
     // Unpaired team start → running team block
     if (startEvent.kind === 'team') {
       const teamName = extractTeamDisplayName(startEvent.label);
+      const teamGoal = extractTeamGoal(startEvent.label);
+      const {memberCount, jobTotal} = parseTeamStartDetail(startEvent.detail);
+      const runningStats: string[] = [];
+      if (memberCount > 0) runningStats.push(`${memberCount} member${memberCount === 1 ? '' : 's'}`);
+      if (jobTotal > 0) runningStats.push(`${jobTotal} jobs planned`);
+      const runningLine = runningStats.length > 0
+        ? `Running… (${runningStats.join(' · ')})`
+        : 'Running…';
+      const contentLines = [`⏺ Team "${teamName}"`];
+      if (teamGoal) contentLines.push(`  Goal: ${teamGoal}`);
+      contentLines.push(`  ⎿  ${runningLine}`);
       items.push({
         id: activeId(startEvent.id),
         role: 'task',
-        content: `⏺ Team "${teamName}"\n  ⎿  Running…`,
+        content: contentLines.join('\n'),
       });
       continue;
     }
@@ -381,13 +406,34 @@ function extractTeamDisplayName(label: string): string {
   return label.slice(0, 40);
 }
 
+function extractTeamGoal(label: string): string | undefined {
+  // "Team frontend-refactor: Build UI components" → "Build UI components"
+  const colonIdx = label.indexOf(': ');
+  if (colonIdx > 0) {
+    const goal = label.slice(colonIdx + 2).trim();
+    return goal.length > 80 ? `${goal.slice(0, 77)}...` : goal;
+  }
+  return undefined;
+}
+
+function parseTeamStartDetail(detail?: string): {memberCount: number; jobTotal: number} {
+  const memberMatch = detail?.match(/memberCount:(\d+)/);
+  const jobTotalMatch = detail?.match(/jobTotal:(\d+)/);
+  return {
+    memberCount: memberMatch ? parseInt(memberMatch[1]!, 10) : 0,
+    jobTotal: jobTotalMatch ? parseInt(jobTotalMatch[1]!, 10) : 0,
+  };
+}
+
 function formatTeamDoneSummary(elapsed: number, detail?: string): string {
   const parts: string[] = [];
   if (detail) {
     const doneMatch = detail.match(/done:(\d+)/);
     const totalMatch = detail.match(/total:(\d+)/);
+    const membersMatch = detail.match(/members:(\d+)/);
     const tokenMatch = detail.match(/([\d.]+[kKmM]?)\s+tokens?/);
     if (doneMatch && totalMatch) parts.push(`${doneMatch[1]}/${totalMatch[1]} jobs`);
+    if (membersMatch) parts.push(`${membersMatch[1]} members`);
     if (tokenMatch) parts.push(`${tokenMatch[1]} tokens`);
   }
   const minutes = Math.floor(elapsed / 60);
@@ -395,6 +441,24 @@ function formatTeamDoneSummary(elapsed: number, detail?: string): string {
   const timeStr = minutes > 0 ? `${minutes}m ${seconds}s` : `${seconds}s`;
   parts.push(timeStr);
   return `Done (${parts.join(' · ')})`;
+}
+
+function formatTeamFailedSummary(elapsed: number, detail?: string): string {
+  const parts: string[] = [];
+  if (detail) {
+    const doneMatch = detail.match(/done:(\d+)/);
+    const totalMatch = detail.match(/total:(\d+)/);
+    // Extract error reason: "error:<reason>" — strip the structured parts first
+    const errorMatch = detail.match(/error:(.+?)(?:\s+\w+:\S+|$)/);
+    const errorReason = errorMatch?.[1]?.trim();
+    if (errorReason) parts.unshift(errorReason);
+    if (doneMatch && totalMatch) parts.push(`${doneMatch[1]}/${totalMatch[1]} jobs`);
+  }
+  const minutes = Math.floor(elapsed / 60);
+  const seconds = elapsed % 60;
+  const timeStr = minutes > 0 ? `${minutes}m ${seconds}s` : `${seconds}s`;
+  parts.push(timeStr);
+  return `Failed: ${parts.join(' · ')}`;
 }
 
 function computeElapsedSeconds(startTimestamp: string, endTimestamp: string): number {

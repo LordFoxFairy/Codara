@@ -5,9 +5,10 @@ import type {CliLayoutMode} from '../../app/layout-mode';
 interface FooterProps {
   layoutMode: CliLayoutMode;
   hasCommandOutput?: boolean;
+  hasActiveTeams?: boolean;
 }
 
-export function describeFooter(layoutMode: CliLayoutMode, hasCommandOutput = false): string {
+export function describeFooter(layoutMode: CliLayoutMode, hasCommandOutput = false, hasActiveTeams = false): string {
   if (hasCommandOutput) {
     if (layoutMode === 'minimal') {
       return 'Esc close  ·  ↑↓ scroll  ·  Enter send';
@@ -19,13 +20,17 @@ export function describeFooter(layoutMode: CliLayoutMode, hasCommandOutput = fal
     return 'Enter send  ·  ? shortcuts  ·  Ctrl+C exit';
   }
 
-  return 'Enter send  ·  Ctrl+C exit  ·  / commands  ·  Ctrl+T tasks  ·  Ctrl+O expand';
+  const base = 'Enter send  ·  Ctrl+C exit  ·  / commands  ·  Ctrl+T tasks  ·  Ctrl+O expand';
+  if (hasActiveTeams) {
+    return `${base}  ·  @team-name to message a team`;
+  }
+  return base;
 }
 
-export function Footer({layoutMode, hasCommandOutput}: FooterProps): React.JSX.Element {
+export function Footer({layoutMode, hasCommandOutput, hasActiveTeams}: FooterProps): React.JSX.Element {
   return (
     <Text dimColor wrap="truncate-end">
-      {describeFooter(layoutMode, hasCommandOutput)}
+      {describeFooter(layoutMode, hasCommandOutput, hasActiveTeams)}
     </Text>
   );
 }

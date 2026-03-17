@@ -99,6 +99,19 @@ export function CodaraCliApp(props: CodaraCliAppProps): React.JSX.Element {
   const layoutMode = resolveCliLayoutMode(terminalWidth);
   const activeTasks = useActiveTasks({runtimeEvents: shell.runtimeEvents});
   const activeTeams = useActiveTeams({runtimeEvents: shell.runtimeEvents});
+
+  // Build team member map from the facade for TeamPanel inline display
+  const teamMembers = React.useMemo(() => {
+    if (!activeTeams.hasActiveTeams) return undefined;
+    const map = new Map<string, Array<{name: string; role: string; status: string}>>();
+    for (const team of activeTeams.activeTeams) {
+      const detail = codara.getTeamDetail(team.teamId);
+      if (detail && detail.members.length > 0) {
+        map.set(team.teamId, detail.members.map(m => ({name: m.name, role: m.role, status: m.status})));
+      }
+    }
+    return map.size > 0 ? map : undefined;
+  }, [activeTeams.activeTeams, activeTeams.hasActiveTeams, codara]);
   const listCommands = React.useCallback(() => codara.listCommands(), [codara]);
   const completion = useCommandCompletion({
     text: shell.composer.text,
@@ -253,6 +266,7 @@ export function CodaraCliApp(props: CodaraCliAppProps): React.JSX.Element {
             runningCount={activeTeams.runningCount}
             doneCount={activeTeams.doneCount}
             errorCount={activeTeams.errorCount}
+            teamMembers={teamMembers}
           />
         )}
 
@@ -310,7 +324,7 @@ export function CodaraCliApp(props: CodaraCliAppProps): React.JSX.Element {
                 activeTeamCount={activeTeams.runningCount > 0 ? activeTeams.runningCount : undefined}
               />
             )}
-            <Footer layoutMode={layoutMode} hasCommandOutput={Boolean(shell.commandOutput)} />
+            <Footer layoutMode={layoutMode} hasCommandOutput={Boolean(shell.commandOutput)} hasActiveTeams={activeTeams.runningCount > 0} />
           </>
         )}
       </Box>

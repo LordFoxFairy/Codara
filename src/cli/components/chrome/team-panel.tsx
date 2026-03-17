@@ -13,11 +13,19 @@ const TEAM_NAME_MAX_WIDTH = 24;
 /** Maximum characters for goal column before truncation. */
 const TEAM_GOAL_MAX_WIDTH = 28;
 
+export interface TeamMemberInfo {
+  name: string;
+  role: string;
+  status: string;
+}
+
 interface TeamPanelProps {
   teams: ActiveTeam[];
   runningCount: number;
   doneCount: number;
   errorCount: number;
+  /** Optional member details per team (teamId -> members) */
+  teamMembers?: Map<string, TeamMemberInfo[]>;
 }
 
 function buildTeamSummary(runningCount: number, doneCount: number, errorCount: number): string {
@@ -81,7 +89,70 @@ function TeamStatusText({status}: {status: ActiveTeam['status']}): React.JSX.Ele
   return <Text color={TEAM_STATUS_COLOR[displayStatus]}>{TEAM_STATUS_LABEL[displayStatus]}</Text>;
 }
 
-export function TeamPanel({teams, runningCount, doneCount, errorCount}: TeamPanelProps): React.JSX.Element | null {
+const MAX_VISIBLE_MEMBERS = 6;
+
+/** Role icon: ♚ for leader, ♟ for worker. */
+function memberRoleIcon(role: string): string {
+  return role === 'leader' ? '♚' : '♟';
+}
+
+/** Color for member activity status. */
+function memberStatusColor(status: string): string {
+  switch (status) {
+    case 'working': return theme.status.done;        // green
+    case 'coordinating': return theme.status.running; // yellow
+    case 'paused': return theme.status.paused;        // blueBright
+    case 'idle':
+    default: return theme.chrome.dimmed;              // gray
+  }
+}
+
+function MemberPair({members}: {members: TeamMemberInfo[]}): React.JSX.Element {
+  const [left, right] = members;
+  return (
+    <Box gap={2}>
+      <Text>{'  '}</Text>
+      {left && (
+        <Box gap={1}>
+          <Text color={memberStatusColor(left.status)}>{memberRoleIcon(left.role)}</Text>
+          <Text dimColor>{left.name.slice(0, 12).padEnd(12)}</Text>
+          <Text color={memberStatusColor(left.status)}>{left.status.slice(0, 12).padEnd(12)}</Text>
+        </Box>
+      )}
+      {right && (
+        <Box gap={1}>
+          <Text color={memberStatusColor(right.status)}>{memberRoleIcon(right.role)}</Text>
+          <Text dimColor>{right.name.slice(0, 12).padEnd(12)}</Text>
+          <Text color={memberStatusColor(right.status)}>{right.status.slice(0, 12)}</Text>
+        </Box>
+      )}
+    </Box>
+  );
+}
+
+function TeamMemberRows({members}: {members: TeamMemberInfo[]}): React.JSX.Element {
+  const visible = members.slice(0, MAX_VISIBLE_MEMBERS);
+  const overflow = members.length - MAX_VISIBLE_MEMBERS;
+  const pairs: Array<[TeamMemberInfo, TeamMemberInfo | undefined]> = [];
+  for (let i = 0; i < visible.length; i += 2) {
+    pairs.push([visible[i]!, visible[i + 1]]);
+  }
+  return (
+    <>
+      {pairs.map((pair, idx) => (
+        <MemberPair key={idx} members={pair.filter((m): m is TeamMemberInfo => m !== undefined)} />
+      ))}
+      {overflow > 0 && (
+        <Box>
+          <Text>{'  '}</Text>
+          <Text dimColor>+{overflow} more</Text>
+        </Box>
+      )}
+    </>
+  );
+}
+
+export function TeamPanel({teams, runningCount, doneCount, errorCount, teamMembers}: TeamPanelProps): React.JSX.Element | null {
   const [frame, setFrame] = useState(0);
 
   useEffect(() => {
@@ -112,13 +183,17 @@ export function TeamPanel({teams, runningCount, doneCount, errorCount}: TeamPane
           progressParts.push(`${team.jobProgress.done}/${team.jobProgress.total} jobs`);
         }
         const statSuffix = progressParts.length > 0 ? `  ${progressParts.join(' · ')}` : '';
+        const members = teamMembers?.get(team.teamId);
         return (
-          <Box key={team.teamId} gap={1}>
-            <TeamIcon status={team.status} frame={frame} />
-            <Text wrap="truncate-end">{name}</Text>
-            {goal ? <Text dimColor wrap="truncate-end">{goal}</Text> : null}
-            <TeamStatusText status={team.status} />
-            <Text dimColor>{formatElapsedMs(team.elapsed)}{statSuffix}</Text>
+          <Box key={team.teamId} flexDirection="column">
+            <Box gap={1}>
+              <TeamIcon status={team.status} frame={frame} />
+              <Text wrap="truncate-end">{name}</Text>
+              {goal ? <Text dimColor wrap="truncate-end">{goal}</Text> : null}
+              <TeamStatusText status={team.status} />
+              <Text dimColor>{formatElapsedMs(team.elapsed)}{statSuffix}</Text>
+            </Box>
+            {members && members.length > 0 && <TeamMemberRows members={members} />}
           </Box>
         );
       })}
