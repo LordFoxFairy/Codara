@@ -82,3 +82,11 @@ export type { RemoteAgentConfig } from './remote-pool.js';
 // A2A
 export { CodaraA2AServer, buildCodaraAgentCard } from './a2a-server.js';
 export type { AgentCard, A2AServerConfig } from './a2a-server.js';
+
+// SharedState
+export type { SharedState, SharedStateEntry } from './state/shared-state.js';
+export { MemorySharedState } from './state/memory-shared-state.js';
+export { RedisSharedState } from './state/redis-shared-state.js';
+export type { RedisSharedStateConfig } from './state/redis-shared-state.js';
+export { createSharedState, DEFAULT_SHARED_STATE_CONFIG } from './state/index.js';
+export type { SharedStateConfig } from './state/index.js';

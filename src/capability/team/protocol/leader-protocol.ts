@@ -41,8 +41,8 @@ ${ctx.goal}
 ## Staffing Guidelines
 - 1 worker: sequential jobs, simple goal
 - 2-3 workers: parallel independent jobs
-- + reviewer: when code quality is critical or team has > 3 jobs
-- + remote: when job requires capabilities not available locally (GPU, special tools)
+- Review via prompt: add review criteria to worker prompts when code quality is critical
+- For GPU/special tools: delegate to remote Codara instance via A2A (instance-level)
 - Maximum practical team size: 5-6 members (coordination overhead grows quadratically)
 
 ## Communication Style

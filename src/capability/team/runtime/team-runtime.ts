@@ -204,7 +204,7 @@ export class TeamRuntime {
       this.pauseTeam(teamId);
       emitter?.emit({ type: 'team.paused', data: { teamId, reason: `Leader crashed: ${error}` } });
     } else {
-      // Worker/reviewer crash -> release their job, emit event
+      // Worker crash -> release their job, emit event
       const jobBoard = registry.getJobBoard(teamId);
       if (member.currentJobId && jobBoard) {
         try { jobBoard.releaseJob(member.currentJobId); } catch { /* job may not be releasable */ }
