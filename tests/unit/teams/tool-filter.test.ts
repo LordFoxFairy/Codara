@@ -76,13 +76,14 @@ describe('Tool Filter', () => {
     expect(names).toContain('edit_file');
 
     // Has worker team tools
+    expect(names).toContain('team_list_jobs');
     expect(names).toContain('team_claim_job');
     expect(names).toContain('team_submit_job');
     expect(names).toContain('team_send_message');
     expect(names).toContain('team_ask_leader');
 
-    // 6 base (7 minus Task) + 4 worker = 10
-    expect(tools).toHaveLength(10);
+    // 6 base (7 minus Task) + 5 worker = 11
+    expect(tools).toHaveLength(11);
   });
 
   test('leader role returns only team coordination tools', () => {

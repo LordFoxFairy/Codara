@@ -48,10 +48,11 @@ describe('Worker Tools', () => {
 
   // ── createWorkerTools ───────────────────────────────────────────
 
-  test('createWorkerTools returns 4 tools', () => {
+  test('createWorkerTools returns 5 tools', () => {
     const tools = createWorkerTools(ctx);
-    expect(tools).toHaveLength(4);
+    expect(tools).toHaveLength(5);
     const names = tools.map((t) => t.name);
+    expect(names).toContain('team_list_jobs');
     expect(names).toContain('team_claim_job');
     expect(names).toContain('team_submit_job');
     expect(names).toContain('team_send_message');

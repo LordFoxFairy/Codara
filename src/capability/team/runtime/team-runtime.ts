@@ -10,6 +10,7 @@ import { mergeBranch, type MergeResult } from '@capability/team/worktree/merge-c
 import type { TeamStore } from '@capability/team/persistence/team-store';
 import type { MemberStore } from '@capability/team/persistence/member-store';
 import type { JobBoardStore } from '@capability/team/persistence/job-board-store';
+import type { SharedState } from '@capability/team/state/shared-state';
 import { TeamBudgetTracker } from '@capability/team/budget/budget-tracker';
 import { MessageLog } from '@capability/team/persistence/message-log';
 
@@ -29,6 +30,8 @@ export interface TeamRuntimeOptions {
   createSession?: (options: MemberSessionOptions) => MemberSession;
   /** Optional persistence — when provided, team/member state auto-saves on changes. */
   persistence?: TeamRuntimePersistence;
+  /** Optional shared state — when provided, team status changes are reflected for cross-team visibility. */
+  sharedState?: SharedState;
 }
 
 // ─── TeamRuntime ────────────────────────────────────────────────────
@@ -70,6 +73,7 @@ export class TeamRuntime {
 
     registry.updateTeamStatus(teamId, 'running');
     this.persistTeam(teamId);
+    this.syncSharedState(teamId, 'running');
     emitter.emit({ type: 'team.running', data: { teamId } });
 
     // Periodic health check — detects deadlocks in the job board
@@ -190,6 +194,7 @@ export class TeamRuntime {
 
     registry.updateTeamStatus(teamId, 'completed');
     this.persistTeam(teamId);
+    this.syncSharedState(teamId, 'completed');
 
     const summary = failedMerges.length > 0
       ? `Team shutdown complete. ${failedMerges.length} merge(s) had conflicts.`
@@ -233,6 +238,7 @@ export class TeamRuntime {
     }
     this.options.registry.updateTeamStatus(teamId, 'failed');
     this.persistTeam(teamId);
+    this.syncSharedState(teamId, 'failed');
     this.emitters.get(teamId)?.emit({ type: 'team.failed', data: { teamId, error: 'Killed by user' } });
 
     const killTimer = this.healthTimers.get(teamId);
@@ -255,6 +261,7 @@ export class TeamRuntime {
     }
     this.options.registry.updateTeamStatus(teamId, 'paused');
     this.persistTeam(teamId);
+    this.syncSharedState(teamId, 'paused');
     this.emitters.get(teamId)?.emit({ type: 'team.paused', data: { teamId, reason: 'User requested' } });
 
     // Pause health check — no point checking a paused team
@@ -273,6 +280,7 @@ export class TeamRuntime {
     }
     this.options.registry.updateTeamStatus(teamId, 'running');
     this.persistTeam(teamId);
+    this.syncSharedState(teamId, 'running');
     this.emitters.get(teamId)?.emit({ type: 'team.running', data: { teamId } });
 
     // Restart health check timer
@@ -321,6 +329,18 @@ export class TeamRuntime {
     const { persistence } = this.options;
     if (!persistence) return;
     try { persistence.memberStore.save(member); } catch { /* best-effort */ }
+  }
+
+  /** Update shared state with current team status and job summary. */
+  private syncSharedState(teamId: string, status: string): void {
+    const { sharedState, registry } = this.options;
+    if (!sharedState) return;
+    const board = registry.getJobBoard(teamId);
+    const progress = board.getProgress();
+    sharedState.updateTeamState(teamId, {
+      status,
+      jobsSummary: {total: progress.total, done: progress.done, failed: 0},
+    });
   }
 
   // ── Private ──────────────────────────────────────────────────────

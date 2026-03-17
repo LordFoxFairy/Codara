@@ -159,10 +159,44 @@ function buildAskLeader(ctx: TeamToolContext) {
   );
 }
 
+// ─── team_list_jobs ─────────────────────────────────────────────────
+
+function buildListJobs(ctx: TeamToolContext) {
+  return tool(
+    async () => {
+      const board = ctx.registry.getJobBoard(ctx.teamId);
+      const claimable = board.getClaimable(ctx.memberId);
+      const allJobs = board.getAllJobs();
+      const progress = board.getProgress();
+      return JSON.stringify({
+        progress,
+        claimable: claimable.map(j => ({
+          id: j.id,
+          title: j.title,
+          description: j.description,
+          priority: j.priority,
+        })),
+        all: allJobs.map(j => ({
+          id: j.id,
+          title: j.title,
+          status: j.status,
+          assignee: j.assignee,
+        })),
+      });
+    },
+    {
+      name: 'team_list_jobs',
+      description: 'List all jobs on the team job board. Shows claimable jobs (ready for you to work on) and overall progress.',
+      schema: z.object({}),
+    },
+  );
+}
+
 // ─── Export ─────────────────────────────────────────────────────────
 
 export function createWorkerTools(ctx: TeamToolContext): StructuredToolInterface[] {
   return [
+    buildListJobs(ctx),
     buildClaimJob(ctx),
     buildSubmitJob(ctx),
     buildSendMessage(ctx),

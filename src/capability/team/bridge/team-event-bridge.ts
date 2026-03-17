@@ -238,6 +238,18 @@ export class TeamEventBridge {
         });
       }
 
+      case 'team.deadlock': {
+        const parentId = this.teamRootIds.get(teamId);
+        return this.makeEvent({
+          kind: 'team',
+          phase: 'update',
+          status: 'error',
+          label: `Team ${teamId} deadlock detected`,
+          detail: event.data.message,
+          ...(parentId ? {parentId} : {}),
+        });
+      }
+
       case 'team.budget.exceeded': {
         const parentId = this.teamRootIds.get(teamId);
         return this.makeEvent({
