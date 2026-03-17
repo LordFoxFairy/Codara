@@ -71,6 +71,7 @@ import {TeamRuntime} from '@capability/team/runtime/team-runtime';
 import {RemotePool} from '@capability/team/remote-pool';
 import {createConversationTeamTools} from '@capability/team/tools/conversation-tools';
 import {MemorySharedState} from '@capability/team/state/memory-shared-state';
+import {TeamEventBridge} from '@capability/team/bridge/team-event-bridge';
 
 export const DEFAULT_CODARA_MODEL_ALIAS = 'default';
 const DEFAULT_RUNTIME_FILE_LOGGING_ENABLED = true;
@@ -436,6 +437,31 @@ function assembleCodara(
   };
 
   const getMcpStatus = (): McpClientInfo[] => mcpManager?.status() ?? [];
+
+  // ── Team Event Bridge ──
+  // Bridge TeamEventEmitter events into the main runtime event stream.
+  // The bridge is only created when a TeamRuntime is present (i.e. createCodaraRuntime path).
+  const teamRuntime = preloadedSources?.teamRuntime;
+  if (teamRuntime) {
+    const bridge = new TeamEventBridge({
+      sessionId: session.getState().sessionId,
+      onRuntimeEvent: (event) => {
+        for (const listener of commandEventListeners) {
+          listener(event);
+        }
+      },
+    });
+
+    // Patch startTeam to auto-attach the new team's emitter to the bridge
+    const originalStartTeam = teamRuntime.startTeam.bind(teamRuntime);
+    teamRuntime.startTeam = async (teamId: string): Promise<void> => {
+      await originalStartTeam(teamId);
+      const emitter = teamRuntime.getEmitter(teamId);
+      if (emitter) {
+        bridge.attachTeam(teamId, emitter);
+      }
+    };
+  }
 
   const dispose = async (): Promise<void> => {
     await session.dispose();

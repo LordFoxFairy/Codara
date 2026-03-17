@@ -91,3 +91,7 @@ export { RedisSharedState } from './state/redis-shared-state.js';
 export type { RedisSharedStateConfig } from './state/redis-shared-state.js';
 export { createSharedState, DEFAULT_SHARED_STATE_CONFIG } from './state/index.js';
 export type { SharedStateConfig } from './state/index.js';
+
+// Bridge
+export { TeamEventBridge } from './bridge/team-event-bridge.js';
+export type { TeamEventBridgeOptions } from './bridge/team-event-bridge.js';
