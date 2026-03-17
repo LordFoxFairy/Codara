@@ -1,7 +1,7 @@
 import {tool} from '@langchain/core/tools';
 import type {StructuredToolInterface} from '@langchain/core/tools';
 import {z} from 'zod';
-import type {TeamMessage} from '@capability/team/types';
+import type {TeamMessage} from '@capability/team/coordination/types';
 import type {TeamToolContext} from './types';
 
 // ─── team_claim_job ─────────────────────────────────────────────────

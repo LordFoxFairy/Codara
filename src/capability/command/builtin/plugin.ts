@@ -1,5 +1,5 @@
-import type {CodaraCommandDefinition} from '@capability/command/types';
-import {installPluginSkills, listSupportedPluginSpecs} from '@capability/command/plugin-install';
+import type {CodaraCommandDefinition} from '@capability/command/runtime/types';
+import {installPluginSkills, listSupportedPluginSpecs} from '@capability/command/catalog/plugin-install';
 
 const BUILTIN_SOURCE = {type: 'builtin'} as const;
 

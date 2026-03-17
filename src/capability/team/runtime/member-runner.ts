@@ -1,7 +1,7 @@
-import type { TeamMember, TeamMessage, MemberRole } from '@capability/team/types';
+import type { TeamMember, TeamMessage, MemberRole } from '@capability/team/coordination/types';
 import type { TeamTransport } from '@capability/team/transport/types';
-import type { TeamBusEvent } from '@capability/team/events';
-import type { TeamRegistry } from '@capability/team/team-registry';
+import type { TeamBusEvent } from '@capability/team/coordination/events';
+import type { TeamRegistry } from '@capability/team/coordination/team-registry';
 import { buildLeaderProtocol } from '@capability/team/protocol/leader-protocol';
 import { buildWorkerProtocol } from '@capability/team/protocol/worker-protocol';
 

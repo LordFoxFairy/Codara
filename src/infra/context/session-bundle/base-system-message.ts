@@ -1,14 +1,16 @@
 import type {BaseMessage} from '@langchain/core/messages';
 import type {GuidelinesSource} from '@infra/context/instructions/guidelines';
-import type {PromptSource} from '@infra/context/instructions/prompt';
+import type {PromptSource} from '@infra/context/prompts/prompt-source';
 import type {AutoMemorySource} from '@infra/context/memory/auto-memory';
+import {
+  type SkillsRuntimeData,
+  type SkillsSource,
+} from '@infra/context/skills/contracts';
 import {
   formatSkillsList,
   formatSkillsLocations,
   SKILLS_SYSTEM_PROMPT,
-  type SkillsRuntimeData,
-  type SkillsSource,
-} from '@infra/context/skill-contracts';
+} from '@infra/context/prompts/skills-system-prompt';
 
 const BASE_SYSTEM_MESSAGE_KEY = 'codaraSystemMessage';
 

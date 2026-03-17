@@ -1,6 +1,6 @@
-import type {TeamRegistry} from '@capability/team/team-registry';
+import type {TeamRegistry} from '@capability/team/coordination/team-registry';
 import type {TeamTransport} from '@capability/team/transport/types';
-import type {TeamBusEvent} from '@capability/team/events';
+import type {TeamBusEvent} from '@capability/team/coordination/events';
 
 export interface TeamToolContext {
   teamId: string;

@@ -5,7 +5,7 @@ import type {
   CodaraCommandResult,
   CodaraCommandSpec,
   ParsedCodaraCommand,
-} from '@capability/command/types';
+} from '@capability/command/runtime/types';
 import {createBuiltInCommands} from '@capability/command/builtin';
 
 export interface CodaraCommandRunner {

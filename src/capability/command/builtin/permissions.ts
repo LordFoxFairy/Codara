@@ -1,4 +1,4 @@
-import type {CodaraCommandDefinition} from '@capability/command/types';
+import type {CodaraCommandDefinition} from '@capability/command/runtime/types';
 import {
   ensurePermissionSettingsFile,
   resolvePermissionSettingsFile,

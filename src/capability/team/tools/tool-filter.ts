@@ -1,5 +1,5 @@
 import type {StructuredToolInterface} from '@langchain/core/tools';
-import type {MemberRole} from '@capability/team/types';
+import type {MemberRole} from '@capability/team/coordination/types';
 import {createLeaderTools} from './leader-tools';
 import {createWorkerTools} from './worker-tools';
 import type {TeamToolContext} from './types';

@@ -1,6 +1,6 @@
 import {useEffect, useMemo, useState} from 'react';
 import type {CodaraRuntimeEvent} from '@/index';
-import type {TeamStatus} from '@capability/team/types';
+import type {TeamStatus} from '@capability/team/coordination/types';
 
 export interface ActiveTeam {
   teamId: string;

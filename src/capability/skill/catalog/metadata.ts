@@ -1,5 +1,5 @@
 import {z} from 'zod'
-import type {SkillMetadata} from '@infra/context/skill-contracts'
+import type {SkillMetadata} from '@infra/context/skills/contracts'
 
 // Re-export contracts so existing consumers continue to work
 export {
@@ -7,7 +7,7 @@ export {
   formatSkillAnnotations,
   formatSkillsList,
   formatSkillsLocations,
-} from '@infra/context/skill-contracts';
+} from '@infra/context/prompts/skills-system-prompt';
 
 export const SkillMetadataEntrySchema = z.object({
   name: z.string(),

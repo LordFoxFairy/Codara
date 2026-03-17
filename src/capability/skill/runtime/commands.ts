@@ -1,7 +1,7 @@
 import {readFile} from 'node:fs/promises';
-import type {SkillsRuntimeData} from '@capability/skill/runtime';
-import type {SkillMetadata, SkillStore} from '@capability/skill/types';
-import {normalizeDiscoveredSkills} from '@capability/skill/metadata';
+import type {SkillsRuntimeData} from '@infra/context/skills/contracts';
+import type {SkillMetadata, SkillStore} from '@capability/skill/catalog/types';
+import {normalizeDiscoveredSkills} from '@capability/skill/catalog/metadata';
 
 export interface SkillCommandDefinition {
   name: string;

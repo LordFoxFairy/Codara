@@ -1,4 +1,4 @@
-import type { TeamMessage } from '@capability/team/types';
+import type { TeamMessage } from '@capability/team/coordination/types';
 
 export type Unsubscribe = () => void;
 

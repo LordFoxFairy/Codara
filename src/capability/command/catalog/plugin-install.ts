@@ -3,7 +3,7 @@ import {existsSync} from 'node:fs';
 import {cp, mkdir, mkdtemp, readFile, readdir, rm, writeFile} from 'node:fs/promises';
 import {homedir, tmpdir} from 'node:os';
 import path from 'node:path';
-import {parseMarkdownFrontmatterDocument} from '@capability/skill/loading';
+import {parseMarkdownFrontmatterDocument} from '@capability/skill/catalog/loading';
 import {resolvePluginInstallGlobal} from '@infra/config/settings';
 import {resolveWorkspaceRoot} from '@infra/config/workspace';
 

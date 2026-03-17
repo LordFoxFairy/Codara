@@ -1,6 +1,6 @@
 import yaml from 'yaml'
-import type {SkillCommandMetadata, SkillMetadata} from '@capability/skill/types'
-import {splitAllowedToolTokens} from '@capability/skill/parsing'
+import type {SkillCommandMetadata, SkillMetadata} from '@capability/skill/catalog/types'
+import {splitAllowedToolTokens} from '@capability/skill/discovery/parsing'
 
 export const MAX_SKILL_FILE_SIZE = 1024 * 1024 // 1MB - skill files should be concise
 export const MAX_SKILL_NAME_LENGTH = 64

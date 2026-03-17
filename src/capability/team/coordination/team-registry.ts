@@ -1,6 +1,6 @@
-import {JobBoard} from '@capability/team/job-board';
-import {TeamConfigSchema, SECURITY_DEFAULTS} from '@capability/team/types';
-import type {Team, TeamConfig, TeamMember, TeamStatus, MemberRole} from '@capability/team/types';
+import {JobBoard} from '@capability/team/coordination/job-board';
+import {TeamConfigSchema, SECURITY_DEFAULTS} from '@capability/team/coordination/types';
+import type {Team, TeamConfig, TeamMember, TeamStatus, MemberRole} from '@capability/team/coordination/types';
 
 // ─── Errors ──────────────────────────────────────────────────────────
 

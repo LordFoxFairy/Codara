@@ -1,7 +1,7 @@
 import {tool} from '@langchain/core/tools';
 import type {StructuredToolInterface} from '@langchain/core/tools';
 import {z} from 'zod';
-import type {TeamRegistry} from '@capability/team/team-registry';
+import type {TeamRegistry} from '@capability/team/coordination/team-registry';
 import type {TeamRuntime} from '@capability/team/runtime/team-runtime';
 import type {SharedState} from '@capability/team/state/shared-state';
 

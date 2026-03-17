@@ -1,9 +1,9 @@
 import {readdir, readFile, stat} from 'node:fs/promises'
 import {homedir} from 'node:os'
 import path from 'node:path'
-import {MAX_SKILL_FILE_SIZE, parseSkillMetadataFromContent} from '@capability/skill/loading'
-import {skillsMetadataReducer} from '@capability/skill/metadata'
-import type {SkillMetadata, SkillStore} from '@capability/skill/types'
+import {MAX_SKILL_FILE_SIZE, parseSkillMetadataFromContent} from '@capability/skill/catalog/loading'
+import {skillsMetadataReducer} from '@capability/skill/catalog/metadata'
+import type {SkillMetadata, SkillStore} from '@capability/skill/catalog/types'
 import {resolveWorkspaceRoot} from '@infra/config/workspace'
 
 const DEFAULT_CACHE_TTL_MS = 5_000

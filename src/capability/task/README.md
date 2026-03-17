@@ -1,6 +1,6 @@
 # Tasks
 
-`tasks/*` 是统一的委派执行与共享任务协调域。
+`task/*` 是统一的委派执行与共享任务协调域。
 这里的 delegation 心智对齐 DeepAgents：它是建立在通用 agent loop 之上的 middleware-maintained capability，不是 core 自己的一套特殊 runtime。
 产品语义上按 `Task -> delegated child run` 理解：`Task` 是委派入口，child run 是其执行机制。
 
@@ -19,19 +19,22 @@
 分层：
 
 ```text
-tasks/
-  delegation.ts       # delegated child runner + helpers
-  task.ts              # formal Task tool (public API stays runtime-agnostic)
-  shared-tasks.ts      # TaskCreate/TaskUpdate/TaskList
-  store.ts             # TaskStore implementations
-  types.ts             # tasks domain types
+task/
+  delegation/
+    runtime.ts            # delegated child runner + helpers
+  tools/
+    task-middleware.ts    # formal Task tool + middleware
+  shared/
+    task-tools.ts         # TaskCreate/TaskUpdate/TaskList
+    store.ts              # TaskStore implementations
+    types.ts              # shared task domain types
 ```
 
 规则：
 
 - `agents/*` 保持纯执行内核，不再承载 task/subagent 领域文件。
 - `middleware/*` 只保留 generic lifecycle domain；tasks 的 middleware facade 与对应 primitive 放在同一 tasks 文件中，避免再拆出一层薄 wrapper 目录。
-- 根入口 / `@capability/task` 和 `@capability/task/tasks` 应只保留 `TaskMiddleware` 作为委派主入口；低层 delegation helper 退回 `@capability/task/tasks/delegation`，`createTaskTool(...)` 退回 `@capability/task/tasks/task` 作为内部实现。
+- `@capability/task` 只保留轻量 public barrel，内部实现优先按子域直接导入（`delegation/*`、`tools/*`、`shared/*`），不要再回退到旧平铺结构。
 - `skills` 只负责发现和解析；`Task` 通过 `runtime.shared.skills` 消费定义，不直接读 store。
 - 宿主装配（例如 Codara child-agent 创建）通过 product layer 接入，不继续污染 tasks 核心 API。
 - child delegation 的限制优先通过能力装配表达：创建 child 时直接剔除 delegation tools，而不是在运行期依赖 `agentType` 再做一层兜底分支。

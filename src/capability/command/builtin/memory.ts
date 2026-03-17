@@ -3,7 +3,7 @@ import {homedir} from 'node:os';
 import path from 'node:path';
 import {resolveWorkspaceRoot} from '@infra/config/workspace';
 import {createWorkspaceKey} from '@infra/config/workspace-key';
-import type {CodaraCommandDefinition} from '@capability/command/types';
+import type {CodaraCommandDefinition} from '@capability/command/runtime/types';
 
 const BUILTIN_SOURCE = {type: 'builtin'} as const;
 const MEMORY_FILE_NAME = 'AGENTS.md';

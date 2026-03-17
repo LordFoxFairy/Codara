@@ -1,9 +1,9 @@
 import {existsSync, mkdirSync, readFileSync, readdirSync, renameSync, rmSync, writeFileSync} from 'node:fs';
 import {join} from 'node:path';
 
-import {TeamSchema, TeamMemberSchema} from '@capability/team/types';
-import type {Team, TeamMember, TeamStatus, Job, TeamMessage} from '@capability/team/types';
-import {JobBoard} from '@capability/team/job-board';
+import {TeamSchema, TeamMemberSchema} from '@capability/team/coordination/types';
+import type {Team, TeamMember, TeamStatus, Job, TeamMessage} from '@capability/team/coordination/types';
+import {JobBoard} from '@capability/team/coordination/job-board';
 
 // ─── Types ──────────────────────────────────────────────────────────
 

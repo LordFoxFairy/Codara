@@ -2,16 +2,16 @@ import {
   createSkillCommandInvocation,
   discoverSkillCommandsFromRuntime,
   type SkillCommandDefinition,
-} from '@capability/skill/commands';
+} from '@capability/skill/runtime/commands';
 import type {SkillsSource} from '@capability/skill';
-import type {CodaraCommandDefinition} from '@capability/command/types';
+import type {CodaraCommandDefinition} from '@capability/command/runtime/types';
 import {readLatestAssistantText} from '@shared/messages';
 import {
   deriveSkillCommandRequirements,
   runSkillCommandPreflight,
   type SkillCommandRequirements,
   type SkillCommandPreflightResult,
-} from '@capability/command/skill-requirements';
+} from '@capability/command/runtime/skill-requirements';
 
 export async function createSkillCodaraCommands(
   source: SkillsSource,

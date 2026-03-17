@@ -6,14 +6,16 @@ import {
   markDelegationTool,
   readDelegatedParentRuntimeMetadata,
   runDelegatedAgent,
-} from '@capability/task/delegation';
+} from '@capability/task/delegation/runtime';
+import {
+  type SkillsRuntimeData,
+  type SubagentDefinition,
+} from '@infra/context/skills/contracts';
 import {
   readSkillsRuntimeData,
   resolveSubagentDefinition,
-  type SkillsRuntimeData,
-  type SubagentDefinition,
-} from '@infra/context/skill-contracts';
-import {readBaseSystemMessage} from '@infra/context/system-message';
+} from '@infra/context/skills/runtime-shared';
+import {readBaseSystemMessage} from '@infra/context/session-bundle/base-system-message';
 import {filterToolsByReferences} from '@engine/tool';
 import {createAgentMemoryCheckpointer} from '@engine/checkpoint/agent';
 

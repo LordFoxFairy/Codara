@@ -1,4 +1,4 @@
-import type { TeamMessage } from '@capability/team/types';
+import type { TeamMessage } from '@capability/team/coordination/types';
 import type { TeamTransport, Unsubscribe } from './types';
 
 export class LocalTransport implements TeamTransport {

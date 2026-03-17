@@ -1,7 +1,7 @@
 import type {AgentResult, AgentState} from '@shared/contracts/agent-types';
 import type {CompactOptions} from '@engine/checkpoint/types';
 import type {HookRegistry} from '@engine/hook/registry';
-import type {TeamRegistry} from '@capability/team/team-registry';
+import type {TeamRegistry} from '@capability/team/coordination/team-registry';
 import type {TeamRuntime} from '@capability/team/runtime/team-runtime';
 export interface ParsedCodaraCommand {
   raw: string;

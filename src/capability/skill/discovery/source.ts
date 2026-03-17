@@ -1,8 +1,8 @@
-import type {SkillsRuntimeData, SkillStore, SkillsSource} from '@infra/context/skill-contracts';
-import {loadSkillsRuntimeData} from '@capability/skill/runtime';
+import type {SkillsRuntimeData, SkillStore, SkillsSource} from '@infra/context/skills/contracts';
+import {loadSkillsRuntimeData} from '@capability/skill/runtime/runtime';
 
 // Re-export from infra for backwards compatibility
-export type {SkillsSource} from '@infra/context/skill-contracts';
+export type {SkillsSource} from '@infra/context/skills/contracts';
 
 export interface FileSkillsSourceOptions {
   load: () => Promise<SkillsRuntimeData>;

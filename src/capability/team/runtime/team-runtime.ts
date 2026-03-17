@@ -1,16 +1,16 @@
 import { randomUUID } from 'node:crypto';
-import type { Team, TeamMember, MemberRole } from '@capability/team/types';
-import { TeamRegistry } from '@capability/team/team-registry';
+import type { Team, TeamMember, MemberRole } from '@capability/team/coordination/types';
+import { TeamRegistry } from '@capability/team/coordination/team-registry';
 import { LocalTransport } from '@capability/team/transport/local-transport';
 import type { TeamTransport } from '@capability/team/transport/types';
-import type { TeamBusEvent } from '@capability/team/events';
+import type { TeamBusEvent } from '@capability/team/coordination/events';
 import { MemberRunner } from '@capability/team/runtime/member-runner';
 import type { MemberSession, MemberSessionOptions } from '@capability/team/runtime/member-runner';
-import { createMemberWorktree, cleanupTeamWorktrees, listTeamWorktrees } from '@capability/team/worktree/team-worktree';
-import { mergeBranch, type MergeResult } from '@capability/team/worktree/merge-coordinator';
+import { createMemberWorktree, cleanupTeamWorktrees, listTeamWorktrees } from '@infra/worktree/team-worktree';
+import { mergeBranch, type MergeResult } from '@infra/git/merge';
 import { TeamPersistence } from '@capability/team/persistence/team-persistence';
-import type { TeamMessage } from '@capability/team/types';
-import type { CodaraRuntimeEvent, CodaraRuntimeEventPhase, CodaraRuntimeEventStatus } from '@engine/session/runtime-events';
+import type { TeamMessage } from '@capability/team/coordination/types';
+import type { CodaraRuntimeEvent, CodaraRuntimeEventPhase, CodaraRuntimeEventStatus } from '@engine/events/runtime-events';
 
 // ─── Types ──────────────────────────────────────────────────────────
 

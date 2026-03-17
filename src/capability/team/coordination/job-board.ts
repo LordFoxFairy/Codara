@@ -1,4 +1,4 @@
-import type {Job, JobResult, JobSpec, JobStatus} from '@capability/team/types';
+import type {Job, JobResult, JobSpec, JobStatus} from '@capability/team/coordination/types';
 
 // ─── Errors ──────────────────────────────────────────────────────────
 

@@ -1,9 +1,9 @@
 import {tool} from '@langchain/core/tools';
 import type {StructuredToolInterface} from '@langchain/core/tools';
 import {z} from 'zod';
-import type {Team, TeamMessage} from '@capability/team/types';
-import {SECURITY_DEFAULTS} from '@capability/team/types';
-import {mergeBranch} from '@capability/team/worktree/merge-coordinator';
+import type {Team, TeamMessage} from '@capability/team/coordination/types';
+import {SECURITY_DEFAULTS} from '@capability/team/coordination/types';
+import {mergeBranch} from '@infra/git/merge';
 import type {TeamToolContext} from './types';
 
 // ─── Inline security guards (depth-control.ts removed) ──────────────

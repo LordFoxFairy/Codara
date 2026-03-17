@@ -1,7 +1,7 @@
 import {existsSync} from 'node:fs';
 import path from 'node:path';
 import {homedir} from 'node:os';
-import type {CodaraCommandDefinition} from '@capability/command/types';
+import type {CodaraCommandDefinition} from '@capability/command/runtime/types';
 import {resolvePermissionSettingsFile} from '@engine/pipeline/permission';
 import {resolveWorkspaceRoot} from '@infra/config/workspace';
 
