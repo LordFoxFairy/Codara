@@ -20,11 +20,42 @@ fn get_server_port() -> u16 {
 }
 
 /// Spawn `bun src/server/index.ts` and return the child handle.
+/// The server script path is relative to the project root, so we resolve
+/// it from the executable's location (src-tauri/target/debug/) upward.
 fn spawn_server() -> Child {
+    // In dev: executable is at src-tauri/target/debug/codara-desktop
+    // In prod: executable is inside the app bundle
+    // Either way, find the project root by looking for src/server/index.ts
+    let project_root = find_project_root()
+        .expect("could not find project root (looked for src/server/index.ts)");
+
     Command::new("bun")
         .args(["src/server/index.ts"])
+        .current_dir(&project_root)
         .spawn()
         .expect("failed to start bun server — is bun installed and on PATH?")
+}
+
+/// Walk up from the current executable to find the project root.
+fn find_project_root() -> Option<std::path::PathBuf> {
+    // Try CARGO_MANIFEST_DIR first (set by cargo during dev builds)
+    if let Ok(manifest) = std::env::var("CARGO_MANIFEST_DIR") {
+        let root = std::path::Path::new(&manifest).parent()?;
+        if root.join("src/server/index.ts").exists() {
+            return Some(root.to_path_buf());
+        }
+    }
+
+    // Fallback: walk up from current exe
+    let exe = std::env::current_exe().ok()?;
+    let mut dir = exe.parent()?;
+    for _ in 0..10 {
+        if dir.join("src/server/index.ts").exists() {
+            return Some(dir.to_path_buf());
+        }
+        dir = dir.parent()?;
+    }
+    None
 }
 
 /// Block until `GET /api/status` returns 200, or panic on timeout.

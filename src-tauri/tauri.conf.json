@@ -5,12 +5,11 @@
   "identifier": "com.codara.desktop",
   "build": {
     "frontendDist": "../dist-desktop",
-    "devUrl": "http://localhost:5173",
+    "devUrl": "http://localhost:1420",
     "beforeDevCommand": "bun run dev:vite",
     "beforeBuildCommand": "bun run build:desktop"
   },
   "app": {
-    "title": "Codara",
     "windows": [
       {
         "title": "Codara",
