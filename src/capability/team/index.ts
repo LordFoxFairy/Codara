@@ -25,10 +25,9 @@ export type {
 } from './runtime/member-runner.js';
 export { TeamRuntime } from './runtime/team-runtime.js';
 export type { TeamRuntimeOptions } from './runtime/team-runtime.js';
-export { resolveModel } from './runtime/model-resolver.js';
-export { sortInbox, formatTeamMessage, prepareInboxInjection } from './runtime/message-injector.js';
 
 // Events
+/** @deprecated TeamEventEmitter is no longer used by TeamRuntime — use onTeamEvent callback instead. */
 export { TeamEventEmitter, isTeamEvent } from './events.js';
 export type {
   TeamBusEvent,
@@ -56,17 +55,6 @@ export type { WorkerPromptContext } from './protocol/worker-protocol.js';
 // Persistence
 export { TeamPersistence } from './persistence/team-persistence.js';
 export type { TeamSnapshot, TeamSummary } from './persistence/team-persistence.js';
-/** @deprecated Use TeamPersistence instead. */
-export { MessageLog } from './persistence/message-log.js';
-/** @deprecated Use TeamPersistence instead. */
-export { TeamStore } from './persistence/team-store.js';
-/** @deprecated Use TeamPersistence instead. */
-export { JobBoardStore } from './persistence/job-board-store.js';
-/** @deprecated Use TeamPersistence instead. */
-export { MemberStore } from './persistence/member-store.js';
-
-// Security
-export { canCreateSubTeam, canSpawnMember } from './security/depth-control.js';
 
 // Worktree
 export { createMemberWorktree, removeMemberWorktree, listTeamWorktrees, cleanupTeamWorktrees } from './worktree/team-worktree.js';
@@ -74,23 +62,12 @@ export type { WorktreeInfo } from './worktree/team-worktree.js';
 export { getMergeOrder, mergeBranch } from './worktree/merge-coordinator.js';
 export type { MergeResult } from './worktree/merge-coordinator.js';
 
-// Remote
-export { RemotePool } from './remote-pool.js';
-export type { RemoteAgentConfig } from './remote-pool.js';
-
-// A2A
-export { CodaraA2AServer, buildCodaraAgentCard } from './a2a-server.js';
-export type { AgentCard, A2AServerConfig } from './a2a-server.js';
 
 // SharedState
 export type { SharedState, SharedStateEntry } from './state/shared-state.js';
 export { MemorySharedState } from './state/memory-shared-state.js';
 export { createSharedState, DEFAULT_SHARED_STATE_CONFIG } from './state/index.js';
 export type { SharedStateConfig } from './state/index.js';
-
-// Bridge
-export { TeamEventBridge } from './bridge/team-event-bridge.js';
-export type { TeamEventBridgeOptions } from './bridge/team-event-bridge.js';
 
 // Middleware (moved from engine/pipeline — this is the canonical location)
 export {

@@ -1,10 +1,25 @@
 import {tool} from '@langchain/core/tools';
 import type {StructuredToolInterface} from '@langchain/core/tools';
 import {z} from 'zod';
-import type {TeamMessage} from '@capability/team/types';
-import {canCreateSubTeam, canSpawnMember} from '@capability/team/security/depth-control';
+import type {Team, TeamMessage} from '@capability/team/types';
+import {SECURITY_DEFAULTS} from '@capability/team/types';
 import {mergeBranch} from '@capability/team/worktree/merge-coordinator';
 import type {TeamToolContext} from './types';
+
+// ─── Inline security guards (depth-control.ts removed) ──────────────
+
+function canCreateSubTeam(team: Team): boolean {
+  return team.config.allowSubTeams && team.depth < team.config.maxDepth;
+}
+
+function canSpawnMember(
+  teamMemberCount: number,
+  teamMaxMembers: number,
+  globalAgentCount: number,
+): boolean {
+  return teamMemberCount < teamMaxMembers
+    && globalAgentCount < SECURITY_DEFAULTS.maxTotalAgents;
+}
 
 // ─── Factory ────────────────────────────────────────────────────────
 
@@ -57,7 +72,7 @@ function createTeamPlanJobsTool(ctx: TeamToolContext): StructuredToolInterface {
       const created = board.planJobs(input.jobs);
 
       for (const job of created) {
-        ctx.emitter.emit({
+        ctx.emitEvent({
           type: 'job.created',
           data: {teamId: ctx.teamId, jobId: job.id, title: job.title, priority: job.priority},
         });
@@ -185,7 +200,7 @@ function createTeamSpawnMemberTool(ctx: TeamToolContext): StructuredToolInterfac
 
       ctx.registry.registerMember(ctx.teamId, member);
 
-      ctx.emitter.emit({
+      ctx.emitEvent({
         type: 'member.joined',
         data: {teamId: ctx.teamId, memberId, name: input.name, role: input.role, mode: 'local'},
       });
@@ -222,7 +237,7 @@ function createTeamAssignJobTool(ctx: TeamToolContext): StructuredToolInterface 
         return JSON.stringify({error: `Cannot assign job ${input.jobId} to ${input.memberId}. Job may not be ready or member may already have an active job.`});
       }
 
-      ctx.emitter.emit({
+      ctx.emitEvent({
         type: 'job.claimed',
         data: {teamId: ctx.teamId, jobId: input.jobId, memberId: input.memberId},
       });
@@ -254,7 +269,7 @@ function createTeamReviewJobTool(ctx: TeamToolContext): StructuredToolInterface 
 
       if (input.approved) {
         board.completeJob(input.jobId, ctx.memberId);
-        ctx.emitter.emit({
+        ctx.emitEvent({
           type: 'job.done',
           data: {teamId: ctx.teamId, jobId: input.jobId},
         });
@@ -267,7 +282,7 @@ function createTeamReviewJobTool(ctx: TeamToolContext): StructuredToolInterface 
         return JSON.stringify({reviewed: true, approved: true, jobId: input.jobId});
       } else {
         board.rejectJob(input.jobId, input.feedback ?? 'Rejected');
-        ctx.emitter.emit({
+        ctx.emitEvent({
           type: 'job.reviewed',
           data: {teamId: ctx.teamId, jobId: input.jobId, approved: false, reviewerId: ctx.memberId},
         });
@@ -321,7 +336,7 @@ function createTeamSendMessageTool(ctx: TeamToolContext): StructuredToolInterfac
       const msg = makeMessage(ctx, input.to, 'message', input.content);
       await ctx.transport.send(input.to, msg);
 
-      ctx.emitter.emit({
+      ctx.emitEvent({
         type: 'team.message',
         data: {teamId: ctx.teamId, message: msg},
       });
@@ -347,7 +362,7 @@ function createTeamBroadcastTool(ctx: TeamToolContext): StructuredToolInterface 
       const msg = makeMessage(ctx, 'broadcast', 'message', input.content);
       await ctx.transport.send('broadcast', msg);
 
-      ctx.emitter.emit({
+      ctx.emitEvent({
         type: 'team.message',
         data: {teamId: ctx.teamId, message: msg},
       });
@@ -383,7 +398,7 @@ function createTeamCreateSubteamTool(ctx: TeamToolContext): StructuredToolInterf
         createdBy: ctx.memberId,
       });
 
-      ctx.emitter.emit({
+      ctx.emitEvent({
         type: 'team.created',
         data: {teamId: subTeam.teamId, name: subTeam.name, goal: subTeam.goal, depth: subTeam.depth},
       });
@@ -413,7 +428,7 @@ function createTeamReportTool(ctx: TeamToolContext): StructuredToolInterface {
       });
 
       if (input.isFinal) {
-        ctx.emitter.emit({
+        ctx.emitEvent({
           type: 'team.completing',
           data: {teamId: ctx.teamId},
         });
@@ -437,7 +452,7 @@ function createTeamReportTool(ctx: TeamToolContext): StructuredToolInterface {
 function createTeamShutdownTool(ctx: TeamToolContext): StructuredToolInterface {
   return tool(
     async (input) => {
-      ctx.emitter.emit({
+      ctx.emitEvent({
         type: 'team.completing',
         data: {teamId: ctx.teamId},
       });
