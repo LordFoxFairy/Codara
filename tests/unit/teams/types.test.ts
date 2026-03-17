@@ -37,12 +37,16 @@ describe('TeamStatusSchema', () => {
 });
 
 describe('MemberRoleSchema', () => {
-  test.each(['leader', 'worker', 'reviewer'])('accepts "%s"', (v) => {
+  test.each(['leader', 'worker'])('accepts "%s"', (v) => {
     expect(MemberRoleSchema.parse(v)).toBe(v);
   });
 
   test('rejects invalid value', () => {
     expect(() => MemberRoleSchema.parse('admin')).toThrow();
+  });
+
+  test('rejects "reviewer"', () => {
+    expect(() => MemberRoleSchema.parse('reviewer')).toThrow();
   });
 });
 
@@ -259,16 +263,6 @@ describe('TeamMemberSchema', () => {
     expect(result.memberId).toBe('member-1');
     expect(result.model).toBeUndefined();
     expect(result.worktreePath).toBeUndefined();
-  });
-
-  test('accepts remote member with remoteInfo', () => {
-    const result = TeamMemberSchema.parse({
-      ...validMember,
-      mode: 'remote',
-      remoteInfo: {agentCardUrl: 'https://example.com/agent'},
-    });
-    expect(result.mode).toBe('remote');
-    expect(result.remoteInfo?.agentCardUrl).toBe('https://example.com/agent');
   });
 
   test('rejects invalid role', () => {

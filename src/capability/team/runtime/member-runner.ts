@@ -4,7 +4,6 @@ import type { TeamEventEmitter } from '@capability/team/events';
 import type { TeamRegistry } from '@capability/team/team-registry';
 import { buildLeaderProtocol } from '@capability/team/protocol/leader-protocol';
 import { buildWorkerProtocol } from '@capability/team/protocol/worker-protocol';
-import { buildReviewerProtocol } from '@capability/team/protocol/reviewer-protocol';
 import { prepareInboxInjection } from '@capability/team/runtime/message-injector';
 
 // ─── Types ──────────────────────────────────────────────────────────
@@ -225,12 +224,6 @@ export class MemberRunner {
           memberName: member.name,
           goal: this.options.goal,
           worktreePath: member.worktreePath,
-        });
-      case 'reviewer':
-        return buildReviewerProtocol({
-          teamName: this.options.teamName,
-          memberName: member.name,
-          goal: this.options.goal,
         });
     }
   }

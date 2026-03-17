@@ -71,13 +71,13 @@ describe('Leader Tools', () => {
 
   // ── createLeaderTools ───────────────────────────────────────────
 
-  test('returns 14 tools', () => {
-    expect(tools).toHaveLength(14);
+  test('returns 13 tools', () => {
+    expect(tools).toHaveLength(13);
   });
 
   test('all tools have unique names', () => {
     const names = tools.map((t) => t.name);
-    expect(new Set(names).size).toBe(14);
+    expect(new Set(names).size).toBe(13);
   });
 
   // ── team_plan_jobs ──────────────────────────────────────────────
@@ -166,11 +166,11 @@ describe('Leader Tools', () => {
 
     test('emits member.joined event', async () => {
       const spawnTool = findTool(tools, 'team_spawn_member');
-      await spawnTool.invoke({name: 'worker-2', role: 'reviewer'});
+      await spawnTool.invoke({name: 'worker-2', role: 'worker'});
 
       const joined = events.filter((e) => e.type === 'member.joined');
       expect(joined).toHaveLength(1);
-      expect(joined[0].data).toMatchObject({name: 'worker-2', role: 'reviewer', mode: 'local'});
+      expect(joined[0].data).toMatchObject({name: 'worker-2', role: 'worker', mode: 'local'});
     });
 
     test('returns error when limit reached', async () => {
@@ -380,17 +380,6 @@ describe('Leader Tools', () => {
       expect(completing).toHaveLength(1);
 
       expect(registry.getTeam(team.teamId)!.status).toBe('completing');
-    });
-  });
-
-  // ── team_connect_remote ─────────────────────────────────────────
-
-  describe('team_connect_remote', () => {
-    test('returns stub message', async () => {
-      const remoteTool = findTool(tools, 'team_connect_remote');
-      const result = parse(await remoteTool.invoke({remoteName: 'ext-agent', role: 'worker'}));
-
-      expect(result.status).toBe('not_implemented');
     });
   });
 

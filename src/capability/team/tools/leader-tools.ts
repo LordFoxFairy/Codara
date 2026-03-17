@@ -28,7 +28,6 @@ export function createLeaderTools(ctx: TeamToolContext): StructuredToolInterface
     createTeamCancelJobTool(ctx),
     createTeamGetJobBoardTool(ctx),
     createTeamSpawnMemberTool(ctx),
-    createTeamConnectRemoteTool(ctx),
     createTeamAssignJobTool(ctx),
     createTeamReviewJobTool(ctx),
     createTeamMergeBranchTool(ctx),
@@ -189,7 +188,7 @@ function createTeamSpawnMemberTool(ctx: TeamToolContext): StructuredToolInterfac
         memberId,
         name: input.name,
         teamId: ctx.teamId,
-        role: input.role as 'worker' | 'reviewer',
+        role: input.role as 'worker',
         status: 'initializing' as const,
         model: input.model,
         sessionId: `session_${memberId}`,
@@ -208,32 +207,11 @@ function createTeamSpawnMemberTool(ctx: TeamToolContext): StructuredToolInterfac
     },
     {
       name: 'team_spawn_member',
-      description: 'Spawn a new local team member (worker or reviewer). Creates the member record; the runtime handles actual agent session creation.',
+      description: 'Spawn a new local team member (worker). Creates the member record; the runtime handles actual agent session creation.',
       schema: z.object({
         name: z.string(),
-        role: z.enum(['worker', 'reviewer']),
+        role: z.enum(['worker']),
         model: z.string().optional(),
-      }),
-    },
-  );
-}
-
-// ─── 6. team_connect_remote ─────────────────────────────────────────
-
-function createTeamConnectRemoteTool(ctx: TeamToolContext): StructuredToolInterface {
-  return tool(
-    async (_input) => {
-      return JSON.stringify({
-        status: 'not_implemented',
-        message: 'Remote connections will be available when A2A transport is implemented',
-      });
-    },
-    {
-      name: 'team_connect_remote',
-      description: 'Connect a remote agent to the team (placeholder — awaiting A2A transport implementation).',
-      schema: z.object({
-        remoteName: z.string(),
-        role: z.enum(['worker', 'reviewer']),
       }),
     },
   );

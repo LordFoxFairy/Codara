@@ -1,3 +1,15 @@
+/**
+ * CodaraA2AServer — exposes the *entire* Codara instance as an A2A-compatible agent.
+ *
+ * This server is NOT a per-team or per-member endpoint. It represents one
+ * Codara process as a single agent that remote instances (other Codara installs,
+ * or any A2A-compliant client) can discover and delegate tasks to.
+ *
+ * Topology:
+ *   [Remote Codara / A2A Client]  ──HTTP/JSON-RPC──▶  [CodaraA2AServer]
+ *                                                           │
+ *                                                    routes to local agent
+ */
 import * as os from 'os';
 
 // ─── Types ──────────────────────────────────────────────────────────

@@ -43,7 +43,6 @@ export type {
 // Tools
 export { createLeaderTools } from './tools/leader-tools.js';
 export { createWorkerTools } from './tools/worker-tools.js';
-export { createReviewerTools } from './tools/reviewer-tools.js';
 export { getToolsForRole, isTeamTool } from './tools/tool-filter.js';
 export type { TeamToolContext } from './tools/types.js';
 
@@ -52,8 +51,6 @@ export { buildLeaderProtocol } from './protocol/leader-protocol.js';
 export type { LeaderPromptContext } from './protocol/leader-protocol.js';
 export { buildWorkerProtocol } from './protocol/worker-protocol.js';
 export type { WorkerPromptContext } from './protocol/worker-protocol.js';
-export { buildReviewerProtocol } from './protocol/reviewer-protocol.js';
-export type { ReviewerPromptContext } from './protocol/reviewer-protocol.js';
 
 // Persistence
 export { MessageLog } from './persistence/message-log.js';

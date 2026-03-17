@@ -2,13 +2,7 @@ import type {StructuredToolInterface} from '@langchain/core/tools';
 import type {MemberRole} from '@capability/team/types';
 import {createLeaderTools} from './leader-tools';
 import {createWorkerTools} from './worker-tools';
-import {createReviewerTools} from './reviewer-tools';
 import type {TeamToolContext} from './types';
-
-// Tools that are read-only (safe for reviewers)
-const READ_ONLY_TOOL_NAMES = new Set([
-  'read_file', 'glob', 'grep', 'bash', 'web_search', 'fetch_url', 'notebook_read',
-]);
 
 // Tools blocked for workers (prevent confusion with team jobs)
 const BLOCKED_FOR_WORKER = new Set(['Task']);
@@ -28,13 +22,6 @@ export function getToolsForRole(
       return [
         ...baseTools.filter((t) => !BLOCKED_FOR_WORKER.has(t.name)),
         ...createWorkerTools(ctx),
-      ];
-
-    case 'reviewer':
-      // Read-only dev tools + reviewer team tools
-      return [
-        ...baseTools.filter((t) => READ_ONLY_TOOL_NAMES.has(t.name)),
-        ...createReviewerTools(ctx),
       ];
   }
 }

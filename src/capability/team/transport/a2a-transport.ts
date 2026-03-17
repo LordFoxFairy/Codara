@@ -1,128 +1,79 @@
-import type { TeamMessage } from '@capability/team/types';
-import type { TeamTransport, Unsubscribe } from './types';
+/**
+ * A2ATransport — instance-level transport for cross-Codara communication.
+ *
+ * This class is NOT a TeamTransport. It does NOT handle intra-team messaging
+ * between local members. Instead it connects one Codara instance (typically
+ * the Team Leader's machine) to a *remote* Codara instance exposed via the
+ * A2A protocol (see `CodaraA2AServer`).
+ *
+ * Topology:
+ *   [Local Codara Instance]  ←─ A2ATransport ─→  [Remote Codara Instance]
+ *
+ * Intra-team messaging (leader ↔ local workers) uses LocalTransport / TransportRouter.
+ */
 
 export interface A2AConnectionConfig {
   url: string;
   authHeaders?: Record<string, string>;
 }
 
-interface ConnectionState {
-  config: A2AConnectionConfig;
-  healthy: boolean;
+interface PendingResult {
+  status: 'pending' | 'completed' | 'failed';
+  output?: string;
+  error?: string;
 }
 
-/**
- * Remote transport for A2A protocol agents.
- *
- * Manages per-member inboxes, health tracking, and subscriber notifications
- * for remote team members reached via `@a2a-js/sdk`.
- *
- * Full A2A client integration (message/send, streaming) will be wired once
- * the agent-card verification flow is in place.
- */
-export class A2ATransport implements TeamTransport {
-  private inboxes = new Map<string, TeamMessage[]>();
-  private subscribers = new Map<string, Set<(msg: TeamMessage) => void>>();
-  private connections = new Map<string, ConnectionState>();
+export class A2ATransport {
+  private config: A2AConnectionConfig;
+  private results = new Map<string, PendingResult>();
+  private connected = true;
 
-  // ─── Connection lifecycle ──────────────────────────────────────────
-
-  /** Connect a remote member with its A2A endpoint config. */
-  async connectRemote(memberId: string, config: A2AConnectionConfig): Promise<void> {
-    this.connections.set(memberId, { config, healthy: true });
-    if (!this.inboxes.has(memberId)) {
-      this.inboxes.set(memberId, []);
-      this.subscribers.set(memberId, new Set());
-    }
+  constructor(config: A2AConnectionConfig) {
+    this.config = config;
   }
-
-  /** Mark a remote member as disconnected (e.g., network failure). */
-  markDisconnected(memberId: string): void {
-    const conn = this.connections.get(memberId);
-    if (conn) conn.healthy = false;
-  }
-
-  /** Mark a remote member as reconnected. */
-  markReconnected(memberId: string): void {
-    const conn = this.connections.get(memberId);
-    if (conn) conn.healthy = true;
-  }
-
-  // ─── TeamTransport interface ───────────────────────────────────────
-
-  async send(to: string | 'broadcast', message: TeamMessage): Promise<void> {
-    if (to === 'broadcast') {
-      for (const memberId of this.connections.keys()) {
-        if (memberId !== message.from) {
-          this.deliverToInbox(memberId, message);
-        }
-      }
-    } else {
-      this.deliverToInbox(to, message);
-    }
-  }
-
-  async receive(memberId: string): Promise<TeamMessage[]> {
-    const inbox = this.inboxes.get(memberId);
-    if (!inbox) return [];
-    const messages = [...inbox];
-    inbox.length = 0;
-    return messages;
-  }
-
-  subscribe(memberId: string, handler: (msg: TeamMessage) => void): Unsubscribe {
-    const subs = this.subscribers.get(memberId);
-    if (!subs) throw new Error(`Member ${memberId} not connected`);
-    subs.add(handler);
-    return () => subs.delete(handler);
-  }
-
-  isHealthy(memberId: string): boolean {
-    return this.connections.get(memberId)?.healthy ?? false;
-  }
-
-  async close(memberId: string): Promise<void> {
-    this.connections.delete(memberId);
-    this.inboxes.delete(memberId);
-    this.subscribers.delete(memberId);
-  }
-
-  // ─── A2A-specific operations ───────────────────────────────────────
 
   /**
-   * Send a job to a remote agent via A2A protocol. Returns remote task ID.
+   * Send a task to the remote Codara instance via A2A `message/send`.
+   * Returns the remote task ID that can be polled with `getResult`.
    *
-   * Currently returns a deterministic placeholder; the real A2AClient call
-   * will be wired once agent-card verification is complete.
+   * The real A2AClient HTTP call will be wired once agent-card verification
+   * is in place. Currently returns a deterministic placeholder task ID.
    */
-  async sendJob(memberId: string, _jobTitle: string, _jobDescription: string): Promise<string> {
-    const conn = this.connections.get(memberId);
-    if (!conn) throw new Error(`Member ${memberId} not connected`);
-    return `a2a-task-${Date.now()}`;
-  }
-
-  /** Retrieve the connection config for a given member (if any). */
-  getConnectionConfig(memberId: string): A2AConnectionConfig | undefined {
-    return this.connections.get(memberId)?.config;
-  }
-
-  // ─── Private helpers ───────────────────────────────────────────────
-
-  private deliverToInbox(memberId: string, message: TeamMessage): void {
-    const inbox = this.inboxes.get(memberId);
-    if (!inbox) return;
-
-    inbox.push(message);
-
-    const subs = this.subscribers.get(memberId);
-    if (subs) {
-      for (const handler of subs) {
-        try {
-          handler(message);
-        } catch {
-          // subscriber errors must never break delivery
-        }
-      }
+  async sendTask(task: { title: string; description: string }): Promise<string> {
+    if (!this.connected) {
+      throw new Error(`A2ATransport: not connected to ${this.config.url}`);
     }
+    const taskId = `a2a-task-${Date.now()}`;
+    this.results.set(taskId, { status: 'pending' });
+    // TODO: POST to this.config.url with JSON-RPC message/send payload
+    return taskId;
+  }
+
+  /**
+   * Poll the result of a previously submitted task.
+   * Returns undefined while the task is still pending.
+   */
+  async getResult(taskId: string): Promise<{ output: string } | { error: string } | undefined> {
+    const result = this.results.get(taskId);
+    if (!result) throw new Error(`A2ATransport: unknown task ${taskId}`);
+    if (result.status === 'pending') return undefined;
+    if (result.status === 'failed') return { error: result.error ?? 'unknown error' };
+    return { output: result.output ?? '' };
+  }
+
+  /** Disconnect from the remote instance and clear pending state. */
+  disconnect(): void {
+    this.connected = false;
+    this.results.clear();
+  }
+
+  /** Whether the transport is currently connected. */
+  isConnected(): boolean {
+    return this.connected;
+  }
+
+  /** The endpoint URL this transport is connected to. */
+  getUrl(): string {
+    return this.config.url;
   }
 }

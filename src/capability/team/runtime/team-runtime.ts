@@ -237,7 +237,6 @@ export class TeamRuntime {
       teamId,
       role,
       status: 'initializing',
-      mode: 'local',
       model,
       sessionId: `session-${teamId}-${name}`,
       joinedAt: new Date().toISOString(),

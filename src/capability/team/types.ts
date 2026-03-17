@@ -14,7 +14,7 @@ export const TeamStatusSchema = z.enum([
 ]);
 export type TeamStatus = z.infer<typeof TeamStatusSchema>;
 
-export const MemberRoleSchema = z.enum(['leader', 'worker', 'reviewer']);
+export const MemberRoleSchema = z.enum(['leader', 'worker']);
 export type MemberRole = z.infer<typeof MemberRoleSchema>;
 
 export const MemberStatusSchema = z.enum([
@@ -68,7 +68,6 @@ export type TeamBudgetConfig = z.infer<typeof TeamBudgetConfigSchema>;
 export const ModelCascadeSchema = z.object({
   leader: z.string().optional(),
   worker: z.string().optional(),
-  reviewer: z.string().optional(),
   default: z.string().optional(),
 });
 export type ModelCascade = z.infer<typeof ModelCascadeSchema>;
@@ -99,6 +98,9 @@ export const TeamSchema = z.object({
 });
 export type Team = z.infer<typeof TeamSchema>;
 
+// NOTE: RemoteConnectionInfoSchema is used at the instance level (for connecting
+// to remote Codara instances), NOT for individual team members. All team members
+// are local agents.
 export const RemoteConnectionInfoSchema = z.object({
   agentCardUrl: z.string(),
   contextId: z.string().optional(),
@@ -117,8 +119,6 @@ export const TeamMemberSchema = z.object({
   sessionId: z.string(),
   worktreePath: z.string().optional(),
   currentJobId: z.string().optional(),
-  mode: z.enum(['local', 'remote']),
-  remoteInfo: RemoteConnectionInfoSchema.optional(),
   joinedAt: z.string(),
   lastHeartbeat: z.string().optional(),
 });

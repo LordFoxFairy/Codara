@@ -5,7 +5,6 @@ import {LocalTransport} from '@capability/team/transport/local-transport';
 import {TeamEventEmitter} from '@capability/team/events';
 import {getToolsForRole, isTeamTool} from '@capability/team/tools/tool-filter';
 import {createWorkerTools} from '@capability/team/tools/worker-tools';
-import {createReviewerTools} from '@capability/team/tools/reviewer-tools';
 import type {TeamToolContext} from '@capability/team/tools/types';
 import type {TeamMember} from '@capability/team/types';
 
@@ -86,29 +85,6 @@ describe('Tool Filter', () => {
     expect(tools).toHaveLength(10);
   });
 
-  test('reviewer role includes only read-only base tools + 2 reviewer tools', () => {
-    const tools = getToolsForRole('reviewer', ctx, baseTools);
-    const names = tools.map((t) => t.name);
-
-    // Only read-only tools from base
-    expect(names).toContain('read_file');
-    expect(names).toContain('bash');
-    expect(names).toContain('glob');
-    expect(names).toContain('grep');
-
-    // No write tools
-    expect(names).not.toContain('edit_file');
-    expect(names).not.toContain('write_file');
-    expect(names).not.toContain('Task');
-
-    // Has reviewer team tools
-    expect(names).toContain('team_review_submit');
-    expect(names).toContain('team_send_message');
-
-    // 4 read-only base + 2 reviewer = 6
-    expect(tools).toHaveLength(6);
-  });
-
   test('leader role returns only team coordination tools', () => {
     // Note: this test depends on leader-tools being implemented.
     // Since leader-tools is built in parallel, we just verify it returns tools
@@ -126,11 +102,6 @@ describe('Tool Filter', () => {
   test('isTeamTool identifies team tools correctly', () => {
     const workerTools = createWorkerTools(ctx);
     for (const t of workerTools) {
-      expect(isTeamTool(t)).toBe(true);
-    }
-
-    const reviewerTools = createReviewerTools(ctx);
-    for (const t of reviewerTools) {
       expect(isTeamTool(t)).toBe(true);
     }
   });
