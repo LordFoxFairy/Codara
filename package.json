@@ -59,7 +59,7 @@
     "dev:once": "bun src/cli/main.tsx",
     "dev:server": "bun --watch src/server/index.ts",
     "dev:vite": "vite --config src/desktop/vite.config.ts",
-    "desktop": "bun --watch src/server/index.ts & vite --config src/desktop/vite.config.ts --open",
+    "desktop": "sh -c 'bun --watch src/server/index.ts & vite --config src/desktop/vite.config.ts --open'",
     "desktop:tauri": "cargo tauri dev --config src-tauri/tauri.conf.json",
     "build": "rm -rf dist && tsc -p tsconfig.json && tsc-alias -p tsconfig.json --resolve-full-paths --resolve-full-extension .js",
     "build:desktop": "vite build --config src/desktop/vite.config.ts && cargo tauri build --config src-tauri/tauri.conf.json",

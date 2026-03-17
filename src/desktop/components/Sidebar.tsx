@@ -278,7 +278,12 @@ export function Sidebar({
       {/* ── Control ── */}
       <SectionHeader label="Control" />
       <div className="px-2">
-        <NavItem icon={BarChart3} label="Overview" />
+        <NavItem
+          icon={BarChart3}
+          label="Overview"
+          active={activePage === "debug"}
+          onClick={() => onNavigate("debug")}
+        />
         <NavItem
           icon={FolderClock}
           label="Sessions"
@@ -296,7 +301,12 @@ export function Sidebar({
           active={activePage === "skills"}
           onClick={() => onNavigate("skills")}
         />
-        <NavItem icon={Cpu} label="Nodes" />
+        <NavItem
+          icon={Cpu}
+          label="Nodes"
+          active={activePage === "config"}
+          onClick={() => onNavigate("config")}
+        />
       </div>
 
       {/* ── Settings ── */}

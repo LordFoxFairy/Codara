@@ -1,4 +1,5 @@
-import { Menu, RotateCcw, Wifi, WifiOff, AlertCircle, Monitor, Sun } from "lucide-react";
+import { Menu, RotateCcw, Wifi, WifiOff, AlertCircle, Monitor, Sun, Moon } from "lucide-react";
+import { useCallback, useState } from "react";
 import type { ConnectionStatus, RuntimeStatus } from "../types";
 
 interface TopBarProps {
@@ -6,6 +7,7 @@ interface TopBarProps {
   runtimeStatus: RuntimeStatus;
   onToggleSidebar: () => void;
   onRefresh?: () => void;
+  onOpenDebug?: () => void;
 }
 
 function HealthBadge({ status }: { status: ConnectionStatus }) {
@@ -42,7 +44,17 @@ function HealthBadge({ status }: { status: ConnectionStatus }) {
   );
 }
 
-export function TopBar({ connectionStatus, onToggleSidebar, onRefresh }: TopBarProps) {
+export function TopBar({ connectionStatus, onToggleSidebar, onRefresh, onOpenDebug }: TopBarProps) {
+  const [isDark, setIsDark] = useState(false);
+
+  const toggleTheme = useCallback(() => {
+    setIsDark((prev) => {
+      const next = !prev;
+      document.documentElement.classList.toggle("dark", next);
+      return next;
+    });
+  }, []);
+
   return (
     <header className="flex h-[46px] shrink-0 items-center justify-between border-b border-[var(--color-border)] bg-[var(--color-surface-elevated)] px-3">
       {/* Left: hamburger + brand */}
@@ -50,6 +62,7 @@ export function TopBar({ connectionStatus, onToggleSidebar, onRefresh }: TopBarP
         <button
           onClick={onToggleSidebar}
           className="rounded-md p-1.5 text-[var(--color-text-tertiary)] transition-colors hover:bg-[var(--color-surface-hover)] hover:text-[var(--color-text-secondary)]"
+          title="Toggle sidebar"
         >
           <Menu size={18} strokeWidth={1.75} />
         </button>
@@ -60,11 +73,9 @@ export function TopBar({ connectionStatus, onToggleSidebar, onRefresh }: TopBarP
               <path strokeLinecap="round" strokeLinejoin="round" d="M9.813 15.904L9 18.75l-.813-2.846a4.5 4.5 0 00-3.09-3.09L2.25 12l2.846-.813a4.5 4.5 0 003.09-3.09L9 5.25l.813 2.846a4.5 4.5 0 003.09 3.09L15.75 12l-2.846.813a4.5 4.5 0 00-3.09 3.09z" />
             </svg>
           </div>
-          <div className="flex items-baseline gap-1.5">
-            <span className="text-[14px] font-bold tracking-tight text-[var(--color-text-primary)]">
-              CODARA
-            </span>
-          </div>
+          <span className="text-[14px] font-bold tracking-tight text-[var(--color-text-primary)]">
+            CODARA
+          </span>
         </div>
       </div>
 
@@ -73,21 +84,23 @@ export function TopBar({ connectionStatus, onToggleSidebar, onRefresh }: TopBarP
         <HealthBadge status={connectionStatus} />
 
         <button
+          onClick={onOpenDebug}
           className="rounded-md p-1.5 text-[var(--color-text-tertiary)] transition-colors hover:bg-[var(--color-surface-hover)] hover:text-[var(--color-text-secondary)]"
-          title="Terminal"
+          title="Debug console"
         >
           <Monitor size={15} strokeWidth={1.75} />
         </button>
         <button
+          onClick={toggleTheme}
           className="rounded-md p-1.5 text-[var(--color-text-tertiary)] transition-colors hover:bg-[var(--color-surface-hover)] hover:text-[var(--color-text-secondary)]"
-          title="Theme"
+          title={isDark ? "Switch to light mode" : "Switch to dark mode"}
         >
-          <Sun size={15} strokeWidth={1.75} />
+          {isDark ? <Moon size={15} strokeWidth={1.75} /> : <Sun size={15} strokeWidth={1.75} />}
         </button>
         <button
           onClick={onRefresh}
           className="rounded-md p-1.5 text-[var(--color-text-tertiary)] transition-colors hover:bg-[var(--color-surface-hover)] hover:text-[var(--color-text-secondary)]"
-          title="Refresh"
+          title="Refresh status"
         >
           <RotateCcw size={15} strokeWidth={1.75} />
         </button>

@@ -5,9 +5,29 @@ import { Sidebar, type NavPage } from "./components/Sidebar";
 import { ContentHeader } from "./components/ContentHeader";
 import { Chat } from "./components/Chat";
 import { InputArea } from "./components/InputArea";
+import { SessionsPage } from "./pages/SessionsPage";
+import { SkillsPage } from "./pages/SkillsPage";
+import { ConfigPage } from "./pages/ConfigPage";
+import { DebugPage } from "./pages/DebugPage";
+import { LogsPage } from "./pages/LogsPage";
+import { DocsPage } from "./pages/DocsPage";
 import { useCodara } from "./hooks/useCodara";
 import { useSessions } from "./hooks/useSessions";
 import { useStatus } from "./hooks/useStatus";
+
+/* ── Page metadata ───────────────────────────────────────── */
+
+const PAGE_META: Record<NavPage, { title: string; subtitle: string }> = {
+  chat: { title: "Chat", subtitle: "Direct chat session for quick interactions." },
+  sessions: { title: "Sessions", subtitle: "Browse and restore past conversations." },
+  skills: { title: "Skills & Tools", subtitle: "MCP servers, tools, and skill registry." },
+  config: { title: "Configuration", subtitle: "Runtime settings, models, and providers." },
+  debug: { title: "Debug", subtitle: "Command runner and runtime inspector." },
+  logs: { title: "Logs", subtitle: "Live runtime event stream." },
+  docs: { title: "Documentation", subtitle: "Quick reference for Codara features." },
+};
+
+/* ── App ─────────────────────────────────────────────────── */
 
 export function App() {
   const [currentSessionId, setCurrentSessionId] = useState<string | null>(null);
@@ -71,6 +91,7 @@ export function App() {
       setCurrentSessionId(session.id);
       setActiveSession(session);
       clearMessages();
+      setActivePage("chat");
     }
   }, [createSession, clearMessages]);
 
@@ -78,16 +99,15 @@ export function App() {
     async (id: string) => {
       if (id !== currentSessionId) {
         setCurrentSessionId(id);
-        // Update active session ref
         const found = sessions.find((s) => s.id === id);
         if (found) setActiveSession(found);
         clearMessages();
-        // Load conversation history from checkpoint
         const history = await loadMessages(id);
         if (history.length > 0) {
           restoreMessages(history);
         }
       }
+      setActivePage("chat");
     },
     [currentSessionId, sessions, clearMessages, loadMessages, restoreMessages],
   );
@@ -95,6 +115,16 @@ export function App() {
   const handleNavigate = useCallback((page: NavPage) => {
     setActivePage(page);
   }, []);
+
+  // Open session from Sessions page → switch to chat
+  const handleOpenSession = useCallback(
+    (id: string) => {
+      void handleSelectSession(id);
+    },
+    [handleSelectSession],
+  );
+
+  const pageMeta = PAGE_META[activePage];
 
   return (
     <div className="flex h-full flex-col overflow-hidden bg-[var(--color-surface)]">
@@ -104,11 +134,11 @@ export function App() {
         runtimeStatus={runtimeStatus}
         onToggleSidebar={() => setSidebarCollapsed((c) => !c)}
         onRefresh={() => void refreshStatus()}
+        onOpenDebug={() => setActivePage("debug")}
       />
 
       {/* ── Body: sidebar + content ───────────────────── */}
       <div className="flex min-h-0 flex-1">
-        {/* Sidebar navigation */}
         <Sidebar
           sessions={displaySessions}
           currentSessionId={currentSessionId}
@@ -123,13 +153,15 @@ export function App() {
         <main className="relative flex min-w-0 flex-1 flex-col">
           {/* Content header */}
           <ContentHeader
-            title="Chat"
-            subtitle="Direct chat session for quick interactions."
-            agentLabel="codara:main"
+            title={pageMeta.title}
+            subtitle={pageMeta.subtitle}
+            agentLabel={activePage === "chat" ? "codara:main" : undefined}
+            onRefresh={() => void refreshStatus()}
+            onSettings={() => setActivePage("config")}
           />
 
-          {/* Error banner */}
-          {error && errorVisible && (
+          {/* Error banner (chat only) */}
+          {activePage === "chat" && error && errorVisible && (
             <div className="animate-fade-in border-b border-red-200 bg-red-50 px-4 py-2">
               <div className="mx-auto flex max-w-4xl items-center gap-2 text-[13px] text-red-600">
                 <AlertCircle size={14} strokeWidth={2} className="shrink-0" />
@@ -144,22 +176,30 @@ export function App() {
             </div>
           )}
 
-          {/* Chat messages */}
-          <Chat
-            messages={messages}
-            status={status}
-            pauseRequest={pauseRequest}
-            onResume={resumePause}
-          />
-
-          {/* Input bar */}
-          <InputArea
-            onSend={sendMessage}
-            disabled={isStreaming || status === "paused"}
-            onStop={stopStreaming}
-            isStreaming={isStreaming}
-            onNewSession={handleNewChat}
-          />
+          {/* ── Page content ─────────────────────────── */}
+          {activePage === "chat" && (
+            <>
+              <Chat
+                messages={messages}
+                status={status}
+                pauseRequest={pauseRequest}
+                onResume={resumePause}
+              />
+              <InputArea
+                onSend={sendMessage}
+                disabled={isStreaming || status === "paused"}
+                onStop={stopStreaming}
+                isStreaming={isStreaming}
+                onNewSession={handleNewChat}
+              />
+            </>
+          )}
+          {activePage === "sessions" && <SessionsPage onOpenSession={handleOpenSession} />}
+          {activePage === "skills" && <SkillsPage />}
+          {activePage === "config" && <ConfigPage />}
+          {activePage === "debug" && <DebugPage />}
+          {activePage === "logs" && <LogsPage />}
+          {activePage === "docs" && <DocsPage />}
         </main>
       </div>
     </div>
