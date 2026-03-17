@@ -1,4 +1,4 @@
-import { RotateCcw, Settings, ChevronDown } from "lucide-react";
+import { RotateCcw, Settings } from "lucide-react";
 
 interface ContentHeaderProps {
   title: string;

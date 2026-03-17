@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useState } from "react";
 import { Zap, Wrench, CircleDot, AlertTriangle } from "lucide-react";
 
-const API_BASE = "http://localhost:23981";
+import { API_BASE } from "../config";
 
 interface McpTool {
   name: string;
@@ -19,6 +19,7 @@ interface McpServer {
 export function SkillsPage() {
   const [servers, setServers] = useState<McpServer[]>([]);
   const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
 
   const refresh = useCallback(async () => {
     try {
@@ -27,7 +28,10 @@ export function SkillsPage() {
       const data = await res.json();
       const mcp = (data.mcp ?? []) as McpServer[];
       setServers(mcp);
-    } catch { /* ignore */ } finally {
+      setError(null);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Failed to load skills");
+    } finally {
       setLoading(false);
     }
   }, []);
@@ -49,6 +53,13 @@ export function SkillsPage() {
             icon={Zap}
           />
         </div>
+
+        {/* Error */}
+        {error && (
+          <div className="mb-4 rounded-lg border border-red-200 bg-red-50 px-4 py-3 text-[12px] text-red-600">
+            {error}
+          </div>
+        )}
 
         {loading ? (
           <div className="space-y-3">

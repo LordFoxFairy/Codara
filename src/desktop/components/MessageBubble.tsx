@@ -4,7 +4,6 @@ import type { Message, ToolCall } from "../types";
 
 interface MessageBubbleProps {
   message: Message;
-  isLast: boolean;
 }
 
 function formatTime(timestamp: number): string {
@@ -12,7 +11,7 @@ function formatTime(timestamp: number): string {
   return d.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit", hour12: false });
 }
 
-export function MessageBubble({ message, isLast }: MessageBubbleProps) {
+export function MessageBubble({ message }: MessageBubbleProps) {
   const isUser = message.role === "user";
   const time = formatTime(message.timestamp);
 

@@ -1,8 +1,8 @@
 import { useCallback, useEffect, useState } from "react";
-import { FolderClock, Hash, Trash2, MessageSquare } from "lucide-react";
+import { FolderClock, Hash, MessageSquare } from "lucide-react";
 import type { Session } from "../types";
 
-const API_BASE = "http://localhost:23981";
+import { API_BASE } from "../config";
 
 interface SessionDetail extends Session {
   status: string;
@@ -12,6 +12,7 @@ interface SessionDetail extends Session {
 export function SessionsPage({ onOpenSession }: { onOpenSession: (id: string) => void }) {
   const [sessions, setSessions] = useState<SessionDetail[]>([]);
   const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
 
   const refresh = useCallback(async () => {
     try {
@@ -32,7 +33,10 @@ export function SessionsPage({ onOpenSession }: { onOpenSession: (id: string) =>
         };
       });
       setSessions(data);
-    } catch { /* ignore */ } finally {
+      setError(null);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Failed to load sessions");
+    } finally {
       setLoading(false);
     }
   }, []);
@@ -59,6 +63,13 @@ export function SessionsPage({ onOpenSession }: { onOpenSession: (id: string) =>
           <StatCard label="With Messages" value={sessionsWithMessages.length} icon={MessageSquare} />
           <StatCard label="Empty" value={emptySessions.length} icon={Hash} />
         </div>
+
+        {/* Error */}
+        {error && (
+          <div className="mb-4 rounded-lg border border-red-200 bg-red-50 px-4 py-3 text-[12px] text-red-600">
+            {error}
+          </div>
+        )}
 
         {/* Session list */}
         {loading ? (

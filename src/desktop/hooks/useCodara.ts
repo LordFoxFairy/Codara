@@ -1,7 +1,7 @@
 import { useCallback, useRef, useState } from "react";
 import type { Message, PauseRequest, StreamStatus, ToolCall } from "../types";
 
-const API_BASE = "http://localhost:23981";
+import { API_BASE } from "../config";
 
 function generateId(): string {
   return `msg_${Date.now()}_${Math.random().toString(36).slice(2, 9)}`;

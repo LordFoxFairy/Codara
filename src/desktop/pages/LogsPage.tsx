@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { ScrollText, Pause, Play, Trash2 } from "lucide-react";
 
-const API_BASE = "http://localhost:23981";
+import { API_BASE } from "../config";
 const POLL_INTERVAL = 3000;
 
 interface LogEntry {

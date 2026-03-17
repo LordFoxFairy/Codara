@@ -1,4 +1,4 @@
-import { Menu, RotateCcw, Wifi, WifiOff, AlertCircle, Monitor, Sun, Moon } from "lucide-react";
+import { Menu, RotateCcw, Monitor, Sun, Moon } from "lucide-react";
 import { useCallback, useState } from "react";
 import type { ConnectionStatus, RuntimeStatus } from "../types";
 

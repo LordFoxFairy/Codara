@@ -1,4 +1,4 @@
-import { FileText, ExternalLink, BookOpen, Terminal, Zap, Shield, Cpu } from "lucide-react";
+import { BookOpen, Terminal, Zap, Shield, Cpu } from "lucide-react";
 
 const DOCS = [
   {

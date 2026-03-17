@@ -48,8 +48,8 @@ export function Chat({ messages, status, pauseRequest, onResume }: ChatProps) {
     <div ref={containerRef} className="flex-1 overflow-y-auto bg-[var(--color-surface)]">
       <div className="mx-auto max-w-4xl px-6 py-6">
         <div className="space-y-5">
-          {messages.map((msg, i) => (
-            <MessageBubble key={msg.id} message={msg} isLast={i === messages.length - 1} />
+          {messages.map((msg) => (
+            <MessageBubble key={msg.id} message={msg} />
           ))}
         </div>
 

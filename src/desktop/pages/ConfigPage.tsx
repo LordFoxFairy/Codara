@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useState } from "react";
 import { Settings, Cpu, Globe, Shield } from "lucide-react";
 
-const API_BASE = "http://localhost:23981";
+import { API_BASE } from "../config";
 
 interface StatusData {
   sessionId?: string;
@@ -18,6 +18,7 @@ interface StatusData {
 export function ConfigPage() {
   const [status, setStatus] = useState<StatusData | null>(null);
   const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
 
   const refresh = useCallback(async () => {
     try {
@@ -25,7 +26,10 @@ export function ConfigPage() {
       if (!res.ok) return;
       const data = await res.json();
       setStatus(data);
-    } catch { /* ignore */ } finally {
+      setError(null);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Failed to load config");
+    } finally {
       setLoading(false);
     }
   }, []);
@@ -47,6 +51,13 @@ export function ConfigPage() {
   return (
     <div className="flex-1 overflow-y-auto bg-[var(--color-surface)]">
       <div className="mx-auto max-w-4xl px-6 py-6 space-y-5">
+        {/* Error */}
+        {error && (
+          <div className="rounded-lg border border-red-200 bg-red-50 px-4 py-3 text-[12px] text-red-600">
+            {error}
+          </div>
+        )}
+
         {/* Runtime */}
         <Section title="Runtime" icon={Cpu}>
           <ConfigRow label="Session ID" value={status?.sessionId ?? "—"} mono />

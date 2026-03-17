@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useState } from "react";
-import { Bug, Activity, Clock, Terminal } from "lucide-react";
+import { Activity, Terminal } from "lucide-react";
 
-const API_BASE = "http://localhost:23981";
+import { API_BASE } from "../config";
 
 interface DebugInfo {
   sessionId: string;
@@ -16,6 +16,7 @@ export function DebugPage() {
   const [commandOutput, setCommandOutput] = useState<string | null>(null);
   const [commandInput, setCommandInput] = useState("");
   const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
 
   const refresh = useCallback(async () => {
     try {
@@ -23,7 +24,10 @@ export function DebugPage() {
       if (!res.ok) return;
       const data = await res.json();
       setInfo(data);
-    } catch { /* ignore */ } finally {
+      setError(null);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Failed to load status");
+    } finally {
       setLoading(false);
     }
   }, []);
@@ -78,6 +82,13 @@ export function DebugPage() {
             )}
           </div>
         </div>
+
+        {/* Error */}
+        {error && (
+          <div className="rounded-lg border border-red-200 bg-red-50 px-4 py-3 text-[12px] text-red-600">
+            {error}
+          </div>
+        )}
 
         {/* Runtime state */}
         <div className="rounded-xl border border-[var(--color-border-subtle)] bg-[var(--color-surface-elevated)]">

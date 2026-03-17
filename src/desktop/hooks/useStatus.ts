@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import type { ConnectionStatus, RuntimeStatus } from "../types";
 
-const API_BASE = "http://localhost:23981";
+import { API_BASE } from "../config";
 const POLL_INTERVAL = 5000;
 const RETRY_INTERVAL = 1000; // faster retries when disconnected
 const MAX_FAST_RETRIES = 15; // try for 15 seconds on startup
@@ -15,20 +15,17 @@ export function useStatus() {
   const fastRetriesLeft = useRef(MAX_FAST_RETRIES);
 
   const check = useCallback(async () => {
+    const controller = new AbortController();
+    const timeout = setTimeout(() => controller.abort(), 3000);
     try {
-      const controller = new AbortController();
-      const timeout = setTimeout(() => controller.abort(), 3000);
-
       const res = await fetch(`${API_BASE}/api/status`, {
         signal: controller.signal,
       });
-      clearTimeout(timeout);
-
       if (!res.ok) throw new Error("Status check failed");
       const data = (await res.json()) as Record<string, unknown>;
       setRuntimeStatus({ ...data, connected: true } as RuntimeStatus);
       setConnectionStatus("connected");
-      fastRetriesLeft.current = 0; // stop fast retries once connected
+      fastRetriesLeft.current = 0;
     } catch {
       setConnectionStatus((prev) => {
         // Don't flash "disconnected" on first load — keep initial state
@@ -37,6 +34,8 @@ export function useStatus() {
         return "disconnected";
       });
       setRuntimeStatus({ connected: false });
+    } finally {
+      clearTimeout(timeout);
     }
   }, []);
 

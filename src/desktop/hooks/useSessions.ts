@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useState } from "react";
 import type { Session } from "../types";
 
-const API_BASE = "http://localhost:23981";
+import { API_BASE } from "../config";
 
 export function useSessions() {
   const [sessions, setSessions] = useState<Session[]>([]);
