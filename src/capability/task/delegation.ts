@@ -18,6 +18,7 @@ import type {BaseMiddleware} from '@engine/pipeline/types';
 import type {HILToolMessagePayload} from '@engine/pipeline/hil';
 import type {ExecutionContextMetadata} from '@engine/pipeline/types';
 import type {AgentCheckpointer} from '@engine/checkpoint/agent';
+import type {AgentLifecycleHooks} from '@engine/hook/types';
 import {deepClone} from '@shared/clone';
 import {readLatestAssistantText} from '@shared/messages';
 import type {DelegatedAgentResult} from '@shared/delegation-result';
@@ -69,6 +70,7 @@ export interface DelegatedAgentOptions {
   systemMessages?: string[];
   systemPrompt?: string;
   blockedToolNames?: string[];
+  lifecycle?: AgentLifecycleHooks;
 }
 
 interface DelegatedPauseMetadata {
@@ -144,6 +146,22 @@ export async function runDelegatedAgent(
   assertDelegationDepth(input.delegationDepth);
   const childOptions = await buildDelegatedChildOptions(options, input);
   const result = await runDelegatedChild(childOptions, input);
+
+  // SubagentStop hook — best-effort notification after delegated agent completes
+  if (options.lifecycle && !result.state.pendingPause) {
+    try {
+      await options.lifecycle.onSubagentStop({
+        hookEvent: 'SubagentStop',
+        sessionId: input.parentExecution.sessionId,
+        agentName: input.subagentType ?? 'general-purpose',
+        taskId: result.state.sessionId,
+        reason: result.reason,
+        timestamp: new Date().toISOString(),
+      });
+    } catch {
+      // Fail-open: SubagentStop hooks are best-effort
+    }
+  }
 
   if (result.state.pendingPause) {
     return createDelegatedPauseToolMessage(result.state.pendingPause, {

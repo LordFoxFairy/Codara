@@ -956,6 +956,7 @@ function createRuntimeDefaultMiddlewares(input: {
         tools: input.runtimeTools,
         catalog: input.catalog,
       }),
+      ...(input.hookPipeline ? {lifecycle: input.hookPipeline} : {}),
     }));
   }
 
