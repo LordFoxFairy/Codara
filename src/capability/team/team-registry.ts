@@ -244,6 +244,29 @@ export class TeamRegistry {
     return team;
   }
 
+  // ── Restore (persistence recovery) ─────────────────────────────
+
+  /** Restore a previously persisted team without validation (for startup recovery). */
+  restoreTeam(team: Team): void {
+    this.teams.set(team.teamId, team);
+    if (!this.members.has(team.teamId)) {
+      this.members.set(team.teamId, []);
+    }
+    if (!this.jobBoards.has(team.teamId)) {
+      this.jobBoards.set(team.teamId, new JobBoard(team.teamId));
+    }
+  }
+
+  /** Restore a previously persisted member without validation. */
+  restoreMember(member: TeamMember): void {
+    const teamMembers = this.members.get(member.teamId) ?? [];
+    // Avoid duplicates
+    if (!teamMembers.some(m => m.memberId === member.memberId)) {
+      teamMembers.push(member);
+      this.members.set(member.teamId, teamMembers);
+    }
+  }
+
   // ── Helpers ──────────────────────────────────────────────────────
 
   private mustGetTeam(teamId: string): Team {

@@ -72,6 +72,14 @@ import {RemotePool} from '@capability/team/remote-pool';
 import {createConversationTeamTools} from '@capability/team/tools/conversation-tools';
 import {MemorySharedState} from '@capability/team/state/memory-shared-state';
 import {TeamEventBridge} from '@capability/team/bridge/team-event-bridge';
+import {getToolsForRole} from '@capability/team/tools/tool-filter';
+import {createTeamContextMiddleware} from '@capability/team/middleware/team-context';
+import type {MemberSession, MemberSessionOptions} from '@capability/team/runtime/member-runner';
+import {createAgent} from '@engine/agent/run/agent-loop';
+import {TeamStore} from '@capability/team/persistence/team-store';
+import {MemberStore} from '@capability/team/persistence/member-store';
+import {createTeamBudgetMiddleware} from '@capability/team/budget/team-budget-middleware';
+import {createPathGuardMiddleware} from '@capability/team/security/path-guard-middleware';
 
 export const DEFAULT_CODARA_MODEL_ALIAS = 'default';
 const DEFAULT_RUNTIME_FILE_LOGGING_ENABLED = true;
@@ -295,10 +303,149 @@ export async function createCodaraRuntime(options: CodaraRuntimeOptions = {}): P
 
   // ── Team System Assembly ──
   const teamRegistry = new TeamRegistry();
-  const teamRuntime = new TeamRuntime({registry: teamRegistry, projectRoot});
+  const sharedState = new MemorySharedState();
+
+  // Session factory: creates real agent sessions for team members.
+  // Uses createAgent directly (same pattern as Task delegation) so we can
+  // pass runtimeShared.teamContext for TeamContextMiddleware to read.
+  const teamSessionFactory = (memberOptions: MemberSessionOptions): MemberSession => {
+    const teamToolContext = {
+      teamId: memberOptions.teamId,
+      memberId: memberOptions.memberId,
+      registry: teamRegistry,
+      transport: teamRuntime.getTransport(memberOptions.teamId)!,
+      emitter: teamRuntime.getEmitter(memberOptions.teamId)!,
+      projectRoot,
+    };
+
+    // Role-based tool injection:
+    // - Leader: only coordination tools (plan_jobs, assign, review, etc.)
+    // - Worker: dev tools (bash, read, write...) + worker team tools (claim, submit...)
+    const baseDevTools = createBuiltinTools({
+      cwd: memberOptions.worktreePath ?? options.cwd,
+      extended: true,
+    });
+    const memberTools = getToolsForRole(memberOptions.role, teamToolContext, baseDevTools);
+
+    // Middleware: team context injection + context budget + team budget tracking + path guard
+    const memberMiddleware: BaseMiddleware[] = [
+      createTeamContextMiddleware(),
+      createBudgetMiddleware(),
+    ];
+
+    // Filesystem isolation: workers with worktrees can only access their own workspace
+    if (memberOptions.worktreePath && memberOptions.role === 'worker') {
+      memberMiddleware.push(createPathGuardMiddleware(memberOptions.worktreePath));
+    }
+
+    // Wire team-level budget tracker (records actual LLM token costs)
+    const budgetTracker = teamRuntime.getBudgetTracker(memberOptions.teamId);
+    if (budgetTracker) {
+      memberMiddleware.push(createTeamBudgetMiddleware({
+        tracker: budgetTracker,
+        memberId: memberOptions.memberId,
+        model: 'claude-sonnet-4-6', // default; overridden when model resolves
+        onBudgetAction: (result) => {
+          const emitter = teamRuntime.getEmitter(memberOptions.teamId);
+          if (result.action === 'exceeded') {
+            const policy = budgetTracker.getExceededPolicy();
+            emitter?.emit({
+              type: 'team.budget.exceeded',
+              data: {teamId: memberOptions.teamId, action: policy === 'warn_leader' ? 'warn' : policy},
+            });
+            if (policy === 'pause') {
+              teamRuntime.pauseTeam(memberOptions.teamId);
+            } else if (policy === 'shutdown') {
+              teamRuntime.shutdownTeam(memberOptions.teamId).catch(() => {});
+            }
+          } else if (result.action === 'warning') {
+            emitter?.emit({
+              type: 'team.budget.warning',
+              data: {teamId: memberOptions.teamId, usedPercent: result.usedPercent, remaining: result.remaining},
+            });
+          }
+        },
+      }));
+    }
+
+    // Resolve model lazily — reuse the same catalog as the main agent
+    let agentReady: ReturnType<typeof createAgent> | undefined;
+
+    const ensureAgent = async () => {
+      if (agentReady) return agentReady;
+
+      const model = catalog
+        ? await (await catalog).create()
+        : options.model
+          ? await Promise.resolve(options.model)
+          : (() => { throw new Error('No model available for team worker'); })();
+
+      agentReady = createAgent({
+        model,
+        agentType: 'subagent',
+        tools: memberTools,
+        middleware: memberMiddleware,
+        systemMessage: memberOptions.systemMessage.length > 0
+          ? memberOptions.systemMessage
+          : undefined,
+        runtimeShared: memberOptions.runtimeShared,
+      });
+      return agentReady;
+    };
+
+    // Adapt Agent → MemberSession interface
+    return {
+      async invoke(input?: string) {
+        try {
+          const agent = await ensureAgent();
+          const result = await agent.invoke(input ?? undefined);
+          if (result.reason === 'error') {
+            return {reason: 'error' as const, error: result.error};
+          }
+          return {reason: 'complete' as const};
+        } catch (err) {
+          return {reason: 'error' as const, error: err instanceof Error ? err : new Error(String(err))};
+        }
+      },
+      async dispose() {
+        // Agent doesn't have explicit dispose; release reference
+        agentReady = undefined;
+      },
+    };
+  };
+
+  const teamsDir = path.join(codaraPath, 'teams');
+  const teamStore = new TeamStore(teamsDir);
+  const memberStore = new MemberStore(teamsDir);
+
+  const teamRuntime = new TeamRuntime({
+    registry: teamRegistry,
+    projectRoot,
+    createSession: teamSessionFactory,
+    persistence: { teamStore, memberStore },
+  });
+  // Recover persisted teams into registry (best-effort)
+  try {
+    const savedTeams = teamStore.loadRegistry();
+    for (const entry of savedTeams) {
+      const fullTeam = teamStore.load(entry.teamId);
+      if (fullTeam && (fullTeam.status === 'running' || fullTeam.status === 'paused')) {
+        // Mark as paused — user must explicitly resume
+        fullTeam.status = 'paused';
+        teamRegistry.restoreTeam(fullTeam);
+        // Restore members
+        const savedMembers = memberStore.loadByTeam(entry.teamId);
+        for (const m of savedMembers) {
+          teamRegistry.restoreMember(m);
+        }
+      }
+    }
+  } catch {
+    // Recovery is best-effort — fresh start if it fails
+  }
+
   const remotePool = new RemotePool(codaraPath);
   await remotePool.load();
-  const sharedState = new MemorySharedState();
 
   // Add conversation-driven team tools
   const teamTools = createConversationTeamTools({registry: teamRegistry, runtime: teamRuntime, sharedState});

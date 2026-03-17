@@ -34,6 +34,10 @@ export class TransportRouter implements TeamTransport {
     return this.local.receive(memberId);
   }
 
+  pendingCount(memberId: string): number {
+    return this.local.pendingCount(memberId);
+  }
+
   subscribe(memberId: string, handler: (msg: TeamMessage) => void): Unsubscribe {
     return this.local.subscribe(memberId, handler);
   }

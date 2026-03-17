@@ -62,6 +62,7 @@ export { MemberStore } from './persistence/member-store.js';
 // Security
 export { canCreateSubTeam, canSpawnMember } from './security/depth-control.js';
 export { isAllowedPath } from './security/path-guard.js';
+export { createPathGuardMiddleware, PATH_GUARD_MIDDLEWARE_NAME } from './security/path-guard-middleware.js';
 export { validateRemoteArtifact, DEFAULT_ARTIFACT_SECURITY } from './security/artifact-validator.js';
 export type { ArtifactValidationResult, ArtifactSecurityConfig } from './security/artifact-validator.js';
 
@@ -69,6 +70,8 @@ export type { ArtifactValidationResult, ArtifactSecurityConfig } from './securit
 export { TeamBudgetTracker } from './budget/budget-tracker.js';
 export type { BudgetAction, BudgetCheckResult } from './budget/budget-tracker.js';
 export { calculateCost, formatTokenCount, formatCost } from './budget/cost-calculator.js';
+export { createTeamBudgetMiddleware, TEAM_BUDGET_MIDDLEWARE_NAME } from './budget/team-budget-middleware.js';
+export type { TeamBudgetMiddlewareOptions } from './budget/team-budget-middleware.js';
 
 // Worktree
 export { createMemberWorktree, removeMemberWorktree, listTeamWorktrees, cleanupTeamWorktrees } from './worktree/team-worktree.js';
@@ -95,3 +98,11 @@ export type { SharedStateConfig } from './state/index.js';
 // Bridge
 export { TeamEventBridge } from './bridge/team-event-bridge.js';
 export type { TeamEventBridgeOptions } from './bridge/team-event-bridge.js';
+
+// Middleware (moved from engine/pipeline — this is the canonical location)
+export {
+  createTeamContextMiddleware,
+  readTeamContext,
+  TEAM_CONTEXT_MIDDLEWARE_NAME,
+  type TeamRuntimeContext,
+} from './middleware/team-context.js';

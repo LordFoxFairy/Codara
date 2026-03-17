@@ -42,6 +42,10 @@ export class LocalTransport implements TeamTransport {
     return inbox;
   }
 
+  pendingCount(memberId: string): number {
+    return (this.inboxes.get(memberId) ?? []).length;
+  }
+
   subscribe(memberId: string, handler: (msg: TeamMessage) => void): Unsubscribe {
     const subs = this.subscribers.get(memberId);
     if (!subs) {

@@ -128,10 +128,12 @@ export class MemberRunner {
     const { member, transport, registry, emitter } = this.options;
 
     while (!this.shutdownRequested) {
-      const messages = await transport.receive(member.memberId);
-      const hasWork = messages.length > 0;
+      // Check for pending work without draining — messages are drained
+      // by TeamContextMiddleware.drainInbox during session.invoke()
+      const hasPending = transport.pendingCount(member.memberId) > 0;
+      const hasClaimed = !!registry.getMember(member.memberId)?.currentJobId;
 
-      if (!hasWork) {
+      if (!hasPending && !hasClaimed) {
         this.status = 'idle';
         registry.updateMember(member.teamId, member.memberId, { status: 'idle' });
         emitter.emit({ type: 'member.idle', data: { teamId: member.teamId, memberId: member.memberId } });
@@ -141,7 +143,7 @@ export class MemberRunner {
         continue;
       }
 
-      // Process messages — run a turn
+      // Process work — invoke session which drains inbox via middleware
       this.status = 'running';
       registry.updateMember(member.teamId, member.memberId, { status: 'working' });
 

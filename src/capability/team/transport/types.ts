@@ -7,6 +7,8 @@ export interface TeamTransport {
   send(to: string | 'broadcast', message: TeamMessage): Promise<void>;
   /** Pull pending messages for a member (drains inbox) */
   receive(memberId: string): Promise<TeamMessage[]>;
+  /** Check how many messages are pending without draining */
+  pendingCount(memberId: string): number;
   /** Subscribe to real-time message events for a member */
   subscribe(memberId: string, handler: (msg: TeamMessage) => void): Unsubscribe;
   /** Check if the transport is healthy for a member */

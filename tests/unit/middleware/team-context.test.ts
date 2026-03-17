@@ -3,8 +3,8 @@ import {
   createTeamContextMiddleware,
   readTeamContext,
   TEAM_CONTEXT_MIDDLEWARE_NAME,
-} from '../../../src/engine/pipeline/team-context'
-import type {TeamRuntimeContext} from '../../../src/engine/pipeline/team-context'
+} from '../../../src/capability/team/middleware/team-context'
+import type {TeamRuntimeContext} from '../../../src/capability/team/middleware/team-context'
 import type {BeforeModelContext} from '../../../src/engine/pipeline/types'
 
 function createMockContext(teamContext?: TeamRuntimeContext): BeforeModelContext {
