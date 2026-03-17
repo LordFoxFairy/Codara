@@ -2,7 +2,7 @@ import { describe, test, expect, beforeEach } from 'bun:test';
 import { MemberRunner } from '@capability/team/runtime/member-runner';
 import type { MemberRunnerOptions, MemberSession } from '@capability/team/runtime/member-runner';
 import { TeamRegistry } from '@capability/team/coordination/team-registry';
-import { LocalTransport } from '@capability/team/transport/local-transport';
+import { LocalTransport } from '@capability/team/local-transport';
 import { TeamEventEmitter } from '@capability/team/coordination/events';
 import type { TeamBusEvent } from '@capability/team/coordination/events';
 import type { TeamMember } from '@capability/team/coordination/types';

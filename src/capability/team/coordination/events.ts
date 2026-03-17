@@ -12,7 +12,7 @@ export type TeamLifecycleEvent =
   | { type: 'team.archived'; data: { teamId: string } };
 
 export type MemberLifecycleEvent =
-  | { type: 'member.joined'; data: { teamId: string; memberId: string; name: string; role: string; mode: 'local' | 'remote' } }
+  | { type: 'member.joined'; data: { teamId: string; memberId: string; name: string; role: string; mode: 'local' } }
   | { type: 'member.idle'; data: { teamId: string; memberId: string } }
   | { type: 'member.working'; data: { teamId: string; memberId: string; jobId: string } }
   | { type: 'member.paused'; data: { teamId: string; memberId: string } }

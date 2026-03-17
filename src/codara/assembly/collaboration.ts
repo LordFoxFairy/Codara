@@ -3,16 +3,15 @@ import type {BaseMiddleware} from '@engine/pipeline';
 import {createBudgetMiddleware} from '@engine/pipeline';
 import {TeamRegistry} from '@capability/team/coordination/team-registry';
 import {TeamRuntime} from '@capability/team/runtime/team-runtime';
-import {createConversationTeamTools} from '@capability/team/tools/conversation-tools';
-import {MemorySharedState} from '@capability/team/state/memory-shared-state';
-import {getToolsForRole} from '@capability/team/tools/tool-filter';
-import {createTeamContextMiddleware} from '@capability/team/middleware/team-context';
+import {MemorySharedState} from '@capability/team/shared-state';
+import {getToolsForRole} from '@capability/team/surface/tool-filter';
+import {createTeamMiddleware} from '@capability/team/middleware';
 import type {
   MemberSession,
   MemberSessionOptions,
 } from '@capability/team/runtime/member-runner';
 import {bootstrapAgent} from '@engine/agent/bootstrap';
-import {TeamPersistence} from '@capability/team/persistence/team-persistence';
+import {TeamPersistence} from '@capability/team/persistence';
 import {createBuiltinTools} from '@engine/tool';
 import type {CodaraRuntimeOptions, TeamQuerySummary, TeamQueryDetail} from '../types';
 import type {CodaraModelCatalog} from './runtime';
@@ -28,7 +27,6 @@ export interface TeamSystemAssemblyResult {
   teamRegistry: TeamRegistry;
   teamRuntime: TeamRuntime;
   sharedState: MemorySharedState;
-  teamTools: StructuredToolInterface[];
 }
 
 export async function assembleTeamSystem(input: TeamSystemAssemblyInput): Promise<TeamSystemAssemblyResult> {
@@ -56,7 +54,7 @@ export async function assembleTeamSystem(input: TeamSystemAssemblyInput): Promis
     const memberTools = getToolsForRole(memberOptions.role, teamToolContext, baseDevTools);
 
     const memberMiddleware: BaseMiddleware[] = [
-      createTeamContextMiddleware(),
+      createTeamMiddleware({teamType: 'worker'}),
       createBudgetMiddleware(),
     ];
 
@@ -140,13 +138,7 @@ export async function assembleTeamSystem(input: TeamSystemAssemblyInput): Promis
     // Recovery is best-effort; a clean start is acceptable.
   }
 
-  const teamTools = createConversationTeamTools({
-    registry: teamRegistry,
-    runtime: teamRuntime,
-    sharedState,
-  });
-
-  return {teamRegistry, teamRuntime, sharedState, teamTools};
+  return {teamRegistry, teamRuntime, sharedState};
 }
 
 export function getTeamSummaries(registry: TeamRegistry | undefined): TeamQuerySummary[] {

@@ -14,8 +14,8 @@ import {describe, test, expect, beforeEach, afterEach} from 'bun:test';
 
 import {TeamRegistry} from '@capability/team/coordination/team-registry';
 import {TeamRuntime} from '@capability/team/runtime/team-runtime';
-import {MemorySharedState} from '@capability/team/state/memory-shared-state';
-import {createConversationTeamTools} from '@capability/team/tools/conversation-tools';
+import {MemorySharedState} from '@capability/team/shared-state';
+import {createConversationTeamTools} from '@capability/team/surface/conversation-tools';
 import type {CodaraRuntimeEvent} from '@engine/session/runtime-events';
 import {deriveActiveTeams} from '@/cli/hooks/use-active-teams';
 

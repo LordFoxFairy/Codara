@@ -35,8 +35,6 @@ export type BusEvent =
   // Future: Teams
   | { type: 'agent.spawned'; agentId: string; sessionId: string; task: string }
   | { type: 'agent.completed'; agentId: string; sessionId: string }
-  // Future: A2A federation
-  | { type: 'a2a.forward'; from: string; to: string; payload: unknown }
   // Team lifecycle
   | { type: 'team.created'; data: { teamId: string; name: string; goal: string; depth: number } }
   | { type: 'team.running'; data: { teamId: string } }
@@ -46,7 +44,7 @@ export type BusEvent =
   | { type: 'team.failed'; data: { teamId: string; error: string } }
   | { type: 'team.archived'; data: { teamId: string } }
   // Member lifecycle
-  | { type: 'member.joined'; data: { teamId: string; memberId: string; name: string; role: string; mode: 'local' | 'remote' } }
+  | { type: 'member.joined'; data: { teamId: string; memberId: string; name: string; role: string; mode: 'local' } }
   | { type: 'member.idle'; data: { teamId: string; memberId: string } }
   | { type: 'member.working'; data: { teamId: string; memberId: string; jobId: string } }
   | { type: 'member.paused'; data: { teamId: string; memberId: string } }
@@ -72,7 +70,7 @@ export type BusEvent =
 export interface BusClientInfo {
   id: ClientId;
   name: string;
-  type: 'cli' | 'desktop' | 'agent' | 'a2a';
+  type: 'cli' | 'desktop' | 'agent';
   connectedAt: number;
   /** Sessions this client is subscribed to. */
   subscriptions: Set<string>;

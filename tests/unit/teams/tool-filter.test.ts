@@ -1,11 +1,11 @@
 import {describe, test, expect, beforeEach} from 'bun:test';
 import {z} from 'zod';
 import {TeamRegistry} from '@capability/team/coordination/team-registry';
-import {LocalTransport} from '@capability/team/transport/local-transport';
+import {LocalTransport} from '@capability/team/local-transport';
 import {TeamEventEmitter} from '@capability/team/coordination/events';
-import {getToolsForRole, isTeamTool} from '@capability/team/tools/tool-filter';
-import {createWorkerTools} from '@capability/team/tools/worker-tools';
-import type {TeamToolContext} from '@capability/team/tools/types';
+import {getToolsForRole, isTeamTool} from '@capability/team/surface/tool-filter';
+import {createWorkerTools} from '@capability/team/surface/worker-tools';
+import type {TeamToolContext} from '@capability/team/surface/types';
 import type {TeamMember} from '@capability/team/coordination/types';
 
 // ─── Mock base tools ────────────────────────────────────────────────

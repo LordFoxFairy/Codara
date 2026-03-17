@@ -1,10 +1,10 @@
 import {describe, test, expect, beforeEach} from 'bun:test'
 import {
-  createTeamContextMiddleware,
+  createTeamMiddleware,
   readTeamContext,
-  TEAM_CONTEXT_MIDDLEWARE_NAME,
-} from '../../../src/capability/team/middleware/team-context'
-import type {TeamRuntimeContext} from '../../../src/capability/team/middleware/team-context'
+  TEAM_MIDDLEWARE_NAME,
+} from '../../../src/capability/team/middleware'
+import type {TeamRuntimeContext} from '../../../src/capability/team/middleware'
 import type {BeforeModelContext} from '../../../src/engine/pipeline/types'
 
 function createMockContext(teamContext?: TeamRuntimeContext): BeforeModelContext {
@@ -42,23 +42,23 @@ function createMockTeamContext(overrides?: Partial<TeamRuntimeContext>): TeamRun
 
 describe('TeamContextMiddleware', () => {
   test('exports correct middleware name', () => {
-    expect(TEAM_CONTEXT_MIDDLEWARE_NAME).toBe('TeamContextMiddleware')
+    expect(TEAM_MIDDLEWARE_NAME).toBe('TeamMiddleware')
   })
 
   test('has correct name property', () => {
-    const mw = createTeamContextMiddleware()
-    expect(mw.name).toBe('TeamContextMiddleware')
+    const mw = createTeamMiddleware({teamType: 'worker'})
+    expect(mw.name).toBe('TeamMiddleware')
   })
 
   test('non-team session: systemMessage remains empty', async () => {
-    const mw = createTeamContextMiddleware()
+    const mw = createTeamMiddleware({teamType: 'worker'})
     const ctx = createMockContext() // no teamContext
     await mw.beforeModel!(ctx)
     expect(ctx.systemMessage).toEqual([])
   })
 
   test('team session first call: injects protocol prompt', async () => {
-    const mw = createTeamContextMiddleware()
+    const mw = createTeamMiddleware({teamType: 'worker'})
     const teamCtx = createMockTeamContext()
     const ctx = createMockContext(teamCtx)
 
@@ -68,7 +68,7 @@ describe('TeamContextMiddleware', () => {
   })
 
   test('team session subsequent calls: protocol NOT injected again', async () => {
-    const mw = createTeamContextMiddleware()
+    const mw = createTeamMiddleware({teamType: 'worker'})
     const teamCtx = createMockTeamContext()
 
     const ctx1 = createMockContext(teamCtx)
@@ -81,7 +81,7 @@ describe('TeamContextMiddleware', () => {
   })
 
   test('inbox messages injected when present', async () => {
-    const mw = createTeamContextMiddleware()
+    const mw = createTeamMiddleware({teamType: 'worker'})
     const teamCtx = createMockTeamContext({
       drainInbox: async () => ['[leader] Please focus on tests', '[worker-2] Done with module A'],
     })
@@ -99,7 +99,7 @@ describe('TeamContextMiddleware', () => {
   })
 
   test('empty inbox: no inbox block added', async () => {
-    const mw = createTeamContextMiddleware()
+    const mw = createTeamMiddleware({teamType: 'worker'})
     const teamCtx = createMockTeamContext({drainInbox: async () => []})
 
     // Skip first call (protocol injection)
@@ -114,7 +114,7 @@ describe('TeamContextMiddleware', () => {
   })
 
   test('first call with inbox: both protocol and inbox in systemMessage', async () => {
-    const mw = createTeamContextMiddleware()
+    const mw = createTeamMiddleware({teamType: 'worker'})
     const teamCtx = createMockTeamContext({
       drainInbox: async () => ['[leader] Start now'],
     })

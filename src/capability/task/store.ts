@@ -2,13 +2,24 @@ import {randomUUID} from 'node:crypto';
 import {mkdir, readdir, readFile, rename, writeFile} from 'node:fs/promises';
 import path from 'node:path';
 import {z} from 'zod';
-import type {CreateTaskInput, TaskRecord, TaskStore, TaskStatus, UpdateTaskInput} from '@capability/task/shared/types';
+import type {CreateTaskInput, TaskRecord, TaskStore, UpdateTaskInput} from '@capability/task/types';
 
 export interface TaskFileStoreOptions {
   rootDir: string;
 }
 
-const taskRecordInputSchema = z.object({}).loose().catch({});
+const taskRecordInputSchema = z.object({
+  id: z.string(),
+  subject: z.string(),
+  description: z.string(),
+  activeForm: z.string().optional(),
+  status: z.enum(['pending', 'in_progress', 'completed', 'deleted']),
+  owner: z.string().optional(),
+  blocks: z.array(z.string()).default([]),
+  blockedBy: z.array(z.string()).default([]),
+  createdAt: z.string(),
+  updatedAt: z.string(),
+});
 
 export function createTaskMemoryStore(): TaskStore {
   return new InMemoryTaskStore();
@@ -262,139 +273,90 @@ async function addDependencyEdge(
     throw new Error(`Task "${sourceTaskId}" cannot depend on itself`);
   }
 
-  const source = await getRequiredTask(sourceTaskId, getTask);
-  const blocked = await getRequiredTask(blockedTaskId, getTask);
+  const source = await getTask(sourceTaskId);
+  const blocked = await getTask(blockedTaskId);
 
-  if (await hasDependencyPath(blocked.id, source.id, getTask)) {
-    throw new Error(`Adding dependency ${source.id} -> ${blocked.id} would create a cycle`);
+  if (!source) {
+    throw new Error(`Task "${sourceTaskId}" not found`);
+  }
+  if (!blocked) {
+    throw new Error(`Task "${blockedTaskId}" not found`);
   }
 
-  source.blocks = mergeTaskIds(source.blocks, [blocked.id]);
+  if (await createsCycle(sourceTaskId, blockedTaskId, getTask)) {
+    throw new Error(`Adding dependency ${sourceTaskId} -> ${blockedTaskId} would create a cycle`);
+  }
+
+  source.blocks = mergeTaskIds(source.blocks, [blockedTaskId]);
   source.updatedAt = now;
-  blocked.blockedBy = mergeTaskIds(blocked.blockedBy, [source.id]);
+  blocked.blockedBy = mergeTaskIds(blocked.blockedBy, [sourceTaskId]);
   blocked.updatedAt = now;
 }
 
-async function getRequiredTask(
-  taskId: string,
-  getTask: (taskId: string) => Promise<TaskRecord | undefined>,
-): Promise<TaskRecord> {
-  const task = await getTask(taskId);
-  if (!task) {
-    throw new Error(`Task "${taskId}" not found`);
-  }
-  return task;
-}
-
-async function hasDependencyPath(
-  startTaskId: string,
-  targetTaskId: string,
+async function createsCycle(
+  sourceTaskId: string,
+  blockedTaskId: string,
   getTask: (taskId: string) => Promise<TaskRecord | undefined>,
 ): Promise<boolean> {
-  const visited = new Set<string>();
-  const queue = [startTaskId];
-
-  while (queue.length > 0) {
-    const currentId = queue.shift() as string;
-    if (currentId === targetTaskId) {
+  const visit = async (taskId: string, seen: Set<string>): Promise<boolean> => {
+    if (taskId === sourceTaskId) {
       return true;
     }
-
-    if (visited.has(currentId)) {
-      continue;
+    if (seen.has(taskId)) {
+      return false;
     }
-    visited.add(currentId);
-
-    const current = await getTask(currentId);
-    if (!current) {
-      continue;
+    seen.add(taskId);
+    const task = await getTask(taskId);
+    if (!task) {
+      return false;
     }
-
-    for (const nextId of current.blocks) {
-      if (!visited.has(nextId)) {
-        queue.push(nextId);
+    for (const next of task.blocks) {
+      if (await visit(next, seen)) {
+        return true;
       }
     }
-  }
+    return false;
+  };
 
-  return false;
+  return visit(blockedTaskId, new Set());
 }
 
 function normalizeNewTaskIds(taskIds: string[] | undefined): string[] {
-  return dedupeTaskIds(taskIds ?? []);
-}
-
-function dedupeTaskIds(taskIds: string[]): string[] {
-  return taskIds
-    .map((taskId) => taskId.trim())
-    .filter(Boolean)
-    .filter((taskId, index, all) => all.indexOf(taskId) === index);
-}
-
-function normalizeOptionalText(value: string | undefined): string | undefined {
-  const normalized = value?.trim();
-  return normalized ? normalized : undefined;
-}
-
-function sortTasks(tasks: TaskRecord[]): TaskRecord[] {
-  return tasks.sort((left, right) => left.createdAt.localeCompare(right.createdAt));
-}
-
-function parseTaskRecord(value: unknown): TaskRecord {
-  const record = taskRecordInputSchema.parse(value);
-  const status = parseTaskStatus(record.status);
-  const createdAt = typeof record.createdAt === 'string' ? record.createdAt : new Date(0).toISOString();
-  const updatedAt = typeof record.updatedAt === 'string' ? record.updatedAt : createdAt;
-
-  return {
-    id: typeof record.id === 'string' ? record.id : randomUUID(),
-    subject: typeof record.subject === 'string' ? record.subject : '',
-    description: typeof record.description === 'string' ? record.description : '',
-    ...(typeof record.activeForm === 'string' && record.activeForm ? {activeForm: record.activeForm} : {}),
-    status,
-    ...(typeof record.owner === 'string' && record.owner ? {owner: record.owner} : {}),
-    blocks: readTaskIds(record.blocks),
-    blockedBy: readTaskIds(record.blockedBy),
-    createdAt,
-    updatedAt,
-  };
-}
-
-function readTaskIds(value: unknown): string[] {
-  if (!Array.isArray(value)) {
-    return [];
-  }
-
-  return value
-    .filter((taskId): taskId is string => typeof taskId === 'string')
+  return (taskIds ?? [])
     .map((taskId) => taskId.trim())
     .filter(Boolean);
 }
 
-function parseTaskStatus(value: unknown): TaskStatus {
-  switch (value) {
-    case 'pending':
-    case 'in_progress':
-    case 'completed':
-    case 'deleted':
-      return value;
-    default:
-      return 'pending';
-  }
+function dedupeTaskIds(taskIds: string[]): string[] {
+  return Array.from(new Set(taskIds.map((taskId) => taskId.trim()).filter(Boolean)));
 }
 
-function cloneTask(task: TaskRecord): TaskRecord {
-  try {
-    return structuredClone(task);
-  } catch {
-    return {
-      ...task,
-      blocks: [...task.blocks],
-      blockedBy: [...task.blockedBy],
-    };
-  }
+function normalizeOptionalText(value: string | undefined): string | undefined {
+  const trimmed = value?.trim();
+  return trimmed ? trimmed : undefined;
+}
+
+function cloneTask(record: TaskRecord): TaskRecord {
+  return {
+    ...record,
+    blocks: [...record.blocks],
+    blockedBy: [...record.blockedBy],
+  };
+}
+
+function parseTaskRecord(value: unknown): TaskRecord {
+  const record = taskRecordInputSchema.parse(value);
+  return {
+    ...record,
+    blocks: dedupeTaskIds(record.blocks ?? []),
+    blockedBy: dedupeTaskIds(record.blockedBy ?? []),
+  };
+}
+
+function sortTasks(records: TaskRecord[]): TaskRecord[] {
+  return [...records].sort((left, right) => left.createdAt.localeCompare(right.createdAt));
 }
 
 function isFileMissing(error: unknown): boolean {
-  return error !== null && typeof error === 'object' && 'code' in error && error.code === 'ENOENT';
+  return error instanceof Error && 'code' in error && error.code === 'ENOENT';
 }

@@ -5,13 +5,13 @@ import {tmpdir} from 'node:os';
 
 import {TeamRegistry} from '@capability/team/coordination/team-registry';
 import {JobBoard} from '@capability/team/coordination/job-board';
-import {LocalTransport} from '@capability/team/transport/local-transport';
+import {LocalTransport} from '@capability/team/local-transport';
 import {TeamEventEmitter} from '@capability/team/coordination/events';
 import type {TeamBusEvent} from '@capability/team/coordination/events';
-import {createLeaderTools} from '@capability/team/tools/leader-tools';
-import {createWorkerTools} from '@capability/team/tools/worker-tools';
+import {createLeaderTools} from '@capability/team/surface/leader-tools';
+import {createWorkerTools} from '@capability/team/surface/worker-tools';
 import type {TeamMember} from '@capability/team/coordination/types';
-import type {TeamToolContext} from '@capability/team/tools/types';
+import type {TeamToolContext} from '@capability/team/surface/types';
 
 // ─── Helpers ──────────────────────────────────────────────────────────
 

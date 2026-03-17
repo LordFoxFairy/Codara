@@ -1,5 +1,5 @@
 import { describe, it, expect, beforeEach } from 'bun:test';
-import { LocalTransport } from '@capability/team/transport/local-transport';
+import { LocalTransport } from '@capability/team/local-transport';
 import type { TeamMessage } from '@capability/team/coordination/types';
 
 function makeMessage(from: string, to: string | 'broadcast', content = 'test'): TeamMessage {

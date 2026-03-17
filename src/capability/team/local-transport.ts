@@ -1,5 +1,15 @@
 import type { TeamMessage } from '@capability/team/coordination/types';
-import type { TeamTransport, Unsubscribe } from './types';
+
+export type Unsubscribe = () => void;
+
+export interface TeamTransport {
+  send(to: string | 'broadcast', message: TeamMessage): Promise<void>;
+  receive(memberId: string): Promise<TeamMessage[]>;
+  pendingCount(memberId: string): number;
+  subscribe(memberId: string, handler: (msg: TeamMessage) => void): Unsubscribe;
+  isHealthy(memberId: string): boolean;
+  close(memberId: string): Promise<void>;
+}
 
 export class LocalTransport implements TeamTransport {
   private inboxes: Map<string, TeamMessage[]> = new Map();

@@ -3,9 +3,7 @@ import type {StructuredToolInterface} from '@langchain/core/tools';
 import {z} from 'zod';
 import type {Team, TeamMessage} from '@capability/team/coordination/types';
 import {SECURITY_DEFAULTS} from '@capability/team/coordination/types';
-import type {TeamToolContext} from './types';
-
-// ─── Inline security guards (depth-control.ts removed) ──────────────
+import type {TeamToolContext} from '@capability/team/surface/types';
 
 function canCreateSubTeam(team: Team): boolean {
   return team.config.allowSubTeams && team.depth < team.config.maxDepth;
@@ -19,8 +17,6 @@ function canSpawnMember(
   return teamMemberCount < teamMaxMembers
     && globalAgentCount < SECURITY_DEFAULTS.maxTotalAgents;
 }
-
-// ─── Factory ────────────────────────────────────────────────────────
 
 export function createLeaderTools(ctx: TeamToolContext): StructuredToolInterface[] {
   return [
@@ -38,8 +34,6 @@ export function createLeaderTools(ctx: TeamToolContext): StructuredToolInterface
     createTeamShutdownTool(ctx),
   ];
 }
-
-// ─── Helpers ────────────────────────────────────────────────────────
 
 function makeMessage(
   ctx: TeamToolContext,
@@ -60,8 +54,6 @@ function makeMessage(
     read: false,
   };
 }
-
-// ─── 1. team_plan_jobs ──────────────────────────────────────────────
 
 function createTeamPlanJobsTool(ctx: TeamToolContext): StructuredToolInterface {
   return tool(
@@ -92,8 +84,6 @@ function createTeamPlanJobsTool(ctx: TeamToolContext): StructuredToolInterface {
     },
   );
 }
-
-// ─── 2. team_update_job ─────────────────────────────────────────────
 
 function createTeamUpdateJobTool(ctx: TeamToolContext): StructuredToolInterface {
   return tool(
@@ -129,8 +119,6 @@ function createTeamUpdateJobTool(ctx: TeamToolContext): StructuredToolInterface 
   );
 }
 
-// ─── 3. team_cancel_job ─────────────────────────────────────────────
-
 function createTeamCancelJobTool(ctx: TeamToolContext): StructuredToolInterface {
   return tool(
     async (input) => {
@@ -149,8 +137,6 @@ function createTeamCancelJobTool(ctx: TeamToolContext): StructuredToolInterface 
   );
 }
 
-// ─── 4. team_get_jobboard ───────────────────────────────────────────
-
 function createTeamGetJobBoardTool(ctx: TeamToolContext): StructuredToolInterface {
   return tool(
     async () => {
@@ -167,8 +153,6 @@ function createTeamGetJobBoardTool(ctx: TeamToolContext): StructuredToolInterfac
     },
   );
 }
-
-// ─── 5. team_spawn_member ───────────────────────────────────────────
 
 function createTeamSpawnMemberTool(ctx: TeamToolContext): StructuredToolInterface {
   return tool(
@@ -217,8 +201,6 @@ function createTeamSpawnMemberTool(ctx: TeamToolContext): StructuredToolInterfac
   );
 }
 
-// ─── 7. team_assign_job ─────────────────────────────────────────────
-
 function createTeamAssignJobTool(ctx: TeamToolContext): StructuredToolInterface {
   return tool(
     async (input) => {
@@ -256,8 +238,6 @@ function createTeamAssignJobTool(ctx: TeamToolContext): StructuredToolInterface 
   );
 }
 
-// ─── 8. team_review_job ─────────────────────────────────────────────
-
 function createTeamReviewJobTool(ctx: TeamToolContext): StructuredToolInterface {
   return tool(
     async (input) => {
@@ -278,20 +258,20 @@ function createTeamReviewJobTool(ctx: TeamToolContext): StructuredToolInterface 
         }
 
         return JSON.stringify({reviewed: true, approved: true, jobId: input.jobId});
-      } else {
-        board.rejectJob(input.jobId, input.feedback ?? 'Rejected');
-        ctx.emitEvent({
-          type: 'job.reviewed',
-          data: {teamId: ctx.teamId, jobId: input.jobId, approved: false, reviewerId: ctx.memberId},
-        });
-
-        if (job.assignee) {
-          const msg = makeMessage(ctx, job.assignee, 'job_reviewed', input.feedback ?? 'Job rejected.', {jobId: input.jobId, approved: false});
-          await ctx.transport.send(job.assignee, msg);
-        }
-
-        return JSON.stringify({reviewed: true, approved: false, jobId: input.jobId});
       }
+
+      board.rejectJob(input.jobId, input.feedback ?? 'Rejected');
+      ctx.emitEvent({
+        type: 'job.reviewed',
+        data: {teamId: ctx.teamId, jobId: input.jobId, approved: false, reviewerId: ctx.memberId},
+      });
+
+      if (job.assignee) {
+        const msg = makeMessage(ctx, job.assignee, 'job_reviewed', input.feedback ?? 'Job rejected.', {jobId: input.jobId, approved: false});
+        await ctx.transport.send(job.assignee, msg);
+      }
+
+      return JSON.stringify({reviewed: true, approved: false, jobId: input.jobId});
     },
     {
       name: 'team_review_job',
@@ -304,8 +284,6 @@ function createTeamReviewJobTool(ctx: TeamToolContext): StructuredToolInterface 
     },
   );
 }
-
-// ─── 9. team_send_message ──────────────────────────────────────────
 
 function createTeamSendMessageTool(ctx: TeamToolContext): StructuredToolInterface {
   return tool(
@@ -331,8 +309,6 @@ function createTeamSendMessageTool(ctx: TeamToolContext): StructuredToolInterfac
   );
 }
 
-// ─── 11. team_broadcast ─────────────────────────────────────────────
-
 function createTeamBroadcastTool(ctx: TeamToolContext): StructuredToolInterface {
   return tool(
     async (input) => {
@@ -356,18 +332,14 @@ function createTeamBroadcastTool(ctx: TeamToolContext): StructuredToolInterface 
   );
 }
 
-// ─── 12. team_create_subteam ────────────────────────────────────────
-
 function createTeamCreateSubteamTool(ctx: TeamToolContext): StructuredToolInterface {
   return tool(
     async (input) => {
       const team = ctx.registry.getTeam(ctx.teamId);
       if (!team) return JSON.stringify({error: `Team not found: ${ctx.teamId}`});
-
       if (!canCreateSubTeam(team)) {
         return JSON.stringify({error: 'Cannot create sub-team: depth limit reached or sub-teams disabled'});
       }
-
       const subTeam = ctx.registry.createSubTeam(ctx.teamId, {
         name: input.name,
         goal: input.goal,
@@ -384,7 +356,7 @@ function createTeamCreateSubteamTool(ctx: TeamToolContext): StructuredToolInterf
     },
     {
       name: 'team_create_subteam',
-      description: 'Create a sub-team under the current team.',
+      description: 'Create a nested sub-team under the current team.',
       schema: z.object({
         name: z.string(),
         goal: z.string(),
@@ -394,14 +366,12 @@ function createTeamCreateSubteamTool(ctx: TeamToolContext): StructuredToolInterf
   );
 }
 
-// ─── 13. team_report ────────────────────────────────────────────────
-
 function createTeamReportTool(ctx: TeamToolContext): StructuredToolInterface {
   return tool(
     async (input) => {
       const msg = makeMessage(ctx, 'user', 'status_update', input.content, {isFinal: input.isFinal});
       await ctx.transport.send('user', msg).catch(() => {
-        // 'user' may not be a registered transport member — that's OK
+        // 'user' may not be a registered transport member.
       });
 
       if (input.isFinal) {
@@ -410,12 +380,11 @@ function createTeamReportTool(ctx: TeamToolContext): StructuredToolInterface {
           data: {teamId: ctx.teamId},
         });
       }
-
       return JSON.stringify({reported: true, isFinal: input.isFinal});
     },
     {
       name: 'team_report',
-      description: 'Send a progress report to the user. Set isFinal=true for the final report.',
+      description: 'Report progress or final completion summary for the team.',
       schema: z.object({
         content: z.string(),
         isFinal: z.boolean().default(false),
@@ -423,8 +392,6 @@ function createTeamReportTool(ctx: TeamToolContext): StructuredToolInterface {
     },
   );
 }
-
-// ─── 14. team_shutdown ──────────────────────────────────────────────
 
 function createTeamShutdownTool(ctx: TeamToolContext): StructuredToolInterface {
   return tool(
@@ -434,18 +401,17 @@ function createTeamShutdownTool(ctx: TeamToolContext): StructuredToolInterface {
         data: {teamId: ctx.teamId},
       });
 
-      // Transition team to 'completing' — requires 'running' state
       try {
         ctx.registry.updateTeamStatus(ctx.teamId, 'completing');
       } catch {
-        // Team may already be in completing or other transitional state
+        // Team may already be in a transitional state.
       }
 
       return JSON.stringify({shutdown: true, reason: input.reason ?? 'Leader initiated shutdown'});
     },
     {
       name: 'team_shutdown',
-      description: 'Initiate team shutdown. Actual cleanup is handled by TeamRuntime.',
+      description: 'Signal that the team should begin graceful shutdown.',
       schema: z.object({
         reason: z.string().optional(),
       }),

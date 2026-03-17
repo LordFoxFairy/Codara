@@ -19,10 +19,13 @@ import {
 } from '@engine/pipeline';
 import {createPermissionMiddleware} from '@engine/pipeline/permission';
 import {
-  createSharedTaskMiddleware,
   createTaskMiddleware,
   type TaskStore,
 } from '@capability/task';
+import {createTeamMiddleware} from '@capability/team/middleware';
+import type {TeamRegistry} from '@capability/team/coordination/team-registry';
+import type {TeamRuntime} from '@capability/team/runtime/team-runtime';
+import type {SharedState} from '@capability/team/shared-state';
 import type {HookPipeline} from '@engine/hook';
 import {createToolHooksBridge} from '@engine/hook';
 import type {GuidelinesSource} from '@infra/context/instructions/guidelines';
@@ -89,6 +92,9 @@ export function createRuntimeDefaultMiddlewares(input: {
   promptSource: PromptSource;
   guidelinesSource: GuidelinesSource;
   hookPipeline?: HookPipeline;
+  teamRegistry?: TeamRegistry;
+  teamRuntime?: TeamRuntime;
+  teamSharedState?: SharedState;
 }): BaseMiddleware[] {
   const callerMiddlewares = input.options.middleware ?? [];
   const byName = new Map<string, BaseMiddleware>();
@@ -114,17 +120,11 @@ export function createRuntimeDefaultMiddlewares(input: {
     byName.set(MIDDLEWARE_NAMES.TodoList, createTodoListMiddleware());
   }
 
-  if (!byName.has(MIDDLEWARE_NAMES.SharedTask) && !hasSharedTaskTools(providedToolNames)) {
-    byName.set(
-      MIDDLEWARE_NAMES.SharedTask,
-      createSharedTaskMiddleware({store: input.taskStore}),
-    );
-  }
-
   if (!byName.has(MIDDLEWARE_NAMES.Task) && !providedToolNames.has('Task')) {
     byName.set(
       MIDDLEWARE_NAMES.Task,
       createTaskMiddleware({
+        store: input.taskStore,
         model: input.options.model ?? (() => createCodaraChatModel({
           alias: input.options.alias,
           config: input.options.config,
@@ -143,6 +143,20 @@ export function createRuntimeDefaultMiddlewares(input: {
         ...(input.hookPipeline ? {lifecycle: input.hookPipeline} : {}),
       }),
     );
+  }
+
+  if (
+    input.teamRegistry &&
+    input.teamRuntime &&
+    input.teamSharedState &&
+    !byName.has('TeamMiddleware')
+  ) {
+    byName.set('TeamMiddleware', createTeamMiddleware({
+      teamType: 'leader',
+      registry: input.teamRegistry,
+      runtime: input.teamRuntime,
+      sharedState: input.teamSharedState,
+    }));
   }
 
   if (input.options.hil !== false && !byName.has(MIDDLEWARE_NAMES.AskUserQuestion)) {
@@ -209,9 +223,6 @@ function createDelegatedRuntimeMiddlewares(input: {
   if (!seen.has(MIDDLEWARE_NAMES.TodoList) && !providedToolNames.has('write_todos')) {
     push(createTodoListMiddleware());
   }
-  if (!seen.has(MIDDLEWARE_NAMES.SharedTask) && !hasSharedTaskTools(providedToolNames)) {
-    push(createSharedTaskMiddleware({store: input.taskStore}));
-  }
   if (input.options.hil !== false && !seen.has(MIDDLEWARE_NAMES.AskUserQuestion)) {
     push(createAskUserQuestionMiddleware());
   }
@@ -243,10 +254,6 @@ function collectProvidedToolNames(input: {
     }
   }
   return names;
-}
-
-function hasSharedTaskTools(toolNames: ReadonlySet<string>): boolean {
-  return toolNames.has('TaskCreate') || toolNames.has('TaskUpdate') || toolNames.has('TaskList');
 }
 
 function createRuntimePermissionAnalysisModel(

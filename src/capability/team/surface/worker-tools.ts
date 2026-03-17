@@ -2,9 +2,7 @@ import {tool} from '@langchain/core/tools';
 import type {StructuredToolInterface} from '@langchain/core/tools';
 import {z} from 'zod';
 import type {TeamMessage} from '@capability/team/coordination/types';
-import type {TeamToolContext} from './types';
-
-// ─── team_claim_job ─────────────────────────────────────────────────
+import type {TeamToolContext} from '@capability/team/surface/types';
 
 function buildClaimJob(ctx: TeamToolContext) {
   return tool(
@@ -44,8 +42,6 @@ function buildClaimJob(ctx: TeamToolContext) {
   );
 }
 
-// ─── team_submit_job ────────────────────────────────────────────────
-
 function buildSubmitJob(ctx: TeamToolContext) {
   return tool(
     async ({jobId, summary, artifacts}) => {
@@ -61,7 +57,6 @@ function buildSubmitJob(ctx: TeamToolContext) {
         status: 'idle',
       });
 
-      // Notify leader
       const leader = ctx.registry.getLeader(ctx.teamId);
       if (leader) {
         const msg: TeamMessage = {
@@ -101,8 +96,6 @@ function buildSubmitJob(ctx: TeamToolContext) {
   );
 }
 
-// ─── team_send_message ──────────────────────────────────────────────
-
 function buildSendMessage(ctx: TeamToolContext) {
   return tool(
     async ({to, content}) => {
@@ -126,8 +119,6 @@ function buildSendMessage(ctx: TeamToolContext) {
     },
   );
 }
-
-// ─── team_ask_leader ────────────────────────────────────────────────
 
 function buildAskLeader(ctx: TeamToolContext) {
   return tool(
@@ -159,8 +150,6 @@ function buildAskLeader(ctx: TeamToolContext) {
   );
 }
 
-// ─── team_list_jobs ─────────────────────────────────────────────────
-
 function buildListJobs(ctx: TeamToolContext) {
   return tool(
     async () => {
@@ -191,8 +180,6 @@ function buildListJobs(ctx: TeamToolContext) {
     },
   );
 }
-
-// ─── Export ─────────────────────────────────────────────────────────
 
 export function createWorkerTools(ctx: TeamToolContext): StructuredToolInterface[] {
   return [

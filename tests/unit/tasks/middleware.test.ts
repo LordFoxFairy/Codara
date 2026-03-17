@@ -11,7 +11,6 @@ import {createCodaraGuidelinesSource} from '@infra/context/instructions/guidelin
 import {createCodaraPromptSource} from '@infra/context/prompts/prompt-source';
 import {buildBaseSystemMessage} from '@infra/context/session-bundle/base-system-message';
 import {
-  createSharedTaskMiddleware,
   createTaskMemoryStore,
   createTaskMiddleware,
   TASK_CREATE_TOOL_NAME,
@@ -20,7 +19,7 @@ import {
 } from '@capability/task';
 import {
   readDelegatedAgentResult,
-} from '@capability/task/delegation/runtime';
+} from '@capability/task/delegation';
 import {createAgentSkillsMiddleware, createBuiltinSubagentStore} from '../agents/task-tool.fixtures';
 
 class ScriptedModel {
@@ -250,9 +249,12 @@ describe('tasks middlewares', () => {
     expect(String(toolMessage.content)).toContain('child_visible:false');
   });
 
-  it('should expose shared task coordination tools as a dedicated middleware', async () => {
+  it('should expose shared task coordination tools through the single Task middleware', async () => {
     const store = createTaskMemoryStore();
-    const sharedTaskMiddleware = createSharedTaskMiddleware({store});
+    const taskMiddleware = createTaskMiddleware({
+      store,
+      model: new ChildSummaryModel() as unknown as BaseChatModel,
+    });
     const model = new ScriptedModel([
       new AIMessage({
         content: '',
@@ -278,13 +280,14 @@ describe('tasks middlewares', () => {
 
     const agent = createAgent({
       model,
-      middleware: [sharedTaskMiddleware],
+      middleware: [taskMiddleware],
     });
 
     const result = await agent.invoke([new HumanMessage('start')], {recursionLimit: 3});
     const taskToolMessages = result.state.messages.filter((message) => ToolMessage.isInstance(message)) as ToolMessage[];
 
-    expect(sharedTaskMiddleware.tools?.map((tool) => tool.name)).toEqual([
+    expect(taskMiddleware.tools?.map((tool) => tool.name)).toEqual([
+      TASK_TOOL_NAME,
       TASK_CREATE_TOOL_NAME,
       'TaskUpdate',
       TASK_LIST_TOOL_NAME,

@@ -97,17 +97,6 @@ export const TeamSchema = z.object({
 });
 export type Team = z.infer<typeof TeamSchema>;
 
-// NOTE: RemoteConnectionInfoSchema is used at the instance level (for connecting
-// to remote Codara instances), NOT for individual team members. All team members
-// are local agents.
-export const RemoteConnectionInfoSchema = z.object({
-  agentCardUrl: z.string(),
-  contextId: z.string().optional(),
-  capabilities: z.array(z.string()).optional(),
-  authMethod: z.enum(['bearer', 'oauth2', 'apiKey']).optional(),
-});
-export type RemoteConnectionInfo = z.infer<typeof RemoteConnectionInfoSchema>;
-
 export const TeamMemberSchema = z.object({
   memberId: z.string(),
   name: z.string(),

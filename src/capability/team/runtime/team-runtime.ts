@@ -1,12 +1,12 @@
 import { randomUUID } from 'node:crypto';
 import type { TeamMember, MemberRole } from '@capability/team/coordination/types';
 import { TeamRegistry } from '@capability/team/coordination/team-registry';
-import { LocalTransport } from '@capability/team/transport/local-transport';
-import type { TeamTransport } from '@capability/team/transport/types';
+import { LocalTransport } from '@capability/team/local-transport';
+import type { TeamTransport } from '@capability/team/local-transport';
 import type { TeamBusEvent } from '@capability/team/coordination/events';
 import { MemberRunner } from '@capability/team/runtime/member-runner';
 import type { MemberSession, MemberSessionOptions } from '@capability/team/runtime/member-runner';
-import { TeamPersistence } from '@capability/team/persistence/team-persistence';
+import { TeamPersistence } from '@capability/team/persistence';
 import type { TeamMessage } from '@capability/team/coordination/types';
 import type { CodaraRuntimeEvent, CodaraRuntimeEventPhase, CodaraRuntimeEventStatus } from '@engine/events/runtime-events';
 

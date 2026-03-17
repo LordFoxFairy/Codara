@@ -6,7 +6,9 @@ import {
   markDelegationTool,
   readDelegatedParentRuntimeMetadata,
   runDelegatedAgent,
-} from '@capability/task/delegation/runtime';
+} from '@capability/task/delegation';
+import {createTaskTools} from '@capability/task/tools';
+import type {TaskStore} from '@capability/task/types';
 import {
   type SkillsRuntimeData,
   type SubagentDefinition,
@@ -43,6 +45,7 @@ export interface CreateTaskToolOptions extends DelegatedAgentOptions {
 }
 
 export interface CreateTaskMiddlewareOptions extends CreateTaskToolOptions {
+  store?: TaskStore;
   name?: string;
 }
 
@@ -105,7 +108,10 @@ When using \`Task\`:
 export function createTaskMiddleware(options: CreateTaskMiddlewareOptions): BaseMiddleware {
   return createMiddleware({
     name: options.name?.trim() || 'TaskMiddleware',
-    tools: [createTaskTool(options)],
+    tools: [
+      createTaskTool(options),
+      ...(options.store ? createTaskTools({store: options.store}) : []),
+    ],
     beforeModel(context) {
       context.systemMessage.push(TASK_MIDDLEWARE_SYSTEM_PROMPT);
       const runtime = readSkillsRuntimeData(context.runtime.shared);

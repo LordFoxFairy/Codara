@@ -4,28 +4,26 @@ export type {
   TaskStatus,
   TaskStore,
   UpdateTaskInput,
-} from '@capability/task/shared/types';
+} from '@capability/task/types';
 export {
   createTaskFileStore,
   createTaskMemoryStore,
   type TaskFileStoreOptions,
-} from '@capability/task/shared/store';
+} from '@capability/task/store';
 export {
   TASK_CREATE_TOOL_NAME,
   TASK_LIST_TOOL_NAME,
   TASK_UPDATE_TOOL_NAME,
-  createSharedTaskMiddleware,
   createTaskCreateTool,
   createTaskListTool,
   createTaskTools,
   createTaskUpdateTool,
-  type CreateSharedTaskMiddlewareOptions,
   type TaskToolOptions,
-} from '@capability/task/shared/task-tools';
+} from '@capability/task/tools';
 export {
   TASK_MIDDLEWARE_SYSTEM_PROMPT,
   TASK_TOOL_DESCRIPTION,
   TASK_TOOL_NAME,
   createTaskMiddleware,
   type CreateTaskMiddlewareOptions,
-} from '@capability/task/tools/task-middleware';
+} from '@capability/task/middleware';

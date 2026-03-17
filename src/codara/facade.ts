@@ -3,7 +3,7 @@ import path from 'node:path';
 import type {StructuredToolInterface} from '@langchain/core/tools';
 import {createAgentFileCheckpointer} from '@engine/checkpoint';
 import {ensurePermissionSettingsFile} from '@engine/pipeline/permission';
-import {createTaskFileStore} from '@capability/task/shared/store';
+import {createTaskFileStore} from '@capability/task/store';
 import {loadModelRoutingConfigFromPath, resolveCodaraPath, type ModelRoutingConfig} from '@infra/provider';
 import {createCodaraGuidelinesSource, type GuidelinesSource} from '@infra/context/instructions/guidelines';
 import {createCodaraPromptSource, type PromptSource} from '@infra/context/prompts/prompt-source';
@@ -115,11 +115,11 @@ export async function createCodaraRuntime(options: CodaraRuntimeOptions = {}): P
 
   // 6. Team system
   const teamSystem = await assembleTeamSystem({options, codaraPath, projectRoot, catalog});
-  for (const t of teamSystem.teamTools) runtimeTools.push(t);
 
   // 7. Middleware chain
   const runtimeMiddlewares = createRuntimeDefaultMiddlewares({
     options, runtimeTools, taskStore, logging, catalog, promptSource, guidelinesSource, hookPipeline,
+    teamRegistry: teamSystem.teamRegistry, teamRuntime: teamSystem.teamRuntime, teamSharedState: teamSystem.sharedState,
   });
 
   // 8. Assemble facade

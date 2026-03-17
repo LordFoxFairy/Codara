@@ -18,7 +18,6 @@ import {
   parseAskUserResult,
 } from '@engine/pipeline';
 import {
-  createSharedTaskMiddleware,
   createTaskCreateTool,
   createTaskFileStore,
   createTaskListTool,
@@ -28,7 +27,6 @@ import {
   TASK_LIST_TOOL_NAME,
   TASK_TOOL_NAME,
 } from '@capability/task';
-import {createTaskTool} from '@capability/task/tools/task-middleware';
 import {FileSystemSkillStore, loadSkillsRuntimeData} from '@capability/skill';
 import {seedProjectSkillFixtures} from '../../helpers/project-skill-fixtures';
 
@@ -202,8 +200,8 @@ export async function createCliRuntime(input: {
           },
           middleware: [
             createSkillsMiddleware({store: createRepoSkillStore(repoRoot), loadRuntime: loadSkillsRuntimeData}),
-            createSharedTaskMiddleware({store}),
             createTaskMiddleware({
+              store,
               model: childModel as unknown as BaseChatModel,
               tools: [
                 tool(async ({path: targetPath}: {path: string}) => `plan-doc:${targetPath}`, {
@@ -226,8 +224,6 @@ export async function createCliRuntime(input: {
                   description: 'Search web',
                   schema: z.object({query: z.string()}),
                 }),
-                createTaskListTool({store}),
-                createTaskUpdateTool({store}),
               ],
             }),
           ],

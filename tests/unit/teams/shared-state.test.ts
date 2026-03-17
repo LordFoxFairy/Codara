@@ -1,6 +1,5 @@
 import {describe, expect, test} from 'bun:test';
-import {MemorySharedState} from '@capability/team/state/memory-shared-state';
-import {createSharedState} from '@capability/team/state';
+import {MemorySharedState, createSharedState} from '@capability/team/shared-state';
 
 // ── MemorySharedState ─────────────────────────────────────────────────
 

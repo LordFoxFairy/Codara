@@ -9,7 +9,6 @@ import {
   ModelCascadeSchema,
   TeamConfigSchema,
   TeamSchema,
-  RemoteConnectionInfoSchema,
   TeamMemberSchema,
   TeamMemberTerminationSchema,
   JobArtifactSchema,
@@ -213,30 +212,6 @@ describe('TeamSchema', () => {
 
   test('rejects invalid status', () => {
     expect(() => TeamSchema.parse({...validTeam, status: 'deleted'})).toThrow();
-  });
-});
-
-describe('RemoteConnectionInfoSchema', () => {
-  test('validates minimal', () => {
-    const result = RemoteConnectionInfoSchema.parse({agentCardUrl: 'https://example.com/agent'});
-    expect(result.agentCardUrl).toBe('https://example.com/agent');
-  });
-
-  test('validates full', () => {
-    const result = RemoteConnectionInfoSchema.parse({
-      agentCardUrl: 'https://example.com/agent',
-      contextId: 'ctx-1',
-      capabilities: ['code', 'review'],
-      authMethod: 'bearer',
-    });
-    expect(result.capabilities).toEqual(['code', 'review']);
-    expect(result.authMethod).toBe('bearer');
-  });
-
-  test('rejects invalid authMethod', () => {
-    expect(() =>
-      RemoteConnectionInfoSchema.parse({agentCardUrl: 'x', authMethod: 'basic'}),
-    ).toThrow();
   });
 });
 

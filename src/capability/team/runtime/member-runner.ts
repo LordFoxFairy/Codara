@@ -1,9 +1,8 @@
 import type { TeamMember, TeamMessage, MemberRole } from '@capability/team/coordination/types';
-import type { TeamTransport } from '@capability/team/transport/types';
+import type { TeamTransport } from '@capability/team/local-transport';
 import type { TeamBusEvent } from '@capability/team/coordination/events';
 import type { TeamRegistry } from '@capability/team/coordination/team-registry';
-import { buildLeaderProtocol } from '@capability/team/protocol/leader-protocol';
-import { buildWorkerProtocol } from '@capability/team/protocol/worker-protocol';
+import { buildLeaderProtocol, buildWorkerProtocol } from '@capability/team/prompts';
 
 // ─── Inbox Helpers (inlined from former message-injector.ts) ─────────
 
