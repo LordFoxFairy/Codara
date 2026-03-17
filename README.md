@@ -72,30 +72,6 @@ bun run test        # 运行测试
 bun run build       # 构建 dist/
 ```
 
-## 你能得到什么
-
-- **终端优先的工作流**
-  - Codara 从一开始就是 CLI，不依赖浏览器外壳。
-- **统一的 runtime 边界**
-  - 会话、运行时事件和交互流程放在同一套系统里，而不是散落在脚本和粘合代码中。
-- **任务与子代理能力**
-  - 委派子运行和共享任务已经是产品表面的一部分，不是后补的演示功能。
-- **权限与人工介入**
-  - 运行时从设计上就保留了 review 和受控执行入口，而不是默认无边界写入。
-- **可演化的分层结构**
-  - engine、CLI、capability 各自有清晰文档，后续继续扩功能时不容易塌成一层。
-
-## 文档入口
-
-- [CLI Guide](./src/cli/README.md)
-  - 终端界面、输入流程、交互行为。
-- [Engine Guide](./src/engine/README.md)
-  - 会话、pipeline、运行时装配和核心执行结构。
-- [Tasks Guide](./src/capability/task/README.md)
-  - 任务委派、共享任务、子代理协调能力。
-- [Skill Guide](./src/capability/skill/README.md)
-  - skill 加载和 capability 侧的行为。
-
 ## 开发说明
 
 - 运行时：Bun
