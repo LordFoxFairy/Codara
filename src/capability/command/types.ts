@@ -1,4 +1,4 @@
-import type {AgentResult, AgentState} from '@engine/agent/models/agent';
+import type {AgentResult, AgentState} from '@shared/contracts/agent-types';
 import type {CompactOptions} from '@infra/checkpoint/types';
 import type {HookRegistry} from '@engine/hook/registry';
 import type {TeamRegistry} from '@capability/team/team-registry';
