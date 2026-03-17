@@ -50,17 +50,20 @@ function createTestTeam() {
 describe('TeamRuntime', () => {
   beforeEach(() => setup());
 
-  test('startTeam creates leader member and sets team to running', async () => {
+  test('startTeam creates infra, sets running, no auto-leader (main agent IS leader)', async () => {
     const team = createTestTeam();
     await runtime.startTeam(team.teamId);
 
     const updatedTeam = registry.getTeam(team.teamId);
     expect(updatedTeam?.status).toBe('running');
 
+    // No members auto-spawned — the main agent IS the leader
     const members = registry.getMembersByTeam(team.teamId);
-    expect(members.length).toBe(1);
-    expect(members[0]!.role).toBe('leader');
-    expect(members[0]!.name).toBe('leader');
+    expect(members.length).toBe(0);
+
+    // Transport and emitter should exist
+    expect(runtime.getTransport(team.teamId)).toBeDefined();
+    expect(runtime.getEmitter(team.teamId)).toBeDefined();
   });
 
   test('startTeam throws for non-existent team', async () => {
@@ -134,10 +137,12 @@ describe('TeamRuntime', () => {
     expect(updatedTeam?.status).toBe('failed');
   });
 
-  test('pauseTeam pauses all members and sets paused', async () => {
+  test('pauseTeam pauses all workers and sets paused', async () => {
     const team = createTestTeam();
     await runtime.startTeam(team.teamId);
 
+    // Spawn workers (main agent is leader, only workers are spawned)
+    const worker = await runtime.spawnMember(team.teamId, 'worker-1', 'worker');
     await new Promise(r => setTimeout(r, 20));
 
     runtime.pauseTeam(team.teamId);
@@ -145,10 +150,9 @@ describe('TeamRuntime', () => {
     const updatedTeam = registry.getTeam(team.teamId);
     expect(updatedTeam?.status).toBe('paused');
 
-    // Leader runner should be paused
-    const members = registry.getMembersByTeam(team.teamId);
-    const leaderRunner = runtime.getRunner(members[0]!.memberId);
-    expect(leaderRunner?.getStatus()).toBe('paused');
+    // Worker runner should be paused
+    const workerRunner = runtime.getRunner(worker.memberId);
+    expect(workerRunner?.getStatus()).toBe('paused');
 
     // Cleanup: resume then shutdown
     runtime.resumeTeam(team.teamId);
@@ -170,24 +174,27 @@ describe('TeamRuntime', () => {
     await runtime.shutdownTeam(team.teamId);
   });
 
-  test('leader crash pauses team automatically', async () => {
+  test('worker crash emits member.failed event', async () => {
     const errorSession = createMockSession({
-      invokeResult: () => ({ reason: 'error', error: new Error('leader boom') }),
+      invokeResult: () => ({ reason: 'error', error: new Error('worker boom') }),
     });
 
     setup(() => errorSession);
     const team = createTestTeam();
     await runtime.startTeam(team.teamId);
 
-    // Send a message to leader so it enters processing and crashes
-    const transport = runtime.getTransport(team.teamId)!;
-    const members = registry.getMembersByTeam(team.teamId);
-    const leaderId = members[0]!.memberId;
+    const emitter = runtime.getEmitter(team.teamId)!;
+    const events: TeamBusEvent[] = [];
+    emitter.subscribe(e => events.push(e));
 
-    await transport.send(leaderId, {
+    // Spawn a worker that will crash
+    const worker = await runtime.spawnMember(team.teamId, 'crash-worker', 'worker');
+    const transport = runtime.getTransport(team.teamId)!;
+
+    await transport.send(worker.memberId, {
       id: 'msg-1',
-      from: 'user',
-      to: leaderId,
+      from: 'leader',
+      to: worker.memberId,
       teamId: team.teamId,
       type: 'message',
       content: 'start work',
@@ -195,24 +202,23 @@ describe('TeamRuntime', () => {
       read: false,
     });
 
-    // Wake the leader to pick up the message
-    runtime.getRunner(leaderId)?.wake();
-
-    // Wait for crash to propagate
+    runtime.getRunner(worker.memberId)?.wake();
     await new Promise(r => setTimeout(r, 100));
 
-    const updatedTeam = registry.getTeam(team.teamId);
-    expect(updatedTeam?.status).toBe('paused');
+    const failEvents = events.filter(e => e.type === 'member.failed');
+    expect(failEvents.length).toBeGreaterThanOrEqual(1);
+
+    await runtime.shutdownTeam(team.teamId);
   });
 
-  test('getRunner returns the runner for a member', async () => {
+  test('getRunner returns the runner for a spawned member', async () => {
     const team = createTestTeam();
     await runtime.startTeam(team.teamId);
 
-    const members = registry.getMembersByTeam(team.teamId);
-    const runner = runtime.getRunner(members[0]!.memberId);
+    const worker = await runtime.spawnMember(team.teamId, 'w1', 'worker');
+    const runner = runtime.getRunner(worker.memberId);
     expect(runner).toBeDefined();
-    expect(runner!.getRole()).toBe('leader');
+    expect(runner!.getRole()).toBe('worker');
 
     await runtime.shutdownTeam(team.teamId);
   });
@@ -230,7 +236,7 @@ describe('TeamRuntime', () => {
     await runtime.spawnMember(team.teamId, 'reviewer-1', 'reviewer');
 
     const members = registry.getMembersByTeam(team.teamId);
-    expect(members.length).toBe(4); // leader + 3 spawned
+    expect(members.length).toBe(3); // 3 spawned (no auto-leader)
 
     await runtime.shutdownTeam(team.teamId);
   });

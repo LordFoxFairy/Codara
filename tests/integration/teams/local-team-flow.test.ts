@@ -138,7 +138,8 @@ describe('Team Lifecycle', () => {
 
   test('invalid state transition throws', () => {
     const team = registry.createTeam({name: 'epsilon', goal: 'Test transitions'});
-    expect(() => registry.updateTeamStatus(team.teamId, 'running')).toThrow(
+    // created → completing is not a valid direct transition
+    expect(() => registry.updateTeamStatus(team.teamId, 'completing')).toThrow(
       /Invalid status transition/,
     );
   });

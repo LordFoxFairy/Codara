@@ -30,7 +30,7 @@ export interface CreateSubTeamInput {
 // ─── Valid State Transitions ─────────────────────────────────────────
 
 const VALID_TRANSITIONS: Record<string, TeamStatus[]> = {
-  created: ['spawning'],
+  created: ['spawning', 'running'],
   spawning: ['running', 'failed'],
   running: ['paused', 'completing', 'failed'],
   paused: ['running', 'failed'],

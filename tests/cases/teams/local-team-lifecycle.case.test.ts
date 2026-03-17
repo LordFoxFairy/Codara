@@ -91,11 +91,9 @@ describe('Teams Case: Local Team Lifecycle', () => {
     await runtime.startTeam(team.teamId);
     expect(registry.getTeam(team.teamId)?.status).toBe('running');
 
-    // Verify leader member was created
+    // No auto-leader — main agent IS the leader (Claude Code model)
     const members = registry.getMembersByTeam(team.teamId);
-    expect(members).toHaveLength(1);
-    expect(members[0].role).toBe('leader');
-    expect(members[0].name).toBe('leader');
+    expect(members).toHaveLength(0);
 
     // Verify transport and emitter exist
     expect(runtime.getTransport(team.teamId)).toBeDefined();
@@ -142,7 +140,7 @@ describe('Teams Case: Local Team Lifecycle', () => {
     expect(worker.teamId).toBe(team.teamId);
 
     const members = registry.getMembersByTeam(team.teamId);
-    expect(members).toHaveLength(2); // leader + worker
+    expect(members).toHaveLength(1); // just the worker (no auto-leader)
   });
 
   test('multiple teams run independently', async () => {
@@ -293,7 +291,7 @@ describe('Teams Case: Conversation Tools', () => {
     const result = await getTool('create_team').invoke({goal: 'Build auth module'});
     const parsed = JSON.parse(result as string);
 
-    expect(parsed.status).toBe('started');
+    expect(parsed.status).toBe('running');
     expect(parsed.teamId).toBeDefined();
     expect(parsed.name).toBeDefined();
 
@@ -331,8 +329,8 @@ describe('Teams Case: Conversation Tools', () => {
 
     expect(parsed.team.id).toBe(teamId);
     expect(parsed.team.status).toBe('running');
-    expect(parsed.members).toHaveLength(1); // leader
-    expect(parsed.members[0].role).toBe('leader');
+    // No auto-leader — main agent IS the leader
+    expect(parsed.members).toHaveLength(0);
     expect(Array.isArray(parsed.jobs)).toBe(true);
   });
 
@@ -524,10 +522,10 @@ describe('Teams Case: Resource Cleanup', () => {
     const team = registry.createTeam({name: 'cleanup-test', goal: 'Verify cleanup'});
     await runtime.startTeam(team.teamId);
 
-    // Spawn a worker
+    // Spawn a worker (no auto-leader)
     await runtime.spawnMember(team.teamId, 'worker-1', 'worker');
     const members = registry.getMembersByTeam(team.teamId);
-    expect(members).toHaveLength(2);
+    expect(members).toHaveLength(1);
 
     // All runners should exist
     for (const m of members) {

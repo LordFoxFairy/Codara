@@ -22,7 +22,13 @@ export class TeamRuntime {
 
   constructor(private readonly options: TeamRuntimeOptions) {}
 
-  /** Start a team: create transport, emitter, spawn leader. */
+  /**
+   * Start a team: create transport and emitter.
+   *
+   * The main Codara agent acts as the team leader (like Claude Code).
+   * No separate leader session is spawned — the main agent coordinates
+   * workers via conversation tools (spawn_teammate, send_message, etc.).
+   */
   async startTeam(teamId: string): Promise<void> {
     const { registry } = this.options;
     const team = registry.getTeam(teamId);
@@ -33,34 +39,8 @@ export class TeamRuntime {
     this.transports.set(teamId, transport);
     this.emitters.set(teamId, emitter);
 
-    registry.updateTeamStatus(teamId, 'spawning');
-
-    const leader = this.buildMember(teamId, 'leader', 'leader');
-    registry.registerMember(teamId, leader);
-    transport.registerMember(leader.memberId);
-
-    const runner = new MemberRunner({
-      member: leader,
-      teamName: team.name,
-      goal: team.goal,
-      depth: team.depth,
-      maxDepth: team.config.maxDepth,
-      registry,
-      transport,
-      emitter,
-      projectRoot: this.options.projectRoot,
-      createSession: this.options.createSession,
-    });
-
-    this.runners.set(leader.memberId, runner);
-
     registry.updateTeamStatus(teamId, 'running');
     emitter.emit({ type: 'team.running', data: { teamId } });
-
-    // Start leader in background (don't await)
-    runner.start().catch(err => {
-      this.handleMemberCrash(teamId, leader.memberId, err);
-    });
   }
 
   /** Spawn a new member in a running team. */

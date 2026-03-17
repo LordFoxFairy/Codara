@@ -170,7 +170,8 @@ describe('TeamRegistry', () => {
 
     test('invalid transition throws', () => {
       const team = registry.createTeam({name: 'A', goal: 'G'});
-      expect(() => registry.updateTeamStatus(team.teamId, 'running')).toThrow(
+      // created → completing is not a valid transition
+      expect(() => registry.updateTeamStatus(team.teamId, 'completing')).toThrow(
         /Invalid status transition/,
       );
     });

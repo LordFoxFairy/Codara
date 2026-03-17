@@ -8,9 +8,14 @@ import type {SharedState} from '@capability/team/state/shared-state';
 // ─── Factory ────────────────────────────────────────────────────────
 
 /**
- * High-level team tools for the main Codara agent.
- * These allow conversational team creation and management
- * (as opposed to the internal leader/worker tools).
+ * Conversation-driven team tools for the main Codara agent.
+ *
+ * The main agent acts as the team leader (like Claude Code):
+ * - create_team: set up a team
+ * - spawn_teammate: add a worker to the team
+ * - send_message: communicate with a teammate
+ * - list_teams / team_status: monitor progress
+ * - shutdown_team: finish a team
  */
 export function createConversationTeamTools(deps: {
   registry: TeamRegistry;
@@ -19,6 +24,8 @@ export function createConversationTeamTools(deps: {
 }): StructuredToolInterface[] {
   return [
     createTeamTool(deps),
+    spawnTeammateTool(deps),
+    sendMessageTool(deps),
     listTeamsTool(deps),
     teamStatusTool(deps),
     shutdownTeamTool(deps),
@@ -42,7 +49,7 @@ function createTeamTool(deps: {
           status: 'running',
           jobsSummary: {total: 0, done: 0, failed: 0},
         });
-        return JSON.stringify({teamId: team.teamId, name: team.name, status: 'started'});
+        return JSON.stringify({teamId: team.teamId, name: team.name, status: 'running'});
       } catch (e) {
         return JSON.stringify({error: e instanceof Error ? e.message : String(e)});
       }
@@ -50,10 +57,88 @@ function createTeamTool(deps: {
     {
       name: 'create_team',
       description:
-        'Create a new team to work on a complex goal. Use when the task requires multiple parallel workstreams or specialized agents. The team will have a leader that coordinates workers.',
+        'Create a new team to work on a complex goal. You (the main agent) are the team leader. After creating the team, use spawn_teammate to add workers.',
       schema: z.object({
         goal: z.string().describe('The goal for the team'),
         name: z.string().optional().describe('Optional team name'),
+      }),
+    },
+  );
+}
+
+function spawnTeammateTool(deps: {
+  registry: TeamRegistry;
+  runtime: TeamRuntime;
+}): StructuredToolInterface {
+  return tool(
+    async (input) => {
+      try {
+        const team = deps.registry.getTeam(input.teamId) ?? deps.registry.getTeamByName(input.teamId);
+        if (!team) return JSON.stringify({error: `Team "${input.teamId}" not found`});
+        const member = await deps.runtime.spawnMember(
+          team.teamId,
+          input.name,
+          'worker',
+          input.model,
+        );
+        return JSON.stringify({
+          memberId: member.memberId,
+          name: member.name,
+          role: member.role,
+          status: 'spawned',
+        });
+      } catch (e) {
+        return JSON.stringify({error: e instanceof Error ? e.message : String(e)});
+      }
+    },
+    {
+      name: 'spawn_teammate',
+      description:
+        'Spawn a new teammate (worker) in a team. The worker runs independently in its own session. Give it a descriptive name based on what it will work on.',
+      schema: z.object({
+        teamId: z.string().describe('The team ID or name'),
+        name: z.string().describe('Descriptive name for the teammate, e.g. "backend-api" or "test-writer"'),
+        model: z.string().optional().describe('Model to use for this teammate (defaults to same as parent)'),
+      }),
+    },
+  );
+}
+
+function sendMessageTool(deps: {
+  registry: TeamRegistry;
+  runtime: TeamRuntime;
+}): StructuredToolInterface {
+  return tool(
+    async (input) => {
+      try {
+        const team = deps.registry.getTeam(input.teamId) ?? deps.registry.getTeamByName(input.teamId);
+        if (!team) return JSON.stringify({error: `Team "${input.teamId}" not found`});
+        const transport = deps.runtime.getTransport(team.teamId);
+        if (!transport) return JSON.stringify({error: `Team "${team.name}" transport not available`});
+        const to = input.memberId ?? 'broadcast';
+        await transport.send(to, {
+          id: `msg_${crypto.randomUUID().slice(0, 8)}`,
+          from: 'leader',
+          to,
+          teamId: team.teamId,
+          type: 'message',
+          content: input.message,
+          timestamp: new Date().toISOString(),
+          read: false,
+        });
+        return JSON.stringify({ok: true, sentTo: to});
+      } catch (e) {
+        return JSON.stringify({error: e instanceof Error ? e.message : String(e)});
+      }
+    },
+    {
+      name: 'send_message',
+      description:
+        'Send a message to a teammate or broadcast to the entire team. Use to give instructions, ask for status, or coordinate work.',
+      schema: z.object({
+        teamId: z.string().describe('The team ID or name'),
+        message: z.string().describe('The message content'),
+        memberId: z.string().optional().describe('Specific member ID to message (omit for broadcast to all)'),
       }),
     },
   );
