@@ -114,8 +114,6 @@ interface DelegatedChildInput {
   profileTools?: StructuredToolInterface[];
   profileSystemPrompt?: string;
   resume?: DelegatedResumeState;
-  /** 当前委托深度（0 = 主 agent）。 */
-  delegationDepth?: number;
 }
 
 interface ParentPauseContext {
@@ -125,21 +123,11 @@ interface ParentPauseContext {
   maxTurns?: number;
 }
 
-export const MAX_DELEGATION_DEPTH = 1;
-
 /**
- * 校验委托深度是否在允许范围内。
- * @throws 超过 MAX_DELEGATION_DEPTH 时抛出错误。
+ * Delegation depth protection is handled by `resolveDelegatedAgentTools()` which
+ * physically removes all `isDelegationTool`-marked tools from child agents.
+ * No depth counter is needed — subagents simply cannot access delegation tools.
  */
-export function assertDelegationDepth(depth: number | undefined): void {
-  const effective = depth ?? 0;
-  if (effective >= MAX_DELEGATION_DEPTH) {
-    throw new Error(
-      `Delegation depth limit reached (${effective}/${MAX_DELEGATION_DEPTH}). ` +
-      'Subagents cannot delegate further to prevent infinite recursion.',
-    );
-  }
-}
 
 const DELEGATION_TOOL = Symbol.for('codara.tasks.delegation.tool');
 
@@ -147,7 +135,6 @@ export async function runDelegatedAgent(
   options: DelegatedAgentOptions,
   input: DelegatedChildInput,
 ): Promise<ToolMessage> {
-  assertDelegationDepth(input.delegationDepth);
   const childOptions = await buildDelegatedChildOptions(options, input);
   const result = await runDelegatedChild(childOptions, input);
 
@@ -270,11 +257,8 @@ async function runDelegatedChild(
   childOptions: BootstrapAgentOptions,
   input: DelegatedChildInput,
 ) {
-  // Propagate incremented delegation depth so nested Task tools see the correct depth.
-  const childDepth = (input.delegationDepth ?? 0) + 1;
   const childConfig = {
     ...(input.maxTurns ? {recursionLimit: input.maxTurns} : {}),
-    configurable: {execution: {delegationDepth: childDepth}},
   };
 
   if (input.resume) {
