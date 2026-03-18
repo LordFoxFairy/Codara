@@ -60,7 +60,7 @@ describe('Basic Integration: Model + Agent + Tools', () => {
             name: 'glob',
             args: {
               pattern: '**/*.ts',
-              path: 'src/engine/tool',
+              path: 'src/integration/tool',
             },
             type: 'tool_call',
           },
@@ -76,7 +76,7 @@ describe('Basic Integration: Model + Agent + Tools', () => {
 
     const result = await agent.invoke(
       {
-        messages: [new HumanMessage('请使用 glob 工具查找 src/engine/tool 目录下的所有 .ts 文件')],
+        messages: [new HumanMessage('请使用 glob 工具查找 src/integration/tool 目录下的所有 .ts 文件')],
       },
       {
         recursionLimit: 10,
@@ -88,6 +88,6 @@ describe('Basic Integration: Model + Agent + Tools', () => {
 
     const toolMessage = result.state.messages.find((message) => message instanceof ToolMessage) as ToolMessage | undefined;
     expect(toolMessage).toBeDefined();
-    expect(String(toolMessage?.content ?? '')).toContain('/src/engine/tool/');
+    expect(String(toolMessage?.content ?? '')).toContain('/src/integration/tool/');
   });
 });
