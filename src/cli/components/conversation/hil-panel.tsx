@@ -127,16 +127,18 @@ function AskUserView({review}: {review: CliHilReviewState}): React.JSX.Element {
         <Text bold>{activeTab.question}</Text>
       )}
 
-      {/* Options list */}
+      {/* Options list — vertical, ↑/↓ navigable */}
       {activeTab && (
         <Box flexDirection="column" marginTop={1}>
           {(activeTab.options ?? []).map((option, index) => {
             const answer = activeTab.id ? form.answers[activeTab.id] : undefined;
             const isSelected = isOptionSelected(option.label, answer);
+            const isFocused = review.focus !== 'actions' && review.selectedActionIndex === index;
+            const highlighted = isSelected || isFocused;
             return (
               <Box key={index} flexDirection="column">
-                <Text color={isSelected ? 'green' : undefined}>
-                  {isSelected ? '› ' : '  '}{index + 1}. {option.label}
+                <Text color={highlighted ? 'green' : undefined}>
+                  {highlighted ? '› ' : '  '}{index + 1}. {option.label}
                 </Text>
                 {option.description && (
                   <Text dimColor>{'     '}{option.description}</Text>
@@ -145,26 +147,36 @@ function AskUserView({review}: {review: CliHilReviewState}): React.JSX.Element {
             );
           })}
 
-          {/* Free text option */}
-          {activeTab.placeholder && (
-            <Text dimColor>  {(activeTab.options?.length ?? 0) + 1}. {activeTab.placeholder}</Text>
-          )}
+          {/* Free text option — also navigable */}
+          {activeTab.placeholder && (() => {
+            const freeIdx = (activeTab.options?.length ?? 0);
+            const isFocused = review.focus !== 'actions' && review.selectedActionIndex === freeIdx;
+            return (
+              <Text color={isFocused ? 'green' : undefined} dimColor={!isFocused}>
+                {isFocused ? '› ' : '  '}{freeIdx + 1}. {activeTab.placeholder}
+              </Text>
+            );
+          })()}
 
-          {/* Chat about this */}
+          {/* Actions as numbered items below a separator */}
           {review.actions.length > 0 && (
-            <Box marginTop={1}>
-              {review.actions.map((action, index) => (
-                <Text key={index} color={review.focus === 'actions' && index === review.selectedActionIndex ? 'cyan' : undefined} dimColor={!(review.focus === 'actions' && index === review.selectedActionIndex)}>
-                  {index > 0 ? '  ·  ' : '  '}{action.label}
-                </Text>
-              ))}
+            <Box marginTop={1} flexDirection="column">
+              {review.actions.map((action, index) => {
+                const actionIdx = (activeTab.options?.length ?? 0) + (activeTab.placeholder ? 1 : 0) + index;
+                const isFocused = review.focus === 'actions' && index === review.selectedActionIndex;
+                return (
+                  <Text key={index} color={isFocused ? 'cyan' : undefined} dimColor={!isFocused}>
+                    {isFocused ? '› ' : '  '}{actionIdx + 1}. {action.label}
+                  </Text>
+                );
+              })}
             </Box>
           )}
         </Box>
       )}
 
-      {/* Input line */}
-      {review.draft !== undefined && (
+      {/* Input line — visible when typing or focused */}
+      {(review.focus === 'input' || review.draft.trim()) && (
         <Box marginTop={1}>
           <Text color={review.focus === 'input' ? 'cyan' : 'gray'}>
             Answer › {review.draft || '(empty)'}
@@ -176,8 +188,8 @@ function AskUserView({review}: {review: CliHilReviewState}): React.JSX.Element {
       <Box marginTop={1}>
         <Text dimColor>
           {hasMultipleTabs
-            ? 'Enter to select · Left/Right tabs · Tab actions · Esc cancel'
-            : 'Enter to select · Tab/Arrow keys to navigate · Esc to cancel'}
+            ? '↑/↓ select · 1-9 quick pick · Enter confirm · ←/→ tabs · Tab focus · Esc cancel'
+            : '↑/↓ select · 1-9 quick pick · Enter confirm · Tab focus · Esc cancel'}
         </Text>
       </Box>
 
