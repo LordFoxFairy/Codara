@@ -1,4 +1,3 @@
-import React from 'react';
 import { Box, Text } from 'ink';
 import type { TeamMemberInfo, TeamJobInfo } from '../../hooks/use-team-detail.js';
 import { theme } from '../../utils/theme.js';

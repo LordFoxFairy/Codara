@@ -345,7 +345,7 @@ export class BusClient {
     // Buffer incoming events and signal when new ones arrive.
     const buffer: BusEvent[] = [];
     let finished = false;
-    let _error: Error | null = null;
+    // Error tracking removed — errors terminate the stream via `finished = true`.
     let notifyResolve: (() => void) | null = null;
 
     const notify = (): void => {
@@ -380,7 +380,7 @@ export class BusClient {
         finished = true;
         notify();
       } else if (event.type === 'error' && hasRequestId) {
-        _error = new Error((event as BusEvent & Record<string, unknown>).message as string ?? 'Unknown bus error');
+        // Error event terminates the stream
         buffer.push(event);
         finished = true;
         notify();

@@ -1,4 +1,3 @@
-import React from 'react';
 import { Box, Text } from 'ink';
 import type { TeamSummary } from '../../hooks/use-team-dashboard.js';
 import { theme } from '../../utils/theme.js';
