@@ -25,7 +25,8 @@
       "@observability/*": ["src/observability/*"],
       "@integration/*": ["src/integration/*"],
       "@context/*": ["src/context/*"],
-      "@config/*": ["src/config/*"]
+      "@config/*": ["src/config/*"],
+      "@gateway/*": ["src/gateway/*"]
     }
   },
   "include": ["src"]
