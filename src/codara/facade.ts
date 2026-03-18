@@ -260,7 +260,23 @@ export function assembleCodara(
 
   const channelRegistry = preloadedSources?.channelRegistry;
 
+  const teamRuntime = preloadedSources?.teamRuntime;
+  const teamRegistry = preloadedSources?.teamRegistry;
+
   const dispose = async (): Promise<void> => {
+    // Shut down all running teams before disposing session
+    if (teamRuntime && teamRegistry) {
+      const activeTeams = teamRegistry.listTeams().filter(
+        (t) => t.status === 'running' || t.status === 'paused',
+      );
+      for (const team of activeTeams) {
+        try {
+          await teamRuntime.shutdownTeam(team.teamId);
+        } catch {
+          // Best-effort — continue disposing other resources
+        }
+      }
+    }
     await session.dispose();
     if (mcpManager) await mcpManager.dispose();
     if (channelRegistry) await channelRegistry.disposeAll();
