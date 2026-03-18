@@ -1,5 +1,6 @@
-import {mkdir, readFile, readdir, rm, writeFile} from 'node:fs/promises';
+import {mkdir, readFile, readdir, rename, rm, writeFile} from 'node:fs/promises';
 import {existsSync} from 'node:fs';
+import {randomUUID} from 'node:crypto';
 import path from 'node:path';
 import {homedir} from 'node:os';
 import type {SessionState} from './types';
@@ -31,9 +32,11 @@ export class FileSessionStore implements SessionStore {
   async save(sessionId: string, state: SessionState): Promise<void> {
     const sessionDir = path.join(this.basePath, sessionId);
     const metadataPath = path.join(sessionDir, 'metadata.json');
+    const tmpPath = `${metadataPath}.${randomUUID()}.tmp`;
 
     await mkdir(sessionDir, {recursive: true});
-    await writeFile(metadataPath, JSON.stringify(state, null, 2), 'utf8');
+    await writeFile(tmpPath, JSON.stringify(state, null, 2), 'utf8');
+    await rename(tmpPath, metadataPath);
   }
 
   async get(sessionId: string): Promise<SessionState | undefined> {
