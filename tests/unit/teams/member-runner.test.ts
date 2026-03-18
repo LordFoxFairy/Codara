@@ -193,7 +193,7 @@ describe('MemberRunner', () => {
     await startPromise;
   });
 
-  test('error in session terminates member and emits event', async () => {
+  test('error in session is isolated — member recovers to idle and emits member.failed', async () => {
     const opts = buildOptions();
     const mockSession = createMockSession({
       invokeResult: () => ({ reason: 'error', error: new Error('session boom') }),
@@ -216,12 +216,19 @@ describe('MemberRunner', () => {
     });
 
     const runner = new MemberRunner(opts);
+    const startPromise = runner.start();
 
-    await expect(runner.start()).rejects.toThrow('session boom');
-    expect(runner.getStatus()).toBe('terminated');
+    // Give it time to process the error and recover to idle
+    await new Promise(r => setTimeout(r, 50));
+
+    // Member should have recovered to idle, not terminated
+    expect(runner.getStatus()).toBe('idle');
 
     const failEvents = events.filter(e => e.type === 'member.failed');
-    expect(failEvents.length).toBe(1);
+    expect(failEvents.length).toBeGreaterThanOrEqual(1);
+
+    runner.requestShutdown();
+    await startPromise;
   });
 
   test('shutdown request wakes idle member and terminates', async () => {

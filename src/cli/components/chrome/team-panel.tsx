@@ -105,6 +105,7 @@ function MemberRow({member, isLast}: {
   const displayStatus = deriveMemberDisplayStatus(member);
   const statusColor = memberStatusColor(displayStatus);
   const name = formatMemberName(member);
+  const jobInfo = member.currentJobId ? ` (${member.currentJobId.slice(0, 8)})` : '';
 
   const statParts: string[] = [];
   if (member.toolUseCount) statParts.push(`${member.toolUseCount} tool uses`);
@@ -116,7 +117,7 @@ function MemberRow({member, isLast}: {
       <Text dimColor>{'  '}{connector} </Text>
       <Text color={statusColor}>{name}</Text>
       <Text dimColor>: </Text>
-      <Text color={statusColor} wrap="truncate-end">{displayStatus}</Text>
+      <Text color={statusColor} wrap="truncate-end">{displayStatus}{jobInfo}</Text>
       {stats && <Text dimColor>{stats}</Text>}
     </Box>
   );

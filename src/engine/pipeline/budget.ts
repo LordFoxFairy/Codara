@@ -62,6 +62,9 @@ export function createContextBudgetSnapshot(
     reservedTokens,
     availableInputTokens,
     estimatedInputTokens,
+    usagePercent: availableInputTokens > 0
+      ? Math.round((estimatedInputTokens / availableInputTokens) * 100)
+      : 0,
     overBudget: estimatedInputTokens > availableInputTokens,
   };
 }

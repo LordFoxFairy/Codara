@@ -141,7 +141,6 @@ export class MemberRunner {
         type: 'member.failed',
         data: { teamId: member.teamId, memberId: member.memberId, error: String(err) },
       });
-      throw err;
     }
   }
 
@@ -177,6 +176,36 @@ export class MemberRunner {
 
   // ── Private ──────────────────────────────────────────────────────
 
+  private async handleInvokeError(error: Error): Promise<void> {
+    const { member, registry, transport, emitEvent } = this.options;
+    const currentMember = registry.getMember(member.memberId);
+    if (currentMember?.currentJobId) {
+      try {
+        const board = registry.getJobBoard(member.teamId);
+        board.rejectJob(currentMember.currentJobId, `Worker crashed: ${error.message}`);
+      } catch { /* ignore */ }
+      registry.updateMember(member.teamId, member.memberId, { currentJobId: undefined });
+    }
+    try {
+      await transport.send('leader', {
+        id: `crash_${crypto.randomUUID().slice(0, 8)}`,
+        from: member.memberId,
+        to: 'leader',
+        teamId: member.teamId,
+        type: 'status_update',
+        content: `Worker ${member.name} crashed: ${error.message}`,
+        timestamp: new Date().toISOString(),
+        read: false,
+      });
+    } catch { /* ignore */ }
+    emitEvent({
+      type: 'member.failed',
+      data: { teamId: member.teamId, memberId: member.memberId, error: error.message },
+    });
+    this.status = 'idle';
+    registry.updateMember(member.teamId, member.memberId, { status: 'idle' });
+  }
+
   private async runLoop(): Promise<void> {
     const { member, transport, registry, emitEvent } = this.options;
 
@@ -201,9 +230,15 @@ export class MemberRunner {
       registry.updateMember(member.teamId, member.memberId, { status: 'working' });
 
       if (this.session) {
-        const result = await this.session.invoke();
-        if (result.reason === 'error') {
-          throw result.error ?? new Error('Agent loop error');
+        try {
+          const result = await this.session.invoke();
+          if (result.reason === 'error') {
+            await this.handleInvokeError(result.error ?? new Error('Agent loop error'));
+            continue;
+          }
+        } catch (err) {
+          await this.handleInvokeError(err instanceof Error ? err : new Error(String(err)));
+          continue;
         }
       }
     }

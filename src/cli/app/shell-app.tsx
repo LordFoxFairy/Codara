@@ -98,6 +98,14 @@ export function CodaraCliApp(props: CodaraCliAppProps): React.JSX.Element {
   const activeTasks = useActiveTasks({runtimeEvents: shell.runtimeEvents});
   const activeTeams = useActiveTeams({runtimeEvents: shell.runtimeEvents});
 
+  // Periodic refresh so team member statuses update in real-time.
+  const [teamMembersVersion, setTeamMembersVersion] = useState(0);
+  useEffect(() => {
+    if (!activeTeams.hasActiveTeams) return;
+    const timer = setInterval(() => setTeamMembersVersion(v => v + 1), 1000);
+    return () => clearInterval(timer);
+  }, [activeTeams.hasActiveTeams]);
+
   // Build team member map from the facade for TeamPanel inline display.
   // ActiveTeam.teamId is the runtime event root UUID, not the registry ID.
   // Look up by team name (getTeamDetail falls back to getTeamByName).
@@ -122,7 +130,7 @@ export function CodaraCliApp(props: CodaraCliAppProps): React.JSX.Element {
       }
     }
     return map.size > 0 ? map : undefined;
-  }, [activeTeams.activeTeams, activeTeams.hasActiveTeams, codara]);
+  }, [activeTeams.activeTeams, activeTeams.hasActiveTeams, codara, teamMembersVersion]);
   const listCommands = React.useCallback(() => codara.listCommands(), [codara]);
   const completion = useCommandCompletion({
     text: shell.composer.text,
