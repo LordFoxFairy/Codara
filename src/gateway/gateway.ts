@@ -2,9 +2,11 @@ import type {ChannelPlugin} from '@integration/channel/contracts';
 import type {ChannelType} from '@shared/contracts/channel';
 import type {GatewayConfig, InboundMessage, StopHandle} from './types';
 import type {GatewaySessionFactory} from './session-manager';
+import type {DebouncedHandler} from './debounce';
 import {createGatewayRouter} from './router';
 import {createGatewaySessionManager} from './session-manager';
-import {chunkText} from './outbound';
+import {chunkMarkdown} from './outbound';
+import {createDebouncedHandler} from './debounce';
 import {GatewayChannelBridge} from './channel-bridge';
 import {ChannelRegistry} from '@integration/channel/registry';
 
@@ -26,6 +28,7 @@ export class Gateway {
   private readonly accounts = new Map<string, unknown>();
   private readonly channelRegistry: ChannelRegistry;
   private readonly bridges = new Map<string, GatewayChannelBridge>();
+  private debouncer?: DebouncedHandler;
 
   constructor(options: GatewayOptions) {
     this.config = options.config;
@@ -44,6 +47,8 @@ export class Gateway {
   }
 
   async start(): Promise<void> {
+    this.debouncer = createDebouncedHandler((msg) => this.handleInbound(msg));
+
     for (const [channelId, channelConfig] of Object.entries(this.config.channels)) {
       if (!channelConfig.enabled) continue;
       const plugin = this.plugins.get(channelId);
@@ -55,11 +60,12 @@ export class Gateway {
 
         this.accounts.set(`${channelId}:${accountId}`, account);
 
+        const debouncer = this.debouncer;
         const handle = await plugin.startListening({
           account,
           accountId,
           config: accountConfig,
-          onMessage: (msg) => this.handleInbound(msg),
+          onMessage: (msg) => debouncer.add(msg),
           onPauseResponse: (pauseId, payload) => this.handlePauseResponse(pauseId, payload),
         });
         this.stopHandles.push(handle);
@@ -68,6 +74,8 @@ export class Gateway {
   }
 
   async stop(): Promise<void> {
+    this.debouncer?.dispose();
+    this.debouncer = undefined;
     await Promise.allSettled(this.stopHandles.map((h) => h.stop()));
     this.stopHandles.length = 0;
     await this.sessionManager.disposeAll();
@@ -98,7 +106,7 @@ export class Gateway {
       }
 
       const response = await session.invoke(msg.text);
-      const chunks = chunkText(response, plugin.capabilities.textLimit);
+      const chunks = chunkMarkdown(response, {limit: plugin.capabilities.textLimit});
 
       for (const chunk of chunks) {
         await plugin.sendText(account, {
