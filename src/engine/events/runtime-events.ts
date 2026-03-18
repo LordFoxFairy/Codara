@@ -139,6 +139,8 @@ export class RuntimeEventsController {
   private readonly turnRoots = new Map<string, string>();
   private readonly modelRoots = new Map<string, string>();
   private readonly toolRoots = new Map<string, string>();
+  /** Track pending task IDs (pre-registered before execution) to emit end events when real task starts. */
+  private readonly pendingTaskIds = new Set<string>();
 
   constructor(private readonly sessionId: string) {}
 
@@ -296,6 +298,31 @@ export class RuntimeEventsController {
             label: response.text?.trim() ? 'Model response ready' : 'Model step complete',
             parentId: modelRootId,
           });
+
+          // Pre-register pending Task tool calls so the panel shows all tasks immediately
+          const toolCalls = Array.isArray(response.tool_calls) ? response.tool_calls : [];
+          const taskCalls = toolCalls.filter((tc: {name?: string}) => tc.name === 'Task');
+          if (taskCalls.length > 1) {
+            const turnId = this.turnRoots.get(currentTurnKey);
+            for (let i = 0; i < taskCalls.length; i++) {
+              const tc = taskCalls[i]!;
+              const tcId = typeof tc.id === 'string' ? tc.id : `pending-task-${i}`;
+              const args = tc.args as Record<string, unknown> | undefined;
+              const subagentType = typeof args?.subagent_type === 'string' ? args.subagent_type : 'general-purpose';
+              const prompt = typeof args?.prompt === 'string' ? args.prompt.split('\n')[0]!.slice(0, 50) : '';
+              this.pendingTaskIds.add(tcId);
+              this.emit({
+                id: `pending-${tcId}`,
+                kind: 'task',
+                phase: 'start',
+                status: 'running',
+                label: `Delegating ${subagentType}: ${prompt}`,
+                detail: 'pending',
+                parentId: turnId,
+              });
+            }
+          }
+
           return response;
         } catch (error) {
           this.emit({
@@ -324,6 +351,19 @@ export class RuntimeEventsController {
         });
 
         if (context.toolCall.name === 'Task') {
+          // End the matching pending task event (pre-registered from afterModel)
+          const tcId = typeof context.toolCall.id === 'string' ? context.toolCall.id : '';
+          if (tcId && this.pendingTaskIds.has(tcId)) {
+            this.pendingTaskIds.delete(tcId);
+            this.emit({
+              kind: 'task',
+              phase: 'end',
+              status: 'done',
+              label: 'Task started',
+              parentId: `pending-${tcId}`,
+            });
+          }
+
           const taskRootId = randomUUID();
           this.emit({
             id: taskRootId,
