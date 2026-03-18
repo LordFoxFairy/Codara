@@ -645,6 +645,12 @@ export function createSession(options: CreateSessionOptions): Session {
     },
     async reset() {
       ensureReady();
+      // If bootstrap is in-flight, await it before deciding whether to clean up.
+      if (!agent && agentPromise) {
+        try {
+          await agentPromise;
+        } catch { /* bootstrap may have failed */ }
+      }
       if (!agent && !(await hasStoredCheckpoint())) {
         await persistSessionState();
         return;
@@ -666,6 +672,12 @@ export function createSession(options: CreateSessionOptions): Session {
             reason: 'user_exit',
           }),
         );
+      }
+      // If bootstrap is in-flight, await it before deciding whether to clean up.
+      if (!agent && agentPromise) {
+        try {
+          await agentPromise;
+        } catch { /* bootstrap may have failed */ }
       }
       if (!agent && !(await hasStoredCheckpoint())) {
         sessionStatus = 'closed';
