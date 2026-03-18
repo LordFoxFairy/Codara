@@ -32,8 +32,14 @@ export async function handleChat(req: Request): Promise<Response> {
         ...(body.sessionId ? {sessionId: body.sessionId} : {}),
       };
 
-      const pipePromise = pipeBusEventsToSSE(busInstance, requestId, send, signal);
-      await busInstance.handleRequest(clientId, request);
+      const pipePromise = pipeBusEventsToSSE(busInstance, requestId, send, signal, body.sessionId);
+      try {
+        await busInstance.handleRequest(clientId, request);
+      } catch (error) {
+        // Force-close the SSE pipe so it doesn't hang forever
+        send({event: 'error', data: {message: error instanceof Error ? error.message : String(error)}});
+        send({event: 'done', data: {sessionId: body.sessionId ?? '', requestId}});
+      }
       await pipePromise;
     } finally {
       busInstance.unregisterClient(clientId);
@@ -67,8 +73,14 @@ export async function handleResume(req: Request): Promise<Response> {
         ...(body.input !== undefined ? {input: body.input} : {}),
       };
 
-      const pipePromise = pipeBusEventsToSSE(busInstance, requestId, send, signal);
-      await busInstance.handleRequest(clientId, request);
+      const pipePromise = pipeBusEventsToSSE(busInstance, requestId, send, signal, body.sessionId);
+      try {
+        await busInstance.handleRequest(clientId, request);
+      } catch (error) {
+        // Force-close the SSE pipe so it doesn't hang forever
+        send({event: 'error', data: {message: error instanceof Error ? error.message : String(error)}});
+        send({event: 'done', data: {sessionId: body.sessionId ?? '', requestId}});
+      }
       await pipePromise;
     } finally {
       busInstance.unregisterClient(clientId);
