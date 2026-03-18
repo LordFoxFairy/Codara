@@ -97,8 +97,8 @@ export class Gateway {
     const account = this.accounts.get(`${msg.channel}:${msg.accountId}`);
     if (!account) return;
 
-    // Ensure a GatewayChannelBridge exists for this conversation
-    const bridge = this.getOrCreateBridge(plugin, account, msg);
+    // Ensure a GatewayChannelBridge exists for this conversation (registers with ChannelRegistry)
+    this.getOrCreateBridge(plugin, account, msg);
 
     try {
       const {session} = await this.sessionManager.getOrCreate(msg, profile);
