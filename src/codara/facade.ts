@@ -19,6 +19,7 @@ import {resolveWorkspaceRoot} from '@infra/config/workspace';
 import {HookRegistryImpl, HookPipeline, createHookExecutor} from '@engine/hook';
 import type {HookSource, HookRegistry, SessionLifecycleHooks, AgentLifecycleHooks} from '@engine/hook';
 import {loadMcpConfig, createMcpManager, createMcpLangChainTools, type McpManager} from '@engine/mcp';
+import type {ChannelRegistry} from '@engine/channel';
 import type {TeamRegistry} from '@capability/team/coordination/team-registry';
 import type {TeamRuntime} from '@capability/team/runtime/team-runtime';
 import {
@@ -120,6 +121,7 @@ export async function createCodaraRuntime(options: CodaraRuntimeOptions = {}): P
   const runtimeMiddlewares = createRuntimeDefaultMiddlewares({
     options, runtimeTools, taskStore, logging, catalog, promptSource, guidelinesSource, hookPipeline,
     teamRegistry: teamSystem.teamRegistry, teamRuntime: teamSystem.teamRuntime, teamSharedState: teamSystem.sharedState,
+    channelRegistry: options.channelRegistry,
   });
 
   // 8. Assemble facade
@@ -139,6 +141,7 @@ export async function createCodaraRuntime(options: CodaraRuntimeOptions = {}): P
   }, undefined, {
     promptSource, guidelinesSource, hookPipeline, hookRegistry, mcpManager,
     teamRegistry: teamSystem.teamRegistry, teamRuntime: teamSystem.teamRuntime,
+    channelRegistry: options.channelRegistry,
   });
 }
 
@@ -172,6 +175,7 @@ export function assembleCodara(
     promptSource?: PromptSource; guidelinesSource?: GuidelinesSource;
     hookPipeline?: HookPipeline; hookRegistry?: HookRegistry;
     mcpManager?: McpManager; teamRegistry?: TeamRegistry; teamRuntime?: TeamRuntime;
+    channelRegistry?: ChannelRegistry;
   },
 ): Codara {
   const skills = resolveCodaraSkills(options);
@@ -199,7 +203,7 @@ export function assembleCodara(
     ...(autoMemory ? {autoMemory} : {}),
     tools,
     ...(options.handleToolErrors !== undefined ? {handleToolErrors: options.handleToolErrors} : {}),
-    middleware: createCodaraMiddlewares(options),
+    middleware: createCodaraMiddlewares(options, preloadedSources?.channelRegistry),
     ...(options.summary ? {summary: options.summary} : {}),
     ...(options.inputBudget ? {inputBudget: options.inputBudget} : {}),
     ...(preloadedSources?.hookPipeline ? {lifecycle: preloadedSources.hookPipeline as SessionLifecycleHooks & AgentLifecycleHooks} : {}),
@@ -254,9 +258,12 @@ export function assembleCodara(
     );
   }
 
+  const channelRegistry = preloadedSources?.channelRegistry;
+
   const dispose = async (): Promise<void> => {
     await session.dispose();
     if (mcpManager) await mcpManager.dispose();
+    if (channelRegistry) await channelRegistry.disposeAll();
   };
 
   return {
@@ -265,6 +272,7 @@ export function assembleCodara(
     getMcpStatus: () => mcpManager?.status() ?? [],
     getTeamSummaries: () => getTeamSummaries(preloadedSources?.teamRegistry),
     getTeamDetail: (teamId: string) => getTeamDetail(preloadedSources?.teamRegistry, teamId),
+    getChannelRegistry: () => channelRegistry,
     dispose,
   };
 }

@@ -9,6 +9,7 @@ import type {SkillStore} from '@capability/skill';
 import type {CodaraCommandResult, CodaraCommandSpec} from '@capability/command';
 import type {Session, SessionState, SessionStore} from '@engine/session';
 import type {McpClientInfo, McpConfig} from '@engine/mcp';
+import type {ChannelRegistry} from '@engine/channel';
 import type {CodaraModelCatalog} from './assembly/runtime';
 
 // ── Skill & Memory Options ──
@@ -68,6 +69,8 @@ export interface CodaraOptions {
 export interface CodaraRuntimeOptions extends CodaraOptions {
   codaraPath?: string;
   taskStore?: TaskStore;
+  /** Optional pre-configured ChannelRegistry for multi-channel HIL routing. */
+  channelRegistry?: ChannelRegistry;
 }
 
 export type CreateCodaraModelCatalogOptions = Pick<CodaraOptions, 'config'>;
@@ -124,4 +127,5 @@ export type Codara = Session & {
   getMcpStatus(): McpClientInfo[];
   getTeamSummaries(): TeamQuerySummary[];
   getTeamDetail(teamId: string): TeamQueryDetail | undefined;
+  getChannelRegistry(): ChannelRegistry | undefined;
 };

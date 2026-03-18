@@ -334,9 +334,10 @@ function mergeDelegatedSystemMessages(
   profileSystemPrompt: string | undefined,
   toolSystemPrompt: string | undefined,
 ): string[] {
+  const merged = mergeSystemPrompt(profileSystemPrompt, toolSystemPrompt);
   return [
     ...(inheritedMessages ?? []),
-    ...(mergeSystemPrompt(profileSystemPrompt, toolSystemPrompt) ? [mergeSystemPrompt(profileSystemPrompt, toolSystemPrompt) as string] : []),
+    ...(merged ? [merged] : []),
   ];
 }
 

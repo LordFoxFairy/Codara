@@ -98,7 +98,7 @@ function jsonSchemaPropertyToZod(prop: Record<string, unknown>): z.ZodType {
 
   switch (type) {
     case 'string':
-      if (prop.enum && Array.isArray(prop.enum)) {
+      if (prop.enum && Array.isArray(prop.enum) && prop.enum.length > 0) {
         return z.enum(prop.enum as [string, ...string[]]);
       }
       return z.string();

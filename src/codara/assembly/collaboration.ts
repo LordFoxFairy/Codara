@@ -1,5 +1,6 @@
 import type {BaseMiddleware} from '@engine/pipeline';
-import {createAskUserQuestionMiddleware, createBudgetMiddleware, createHILMiddleware} from '@engine/pipeline';
+import {createAskUserQuestionMiddleware, createBudgetMiddleware, createHILMiddleware, type HILMiddlewareOptions} from '@engine/pipeline';
+import {createChannelHILOptions} from '@engine/channel';
 import {createMiddleware} from '@engine/pipeline/types';
 import {createPermissionMiddleware} from '@engine/pipeline/permission';
 import {TeamRegistry} from '@capability/team/coordination/team-registry';
@@ -68,7 +69,11 @@ export async function assembleTeamSystem(input: TeamSystemAssemblyInput): Promis
         projectRoot: options.projectRoot,
         userHome: options.userHome,
       }));
-      memberMiddleware.push(createHILMiddleware(typeof options.hil === 'object' ? options.hil : {}));
+      const baseHilOptions: HILMiddlewareOptions = typeof options.hil === 'object' ? options.hil : {};
+      const hilOptions = options.channelRegistry
+        ? {...baseHilOptions, ...createChannelHILOptions(options.channelRegistry)}
+        : baseHilOptions;
+      memberMiddleware.push(createHILMiddleware(hilOptions));
     }
 
     // Forward worker tool activity to parent runtime events for team panel display

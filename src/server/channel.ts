@@ -56,7 +56,7 @@ export class SSEChannel implements Channel {
 
   async showPauseRequest(request: PauseRequest): Promise<ResumePayload> {
     if (this.disposed) {
-      throw new Error('SSEChannel is disposed');
+      return {decision: 'reject', reason: 'Channel disposed'};
     }
 
     // Send the pause as an SSE event

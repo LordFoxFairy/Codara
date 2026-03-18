@@ -30,6 +30,8 @@ import {createToolHooksBridge} from '@engine/hook';
 import type {GuidelinesSource} from '@infra/context/instructions/guidelines';
 import type {PromptSource} from '@infra/context/prompts/prompt-source';
 import {resolveWorkspaceRoot} from '@infra/config/workspace';
+import type {ChannelRegistry} from '@engine/channel';
+import {createChannelHILOptions} from '@engine/channel';
 import type {
   CodaraMiddlewareOptions,
   CodaraRuntimeOptions,
@@ -65,6 +67,7 @@ export function resolveRuntimeLoggingOptions(
 }
 export function createCodaraMiddlewares(
   options: CodaraMiddlewareOptions = {},
+  channelRegistry?: ChannelRegistry,
 ): BaseMiddleware[] {
   const middlewares: BaseMiddleware[] = [];
   if (options.logging) {
@@ -76,7 +79,10 @@ export function createCodaraMiddlewares(
   middlewares.push(...(options.middleware ?? []));
   middlewares.push(createBudgetMiddleware());
   if (options.hil !== false) {
-    middlewares.push(createHILMiddleware(options.hil ?? {}));
+    const hilOptions = channelRegistry
+      ? {...(options.hil ?? {}), ...createChannelHILOptions(channelRegistry)}
+      : (options.hil ?? {});
+    middlewares.push(createHILMiddleware(hilOptions));
   }
   return middlewares;
 }
@@ -89,10 +95,11 @@ export function createRuntimeDefaultMiddlewares(input: {
   catalog?: CodaraModelCatalog | Promise<CodaraModelCatalog>;
   promptSource: PromptSource;
   guidelinesSource: GuidelinesSource;
-  hookPipeline?: HookPipeline
+  hookPipeline?: HookPipeline;
   teamRegistry?: TeamRegistry;
   teamRuntime?: TeamRuntime;
   teamSharedState?: SharedState;
+  channelRegistry?: ChannelRegistry;
 }): BaseMiddleware[] {
   const callerMiddlewares = input.options.middleware ?? [];
   const byName = new Map<string, BaseMiddleware>();
