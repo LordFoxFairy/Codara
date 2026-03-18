@@ -184,14 +184,3 @@ function readParentDelegationDepth(configurable: Record<string, unknown>): numbe
   }
   return 0;
 }
-
-function readParentDelegationDepth(configurable: Record<string, unknown>): number {
-  const execution = configurable.execution;
-  if (execution && typeof execution === 'object' && 'delegationDepth' in execution) {
-    const depth = (execution as Record<string, unknown>).delegationDepth;
-    if (typeof depth === 'number' && Number.isFinite(depth)) {
-      return depth;
-    }
-  }
-  return 0;
-}
