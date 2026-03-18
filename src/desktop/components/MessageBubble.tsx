@@ -155,8 +155,13 @@ function ToolCallBlock({ toolCall }: { toolCall: ToolCall }) {
           strokeWidth={1.5}
         />
         <span className="font-mono text-[12px] font-medium text-[var(--color-text-secondary)]">
-          {toolCall.name}
+          {formatToolLabel(toolCall.name)}
         </span>
+        {summarizeToolArgs(toolCall.name, toolCall.args) && (
+          <span className="truncate text-[11px] text-[var(--color-text-tertiary)]">
+            {summarizeToolArgs(toolCall.name, toolCall.args)}
+          </span>
+        )}
       </button>
       {expanded && (
         <pre className="overflow-x-auto border-t border-[var(--color-border-subtle)] bg-[var(--color-surface)] px-3 py-2 font-mono text-[11px] leading-relaxed text-[var(--color-text-secondary)]">
@@ -165,4 +170,65 @@ function ToolCallBlock({ toolCall }: { toolCall: ToolCall }) {
       )}
     </div>
   );
+}
+
+/* ── Helpers ────────────────────────────────────────────────────── */
+
+const TOOL_DISPLAY_NAMES: Record<string, string> = {
+  bash: "Bash",
+  read_file: "Read",
+  read: "Read",
+  write_file: "Write",
+  write: "Write",
+  edit_file: "Edit",
+  edit: "Edit",
+  glob: "Glob",
+  grep: "Grep",
+  fetch_url: "Fetch",
+  fetch: "Fetch",
+  web_search: "Search",
+  search: "Search",
+  Task: "Task",
+  TaskCreate: "TaskCreate",
+  TaskUpdate: "TaskUpdate",
+  TaskList: "TaskList",
+};
+
+function formatToolLabel(name: string): string {
+  return TOOL_DISPLAY_NAMES[name] ?? name;
+}
+
+function summarizeToolArgs(name: string, args: Record<string, unknown>): string | undefined {
+  const str = (key: string) => {
+    const v = args[key];
+    return typeof v === "string" ? v.trim() : undefined;
+  };
+
+  const limit = (s: string | undefined, max = 60) => {
+    if (!s) return undefined;
+    return s.length > max ? `${s.slice(0, max - 3)}...` : s;
+  };
+
+  switch (name) {
+    case "bash":
+      return limit(str("command") ?? str("description"));
+    case "read_file":
+    case "read":
+    case "write_file":
+    case "write":
+    case "edit_file":
+    case "edit":
+      return limit(str("file_path") ?? str("path"));
+    case "glob":
+    case "grep":
+      return limit(str("pattern"));
+    case "fetch_url":
+    case "fetch":
+      return limit(str("url"));
+    case "web_search":
+    case "search":
+      return limit(str("query"));
+    default:
+      return undefined;
+  }
 }
