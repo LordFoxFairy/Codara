@@ -49,7 +49,10 @@ export class CodaraBus {
           type: 'runtime_event',
           sessionId: event.sessionId,
           kind: event.kind,
+          phase: event.phase,
+          status: event.status,
           label: event.label,
+          detail: event.detail,
         });
       },
     );

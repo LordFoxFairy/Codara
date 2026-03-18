@@ -1,5 +1,5 @@
 import { useCallback, useRef, useState } from "react";
-import type { Message, PauseRequest, StreamStatus, ToolCall } from "../types";
+import type { Message, PauseRequest, RuntimeEvent, StreamStatus, ToolCall } from "../types";
 
 import { API_BASE } from "../config";
 
@@ -67,6 +67,7 @@ export function useCodara({ sessionId }: UseCodaraOptions) {
   const [status, setStatus] = useState<StreamStatus>("idle");
   const [error, setError] = useState<string | null>(null);
   const [pauseRequest, setPauseRequest] = useState<PauseRequest | null>(null);
+  const [runtimeEvent, setRuntimeEvent] = useState<RuntimeEvent | null>(null);
   const abortRef = useRef<AbortController | null>(null);
 
   const isStreaming = status === "streaming" || status === "thinking";
@@ -77,6 +78,7 @@ export function useCodara({ sessionId }: UseCodaraOptions) {
 
       setError(null);
       setPauseRequest(null);
+      setRuntimeEvent(null);
 
       const userMessage: Message = {
         id: generateId(),
@@ -128,7 +130,7 @@ export function useCodara({ sessionId }: UseCodaraOptions) {
           buffer = remaining;
 
           for (const event of events) {
-            processEvent(event, assistantId, setMessages, setStatus, setError, setPauseRequest);
+            processEvent(event, assistantId, setMessages, setStatus, setError, setPauseRequest, setRuntimeEvent);
           }
         }
 
@@ -136,7 +138,7 @@ export function useCodara({ sessionId }: UseCodaraOptions) {
         if (buffer.trim()) {
           const { events } = parseSSEChunk(buffer + "\n\n");
           for (const event of events) {
-            processEvent(event, assistantId, setMessages, setStatus, setError, setPauseRequest);
+            processEvent(event, assistantId, setMessages, setStatus, setError, setPauseRequest, setRuntimeEvent);
           }
         }
 
@@ -209,7 +211,7 @@ export function useCodara({ sessionId }: UseCodaraOptions) {
           buffer = remaining;
 
           for (const event of events) {
-            processEvent(event, assistantId, setMessages, setStatus, setError, setPauseRequest);
+            processEvent(event, assistantId, setMessages, setStatus, setError, setPauseRequest, setRuntimeEvent);
           }
         }
 
@@ -217,7 +219,7 @@ export function useCodara({ sessionId }: UseCodaraOptions) {
         if (buffer.trim()) {
           const { events } = parseSSEChunk(buffer + "\n\n");
           for (const event of events) {
-            processEvent(event, assistantId, setMessages, setStatus, setError, setPauseRequest);
+            processEvent(event, assistantId, setMessages, setStatus, setError, setPauseRequest, setRuntimeEvent);
           }
         }
 
@@ -241,6 +243,7 @@ export function useCodara({ sessionId }: UseCodaraOptions) {
     setMessages([]);
     setError(null);
     setPauseRequest(null);
+    setRuntimeEvent(null);
     setStatus("idle");
   }, []);
 
@@ -257,6 +260,7 @@ export function useCodara({ sessionId }: UseCodaraOptions) {
     isStreaming,
     error,
     pauseRequest,
+    runtimeEvent,
     sendMessage,
     stopStreaming,
     resumePause,
@@ -272,6 +276,7 @@ function processEvent(
   setStatus: React.Dispatch<React.SetStateAction<StreamStatus>>,
   setError: React.Dispatch<React.SetStateAction<string | null>>,
   setPauseRequest: React.Dispatch<React.SetStateAction<PauseRequest | null>>,
+  setRuntimeEvent: React.Dispatch<React.SetStateAction<RuntimeEvent | null>>,
 ) {
   switch (event.type) {
     case "token": {
@@ -315,12 +320,21 @@ function processEvent(
       break;
     }
 
-    case "runtime_event":
-      // Status updates, can be used for UI indicators later
+    case "runtime_event": {
+      const re: RuntimeEvent = {
+        kind: event.data.kind as RuntimeEvent["kind"],
+        phase: event.data.phase as RuntimeEvent["phase"],
+        status: event.data.status as RuntimeEvent["status"],
+        label: (event.data.label as string) ?? "",
+        detail: event.data.detail as string | undefined,
+      };
+      setRuntimeEvent(re);
       setStatus("streaming");
       break;
+    }
 
     case "done":
+      setRuntimeEvent(null);
       setStatus("idle");
       break;
 
