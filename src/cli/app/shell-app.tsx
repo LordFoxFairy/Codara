@@ -174,10 +174,6 @@ export function CodaraCliApp(props: CodaraCliAppProps): React.JSX.Element {
 
   const hasInitialPrompt = Boolean(initialPrompt?.trim());
   const hasHilReview = Boolean(shell.hilReview);
-  const foregroundSurface = resolveCliForegroundSurface({
-    hasHilReview,
-    hasConversation: shell.hasConversation,
-  });
 
   // 输入监听挂在组装层；展示组件不直接感知键盘事件。
   usePromptInput({
@@ -295,7 +291,7 @@ export function CodaraCliApp(props: CodaraCliAppProps): React.JSX.Element {
         {activeItems.length > 0 && <ActiveTranscript items={activeItems} expandedAll={shell.expandedAll} />}
 
         {/* Unified Task/Team Panel (Ctrl+T toggle) */}
-        {shell.hasConversation && shell.taskPanelVisible && foregroundSurface !== 'hil' && (
+        {shell.hasConversation && shell.taskPanelVisible && (
           <>
             {activeTasks.hasActiveTasks && (
               <TaskPanel
@@ -317,17 +313,19 @@ export function CodaraCliApp(props: CodaraCliAppProps): React.JSX.Element {
           </>
         )}
 
-        {/* HIL 或正常交互区 — 始终渲染 */}
-        {foregroundSurface === 'hil' && shell.hilReview ? (
-          <HilPanel review={shell.hilReview} />
-        ) : (
-          <>
-            <ActivityLine
-              runState={shell.runState}
-              activeTurn={shell.activeTurn}
-              latestRuntimeEvent={shell.latestRuntimeEvent}
-              sessionMetadata={shell.sessionState.metadata}
-            />
+        {/* HIL 内联显示在对话流下方（不替换整个界面） */}
+        {shell.hilReview && <HilPanel review={shell.hilReview} />}
+
+        {/* Activity / Prompt / Status — 始终渲染 */}
+        <>
+            {!shell.hilReview && (
+              <ActivityLine
+                runState={shell.runState}
+                activeTurn={shell.activeTurn}
+                latestRuntimeEvent={shell.latestRuntimeEvent}
+                sessionMetadata={shell.sessionState.metadata}
+              />
+            )}
             {sessionPicker.state.visible && (
               <SessionPicker
                 sessions={sessionPicker.state.sessions}
@@ -342,7 +340,7 @@ export function CodaraCliApp(props: CodaraCliAppProps): React.JSX.Element {
             {shell.commandOutput && (
               <CommandOutputPanel content={shell.commandOutput.content} commandName={shell.commandOutput.commandName} scrollOffset={shell.commandOutput.scrollOffset} />
             )}
-            {!shell.commandOutput && !completion.completion.visible && (
+            {!shell.commandOutput && !completion.completion.visible && !shell.hilReview && (
               <Box>
                 <Box flexGrow={1}>
                   <PromptFrame
@@ -374,8 +372,7 @@ export function CodaraCliApp(props: CodaraCliAppProps): React.JSX.Element {
               />
             )}
             <Footer layoutMode={layoutMode} hasCommandOutput={Boolean(shell.commandOutput)} hasActiveTeams={activeTeams.runningCount > 0} />
-          </>
-        )}
+        </>
       </Box>
   );
 }
