@@ -62,6 +62,7 @@ Codara 划分为 **10 个限界上下文**，每个对应一个顶层目录：
 │  │  cli/            终端 UI（Ink）                            │  │
 │  │  desktop/        桌面 UI（React + Tauri）                  │  │
 │  │  server/         HTTP/SSE 服务                             │  │
+│  │  gateway/        消息网关（Telegram, Feishu, DingTalk...）  │  │
 │  └───────────────────────────────────────────────────────────┘  │
 │                                                                 │
 │  ┌─ 共享内核 ────────────────────────────────────────────────┐  │
@@ -85,6 +86,7 @@ Codara 划分为 **10 个限界上下文**，每个对应一个顶层目录：
 | 基础设施 | `bus/` | 类型化事件总线 + 多端通信 | 基础设施服务 |
 | 应用层 | `codara/` | 运行时装配 + API 门面 | 应用服务 |
 | 展示层 | `cli/` `desktop/` `server/` | 用户交互界面 | 端口适配器 |
+| 展示层 | `gateway/` | 消息网关（IM 渠道接入） | 端口适配器 |
 | 共享内核 | `shared/` | 跨上下文类型契约 | 共享内核 |
 
 ---
@@ -256,8 +258,15 @@ src/
 │   │   └── index.ts
 │   │
 │   ├── channel/                   # 交互通道
+│   │   ├── contracts.ts           #   ChannelPlugin 契约
 │   │   ├── registry.ts            #   ChannelRegistry
 │   │   ├── hil-adapter.ts         #   HIL 通道适配
+│   │   ├── telegram/              #   Telegram 适配器
+│   │   │   ├── plugin.ts
+│   │   │   ├── api.ts
+│   │   │   ├── polling.ts
+│   │   │   ├── types.ts
+│   │   │   └── index.ts
 │   │   └── index.ts
 │   │
 │   └── provider/                  # 模型提供商适配
@@ -299,6 +308,17 @@ src/
 │   │
 │   ├── facade.ts                  # Codara API 门面
 │   ├── types.ts                   # 应用层类型
+│   └── index.ts
+│
+├── gateway/                       # ═══ 展示层：消息网关 ═══
+│   │
+│   ├── gateway.ts                 # Gateway 主类（插件生命周期、消息路由）
+│   ├── router.ts                  # 消息路由（session key、白名单、binding）
+│   ├── session-manager.ts         # 会话管理（多租户 session 映射）
+│   ├── outbound.ts                # 出站处理（消息分片）
+│   ├── config.ts                  # 配置加载（gateway.json）
+│   ├── types.ts                   # Gateway 类型定义
+│   ├── main.ts                    # 入口（bun run gateway）
 │   └── index.ts
 │
 ├── cli/                           # ═══ 展示层：终端 UI ═══
@@ -373,8 +393,8 @@ src/
 ```text
 ┌─ Presentation Layer ────────────────────────────────────────┐
 │                                                             │
-│  cli/          │  desktop/         │  server/               │
-│  终端 UI (Ink)  │  桌面 UI (React)   │  HTTP/SSE 服务        │
+│  cli/          │  desktop/         │  server/          │  gateway/        │
+│  终端 UI (Ink)  │  桌面 UI (React)   │  HTTP/SSE 服务    │  消息网关         │
 │                                                             │
 │  职责：接收用户输入，渲染输出，不参与执行决策                   │
 └─────────────────────────┬───────────────────────────────────┘
