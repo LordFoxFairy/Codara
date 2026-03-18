@@ -95,22 +95,12 @@ export class McpClient {
       throw new Error(`MCP server "${this.name}" is not connected (status: ${this._status})`);
     }
 
-    try { this.onProgress?.({phase: 'start', toolName, serverName: this.name}); } catch { /* fail-open */ }
-
     const timeout = this.config.timeout ?? DEFAULT_MCP_TIMEOUT;
-    try {
-      const result = await raceWithTimeout(
-        this.client.callTool({name: toolName, arguments: args}),
-        timeout,
-        `MCP tool call "${toolName}" timed out after ${timeout}ms`,
-      );
-
-      try { this.onProgress?.({phase: 'end', toolName, serverName: this.name}); } catch { /* fail-open */ }
-      return result;
-    } catch (error) {
-      try { this.onProgress?.({phase: 'end', toolName, serverName: this.name}); } catch { /* fail-open */ }
-      throw error;
-    }
+    return raceWithTimeout(
+      this.client.callTool({name: toolName, arguments: args}),
+      timeout,
+      `MCP tool call "${toolName}" timed out after ${timeout}ms`,
+    );
   }
 
   /**
