@@ -11,8 +11,6 @@ import {HilPanel, isPermissionReview} from '../components/conversation/hil-panel
 import {SessionPicker} from '../components/conversation/session-picker';
 import {ActiveTranscript} from '../components/conversation/transcript';
 import {SolidifiedBlock} from '../components/conversation/solidified-block';
-import {TeamDashboard} from '../components/teams/team-dashboard';
-import {TeamDetailView} from '../components/teams/team-detail-view';
 import {TIPS} from '../hooks/use-rotating-tip';
 import {CompletionMenu} from '../components/prompt/completion-menu';
 import {PromptFrame} from '../components/prompt/prompt-frame';
@@ -107,9 +105,20 @@ export function CodaraCliApp(props: CodaraCliAppProps): React.JSX.Element {
     if (!activeTeams.hasActiveTeams) return undefined;
     const map = new Map<string, Array<{name: string; role: string; status: string}>>();
     for (const team of activeTeams.activeTeams) {
-      const detail = codara.getTeamDetail(team.name);
-      if (detail && detail.members.length > 0) {
-        map.set(team.teamId, detail.members.map(m => ({name: m.name, role: m.role, status: m.status, currentJobId: m.currentJobId})));
+      // Try by name first, then by teamId from the event
+      const detail = codara.getTeamDetail(team.name) ?? codara.getTeamDetail(team.teamId);
+      if (detail) {
+        // Use the registry's name (authoritative) to fix display
+        if (detail.name && detail.name !== team.name) {
+          team.name = detail.name;
+        }
+        if (detail.goal && !team.goal) {
+          team.goal = detail.goal;
+        }
+        team.memberCount = detail.members.length;
+        if (detail.members.length > 0) {
+          map.set(team.teamId, detail.members.map(m => ({name: m.name, role: m.role, status: m.status, currentJobId: m.currentJobId})));
+        }
       }
     }
     return map.size > 0 ? map : undefined;
@@ -277,33 +286,27 @@ export function CodaraCliApp(props: CodaraCliAppProps): React.JSX.Element {
         {/* 动态区 */}
         {activeItems.length > 0 && <ActiveTranscript items={activeItems} expandedAll={shell.expandedAll} />}
 
-        {/* Task Panel — ActiveTranscript 和 ActivityLine 之间 */}
-        {shell.hasConversation && activeTasks.hasActiveTasks && shell.taskPanelVisible && foregroundSurface !== 'hil' && (
-          <TaskPanel
-            tasks={activeTasks.tasks}
-            runningCount={activeTasks.runningCount}
-            doneCount={activeTasks.doneCount}
-            errorCount={activeTasks.errorCount}
-          />
-        )}
-
-        {/* Team Panel — shows active team status inline */}
-        {shell.hasConversation && activeTeams.hasActiveTeams && shell.taskPanelVisible && foregroundSurface !== 'hil' && (
-          <TeamPanel
-            teams={activeTeams.activeTeams}
-            runningCount={activeTeams.runningCount}
-            doneCount={activeTeams.doneCount}
-            errorCount={activeTeams.errorCount}
-            teamMembers={teamMembers}
-          />
-        )}
-
-        {/* Team Dashboard / Detail View */}
-        {shell.teamDashboardState.teams.length > 0 && !shell.teamDashboardState.activeTeamId && (
-          <TeamDashboard teams={shell.teamDashboardState.teams} />
-        )}
-        {shell.teamDashboardState.activeTeamId && shell.teamDetailState && (
-          <TeamDetailView state={shell.teamDetailState} />
+        {/* Unified Task/Team Panel (Ctrl+T toggle) */}
+        {shell.hasConversation && shell.taskPanelVisible && foregroundSurface !== 'hil' && (
+          <>
+            {activeTasks.hasActiveTasks && (
+              <TaskPanel
+                tasks={activeTasks.tasks}
+                runningCount={activeTasks.runningCount}
+                doneCount={activeTasks.doneCount}
+                errorCount={activeTasks.errorCount}
+              />
+            )}
+            {activeTeams.hasActiveTeams && (
+              <TeamPanel
+                teams={activeTeams.activeTeams}
+                runningCount={activeTeams.runningCount}
+                doneCount={activeTeams.doneCount}
+                errorCount={activeTeams.errorCount}
+                teamMembers={teamMembers}
+              />
+            )}
+          </>
         )}
 
         {/* HIL 或正常交互区 — 始终渲染 */}

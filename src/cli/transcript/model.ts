@@ -299,41 +299,35 @@ function buildRuntimeEventItems(events: readonly CodaraRuntimeEvent[]): Transcri
     });
   }
 
-  // Render completed tasks: single → tool-like, multiple → grouped tree
-  if (pairedTaskEnds.length === 1) {
-    const {startEvent, endEvent} = pairedTaskEnds[0]!;
+  // Render completed tasks via ToolResultBlock (same visual as tool calls)
+  for (const {startEvent, endEvent} of pairedTaskEnds) {
     const taskName = extractTaskDisplayName(startEvent.label);
-    const elapsed = computeElapsedSeconds(startEvent.timestamp, endEvent.timestamp);
+    const agentType = extractSubagentType(startEvent.label);
+    const elapsed = formatElapsed(startEvent.timestamp, endEvent.timestamp);
+    const status = endEvent.status === 'error' ? 'error' : 'done';
+    const elapsedSec = computeElapsedSeconds(startEvent.timestamp, endEvent.timestamp);
     const summary = endEvent.status === 'error'
-      ? `Failed (${elapsed}s)`
+      ? `Failed (${elapsedSec}s)`
       : endEvent.status === 'paused'
         ? 'Waiting for review'
-        : formatTaskDoneSummary(elapsed, endEvent.detail);
-    const agentType = extractSubagentType(startEvent.label);
+        : formatTaskDoneSummary(elapsedSec, endEvent.detail);
+    const {outputLines, allOutputLines, totalOutputLines} = buildToolOutput('Task', status, endEvent.detail);
     items.push({
       id: activeId(startEvent.id),
       role: 'task',
       content: `⚙ ${agentType}(${taskName})\n${summary}`,
-    });
-  } else if (pairedTaskEnds.length > 1) {
-    const treeLines = pairedTaskEnds.map(({startEvent, endEvent}, idx) => {
-      const agentType = extractSubagentType(startEvent.label);
-      const taskName = extractTaskDisplayName(startEvent.label);
-      const elapsed = computeElapsedSeconds(startEvent.timestamp, endEvent.timestamp);
-      const summary = endEvent.status === 'error'
-        ? `Failed (${elapsed}s)`
-        : formatTaskDoneSummary(elapsed, endEvent.detail);
-      const isLast = idx === pairedTaskEnds.length - 1;
-      const connector = isLast ? '└─' : '├─';
-      const verticalBar = isLast ? '   ' : '│  ';
-      const label = agentType !== 'Task' ? `${agentType} (${taskName})` : taskName;
-      return `   ${connector} ${label}\n   ${verticalBar}⎿  ${summary}`;
-    });
-    items.push({
-      id: activeId(pairedTaskEnds[0]!.startEvent.id),
-      role: 'task',
-      content: [`⏺ ${pairedTaskEnds.length} agents completed`, ...treeLines].join('\n'),
-      renderHint: 'block',
+      toolMeta: {
+        toolName: 'Task',
+        displayName: agentType,
+        icon: '⚙',
+        args: taskName,
+        status: status as 'done' | 'error',
+        elapsed,
+        summaryLine: summary,
+        outputLines,
+        allOutputLines,
+        totalOutputLines,
+      },
     });
   }
 
@@ -398,32 +392,22 @@ function buildRuntimeEventItems(events: readonly CodaraRuntimeEvent[]): Transcri
     }
   }
 
-  // Group unpaired running tasks: single → inline, multiple → tree block
-  if (unpairedTaskStarts.length === 1) {
-    const {id: taskId, startEvent} = unpairedTaskStarts[0]!;
+  // Render running tasks via ToolResultBlock (same visual as tool calls)
+  for (const {id: taskId, startEvent} of unpairedTaskStarts) {
+    const taskName = extractTaskDisplayName(startEvent.label);
     const agentType = extractSubagentType(startEvent.label);
     items.push({
       id: activeId(taskId),
       role: 'task',
-      content: `⚙ ${agentType}\nRunning…`,
-    });
-  } else if (unpairedTaskStarts.length > 1) {
-    const headerLine = `⏺ ${unpairedTaskStarts.length} agents launched (ctrl+o to expand)`;
-    const treeLines = unpairedTaskStarts.map(({startEvent}, idx) => {
-      const taskName = extractTaskDisplayName(startEvent.label);
-      // Extract subagent type from label: "Delegating Plan: ..." → "Plan"
-      const agentType = extractSubagentType(startEvent.label);
-      const isLast = idx === unpairedTaskStarts.length - 1;
-      const connector = isLast ? '└─' : '├─';
-      const verticalBar = isLast ? '   ' : '│  ';
-      const label = agentType !== 'Task' ? `${agentType} (${taskName})` : taskName;
-      return `   ${connector} ${label}\n   ${verticalBar}⎿  Running in the background`;
-    });
-    items.push({
-      id: activeId(unpairedTaskStarts[0]!.id),
-      role: 'task',
-      content: [headerLine, ...treeLines].join('\n'),
-      renderHint: 'block',
+      content: `⚙ ${agentType}(${taskName})\n…`,
+      toolMeta: {
+        toolName: 'Task',
+        displayName: agentType,
+        icon: '⚙',
+        args: taskName,
+        status: 'running',
+        summaryLine: '…',
+      },
     });
   }
 
