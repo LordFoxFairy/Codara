@@ -109,27 +109,49 @@ export async function assembleTeamSystem(input: TeamSystemAssemblyInput): Promis
       return agentReady;
     };
 
+    function handleAgentResult(result: import('@shared/contracts/agent-types').AgentResult): import('@capability/team/runtime/member-runner').MemberInvokeResult {
+      if (result.reason === 'error') {
+        return {reason: 'error' as const, error: result.error};
+      }
+      if (result.state.pendingPause) {
+        teamToolContext.emitEvent({
+          type: 'member.paused' as const,
+          data: {
+            teamId: memberOptions.teamId,
+            memberId: memberOptions.memberId,
+            pause: result.state.pendingPause,
+          },
+        });
+        return {reason: 'idle' as const};
+      }
+      return {reason: 'complete' as const};
+    }
+
     return {
       async invoke(input?: string) {
         try {
           const agent = await ensureAgent();
           const result = await agent.invoke(input ?? undefined);
-          if (result.reason === 'error') {
-            return {reason: 'error' as const, error: result.error};
-          }
-          // Detect HIL pause from the agent state and bubble it up
-          if (result.state.pendingPause) {
-            teamToolContext.emitEvent({
-              type: 'member.paused' as const,
-              data: {
-                teamId: memberOptions.teamId,
-                memberId: memberOptions.memberId,
-                pause: result.state.pendingPause,
-              },
-            });
-            return {reason: 'idle' as const};
-          }
-          return {reason: 'complete' as const};
+          return handleAgentResult(result);
+        } catch (error) {
+          return {
+            reason: 'error' as const,
+            error: error instanceof Error ? error : new Error(String(error)),
+          };
+        }
+      },
+      async *stream(input?: string) {
+        try {
+          const agent = await ensureAgent();
+          const gen = agent.stream(input ?? undefined);
+          let iterResult: IteratorResult<unknown, import('@shared/contracts/agent-types').AgentResult>;
+          do {
+            iterResult = await gen.next();
+            if (!iterResult.done) {
+              yield iterResult.value;
+            }
+          } while (!iterResult.done);
+          return handleAgentResult(iterResult.value);
         } catch (error) {
           return {
             reason: 'error' as const,

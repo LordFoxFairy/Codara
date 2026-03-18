@@ -81,6 +81,8 @@ export interface MemberRunnerOptions {
 /** Minimal session interface that MemberRunner needs (for mockability). */
 export interface MemberSession {
   invoke(input?: string): Promise<MemberInvokeResult>;
+  /** Optional streaming interface — preferred by runLoop when available. */
+  stream?(input?: string): AsyncGenerator<unknown, MemberInvokeResult, void>;
   dispose(): Promise<void>;
 }
 
@@ -231,7 +233,7 @@ export class MemberRunner {
 
       if (this.session) {
         try {
-          const result = await this.session.invoke();
+          const result = await this.invokeSession();
           if (result.reason === 'error') {
             await this.handleInvokeError(result.error ?? new Error('Agent loop error'));
             // Yield to event loop after error recovery — prevents tight loop when inbox isn't drained
@@ -257,6 +259,23 @@ export class MemberRunner {
     if (this.session) {
       await this.session.dispose();
     }
+  }
+
+  /**
+   * Invoke the session, preferring stream() when available.
+   * Stream mode lets the event loop process middleware events in real-time
+   * instead of blocking until the entire agent turn completes.
+   */
+  private async invokeSession(): Promise<MemberInvokeResult> {
+    if (this.session!.stream) {
+      const gen = this.session!.stream();
+      let iterResult: IteratorResult<unknown, MemberInvokeResult>;
+      do {
+        iterResult = await gen.next();
+      } while (!iterResult.done);
+      return iterResult.value;
+    }
+    return this.session!.invoke();
   }
 
   /** Maximum idle wait before re-checking loop condition (prevents indefinite hangs). */
