@@ -4,7 +4,7 @@ import type {StructuredToolInterface} from '@langchain/core/tools';
 import {createAgentFileCheckpointer} from '@durability/checkpoint';
 import {ensurePermissionSettingsFile} from '@core/middleware/permission';
 import {createTaskFileStore} from '@capability/task/store';
-import {loadModelRoutingConfigFromPath, resolveCodaraPath, type ModelRoutingConfig} from '@integration/provider';
+import {loadModelRoutingConfigFromPath, resolveCodaraPath} from '@integration/provider';
 import {createCodaraGuidelinesSource, type GuidelinesSource} from '@context/instructions/guidelines';
 import {createCodaraPromptSource, type PromptSource} from '@context/prompts/prompt-source';
 import {createCodaraSkillsSource} from '@capability/skill';
@@ -29,16 +29,13 @@ import {
 } from './assembly/middleware';
 import {assembleTeamSystem, getTeamSummaries, getTeamDetail} from './assembly/collaboration';
 import {
-  CodaraModelCatalog,
-  createCodaraChatModel,
   createCodaraModelCatalog,
   DEFAULT_CODARA_MODEL_ALIAS,
 } from './assembly/runtime';
-import {createCodaraTools, type CodaraToolsOptions} from './assembly/tools';
+import {createCodaraTools} from './assembly/tools';
 import {resolveCodaraAutoMemory, resolveCodaraSkills} from './assembly/context';
 import type {
   Codara, CodaraOptions, CodaraRuntimeOptions,
-  CreateCodaraModelCatalogOptions, CreateCodaraChatModelOptions,
 } from './types';
 
 // Re-export all types from types.ts for backward compatibility

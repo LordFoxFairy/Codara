@@ -61,7 +61,7 @@ export class OneBotWsClient {
         }
       });
 
-      ws.addEventListener('error', (err) => {
+      ws.addEventListener('error', (_err) => {
         if (!this.ws) {
           // Connection never established
           reject(new Error(`WebSocket connection failed: ${this.url}`));
@@ -118,7 +118,7 @@ export class OneBotWsClient {
   }
 
   private clearPendingRequests(reason: string): void {
-    for (const [id, pending] of this.pendingRequests) {
+    for (const [_id, pending] of this.pendingRequests) {
       clearTimeout(pending.timer);
       pending.reject(new Error(reason));
     }

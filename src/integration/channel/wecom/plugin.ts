@@ -3,7 +3,6 @@ import type {ChannelPlugin, GatewayListenContext} from '@integration/channel/con
 import type {OutboundContext, PausePromptContext, SendResult, StopHandle} from '@gateway/types';
 import {WeComApi} from './api';
 import {startWeComWebhook} from './webhook';
-import type {WeComAccountConfig} from './types';
 
 /** Resolved account — ready for use after config parsing. */
 export interface WeComAccount {

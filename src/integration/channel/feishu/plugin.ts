@@ -1,9 +1,8 @@
 import {z} from 'zod';
 import type {ChannelPlugin, GatewayListenContext} from '@integration/channel/contracts';
 import type {OutboundContext, PausePromptContext, SendResult, StopHandle} from '@gateway/types';
-import {FeishuApi, FeishuApiError} from './api';
+import {FeishuApi} from './api';
 import {startFeishuWebhook} from './webhook';
-import type {FeishuAccountConfig} from './types';
 
 /** Resolved account — ready for use after config parsing. */
 export interface FeishuAccount {
@@ -105,7 +104,7 @@ export const feishuPlugin: ChannelPlugin<FeishuAccount> = {
   async startListening(ctx: GatewayListenContext<FeishuAccount>): Promise<StopHandle> {
     const {account, accountId, onMessage, onPauseResponse} = ctx;
 
-    const onCardAction = (actionTag: string, actionValue: unknown, userId: string) => {
+    const onCardAction = (_actionTag: string, actionValue: unknown, userId: string) => {
       if (!onPauseResponse) return;
 
       const value = actionValue as Record<string, string> | undefined;

@@ -11,7 +11,7 @@ import type {ChannelPlugin, GatewayListenContext} from '@integration/channel/con
 import type {OutboundContext, PausePromptContext, SendResult, StopHandle} from '@gateway/types';
 import {DingTalkApi, DingTalkApiError} from './api';
 import {startDingTalkWebhook} from './webhook';
-import type {DingTalkAccountConfig, DingTalkActionCardButton} from './types';
+import type {DingTalkActionCardButton} from './types';
 
 const DEFAULT_WEBHOOK_PORT = 8075;
 const DEFAULT_WEBHOOK_PATH = '/dingtalk/webhook';

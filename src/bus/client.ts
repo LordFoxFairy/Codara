@@ -39,7 +39,7 @@ export class BusClient {
    * Connect to the bus server via WebSocket.
    * Resolves when the connection is open and the `client.joined` event is received.
    */
-  async connect(info: {name: string; type: 'cli' | 'desktop' | 'agent'}): Promise<void> {
+  async connect(_info: {name: string; type: 'cli' | 'desktop' | 'agent'}): Promise<void> {
     if (this.connected) return;
 
     return new Promise<void>((resolve, reject) => {
@@ -85,7 +85,7 @@ export class BusClient {
         clearTimeout(connectTimeout);
 
         // Reject all pending requests.
-        for (const [id, pending] of this.pendingRequests) {
+        for (const [_id, pending] of this.pendingRequests) {
           clearTimeout(pending.timer);
           pending.reject(new Error(`WebSocket closed (code: ${ev.code})`));
         }
@@ -141,7 +141,8 @@ export class BusClient {
       requestId,
       'command.result',
     );
-    return {output: (event as any).output, ok: (event as any).ok};
+    const ev = event as BusEvent & Record<string, unknown>;
+    return {output: ev.output as string, ok: ev.ok as boolean};
   }
 
   /** List sessions. */
@@ -152,7 +153,7 @@ export class BusClient {
       requestId,
       'sessions.list.result',
     );
-    return (event as any).sessions;
+    return (event as BusEvent & Record<string, unknown>).sessions as unknown[];
   }
 
   /** Create a new session. Returns the new sessionId. */
@@ -163,7 +164,7 @@ export class BusClient {
       requestId,
       'sessions.create.result',
     );
-    return (event as any).sessionId;
+    return (event as BusEvent & Record<string, unknown>).sessionId as string;
   }
 
   /** Get server status. */
@@ -174,7 +175,7 @@ export class BusClient {
       requestId,
       'status.result',
     );
-    return (event as any).data;
+    return (event as BusEvent & Record<string, unknown>).data;
   }
 
   // ── Session subscription ─────────────────────────────────────────
@@ -286,7 +287,7 @@ export class BusClient {
         if (event.type === 'error') {
           clearTimeout(pending.timer);
           this.pendingRequests.delete(event.requestId);
-          pending.reject(new Error((event as any).message ?? 'Unknown bus error'));
+          pending.reject(new Error((event as BusEvent & Record<string, unknown>).message as string ?? 'Unknown bus error'));
         }
         // One-shot result types resolve in sendAndWait via the listener mechanism.
       }
@@ -319,7 +320,7 @@ export class BusClient {
             clearTimeout(timer);
             this.pendingRequests.delete(requestId);
             off();
-            reject(new Error((event as any).message ?? 'Unknown bus error'));
+            reject(new Error((event as BusEvent & Record<string, unknown>).message as string ?? 'Unknown bus error'));
           }
         }
       });
@@ -344,7 +345,7 @@ export class BusClient {
     // Buffer incoming events and signal when new ones arrive.
     const buffer: BusEvent[] = [];
     let finished = false;
-    let error: Error | null = null;
+    let _error: Error | null = null;
     let notifyResolve: (() => void) | null = null;
 
     const notify = (): void => {
@@ -379,7 +380,7 @@ export class BusClient {
         finished = true;
         notify();
       } else if (event.type === 'error' && hasRequestId) {
-        error = new Error((event as any).message ?? 'Unknown bus error');
+        _error = new Error((event as BusEvent & Record<string, unknown>).message as string ?? 'Unknown bus error');
         buffer.push(event);
         finished = true;
         notify();

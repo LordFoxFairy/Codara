@@ -1,5 +1,4 @@
 import {tool} from '@langchain/core/tools';
-import {ToolMessage} from '@langchain/core/messages';
 import type {StructuredToolInterface} from '@langchain/core/tools';
 import {z} from 'zod';
 import {Command} from '@core/agent/models/command';

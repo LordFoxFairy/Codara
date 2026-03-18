@@ -88,7 +88,7 @@ export class GatewayChannelBridge implements Channel {
     return this.pendingPauses.size > 0;
   }
 
-  emitEvent?(event: ChannelRuntimeEvent): void {
+  emitEvent?(_event: ChannelRuntimeEvent): void {
     // Future: forward runtime events to IM as status messages
   }
 

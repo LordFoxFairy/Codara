@@ -24,7 +24,7 @@ export class McpClient {
   private _tools: McpToolDefinition[] = [];
   private _lastError: string | undefined;
   private readonly config: McpServerConfig;
-  private readonly onProgress: McpProgressCallback | undefined;
+  private readonly _onProgress: McpProgressCallback | undefined;
 
   constructor(
     readonly name: string,
@@ -32,7 +32,7 @@ export class McpClient {
     onProgress?: McpProgressCallback,
   ) {
     this.config = config;
-    this.onProgress = onProgress;
+    this._onProgress = onProgress;
     if (config.enabled === false) {
       this._status = 'disabled';
     }

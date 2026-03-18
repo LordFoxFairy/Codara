@@ -7,15 +7,12 @@ import type {HILToolMessagePayload} from '@core/middleware/hil';
 import type {AgentLifecycleHooks} from '@observability/hook/types';
 import type {
   AgentExecutionMetadata,
-  AgentFinishReason,
   AgentInputBudget,
   AgentResult,
   AgentRuntimeContext,
   AgentRuntimeValues,
   AgentState,
-  AgentStatus,
   AgentType,
-  PauseRequest,
   ResumePayload,
 } from './types';
 export type {

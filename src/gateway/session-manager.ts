@@ -1,6 +1,6 @@
 import type {GatewaySessionConfig, InboundMessage, SessionResetPolicy} from './types';
 import {buildSessionKey, type SessionKeyOptions} from './session-key';
-import {createFileSessionStore, type GatewaySessionStore, type StoredSessionEntry} from './session-store';
+import {createFileSessionStore, type GatewaySessionStore} from './session-store';
 
 export interface GatewaySession {
   invoke(text: string): Promise<string>;

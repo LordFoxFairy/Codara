@@ -68,7 +68,7 @@ export class Gateway {
           account,
           accountId,
           config: accountConfig,
-          onMessage: (msg) => debouncer.add(msg),
+          onMessage: async (msg) => { debouncer.add(msg); },
           onPauseResponse: (pauseId, payload) => this.handlePauseResponse(pauseId, payload),
         });
         this.stopHandles.push(handle);
