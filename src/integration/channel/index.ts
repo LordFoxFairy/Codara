@@ -6,3 +6,5 @@ export {feishuPlugin} from './feishu';
 export {dingtalkPlugin} from './dingtalk';
 export {qqPlugin} from './qq';
 export {wecomPlugin} from './wecom';
+export {discordPlugin} from './discord';
+export {slackPlugin} from './slack';
