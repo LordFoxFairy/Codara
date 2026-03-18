@@ -105,7 +105,30 @@ export class Gateway {
         plugin.sendTyping(account, {accountId: msg.accountId, to: msg.peer.id, text: ''}).catch(() => {});
       }
 
-      const response = await session.invoke(msg.text);
+      let response: string;
+
+      if (session.stream) {
+        // Prefer streaming: accumulate full response while sending periodic typing indicators
+        let fullResponse = '';
+        const typingInterval = plugin.sendTyping
+          ? setInterval(() => {
+            plugin.sendTyping!(account, {accountId: msg.accountId, to: msg.peer.id, text: ''}).catch(() => {});
+          }, 5000)
+          : undefined;
+
+        try {
+          for await (const chunk of session.stream(msg.text)) {
+            fullResponse += chunk;
+          }
+        } finally {
+          if (typingInterval) clearInterval(typingInterval);
+        }
+        response = fullResponse;
+      } else {
+        // Fallback to invoke
+        response = await session.invoke(msg.text);
+      }
+
       const chunks = chunkMarkdown(response, {limit: plugin.capabilities.textLimit});
 
       for (const chunk of chunks) {
