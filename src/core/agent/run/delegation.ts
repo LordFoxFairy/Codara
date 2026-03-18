@@ -270,16 +270,20 @@ async function runDelegatedChild(
   childOptions: BootstrapAgentOptions,
   input: DelegatedChildInput,
 ) {
+  // Propagate incremented delegation depth so nested Task tools see the correct depth.
+  const childDepth = (input.delegationDepth ?? 0) + 1;
+  const childConfig = {
+    ...(input.maxTurns ? {recursionLimit: input.maxTurns} : {}),
+    configurable: {execution: {delegationDepth: childDepth}},
+  };
+
   if (input.resume) {
-    return resumeDelegatedChild(childOptions, input.resume, input.maxTurns);
+    return resumeDelegatedChild(childOptions, input.resume, childConfig);
   }
 
   const child = await bootstrapAgent(childOptions);
   const messages = createDelegatedAgentInput(input.prompt);
-  return consumeAgentStream(child.stream(
-    {messages},
-    {...(input.maxTurns ? {recursionLimit: input.maxTurns} : {})},
-  ));
+  return consumeAgentStream(child.stream({messages}, childConfig));
 }
 
 function resolveDelegatedAgentTools(
@@ -294,7 +298,7 @@ function resolveDelegatedAgentTools(
 async function resumeDelegatedChild(
   childOptions: BootstrapAgentOptions,
   resume: DelegatedResumeState,
-  maxTurns: number | undefined,
+  childConfig: Record<string, unknown>,
 ) {
   const checkpoint = await childOptions.checkpointer?.getLatest(resume.childSessionId);
   const child = await bootstrapAgent({
@@ -305,7 +309,7 @@ async function resumeDelegatedChild(
 
   return consumeAgentStream(child.resumeStream(
     resume.payload,
-    {resumeMode: 'tool', ...(maxTurns ? {recursionLimit: maxTurns} : {})},
+    {resumeMode: 'tool', ...childConfig},
   ));
 }
 
