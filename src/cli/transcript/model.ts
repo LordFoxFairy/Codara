@@ -213,7 +213,7 @@ function buildRuntimeEventItems(events: readonly CodaraRuntimeEvent[]): Transcri
         items.push({
           id: activeId(startEvent.id),
           role: 'task',
-          content: `⏺ Team "${teamName}"\n  ⎿  ${summary}`,
+          content: `⏺ Team "${teamName}"\n${summary}`,
         });
         continue;
       }
@@ -233,13 +233,14 @@ function buildRuntimeEventItems(events: readonly CodaraRuntimeEvent[]): Transcri
         items.push({
           id: activeId(event.id),
           role: 'task',
-          content: `  ⎿  ${label}`,
+          content: `${label}`,
         });
       }
     }
   }
 
   // Second pass: pair end events with start events, build items
+  const pairedTaskEnds: Array<{startEvent: CodaraRuntimeEvent; endEvent: CodaraRuntimeEvent}> = [];
   for (const event of events) {
     if (event.kind === 'turn' || event.kind === 'model' || shouldHideRuntimeEvent(event)) {
       continue;
@@ -251,23 +252,12 @@ function buildRuntimeEventItems(events: readonly CodaraRuntimeEvent[]): Transcri
       continue;
     }
 
-    // Task end event — pair with start, render Claude Code style
+    // Task end event — pair with start, render like tool call
     if (event.kind === 'task' && event.phase === 'end' && event.parentId) {
       const startEvent = startEvents.get(event.parentId);
       if (startEvent) {
         pairedEndIds.add(event.id);
-        const taskName = extractTaskDisplayName(startEvent.label);
-        const elapsed = computeElapsedSeconds(startEvent.timestamp, event.timestamp);
-        const summary = event.status === 'error'
-          ? `Failed (${elapsed}s)`
-          : event.status === 'paused'
-            ? 'Waiting for review'
-            : formatTaskDoneSummary(elapsed, event.detail);
-        items.push({
-          id: activeId(startEvent.id),
-          role: 'task',
-          content: `⏺ ${taskName}\n  ⎿  ${summary}`,
-        });
+        pairedTaskEnds.push({startEvent, endEvent: event});
         continue;
       }
     }
@@ -280,7 +270,7 @@ function buildRuntimeEventItems(events: readonly CodaraRuntimeEvent[]): Transcri
         const rawToolName = startEvent.detail ?? '';
         const toolMeta = buildToolMetaFromEvents(rawToolName, startEvent, event);
         const content = toolMeta
-          ? `${toolMeta.icon} ${toolMeta.displayName}(${toolMeta.args ?? ''})\n⎿ ${toolMeta.summaryLine}`
+          ? `${toolMeta.icon} ${toolMeta.displayName}(${toolMeta.args ?? ''})\n${toolMeta.summaryLine}`
           : formatRuntimeEvent(event);
         items.push({
           id: activeId(startEvent.id),
@@ -309,7 +299,46 @@ function buildRuntimeEventItems(events: readonly CodaraRuntimeEvent[]): Transcri
     });
   }
 
+  // Render completed tasks: single → tool-like, multiple → grouped tree
+  if (pairedTaskEnds.length === 1) {
+    const {startEvent, endEvent} = pairedTaskEnds[0]!;
+    const taskName = extractTaskDisplayName(startEvent.label);
+    const elapsed = computeElapsedSeconds(startEvent.timestamp, endEvent.timestamp);
+    const summary = endEvent.status === 'error'
+      ? `Failed (${elapsed}s)`
+      : endEvent.status === 'paused'
+        ? 'Waiting for review'
+        : formatTaskDoneSummary(elapsed, endEvent.detail);
+    const agentType = extractSubagentType(startEvent.label);
+    items.push({
+      id: activeId(startEvent.id),
+      role: 'task',
+      content: `⚙ ${agentType}(${taskName})\n${summary}`,
+    });
+  } else if (pairedTaskEnds.length > 1) {
+    const treeLines = pairedTaskEnds.map(({startEvent, endEvent}, idx) => {
+      const agentType = extractSubagentType(startEvent.label);
+      const taskName = extractTaskDisplayName(startEvent.label);
+      const elapsed = computeElapsedSeconds(startEvent.timestamp, endEvent.timestamp);
+      const summary = endEvent.status === 'error'
+        ? `Failed (${elapsed}s)`
+        : formatTaskDoneSummary(elapsed, endEvent.detail);
+      const isLast = idx === pairedTaskEnds.length - 1;
+      const connector = isLast ? '└─' : '├─';
+      const verticalBar = isLast ? '   ' : '│  ';
+      const label = agentType !== 'Task' ? `${agentType} (${taskName})` : taskName;
+      return `   ${connector} ${label}\n   ${verticalBar}⎿  ${summary}`;
+    });
+    items.push({
+      id: activeId(pairedTaskEnds[0]!.startEvent.id),
+      role: 'task',
+      content: [`⏺ ${pairedTaskEnds.length} agents completed`, ...treeLines].join('\n'),
+      renderHint: 'block',
+    });
+  }
+
   // Third pass: show unpaired start events as "running"
+  const unpairedTaskStarts: Array<{id: string; startEvent: CodaraRuntimeEvent}> = [];
   for (const [id, startEvent] of startEvents) {
     if (shouldHideRuntimeEvent(startEvent)) {
       continue;
@@ -334,7 +363,7 @@ function buildRuntimeEventItems(events: readonly CodaraRuntimeEvent[]): Transcri
         : 'Running…';
       const contentLines = [`⏺ Team "${teamName}"`];
       if (teamGoal) contentLines.push(`  Goal: ${teamGoal}`);
-      contentLines.push(`  ⎿  ${runningLine}`);
+      contentLines.push(runningLine);
       items.push({
         id: activeId(startEvent.id),
         role: 'task',
@@ -343,14 +372,9 @@ function buildRuntimeEventItems(events: readonly CodaraRuntimeEvent[]): Transcri
       continue;
     }
 
-    // Unpaired task start → running task block
+    // Unpaired task start → collected below for grouped rendering
     if (startEvent.kind === 'task') {
-      const taskName = extractTaskDisplayName(startEvent.label);
-      items.push({
-        id: activeId(startEvent.id),
-        role: 'task',
-        content: `⏺ ${taskName}\n  ⎿  Running…`,
-      });
+      unpairedTaskStarts.push({id, startEvent});
       continue;
     }
 
@@ -363,7 +387,7 @@ function buildRuntimeEventItems(events: readonly CodaraRuntimeEvent[]): Transcri
       const rawToolName = startEvent.detail ?? '';
       const toolMeta = buildToolMetaRunning(rawToolName, startEvent);
       const content = toolMeta
-        ? `${toolMeta.icon} ${toolMeta.displayName}(${toolMeta.args ?? ''})\n⎿ ${toolMeta.summaryLine}`
+        ? `${toolMeta.icon} ${toolMeta.displayName}(${toolMeta.args ?? ''})\n${toolMeta.summaryLine}`
         : formatRuntimeEvent(startEvent);
       items.push({
         id: activeId(startEvent.id),
@@ -374,7 +398,46 @@ function buildRuntimeEventItems(events: readonly CodaraRuntimeEvent[]): Transcri
     }
   }
 
+  // Group unpaired running tasks: single → inline, multiple → tree block
+  if (unpairedTaskStarts.length === 1) {
+    const {id: taskId, startEvent} = unpairedTaskStarts[0]!;
+    const agentType = extractSubagentType(startEvent.label);
+    items.push({
+      id: activeId(taskId),
+      role: 'task',
+      content: `⚙ ${agentType}\nRunning…`,
+    });
+  } else if (unpairedTaskStarts.length > 1) {
+    const headerLine = `⏺ ${unpairedTaskStarts.length} agents launched (ctrl+o to expand)`;
+    const treeLines = unpairedTaskStarts.map(({startEvent}, idx) => {
+      const taskName = extractTaskDisplayName(startEvent.label);
+      // Extract subagent type from label: "Delegating Plan: ..." → "Plan"
+      const agentType = extractSubagentType(startEvent.label);
+      const isLast = idx === unpairedTaskStarts.length - 1;
+      const connector = isLast ? '└─' : '├─';
+      const verticalBar = isLast ? '   ' : '│  ';
+      const label = agentType !== 'Task' ? `${agentType} (${taskName})` : taskName;
+      return `   ${connector} ${label}\n   ${verticalBar}⎿  Running in the background`;
+    });
+    items.push({
+      id: activeId(unpairedTaskStarts[0]!.id),
+      role: 'task',
+      content: [headerLine, ...treeLines].join('\n'),
+      renderHint: 'block',
+    });
+  }
+
   return items;
+}
+
+function extractSubagentType(label: string): string {
+  // "Delegating Plan: some description" → "Plan"
+  // "Delegating general-purpose: some description" → "Agent"
+  const match = label.match(/^Delegating\s+(\S+)/);
+  if (!match) return 'Task';
+  const type = match[1]!;
+  if (type === 'general-purpose') return 'Agent';
+  return type.charAt(0).toUpperCase() + type.slice(1);
 }
 
 function extractTaskDisplayName(label: string): string {
@@ -769,7 +832,7 @@ function buildToolResultItems(
     id: messageId,
     role,
     content: toolMeta
-      ? `${toolMeta.icon} ${toolMeta.displayName}(${toolMeta.args ?? ''})\n⎿ ${toolMeta.summaryLine}`
+      ? `${toolMeta.icon} ${toolMeta.displayName}(${toolMeta.args ?? ''})\n${toolMeta.summaryLine}`
       : formattedContent,
     renderHint: lineCount > 3 ? 'block' : 'inline',
     toolMeta,

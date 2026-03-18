@@ -334,6 +334,7 @@ export class RuntimeEventsController {
             parentId: toolRootId,
           });
           this.toolRoots.set(`${currentToolKey}:task`, taskRootId);
+
         }
 
         try {

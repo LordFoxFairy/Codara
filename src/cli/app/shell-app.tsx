@@ -1,5 +1,5 @@
 import React, {useCallback, useEffect, useState} from 'react';
-import {Box, Static, useApp} from 'ink';
+import {Box, Static, Text, useApp} from 'ink';
 import type {Codara} from '@/index';
 import {CommandOutputPanel} from '../components/chrome/command-output-panel';
 import {Footer} from '../components/chrome/footer';
@@ -128,6 +128,30 @@ export function CodaraCliApp(props: CodaraCliAppProps): React.JSX.Element {
       total: statuses.length,
     };
   }, [codara]);
+  // Team member selection (shift+↑/↓)
+  const [selectedMemberIndex, setSelectedMemberIndex] = useState(-1);
+  const allTeamMembers = React.useMemo(() => {
+    if (!teamMembers) return [];
+    const members: Array<{teamId: string; name: string; role: string}> = [];
+    for (const [teamId, ms] of teamMembers) {
+      for (const m of ms) {
+        members.push({teamId, name: m.name, role: m.role});
+      }
+    }
+    return members;
+  }, [teamMembers]);
+  const selectedMemberName = selectedMemberIndex >= 0 && selectedMemberIndex < allTeamMembers.length
+    ? allTeamMembers[selectedMemberIndex]?.name
+    : undefined;
+  const handleSelectMemberUp = useCallback(() => {
+    if (allTeamMembers.length === 0) return;
+    setSelectedMemberIndex((prev) => prev <= 0 ? allTeamMembers.length - 1 : prev - 1);
+  }, [allTeamMembers.length]);
+  const handleSelectMemberDown = useCallback(() => {
+    if (allTeamMembers.length === 0) return;
+    setSelectedMemberIndex((prev) => prev >= allTeamMembers.length - 1 ? 0 : prev + 1);
+  }, [allTeamMembers.length]);
+
   // Freeze tip and initial terminal width at mount time (for Static welcome)
   const [frozenTip] = useState(() => TIPS[Math.floor(Math.random() * TIPS.length)]!);
 
@@ -178,6 +202,8 @@ export function CodaraCliApp(props: CodaraCliAppProps): React.JSX.Element {
     },
     onToggleTaskPanel: shell.toggleTaskPanel,
     onToggleExpand: shell.toggleExpand,
+    onSelectMemberUp: handleSelectMemberUp,
+    onSelectMemberDown: handleSelectMemberDown,
     onTab: () => {
       if (completion.completion.visible) {
         const accepted = completion.accept();
@@ -306,12 +332,22 @@ export function CodaraCliApp(props: CodaraCliAppProps): React.JSX.Element {
               <CommandOutputPanel content={shell.commandOutput.content} commandName={shell.commandOutput.commandName} scrollOffset={shell.commandOutput.scrollOffset} />
             )}
             {!shell.commandOutput && !completion.completion.visible && (
-              <PromptFrame
-                composer={shell.composer}
-                cursorActivityVersion={shell.composerActivityVersion}
-                isRunning={shell.runState.status === 'running'}
-                placeholder={shell.hasConversation ? 'Reply to Codara...' : 'Ask Codara...'}
-              />
+              <Box>
+                <Box flexGrow={1}>
+                  <PromptFrame
+                    composer={shell.composer}
+                    cursorActivityVersion={shell.composerActivityVersion}
+                    isRunning={shell.runState.status === 'running'}
+                    placeholder={shell.hasConversation ? 'Reply to Codara...' : 'Ask Codara...'}
+                    terminalWidth={terminalWidth}
+                  />
+                </Box>
+                {selectedMemberName && activeTeams.hasActiveTeams && (
+                  <Box>
+                    <Text color="green" bold>@{selectedMemberName}</Text>
+                  </Box>
+                )}
+              </Box>
             )}
             <CompletionMenu completion={completion.completion} />
             {shell.hasConversation && (

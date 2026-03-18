@@ -24,9 +24,9 @@ describe('extractTaskName', () => {
     expect(extractTaskName('Delegating research')).toBe('research');
   });
 
-  it('truncates long names to 30 chars', () => {
+  it('truncates long names to 40 chars', () => {
     const long = 'Delegating research: ' + 'a'.repeat(50);
-    expect(extractTaskName(long).length).toBeLessThanOrEqual(30);
+    expect(extractTaskName(long).length).toBeLessThanOrEqual(40);
   });
 
   it('falls back to raw label', () => {

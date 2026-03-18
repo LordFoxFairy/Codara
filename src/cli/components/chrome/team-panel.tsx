@@ -7,17 +7,14 @@ import {theme} from '../../utils/theme';
 
 const BRAILLE_FRAMES = ['⠋', '⠙', '⠹', '⠸', '⠼', '⠴', '⠦', '⠧', '⠇', '⠏'] as const;
 
-/** Maximum characters for team name column before truncation. */
-const TEAM_NAME_MAX_WIDTH = 24;
-
-/** Maximum characters for goal column before truncation. */
-const TEAM_GOAL_MAX_WIDTH = 28;
-
 export interface TeamMemberInfo {
   name: string;
   role: string;
   status: string;
   currentJobId?: string;
+  activity?: string;
+  toolUseCount?: number;
+  totalTokens?: string;
 }
 
 interface TeamPanelProps {
@@ -63,13 +60,6 @@ const TEAM_STATUS_COLOR: Record<TeamDisplayStatus, string> = {
   paused: theme.status.paused,
 };
 
-const TEAM_STATUS_LABEL: Record<TeamDisplayStatus, string> = {
-  running: 'running',
-  completed: 'done',
-  failed: 'failed',
-  paused: 'paused',
-};
-
 function TeamIcon({status, frame}: {status: ActiveTeam['status']; frame: number}): React.JSX.Element {
   const displayStatus = resolveDisplayStatus(status);
   const color = TEAM_STATUS_COLOR[displayStatus];
@@ -85,80 +75,83 @@ function TeamIcon({status, frame}: {status: ActiveTeam['status']; frame: number}
   }
 }
 
-function TeamStatusText({status}: {status: ActiveTeam['status']}): React.JSX.Element {
-  const displayStatus = resolveDisplayStatus(status);
-  return <Text color={TEAM_STATUS_COLOR[displayStatus]}>{TEAM_STATUS_LABEL[displayStatus]}</Text>;
-}
-
-const MAX_VISIBLE_MEMBERS = 6;
-
-/** Role icon: ♚ for leader, ♟ for worker. */
-function memberRoleIcon(role: string): string {
-  return role === 'leader' ? '♚' : '♟';
-}
-
-/** Derive display status: leader with active job → coordinating. */
-function deriveDisplayStatus(member: TeamMemberInfo): string {
+/** Derive display status for a member. */
+function deriveMemberDisplayStatus(member: TeamMemberInfo): string {
   if (member.role === 'leader' && member.currentJobId) return 'coordinating';
   if (member.currentJobId) return 'working';
-  return member.status;
+  if (member.activity) return member.activity;
+  return member.status === 'idle' ? 'Idle' : member.status;
 }
 
 /** Color for member activity status. */
 function memberStatusColor(status: string): string {
-  switch (status) {
-    case 'working': return theme.status.done;        // green
-    case 'coordinating': return theme.status.running; // yellow
-    case 'paused': return theme.status.paused;        // blueBright
-    case 'idle':
-    default: return theme.chrome.dimmed;              // gray
-  }
+  const lower = status.toLowerCase();
+  if (lower === 'working' || lower.startsWith('search') || lower.startsWith('read')) return theme.status.done;
+  if (lower === 'coordinating') return theme.status.running;
+  if (lower === 'paused') return theme.status.paused;
+  return theme.chrome.dimmed;
 }
 
-function MemberPair({members}: {members: TeamMemberInfo[]}): React.JSX.Element {
-  const [left, right] = members;
-  const leftStatus = left ? deriveDisplayStatus(left) : '';
-  const rightStatus = right ? deriveDisplayStatus(right) : '';
+/** Role display: leader shows name directly, worker shows @name. */
+function formatMemberName(member: TeamMemberInfo): string {
+  return member.role === 'leader' ? member.name : `@${member.name}`;
+}
+
+function MemberRow({member, isLast}: {
+  member: TeamMemberInfo;
+  isLast: boolean;
+}): React.JSX.Element {
+  const connector = isLast ? '└─' : '├─';
+  const displayStatus = deriveMemberDisplayStatus(member);
+  const statusColor = memberStatusColor(displayStatus);
+  const name = formatMemberName(member);
+
+  const statParts: string[] = [];
+  if (member.toolUseCount) statParts.push(`${member.toolUseCount} tool uses`);
+  if (member.totalTokens) statParts.push(`${member.totalTokens} tokens`);
+  const stats = statParts.length > 0 ? ` · ${statParts.join(' · ')}` : '';
+
   return (
-    <Box gap={2}>
-      <Text>{'  '}</Text>
-      {left && (
-        <Box gap={1}>
-          <Text color={memberStatusColor(leftStatus)}>{memberRoleIcon(left.role)}</Text>
-          <Text dimColor>{left.name.slice(0, 12).padEnd(12)}</Text>
-          <Text color={memberStatusColor(leftStatus)}>{leftStatus.slice(0, 12).padEnd(12)}</Text>
-        </Box>
-      )}
-      {right && (
-        <Box gap={1}>
-          <Text color={memberStatusColor(rightStatus)}>{memberRoleIcon(right.role)}</Text>
-          <Text dimColor>{right.name.slice(0, 12).padEnd(12)}</Text>
-          <Text color={memberStatusColor(rightStatus)}>{rightStatus.slice(0, 12)}</Text>
-        </Box>
-      )}
+    <Box>
+      <Text dimColor>{'  '}{connector} </Text>
+      <Text color={statusColor}>{name}</Text>
+      <Text dimColor>: </Text>
+      <Text color={statusColor} wrap="truncate-end">{displayStatus}</Text>
+      {stats && <Text dimColor>{stats}</Text>}
     </Box>
   );
 }
 
-function TeamMemberRows({members}: {members: TeamMemberInfo[]}): React.JSX.Element {
-  const visible = members.slice(0, MAX_VISIBLE_MEMBERS);
-  const overflow = members.length - MAX_VISIBLE_MEMBERS;
-  const pairs: Array<[TeamMemberInfo, TeamMemberInfo | undefined]> = [];
-  for (let i = 0; i < visible.length; i += 2) {
-    pairs.push([visible[i]!, visible[i + 1]]);
+function TeamRow({team, frame, members}: {
+  team: ActiveTeam;
+  frame: number;
+  members?: TeamMemberInfo[];
+}): React.JSX.Element {
+  const progressParts: string[] = [];
+  if (team.memberCount > 0) {
+    progressParts.push(`${team.memberCount} member${team.memberCount !== 1 ? 's' : ''}`);
   }
+  if (team.jobProgress.total > 0) {
+    progressParts.push(`${team.jobProgress.done}/${team.jobProgress.total} jobs`);
+  }
+  const statSuffix = progressParts.length > 0 ? `  ${progressParts.join(' · ')}` : '';
+
   return (
-    <>
-      {pairs.map((pair, idx) => (
-        <MemberPair key={idx} members={pair.filter((m): m is TeamMemberInfo => m !== undefined)} />
+    <Box flexDirection="column">
+      <Box gap={1}>
+        <TeamIcon status={team.status} frame={frame} />
+        <Text bold wrap="truncate-end">{team.name}</Text>
+        {team.goal ? <Text dimColor wrap="truncate-end">{team.goal}</Text> : null}
+        <Text dimColor>{formatElapsedMs(team.elapsed)}{statSuffix}</Text>
+      </Box>
+      {members && members.length > 0 && members.map((member, idx) => (
+        <MemberRow
+          key={member.name}
+          member={member}
+          isLast={idx === members.length - 1}
+        />
       ))}
-      {overflow > 0 && (
-        <Box>
-          <Text>{'  '}</Text>
-          <Text dimColor>+{overflow} more</Text>
-        </Box>
-      )}
-    </>
+    </Box>
   );
 }
 
@@ -182,31 +175,14 @@ export function TeamPanel({teams, runningCount, doneCount, errorCount, teamMembe
   return (
     <Box flexDirection="column" borderStyle="single" borderColor={theme.chrome.border} paddingX={1}>
       <Text dimColor bold>Teams ({summary})</Text>
-      {teams.map(team => {
-        const name = team.name.slice(0, TEAM_NAME_MAX_WIDTH).padEnd(TEAM_NAME_MAX_WIDTH);
-        const goal = team.goal.slice(0, TEAM_GOAL_MAX_WIDTH);
-        const progressParts: string[] = [];
-        if (team.memberCount > 0) {
-          progressParts.push(`${team.memberCount} member${team.memberCount !== 1 ? 's' : ''}`);
-        }
-        if (team.jobProgress.total > 0) {
-          progressParts.push(`${team.jobProgress.done}/${team.jobProgress.total} jobs`);
-        }
-        const statSuffix = progressParts.length > 0 ? `  ${progressParts.join(' · ')}` : '';
-        const members = teamMembers?.get(team.teamId);
-        return (
-          <Box key={team.teamId} flexDirection="column">
-            <Box gap={1}>
-              <TeamIcon status={team.status} frame={frame} />
-              <Text wrap="truncate-end">{name}</Text>
-              {goal ? <Text dimColor wrap="truncate-end">{goal}</Text> : null}
-              <TeamStatusText status={team.status} />
-              <Text dimColor>{formatElapsedMs(team.elapsed)}{statSuffix}</Text>
-            </Box>
-            {members && members.length > 0 && <TeamMemberRows members={members} />}
-          </Box>
-        );
-      })}
+      {teams.map((team) => (
+        <TeamRow
+          key={team.teamId}
+          team={team}
+          frame={frame}
+          members={teamMembers?.get(team.teamId)}
+        />
+      ))}
     </Box>
   );
 }

@@ -29,11 +29,15 @@ const MAX_VISIBLE_TASKS = 5;
 const DONE_TASK_LINGER_MS = 3000;
 
 export function extractTaskName(label: string): string {
-  const match = label.match(/^Delegating\s+(\w+)(?::\s+(.+))?$/);
-  if (match) {
-    return match[2] ? `${match[1]}: ${match[2]}`.slice(0, 30) : match[1]!;
+  // Take first line only
+  const firstLine = label.split('\n')[0]!.trim();
+  // Strip "Delegating " prefix
+  const text = firstLine.startsWith('Delegating ') ? firstLine.slice('Delegating '.length) : firstLine;
+  // "Plan: some long description" → "Plan: some long desc…"
+  if (text.length > 40) {
+    return `${text.slice(0, 37)}…`;
   }
-  return label.slice(0, 30);
+  return text;
 }
 
 export function deriveActiveTasks(

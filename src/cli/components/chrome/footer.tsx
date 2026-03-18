@@ -22,7 +22,7 @@ export function describeFooter(layoutMode: CliLayoutMode, hasCommandOutput = fal
 
   const base = 'Enter send  ·  Ctrl+C exit  ·  / commands  ·  Ctrl+T tasks  ·  Ctrl+O expand';
   if (hasActiveTeams) {
-    return `${base}  ·  @team-name to message a team`;
+    return `${base}  ·  shift+↑/↓ select member`;
   }
   return base;
 }
