@@ -23,3 +23,9 @@ export type {
   ContextBudgetSnapshot,
   ExecutionContextMetadata,
 } from './execution';
+export type {
+  Channel,
+  ChannelMessage,
+  ChannelRuntimeEvent,
+  ChannelType,
+} from './channel';
