@@ -102,8 +102,43 @@ export class FileCheckpointer<TState = unknown, TInfo = unknown>
   }
 
   async compact(sessionId: string, options?: CompactOptions): Promise<void> {
-    void sessionId;
-    void options;
+    const latest = await this.getLatest(sessionId);
+    if (!latest) return;
+
+    const keepLast = options?.keepLast ?? 20;
+    const threshold = Math.max(keepLast, 50);
+
+    // Determine if compaction is needed:
+    // 1. Always clear parentCheckpointId if present
+    // 2. Truncate messages array if state has one and it exceeds the threshold
+    const state = latest.state as Record<string, unknown>;
+    const hasMessages = Array.isArray(state?.messages);
+    const needsMessageTruncation = hasMessages && (state.messages as unknown[]).length > threshold;
+    const needsParentClear = Boolean(latest.ref.parentCheckpointId);
+
+    if (!needsMessageTruncation && !needsParentClear) return;
+
+    // Truncate messages if needed
+    if (needsMessageTruncation) {
+      (state.messages as unknown[]).splice(0, (state.messages as unknown[]).length - keepLast);
+    }
+
+    // Write compacted checkpoint with cleared parent reference
+    const lockDir = path.join(this.rootDir, '.locks');
+    await acquireSessionLock(lockDir, sessionId);
+    try {
+      const compactedRecord = {
+        ref: {
+          sessionId: latest.ref.sessionId,
+          checkpointId: latest.ref.checkpointId,
+        },
+        state: latest.state,
+        info: latest.info,
+      };
+      await writeJsonFile(this.latestCheckpointPath(sessionId), this.encodeRecord(compactedRecord));
+    } finally {
+      await releaseSessionLock(lockDir, sessionId);
+    }
   }
 
   private sessionDir(sessionId: string): string {
