@@ -19,7 +19,7 @@ import {
 } from '@capability/task';
 import {
   readDelegatedAgentResult,
-} from '@capability/task/delegation';
+} from '@core/agent/run/delegation';
 import {createAgentSkillsMiddleware, createBuiltinSubagentStore} from '../agents/task-tool.fixtures';
 
 class ScriptedModel {

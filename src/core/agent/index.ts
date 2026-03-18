@@ -74,3 +74,15 @@ export {
   type BootstrapAgentOptions,
   type ModelResolver,
 } from '@core/agent/bootstrap';
+export {
+  assertDelegationDepth,
+  markDelegationTool,
+  MAX_DELEGATION_DEPTH,
+  readDelegatedAgentResult,
+  readDelegatedParentRuntimeMetadata,
+  runDelegatedAgent,
+  type DelegatedAgentModelResolver,
+  type DelegatedAgentOptions,
+  type DelegatedParentRuntimeMetadata,
+  type DelegatedAgentResult,
+} from '@core/agent/run/delegation';

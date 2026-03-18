@@ -2,7 +2,7 @@ import {describe, test, expect} from 'bun:test';
 import {
   MAX_DELEGATION_DEPTH,
   assertDelegationDepth,
-} from '@capability/task/delegation';
+} from '@core/agent/run/delegation';
 
 describe('Task delegation depth limit', () => {
   test('MAX_DELEGATION_DEPTH is 1', () => {
