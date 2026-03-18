@@ -1,5 +1,5 @@
-import {createMiddleware} from '@engine/pipeline/types';
-import type {BaseMiddleware, BeforeModelContext} from '@engine/pipeline/types';
+import {createMiddleware} from '@core/pipeline/types';
+import type {BaseMiddleware, BeforeModelContext} from '@core/pipeline/types';
 import type {TeamRegistry} from '@capability/team/coordination/team-registry';
 import type {TeamRuntime} from '@capability/team/runtime/team-runtime';
 import type {SharedState} from '@capability/team/shared-state';

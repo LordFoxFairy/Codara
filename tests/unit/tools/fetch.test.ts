@@ -1,5 +1,5 @@
 import {afterEach, describe, expect, it} from 'bun:test';
-import {createFetchTool} from '@engine/tool';
+import {createFetchTool} from '@integration/tool';
 
 const originalFetch = globalThis.fetch;
 type FetchImpl = (url: URL | RequestInfo, options?: RequestInit | BunFetchRequestInit) => Promise<Response>;
@@ -119,9 +119,11 @@ describe('FetchTool - Generic HTTP Client', () => {
       max_response_size: 100,
     });
 
-    expect(String(result)).toContain('Response too large');
-    expect(String(result)).toContain('2000 bytes');
-    expect(String(result)).toContain('exceeds limit of 100 bytes');
+    // Streaming reader truncates the body and appends a truncation note.
+    const parsed = JSON.parse(String(result));
+    expect(parsed.body).toContain('[Truncated: response exceeded 100 bytes limit]');
+    const contentBeforeTruncation = parsed.body.split('\n\n[Truncated')[0];
+    expect(contentBeforeTruncation.length).toBeLessThanOrEqual(100);
   });
 
   it('should handle timeout', async () => {

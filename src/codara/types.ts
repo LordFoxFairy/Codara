@@ -1,15 +1,16 @@
 import type {BaseChatModel} from '@langchain/core/language_models/chat_models';
 import type {StructuredToolInterface} from '@langchain/core/tools';
-import type {AgentCheckpointer} from '@engine/checkpoint';
-import type {BaseMiddleware, HILMiddlewareOptions, LoggingMiddlewareOptions} from '@engine/pipeline';
-import type {SummarySettings} from '@engine/pipeline/summary';
+import type {AgentCheckpointer} from '@durability/checkpoint';
+import type {BaseMiddleware} from '@core/pipeline/types';
+import type {HILMiddlewareOptions, LoggingMiddlewareOptions} from '@core/middleware';
+import type {SummarySettings} from '@core/middleware/summary';
 import type {TaskStore} from '@capability/task';
-import type {ModelRoutingConfig} from '@infra/provider';
+import type {ModelRoutingConfig} from '@integration/provider';
 import type {SkillStore} from '@capability/skill';
 import type {CodaraCommandResult, CodaraCommandSpec} from '@capability/command';
-import type {Session, SessionState, SessionStore} from '@engine/session';
-import type {McpClientInfo, McpConfig} from '@engine/mcp';
-import type {ChannelRegistry} from '@engine/channel';
+import type {Session, SessionState, SessionStore} from '@durability/session';
+import type {McpClientInfo, McpConfig} from '@integration/mcp';
+import type {ChannelRegistry} from '@integration/channel';
 import type {CodaraModelCatalog} from './assembly/runtime';
 
 // ── Skill & Memory Options ──
@@ -57,8 +58,8 @@ export interface CodaraOptions {
   store?: SessionStore;
   checkpointer?: AgentCheckpointer;
   handleToolErrors?: boolean;
-  inputBudget?: import('@engine/agent').AgentInputBudget;
-  messages?: import('@engine/agent').AgentInput;
+  inputBudget?: import('@core/agent').AgentInputBudget;
+  messages?: import('@core/agent').AgentInput;
   context?: Record<string, unknown>;
   values?: Record<string, unknown>;
   autoMemory?: false | CodaraAutoMemoryOptions;
@@ -123,7 +124,7 @@ export interface TeamQueryDetail {
 export type Codara = Session & {
   listCommands(): Promise<readonly CodaraCommandSpec[]>;
   executeCommand(input: string): Promise<CodaraCommandResult>;
-  listSessions(options?: import('@engine/session').SessionListOptions): Promise<SessionState[]>;
+  listSessions(options?: import('@durability/session').SessionListOptions): Promise<SessionState[]>;
   getMcpStatus(): McpClientInfo[];
   getTeamSummaries(): TeamQuerySummary[];
   getTeamDetail(teamId: string): TeamQueryDetail | undefined;

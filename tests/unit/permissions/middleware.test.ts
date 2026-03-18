@@ -4,8 +4,8 @@ import {tmpdir} from 'node:os';
 import path from 'node:path';
 import {AIMessage, HumanMessage, ToolMessage, type BaseMessage, type ToolCall} from '@langchain/core/messages';
 import {createPermissionMiddleware, ensurePermissionSettingsFile} from '@/index';
-import {parseHILToolMessagePayload, type ToolCallContext} from '@engine/pipeline';
-import {createPermissionMiddlewareInternal} from '@engine/pipeline/permission/middleware';
+import {parseHILToolMessagePayload, type ToolCallContext} from '@core/middleware';
+import {createPermissionMiddlewareInternal} from '@core/middleware/permission/middleware';
 
 function createToolContext(toolCall: ToolCall, runtimeContext: Record<string, unknown> = {}): ToolCallContext {
   const messages = [new HumanMessage('run')] as BaseMessage[];

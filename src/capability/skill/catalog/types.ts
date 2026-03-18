@@ -5,4 +5,4 @@ export type {
   SkillMetadata,
   SkillCommandMetadata,
   SkillStore,
-} from '@infra/context/skills/contracts';
+} from '@context/skills/contracts';

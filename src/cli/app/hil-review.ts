@@ -1,4 +1,4 @@
-import type {PauseRequest, PauseReviewDecision, ResumePayload} from '@engine/agent';
+import type {PauseRequest, PauseReviewDecision, ResumePayload} from '@core/agent';
 import type {PermissionStage} from '../components/permission/types';
 import type {
   CliHilAnswerValue,

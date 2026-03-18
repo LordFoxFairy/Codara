@@ -167,17 +167,71 @@ export function useCodara({ sessionId }: UseCodaraOptions) {
       setPauseRequest(null);
       setStatus("streaming");
 
+      // Create an assistant message to accumulate the response after resume.
+      const assistantId = generateId();
+      const assistantMessage: Message = {
+        id: assistantId,
+        role: "assistant",
+        content: "",
+        thinking: "",
+        toolCalls: [],
+        timestamp: Date.now(),
+      };
+      setMessages((prev) => [...prev, assistantMessage]);
+
+      const controller = new AbortController();
+      abortRef.current = controller;
+
       try {
-        await fetch(`${API_BASE}/api/resume`, {
+        const response = await fetch(`${API_BASE}/api/resume`, {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({ sessionId, action }),
+          signal: controller.signal,
         });
-        setStatus("idle");
+
+        if (!response.ok) {
+          throw new Error(`Server responded with ${response.status}`);
+        }
+
+        const reader = response.body?.getReader();
+        if (!reader) throw new Error("No response body");
+
+        const decoder = new TextDecoder();
+        let buffer = "";
+
+        while (true) {
+          const { done, value } = await reader.read();
+          if (done) break;
+
+          buffer += decoder.decode(value, { stream: true });
+          const { events, remaining } = parseSSEChunk(buffer);
+          buffer = remaining;
+
+          for (const event of events) {
+            processEvent(event, assistantId, setMessages, setStatus, setError, setPauseRequest);
+          }
+        }
+
+        // Process any remaining buffer
+        if (buffer.trim()) {
+          const { events } = parseSSEChunk(buffer + "\n\n");
+          for (const event of events) {
+            processEvent(event, assistantId, setMessages, setStatus, setError, setPauseRequest);
+          }
+        }
+
+        setStatus((prev) => (prev === "paused" ? "paused" : "idle"));
       } catch (err) {
+        if ((err as Error).name === "AbortError") {
+          setStatus("idle");
+          return;
+        }
         const message = err instanceof Error ? err.message : "Unknown error";
         setError(message);
         setStatus("idle");
+      } finally {
+        abortRef.current = null;
       }
     },
     [sessionId],

@@ -6,8 +6,8 @@ import {AIMessage, type BaseMessage, type ToolCall} from '@langchain/core/messag
 import type {BaseChatModel} from '@langchain/core/language_models/chat_models';
 import {tool} from '@langchain/core/tools';
 import {z} from 'zod';
-import {createAgent} from '@engine/agent';
-import {createHILMiddleware} from '@engine/pipeline';
+import {createAgent} from '@core/agent';
+import {createHILMiddleware} from '@core/middleware';
 import {TASK_TOOL_NAME, createTaskTool} from '@capability/task/middleware';
 import {FileSystemSkillStore} from '@capability/skill';
 import {createAgentSkillsMiddleware, ChildSummaryModel, ScriptedModel} from './task-tool.fixtures';

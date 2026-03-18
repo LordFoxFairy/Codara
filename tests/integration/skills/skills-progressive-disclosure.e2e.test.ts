@@ -5,8 +5,8 @@ import path from 'node:path'
 import {AIMessage, HumanMessage, type BaseMessage} from '@langchain/core/messages'
 import type {BaseChatModel} from '@langchain/core/language_models/chat_models'
 import type {StructuredToolInterface} from '@langchain/core/tools'
-import {createAgent} from '@engine/agent'
-import {createMiddleware, createSkillsMiddleware} from '@engine/pipeline'
+import {createAgent} from '@core/agent'
+import {createMiddleware, createSkillsMiddleware} from '@core/middleware'
 import {FileSystemSkillStore, loadSkillsRuntimeData} from '@capability/skill'
 
 class ScriptedModel {

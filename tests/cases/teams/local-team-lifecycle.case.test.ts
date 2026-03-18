@@ -16,7 +16,7 @@ import {TeamRegistry} from '@capability/team/coordination/team-registry';
 import {TeamRuntime} from '@capability/team/runtime/team-runtime';
 import {MemorySharedState} from '@capability/team/shared-state';
 import {createConversationTeamTools} from '@capability/team/surface/conversation-tools';
-import type {CodaraRuntimeEvent} from '@engine/session/runtime-events';
+import type {CodaraRuntimeEvent} from '@observability/events';
 import {deriveActiveTeams} from '@/cli/hooks/use-active-teams';
 
 // ─── Helpers ──────────────────────────────────────────────────────────
