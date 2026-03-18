@@ -2,7 +2,7 @@ import {describe, expect, it} from 'bun:test';
 import {mkdir, mkdtemp, writeFile} from 'node:fs/promises';
 import path from 'node:path';
 import {tmpdir} from 'node:os';
-import {loadMcpConfig} from '@engine/mcp';
+import {loadMcpConfig} from '@integration/mcp';
 
 describe('MCP config loading', () => {
   it('returns empty config when no files exist', async () => {

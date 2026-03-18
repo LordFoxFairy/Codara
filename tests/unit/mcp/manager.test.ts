@@ -1,5 +1,5 @@
 import {describe, expect, it} from 'bun:test';
-import {createMcpManager, namespacedToolName, parseNamespacedToolName, type McpConfig} from '@engine/mcp';
+import {createMcpManager, namespacedToolName, parseNamespacedToolName, type McpConfig} from '@integration/mcp';
 
 describe('MCP manager', () => {
   it('creates a manager with empty config', () => {

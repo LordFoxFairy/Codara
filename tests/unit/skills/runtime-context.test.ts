@@ -4,9 +4,9 @@ import os from 'node:os';
 import path from 'node:path';
 import {AIMessage} from '@langchain/core/messages';
 import type {BaseChatModel} from '@langchain/core/language_models/chat_models';
-import {createAgent} from '@engine/agent';
-import {createAgentMemoryCheckpointer} from '@engine/checkpoint';
-import {createSkillsMiddleware} from '@engine/pipeline';
+import {createAgent} from '@core/agent';
+import {createAgentMemoryCheckpointer} from '@durability/checkpoint';
+import {createSkillsMiddleware} from '@core/middleware';
 import {FileSystemSkillStore, loadSkillsRuntimeData} from '@capability/skill';
 
 class SingleResponseModel {

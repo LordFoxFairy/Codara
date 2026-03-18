@@ -7,8 +7,8 @@
 import {describe, expect, it} from 'bun:test';
 import {AIMessage, HumanMessage, ToolMessage, type BaseMessage} from '@langchain/core/messages';
 import type {BaseChatModel} from '@langchain/core/language_models/chat_models';
-import {createAgent} from '@engine/agent';
-import {createBuiltinTools} from '@engine/tool';
+import {createAgent} from '@core/agent';
+import {createBuiltinTools} from '@integration/tool';
 
 class ScriptedModel {
   private index = 0;

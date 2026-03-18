@@ -1,6 +1,6 @@
 import {describe, expect, test} from 'bun:test';
-import {createToolHooksBridge} from '@engine/hook/bridge';
-import type {ToolLifecycleHooks, ToolResultContext} from '@engine/hook/types';
+import {createToolHooksBridge} from '@observability/hook/bridge';
+import type {ToolLifecycleHooks, ToolResultContext} from '@observability/hook/types';
 import {ToolMessage} from '@langchain/core/messages';
 
 function createMockLifecycle(overrides: Partial<ToolLifecycleHooks> = {}): ToolLifecycleHooks {

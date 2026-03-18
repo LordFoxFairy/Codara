@@ -3,7 +3,7 @@ import {mkdir, writeFile, readdir, stat} from 'node:fs/promises';
 import {mkdtempSync, rmSync} from 'node:fs';
 import path from 'node:path';
 import os from 'node:os';
-import {evictMemoryFiles, type EvictionPolicy} from '@infra/context/memory/eviction';
+import {evictMemoryFiles, type EvictionPolicy} from '@context/memory/eviction';
 
 let tmpDir: string;
 
