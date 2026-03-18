@@ -21,7 +21,7 @@ describe('middleware public surface', () => {
     expect('createSharedTaskMiddleware' in middleware).toBe(false);
   });
 
-  it('should keep the middleware executor internal', () => {
-    expect('MiddlewarePipeline' in middleware).toBe(false);
+  it('should export MiddlewarePipeline for external consumers', () => {
+    expect('MiddlewarePipeline' in middleware).toBe(true);
   });
 });
