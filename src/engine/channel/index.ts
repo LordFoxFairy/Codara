@@ -1,0 +1,1 @@
+export {ChannelRegistry} from './registry';
