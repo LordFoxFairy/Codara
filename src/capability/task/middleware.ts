@@ -80,7 +80,7 @@ export function createTaskTool(options: CreateTaskToolOptions): StructuredToolIn
         toolName: TASK_TOOL_NAME,
         parentExecution: delegated.parentExecution,
         ...(delegated.resume ? {resume: delegated.resume} : {}),
-        delegationDepth: 0,
+        delegationDepth: readParentDelegationDepth(configurable),
         profileTools: resolveDefinitionTools(options.tools ?? [], profile),
         profileSystemPrompt: profile.systemPrompt,
       });
@@ -172,4 +172,26 @@ function wrapDelegatedPrepareContext(
       context.systemMessage.push(...preservedExtras);
     }
   };
+}
+
+function readParentDelegationDepth(configurable: Record<string, unknown>): number {
+  const execution = configurable.execution;
+  if (execution && typeof execution === 'object' && 'delegationDepth' in execution) {
+    const depth = (execution as Record<string, unknown>).delegationDepth;
+    if (typeof depth === 'number' && Number.isFinite(depth)) {
+      return depth;
+    }
+  }
+  return 0;
+}
+
+function readParentDelegationDepth(configurable: Record<string, unknown>): number {
+  const execution = configurable.execution;
+  if (execution && typeof execution === 'object' && 'delegationDepth' in execution) {
+    const depth = (execution as Record<string, unknown>).delegationDepth;
+    if (typeof depth === 'number' && Number.isFinite(depth)) {
+      return depth;
+    }
+  }
+  return 0;
 }
