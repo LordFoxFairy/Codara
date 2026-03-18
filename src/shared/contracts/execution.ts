@@ -20,5 +20,6 @@ export interface ContextBudgetSnapshot {
   reservedTokens: number;
   availableInputTokens: number;
   estimatedInputTokens: number;
+  usagePercent: number;
   overBudget: boolean;
 }

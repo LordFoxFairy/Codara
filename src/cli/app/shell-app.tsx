@@ -1,11 +1,12 @@
 import React, {useCallback, useEffect, useState} from 'react';
-import {Box, Static, useApp} from 'ink';
+import {Box, Static, Text, useApp} from 'ink';
 import type {Codara} from '@/index';
 import {CommandOutputPanel} from '../components/chrome/command-output-panel';
 import {Footer} from '../components/chrome/footer';
 import {StatusBar} from '../components/chrome/header';
 import {ActivityLine} from '../components/chrome/activity-line';
 import {TaskPanel} from '../components/chrome/task-panel';
+import {TeamPanel} from '../components/chrome/team-panel';
 import {HilPanel, isPermissionReview} from '../components/conversation/hil-panel';
 import {SessionPicker} from '../components/conversation/session-picker';
 import {ActiveTranscript} from '../components/conversation/transcript';
@@ -17,6 +18,7 @@ import type {CliHilAutoAction} from './hil-review';
 import {resolveCliLayoutMode} from './layout-mode';
 import {useCliController} from './use-cli-controller';
 import {useActiveTasks} from '../hooks/use-active-tasks';
+import {useActiveTeams} from '../hooks/use-active-teams';
 import {useCommandCompletion} from '../hooks/use-command-completion';
 import {useHilInput} from '../hooks/use-hil-input';
 import {usePromptInput} from '../hooks/use-prompt-input';
@@ -94,6 +96,47 @@ export function CodaraCliApp(props: CodaraCliAppProps): React.JSX.Element {
   const terminalWidth = useTerminalWidth();
   const layoutMode = resolveCliLayoutMode(terminalWidth);
   const activeTasks = useActiveTasks({runtimeEvents: shell.runtimeEvents});
+  const activeTeams = useActiveTeams({runtimeEvents: shell.runtimeEvents});
+
+  // Periodic refresh so team member statuses update in real-time.
+  const [teamMembersVersion, setTeamMembersVersion] = useState(0);
+  useEffect(() => {
+    if (!activeTeams.hasActiveTeams) return;
+    const timer = setInterval(() => setTeamMembersVersion(v => v + 1), 1000);
+    return () => clearInterval(timer);
+  }, [activeTeams.hasActiveTeams]);
+
+  // Build team member map from the facade for TeamPanel inline display.
+  // ActiveTeam.teamId is the runtime event root UUID, not the registry ID.
+  // Look up by team name (getTeamDetail falls back to getTeamByName).
+  const teamMembers = React.useMemo(() => {
+    if (!activeTeams.hasActiveTeams) return undefined;
+    const map = new Map<string, Array<{name: string; role: string; status: string; currentJobId?: string; activity?: string}>>();
+    for (const team of activeTeams.activeTeams) {
+      // Try by name first, then by teamId from the event
+      const detail = codara.getTeamDetail(team.name) ?? codara.getTeamDetail(team.teamId);
+      if (detail) {
+        // Use the registry's name (authoritative) to fix display
+        if (detail.name && detail.name !== team.name) {
+          team.name = detail.name;
+        }
+        if (detail.goal && !team.goal) {
+          team.goal = detail.goal;
+        }
+        team.memberCount = detail.members.length;
+        if (detail.members.length > 0) {
+          map.set(team.teamId, detail.members.map(m => ({
+            name: m.name,
+            role: m.role,
+            status: m.status,
+            currentJobId: m.currentJobId,
+            activity: activeTeams.memberActivities.get(m.memberId),
+          })));
+        }
+      }
+    }
+    return map.size > 0 ? map : undefined;
+  }, [activeTeams.activeTeams, activeTeams.hasActiveTeams, activeTeams.memberActivities, codara, teamMembersVersion]);
   const listCommands = React.useCallback(() => codara.listCommands(), [codara]);
   const completion = useCommandCompletion({
     text: shell.composer.text,
@@ -108,15 +151,35 @@ export function CodaraCliApp(props: CodaraCliAppProps): React.JSX.Element {
       total: statuses.length,
     };
   }, [codara]);
+  // Team member selection (shift+↑/↓)
+  const [selectedMemberIndex, setSelectedMemberIndex] = useState(-1);
+  const allTeamMembers = React.useMemo(() => {
+    if (!teamMembers) return [];
+    const members: Array<{teamId: string; name: string; role: string}> = [];
+    for (const [teamId, ms] of teamMembers) {
+      for (const m of ms) {
+        members.push({teamId, name: m.name, role: m.role});
+      }
+    }
+    return members;
+  }, [teamMembers]);
+  const selectedMemberName = selectedMemberIndex >= 0 && selectedMemberIndex < allTeamMembers.length
+    ? allTeamMembers[selectedMemberIndex]?.name
+    : undefined;
+  const handleSelectMemberUp = useCallback(() => {
+    if (allTeamMembers.length === 0) return;
+    setSelectedMemberIndex((prev) => prev <= 0 ? allTeamMembers.length - 1 : prev - 1);
+  }, [allTeamMembers.length]);
+  const handleSelectMemberDown = useCallback(() => {
+    if (allTeamMembers.length === 0) return;
+    setSelectedMemberIndex((prev) => prev >= allTeamMembers.length - 1 ? 0 : prev + 1);
+  }, [allTeamMembers.length]);
+
   // Freeze tip and initial terminal width at mount time (for Static welcome)
   const [frozenTip] = useState(() => TIPS[Math.floor(Math.random() * TIPS.length)]!);
 
   const hasInitialPrompt = Boolean(initialPrompt?.trim());
   const hasHilReview = Boolean(shell.hilReview);
-  const foregroundSurface = resolveCliForegroundSurface({
-    hasHilReview,
-    hasConversation: shell.hasConversation,
-  });
 
   // 输入监听挂在组装层；展示组件不直接感知键盘事件。
   usePromptInput({
@@ -158,6 +221,8 @@ export function CodaraCliApp(props: CodaraCliAppProps): React.JSX.Element {
     },
     onToggleTaskPanel: shell.toggleTaskPanel,
     onToggleExpand: shell.toggleExpand,
+    onSelectMemberUp: handleSelectMemberUp,
+    onSelectMemberDown: handleSelectMemberDown,
     onTab: () => {
       if (completion.completion.visible) {
         const accepted = completion.accept();
@@ -231,27 +296,42 @@ export function CodaraCliApp(props: CodaraCliAppProps): React.JSX.Element {
         {/* 动态区 */}
         {activeItems.length > 0 && <ActiveTranscript items={activeItems} expandedAll={shell.expandedAll} />}
 
-        {/* Task Panel — ActiveTranscript 和 ActivityLine 之间 */}
-        {shell.hasConversation && activeTasks.hasActiveTasks && shell.taskPanelVisible && foregroundSurface !== 'hil' && (
-          <TaskPanel
-            tasks={activeTasks.tasks}
-            runningCount={activeTasks.runningCount}
-            doneCount={activeTasks.doneCount}
-            errorCount={activeTasks.errorCount}
-          />
+        {/* Unified Task/Team Panel (Ctrl+T toggle) */}
+        {shell.hasConversation && shell.taskPanelVisible && (
+          <>
+            {activeTasks.hasActiveTasks && (
+              <TaskPanel
+                tasks={activeTasks.tasks}
+                runningCount={activeTasks.runningCount}
+                doneCount={activeTasks.doneCount}
+                errorCount={activeTasks.errorCount}
+              />
+            )}
+            {activeTeams.hasActiveTeams && (
+              <TeamPanel
+                teams={activeTeams.activeTeams}
+                runningCount={activeTeams.runningCount}
+                doneCount={activeTeams.doneCount}
+                errorCount={activeTeams.errorCount}
+                teamMembers={teamMembers}
+              />
+            )}
+          </>
         )}
 
-        {/* HIL 或正常交互区 — 始终渲染 */}
-        {foregroundSurface === 'hil' && shell.hilReview ? (
-          <HilPanel review={shell.hilReview} />
-        ) : (
-          <>
-            <ActivityLine
-              runState={shell.runState}
-              activeTurn={shell.activeTurn}
-              latestRuntimeEvent={shell.latestRuntimeEvent}
-              sessionMetadata={shell.sessionState.metadata}
-            />
+        {/* HIL 内联显示在对话流下方（不替换整个界面） */}
+        {shell.hilReview && <HilPanel review={shell.hilReview} />}
+
+        {/* Activity / Prompt / Status — 始终渲染 */}
+        <>
+            {!shell.hilReview && (
+              <ActivityLine
+                runState={shell.runState}
+                activeTurn={shell.activeTurn}
+                latestRuntimeEvent={shell.latestRuntimeEvent}
+                sessionMetadata={shell.sessionState.metadata}
+              />
+            )}
             {sessionPicker.state.visible && (
               <SessionPicker
                 sessions={sessionPicker.state.sessions}
@@ -266,13 +346,23 @@ export function CodaraCliApp(props: CodaraCliAppProps): React.JSX.Element {
             {shell.commandOutput && (
               <CommandOutputPanel content={shell.commandOutput.content} commandName={shell.commandOutput.commandName} scrollOffset={shell.commandOutput.scrollOffset} />
             )}
-            {!shell.commandOutput && !completion.completion.visible && (
-              <PromptFrame
-                composer={shell.composer}
-                cursorActivityVersion={shell.composerActivityVersion}
-                isRunning={shell.runState.status === 'running'}
-                placeholder={shell.hasConversation ? 'Reply to Codara...' : 'Ask Codara...'}
-              />
+            {!shell.commandOutput && !completion.completion.visible && !shell.hilReview && (
+              <Box>
+                <Box flexGrow={1}>
+                  <PromptFrame
+                    composer={shell.composer}
+                    cursorActivityVersion={shell.composerActivityVersion}
+                    isRunning={shell.runState.status === 'running'}
+                    placeholder={shell.hasConversation ? 'Reply to Codara...' : 'Ask Codara...'}
+                    terminalWidth={terminalWidth}
+                  />
+                </Box>
+                {selectedMemberName && activeTeams.hasActiveTeams && (
+                  <Box>
+                    <Text color="green" bold>@{selectedMemberName}</Text>
+                  </Box>
+                )}
+              </Box>
             )}
             <CompletionMenu completion={completion.completion} />
             {shell.hasConversation && (
@@ -284,11 +374,11 @@ export function CodaraCliApp(props: CodaraCliAppProps): React.JSX.Element {
                 runState={shell.runState}
                 latestRuntimeEvent={shell.latestRuntimeEvent}
                 mcpStatus={mcpStatus}
+                activeTeamCount={activeTeams.runningCount > 0 ? activeTeams.runningCount : undefined}
               />
             )}
-            <Footer layoutMode={layoutMode} hasCommandOutput={Boolean(shell.commandOutput)} />
-          </>
-        )}
+            <Footer layoutMode={layoutMode} hasCommandOutput={Boolean(shell.commandOutput)} hasActiveTeams={activeTeams.runningCount > 0} />
+        </>
       </Box>
   );
 }

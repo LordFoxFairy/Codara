@@ -11,6 +11,7 @@ import { ConfigPage } from "./pages/ConfigPage";
 import { DebugPage } from "./pages/DebugPage";
 import { LogsPage } from "./pages/LogsPage";
 import { DocsPage } from "./pages/DocsPage";
+import { TeamsPage } from "./pages/TeamsPage";
 import { useCodara } from "./hooks/useCodara";
 import { useSessions } from "./hooks/useSessions";
 import { useStatus } from "./hooks/useStatus";
@@ -25,6 +26,7 @@ const PAGE_META: Record<NavPage, { title: string; subtitle: string }> = {
   debug: { title: "Debug", subtitle: "Command runner and runtime inspector." },
   logs: { title: "Logs", subtitle: "Live runtime event stream." },
   docs: { title: "Documentation", subtitle: "Quick reference for Codara features." },
+  teams: { title: "Agent Teams", subtitle: "Multi-agent collaboration — teams, members, and job boards." },
 };
 
 /* ── App ─────────────────────────────────────────────────── */
@@ -200,6 +202,7 @@ export function App() {
           {activePage === "debug" && <DebugPage />}
           {activePage === "logs" && <LogsPage />}
           {activePage === "docs" && <DocsPage />}
+          {activePage === "teams" && <TeamsPage />}
         </main>
       </div>
     </div>

@@ -1,5 +1,5 @@
 import {useCallback, useEffect, useMemo, useRef, useState} from 'react';
-import type {CodaraCommandSpec} from '@capability/command/types';
+import type {CodaraCommandSpec} from '@capability/command/runtime/types';
 
 export interface CompletionItem {
   name: string;

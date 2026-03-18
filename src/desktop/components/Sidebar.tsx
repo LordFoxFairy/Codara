@@ -8,12 +8,13 @@ import {
   ScrollText,
   FileText,
   Hash,
+  Users,
 } from "lucide-react";
 import type { Session } from "../types";
 
 /* ── Types ──────────────────────────────────────────────────────── */
 
-type NavPage = "chat" | "sessions" | "skills" | "config" | "debug" | "logs" | "docs";
+type NavPage = "chat" | "sessions" | "skills" | "config" | "debug" | "logs" | "docs" | "teams";
 
 interface SidebarProps {
   sessions: Session[];
@@ -139,6 +140,7 @@ function CollapsedSidebar({
       {/* Bottom nav icons */}
       <div className="mt-auto flex flex-col items-center gap-0.5 pt-2">
         <IconBtn icon={FolderClock} active={activePage === "sessions"} onClick={() => onNavigate("sessions")} title="Sessions" />
+        <IconBtn icon={Users} active={activePage === "teams"} onClick={() => onNavigate("teams")} title="Teams" />
         <IconBtn icon={Zap} active={activePage === "skills"} onClick={() => onNavigate("skills")} title="Skills" />
         <IconBtn icon={Settings} active={activePage === "config"} onClick={() => onNavigate("config")} title="Config" />
       </div>
@@ -281,6 +283,12 @@ export function Sidebar({
           label="Sessions"
           active={activePage === "sessions"}
           onClick={() => onNavigate("sessions")}
+        />
+        <NavItem
+          icon={Users}
+          label="Teams"
+          active={activePage === "teams"}
+          onClick={() => onNavigate("teams")}
         />
         <NavItem
           icon={Zap}

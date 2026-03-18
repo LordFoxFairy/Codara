@@ -2,7 +2,7 @@ import {randomUUID} from 'node:crypto';
 import {AIMessageChunk} from '@langchain/core/messages';
 import {createCodaraRuntime} from '../codara/facade';
 import type {Codara} from '../codara/facade';
-import type {CodaraRuntimeEvent} from '../engine/session/runtime-events';
+import type {CodaraRuntimeEvent} from '../engine/events/runtime-events';
 import type {AgentStreamOutput, AgentStreamCustomChunk} from '../engine/agent/models/agent';
 import {TypedEmitter} from './event-emitter';
 import type {BusClientInfo, BusConfig, BusEvent, BusRequest, ClientId} from './types';

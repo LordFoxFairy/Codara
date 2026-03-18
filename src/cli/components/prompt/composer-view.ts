@@ -1,6 +1,9 @@
 import type {CliComposerState} from '../../composer/types';
 
-export const COMPOSER_VIEWPORT_LINE_LIMIT = 4;
+export const COMPOSER_VIEWPORT_LINE_LIMIT = 6;
+
+/** Prefix width: "> " or "  " = 2 chars. */
+const PREFIX_WIDTH = 2;
 
 export interface ComposerRenderLine {
   beforeCursor: string;
@@ -15,7 +18,34 @@ export interface ComposerViewport {
   hasOverflowBelow: boolean;
 }
 
-function buildComposerLines(composer: CliComposerState, placeholder?: string): {lines: ComposerRenderLine[]; cursorLineIndex: number} {
+/**
+ * Soft-wrap a single logical line into multiple visual lines.
+ * Returns an array of substrings, each fitting within `width`.
+ */
+function softWrapLine(line: string, width: number): string[] {
+  if (width <= 0 || line.length <= width) {
+    return [line];
+  }
+
+  const result: string[] = [];
+  let remaining = line;
+  while (remaining.length > width) {
+    result.push(remaining.slice(0, width));
+    remaining = remaining.slice(width);
+  }
+  result.push(remaining);
+  return result;
+}
+
+/**
+ * Build visual lines from the composer state with soft-wrapping.
+ * Each logical line (separated by \n) is soft-wrapped at `wrapWidth`.
+ */
+function buildComposerLines(
+  composer: CliComposerState,
+  wrapWidth: number,
+  placeholder?: string,
+): {lines: ComposerRenderLine[]; cursorLineIndex: number} {
   if (!composer.text) {
     return {
       lines: [
@@ -31,37 +61,63 @@ function buildComposerLines(composer: CliComposerState, placeholder?: string): {
   }
 
   const beforeCursor = composer.text.slice(0, composer.cursorOffset);
-  const sourceLines = composer.text.split('\n');
+  const logicalLines = composer.text.split('\n');
   const beforeLines = beforeCursor.split('\n');
-  const cursorLineIndex = beforeLines.length - 1;
-  const cursorColumn = beforeLines[cursorLineIndex]?.length ?? 0;
+  const logicalCursorLine = beforeLines.length - 1;
+  const cursorColumn = beforeLines[logicalCursorLine]?.length ?? 0;
 
-  return {
-    lines: sourceLines.map((line, index) => {
-      if (index < cursorLineIndex) {
-        return {
-          beforeCursor: line,
-          afterCursor: '',
-          isCursorLine: false,
-        };
+  const renderLines: ComposerRenderLine[] = [];
+  let visualCursorLine = -1;
+
+  for (let i = 0; i < logicalLines.length; i++) {
+    const logicalLine = logicalLines[i]!;
+
+    if (i === logicalCursorLine) {
+      // This logical line contains the cursor — wrap it with cursor position tracking
+      const wrappedFull = softWrapLine(logicalLine, wrapWidth);
+      let charsSeen = 0;
+
+      for (let w = 0; w < wrappedFull.length; w++) {
+        const segment = wrappedFull[w]!;
+        const segmentStart = charsSeen;
+        const segmentEnd = charsSeen + segment.length;
+
+        if (cursorColumn >= segmentStart && cursorColumn <= segmentEnd) {
+          // Cursor is on this visual line
+          const localOffset = cursorColumn - segmentStart;
+          visualCursorLine = renderLines.length;
+          renderLines.push({
+            beforeCursor: segment.slice(0, localOffset),
+            afterCursor: segment.slice(localOffset),
+            isCursorLine: true,
+          });
+        } else {
+          renderLines.push({
+            beforeCursor: segment,
+            afterCursor: '',
+            isCursorLine: false,
+          });
+        }
+        charsSeen = segmentEnd;
       }
-
-      if (index > cursorLineIndex) {
-        return {
-          beforeCursor: '',
-          afterCursor: line,
+    } else {
+      // Non-cursor line — simple wrap
+      const wrapped = softWrapLine(logicalLine, wrapWidth);
+      for (const segment of wrapped) {
+        renderLines.push({
+          beforeCursor: i < logicalCursorLine ? segment : '',
+          afterCursor: i < logicalCursorLine ? '' : segment,
           isCursorLine: false,
-        };
+        });
       }
+    }
+  }
 
-      return {
-        beforeCursor: line.slice(0, cursorColumn),
-        afterCursor: line.slice(cursorColumn),
-        isCursorLine: true,
-      };
-    }),
-    cursorLineIndex,
-  };
+  if (visualCursorLine < 0) {
+    visualCursorLine = 0;
+  }
+
+  return {lines: renderLines, cursorLineIndex: visualCursorLine};
 }
 
 function resolveViewportStart(cursorLineIndex: number, lineCount: number, limit: number): number {
@@ -76,9 +132,12 @@ function resolveViewportStart(cursorLineIndex: number, lineCount: number, limit:
 export function buildComposerViewport(
   composer: CliComposerState,
   lineLimit = COMPOSER_VIEWPORT_LINE_LIMIT,
-  placeholder?: string
+  placeholder?: string,
+  terminalWidth?: number,
 ): ComposerViewport {
-  const {lines, cursorLineIndex} = buildComposerLines(composer, placeholder);
+  const availableWidth = (terminalWidth ?? 120) - PREFIX_WIDTH - 2; // 2 for padding
+  const wrapWidth = Math.max(20, availableWidth);
+  const {lines, cursorLineIndex} = buildComposerLines(composer, wrapWidth, placeholder);
   const viewportStart = resolveViewportStart(cursorLineIndex, lines.length, lineLimit);
   const viewportEnd = Math.min(lines.length, viewportStart + lineLimit);
 

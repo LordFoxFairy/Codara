@@ -93,58 +93,94 @@ export async function runTools(
   toolCalls: ToolCall[],
   stream?: AgentStreamWriter,
 ): Promise<void> {
-  for (let toolIndex = 0; toolIndex < toolCalls.length; toolIndex += 1) {
-    const toolCall = toolCalls[toolIndex] as ToolCall;
-    const toolCallId = resolveToolCallId(toolCall, toolIndex);
-    const tool = runtime.tools.get(toolCall.name);
-    const baseExecution = {
-      ...readExecutionMetadata(context),
-      requestId: `${readExecutionMetadata(context).requestId}:tool:${toolCallId}`,
-      toolIndex,
-      toolCallId,
-    };
-
-    const toolMessage = await runtime.pipeline.wrapToolCall({
-      ...context,
-      execution: baseExecution,
-      toolCall,
-      toolIndex,
-      tool,
-    }, (request?: ToolCallContext) => {
-      const nextCall = request?.toolCall ?? toolCall;
-      const nextIndex = request?.toolIndex ?? toolIndex;
-      const nextToolCallId = resolveToolCallId(nextCall, nextIndex);
-      return executeToolCall(
-        nextCall,
-        nextToolCallId,
-        request?.tool ?? runtime.tools.get(nextCall.name),
-        runtime.handleToolErrors,
-        run.state,
-        {
-          ...(request?.runtime ?? context.runtime),
-          execution: request?.execution ?? {...baseExecution, toolIndex: nextIndex, toolCallId: nextToolCallId},
-        },
-        (values) => runtime.pipeline.normalizeValues(values ?? {}),
-      );
-    });
-
-    run.state.messages.push(toolMessage);
-    if (stream) {
-      await stream.emitToolUpdate(toolMessage);
-      await stream.emitValues(run.state.messages);
-      const payload = parseHILToolMessagePayload(toolMessage.content);
-      if (payload) {
-        const execution = readExecutionMetadata(context);
-        await stream.emitCustom({runId: execution.runId, turn: execution.turn, payload});
-      }
-    }
-
-    const pausePayload = parseHILToolMessagePayload(toolMessage.content);
-    if (pausePayload?.type === 'hil_pause') {
-      run.state.pendingPause = pausePayload.request;
-      return;
+  // Partition into concurrent-safe Task calls and sequential other calls.
+  // Task tool calls are independent subagents — safe to run in parallel.
+  // All other tools run sequentially (may depend on each other).
+  const taskIndices: number[] = [];
+  const otherIndices: number[] = [];
+  for (let i = 0; i < toolCalls.length; i++) {
+    if (toolCalls[i]!.name === 'Task') {
+      taskIndices.push(i);
+    } else {
+      otherIndices.push(i);
     }
   }
+
+  // Run non-Task tools first (sequentially)
+  for (const toolIndex of otherIndices) {
+    const result = await runSingleTool(run, runtime, context, toolCalls, toolIndex, stream);
+    if (result === 'paused') return;
+  }
+
+  // Run Task tools concurrently
+  if (taskIndices.length > 0) {
+    const results = await Promise.all(
+      taskIndices.map((toolIndex) => runSingleTool(run, runtime, context, toolCalls, toolIndex, stream)),
+    );
+    if (results.includes('paused')) return;
+  }
+}
+
+async function runSingleTool(
+  run: AgentRunContext,
+  runtime: AgentRuntime,
+  context: BaseExecutionContext,
+  toolCalls: ToolCall[],
+  toolIndex: number,
+  stream?: AgentStreamWriter,
+): Promise<'ok' | 'paused'> {
+  const toolCall = toolCalls[toolIndex] as ToolCall;
+  const toolCallId = resolveToolCallId(toolCall, toolIndex);
+  const tool = runtime.tools.get(toolCall.name);
+  const baseExecution = {
+    ...readExecutionMetadata(context),
+    requestId: `${readExecutionMetadata(context).requestId}:tool:${toolCallId}`,
+    toolIndex,
+    toolCallId,
+  };
+
+  const toolMessage = await runtime.pipeline.wrapToolCall({
+    ...context,
+    execution: baseExecution,
+    toolCall,
+    toolIndex,
+    tool,
+  }, (request?: ToolCallContext) => {
+    const nextCall = request?.toolCall ?? toolCall;
+    const nextIndex = request?.toolIndex ?? toolIndex;
+    const nextToolCallId = resolveToolCallId(nextCall, nextIndex);
+    return executeToolCall(
+      nextCall,
+      nextToolCallId,
+      request?.tool ?? runtime.tools.get(nextCall.name),
+      runtime.handleToolErrors,
+      run.state,
+      {
+        ...(request?.runtime ?? context.runtime),
+        execution: request?.execution ?? {...baseExecution, toolIndex: nextIndex, toolCallId: nextToolCallId},
+      },
+      (values) => runtime.pipeline.normalizeValues(values ?? {}),
+    );
+  });
+
+  run.state.messages.push(toolMessage);
+  if (stream) {
+    await stream.emitToolUpdate(toolMessage);
+    await stream.emitValues(run.state.messages);
+    const payload = parseHILToolMessagePayload(toolMessage.content);
+    if (payload) {
+      const execution = readExecutionMetadata(context);
+      await stream.emitCustom({runId: execution.runId, turn: execution.turn, payload});
+    }
+  }
+
+  const pausePayload = parseHILToolMessagePayload(toolMessage.content);
+  if (pausePayload?.type === 'hil_pause') {
+    run.state.pendingPause = pausePayload.request;
+    return 'paused';
+  }
+
+  return 'ok';
 }
 
 export async function finishTurn(

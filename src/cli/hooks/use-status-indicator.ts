@@ -41,9 +41,19 @@ export function useStatusIndicator(input: StatusIndicatorInput): StatusIndicator
   return describeStatusIndicator(input, input.runState.status === 'running' ? frame : 0);
 }
 
+function truncateLabel(label: string | undefined, maxLength = 60): string | undefined {
+  if (!label) return undefined;
+  // Take first line only, strip "Delegating " prefix
+  let text = label.split('\n')[0]!.trim();
+  if (text.startsWith('Delegating ')) {
+    text = text.slice('Delegating '.length);
+  }
+  return text.length > maxLength ? `${text.slice(0, maxLength - 1)}…` : text;
+}
+
 export function describeStatusIndicator(input: StatusIndicatorInput, frame = 0): StatusIndicatorModel {
   const {runState, activeTurn, latestRuntimeEvent} = input;
-  const activeEventLabel = latestRuntimeEvent?.label?.trim();
+  const activeEventLabel = truncateLabel(latestRuntimeEvent?.label);
 
   switch (runState.status) {
     case 'running':
@@ -64,9 +74,14 @@ export function describeStatusIndicator(input: StatusIndicatorInput, frame = 0):
       }
 
       if (activeEventLabel) {
+        // Status bar only shows short status word, not the full label
+        const isTask = latestRuntimeEvent?.kind === 'task';
+        const isTool = latestRuntimeEvent?.kind === 'tool';
+        const statusWord = isTask ? 'delegating' : isTool ? activeEventLabel : activeEventLabel;
+        const shortStatus = statusWord.length > 30 ? `${statusWord.slice(0, 27)}…` : statusWord;
         return {
           banner: buildSpinnerBanner(activeEventLabel, frame),
-          status: activeEventLabel,
+          status: shortStatus,
           color: latestRuntimeEvent?.kind === 'command' || latestRuntimeEvent?.kind === 'summary'
             ? theme.status.paused
             : theme.status.running,
@@ -86,14 +101,14 @@ export function describeStatusIndicator(input: StatusIndicatorInput, frame = 0):
         status: 'Thinking',
         color: theme.status.thinking,
       };
-    case 'paused':
+    case 'paused': {
+      const pausedLabel = truncateLabel(latestRuntimeEvent?.label);
       return {
-        banner: latestRuntimeEvent?.label?.trim()
-          ? `⏺ ${latestRuntimeEvent.label.trim()}`
-          : '⏺ Waiting for input',
-        status: latestRuntimeEvent?.label?.trim() || 'Waiting',
+        banner: pausedLabel ? `⏺ ${pausedLabel}` : '⏺ Waiting for input',
+        status: pausedLabel || 'Waiting',
         color: theme.status.paused,
       };
+    }
     case 'done':
       return {
         status: 'Ready',

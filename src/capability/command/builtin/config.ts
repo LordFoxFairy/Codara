@@ -1,5 +1,5 @@
 import path from 'node:path';
-import type {CodaraCommandDefinition} from '@capability/command/types';
+import type {CodaraCommandDefinition} from '@capability/command/runtime/types';
 
 const BUILTIN_SOURCE = {type: 'builtin'} as const;
 

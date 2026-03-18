@@ -9,6 +9,7 @@ interface PromptFrameProps {
   cursorActivityVersion: number;
   isRunning: boolean;
   placeholder?: string;
+  terminalWidth?: number;
 }
 
 interface CursorRenderParts {
@@ -40,9 +41,12 @@ export function PromptFrame({
   cursorActivityVersion,
   isRunning,
   placeholder,
+  terminalWidth,
 }: PromptFrameProps): React.JSX.Element {
   const showCursor = useBlinkingCursor(!isRunning, cursorActivityVersion);
-  const viewport = buildComposerViewport(composer, undefined, placeholder);
+  const viewport = buildComposerViewport(composer, undefined, placeholder, terminalWidth);
+  const hasText = Boolean(composer.text.trim());
+  const isMultiLine = composer.text.includes('\n') || viewport.lines.length > 1;
 
   return (
     <Box flexDirection="column">
@@ -56,19 +60,24 @@ export function PromptFrame({
             <Text color="greenBright" bold>{index === 0 ? '> ' : '  '}</Text>
             <Box flexGrow={1} flexShrink={1}>
               {line.isCursorLine ? (
-                <Text wrap="truncate-end" dimColor={renderParts.dimColor}>
+                <Text dimColor={renderParts.dimColor}>
                   {renderParts.beforeCursor}
                   {showCursor ? <Text inverse>{renderParts.cursorCell}</Text> : renderParts.cursorCell}
                   {renderParts.afterCursor}
                 </Text>
               ) : (
-                <Text wrap="truncate-end">{plainText}</Text>
+                <Text>{plainText}</Text>
               )}
             </Box>
           </Box>
         );
       })}
       {viewport.hasOverflowBelow ? <Text dimColor>  ...</Text> : null}
+      {!isRunning && hasText && !isMultiLine && (
+        <Box justifyContent="flex-end">
+          <Text dimColor>shift+enter for newline  ·  enter to send</Text>
+        </Box>
+      )}
     </Box>
   );
 }

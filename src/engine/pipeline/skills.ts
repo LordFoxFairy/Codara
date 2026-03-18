@@ -6,14 +6,16 @@ import {
   type ModelCallContext
 } from '@engine/pipeline/types'
 import {
-  SKILLS_SYSTEM_PROMPT,
-  formatSkillsList,
-  formatSkillsLocations,
-  readSkillsRuntimeData,
   type SkillsRuntimeData,
   type SkillMetadata,
   type SkillStore,
-} from '@infra/context/skill-contracts'
+} from '@infra/context/skills/contracts'
+import {readSkillsRuntimeData} from '@infra/context/skills/runtime-shared'
+import {
+  SKILLS_SYSTEM_PROMPT,
+  formatSkillsList,
+  formatSkillsLocations,
+} from '@infra/context/prompts/skills-system-prompt'
 
 export type SkillsRuntimeDataLoader = (store: SkillStore, subagentRoots: string[]) => Promise<SkillsRuntimeData>
 
@@ -131,9 +133,18 @@ function createSkillTool(getRuntime: () => SkillsRuntimeData | undefined) {
 
 function findSkill(discovered: SkillMetadata[], name: string): SkillMetadata | undefined {
   const lower = name.toLowerCase()
-  return discovered.find((s) =>
+  // Exact match on full name, command name, or alias
+  const exact = discovered.find((s) =>
     s.name === lower
     || s.command?.name === lower
     || s.command?.aliases?.includes(lower)
   )
+  if (exact) return exact
+
+  // Fuzzy: bare name matches the part after ":" in namespaced skills
+  // e.g. "brainstorming" matches "superworkers:brainstorming"
+  return discovered.find((s) => {
+    const colonIdx = s.name.indexOf(':')
+    return colonIdx >= 0 && s.name.slice(colonIdx + 1) === lower
+  })
 }

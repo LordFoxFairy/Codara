@@ -7,17 +7,21 @@ import {
   type AgentRuntimeContext,
   type AgentContextPreparer,
   type AgentRuntimeValues,
-  type CreateAgentOptions,
   type PauseRequest,
   type ResumePayload,
   type ToolErrorHandler,
 } from '@engine/agent/models/agent';
-import {createAgent} from '@engine/agent/run/agent-loop';
-import type {BaseMiddleware} from '@engine/pipeline/types';
+import type {AgentResult, AgentStreamOutput} from '@engine/agent/models/agent';
+import type {BootstrapAgentOptions} from '@engine/agent/bootstrap';
+import {bootstrapAgent, resolveModel} from '@engine/agent/bootstrap';
+import {createMiddleware, type BaseMiddleware} from '@engine/pipeline/types';
+import type {ChildToolActivityCallback} from '@engine/events/runtime-events';
 import type {HILToolMessagePayload} from '@engine/pipeline/hil';
 import type {ExecutionContextMetadata} from '@engine/pipeline/types';
-import type {AgentCheckpointer} from '@infra/checkpoint/agent';
+import type {AgentCheckpointer} from '@engine/checkpoint/agent';
+import type {AgentLifecycleHooks} from '@engine/hook/types';
 import {deepClone} from '@shared/clone';
+import {formatToolSummary} from '@shared/tool-display';
 import {readLatestAssistantText} from '@shared/messages';
 import type {DelegatedAgentResult} from '@shared/delegation-result';
 export {readDelegatedAgentResult, type DelegatedAgentResult} from '@shared/delegation-result';
@@ -68,6 +72,9 @@ export interface DelegatedAgentOptions {
   systemMessages?: string[];
   systemPrompt?: string;
   blockedToolNames?: string[];
+  lifecycle?: AgentLifecycleHooks;
+  /** Optional callback for forwarding child tool activity to parent runtime events. */
+  onChildToolActivity?: ChildToolActivityCallback;
 }
 
 interface DelegatedPauseMetadata {
@@ -118,7 +125,7 @@ interface ParentPauseContext {
   maxTurns?: number;
 }
 
-export const MAX_DELEGATION_DEPTH = 5;
+export const MAX_DELEGATION_DEPTH = 1;
 
 /**
  * 校验委托深度是否在允许范围内。
@@ -143,6 +150,22 @@ export async function runDelegatedAgent(
   assertDelegationDepth(input.delegationDepth);
   const childOptions = await buildDelegatedChildOptions(options, input);
   const result = await runDelegatedChild(childOptions, input);
+
+  // SubagentStop hook — best-effort notification after delegated agent completes
+  if (options.lifecycle && !result.state.pendingPause) {
+    try {
+      await options.lifecycle.onSubagentStop({
+        hookEvent: 'SubagentStop',
+        sessionId: input.parentExecution.sessionId,
+        agentName: input.subagentType ?? 'general-purpose',
+        taskId: result.state.sessionId,
+        reason: result.reason,
+        timestamp: new Date().toISOString(),
+      });
+    } catch {
+      // Fail-open: SubagentStop hooks are best-effort
+    }
+  }
 
   if (result.state.pendingPause) {
     return createDelegatedPauseToolMessage(result.state.pendingPause, {
@@ -213,11 +236,17 @@ function createDelegatedAgentInput(prompt: string): BaseMessage[] {
 async function buildDelegatedChildOptions(
   options: DelegatedAgentOptions,
   input: DelegatedChildInput,
-): Promise<CreateAgentOptions> {
+): Promise<BootstrapAgentOptions> {
   const mergedContext = mergeRuntimeContext(options.context, input.profileContext);
+  const baseMiddleware = [...(input.profileMiddleware ?? options.middleware ?? [])];
+
+  // Inject activity forward middleware if parent provided a callback
+  if (options.onChildToolActivity) {
+    baseMiddleware.push(createActivityForwardMiddleware(options.onChildToolActivity));
+  }
 
   return {
-    model: await resolveDelegatedModel(input.profileModel ?? options.model),
+    model: await resolveModel(input.profileModel ?? options.model),
     agentType: 'subagent',
     ...(mergeDelegatedSystemMessages(options.systemMessages, input.profileSystemPrompt, options.systemPrompt).length > 0
       ? {systemMessage: mergeDelegatedSystemMessages(options.systemMessages, input.profileSystemPrompt, options.systemPrompt)}
@@ -227,7 +256,7 @@ async function buildDelegatedChildOptions(
       input.toolName,
       options.blockedToolNames,
     ),
-    ...(input.profileMiddleware ?? options.middleware?.length ? {middleware: [...(input.profileMiddleware ?? options.middleware ?? [])]} : {}),
+    ...(baseMiddleware.length > 0 ? {middleware: baseMiddleware} : {}),
     handleToolErrors: options.handleToolErrors,
     checkpointer: options.checkpointer,
     inputBudget: options.inputBudget,
@@ -238,19 +267,19 @@ async function buildDelegatedChildOptions(
 }
 
 async function runDelegatedChild(
-  childOptions: CreateAgentOptions,
+  childOptions: BootstrapAgentOptions,
   input: DelegatedChildInput,
 ) {
   if (input.resume) {
     return resumeDelegatedChild(childOptions, input.resume, input.maxTurns);
   }
 
-  const child = createAgent(childOptions);
+  const child = await bootstrapAgent(childOptions);
   const messages = createDelegatedAgentInput(input.prompt);
-  return child.invoke(
+  return consumeAgentStream(child.stream(
     {messages},
     {...(input.maxTurns ? {recursionLimit: input.maxTurns} : {})},
-  );
+  ));
 }
 
 function resolveDelegatedAgentTools(
@@ -263,21 +292,36 @@ function resolveDelegatedAgentTools(
 }
 
 async function resumeDelegatedChild(
-  childOptions: CreateAgentOptions,
+  childOptions: BootstrapAgentOptions,
   resume: DelegatedResumeState,
   maxTurns: number | undefined,
 ) {
   const checkpoint = await childOptions.checkpointer?.getLatest(resume.childSessionId);
-  const child = createAgent({
+  const child = await bootstrapAgent({
     ...childOptions,
     sessionId: resume.childSessionId,
     ...(checkpoint ? {checkpoint} : {}),
   });
 
-  return child.resume(
+  return consumeAgentStream(child.resumeStream(
     resume.payload,
     {resumeMode: 'tool', ...(maxTurns ? {recursionLimit: maxTurns} : {})},
-  );
+  ));
+}
+
+/**
+ * Drain an AsyncGenerator produced by agent.stream() / agent.resumeStream(),
+ * discarding intermediate chunks (middleware already handles them in real-time),
+ * and return the final AgentResult.
+ */
+async function consumeAgentStream(
+  gen: AsyncGenerator<AgentStreamOutput, AgentResult, void>,
+): Promise<AgentResult> {
+  let result: IteratorResult<AgentStreamOutput, AgentResult>;
+  do {
+    result = await gen.next();
+  } while (!result.done);
+  return result.value;
 }
 
 function mergeSystemPrompt(profileSystemPrompt: string | undefined, toolSystemPrompt: string | undefined): string | undefined {
@@ -290,9 +334,10 @@ function mergeDelegatedSystemMessages(
   profileSystemPrompt: string | undefined,
   toolSystemPrompt: string | undefined,
 ): string[] {
+  const merged = mergeSystemPrompt(profileSystemPrompt, toolSystemPrompt);
   return [
     ...(inheritedMessages ?? []),
-    ...(mergeSystemPrompt(profileSystemPrompt, toolSystemPrompt) ? [mergeSystemPrompt(profileSystemPrompt, toolSystemPrompt) as string] : []),
+    ...(merged ? [merged] : []),
   ];
 }
 
@@ -310,20 +355,13 @@ function mergeRuntimeContext(
   };
 }
 
-async function resolveDelegatedModel(model: DelegatedAgentModelResolver): Promise<BaseChatModel> {
-  if (typeof model === 'function') {
-    return await model();
-  }
-
-  return await model;
-}
-
 function isDelegationTool(tool: StructuredToolInterface | undefined): boolean {
   if (!tool) {
     return false;
   }
 
-  return (tool as unknown as Record<PropertyKey, unknown>)[DELEGATION_TOOL] === true;
+  const obj = tool as object;
+  return DELEGATION_TOOL in obj && (obj as Record<PropertyKey, unknown>)[DELEGATION_TOOL] === true;
 }
 
 function createDelegatedAgentResult(
@@ -512,3 +550,33 @@ function readParentExecution(value: unknown): ExecutionContextMetadata & {
 
   return parsed.data;
 }
+
+/**
+ * Lightweight middleware that forwards child tool call activity to the parent via callback.
+ * Injected into delegated child agents so the parent transcript can display real-time sub-tool activity.
+ */
+function createActivityForwardMiddleware(callback: ChildToolActivityCallback): BaseMiddleware {
+  return createMiddleware({
+    name: 'ActivityForwardMiddleware',
+    wrapToolCall: async (context, handler) => {
+      const toolName = context.toolCall.name ?? 'tool';
+      const args = context.toolCall.args;
+      const summary = formatChildToolSummary(toolName, args);
+      const label = summary ? `${toolName}(${summary})` : toolName;
+      try {
+        callback({toolName, label});
+      } catch { /* best-effort — don't break child execution */ }
+      return handler(context);
+    },
+  });
+}
+
+function formatChildToolSummary(toolName: string, args: unknown): string | undefined {
+  return truncateStr(formatToolSummary(toolName, args));
+}
+
+function truncateStr(value: string | undefined, max = 60): string | undefined {
+  if (!value) return undefined;
+  return value.length > max ? `${value.slice(0, max - 1)}…` : value;
+}
+

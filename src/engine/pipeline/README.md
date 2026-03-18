@@ -113,13 +113,24 @@ Codara 默认 runtime 只把下面几类模块当成一等 middleware stage：
 - `SummaryMiddleware`
 - `HumanInTheLoopMiddleware`
 
-其中：
+补充说明：
 
-- `GuidelinesMiddleware` — wrapToolCall 拦截文件工具，按需注入子目录 AGENTS.md/codara.md
-- `SkillsMiddleware` — 技能上下文注入
-- `PermissionMiddleware` — deny→ask→allow 权限策略
-- `TodoListMiddleware` — write_todos 工具
-- `ToolHooksMiddleware` — 生命周期 hooks 集成
+- `PathInstructionsMiddleware`
+  - hook scope: `wrapToolCall`
+  - role: 按路径动态投影 `AGENTS.md` / `codara.md` 到当前 turn
+  - owner: context bridge，不是 permission/security policy
+- `SkillsMiddleware`
+  - hook scope: `beforeModel`
+  - role: 暴露 `Skill` 工具并读取已准备好的 skill snapshot
+- `PermissionMiddleware`
+  - hook scope: `wrapToolCall`
+  - role: deny→ask→allow 权限策略
+- `TodoListMiddleware`
+  - hook scope: tool exposure / `wrapToolCall`
+  - role: `write_todos` 工具支持
+- `ToolHooksMiddleware`
+  - hook scope: `wrapToolCall`
+  - role: hook 生命周期桥接
 
 ### 默认主链职责矩阵
 
@@ -155,8 +166,8 @@ source-driven system layers 现在走另一条链：
 
 因此：
 
-- `GuidelinesMiddleware` — wrapToolCall 阶段按需加载子目录指令文件
-- `SkillsMiddleware` — beforeModel 阶段注入技能上下文
+- `PathInstructionsMiddleware` — `wrapToolCall` 阶段按需投影子目录指令文件
+- `SkillsMiddleware` — `beforeModel` 阶段读取已准备好的技能快照并暴露 `Skill` 工具
 
 ## 典型模式
 
@@ -293,7 +304,7 @@ src/engine/pipeline/
 ├── index.ts
 ├── types.ts
 ├── pipeline.ts
-├── guidelines.ts
+├── path-instructions.ts
 ├── skills.ts
 ├── logging.ts
 ├── budget.ts

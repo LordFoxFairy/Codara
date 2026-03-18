@@ -2,7 +2,7 @@ import {describe, expect, it} from 'bun:test';
 import {mkdir, mkdtemp, rm, writeFile} from 'node:fs/promises';
 import os from 'node:os';
 import path from 'node:path';
-import {filterToolsByReferences} from '@capability/tool';
+import {filterToolsByReferences} from '@engine/tool';
 import {tool} from '@langchain/core/tools';
 import {z} from 'zod';
 import {loadSkillsRuntimeData, resolveSubagentDefinition} from '@capability/skill';

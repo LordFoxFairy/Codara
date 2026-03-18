@@ -18,7 +18,6 @@ import {
   parseAskUserResult,
 } from '@engine/pipeline';
 import {
-  createSharedTaskMiddleware,
   createTaskCreateTool,
   createTaskFileStore,
   createTaskListTool,
@@ -28,9 +27,9 @@ import {
   TASK_LIST_TOOL_NAME,
   TASK_TOOL_NAME,
 } from '@capability/task';
-import {createTaskTool} from '@capability/task/task';
 import {FileSystemSkillStore, loadSkillsRuntimeData} from '@capability/skill';
 import {seedProjectSkillFixtures} from '../../helpers/project-skill-fixtures';
+import {createTaskTool} from "../../../src/capability/task/middleware";
 
 const createCliCaseRuntime = async (options: Parameters<typeof createCodaraRuntime>[0]) => (
   createCodaraRuntime({
@@ -202,8 +201,8 @@ export async function createCliRuntime(input: {
           },
           middleware: [
             createSkillsMiddleware({store: createRepoSkillStore(repoRoot), loadRuntime: loadSkillsRuntimeData}),
-            createSharedTaskMiddleware({store}),
             createTaskMiddleware({
+              store,
               model: childModel as unknown as BaseChatModel,
               tools: [
                 tool(async ({path: targetPath}: {path: string}) => `plan-doc:${targetPath}`, {

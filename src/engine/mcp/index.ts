@@ -4,6 +4,7 @@ export {
 
 export {
   McpClient,
+  type McpProgressCallback,
 } from './client';
 
 export {
@@ -13,6 +14,7 @@ export {
 
 export {
   createMcpLangChainTools,
+  type CreateMcpLangChainToolsOptions,
 } from './tool-adapter';
 
 export {

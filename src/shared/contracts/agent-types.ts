@@ -1,9 +1,11 @@
 /**
- * Foundational agent types — no external dependencies.
+ * Foundational agent types — no external dependencies (except langchain base).
  *
  * These live in shared so that both engine and capability layers
  * can depend on them without creating cross-layer cycles.
  */
+
+import type {BaseMessage} from '@langchain/core/messages';
 
 export type AgentRuntimeContext = Record<string, unknown>;
 export type AgentRuntimeValues = Record<string, unknown>;
@@ -91,4 +93,23 @@ export interface PauseRequest {
   channel?: string;
   ui?: PauseUIConfig;
   metadata?: Record<string, unknown>;
+}
+
+export type AgentFinishReason = 'complete' | 'error' | 'max_turns';
+
+export interface AgentState {
+  sessionId: string;
+  agentType: AgentType;
+  messages: BaseMessage[];
+  context: AgentRuntimeContext;
+  values: AgentRuntimeValues;
+  status: AgentStatus;
+  pendingPause?: PauseRequest;
+}
+
+export interface AgentResult {
+  reason: AgentFinishReason;
+  state: AgentState;
+  turns: number;
+  error?: Error;
 }

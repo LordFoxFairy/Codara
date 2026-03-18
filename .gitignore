@@ -49,6 +49,7 @@ docs/
 coverage/
 
 .codara/sessions
+.worktrees/
 
 # Lock files (uncomment the ones you don't use)
 # package-lock.json
@@ -56,5 +57,8 @@ coverage/
 # pnpm-lock.yaml
 
 
-.codara
+# .codara — ignore all except skills/
+.codara/*
+!.codara/skills/
+.codara/sessions
 .claude

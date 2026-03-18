@@ -5,16 +5,12 @@ import {
 } from '@capability/task/delegation';
 
 describe('Task delegation depth limit', () => {
-  test('MAX_DELEGATION_DEPTH is 5', () => {
-    expect(MAX_DELEGATION_DEPTH).toBe(5);
+  test('MAX_DELEGATION_DEPTH is 1', () => {
+    expect(MAX_DELEGATION_DEPTH).toBe(1);
   });
 
   test('assertDelegationDepth does not throw at depth 0', () => {
     expect(() => assertDelegationDepth(0)).not.toThrow();
-  });
-
-  test('assertDelegationDepth does not throw at MAX_DELEGATION_DEPTH - 1', () => {
-    expect(() => assertDelegationDepth(MAX_DELEGATION_DEPTH - 1)).not.toThrow();
   });
 
   test('assertDelegationDepth throws at MAX_DELEGATION_DEPTH', () => {

@@ -13,9 +13,10 @@ import path from 'node:path';
 import {CodaraBus} from '../bus/bus';
 import type {BusRequest, BusEvent, ClientId} from '../bus/types';
 import {createSSEResponse, jsonResponse, errorResponse, corsHeaders, type SSEEvent} from './sse';
-import {createAgentFileCheckpointer} from '../infra/checkpoint/agent';
+import {createAgentFileCheckpointer} from '../engine/checkpoint/agent';
 import {resolveCodaraPath} from '../infra/provider/config/loader';
 import {resolveWorkspaceRoot} from '../infra/config/workspace';
+import {createTeamsApiHandler} from './teams-api';
 
 // ── Configuration ────────────────────────────────────────────────────
 
@@ -420,9 +421,13 @@ interface WSClientState {
   unsubscribe: () => void;
 }
 
+// ── Teams API handler (lazy singleton) ───────────────────────────────
+
+const handleTeamsRequest = createTeamsApiHandler();
+
 // ── Router ───────────────────────────────────────────────────────────
 
-function route(req: Request, server: ReturnType<typeof Bun.serve>): Promise<Response> | Response {
+async function route(req: Request, server: ReturnType<typeof Bun.serve>): Promise<Response> {
   const url = new URL(req.url);
   const method = req.method.toUpperCase();
   const pathname = url.pathname;
@@ -454,6 +459,12 @@ function route(req: Request, server: ReturnType<typeof Bun.serve>): Promise<Resp
   const sessionsMatch = pathname.match(/^\/api\/sessions\/([^/]+)\/messages$/);
   if (method === 'GET' && sessionsMatch) {
     return handleSessionMessages(sessionsMatch[1]);
+  }
+
+  // Teams / Remotes API — delegates to teams-api handler.
+  if (pathname.startsWith('/api/teams') || pathname.startsWith('/api/remotes')) {
+    const teamsResponse = await handleTeamsRequest(req);
+    if (teamsResponse) return teamsResponse;
   }
 
   return errorResponse('Not Found', 404);

@@ -38,4 +38,4 @@ export {
   createHookExecutor,
 } from './executor';
 export {type HookExecutorFactory, HookPipeline} from './pipeline';
-export {createToolHooksMiddleware} from './middleware';
+export {createToolHooksBridge} from './bridge';

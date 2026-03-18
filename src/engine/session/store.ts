@@ -6,6 +6,8 @@ import type {SessionState} from './types';
 
 export interface SessionListOptions {
   includeArchived?: boolean;
+  /** Include internal sessions (delegated tasks, team workers). Defaults to false. */
+  includeInternal?: boolean;
   sortBy?: 'createdAt' | 'updatedAt' | 'lastActivity';
   sortOrder?: 'asc' | 'desc';
   limit?: number;
@@ -50,7 +52,7 @@ export class FileSessionStore implements SessionStore {
   }
 
   async list(options: SessionListOptions = {}): Promise<SessionState[]> {
-    const {includeArchived = false, sortBy = 'updatedAt', sortOrder = 'desc', limit, tags} = options;
+    const {includeArchived = false, includeInternal = false, sortBy = 'updatedAt', sortOrder = 'desc', limit, tags} = options;
 
     if (!existsSync(this.basePath)) {
       return [];
@@ -65,6 +67,10 @@ export class FileSessionStore implements SessionStore {
       if (!state) continue;
 
       if (!includeArchived && state.metadata?.archived) {
+        continue;
+      }
+
+      if (!includeInternal && state.metadata?.internal) {
         continue;
       }
 

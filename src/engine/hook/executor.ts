@@ -5,6 +5,24 @@ import type {HookDefinition, HookContextBase, HookOutput} from '@engine/hook/typ
 
 const EMPTY_OUTPUT: HookOutput = {};
 
+const MAX_COMMAND_LENGTH = 10_000;
+
+/**
+ * Lightweight validation for hook commands.
+ * Hooks come from semi-trusted config files, so this is a safety net — not a sandbox.
+ */
+export function validateHookCommand(command: string): void {
+  if (!command || command.trim().length === 0) {
+    throw new Error('Hook command must not be empty');
+  }
+  if (command.length > MAX_COMMAND_LENGTH) {
+    throw new Error(`Hook command exceeds maximum length of ${MAX_COMMAND_LENGTH} characters`);
+  }
+  if (command.includes('\0')) {
+    throw new Error('Hook command must not contain null bytes');
+  }
+}
+
 export interface HookExecutionStrategy {
   execute(hook: HookDefinition, context: HookContextBase): Promise<HookOutput>;
 }
@@ -31,6 +49,7 @@ export class CommandExecutionStrategy implements HookExecutionStrategy {
   }
 
   private runCommand(command: string, context: HookContextBase, timeout: number): Promise<string> {
+    validateHookCommand(command);
     return new Promise((resolve, reject) => {
       const env = {
         ...process.env,

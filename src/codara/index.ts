@@ -3,6 +3,10 @@ export type {
   CodaraAutoMemoryOptions,
   CodaraRuntimeOptions,
   CodaraOptions,
+  TeamQuerySummary,
+  TeamQueryMember,
+  TeamQueryJob,
+  TeamQueryDetail,
 } from '@codara/facade';
 export {
   CodaraModelCatalog,
