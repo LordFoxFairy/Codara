@@ -345,10 +345,6 @@ src/
 │   │   ├── agent-types.ts         #   Agent 契约
 │   │   ├── channel.ts             #   Channel 契约
 │   │   ├── execution.ts           #   执行契约
-│   │   ├── middleware.ts          #   Middleware 契约（planned）
-│   │   ├── durability.ts          #   持久化契约（planned）
-│   │   ├── observability.ts       #   观测契约（planned）
-│   │   ├── collaboration.ts       #   协作契约（planned）
 │   │   └── index.ts
 │   │
 │   ├── tool-names.ts              # 工具名常量
@@ -955,27 +951,21 @@ shared/contracts/
 ├── channel.ts           # Channel, ChannelType, ChannelMessage
 │                        # PauseRequest, ResumePayload
 │
-├── middleware.ts         # MiddlewareContext, MiddlewareNext
-│                        # MiddlewareDefinition, PipelineStage
-│
-├── durability.ts         # SessionState, SessionStatus, SessionMetadata
-│                        # CheckpointData, CheckpointMeta
-│
-├── observability.ts      # CodaraRuntimeEvent, HookDefinition, HookEvent
-│                        # EventEmitter
-│
-├── collaboration.ts      # TaskRecord, TaskStatus, TaskStore
-│                        # TeamMember, MemberSession, MemberInvokeResult
+├── execution.ts         # ContextBudgetSnapshot, ExecutionContextMetadata
 │
 └── index.ts              # 统一导出
 ```
 
+> **注意：** middleware、durability、observability、collaboration 的类型定义保留在各自规范源
+> （`@core/pipeline/types`、`@durability/*`、`@observability/*`、`@capability/task`、`@capability/team/*`），
+> 消费方直接从规范源导入，不经过 shared/contracts 中转。
+
 **契约设计原则：**
 
 1. **只包含接口和类型**，不包含实现
-2. **核心域定义契约**，其他域实现契约
+2. **只收录真正跨多个上下文消费的类型**，单域类型留在规范源
 3. **最稳定的层**，变更频率最低
-4. **每个契约文件对应一个限界上下文的公共面**
+4. **消费方直接导入规范源**，不通过纯 re-export 中转
 
 ---
 
