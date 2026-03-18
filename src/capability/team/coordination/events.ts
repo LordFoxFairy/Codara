@@ -15,7 +15,7 @@ export type MemberLifecycleEvent =
   | { type: 'member.joined'; data: { teamId: string; memberId: string; name: string; role: string; mode: 'local' } }
   | { type: 'member.idle'; data: { teamId: string; memberId: string } }
   | { type: 'member.working'; data: { teamId: string; memberId: string; jobId: string } }
-  | { type: 'member.paused'; data: { teamId: string; memberId: string } }
+  | { type: 'member.paused'; data: { teamId: string; memberId: string; pause?: unknown } }
   | { type: 'member.disconnected'; data: { teamId: string; memberId: string; reason: string } }
   | { type: 'member.failed'; data: { teamId: string; memberId: string; error: string } }
   | { type: 'member.left'; data: { teamId: string; memberId: string; reason: string } };

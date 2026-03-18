@@ -1,11 +1,13 @@
-import type {StructuredToolInterface} from '@langchain/core/tools';
 import type {BaseMiddleware} from '@engine/pipeline';
-import {createBudgetMiddleware} from '@engine/pipeline';
+import {createAskUserQuestionMiddleware, createBudgetMiddleware, createHILMiddleware} from '@engine/pipeline';
+import {createMiddleware} from '@engine/pipeline/types';
+import {createPermissionMiddleware} from '@engine/pipeline/permission';
 import {TeamRegistry} from '@capability/team/coordination/team-registry';
 import {TeamRuntime} from '@capability/team/runtime/team-runtime';
 import {MemorySharedState} from '@capability/team/shared-state';
 import {getToolsForRole} from '@capability/team/surface/tool-filter';
 import {createTeamMiddleware} from '@capability/team/middleware';
+import type {TeamBusEvent} from '@capability/team/coordination/events';
 import type {
   MemberSession,
   MemberSessionOptions,
@@ -55,8 +57,28 @@ export async function assembleTeamSystem(input: TeamSystemAssemblyInput): Promis
 
     const memberMiddleware: BaseMiddleware[] = [
       createTeamMiddleware({teamType: 'worker'}),
-      createBudgetMiddleware(),
     ];
+
+    // Inject Permission + HIL middleware so worker pauses bubble to the CLI
+    if (options.hil !== false) {
+      memberMiddleware.push(createAskUserQuestionMiddleware());
+      memberMiddleware.push(createPermissionMiddleware({
+        ...(typeof options.hil === 'object' && options.hil !== null ? options.hil : {}),
+        cwd: options.cwd,
+        projectRoot: options.projectRoot,
+        userHome: options.userHome,
+      }));
+      memberMiddleware.push(createHILMiddleware(typeof options.hil === 'object' ? options.hil : {}));
+    }
+
+    // Forward worker tool activity to parent runtime events for team panel display
+    memberMiddleware.push(createWorkerActivityMiddleware(
+      memberOptions.memberId,
+      memberOptions.teamId,
+      teamToolContext.emitEvent,
+    ));
+
+    memberMiddleware.push(createBudgetMiddleware());
 
     let agentReady: import('@engine/agent/models/agent').Agent | undefined;
 
@@ -94,6 +116,18 @@ export async function assembleTeamSystem(input: TeamSystemAssemblyInput): Promis
           const result = await agent.invoke(input ?? undefined);
           if (result.reason === 'error') {
             return {reason: 'error' as const, error: result.error};
+          }
+          // Detect HIL pause from the agent state and bubble it up
+          if (result.state.pendingPause) {
+            teamToolContext.emitEvent({
+              type: 'member.paused' as const,
+              data: {
+                teamId: memberOptions.teamId,
+                memberId: memberOptions.memberId,
+                pause: result.state.pendingPause,
+              },
+            });
+            return {reason: 'idle' as const};
           }
           return {reason: 'complete' as const};
         } catch (error) {
@@ -195,4 +229,65 @@ export function getTeamDetail(
       blockedBy: job.blockedBy,
     })),
   };
+}
+
+/**
+ * Lightweight middleware that forwards worker tool activity as team bus events.
+ * Enables the team panel to display real-time tool activity per worker.
+ */
+function createWorkerActivityMiddleware(
+  memberId: string,
+  teamId: string,
+  emitEvent: (event: TeamBusEvent) => void,
+): BaseMiddleware {
+  return createMiddleware({
+    name: 'WorkerActivityMiddleware',
+    wrapToolCall: async (context, handler) => {
+      const toolName = context.toolCall.name ?? 'tool';
+      const args = context.toolCall.args as Record<string, unknown> | undefined;
+      const summary = formatWorkerToolSummary(toolName, args);
+      const label = summary ? `${toolName}(${summary})` : toolName;
+      try {
+        emitEvent({
+          type: 'member.working',
+          data: {
+            teamId,
+            memberId,
+            jobId: label,
+          },
+        });
+      } catch { /* best-effort */ }
+      return handler(context);
+    },
+  });
+}
+
+function formatWorkerToolSummary(toolName: string, args: unknown): string | undefined {
+  if (!args || typeof args !== 'object' || Array.isArray(args)) return undefined;
+  const record = args as Record<string, unknown>;
+  switch (toolName) {
+    case 'bash':
+      return truncateWorkerStr(asWorkerStr(record.command) ?? asWorkerStr(record.description));
+    case 'read_file':
+    case 'read':
+    case 'write_file':
+    case 'write':
+    case 'edit_file':
+    case 'edit':
+      return truncateWorkerStr(asWorkerStr(record.file_path) ?? asWorkerStr(record.path));
+    case 'glob':
+    case 'grep':
+      return truncateWorkerStr(asWorkerStr(record.pattern));
+    default:
+      return undefined;
+  }
+}
+
+function asWorkerStr(value: unknown): string | undefined {
+  return typeof value === 'string' && value.trim() ? value.trim() : undefined;
+}
+
+function truncateWorkerStr(value: string | undefined, max = 50): string | undefined {
+  if (!value) return undefined;
+  return value.length > max ? `${value.slice(0, max - 1)}…` : value;
 }

@@ -134,6 +134,12 @@ function readString(value: unknown): string | undefined {
   return trimmed || undefined;
 }
 
+/** Callback for child agent tool activity — injected into delegated child middleware. */
+export type ChildToolActivityCallback = (info: {toolName: string; label: string}) => void;
+
+/** Key used to store child activity callback in runtimeShared. */
+export const CHILD_ACTIVITY_CALLBACK_KEY = '__taskActivityCallback';
+
 export class RuntimeEventsController {
   private readonly listeners = new Set<CodaraRuntimeEventListener>();
   private readonly turnRoots = new Map<string, string>();
@@ -375,6 +381,20 @@ export class RuntimeEventsController {
           });
           this.toolRoots.set(`${currentToolKey}:task`, taskRootId);
 
+          // Inject child activity callback so delegated agent tool calls bubble up as task:update events
+          const activityCallback: ChildToolActivityCallback = (info) => {
+            this.emit({
+              kind: 'task',
+              phase: 'update',
+              status: 'running',
+              label: info.label,
+              detail: info.toolName,
+              parentId: taskRootId,
+            });
+          };
+          if (context.runtime?.shared) {
+            context.runtime.shared[CHILD_ACTIVITY_CALLBACK_KEY] = activityCallback;
+          }
         }
 
         try {

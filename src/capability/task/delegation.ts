@@ -13,7 +13,8 @@ import {
 } from '@engine/agent/models/agent';
 import type {BootstrapAgentOptions} from '@engine/agent/bootstrap';
 import {bootstrapAgent, resolveModel} from '@engine/agent/bootstrap';
-import type {BaseMiddleware} from '@engine/pipeline/types';
+import {createMiddleware, type BaseMiddleware} from '@engine/pipeline/types';
+import type {ChildToolActivityCallback} from '@engine/events/runtime-events';
 import type {HILToolMessagePayload} from '@engine/pipeline/hil';
 import type {ExecutionContextMetadata} from '@engine/pipeline/types';
 import type {AgentCheckpointer} from '@engine/checkpoint/agent';
@@ -70,6 +71,8 @@ export interface DelegatedAgentOptions {
   systemPrompt?: string;
   blockedToolNames?: string[];
   lifecycle?: AgentLifecycleHooks;
+  /** Optional callback for forwarding child tool activity to parent runtime events. */
+  onChildToolActivity?: ChildToolActivityCallback;
 }
 
 interface DelegatedPauseMetadata {
@@ -233,6 +236,12 @@ async function buildDelegatedChildOptions(
   input: DelegatedChildInput,
 ): Promise<BootstrapAgentOptions> {
   const mergedContext = mergeRuntimeContext(options.context, input.profileContext);
+  const baseMiddleware = [...(input.profileMiddleware ?? options.middleware ?? [])];
+
+  // Inject activity forward middleware if parent provided a callback
+  if (options.onChildToolActivity) {
+    baseMiddleware.push(createActivityForwardMiddleware(options.onChildToolActivity));
+  }
 
   return {
     model: await resolveModel(input.profileModel ?? options.model),
@@ -245,7 +254,7 @@ async function buildDelegatedChildOptions(
       input.toolName,
       options.blockedToolNames,
     ),
-    ...(input.profileMiddleware ?? options.middleware?.length ? {middleware: [...(input.profileMiddleware ?? options.middleware ?? [])]} : {}),
+    ...(baseMiddleware.length > 0 ? {middleware: baseMiddleware} : {}),
     handleToolErrors: options.handleToolErrors,
     checkpointer: options.checkpointer,
     inputBudget: options.inputBudget,
@@ -521,5 +530,64 @@ function readParentExecution(value: unknown): ExecutionContextMetadata & {
   }
 
   return parsed.data;
+}
+
+/**
+ * Lightweight middleware that forwards child tool call activity to the parent via callback.
+ * Injected into delegated child agents so the parent transcript can display real-time sub-tool activity.
+ */
+function createActivityForwardMiddleware(callback: ChildToolActivityCallback): BaseMiddleware {
+  return createMiddleware({
+    name: 'ActivityForwardMiddleware',
+    wrapToolCall: async (context, handler) => {
+      const toolName = context.toolCall.name ?? 'tool';
+      const args = context.toolCall.args;
+      const summary = formatChildToolSummary(toolName, args);
+      const label = summary ? `${toolName}(${summary})` : toolName;
+      try {
+        callback({toolName, label});
+      } catch { /* best-effort — don't break child execution */ }
+      return handler(context);
+    },
+  });
+}
+
+function formatChildToolSummary(toolName: string, args: unknown): string | undefined {
+  if (!args || typeof args !== 'object' || Array.isArray(args)) {
+    return undefined;
+  }
+  const record = args as Record<string, unknown>;
+  switch (toolName) {
+    case 'bash':
+      return truncateStr(asStr(record.command) ?? asStr(record.description));
+    case 'read_file':
+    case 'read':
+    case 'write_file':
+    case 'write':
+    case 'edit_file':
+    case 'edit':
+      return truncateStr(asStr(record.file_path) ?? asStr(record.path));
+    case 'glob':
+      return truncateStr(asStr(record.pattern));
+    case 'grep':
+      return truncateStr(asStr(record.pattern));
+    case 'fetch_url':
+    case 'fetch':
+      return truncateStr(asStr(record.url));
+    case 'web_search':
+    case 'search':
+      return truncateStr(asStr(record.query));
+    default:
+      return undefined;
+  }
+}
+
+function asStr(value: unknown): string | undefined {
+  return typeof value === 'string' && value.trim() ? value.trim() : undefined;
+}
+
+function truncateStr(value: string | undefined, max = 60): string | undefined {
+  if (!value) return undefined;
+  return value.length > max ? `${value.slice(0, max - 1)}…` : value;
 }
 

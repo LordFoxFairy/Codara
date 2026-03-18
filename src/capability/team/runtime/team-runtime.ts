@@ -215,6 +215,43 @@ export class TeamRuntime {
         });
       }
 
+      case 'member.working': {
+        const parentId = this.teamRootIds.get(teamId);
+        const activity = event.data.jobId; // Carries tool activity label from WorkerActivityMiddleware
+        return this.makeRuntimeEvent(sessionId, {
+          kind: 'team',
+          phase: 'update',
+          status: 'running',
+          label: `${event.data.memberId}: ${activity}`,
+          detail: `member.activity:${event.data.memberId}:${activity}`,
+          ...(parentId ? { parentId } : {}),
+        });
+      }
+
+      case 'member.paused': {
+        const parentId = this.teamRootIds.get(teamId);
+        // If the pause carries HIL data, emit an 'hil' runtime event so the CLI shows the approval panel
+        if (event.data.pause) {
+          const pauseData = event.data.pause as Record<string, unknown>;
+          const description = typeof pauseData.description === 'string' ? pauseData.description : 'Worker waiting for approval';
+          return this.makeRuntimeEvent(sessionId, {
+            kind: 'team' as const,
+            phase: 'update',
+            status: 'paused',
+            label: `Worker ${event.data.memberId} paused: ${description}`,
+            detail: JSON.stringify(event.data.pause),
+            ...(parentId ? { parentId } : {}),
+          });
+        }
+        return this.makeRuntimeEvent(sessionId, {
+          kind: 'team',
+          phase: 'update',
+          status: 'paused',
+          label: `Worker ${event.data.memberId} paused`,
+          ...(parentId ? { parentId } : {}),
+        });
+      }
+
       case 'member.disconnected':
       case 'member.failed': {
         const parentId = this.teamRootIds.get(teamId);

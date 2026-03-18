@@ -7,6 +7,8 @@ import {
   readDelegatedParentRuntimeMetadata,
   runDelegatedAgent,
 } from '@capability/task/delegation';
+import type {ChildToolActivityCallback} from '@engine/events/runtime-events';
+import {CHILD_ACTIVITY_CALLBACK_KEY} from '@engine/events/runtime-events';
 import {createTaskTools} from '@capability/task/tools';
 import type {TaskStore} from '@capability/task/types';
 import {
@@ -62,6 +64,8 @@ export function createTaskTool(options: CreateTaskToolOptions): StructuredToolIn
       );
       const baseSystemMessage = readBaseSystemMessage(configurable.runtimeShared);
       const inheritedBaseMessageCount = baseSystemMessage?.systemMessage.length ?? 0;
+      // Read child activity callback injected by RuntimeEventsController
+      const childActivityCallback = readChildActivityCallback(configurable.runtimeShared);
       return runDelegatedAgent({
         ...options,
         ...(baseSystemMessage?.systemMessage?.length || options.systemMessages?.length || options.systemPrompt
@@ -69,6 +73,7 @@ export function createTaskTool(options: CreateTaskToolOptions): StructuredToolIn
           : {}),
         prepareContext: wrapDelegatedPrepareContext(options.prepareContext, inheritedBaseMessageCount),
         checkpointer: delegatedCheckpointer,
+        ...(childActivityCallback ? {onChildToolActivity: childActivityCallback} : {}),
       }, {
         prompt,
         ...(subagent_type ? {subagentType: subagent_type} : {}),
@@ -144,6 +149,13 @@ function mergeTaskSystemMessages(
     ...(providedMessages ?? []),
     ...(baseSystemPrompt?.trim() ? [baseSystemPrompt.trim()] : []),
   ];
+}
+
+function readChildActivityCallback(runtimeShared: unknown): ChildToolActivityCallback | undefined {
+  if (!runtimeShared || typeof runtimeShared !== 'object') return undefined;
+  const shared = runtimeShared as Record<string, unknown>;
+  const callback = shared[CHILD_ACTIVITY_CALLBACK_KEY];
+  return typeof callback === 'function' ? callback as ChildToolActivityCallback : undefined;
 }
 
 function wrapDelegatedPrepareContext(

@@ -111,7 +111,7 @@ export function CodaraCliApp(props: CodaraCliAppProps): React.JSX.Element {
   // Look up by team name (getTeamDetail falls back to getTeamByName).
   const teamMembers = React.useMemo(() => {
     if (!activeTeams.hasActiveTeams) return undefined;
-    const map = new Map<string, Array<{name: string; role: string; status: string}>>();
+    const map = new Map<string, Array<{name: string; role: string; status: string; currentJobId?: string; activity?: string}>>();
     for (const team of activeTeams.activeTeams) {
       // Try by name first, then by teamId from the event
       const detail = codara.getTeamDetail(team.name) ?? codara.getTeamDetail(team.teamId);
@@ -125,12 +125,18 @@ export function CodaraCliApp(props: CodaraCliAppProps): React.JSX.Element {
         }
         team.memberCount = detail.members.length;
         if (detail.members.length > 0) {
-          map.set(team.teamId, detail.members.map(m => ({name: m.name, role: m.role, status: m.status, currentJobId: m.currentJobId})));
+          map.set(team.teamId, detail.members.map(m => ({
+            name: m.name,
+            role: m.role,
+            status: m.status,
+            currentJobId: m.currentJobId,
+            activity: activeTeams.memberActivities.get(m.memberId),
+          })));
         }
       }
     }
     return map.size > 0 ? map : undefined;
-  }, [activeTeams.activeTeams, activeTeams.hasActiveTeams, codara, teamMembersVersion]);
+  }, [activeTeams.activeTeams, activeTeams.hasActiveTeams, activeTeams.memberActivities, codara, teamMembersVersion]);
   const listCommands = React.useCallback(() => codara.listCommands(), [codara]);
   const completion = useCommandCompletion({
     text: shell.composer.text,

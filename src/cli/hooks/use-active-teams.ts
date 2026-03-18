@@ -18,12 +18,20 @@ export interface UseActiveTeamsInput {
   runtimeEvents: readonly CodaraRuntimeEvent[];
 }
 
+export interface MemberActivity {
+  memberId: string;
+  activity: string;
+  timestamp: number;
+}
+
 export interface UseActiveTeamsOutput {
   activeTeams: ActiveTeam[];
   hasActiveTeams: boolean;
   runningCount: number;
   doneCount: number;
   errorCount: number;
+  /** Latest tool activity per member (memberId -> activity label). */
+  memberActivities: Map<string, string>;
 }
 
 const MAX_VISIBLE_TEAMS = 3;
@@ -128,6 +136,26 @@ export function deriveActiveTeams(
   return teams.slice(0, MAX_VISIBLE_TEAMS);
 }
 
+/**
+ * Extract the latest tool activity per member from runtime events.
+ * Parses detail format: "member.activity:<memberId>:<activity>"
+ */
+export function deriveMemberActivities(events: readonly CodaraRuntimeEvent[]): Map<string, string> {
+  const activities = new Map<string, string>();
+  for (const event of events) {
+    if (event.kind !== 'team' || event.phase !== 'update') continue;
+    const detail = event.detail;
+    if (!detail?.startsWith('member.activity:')) continue;
+    const rest = detail.slice('member.activity:'.length);
+    const colonIdx = rest.indexOf(':');
+    if (colonIdx <= 0) continue;
+    const memberId = rest.slice(0, colonIdx);
+    const activity = rest.slice(colonIdx + 1);
+    activities.set(memberId, activity);
+  }
+  return activities;
+}
+
 export function useActiveTeams(input: UseActiveTeamsInput): UseActiveTeamsOutput {
   const [now, setNow] = useState(() => Date.now());
   const activeTeams = useMemo(() => deriveActiveTeams(input.runtimeEvents, now), [input.runtimeEvents, now]);
@@ -137,6 +165,7 @@ export function useActiveTeams(input: UseActiveTeamsInput): UseActiveTeamsOutput
   );
   const doneCount = useMemo(() => activeTeams.filter(t => t.status === 'completed').length, [activeTeams]);
   const errorCount = useMemo(() => activeTeams.filter(t => t.status === 'failed').length, [activeTeams]);
+  const memberActivities = useMemo(() => deriveMemberActivities(input.runtimeEvents), [input.runtimeEvents]);
 
   useEffect(() => {
     if (runningCount === 0 && activeTeams.length === 0) return;
@@ -154,5 +183,6 @@ export function useActiveTeams(input: UseActiveTeamsInput): UseActiveTeamsOutput
     runningCount,
     doneCount,
     errorCount,
+    memberActivities,
   };
 }

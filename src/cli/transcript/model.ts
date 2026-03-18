@@ -175,16 +175,20 @@ export function hasTranscriptContent(input: HasTranscriptContentInput): boolean 
   });
 }
 
+const MAX_CHILD_ACTIVITY_LINES = 3;
+
 function buildRuntimeEventItems(events: readonly CodaraRuntimeEvent[]): TranscriptItem[] {
   const startEvents = new Map<string, CodaraRuntimeEvent>();
   const pairedEndIds = new Set<string>();
   const taskToolIds = new Set<string>();
+  /** Child tool activity events grouped by parent task ID. */
+  const taskChildActivity = new Map<string, CodaraRuntimeEvent[]>();
   const items: TranscriptItem[] = [];
   // Prefix IDs to avoid collisions with solidified transcript items
   // (runtime events share IDs with coreMessages that may already be rendered)
   const activeId = (id: string) => `active-${id}`;
 
-  // First pass: index start events by id, identify Task tool calls
+  // First pass: index start events by id, identify Task tool calls, collect child activity
   for (const event of events) {
     if (event.phase === 'start') {
       startEvents.set(event.id, event);
@@ -192,6 +196,12 @@ function buildRuntimeEventItems(events: readonly CodaraRuntimeEvent[]): Transcri
     // Task events have a parentId pointing to their parent tool event — mark those tool events
     if (event.kind === 'task' && event.phase === 'start' && event.parentId) {
       taskToolIds.add(event.parentId);
+    }
+    // Collect child tool activity events (task:update from ActivityForwardMiddleware)
+    if (event.kind === 'task' && event.phase === 'update' && event.parentId && event.detail) {
+      const activities = taskChildActivity.get(event.parentId) ?? [];
+      activities.push(event);
+      taskChildActivity.set(event.parentId, activities);
     }
   }
 
@@ -249,6 +259,11 @@ function buildRuntimeEventItems(events: readonly CodaraRuntimeEvent[]): Transcri
     // Skip tool events that are the parent of a task event (task rendering replaces them)
     if (event.kind === 'tool' && event.phase === 'end' && event.parentId && taskToolIds.has(event.parentId)) {
       pairedEndIds.add(event.id);
+      continue;
+    }
+
+    // Task update events (child activity) — handled in the running task rendering, skip here
+    if (event.kind === 'task' && event.phase === 'update' && event.parentId && taskChildActivity.has(event.parentId)) {
       continue;
     }
 
@@ -394,22 +409,38 @@ function buildRuntimeEventItems(events: readonly CodaraRuntimeEvent[]): Transcri
   // Render running tasks via ToolResultBlock (same visual as tool calls)
   for (const {id: taskId, startEvent} of unpairedTaskStarts) {
     const agentType = extractSubagentType(startEvent.label);
+    const childActivities = taskChildActivity.get(taskId) ?? [];
+    const activityLines = formatChildActivityLines(childActivities);
+    const summaryLine = activityLines.length > 0 ? activityLines.join('\n') : '…';
     items.push({
       id: activeId(taskId),
       role: 'task',
-      content: `⚙ ${agentType}(${extractTaskArgs(startEvent.label)})\n…`,
+      content: `⚙ ${agentType}(${extractTaskArgs(startEvent.label)})\n${summaryLine}`,
       toolMeta: {
         toolName: 'Task',
         displayName: agentType,
         icon: '⚙',
         args: extractTaskArgs(startEvent.label),
         status: 'running',
-        summaryLine: '…',
+        summaryLine,
       },
     });
   }
 
   return items;
+}
+
+/** Format child agent tool activity lines for display under a running task. */
+function formatChildActivityLines(activities: CodaraRuntimeEvent[]): string[] {
+  if (activities.length === 0) return [];
+  // Show the most recent activities (tail)
+  const recent = activities.slice(-MAX_CHILD_ACTIVITY_LINES);
+  const lines = recent.map(a => `  ⎿ ${a.label}`);
+  const overflow = activities.length - MAX_CHILD_ACTIVITY_LINES;
+  if (overflow > 0) {
+    lines.unshift(`  … +${overflow} more`);
+  }
+  return lines;
 }
 
 function extractSubagentType(label: string): string {
