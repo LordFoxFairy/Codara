@@ -5,7 +5,7 @@ import {parseHILToolMessagePayload} from '@engine/pipeline/hil';
 import {readMessageText} from '@shared/messages';
 import type {CliActiveTurn, CliNotice} from '../app/view-state';
 import {formatTokenCount} from '../utils/format';
-import {computeEditDiff, computeWriteDiff, type DiffData} from './diff-compute';
+import {computeEditDiff, type DiffData} from './diff-compute';
 
 export type TranscriptRole = 'system' | 'warning' | 'user' | 'assistant' | 'tool' | 'task' | 'hil' | 'command' | 'error';
 
@@ -301,7 +301,6 @@ function buildRuntimeEventItems(events: readonly CodaraRuntimeEvent[]): Transcri
 
   // Render completed tasks via ToolResultBlock (same visual as tool calls)
   for (const {startEvent, endEvent} of pairedTaskEnds) {
-    const taskName = extractTaskDisplayName(startEvent.label);
     const agentType = extractSubagentType(startEvent.label);
     const elapsed = formatElapsed(startEvent.timestamp, endEvent.timestamp);
     const status = endEvent.status === 'error' ? 'error' : 'done';
@@ -394,7 +393,6 @@ function buildRuntimeEventItems(events: readonly CodaraRuntimeEvent[]): Transcri
 
   // Render running tasks via ToolResultBlock (same visual as tool calls)
   for (const {id: taskId, startEvent} of unpairedTaskStarts) {
-    const taskName = extractTaskDisplayName(startEvent.label);
     const agentType = extractSubagentType(startEvent.label);
     items.push({
       id: activeId(taskId),
@@ -432,12 +430,6 @@ function extractTaskArgs(label: string): string {
   return desc.length > 50 ? `${desc.slice(0, 47)}…` : desc;
 }
 
-/** For task panel display: "Delegating Plan: desc" → "Plan: short desc" */
-function extractTaskDisplayName(label: string): string {
-  const firstLine = label.split('\n')[0]!.trim();
-  const text = firstLine.startsWith('Delegating ') ? firstLine.slice('Delegating '.length) : firstLine;
-  return text.length > 40 ? `${text.slice(0, 37)}…` : text;
-}
 
 function extractTeamDisplayName(label: string): string {
   // "Team frontend-refactor: Implement the frontend" → "frontend-refactor"
@@ -862,9 +854,19 @@ function tryComputeDiff(toolName: string, toolArgs: unknown): DiffData | undefin
       }
       case 'write':
       case 'write_file': {
+        // Don't read disk — file is already written by the time we render.
+        // Just compute additions from the content directly.
         const content = asString(record.content);
         if (content !== undefined) {
-          return computeWriteDiff(filePath, content);
+          const lines = content.split('\n');
+          const additions = lines.length;
+          return {
+            filePath,
+            hunks: [],
+            additions,
+            deletions: 0,
+            isNewFile: true,
+          };
         }
         return undefined;
       }
