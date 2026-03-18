@@ -10,16 +10,16 @@ import {
   type PauseRequest,
   type ResumePayload,
   type ToolErrorHandler,
-} from '@engine/agent/models/agent';
-import type {AgentResult, AgentStreamOutput} from '@engine/agent/models/agent';
-import type {BootstrapAgentOptions} from '@engine/agent/bootstrap';
-import {bootstrapAgent, resolveModel} from '@engine/agent/bootstrap';
-import {createMiddleware, type BaseMiddleware} from '@engine/pipeline/types';
-import type {ChildToolActivityCallback} from '@engine/events/runtime-events';
-import type {HILToolMessagePayload} from '@engine/pipeline/hil';
-import type {ExecutionContextMetadata} from '@engine/pipeline/types';
-import type {AgentCheckpointer} from '@engine/checkpoint/agent';
-import type {AgentLifecycleHooks} from '@engine/hook/types';
+} from '@core/agent/models/agent';
+import type {AgentResult, AgentStreamOutput} from '@core/agent/models/agent';
+import type {BootstrapAgentOptions} from '@core/agent/bootstrap';
+import {bootstrapAgent, resolveModel} from '@core/agent/bootstrap';
+import {createMiddleware, type BaseMiddleware} from '@core/pipeline/types';
+import type {ChildToolActivityCallback} from '@observability/events/runtime-events';
+import type {HILToolMessagePayload} from '@core/middleware/hil';
+import type {ExecutionContextMetadata} from '@core/pipeline/types';
+import type {AgentCheckpointer} from '@durability/checkpoint/agent';
+import type {AgentLifecycleHooks} from '@observability/hook/types';
 import {deepClone} from '@shared/clone';
 import {formatToolSummary} from '@shared/tool-display';
 import {readLatestAssistantText} from '@shared/messages';

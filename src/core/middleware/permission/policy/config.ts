@@ -8,7 +8,7 @@ import {existsSync} from 'node:fs';
 import {readFile} from 'node:fs/promises';
 import os from 'node:os';
 import path from 'node:path';
-import {resolveWorkspaceRoot} from '@infra/config/workspace';
+import {resolveWorkspaceRoot} from '@config/workspace';
 import type {
   PermissionAction,
   PermissionConfig,

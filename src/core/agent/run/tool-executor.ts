@@ -3,7 +3,7 @@ import {ToolInputParsingException, type StructuredToolInterface} from '@langchai
 import {ToolInvocationError} from 'langchain';
 import {Command, applyAgentStateUpdate, isCommand} from '../models/command';
 import type {AgentState, ToolErrorHandler} from '../models/agent';
-import type {ExecutionContextMetadata} from '@engine/pipeline/types';
+import type {ExecutionContextMetadata} from '@core/pipeline/types';
 
 export function resolveToolCallId(toolCall: ToolCall, toolIndex: number): string {
   const id = typeof toolCall.id === 'string' ? toolCall.id.trim() : '';

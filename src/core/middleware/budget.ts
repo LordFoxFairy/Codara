@@ -1,7 +1,7 @@
 import type {BaseMessage} from '@langchain/core/messages';
 import type {AgentInputBudget} from '@shared/contracts/agent-types';
 import type {ContextBudgetSnapshot} from '@shared/contracts/execution';
-import {createMiddleware, type BaseMiddleware, type BeforeModelContext} from '@engine/pipeline/types';
+import {createMiddleware, type BaseMiddleware, type BeforeModelContext} from '@core/pipeline/types';
 
 export type {ContextBudgetSnapshot} from '@shared/contracts/execution';
 

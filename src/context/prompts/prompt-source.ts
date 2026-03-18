@@ -1,12 +1,12 @@
 import path from 'node:path';
 import {homedir} from 'node:os';
-import {resolveWorkspaceRoot} from '@infra/config/workspace';
-import {createWorkspaceKey} from '@infra/config/workspace-key';
+import {resolveWorkspaceRoot} from '@config/workspace';
+import {createWorkspaceKey} from '@config/workspace-key';
 import {
   type ProgressiveInstructionSource,
   type ProgressiveInstructionWorkspaceOptions,
   SessionScopedProgressiveInstructionSource,
-} from '@infra/context/instructions/progressive-source';
+} from '@context/instructions/progressive-source';
 
 const HANDBOOK_FILE_NAME = 'codara.md';
 

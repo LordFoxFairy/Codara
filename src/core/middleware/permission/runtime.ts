@@ -8,19 +8,19 @@ import {
   type HILResumeHandler,
   type HILResumePayload,
   type HILToolMessagePayload,
-} from '@engine/pipeline/hil';
-import type {ToolCallContext} from '@engine/pipeline/types';
+} from '@core/middleware/hil';
+import type {ToolCallContext} from '@core/pipeline/types';
 import {
   evaluatePermissionToolCall,
   evaluatePermissionExpression,
   formatPermissionExpression,
-} from '@engine/pipeline/permission/policy';
-import {persistPermissionRule, persistPermissionScope} from '@engine/pipeline/permission/policy/persist';
-import type {PermissionPolicyOptions} from '@engine/pipeline/permission/types';
+} from '@core/middleware/permission/policy';
+import {persistPermissionRule, persistPermissionScope} from '@core/middleware/permission/policy/persist';
+import type {PermissionPolicyOptions} from '@core/middleware/permission/types';
 import {normalizeToolReferenceName} from '@shared/tool-names';
-import type {PermissionBashAnalysis, PermissionAnalysisModel} from '@engine/pipeline/permission/analysis';
-import {createModelPermissionBashAnalysis} from '@engine/pipeline/permission/analysis';
-import {extractBashAlwaysPatterns, extractBashWritePathOperands} from '@engine/pipeline/permission/bash';
+import type {PermissionBashAnalysis, PermissionAnalysisModel} from '@core/middleware/permission/analysis';
+import {createModelPermissionBashAnalysis} from '@core/middleware/permission/analysis';
+import {extractBashAlwaysPatterns, extractBashWritePathOperands} from '@core/middleware/permission/bash';
 
 export interface PermissionRuntimeOptions extends PermissionPolicyOptions {
   bashAnalysisModel?: PermissionAnalysisModel | Promise<PermissionAnalysisModel> | (() => Promise<PermissionAnalysisModel>);

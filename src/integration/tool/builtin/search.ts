@@ -1,6 +1,6 @@
 import {StructuredTool} from '@langchain/core/tools';
 import {z} from 'zod';
-import {formatError, getErrorMessage} from '@engine/tool/utils';
+import {formatError, getErrorMessage} from '@integration/tool/utils';
 
 const DEFAULT_MAX_RESULTS = 10;
 const MAX_MAX_RESULTS = 20;

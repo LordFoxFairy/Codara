@@ -1,6 +1,6 @@
 import {ToolMessage} from '@langchain/core/messages';
-import {createMiddleware, type BaseMiddleware, type ToolCallContext, type ToolCallHandler} from '@engine/pipeline/types';
-import type {ToolLifecycleHooks} from '@engine/hook/types';
+import {createMiddleware, type BaseMiddleware, type ToolCallContext, type ToolCallHandler} from '@core/pipeline/types';
+import type {ToolLifecycleHooks} from '@observability/hook/types';
 
 export function createToolHooksBridge(lifecycle: ToolLifecycleHooks): BaseMiddleware {
   return createMiddleware({

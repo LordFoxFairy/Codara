@@ -6,10 +6,10 @@ import path from 'node:path';
 import yaml from 'yaml';
 import {AIMessage, HumanMessage, type BaseMessage, type ToolCall} from '@langchain/core/messages';
 import type {AgentResult} from '@shared/contracts/agent-types';
-import {resolveWorkspaceRoot, type WorkspaceRootOptions} from '@infra/config/workspace';
-import {createWorkspaceKey, sanitizeSlug} from '@infra/config/workspace-key';
-import {resolveAutoMemoryGlobal} from '@infra/config/settings';
-import {evictMemoryFiles} from '@infra/context/memory/eviction';
+import {resolveWorkspaceRoot, type WorkspaceRootOptions} from '@config/workspace';
+import {createWorkspaceKey, sanitizeSlug} from '@config/workspace-key';
+import {resolveAutoMemoryGlobal} from '@config/settings';
+import {evictMemoryFiles} from '@context/memory/eviction';
 
 const MEMORY_INDEX_FILE = 'MEMORY.md';
 const TOPICS_DIR = 'topics';

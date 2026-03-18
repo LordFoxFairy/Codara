@@ -1,5 +1,5 @@
 import path from 'node:path';
-import {globToRegExp} from '@engine/pipeline/permission/policy/wildcard';
+import {globToRegExp} from '@core/middleware/permission/policy/wildcard';
 
 export interface NormalizedBashCommand {
   tokens: string[];

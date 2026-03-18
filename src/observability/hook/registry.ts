@@ -9,7 +9,7 @@ import {
   HOOK_EVENT_TYPES,
   hookDefinitionSchema,
   hookSourcePriority,
-} from '@engine/hook/types';
+} from '@observability/hook/types';
 
 // Lenient config schema: accepts the structure but doesn't validate individual hook definitions,
 // so we can skip invalid ones instead of rejecting the whole file.

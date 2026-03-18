@@ -1,5 +1,5 @@
 import {z} from 'zod';
-import type {SkillMetadata, SkillsRuntimeData, SubagentDefinition} from '@infra/context/skills/contracts';
+import type {SkillMetadata, SkillsRuntimeData, SubagentDefinition} from '@context/skills/contracts';
 
 const subagentDefinitionSchema = z.object({
   name: z.string().trim().min(1),

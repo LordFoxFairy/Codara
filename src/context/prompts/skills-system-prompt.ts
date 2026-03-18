@@ -1,4 +1,4 @@
-import type {SkillMetadata} from '@infra/context/skills/contracts';
+import type {SkillMetadata} from '@context/skills/contracts';
 
 export const SKILLS_SYSTEM_PROMPT = `
 ## Skills System

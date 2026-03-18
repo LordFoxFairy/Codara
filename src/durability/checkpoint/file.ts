@@ -6,8 +6,8 @@ import type {
   Checkpointer,
   CompactOptions,
   PutCheckpointInput,
-} from '@engine/checkpoint/types';
-import {acquireSessionLock, releaseSessionLock} from '@engine/checkpoint/lock';
+} from '@durability/checkpoint/types';
+import {acquireSessionLock, releaseSessionLock} from '@durability/checkpoint/lock';
 
 interface JsonCodec<T> {
   serialize(value: T): unknown;

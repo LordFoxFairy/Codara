@@ -1,10 +1,10 @@
-import {createHILMiddleware, type HILMiddlewareOptions} from '@engine/pipeline/hil';
-import type {BaseMiddleware} from '@engine/pipeline/types';
+import {createHILMiddleware, type HILMiddlewareOptions} from '@core/middleware/hil';
+import type {BaseMiddleware} from '@core/pipeline/types';
 import {
   createPermissionRuntime,
   handlePermissionFallbackResume,
   type PermissionRuntimeOptions,
-} from '@engine/pipeline/permission/runtime';
+} from '@core/middleware/permission/runtime';
 
 export interface PermissionMiddlewareOptions extends PermissionRuntimeOptions, HILMiddlewareOptions {}
 

@@ -32,7 +32,7 @@ export type {
   PauseUIFormTab,
   ResumePayload,
   ToolErrorHandler,
-} from '@engine/agent/models/agent';
+} from '@core/agent/models/agent';
 export {
   applyAgentStateSnapshot,
   cloneAgentContext,
@@ -50,14 +50,14 @@ export {
   toCheckpointState,
   type AgentRuntimeState,
   type MutableAgentState,
-} from '@engine/agent/models/state';
+} from '@core/agent/models/state';
 export {
   Command,
   applyAgentStateUpdate,
   isCommand,
   mergeContext,
   type AgentStateUpdate,
-} from '@engine/agent/models/command';
+} from '@core/agent/models/command';
 export {
   createAgent,
   createRunContext,
@@ -67,10 +67,10 @@ export {
   type AgentModel,
   type AgentRunContext,
   type AgentRuntime,
-} from '@engine/agent/run/agent-loop';
+} from '@core/agent/run/agent-loop';
 export {
   bootstrapAgent,
   resolveModel,
   type BootstrapAgentOptions,
   type ModelResolver,
-} from '@engine/agent/bootstrap';
+} from '@core/agent/bootstrap';

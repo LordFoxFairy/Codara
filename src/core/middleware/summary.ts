@@ -5,14 +5,14 @@ import type {
   AgentRuntimeContext,
   AgentRuntimeValues,
 } from '@shared/contracts/agent-types';
-import {estimateModelInputTokens} from '@engine/pipeline/budget';
+import {estimateModelInputTokens} from '@core/middleware/budget';
 import {
   createMiddleware,
   readExecutionMetadata,
   type BaseMiddleware,
   type BeforeModelContext,
   type MiddlewareRuntimeShared,
-} from '@engine/pipeline/types';
+} from '@core/pipeline/types';
 
 const KEEP_LAST_MESSAGES = 2;
 const AUTO_COMPACT_THRESHOLD = 0.80;

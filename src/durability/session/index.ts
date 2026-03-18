@@ -1,11 +1,11 @@
 export type {
   Session,
-} from '@engine/session/session';
+} from '@durability/session/session';
 export type {
   SessionMetadata,
   SessionState,
   SessionStatus,
-} from '@engine/session/types';
-export {createSession} from '@engine/session/session';
-export type {SessionStore, SessionListOptions} from '@engine/session/store';
-export {FileSessionStore} from '@engine/session/store';
+} from '@durability/session/types';
+export {createSession} from '@durability/session/session';
+export type {SessionStore, SessionListOptions} from '@durability/session/store';
+export {FileSessionStore} from '@durability/session/store';
