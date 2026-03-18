@@ -184,8 +184,13 @@ export class MemberRunner {
     if (currentMember?.currentJobId) {
       try {
         const board = registry.getJobBoard(member.teamId);
-        board.rejectJob(currentMember.currentJobId, `Worker crashed: ${error.message}`);
-      } catch { /* ignore */ }
+        const job = board.getJob(currentMember.currentJobId);
+        if (job?.status === 'in_progress') {
+          board.releaseJob(currentMember.currentJobId);
+        } else if (job?.status === 'review') {
+          board.rejectJob(currentMember.currentJobId, `Worker crashed: ${error.message}`);
+        }
+      } catch { /* job may already be handled */ }
       registry.updateMember(member.teamId, member.memberId, { currentJobId: undefined });
     }
     try {
