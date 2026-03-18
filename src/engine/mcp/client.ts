@@ -5,6 +5,13 @@ import {createHttpTransport} from './transport/http';
 import type {McpClientInfo, McpClientStatus, McpServerConfig, McpToolDefinition} from './types';
 import {DEFAULT_MCP_TIMEOUT} from './types';
 
+/** Progress callback fired at the start and end of each MCP tool call. */
+export type McpProgressCallback = (event: {
+  phase: 'start' | 'end';
+  toolName: string;
+  serverName: string;
+}) => void;
+
 /**
  * McpClient wraps the MCP SDK Client for a single server connection.
  *
@@ -17,12 +24,15 @@ export class McpClient {
   private _tools: McpToolDefinition[] = [];
   private _lastError: string | undefined;
   private readonly config: McpServerConfig;
+  private readonly onProgress: McpProgressCallback | undefined;
 
   constructor(
     readonly name: string,
     config: McpServerConfig,
+    onProgress?: McpProgressCallback,
   ) {
     this.config = config;
+    this.onProgress = onProgress;
     if (config.enabled === false) {
       this._status = 'disabled';
     }
@@ -85,14 +95,22 @@ export class McpClient {
       throw new Error(`MCP server "${this.name}" is not connected (status: ${this._status})`);
     }
 
-    const timeout = this.config.timeout ?? DEFAULT_MCP_TIMEOUT;
-    const result = await raceWithTimeout(
-      this.client.callTool({name: toolName, arguments: args}),
-      timeout,
-      `MCP tool call "${toolName}" timed out after ${timeout}ms`,
-    );
+    try { this.onProgress?.({phase: 'start', toolName, serverName: this.name}); } catch { /* fail-open */ }
 
-    return result;
+    const timeout = this.config.timeout ?? DEFAULT_MCP_TIMEOUT;
+    try {
+      const result = await raceWithTimeout(
+        this.client.callTool({name: toolName, arguments: args}),
+        timeout,
+        `MCP tool call "${toolName}" timed out after ${timeout}ms`,
+      );
+
+      try { this.onProgress?.({phase: 'end', toolName, serverName: this.name}); } catch { /* fail-open */ }
+      return result;
+    } catch (error) {
+      try { this.onProgress?.({phase: 'end', toolName, serverName: this.name}); } catch { /* fail-open */ }
+      throw error;
+    }
   }
 
   /**

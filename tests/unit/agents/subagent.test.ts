@@ -5,9 +5,9 @@ import {tool, type StructuredToolInterface} from '@langchain/core/tools';
 import {z} from 'zod';
 import {createAgent} from '@engine/agent';
 import {createHILMiddleware, createMiddleware} from '@engine/pipeline';
-import {createAgentMemoryCheckpointer} from '@infra/checkpoint';
+import {createAgentMemoryCheckpointer} from '@engine/checkpoint';
 import {readDelegatedAgentResult} from '@capability/task/delegation';
-import {TASK_TOOL_NAME, createTaskTool} from '@capability/task/task';
+import {TASK_TOOL_NAME, createTaskTool} from '@capability/task/middleware';
 
 class ScriptedModel {
   private index = 0;

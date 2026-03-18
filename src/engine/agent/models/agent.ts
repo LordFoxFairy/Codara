@@ -2,14 +2,17 @@ import type {AIMessage, AIMessageChunk, BaseMessage, ToolCall, ToolMessage} from
 import type {BaseChatModel} from '@langchain/core/language_models/chat_models';
 import type {StructuredToolInterface} from '@langchain/core/tools';
 import type {BaseMiddleware} from '@engine/pipeline/types';
-import type {AgentCheckpoint, AgentCheckpointer} from '@infra/checkpoint/agent';
+import type {AgentCheckpoint, AgentCheckpointer} from '@engine/checkpoint/agent';
 import type {HILToolMessagePayload} from '@engine/pipeline/hil';
 import type {AgentLifecycleHooks} from '@engine/hook/types';
 import type {
   AgentExecutionMetadata,
+  AgentFinishReason,
   AgentInputBudget,
+  AgentResult,
   AgentRuntimeContext,
   AgentRuntimeValues,
+  AgentState,
   AgentStatus,
   AgentType,
   PauseRequest,
@@ -17,9 +20,12 @@ import type {
 } from './types';
 export type {
   AgentExecutionMetadata,
+  AgentFinishReason,
   AgentInputBudget,
+  AgentResult,
   AgentRuntimeContext,
   AgentRuntimeValues,
+  AgentState,
   AgentStatus,
   AgentType,
   PauseRequest,
@@ -36,7 +42,6 @@ export type {
 
 export type AgentStreamMode = 'values' | 'updates' | 'messages' | 'custom';
 export type AgentInput = AgentMessagesInput | string | BaseMessage | BaseMessage[] | undefined;
-export type AgentFinishReason = 'complete' | 'error' | 'max_turns';
 export type ToolErrorHandler =
   | boolean
   | ((error: unknown, toolCall: ToolCall) => ToolMessage | void | Promise<ToolMessage | void>);
@@ -61,24 +66,7 @@ export interface AgentPreparationContext {
 
 export type AgentContextPreparer = (context: AgentPreparationContext) => Promise<void> | void;
 
-export interface AgentState {
-  sessionId: string;
-  agentType: AgentType;
-  messages: BaseMessage[];
-  context: AgentRuntimeContext;
-  values: AgentRuntimeValues;
-  status: AgentStatus;
-  pendingPause?: PauseRequest;
-}
-
 export interface AgentMessagesInput { messages: BaseMessage[]; }
-
-export interface AgentResult {
-  reason: AgentFinishReason;
-  state: AgentState;
-  turns: number;
-  error?: Error;
-}
 
 export interface AgentStreamCustomChunk { type: 'hil_event'; runId: string; turn: number; payload: HILToolMessagePayload; }
 

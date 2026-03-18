@@ -134,7 +134,7 @@ export function readExecutionMetadata(context: BaseExecutionContext): ExecutionC
 
 /** Well-known middleware names used for dedup and ordering across the runtime. */
 export const MIDDLEWARE_NAMES = {
-  Guidelines: 'GuidelinesMiddleware',
+  PathInstructions: 'PathInstructionsMiddleware',
   Skills: 'SkillsMiddleware',
   Budget: 'BudgetMiddleware',
   Summary: 'SummaryMiddleware',
@@ -143,7 +143,7 @@ export const MIDDLEWARE_NAMES = {
   Permission: 'PermissionMiddleware',
   Logging: 'LoggingMiddleware',
   Task: 'TaskMiddleware',
-  SharedTask: 'SharedTaskMiddleware',
+  Team: 'TeamMiddleware',
   TodoList: 'TodoListMiddleware',
   ToolHooks: 'ToolHooksMiddleware',
 } as const;

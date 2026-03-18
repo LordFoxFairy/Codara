@@ -15,7 +15,7 @@ import {
 } from '@engine/pipeline/types';
 
 const KEEP_LAST_MESSAGES = 2;
-const AUTO_COMPACT_THRESHOLD = 0.95;
+const AUTO_COMPACT_THRESHOLD = 0.80;
 
 export interface SummaryInput {
   messages: BaseMessage[];

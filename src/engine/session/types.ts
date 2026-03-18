@@ -6,6 +6,8 @@ export interface SessionMetadata {
   messageCount: number;
   tags?: string[];
   archived?: boolean;
+  /** When true, this session is internal (e.g. delegated task or team worker) and hidden from /resume. */
+  internal?: boolean;
   lastActivity: string;
   usage?: {
     modelCalls: number;

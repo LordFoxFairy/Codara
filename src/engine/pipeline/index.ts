@@ -18,6 +18,9 @@ export {
   type ToolCallHandler,
 } from '@engine/pipeline/types';
 export {
+  MiddlewarePipeline,
+} from '@engine/pipeline/pipeline';
+export {
   createSkillsMiddleware,
   type SkillsMiddlewareOptions,
   type SkillsRuntimeDataLoader,
@@ -36,9 +39,9 @@ export {
   type BudgetMiddlewareOptions,
 } from '@engine/pipeline/budget';
 export {
-  createGuidelinesMiddleware,
-  type GuidelinesMiddlewareOptions,
-} from '@engine/pipeline/guidelines';
+  createPathInstructionsMiddleware,
+  type PathInstructionsMiddlewareOptions,
+} from '@engine/pipeline/path-instructions';
 export {
   applyHILResumeToolEdits,
   createHILMiddleware,
@@ -67,7 +70,6 @@ export {
   type HILReviewRequest,
   type HILToolMessagePayload,
   type HILUIActionOption,
-  type HILUIConfig,
 } from '@engine/pipeline/hil';
 export {
   createSummaryMiddleware,

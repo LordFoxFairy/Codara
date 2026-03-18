@@ -1,6 +1,6 @@
 import {randomUUID} from 'node:crypto';
 import {useCallback, useEffect, useMemo, useRef, useState} from 'react';
-import type {Codara, CodaraRuntimeEvent, SessionState} from '@/index';
+import type {Codara, CodaraRuntimeEvent, SessionState, TeamQuerySummary, TeamQueryDetail} from '@/index';
 import {AIMessageChunk, type BaseMessage} from '@langchain/core/messages';
 import {
   backspaceComposerText,
@@ -31,6 +31,8 @@ import {
   type CliHilAutoAction,
 } from './hil-review';
 import type {CliActiveTurn, CliHilReviewState, CliNotice, CliRunState} from './view-state';
+import type {TeamDashboardState} from '../hooks/use-team-dashboard';
+import type {TeamDetailState} from '../hooks/use-team-detail';
 
 const STARTUP_MESSAGE = '';
 const HIL_AUTO_ACTION_DELAY_MS = 30;
@@ -90,6 +92,10 @@ export interface CliController {
   permissionConfirm: () => void;
   permissionRejectSend: () => void;
   permissionRejectSilent: () => void;
+  teamDashboardState: TeamDashboardState;
+  teamDetailState?: TeamDetailState;
+  enterTeam: (teamId: string) => void;
+  leaveTeam: () => void;
 }
 
 export function useCliController(options: UseCliControllerOptions): CliController {
@@ -125,6 +131,8 @@ export function useCliController(options: UseCliControllerOptions): CliControlle
   const [taskPanelVisible, setTaskPanelVisible] = useState(true);
   const [expandedAll, setExpandedAll] = useState(false);
   const [commandOutput, setCommandOutput] = useState<{content: string; commandName?: string; scrollOffset: number} | undefined>();
+  const [teamDashboardState, setTeamDashboardState] = useState<TeamDashboardState>({ teams: [], viewMode: 'dashboard' });
+  const [teamDetailState, setTeamDetailState] = useState<TeamDetailState | undefined>();
   const isRunningRef = useRef(false);
   const initialPromptSentRef = useRef(false);
   const hilReviewRef = useRef<CliHilReviewState | undefined>(undefined);
@@ -137,10 +145,55 @@ export function useCliController(options: UseCliControllerOptions): CliControlle
 
   useEffect(() => {
     setRuntimeEvents([]);
-    return codara.subscribeRuntimeEvents((event) => {
+    return codara.subscribeRuntimeEvents((event: CodaraRuntimeEvent) => {
       setRuntimeEvents((current) => [...current, event].slice(-40));
+      // Auto-refresh team dashboard when team events arrive
+      if (event.kind === 'team') {
+        const summaries = codara.getTeamSummaries();
+        setTeamDashboardState(prev => ({
+          ...prev,
+          teams: summaries.map((s: TeamQuerySummary) => ({
+            teamId: s.teamId,
+            name: s.name,
+            status: s.status,
+            progress: s.jobProgress,
+            memberCount: s.memberCount,
+            tokenUsage: 0,
+            health: 'healthy' as const,
+            lastActivity: new Date().toISOString(),
+          })),
+        }));
+      }
     });
   }, [codara]);
+
+  useEffect(() => {
+    const activeTeamId = teamDashboardState.activeTeamId;
+    if (!activeTeamId) return;
+    // Refresh detail state whenever runtime events change (contains team events)
+    const detail: TeamQueryDetail | undefined = codara.getTeamDetail(activeTeamId);
+    if (detail) {
+      setTeamDetailState(prev => prev ? {
+        ...prev,
+        status: detail.status,
+        members: detail.members.map(m => ({
+          memberId: m.memberId,
+          name: m.name,
+          role: m.role,
+          status: m.status,
+          model: m.model,
+          tokens: 0,
+        })),
+        jobs: detail.jobs.map(j => ({
+          id: j.id,
+          title: j.title,
+          status: j.status,
+          assignee: j.assignee,
+          blockedBy: j.blockedBy,
+        })),
+      } : prev);
+    }
+  }, [codara, teamDashboardState.activeTeamId, runtimeEvents]);
 
   const appendNotice = useCallback((level: CliNotice['level'], content: string) => {
     const message = content.trim();
@@ -173,6 +226,42 @@ export function useCliController(options: UseCliControllerOptions): CliControlle
     setHilReview((current) => syncCliHilReviewState(current, nextAgentState.pendingPause));
     return nextAgentState;
   }, [codara]);
+
+  const enterTeam = useCallback((teamId: string) => {
+    setTeamDashboardState(prev => ({ ...prev, activeTeamId: teamId, viewMode: 'observe' as const }));
+    const detail: TeamQueryDetail | undefined = codara.getTeamDetail(teamId);
+    if (detail) {
+      setTeamDetailState({
+        teamId: detail.teamId,
+        teamName: detail.name,
+        goal: detail.goal,
+        status: detail.status,
+        members: detail.members.map(m => ({
+          memberId: m.memberId,
+          name: m.name,
+          role: m.role,
+          status: m.status,
+          model: m.model,
+          tokens: 0,
+        })),
+        jobs: detail.jobs.map(j => ({
+          id: j.id,
+          title: j.title,
+          status: j.status,
+          assignee: j.assignee,
+          blockedBy: j.blockedBy,
+        })),
+        activity: [],
+        tokenUsage: 0,
+        estimatedCost: 0,
+      });
+    }
+  }, [codara]);
+
+  const leaveTeam = useCallback(() => {
+    setTeamDashboardState(prev => ({ ...prev, activeTeamId: undefined, viewMode: 'dashboard' as const }));
+    setTeamDetailState(undefined);
+  }, []);
 
   const runSlashCommand = useCallback(async (prompt: string) => {
     const result = await codara.executeCommand(prompt);
@@ -215,6 +304,24 @@ export function useCliController(options: UseCliControllerOptions): CliControlle
       return;
     }
 
+    if (result.action?.type === 'enter_team') {
+      enterTeam(result.action.teamId);
+      if (result.ok) {
+        appendNotice('system', result.output || `Entered team ${result.action.teamId}`);
+      } else {
+        appendNotice('error', result.output || '(no output)');
+      }
+      setRunState(result.ok ? {status: 'done'} : {status: 'error', error: result.output});
+      return;
+    }
+
+    if (result.action?.type === 'leave_team') {
+      leaveTeam();
+      appendNotice('system', result.output || 'Left team view.');
+      setRunState({status: 'done'});
+      return;
+    }
+
     if (result.ok) {
       setCommandOutput({content: result.output || '(no output)', commandName: result.command, scrollOffset: 0});
     } else {
@@ -224,7 +331,7 @@ export function useCliController(options: UseCliControllerOptions): CliControlle
     setRunState(result.ok
       ? nextAgentState.status === 'paused' ? {status: 'paused'} : {status: 'done'}
       : {status: 'error', error: result.output});
-  }, [appendNotice, codara, onShowSessionPicker, openFile, refreshCoreState, reopenSession, sessionState.sessionId]);
+  }, [appendNotice, codara, enterTeam, leaveTeam, onShowSessionPicker, openFile, refreshCoreState, reopenSession, sessionState.sessionId]);
 
   const runAgentPrompt = useCallback(async (prompt: string) => {
     setActiveTurn({
@@ -411,10 +518,33 @@ export function useCliController(options: UseCliControllerOptions): CliControlle
       return;
     }
 
+    // Check for @team mention shorthand: "@team-name rest of message"
+    const teamMentionMatch = prompt.match(/^@(\S+)\s+([\s\S]*)/);
+    if (teamMentionMatch) {
+      const teamName = teamMentionMatch[1]!;
+      const message = teamMentionMatch[2]!;
+      const teams = codara.getTeamSummaries();
+      const matchedTeam = teams.find(t => t.name === teamName);
+      if (matchedTeam) {
+        setComposer(createComposerState());
+        setComposerActivityVersion((current) => current + 1);
+        void runSlashCommand(`/team message ${teamName} ${message}`);
+        return;
+      }
+      // Team not found — show error with available team names
+      const available = teams.map(t => t.name);
+      if (available.length > 0) {
+        appendNotice('error', `Team "${teamName}" not found. Available: ${available.join(', ')}`);
+      } else {
+        appendNotice('error', `Team "${teamName}" not found. No active teams.`);
+      }
+      return;
+    }
+
     setComposer(createComposerState());
     setComposerActivityVersion((current) => current + 1);
     void submitPrompt(prompt);
-  }, [composer.text, submitPrompt]);
+  }, [appendNotice, codara, composer.text, runSlashCommand, submitPrompt]);
 
   const submitText = useCallback((text: string) => {
     const prompt = text.trim();
@@ -496,7 +626,8 @@ export function useCliController(options: UseCliControllerOptions): CliControlle
 
     isRunningRef.current = true;
     setRunState({status: 'running'});
-    setHilReview((current) => current ? {...prepared.review, busy: true} : current);
+    // Clear HIL panel immediately — don't show "Running..." while model processes
+    setHilReview(undefined);
 
     try {
       const selectedAction = autoAction
@@ -505,17 +636,27 @@ export function useCliController(options: UseCliControllerOptions): CliControlle
       if (!prepared.review.form && !isPermissionReview(prepared.review)) {
         appendNotice('system', `HIL action: ${selectedAction?.label ?? autoAction?.action ?? 'resume'}`);
       }
-      const result = await codara.resumePause(prepared.payload);
-      setCoreMessages(result.state.messages);
-      setSessionState(codara.getState());
-      setHilReview((current) => syncCliHilReviewState(current, result.state.pendingPause));
-      setRunState(result.state.status === 'paused' ? {status: 'paused'} : {status: 'done'});
+
+      // Use streaming resume for immediate UI feedback (like Claude Code)
+      for await (const chunk of codara.resumePauseStream(prepared.payload, {streamMode: 'messages'})) {
+        if (!AIMessageChunk.isInstance(chunk)) continue;
+        const text = chunk.text;
+        if (text) {
+          setActiveTurn((current) => current
+            ? {...current, response: current.response + text}
+            : {id: `turn-resume-${Date.now()}`, prompt: '', response: text, responseRole: 'assistant'});
+        }
+      }
+
+      setActiveTurn(undefined);
+      const nextAgentState = await refreshCoreState();
+      setHilReview((current) => syncCliHilReviewState(current, nextAgentState.pendingPause));
+      setRunState(nextAgentState.status === 'paused' ? {status: 'paused'} : {status: 'done'});
     } catch (error) {
       reportError(error);
       await refreshCoreState().catch(() => undefined);
     } finally {
       isRunningRef.current = false;
-      setHilReview((current) => current ? {...current, busy: false} : current);
     }
   }, [appendNotice, codara, refreshCoreState, reportError]);
 
@@ -631,6 +772,10 @@ export function useCliController(options: UseCliControllerOptions): CliControlle
     permissionConfirm,
     permissionRejectSend,
     permissionRejectSilent,
+    teamDashboardState,
+    teamDetailState,
+    enterTeam,
+    leaveTeam,
   };
 }
 

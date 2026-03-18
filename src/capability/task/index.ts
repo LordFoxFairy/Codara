@@ -14,18 +14,15 @@ export {
   TASK_CREATE_TOOL_NAME,
   TASK_LIST_TOOL_NAME,
   TASK_UPDATE_TOOL_NAME,
-  createSharedTaskMiddleware,
   createTaskCreateTool,
   createTaskListTool,
   createTaskTools,
   createTaskUpdateTool,
-  type CreateSharedTaskMiddlewareOptions,
   type TaskToolOptions,
-} from '@capability/task/shared-tasks';
+} from '@capability/task/tools';
 export {
-  TASK_MIDDLEWARE_SYSTEM_PROMPT,
   TASK_TOOL_DESCRIPTION,
   TASK_TOOL_NAME,
   createTaskMiddleware,
   type CreateTaskMiddlewareOptions,
-} from '@capability/task/task';
+} from '@capability/task/middleware';

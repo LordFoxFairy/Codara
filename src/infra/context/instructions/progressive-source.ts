@@ -96,7 +96,7 @@ export class SessionScopedProgressiveInstructionSource implements ProgressiveIns
       return this.fileCache.get(filePath) ?? null;
     }
 
-    const loaded = await loadInstructionFile(filePath, this.options.maxImportDepth ?? 5);
+    const loaded = await loadInstructionFile(filePath, this.options.maxImportDepth ?? 5, this.projectRoot);
     this.fileCache.set(filePath, loaded);
     return loaded;
   }
@@ -149,7 +149,7 @@ export class SessionScopedProgressiveInstructionSource implements ProgressiveIns
 
 // ── File loading ──────────────────────────────────────────────────────
 
-async function loadInstructionFile(filePath: string, maxImportDepth: number): Promise<string | null> {
+async function loadInstructionFile(filePath: string, maxImportDepth: number, projectRoot: string): Promise<string | null> {
   const absolutePath = path.resolve(filePath);
   let raw: string;
   try {
@@ -163,7 +163,7 @@ async function loadInstructionFile(filePath: string, maxImportDepth: number): Pr
     return null;
   }
 
-  return expandImports(absolutePath, trimmed, maxImportDepth, new Set<string>([absolutePath]));
+  return expandImports(absolutePath, trimmed, maxImportDepth, new Set<string>([absolutePath]), projectRoot);
 }
 
 async function expandImports(
@@ -171,12 +171,14 @@ async function expandImports(
   content: string,
   maxImportDepth: number,
   visited: Set<string>,
+  projectRoot: string,
   depth = 0,
 ): Promise<string> {
   if (depth >= maxImportDepth) {
     return content;
   }
 
+  const resolvedProjectRoot = path.resolve(projectRoot);
   const output: string[] = [];
   for (const line of content.split('\n')) {
     const importPath = parseImportPath(line);
@@ -187,6 +189,12 @@ async function expandImports(
 
     const resolved = resolveImportPath(ownerFilePath, importPath);
     if (!resolved || visited.has(resolved)) {
+      output.push(line);
+      continue;
+    }
+
+    // Security: reject imports that resolve outside the project root
+    if (!resolved.startsWith(resolvedProjectRoot + path.sep) && resolved !== resolvedProjectRoot) {
       output.push(line);
       continue;
     }
@@ -207,7 +215,7 @@ async function expandImports(
     const nextVisited = new Set(visited);
     nextVisited.add(resolved);
     output.push(`> Imported from ${resolved}`);
-    output.push(await expandImports(resolved, imported, maxImportDepth, nextVisited, depth + 1));
+    output.push(await expandImports(resolved, imported, maxImportDepth, nextVisited, projectRoot, depth + 1));
   }
 
   return output.join('\n').trim();

@@ -1,6 +1,4 @@
 export type {
-  CodaraRuntimeEvent,
-  CodaraRuntimeEventListener,
   Session,
 } from '@engine/session/session';
 export type {

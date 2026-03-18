@@ -5,7 +5,7 @@ import path from 'node:path';
 import {AIMessage} from '@langchain/core/messages';
 import type {BaseChatModel} from '@langchain/core/language_models/chat_models';
 import {createAgent} from '@engine/agent';
-import {createAgentMemoryCheckpointer} from '@infra/checkpoint';
+import {createAgentMemoryCheckpointer} from '@engine/checkpoint';
 import {createSkillsMiddleware} from '@engine/pipeline';
 import {FileSystemSkillStore, loadSkillsRuntimeData} from '@capability/skill';
 

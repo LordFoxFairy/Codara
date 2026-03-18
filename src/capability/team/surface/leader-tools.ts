@@ -1,0 +1,381 @@
+import {tool} from '@langchain/core/tools';
+import type {StructuredToolInterface} from '@langchain/core/tools';
+import {z} from 'zod';
+import type {TeamMessage} from '@capability/team/coordination/types';
+import {SECURITY_DEFAULTS} from '@capability/team/coordination/types';
+import type {TeamToolContext} from '@capability/team/surface/types';
+
+function canSpawnMember(
+  teamMemberCount: number,
+  teamMaxMembers: number,
+  globalAgentCount: number,
+): boolean {
+  return teamMemberCount < teamMaxMembers
+    && globalAgentCount < SECURITY_DEFAULTS.maxTotalAgents;
+}
+
+export function createLeaderTools(ctx: TeamToolContext): StructuredToolInterface[] {
+  return [
+    createTeamPlanJobsTool(ctx),
+    createTeamUpdateJobTool(ctx),
+    createTeamCancelJobTool(ctx),
+    createTeamGetJobBoardTool(ctx),
+    createTeamSpawnMemberTool(ctx),
+    createTeamAssignJobTool(ctx),
+    createTeamReviewJobTool(ctx),
+    createTeamSendMessageTool(ctx),
+    createTeamBroadcastTool(ctx),
+    createTeamReportTool(ctx),
+    createTeamShutdownTool(ctx),
+  ];
+}
+
+function makeMessage(
+  ctx: TeamToolContext,
+  to: string | 'broadcast',
+  type: TeamMessage['type'],
+  content: string,
+  metadata?: Record<string, unknown>,
+): TeamMessage {
+  return {
+    id: `msg_${crypto.randomUUID().slice(0, 8)}`,
+    from: ctx.memberId,
+    to,
+    teamId: ctx.teamId,
+    type,
+    content,
+    metadata,
+    timestamp: new Date().toISOString(),
+    read: false,
+  };
+}
+
+function createTeamPlanJobsTool(ctx: TeamToolContext): StructuredToolInterface {
+  return tool(
+    async (input) => {
+      const board = ctx.registry.getJobBoard(ctx.teamId);
+      const created = board.planJobs(input.jobs);
+
+      for (const job of created) {
+        ctx.emitEvent({
+          type: 'job.created',
+          data: {teamId: ctx.teamId, jobId: job.id, title: job.title, priority: job.priority},
+        });
+      }
+
+      return JSON.stringify(created);
+    },
+    {
+      name: 'team_plan_jobs',
+      description: 'Plan multiple jobs on the team job board. Supports dependency chains via blockedBy.',
+      schema: z.object({
+        jobs: z.array(z.object({
+          title: z.string(),
+          description: z.string(),
+          priority: z.number().default(0),
+          blockedBy: z.array(z.string()).optional(),
+        })),
+      }),
+    },
+  );
+}
+
+function createTeamUpdateJobTool(ctx: TeamToolContext): StructuredToolInterface {
+  return tool(
+    async (input) => {
+      const board = ctx.registry.getJobBoard(ctx.teamId);
+      const job = board.getJob(input.jobId);
+      if (!job) return JSON.stringify({error: `Job not found: ${input.jobId}`});
+
+      if (input.description !== undefined) job.description = input.description;
+      if (input.priority !== undefined) job.priority = input.priority;
+      if (input.addBlockedBy) {
+        for (const dep of input.addBlockedBy) {
+          if (!job.blockedBy.includes(dep)) job.blockedBy.push(dep);
+        }
+      }
+      if (input.removeBlockedBy) {
+        job.blockedBy = job.blockedBy.filter((id) => !input.removeBlockedBy!.includes(id));
+      }
+
+      return JSON.stringify(job);
+    },
+    {
+      name: 'team_update_job',
+      description: 'Update a job\'s description, priority, or dependency list.',
+      schema: z.object({
+        jobId: z.string(),
+        description: z.string().optional(),
+        priority: z.number().optional(),
+        addBlockedBy: z.array(z.string()).optional(),
+        removeBlockedBy: z.array(z.string()).optional(),
+      }),
+    },
+  );
+}
+
+function createTeamCancelJobTool(ctx: TeamToolContext): StructuredToolInterface {
+  return tool(
+    async (input) => {
+      const board = ctx.registry.getJobBoard(ctx.teamId);
+      board.cancelJob(input.jobId, input.reason);
+      return JSON.stringify({cancelled: true, jobId: input.jobId});
+    },
+    {
+      name: 'team_cancel_job',
+      description: 'Cancel a planned or ready job.',
+      schema: z.object({
+        jobId: z.string(),
+        reason: z.string(),
+      }),
+    },
+  );
+}
+
+function createTeamGetJobBoardTool(ctx: TeamToolContext): StructuredToolInterface {
+  return tool(
+    async () => {
+      const board = ctx.registry.getJobBoard(ctx.teamId);
+      return JSON.stringify({
+        jobs: board.getAllJobs(),
+        progress: board.getProgress(),
+      });
+    },
+    {
+      name: 'team_get_jobboard',
+      description: 'Get the current state of the team job board, including all jobs and progress summary.',
+      schema: z.object({}),
+    },
+  );
+}
+
+function createTeamSpawnMemberTool(ctx: TeamToolContext): StructuredToolInterface {
+  return tool(
+    async (input) => {
+      const team = ctx.registry.getTeam(ctx.teamId);
+      if (!team) return JSON.stringify({error: `Team not found: ${ctx.teamId}`});
+
+      const currentMembers = ctx.registry.getMembersByTeam(ctx.teamId);
+      const globalCount = ctx.registry.getTotalAgentCount();
+
+      if (!canSpawnMember(currentMembers.length, team.config.maxMembers, globalCount)) {
+        return JSON.stringify({error: 'Cannot spawn member: team or global agent limit reached'});
+      }
+
+      const memberId = `member_${crypto.randomUUID().slice(0, 8)}`;
+      const member = {
+        memberId,
+        name: input.name,
+        teamId: ctx.teamId,
+        role: input.role as 'worker',
+        status: 'initializing' as const,
+        model: input.model,
+        sessionId: `session_${memberId}`,
+        mode: 'local' as const,
+        joinedAt: new Date().toISOString(),
+      };
+
+      ctx.registry.registerMember(ctx.teamId, member);
+
+      ctx.emitEvent({
+        type: 'member.joined',
+        data: {teamId: ctx.teamId, memberId, name: input.name, role: input.role, mode: 'local'},
+      });
+
+      return JSON.stringify(member);
+    },
+    {
+      name: 'team_spawn_member',
+      description: 'Spawn a new local team member (worker). Creates the member record; the runtime handles actual agent session creation.',
+      schema: z.object({
+        name: z.string(),
+        role: z.enum(['worker']),
+        model: z.string().optional(),
+      }),
+    },
+  );
+}
+
+function createTeamAssignJobTool(ctx: TeamToolContext): StructuredToolInterface {
+  return tool(
+    async (input) => {
+      const board = ctx.registry.getJobBoard(ctx.teamId);
+
+      let claimed: boolean;
+      try {
+        claimed = board.claimJob(input.jobId, input.memberId);
+      } catch (err: any) {
+        return JSON.stringify({error: err.message});
+      }
+
+      if (!claimed) {
+        return JSON.stringify({error: `Cannot assign job ${input.jobId} to ${input.memberId}. Job may not be ready or member may already have an active job.`});
+      }
+
+      ctx.emitEvent({
+        type: 'job.claimed',
+        data: {teamId: ctx.teamId, jobId: input.jobId, memberId: input.memberId},
+      });
+
+      const msg = makeMessage(ctx, input.memberId, 'job_assigned', `You have been assigned job: ${input.jobId}`, {jobId: input.jobId});
+      await ctx.transport.send(input.memberId, msg);
+
+      return JSON.stringify({assigned: true, jobId: input.jobId, memberId: input.memberId});
+    },
+    {
+      name: 'team_assign_job',
+      description: 'Assign a ready job to a specific team member.',
+      schema: z.object({
+        jobId: z.string(),
+        memberId: z.string(),
+      }),
+    },
+  );
+}
+
+function createTeamReviewJobTool(ctx: TeamToolContext): StructuredToolInterface {
+  return tool(
+    async (input) => {
+      const board = ctx.registry.getJobBoard(ctx.teamId);
+      const job = board.getJob(input.jobId);
+      if (!job) return JSON.stringify({error: `Job not found: ${input.jobId}`});
+
+      if (input.approved) {
+        board.completeJob(input.jobId, ctx.memberId);
+        ctx.emitEvent({
+          type: 'job.done',
+          data: {teamId: ctx.teamId, jobId: input.jobId},
+        });
+
+        if (job.assignee) {
+          const msg = makeMessage(ctx, job.assignee, 'job_reviewed', input.feedback ?? 'Job approved.', {jobId: input.jobId, approved: true});
+          await ctx.transport.send(job.assignee, msg);
+        }
+
+        return JSON.stringify({reviewed: true, approved: true, jobId: input.jobId});
+      }
+
+      board.rejectJob(input.jobId, input.feedback ?? 'Rejected');
+      ctx.emitEvent({
+        type: 'job.reviewed',
+        data: {teamId: ctx.teamId, jobId: input.jobId, approved: false, reviewerId: ctx.memberId},
+      });
+
+      if (job.assignee) {
+        const msg = makeMessage(ctx, job.assignee, 'job_reviewed', input.feedback ?? 'Job rejected.', {jobId: input.jobId, approved: false});
+        await ctx.transport.send(job.assignee, msg);
+      }
+
+      return JSON.stringify({reviewed: true, approved: false, jobId: input.jobId});
+    },
+    {
+      name: 'team_review_job',
+      description: 'Review a submitted job — approve to complete it, or reject to send it back for rework.',
+      schema: z.object({
+        jobId: z.string(),
+        approved: z.boolean(),
+        feedback: z.string().optional(),
+      }),
+    },
+  );
+}
+
+function createTeamSendMessageTool(ctx: TeamToolContext): StructuredToolInterface {
+  return tool(
+    async (input) => {
+      const msg = makeMessage(ctx, input.to, 'message', input.content);
+      await ctx.transport.send(input.to, msg);
+
+      ctx.emitEvent({
+        type: 'team.message',
+        data: {teamId: ctx.teamId, message: msg},
+      });
+
+      return JSON.stringify({sent: true, messageId: msg.id});
+    },
+    {
+      name: 'team_send_message',
+      description: 'Send a direct message to a specific team member.',
+      schema: z.object({
+        to: z.string(),
+        content: z.string(),
+      }),
+    },
+  );
+}
+
+function createTeamBroadcastTool(ctx: TeamToolContext): StructuredToolInterface {
+  return tool(
+    async (input) => {
+      const msg = makeMessage(ctx, 'broadcast', 'message', input.content);
+      await ctx.transport.send('broadcast', msg);
+
+      ctx.emitEvent({
+        type: 'team.message',
+        data: {teamId: ctx.teamId, message: msg},
+      });
+
+      return JSON.stringify({broadcast: true, messageId: msg.id});
+    },
+    {
+      name: 'team_broadcast',
+      description: 'Broadcast a message to all team members.',
+      schema: z.object({
+        content: z.string(),
+      }),
+    },
+  );
+}
+
+function createTeamReportTool(ctx: TeamToolContext): StructuredToolInterface {
+  return tool(
+    async (input) => {
+      const msg = makeMessage(ctx, 'user', 'status_update', input.content, {isFinal: input.isFinal});
+      await ctx.transport.send('user', msg).catch(() => {
+        // 'user' may not be a registered transport member.
+      });
+
+      if (input.isFinal) {
+        ctx.emitEvent({
+          type: 'team.completing',
+          data: {teamId: ctx.teamId},
+        });
+      }
+      return JSON.stringify({reported: true, isFinal: input.isFinal});
+    },
+    {
+      name: 'team_report',
+      description: 'Report progress or final completion summary for the team.',
+      schema: z.object({
+        content: z.string(),
+        isFinal: z.boolean().default(false),
+      }),
+    },
+  );
+}
+
+function createTeamShutdownTool(ctx: TeamToolContext): StructuredToolInterface {
+  return tool(
+    async (input) => {
+      ctx.emitEvent({
+        type: 'team.completing',
+        data: {teamId: ctx.teamId},
+      });
+
+      try {
+        ctx.registry.updateTeamStatus(ctx.teamId, 'completing');
+      } catch {
+        // Team may already be in a transitional state.
+      }
+
+      return JSON.stringify({shutdown: true, reason: input.reason ?? 'Leader initiated shutdown'});
+    },
+    {
+      name: 'team_shutdown',
+      description: 'Signal that the team should begin graceful shutdown.',
+      schema: z.object({
+        reason: z.string().optional(),
+      }),
+    },
+  );
+}

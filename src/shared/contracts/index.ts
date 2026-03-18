@@ -1,8 +1,11 @@
 export type {
   AgentExecutionMetadata,
+  AgentFinishReason,
   AgentInputBudget,
+  AgentResult,
   AgentRuntimeContext,
   AgentRuntimeValues,
+  AgentState,
   AgentStatus,
   AgentType,
   PauseActionDescriptor,
@@ -20,3 +23,9 @@ export type {
   ContextBudgetSnapshot,
   ExecutionContextMetadata,
 } from './execution';
+export type {
+  Channel,
+  ChannelMessage,
+  ChannelRuntimeEvent,
+  ChannelType,
+} from './channel';

@@ -4,7 +4,7 @@ import type {BaseChatModel} from '@langchain/core/language_models/chat_models';
 import {tool} from '@langchain/core/tools';
 import {z} from 'zod';
 import {createAgent} from '@engine/agent';
-import {createAgentMemoryCheckpointer} from '@infra/checkpoint';
+import {createAgentMemoryCheckpointer} from '@engine/checkpoint';
 import {createHILMiddleware} from '@engine/pipeline';
 
 class SequenceModel {

@@ -6,7 +6,7 @@ import type {
   CodaraCommandHelpMetadata,
   CodaraCommandSource,
   CodaraCommandSpec,
-} from '@capability/command/types';
+} from '@capability/command/runtime/types';
 
 const BUILTIN_SOURCE = {type: 'builtin'} as const;
 const HELP_PAGE_SIZE = 8;

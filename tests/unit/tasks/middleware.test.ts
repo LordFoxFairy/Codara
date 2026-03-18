@@ -8,10 +8,9 @@ import {tool, type StructuredToolInterface} from '@langchain/core/tools';
 import {z} from 'zod';
 import {createAgent} from '@engine/agent';
 import {createCodaraGuidelinesSource} from '@infra/context/instructions/guidelines';
-import {createCodaraPromptSource} from '@infra/context/instructions/prompt';
-import {buildBaseSystemMessage} from '@infra/context/system-message';
+import {createCodaraPromptSource} from '@infra/context/prompts/prompt-source';
+import {buildBaseSystemMessage} from '@infra/context/session-bundle/base-system-message';
 import {
-  createSharedTaskMiddleware,
   createTaskMemoryStore,
   createTaskMiddleware,
   TASK_CREATE_TOOL_NAME,
@@ -153,7 +152,6 @@ describe('tasks middlewares', () => {
     const result = await agent.invoke([new HumanMessage('show tasks prompt')]);
     const lastAi = result.state.messages[result.state.messages.length - 1] as AIMessage;
 
-    expect(String(lastAi.content)).toContain('Task Delegation');
     expect(String(lastAi.content)).toContain('Available Subagents');
     expect(String(lastAi.content)).toContain('general-purpose');
     expect(String(lastAi.content)).toContain('Explore');
@@ -250,9 +248,12 @@ describe('tasks middlewares', () => {
     expect(String(toolMessage.content)).toContain('child_visible:false');
   });
 
-  it('should expose shared task coordination tools as a dedicated middleware', async () => {
+  it('should expose shared task coordination tools through the single Task middleware', async () => {
     const store = createTaskMemoryStore();
-    const sharedTaskMiddleware = createSharedTaskMiddleware({store});
+    const taskMiddleware = createTaskMiddleware({
+      store,
+      model: new ChildSummaryModel() as unknown as BaseChatModel,
+    });
     const model = new ScriptedModel([
       new AIMessage({
         content: '',
@@ -278,13 +279,14 @@ describe('tasks middlewares', () => {
 
     const agent = createAgent({
       model,
-      middleware: [sharedTaskMiddleware],
+      middleware: [taskMiddleware],
     });
 
     const result = await agent.invoke([new HumanMessage('start')], {recursionLimit: 3});
     const taskToolMessages = result.state.messages.filter((message) => ToolMessage.isInstance(message)) as ToolMessage[];
 
-    expect(sharedTaskMiddleware.tools?.map((tool) => tool.name)).toEqual([
+    expect(taskMiddleware.tools?.map((tool) => tool.name)).toEqual([
+      TASK_TOOL_NAME,
       TASK_CREATE_TOOL_NAME,
       'TaskUpdate',
       TASK_LIST_TOOL_NAME,

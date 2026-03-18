@@ -7,12 +7,6 @@ import {theme} from '../../utils/theme';
 
 const BRAILLE_FRAMES = ['⠋', '⠙', '⠹', '⠸', '⠼', '⠴', '⠦', '⠧', '⠇', '⠏'] as const;
 
-/** Maximum characters for task name column before truncation. */
-const TASK_NAME_MAX_WIDTH = 30;
-
-/** Minimum characters for elapsed time column. */
-const ELAPSED_MIN_WIDTH = 6;
-
 interface TaskPanelProps {
   tasks: ActiveTask[];
   runningCount: number;
@@ -28,36 +22,19 @@ function buildTaskSummary(runningCount: number, doneCount: number, errorCount: n
   return parts.join(', ');
 }
 
-const TASK_STATUS_COLOR: Record<ActiveTask['status'], string> = {
-  running: theme.status.running,
-  done: theme.status.done,
-  error: theme.status.error,
-  paused: theme.status.paused,
-};
-
-const TASK_STATUS_LABEL: Record<ActiveTask['status'], string> = {
-  running: 'running',
-  done: 'done',
-  error: 'failed',
-  paused: 'paused',
-};
-
-function TaskIcon({status, frame}: {status: ActiveTask['status']; frame: number}): React.JSX.Element {
-  const color = TASK_STATUS_COLOR[status];
+function TaskCheckbox({status, frame}: {status: ActiveTask['status']; frame: number}): React.JSX.Element {
   switch (status) {
-    case 'running':
-      return <Text color={color}>{BRAILLE_FRAMES[((frame % BRAILLE_FRAMES.length) + BRAILLE_FRAMES.length) % BRAILLE_FRAMES.length]}</Text>;
+    case 'running': {
+      const spinner = BRAILLE_FRAMES[((frame % BRAILLE_FRAMES.length) + BRAILLE_FRAMES.length) % BRAILLE_FRAMES.length];
+      return <Text color={theme.status.running}>[{spinner}]</Text>;
+    }
     case 'done':
-      return <Text color={color}>✓</Text>;
+      return <Text color={theme.status.done}>[✓]</Text>;
     case 'error':
-      return <Text color={color}>✕</Text>;
+      return <Text color={theme.status.error}>[✕]</Text>;
     case 'paused':
-      return <Text color={color}>⏸</Text>;
+      return <Text color={theme.status.paused}>[⏸]</Text>;
   }
-}
-
-function TaskStatusText({status}: {status: ActiveTask['status']}): React.JSX.Element {
-  return <Text color={TASK_STATUS_COLOR[status]}>{TASK_STATUS_LABEL[status]}</Text>;
 }
 
 export function TaskPanel({tasks, runningCount, doneCount, errorCount}: TaskPanelProps): React.JSX.Element | null {
@@ -84,13 +61,14 @@ export function TaskPanel({tasks, runningCount, doneCount, errorCount}: TaskPane
         const statParts: string[] = [];
         if (task.toolUseCount) statParts.push(`${task.toolUseCount} tools`);
         if (task.totalTokens) statParts.push(`${task.totalTokens} tok`);
-        const statSuffix = statParts.length > 0 ? `  ${statParts.join(' · ')}` : '';
+        const elapsed = formatElapsedMs(task.elapsed);
+        const stats = statParts.length > 0 ? `  ${statParts.join(' · ')}` : '';
+
         return (
           <Box key={task.id} gap={1}>
-            <TaskIcon status={task.status} frame={frame} />
-            <Text wrap="truncate-end">{task.name.padEnd(TASK_NAME_MAX_WIDTH)}</Text>
-            <TaskStatusText status={task.status} />
-            <Text dimColor>{formatElapsedMs(task.elapsed).padStart(ELAPSED_MIN_WIDTH)}{statSuffix}</Text>
+            <TaskCheckbox status={task.status} frame={frame} />
+            <Text wrap="truncate-end">{task.name}</Text>
+            <Text dimColor>{elapsed}{stats}</Text>
           </Box>
         );
       })}

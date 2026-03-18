@@ -6,9 +6,12 @@
  */
 export type {
   AgentExecutionMetadata,
+  AgentFinishReason,
   AgentInputBudget,
+  AgentResult,
   AgentRuntimeContext,
   AgentRuntimeValues,
+  AgentState,
   AgentStatus,
   AgentType,
   PauseActionDescriptor,

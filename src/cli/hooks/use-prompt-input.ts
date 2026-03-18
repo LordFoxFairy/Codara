@@ -17,6 +17,8 @@ interface UsePromptInputOptions {
   onExit: () => void;
   onToggleTaskPanel?: () => void;
   onToggleExpand?: () => void;
+  onSelectMemberUp?: () => void;
+  onSelectMemberDown?: () => void;
   onTab?: () => void;
 }
 
@@ -38,6 +40,8 @@ export function usePromptInput(options: UsePromptInputOptions): void {
     onExit,
     onToggleTaskPanel,
     onToggleExpand,
+    onSelectMemberUp,
+    onSelectMemberDown,
     onTab,
   } = options;
   const {isRawModeSupported} = useStdin();
@@ -57,6 +61,16 @@ export function usePromptInput(options: UsePromptInputOptions): void {
 
     if (action === 'toggle-expand') {
       onToggleExpand?.();
+      return;
+    }
+
+    if (action === 'select-member-up') {
+      onSelectMemberUp?.();
+      return;
+    }
+
+    if (action === 'select-member-down') {
+      onSelectMemberDown?.();
       return;
     }
 

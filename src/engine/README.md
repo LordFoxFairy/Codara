@@ -4,8 +4,9 @@
 
 它负责：
 - `agent/` — agent 模型定义、agent loop 执行、流式输出
-- `session/` — session 生命周期、状态存储、runtime events
-- `pipeline/` — middleware 管道（permission、HIL、budget、logging、skills、summary 等）
+- `session/` — session 生命周期、状态存储
+- `events/` — runtime events 与事件桥接能力
+- `pipeline/` — 统一执行链，承载 runtime policy 与少量运行时 bridge（permission、HIL、budget、logging、skills、summary、path instructions 等）
 - `hook/` — 9 种 hook 事件、registry、executor、pipeline
 
 它不负责：
@@ -13,5 +14,9 @@
 - 技能发现与加载（→ `capability/skill`）
 - 模型提供者（→ `infra/provider`）
 - Facade 装配（→ `codara/`）
+
+补充边界：
+- `pipeline/` 可以执行 context bridge，但不拥有 context source 扫描本身
+- 路径相关指令解析仍属于 `infra/context`
 
 依赖规则：engine 可依赖 shared，不可反向依赖 capability 或 infra。

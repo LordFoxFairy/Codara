@@ -50,6 +50,8 @@ function getRolePrefix(role: TranscriptRole): { text: string; width: number } {
     case 'user': return { text: '> ', width: 2 };
     case 'assistant': return { text: '', width: 0 };
     case 'command': return { text: '', width: 0 };
+    case 'tool': return { text: '', width: 0 };
+    case 'task': return { text: '', width: 0 };
     default: return { text: `${ROLE_LABEL_MAP[role]} `, width: ROLE_LABEL_MAP[role].length + 1 };
   }
 }
@@ -111,16 +113,19 @@ export function TranscriptBlock({role, content, renderHint, tokenAnnotation}: {r
     );
   }
 
+  // User messages wrap naturally; other roles truncate to keep output compact
+  const textWrap = role === 'user' ? 'wrap' : 'truncate-end';
+
   return (
     <Box marginBottom={1} flexDirection="column">
       <Box>
         <Text color={ROLE_COLOR_MAP[role]} bold={role === 'user'}>{prefix.text}</Text>
-        <Text wrap="truncate-end">{firstLine}</Text>
+        <Text wrap={textWrap}>{firstLine}</Text>
       </Box>
       {trailingLines.length > 0 ? (
         <Box paddingLeft={prefix.width} flexDirection="column">
           {trailingLines.map((line, index) => (
-            <Text key={`${role}-${index}`} wrap="truncate-end">
+            <Text key={`${role}-${index}`} wrap={textWrap}>
               {line || ' '}
             </Text>
           ))}
@@ -142,19 +147,18 @@ export function ToolResultBlock({meta, expanded = false}: {meta: ToolResultMeta;
   const visibleLines = expanded && allOutputLines?.length ? allOutputLines : outputLines;
   const hiddenLines = expanded ? 0 : (totalOutputLines ?? 0) - (outputLines?.length ?? 0);
   const isEdit = meta.toolName === 'edit' || meta.toolName === 'edit_file';
-
   return (
     <Box marginBottom={1} flexDirection="column">
       <Text bold>{header}</Text>
-      <Box paddingLeft={2}>
+      <Box>
         <Text dimColor color={status === 'error' ? 'red' : undefined}>
-          {'⎿ '}{summaryLine}
+          {'  ⎿ '}{summaryLine}
         </Text>
       </Box>
       {diffData ? (
         <DiffView diff={diffData} />
       ) : visibleLines && visibleLines.length > 0 ? (
-        <Box paddingLeft={5} flexDirection="column">
+        <Box paddingLeft={4} flexDirection="column">
           {visibleLines.map((line, index) => {
             const lineColor = isEdit ? EDIT_LINE_COLORS[line.charAt(0)] : undefined;
             return (

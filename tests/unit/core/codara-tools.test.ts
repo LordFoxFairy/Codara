@@ -16,6 +16,9 @@ describe('Codara tools', () => {
       'fetch_url',
       'web_search',
       'notebook_read',
+      'enter_worktree',
+      'exit_worktree',
+      'list_worktrees',
     ]);
   });
 

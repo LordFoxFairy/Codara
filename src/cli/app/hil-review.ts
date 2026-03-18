@@ -49,24 +49,61 @@ export function syncCliHilReviewState(
 }
 
 export function selectPreviousCliHilAction(current: CliHilReviewState): CliHilReviewState {
-  if (current.actions.length === 0) {
-    return current;
-  }
+  const totalItems = countTotalNavigableItems(current);
+  if (totalItems === 0) return current;
 
-  return {
-    ...clearCliHilValidation(current),
-    selectedActionIndex: (current.selectedActionIndex - 1 + current.actions.length) % current.actions.length,
-  };
+  const currentAbsolute = toAbsoluteIndex(current);
+  const nextAbsolute = (currentAbsolute - 1 + totalItems) % totalItems;
+  return applyAbsoluteIndex(current, nextAbsolute);
 }
 
 export function selectNextCliHilAction(current: CliHilReviewState): CliHilReviewState {
-  if (current.actions.length === 0) {
-    return current;
-  }
+  const totalItems = countTotalNavigableItems(current);
+  if (totalItems === 0) return current;
 
+  const currentAbsolute = toAbsoluteIndex(current);
+  const nextAbsolute = (currentAbsolute + 1) % totalItems;
+  return applyAbsoluteIndex(current, nextAbsolute);
+}
+
+/** Count options + placeholder + actions as one unified navigable list. */
+function countTotalNavigableItems(current: CliHilReviewState): number {
+  if (!current.form) return current.actions.length;
+  const activeTab = current.form.tabs[current.form.activeTabIndex];
+  const optionCount = (activeTab?.options?.length ?? 0) + (activeTab?.placeholder ? 1 : 0);
+  return optionCount + current.actions.length;
+}
+
+/** Convert focus+selectedActionIndex to a single absolute index in the unified list. */
+function toAbsoluteIndex(current: CliHilReviewState): number {
+  if (!current.form) return current.selectedActionIndex;
+  const activeTab = current.form.tabs[current.form.activeTabIndex];
+  const optionCount = (activeTab?.options?.length ?? 0) + (activeTab?.placeholder ? 1 : 0);
+  if (current.focus === 'actions') return optionCount + current.selectedActionIndex;
+  return current.selectedActionIndex;
+}
+
+/** Apply absolute index back to focus+selectedActionIndex. */
+function applyAbsoluteIndex(current: CliHilReviewState, absoluteIndex: number): CliHilReviewState {
+  if (!current.form) {
+    return {
+      ...clearCliHilValidation(current),
+      selectedActionIndex: absoluteIndex % Math.max(current.actions.length, 1),
+    };
+  }
+  const activeTab = current.form.tabs[current.form.activeTabIndex];
+  const optionCount = (activeTab?.options?.length ?? 0) + (activeTab?.placeholder ? 1 : 0);
+  if (absoluteIndex < optionCount) {
+    return {
+      ...clearCliHilValidation(current),
+      focus: 'input',
+      selectedActionIndex: absoluteIndex,
+    };
+  }
   return {
     ...clearCliHilValidation(current),
-    selectedActionIndex: (current.selectedActionIndex + 1) % current.actions.length,
+    focus: 'actions',
+    selectedActionIndex: absoluteIndex - optionCount,
   };
 }
 
