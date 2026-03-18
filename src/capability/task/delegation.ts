@@ -21,6 +21,7 @@ import type {ExecutionContextMetadata} from '@engine/pipeline/types';
 import type {AgentCheckpointer} from '@engine/checkpoint/agent';
 import type {AgentLifecycleHooks} from '@engine/hook/types';
 import {deepClone} from '@shared/clone';
+import {formatToolSummary} from '@shared/tool-display';
 import {readLatestAssistantText} from '@shared/messages';
 import type {DelegatedAgentResult} from '@shared/delegation-result';
 export {readDelegatedAgentResult, type DelegatedAgentResult} from '@shared/delegation-result';
@@ -358,7 +359,8 @@ function isDelegationTool(tool: StructuredToolInterface | undefined): boolean {
     return false;
   }
 
-  return (tool as unknown as Record<PropertyKey, unknown>)[DELEGATION_TOOL] === true;
+  const obj = tool as object;
+  return DELEGATION_TOOL in obj && (obj as Record<PropertyKey, unknown>)[DELEGATION_TOOL] === true;
 }
 
 function createDelegatedAgentResult(
@@ -569,37 +571,7 @@ function createActivityForwardMiddleware(callback: ChildToolActivityCallback): B
 }
 
 function formatChildToolSummary(toolName: string, args: unknown): string | undefined {
-  if (!args || typeof args !== 'object' || Array.isArray(args)) {
-    return undefined;
-  }
-  const record = args as Record<string, unknown>;
-  switch (toolName) {
-    case 'bash':
-      return truncateStr(asStr(record.command) ?? asStr(record.description));
-    case 'read_file':
-    case 'read':
-    case 'write_file':
-    case 'write':
-    case 'edit_file':
-    case 'edit':
-      return truncateStr(asStr(record.file_path) ?? asStr(record.path));
-    case 'glob':
-      return truncateStr(asStr(record.pattern));
-    case 'grep':
-      return truncateStr(asStr(record.pattern));
-    case 'fetch_url':
-    case 'fetch':
-      return truncateStr(asStr(record.url));
-    case 'web_search':
-    case 'search':
-      return truncateStr(asStr(record.query));
-    default:
-      return undefined;
-  }
-}
-
-function asStr(value: unknown): string | undefined {
-  return typeof value === 'string' && value.trim() ? value.trim() : undefined;
+  return truncateStr(formatToolSummary(toolName, args));
 }
 
 function truncateStr(value: string | undefined, max = 60): string | undefined {

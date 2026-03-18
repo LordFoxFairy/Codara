@@ -8,6 +8,7 @@ import {
 } from '@engine/pipeline/types';
 import {parseHILToolMessagePayload} from '@engine/pipeline/hil';
 import {readDelegatedAgentResult} from '@shared/delegation-result';
+import {TOOL_NAMES, formatToolSummary} from '@shared/tool-display';
 
 export type CodaraRuntimeEventKind = 'turn' | 'model' | 'tool' | 'task' | 'hil' | 'command' | 'summary' | 'hook' | 'team';
 export type CodaraRuntimeEventPhase = 'start' | 'update' | 'end';
@@ -53,72 +54,36 @@ function formatToolLabel(context: ToolCallContext): string {
   return summary ? `${formatToolDisplayName(name)}(${summary})` : formatToolDisplayName(name);
 }
 
-function formatToolSummary(toolName: string, args: unknown): string | undefined {
-  if (!args || typeof args !== 'object' || Array.isArray(args)) {
-    return undefined;
-  }
-
-  const record = args as Record<string, unknown>;
-  switch (toolName) {
-    case 'bash':
-      return readString(record.command) ?? readString(record.description);
-    case 'read_file':
-    case 'read':
-    case 'write_file':
-    case 'write':
-    case 'edit_file':
-    case 'edit':
-      return readString(record.file_path) ?? readString(record.path);
-    case 'fetch_url':
-    case 'fetch':
-      return readString(record.url);
-    case 'web_search':
-    case 'search':
-      return readString(record.query);
-    case 'Task':
-      return readString(record.subagent_type)
-        ? `Delegating ${readString(record.subagent_type)}`
-        : 'Delegating task';
-    case 'TaskCreate':
-    case 'TaskUpdate':
-      return readString(record.subject) ?? readString(record.taskId);
-    case 'AskUserQuestion':
-      return readString(record.summary)
-        ? `summary: ${readString(record.summary)}`
-        : undefined;
-    default:
-      return undefined;
-  }
-}
+// formatToolSummary is imported from @shared/tool-display
 
 function formatToolDisplayName(toolName: string): string {
   switch (toolName) {
-    case 'bash':
+    case TOOL_NAMES.BASH:
       return 'Running Bash';
-    case 'read_file':
-    case 'read':
+    case TOOL_NAMES.READ_FILE:
+    case TOOL_NAMES.READ:
       return 'Reading';
-    case 'write_file':
-    case 'write':
+    case TOOL_NAMES.WRITE_FILE:
+    case TOOL_NAMES.WRITE:
       return 'Writing';
-    case 'edit_file':
-    case 'edit':
+    case TOOL_NAMES.EDIT_FILE:
+    case TOOL_NAMES.EDIT:
       return 'Editing';
-    case 'fetch_url':
-    case 'fetch':
+    case TOOL_NAMES.FETCH_URL:
+    case TOOL_NAMES.FETCH:
       return 'Fetching';
-    case 'web_search':
-    case 'search':
+    case TOOL_NAMES.WEB_SEARCH:
+    case TOOL_NAMES.SEARCH:
       return 'Searching';
-    case 'Task':
+    case TOOL_NAMES.TASK:
       return 'Delegating task';
-    case 'TaskCreate':
+    case TOOL_NAMES.TASK_CREATE:
       return 'Creating task';
-    case 'TaskUpdate':
+    case TOOL_NAMES.TASK_UPDATE:
       return 'Updating task';
-    case 'TaskList':
+    case TOOL_NAMES.TASK_LIST:
       return 'Listing tasks';
-    case 'AskUserQuestion':
+    case TOOL_NAMES.ASK_USER:
       return 'AskUserQuestion';
     default:
       return toolName;
@@ -307,7 +272,7 @@ export class RuntimeEventsController {
 
           // Pre-register pending Task tool calls so the panel shows all tasks immediately
           const toolCalls = Array.isArray(response.tool_calls) ? response.tool_calls : [];
-          const taskCalls = toolCalls.filter((tc: {name?: string}) => tc.name === 'Task');
+          const taskCalls = toolCalls.filter((tc: {name?: string}) => tc.name === TOOL_NAMES.TASK);
           if (taskCalls.length > 1) {
             const turnId = this.turnRoots.get(currentTurnKey);
             for (let i = 0; i < taskCalls.length; i++) {
@@ -356,7 +321,7 @@ export class RuntimeEventsController {
           parentId: this.turnRoots.get(turnKey(context)),
         });
 
-        if (context.toolCall.name === 'Task') {
+        if (context.toolCall.name === TOOL_NAMES.TASK) {
           // End the matching pending task event (pre-registered from afterModel)
           const tcId = typeof context.toolCall.id === 'string' ? context.toolCall.id : '';
           if (tcId && this.pendingTaskIds.has(tcId)) {
@@ -414,7 +379,7 @@ export class RuntimeEventsController {
             parentId: toolRootId,
           });
 
-          if (context.toolCall.name === 'Task') {
+          if (context.toolCall.name === TOOL_NAMES.TASK) {
             const taskRootId = this.toolRoots.get(`${currentToolKey}:task`);
             const delegated = readDelegatedAgentResult(message.artifact);
             this.emit({

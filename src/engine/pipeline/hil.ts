@@ -506,7 +506,7 @@ export function parseHILToolMessagePayload(content: unknown): HILToolMessagePayl
     }
 
     if (parsed.type === 'hil_pause') {
-      return isRecord(parsed.request) ? {type: 'hil_pause', request: parsed.request as unknown as PauseRequest} : undefined;
+      return isPauseRequest(parsed.request) ? {type: 'hil_pause', request: parsed.request} : undefined;
     }
 
     if (parsed.type === 'hil_deny') {
@@ -662,6 +662,24 @@ function readRecord(value: unknown): Record<string, unknown> {
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return Boolean(value && typeof value === 'object' && !Array.isArray(value));
+}
+
+function isPauseRequest(value: unknown): value is PauseRequest {
+  if (!isRecord(value)) {
+    return false;
+  }
+  const {id, description, action, review, runtime} = value;
+  return (
+    typeof id === 'string'
+    && typeof description === 'string'
+    && isRecord(action)
+    && typeof (action as Record<string, unknown>).toolCallId === 'string'
+    && typeof (action as Record<string, unknown>).toolName === 'string'
+    && isRecord(review)
+    && typeof (review as Record<string, unknown>).actionName === 'string'
+    && isRecord(runtime)
+    && typeof (runtime as Record<string, unknown>).runId === 'string'
+  );
 }
 
 function readOptionalString(value: unknown): string | undefined {
