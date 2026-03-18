@@ -1,6 +1,6 @@
 import {describe, expect, test} from 'bun:test';
-import type {CodaraRuntimeEvent} from '@observability/events/runtime-events';
-import {RuntimeEventsController, CHILD_ACTIVITY_CALLBACK_KEY} from '@observability/events/runtime-events';
+import type {CodaraRuntimeEvent} from '@observability/events';
+import {RuntimeEventsController, CHILD_ACTIVITY_CALLBACK_KEY} from '@observability/events';
 import {buildTranscriptItems, buildActiveItems} from '@/cli/transcript/model';
 import {deriveActiveTeams, deriveMemberActivities} from '@/cli/hooks/use-active-teams';
 import type {SessionState} from '@durability/session/types';

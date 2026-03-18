@@ -15,7 +15,7 @@ import type {AgentResult, AgentStreamOutput} from '@core/agent/models/agent';
 import type {BootstrapAgentOptions} from '@core/agent/bootstrap';
 import {bootstrapAgent, resolveModel} from '@core/agent/bootstrap';
 import {createMiddleware, type BaseMiddleware} from '@core/pipeline/types';
-import type {ChildToolActivityCallback} from '@observability/events/runtime-events';
+import type {ChildToolActivityCallback} from '@observability/events';
 import type {HILToolMessagePayload} from '@core/middleware/hil';
 import type {ExecutionContextMetadata} from '@core/pipeline/types';
 import type {AgentCheckpointer} from '@durability/checkpoint/agent';
