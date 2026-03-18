@@ -6,7 +6,7 @@ import {
   markDelegationTool,
   readDelegatedParentRuntimeMetadata,
   runDelegatedAgent,
-} from '@core/agent/run/delegation';
+} from '@capability/task/delegation';
 import {CHILD_ACTIVITY_CALLBACK_KEY, type ChildToolActivityCallback} from '@observability/events';
 import {createTaskTools} from '@capability/task/tools';
 import type {TaskStore} from '@capability/task/types';

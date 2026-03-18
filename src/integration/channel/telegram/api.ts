@@ -20,7 +20,7 @@ export interface SendMessageOptions {
 export class TelegramApi {
   private readonly baseUrl: string;
 
-  constructor(private readonly token: string) {
+  constructor(token: string) {
     this.baseUrl = `https://api.telegram.org/bot${token}`;
   }
 

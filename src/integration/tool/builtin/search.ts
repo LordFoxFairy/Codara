@@ -37,60 +37,57 @@ async function searchWithSearXNG(
   query: string,
   maxResults: number
 ): Promise<SearchResult[]> {
-  const controller = new AbortController();
-  const timer = setTimeout(() => controller.abort(), DEFAULT_TIMEOUT_MS);
+  for (const instance of SEARXNG_INSTANCES) {
+    const controller = new AbortController();
+    const timer = setTimeout(() => controller.abort(), DEFAULT_TIMEOUT_MS);
+    try {
+      const params = new URLSearchParams({
+        q: query,
+        format: 'json',
+        categories: 'general',
+      });
 
-  try {
-    for (const instance of SEARXNG_INSTANCES) {
-      try {
-        const params = new URLSearchParams({
-          q: query,
-          format: 'json',
-          categories: 'general',
-        });
+      const url = `${instance}/search?${params.toString()}`;
 
-        const url = `${instance}/search?${params.toString()}`;
+      const response = await fetch(url, {
+        method: 'GET',
+        headers: {
+          'Accept': 'application/json',
+          'User-Agent': 'Codara/1.0',
+        },
+        signal: controller.signal,
+      });
 
-        const response = await fetch(url, {
-          method: 'GET',
-          headers: {
-            'Accept': 'application/json',
-            'User-Agent': 'Codara/1.0',
-          },
-          signal: controller.signal,
-        });
-
-        if (!response.ok) {
-          continue;
-        }
-
-        const data = await response.json() as {results?: Array<{title?: string; url?: string; content?: string}>};
-
-        if (!data.results || data.results.length === 0) {
-          continue;
-        }
-
-        const results: SearchResult[] = data.results
-          .slice(0, maxResults)
-          .filter((r) => r.title && r.url)
-          .map((r) => ({
-            title: r.title || '',
-            url: r.url || '',
-            snippet: r.content || '',
-          }));
-
-        if (results.length > 0) {
-          return results;
-        }
-      } catch {
+      if (!response.ok) {
         continue;
       }
-    }
 
-    return [];
-  } finally {
-    clearTimeout(timer);
+      const data = await response.json() as {results?: Array<{title?: string; url?: string; content?: string}>};
+
+      if (!data.results || data.results.length === 0) {
+        continue;
+      }
+
+      const results: SearchResult[] = data.results
+        .slice(0, maxResults)
+        .filter((r) => r.title && r.url)
+        .map((r) => ({
+          title: r.title || '',
+          url: r.url || '',
+          snippet: r.content || '',
+        }));
+
+      if (results.length > 0) {
+        return results;
+      }
+    } catch {
+      continue;
+    } finally {
+      clearTimeout(timer);
+    }
   }
+
+  return [];
 }
 
 /** 网络搜索工具。 */

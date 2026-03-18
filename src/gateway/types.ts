@@ -47,10 +47,39 @@ export interface SendResult {
 
 export type StopHandle = {stop(): Promise<void>};
 
+/** DM session scoping strategy */
+export type DmScope = 'main' | 'per-peer' | 'per-channel-peer' | 'per-account-channel-peer';
+
+/** Cross-channel identity mapping */
+export interface IdentityLinks {
+  [canonicalName: string]: string[]; // e.g. {alice: ['telegram:123', 'discord:456']}
+}
+
+/** Session reset policy */
+export interface SessionResetPolicy {
+  mode: 'idle' | 'daily' | 'never';
+  idleMinutes?: number; // For 'idle' mode (default: 120)
+  atHour?: number; // For 'daily' mode, hour in local time (default: 4)
+}
+
+/** Extended gateway config with session settings */
+export interface GatewaySessionConfig {
+  dmScope?: DmScope;
+  identityLinks?: IdentityLinks;
+  resetPolicy?: SessionResetPolicy;
+  resetByType?: {
+    direct?: SessionResetPolicy;
+    group?: SessionResetPolicy;
+  };
+  maxSessions?: number;
+  persistDir?: string; // Directory for session persistence (default: ~/.codara/gateway/sessions)
+}
+
 export interface GatewayConfig {
   gateway?: {host?: string; port?: number; webhookBaseUrl?: string};
   channels: Record<string, ChannelAccountsConfig>;
   bindings?: GatewayBinding[];
+  session?: GatewaySessionConfig;
 }
 
 export interface ChannelAccountsConfig {

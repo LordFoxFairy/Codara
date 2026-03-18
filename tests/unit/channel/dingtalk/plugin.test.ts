@@ -91,7 +91,7 @@ describe('dingtalkPlugin', () => {
 
       // Mock fetch
       const originalFetch = globalThis.fetch;
-      globalThis.fetch = mock(async () => new Response('{"errcode":0}', {status: 200})) as typeof fetch;
+      globalThis.fetch = mock(async () => new Response('{"errcode":0}', {status: 200})) as unknown as typeof fetch;
 
       try {
         const ctx: OutboundContext = {accountId: 'acc', to: 'cid-123', text: 'hello response'};
@@ -140,7 +140,7 @@ describe('dingtalkPlugin', () => {
       globalThis.fetch = mock(async (_url: string | URL | Request, init?: RequestInit) => {
         sentBody = JSON.parse(init?.body as string);
         return new Response('{"errcode":0}', {status: 200});
-      }) as typeof fetch;
+      }) as unknown as typeof fetch;
 
       try {
         const ctx: PausePromptContext = {

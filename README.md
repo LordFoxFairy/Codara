@@ -1,227 +1,176 @@
 # Codara
 
 <p align="center">
-  终端优先的代码代理运行时，面向真实开发工作流。
+  终端优先的 Agent 运行时，面向真实开发工作流。
 </p>
 
 <p align="center">
   <img alt="Bun" src="https://img.shields.io/badge/runtime-Bun-black">
   <img alt="TypeScript" src="https://img.shields.io/badge/language-TypeScript-3178c6">
-  <img alt="Ink" src="https://img.shields.io/badge/ui-Ink-black">
+  <img alt="Ink" src="https://img.shields.io/badge/cli-Ink-black">
+  <img alt="Tauri" src="https://img.shields.io/badge/desktop-Tauri_v2-orange">
 </p>
 
 <p align="center">
   <a href="#快速开始">快速开始</a>
   ·
-  <a href="#架构总览">架构</a>
+  <a href="#架构">架构</a>
   ·
-  <a href="#核心机制">核心</a>
+  <a href="#多端接入">多端接入</a>
   ·
-  <a href="#常用命令">常用命令</a>
+  <a href="#核心机制">核心机制</a>
+  ·
+  <a href="#常用命令">命令</a>
 </p>
 
-Codara 把会话、任务、子代理、权限和 CLI 交互收进同一套 Bun + TypeScript 运行时里。它不是一个包着模型调用的聊天壳，而是一个可以直接运行、验证和扩展的终端编码工作台。
+Codara 把会话、任务、子代理、权限、多 Agent 协作和 IM 渠道接入收进同一套 Bun + TypeScript 运行时。不是聊天壳，是可以直接运行、验证和扩展的 Agent 执行引擎。
 
 <p align="center">
   <img src="./imgs/img.png" alt="Codara CLI" width="760" />
 </p>
 
-## 为什么是 Codara
+---
 
-- 你想先跑通真实的终端编码流程，而不是先堆一层又一层 agent demo
-- 你希望 session、任务委派、子代理、权限和交互边界放在同一套 runtime 里维护
-- 你需要一个能继续演化成产品的底座，而不是一次性的脚本拼装
+## 架构
 
-先把工作流打通，再围绕真实使用体验做收敛。
+> 完整架构蓝图见 **[ARCHITECTURE.md](./ARCHITECTURE.md)**
+
+DDD 轻量分层，10 个限界上下文，严格单向依赖：
+
+```
+src/
+├── core/              执行引擎（Agent Loop + Pipeline + Middleware）
+├── capability/        领域能力（Skill · Task · Team · Command）
+├── durability/        持久化（Session · Checkpoint）
+├── observability/     观测（Runtime Events · Lifecycle Hooks）
+├── integration/       集成适配（Tool · MCP · Channel · Provider）
+├── context/           上下文来源（Instructions · Prompts · Memory · Skills）
+├── config/            配置管理
+├── codara/            应用层（Runtime 装配 + API 门面）
+├── gateway/           消息网关（IM 渠道统一接入）
+├── cli/               终端 UI（Ink）
+├── desktop/           桌面 UI（React + Tauri v2）
+├── server/            HTTP/SSE 服务
+├── bus/               通信基础设施
+└── shared/            共享内核（跨上下文契约）
+```
+
+**依赖方向：** `展示层 → 应用层 → 领域层 → 基础设施层 → 共享内核`
+
+```
+┌─ 展示层 ────────────────────────────────────────────┐
+│  cli/  │  desktop/  │  server/  │  gateway/          │
+└────────────────────┬────────────────────────────────┘
+                     │
+┌─ 应用层 ───────────┴────────────────────────────────┐
+│  codara/ (assembly + facade + entrypoints)          │
+└────────────────────┬────────────────────────────────┘
+                     │
+┌─ 领域层 ───────────┴────────────────────────────────┐
+│  core/  │  capability/  │  durability/  │  observability/  │
+└────────────────────┬────────────────────────────────┘
+                     │
+┌─ 基础设施层 ───────┴────────────────────────────────┐
+│  integration/  │  context/  │  config/  │  bus/      │
+└────────────────────┬────────────────────────────────┘
+                     │
+┌─ 共享内核 ─────────┴────────────────────────────────┐
+│  shared/ (contracts + types + utils)                │
+└─────────────────────────────────────────────────────┘
+```
 
 ---
 
-## 架构总览
+## 多端接入
 
-```
-                           ┌─────────────────┐
-                           │     用户输入      │
-                           └────────┬────────┘
-                                    │
-         ┌──────────────────────────┼──────────────────────────┐
-         │                          │                          │
-    ┌────┴────┐              ┌──────┴──────┐            ┌──────┴──────┐
-    │   CLI   │              │   Desktop   │            │   Server    │
-    │  (Ink)  │              │   (React)   │            │  (HTTP/SSE) │
-    └────┬────┘              └──────┬──────┘            └──────┬──────┘
-         │                          │                          │
-         └──────────────────────────┼──────────────────────────┘
-                                    │
-                                    ▼
-┏━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━┓
-┃                         Codara Runtime                                    ┃
-┃                                                                           ┃
-┃   createCodaraRuntime() 组装全部子系统，输出 Session + 命令 + 事件         ┃
-┃                                                                           ┃
-┃   ┌─ 模型 ──────┐  ┌─ 工具 ──────────────┐  ┌─ 上下文 ───────────────┐  ┃
-┃   │ ModelCatalog │  │ Built-in + MCP Tools │  │ Guidelines · Prompts   │  ┃
-┃   │ 多模型路由    │  │ bash/read/edit/...   │  │ Skills · AutoMemory    │  ┃
-┃   └──────────────┘  └──────────────────────┘  └────────────────────────┘  ┃
-┗━━━━━━━━━━━━━━━━━━━━━━━━━━━━┳━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━┛
-                              │
-                              ▼
-┏━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━┓
-┃                          Agent Loop                                       ┃
-┃                                                                           ┃
-┃   每个 Agent 执行一个 stream 化的 model → tools → model 循环              ┃
-┃   支持 invoke() / stream() / resume() 三种执行模式                        ┃
-┃                                                                           ┃
-┃   ┌───────────────────────────────────────────────────────────────────┐   ┃
-┃   │                     Middleware Pipeline                           │   ┃
-┃   │                                                                   │   ┃
-┃   │   ┌──────────┐    ┌──────────┐    ┌───────────────────────────┐  │   ┃
-┃   │   │ Before   │    │ Before   │    │       Model Call          │  │   ┃
-┃   │   │ Agent    │───▶│ Model    │───▶│  LLM 推理 (Claude/GPT/..)│  │   ┃
-┃   │   │          │    │          │    │                           │  │   ┃
-┃   │   │ Skills   │    │ Budget   │    └─────────┬─────────────────┘  │   ┃
-┃   │   │ Context  │    │ Summary  │              │                    │   ┃
-┃   │   └──────────┘    └──────────┘              │ tool_calls         │   ┃
-┃   │                                             ▼                    │   ┃
-┃   │   ┌──────────┐    ┌──────────┐    ┌───────────────────────────┐  │   ┃
-┃   │   │ After    │    │ After    │    │       Tool Call           │  │   ┃
-┃   │   │ Agent    │◀───│ Model    │◀───│                           │  │   ┃
-┃   │   │          │    │          │    │  Permission → HIL Pause?  │  │   ┃
-┃   │   │ Hooks    │    │ Logging  │    │       │                   │  │   ┃
-┃   │   │ Checkpoint│   │          │    │       ▼                   │  │   ┃
-┃   │   └──────────┘    └──────────┘    │  bash · read · edit ···  │  │   ┃
-┃   │                                   │  MCP tools · TaskCreate  │  │   ┃
-┃   │                                   └───────────────────────────┘  │   ┃
-┃   └───────────────────────────────────────────────────────────────────┘   ┃
-┃                              │                                            ┃
-┃                    ┌─────────┴──────────┐                                 ┃
-┃                    │  下一轮 or 结束？    │                                 ┃
-┃                    │  max_turns / pause  │                                 ┃
-┃                    └────────────────────┘                                  ┃
-┗━━━━━━━━━━━━━━━━━━━━━━━━━━━━━┳━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━┛
-                              │
-                  ┌───────────┴───────────┐
-                  │                       │
-                  ▼                       ▼
-┏━━━━━━━━━━━━━━━━━━━━━━━━━┓  ┏━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━┓
-┃   Task Delegation       ┃  ┃   Team Collaboration                       ┃
-┃                         ┃  ┃                                             ┃
-┃   主 Agent 派生子 Agent  ┃  ┃   Leader 协调 + Workers 并行               ┃
-┃   stream 化执行          ┃  ┃                                             ┃
-┃   活动实时上报           ┃  ┃   ┌────────┐                               ┃
-┃                         ┃  ┃   │ Leader │──分派──┬──────┬──────┐        ┃
-┃   Parent                ┃  ┃   └────────┘       │      │      │        ┃
-┃     └─ Child Agent      ┃  ┃                ┌───┴──┐┌──┴───┐┌─┴────┐  ┃
-┃          └─ Tools       ┃  ┃                │Wrkr A││Wrkr B││Wrkr C│  ┃
-┃                         ┃  ┃                │stream││stream││stream│  ┃
-┃                         ┃  ┃                └──┬───┘└──┬───┘└──┬───┘  ┃
-┃                         ┃  ┃                   └───────┴───────┘       ┃
-┃                         ┃  ┃                     LocalTransport        ┃
-┗━━━━━━━━━━━━━━━━━━━━━━━━━┛  ┗━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━┛
-                              │
-                              ▼
-┏━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━┓
-┃                         持久化 & 通信                                      ┃
-┃                                                                           ┃
-┃   ┌──────────┐  ┌──────────────┐  ┌──────────────┐  ┌─────────────────┐  ┃
-┃   │ Session  │  │  Checkpoint  │  │   Channel    │  │  Runtime Events │  ┃
-┃   │          │  │              │  │   Registry   │  │                 │  ┃
-┃   │ 会话元数据│  │ 完整状态快照  │  │              │  │  实时事件流      │  ┃
-┃   │ 恢复/归档 │  │ compact 压缩 │  │ CLI/SSE/IM  │  │  工具活动上报    │  ┃
-┃   │          │  │ stale lock   │  │ HIL 路由     │  │  Team 状态同步   │  ┃
-┃   └──────────┘  └──────────────┘  └──────────────┘  └─────────────────┘  ┃
-┃                                                                           ┃
-┃   ┌──────────────────┐  ┌──────────────────┐  ┌──────────────────────┐   ┃
-┃   │  Lifecycle Hooks │  │   MCP Protocol   │  │   Model Provider     │   ┃
-┃   │                  │  │                  │  │                      │   ┃
-┃   │  PreToolUse      │  │  Server 发现     │  │  Claude / GPT /      │   ┃
-┃   │  PostToolUse     │  │  工具注册         │  │  Gemini / DeepSeek / │   ┃
-┃   │  SubagentStart   │  │  progress 通知   │  │  本地模型 ...         │   ┃
-┃   └──────────────────┘  └──────────────────┘  └──────────────────────┘   ┃
-┗━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━┛
-```
+### 本地
 
-### 一次完整交互的技术链路
+| 端 | 入口 | 说明 |
+|----|------|------|
+| **CLI** | `bun run dev` | Ink 终端 UI，直接调用 Runtime |
+| **Desktop** | `bun run dev:desktop` | React + Tauri v2，通过 Server SSE 通信 |
+| **Server** | `bun run dev:server` | HTTP/SSE 服务，为 Desktop 和 API 客户端提供后端 |
 
-```
-用户在终端键入 "修复 auth 模块的 token 过期 bug"
+### 消息网关（Gateway）
 
-  1. CLI 层 ──────────────── Ink 收集输入，构造 HumanMessage
-  2. Session ─────────────── 恢复上次 checkpoint（如有），初始化 Agent 状态
-  3. Agent Loop (stream) ─── 进入 model→tools→model 循环
-     │
-     ├─ BeforeAgent ──────── Skills/Guidelines/Memory 注入 system prompt
-     ├─ BeforeModel ──────── Token budget 检查，必要时 summary 压缩
-     ├─ ModelCall ─────────── LLM 推理 → 返回: "我需要先看一下相关代码"
-     │                                     tool_calls: [read("auth.ts"), grep("token")]
-     ├─ ToolCall ──────────── Permission 中间件评估:
-     │   │                      read → allow (自动放行)
-     │   │                      grep → allow
-     │   │
-     │   ├─ 执行 read("auth.ts") → 返回文件内容
-     │   └─ 执行 grep("token")   → 返回匹配行
-     │
-     ├─ AfterModel ────────── 日志记录，token 计数
-     ├─ (下一轮) ModelCall ── LLM: "找到 bug，需要修改" → tool_calls: [edit("auth.ts")]
-     ├─ ToolCall ──────────── Permission 评估:
-     │   │                      edit → ask (需要人工审批)
-     │   │
-     │   ├─ HIL Pause ─────── 构造 PauseRequest，发送到 Channel
-     │   ├─ Channel ─────────── CLI: 渲染审批面板，用户按 y 确认
-     │   ├─ Resume ──────────── 恢复执行，edit("auth.ts") 完成
-     │   └─ AfterModel
-     │
-     └─ Agent 判断任务完成 → 输出最终响应
+通过 `bun run dev:gateway` 启动，统一接入 7 个 IM 渠道：
 
-  4. Checkpoint ────────────── 保存完整状态（messages + context + values）
-  5. CLI ───────────────────── Transcript 渲染 markdown + diff
+| 渠道 | 协议 | HIL 交互 |
+|------|------|---------|
+| **Telegram** | Bot API 长轮询 | InlineKeyboard 按钮 |
+| **飞书** | Open API + Webhook | 交互卡片 |
+| **钉钉** | Robot API + Webhook | ActionCard |
+| **QQ** | OneBot v11 WebSocket | 文本数字选项 |
+| **企业微信** | 官方 API + AES 加解密 | 模板卡片按钮 |
+| **Discord** | Gateway WebSocket + REST | Button 组件 |
+| **Slack** | Socket Mode + Web API | Block Kit 按钮 |
+
+**会话管理：** 4 种 DM 作用域（`main` / `per-peer` / `per-channel-peer` / `per-account-channel-peer`），跨渠道身份链接（Identity Links），文件持久化 + idle/daily 重置策略。
+
+配置：`~/.codara/gateway.json`
+
+```json
+{
+  "channels": {
+    "telegram": {
+      "enabled": true,
+      "accounts": {
+        "default": { "botToken": "$TELEGRAM_BOT_TOKEN" }
+      }
+    }
+  },
+  "session": {
+    "dmScope": "per-channel-peer",
+    "resetPolicy": { "mode": "idle", "idleMinutes": 120 }
+  }
+}
 ```
 
 ---
 
 ## 核心机制
 
-### Agent Loop — 执行核心
+### Agent Loop
 
-每个 Agent 运行 `model → tools → model` 循环。所有执行路径均为 **stream 化**：delegation 和 team worker 使用 `stream()` 而非 `invoke()`，中间件 hook 实时触发，不阻塞。
-
-三种执行模式：
-- **stream()** — 流式执行，边推理边输出（主推）
-- **invoke()** — 阻塞执行，返回最终结果
-- **resume() / resumeStream()** — 从 HIL 暂停点恢复
+每个 Agent 运行 `model → tools → model` 循环。所有路径 **Stream-First**（AsyncGenerator），delegation 和 team worker 均走 `stream()`。
 
 ### Middleware Pipeline — 6 个拦截点
 
-所有 Agent 执行经过统一管道。中间件按声明顺序执行，可拦截、修改或暂停任何阶段：
+| 阶段 | 时机 | 核心 Middleware |
+|------|------|----------------|
+| BeforeAgent | 启动前 | Skills 注入 · PathInstructions |
+| BeforeModel | LLM 调用前 | Budget · Summary 压缩 |
+| ModelCall | 推理时 | Logging |
+| **ToolCall** | **工具执行** | **Permission (deny→ask→allow) → HIL pause/resume** |
+| AfterModel | 推理后 | Logging · Checkpoint |
+| AfterAgent | 结束后 | Hooks · Cleanup |
 
-| 阶段 | 触发时机 | 核心中间件 |
-|------|---------|-----------|
-| BeforeAgent | Agent 启动 | Skills 注入、PathInstructions（CLAUDE.md） |
-| BeforeModel | 每次 LLM 调用前 | Budget（token 预算）、Summary（对话压缩） |
-| ModelCall | 模型推理 | Logging（日志） |
-| **ToolCall** | **工具执行** | **Permission（allow/ask/deny）→ HIL（暂停/恢复）** |
-| AfterModel | 推理完成后 | Logging、Checkpoint |
-| AfterAgent | 循环结束 | Lifecycle Hooks |
+### HIL（Human-in-the-Loop）
 
-### HIL & Channel — 人机协作
+工具执行可被 Permission 中间件拦截 → 通过 ChannelRegistry 路由到对应交互通道 → 用户审批/拒绝 → 恢复执行。
 
-工具执行可被 Permission 中间件拦截，触发 HIL 暂停。暂停请求通过 **ChannelRegistry** 路由到对应的交互通道：
+支持 CLI 终端审批、Desktop 对话框、IM 按钮（7 渠道均支持）。
 
-- **CLI Channel** — Ink 渲染审批面板，终端内交互
-- **SSE Channel** — 通过 Server-Sent Events 发送到 Web/Desktop 客户端
-- **IM Channel** — 路由到 Telegram / DingTalk / Feishu / QQ / WeCom（预留）
+### Task & Team
 
-### Task & Team — 多 Agent 协作
+- **Task** — 单代理派发。主 Agent spawn 子 Agent，stream 化执行，活动实时上报。
+- **Team** — 多代理协作。Leader 创建团队、分派 Job，Worker 独立执行，通过 LocalTransport 通信。
 
-**Task（单代理派发）：** 主 Agent 通过 Delegation 工具 spawn 子 Agent。子 Agent stream 化执行，活动实时上报到主 Agent 的 runtime events。
+### 三层扩展体系
 
-**Team（多代理协作）：** Leader Agent 创建团队，分派 Job 到 Worker Agent。Workers 通过 LocalTransport 通信，独立 stream 化执行，各自有 Permission + HIL 支持。
+```
+Skill（用户态能力包）    ← SKILL.md 发现 → skills middleware 注入
+  ↓ 通过 middleware 注入
+Hook（生命周期桥接）     ← 只能观测，不控制执行
+  ↓ 通过 middleware 桥接
+Middleware（第一扩展机制） ← 拦截、修改、放行、阻断
+```
 
-### Session & Checkpoint — 持久化
+### Session & Checkpoint
 
-- **Session** — 对话元数据（id, status, createdAt），支持 list / archive / restore
-- **Checkpoint** — Agent 完整状态快照（messages + context + values），文件级原子写入
-- **Compact** — 消息超阈值时自动截断，保留最近 N 条
-- **Lock** — Advisory 文件锁，自动检测 stale lock（PID 存活 + 5 分钟 TTL）
+- **Session** — 会话元数据，支持恢复/归档
+- **Checkpoint** — Agent 完整状态快照，原子写入，compact 压缩
+- **Lock** — Advisory 文件锁（PID + 5min TTL stale 检测）
 
 ---
 
@@ -229,40 +178,33 @@ Codara 把会话、任务、子代理、权限和 CLI 交互收进同一套 Bun 
 
 ```bash
 bun install
-bun run dev         # 启动 CLI（watch 模式）
-```
-
-单次运行或快速检查：
-
-```bash
-bun run dev:once    # 单次运行 CLI
-bun run check:fast  # lint + typecheck
+bun run dev         # CLI 开发模式
 ```
 
 ## 常用命令
 
 ```bash
-bun run dev           # CLI 开发模式
-bun run dev:once      # 单次运行
-bun run dev:desktop   # Desktop 开发模式
-bun run dev:server    # Server 模式
-bun run check:fast    # lint + typecheck
-bun run test          # 运行测试
-bun run build         # 构建 dist/
+bun run dev           # CLI（watch）
+bun run dev:gateway   # 消息网关（IM 渠道）
+bun run dev:server    # HTTP/SSE 服务
+bun run dev:desktop   # 桌面端
+bun run test          # 测试（1450+ tests）
+bun run typecheck     # 类型检查（0 errors）
+bun run lint          # 代码规范（0 errors）
+bun run build         # 构建
 ```
 
 ## 技术栈
 
 | 层 | 技术 |
-|---|------|
+|----|------|
 | Runtime | Bun |
 | Language | TypeScript (strict) |
-| CLI UI | Ink + React |
-| Desktop UI | React + Vite |
+| CLI | Ink (React for terminal) |
+| Desktop | React + Vite + Tauri v2 |
 | LLM | LangChain (Claude / GPT / Gemini / DeepSeek / ...) |
-| Tools | MCP Protocol + Built-in |
-| Package | ESM |
-
----
-
-这个仓库在持续演进中。架构设计优先保证主线链路的完整性和可扩展性。
+| MCP | @modelcontextprotocol/sdk |
+| Gateway | 7 IM channels (Telegram / Feishu / DingTalk / QQ / WeCom / Discord / Slack) |
+| Validation | Zod |
+| Testing | Bun test (1450+ tests) |
+| Build | tsc + tsc-alias |

@@ -13,7 +13,7 @@ export const McpLocalServerConfigSchema = z.object({
 
 export const McpRemoteServerConfigSchema = z.object({
   type: z.literal('remote'),
-  url: z.string().url('url must be a valid URL'),
+  url: z.url('url must be a valid URL'),
   headers: z.record(z.string(), z.string()).optional(),
   timeout: z.number().positive().optional(),
   enabled: z.boolean().optional(),

@@ -1,4 +1,4 @@
-import type {ZodType} from 'zod';
+import type {z} from 'zod';
 import type {
   InboundMessage,
   OutboundContext,
@@ -30,7 +30,7 @@ export interface ChannelPlugin<TAccount = unknown> {
   readonly name: string;
   readonly capabilities: ChannelPluginCapabilities;
 
-  configSchema: ZodType;
+  configSchema: z.ZodType;
   resolveAccount(config: Record<string, unknown>, accountId?: string): TAccount | undefined;
 
   startListening(ctx: GatewayListenContext<TAccount>): Promise<StopHandle>;

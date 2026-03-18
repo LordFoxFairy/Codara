@@ -116,14 +116,14 @@ export function CodaraCliApp(props: CodaraCliAppProps): React.JSX.Element {
       // Try by name first, then by teamId from the event
       const detail = codara.getTeamDetail(team.name) ?? codara.getTeamDetail(team.teamId);
       if (detail) {
-        // Use the registry's name (authoritative) to fix display
+        // Enrich team data via Object.assign to avoid direct property mutation
         if (detail.name && detail.name !== team.name) {
-          team.name = detail.name;
+          Object.assign(team, {name: detail.name});
         }
         if (detail.goal && !team.goal) {
-          team.goal = detail.goal;
+          Object.assign(team, {goal: detail.goal});
         }
-        team.memberCount = detail.members.length;
+        Object.assign(team, {memberCount: detail.members.length});
         if (detail.members.length > 0) {
           map.set(team.teamId, detail.members.map(m => ({
             name: m.name,

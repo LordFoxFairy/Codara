@@ -1,4 +1,4 @@
-import {describe, test, expect, beforeEach, afterEach, mock} from 'bun:test';
+import {describe, test, expect, beforeEach, afterEach} from 'bun:test';
 import {OneBotWsClient} from '@integration/channel/qq/ws-client';
 
 /**
@@ -12,7 +12,7 @@ class MockWebSocket {
   static CLOSED = 3;
 
   readyState = MockWebSocket.CONNECTING;
-  private listeners = new Map<string, Function[]>();
+  private listeners = new Map<string, Array<(...args: unknown[]) => void>>();
   sent: string[] = [];
 
   constructor(public url: string) {
@@ -30,12 +30,12 @@ class MockWebSocket {
     MockWebSocket.instances.push(this);
   }
 
-  addEventListener(event: string, handler: Function) {
+  addEventListener(event: string, handler: (...args: unknown[]) => void) {
     if (!this.listeners.has(event)) this.listeners.set(event, []);
     this.listeners.get(event)!.push(handler);
   }
 
-  removeEventListener(event: string, handler: Function) {
+  removeEventListener(event: string, handler: (...args: unknown[]) => void) {
     const handlers = this.listeners.get(event);
     if (handlers) {
       const idx = handlers.indexOf(handler);
@@ -77,7 +77,8 @@ describe('OneBotWsClient', () => {
   beforeEach(() => {
     originalWebSocket = globalThis.WebSocket;
     MockWebSocket.reset();
-    (globalThis as any).WebSocket = MockWebSocket as any;
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    (globalThis as Record<string, any>).WebSocket = MockWebSocket;
   });
 
   afterEach(() => {
@@ -193,7 +194,7 @@ describe('OneBotWsClient', () => {
       });
 
       expect(events).toHaveLength(1);
-      expect((events[0] as any).post_type).toBe('message');
+      expect((events[0] as Record<string, unknown>).post_type).toBe('message');
 
       await client.disconnect();
     });

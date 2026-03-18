@@ -1,5 +1,5 @@
 import {describe, test, expect, beforeEach, afterEach, mock} from 'bun:test';
-import {telegramPlugin, type TelegramAccount} from '@integration/channel/telegram/plugin';
+import {telegramPlugin} from '@integration/channel/telegram/plugin';
 
 function mockFetch(response: {ok: boolean; result?: unknown; description?: string; error_code?: number}) {
   return mock(() =>
@@ -7,7 +7,7 @@ function mockFetch(response: {ok: boolean; result?: unknown; description?: strin
       status: response.error_code ?? 200,
       json: () => Promise.resolve(response),
     } as Response),
-  );
+  ) as unknown as typeof fetch & ReturnType<typeof mock>;
 }
 
 describe('telegramPlugin', () => {
@@ -84,8 +84,8 @@ describe('telegramPlugin', () => {
       expect(result.ok).toBe(true);
       expect(result.messageId).toBe('99');
 
-      const [, opts] = fetchMock.mock.calls[0];
-      const body = JSON.parse((opts as RequestInit).body as string);
+      const call0 = fetchMock.mock.calls[0] as unknown[];
+      const body = JSON.parse((call0[1] as RequestInit).body as string);
       expect(body.parse_mode).toBe('HTML');
     });
 
@@ -107,7 +107,7 @@ describe('telegramPlugin', () => {
           json: () =>
             Promise.resolve({ok: true, result: {message_id: 100, date: 1000, chat: {id: 123, type: 'private'}}}),
         } as Response);
-      });
+      }) as unknown as typeof fetch;
 
       const account = telegramPlugin.resolveAccount({botToken: 'test-token'})!;
       const result = await telegramPlugin.sendText(account, {
@@ -134,8 +134,8 @@ describe('telegramPlugin', () => {
         text: '',
       });
 
-      const [url] = fetchMock.mock.calls[0];
-      expect(url).toContain('/sendChatAction');
+      const call0t = fetchMock.mock.calls[0] as unknown[];
+      expect(call0t[0]).toContain('/sendChatAction');
     });
   });
 
@@ -163,7 +163,7 @@ describe('telegramPlugin', () => {
         accountId: 'bot-1',
         to: '123',
         text: 'Approve this action?',
-        pause: {id: 'pause-1', description: 'Run command'} as any,
+        pause: {id: 'pause-1', description: 'Run command'} as unknown as import('@shared/contracts/agent-types').PauseRequest,
         actions: [
           {id: 'approve', label: 'Approve', style: 'approve'},
           {id: 'reject', label: 'Reject', style: 'reject'},
@@ -172,8 +172,8 @@ describe('telegramPlugin', () => {
 
       expect(result.ok).toBe(true);
 
-      const [, opts] = fetchMock.mock.calls[0];
-      const body = JSON.parse((opts as RequestInit).body as string);
+      const call0pp = fetchMock.mock.calls[0] as unknown[];
+      const body = JSON.parse((call0pp[1] as RequestInit).body as string);
       expect(body.reply_markup.inline_keyboard).toHaveLength(1);
       expect(body.reply_markup.inline_keyboard[0]).toHaveLength(2);
       expect(body.reply_markup.inline_keyboard[0][0]).toEqual({

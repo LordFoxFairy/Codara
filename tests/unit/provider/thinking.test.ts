@@ -1,6 +1,6 @@
 import {describe, expect, it} from 'bun:test';
 import {resolveThinkingConfig} from '@integration/provider/runtime/factory';
-import type {EffortLevel, ThinkingConfig} from '@integration/provider/model';
+import type {ThinkingConfig} from '@integration/provider/model';
 import {ModelRegistry} from '@integration/provider/runtime/registry';
 import type {ModelRoutingConfig} from '@integration/provider/model';
 

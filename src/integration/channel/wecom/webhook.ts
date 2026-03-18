@@ -49,7 +49,7 @@ export function normalizeWeComMessage(
  *    - template_card_event → onCardAction callback
  */
 export function startWeComWebhook(options: WeComWebhookOptions): StopHandle {
-  const {port, path, token, encodingAESKey, corpId, accountId, onMessage, onCardAction} = options;
+  const {port, path, token, encodingAESKey, corpId: _corpId, accountId, onMessage, onCardAction} = options;
 
   // Dedup: WeCom may retry events; track seen MsgIds
   const seenMsgIds = new Set<string>();

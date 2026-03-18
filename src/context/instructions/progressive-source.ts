@@ -228,7 +228,17 @@ function parseImportPath(line: string): string | undefined {
   }
 
   const spec = trimmed.slice(1).trim();
-  return spec.length > 0 ? spec : undefined;
+  if (!spec || spec.length === 0) {
+    return undefined;
+  }
+
+  // Only treat as import if it looks like a file path (contains / or .)
+  // This avoids false positives on JSDoc tags like @param, @returns, etc.
+  if (!spec.includes('/') && !spec.includes('.')) {
+    return undefined;
+  }
+
+  return spec;
 }
 
 function resolveImportPath(ownerFilePath: string, spec: string): string | undefined {

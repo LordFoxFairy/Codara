@@ -44,7 +44,23 @@ export class RuntimeEventsController {
     };
   }
 
+  /** Remove oldest entries when Maps exceed the threshold to prevent unbounded growth. */
+  private pruneStaleEntries(): void {
+    const MAX_ENTRIES = 1000;
+    for (const map of [this.turnRoots, this.modelRoots, this.toolRoots]) {
+      if (map.size > MAX_ENTRIES) {
+        const excess = map.size - MAX_ENTRIES;
+        let count = 0;
+        for (const key of map.keys()) {
+          if (count++ >= excess) break;
+          map.delete(key);
+        }
+      }
+    }
+  }
+
   emit(input: EmitRuntimeEventInput): CodaraRuntimeEvent {
+    this.pruneStaleEntries();
     const event: CodaraRuntimeEvent = {
       id: input.id ?? randomUUID(),
       sessionId: this.sessionId,

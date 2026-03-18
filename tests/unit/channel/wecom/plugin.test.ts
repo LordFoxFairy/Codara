@@ -1,4 +1,4 @@
-import {describe, test, expect, beforeEach, afterEach} from 'bun:test';
+import {describe, test, expect} from 'bun:test';
 import {wecomPlugin} from '@integration/channel/wecom/plugin';
 import type {WeComAccount} from '@integration/channel/wecom/plugin';
 
@@ -165,7 +165,7 @@ describe('sendPausePrompt', () => {
       accountId: 'wecom-bot-1',
       to: 'user_001',
       text: 'Approve this action?',
-      pause: {id: 'pause_001'} as any,
+      pause: {id: 'pause_001'} as unknown as import('@shared/contracts/agent-types').PauseRequest,
       actions: [
         {id: 'approve', label: 'Approve', style: 'approve'},
         {id: 'reject', label: 'Reject', style: 'reject'},

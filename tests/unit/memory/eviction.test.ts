@@ -1,5 +1,5 @@
 import {describe, test, expect, beforeEach, afterEach} from 'bun:test';
-import {mkdir, writeFile, readdir, stat} from 'node:fs/promises';
+import {writeFile, readdir} from 'node:fs/promises';
 import {mkdtempSync, rmSync} from 'node:fs';
 import path from 'node:path';
 import os from 'node:os';

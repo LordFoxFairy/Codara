@@ -35,8 +35,8 @@ export const diffCommand: CodaraCommandDefinition = {
       }
 
       return {ok: true, command: command.name, output: sections.join('\n\n')};
-    } catch (err: any) {
-      return {ok: false, command: command.name, output: `Git error: ${err.message}`};
+    } catch (err: unknown) {
+      return {ok: false, command: command.name, output: `Git error: ${err instanceof Error ? err.message : String(err)}`};
     }
   },
 };

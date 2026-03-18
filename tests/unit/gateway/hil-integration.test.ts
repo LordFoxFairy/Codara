@@ -1,6 +1,6 @@
 import {describe, test, expect} from 'bun:test';
 import {Gateway} from '@gateway/gateway';
-import type {GatewayConfig, InboundMessage, SendResult, StopHandle, PausePromptContext} from '@gateway/types';
+import type {GatewayConfig, InboundMessage, StopHandle, PausePromptContext} from '@gateway/types';
 import type {ChannelPlugin, GatewayListenContext} from '@integration/channel/contracts';
 import {z} from 'zod';
 
@@ -28,7 +28,8 @@ function createHILPlugin(): ChannelPlugin<MockAccount> & {
       reactions: false,
       textLimit: 4096,
     },
-    configSchema: z.object({}),
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    configSchema: z.object({}) as any,
     resolveAccount(_config, accountId) {
       return {id: accountId ?? 'default'};
     },

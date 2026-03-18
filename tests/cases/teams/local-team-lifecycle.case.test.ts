@@ -10,7 +10,7 @@
  * NOTE: These tests do NOT require a real LLM or MCP server.
  * Member sessions are stubbed to simulate agent behavior.
  */
-import {describe, test, expect, beforeEach, afterEach} from 'bun:test';
+import {describe, test, expect, beforeEach} from 'bun:test';
 
 import {TeamRegistry} from '@capability/team/coordination/team-registry';
 import {TeamRuntime} from '@capability/team/runtime/team-runtime';
@@ -27,7 +27,7 @@ function createTestRuntime(projectRoot = '/tmp/test-teams') {
     registry,
     projectRoot,
     createSession: () => ({
-      invoke: async () => ({messages: [], done: false}),
+      invoke: async () => ({reason: 'complete' as const}),
       dispose: async () => {},
     }),
   });

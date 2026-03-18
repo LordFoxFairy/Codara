@@ -1,25 +1,32 @@
 import {Gateway} from './gateway';
 import {loadGatewayConfig} from './config';
+import {createCodaraSessionFactory} from './codara-session-factory';
 
 export async function startGateway(configPath?: string): Promise<Gateway> {
   const config = await loadGatewayConfig(configPath);
 
-  // Dynamically import available plugins
+  // Dynamically import all available channel plugins
+  const pluginImports = [
+    () => import('@integration/channel/telegram').then(m => m.telegramPlugin),
+    () => import('@integration/channel/feishu').then(m => m.feishuPlugin),
+    () => import('@integration/channel/dingtalk').then(m => m.dingtalkPlugin),
+    () => import('@integration/channel/qq').then(m => m.qqPlugin),
+    () => import('@integration/channel/wecom').then(m => m.wecomPlugin),
+    () => import('@integration/channel/discord').then(m => m.discordPlugin),
+    () => import('@integration/channel/slack').then(m => m.slackPlugin),
+  ];
+
   const plugins = [];
-  try {
-    const {telegramPlugin} = await import('@integration/channel/telegram');
-    plugins.push(telegramPlugin);
-  } catch {
-    /* telegram not available */
+  for (const importPlugin of pluginImports) {
+    try {
+      plugins.push(await importPlugin());
+    } catch { /* plugin not available */ }
   }
 
   const gateway = new Gateway({
     config,
     plugins,
-    createSession: async (_key, _profile) => ({
-      invoke: async (text: string) => `[Echo] ${text}`,
-      dispose: async () => {},
-    }),
+    createSession: createCodaraSessionFactory({cwd: process.cwd()}),
   });
   await gateway.start();
 

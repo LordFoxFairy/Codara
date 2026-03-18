@@ -3,7 +3,7 @@ import type {ChannelPlugin, GatewayListenContext} from '@integration/channel/con
 import type {InboundMessage, OutboundContext, PausePromptContext, SendResult, StopHandle} from '@gateway/types';
 import {SlackApi} from './api';
 import {SlackSocketModeClient} from './socket-mode';
-import type {SlackAccountConfig, SlackBlock, SlackMessageEvent, SlackInteractivePayload} from './types';
+import type {SlackBlock, SlackMessageEvent, SlackInteractivePayload} from './types';
 
 // ── Account ────────────────────────────────────────────────────────────
 

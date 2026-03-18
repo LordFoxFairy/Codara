@@ -214,8 +214,8 @@ function createTeamAssignJobTool(ctx: TeamToolContext): StructuredToolInterface 
       let claimed: boolean;
       try {
         claimed = board.claimJob(input.jobId, input.memberId);
-      } catch (err: any) {
-        return JSON.stringify({error: err.message});
+      } catch (err: unknown) {
+        return JSON.stringify({error: err instanceof Error ? err.message : String(err)});
       }
 
       if (!claimed) {

@@ -1,6 +1,6 @@
-import {describe, test, expect, beforeEach} from 'bun:test';
+import {describe, test, expect} from 'bun:test';
 import {Gateway} from '@gateway/gateway';
-import type {GatewayConfig, InboundMessage, SendResult, StopHandle} from '@gateway/types';
+import type {GatewayConfig, InboundMessage, StopHandle} from '@gateway/types';
 import type {ChannelPlugin, ChannelPluginCapabilities, GatewayListenContext} from '@integration/channel/contracts';
 import {z} from 'zod';
 
@@ -26,14 +26,15 @@ function createMockPlugin(overrides: Partial<ChannelPlugin<MockAccount>> = {}): 
       reactions: false,
       textLimit: 4096,
     },
-    configSchema: z.object({}),
-    resolveAccount(config, accountId) {
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    configSchema: z.object({}) as any,
+    resolveAccount(_config, accountId) {
       return {id: accountId ?? 'default'};
     },
-    async startListening(ctx: GatewayListenContext<MockAccount>): Promise<StopHandle> {
+    async startListening(_ctx: GatewayListenContext<MockAccount>): Promise<StopHandle> {
       return {async stop() {}};
     },
-    async sendText(account, ctx) {
+    async sendText(_account, ctx) {
       sentTexts.push({to: ctx.to, text: ctx.text});
       return {ok: true, messageId: 'sent1'};
     },
@@ -83,8 +84,8 @@ describe('Gateway', () => {
           return 'Hi there!';
         },
         async *stream() {
-          yield '';
-          return '';
+          yield 'Hi there!';
+          return 'Hi there!';
         },
         async dispose() {},
       }),
@@ -160,9 +161,9 @@ describe('Gateway', () => {
         async invoke() {
           throw new Error('LLM timeout');
         },
-        async *stream() {
-          yield '';
-          return '';
+        // eslint-disable-next-line require-yield
+        async *stream(): AsyncGenerator<string, string, void> {
+          throw new Error('LLM timeout');
         },
         async dispose() {},
       }),
@@ -193,9 +194,10 @@ describe('Gateway', () => {
         async invoke(text: string) {
           return `Echo: ${text}`;
         },
-        async *stream() {
-          yield '';
-          return '';
+        async *stream(text: string) {
+          const result = `Echo: ${text}`;
+          yield result;
+          return result;
         },
         async dispose() {},
       }),
@@ -240,8 +242,8 @@ describe('Gateway', () => {
           return 'abcdefghij klmnopqrst';
         },
         async *stream() {
-          yield '';
-          return '';
+          yield 'abcdefghij klmnopqrst';
+          return 'abcdefghij klmnopqrst';
         },
         async dispose() {},
       }),

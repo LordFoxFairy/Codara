@@ -1,12 +1,12 @@
 import {describe, test, expect, beforeEach, afterEach, mock} from 'bun:test';
-import {slackPlugin, type SlackAccount} from '@integration/channel/slack/plugin';
+import {slackPlugin} from '@integration/channel/slack/plugin';
 
 function mockFetch(response: unknown) {
   return mock(() =>
     Promise.resolve({
       json: () => Promise.resolve(response),
     } as Response),
-  );
+  ) as unknown as typeof fetch & ReturnType<typeof mock>;
 }
 
 describe('slackPlugin', () => {
@@ -101,8 +101,8 @@ describe('slackPlugin', () => {
         threadId: '1617243400.000000',
       });
 
-      const [, opts] = fetchMock.mock.calls[0];
-      const body = JSON.parse((opts as RequestInit).body as string);
+      const call0 = fetchMock.mock.calls[0] as unknown[];
+      const body = JSON.parse((call0[1] as RequestInit).body as string);
       expect(body.thread_ts).toBe('1617243400.000000');
     });
 
@@ -143,7 +143,7 @@ describe('slackPlugin', () => {
         accountId: 'bot-1',
         to: 'C123',
         text: 'Approve this action?',
-        pause: {id: 'pause-1', description: 'Run command'} as any,
+        pause: {id: 'pause-1', description: 'Run command'} as unknown as import('@shared/contracts/agent-types').PauseRequest,
         actions: [
           {id: 'approve', label: 'Approve', style: 'approve'},
           {id: 'reject', label: 'Reject', style: 'reject'},
@@ -153,8 +153,8 @@ describe('slackPlugin', () => {
       expect(result.ok).toBe(true);
       expect(result.messageId).toBe('1617243423.000300');
 
-      const [, opts] = fetchMock.mock.calls[0];
-      const body = JSON.parse((opts as RequestInit).body as string);
+      const call0p = fetchMock.mock.calls[0] as unknown[];
+      const body = JSON.parse((call0p[1] as RequestInit).body as string);
       expect(body.blocks).toHaveLength(2);
       expect(body.blocks[0].type).toBe('section');
       expect(body.blocks[0].text.type).toBe('mrkdwn');

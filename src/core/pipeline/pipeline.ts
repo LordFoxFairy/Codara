@@ -316,6 +316,10 @@ function cloneRecord<T extends Record<string, unknown>>(value: T): T {
   try {
     return structuredClone(value);
   } catch {
-    return {...value};
+    try {
+      return JSON.parse(JSON.stringify(value));
+    } catch {
+      return {...value};
+    }
   }
 }

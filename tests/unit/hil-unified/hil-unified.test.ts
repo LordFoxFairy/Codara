@@ -1,11 +1,11 @@
 import {describe, expect, test} from 'bun:test';
 import type {CodaraRuntimeEvent} from '@observability/events';
 import {RuntimeEventsController, CHILD_ACTIVITY_CALLBACK_KEY} from '@observability/events';
-import {buildTranscriptItems, buildActiveItems} from '@/cli/transcript/model';
-import {deriveActiveTeams, deriveMemberActivities} from '@/cli/hooks/use-active-teams';
+import {buildActiveItems} from '@/cli/transcript/model';
+import {deriveMemberActivities} from '@/cli/hooks/use-active-teams';
 import type {SessionState} from '@durability/session/types';
 import {FileSessionStore} from '@durability/session/store';
-import {mkdtemp, mkdir, writeFile} from 'node:fs/promises';
+import {mkdtemp} from 'node:fs/promises';
 import {tmpdir} from 'node:os';
 import path from 'node:path';
 

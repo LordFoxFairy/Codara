@@ -1,4 +1,4 @@
-import {useCallback, useEffect, useMemo, useRef, useState} from 'react';
+import {useCallback, useEffect, useMemo, useState} from 'react';
 import type {CodaraCommandSpec} from '@capability/command/runtime/types';
 
 export interface CompletionItem {
@@ -68,7 +68,7 @@ export function useCommandCompletion(input: UseCommandCompletionInput): UseComma
   const [allCommands, setAllCommands] = useState<CompletionItem[]>([]);
   const [selectedIndex, setSelectedIndex] = useState(0);
   const [dismissed, setDismissed] = useState(false);
-  const lastTextRef = useRef('');
+  const [lastText, setLastText] = useState('');
 
   // Load commands once
   useEffect(() => {
@@ -82,13 +82,11 @@ export function useCommandCompletion(input: UseCommandCompletionInput): UseComma
   }, [listCommands]);
 
   // Reset dismissed state when text changes
-  useEffect(() => {
-    if (text !== lastTextRef.current) {
-      lastTextRef.current = text;
-      setDismissed(false);
-      setSelectedIndex(0);
-    }
-  }, [text]);
+  if (text !== lastText) {
+    setLastText(text);
+    setDismissed(false);
+    setSelectedIndex(0);
+  }
 
   const prefix = useMemo(() => matchCommandPrefix(text), [text]);
   const items = useMemo(

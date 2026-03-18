@@ -7,6 +7,7 @@ import type {HookExecutionStrategy} from '@observability/hook/executor';
 // Mock registry
 function createMockRegistry(entries: Record<string, HookEntry[]>): HookRegistry {
   return {
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
     load: async (_sources: any[]) => {},
     reload: async () => {},
     getHooks: (eventType) => entries[eventType] ?? [],
@@ -28,7 +29,7 @@ function createMockExecutorFactory(outputs: HookOutput[]) {
   };
 }
 
-function makeEntry(command: string, eventType = 'PreToolUse' as const): HookEntry {
+function makeEntry(command: string, eventType: HookEntry['eventType'] = 'PreToolUse'): HookEntry {
   return {
     definition: {type: 'command', command, timeout: 5000},
     eventType,
@@ -111,8 +112,8 @@ describe('HookPipeline — Notify (Observer)', () => {
   test('collects systemMessages from parallel hooks', async () => {
     const registry = createMockRegistry({
       SessionStart: [
-        makeEntry('a', 'SessionStart' as any),
-        makeEntry('b', 'SessionStart' as any),
+        makeEntry('a', 'SessionStart' as HookEntry['eventType']),
+        makeEntry('b', 'SessionStart' as HookEntry['eventType']),
       ],
     });
     const factory = createMockExecutorFactory([
@@ -130,8 +131,8 @@ describe('HookPipeline — Notify (Observer)', () => {
   test('partial failure does not affect other hooks', async () => {
     const registry = createMockRegistry({
       SessionStart: [
-        makeEntry('a', 'SessionStart' as any),
-        makeEntry('b', 'SessionStart' as any),
+        makeEntry('a', 'SessionStart' as HookEntry['eventType']),
+        makeEntry('b', 'SessionStart' as HookEntry['eventType']),
       ],
     });
     let callIdx = 0;
@@ -157,7 +158,7 @@ describe('HookPipeline — Notify (Observer)', () => {
 describe('HookPipeline — Stop hook', () => {
   test('Stop hook deny prevents agent from stopping', async () => {
     const registry = createMockRegistry({
-      Stop: [makeEntry('check', 'Stop' as any)],
+      Stop: [makeEntry('check', 'Stop' as HookEntry['eventType'])],
     });
     const factory = createMockExecutorFactory([
       {decision: 'deny', systemMessage: 'Not done yet'},

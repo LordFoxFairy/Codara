@@ -1,3 +1,4 @@
+/* eslint-disable react-hooks/refs */
 import {useRef, useMemo} from 'react';
 import type {BaseMessage} from '@langchain/core/messages';
 import type {CodaraRuntimeEvent} from '@/index';

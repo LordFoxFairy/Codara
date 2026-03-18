@@ -24,15 +24,12 @@ export class McpClient {
   private _tools: McpToolDefinition[] = [];
   private _lastError: string | undefined;
   private readonly config: McpServerConfig;
-  private readonly onProgress: McpProgressCallback | undefined;
-
   constructor(
     readonly name: string,
     config: McpServerConfig,
-    onProgress?: McpProgressCallback,
+    _onProgress?: McpProgressCallback,
   ) {
     this.config = config;
-    this.onProgress = onProgress;
     if (config.enabled === false) {
       this._status = 'disabled';
     }

@@ -6,7 +6,7 @@ function mockFetch(response: unknown) {
     Promise.resolve({
       json: () => Promise.resolve(response),
     } as Response),
-  );
+  ) as unknown as typeof fetch & ReturnType<typeof mock>;
 }
 
 describe('SlackApi', () => {
@@ -33,7 +33,7 @@ describe('SlackApi', () => {
       expect(result.ts).toBe('1617243423.000100');
       expect(globalThis.fetch).toHaveBeenCalledTimes(1);
 
-      const [url, opts] = (globalThis.fetch as ReturnType<typeof mock>).mock.calls[0];
+      const [url, opts] = (globalThis.fetch as unknown as ReturnType<typeof mock>).mock.calls[0];
       expect(url).toBe('https://slack.com/api/chat.postMessage');
       const body = JSON.parse((opts as RequestInit).body as string);
       expect(body.channel).toBe('C123');
@@ -46,7 +46,7 @@ describe('SlackApi', () => {
 
       await api.postMessage('C123', 'Thread reply', {thread_ts: '1617243400.000000'});
 
-      const [, opts] = (globalThis.fetch as ReturnType<typeof mock>).mock.calls[0];
+      const [, opts] = (globalThis.fetch as unknown as ReturnType<typeof mock>).mock.calls[0];
       const body = JSON.parse((opts as RequestInit).body as string);
       expect(body.thread_ts).toBe('1617243400.000000');
     });
@@ -59,7 +59,7 @@ describe('SlackApi', () => {
       ];
       await api.postMessage('C123', 'Fallback', {blocks});
 
-      const [, opts] = (globalThis.fetch as ReturnType<typeof mock>).mock.calls[0];
+      const [, opts] = (globalThis.fetch as unknown as ReturnType<typeof mock>).mock.calls[0];
       const body = JSON.parse((opts as RequestInit).body as string);
       expect(body.blocks).toHaveLength(1);
       expect(body.blocks[0].type).toBe('section');

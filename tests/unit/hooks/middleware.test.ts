@@ -20,6 +20,7 @@ function createMockToolCallContext(toolName = 'Bash', args: Record<string, unkno
     execution: {sessionId: 'test', runId: 'r1', turn: 1, maxTurns: 10, requestId: 'req1', toolCallId: 'tc1'},
     toolCall: {name: toolName, args, id: 'tc1'},
     toolIndex: 0,
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
   } as any;
 }
 
@@ -49,6 +50,7 @@ describe('ToolHooksMiddleware', () => {
   });
 
   test('applies modifiedInput from PreToolUse', async () => {
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
     let capturedArgs: any;
     const lifecycle = createMockLifecycle({
       onPreToolUse: async () => ({
@@ -60,6 +62,7 @@ describe('ToolHooksMiddleware', () => {
     const mw = createToolHooksBridge(lifecycle);
 
     const ctx = createMockToolCallContext('Bash', {command: 'ls'});
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const handler = async (c: any) => {
       capturedArgs = c.toolCall.args;
       return new ToolMessage({content: 'ok', tool_call_id: 'tc1'});
@@ -82,6 +85,7 @@ describe('ToolHooksMiddleware', () => {
     const handler = async () => new ToolMessage({content: 'ok', tool_call_id: 'tc1'});
 
     await mw.wrapToolCall!(ctx, handler);
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
     expect((ctx.runtime.shared as any).pendingHookMessages).toContain('Remember to check tests');
   });
 

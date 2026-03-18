@@ -69,7 +69,9 @@ export function validatePath(filePath: string): string | null {
     }
 
     const normalized = path.normalize(filePath);
-    if (normalized !== filePath) {
+    // Detect traversal: if normalize changed the path beyond just stripping trailing slashes,
+    // or if the raw input contains '..' path segments
+    if (filePath.includes('..') || (normalized !== filePath && normalized !== filePath.replace(/\/+$/, ''))) {
         return formatError('Path traversal detected', 'path contains traversal sequences', filePath);
     }
 

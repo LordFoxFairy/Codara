@@ -1,4 +1,3 @@
-import React from 'react';
 import { Box, Text } from 'ink';
 import { MemberPanel } from './member-panel.js';
 import { JobBoardPanel } from './job-board-panel.js';

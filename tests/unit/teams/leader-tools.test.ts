@@ -16,6 +16,7 @@ function findTool(tools: StructuredToolInterface[], name: string): StructuredToo
   return t;
 }
 
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
 function parse(result: unknown): any {
   return JSON.parse(result as string);
 }
@@ -25,7 +26,6 @@ function makeMember(overrides: Partial<TeamMember> & {memberId: string; teamId: 
     name: overrides.memberId,
     role: 'worker',
     status: 'idle',
-    mode: 'local',
     sessionId: `session_${overrides.memberId}`,
     joinedAt: new Date().toISOString(),
     ...overrides,
@@ -285,7 +285,7 @@ describe('Leader Tools', () => {
 
       const reviewed = events.filter((e) => e.type === 'job.reviewed');
       expect(reviewed).toHaveLength(1);
-      expect((reviewed[0].data as any).approved).toBe(false);
+      expect((reviewed[0].data as Record<string, unknown>).approved).toBe(false);
 
       const msgs = await transport.receive('w-rev');
       expect(msgs).toHaveLength(1);

@@ -65,14 +65,14 @@ function createSingleMcpTool(
  */
 function jsonSchemaToZod(schema: Record<string, unknown>): z.ZodType {
   if (!schema || typeof schema !== 'object') {
-    return z.object({}).passthrough();
+    return z.object({}).loose();
   }
 
   const properties = schema.properties as Record<string, Record<string, unknown>> | undefined;
   const required = (schema.required as string[]) ?? [];
 
   if (!properties || typeof properties !== 'object') {
-    return z.object({}).passthrough();
+    return z.object({}).loose();
   }
 
   const shape: Record<string, z.ZodType> = {};
@@ -90,7 +90,7 @@ function jsonSchemaToZod(schema: Record<string, unknown>): z.ZodType {
     shape[key] = fieldSchema;
   }
 
-  return z.object(shape).passthrough();
+  return z.object(shape).loose();
 }
 
 function jsonSchemaPropertyToZod(prop: Record<string, unknown>): z.ZodType {
@@ -110,7 +110,7 @@ function jsonSchemaPropertyToZod(prop: Record<string, unknown>): z.ZodType {
     case 'array':
       return z.array(z.unknown());
     case 'object':
-      return z.object({}).passthrough();
+      return z.object({}).loose();
     default:
       return z.unknown();
   }

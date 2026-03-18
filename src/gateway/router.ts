@@ -1,7 +1,6 @@
-import type {InboundMessage, GatewayConfig, GatewayBinding} from './types';
+import type {InboundMessage, GatewayConfig} from './types';
 
 export interface GatewayRouter {
-  buildSessionKey(msg: InboundMessage): string;
   isAllowed(msg: InboundMessage): boolean;
   requiresMention(msg: InboundMessage): boolean;
   resolveProfile(msg: InboundMessage): string | undefined;
@@ -12,10 +11,6 @@ export function createGatewayRouter(config: GatewayConfig): GatewayRouter {
   const bindings = config.bindings ?? [];
 
   return {
-    buildSessionKey(msg) {
-      return `${msg.channel}:${msg.accountId}:${msg.peer.kind}:${msg.peer.id}`;
-    },
-
     isAllowed(msg) {
       const channelConfig = channelConfigs[msg.channel];
       if (!channelConfig?.enabled) return false;

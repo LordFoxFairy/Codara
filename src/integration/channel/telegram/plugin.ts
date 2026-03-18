@@ -2,8 +2,8 @@ import {z} from 'zod';
 import type {ChannelPlugin, GatewayListenContext} from '@integration/channel/contracts';
 import type {OutboundContext, PausePromptContext, SendResult, StopHandle} from '@gateway/types';
 import {TelegramApi, TelegramApiError} from './api';
-import {startTelegramPolling, normalizeTelegramMessage} from './polling';
-import type {TelegramAccountConfig, TelegramCallbackQuery} from './types';
+import {startTelegramPolling} from './polling';
+import type {TelegramCallbackQuery} from './types';
 
 /** Resolved account — ready for use after config parsing. */
 export interface TelegramAccount {

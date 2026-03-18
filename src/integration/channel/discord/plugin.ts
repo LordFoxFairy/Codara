@@ -3,7 +3,7 @@ import type {ChannelPlugin, GatewayListenContext} from '@integration/channel/con
 import type {InboundMessage, OutboundContext, PausePromptContext, SendResult, StopHandle} from '@gateway/types';
 import {DiscordApi} from './api';
 import {DiscordGatewayClient} from './gateway-ws';
-import type {DiscordAccountConfig, DiscordMessage, DiscordInteraction, DiscordActionRow} from './types';
+import type {DiscordMessage, DiscordInteraction, DiscordActionRow} from './types';
 import {ButtonStyle, ComponentType, InteractionCallbackType, InteractionType} from './types';
 
 // ── Account ────────────────────────────────────────────────────────────
@@ -170,15 +170,17 @@ export const discordPlugin: ChannelPlugin<DiscordAccount> = {
   },
 
   async sendPausePrompt(account: DiscordAccount, ctx: PausePromptContext): Promise<SendResult> {
+    const buttonType = ComponentType.BUTTON;
     const buttons = ctx.actions.map((a) => ({
-      type: ComponentType.BUTTON as const,
+      type: buttonType,
       style: a.style === 'approve' ? ButtonStyle.SUCCESS : a.style === 'reject' ? ButtonStyle.DANGER : ButtonStyle.SECONDARY,
       label: a.label,
       custom_id: `${a.id}:${ctx.pause.id}`,
     }));
 
+    const actionRowType = ComponentType.ACTION_ROW;
     const components: DiscordActionRow[] = [
-      {type: ComponentType.ACTION_ROW as const, components: buttons},
+      {type: actionRowType, components: buttons},
     ];
 
     try {
