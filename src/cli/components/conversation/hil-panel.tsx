@@ -96,8 +96,8 @@ function AskUserView({review}: {review: CliHilReviewState}): React.JSX.Element {
 
   return (
     <Box flexDirection="column" paddingX={1}>
-      {/* Tab navigation bar */}
-      {hasMultipleTabs && (
+      {/* Tab navigation bar — always show */}
+      {form.tabs.length > 0 && (
         <Box marginBottom={1}>
           <Text dimColor>← </Text>
           {form.tabs.map((tab, index) => {
@@ -134,14 +134,14 @@ function AskUserView({review}: {review: CliHilReviewState}): React.JSX.Element {
             const answer = activeTab.id ? form.answers[activeTab.id] : undefined;
             const isSelected = isOptionSelected(option.label, answer);
             const isFocused = review.focus !== 'actions' && review.selectedActionIndex === index;
-            const highlighted = isSelected || isFocused;
+            const checkbox = isSelected ? '[✓]' : '[ ]';
             return (
               <Box key={index} flexDirection="column">
-                <Text color={highlighted ? 'green' : undefined}>
-                  {highlighted ? '› ' : '  '}{index + 1}. {option.label}
+                <Text color={isFocused ? 'green' : isSelected ? 'cyan' : undefined}>
+                  {isFocused ? '› ' : '  '}{checkbox} {index + 1}. {option.label}
                 </Text>
                 {option.description && (
-                  <Text dimColor>{'     '}{option.description}</Text>
+                  <Text dimColor>{'        '}{option.description}</Text>
                 )}
               </Box>
             );
@@ -187,9 +187,13 @@ function AskUserView({review}: {review: CliHilReviewState}): React.JSX.Element {
       {/* Hint */}
       <Box marginTop={1}>
         <Text dimColor>
-          {hasMultipleTabs
-            ? '↑/↓ select · 1-9 quick pick · Enter confirm · ←/→ tabs · Tab focus · Esc cancel'
-            : '↑/↓ select · 1-9 quick pick · Enter confirm · Tab focus · Esc cancel'}
+          {(() => {
+            const isLastTab = form.activeTabIndex >= form.tabs.length - 1;
+            const enterAction = isLastTab ? 'Enter submit' : 'Enter next';
+            return hasMultipleTabs
+              ? `↑/↓ select · 1-9 quick pick · ${enterAction} · ←/→ tabs · Esc cancel`
+              : `↑/↓ select · 1-9 quick pick · ${enterAction} · Esc cancel`;
+          })()}
         </Text>
       </Box>
 
