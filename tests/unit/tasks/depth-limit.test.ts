@@ -1,31 +1,25 @@
 import {describe, test, expect} from 'bun:test';
-import {
-  MAX_DELEGATION_DEPTH,
-  assertDelegationDepth,
-} from '@core/agent/run/delegation';
+import {tool} from '@langchain/core/tools';
+import {z} from 'zod';
+import {markDelegationTool} from '@core/agent/run/delegation';
 
-describe('Task delegation depth limit', () => {
-  test('MAX_DELEGATION_DEPTH is 1', () => {
-    expect(MAX_DELEGATION_DEPTH).toBe(1);
+describe('Task delegation recursion prevention', () => {
+  test('markDelegationTool returns the same tool instance', () => {
+    const myTool = tool(async () => 'ok', {name: 'Task', schema: z.object({})});
+    const marked = markDelegationTool(myTool);
+    expect(marked).toBe(myTool);
   });
 
-  test('assertDelegationDepth does not throw at depth 0', () => {
-    expect(() => assertDelegationDepth(0)).not.toThrow();
+  test('markDelegationTool sets the delegation symbol', () => {
+    const myTool = tool(async () => 'ok', {name: 'Task', schema: z.object({})});
+    markDelegationTool(myTool);
+    const sym = Symbol.for('codara.tasks.delegation.tool');
+    expect((myTool as Record<symbol, unknown>)[sym]).toBe(true);
   });
 
-  test('assertDelegationDepth throws at MAX_DELEGATION_DEPTH', () => {
-    expect(() => assertDelegationDepth(MAX_DELEGATION_DEPTH)).toThrow(
-      /delegation depth limit/i,
-    );
-  });
-
-  test('assertDelegationDepth throws above MAX_DELEGATION_DEPTH', () => {
-    expect(() => assertDelegationDepth(MAX_DELEGATION_DEPTH + 1)).toThrow(
-      /delegation depth limit/i,
-    );
-  });
-
-  test('assertDelegationDepth treats undefined as 0', () => {
-    expect(() => assertDelegationDepth(undefined)).not.toThrow();
+  test('unmarked tools do not have delegation symbol', () => {
+    const myTool = tool(async () => 'ok', {name: 'bash', schema: z.object({})});
+    const sym = Symbol.for('codara.tasks.delegation.tool');
+    expect((myTool as Record<symbol, unknown>)[sym]).toBeUndefined();
   });
 });
