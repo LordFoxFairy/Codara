@@ -315,12 +315,12 @@ function buildRuntimeEventItems(events: readonly CodaraRuntimeEvent[]): Transcri
     items.push({
       id: activeId(startEvent.id),
       role: 'task',
-      content: `⚙ ${agentType}(${taskName})\n${summary}`,
+      content: `⚙ ${agentType}(${extractTaskArgs(startEvent.label)})\n${summary}`,
       toolMeta: {
         toolName: 'Task',
         displayName: agentType,
         icon: '⚙',
-        args: taskName,
+        args: extractTaskArgs(startEvent.label),
         status: status as 'done' | 'error',
         elapsed,
         summaryLine: summary,
@@ -399,12 +399,12 @@ function buildRuntimeEventItems(events: readonly CodaraRuntimeEvent[]): Transcri
     items.push({
       id: activeId(taskId),
       role: 'task',
-      content: `⚙ ${agentType}(${taskName})\n…`,
+      content: `⚙ ${agentType}(${extractTaskArgs(startEvent.label)})\n…`,
       toolMeta: {
         toolName: 'Task',
         displayName: agentType,
         icon: '⚙',
-        args: taskName,
+        args: extractTaskArgs(startEvent.label),
         status: 'running',
         summaryLine: '…',
       },
@@ -416,32 +416,27 @@ function buildRuntimeEventItems(events: readonly CodaraRuntimeEvent[]): Transcri
 
 function extractSubagentType(label: string): string {
   // "Delegating Plan: some description" → "Plan"
-  // "Delegating general-purpose: some description" → "Agent"
-  const match = label.match(/^Delegating\s+(\S+)/);
+  const match = label.match(/^Delegating\s+([\w-]+)/);
   if (!match) return 'Task';
   const type = match[1]!;
   if (type === 'general-purpose') return 'Agent';
   return type.charAt(0).toUpperCase() + type.slice(1);
 }
 
+/** Extract just the description (without agent type prefix) for toolMeta.args. */
+function extractTaskArgs(label: string): string {
+  const firstLine = label.split('\n')[0]!.trim();
+  const text = firstLine.startsWith('Delegating ') ? firstLine.slice('Delegating '.length) : firstLine;
+  const colonIndex = text.indexOf(': ');
+  const desc = colonIndex > 0 ? text.slice(colonIndex + 2) : text;
+  return desc.length > 50 ? `${desc.slice(0, 47)}…` : desc;
+}
+
+/** For task panel display: "Delegating Plan: desc" → "Plan: short desc" */
 function extractTaskDisplayName(label: string): string {
-  // "Delegating general-purpose: some long prompt\nwith newlines" → "general-purpose(some long prompt)"
-  const delegatingPrefix = 'Delegating ';
-  let text = label;
-  if (text.startsWith(delegatingPrefix)) {
-    text = text.slice(delegatingPrefix.length);
-  }
-  // Take only first line
-  const firstLine = text.split('\n')[0]!.trim();
-  // Split "type: description" → "type(description)"
-  const colonIndex = firstLine.indexOf(': ');
-  if (colonIndex > 0) {
-    const agentType = firstLine.slice(0, colonIndex);
-    const description = firstLine.slice(colonIndex + 2);
-    const shortDesc = description.length > 50 ? `${description.slice(0, 47)}...` : description;
-    return `${agentType}(${shortDesc})`;
-  }
-  return firstLine;
+  const firstLine = label.split('\n')[0]!.trim();
+  const text = firstLine.startsWith('Delegating ') ? firstLine.slice('Delegating '.length) : firstLine;
+  return text.length > 40 ? `${text.slice(0, 37)}…` : text;
 }
 
 function extractTeamDisplayName(label: string): string {
