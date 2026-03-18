@@ -1,11 +1,11 @@
 import {describe, expect, it} from 'bun:test';
 import {
   createSkillsMiddleware,
-} from '@engine/pipeline';
+} from '@core/middleware';
 import {FileSystemSkillStore, getDefaultSkillSources, loadSkillsRuntimeData, type SkillStore} from '@capability/skill';
 
 describe('middleware unified skills exports', () => {
-  it('should expose the skills middleware without leaking skills store helpers from @engine/pipeline', async () => {
+  it('should expose the skills middleware without leaking skills store helpers from @core/middleware', async () => {
     const defaults = getDefaultSkillSources({
       userHome: '/tmp/u',
       projectRoot: '/tmp/p',

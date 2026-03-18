@@ -1,7 +1,7 @@
 import path from 'node:path';
 import {AIMessage, HumanMessage, SystemMessage, type BaseMessage} from '@langchain/core/messages';
 import type {StructuredToolInterface} from '@langchain/core/tools';
-import {createSkillsMiddleware} from '@engine/pipeline';
+import {createSkillsMiddleware} from '@core/middleware';
 import {FileSystemSkillStore, loadSkillsRuntimeData} from '@capability/skill';
 
 export function createBuiltinSubagentStore() {

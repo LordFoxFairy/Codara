@@ -4,8 +4,8 @@ import {
   createContextBudgetSnapshot,
   estimateModelInputTokens,
   refreshContextBudget,
-} from '@engine/pipeline/budget';
-import type {BeforeModelContext} from '@engine/pipeline';
+} from '@core/middleware/budget';
+import type {BeforeModelContext} from '@core/middleware';
 
 describe('context budget middleware', () => {
   it('should create a budget snapshot from input budget and model input', () => {

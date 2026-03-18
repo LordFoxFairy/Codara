@@ -3,7 +3,7 @@ import {mkdir, mkdtemp, writeFile} from 'node:fs/promises'
 import {tmpdir} from 'node:os'
 import path from 'node:path'
 import {HumanMessage, type BaseMessage} from '@langchain/core/messages'
-import {createSkillsMiddleware} from '@engine/pipeline'
+import {createSkillsMiddleware} from '@core/middleware'
 import {
   FileSystemSkillStore,
   loadSkillsRuntimeData,

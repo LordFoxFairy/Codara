@@ -11,7 +11,7 @@ import {
   createAskUserQuestionMiddleware,
   createSession,
 } from '@/index';
-import {createAutoMemoryRuntime, resolveAutoMemoryRoot} from '@infra/context/memory/auto-memory';
+import {createAutoMemoryRuntime, resolveAutoMemoryRoot} from '@context/memory/auto-memory';
 
 describe('runtime auto memory cases', () => {
   it('writes global auto memory after a successful main-agent turn by default', async () => {

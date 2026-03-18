@@ -6,7 +6,7 @@ import {
   parseHILToolMessagePayload,
   parseHILResumeActionPayload,
   type ToolCallContext,
-} from '@engine/pipeline';
+} from '@core/middleware';
 
 function createToolContext(toolCall: ToolCall, runtimeContext: Record<string, unknown> = {}): ToolCallContext {
   const messages = [new HumanMessage('run')] as BaseMessage[];

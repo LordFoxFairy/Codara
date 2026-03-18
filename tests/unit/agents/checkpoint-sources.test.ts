@@ -3,9 +3,9 @@ import {AIMessage, type BaseMessage, type ToolCall} from '@langchain/core/messag
 import type {BaseChatModel} from '@langchain/core/language_models/chat_models';
 import {tool} from '@langchain/core/tools';
 import {z} from 'zod';
-import {createAgent} from '@engine/agent';
-import {createAgentMemoryCheckpointer} from '@engine/checkpoint';
-import {createHILMiddleware} from '@engine/pipeline';
+import {createAgent} from '@core/agent';
+import {createAgentMemoryCheckpointer} from '@durability/checkpoint';
+import {createHILMiddleware} from '@core/middleware';
 
 class SequenceModel {
   private index = 0;

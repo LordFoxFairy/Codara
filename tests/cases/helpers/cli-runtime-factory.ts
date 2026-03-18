@@ -16,7 +16,7 @@ import {
   createPermissionMiddleware,
   createSkillsMiddleware,
   parseAskUserResult,
-} from '@engine/pipeline';
+} from '@core/middleware';
 import {
   createTaskCreateTool,
   createTaskFileStore,

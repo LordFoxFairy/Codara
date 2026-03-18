@@ -1,6 +1,6 @@
 import {describe, expect, test} from 'bun:test';
-import {CommandExecutionStrategy, PromptExecutionStrategy, createHookExecutor} from '@engine/hook/executor';
-import type {HookDefinition, HookContextBase} from '@engine/hook/types';
+import {CommandExecutionStrategy, PromptExecutionStrategy, createHookExecutor} from '@observability/hook/executor';
+import type {HookDefinition, HookContextBase} from '@observability/hook/types';
 
 const baseContext: HookContextBase = {
   sessionId: 'test-session',

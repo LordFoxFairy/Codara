@@ -1,5 +1,5 @@
 import {describe, test, expect, beforeEach} from 'bun:test';
-import {ChannelRegistry} from '@engine/channel/registry';
+import {ChannelRegistry} from '@integration/channel/registry';
 import type {Channel} from '@shared/contracts/channel';
 import type {PauseRequest} from '@shared/contracts/agent-types';
 

@@ -1,9 +1,9 @@
 import {describe, test, expect, beforeEach} from 'bun:test';
-import {ChannelRegistry} from '@engine/channel/registry';
-import {createChannelHILOptions} from '@engine/channel/hil-adapter';
+import {ChannelRegistry} from '@integration/channel/registry';
+import {createChannelHILOptions} from '@integration/channel/hil-adapter';
 import type {Channel} from '@shared/contracts/channel';
 import type {PauseRequest} from '@shared/contracts/agent-types';
-import type {ToolCallContext} from '@engine/pipeline/types';
+import type {ToolCallContext} from '@core/pipeline/types';
 
 function createMockChannel(id: string): Channel & {
   pauseRequests: PauseRequest[];
