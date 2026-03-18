@@ -29,7 +29,7 @@ const dingtalkAccountConfigSchema = z.object({
   appSecret: z.string().min(1, 'appSecret is required'),
   webhookPort: z.number().int().positive().optional(),
   webhookPath: z.string().optional(),
-  callbackBaseUrl: z.string().url().optional(),
+  callbackBaseUrl: z.url().optional(),
 });
 
 /**

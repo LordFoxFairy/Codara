@@ -144,6 +144,7 @@ function convertInlineMarkdownToSlack(line: string): string {
   result = result.replace(/(?<!\*)\*(?!\*)(.+?)(?<!\*)\*(?!\*)/g, '_$1_');
 
   // Restore bold markers
+  // eslint-disable-next-line no-control-regex -- intentional \x01 placeholder
   result = result.replace(/\x01B/g, '*').replace(/B\x01/g, '*');
 
   // Strikethrough (~~text~~) → ~text~

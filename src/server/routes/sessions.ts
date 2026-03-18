@@ -90,7 +90,7 @@ export async function handleSessionMessages(sessionId: string): Promise<Response
 
     // Convert LangChain BaseMessage[] to simple frontend-friendly format.
     const messages = checkpoint.state.messages.map((msg, i) => {
-      const role = msg.getType() === 'human' ? 'user' as const : 'assistant' as const;
+      const role = msg.type === 'human' ? 'user' as const : 'assistant' as const;
       let content = '';
       if (typeof msg.content === 'string') {
         content = msg.content;

@@ -1,4 +1,4 @@
-import type {AIMessageChunk} from '@langchain/core/messages';
+import type {AIMessageChunk, BaseMessage} from '@langchain/core/messages';
 import {createCodaraRuntime} from '@codara/facade';
 import type {GatewaySession, GatewaySessionFactory} from './session-manager';
 
@@ -24,7 +24,7 @@ export function createCodaraSessionFactory(options?: CodaraSessionFactoryOptions
         const result = await runtime.invoke(text);
         const messages = result?.state?.messages ?? [];
         const lastAI = [...messages].reverse().find(
-          (m: any) => m._getType?.() === 'ai' || m.constructor?.name === 'AIMessage',
+          (m: BaseMessage) => m.type === 'ai',
         );
         return typeof lastAI?.content === 'string'
           ? lastAI.content

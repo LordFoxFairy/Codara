@@ -22,6 +22,7 @@ export async function createHttpTransport(config: McpRemoteServerConfig): Promis
     // Fall back to SSE
   }
 
+  // eslint-disable-next-line @typescript-eslint/no-deprecated -- SSE fallback needed for servers that don't support StreamableHTTP
   return new SSEClientTransport(url, {
     requestInit: {headers: new Headers(headers)},
   });

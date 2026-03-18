@@ -39,6 +39,7 @@ export async function assembleTeamSystem(input: TeamSystemAssemblyInput): Promis
   const teamRegistry = new TeamRegistry();
   const sharedState = new MemorySharedState();
 
+  // eslint-disable-next-line prefer-const -- declared before closures that read it, assigned later
   let _teamRuntime: TeamRuntime | undefined;
   const getTeamRuntime = (): TeamRuntime => {
     if (!_teamRuntime) throw new Error('TeamRuntime not yet initialized');
