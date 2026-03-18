@@ -636,11 +636,22 @@ export function useCliController(options: UseCliControllerOptions): CliControlle
       if (!prepared.review.form && !isPermissionReview(prepared.review)) {
         appendNotice('system', `HIL action: ${selectedAction?.label ?? autoAction?.action ?? 'resume'}`);
       }
-      const result = await codara.resumePause(prepared.payload);
-      setCoreMessages(result.state.messages);
-      setSessionState(codara.getState());
-      setHilReview((current) => syncCliHilReviewState(current, result.state.pendingPause));
-      setRunState(result.state.status === 'paused' ? {status: 'paused'} : {status: 'done'});
+
+      // Use streaming resume for immediate UI feedback (like Claude Code)
+      for await (const chunk of codara.resumePauseStream(prepared.payload, {streamMode: 'messages'})) {
+        if (!AIMessageChunk.isInstance(chunk)) continue;
+        const text = chunk.text;
+        if (text) {
+          setActiveTurn((current) => current
+            ? {...current, response: current.response + text}
+            : {id: `turn-resume-${Date.now()}`, prompt: '', response: text, responseRole: 'assistant'});
+        }
+      }
+
+      setActiveTurn(undefined);
+      const nextAgentState = await refreshCoreState();
+      setHilReview((current) => syncCliHilReviewState(current, nextAgentState.pendingPause));
+      setRunState(nextAgentState.status === 'paused' ? {status: 'paused'} : {status: 'done'});
     } catch (error) {
       reportError(error);
       await refreshCoreState().catch(() => undefined);
