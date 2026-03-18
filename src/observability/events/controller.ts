@@ -58,7 +58,11 @@ export class RuntimeEventsController {
     };
 
     for (const listener of this.listeners) {
-      listener(event);
+      try {
+        listener(event);
+      } catch (error) {
+        console.error('[RuntimeEvents] Listener error:', error);
+      }
     }
 
     return event;
