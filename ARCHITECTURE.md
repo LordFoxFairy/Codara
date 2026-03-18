@@ -186,10 +186,9 @@ src/
 │   │   └── runtime/               #   运行时（subagent 解析, 命令调用）
 │   │
 │   ├── task/                      # 任务派发子域
-│   │   ├── delegation.ts          #   子 agent 派发（stream-first）
 │   │   ├── store.ts               #   任务仓储（file/memory）
 │   │   ├── tools.ts               #   任务工具（create/list/update）
-│   │   ├── middleware.ts          #   任务中间件
+│   │   ├── middleware.ts          #   任务中间件（触发 delegation）
 │   │   ├── types.ts               #   任务类型
 │   │   └── index.ts
 │   │
@@ -360,8 +359,13 @@ src/
 │
 ├── server/                        # ═══ 展示层：HTTP/SSE 服务 ═══
 │   │
+│   ├── routes/                    # HTTP 路由
+│   │   ├── chat.ts                #   聊天 + SSE 流
+│   │   ├── sessions.ts            #   会话 CRUD
+│   │   └── command.ts             #   命令执行
+│   ├── bus-manager.ts             # Bus 单例 + 事件分发
 │   ├── channel.ts                 # SSEChannel 实现
-│   ├── sse.ts                     # SSE 流处理
+│   ├── sse.ts                     # SSE 格式化
 │   ├── teams-api.ts               # Teams API 路由
 │   └── index.ts
 │
@@ -491,6 +495,7 @@ core/agent/
 │   ├── stream.ts       AsyncGenerator 流式执行
 │   ├── turn.ts         单轮执行逻辑
 │   ├── tool-executor.ts 工具调用执行
+│   ├── delegation.ts   子 agent 派发（stream-first）
 │   └── errors.ts       执行错误类型
 │
 ├── bootstrap.ts        Agent 初始化 + 模型解析
@@ -875,7 +880,7 @@ Codara 的扩展机制分为**三层递进**，所有扩展最终通过 Middlewa
 
 ```text
 ① 接入
-   cli/ | desktop/ | server/ 接收用户动作
+   cli/ | desktop/ | server/ | gateway/ 接收用户动作
    统一转换为 AgentInput
 
 ② 装配
@@ -940,7 +945,8 @@ core/ ──emit──→ observability/events ──broadcast──→ bus/ ─
   │                                                         │
   └──write──→ durability/checkpoint                         ├──→ cli/ (Ink)
                                                             ├──→ desktop/ (React)
-                                                            └──→ server/ (SSE)
+                                                            ├──→ server/ (SSE)
+                                                            └──→ gateway/ (IM 渠道)
 ```
 
 ---
