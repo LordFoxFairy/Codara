@@ -45,6 +45,7 @@ export function App() {
     isStreaming,
     error,
     pauseRequest,
+    runtimeEvent,
     sendMessage,
     stopStreaming,
     resumePause,
@@ -185,6 +186,7 @@ export function App() {
                 messages={messages}
                 status={status}
                 pauseRequest={pauseRequest}
+                runtimeEvent={runtimeEvent}
                 onResume={resumePause}
               />
               <InputArea

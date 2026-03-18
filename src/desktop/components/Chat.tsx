@@ -1,16 +1,17 @@
 import { useEffect, useRef } from "react";
 import { Sparkles } from "lucide-react";
-import type { Message, PauseRequest, StreamStatus } from "../types";
+import type { Message, PauseRequest, RuntimeEvent, StreamStatus } from "../types";
 import { MessageBubble } from "./MessageBubble";
 
 interface ChatProps {
   messages: Message[];
   status: StreamStatus;
   pauseRequest: PauseRequest | null;
+  runtimeEvent: RuntimeEvent | null;
   onResume: (action: string) => void;
 }
 
-export function Chat({ messages, status, pauseRequest, onResume }: ChatProps) {
+export function Chat({ messages, status, pauseRequest, runtimeEvent, onResume }: ChatProps) {
   const bottomRef = useRef<HTMLDivElement>(null);
   const containerRef = useRef<HTMLDivElement>(null);
 
@@ -64,7 +65,7 @@ export function Chat({ messages, status, pauseRequest, onResume }: ChatProps) {
               <span className="h-1.5 w-1.5 rounded-full bg-[var(--color-accent)]" style={{ animation: "pulse-dot 1.4s ease-in-out 0.2s infinite" }} />
               <span className="h-1.5 w-1.5 rounded-full bg-[var(--color-accent)]" style={{ animation: "pulse-dot 1.4s ease-in-out 0.4s infinite" }} />
               <span className="ml-1 text-[12px] font-medium text-[var(--color-text-tertiary)]">
-                {status === "thinking" ? "Thinking..." : "Writing..."}
+                {describeRuntimeStatus(status, runtimeEvent)}
               </span>
             </div>
           </div>
@@ -92,4 +93,33 @@ export function Chat({ messages, status, pauseRequest, onResume }: ChatProps) {
       </div>
     </div>
   );
+}
+
+/** Derive a human-readable status label from stream status and the latest runtime event. */
+function describeRuntimeStatus(status: StreamStatus, event: RuntimeEvent | null): string {
+  if (status === "thinking") return "Thinking...";
+
+  if (!event) return "Writing...";
+
+  switch (event.kind) {
+    case "model":
+      return "Thinking...";
+    case "tool": {
+      // Extract tool name from label like "bash(git status)" → "bash"
+      const toolMatch = event.label.match(/^(\w+)\(/);
+      const toolName = toolMatch?.[1] ?? event.label;
+      const truncated = event.label.length > 60 ? `${event.label.slice(0, 57)}...` : event.label;
+      return event.phase === "start" ? `Running: ${truncated}` : `Done: ${toolName}`;
+    }
+    case "task":
+      if (event.phase === "start") return "Delegating to subagent...";
+      if (event.phase === "end") return "Subagent completed";
+      return "Subagent working...";
+    case "team":
+      if (event.phase === "start") return "Team coordinating...";
+      if (event.phase === "update") return event.label.length > 50 ? `${event.label.slice(0, 47)}...` : event.label;
+      return "Team completed";
+    default:
+      return "Working...";
+  }
 }
