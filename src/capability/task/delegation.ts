@@ -11,6 +11,7 @@ import {
   type ResumePayload,
   type ToolErrorHandler,
 } from '@engine/agent/models/agent';
+import type {AgentResult, AgentStreamOutput} from '@engine/agent/models/agent';
 import type {BootstrapAgentOptions} from '@engine/agent/bootstrap';
 import {bootstrapAgent, resolveModel} from '@engine/agent/bootstrap';
 import {createMiddleware, type BaseMiddleware} from '@engine/pipeline/types';
@@ -274,10 +275,10 @@ async function runDelegatedChild(
 
   const child = await bootstrapAgent(childOptions);
   const messages = createDelegatedAgentInput(input.prompt);
-  return child.invoke(
+  return consumeAgentStream(child.stream(
     {messages},
     {...(input.maxTurns ? {recursionLimit: input.maxTurns} : {})},
-  );
+  ));
 }
 
 function resolveDelegatedAgentTools(
@@ -301,10 +302,25 @@ async function resumeDelegatedChild(
     ...(checkpoint ? {checkpoint} : {}),
   });
 
-  return child.resume(
+  return consumeAgentStream(child.resumeStream(
     resume.payload,
     {resumeMode: 'tool', ...(maxTurns ? {recursionLimit: maxTurns} : {})},
-  );
+  ));
+}
+
+/**
+ * Drain an AsyncGenerator produced by agent.stream() / agent.resumeStream(),
+ * discarding intermediate chunks (middleware already handles them in real-time),
+ * and return the final AgentResult.
+ */
+async function consumeAgentStream(
+  gen: AsyncGenerator<AgentStreamOutput, AgentResult, void>,
+): Promise<AgentResult> {
+  let result: IteratorResult<AgentStreamOutput, AgentResult>;
+  do {
+    result = await gen.next();
+  } while (!result.done);
+  return result.value;
 }
 
 function mergeSystemPrompt(profileSystemPrompt: string | undefined, toolSystemPrompt: string | undefined): string | undefined {
