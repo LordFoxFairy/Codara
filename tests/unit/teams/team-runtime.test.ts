@@ -1,4 +1,4 @@
-import { describe, test, expect, beforeEach } from 'bun:test';
+import { describe, test, expect, beforeEach, afterEach } from 'bun:test';
 import { TeamRuntime } from '@capability/team/runtime/team-runtime';
 import { TeamRegistry } from '@capability/team/coordination/team-registry';
 import { JobBoard } from '@capability/team/coordination/job-board';
@@ -23,13 +23,13 @@ let registry: TeamRegistry;
 let runtime: TeamRuntime;
 let domainEvents: { teamId: string; event: TeamBusEvent }[];
 
-function setup(sessionFactory?: typeof createMockSession) {
+function setup(sessionFactory?: () => MemberSession) {
   registry = new TeamRegistry();
   domainEvents = [];
   runtime = new TeamRuntime({
     registry,
     projectRoot: '/tmp/test',
-    createSession: sessionFactory ?? (() => createMockSession()),
+    createSession: () => (sessionFactory ?? createMockSession)(),
   });
   // Subscribe to domain events for test assertions
   runtime.subscribeDomainEvents((teamId, event) => {
@@ -55,6 +55,18 @@ function createTestTeam() {
 
 describe('TeamRuntime', () => {
   beforeEach(() => setup());
+
+  afterEach(async () => {
+    // Force-kill all teams to clear health timers + runner loops (prevents Bun OOM)
+    if (!registry) return;
+    for (const team of registry.listTeams()) {
+      if (team.status !== 'completed' && team.status !== 'failed' && team.status !== 'archived') {
+        try { await runtime.killTeam(team.teamId); } catch { /* already dead */ }
+      }
+    }
+    // Brief settle for async cleanup
+    await new Promise(r => setTimeout(r, 20));
+  });
 
   test('startTeam creates infra, sets running, no auto-leader (main agent IS leader)', async () => {
     const team = createTestTeam();
@@ -223,7 +235,7 @@ describe('TeamRuntime', () => {
 
     await runtime.spawnMember(team.teamId, 'worker-1', 'worker');
     await runtime.spawnMember(team.teamId, 'worker-2', 'worker');
-    await runtime.spawnMember(team.teamId, 'reviewer-1', 'reviewer');
+    await runtime.spawnMember(team.teamId, 'worker-3', 'worker');
 
     const members = registry.getMembersByTeam(team.teamId);
     expect(members.length).toBe(3); // 3 spawned (no auto-leader)

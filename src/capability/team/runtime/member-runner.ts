@@ -234,10 +234,13 @@ export class MemberRunner {
           const result = await this.session.invoke();
           if (result.reason === 'error') {
             await this.handleInvokeError(result.error ?? new Error('Agent loop error'));
+            // Yield to event loop after error recovery — prevents tight loop when inbox isn't drained
+            await new Promise(r => setTimeout(r, 0));
             continue;
           }
         } catch (err) {
           await this.handleInvokeError(err instanceof Error ? err : new Error(String(err)));
+          await new Promise(r => setTimeout(r, 0));
           continue;
         }
       }
@@ -256,9 +259,19 @@ export class MemberRunner {
     }
   }
 
+  /** Maximum idle wait before re-checking loop condition (prevents indefinite hangs). */
+  static IDLE_POLL_MS = 30_000;
+
   private waitForWake(): Promise<void> {
     return new Promise<void>(resolve => {
-      this.wakeResolve = resolve;
+      const timer = setTimeout(() => {
+        this.wakeResolve = null;
+        resolve();
+      }, MemberRunner.IDLE_POLL_MS);
+      this.wakeResolve = () => {
+        clearTimeout(timer);
+        resolve();
+      };
     });
   }
 
