@@ -58,9 +58,9 @@ import type {SessionStore} from './store';
 import {
   RuntimeEventsController,
   type CodaraRuntimeEventListener,
-} from '@observability/events/runtime-events';
+} from '@observability/events';
 import type {SessionMetadata, SessionState, SessionStatus} from './types';
-export type {CodaraRuntimeEvent, CodaraRuntimeEventListener} from '@observability/events/runtime-events';
+export type {CodaraRuntimeEvent, CodaraRuntimeEventListener} from '@observability/events';
 
 export interface SessionModelCatalog {
   create(modelRef?: string): Promise<BaseChatModel>;

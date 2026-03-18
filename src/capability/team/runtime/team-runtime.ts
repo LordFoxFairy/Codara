@@ -8,7 +8,7 @@ import { MemberRunner } from '@capability/team/runtime/member-runner';
 import type { MemberSession, MemberSessionOptions } from '@capability/team/runtime/member-runner';
 import { TeamPersistence } from '@capability/team/persistence';
 import type { TeamMessage } from '@capability/team/coordination/types';
-import type { CodaraRuntimeEvent, CodaraRuntimeEventPhase, CodaraRuntimeEventStatus } from '@observability/events/runtime-events';
+import type { CodaraRuntimeEvent, CodaraRuntimeEventPhase, CodaraRuntimeEventStatus } from '@observability/events';
 
 // ─── Types ──────────────────────────────────────────────────────────
 

@@ -1,99 +1,28 @@
 import {randomUUID} from 'node:crypto';
-import type {ToolMessage} from '@langchain/core/messages';
 import {
   createMiddleware,
   readExecutionMetadata,
-  type BaseExecutionContext,
-  type ToolCallContext,
 } from '@core/pipeline/types';
 import {parseHILToolMessagePayload} from '@core/middleware/hil';
 import {readDelegatedAgentResult} from '@shared/delegation-result';
-import {TOOL_NAMES, formatToolSummary, readString} from '@shared/tool-display';
+import {TOOL_NAMES} from '@shared/tool-display';
 
-export type CodaraRuntimeEventKind = 'turn' | 'model' | 'tool' | 'task' | 'hil' | 'command' | 'summary' | 'hook' | 'team';
-export type CodaraRuntimeEventPhase = 'start' | 'update' | 'end';
-export type CodaraRuntimeEventStatus = 'running' | 'done' | 'paused' | 'error';
-
-export interface CodaraRuntimeEvent {
-  id: string;
-  sessionId: string;
-  timestamp: string;
-  kind: CodaraRuntimeEventKind;
-  phase: CodaraRuntimeEventPhase;
-  status: CodaraRuntimeEventStatus;
-  label: string;
-  detail?: string;
-  parentId?: string;
-}
-
-export type CodaraRuntimeEventListener = (event: CodaraRuntimeEvent) => void;
-
-interface EmitRuntimeEventInput {
-  id?: string;
-  kind: CodaraRuntimeEventKind;
-  phase: CodaraRuntimeEventPhase;
-  status: CodaraRuntimeEventStatus;
-  label: string;
-  detail?: string;
-  parentId?: string;
-}
-
-function turnKey(context: BaseExecutionContext): string {
-  const execution = readExecutionMetadata(context);
-  return `${execution.runId}:${execution.turn}`;
-}
-
-function toolKey(context: ToolCallContext): string {
-  const execution = readExecutionMetadata(context);
-  return `${execution.runId}:${execution.turn}:${execution.toolCallId ?? context.toolCall.id ?? context.toolIndex}`;
-}
-
-function formatToolLabel(context: ToolCallContext): string {
-  const name = context.toolCall.name ?? 'tool';
-  const summary = formatToolSummary(name, context.toolCall.args);
-  return summary ? `${formatToolDisplayName(name)}(${summary})` : formatToolDisplayName(name);
-}
-
-// formatToolSummary is imported from @shared/tool-display
-
-function formatToolDisplayName(toolName: string): string {
-  switch (toolName) {
-    case TOOL_NAMES.BASH:
-      return 'Running Bash';
-    case TOOL_NAMES.READ_FILE:
-    case TOOL_NAMES.READ:
-      return 'Reading';
-    case TOOL_NAMES.WRITE_FILE:
-    case TOOL_NAMES.WRITE:
-      return 'Writing';
-    case TOOL_NAMES.EDIT_FILE:
-    case TOOL_NAMES.EDIT:
-      return 'Editing';
-    case TOOL_NAMES.FETCH_URL:
-    case TOOL_NAMES.FETCH:
-      return 'Fetching';
-    case TOOL_NAMES.WEB_SEARCH:
-    case TOOL_NAMES.SEARCH:
-      return 'Searching';
-    case TOOL_NAMES.TASK:
-      return 'Delegating task';
-    case TOOL_NAMES.TASK_CREATE:
-      return 'Creating task';
-    case TOOL_NAMES.TASK_UPDATE:
-      return 'Updating task';
-    case TOOL_NAMES.TASK_LIST:
-      return 'Listing tasks';
-    case TOOL_NAMES.ASK_USER:
-      return 'AskUserQuestion';
-    default:
-      return toolName;
-  }
-}
-
-// readString is imported from @shared/tool-display
-
-/** Callback for child agent tool activity — injected into delegated child middleware. */
-export type ChildToolActivityCallback = (info: {toolName: string; label: string}) => void;
+import type {
+  CodaraRuntimeEvent,
+  CodaraRuntimeEventListener,
+  CodaraRuntimeEventStatus,
+  EmitRuntimeEventInput,
+  ChildToolActivityCallback,
+} from './types';
+import {
+  turnKey,
+  toolKey,
+  formatToolLabel,
+  formatTaskStartLabel,
+  summarizeToolMessage,
+  summarizeDelegatedTask,
+  summarizePauseLabel,
+} from './formatters';
 
 /** Key used to store child activity callback in runtimeShared. */
 export const CHILD_ACTIVITY_CALLBACK_KEY = '__taskActivityCallback';
@@ -441,67 +370,4 @@ export class RuntimeEventsController {
       },
     });
   }
-}
-
-function summarizeToolMessage(message: ToolMessage): string | undefined {
-  if (typeof message.content !== 'string') {
-    return undefined;
-  }
-
-  const trimmed = message.content.trim();
-  return trimmed || undefined;
-}
-
-function summarizeDelegatedTask(message: ToolMessage): string | undefined {
-  const delegated = readDelegatedAgentResult(message.artifact);
-  if (!delegated) {
-    return summarizeToolMessage(message);
-  }
-
-  const parts: string[] = [];
-  if (delegated.summary?.trim()) {
-    parts.push(delegated.summary.trim());
-  }
-  const statParts: string[] = [];
-  if (delegated.toolUseCount && delegated.toolUseCount > 0) {
-    statParts.push(`${delegated.toolUseCount} tool uses`);
-  }
-  if (delegated.totalTokens && delegated.totalTokens > 0) {
-    statParts.push(`${formatDelegatedTokens(delegated.totalTokens)} tokens`);
-  }
-  if (statParts.length > 0) {
-    parts.push(statParts.join(' · '));
-  }
-  return parts.join('\n') || summarizeToolMessage(message);
-}
-
-function formatDelegatedTokens(n: number): string {
-  if (n >= 1000000) return `${(n / 1000000).toFixed(1)}M`;
-  if (n >= 1000) return `${(n / 1000).toFixed(1)}k`;
-  return String(n);
-}
-
-function formatTaskStartLabel(args: unknown): string {
-  if (!args || typeof args !== 'object' || Array.isArray(args)) {
-    return 'Delegating task';
-  }
-
-  const record = args as Record<string, unknown>;
-  const subagentType = readString(record.subagent_type);
-  const prompt = readString(record.prompt);
-  if (subagentType && prompt) {
-    return `Delegating ${subagentType}: ${prompt}`;
-  }
-  if (subagentType) {
-    return `Delegating ${subagentType}`;
-  }
-  if (prompt) {
-    return `Delegating task: ${prompt}`;
-  }
-  return 'Delegating task';
-}
-
-function summarizePauseLabel(description: string): string {
-  const trimmed = description.trim();
-  return trimmed || 'Waiting for review';
 }
