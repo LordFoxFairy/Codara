@@ -39,16 +39,21 @@ export async function assembleTeamSystem(input: TeamSystemAssemblyInput): Promis
   const teamRegistry = new TeamRegistry();
   const sharedState = new MemorySharedState();
 
-  let teamRuntime!: TeamRuntime;
+  let _teamRuntime: TeamRuntime | undefined;
+  const getTeamRuntime = (): TeamRuntime => {
+    if (!_teamRuntime) throw new Error('TeamRuntime not yet initialized');
+    return _teamRuntime;
+  };
 
   const teamSessionFactory = (memberOptions: MemberSessionOptions): MemberSession => {
     const teamToolContext = {
       teamId: memberOptions.teamId,
       memberId: memberOptions.memberId,
       registry: teamRegistry,
-      transport: teamRuntime.getTransport(memberOptions.teamId)!,
-      emitEvent: teamRuntime.createEmitEvent(memberOptions.teamId),
+      transport: getTeamRuntime().getTransport(memberOptions.teamId)!,
+      emitEvent: getTeamRuntime().createEmitEvent(memberOptions.teamId),
       projectRoot,
+      runtime: getTeamRuntime(),
     };
 
     const baseDevTools = createBuiltinTools({
@@ -173,7 +178,7 @@ export async function assembleTeamSystem(input: TeamSystemAssemblyInput): Promis
 
   const teamPersistence = new TeamPersistence(codaraPath);
 
-  teamRuntime = new TeamRuntime({
+  _teamRuntime = new TeamRuntime({
     registry: teamRegistry,
     projectRoot,
     createSession: teamSessionFactory,
@@ -200,6 +205,7 @@ export async function assembleTeamSystem(input: TeamSystemAssemblyInput): Promis
     // Recovery is best-effort; a clean start is acceptable.
   }
 
+  const teamRuntime = _teamRuntime;
   return {teamRegistry, teamRuntime, sharedState};
 }
 
