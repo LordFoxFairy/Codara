@@ -39,6 +39,49 @@ function validateUrl(rawUrl: string): {url?: URL; error?: string} {
   return {url: parsed};
 }
 
+/**
+ * Stream-read response body up to `maxBytes`, cancelling the stream if exceeded.
+ * Prevents OOM when Content-Length is absent or inaccurate.
+ */
+async function readLimitedText(response: Response, maxBytes: number): Promise<string> {
+  const reader = response.body?.getReader();
+  if (!reader) return '';
+
+  const chunks: Uint8Array[] = [];
+  let totalBytes = 0;
+  let truncated = false;
+
+  try {
+    while (true) {
+      const {done, value} = await reader.read();
+      if (done) break;
+      totalBytes += value.byteLength;
+      if (totalBytes > maxBytes) {
+        // Keep only the bytes up to the limit from this chunk.
+        const overshoot = totalBytes - maxBytes;
+        const trimmed = value.slice(0, value.byteLength - overshoot);
+        if (trimmed.byteLength > 0) {
+          chunks.push(trimmed);
+        }
+        truncated = true;
+        reader.cancel();
+        break;
+      }
+      chunks.push(value);
+    }
+  } catch {
+    // Stream may error after cancel — that's fine.
+  }
+
+  const decoder = new TextDecoder();
+  const text = chunks.map(c => decoder.decode(c, {stream: true})).join('') + decoder.decode();
+
+  if (truncated) {
+    return text + `\n\n[Truncated: response exceeded ${maxBytes} bytes limit]`;
+  }
+  return text;
+}
+
 /** HTTP 请求工具。 */
 export class FetchTool extends StructuredTool<typeof fetchInputSchema> {
   name = 'fetch_url';
@@ -78,14 +121,7 @@ Returns: JSON with response metadata (status, headers) and body content.`;
         }
       }
 
-      const text = await response.text();
-      if (text.length > input.max_response_size) {
-        return formatError(
-          'Response too large',
-          `${text.length} bytes`,
-          `exceeds limit of ${input.max_response_size} bytes`
-        );
-      }
+      const text = await readLimitedText(response, input.max_response_size);
 
       return JSON.stringify({
         url: validation.url.toString(),
