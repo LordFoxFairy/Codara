@@ -626,7 +626,8 @@ export function useCliController(options: UseCliControllerOptions): CliControlle
 
     isRunningRef.current = true;
     setRunState({status: 'running'});
-    setHilReview((current) => current ? {...prepared.review, busy: true} : current);
+    // Clear HIL panel immediately — don't show "Running..." while model processes
+    setHilReview(undefined);
 
     try {
       const selectedAction = autoAction
@@ -645,7 +646,6 @@ export function useCliController(options: UseCliControllerOptions): CliControlle
       await refreshCoreState().catch(() => undefined);
     } finally {
       isRunningRef.current = false;
-      setHilReview((current) => current ? {...current, busy: false} : current);
     }
   }, [appendNotice, codara, refreshCoreState, reportError]);
 
