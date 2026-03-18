@@ -1061,11 +1061,12 @@ describe('Agent', () => {
                 toolCallId: context.toolCall.id ?? 'call_pause',
                 toolArgs: context.toolCall.args,
               },
-              review: {decision: 'ask', allowedDecisions: ['approve', 'reject']},
+              review: {actionName: 'bash', allowedDecisions: ['approve', 'reject']},
               runtime: {
                 runId: context.execution.runId,
                 requestId: context.execution.requestId,
                 turn: context.execution.turn,
+                toolIndex: context.execution.toolIndex,
               },
             },
           }),
