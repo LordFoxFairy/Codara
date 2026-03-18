@@ -30,22 +30,6 @@ function makeConfig(overrides: Partial<GatewayConfig> = {}): GatewayConfig {
 }
 
 describe('GatewayRouter', () => {
-  describe('buildSessionKey', () => {
-    test('builds key from channel, account, peer kind and id', () => {
-      const router = createGatewayRouter(makeConfig());
-      const key = router.buildSessionKey(makeMsg());
-      expect(key).toBe('telegram:bot1:direct:user1');
-    });
-
-    test('includes group peer info', () => {
-      const router = createGatewayRouter(makeConfig());
-      const key = router.buildSessionKey(
-        makeMsg({peer: {kind: 'group', id: 'group1', name: 'Test Group'}}),
-      );
-      expect(key).toBe('telegram:bot1:group:group1');
-    });
-  });
-
   describe('isAllowed', () => {
     test('rejects disabled channel', () => {
       const config = makeConfig({

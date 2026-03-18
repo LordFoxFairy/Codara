@@ -36,7 +36,10 @@ export class Gateway {
     this.router = createGatewayRouter(options.config);
     this.sessionManager = createGatewaySessionManager({
       createSession: options.createSession,
-      maxSessions: options.maxSessions,
+      sessionConfig: {
+        ...options.config.session,
+        maxSessions: options.maxSessions ?? options.config.session?.maxSessions,
+      },
     });
     this.channelRegistry = options.channelRegistry ?? new ChannelRegistry();
   }
@@ -90,7 +93,6 @@ export class Gateway {
     if (!this.router.isAllowed(msg)) return;
     if (this.router.requiresMention(msg)) return;
 
-    const sessionKey = this.router.buildSessionKey(msg);
     const profile = this.router.resolveProfile(msg);
     const account = this.accounts.get(`${msg.channel}:${msg.accountId}`);
     if (!account) return;
@@ -99,7 +101,7 @@ export class Gateway {
     const bridge = this.getOrCreateBridge(plugin, account, msg);
 
     try {
-      const session = await this.sessionManager.getOrCreate(sessionKey, profile);
+      const {session} = await this.sessionManager.getOrCreate(msg, profile);
 
       if (plugin.sendTyping) {
         plugin.sendTyping(account, {accountId: msg.accountId, to: msg.peer.id, text: ''}).catch(() => {});
