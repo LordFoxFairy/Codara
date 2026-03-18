@@ -8,6 +8,7 @@ export {chunkText, chunkMarkdown} from './outbound';
 export type {ChunkOptions} from './outbound';
 export {createDebouncedHandler} from './debounce';
 export type {DebounceOptions, DebouncedHandler} from './debounce';
+export {adaptMarkdown} from './format';
 export {loadGatewayConfig, expandEnvVars} from './config';
 export type {
   InboundMessage,
