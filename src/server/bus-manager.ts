@@ -40,13 +40,22 @@ export function generateRequestId(): string {
 /**
  * Subscribe to bus events filtered by requestId and forward them as SSE.
  * Resolves when a `done` or `error` event for this request is received.
+ *
+ * When `sessionId` is provided, streaming events without a `requestId`
+ * (token, thinking, tool_call, runtime_event) are scoped to that session,
+ * preventing multi-client crosstalk. When omitted, the session is inferred
+ * from the first event that carries both `sessionId` and `requestId`.
  */
 export function pipeBusEventsToSSE(
   busInstance: CodaraBus,
   requestId: string,
   send: (event: SSEEvent) => void,
   signal: AbortSignal,
+  sessionId?: string,
 ): Promise<void> {
+  // Track the resolved sessionId — filled from the first scoped event if not provided.
+  let resolvedSessionId = sessionId;
+
   return new Promise<void>((resolve, _reject) => {
     const unsubscribe = busInstance.subscribe((event: BusEvent) => {
       if (signal.aborted) {
@@ -55,7 +64,12 @@ export function pipeBusEventsToSSE(
         return;
       }
 
-      if (!matchesRequest(event, requestId)) return;
+      if (!matchesRequest(event, requestId, resolvedSessionId)) return;
+
+      // Capture sessionId from the first event that has both requestId and sessionId.
+      if (!resolvedSessionId && 'requestId' in event && event.requestId === requestId && 'sessionId' in event) {
+        resolvedSessionId = (event as {sessionId: string}).sessionId;
+      }
 
       switch (event.type) {
         case 'token':
@@ -72,6 +86,8 @@ export function pipeBusEventsToSSE(
           break;
         case 'paused':
           send({event: 'paused', data: {request: event.request, actions: event.actions}});
+          unsubscribe();
+          resolve();
           break;
         case 'done':
           send({event: 'done', data: {sessionId: event.sessionId, requestId: event.requestId}});
@@ -97,8 +113,14 @@ export function pipeBusEventsToSSE(
 
 /**
  * Check if a BusEvent is relevant to the given requestId.
+ *
+ * For events that carry a `requestId`, match exactly.
+ * For streaming events without `requestId` (token, thinking, tool_call,
+ * runtime_event, tool_result), require a matching `sessionId` to prevent
+ * multi-client crosstalk. If no `sessionId` is resolved yet, these events
+ * are accepted (first-request bootstrap).
  */
-function matchesRequest(event: BusEvent, requestId: string): boolean {
+function matchesRequest(event: BusEvent, requestId: string, sessionId?: string): boolean {
   if ('requestId' in event && event.requestId !== undefined) {
     return event.requestId === requestId;
   }
@@ -106,8 +128,14 @@ function matchesRequest(event: BusEvent, requestId: string): boolean {
     event.type === 'token' ||
     event.type === 'thinking' ||
     event.type === 'tool_call' ||
+    event.type === 'tool_result' ||
     event.type === 'runtime_event'
   ) {
+    // If we have a resolved sessionId, only match events from that session.
+    if (sessionId && 'sessionId' in event) {
+      return (event as {sessionId: string}).sessionId === sessionId;
+    }
+    // No sessionId resolved yet — accept to bootstrap the first request.
     return true;
   }
   return false;
