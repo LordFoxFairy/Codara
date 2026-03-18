@@ -3,6 +3,7 @@ import type {CodaraRuntimeEvent} from '@/index';
 import {parseAskUserResult} from '@engine/pipeline';
 import {parseHILToolMessagePayload} from '@engine/pipeline/hil';
 import {readMessageText} from '@shared/messages';
+import {TOOL_NAMES} from '@shared/tool-display';
 import type {CliActiveTurn, CliNotice} from '../app/view-state';
 import {formatTokenCount} from '../utils/format';
 import {computeEditDiff, type DiffData} from './diff-compute';
@@ -325,13 +326,13 @@ function buildRuntimeEventItems(events: readonly CodaraRuntimeEvent[]): Transcri
       : endEvent.status === 'paused'
         ? 'Waiting for review'
         : formatTaskDoneSummary(elapsedSec, endEvent.detail);
-    const {outputLines, allOutputLines, totalOutputLines} = buildToolOutput('Task', status, endEvent.detail);
+    const {outputLines, allOutputLines, totalOutputLines} = buildToolOutput(TOOL_NAMES.TASK, status, endEvent.detail);
     items.push({
       id: activeId(startEvent.id),
       role: 'task',
       content: `⚙ ${agentType}(${extractTaskArgs(startEvent.label)})\n${summary}`,
       toolMeta: {
-        toolName: 'Task',
+        toolName: TOOL_NAMES.TASK,
         displayName: agentType,
         icon: '⚙',
         args: extractTaskArgs(startEvent.label),
@@ -417,7 +418,7 @@ function buildRuntimeEventItems(events: readonly CodaraRuntimeEvent[]): Transcri
       role: 'task',
       content: `⚙ ${agentType}(${extractTaskArgs(startEvent.label)})\n${summaryLine}`,
       toolMeta: {
-        toolName: 'Task',
+        toolName: TOOL_NAMES.TASK,
         displayName: agentType,
         icon: '⚙',
         args: extractTaskArgs(startEvent.label),
@@ -611,8 +612,8 @@ function buildToolOutput(
   const trimmed = detail?.trim() ?? '';
 
   switch (toolName) {
-    case 'write_file':
-    case 'write': {
+    case TOOL_NAMES.WRITE_FILE:
+    case TOOL_NAMES.WRITE: {
       const lines = truncateOutput(trimmed);
       const lineCount = lines.total;
       const fileMatch = trimmed.match(/^Wrote \d+ lines? to (.+)/);
@@ -621,19 +622,19 @@ function buildToolOutput(
         : `Wrote ${lineCount} lines`;
       return {summaryLine, outputLines: lines.visible, allOutputLines: lines.all, totalOutputLines: lines.total};
     }
-    case 'edit_file':
-    case 'edit': {
+    case TOOL_NAMES.EDIT_FILE:
+    case TOOL_NAMES.EDIT: {
       const lines = truncateOutput(trimmed);
       return {summaryLine: buildEditSummary(trimmed), outputLines: lines.visible, allOutputLines: lines.all, totalOutputLines: lines.total};
     }
-    case 'bash': {
+    case TOOL_NAMES.BASH: {
       if (!trimmed) {
         return {summaryLine: 'Done'};
       }
       const lines = truncateOutput(trimmed);
       return {summaryLine: lines.visible[0] ?? 'Done', outputLines: lines.visible.slice(1), allOutputLines: lines.all.slice(1), totalOutputLines: lines.total};
     }
-    case 'Task': {
+    case TOOL_NAMES.TASK: {
       if (!trimmed) {
         return {summaryLine: 'Done'};
       }
@@ -874,8 +875,8 @@ function tryComputeDiff(toolName: string, toolArgs: unknown): DiffData | undefin
     }
 
     switch (toolName) {
-      case 'edit':
-      case 'edit_file': {
+      case TOOL_NAMES.EDIT:
+      case TOOL_NAMES.EDIT_FILE: {
         const oldString = asString(record.old_string);
         const newString = asString(record.new_string);
         if (oldString !== undefined && newString !== undefined) {
@@ -883,8 +884,8 @@ function tryComputeDiff(toolName: string, toolArgs: unknown): DiffData | undefin
         }
         return undefined;
       }
-      case 'write':
-      case 'write_file': {
+      case TOOL_NAMES.WRITE:
+      case TOOL_NAMES.WRITE_FILE: {
         // Don't read disk — file is already written by the time we render.
         // Just compute additions from the content directly.
         const content = asString(record.content);
@@ -919,7 +920,7 @@ function shouldHideRuntimeEvent(event: CodaraRuntimeEvent): boolean {
     return false;
   }
 
-  if (event.label.includes('AskUserQuestion')) {
+  if (event.label.includes(TOOL_NAMES.ASK_USER)) {
     return true;
   }
 
@@ -964,29 +965,29 @@ function resolveToolMessageName(message: ToolMessage, toolLookup: Map<string, To
 
 function toolIcon(toolName: string): string {
   switch (toolName) {
-    case 'bash':
+    case TOOL_NAMES.BASH:
       return '⚡';
-    case 'read_file':
-    case 'read':
+    case TOOL_NAMES.READ_FILE:
+    case TOOL_NAMES.READ:
       return '→';
-    case 'write_file':
-    case 'write':
+    case TOOL_NAMES.WRITE_FILE:
+    case TOOL_NAMES.WRITE:
       return '←';
-    case 'edit_file':
-    case 'edit':
+    case TOOL_NAMES.EDIT_FILE:
+    case TOOL_NAMES.EDIT:
       return '●';
-    case 'glob':
-    case 'grep':
+    case TOOL_NAMES.GLOB:
+    case TOOL_NAMES.GREP:
       return '✱';
-    case 'fetch_url':
-    case 'fetch':
+    case TOOL_NAMES.FETCH_URL:
+    case TOOL_NAMES.FETCH:
       return '%';
-    case 'web_search':
-    case 'search':
+    case TOOL_NAMES.WEB_SEARCH:
+    case TOOL_NAMES.SEARCH:
       return '◈';
-    case 'TaskCreate':
-    case 'TaskUpdate':
-    case 'TaskList':
+    case TOOL_NAMES.TASK_CREATE:
+    case TOOL_NAMES.TASK_UPDATE:
+    case TOOL_NAMES.TASK_LIST:
       return '│';
     default:
       return '⚙';
@@ -1000,25 +1001,25 @@ function formatFriendlyToolSummary(toolName: string, args: unknown): string | un
 
   const record = args as Record<string, unknown>;
   switch (toolName) {
-    case 'bash':
+    case TOOL_NAMES.BASH:
       return limitSummary(asString(record.command) || asString(record.description));
-    case 'read_file':
-    case 'read':
+    case TOOL_NAMES.READ_FILE:
+    case TOOL_NAMES.READ:
       return formatReadSummary(record);
-    case 'fetch_url':
-    case 'fetch':
+    case TOOL_NAMES.FETCH_URL:
+    case TOOL_NAMES.FETCH:
       return formatFetchSummary(record);
-    case 'web_search':
-    case 'search':
+    case TOOL_NAMES.WEB_SEARCH:
+    case TOOL_NAMES.SEARCH:
       return limitSummary(asString(record.query));
-    case 'glob':
+    case TOOL_NAMES.GLOB:
       return limitSummary(asString(record.pattern) || asString(record.path));
-    case 'grep':
+    case TOOL_NAMES.GREP:
       return formatGrepSummary(record);
-    case 'write_file':
-    case 'write':
-    case 'edit_file':
-    case 'edit':
+    case TOOL_NAMES.WRITE_FILE:
+    case TOOL_NAMES.WRITE:
+    case TOOL_NAMES.EDIT_FILE:
+    case TOOL_NAMES.EDIT:
       return limitSummary(asString(record.file_path) || asString(record.path));
     default:
       return undefined;
@@ -1026,7 +1027,7 @@ function formatFriendlyToolSummary(toolName: string, args: unknown): string | un
 }
 
 function isInteractionToolName(toolName: string | undefined): boolean {
-  return (toolName || '').trim() === 'AskUserQuestion';
+  return (toolName || '').trim() === TOOL_NAMES.ASK_USER;
 }
 
 function formatTaskResultText(content: string): string {
@@ -1061,26 +1062,26 @@ function serializeValue(value: unknown): string | undefined {
 
 function formatToolDisplayName(toolName: string): string {
   switch (toolName) {
-    case 'bash':
+    case TOOL_NAMES.BASH:
       return 'Bash';
-    case 'read_file':
-    case 'read':
+    case TOOL_NAMES.READ_FILE:
+    case TOOL_NAMES.READ:
       return 'Read';
-    case 'write_file':
-    case 'write':
+    case TOOL_NAMES.WRITE_FILE:
+    case TOOL_NAMES.WRITE:
       return 'Write';
-    case 'edit_file':
-    case 'edit':
+    case TOOL_NAMES.EDIT_FILE:
+    case TOOL_NAMES.EDIT:
       return 'Edit';
-    case 'fetch_url':
-    case 'fetch':
+    case TOOL_NAMES.FETCH_URL:
+    case TOOL_NAMES.FETCH:
       return 'Fetch';
-    case 'web_search':
-    case 'search':
+    case TOOL_NAMES.WEB_SEARCH:
+    case TOOL_NAMES.SEARCH:
       return 'Search';
-    case 'glob':
+    case TOOL_NAMES.GLOB:
       return 'Glob';
-    case 'grep':
+    case TOOL_NAMES.GREP:
       return 'Grep';
     default:
       return toTitleCase(toolName);
@@ -1145,5 +1146,5 @@ function toTitleCase(value: string): string {
 }
 
 function isTaskToolName(toolName: string | undefined): boolean {
-  return toolName === 'TaskCreate' || toolName === 'TaskUpdate' || toolName === 'TaskList';
+  return toolName === TOOL_NAMES.TASK_CREATE || toolName === TOOL_NAMES.TASK_UPDATE || toolName === TOOL_NAMES.TASK_LIST;
 }
