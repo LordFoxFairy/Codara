@@ -83,4 +83,4 @@ export {
   type DelegatedAgentOptions,
   type DelegatedParentRuntimeMetadata,
   type DelegatedAgentResult,
-} from '@core/agent/run/delegation';
+} from '@capability/task/delegation';
