@@ -33,6 +33,8 @@ Codara 把会话、任务、子代理、权限、多 Agent 协作和 IM 渠道�
 
 ## 架构
 
+> 完整架构蓝图见 **[ARCHITECTURE.md](./ARCHITECTURE.md)**
+
 DDD 轻量分层，10 个限界上下文，严格单向依赖：
 
 ```
