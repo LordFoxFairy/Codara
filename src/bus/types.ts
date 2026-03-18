@@ -19,7 +19,7 @@ export type BusEvent =
   | { type: 'thinking'; sessionId: string; text: string }
   | { type: 'tool_call'; sessionId: string; name: string; args: Record<string, unknown> }
   | { type: 'tool_result'; sessionId: string; name: string; output: string }
-  | { type: 'runtime_event'; sessionId: string; kind: string; label: string }
+  | { type: 'runtime_event'; sessionId: string; kind: string; phase: string; status: string; label: string; detail?: string }
   | { type: 'done'; sessionId: string; requestId: string }
   | { type: 'error'; sessionId: string; requestId: string; message: string }
   | { type: 'paused'; sessionId: string; requestId: string; request: unknown; actions: unknown[] }
