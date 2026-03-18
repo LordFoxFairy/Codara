@@ -1,5 +1,5 @@
 import {describe, test, expect, beforeEach, afterEach, mock} from 'bun:test';
-import {discordPlugin, type DiscordAccount} from '@integration/channel/discord/plugin';
+import {discordPlugin} from '@integration/channel/discord/plugin';
 
 function mockFetch(response: unknown, status = 200) {
   return mock(() =>
@@ -8,7 +8,7 @@ function mockFetch(response: unknown, status = 200) {
       status,
       json: () => Promise.resolve(response),
     } as Response),
-  );
+  ) as unknown as typeof fetch & ReturnType<typeof mock>;
 }
 
 describe('discordPlugin', () => {
@@ -102,7 +102,7 @@ describe('discordPlugin', () => {
     test('triggers typing indicator', async () => {
       globalThis.fetch = mock(() =>
         Promise.resolve({ok: true, status: 204} as Response),
-      );
+      ) as unknown as typeof fetch;
 
       const account = discordPlugin.resolveAccount({botToken: 'test-token'})!;
       await discordPlugin.sendTyping!(account, {
@@ -111,7 +111,7 @@ describe('discordPlugin', () => {
         text: '',
       });
 
-      const [url] = (globalThis.fetch as ReturnType<typeof mock>).mock.calls[0];
+      const [url] = (globalThis.fetch as unknown as ReturnType<typeof mock>).mock.calls[0];
       expect(url).toContain('/channels/ch-1/typing');
     });
   });
@@ -138,7 +138,7 @@ describe('discordPlugin', () => {
         accountId: 'bot-1',
         to: 'ch-1',
         text: 'Approve this action?',
-        pause: {id: 'pause-1', description: 'Run command'} as any,
+        pause: {id: 'pause-1', description: 'Run command'} as unknown as import('@shared/contracts/agent-types').PauseRequest,
         actions: [
           {id: 'approve', label: 'Approve', style: 'approve'},
           {id: 'reject', label: 'Reject', style: 'reject'},
@@ -148,7 +148,8 @@ describe('discordPlugin', () => {
       expect(result.ok).toBe(true);
       expect(result.messageId).toBe('msg-200');
 
-      const [, opts] = fetchMock.mock.calls[0];
+      const calls = fetchMock.mock.calls[0] as unknown[];
+      const opts = calls[1];
       const body = JSON.parse((opts as RequestInit).body as string);
       expect(body.components).toHaveLength(1);
       expect(body.components[0].type).toBe(1); // ACTION_ROW

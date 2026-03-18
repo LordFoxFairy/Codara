@@ -1,4 +1,4 @@
-import {describe, test, expect, beforeEach, afterEach} from 'bun:test';
+import {describe, test, expect} from 'bun:test';
 import {normalizeDiscordMessage} from '@integration/channel/discord/plugin';
 import type {DiscordMessage} from '@integration/channel/discord/types';
 

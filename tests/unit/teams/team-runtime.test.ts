@@ -308,7 +308,7 @@ describe('TeamRuntime', () => {
     const deadlockEvents = domainEvents.filter(e => e.event.type === 'team.deadlock');
     expect(deadlockEvents.length).toBe(1);
     expect(deadlockEvents[0]!.event.data.teamId).toBe(team.teamId);
-    expect((deadlockEvents[0]!.event.data as any).message).toContain('blocked');
+    expect((deadlockEvents[0]!.event.data as Record<string, unknown>).message).toContain('blocked');
 
     await runtime.shutdownTeam(team.teamId);
   });

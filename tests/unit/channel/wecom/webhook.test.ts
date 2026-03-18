@@ -89,6 +89,7 @@ describe('URL verification flow', () => {
 
     // Verify the signature
     const arr = [token, timestamp, nonce, encrypted].sort();
+    // eslint-disable-next-line @typescript-eslint/no-require-imports
     const {createHash} = require('node:crypto');
     const expected = createHash('sha1').update(arr.join('')).digest('hex');
     expect(signature).toBe(expected);

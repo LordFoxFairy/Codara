@@ -14,12 +14,12 @@ describe('Task delegation recursion prevention', () => {
     const myTool = tool(async () => 'ok', {name: 'Task', schema: z.object({})});
     markDelegationTool(myTool);
     const sym = Symbol.for('codara.tasks.delegation.tool');
-    expect((myTool as Record<symbol, unknown>)[sym]).toBe(true);
+    expect((myTool as unknown as Record<symbol, unknown>)[sym]).toBe(true);
   });
 
   test('unmarked tools do not have delegation symbol', () => {
     const myTool = tool(async () => 'ok', {name: 'bash', schema: z.object({})});
     const sym = Symbol.for('codara.tasks.delegation.tool');
-    expect((myTool as Record<symbol, unknown>)[sym]).toBeUndefined();
+    expect((myTool as unknown as Record<symbol, unknown>)[sym]).toBeUndefined();
   });
 });

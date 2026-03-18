@@ -7,6 +7,7 @@ import type {
 } from '@observability/hook/types';
 
 function createTrackingAgentLifecycle(stopBehavior: 'allow' | 'deny' = 'allow') {
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const calls: {method: string; ctx: any}[] = [];
 
   const lifecycle: AgentLifecycleHooks = {

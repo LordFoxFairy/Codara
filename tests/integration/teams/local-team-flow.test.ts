@@ -1,7 +1,4 @@
-import {describe, test, expect, beforeEach, afterEach} from 'bun:test';
-import {mkdtempSync, rmSync} from 'node:fs';
-import {join} from 'node:path';
-import {tmpdir} from 'node:os';
+import {describe, test, expect, beforeEach} from 'bun:test';
 
 import {TeamRegistry} from '@capability/team/coordination/team-registry';
 import {JobBoard} from '@capability/team/coordination/job-board';
@@ -185,7 +182,7 @@ describe('Job Board Flow', () => {
 
     // Try to create C that depends on B, then make A depend on C
     // Direct cycle: create a job that creates a cycle
-    const [c] = board.planJobs([
+    const [_c] = board.planJobs([
       {title: 'C', description: 'Task C', blockedBy: [b.id]},
     ]);
 

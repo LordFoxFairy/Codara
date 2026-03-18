@@ -1,5 +1,5 @@
 import {describe, expect, test} from 'bun:test';
-import {JobBoard, JobBoardError} from '@capability/team/coordination/job-board';
+import {JobBoard} from '@capability/team/coordination/job-board';
 import type {JobResult} from '@capability/team/coordination/types';
 
 const result: JobResult = {
@@ -78,7 +78,7 @@ describe('JobBoard', () => {
     });
 
     test('detects a cycle', () => {
-      const board = new JobBoard('team-1');
+      void new JobBoard('team-1');
       // Manually construct a cycle by injecting jobs
       const data = {
         teamId: 'team-1',
@@ -508,7 +508,7 @@ describe('JobBoard', () => {
         {title: 'A', description: 'Do A'},
         {title: 'B', description: 'Do B'},
       ]);
-      const [c] = board.planJobs([
+      const [_c] = board.planJobs([
         {title: 'C', description: 'Do C', blockedBy: [a.id]},
       ]);
 

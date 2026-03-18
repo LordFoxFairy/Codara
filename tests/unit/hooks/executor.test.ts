@@ -84,6 +84,7 @@ describe('createHookExecutor', () => {
 
   test('returns PromptExecutionStrategy for prompt type', () => {
     const hook: HookDefinition = {type: 'prompt', prompt: 'test', timeout: 5000};
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const mockCreateModel = () => ({} as any);
     const executor = createHookExecutor(hook, {projectRoot: '/tmp', createModel: mockCreateModel});
     expect(executor).toBeInstanceOf(PromptExecutionStrategy);

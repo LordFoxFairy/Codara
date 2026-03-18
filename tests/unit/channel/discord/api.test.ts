@@ -8,7 +8,7 @@ function mockFetch(response: unknown, status = 200) {
       status,
       json: () => Promise.resolve(response),
     } as Response),
-  );
+  ) as unknown as typeof fetch;
 }
 
 describe('DiscordApi', () => {
@@ -35,7 +35,7 @@ describe('DiscordApi', () => {
       expect(result).toEqual(mockResult);
       expect(globalThis.fetch).toHaveBeenCalledTimes(1);
 
-      const [url, opts] = (globalThis.fetch as ReturnType<typeof mock>).mock.calls[0];
+      const [url, opts] = (globalThis.fetch as unknown as ReturnType<typeof mock>).mock.calls[0];
       expect(url).toBe('https://discord.com/api/v10/channels/ch-1/messages');
       const body = JSON.parse((opts as RequestInit).body as string);
       expect(body.content).toBe('Hello Discord');
@@ -52,7 +52,7 @@ describe('DiscordApi', () => {
       }];
       await api.sendMessage('ch-1', 'With buttons', {components});
 
-      const [, opts] = (globalThis.fetch as ReturnType<typeof mock>).mock.calls[0];
+      const [, opts] = (globalThis.fetch as unknown as ReturnType<typeof mock>).mock.calls[0];
       const body = JSON.parse((opts as RequestInit).body as string);
       expect(body.components).toHaveLength(1);
       expect(body.components[0].components[0].custom_id).toBe('btn-1');
@@ -63,11 +63,11 @@ describe('DiscordApi', () => {
     test('sends deferred update response', async () => {
       globalThis.fetch = mock(() =>
         Promise.resolve({ok: true, status: 204} as Response),
-      );
+      ) as unknown as typeof fetch;
 
       await api.createInteractionResponse('int-1', 'int-token', 6);
 
-      const [url, opts] = (globalThis.fetch as ReturnType<typeof mock>).mock.calls[0];
+      const [url, opts] = (globalThis.fetch as unknown as ReturnType<typeof mock>).mock.calls[0];
       expect(url).toBe('https://discord.com/api/v10/interactions/int-1/int-token/callback');
       const body = JSON.parse((opts as RequestInit).body as string);
       expect(body.type).toBe(6);
@@ -76,11 +76,11 @@ describe('DiscordApi', () => {
     test('sends response with content', async () => {
       globalThis.fetch = mock(() =>
         Promise.resolve({ok: true, status: 204} as Response),
-      );
+      ) as unknown as typeof fetch;
 
       await api.createInteractionResponse('int-1', 'int-token', 4, 'Done!');
 
-      const [, opts] = (globalThis.fetch as ReturnType<typeof mock>).mock.calls[0];
+      const [, opts] = (globalThis.fetch as unknown as ReturnType<typeof mock>).mock.calls[0];
       const body = JSON.parse((opts as RequestInit).body as string);
       expect(body.type).toBe(4);
       expect(body.data.content).toBe('Done!');
@@ -91,11 +91,11 @@ describe('DiscordApi', () => {
     test('triggers typing indicator', async () => {
       globalThis.fetch = mock(() =>
         Promise.resolve({ok: true, status: 204} as Response),
-      );
+      ) as unknown as typeof fetch;
 
       await api.triggerTyping('ch-1');
 
-      const [url] = (globalThis.fetch as ReturnType<typeof mock>).mock.calls[0];
+      const [url] = (globalThis.fetch as unknown as ReturnType<typeof mock>).mock.calls[0];
       expect(url).toBe('https://discord.com/api/v10/channels/ch-1/typing');
     });
   });

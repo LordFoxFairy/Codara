@@ -22,7 +22,8 @@ function createMockPlugin(overrides: Partial<ChannelPlugin> = {}): ChannelPlugin
       reactions: false,
       textLimit: 4096,
     },
-    configSchema: z.object({}),
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    configSchema: z.object({}) as any,
     resolveAccount: () => ({id: 'acc1'}),
     startListening: async () => ({async stop() {}}),
     async sendText(_account, ctx) {

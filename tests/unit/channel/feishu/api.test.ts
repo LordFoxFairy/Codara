@@ -9,7 +9,7 @@ function mockFetchSequence(responses: Array<{code: number; msg: string; [key: st
       status: 200,
       json: () => Promise.resolve(data),
     } as Response);
-  });
+  }) as unknown as typeof fetch & ReturnType<typeof mock>;
 }
 
 function mockFetch(response: Record<string, unknown>) {
@@ -18,7 +18,7 @@ function mockFetch(response: Record<string, unknown>) {
       status: 200,
       json: () => Promise.resolve(response),
     } as Response),
-  );
+  ) as unknown as typeof fetch & ReturnType<typeof mock>;
 }
 
 describe('FeishuApi', () => {
@@ -66,9 +66,9 @@ describe('FeishuApi', () => {
 
       await api.getAccessToken();
 
-      const [url, opts] = fetchMock.mock.calls[0];
-      expect(url).toBe('https://open.feishu.cn/open-apis/auth/v3/tenant_access_token/internal');
-      const body = JSON.parse((opts as RequestInit).body as string);
+      const call0 = fetchMock.mock.calls[0] as unknown[];
+      expect(call0[0]).toBe('https://open.feishu.cn/open-apis/auth/v3/tenant_access_token/internal');
+      const body = JSON.parse((call0[1] as RequestInit).body as string);
       expect(body.app_id).toBe('test-app-id');
       expect(body.app_secret).toBe('test-app-secret');
     });
@@ -119,10 +119,10 @@ describe('FeishuApi', () => {
       expect(result.data?.message_id).toBe('msg-123');
 
       // Verify sendMessage call
-      const [url, opts] = fetchMock.mock.calls[1];
-      expect(url).toBe('https://open.feishu.cn/open-apis/im/v1/messages?receive_id_type=chat_id');
-      expect((opts as RequestInit).headers).toHaveProperty('Authorization', 'Bearer token-abc');
-      const body = JSON.parse((opts as RequestInit).body as string);
+      const call1 = fetchMock.mock.calls[1] as unknown[];
+      expect(call1[0]).toBe('https://open.feishu.cn/open-apis/im/v1/messages?receive_id_type=chat_id');
+      expect((call1[1] as RequestInit).headers).toHaveProperty('Authorization', 'Bearer token-abc');
+      const body = JSON.parse((call1[1] as RequestInit).body as string);
       expect(body.receive_id).toBe('chat-1');
       expect(body.msg_type).toBe('text');
     });
@@ -156,8 +156,8 @@ describe('FeishuApi', () => {
 
       expect(result.data?.message_id).toBe('reply-456');
 
-      const [url] = fetchMock.mock.calls[1];
-      expect(url).toBe('https://open.feishu.cn/open-apis/im/v1/messages/msg-123/reply');
+      const call1r = fetchMock.mock.calls[1] as unknown[];
+      expect(call1r[0]).toBe('https://open.feishu.cn/open-apis/im/v1/messages/msg-123/reply');
     });
   });
 });

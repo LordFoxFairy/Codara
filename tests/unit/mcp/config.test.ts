@@ -33,7 +33,7 @@ describe('MCP config loading', () => {
 
     const config = await loadMcpConfig({userHome});
     expect(config.mcpServers).toHaveProperty('global_fs');
-    expect((config.mcpServers.global_fs as any).type).toBe('local');
+    expect((config.mcpServers.global_fs as Record<string, unknown>).type).toBe('local');
   });
 
   it('merges project config over global config', async () => {
@@ -69,7 +69,7 @@ describe('MCP config loading', () => {
     const config = await loadMcpConfig({projectRoot, userHome});
 
     // Project overrides global for 'shared'
-    expect((config.mcpServers.shared as any).url).toBe('https://project.example.com');
+    expect((config.mcpServers.shared as Record<string, unknown>).url).toBe('https://project.example.com');
     // Global-only server preserved
     expect(config.mcpServers).toHaveProperty('global_only');
     // Project-only server preserved
@@ -98,6 +98,7 @@ describe('MCP config loading', () => {
       );
 
       const config = await loadMcpConfig({userHome});
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
       expect((config.mcpServers.api as any).headers.Authorization).toBe('Bearer secret123');
     } finally {
       delete process.env.TEST_MCP_TOKEN;

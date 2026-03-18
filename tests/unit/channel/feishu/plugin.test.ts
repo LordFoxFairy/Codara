@@ -1,5 +1,5 @@
 import {describe, test, expect, beforeEach, afterEach, mock} from 'bun:test';
-import {feishuPlugin, type FeishuAccount} from '@integration/channel/feishu/plugin';
+import {feishuPlugin} from '@integration/channel/feishu/plugin';
 
 function mockFetchSequence(responses: Array<Record<string, unknown>>) {
   let callIndex = 0;
@@ -9,7 +9,7 @@ function mockFetchSequence(responses: Array<Record<string, unknown>>) {
       status: 200,
       json: () => Promise.resolve(data),
     } as Response);
-  });
+  }) as unknown as typeof fetch & ReturnType<typeof mock>;
 }
 
 describe('feishuPlugin', () => {
@@ -144,8 +144,8 @@ describe('feishuPlugin', () => {
       expect(result.ok).toBe(true);
       expect(result.messageId).toBe('reply-001');
 
-      const [url] = fetchMock.mock.calls[1];
-      expect(url).toContain('/messages/om_msg001/reply');
+      const call1 = fetchMock.mock.calls[1] as unknown[];
+      expect(call1[0]).toContain('/messages/om_msg001/reply');
     });
 
     test('returns error on API failure', async () => {
@@ -180,7 +180,7 @@ describe('feishuPlugin', () => {
         accountId: 'bot-1',
         to: 'oc_chat001',
         text: '确认执行此操作？',
-        pause: {id: 'pause-1', description: 'Run command'} as any,
+        pause: {id: 'pause-1', description: 'Run command'} as unknown as import('@shared/contracts/agent-types').PauseRequest,
         actions: [
           {id: 'approve', label: '批准', style: 'approve'},
           {id: 'reject', label: '拒绝', style: 'reject'},
@@ -191,8 +191,8 @@ describe('feishuPlugin', () => {
       expect(result.messageId).toBe('card-001');
 
       // Verify interactive card content
-      const [, opts] = fetchMock.mock.calls[1];
-      const body = JSON.parse((opts as RequestInit).body as string);
+      const call1p = fetchMock.mock.calls[1] as unknown[];
+      const body = JSON.parse((call1p[1] as RequestInit).body as string);
       expect(body.msg_type).toBe('interactive');
 
       const card = JSON.parse(body.content);
