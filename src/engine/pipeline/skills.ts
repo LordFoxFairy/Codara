@@ -133,9 +133,18 @@ function createSkillTool(getRuntime: () => SkillsRuntimeData | undefined) {
 
 function findSkill(discovered: SkillMetadata[], name: string): SkillMetadata | undefined {
   const lower = name.toLowerCase()
-  return discovered.find((s) =>
+  // Exact match on full name, command name, or alias
+  const exact = discovered.find((s) =>
     s.name === lower
     || s.command?.name === lower
     || s.command?.aliases?.includes(lower)
   )
+  if (exact) return exact
+
+  // Fuzzy: bare name matches the part after ":" in namespaced skills
+  // e.g. "brainstorming" matches "superworkers:brainstorming"
+  return discovered.find((s) => {
+    const colonIdx = s.name.indexOf(':')
+    return colonIdx >= 0 && s.name.slice(colonIdx + 1) === lower
+  })
 }
