@@ -29,3 +29,7 @@ export type {
   ChannelRuntimeEvent,
   ChannelType,
 } from './channel';
+export * from './middleware';
+export * from './durability';
+export * from './observability';
+export * from './collaboration';
