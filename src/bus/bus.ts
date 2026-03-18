@@ -317,7 +317,7 @@ export class CodaraBus {
             state?: {pendingPause?: unknown};
           } | undefined;
 
-          // Emit paused if HIL is active.
+          // Emit paused if HIL is active — don't emit 'done' since session is paused, not finished.
           if (result?.state?.pendingPause) {
             const pause = result.state.pendingPause as {
               review?: {allowedDecisions?: unknown[]};
@@ -329,6 +329,7 @@ export class CodaraBus {
               request: result.state.pendingPause,
               actions: pause.review?.allowedDecisions ?? [],
             });
+            break;
           }
 
           this.events.emit({type: 'done', sessionId, requestId});
