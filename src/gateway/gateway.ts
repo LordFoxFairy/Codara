@@ -1,15 +1,20 @@
 import type {ChannelPlugin} from '@integration/channel/contracts';
+import type {ChannelType} from '@shared/contracts/channel';
 import type {GatewayConfig, InboundMessage, StopHandle} from './types';
 import type {GatewaySessionFactory} from './session-manager';
 import {createGatewayRouter} from './router';
 import {createGatewaySessionManager} from './session-manager';
 import {chunkText} from './outbound';
+import {GatewayChannelBridge} from './channel-bridge';
+import {ChannelRegistry} from '@integration/channel/registry';
 
 export interface GatewayOptions {
   config: GatewayConfig;
   plugins: ChannelPlugin[];
   createSession: GatewaySessionFactory;
   maxSessions?: number;
+  /** Optional pre-created ChannelRegistry. If not provided, one will be created. */
+  channelRegistry?: ChannelRegistry;
 }
 
 export class Gateway {
@@ -19,6 +24,8 @@ export class Gateway {
   private readonly sessionManager;
   private readonly stopHandles: StopHandle[] = [];
   private readonly accounts = new Map<string, unknown>();
+  private readonly channelRegistry: ChannelRegistry;
+  private readonly bridges = new Map<string, GatewayChannelBridge>();
 
   constructor(options: GatewayOptions) {
     this.config = options.config;
@@ -28,6 +35,12 @@ export class Gateway {
       createSession: options.createSession,
       maxSessions: options.maxSessions,
     });
+    this.channelRegistry = options.channelRegistry ?? new ChannelRegistry();
+  }
+
+  /** Expose the ChannelRegistry so callers can pass it to session creation. */
+  getChannelRegistry(): ChannelRegistry {
+    return this.channelRegistry;
   }
 
   async start(): Promise<void> {
@@ -47,6 +60,7 @@ export class Gateway {
           accountId,
           config: accountConfig,
           onMessage: (msg) => this.handleInbound(msg),
+          onPauseResponse: (pauseId, payload) => this.handlePauseResponse(pauseId, payload),
         });
         this.stopHandles.push(handle);
       }
@@ -57,6 +71,8 @@ export class Gateway {
     await Promise.allSettled(this.stopHandles.map((h) => h.stop()));
     this.stopHandles.length = 0;
     await this.sessionManager.disposeAll();
+    await this.channelRegistry.disposeAll();
+    this.bridges.clear();
   }
 
   async handleInbound(msg: InboundMessage): Promise<void> {
@@ -70,6 +86,9 @@ export class Gateway {
     const profile = this.router.resolveProfile(msg);
     const account = this.accounts.get(`${msg.channel}:${msg.accountId}`);
     if (!account) return;
+
+    // Ensure a GatewayChannelBridge exists for this conversation
+    const bridge = this.getOrCreateBridge(plugin, account, msg);
 
     try {
       const session = await this.sessionManager.getOrCreate(sessionKey, profile);
@@ -100,5 +119,36 @@ export class Gateway {
         })
         .catch(() => {});
     }
+  }
+
+  /**
+   * Handle a pause response from a plugin callback (e.g., InlineKeyboard button click).
+   * Iterates all bridges to find the one holding the pending pause.
+   */
+  handlePauseResponse(pauseId: string, payload: unknown): boolean {
+    const decision = typeof payload === 'string' ? payload : (payload as {decision?: string})?.decision ?? 'reject';
+
+    for (const bridge of this.bridges.values()) {
+      if (bridge.handlePauseResponse(pauseId, decision)) {
+        return true;
+      }
+    }
+    return false;
+  }
+
+  /** Get or create a bridge for a conversation, registering it with the ChannelRegistry. */
+  private getOrCreateBridge(plugin: ChannelPlugin, account: unknown, msg: InboundMessage): GatewayChannelBridge {
+    const bridgeKey = `${msg.channel}:${msg.accountId}:${msg.peer.id}`;
+    let bridge = this.bridges.get(bridgeKey);
+    if (!bridge) {
+      bridge = new GatewayChannelBridge(plugin, account, msg.peer.id, msg.accountId, msg.channel as ChannelType);
+      this.bridges.set(bridgeKey, bridge);
+
+      // Register with the ChannelRegistry so HIL middleware can route pauses
+      if (!this.channelRegistry.get(bridge.id)) {
+        this.channelRegistry.register(bridge);
+      }
+    }
+    return bridge;
   }
 }
