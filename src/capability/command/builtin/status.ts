@@ -2,8 +2,8 @@ import {existsSync} from 'node:fs';
 import path from 'node:path';
 import {homedir} from 'node:os';
 import type {CodaraCommandDefinition} from '@capability/command/runtime/types';
-import {resolvePermissionSettingsFile} from '@engine/pipeline/permission';
-import {resolveWorkspaceRoot} from '@infra/config/workspace';
+import {resolvePermissionSettingsFile} from '@core/middleware/permission';
+import {resolveWorkspaceRoot} from '@config/workspace';
 
 const BUILTIN_SOURCE = {type: 'builtin'} as const;
 

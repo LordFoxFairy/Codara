@@ -5,8 +5,8 @@ import {
   type BaseMiddleware,
   type ToolCallContext,
   type ToolCallHandler,
-} from '@engine/pipeline/types';
-import type {ProgressiveInstructionSource} from '@infra/context/instructions/progressive-source';
+} from '@core/pipeline/types';
+import type {ProgressiveInstructionSource} from '@context/instructions/progressive-source';
 
 /** Tools that access files and may trigger path-scoped instruction projection. */
 const FILE_TOOL_NAMES = new Set(['read_file', 'edit_file', 'write_file', 'grep', 'glob']);

@@ -10,7 +10,7 @@ import {
   type AfterModelContext,
   type BaseExecutionContext,
   type ToolCallContext,
-} from '@engine/pipeline/types';
+} from '@core/pipeline/types';
 
 export type MiddlewareLogLevel = 'debug' | 'info' | 'warn' | 'error';
 export type MiddlewareLogEvent = 'stage_start' | 'stage_end' | 'stage_error';

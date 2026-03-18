@@ -10,7 +10,7 @@ import {
   bashSpecifierMatches,
   extractBashWritePathOperands,
   normalizeBashCommandForMatching,
-} from '@engine/pipeline/permission/bash';
+} from '@core/middleware/permission/bash';
 import type {
   PermissionEvaluationResult,
   PermissionPolicyOptions,

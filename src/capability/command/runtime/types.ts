@@ -1,6 +1,6 @@
 import type {AgentResult, AgentState} from '@shared/contracts/agent-types';
-import type {CompactOptions} from '@engine/checkpoint/types';
-import type {HookRegistry} from '@engine/hook/registry';
+import type {CompactOptions} from '@durability/checkpoint/types';
+import type {HookRegistry} from '@observability/hook/registry';
 import type {TeamRegistry} from '@capability/team/coordination/team-registry';
 import type {TeamRuntime} from '@capability/team/runtime/team-runtime';
 export interface ParsedCodaraCommand {
@@ -93,7 +93,7 @@ export interface CodaraCommandAgent {
   reloadSources(): Promise<void>;
   reset(): Promise<void>;
   hookRegistry?: HookRegistry;
-  getMcpStatus?(): import('@engine/mcp').McpClientInfo[];
+  getMcpStatus?(): import('@integration/mcp').McpClientInfo[];
   teamRegistry?: TeamRegistry;
   teamRuntime?: TeamRuntime;
 }

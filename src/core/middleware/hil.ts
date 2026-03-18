@@ -1,5 +1,5 @@
 import {ToolMessage, type ToolCall} from '@langchain/core/messages';
-import {createMiddleware, readExecutionMetadata, type ToolCallContext} from '@engine/pipeline/types';
+import {createMiddleware, readExecutionMetadata, type ToolCallContext} from '@core/pipeline/types';
 import type {
   PauseActionDescriptor,
   PauseRequest,

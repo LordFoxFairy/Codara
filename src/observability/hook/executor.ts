@@ -1,7 +1,7 @@
 import {spawn} from 'child_process';
 import type {BaseChatModel} from '@langchain/core/language_models/chat_models';
 import {HumanMessage} from '@langchain/core/messages';
-import type {HookDefinition, HookContextBase, HookOutput} from '@engine/hook/types';
+import type {HookDefinition, HookContextBase, HookOutput} from '@observability/hook/types';
 
 const EMPTY_OUTPUT: HookOutput = {};
 

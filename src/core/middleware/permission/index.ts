@@ -1,14 +1,14 @@
 export {
   createPermissionMiddleware,
   type PermissionMiddlewareOptions,
-} from '@engine/pipeline/permission/middleware';
+} from '@core/middleware/permission/middleware';
 export {
   createPermissionRuntime,
   handlePermissionFallbackResume,
   isPermissionPause,
   type PermissionRuntime,
   type PermissionRuntimeOptions,
-} from '@engine/pipeline/permission/runtime';
+} from '@core/middleware/permission/runtime';
 export {
   ensurePermissionSettingsFile,
   evaluatePermissionExpression,
@@ -19,7 +19,7 @@ export {
   persistPermissionRule,
   resolvePermissionSettingsFile,
   validatePermissionSettings,
-} from '@engine/pipeline/permission/policy';
+} from '@core/middleware/permission/policy';
 export type {
   PermissionAction,
   PermissionDecision,
@@ -32,4 +32,4 @@ export type {
   PermissionValidationResult,
   PermissionReply,
   PermissionConfig,
-} from '@engine/pipeline/permission/types';
+} from '@core/middleware/permission/types';

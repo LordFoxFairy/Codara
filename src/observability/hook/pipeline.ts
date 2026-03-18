@@ -1,5 +1,5 @@
-import type {HookRegistry} from '@engine/hook/registry';
-import type {HookExecutionStrategy} from '@engine/hook/executor';
+import type {HookRegistry} from '@observability/hook/registry';
+import type {HookExecutionStrategy} from '@observability/hook/executor';
 import type {
   HookEventType,
   HookDefinition,
@@ -19,7 +19,7 @@ import type {
   SubagentStopContext,
   ToolUseContext,
   ToolResultContext,
-} from '@engine/hook/types';
+} from '@observability/hook/types';
 
 export interface HookExecutorFactory {
   createStrategy(hook: HookDefinition): HookExecutionStrategy;

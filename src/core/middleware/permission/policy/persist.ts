@@ -17,7 +17,7 @@ import {
   extractBashWritePathOperands,
   formatBashToolScopeExpression,
   normalizeBashCommandForMatching,
-} from '@engine/pipeline/permission/bash';
+} from '@core/middleware/permission/bash';
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === 'object' && value !== null && !Array.isArray(value);

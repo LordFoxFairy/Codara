@@ -5,8 +5,8 @@ import {
   readExecutionMetadata,
   type BaseExecutionContext,
   type ToolCallContext,
-} from '@engine/pipeline/types';
-import {parseHILToolMessagePayload} from '@engine/pipeline/hil';
+} from '@core/pipeline/types';
+import {parseHILToolMessagePayload} from '@core/middleware/hil';
 import {readDelegatedAgentResult} from '@shared/delegation-result';
 import {TOOL_NAMES, formatToolSummary, readString} from '@shared/tool-display';
 

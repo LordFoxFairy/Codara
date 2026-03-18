@@ -1,8 +1,8 @@
 import {readFile} from 'node:fs/promises';
 import {homedir} from 'node:os';
 import path from 'node:path';
-import type {WorkspaceRootOptions} from '@infra/config/workspace';
-import {resolveWorkspaceRoot} from '@infra/config/workspace';
+import type {WorkspaceRootOptions} from '@config/workspace';
+import {resolveWorkspaceRoot} from '@config/workspace';
 
 export interface ProgressiveInstructionWorkspaceOptions extends WorkspaceRootOptions {
   userHome?: string;

@@ -14,8 +14,8 @@ import {
   type BaseExecutionContext,
   type ModelCallContext,
   type ToolCallContext,
-} from '@engine/pipeline/types';
-import {parseHILToolMessagePayload} from '@engine/pipeline/hil';
+} from '@core/pipeline/types';
+import {parseHILToolMessagePayload} from '@core/middleware/hil';
 import {toError} from './errors';
 
 export type AgentTurnOutcome = 'continue' | 'complete';

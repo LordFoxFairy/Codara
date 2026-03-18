@@ -10,7 +10,7 @@
 import type {AIMessage, ToolMessage} from '@langchain/core/messages';
 import type {StructuredToolInterface} from '@langchain/core/tools';
 import {z} from 'zod';
-import {applyAgentStateUpdate} from '@engine/agent/models/command';
+import {applyAgentStateUpdate} from '@core/agent/models/command';
 import type {AgentRuntimeContext} from '@shared/contracts/agent-types';
 import {
   type AfterAgentContext,
@@ -24,7 +24,7 @@ import {
   type ModelCallHandler,
   type ToolCallContext,
   type ToolCallHandler
-} from '@engine/pipeline/types';
+} from '@core/pipeline/types';
 
 const recordSchema = z.record(z.string(), z.unknown());
 

@@ -6,9 +6,9 @@
  */
 
 import type {PauseRequest, ResumePayload} from '@shared/contracts/agent-types';
-import type {HILMiddlewareOptions} from '@engine/pipeline/hil';
+import type {HILMiddlewareOptions} from '@core/middleware/hil';
 import type {ChannelRegistry} from './registry';
-import type {ToolCallContext} from '@engine/pipeline/types';
+import type {ToolCallContext} from '@core/pipeline/types';
 
 /**
  * Create HIL middleware options that route pauses through the ChannelRegistry.

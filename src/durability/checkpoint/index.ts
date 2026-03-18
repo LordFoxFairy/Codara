@@ -4,12 +4,12 @@ export type {
   PutCheckpointInput,
   CompactOptions,
   Checkpointer,
-} from '@engine/checkpoint/types';
-export {InMemoryCheckpointer} from '@engine/checkpoint/in-memory';
+} from '@durability/checkpoint/types';
+export {InMemoryCheckpointer} from '@durability/checkpoint/in-memory';
 export {
   FileCheckpointer,
   type FileCheckpointerOptions,
-} from '@engine/checkpoint/file';
+} from '@durability/checkpoint/file';
 export {
   createAgentFileCheckpointer,
   createAgentMemoryCheckpointer,
@@ -24,4 +24,4 @@ export {
   type AgentFileCheckpointerOptions,
   putForkCheckpoint,
   putManualCheckpoint,
-} from '@engine/checkpoint/agent';
+} from '@durability/checkpoint/agent';

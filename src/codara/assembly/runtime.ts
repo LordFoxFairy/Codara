@@ -4,7 +4,7 @@ import {
   loadModelRoutingConfig,
   ModelRegistry,
   type ModelInfo,
-} from '@infra/provider';
+} from '@integration/provider';
 import type {
   CreateCodaraModelCatalogOptions,
   CreateCodaraChatModelOptions,

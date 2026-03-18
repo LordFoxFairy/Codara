@@ -15,17 +15,17 @@ import type {
   AgentStreamOutput,
   ResumePayload,
   ToolErrorHandler,
-} from '@engine/agent/models/agent';
-import {normalizeAgentInput} from '@engine/agent/run/agent-loop';
-import {bootstrapAgent} from '@engine/agent/bootstrap';
-import type {CompactOptions} from '@engine/checkpoint/types';
+} from '@core/agent/models/agent';
+import {normalizeAgentInput} from '@core/agent/run/agent-loop';
+import {bootstrapAgent} from '@core/agent/bootstrap';
+import type {CompactOptions} from '@durability/checkpoint/types';
 import {
   createAgentMemoryCheckpointer,
   putForkCheckpoint,
   putManualCheckpoint,
   type AgentCheckpointer,
-} from '@engine/checkpoint/agent';
-import {MIDDLEWARE_NAMES, type BaseMiddleware} from '@engine/pipeline/types';
+} from '@durability/checkpoint/agent';
+import {MIDDLEWARE_NAMES, type BaseMiddleware} from '@core/pipeline/types';
 import {
   compactConversationWithSummary,
   createModelSummaryGenerator,
@@ -33,21 +33,21 @@ import {
   resolveSummaryOptions,
   type SummaryOptions,
   type SummarySettings,
-} from '@engine/pipeline/summary';
-import type {SessionLifecycleHooks} from '@engine/hook/types';
-import type {GuidelinesSource} from '@infra/context/instructions/guidelines';
-import {type PromptSource} from '@infra/context/prompts/prompt-source';
-import type {SkillsSource} from '@infra/context/skills/contracts';
+} from '@core/middleware/summary';
+import type {SessionLifecycleHooks} from '@observability/hook/types';
+import type {GuidelinesSource} from '@context/instructions/guidelines';
+import {type PromptSource} from '@context/prompts/prompt-source';
+import type {SkillsSource} from '@context/skills/contracts';
 import {
   type AutoMemoryRuntime,
   shouldRecordAutoMemoryTurn,
-} from '@infra/context/memory/auto-memory';
+} from '@context/memory/auto-memory';
 import {
   applyPreparedInstructionContext,
   buildBaseSystemMessage,
   type BaseSystemMessageBundle,
-} from '@infra/context/session-bundle/base-system-message';
-import type {ModelInfo} from '@infra/provider';
+} from '@context/session-bundle/base-system-message';
+import type {ModelInfo} from '@integration/provider';
 import {
   createSessionMetadata,
   deriveSessionInputBudget,
@@ -58,9 +58,9 @@ import type {SessionStore} from './store';
 import {
   RuntimeEventsController,
   type CodaraRuntimeEventListener,
-} from '@engine/events/runtime-events';
+} from '@observability/events/runtime-events';
 import type {SessionMetadata, SessionState, SessionStatus} from './types';
-export type {CodaraRuntimeEvent, CodaraRuntimeEventListener} from '@engine/events/runtime-events';
+export type {CodaraRuntimeEvent, CodaraRuntimeEventListener} from '@observability/events/runtime-events';
 
 export interface SessionModelCatalog {
   create(modelRef?: string): Promise<BaseChatModel>;
@@ -405,7 +405,7 @@ export function createSession(options: CreateSessionOptions): Session {
     return result;
   }
 
-  async function applySessionContext(context: import('@engine/agent').AgentPreparationContext): Promise<void> {
+  async function applySessionContext(context: import('@core/agent').AgentPreparationContext): Promise<void> {
     const next = await loadBaseInstructionContext();
     applyPreparedInstructionContext(context, next);
   }

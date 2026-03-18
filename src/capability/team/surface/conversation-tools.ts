@@ -2,7 +2,7 @@ import {tool} from '@langchain/core/tools';
 import {ToolMessage} from '@langchain/core/messages';
 import type {StructuredToolInterface} from '@langchain/core/tools';
 import {z} from 'zod';
-import {Command} from '@engine/agent/models/command';
+import {Command} from '@core/agent/models/command';
 import type {TeamRegistry} from '@capability/team/coordination/team-registry';
 import type {TeamRuntime} from '@capability/team/runtime/team-runtime';
 import type {SharedState} from '@capability/team/shared-state';

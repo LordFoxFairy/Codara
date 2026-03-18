@@ -1,27 +1,27 @@
 import {tool, type StructuredToolInterface} from '@langchain/core/tools';
 import {z} from 'zod';
-import {createMiddleware, type BaseMiddleware} from '@engine/pipeline/types';
+import {createMiddleware, type BaseMiddleware} from '@core/pipeline/types';
 import {
   type DelegatedAgentOptions,
   markDelegationTool,
   readDelegatedParentRuntimeMetadata,
   runDelegatedAgent,
 } from '@capability/task/delegation';
-import type {ChildToolActivityCallback} from '@engine/events/runtime-events';
-import {CHILD_ACTIVITY_CALLBACK_KEY} from '@engine/events/runtime-events';
+import type {ChildToolActivityCallback} from '@observability/events/runtime-events';
+import {CHILD_ACTIVITY_CALLBACK_KEY} from '@observability/events/runtime-events';
 import {createTaskTools} from '@capability/task/tools';
 import type {TaskStore} from '@capability/task/types';
 import {
   type SkillsRuntimeData,
   type SubagentDefinition,
-} from '@infra/context/skills/contracts';
+} from '@context/skills/contracts';
 import {
   readSkillsRuntimeData,
   resolveSubagentDefinition,
-} from '@infra/context/skills/runtime-shared';
-import {readBaseSystemMessage} from '@infra/context/session-bundle/base-system-message';
-import {filterToolsByReferences} from '@engine/tool';
-import {createAgentMemoryCheckpointer} from '@engine/checkpoint/agent';
+} from '@context/skills/runtime-shared';
+import {readBaseSystemMessage} from '@context/session-bundle/base-system-message';
+import {filterToolsByReferences} from '@integration/tool';
+import {createAgentMemoryCheckpointer} from '@durability/checkpoint/agent';
 
 export const TASK_TOOL_NAME = 'Task';
 

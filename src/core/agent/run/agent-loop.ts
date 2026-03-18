@@ -39,13 +39,13 @@ import {
   createAgentMemoryCheckpointer,
   type AgentCheckpoint,
   type AgentCheckpointInfo,
-} from '@engine/checkpoint/agent';
-import type {BaseExecutionContext, MiddlewareRuntimeShared} from '@engine/pipeline/types';
-import {MiddlewarePipeline} from '@engine/pipeline/pipeline';
+} from '@durability/checkpoint/agent';
+import type {BaseExecutionContext, MiddlewareRuntimeShared} from '@core/pipeline/types';
+import {MiddlewarePipeline} from '@core/pipeline/pipeline';
 import {deepClone} from '@shared/clone';
 import {formatErrorMessage} from './errors';
-import {parseHILToolMessagePayload} from '@engine/pipeline/hil';
-import type {AgentLifecycleHooks} from '@engine/hook/types';
+import {parseHILToolMessagePayload} from '@core/middleware/hil';
+import type {AgentLifecycleHooks} from '@observability/hook/types';
 
 const DEFAULT_RECURSION_LIMIT = 25;
 const recordSchema = z.record(z.string(), z.unknown());

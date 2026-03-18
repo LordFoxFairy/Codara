@@ -27,8 +27,8 @@ export {
   createListWorktreesTool,
   createBuiltinTools,
   type BuiltinToolOptions,
-} from '@engine/tool/builtin';
-export {filterToolsByReferences, normalizeToolReferenceName} from '@engine/tool/names';
+} from '@integration/tool/builtin';
+export {filterToolsByReferences, normalizeToolReferenceName} from '@integration/tool/names';
 export {
   countLines,
   countOccurrences,
@@ -38,4 +38,4 @@ export {
   getErrorMessage,
   isNodeError,
   validatePath,
-} from '@engine/tool/utils';
+} from '@integration/tool/utils';

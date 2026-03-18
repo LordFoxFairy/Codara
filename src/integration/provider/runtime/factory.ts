@@ -1,7 +1,7 @@
 import {initChatModel} from "langchain/chat_models/universal";
 import type {BaseChatModel} from "@langchain/core/language_models/chat_models";
-import type {EffortLevel, ThinkingConfig} from "@infra/provider/model";
-import {ModelRegistry} from "@infra/provider/runtime/registry";
+import type {EffortLevel, ThinkingConfig} from "@integration/provider/model";
+import {ModelRegistry} from "@integration/provider/runtime/registry";
 
 /**
  * initChatModel 的可选初始化参数。

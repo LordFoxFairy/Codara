@@ -4,18 +4,18 @@ import {z} from 'zod'
 import {
   createMiddleware,
   type ModelCallContext
-} from '@engine/pipeline/types'
+} from '@core/pipeline/types'
 import {
   type SkillsRuntimeData,
   type SkillMetadata,
   type SkillStore,
-} from '@infra/context/skills/contracts'
-import {readSkillsRuntimeData} from '@infra/context/skills/runtime-shared'
+} from '@context/skills/contracts'
+import {readSkillsRuntimeData} from '@context/skills/runtime-shared'
 import {
   SKILLS_SYSTEM_PROMPT,
   formatSkillsList,
   formatSkillsLocations,
-} from '@infra/context/prompts/skills-system-prompt'
+} from '@context/prompts/skills-system-prompt'
 
 export type SkillsRuntimeDataLoader = (store: SkillStore, subagentRoots: string[]) => Promise<SkillsRuntimeData>
 

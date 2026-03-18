@@ -1,9 +1,9 @@
-import type {BaseMiddleware} from '@engine/pipeline';
-import {createAskUserQuestionMiddleware, createBudgetMiddleware, createHILMiddleware, type HILMiddlewareOptions} from '@engine/pipeline';
-import {createChannelHILOptions} from '@engine/channel';
-import {createMiddleware} from '@engine/pipeline/types';
+import type {BaseMiddleware} from '@core/pipeline/types';
+import {createAskUserQuestionMiddleware, createBudgetMiddleware, createHILMiddleware, type HILMiddlewareOptions} from '@core/middleware';
+import {createChannelHILOptions} from '@integration/channel';
+import {createMiddleware} from '@core/pipeline/types';
 import {formatToolSummary} from '@shared/tool-display';
-import {createPermissionMiddleware} from '@engine/pipeline/permission';
+import {createPermissionMiddleware} from '@core/middleware/permission';
 import {TeamRegistry} from '@capability/team/coordination/team-registry';
 import {TeamRuntime} from '@capability/team/runtime/team-runtime';
 import {MemorySharedState} from '@capability/team/shared-state';
@@ -14,9 +14,9 @@ import type {
   MemberSession,
   MemberSessionOptions,
 } from '@capability/team/runtime/member-runner';
-import {bootstrapAgent} from '@engine/agent/bootstrap';
+import {bootstrapAgent} from '@core/agent/bootstrap';
 import {TeamPersistence} from '@capability/team/persistence';
-import {createBuiltinTools} from '@engine/tool';
+import {createBuiltinTools} from '@integration/tool';
 import type {CodaraRuntimeOptions, TeamQuerySummary, TeamQueryDetail} from '../types';
 import type {CodaraModelCatalog} from './runtime';
 
@@ -86,7 +86,7 @@ export async function assembleTeamSystem(input: TeamSystemAssemblyInput): Promis
 
     memberMiddleware.push(createBudgetMiddleware());
 
-    let agentReady: import('@engine/agent/models/agent').Agent | undefined;
+    let agentReady: import('@core/agent/models/agent').Agent | undefined;
 
     const ensureAgent = async () => {
       if (agentReady) {

@@ -6,7 +6,7 @@ import type {
   AgentStreamMode,
   AgentStreamOutput,
 } from '../models/agent';
-import type {HILToolMessagePayload} from '@engine/pipeline/hil';
+import type {HILToolMessagePayload} from '@core/middleware/hil';
 
 export interface AgentStreamWriter {
   stream: AsyncGenerator<AgentStreamOutput, AgentResult, void>;
