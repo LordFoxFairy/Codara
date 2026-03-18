@@ -4,3 +4,4 @@ export type {ChannelPlugin, ChannelPluginCapabilities, GatewayListenContext} fro
 export {telegramPlugin} from './telegram';
 export {feishuPlugin} from './feishu';
 export {dingtalkPlugin} from './dingtalk';
+export {qqPlugin} from './qq';
