@@ -113,14 +113,16 @@ export class FileCheckpointer<TState = unknown, TInfo = unknown>
     // 2. Truncate messages array if state has one and it exceeds the threshold
     const state = latest.state as Record<string, unknown>;
     const hasMessages = Array.isArray(state?.messages);
-    const needsMessageTruncation = hasMessages && (state.messages as unknown[]).length > threshold;
+    const messages = hasMessages ? (state.messages as unknown[]) : [];
+    const needsMessageTruncation = hasMessages && messages.length > threshold;
     const needsParentClear = Boolean(latest.ref.parentCheckpointId);
 
     if (!needsMessageTruncation && !needsParentClear) return;
 
-    // Truncate messages if needed
+    // Build compacted state as a shallow copy to avoid mutating the caller's reference
+    const compactedState = {...state};
     if (needsMessageTruncation) {
-      (state.messages as unknown[]).splice(0, (state.messages as unknown[]).length - keepLast);
+      compactedState.messages = messages.slice(-keepLast);
     }
 
     // Write compacted checkpoint with cleared parent reference
@@ -132,7 +134,7 @@ export class FileCheckpointer<TState = unknown, TInfo = unknown>
           sessionId: latest.ref.sessionId,
           checkpointId: latest.ref.checkpointId,
         },
-        state: latest.state,
+        state: compactedState as TState,
         info: latest.info,
       };
       await writeJsonFile(this.latestCheckpointPath(sessionId), this.encodeRecord(compactedRecord));

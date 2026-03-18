@@ -8,7 +8,7 @@ import {
 } from '@engine/pipeline/types';
 import {parseHILToolMessagePayload} from '@engine/pipeline/hil';
 import {readDelegatedAgentResult} from '@shared/delegation-result';
-import {TOOL_NAMES, formatToolSummary} from '@shared/tool-display';
+import {TOOL_NAMES, formatToolSummary, readString} from '@shared/tool-display';
 
 export type CodaraRuntimeEventKind = 'turn' | 'model' | 'tool' | 'task' | 'hil' | 'command' | 'summary' | 'hook' | 'team';
 export type CodaraRuntimeEventPhase = 'start' | 'update' | 'end';
@@ -90,14 +90,7 @@ function formatToolDisplayName(toolName: string): string {
   }
 }
 
-function readString(value: unknown): string | undefined {
-  if (typeof value !== 'string') {
-    return undefined;
-  }
-
-  const trimmed = value.trim();
-  return trimmed || undefined;
-}
+// readString is imported from @shared/tool-display
 
 /** Callback for child agent tool activity — injected into delegated child middleware. */
 export type ChildToolActivityCallback = (info: {toolName: string; label: string}) => void;

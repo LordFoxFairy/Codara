@@ -68,7 +68,7 @@ export function formatToolSummary(toolName: string, args: unknown): string | und
   }
 }
 
-function readString(value: unknown): string | undefined {
+export function readString(value: unknown): string | undefined {
   if (typeof value !== 'string') {
     return undefined;
   }

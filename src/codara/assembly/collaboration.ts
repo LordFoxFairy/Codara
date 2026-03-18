@@ -2,6 +2,7 @@ import type {BaseMiddleware} from '@engine/pipeline';
 import {createAskUserQuestionMiddleware, createBudgetMiddleware, createHILMiddleware, type HILMiddlewareOptions} from '@engine/pipeline';
 import {createChannelHILOptions} from '@engine/channel';
 import {createMiddleware} from '@engine/pipeline/types';
+import {formatToolSummary} from '@shared/tool-display';
 import {createPermissionMiddleware} from '@engine/pipeline/permission';
 import {TeamRegistry} from '@capability/team/coordination/team-registry';
 import {TeamRuntime} from '@capability/team/runtime/team-runtime';
@@ -272,7 +273,8 @@ function createWorkerActivityMiddleware(
     wrapToolCall: async (context, handler) => {
       const toolName = context.toolCall.name ?? 'tool';
       const args = context.toolCall.args as Record<string, unknown> | undefined;
-      const summary = formatWorkerToolSummary(toolName, args);
+      const rawSummary = formatToolSummary(toolName, args);
+      const summary = rawSummary && rawSummary.length > 50 ? `${rawSummary.slice(0, 49)}…` : rawSummary;
       const label = summary ? `${toolName}(${summary})` : toolName;
       try {
         emitEvent({
@@ -289,32 +291,3 @@ function createWorkerActivityMiddleware(
   });
 }
 
-function formatWorkerToolSummary(toolName: string, args: unknown): string | undefined {
-  if (!args || typeof args !== 'object' || Array.isArray(args)) return undefined;
-  const record = args as Record<string, unknown>;
-  switch (toolName) {
-    case 'bash':
-      return truncateWorkerStr(asWorkerStr(record.command) ?? asWorkerStr(record.description));
-    case 'read_file':
-    case 'read':
-    case 'write_file':
-    case 'write':
-    case 'edit_file':
-    case 'edit':
-      return truncateWorkerStr(asWorkerStr(record.file_path) ?? asWorkerStr(record.path));
-    case 'glob':
-    case 'grep':
-      return truncateWorkerStr(asWorkerStr(record.pattern));
-    default:
-      return undefined;
-  }
-}
-
-function asWorkerStr(value: unknown): string | undefined {
-  return typeof value === 'string' && value.trim() ? value.trim() : undefined;
-}
-
-function truncateWorkerStr(value: string | undefined, max = 50): string | undefined {
-  if (!value) return undefined;
-  return value.length > max ? `${value.slice(0, max - 1)}…` : value;
-}

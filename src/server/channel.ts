@@ -12,16 +12,22 @@ import type {
 } from '@shared/contracts/channel';
 import type {PauseRequest, ResumePayload} from '@shared/contracts/agent-types';
 
+/** Default timeout for pending pause requests (10 minutes). */
+export const DEFAULT_PAUSE_TIMEOUT_MS = 10 * 60 * 1000;
+
 export interface SSEChannelOptions {
   /** Channel instance id. */
   id?: string;
   /** SSE send function — writes an SSE frame to the connected client. */
   send: (event: {event: string; data: unknown; id?: string}) => void;
+  /** Timeout for pending pause requests in ms. Default: 10 minutes. */
+  pauseTimeoutMs?: number;
 }
 
 interface PendingPause {
   request: PauseRequest;
   resolve: (payload: ResumePayload) => void;
+  timer: ReturnType<typeof setTimeout>;
 }
 
 /**
@@ -39,11 +45,13 @@ export class SSEChannel implements Channel {
   readonly type = 'web' as const;
 
   private readonly send: SSEChannelOptions['send'];
+  private readonly pauseTimeoutMs: number;
   private readonly pendingPauses = new Map<string, PendingPause>();
   private disposed = false;
 
   constructor(options: SSEChannelOptions) {
     this.id = options.id ?? `sse-${crypto.randomUUID().slice(0, 8)}`;
+    this.pauseTimeoutMs = options.pauseTimeoutMs ?? DEFAULT_PAUSE_TIMEOUT_MS;
     this.send = options.send;
   }
 
@@ -77,9 +85,15 @@ export class SSEChannel implements Channel {
       throw new Error('Failed to send pause request — SSE connection may be closed');
     }
 
-    // Wait for the resume to come in via resolveResume()
+    // Wait for the resume to come in via resolveResume(), with timeout
     return new Promise<ResumePayload>((resolve) => {
-      this.pendingPauses.set(request.id, {request, resolve});
+      const timer = setTimeout(() => {
+        if (this.pendingPauses.has(request.id)) {
+          this.pendingPauses.delete(request.id);
+          resolve({decision: 'reject', reason: 'Pause request timed out'});
+        }
+      }, this.pauseTimeoutMs);
+      this.pendingPauses.set(request.id, {request, resolve, timer});
     });
   }
 
@@ -99,6 +113,7 @@ export class SSEChannel implements Channel {
   resolveResume(requestId: string, payload: ResumePayload): boolean {
     const pending = this.pendingPauses.get(requestId);
     if (!pending) return false;
+    clearTimeout(pending.timer);
     this.pendingPauses.delete(requestId);
     pending.resolve(payload);
     return true;
@@ -118,6 +133,7 @@ export class SSEChannel implements Channel {
     this.disposed = true;
     // Resolve all pending pauses with a rejection-like payload
     for (const [id, pending] of this.pendingPauses) {
+      clearTimeout(pending.timer);
       pending.resolve({decision: 'reject', reason: 'Channel disposed'});
       this.pendingPauses.delete(id);
     }
