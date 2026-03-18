@@ -10,6 +10,14 @@ import {createSearchTool, SearchTool} from '@engine/tool/builtin/search';
 
 // 扩展工具 — 不在核心 createBuiltinTools() 中，需要显式引入
 import {createNotebookReadTool, NotebookReadTool} from '@engine/tool/extended/notebook';
+import {
+  createEnterWorktreeTool,
+  createExitWorktreeTool,
+  createListWorktreesTool,
+  EnterWorktreeTool,
+  ExitWorktreeTool,
+  ListWorktreesTool,
+} from '@engine/tool/extended/worktree';
 
 export {BashTool, createBashTool};
 export {ReadTool, createReadTool};
@@ -22,6 +30,9 @@ export {SearchTool, createSearchTool};
 
 // 扩展工具导出
 export {NotebookReadTool, createNotebookReadTool};
+export {EnterWorktreeTool, createEnterWorktreeTool};
+export {ExitWorktreeTool, createExitWorktreeTool};
+export {ListWorktreesTool, createListWorktreesTool};
 
 /**
  * 内置工具配置选项。
@@ -51,6 +62,9 @@ export function createBuiltinTools(options: BuiltinToolOptions = {}): Structured
   if (options.extended) {
     core.push(
       createNotebookReadTool(),
+      createEnterWorktreeTool(),
+      createExitWorktreeTool(),
+      createListWorktreesTool(),
     );
   }
 

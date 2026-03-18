@@ -19,6 +19,12 @@ export {
   createWriteTool,
   NotebookReadTool,
   createNotebookReadTool,
+  EnterWorktreeTool,
+  createEnterWorktreeTool,
+  ExitWorktreeTool,
+  createExitWorktreeTool,
+  ListWorktreesTool,
+  createListWorktreesTool,
   createBuiltinTools,
   type BuiltinToolOptions,
 } from '@engine/tool/builtin';
