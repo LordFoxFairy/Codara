@@ -178,6 +178,49 @@ describe('Gateway', () => {
     await gw.stop();
   });
 
+  test('debouncer merges rapid messages from plugin listener', async () => {
+    let capturedOnMessage: ((msg: InboundMessage) => void) | undefined;
+    const plugin = createMockPlugin({
+      async startListening(ctx) {
+        capturedOnMessage = ctx.onMessage;
+        return {async stop() {}};
+      },
+    });
+    const gw = new Gateway({
+      config: makeConfig(),
+      plugins: [plugin],
+      createSession: async () => ({
+        async invoke(text: string) {
+          return `Echo: ${text}`;
+        },
+        async *stream() {
+          yield '';
+          return '';
+        },
+        async dispose() {},
+      }),
+    });
+
+    await gw.start();
+    expect(capturedOnMessage).toBeDefined();
+
+    // Simulate rapid messages via the captured listener callback (goes through debouncer)
+    capturedOnMessage!(makeMsg({text: 'part1', messageId: 'm1', timestamp: 1}));
+    capturedOnMessage!(makeMsg({text: 'part2', messageId: 'm2', timestamp: 2}));
+
+    // No immediate processing — debouncer is buffering
+    expect(plugin.sentTexts.length).toBe(0);
+
+    // Wait for debounce window to fire (default 1500ms)
+    await new Promise((r) => setTimeout(r, 2000));
+
+    // Should have sent ONE merged response
+    expect(plugin.sentTexts.length).toBe(1);
+    expect(plugin.sentTexts[0]!.text).toBe('Echo: part1\npart2');
+
+    await gw.stop();
+  });
+
   test('handleInbound chunks long responses', async () => {
     const plugin = createMockPlugin({
       capabilities: {
