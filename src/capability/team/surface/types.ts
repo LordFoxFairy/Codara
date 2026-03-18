@@ -10,4 +10,8 @@ export interface TeamToolContext {
   /** Emit a domain event — routed through TeamRuntime to the onTeamEvent callback. */
   emitEvent: (event: TeamBusEvent) => void;
   projectRoot: string;
+  /** Runtime reference for spawning members. */
+  runtime?: {
+    spawnMember(teamId: string, name: string, role: 'worker' | 'leader', model?: string): Promise<{memberId: string; name: string; role: string; status: string}>;
+  };
 }

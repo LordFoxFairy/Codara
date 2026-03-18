@@ -1,10 +1,9 @@
 import path from 'node:path';
 import type {BaseChatModel} from '@langchain/core/language_models/chat_models';
 import type {StructuredToolInterface} from '@langchain/core/tools';
-import type {
-  BaseMiddleware,
-  LoggingMiddlewareOptions,
-} from '@engine/pipeline';
+import type {BaseMiddleware} from '@core/pipeline/types';
+import {MIDDLEWARE_NAMES} from '@core/pipeline/types';
+import type {LoggingMiddlewareOptions} from '@core/middleware';
 import {
   createAskUserQuestionMiddleware,
   createBudgetMiddleware,
@@ -14,9 +13,8 @@ import {
   createPathInstructionsMiddleware,
   createSkillsMiddleware,
   createTodoListMiddleware,
-  MIDDLEWARE_NAMES,
-} from '@engine/pipeline';
-import {createPermissionMiddleware} from '@engine/pipeline/permission';
+} from '@core/middleware';
+import {createPermissionMiddleware} from '@core/middleware/permission';
 import {
   createTaskMiddleware,
   type TaskStore,
@@ -25,13 +23,13 @@ import {createTeamMiddleware} from '@capability/team/middleware';
 import type {TeamRegistry} from '@capability/team/coordination/team-registry';
 import type {TeamRuntime} from '@capability/team/runtime/team-runtime';
 import type {SharedState} from '@capability/team/shared-state';
-import type {HookPipeline} from '@engine/hook';
-import {createToolHooksBridge} from '@engine/hook';
-import type {GuidelinesSource} from '@infra/context/instructions/guidelines';
-import type {PromptSource} from '@infra/context/prompts/prompt-source';
-import {resolveWorkspaceRoot} from '@infra/config/workspace';
-import type {ChannelRegistry} from '@engine/channel';
-import {createChannelHILOptions} from '@engine/channel';
+import type {HookPipeline} from '@observability/hook';
+import {createToolHooksBridge} from '@observability/hook';
+import type {GuidelinesSource} from '@context/instructions/guidelines';
+import type {PromptSource} from '@context/prompts/prompt-source';
+import {resolveWorkspaceRoot} from '@config/workspace';
+import type {ChannelRegistry} from '@integration/channel';
+import {createChannelHILOptions} from '@integration/channel';
 import type {
   CodaraMiddlewareOptions,
   CodaraRuntimeOptions,

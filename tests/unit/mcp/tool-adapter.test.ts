@@ -1,5 +1,5 @@
 import {describe, expect, it} from 'bun:test';
-import {createMcpLangChainTools, type McpManager, type McpToolDefinition} from '@engine/mcp';
+import {createMcpLangChainTools, type McpManager, type McpToolDefinition} from '@integration/mcp';
 
 function createMockManager(tools: McpToolDefinition[]): McpManager {
   return {

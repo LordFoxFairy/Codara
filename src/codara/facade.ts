@@ -1,25 +1,25 @@
 import {existsSync} from 'node:fs';
 import path from 'node:path';
 import type {StructuredToolInterface} from '@langchain/core/tools';
-import {createAgentFileCheckpointer} from '@engine/checkpoint';
-import {ensurePermissionSettingsFile} from '@engine/pipeline/permission';
+import {createAgentFileCheckpointer} from '@durability/checkpoint';
+import {ensurePermissionSettingsFile} from '@core/middleware/permission';
 import {createTaskFileStore} from '@capability/task/store';
-import {loadModelRoutingConfigFromPath, resolveCodaraPath, type ModelRoutingConfig} from '@infra/provider';
-import {createCodaraGuidelinesSource, type GuidelinesSource} from '@infra/context/instructions/guidelines';
-import {createCodaraPromptSource, type PromptSource} from '@infra/context/prompts/prompt-source';
+import {loadModelRoutingConfigFromPath, resolveCodaraPath, type ModelRoutingConfig} from '@integration/provider';
+import {createCodaraGuidelinesSource, type GuidelinesSource} from '@context/instructions/guidelines';
+import {createCodaraPromptSource, type PromptSource} from '@context/prompts/prompt-source';
 import {createCodaraSkillsSource} from '@capability/skill';
 import {createSkillCodaraCommands} from '@capability/command/runtime/skill-commands';
 import {createCodaraCommandRunner, type CodaraCommandResult} from '@capability/command';
 import {
   createSession, FileSessionStore,
   type SessionState, type SessionStore,
-} from '@engine/session';
-import type {CodaraRuntimeEvent, CodaraRuntimeEventListener} from '@engine/events';
-import {resolveWorkspaceRoot} from '@infra/config/workspace';
-import {HookRegistryImpl, HookPipeline, createHookExecutor} from '@engine/hook';
-import type {HookSource, HookRegistry, SessionLifecycleHooks, AgentLifecycleHooks} from '@engine/hook';
-import {loadMcpConfig, createMcpManager, createMcpLangChainTools, type McpManager} from '@engine/mcp';
-import type {ChannelRegistry} from '@engine/channel';
+} from '@durability/session';
+import type {CodaraRuntimeEvent, CodaraRuntimeEventListener} from '@observability/events';
+import {resolveWorkspaceRoot} from '@config/workspace';
+import {HookRegistryImpl, HookPipeline, createHookExecutor} from '@observability/hook';
+import type {HookSource, HookRegistry, SessionLifecycleHooks, AgentLifecycleHooks} from '@observability/hook';
+import {loadMcpConfig, createMcpManager, createMcpLangChainTools, type McpManager} from '@integration/mcp';
+import type {ChannelRegistry} from '@integration/channel';
 import type {TeamRegistry} from '@capability/team/coordination/team-registry';
 import type {TeamRuntime} from '@capability/team/runtime/team-runtime';
 import {
@@ -260,7 +260,23 @@ export function assembleCodara(
 
   const channelRegistry = preloadedSources?.channelRegistry;
 
+  const teamRuntime = preloadedSources?.teamRuntime;
+  const teamRegistry = preloadedSources?.teamRegistry;
+
   const dispose = async (): Promise<void> => {
+    // Shut down all running teams before disposing session
+    if (teamRuntime && teamRegistry) {
+      const activeTeams = teamRegistry.listTeams().filter(
+        (t) => t.status === 'running' || t.status === 'paused',
+      );
+      for (const team of activeTeams) {
+        try {
+          await teamRuntime.shutdownTeam(team.teamId);
+        } catch {
+          // Best-effort — continue disposing other resources
+        }
+      }
+    }
     await session.dispose();
     if (mcpManager) await mcpManager.dispose();
     if (channelRegistry) await channelRegistry.disposeAll();
@@ -268,7 +284,7 @@ export function assembleCodara(
 
   return {
     ...session, subscribeRuntimeEvents, listCommands: commands.listCommands, executeCommand,
-    listSessions: async (opts?: import('@engine/session').SessionListOptions) => options.store ? options.store.list(opts) : [],
+    listSessions: async (opts?: import('@durability/session').SessionListOptions) => options.store ? options.store.list(opts) : [],
     getMcpStatus: () => mcpManager?.status() ?? [],
     getTeamSummaries: () => getTeamSummaries(preloadedSources?.teamRegistry),
     getTeamDetail: (teamId: string) => getTeamDetail(preloadedSources?.teamRegistry, teamId),

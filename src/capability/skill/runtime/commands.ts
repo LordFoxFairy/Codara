@@ -1,5 +1,5 @@
 import {readFile} from 'node:fs/promises';
-import type {SkillsRuntimeData} from '@infra/context/skills/contracts';
+import type {SkillsRuntimeData} from '@context/skills/contracts';
 import type {SkillMetadata, SkillStore} from '@capability/skill/catalog/types';
 import {normalizeDiscoveredSkills} from '@capability/skill/catalog/metadata';
 

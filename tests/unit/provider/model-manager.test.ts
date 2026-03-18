@@ -1,6 +1,6 @@
 import {describe, expect, it} from "bun:test";
-import {ChatModelFactory, ModelRegistry} from "@infra/provider";
-import type {ModelRoutingConfig} from "@infra/provider";
+import {ChatModelFactory, ModelRegistry} from "@integration/provider";
+import type {ModelRoutingConfig} from "@integration/provider";
 
 const baseConfig: ModelRoutingConfig = {
     providers: [

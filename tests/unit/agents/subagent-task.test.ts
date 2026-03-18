@@ -5,7 +5,7 @@ import type {BaseChatModel} from '@langchain/core/language_models/chat_models';
 import type {StructuredToolInterface} from '@langchain/core/tools';
 import {
   createAgent,
-} from '@engine/agent';
+} from '@core/agent';
 import {
   createTaskCreateTool,
   createTaskListTool,
@@ -14,7 +14,7 @@ import {
   TASK_LIST_TOOL_NAME,
   TASK_TOOL_NAME,
 } from '@capability/task';
-import {createSkillsMiddleware} from '@engine/pipeline';
+import {createSkillsMiddleware} from '@core/middleware';
 import {FileSystemSkillStore, loadSkillsRuntimeData} from '@capability/skill';
 import {createTaskTool} from '@capability/task/middleware';
 

@@ -9,7 +9,7 @@ import {tool} from '@langchain/core/tools';
 import {z} from 'zod';
 import {createCodaraRuntime, type Codara} from '@/index';
 import {createTaskTool} from '@capability/task/middleware';
-import type {CodaraRuntimeEvent} from '@engine/events/runtime-events';
+import type {CodaraRuntimeEvent} from '@observability/events';
 
 /**
  * Pipeline integration test: Sub-agent Activity Display

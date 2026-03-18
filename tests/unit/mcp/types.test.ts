@@ -6,7 +6,7 @@ import {
   namespacedToolName,
   parseNamespacedToolName,
   sanitizeToolName,
-} from '@engine/mcp';
+} from '@integration/mcp';
 
 describe('MCP types', () => {
   describe('McpLocalServerConfigSchema', () => {

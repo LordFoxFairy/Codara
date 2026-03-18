@@ -175,6 +175,16 @@ function createTeamSpawnMemberTool(ctx: TeamToolContext): StructuredToolInterfac
         joinedAt: new Date().toISOString(),
       };
 
+      if (ctx.runtime) {
+        const spawned = await ctx.runtime.spawnMember(ctx.teamId, input.name, input.role as 'worker', input.model);
+        ctx.emitEvent({
+          type: 'member.joined',
+          data: {teamId: ctx.teamId, memberId: spawned.memberId, name: spawned.name, role: spawned.role, mode: 'local'},
+        });
+        return JSON.stringify(spawned);
+      }
+
+      // Fallback: register only (no runtime available).
       ctx.registry.registerMember(ctx.teamId, member);
 
       ctx.emitEvent({

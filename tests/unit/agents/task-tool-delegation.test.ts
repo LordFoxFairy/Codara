@@ -3,10 +3,10 @@ import {AIMessage, ToolMessage, type ToolCall} from '@langchain/core/messages';
 import type {BaseChatModel} from '@langchain/core/language_models/chat_models';
 import {tool} from '@langchain/core/tools';
 import {z} from 'zod';
-import {createAgent} from '@engine/agent';
-import {createHILMiddleware} from '@engine/pipeline';
+import {createAgent} from '@core/agent';
+import {createHILMiddleware} from '@core/middleware';
 import {TASK_TOOL_NAME, createTaskTool} from '@capability/task/middleware';
-import {readDelegatedAgentResult} from '@capability/task/delegation';
+import {readDelegatedAgentResult} from '@core/agent/run/delegation';
 import {createBuiltinSubagentStore, createAgentSkillsMiddleware, ChildSummaryModel, ScriptedModel} from './task-tool.fixtures';
 
 describe('createTaskTool delegation', () => {

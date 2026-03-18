@@ -1,7 +1,7 @@
 import {AIMessage, HumanMessage, SystemMessage, ToolMessage, type BaseMessage, type ToolCall} from '@langchain/core/messages';
 import type {CodaraRuntimeEvent} from '@/index';
-import {parseAskUserResult} from '@engine/pipeline';
-import {parseHILToolMessagePayload} from '@engine/pipeline/hil';
+import {parseAskUserResult} from '@core/middleware';
+import {parseHILToolMessagePayload} from '@core/middleware/hil';
 import {readMessageText} from '@shared/messages';
 import {TOOL_NAMES} from '@shared/tool-display';
 import type {CliActiveTurn, CliNotice} from '../app/view-state';

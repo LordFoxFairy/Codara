@@ -1,6 +1,6 @@
 import {describe, expect, it, beforeEach, afterEach, mock, spyOn} from "bun:test";
-import {ModelRegistry, WELL_KNOWN_CONTEXT_WINDOWS} from "@infra/provider";
-import type {ModelRoutingConfig} from "@infra/provider";
+import {ModelRegistry, WELL_KNOWN_CONTEXT_WINDOWS} from "@integration/provider";
+import type {ModelRoutingConfig} from "@integration/provider";
 
 describe("ModelRegistry", () => {
   const mockConfig: ModelRoutingConfig = {

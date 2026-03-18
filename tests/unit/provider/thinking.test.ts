@@ -1,8 +1,8 @@
 import {describe, expect, it} from 'bun:test';
-import {resolveThinkingConfig} from '@infra/provider/runtime/factory';
-import type {EffortLevel, ThinkingConfig} from '@infra/provider/model';
-import {ModelRegistry} from '@infra/provider/runtime/registry';
-import type {ModelRoutingConfig} from '@infra/provider/model';
+import {resolveThinkingConfig} from '@integration/provider/runtime/factory';
+import type {EffortLevel, ThinkingConfig} from '@integration/provider/model';
+import {ModelRegistry} from '@integration/provider/runtime/registry';
+import type {ModelRoutingConfig} from '@integration/provider/model';
 
 describe('resolveThinkingConfig', () => {
     it('returns undefined when no thinking and no effort level', () => {
