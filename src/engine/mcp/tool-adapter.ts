@@ -3,6 +3,12 @@ import type {StructuredToolInterface} from '@langchain/core/tools';
 import {z} from 'zod';
 import type {McpManager, McpToolDefinition} from './types';
 import {parseNamespacedToolName} from './types';
+import type {McpProgressCallback} from './client';
+
+export interface CreateMcpLangChainToolsOptions {
+  /** Optional progress callback fired at the start/end of each MCP tool call. */
+  onProgress?: McpProgressCallback;
+}
 
 /**
  * Convert MCP tools into LangChain StructuredToolInterface instances.
@@ -10,12 +16,19 @@ import {parseNamespacedToolName} from './types';
  * Each tool is namespaced as `mcp_{server}__{tool}` and routes through
  * the MCP manager for execution.
  */
-export function createMcpLangChainTools(manager: McpManager): StructuredToolInterface[] {
+export function createMcpLangChainTools(
+  manager: McpManager,
+  options?: CreateMcpLangChainToolsOptions,
+): StructuredToolInterface[] {
   const mcpTools = manager.getTools();
-  return mcpTools.map((mcpTool) => createSingleMcpTool(manager, mcpTool));
+  return mcpTools.map((mcpTool) => createSingleMcpTool(manager, mcpTool, options?.onProgress));
 }
 
-function createSingleMcpTool(manager: McpManager, mcpTool: McpToolDefinition): StructuredToolInterface {
+function createSingleMcpTool(
+  manager: McpManager,
+  mcpTool: McpToolDefinition,
+  onProgress?: McpProgressCallback,
+): StructuredToolInterface {
   const parsed = parseNamespacedToolName(mcpTool.name);
 
   return tool(
@@ -24,10 +37,14 @@ function createSingleMcpTool(manager: McpManager, mcpTool: McpToolDefinition): S
         return `Error: invalid MCP tool name "${mcpTool.name}"`;
       }
 
+      try { onProgress?.({phase: 'start', toolName: parsed.toolName, serverName: parsed.serverName}); } catch { /* fail-open */ }
+
       try {
         const result = await manager.callTool(parsed.serverName, parsed.toolName, args);
+        try { onProgress?.({phase: 'end', toolName: parsed.toolName, serverName: parsed.serverName}); } catch { /* fail-open */ }
         return formatMcpResult(result);
       } catch (error) {
+        try { onProgress?.({phase: 'end', toolName: parsed.toolName, serverName: parsed.serverName}); } catch { /* fail-open */ }
         return `MCP tool error: ${error instanceof Error ? error.message : String(error)}`;
       }
     },
