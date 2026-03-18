@@ -64,6 +64,7 @@ export {
   injectResumePayload,
   normalizeAgentInput,
   readLatestPause,
+  type AgentModel,
   type AgentRunContext,
   type AgentRuntime,
 } from '@engine/agent/run/agent-loop';

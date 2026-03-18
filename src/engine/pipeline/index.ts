@@ -18,6 +18,9 @@ export {
   type ToolCallHandler,
 } from '@engine/pipeline/types';
 export {
+  MiddlewarePipeline,
+} from '@engine/pipeline/pipeline';
+export {
   createSkillsMiddleware,
   type SkillsMiddlewareOptions,
   type SkillsRuntimeDataLoader,
