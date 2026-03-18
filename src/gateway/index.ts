@@ -1,4 +1,6 @@
 export {Gateway} from './gateway';
+export {createCodaraSessionFactory} from './codara-session-factory';
+export type {CodaraSessionFactoryOptions} from './codara-session-factory';
 export type {GatewayOptions} from './gateway';
 export {createGatewayRouter} from './router';
 export type {GatewayRouter} from './router';
