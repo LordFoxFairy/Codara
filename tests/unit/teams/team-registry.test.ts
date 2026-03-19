@@ -10,7 +10,6 @@ function makeMember(overrides: Partial<TeamMember> & {memberId: string; teamId: 
     name: overrides.memberId,
     role: 'worker',
     status: 'idle',
-    mode: 'local',
     sessionId: `session_${overrides.memberId}`,
     joinedAt: new Date().toISOString(),
     ...overrides,
@@ -330,7 +329,8 @@ describe('TeamRegistry', () => {
 
       expect(registry.getMembersByRole(team.teamId, 'leader')).toHaveLength(1);
       expect(registry.getMembersByRole(team.teamId, 'worker')).toHaveLength(2);
-      expect(registry.getMembersByRole(team.teamId, 'reviewer')).toHaveLength(0);
+      // 'reviewer' is not a valid role, cast to test zero-result filtering
+      expect(registry.getMembersByRole(team.teamId, 'reviewer' as 'leader' | 'worker')).toHaveLength(0);
     });
 
     test('getLeader returns the leader', () => {

@@ -16,6 +16,9 @@ const TOOL_REFERENCE_ALIASES: Record<string, string> = {
   websearch: 'web_search',
   notebook: 'notebook_read',
   notebook_read: 'notebook_read',
+  enter_worktree: 'enter_worktree',
+  exit_worktree: 'exit_worktree',
+  list_worktrees: 'list_worktrees',
 };
 
 export function normalizeToolReferenceName(value: string): string {

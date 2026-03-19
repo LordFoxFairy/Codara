@@ -34,7 +34,7 @@ export {
   type AgentStreamOutput,
   type AgentType,
   type CreateAgentOptions,
-} from '@engine/agent';
+} from '@core/agent';
 export {
   TASK_TOOL_DESCRIPTION,
   TASK_TOOL_NAME,
@@ -63,7 +63,6 @@ export {
   createHILMiddleware,
   createAskUserQuestionMiddleware,
   createLoggingMiddleware,
-  createMiddleware,
   createAskUserTool,
   createPathInstructionsMiddleware,
   ASK_USER_TOOL_NAME,
@@ -83,13 +82,11 @@ export {
   validatePermissionSettings,
   createSummaryMiddleware,
   createSkillsMiddleware,
-  type BaseMiddleware,
   type AskUserInput,
   type AskUserOption,
   type AskUserQuestion,
   type AskUserResult,
   type BudgetMiddlewareOptions,
-  type ExecutionContextMetadata,
   type AskUserQuestionMiddlewareOptions,
   type HILMiddlewareOptions,
   type HILResumePayload,
@@ -98,7 +95,12 @@ export {
   type PathInstructionsMiddlewareOptions,
   type SummarySettings,
   type SummaryOptions,
-} from '@engine/pipeline';
+} from '@core/middleware';
+export {
+  createMiddleware,
+  type BaseMiddleware,
+  type ExecutionContextMetadata,
+} from '@core/pipeline/types';
 export {
   FileCheckpointer,
   InMemoryCheckpointer,
@@ -106,20 +108,20 @@ export {
   createAgentMemoryCheckpointer,
   type AgentCheckpoint,
   type AgentCheckpointer,
-} from '@engine/checkpoint';
+} from '@durability/checkpoint';
 export {
   createCodaraGuidelinesSource,
   type GuidelinesSource,
-} from '@infra/context/instructions/guidelines';
+} from '@context/instructions/guidelines';
 export {
   createCodaraPromptSource,
   type PromptSource,
-} from '@infra/context/prompts/prompt-source';
+} from '@context/prompts/prompt-source';
 export {
   readBaseSystemMessage,
   type BaseSystemMessageBundle,
   type BaseSystemMessageRuntimeData,
-} from '@infra/context/session-bundle/base-system-message';
+} from '@context/session-bundle/base-system-message';
 export {
   type SkillMetadata,
   type SkillStore,
@@ -127,12 +129,12 @@ export {
   type SubagentDefinitionHints,
   type SkillsRuntimeData,
   type SubagentDefinition,
-} from '@infra/context/skills/contracts';
+} from '@context/skills/contracts';
 export {
   DEFAULT_SUBAGENT_TYPE,
   readSkillsRuntimeData,
   resolveSubagentDefinition,
-} from '@infra/context/skills/runtime-shared';
+} from '@context/skills/runtime-shared';
 export {
   createBuiltinTools,
   createFetchTool,
@@ -140,7 +142,7 @@ export {
   filterToolsByReferences,
   normalizeToolReferenceName,
   type BuiltinToolOptions,
-} from '@engine/tool';
+} from '@integration/tool';
 export {
   createCodaraSkillsSource,
   FileSystemSkillStore,
@@ -154,18 +156,18 @@ export {
   type SessionStore,
   type SessionState,
   type SessionStatus,
-} from '@engine/session';
+} from '@durability/session';
 export {
   type CodaraRuntimeEvent,
   type CodaraRuntimeEventListener,
-} from '@engine/events';
+} from '@observability/events';
 export {
   ChatModelFactory,
   loadModelRoutingConfig,
   ModelRegistry,
   type ModelInfo,
   type ModelRoutingConfig,
-} from '@infra/provider';
+} from '@integration/provider';
 export {
   type HookEventType,
   type HookDefinition,
@@ -185,7 +187,7 @@ export {
   HookPipeline,
   createToolHooksBridge,
   createHookExecutor,
-} from '@engine/hook';
+} from '@observability/hook';
 export {
   createMcpManager,
   createMcpLangChainTools,
@@ -204,4 +206,4 @@ export {
   type McpRemoteServerConfig,
   type McpServerConfig,
   type McpToolDefinition,
-} from '@engine/mcp';
+} from '@integration/mcp';

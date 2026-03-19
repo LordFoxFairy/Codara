@@ -1,20 +1,20 @@
 import {describe, expect, it} from 'bun:test';
 import {mcpCommand} from '@capability/command/builtin/mcp';
-import type {CodaraCommandContext, CodaraCommandAgent} from '@capability/command/types';
-import type {McpClientInfo} from '@engine/mcp';
+import type {CodaraCommandContext, CodaraCommandAgent} from '@capability/command/runtime/types';
+import type {McpClientInfo} from '@integration/mcp';
 
 function createMockContext(overrides: Partial<CodaraCommandAgent> = {}): CodaraCommandContext {
   return {
     command: {raw: '/mcp', name: 'mcp', args: [], argsText: ''},
     registry: [],
     agent: {
-      compactConversation: async () => ({} as any),
+      compactConversation: async () => ({} as never),
       compactCheckpoints: async () => {},
       getAvailableToolNames: () => [],
-      hydrate: async () => ({} as any),
-      getAgentState: () => ({} as any),
+      hydrate: async () => ({} as never),
+      getAgentState: () => ({} as never),
       getState: () => ({sessionId: 'test', sessionStatus: 'active'}),
-      invoke: async () => ({} as any),
+      invoke: async () => ({} as never),
       reloadSources: async () => {},
       reset: async () => {},
       ...overrides,

@@ -3,7 +3,7 @@ import {
   ensurePermissionSettingsFile,
   resolvePermissionSettingsFile,
   validatePermissionSettings,
-} from '@engine/pipeline/permission';
+} from '@core/middleware/permission';
 
 const BUILTIN_SOURCE = {type: 'builtin'} as const;
 

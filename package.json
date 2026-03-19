@@ -61,6 +61,7 @@
     "cli": "bun --watch src/cli/main.tsx",
     "dev:once": "bun src/cli/main.tsx",
     "dev:server": "bun --watch src/server/index.ts",
+    "dev:gateway": "bun run --watch src/gateway/main.ts",
     "dev:vite": "vite --config src/desktop/vite.config.ts",
     "desktop": "sh -c 'bun --watch src/server/index.ts & cargo tauri dev --config src-tauri/tauri.conf.json'",
     "desktop:web": "sh -c 'bun --watch src/server/index.ts & vite --config src/desktop/vite.config.ts --open'",

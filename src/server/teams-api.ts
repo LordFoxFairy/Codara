@@ -330,11 +330,11 @@ export function createTeamsApiHandler(deps: TeamsApiDependencies = {}) {
  * Subscribes to TeamRuntime.subscribeDomainEvents; if no runtime
  * is available, keeps the connection alive with periodic heartbeats.
  */
-// WeakMap to associate SSE cleanup functions with their ReadableStreamDefaultController instances.
-const sseCleanupMap = new WeakMap<object, () => void>();
-
 function createTeamSSEResponse(deps: TeamsApiDependencies, filterTeamId?: string): Response {
   const encoder = new TextEncoder();
+
+  // Cleanup function captured in closure — shared between start() and cancel().
+  let cleanup: (() => void) | undefined;
 
   const stream = new ReadableStream<Uint8Array>({
     start(controller) {
@@ -370,16 +370,18 @@ function createTeamSSEResponse(deps: TeamsApiDependencies, filterTeamId?: string
         }
       }, 30_000);
 
-      // Store cleanup function keyed on the controller for the cancel() callback.
-      sseCleanupMap.set(controller, () => {
+      // Store cleanup in closure so cancel() can access it.
+      cleanup = () => {
         clearInterval(heartbeat);
         for (const unsub of unsubscribers) {
           unsub();
         }
-      });
+      };
     },
-    cancel(controller) {
-      sseCleanupMap.get(controller)?.();
+    cancel() {
+      // cancel() receives the cancel reason, NOT the controller.
+      // Use the closure-captured cleanup function instead.
+      cleanup?.();
     },
   });
 

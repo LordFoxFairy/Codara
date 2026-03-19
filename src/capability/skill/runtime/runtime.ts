@@ -3,19 +3,19 @@ import path from 'node:path';
 import {z} from 'zod';
 import {parseMarkdownDocument} from '@capability/skill/catalog/loading';
 import {normalizeDiscoveredSkills} from '@capability/skill/catalog/metadata';
-import type {SkillMetadata, SkillStore, SubagentDefinition} from '@infra/context/skills/contracts';
+import type {SkillMetadata, SkillStore, SubagentDefinition} from '@context/skills/contracts';
 
 // Re-export contracts so existing consumers continue to work
 export {
   DEFAULT_SUBAGENT_TYPE,
   readSkillsRuntimeData,
   resolveSubagentDefinition,
-} from '@infra/context/skills/runtime-shared';
+} from '@context/skills/runtime-shared';
 export type {
   SkillsRuntimeData,
   SubagentDefinition,
   SubagentDefinitionHints,
-} from '@infra/context/skills/contracts';
+} from '@context/skills/contracts';
 
 const subagentFrontmatterSchema = z.object({
   name: z.string().trim().min(1).optional(),
@@ -30,7 +30,7 @@ const subagentFrontmatterSchema = z.object({
 export async function loadSkillsRuntimeData(
   store: SkillStore,
   subagentRoots: string[] = []
-): Promise<import('@infra/context/skills/contracts').SkillsRuntimeData> {
+): Promise<import('@context/skills/contracts').SkillsRuntimeData> {
   const discovered = normalizeDiscoveredSkills(await store.discover());
   const sources = store.listSources?.() ?? [];
   const subagentDefinitions = await loadSubagentDefinitions(discovered, subagentRoots);

@@ -20,7 +20,7 @@ describe('/cost command', () => {
           },
         }),
         hydrate: async () => ({status: 'idle', messages: []}),
-      } as any,
+      } as unknown as import('@capability/command/runtime/types').CodaraCommandAgent,
       environment: {modelAlias: 'default'},
     });
     expect(result.ok).toBe(true);
@@ -36,7 +36,7 @@ describe('/cost command', () => {
       agent: {
         getState: () => ({sessionId: 'test', sessionStatus: 'open'}),
         hydrate: async () => ({status: 'idle', messages: []}),
-      } as any,
+      } as unknown as import('@capability/command/runtime/types').CodaraCommandAgent,
       environment: {},
     });
     expect(result.ok).toBe(true);

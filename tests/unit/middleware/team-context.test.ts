@@ -1,11 +1,11 @@
-import {describe, test, expect, beforeEach} from 'bun:test'
+import {describe, test, expect} from 'bun:test'
 import {
   createTeamMiddleware,
   readTeamContext,
   TEAM_MIDDLEWARE_NAME,
 } from '../../../src/capability/team/middleware'
 import type {TeamRuntimeContext} from '../../../src/capability/team/middleware'
-import type {BeforeModelContext} from '../../../src/engine/pipeline/types'
+import type {BeforeModelContext} from '@core/pipeline/types'
 
 function createMockContext(teamContext?: TeamRuntimeContext): BeforeModelContext {
   return {

@@ -1,5 +1,5 @@
 import type {CodaraCommandDefinition} from '@capability/command/runtime/types';
-import type {McpClientStatus} from '@engine/mcp';
+import type {McpClientStatus} from '@integration/mcp';
 
 const BUILTIN_SOURCE = {type: 'builtin'} as const;
 

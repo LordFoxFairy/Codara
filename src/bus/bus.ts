@@ -2,8 +2,8 @@ import {randomUUID} from 'node:crypto';
 import {AIMessageChunk} from '@langchain/core/messages';
 import {createCodaraRuntime} from '../codara/facade';
 import type {Codara} from '../codara/facade';
-import type {CodaraRuntimeEvent} from '../engine/events/runtime-events';
-import type {AgentStreamOutput, AgentStreamCustomChunk} from '../engine/agent/models/agent';
+import type {CodaraRuntimeEvent} from '@observability/events';
+import type {AgentStreamOutput, AgentStreamCustomChunk} from '@core/agent';
 import {TypedEmitter} from './event-emitter';
 import type {BusClientInfo, BusConfig, BusEvent, BusRequest, ClientId} from './types';
 
@@ -49,7 +49,10 @@ export class CodaraBus {
           type: 'runtime_event',
           sessionId: event.sessionId,
           kind: event.kind,
+          phase: event.phase,
+          status: event.status,
           label: event.label,
+          detail: event.detail,
         });
       },
     );
@@ -317,7 +320,7 @@ export class CodaraBus {
             state?: {pendingPause?: unknown};
           } | undefined;
 
-          // Emit paused if HIL is active.
+          // Emit paused if HIL is active — don't emit 'done' since session is paused, not finished.
           if (result?.state?.pendingPause) {
             const pause = result.state.pendingPause as {
               review?: {allowedDecisions?: unknown[]};
@@ -329,6 +332,7 @@ export class CodaraBus {
               request: result.state.pendingPause,
               actions: pause.review?.allowedDecisions ?? [],
             });
+            break;
           }
 
           this.events.emit({type: 'done', sessionId, requestId});

@@ -24,11 +24,13 @@ import {
 // ─── Enum Schemas ────────────────────────────────────────────────────
 
 describe('TeamStatusSchema', () => {
-  const validValues = ['created', 'spawning', 'running', 'paused', 'completing', 'completed', 'failed', 'archived'];
+  const validValues = ['created', 'spawning', 'running', 'paused', 'completing', 'completed', 'failed', 'archived'] as const;
 
-  test.each(validValues)('accepts "%s"', (v) => {
-    expect(TeamStatusSchema.parse(v)).toBe(v);
-  });
+  for (const v of validValues) {
+    test(`accepts "${v}"`, () => {
+      expect(TeamStatusSchema.parse(v)).toBe(v);
+    });
+  }
 
   test('rejects invalid value', () => {
     expect(() => TeamStatusSchema.parse('unknown')).toThrow();
@@ -36,9 +38,11 @@ describe('TeamStatusSchema', () => {
 });
 
 describe('MemberRoleSchema', () => {
-  test.each(['leader', 'worker'])('accepts "%s"', (v) => {
-    expect(MemberRoleSchema.parse(v)).toBe(v);
-  });
+  for (const v of ['leader', 'worker'] as const) {
+    test(`accepts "${v}"`, () => {
+      expect(MemberRoleSchema.parse(v)).toBe(v);
+    });
+  }
 
   test('rejects invalid value', () => {
     expect(() => MemberRoleSchema.parse('admin')).toThrow();
@@ -50,11 +54,13 @@ describe('MemberRoleSchema', () => {
 });
 
 describe('MemberStatusSchema', () => {
-  const validValues = ['initializing', 'idle', 'working', 'paused', 'disconnected', 'leaving', 'terminated'];
+  const validValues = ['initializing', 'idle', 'working', 'paused', 'disconnected', 'leaving', 'terminated'] as const;
 
-  test.each(validValues)('accepts "%s"', (v) => {
-    expect(MemberStatusSchema.parse(v)).toBe(v);
-  });
+  for (const v of validValues) {
+    test(`accepts "${v}"`, () => {
+      expect(MemberStatusSchema.parse(v)).toBe(v);
+    });
+  }
 
   test('rejects invalid value', () => {
     expect(() => MemberStatusSchema.parse('active')).toThrow();
@@ -62,9 +68,11 @@ describe('MemberStatusSchema', () => {
 });
 
 describe('JobStatusSchema', () => {
-  test.each(['planned', 'ready', 'in_progress', 'review', 'done', 'failed'])('accepts "%s"', (v) => {
-    expect(JobStatusSchema.parse(v)).toBe(v);
-  });
+  for (const v of ['planned', 'ready', 'in_progress', 'review', 'done', 'failed'] as const) {
+    test(`accepts "${v}"`, () => {
+      expect(JobStatusSchema.parse(v)).toBe(v);
+    });
+  }
 
   test('rejects invalid value', () => {
     expect(() => JobStatusSchema.parse('cancelled')).toThrow();
@@ -76,11 +84,13 @@ describe('TeamMessageTypeSchema', () => {
     'message', 'job_assigned', 'job_submitted', 'job_reviewed', 'job_completed',
     'question', 'answer', 'code_review', 'merge_request', 'merge_conflict',
     'status_update', 'shutdown_request', 'shutdown_response', 'heartbeat',
-  ];
+  ] as const;
 
-  test.each(validValues)('accepts "%s"', (v) => {
-    expect(TeamMessageTypeSchema.parse(v)).toBe(v);
-  });
+  for (const v of validValues) {
+    test(`accepts "${v}"`, () => {
+      expect(TeamMessageTypeSchema.parse(v)).toBe(v);
+    });
+  }
 
   test('rejects invalid value', () => {
     expect(() => TeamMessageTypeSchema.parse('ping')).toThrow();

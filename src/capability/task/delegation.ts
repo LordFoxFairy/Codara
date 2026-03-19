@@ -10,16 +10,16 @@ import {
   type PauseRequest,
   type ResumePayload,
   type ToolErrorHandler,
-} from '@engine/agent/models/agent';
-import type {AgentResult, AgentStreamOutput} from '@engine/agent/models/agent';
-import type {BootstrapAgentOptions} from '@engine/agent/bootstrap';
-import {bootstrapAgent, resolveModel} from '@engine/agent/bootstrap';
-import {createMiddleware, type BaseMiddleware} from '@engine/pipeline/types';
-import type {ChildToolActivityCallback} from '@engine/events/runtime-events';
-import type {HILToolMessagePayload} from '@engine/pipeline/hil';
-import type {ExecutionContextMetadata} from '@engine/pipeline/types';
-import type {AgentCheckpointer} from '@engine/checkpoint/agent';
-import type {AgentLifecycleHooks} from '@engine/hook/types';
+} from '@core/agent/models/agent';
+import type {AgentResult, AgentStreamOutput} from '@core/agent/models/agent';
+import type {BootstrapAgentOptions} from '@core/agent/bootstrap';
+import {bootstrapAgent, resolveModel} from '@core/agent/bootstrap';
+import {createMiddleware, type BaseMiddleware} from '@core/pipeline/types';
+import type {ChildToolActivityCallback} from '@observability/events';
+import type {HILToolMessagePayload} from '@core/middleware/hil';
+import type {ExecutionContextMetadata} from '@core/pipeline/types';
+import type {AgentCheckpointer} from '@durability/checkpoint/agent';
+import type {AgentLifecycleHooks} from '@observability/hook/types';
 import {deepClone} from '@shared/clone';
 import {formatToolSummary} from '@shared/tool-display';
 import {readLatestAssistantText} from '@shared/messages';
@@ -114,8 +114,6 @@ interface DelegatedChildInput {
   profileTools?: StructuredToolInterface[];
   profileSystemPrompt?: string;
   resume?: DelegatedResumeState;
-  /** 当前委托深度（0 = 主 agent）。 */
-  delegationDepth?: number;
 }
 
 interface ParentPauseContext {
@@ -125,21 +123,11 @@ interface ParentPauseContext {
   maxTurns?: number;
 }
 
-export const MAX_DELEGATION_DEPTH = 1;
-
 /**
- * 校验委托深度是否在允许范围内。
- * @throws 超过 MAX_DELEGATION_DEPTH 时抛出错误。
+ * Delegation depth protection is handled by `resolveDelegatedAgentTools()` which
+ * physically removes all `isDelegationTool`-marked tools from child agents.
+ * No depth counter is needed — subagents simply cannot access delegation tools.
  */
-export function assertDelegationDepth(depth: number | undefined): void {
-  const effective = depth ?? 0;
-  if (effective >= MAX_DELEGATION_DEPTH) {
-    throw new Error(
-      `Delegation depth limit reached (${effective}/${MAX_DELEGATION_DEPTH}). ` +
-      'Subagents cannot delegate further to prevent infinite recursion.',
-    );
-  }
-}
 
 const DELEGATION_TOOL = Symbol.for('codara.tasks.delegation.tool');
 
@@ -147,7 +135,6 @@ export async function runDelegatedAgent(
   options: DelegatedAgentOptions,
   input: DelegatedChildInput,
 ): Promise<ToolMessage> {
-  assertDelegationDepth(input.delegationDepth);
   const childOptions = await buildDelegatedChildOptions(options, input);
   const result = await runDelegatedChild(childOptions, input);
 
@@ -270,16 +257,17 @@ async function runDelegatedChild(
   childOptions: BootstrapAgentOptions,
   input: DelegatedChildInput,
 ) {
+  const childConfig = {
+    ...(input.maxTurns ? {recursionLimit: input.maxTurns} : {}),
+  };
+
   if (input.resume) {
-    return resumeDelegatedChild(childOptions, input.resume, input.maxTurns);
+    return resumeDelegatedChild(childOptions, input.resume, childConfig);
   }
 
   const child = await bootstrapAgent(childOptions);
   const messages = createDelegatedAgentInput(input.prompt);
-  return consumeAgentStream(child.stream(
-    {messages},
-    {...(input.maxTurns ? {recursionLimit: input.maxTurns} : {})},
-  ));
+  return consumeAgentStream(child.stream({messages}, childConfig));
 }
 
 function resolveDelegatedAgentTools(
@@ -294,7 +282,7 @@ function resolveDelegatedAgentTools(
 async function resumeDelegatedChild(
   childOptions: BootstrapAgentOptions,
   resume: DelegatedResumeState,
-  maxTurns: number | undefined,
+  childConfig: Record<string, unknown>,
 ) {
   const checkpoint = await childOptions.checkpointer?.getLatest(resume.childSessionId);
   const child = await bootstrapAgent({
@@ -305,7 +293,7 @@ async function resumeDelegatedChild(
 
   return consumeAgentStream(child.resumeStream(
     resume.payload,
-    {resumeMode: 'tool', ...(maxTurns ? {recursionLimit: maxTurns} : {})},
+    {resumeMode: 'tool', ...childConfig},
   ));
 }
 

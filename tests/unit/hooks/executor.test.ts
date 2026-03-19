@@ -1,6 +1,6 @@
 import {describe, expect, test} from 'bun:test';
-import {CommandExecutionStrategy, PromptExecutionStrategy, createHookExecutor} from '@engine/hook/executor';
-import type {HookDefinition, HookContextBase} from '@engine/hook/types';
+import {CommandExecutionStrategy, PromptExecutionStrategy, createHookExecutor} from '@observability/hook/executor';
+import type {HookDefinition, HookContextBase} from '@observability/hook/types';
 
 const baseContext: HookContextBase = {
   sessionId: 'test-session',
@@ -84,6 +84,7 @@ describe('createHookExecutor', () => {
 
   test('returns PromptExecutionStrategy for prompt type', () => {
     const hook: HookDefinition = {type: 'prompt', prompt: 'test', timeout: 5000};
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const mockCreateModel = () => ({} as any);
     const executor = createHookExecutor(hook, {projectRoot: '/tmp', createModel: mockCreateModel});
     expect(executor).toBeInstanceOf(PromptExecutionStrategy);

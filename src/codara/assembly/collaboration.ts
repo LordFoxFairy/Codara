@@ -1,9 +1,9 @@
-import type {BaseMiddleware} from '@engine/pipeline';
-import {createAskUserQuestionMiddleware, createBudgetMiddleware, createHILMiddleware, type HILMiddlewareOptions} from '@engine/pipeline';
-import {createChannelHILOptions} from '@engine/channel';
-import {createMiddleware} from '@engine/pipeline/types';
+import type {BaseMiddleware} from '@core/pipeline/types';
+import {createAskUserQuestionMiddleware, createBudgetMiddleware, createHILMiddleware, type HILMiddlewareOptions} from '@core/middleware';
+import {createChannelHILOptions} from '@integration/channel';
+import {createMiddleware} from '@core/pipeline/types';
 import {formatToolSummary} from '@shared/tool-display';
-import {createPermissionMiddleware} from '@engine/pipeline/permission';
+import {createPermissionMiddleware} from '@core/middleware/permission';
 import {TeamRegistry} from '@capability/team/coordination/team-registry';
 import {TeamRuntime} from '@capability/team/runtime/team-runtime';
 import {MemorySharedState} from '@capability/team/shared-state';
@@ -14,9 +14,9 @@ import type {
   MemberSession,
   MemberSessionOptions,
 } from '@capability/team/runtime/member-runner';
-import {bootstrapAgent} from '@engine/agent/bootstrap';
+import {bootstrapAgent} from '@core/agent/bootstrap';
 import {TeamPersistence} from '@capability/team/persistence';
-import {createBuiltinTools} from '@engine/tool';
+import {createBuiltinTools} from '@integration/tool';
 import type {CodaraRuntimeOptions, TeamQuerySummary, TeamQueryDetail} from '../types';
 import type {CodaraModelCatalog} from './runtime';
 
@@ -39,16 +39,22 @@ export async function assembleTeamSystem(input: TeamSystemAssemblyInput): Promis
   const teamRegistry = new TeamRegistry();
   const sharedState = new MemorySharedState();
 
-  let teamRuntime!: TeamRuntime;
+  // eslint-disable-next-line prefer-const -- declared before closures that read it, assigned later
+  let _teamRuntime: TeamRuntime | undefined;
+  const getTeamRuntime = (): TeamRuntime => {
+    if (!_teamRuntime) throw new Error('TeamRuntime not yet initialized');
+    return _teamRuntime;
+  };
 
   const teamSessionFactory = (memberOptions: MemberSessionOptions): MemberSession => {
     const teamToolContext = {
       teamId: memberOptions.teamId,
       memberId: memberOptions.memberId,
       registry: teamRegistry,
-      transport: teamRuntime.getTransport(memberOptions.teamId)!,
-      emitEvent: teamRuntime.createEmitEvent(memberOptions.teamId),
+      transport: getTeamRuntime().getTransport(memberOptions.teamId)!,
+      emitEvent: getTeamRuntime().createEmitEvent(memberOptions.teamId),
       projectRoot,
+      runtime: getTeamRuntime(),
     };
 
     const baseDevTools = createBuiltinTools({
@@ -86,7 +92,7 @@ export async function assembleTeamSystem(input: TeamSystemAssemblyInput): Promis
 
     memberMiddleware.push(createBudgetMiddleware());
 
-    let agentReady: import('@engine/agent/models/agent').Agent | undefined;
+    let agentReady: import('@core/agent/models/agent').Agent | undefined;
 
     const ensureAgent = async () => {
       if (agentReady) {
@@ -173,7 +179,7 @@ export async function assembleTeamSystem(input: TeamSystemAssemblyInput): Promis
 
   const teamPersistence = new TeamPersistence(codaraPath);
 
-  teamRuntime = new TeamRuntime({
+  _teamRuntime = new TeamRuntime({
     registry: teamRegistry,
     projectRoot,
     createSession: teamSessionFactory,
@@ -200,6 +206,7 @@ export async function assembleTeamSystem(input: TeamSystemAssemblyInput): Promis
     // Recovery is best-effort; a clean start is acceptable.
   }
 
+  const teamRuntime = _teamRuntime;
   return {teamRegistry, teamRuntime, sharedState};
 }
 

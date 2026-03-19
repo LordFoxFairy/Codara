@@ -20,9 +20,9 @@ export const rewindCommand: CodaraCommandDefinition = {
     let removed = 0;
     let i = messages.length - 1;
     while (i >= 0 && removed < n) {
-      while (i >= 0 && messages[i]!._getType() === 'tool') i--;
-      if (i >= 0 && messages[i]!._getType() === 'ai') i--;
-      if (i >= 0 && messages[i]!._getType() === 'human') i--;
+      while (i >= 0 && messages[i]!.type === 'tool') i--;
+      if (i >= 0 && messages[i]!.type === 'ai') i--;
+      if (i >= 0 && messages[i]!.type === 'human') i--;
       removed++;
     }
 
@@ -33,8 +33,8 @@ export const rewindCommand: CodaraCommandDefinition = {
       return {ok: true, command: command.name, output: 'Nothing to rewind.'};
     }
 
-    if ('rewind' in agent && typeof (agent as any).rewind === 'function') {
-      await (agent as any).rewind(remainingCount);
+    if ('rewind' in agent && typeof (agent as unknown as Record<string, unknown>).rewind === 'function') {
+      await (agent as unknown as {rewind: (count: number) => Promise<void>}).rewind(remainingCount);
       return {
         ok: true,
         command: command.name,

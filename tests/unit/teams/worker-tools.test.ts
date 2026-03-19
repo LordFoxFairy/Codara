@@ -14,7 +14,6 @@ function makeMember(overrides: Partial<TeamMember> & {memberId: string; teamId: 
     name: overrides.memberId,
     status: 'idle',
     sessionId: `sess_${overrides.memberId}`,
-    mode: 'local',
     joinedAt: new Date().toISOString(),
     ...overrides,
   };

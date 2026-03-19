@@ -1,16 +1,16 @@
-import type {AgentContextPreparer} from '@engine/agent';
+import type {AgentContextPreparer} from '@core/agent';
 import {FileSystemSkillStore, type SkillStore} from '@capability/skill';
 import {
   applyPreparedInstructionContext,
   buildBaseSystemMessage,
-} from '@infra/context/session-bundle/base-system-message';
+} from '@context/session-bundle/base-system-message';
 import {
   createAutoMemoryRuntime,
   type AutoMemoryRuntime,
-} from '@infra/context/memory/auto-memory';
-import {resolveWorkspaceRoot} from '@infra/config/workspace';
-import type {GuidelinesSource} from '@infra/context/instructions/guidelines';
-import type {PromptSource} from '@infra/context/prompts/prompt-source';
+} from '@context/memory/auto-memory';
+import {resolveWorkspaceRoot} from '@config/workspace';
+import type {GuidelinesSource} from '@context/instructions/guidelines';
+import type {PromptSource} from '@context/prompts/prompt-source';
 import type {CodaraOptions} from '../types';
 
 export function resolveCodaraSkills(

@@ -2,14 +2,15 @@ import {describe, expect, test, beforeAll, afterAll} from 'bun:test';
 import {mkdtemp, rm, mkdir} from 'node:fs/promises';
 import {tmpdir} from 'node:os';
 import path from 'node:path';
-import {AIMessage, ToolMessage, type ToolCall} from '@langchain/core/messages';
+import {AIMessage, type ToolCall} from '@langchain/core/messages';
+import type {BaseMessage} from '@langchain/core/messages';
 import type {BaseChatModel} from '@langchain/core/language_models/chat_models';
-import type {StructuredToolInterface, BaseMessage} from '@langchain/core/tools';
+import type {StructuredToolInterface} from '@langchain/core/tools';
 import {tool} from '@langchain/core/tools';
 import {z} from 'zod';
-import {createCodaraRuntime, type Codara} from '@/index';
+import {createCodaraRuntime} from '@/index';
 import {createTaskTool} from '@capability/task/middleware';
-import type {CodaraRuntimeEvent} from '@engine/events/runtime-events';
+import type {CodaraRuntimeEvent} from '@observability/events';
 
 /**
  * Pipeline integration test: Sub-agent Activity Display

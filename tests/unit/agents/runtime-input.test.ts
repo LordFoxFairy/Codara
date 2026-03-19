@@ -5,8 +5,8 @@ import {
   mergeContext,
   normalizeAgentInput,
   readLatestPause,
-} from '@engine/agent';
-import type {HILPauseRequest} from '@engine/pipeline/hil';
+} from '@core/agent';
+import type {HILPauseRequest} from '@core/middleware/hil';
 
 describe('agent runtime input helpers', () => {
   it('should normalize string and messages input into message arrays', () => {

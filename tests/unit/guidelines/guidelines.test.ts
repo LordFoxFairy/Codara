@@ -2,7 +2,7 @@ import {describe, expect, it} from 'bun:test';
 import {mkdir, mkdtemp, writeFile} from 'node:fs/promises';
 import path from 'node:path';
 import {tmpdir} from 'node:os';
-import {createCodaraGuidelinesSource} from '@infra/context/instructions/guidelines';
+import {createCodaraGuidelinesSource} from '@context/instructions/guidelines';
 
 describe('AGENTS guidelines', () => {
   it('init loads only global + user-project + project root (not subdirectories)', async () => {

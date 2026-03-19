@@ -1,5 +1,5 @@
 import { useCallback, useRef, useState } from "react";
-import type { Message, PauseRequest, StreamStatus, ToolCall } from "../types";
+import type { Message, PauseRequest, RuntimeEvent, StreamStatus, ToolCall } from "../types";
 
 import { API_BASE } from "../config";
 
@@ -67,6 +67,7 @@ export function useCodara({ sessionId }: UseCodaraOptions) {
   const [status, setStatus] = useState<StreamStatus>("idle");
   const [error, setError] = useState<string | null>(null);
   const [pauseRequest, setPauseRequest] = useState<PauseRequest | null>(null);
+  const [runtimeEvent, setRuntimeEvent] = useState<RuntimeEvent | null>(null);
   const abortRef = useRef<AbortController | null>(null);
 
   const isStreaming = status === "streaming" || status === "thinking";
@@ -77,6 +78,7 @@ export function useCodara({ sessionId }: UseCodaraOptions) {
 
       setError(null);
       setPauseRequest(null);
+      setRuntimeEvent(null);
 
       const userMessage: Message = {
         id: generateId(),
@@ -128,7 +130,7 @@ export function useCodara({ sessionId }: UseCodaraOptions) {
           buffer = remaining;
 
           for (const event of events) {
-            processEvent(event, assistantId, setMessages, setStatus, setError, setPauseRequest);
+            processEvent(event, assistantId, setMessages, setStatus, setError, setPauseRequest, setRuntimeEvent);
           }
         }
 
@@ -136,7 +138,7 @@ export function useCodara({ sessionId }: UseCodaraOptions) {
         if (buffer.trim()) {
           const { events } = parseSSEChunk(buffer + "\n\n");
           for (const event of events) {
-            processEvent(event, assistantId, setMessages, setStatus, setError, setPauseRequest);
+            processEvent(event, assistantId, setMessages, setStatus, setError, setPauseRequest, setRuntimeEvent);
           }
         }
 
@@ -167,17 +169,71 @@ export function useCodara({ sessionId }: UseCodaraOptions) {
       setPauseRequest(null);
       setStatus("streaming");
 
+      // Create an assistant message to accumulate the response after resume.
+      const assistantId = generateId();
+      const assistantMessage: Message = {
+        id: assistantId,
+        role: "assistant",
+        content: "",
+        thinking: "",
+        toolCalls: [],
+        timestamp: Date.now(),
+      };
+      setMessages((prev) => [...prev, assistantMessage]);
+
+      const controller = new AbortController();
+      abortRef.current = controller;
+
       try {
-        await fetch(`${API_BASE}/api/resume`, {
+        const response = await fetch(`${API_BASE}/api/resume`, {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({ sessionId, action }),
+          signal: controller.signal,
         });
-        setStatus("idle");
+
+        if (!response.ok) {
+          throw new Error(`Server responded with ${response.status}`);
+        }
+
+        const reader = response.body?.getReader();
+        if (!reader) throw new Error("No response body");
+
+        const decoder = new TextDecoder();
+        let buffer = "";
+
+        while (true) {
+          const { done, value } = await reader.read();
+          if (done) break;
+
+          buffer += decoder.decode(value, { stream: true });
+          const { events, remaining } = parseSSEChunk(buffer);
+          buffer = remaining;
+
+          for (const event of events) {
+            processEvent(event, assistantId, setMessages, setStatus, setError, setPauseRequest, setRuntimeEvent);
+          }
+        }
+
+        // Process any remaining buffer
+        if (buffer.trim()) {
+          const { events } = parseSSEChunk(buffer + "\n\n");
+          for (const event of events) {
+            processEvent(event, assistantId, setMessages, setStatus, setError, setPauseRequest, setRuntimeEvent);
+          }
+        }
+
+        setStatus((prev) => (prev === "paused" ? "paused" : "idle"));
       } catch (err) {
+        if ((err as Error).name === "AbortError") {
+          setStatus("idle");
+          return;
+        }
         const message = err instanceof Error ? err.message : "Unknown error";
         setError(message);
         setStatus("idle");
+      } finally {
+        abortRef.current = null;
       }
     },
     [sessionId],
@@ -187,6 +243,7 @@ export function useCodara({ sessionId }: UseCodaraOptions) {
     setMessages([]);
     setError(null);
     setPauseRequest(null);
+    setRuntimeEvent(null);
     setStatus("idle");
   }, []);
 
@@ -203,6 +260,7 @@ export function useCodara({ sessionId }: UseCodaraOptions) {
     isStreaming,
     error,
     pauseRequest,
+    runtimeEvent,
     sendMessage,
     stopStreaming,
     resumePause,
@@ -218,6 +276,7 @@ function processEvent(
   setStatus: React.Dispatch<React.SetStateAction<StreamStatus>>,
   setError: React.Dispatch<React.SetStateAction<string | null>>,
   setPauseRequest: React.Dispatch<React.SetStateAction<PauseRequest | null>>,
+  setRuntimeEvent: React.Dispatch<React.SetStateAction<RuntimeEvent | null>>,
 ) {
   switch (event.type) {
     case "token": {
@@ -261,12 +320,21 @@ function processEvent(
       break;
     }
 
-    case "runtime_event":
-      // Status updates, can be used for UI indicators later
+    case "runtime_event": {
+      const re: RuntimeEvent = {
+        kind: event.data.kind as RuntimeEvent["kind"],
+        phase: event.data.phase as RuntimeEvent["phase"],
+        status: event.data.status as RuntimeEvent["status"],
+        label: (event.data.label as string) ?? "",
+        detail: event.data.detail as string | undefined,
+      };
+      setRuntimeEvent(re);
       setStatus("streaming");
       break;
+    }
 
     case "done":
+      setRuntimeEvent(null);
       setStatus("idle");
       break;
 

@@ -11,7 +11,7 @@ import type {TeamMember} from '@capability/team/coordination/types';
 // ─── Mock base tools ────────────────────────────────────────────────
 
 const mockBaseTool = (name: string) =>
-  ({name, description: name, schema: z.object({}), invoke: async () => ''}) as any;
+  ({name, description: name, schema: z.object({}), invoke: async () => ''}) as unknown as import('@langchain/core/tools').StructuredToolInterface;
 
 const baseTools = [
   mockBaseTool('read_file'),
@@ -30,7 +30,6 @@ function makeMember(overrides: Partial<TeamMember> & {memberId: string; teamId: 
     name: overrides.memberId,
     status: 'idle',
     sessionId: `sess_${overrides.memberId}`,
-    mode: 'local',
     joinedAt: new Date().toISOString(),
     ...overrides,
   };

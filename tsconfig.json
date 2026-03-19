@@ -16,12 +16,17 @@
     "baseUrl": ".",
     "paths": {
       "@/*": ["src/*"],
-      "@engine/*": ["src/engine/*"],
       "@capability/*": ["src/capability/*"],
-      "@infra/*": ["src/infra/*"],
       "@shared/*": ["src/shared/*"],
       "@codara/*": ["src/codara/*"],
-      "@cli/*": ["src/cli/*"]
+      "@cli/*": ["src/cli/*"],
+      "@core/*": ["src/core/*"],
+      "@durability/*": ["src/durability/*"],
+      "@observability/*": ["src/observability/*"],
+      "@integration/*": ["src/integration/*"],
+      "@context/*": ["src/context/*"],
+      "@config/*": ["src/config/*"],
+      "@gateway/*": ["src/gateway/*"]
     }
   },
   "include": ["src"]

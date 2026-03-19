@@ -1,4 +1,4 @@
-import { describe, test, expect, beforeEach, afterEach } from 'bun:test';
+import { describe, test, expect, afterEach } from 'bun:test';
 import { MemberRunner } from '@capability/team/runtime/member-runner';
 import type { MemberRunnerOptions, MemberSession } from '@capability/team/runtime/member-runner';
 import { TeamRegistry } from '@capability/team/coordination/team-registry';

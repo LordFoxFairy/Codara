@@ -5,7 +5,7 @@ import {
   hookSourcePriority,
   emptyInterceptResult,
   emptyNotifyResult,
-} from '@engine/hook/types';
+} from '@observability/hook/types';
 
 describe('hookDefinitionSchema', () => {
   test('validates command hook', () => {
