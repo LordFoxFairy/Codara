@@ -1,9 +1,4 @@
 import type {BaseMessage} from '@langchain/core/messages';
-<<<<<<<< HEAD:src/infra/context/session-bundle/base-system-message.ts
-import type {GuidelinesSource} from '@infra/context/instructions/guidelines';
-import type {PromptSource} from '@infra/context/prompts/prompt-source';
-import type {AutoMemorySource} from '@infra/context/memory/auto-memory';
-========
 import type {GuidelinesSource} from '@context/instructions/guidelines';
 import type {PromptSource} from '@context/prompts/prompt-source';
 import type {AutoMemorySource} from '@context/memory/auto-memory';
@@ -11,20 +6,11 @@ import {
   type SkillsRuntimeData,
   type SkillsSource,
 } from '@context/skills/contracts';
->>>>>>>> origin/main:src/context/session-bundle/base-system-message.ts
-import {
-  type SkillsRuntimeData,
-  type SkillsSource,
-} from '@infra/context/skills/contracts';
 import {
   formatSkillsList,
   formatSkillsLocations,
   SKILLS_SYSTEM_PROMPT,
-<<<<<<<< HEAD:src/infra/context/session-bundle/base-system-message.ts
-} from '@infra/context/prompts/skills-system-prompt';
-========
 } from '@context/prompts/skills-system-prompt';
->>>>>>>> origin/main:src/context/session-bundle/base-system-message.ts
 
 const BASE_SYSTEM_MESSAGE_KEY = 'codaraSystemMessage';
 

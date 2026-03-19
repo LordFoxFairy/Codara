@@ -1,11 +1,7 @@
 import {readFile, writeFile, stat} from 'node:fs/promises';
 import {StructuredTool} from '@langchain/core/tools';
 import {z} from 'zod';
-<<<<<<<< HEAD:src/engine/tool/builtin/edit.ts
-import {validatePath, formatError, countLines, countOccurrences, getErrorCode, getErrorMessage} from '@engine/tool/utils';
-========
 import {validatePath, formatError, countLines, countOccurrences, getErrorCode, getErrorMessage} from '@integration/tool/utils';
->>>>>>>> origin/main:src/integration/tool/builtin/edit.ts
 
 const MAX_FILE_SIZE = 10 * 1024 * 1024; // 10MB - consistent with read tool
 

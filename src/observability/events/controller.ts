@@ -5,95 +5,6 @@ import {
 } from '@core/pipeline/types';
 import {parseHILToolMessagePayload} from '@core/middleware/hil';
 import {readDelegatedAgentResult} from '@shared/delegation-result';
-<<<<<<<< HEAD:src/engine/events/runtime-events.ts
-import {TOOL_NAMES, formatToolSummary, readString} from '@shared/tool-display';
-
-export type CodaraRuntimeEventKind = 'turn' | 'model' | 'tool' | 'task' | 'hil' | 'command' | 'summary' | 'hook' | 'team';
-export type CodaraRuntimeEventPhase = 'start' | 'update' | 'end';
-export type CodaraRuntimeEventStatus = 'running' | 'done' | 'paused' | 'error';
-
-export interface CodaraRuntimeEvent {
-  id: string;
-  sessionId: string;
-  timestamp: string;
-  kind: CodaraRuntimeEventKind;
-  phase: CodaraRuntimeEventPhase;
-  status: CodaraRuntimeEventStatus;
-  label: string;
-  detail?: string;
-  parentId?: string;
-}
-
-export type CodaraRuntimeEventListener = (event: CodaraRuntimeEvent) => void;
-
-interface EmitRuntimeEventInput {
-  id?: string;
-  kind: CodaraRuntimeEventKind;
-  phase: CodaraRuntimeEventPhase;
-  status: CodaraRuntimeEventStatus;
-  label: string;
-  detail?: string;
-  parentId?: string;
-}
-
-function turnKey(context: BaseExecutionContext): string {
-  const execution = readExecutionMetadata(context);
-  return `${execution.runId}:${execution.turn}`;
-}
-
-function toolKey(context: ToolCallContext): string {
-  const execution = readExecutionMetadata(context);
-  return `${execution.runId}:${execution.turn}:${execution.toolCallId ?? context.toolCall.id ?? context.toolIndex}`;
-}
-
-function formatToolLabel(context: ToolCallContext): string {
-  const name = context.toolCall.name ?? 'tool';
-  const summary = formatToolSummary(name, context.toolCall.args);
-  return summary ? `${formatToolDisplayName(name)}(${summary})` : formatToolDisplayName(name);
-}
-
-// formatToolSummary is imported from @shared/tool-display
-
-function formatToolDisplayName(toolName: string): string {
-  switch (toolName) {
-    case TOOL_NAMES.BASH:
-      return 'Running Bash';
-    case TOOL_NAMES.READ_FILE:
-    case TOOL_NAMES.READ:
-      return 'Reading';
-    case TOOL_NAMES.WRITE_FILE:
-    case TOOL_NAMES.WRITE:
-      return 'Writing';
-    case TOOL_NAMES.EDIT_FILE:
-    case TOOL_NAMES.EDIT:
-      return 'Editing';
-    case TOOL_NAMES.FETCH_URL:
-    case TOOL_NAMES.FETCH:
-      return 'Fetching';
-    case TOOL_NAMES.WEB_SEARCH:
-    case TOOL_NAMES.SEARCH:
-      return 'Searching';
-    case TOOL_NAMES.TASK:
-      return 'Delegating task';
-    case TOOL_NAMES.TASK_CREATE:
-      return 'Creating task';
-    case TOOL_NAMES.TASK_UPDATE:
-      return 'Updating task';
-    case TOOL_NAMES.TASK_LIST:
-      return 'Listing tasks';
-    case TOOL_NAMES.ASK_USER:
-      return 'AskUserQuestion';
-    default:
-      return toolName;
-  }
-}
-
-// readString is imported from @shared/tool-display
-
-/** Callback for child agent tool activity — injected into delegated child middleware. */
-export type ChildToolActivityCallback = (info: {toolName: string; label: string}) => void;
-
-========
 import {TOOL_NAMES} from '@shared/tool-display';
 
 import type {
@@ -113,7 +24,6 @@ import {
   summarizePauseLabel,
 } from './formatters';
 
->>>>>>>> origin/main:src/observability/events/controller.ts
 /** Key used to store child activity callback in runtimeShared. */
 export const CHILD_ACTIVITY_CALLBACK_KEY = '__taskActivityCallback';
 

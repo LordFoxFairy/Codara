@@ -2,11 +2,7 @@ import {stat} from 'node:fs/promises';
 import path from 'node:path';
 import {StructuredTool} from '@langchain/core/tools';
 import {z} from 'zod';
-<<<<<<<< HEAD:src/engine/tool/builtin/glob.ts
-import {formatNoResults} from '@engine/tool/utils';
-========
 import {formatNoResults} from '@integration/tool/utils';
->>>>>>>> origin/main:src/integration/tool/builtin/glob.ts
 
 const RESULT_LIMIT = 200;
 const SCAN_LIMIT = 5000;

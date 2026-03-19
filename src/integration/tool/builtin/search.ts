@@ -1,10 +1,6 @@
 import {StructuredTool} from '@langchain/core/tools';
 import {z} from 'zod';
-<<<<<<<< HEAD:src/engine/tool/builtin/search.ts
-import {formatError, getErrorMessage} from '@engine/tool/utils';
-========
 import {formatError, getErrorMessage} from '@integration/tool/utils';
->>>>>>>> origin/main:src/integration/tool/builtin/search.ts
 
 const DEFAULT_MAX_RESULTS = 10;
 const MAX_MAX_RESULTS = 20;

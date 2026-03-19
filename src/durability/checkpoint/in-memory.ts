@@ -4,11 +4,7 @@ import type {
   Checkpointer,
   CompactOptions,
   PutCheckpointInput,
-<<<<<<<< HEAD:src/engine/checkpoint/in-memory.ts
-} from '@engine/checkpoint/types';
-========
 } from '@durability/checkpoint/types';
->>>>>>>> origin/main:src/durability/checkpoint/in-memory.ts
 import {deepClone} from '@shared/clone';
 
 interface MemoryCodec<T> {

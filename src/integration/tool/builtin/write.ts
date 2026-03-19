@@ -2,11 +2,7 @@ import {mkdir, writeFile} from 'node:fs/promises';
 import path from 'node:path';
 import {StructuredTool} from '@langchain/core/tools';
 import {z} from 'zod';
-<<<<<<<< HEAD:src/engine/tool/builtin/write.ts
-import {validatePath, formatError, countLines, getErrorCode, getErrorMessage} from '@engine/tool/utils';
-========
 import {validatePath, formatError, countLines, getErrorCode, getErrorMessage} from '@integration/tool/utils';
->>>>>>>> origin/main:src/integration/tool/builtin/write.ts
 
 const writeInputSchema = z.object({
     file_path: z.string().min(1)

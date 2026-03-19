@@ -1,10 +1,6 @@
 import {StructuredTool} from '@langchain/core/tools';
 import {z} from 'zod';
-<<<<<<<< HEAD:src/engine/tool/builtin/fetch.ts
-import {formatError, getErrorMessage} from '@engine/tool/utils';
-========
 import {formatError, getErrorMessage} from '@integration/tool/utils';
->>>>>>>> origin/main:src/integration/tool/builtin/fetch.ts
 
 const DEFAULT_TIMEOUT_MS = 15_000;
 const MAX_TIMEOUT_MS = 120_000;

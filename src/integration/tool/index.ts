@@ -27,13 +27,8 @@ export {
   createListWorktreesTool,
   createBuiltinTools,
   type BuiltinToolOptions,
-<<<<<<<< HEAD:src/engine/tool/index.ts
-} from '@engine/tool/builtin';
-export {filterToolsByReferences, normalizeToolReferenceName} from '@engine/tool/names';
-========
 } from '@integration/tool/builtin';
 export {filterToolsByReferences, normalizeToolReferenceName} from '@integration/tool/names';
->>>>>>>> origin/main:src/integration/tool/index.ts
 export {
   countLines,
   countOccurrences,
@@ -43,8 +38,4 @@ export {
   getErrorMessage,
   isNodeError,
   validatePath,
-<<<<<<<< HEAD:src/engine/tool/index.ts
-} from '@engine/tool/utils';
-========
 } from '@integration/tool/utils';
->>>>>>>> origin/main:src/integration/tool/index.ts

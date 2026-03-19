@@ -4,15 +4,9 @@ import {
   type BaseMessage,
 } from '@langchain/core/messages';
 import {z} from 'zod';
-<<<<<<<< HEAD:src/engine/checkpoint/agent.ts
-import {FileCheckpointer} from '@engine/checkpoint/file';
-import {InMemoryCheckpointer} from '@engine/checkpoint/in-memory';
-import type {CheckpointRecord, Checkpointer} from '@engine/checkpoint/types';
-========
 import {FileCheckpointer} from '@durability/checkpoint/file';
 import {InMemoryCheckpointer} from '@durability/checkpoint/in-memory';
 import type {CheckpointRecord, Checkpointer} from '@durability/checkpoint/types';
->>>>>>>> origin/main:src/durability/checkpoint/agent.ts
 import type {AgentType, PauseRequest} from '@shared/contracts/agent-types';
 import {deepClone} from '@shared/clone';
 

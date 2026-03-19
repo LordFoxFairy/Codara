@@ -3,11 +3,7 @@
 import {readFile} from 'node:fs/promises';
 import {StructuredTool} from '@langchain/core/tools';
 import {z} from 'zod';
-<<<<<<<< HEAD:src/engine/tool/extended/notebook.ts
-import {validatePath, formatError, getErrorCode, getErrorMessage} from '@engine/tool/utils';
-========
 import {validatePath, formatError, getErrorCode, getErrorMessage} from '@integration/tool/utils';
->>>>>>>> origin/main:src/integration/tool/extended/notebook.ts
 
 // ── Notebook JSON 类型 ──────────────────────────────────────────────────
 
