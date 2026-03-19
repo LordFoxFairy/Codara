@@ -11,18 +11,18 @@ interface FooterProps {
 export function describeFooter(layoutMode: CliLayoutMode, hasCommandOutput = false, hasActiveTeams = false): string {
   if (hasCommandOutput) {
     if (layoutMode === 'minimal') {
-      return 'Esc close  ·  ↑↓ scroll  ·  Enter send';
+      return 'Esc close | Up/Down scroll | Enter accept';
     }
-    return 'Esc close output  ·  ↑↓ scroll  ·  Enter send  ·  / commands';
+    return 'Esc close output | Up/Down scroll | Enter accept | / commands';
   }
 
   if (layoutMode === 'minimal') {
-    return 'Enter send  ·  ? shortcuts  ·  Ctrl+C exit';
+    return 'Enter send | / commands | Ctrl+C exit';
   }
 
-  const base = 'Enter send  ·  Ctrl+C exit  ·  / commands  ·  Ctrl+T tasks  ·  Ctrl+O expand';
+  const base = 'Enter send | / commands | Ctrl+T tasks | Ctrl+O expand | Ctrl+C exit';
   if (hasActiveTeams) {
-    return `${base}  ·  shift+↑/↓ select member`;
+    return `${base} | Shift+Up/Down member`;
   }
   return base;
 }

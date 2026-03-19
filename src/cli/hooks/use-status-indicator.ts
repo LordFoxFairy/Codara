@@ -3,7 +3,7 @@ import type {CodaraRuntimeEvent} from '@/index';
 import type {CliActiveTurn, CliRunState} from '../app/view-state';
 import {theme} from '../utils/theme';
 
-const BRAILLE_FRAMES = ['⠋', '⠙', '⠹', '⠸', '⠼', '⠴', '⠦', '⠧', '⠇', '⠏'] as const;
+const SPINNER_FRAMES = ['-', '\\', '|', '/'] as const;
 export const SPINNER_INTERVAL_MS = 80;
 
 export interface StatusIndicatorInput {
@@ -19,7 +19,7 @@ export interface StatusIndicatorModel {
 }
 
 function buildSpinnerBanner(label: string, frame: number): string {
-  const spinner = BRAILLE_FRAMES[((frame % BRAILLE_FRAMES.length) + BRAILLE_FRAMES.length) % BRAILLE_FRAMES.length];
+  const spinner = SPINNER_FRAMES[((frame % SPINNER_FRAMES.length) + SPINNER_FRAMES.length) % SPINNER_FRAMES.length];
   return `${spinner} ${label}`;
 }
 
@@ -42,13 +42,16 @@ export function useStatusIndicator(input: StatusIndicatorInput): StatusIndicator
 }
 
 function truncateLabel(label: string | undefined, maxLength = 60): string | undefined {
-  if (!label) return undefined;
-  // Take first line only, strip "Delegating " prefix
+  if (!label) {
+    return undefined;
+  }
+
   let text = label.split('\n')[0]!.trim();
   if (text.startsWith('Delegating ')) {
     text = text.slice('Delegating '.length);
   }
-  return text.length > maxLength ? `${text.slice(0, maxLength - 1)}…` : text;
+
+  return text.length > maxLength ? `${text.slice(0, maxLength - 3)}...` : text;
 }
 
 export function describeStatusIndicator(input: StatusIndicatorInput, frame = 0): StatusIndicatorModel {
@@ -74,11 +77,10 @@ export function describeStatusIndicator(input: StatusIndicatorInput, frame = 0):
       }
 
       if (activeEventLabel) {
-        // Status bar only shows short status word, not the full label
         const isTask = latestRuntimeEvent?.kind === 'task';
         const isTool = latestRuntimeEvent?.kind === 'tool';
         const statusWord = isTask ? 'delegating' : isTool ? activeEventLabel : activeEventLabel;
-        const shortStatus = statusWord.length > 30 ? `${statusWord.slice(0, 27)}…` : statusWord;
+        const shortStatus = statusWord.length > 30 ? `${statusWord.slice(0, 27)}...` : statusWord;
         return {
           banner: buildSpinnerBanner(activeEventLabel, frame),
           status: shortStatus,
@@ -104,7 +106,7 @@ export function describeStatusIndicator(input: StatusIndicatorInput, frame = 0):
     case 'paused': {
       const pausedLabel = truncateLabel(latestRuntimeEvent?.label);
       return {
-        banner: pausedLabel ? `⏺ ${pausedLabel}` : '⏺ Waiting for input',
+        banner: pausedLabel ? `[pause] ${pausedLabel}` : '[pause] Waiting for input',
         status: pausedLabel || 'Waiting',
         color: theme.status.paused,
       };
@@ -116,7 +118,7 @@ export function describeStatusIndicator(input: StatusIndicatorInput, frame = 0):
       };
     case 'error':
       return {
-        banner: '✕ Review the latest error',
+        banner: '[error] Review the latest error',
         status: 'Error',
         color: theme.status.error,
       };

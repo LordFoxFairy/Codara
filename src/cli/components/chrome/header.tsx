@@ -4,6 +4,7 @@ import type {CodaraRuntimeEvent, SessionState} from '@/index';
 import type {CliLayoutMode} from '../../app/layout-mode';
 import type {CliRunState} from '../../app/view-state';
 import {describeStatusIndicator} from '../../hooks/use-status-indicator';
+import {formatTokenCount} from '../../utils/format';
 
 export interface McpStatusSummary {
   connected: number;
@@ -26,8 +27,7 @@ export interface StatusBarModel {
   pathLine?: string;
 }
 
-import {formatTokenCount} from '../../utils/format';
-
+const STATUS_SEPARATOR = ' | ';
 
 export function describeStatusBar(props: StatusBarProps): StatusBarModel {
   const {layoutMode, session, cwd, modelAlias, runState, latestRuntimeEvent, mcpStatus, activeTeamCount} = props;
@@ -44,43 +44,39 @@ export function describeStatusBar(props: StatusBarProps): StatusBarModel {
     segments.push(`${messageCount} msgs`);
   }
 
-  // Active teams indicator
   if (activeTeamCount && activeTeamCount > 0) {
     segments.push(`${activeTeamCount} ${activeTeamCount === 1 ? 'team' : 'teams'}`);
   }
 
-  // MCP indicator: show when servers are configured
   if (mcpStatus && mcpStatus.total > 0) {
-    if (mcpStatus.connected === mcpStatus.total) {
-      segments.push(`MCP:${mcpStatus.total}`);
-    } else {
-      segments.push(`MCP:${mcpStatus.connected}/${mcpStatus.total}`);
-    }
+    segments.push(
+      mcpStatus.connected === mcpStatus.total
+        ? `MCP:${mcpStatus.total}`
+        : `MCP:${mcpStatus.connected}/${mcpStatus.total}`,
+    );
   }
 
-  // Context window usage: show full contextWindow as denominator (not available-after-output-reserve)
   if (contextWindow) {
     const used = formatTokenCount(contextWindow.estimatedInputTokens);
     const cap = formatTokenCount(contextWindow.maxInputTokens);
     const pct = Math.round(contextWindow.usagePercent);
-    const prefix = contextWindow.overBudget ? '⚠ ' : '';
+    const prefix = contextWindow.overBudget ? '!' : '';
     segments.push(`${prefix}${used}/${cap} ${pct}% ctx`);
   }
 
-  // Token consumption: ↓prompt ↑completion (total)
   if (usage && usage.totalTokens > 0) {
     const total = formatTokenCount(usage.totalTokens);
     if (isMinimal) {
       segments.push(`${total} tok`);
     } else {
-      segments.push(`↓${formatTokenCount(usage.promptTokens)} ↑${formatTokenCount(usage.completionTokens)} (${total})`);
+      segments.push(`in ${formatTokenCount(usage.promptTokens)} / out ${formatTokenCount(usage.completionTokens)} / ${total}`);
     }
   }
 
   segments.push(status.status.toLowerCase());
 
   return {
-    subtitle: segments.join('  ·  '),
+    subtitle: segments.join(STATUS_SEPARATOR),
     ...(!isMinimal ? {pathLine: cwd} : {}),
   };
 }
@@ -91,7 +87,7 @@ function shortenSessionId(value: string): string {
     return trimmed || 'unknown';
   }
 
-  return `${trimmed.slice(0, 8)}…${trimmed.slice(-4)}`;
+  return `${trimmed.slice(0, 8)}...${trimmed.slice(-4)}`;
 }
 
 export function StatusBar(props: StatusBarProps): React.JSX.Element {

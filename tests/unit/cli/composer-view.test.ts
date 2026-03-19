@@ -51,4 +51,36 @@ describe('cli composer viewport', () => {
 
     expect(viewport.lines.map(line => line.isCursorLine)).toEqual([false, true]);
   });
+
+  test('viewport should wrap against the actual available terminal width for pasted content', () => {
+    const state = createComposerState('abcdefghijklmnop', 16);
+    const viewport = buildComposerViewport(state, 6, undefined, 10);
+
+    expect(viewport.lines.map(line => `${line.beforeCursor}|${line.afterCursor}|${line.isCursorLine ? 'cursor' : 'plain'}`)).toEqual([
+      'abcdef||plain',
+      'ghijkl||plain',
+      'mnop||cursor',
+    ]);
+  });
+
+  test('cursor should move to the next wrapped segment at a soft-wrap boundary', () => {
+    const state = createComposerState('abcdefghijklmnop', 6);
+    const viewport = buildComposerViewport(state, 6, undefined, 10);
+
+    expect(viewport.lines.map(line => `${line.beforeCursor}|${line.afterCursor}|${line.isCursorLine ? 'cursor' : 'plain'}`)).toEqual([
+      'abcdef||plain',
+      '|ghijkl|cursor',
+      '|mnop|plain',
+    ]);
+  });
+
+  test('viewport should not render raw carriage returns from CRLF-pasted content', () => {
+    const viewport = buildComposerViewport(createComposerState('a\r\nb\r\nc'));
+
+    expect(viewport.lines.map(line => `${line.beforeCursor}|${line.afterCursor}`)).toEqual([
+      'a|',
+      'b|',
+      'c|',
+    ]);
+  });
 });

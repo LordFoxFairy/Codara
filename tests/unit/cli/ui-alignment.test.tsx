@@ -52,7 +52,7 @@ describe('UI alignment with Claude Code', () => {
       const frame = lastFrame()!;
       // Should contain subtitle metadata
       expect(frame).toContain('sonnet');
-      expect(frame).toContain('12345678…90ab');
+      expect(frame).toContain('12345678...90ab');
       expect(frame).toContain('5 msgs');
       expect(frame).toContain('/tmp/demo');
       // Should NOT contain title (lightweight mode)

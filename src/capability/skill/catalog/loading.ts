@@ -235,7 +235,7 @@ export function parseMarkdownDocument(
   }
 
   try {
-    const parsed = yaml.parse(match[1])
+    const parsed = yaml.parse(normalizeYamlNewlines(match[1]))
     if (!parsed) {
       return {
         frontmatter: {},
@@ -257,6 +257,10 @@ export function parseMarkdownDocument(
     console.warn(`Invalid YAML in ${skillPath}:`, error)
     return null
   }
+}
+
+function normalizeYamlNewlines(value: string): string {
+  return value.replace(/\r\n?/g, '\n')
 }
 
 function parseAllowedTools(rawTools: unknown): string[] {

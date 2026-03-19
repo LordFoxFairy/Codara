@@ -91,6 +91,32 @@ describe('FileSystemSkillStore', () => {
     expect(skills).toHaveLength(0)
   })
 
+  it('should parse frontmatter from CRLF skill files', async () => {
+    const root = await mkdtemp(path.join(tmpdir(), 'codara-skills-store-crlf-'))
+    const skillDir = path.join(root, 'brainstorming')
+    await mkdir(skillDir, {recursive: true})
+    await writeFile(
+      path.join(skillDir, 'SKILL.md'),
+      [
+        '---',
+        'name: brainstorming',
+        'description: "You MUST use this before any creative work - creating features, building components, adding functionality, or modifying behavior. Explores user intent, requirements and design before implementation."',
+        '---',
+        '',
+        '# Brainstorming',
+        '',
+      ].join('\r\n'),
+      'utf8'
+    )
+
+    const store = new FileSystemSkillStore({sources: [root], cacheTtlMs: 0})
+    const skills = await store.discover()
+
+    expect(skills).toHaveLength(1)
+    expect(skills[0]?.name).toBe('brainstorming')
+    expect(skills[0]?.description).toContain('Explores user intent')
+  })
+
   it('should always use real SKILL.md path instead of frontmatter path', async () => {
     const root = await mkdtemp(path.join(tmpdir(), 'codara-skills-store-path-'))
     const skillDir = path.join(root, 'path-skill')

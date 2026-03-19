@@ -1,4 +1,4 @@
-import React, {useCallback, useEffect, useState} from 'react';
+import React, {useCallback, useEffect, useMemo, useState} from 'react';
 import {Box, Static, Text, useApp} from 'ink';
 import type {Codara} from '@/index';
 import {CommandOutputPanel} from '../components/chrome/command-output-panel';
@@ -14,17 +14,17 @@ import {SolidifiedBlock} from '../components/conversation/solidified-block';
 import {TIPS} from '../hooks/use-rotating-tip';
 import {CompletionMenu} from '../components/prompt/completion-menu';
 import {PromptFrame} from '../components/prompt/prompt-frame';
+import {useCliPromptSurface} from '../hooks/use-cli-prompt-surface';
 import type {CliHilAutoAction} from './hil-review';
 import {resolveCliLayoutMode} from './layout-mode';
 import {useCliController} from './use-cli-controller';
 import {useActiveTasks} from '../hooks/use-active-tasks';
 import {useActiveTeams} from '../hooks/use-active-teams';
-import {useCommandCompletion} from '../hooks/use-command-completion';
 import {useHilInput} from '../hooks/use-hil-input';
-import {usePromptInput} from '../hooks/use-prompt-input';
 import {useSessionPicker} from '../hooks/use-session-picker';
 import {useSolidifiedTranscript} from '../hooks/use-solidified-transcript';
 import {useTerminalWidth} from '../hooks/use-terminal-width';
+import {useTeamPanelState} from '../hooks/use-team-panel-state';
 
 export interface CodaraCliAppProps {
   codara: Codara;
@@ -65,7 +65,7 @@ export function CodaraCliApp(props: CodaraCliAppProps): React.JSX.Element {
   } = props;
   const {exit} = useApp();
 
-  // Session picker for /resume without args
+  // /resume 不带参数时，会走这里弹会话选择器。
   const listSessionsForPicker = useCallback(
     () => codara.listSessions({sortBy: 'lastActivity', sortOrder: 'desc', limit: 10}),
     [codara],
@@ -97,53 +97,8 @@ export function CodaraCliApp(props: CodaraCliAppProps): React.JSX.Element {
   const layoutMode = resolveCliLayoutMode(terminalWidth);
   const activeTasks = useActiveTasks({runtimeEvents: shell.runtimeEvents});
   const activeTeams = useActiveTeams({runtimeEvents: shell.runtimeEvents});
-
-  // Periodic refresh so team member statuses update in real-time.
-  const [teamMembersVersion, setTeamMembersVersion] = useState(0);
-  useEffect(() => {
-    if (!activeTeams.hasActiveTeams) return;
-    const timer = setInterval(() => setTeamMembersVersion(v => v + 1), 1000);
-    return () => clearInterval(timer);
-  }, [activeTeams.hasActiveTeams]);
-
-  // Build team member map from the facade for TeamPanel inline display.
-  // ActiveTeam.teamId is the runtime event root UUID, not the registry ID.
-  // Look up by team name (getTeamDetail falls back to getTeamByName).
-  const teamMembers = React.useMemo(() => {
-    if (!activeTeams.hasActiveTeams) return undefined;
-    const map = new Map<string, Array<{name: string; role: string; status: string; currentJobId?: string; activity?: string}>>();
-    for (const team of activeTeams.activeTeams) {
-      // Try by name first, then by teamId from the event
-      const detail = codara.getTeamDetail(team.name) ?? codara.getTeamDetail(team.teamId);
-      if (detail) {
-        // Use the registry's name (authoritative) to fix display
-        if (detail.name && detail.name !== team.name) {
-          team.name = detail.name;
-        }
-        if (detail.goal && !team.goal) {
-          team.goal = detail.goal;
-        }
-        team.memberCount = detail.members.length;
-        if (detail.members.length > 0) {
-          map.set(team.teamId, detail.members.map(m => ({
-            name: m.name,
-            role: m.role,
-            status: m.status,
-            currentJobId: m.currentJobId,
-            activity: activeTeams.memberActivities.get(m.memberId),
-          })));
-        }
-      }
-    }
-    return map.size > 0 ? map : undefined;
-  }, [activeTeams.activeTeams, activeTeams.hasActiveTeams, activeTeams.memberActivities, codara, teamMembersVersion]);
-  const listCommands = React.useCallback(() => codara.listCommands(), [codara]);
-  const completion = useCommandCompletion({
-    text: shell.composer.text,
-    disabled: shell.runState.status === 'running',
-    listCommands,
-  });
-  const mcpStatus = React.useMemo(() => {
+  const teamPanelState = useTeamPanelState({codara, activeTeams});
+  const mcpStatus = useMemo(() => {
     const statuses = codara.getMcpStatus();
     if (statuses.length === 0) return undefined;
     return {
@@ -151,86 +106,47 @@ export function CodaraCliApp(props: CodaraCliAppProps): React.JSX.Element {
       total: statuses.length,
     };
   }, [codara]);
-  // Team member selection (shift+↑/↓)
-  const [selectedMemberIndex, setSelectedMemberIndex] = useState(-1);
-  const allTeamMembers = React.useMemo(() => {
-    if (!teamMembers) return [];
-    const members: Array<{teamId: string; name: string; role: string}> = [];
-    for (const [teamId, ms] of teamMembers) {
-      for (const m of ms) {
-        members.push({teamId, name: m.name, role: m.role});
-      }
-    }
-    return members;
-  }, [teamMembers]);
-  const selectedMemberName = selectedMemberIndex >= 0 && selectedMemberIndex < allTeamMembers.length
-    ? allTeamMembers[selectedMemberIndex]?.name
-    : undefined;
-  const handleSelectMemberUp = useCallback(() => {
-    if (allTeamMembers.length === 0) return;
-    setSelectedMemberIndex((prev) => prev <= 0 ? allTeamMembers.length - 1 : prev - 1);
-  }, [allTeamMembers.length]);
-  const handleSelectMemberDown = useCallback(() => {
-    if (allTeamMembers.length === 0) return;
-    setSelectedMemberIndex((prev) => prev >= allTeamMembers.length - 1 ? 0 : prev + 1);
-  }, [allTeamMembers.length]);
 
-  // Freeze tip and initial terminal width at mount time (for Static welcome)
+  // 这行只做一件事：把欢迎语固定住，别每次重渲染都换一句。
   const [frozenTip] = useState(() => TIPS[Math.floor(Math.random() * TIPS.length)]!);
 
   const hasInitialPrompt = Boolean(initialPrompt?.trim());
   const hasHilReview = Boolean(shell.hilReview);
-
-  // 输入监听挂在组装层；展示组件不直接感知键盘事件。
-  usePromptInput({
-    interactive: !hasHilReview && !sessionPicker.state.visible && !(autoExitOnSettledPrompt && hasInitialPrompt),
-    disabled: hasHilReview || sessionPicker.state.visible || shell.runState.status === 'running',
-    onInsertText: shell.insertText,
-    onInsertNewline: shell.insertNewline,
-    onBackspace: shell.backspace,
-    onMoveCursorLeft: shell.moveCursorLeft,
-    onMoveCursorRight: shell.moveCursorRight,
-    onMoveCursorUp: () => {
-      if (shell.commandOutput && !shell.composer.text.trim()) { shell.scrollCommandOutput(-1); return; }
-      if (completion.completion.visible) { completion.moveUp(); return; }
-      shell.moveCursorUp();
-    },
-    onMoveCursorDown: () => {
-      if (shell.commandOutput && !shell.composer.text.trim()) { shell.scrollCommandOutput(1); return; }
-      if (completion.completion.visible) { completion.moveDown(); return; }
-      shell.moveCursorDown();
-    },
-    onMoveCursorHome: shell.moveCursorHome,
-    onMoveCursorEnd: shell.moveCursorEnd,
-    onSubmit: () => {
-      if (completion.completion.visible) {
-        const accepted = completion.accept();
-        completion.dismiss();
-        if (accepted) {
-          // Use submitText to bypass stale closure on composer.text
-          shell.submitText(accepted);
-        }
-        return;
-      }
-      shell.submitDraft();
-    },
-    onExit: () => {
-      if (completion.completion.visible) { completion.dismiss(); return; }
-      if (shell.commandOutput) { shell.dismissCommandOutput(); return; }
-      exit();
-    },
-    onToggleTaskPanel: shell.toggleTaskPanel,
-    onToggleExpand: shell.toggleExpand,
-    onSelectMemberUp: handleSelectMemberUp,
-    onSelectMemberDown: handleSelectMemberDown,
-    onTab: () => {
-      if (completion.completion.visible) {
-        const accepted = completion.accept();
-        if (accepted) shell.replaceText(accepted);
-        completion.dismiss();
-        return;
-      }
-    },
+  const promptSurface = useCliPromptSurface({
+    codara,
+    composer: shell.composer,
+    hasDraftContent: shell.hasDraftContent,
+    hasConversation: shell.hasConversation,
+    hasHilReview,
+    sessionPickerVisible: sessionPicker.state.visible,
+    autoExitOnSettledPrompt,
+    hasInitialPrompt,
+    runStatus: shell.runState.status,
+    hasCommandOutput: Boolean(shell.commandOutput),
+    hasActiveTeams: activeTeams.hasActiveTeams,
+    selectedMemberName: teamPanelState.selectedMember?.name,
+    exit,
+    dismissCommandOutput: shell.dismissCommandOutput,
+    scrollCommandOutput: shell.scrollCommandOutput,
+    insertText: shell.insertText,
+    insertNewline: shell.insertNewline,
+    backspace: shell.backspace,
+    moveCursorLeft: shell.moveCursorLeft,
+    moveCursorRight: shell.moveCursorRight,
+    moveCursorUp: shell.moveCursorUp,
+    moveCursorDown: shell.moveCursorDown,
+    moveCursorHome: shell.moveCursorHome,
+    moveCursorEnd: shell.moveCursorEnd,
+    isBrowsingHistory: shell.isBrowsingHistory,
+    recallPreviousHistory: shell.recallPreviousHistory,
+    recallNextHistory: shell.recallNextHistory,
+    submitDraft: shell.submitDraft,
+    replaceText: shell.replaceText,
+    toggleTaskPanel: shell.toggleTaskPanel,
+    toggleExpand: shell.toggleExpand,
+    selectPreviousMember: teamPanelState.selectPreviousMember,
+    selectNextMember: teamPanelState.selectNextMember,
+    terminalWidth,
   });
 
   useHilInput({
@@ -278,107 +194,118 @@ export function CodaraCliApp(props: CodaraCliAppProps): React.JSX.Element {
   }, [autoExitOnSettledPrompt, exit, hasInitialPrompt, shell.hasConversation, shell.hilReview?.busy, shell.runState.status]);
 
   return (
-      <Box flexDirection="column" paddingX={1}>
-        {/* 固化区：渲染一次，永久留在滚动缓冲区 */}
-        <Static items={solidifiedItems}>
-          {(turn) => (
-            <SolidifiedBlock
-              key={turn.id}
-              turn={turn}
-              layoutMode={layoutMode}
-              cwd={cwd}
-              modelAlias={modelAlias}
-              tip={frozenTip}
+    <Box flexDirection="column" paddingX={1}>
+      {/* 固化区：渲染一次，永久留在滚动缓冲区 */}
+      <Static items={solidifiedItems}>
+        {(turn) => (
+          <SolidifiedBlock
+            key={turn.id}
+            turn={turn}
+            layoutMode={layoutMode}
+            cwd={cwd}
+            modelAlias={modelAlias}
+            tip={frozenTip}
+          />
+        )}
+      </Static>
+
+      {/* 动态区 */}
+      {activeItems.length > 0 && <ActiveTranscript items={activeItems} expandedAll={shell.expandedAll} />}
+
+      {/* 统一任务/团队面板，Ctrl+T 切换 */}
+      {shell.hasConversation && shell.taskPanelVisible && (
+        <>
+          {activeTasks.hasActiveTasks && (
+            <TaskPanel
+              tasks={activeTasks.tasks}
+              runningCount={activeTasks.runningCount}
+              doneCount={activeTasks.doneCount}
+              errorCount={activeTasks.errorCount}
             />
           )}
-        </Static>
+          {activeTeams.hasActiveTeams && (
+            <TeamPanel
+              teams={teamPanelState.teams}
+              runningCount={activeTeams.runningCount}
+              doneCount={activeTeams.doneCount}
+              errorCount={activeTeams.errorCount}
+              teamMembers={teamPanelState.teamMembers}
+            />
+          )}
+        </>
+      )}
 
-        {/* 动态区 */}
-        {activeItems.length > 0 && <ActiveTranscript items={activeItems} expandedAll={shell.expandedAll} />}
+      {/* HIL 内联显示在对话流下方，不替换整个界面 */}
+      {shell.hilReview && <HilPanel review={shell.hilReview} />}
 
-        {/* Unified Task/Team Panel (Ctrl+T toggle) */}
-        {shell.hasConversation && shell.taskPanelVisible && (
-          <>
-            {activeTasks.hasActiveTasks && (
-              <TaskPanel
-                tasks={activeTasks.tasks}
-                runningCount={activeTasks.runningCount}
-                doneCount={activeTasks.doneCount}
-                errorCount={activeTasks.errorCount}
-              />
-            )}
-            {activeTeams.hasActiveTeams && (
-              <TeamPanel
-                teams={activeTeams.activeTeams}
-                runningCount={activeTeams.runningCount}
-                doneCount={activeTeams.doneCount}
-                errorCount={activeTeams.errorCount}
-                teamMembers={teamMembers}
-              />
-            )}
-          </>
+      <>
+        {!shell.hilReview && (
+          <ActivityLine
+            runState={shell.runState}
+            activeTurn={shell.activeTurn}
+            latestRuntimeEvent={shell.latestRuntimeEvent}
+            sessionMetadata={shell.sessionState.metadata}
+          />
         )}
-
-        {/* HIL 内联显示在对话流下方（不替换整个界面） */}
-        {shell.hilReview && <HilPanel review={shell.hilReview} />}
-
-        {/* Activity / Prompt / Status — 始终渲染 */}
-        <>
-            {!shell.hilReview && (
-              <ActivityLine
-                runState={shell.runState}
-                activeTurn={shell.activeTurn}
-                latestRuntimeEvent={shell.latestRuntimeEvent}
-                sessionMetadata={shell.sessionState.metadata}
+        {sessionPicker.state.visible && (
+          <SessionPicker
+            sessions={sessionPicker.state.sessions}
+            loading={sessionPicker.state.loading}
+            selectedIndex={sessionPicker.state.selectedIndex}
+            onMoveUp={sessionPicker.moveUp}
+            onMoveDown={sessionPicker.moveDown}
+            onSelect={sessionPicker.select}
+            onCancel={sessionPicker.hide}
+          />
+        )}
+        {promptSurface.showCommandOutput && shell.commandOutput && (
+          <CommandOutputPanel
+            content={shell.commandOutput.content}
+            commandName={shell.commandOutput.commandName}
+            scrollOffset={shell.commandOutput.scrollOffset}
+          />
+        )}
+        {promptSurface.showPromptFrame && (
+          <Box flexDirection="column">
+            <Box flexGrow={1}>
+              <PromptFrame
+                composer={shell.composer}
+                hasDraftContent={shell.hasDraftContent}
+                collapsedPasteSummary={shell.collapsedPasteSummary}
+                cursorActivityVersion={shell.composerActivityVersion}
+                isRunning={shell.runState.status === 'running'}
+                placeholder={promptSurface.promptPlaceholder}
+                terminalWidth={terminalWidth}
               />
-            )}
-            {sessionPicker.state.visible && (
-              <SessionPicker
-                sessions={sessionPicker.state.sessions}
-                loading={sessionPicker.state.loading}
-                selectedIndex={sessionPicker.state.selectedIndex}
-                onMoveUp={sessionPicker.moveUp}
-                onMoveDown={sessionPicker.moveDown}
-                onSelect={sessionPicker.select}
-                onCancel={sessionPicker.hide}
-              />
-            )}
-            {shell.commandOutput && (
-              <CommandOutputPanel content={shell.commandOutput.content} commandName={shell.commandOutput.commandName} scrollOffset={shell.commandOutput.scrollOffset} />
-            )}
-            {!shell.commandOutput && !completion.completion.visible && !shell.hilReview && (
+            </Box>
+            <Box paddingLeft={2}>
+              <CompletionMenu completion={promptSurface.completion} />
+            </Box>
+            {promptSurface.showSelectedMember && promptSurface.selectedMemberName && (
               <Box>
-                <Box flexGrow={1}>
-                  <PromptFrame
-                    composer={shell.composer}
-                    cursorActivityVersion={shell.composerActivityVersion}
-                    isRunning={shell.runState.status === 'running'}
-                    placeholder={shell.hasConversation ? 'Reply to Codara...' : 'Ask Codara...'}
-                    terminalWidth={terminalWidth}
-                  />
-                </Box>
-                {selectedMemberName && activeTeams.hasActiveTeams && (
-                  <Box>
-                    <Text color="green" bold>@{selectedMemberName}</Text>
-                  </Box>
-                )}
+                <Text color="green" bold>@{promptSurface.selectedMemberName}</Text>
               </Box>
             )}
-            <CompletionMenu completion={completion.completion} />
-            {shell.hasConversation && (
-              <StatusBar
-                layoutMode={layoutMode}
-                session={shell.sessionState}
-                cwd={cwd}
-                modelAlias={modelAlias}
-                runState={shell.runState}
-                latestRuntimeEvent={shell.latestRuntimeEvent}
-                mcpStatus={mcpStatus}
-                activeTeamCount={activeTeams.runningCount > 0 ? activeTeams.runningCount : undefined}
-              />
-            )}
-            <Footer layoutMode={layoutMode} hasCommandOutput={Boolean(shell.commandOutput)} hasActiveTeams={activeTeams.runningCount > 0} />
-        </>
-      </Box>
+          </Box>
+        )}
+        {shell.hasConversation && (
+          <StatusBar
+            layoutMode={layoutMode}
+            session={shell.sessionState}
+            cwd={cwd}
+            modelAlias={modelAlias}
+            runState={shell.runState}
+            latestRuntimeEvent={shell.latestRuntimeEvent}
+            mcpStatus={mcpStatus}
+            activeTeamCount={activeTeams.runningCount > 0 ? activeTeams.runningCount : undefined}
+          />
+        )}
+        <Footer
+          layoutMode={layoutMode}
+          hasCommandOutput={promptSurface.showCommandOutput}
+          hasActiveTeams={activeTeams.runningCount > 0}
+        />
+      </>
+    </Box>
   );
 }
