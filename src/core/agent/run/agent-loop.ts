@@ -105,6 +105,23 @@ export function readLatestPause(messages: BaseMessage[]): PauseRequest | undefin
   }
 }
 
+function findPauseMessageIndex(messages: BaseMessage[], pause: PauseRequest): number {
+  for (let index = messages.length - 1; index >= 0; index -= 1) {
+    const message = messages[index];
+    if (!ToolMessage.isInstance(message)) {
+      continue;
+    }
+    const payload = parseHILToolMessagePayload(message.content);
+    if (payload?.type !== 'hil_pause') {
+      continue;
+    }
+    if (payload.request.id === pause.id) {
+      return index;
+    }
+  }
+  return -1;
+}
+
 export function injectResumePayload(
   context: AgentRuntimeContext | undefined,
   pause: PauseRequest,
@@ -362,6 +379,18 @@ export function createAgent(options: CreateAgentOptions): Agent {
     return runLoop(run, runtime, stream, 2);
   };
 
+  const prepareResumeRun = (
+    run: AgentRunContext,
+    pause: PauseRequest,
+  ): number => {
+    const pauseMessageIndex = findPauseMessageIndex(run.state.messages, pause);
+    if (pauseMessageIndex >= 0) {
+      run.state.messages.splice(pauseMessageIndex, 1);
+      return pauseMessageIndex;
+    }
+    return run.state.messages.length;
+  };
+
   const execute = async (
     input: AgentInput,
     config: AgentInvokeConfig,
@@ -413,9 +442,9 @@ export function createAgent(options: CreateAgentOptions): Agent {
     payload: ResumePayload,
     config: AgentResumeConfig,
   ): Promise<AgentResult> => {
-    const startIndex = state.messages.length;
     const pause = state.pendingPause as PauseRequest;
     const run = createResumeRun(pause, payload, config);
+    const startIndex = prepareResumeRun(run, pause);
     const lifecycle = enterRunningState();
 
     const preflightResult = await runPreflight(run, lifecycle, config, 'resume failed');
@@ -434,9 +463,9 @@ export function createAgent(options: CreateAgentOptions): Agent {
     payload: ResumePayload,
     config: AgentResumeStreamConfig,
   ): AsyncGenerator<AgentStreamOutput, AgentResult, void> {
-    const startIndex = state.messages.length;
     const pause = state.pendingPause as PauseRequest;
     const run = createResumeRun(pause, payload, config);
+    const startIndex = prepareResumeRun(run, pause);
     const lifecycle = enterRunningState();
 
     const preflightResult = await runPreflight(run, lifecycle, config, 'resume failed');

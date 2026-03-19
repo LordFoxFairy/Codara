@@ -25,7 +25,7 @@ describe('Worker Tools', () => {
   let emitter: TeamEventEmitter;
   let ctx: TeamToolContext;
   let teamId: string;
-  const leaderId = 'leader-1';
+  const leaderId = 'leader';
   const workerId = 'worker-1';
 
   beforeEach(() => {
@@ -36,7 +36,6 @@ describe('Worker Tools', () => {
     const team = registry.createTeam({name: 'test', goal: 'test goal'});
     teamId = team.teamId;
 
-    registry.registerMember(teamId, makeMember({memberId: leaderId, teamId, role: 'leader'}));
     registry.registerMember(teamId, makeMember({memberId: workerId, teamId, role: 'worker'}));
 
     transport.registerMember(leaderId);
@@ -168,5 +167,22 @@ describe('Worker Tools', () => {
     expect(msgs).toHaveLength(1);
     expect(msgs[0].type).toBe('question');
     expect(msgs[0].content).toBe('How should I handle errors?');
+  });
+
+  test('team_submit_job does not depend on a registry leader member', async () => {
+    const board = registry.getJobBoard(teamId);
+    const [job] = board.planJobs([{title: 'Task B', description: 'Do B'}]);
+    board.claimJob(job.id, workerId);
+
+    const tools = createWorkerTools(ctx);
+    const submitTool = tools.find((t) => t.name === 'team_submit_job')!;
+    const result = JSON.parse(await submitTool.invoke({jobId: job.id, summary: 'Background work done'}) as string);
+
+    expect(result.success).toBe(true);
+
+    const leaderMsgs = await transport.receive(leaderId);
+    expect(leaderMsgs).toHaveLength(1);
+    expect(leaderMsgs[0].type).toBe('job_submitted');
+    expect(leaderMsgs[0].to).toBe(leaderId);
   });
 });

@@ -2,6 +2,7 @@ import type {ToolMessage} from '@langchain/core/messages';
 import type {ToolCallContext} from '@core/pipeline/types';
 import {readExecutionMetadata, type BaseExecutionContext} from '@core/pipeline/types';
 import {readDelegatedAgentResult} from '@shared/delegation-result';
+import {readTaskRunLaunchResult} from '@shared/task-run-launch';
 import {TOOL_NAMES, formatToolSummary, readString} from '@shared/tool-display';
 
 export function turnKey(context: BaseExecutionContext): string {
@@ -64,6 +65,11 @@ export function summarizeToolMessage(message: ToolMessage): string | undefined {
 }
 
 export function summarizeDelegatedTask(message: ToolMessage): string | undefined {
+  const launched = readTaskRunLaunchResult(message.artifact);
+  if (launched) {
+    return `run_id: ${launched.runId}\ndelegate_id: ${launched.sessionId}`;
+  }
+
   const delegated = readDelegatedAgentResult(message.artifact);
   if (!delegated) {
     return summarizeToolMessage(message);

@@ -164,7 +164,28 @@ describe('Leader Tools', () => {
       expect(members).toHaveLength(2); // leader + worker
     });
 
-    test('emits member.joined event', async () => {
+    test('runtime-backed spawn emits member.joined only once', async () => {
+      ctx = {
+        ...ctx,
+        runtime: {
+          spawnMember: async (teamId: string, name: string, role: 'worker' | 'leader', model?: string) => {
+            const member = makeMember({
+              memberId: `member-${name}`,
+              teamId,
+              role: role as TeamMember['role'],
+              name,
+              model,
+            });
+            registry.registerMember(teamId, member);
+            emitter.emit({
+              type: 'member.joined',
+              data: {teamId, memberId: member.memberId, name: member.name, role: member.role, mode: 'local'},
+            });
+            return member;
+          },
+        },
+      };
+      tools = createLeaderTools(ctx);
       const spawnTool = findTool(tools, 'team_spawn_member');
       await spawnTool.invoke({name: 'worker-2', role: 'worker'});
 
@@ -366,20 +387,80 @@ describe('Leader Tools', () => {
   // ── team_shutdown ───────────────────────────────────────────────
 
   describe('team_shutdown', () => {
-    test('emits completing event and updates status', async () => {
+    test('prefers runtime shutdown and does not update status directly', async () => {
       // Need team in 'running' state for the transition
       registry.updateTeamStatus(team.teamId, 'spawning');
       registry.updateTeamStatus(team.teamId, 'running');
 
+      const shutdownCalls: string[] = [];
+      ctx = {
+        ...ctx,
+        runtime: {
+          ...ctx.runtime,
+          shutdownTeam: async (teamId: string) => {
+            shutdownCalls.push(teamId);
+          },
+        },
+      };
+      tools = createLeaderTools(ctx);
       const shutdownTool = findTool(tools, 'team_shutdown');
       const result = parse(await shutdownTool.invoke({reason: 'Done'}));
 
       expect(result.shutdown).toBe(true);
+      expect(shutdownCalls).toEqual([team.teamId]);
+      expect(events.filter((e) => e.type === 'team.completing')).toHaveLength(0);
+      expect(registry.getTeam(team.teamId)!.status).toBe('running');
+    });
 
+    test('propagates runtime shutdown failures', async () => {
+      registry.updateTeamStatus(team.teamId, 'spawning');
+      registry.updateTeamStatus(team.teamId, 'running');
+
+      ctx = {
+        ...ctx,
+        runtime: {
+          shutdownTeam: async () => {
+            throw new Error('runtime shutdown failed');
+          },
+        },
+      };
+      tools = createLeaderTools(ctx);
+      const shutdownTool = findTool(tools, 'team_shutdown');
+
+      await expect(shutdownTool.invoke({reason: 'Done'})).rejects.toThrow('runtime shutdown failed');
+      expect(events.filter((e) => e.type === 'team.completing')).toHaveLength(0);
+      expect(registry.getTeam(team.teamId)!.status).toBe('running');
+    });
+
+    test('falls back to emitting completing when runtime shutdown is unavailable', async () => {
+      registry.updateTeamStatus(team.teamId, 'spawning');
+      registry.updateTeamStatus(team.teamId, 'running');
+
+      ctx = {
+        ...ctx,
+        runtime: undefined,
+      };
+      tools = createLeaderTools(ctx);
+      const shutdownTool = findTool(tools, 'team_shutdown');
+      const result = parse(await shutdownTool.invoke({reason: 'Done'}));
+
+      expect(result.shutdown).toBe(true);
       const completing = events.filter((e) => e.type === 'team.completing');
       expect(completing).toHaveLength(1);
-
       expect(registry.getTeam(team.teamId)!.status).toBe('completing');
+    });
+
+    test('fails when fallback shutdown transition is invalid', async () => {
+      ctx = {
+        ...ctx,
+        runtime: undefined,
+      };
+      tools = createLeaderTools(ctx);
+      const shutdownTool = findTool(tools, 'team_shutdown');
+
+      await expect(shutdownTool.invoke({reason: 'Done'})).rejects.toThrow(/Invalid status transition/);
+      expect(events.filter((e) => e.type === 'team.completing')).toHaveLength(0);
+      expect(registry.getTeam(team.teamId)!.status).toBe('created');
     });
   });
 

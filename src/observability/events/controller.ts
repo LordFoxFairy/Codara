@@ -5,6 +5,7 @@ import {
 } from '@core/pipeline/types';
 import {parseHILToolMessagePayload} from '@core/middleware/hil';
 import {readDelegatedAgentResult} from '@shared/delegation-result';
+import {readTaskRunLaunchResult} from '@shared/task-run-launch';
 import {TOOL_NAMES} from '@shared/tool-display';
 
 import type {
@@ -324,6 +325,7 @@ export class RuntimeEventsController {
           if (context.toolCall.name === TOOL_NAMES.TASK) {
             const taskRootId = this.toolRoots.get(`${currentToolKey}:task`);
             const delegated = readDelegatedAgentResult(message.artifact);
+            const launched = readTaskRunLaunchResult(message.artifact);
             this.emit({
               kind: 'task',
               phase: 'end',
@@ -332,7 +334,9 @@ export class RuntimeEventsController {
                 ? 'Delegated task failed'
                 : hilPayload?.type === 'hil_pause'
                   ? 'Delegated task waiting for review'
-                  : 'Delegated task completed',
+                  : launched
+                    ? 'Delegated task running in background'
+                    : 'Delegated task completed',
               detail: summarizeDelegatedTask(message),
               parentId: taskRootId,
             });

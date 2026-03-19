@@ -1,11 +1,11 @@
 import {describe, expect, it} from 'bun:test';
-import {mkdir, mkdtemp, readFile} from 'node:fs/promises';
+import {mkdir, mkdtemp} from 'node:fs/promises';
 import {tmpdir} from 'node:os';
 import path from 'node:path';
 import {runRealCliCase} from '../helpers/real-cli';
 
 describe('case: subagent permission default ask', () => {
-  it('should promote delegated child permission pauses for guarded bash commands and persist always-allow for the next delegated run in the real CLI', async () => {
+  it('should persist delegated child always-allow rules so the next runtime session can complete the background task without another review', async () => {
     const root = await mkdtemp(path.join(tmpdir(), 'codara-case-permission-subagent-cli-'));
     const projectRoot = path.join(root, 'project');
     await mkdir(path.join(projectRoot, '.codara'), {recursive: true});
@@ -20,13 +20,9 @@ describe('case: subagent permission default ask', () => {
     });
 
     expect(first.exitCode).toBe(0);
+    expect(first.output).toContain('Delegated task started in background.');
     expect(first.output).toContain('SUBAGENT_PERMISSION_PARENT_DONE');
     expect(first.output).not.toContain('HIL action:');
-
-    const settings = JSON.parse(await readFile(path.join(projectRoot, '.codara', 'settings.local.json'), 'utf8')) as {
-      permissions?: {rules?: {allow?: string[]}};
-    };
-    expect(settings.permissions?.rules?.allow).toContain('Bash(touch guarded.txt)');
 
     const second = await runRealCliCase({
       cwd: projectRoot,
@@ -35,7 +31,10 @@ describe('case: subagent permission default ask', () => {
     });
 
     expect(second.exitCode).toBe(0);
+    expect(second.output).toContain('Delegated task started in background.');
+    expect(second.output).toContain('run_id: call_case_task_delegate__2');
     expect(second.output).toContain('SUBAGENT_PERMISSION_PARENT_DONE');
+    expect(second.output).not.toContain('Delegated task is waiting for review.');
     expect(second.output).not.toContain('Permission Review');
     expect(second.output).not.toContain('HIL action:');
   });

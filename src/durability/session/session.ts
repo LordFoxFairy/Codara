@@ -13,6 +13,7 @@ import type {
   AgentState,
   AgentStreamConfig,
   AgentStreamOutput,
+  PauseRequest,
   ResumePayload,
   ToolErrorHandler,
 } from '@core/agent/models/agent';
@@ -562,7 +563,31 @@ export function createSession(options: CreateSessionOptions): Session {
     }
   }
 
-  return {
+  async function focusPause(request: PauseRequest): Promise<AgentState> {
+    ensureReady();
+    const current = (await getAgent()).getState();
+
+    if (current.pendingPause?.id === request.id) {
+      return current;
+    }
+
+    await putManualCheckpoint(checkpointer, sessionId, {
+      agentType: current.agentType,
+      messages: current.messages,
+      context: current.context,
+      values: current.values,
+      pendingPause: request,
+    }, await getLatestCheckpoint());
+
+    clearAgentCache();
+    const next = (await getAgent()).getState();
+    await sync(next, {touchActivity: false});
+    return next;
+  }
+
+  const session: Session & {
+    focusPause: (request: PauseRequest) => Promise<AgentState>;
+  } = {
     getState: state,
     getAgentState() {
       return requireAgent().getState();
@@ -688,7 +713,10 @@ export function createSession(options: CreateSessionOptions): Session {
       sessionStatus = 'closed';
       await persistSessionState();
     },
+    focusPause,
   };
+
+  return session;
 }
 
 function readResponseMetadataString(

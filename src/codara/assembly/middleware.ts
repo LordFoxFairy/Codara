@@ -15,10 +15,19 @@ import {
   createTodoListMiddleware,
 } from '@core/middleware';
 import {createPermissionMiddleware} from '@core/middleware/permission';
+import type {AgentCheckpointer} from '@durability/checkpoint/agent';
+import type {ApprovalStore} from '@durability/approval-store';
 import {
   createTaskMiddleware,
+  type TaskRuntime,
+  type TaskRunStore,
   type TaskStore,
 } from '@capability/task';
+import {
+  createTaskTool,
+  readTaskToolOptions,
+  TASK_TOOL_NAME,
+} from '@capability/task/middleware';
 import {createTeamMiddleware} from '@capability/team/middleware';
 import type {TeamRegistry} from '@capability/team/coordination/team-registry';
 import type {TeamRuntime} from '@capability/team/runtime/team-runtime';
@@ -89,6 +98,10 @@ export function createRuntimeDefaultMiddlewares(input: {
   options: CodaraRuntimeOptions;
   runtimeTools: StructuredToolInterface[];
   taskStore: TaskStore;
+  taskRunStore: TaskRunStore;
+  taskRuntime: TaskRuntime;
+  taskCheckpointer: AgentCheckpointer;
+  approvalStore: ApprovalStore;
   logging: false | LoggingMiddlewareOptions;
   catalog?: CodaraModelCatalog | Promise<CodaraModelCatalog>;
   promptSource: PromptSource;
@@ -101,6 +114,13 @@ export function createRuntimeDefaultMiddlewares(input: {
 }): BaseMiddleware[] {
   const callerMiddlewares = input.options.middleware ?? [];
   const byName = new Map<string, BaseMiddleware>();
+  rebindRuntimeTaskTools({
+    tools: input.runtimeTools,
+    taskRunStore: input.taskRunStore,
+    taskRuntime: input.taskRuntime,
+    taskCheckpointer: input.taskCheckpointer,
+    approvalStore: input.approvalStore,
+  });
   const providedToolNames = collectProvidedToolNames({
     tools: input.options.tools,
     middlewares: callerMiddlewares,
@@ -128,6 +148,10 @@ export function createRuntimeDefaultMiddlewares(input: {
       MIDDLEWARE_NAMES.Task,
       createTaskMiddleware({
         store: input.taskStore,
+        runStore: input.taskRunStore,
+        runtime: input.taskRuntime,
+        checkpointer: input.taskCheckpointer,
+        approvalStore: input.approvalStore,
         model: input.options.model ?? (() => createCodaraChatModel({
           alias: input.options.alias,
           config: input.options.config,
@@ -189,6 +213,34 @@ export function createRuntimeDefaultMiddlewares(input: {
   }
 
   return [...byName.values()];
+}
+
+function rebindRuntimeTaskTools(input: {
+  tools: StructuredToolInterface[];
+  taskRunStore: TaskRunStore;
+  taskRuntime: TaskRuntime;
+  taskCheckpointer: AgentCheckpointer;
+  approvalStore: ApprovalStore;
+}): void {
+  for (let index = 0; index < input.tools.length; index += 1) {
+    const tool = input.tools[index];
+    if (!tool || tool.name !== TASK_TOOL_NAME) {
+      continue;
+    }
+
+    const taskOptions = readTaskToolOptions(tool);
+    if (!taskOptions) {
+      continue;
+    }
+
+    input.tools[index] = createTaskTool({
+      ...taskOptions,
+      runStore: input.taskRunStore,
+      runtime: input.taskRuntime,
+      checkpointer: input.taskCheckpointer,
+      approvalStore: input.approvalStore,
+    });
+  }
 }
 
 function createDelegatedRuntimeMiddlewares(input: {

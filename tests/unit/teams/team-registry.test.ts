@@ -167,6 +167,14 @@ describe('TeamRegistry', () => {
       expect(registry.getTeam(team.teamId)!.completedAt).toBeDefined();
     });
 
+    test('sets completedAt on failed terminal transitions too', () => {
+      const team = registry.createTeam({name: 'A-failed', goal: 'G'});
+      registry.updateTeamStatus(team.teamId, 'spawning');
+      registry.updateTeamStatus(team.teamId, 'running');
+      registry.updateTeamStatus(team.teamId, 'failed');
+      expect(registry.getTeam(team.teamId)!.completedAt).toBeDefined();
+    });
+
     test('invalid transition throws', () => {
       const team = registry.createTeam({name: 'A', goal: 'G'});
       // created → completing is not a valid transition

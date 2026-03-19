@@ -1,5 +1,13 @@
 import {describe, expect, it} from 'bun:test';
-import {createAgentMemoryCheckpointer, createCodara, createCodaraRuntime} from '@/index';
+import {createAgentFileCheckpointer, createAgentMemoryCheckpointer, createCodara, createCodaraRuntime} from '@/index';
+import {assembleCodara} from '@/codara/facade';
+import {TeamRegistry} from '@capability/team/coordination/team-registry';
+import {TeamRuntime} from '@capability/team/runtime/team-runtime';
+import type {MemberSession} from '@capability/team/runtime/member-runner';
+import {TeamPersistence} from '@capability/team/persistence';
+import {putManualCheckpoint} from '@durability/checkpoint';
+import {createApprovalFileStore, createApprovalMemoryStore} from '@durability/approval-store';
+import {createHILMiddleware} from '@core/middleware';
 import type {BaseChatModel} from '@langchain/core/language_models/chat_models';
 import {AIMessage, AIMessageChunk, HumanMessage, SystemMessage, ToolMessage, type BaseMessage, type ToolCall} from '@langchain/core/messages';
 import {tool} from '@langchain/core/tools';
@@ -8,6 +16,8 @@ import {mkdtemp, mkdir, readFile, rm, stat, writeFile} from 'node:fs/promises';
 import {tmpdir} from 'node:os';
 import path from 'node:path';
 import {EchoModel, StreamingEchoModel} from './codara-fixtures';
+import {createTaskRunFileStore, createTaskRunMemoryStore, createTaskRuntime, TASK_TOOL_NAME} from '@/capability/task';
+import {createTaskTool} from '@/capability/task/middleware';
 
 const createRuntimeForTest = (options: Parameters<typeof createCodaraRuntime>[0]) => (
   createCodaraRuntime({
@@ -16,15 +26,33 @@ const createRuntimeForTest = (options: Parameters<typeof createCodaraRuntime>[0]
   })
 );
 
+async function waitForCondition(
+  predicate: () => boolean,
+  options: {timeoutMs?: number; intervalMs?: number} = {},
+): Promise<void> {
+  const timeoutMs = options.timeoutMs ?? 500;
+  const intervalMs = options.intervalMs ?? 10;
+  const deadline = Date.now() + timeoutMs;
+
+  while (Date.now() <= deadline) {
+    if (predicate()) {
+      return;
+    }
+    await new Promise((resolve) => setTimeout(resolve, intervalMs));
+  }
+
+  throw new Error('Condition was not satisfied before timeout');
+}
+
 class DefaultRuntimeWorkflowModel {
   async invoke(messages: import('@langchain/core/messages').BaseMessage[]): Promise<AIMessage> {
     const text = messages.map((message) => String(message.content)).join('\n');
 
-    if (text.includes('Inspect isolated child work') && !text.includes('Delegated task completed.')) {
+    if (text.includes('Inspect isolated child work') && !text.includes('Delegated task started in background.')) {
       return new AIMessage('CHILD_FLOW_DONE');
     }
 
-    if (text.includes('Delegated task completed.')) {
+    if (text.includes('Delegated task started in background.')) {
       return new AIMessage('RUNTIME_DEFAULT_FLOW_DONE');
     }
 
@@ -148,6 +176,92 @@ class DefaultRuntimeProgressiveDisclosureModel {
   }
 }
 
+class MultiDelegatedApprovalModel {
+  async invoke(messages: BaseMessage[]): Promise<AIMessage> {
+    const text = messages.map((message) => String(message.content)).join('\n');
+    const dangerousResult = messages.find((message) => (
+      ToolMessage.isInstance(message) && message.tool_call_id === 'dangerous_call'
+    )) as ToolMessage | undefined;
+
+    if (dangerousResult) {
+      return new AIMessage(`CHILD_DONE:${String(dangerousResult.content)}`);
+    }
+
+    if (text.includes('Inspect alpha approval path')) {
+      return new AIMessage({
+        content: '',
+        tool_calls: [{
+          id: 'dangerous_call',
+          name: 'dangerous_tool',
+          args: {target: 'alpha'},
+        } as ToolCall],
+      });
+    }
+
+    if (text.includes('Inspect beta approval path')) {
+      return new AIMessage({
+        content: '',
+        tool_calls: [{
+          id: 'dangerous_call',
+          name: 'dangerous_tool',
+          args: {target: 'beta'},
+        } as ToolCall],
+      });
+    }
+
+    return new AIMessage({
+      content: '',
+      tool_calls: [
+        {
+          id: 'call_task_alpha',
+          name: 'Task',
+          args: {
+            prompt: 'Inspect alpha approval path',
+            subagent_type: 'general-purpose',
+          },
+        } as ToolCall,
+        {
+          id: 'call_task_beta',
+          name: 'Task',
+          args: {
+            prompt: 'Inspect beta approval path',
+            subagent_type: 'general-purpose',
+          },
+        } as ToolCall,
+      ],
+    });
+  }
+
+  bindTools(): this {
+    return this;
+  }
+}
+
+function createTeamApprovalSession(behavior?: {
+  beforeInvoke?: () => Promise<void> | void;
+  beforeResume?: () => Promise<void> | void;
+  invokeResult?: () => {reason: 'complete' | 'continue' | 'error' | 'idle' | 'paused'; pause?: import('@core/agent').PauseRequest};
+  resumeResult?: () => {reason: 'complete' | 'continue' | 'error' | 'idle' | 'paused'; pause?: import('@core/agent').PauseRequest};
+}): MemberSession {
+  let pendingPause: import('@core/agent').PauseRequest | undefined;
+  return {
+    invoke: async () => {
+      await behavior?.beforeInvoke?.();
+      const result = behavior?.invokeResult?.() ?? {reason: 'complete' as const};
+      pendingPause = result.reason === 'paused' ? result.pause : undefined;
+      return result;
+    },
+    resumePause: async () => {
+      await behavior?.beforeResume?.();
+      const result = behavior?.resumeResult?.() ?? {reason: 'complete' as const};
+      pendingPause = result.reason === 'paused' ? result.pause : undefined;
+      return result;
+    },
+    getPendingPause: () => pendingPause,
+    dispose: async () => {},
+  };
+}
+
 describe('Codara facade runtime', () => {
   it('should create a Codara session through the facade', async () => {
     const checkpointer = createAgentMemoryCheckpointer();
@@ -184,6 +298,714 @@ describe('Codara facade runtime', () => {
     const agentState = codara.getAgentState();
     expect(agentState.messages).toHaveLength(2);
     expect(String(agentState.messages[1]?.content)).toBe('seen_humans:1');
+  });
+
+  it('should filter persisted task run summaries to the current runtime session', async () => {
+    const projectRoot = await mkdtemp(path.join(tmpdir(), 'codara-runtime-task-runs-'));
+    const taskRunStore = createTaskRunFileStore({
+      rootDir: path.join(projectRoot, '.codara', 'task-runs'),
+    });
+
+    taskRunStore.start({
+      runId: 'run-session-a',
+      sessionId: 'runtime-task-run-session-a',
+      label: 'Delegating general-purpose: Inspect isolated child work',
+      agentName: 'general-purpose',
+    });
+    taskRunStore.finish('run-session-a', {
+      type: 'delegated_agent_result',
+      sessionId: 'child-a',
+      turns: 1,
+      reason: 'complete',
+      summary: 'done a',
+    });
+
+    taskRunStore.start({
+      runId: 'run-session-b',
+      sessionId: 'runtime-task-run-session-b',
+      label: 'Delegating general-purpose: Inspect another child work',
+      agentName: 'general-purpose',
+    });
+    taskRunStore.finish('run-session-b', {
+      type: 'delegated_agent_result',
+      sessionId: 'child-b',
+      turns: 1,
+      reason: 'complete',
+      summary: 'done b',
+    });
+
+    const runtime = await createRuntimeForTest({
+      cwd: projectRoot,
+      projectRoot,
+      sessionId: 'runtime-task-run-session-a',
+      taskRunStore,
+      model: new EchoModel() as unknown as BaseChatModel,
+      skills: false,
+    });
+
+    expect(runtime.getTaskRunSummaries()).toEqual([
+      expect.objectContaining({
+        label: 'Delegating general-purpose: Inspect isolated child work',
+        agentName: 'general-purpose',
+        status: 'completed',
+      }),
+    ]);
+    expect(runtime.getTaskRunSummaries()).toHaveLength(1);
+  });
+
+  it('should rebind a caller-provided Task tool to the runtime stores while preserving child tools', async () => {
+    const projectRoot = await mkdtemp(path.join(tmpdir(), 'codara-runtime-custom-task-'));
+    const runtimeTaskRunStore = createTaskRunMemoryStore();
+    const runtimeApprovalStore = createApprovalMemoryStore();
+    const customTaskRunStore = createTaskRunMemoryStore();
+    const customApprovalStore = createApprovalMemoryStore();
+    const runtimeEvents: import('@/index').CodaraRuntimeEvent[] = [];
+
+    class RuntimeReboundTaskChildModel {
+      async invoke(messages: BaseMessage[]): Promise<AIMessage> {
+        const toolResult = messages.find((message) => (
+          ToolMessage.isInstance(message) && message.tool_call_id === 'call_runtime_rebound_child_tool'
+        )) as ToolMessage | undefined;
+
+        if (toolResult) {
+          return new AIMessage(`child-tool:${String(toolResult.content)}`);
+        }
+
+        return new AIMessage({
+          content: '',
+          tool_calls: [{
+            id: 'call_runtime_rebound_child_tool',
+            name: 'child_echo',
+            args: {
+              value: 'delegated child hello',
+            },
+          } as ToolCall],
+        });
+      }
+
+      bindTools(): this {
+        return this;
+      }
+    }
+
+    class RuntimeReboundTaskParentModel {
+      async invoke(messages: BaseMessage[]): Promise<AIMessage> {
+        if (messages.some((message) => ToolMessage.isInstance(message) && message.tool_call_id === 'call_runtime_rebound_task')) {
+          return new AIMessage('parent_done');
+        }
+
+        return new AIMessage({
+          content: '',
+          tool_calls: [{
+            id: 'call_runtime_rebound_task',
+            name: TASK_TOOL_NAME,
+            args: {
+              prompt: 'Inspect custom runtime rebinding',
+              subagent_type: 'general-purpose',
+            },
+          } as ToolCall],
+        });
+      }
+
+      bindTools(): this {
+        return this;
+      }
+    }
+
+    const runtime = await createRuntimeForTest({
+      cwd: projectRoot,
+      projectRoot,
+      sessionId: 'runtime-custom-task-session',
+      taskRunStore: runtimeTaskRunStore,
+      approvalStore: runtimeApprovalStore,
+      model: new RuntimeReboundTaskParentModel() as unknown as BaseChatModel,
+      skills: false,
+      builtinTools: false,
+      tools: [
+        createTaskTool({
+          model: new RuntimeReboundTaskChildModel() as unknown as BaseChatModel,
+          tools: [
+            tool(async ({value}: {value: string}) => `child_echo:${value}`, {
+              name: 'child_echo',
+              description: 'Child tool preserved through Task tool rebinding.',
+              schema: z.object({
+                value: z.string(),
+              }),
+            }),
+          ],
+          runStore: customTaskRunStore,
+          approvalStore: customApprovalStore,
+          runtime: createTaskRuntime({
+            runStore: customTaskRunStore,
+            approvalStore: customApprovalStore,
+          }),
+        }),
+      ],
+    });
+    const unsubscribe = runtime.subscribeRuntimeEvents((event) => {
+      runtimeEvents.push(event);
+    });
+
+    try {
+      const result = await runtime.invoke('start the custom task runtime flow');
+      expect(result.reason).toBe('complete');
+
+      await waitForCondition(() => runtime.getTaskRunSummaries().some((run) => (
+        run.runId === 'call_runtime_rebound_task' && run.status === 'completed'
+      )));
+
+      expect(runtime.getTaskRunSummaries()).toEqual([
+        expect.objectContaining({
+          runId: 'call_runtime_rebound_task',
+          label: 'Delegating general-purpose: Inspect custom runtime rebinding',
+          agentName: 'general-purpose',
+          status: 'completed',
+          summary: expect.stringContaining('child-tool:child_echo:delegated child hello'),
+        }),
+      ]);
+      expect(customTaskRunStore.list()).toHaveLength(0);
+      expect(runtimeEvents).toEqual(expect.arrayContaining([
+        expect.objectContaining({
+          kind: 'task',
+          phase: 'start',
+          status: 'running',
+          label: 'Delegating general-purpose: Inspect custom runtime rebinding',
+        }),
+        expect.objectContaining({
+          kind: 'task',
+          phase: 'end',
+          status: 'done',
+          label: 'Delegated task running in background',
+        }),
+      ]));
+    } finally {
+      unsubscribe();
+      await runtime.dispose();
+    }
+  });
+
+  it('should not mutate live running task runs when reading summaries', async () => {
+    const taskRunStore = createTaskRunMemoryStore();
+    const runtime = await createRuntimeForTest({
+      sessionId: 'runtime-live-task-run-session',
+      taskRunStore,
+      model: new EchoModel() as unknown as BaseChatModel,
+      skills: false,
+    });
+
+    taskRunStore.start({
+      runId: 'run-live',
+      sessionId: 'runtime-live-task-run-session',
+      label: 'Delegating general-purpose: Inspect live query behavior',
+      agentName: 'general-purpose',
+    });
+
+    expect(runtime.getTaskRunSummaries()).toEqual([
+      expect.objectContaining({
+        runId: 'run-live',
+        status: 'running',
+      }),
+    ]);
+    expect(taskRunStore.get('run-live')?.status).toBe('running');
+
+    expect(runtime.getTaskRunSummaries()).toEqual([
+      expect.objectContaining({
+        runId: 'run-live',
+        status: 'running',
+      }),
+    ]);
+    expect(taskRunStore.get('run-live')?.status).toBe('running');
+  });
+
+  it('should surface concurrent delegated approvals, switch approval focus, and keep task approval resume behavior working', async () => {
+    const projectRoot = await mkdtemp(path.join(tmpdir(), 'codara-runtime-approval-queue-'));
+    const runtime = await createRuntimeForTest({
+      cwd: projectRoot,
+      projectRoot,
+      sessionId: 'runtime-approval-queue-session',
+      model: new MultiDelegatedApprovalModel() as unknown as BaseChatModel,
+      skills: false,
+      hil: {
+        interruptOn: {
+          dangerous_tool: true,
+        },
+      },
+      tools: [
+        tool(async ({target}: {target: string}) => `dangerous:${target}`, {
+          name: 'dangerous_tool',
+          description: 'Dangerous tool used to force delegated approval pauses.',
+          schema: z.object({target: z.string()}),
+        }),
+      ],
+    });
+    const runtimeEvents: import('@/index').CodaraRuntimeEvent[] = [];
+    const unsubscribe = runtime.subscribeRuntimeEvents((event) => {
+      runtimeEvents.push(event);
+    });
+
+    try {
+      const launched = await runtime.invoke('start the concurrent delegated approvals');
+      expect(launched.state.status).not.toBe('paused');
+      expect(launched.state.pendingPause).toBeUndefined();
+
+      await waitForCondition(() => runtime.getApprovalSummaries().length === 2);
+      const approvals = runtime.getApprovalSummaries();
+      expect(approvals).toHaveLength(2);
+      expect(approvals.map((approval) => approval.taskRunId).sort()).toEqual(['call_task_alpha', 'call_task_beta']);
+      expect(runtime.getAgentState().pendingPause).toBeUndefined();
+      await waitForCondition(() => (
+        runtimeEvents.filter((event) => (
+          event.kind === 'task'
+          && event.phase === 'update'
+          && event.status === 'paused'
+          && event.label === 'Delegated task waiting for review'
+        )).length >= 2
+      ));
+
+      const alternateApproval = approvals[1];
+      expect(alternateApproval).toBeDefined();
+
+      await runtime.focusApproval(alternateApproval!.approvalId);
+      expect(runtime.getFocusedApprovalReview()?.summary.approvalId).toBe(alternateApproval!.approvalId);
+      expect(runtime.getApprovalSummaries().find((approval) => approval.approvalId === alternateApproval!.approvalId)?.isForeground).toBe(true);
+
+      await runtime.resumeApproval({action: 'allow_once'});
+      await waitForCondition(() => runtime.getApprovalSummaries().length === 1);
+
+      const remainingApprovals = runtime.getApprovalSummaries();
+      expect(remainingApprovals).toHaveLength(1);
+      expect(remainingApprovals[0]?.approvalId).not.toBe(alternateApproval!.approvalId);
+      expect(runtime.getFocusedApprovalReview()?.summary.approvalId).toBe(remainingApprovals[0]?.approvalId);
+
+      const taskRuns = runtime.getTaskRunSummaries();
+      expect(taskRuns).toEqual(expect.arrayContaining([
+        expect.objectContaining({
+          runId: alternateApproval!.taskRunId,
+          status: 'completed',
+        }),
+        expect.objectContaining({
+          status: 'paused',
+        }),
+      ]));
+      expect(runtimeEvents.some((event) => (
+        event.kind === 'task'
+        && event.phase === 'end'
+        && event.status === 'done'
+        && event.label === 'Delegated task completed'
+      ))).toBe(true);
+    } finally {
+      unsubscribe();
+    }
+  });
+
+  it('should resume a queued team-member approval through the Codara facade and clear the queue entry', async () => {
+    const approvalStore = createApprovalMemoryStore();
+    const registry = new TeamRegistry();
+    const pauseRequest: import('@core/agent').PauseRequest = {
+      id: 'pause-team-facade-worker',
+      description: 'Worker approval required',
+      action: {
+        toolCallId: 'call_worker_approval',
+        toolName: 'dangerous_tool',
+        toolArgs: {target: 'tmp/out.txt'},
+      },
+      review: {
+        actionName: 'dangerous_tool',
+        allowedDecisions: ['approve', 'reject'],
+      },
+      runtime: {
+        runId: 'run-worker-approval',
+        turn: 1,
+        requestId: 'req-worker-approval',
+        toolIndex: 0,
+      },
+    };
+
+    let firstInvoke = true;
+    let teamId = '';
+    let workerId = '';
+    const teamRuntime = new TeamRuntime({
+      registry,
+      projectRoot: '/tmp/test',
+      approvalStore,
+      sessionId: 'team-facade-approval-session',
+      createSession: () => createTeamApprovalSession({
+        beforeInvoke: async () => {
+          if (teamId && workerId) {
+            await teamRuntime.getTransport(teamId)?.receive(workerId);
+          }
+        },
+        invokeResult: () => {
+          if (firstInvoke) {
+            firstInvoke = false;
+            return {reason: 'paused', pause: pauseRequest};
+          }
+          return {reason: 'complete'};
+        },
+        resumeResult: () => ({reason: 'complete'}),
+      }),
+    });
+
+    const codara = assembleCodara({
+      sessionId: 'team-facade-approval-session',
+      model: new EchoModel() as unknown as BaseChatModel,
+      skills: false,
+      autoMemory: false,
+      hil: false,
+    }, undefined, {
+      teamRegistry: registry,
+      teamRuntime,
+      approvalStore,
+    });
+
+    try {
+      const team = registry.createTeam({
+        name: 'facade-team',
+        goal: 'verify approval resume',
+        config: {
+          maxDepth: 2,
+          allowSubTeams: true,
+          maxMembers: 10,
+          modelCascade: {},
+          autoShutdown: true,
+        },
+      });
+      teamId = team.teamId;
+
+      await teamRuntime.startTeam(team.teamId);
+      const worker = await teamRuntime.spawnMember(team.teamId, 'approval-worker', 'worker');
+      workerId = worker.memberId;
+
+      await teamRuntime.getTransport(team.teamId)!.send(worker.memberId, {
+        id: 'msg-approval-1',
+        from: 'leader',
+        to: worker.memberId,
+        teamId: team.teamId,
+        type: 'message',
+        content: 'perform the risky step',
+        timestamp: new Date().toISOString(),
+        read: false,
+      });
+
+      teamRuntime.getRunner(worker.memberId)?.wake();
+      await new Promise((resolve) => setTimeout(resolve, 100));
+
+      expect(codara.getApprovalSummaries()).toEqual([
+        expect.objectContaining({
+          source: 'team_member',
+          teamId: team.teamId,
+          memberId: worker.memberId,
+          description: 'Worker approval required',
+          isForeground: true,
+        }),
+      ]);
+      expect(codara.getFocusedApprovalReview()?.summary.approvalId).toBe('pause-team-facade-worker');
+      expect(registry.getTeam(team.teamId)?.status).toBe('paused');
+
+      await codara.resumeApproval({action: 'allow_once'});
+      await new Promise((resolve) => setTimeout(resolve, 20));
+
+      expect(codara.getApprovalSummaries()).toHaveLength(0);
+      expect(codara.getFocusedApprovalReview()).toBeUndefined();
+      expect(registry.getTeam(team.teamId)?.status).toBe('running');
+    } finally {
+      await codara.dispose();
+    }
+  });
+
+  it('should recover a reopened persisted running task run for the current runtime session', async () => {
+    const projectRoot = await mkdtemp(path.join(tmpdir(), 'codara-runtime-task-run-recovery-'));
+    const rootDir = path.join(projectRoot, '.codara', 'task-runs');
+
+    const originalStore = createTaskRunFileStore({rootDir});
+    originalStore.start({
+      runId: 'run-recovery',
+      sessionId: 'runtime-task-run-recovery-session',
+      label: 'Delegating research: inspect a restart boundary',
+      agentName: 'research',
+    });
+
+    const reopenedStore = createTaskRunFileStore({rootDir});
+    const runtime = await createRuntimeForTest({
+      cwd: projectRoot,
+      projectRoot,
+      sessionId: 'runtime-task-run-recovery-session',
+      taskRunStore: reopenedStore,
+      model: new EchoModel() as unknown as BaseChatModel,
+      skills: false,
+    });
+
+    expect(runtime.getTaskRunSummaries()).toEqual([
+      expect.objectContaining({
+        runId: 'run-recovery',
+        status: 'paused',
+      }),
+    ]);
+    expect(reopenedStore.get('run-recovery')).toEqual(expect.objectContaining({
+      status: 'paused',
+    }));
+  });
+
+  it('should restore persisted team recent messages into reopened runtime logs', async () => {
+    const projectRoot = await mkdtemp(path.join(tmpdir(), 'codara-runtime-team-logs-reopen-'));
+    const runtimeStatePath = path.join(projectRoot, '.codara');
+    const persistence = new TeamPersistence(runtimeStatePath);
+    const registry = new TeamRegistry();
+    const team = registry.createTeam({
+      name: 'restored-team',
+      goal: 'Review restored logs',
+    });
+    registry.updateTeamStatus(team.teamId, 'running');
+    registry.updateTeamStatus(team.teamId, 'paused');
+
+    persistence.save(team.teamId, TeamPersistence.buildSnapshot(
+      registry.getTeam(team.teamId)!,
+      [],
+      registry.getJobBoard(team.teamId),
+      [{
+        id: 'msg-restored-1',
+        from: 'worker-1',
+        to: 'leader',
+        teamId: team.teamId,
+        type: 'message',
+        content: 'restored handoff payload',
+        timestamp: new Date().toISOString(),
+        read: false,
+      }],
+    ));
+
+    const runtime = await createRuntimeForTest({
+      cwd: projectRoot,
+      projectRoot,
+      sessionId: 'runtime-team-logs-reopen-session',
+      model: new EchoModel() as unknown as BaseChatModel,
+      skills: false,
+    });
+
+    try {
+      expect(runtime.getTeamSummaries()).toEqual([
+        expect.objectContaining({
+          name: 'restored-team',
+          status: 'paused',
+        }),
+      ]);
+
+      const logs = await runtime.executeCommand('/team logs restored-team 5');
+      expect(logs.ok).toBe(true);
+      expect(logs.output).toContain('restored handoff payload');
+    } finally {
+      await runtime.dispose();
+      await rm(projectRoot, {recursive: true, force: true});
+    }
+  });
+
+  it('should resume a reopened persisted task approval through the task runtime control plane', async () => {
+    const projectRoot = await mkdtemp(path.join(tmpdir(), 'codara-runtime-paused-task-reopen-'));
+    const taskRunStore = createTaskRunFileStore({
+      rootDir: path.join(projectRoot, '.codara', 'task-runs'),
+    });
+    const approvalStore = createApprovalFileStore({
+      rootDir: path.join(projectRoot, '.codara', 'approvals'),
+    });
+
+    class ReopenableTaskParentModel {
+      async invoke(messages: BaseMessage[]): Promise<AIMessage> {
+        if (messages.some((message) => ToolMessage.isInstance(message) && message.tool_call_id === 'call_reopen_task')) {
+          return new AIMessage('parent_done');
+        }
+
+        return new AIMessage({
+          content: '',
+          tool_calls: [{
+            id: 'call_reopen_task',
+            name: TASK_TOOL_NAME,
+            args: {
+              prompt: 'Inspect the guarded child flow',
+              subagent_type: 'general-purpose',
+            },
+          } as ToolCall],
+        });
+      }
+
+      bindTools(): this {
+        return this;
+      }
+    }
+
+    class ReopenableTaskChildModel {
+      async invoke(messages: BaseMessage[]): Promise<AIMessage> {
+        const toolMessage = messages.find((message) => (
+          ToolMessage.isInstance(message) && message.tool_call_id === 'call_reopen_child_danger'
+        )) as ToolMessage | undefined;
+
+        if (toolMessage) {
+          return new AIMessage(`recovered_child_done:${String(toolMessage.content)}`);
+        }
+
+        return new AIMessage({
+          content: '',
+          tool_calls: [{
+            id: 'call_reopen_child_danger',
+            name: 'dangerous_tool',
+            args: {
+              target: 'reopen-guarded.txt',
+            },
+          } as ToolCall],
+        });
+      }
+
+      bindTools(): this {
+        return this;
+      }
+    }
+
+    const customTaskTool = () => createTaskTool({
+      model: new ReopenableTaskChildModel() as unknown as BaseChatModel,
+      tools: [
+        tool(async ({target}: {target: string}) => `danger:${target}`, {
+          name: 'dangerous_tool',
+          description: 'Dangerous child tool for paused task recovery tests.',
+          schema: z.object({
+            target: z.string(),
+          }),
+        }),
+      ],
+      middleware: [
+        createHILMiddleware({
+          interruptOn: {
+            dangerous_tool: true,
+          },
+        }),
+      ],
+    });
+
+    const firstRuntime = await createRuntimeForTest({
+      cwd: projectRoot,
+      projectRoot,
+      sessionId: 'runtime-paused-task-session',
+      taskRunStore,
+      approvalStore,
+      model: new ReopenableTaskParentModel() as unknown as BaseChatModel,
+      skills: false,
+      builtinTools: false,
+      tools: [customTaskTool()],
+    });
+
+    try {
+      const first = await firstRuntime.invoke('start paused delegated task');
+      expect(first.reason).toBe('complete');
+
+      await waitForCondition(() => firstRuntime.getApprovalSummaries().length === 1);
+      expect(firstRuntime.getTaskRunSummaries()).toEqual([
+        expect.objectContaining({
+          runId: 'call_reopen_task',
+          status: 'paused',
+        }),
+      ]);
+    } finally {
+      await firstRuntime.dispose();
+    }
+
+    const reopened = await createRuntimeForTest({
+      cwd: projectRoot,
+      projectRoot,
+      sessionId: 'runtime-paused-task-session',
+      taskRunStore,
+      approvalStore,
+      model: new EchoModel() as unknown as BaseChatModel,
+      skills: false,
+      builtinTools: false,
+      tools: [customTaskTool()],
+    });
+
+    try {
+      const approvals = reopened.getApprovalSummaries();
+      expect(approvals).toEqual([
+        expect.objectContaining({
+          taskRunId: 'call_reopen_task',
+          source: 'task_run',
+          toolName: 'dangerous_tool',
+        }),
+      ]);
+
+      await reopened.focusApproval(approvals[0]!.approvalId);
+      await reopened.resumeApproval({decision: 'approve'});
+      await waitForCondition(() => reopened.getTaskRunSummaries().some((run) => (
+        run.runId === 'call_reopen_task' && run.status === 'completed'
+      )));
+
+      expect(reopened.getTaskRunSummaries()).toEqual([
+        expect.objectContaining({
+          runId: 'call_reopen_task',
+          status: 'completed',
+          summary: expect.stringContaining('recovered_child_done:danger:reopen-guarded.txt'),
+        }),
+      ]);
+      expect(reopened.getApprovalSummaries()).toEqual([]);
+    } finally {
+      await reopened.dispose();
+      await rm(projectRoot, {recursive: true, force: true});
+    }
+  });
+
+  it('should keep runtime session checkpoints scoped to the project state directory instead of the global config root', async () => {
+    const userHome = await mkdtemp(path.join(tmpdir(), 'codara-runtime-user-home-'));
+    const projectRoot = await mkdtemp(path.join(tmpdir(), 'codara-runtime-project-root-'));
+    const sessionId = 'runtime-project-state-session';
+    const originalHome = process.env.HOME;
+    const globalCheckpointer = createAgentFileCheckpointer({
+      rootDir: path.join(userHome, '.codara', 'sessions'),
+    });
+
+    await putManualCheckpoint(globalCheckpointer, sessionId, {
+      agentType: 'main',
+      messages: [],
+      context: {},
+      values: {},
+      pendingPause: {
+        id: 'global-stale-pause',
+        description: 'stale global pause',
+        action: {
+          toolCallId: 'call-stale',
+          toolName: 'dangerous_tool',
+          toolArgs: {},
+        },
+        review: {
+          actionName: 'dangerous_tool',
+          allowedDecisions: ['approve', 'edit', 'reject'],
+        },
+        runtime: {
+          runId: 'global-run',
+          turn: 1,
+          requestId: 'global-request',
+          toolIndex: 0,
+        },
+      },
+    });
+
+    process.env.HOME = userHome;
+    try {
+      const runtime = await createRuntimeForTest({
+        cwd: projectRoot,
+        projectRoot,
+        userHome,
+        sessionId,
+        model: new EchoModel() as unknown as BaseChatModel,
+        skills: false,
+        builtinTools: false,
+      });
+
+      const result = await runtime.invoke('hello');
+      expect(result.reason).toBe('complete');
+      expect(result.state.pendingPause).toBeUndefined();
+      await expect(stat(path.join(projectRoot, '.codara', 'sessions', sessionId, 'checkpoints', 'latest.json'))).resolves.toBeDefined();
+    } finally {
+      if (originalHome === undefined) {
+        delete process.env.HOME;
+      } else {
+        process.env.HOME = originalHome;
+      }
+    }
   });
 
   it('should allow an async model without adding a second model entry path', async () => {

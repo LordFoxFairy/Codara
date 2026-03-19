@@ -10,6 +10,7 @@ import {
   createTaskCreateTool,
   createTaskListTool,
   createTaskMemoryStore,
+  createTaskRunMemoryStore,
   TASK_CREATE_TOOL_NAME,
   TASK_LIST_TOOL_NAME,
   TASK_TOOL_NAME,
@@ -17,6 +18,7 @@ import {
 import {createSkillsMiddleware} from '@core/middleware';
 import {FileSystemSkillStore, loadSkillsRuntimeData} from '@capability/skill';
 import {createTaskTool} from '@capability/task/middleware';
+import {readTaskRunLaunchResult} from '@shared/task-run-launch';
 
 function createBuiltinSubagentStore() {
   return new FileSystemSkillStore({
@@ -73,9 +75,29 @@ class SharedTaskReaderModel {
   }
 }
 
+async function waitForTaskRunStatus(
+  runStore: {get(runId: string): {status: string; summary?: string} | undefined},
+  runId: string,
+  status: string,
+): Promise<{status: string; summary?: string}> {
+  const deadline = Date.now() + 500;
+
+  while (Date.now() < deadline) {
+    const record = runStore.get(runId);
+    if (record?.status === status) {
+      return record;
+    }
+
+    await new Promise((resolve) => setTimeout(resolve, 10));
+  }
+
+  throw new Error(`Task run "${runId}" did not reach status "${status}"`);
+}
+
 describe('task delegation + task store', () => {
   it('主代理创建的 shared task 应能被默认 delegated child 读取到', async () => {
     const store = createTaskMemoryStore();
+    const runStore = createTaskRunMemoryStore();
     const parentModel = new ScriptedModel([
       new AIMessage({
         content: '',
@@ -103,6 +125,7 @@ describe('task delegation + task store', () => {
     const taskTool = createTaskTool({
       model: new SharedTaskReaderModel() as unknown as BaseChatModel,
       tools: [taskListTool],
+      runStore,
     });
 
     const parent = createAgent({
@@ -114,15 +137,26 @@ describe('task delegation + task store', () => {
     const delegatedMessage = result.state.messages
       .filter((message) => ToolMessage.isInstance(message))
       .map((message) => message as ToolMessage)
-      .find((message) => String(message.content).includes('Delegated task completed.')) as ToolMessage | undefined;
+      .find((message) => String(message.content).includes('Delegated task started in background.')) as ToolMessage | undefined;
+    const launch = delegatedMessage ? readTaskRunLaunchResult(delegatedMessage.artifact) : undefined;
+    const completed = launch ? await waitForTaskRunStatus(runStore, launch.runId, 'completed') : undefined;
 
     expect(result.reason).toBe('complete');
+    expect(result.state.status).toBe('idle');
+    expect(result.state.pendingPause).toBeUndefined();
     expect(delegatedMessage).toBeDefined();
-    expect(String(delegatedMessage?.content)).toContain('shared_tasks_visible:true');
+    expect(String(delegatedMessage?.content)).toContain('Delegated task started in background.');
+    expect(launch).toMatchObject({
+      type: 'task_run_started',
+      runId: 'call_task_delegate_default',
+      sessionId: expect.any(String),
+    });
+    expect(completed?.summary).toContain('shared_tasks_visible:true');
   });
 
   it('正式 Task 工具应能与 TaskCreate/TaskList 并存，并读取共享 task store', async () => {
     const store = createTaskMemoryStore();
+    const runStore = createTaskRunMemoryStore();
     const parentModel = new ScriptedModel([
       new AIMessage({
         content: '',
@@ -153,6 +187,7 @@ describe('task delegation + task store', () => {
     const taskTool = createTaskTool({
       model: new SharedTaskReaderModel() as unknown as BaseChatModel,
       tools: [taskListTool],
+      runStore,
     });
 
     const parent = createAgent({
@@ -165,10 +200,21 @@ describe('task delegation + task store', () => {
     const taskMessage = result.state.messages
       .filter((message) => ToolMessage.isInstance(message))
       .map((message) => message as ToolMessage)
-      .find((message) => String(message.content).includes('Delegated task completed.')) as ToolMessage | undefined;
+      .find((message) => String(message.content).includes('Delegated task started in background.')) as ToolMessage | undefined;
+    const launch = taskMessage ? readTaskRunLaunchResult(taskMessage.artifact) : undefined;
+    const completed = launch ? await waitForTaskRunStatus(runStore, launch.runId, 'completed') : undefined;
 
     expect(result.reason).toBe('complete');
+    expect(result.state.status).toBe('idle');
+    expect(result.state.pendingPause).toBeUndefined();
     expect(taskMessage).toBeDefined();
-    expect(String(taskMessage?.content)).toContain('shared_tasks_visible:true');
+    expect(String(taskMessage?.content)).toContain('Delegated task started in background.');
+    expect(launch).toMatchObject({
+      type: 'task_run_started',
+      runId: 'call_task_delegate_formal',
+      agentName: 'general-purpose',
+      sessionId: expect.any(String),
+    });
+    expect(completed?.summary).toContain('shared_tasks_visible:true');
   });
 });

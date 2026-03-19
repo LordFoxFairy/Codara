@@ -4,6 +4,8 @@ import {z} from 'zod';
 import type {TeamMessage} from '@capability/team/coordination/types';
 import type {TeamToolContext} from '@capability/team/surface/types';
 
+const TEAM_LEADER_ENDPOINT = 'leader';
+
 function buildClaimJob(ctx: TeamToolContext) {
   return tool(
     async ({jobId}) => {
@@ -57,21 +59,18 @@ function buildSubmitJob(ctx: TeamToolContext) {
         status: 'idle',
       });
 
-      const leader = ctx.registry.getLeader(ctx.teamId);
-      if (leader) {
-        const msg: TeamMessage = {
-          id: crypto.randomUUID(),
-          from: ctx.memberId,
-          to: leader.memberId,
-          teamId: ctx.teamId,
-          type: 'job_submitted',
-          content: summary,
-          metadata: {jobId, artifacts},
-          timestamp: new Date().toISOString(),
-          read: false,
-        };
-        await ctx.transport.send(leader.memberId, msg);
-      }
+      const msg: TeamMessage = {
+        id: crypto.randomUUID(),
+        from: ctx.memberId,
+        to: TEAM_LEADER_ENDPOINT,
+        teamId: ctx.teamId,
+        type: 'job_submitted',
+        content: summary,
+        metadata: {jobId, artifacts},
+        timestamp: new Date().toISOString(),
+        read: false,
+      };
+      await ctx.transport.send(TEAM_LEADER_ENDPOINT, msg);
 
       ctx.emitEvent({
         type: 'job.submitted',
@@ -123,24 +122,19 @@ function buildSendMessage(ctx: TeamToolContext) {
 function buildAskLeader(ctx: TeamToolContext) {
   return tool(
     async ({question}) => {
-      const leader = ctx.registry.getLeader(ctx.teamId);
-      if (!leader) {
-        return JSON.stringify({success: false, error: 'No leader found for this team'});
-      }
-
       const msg: TeamMessage = {
         id: crypto.randomUUID(),
         from: ctx.memberId,
-        to: leader.memberId,
+        to: TEAM_LEADER_ENDPOINT,
         teamId: ctx.teamId,
         type: 'question',
         content: question,
         timestamp: new Date().toISOString(),
         read: false,
       };
-      await ctx.transport.send(leader.memberId, msg);
+      await ctx.transport.send(TEAM_LEADER_ENDPOINT, msg);
 
-      return JSON.stringify({success: true, messageId: msg.id, leaderId: leader.memberId});
+      return JSON.stringify({success: true, messageId: msg.id, leaderId: TEAM_LEADER_ENDPOINT});
     },
     {
       name: 'team_ask_leader',

@@ -7,6 +7,7 @@ import {StatusBar} from '../components/chrome/header';
 import {ActivityLine} from '../components/chrome/activity-line';
 import {TaskPanel} from '../components/chrome/task-panel';
 import {TeamPanel} from '../components/chrome/team-panel';
+import {TeamDetailView} from '../components/teams/team-detail-view';
 import {HilPanel, isPermissionReview} from '../components/conversation/hil-panel';
 import {SessionPicker} from '../components/conversation/session-picker';
 import {ActiveTranscript} from '../components/conversation/transcript';
@@ -95,48 +96,32 @@ export function CodaraCliApp(props: CodaraCliAppProps): React.JSX.Element {
   });
   const terminalWidth = useTerminalWidth();
   const layoutMode = resolveCliLayoutMode(terminalWidth);
-  const activeTasks = useActiveTasks({runtimeEvents: shell.runtimeEvents});
-  const activeTeams = useActiveTeams({runtimeEvents: shell.runtimeEvents});
+  const activeTasks = useActiveTasks({
+    taskRunSummaries: codara.getTaskRunSummaries(),
+    approvals: codara.getApprovalSummaries(),
+  });
+  const activeTeams = useActiveTeams({
+    teamSummaries: codara.getTeamSummaries(),
+    runtimeEvents: shell.runtimeEvents,
+  });
 
-  // Periodic refresh so team member statuses update in real-time.
-  const [teamMembersVersion, setTeamMembersVersion] = useState(0);
-  useEffect(() => {
-    if (!activeTeams.hasActiveTeams) return;
-    const timer = setInterval(() => setTeamMembersVersion(v => v + 1), 1000);
-    return () => clearInterval(timer);
-  }, [activeTeams.hasActiveTeams]);
-
-  // Build team member map from the facade for TeamPanel inline display.
-  // ActiveTeam.teamId is the runtime event root UUID, not the registry ID.
-  // Look up by team name (getTeamDetail falls back to getTeamByName).
   const teamMembers = React.useMemo(() => {
     if (!activeTeams.hasActiveTeams) return undefined;
     const map = new Map<string, Array<{name: string; role: string; status: string; currentJobId?: string; activity?: string}>>();
     for (const team of activeTeams.activeTeams) {
-      // Try by name first, then by teamId from the event
-      const detail = codara.getTeamDetail(team.name) ?? codara.getTeamDetail(team.teamId);
-      if (detail) {
-        // Enrich team data via Object.assign to avoid direct property mutation
-        if (detail.name && detail.name !== team.name) {
-          Object.assign(team, {name: detail.name});
-        }
-        if (detail.goal && !team.goal) {
-          Object.assign(team, {goal: detail.goal});
-        }
-        Object.assign(team, {memberCount: detail.members.length});
-        if (detail.members.length > 0) {
-          map.set(team.teamId, detail.members.map(m => ({
-            name: m.name,
-            role: m.role,
-            status: m.status,
-            currentJobId: m.currentJobId,
-            activity: activeTeams.memberActivities.get(m.memberId),
-          })));
-        }
+      const detail = codara.getTeamDetail(team.teamId);
+      if (detail && detail.members.length > 0) {
+        map.set(team.teamId, detail.members.map(m => ({
+          name: m.name,
+          role: m.role,
+          status: m.status,
+          currentJobId: m.currentJobId,
+          activity: activeTeams.memberActivities.get(m.memberId),
+        })));
       }
     }
     return map.size > 0 ? map : undefined;
-  }, [activeTeams.activeTeams, activeTeams.hasActiveTeams, activeTeams.memberActivities, codara, teamMembersVersion]);
+  }, [activeTeams.activeTeams, activeTeams.hasActiveTeams, activeTeams.memberActivities, codara]);
   const listCommands = React.useCallback(() => codara.listCommands(), [codara]);
   const completion = useCommandCompletion({
     text: shell.composer.text,
@@ -241,6 +226,8 @@ export function CodaraCliApp(props: CodaraCliAppProps): React.JSX.Element {
     onMoveRight: shell.moveHilRight,
     onSelectPrevious: shell.selectPreviousHilAction,
     onSelectNext: shell.selectNextHilAction,
+    onSelectPreviousApproval: shell.selectPreviousApproval,
+    onSelectNextApproval: shell.selectNextApproval,
     onToggleFocus: shell.toggleHilFocus,
     onInsertText: shell.insertHilText,
     onInsertNewline: shell.insertHilNewline,
@@ -303,18 +290,23 @@ export function CodaraCliApp(props: CodaraCliAppProps): React.JSX.Element {
               <TaskPanel
                 tasks={activeTasks.tasks}
                 runningCount={activeTasks.runningCount}
+                pausedCount={activeTasks.pausedCount}
                 doneCount={activeTasks.doneCount}
                 errorCount={activeTasks.errorCount}
               />
             )}
             {activeTeams.hasActiveTeams && (
-              <TeamPanel
-                teams={activeTeams.activeTeams}
-                runningCount={activeTeams.runningCount}
-                doneCount={activeTeams.doneCount}
-                errorCount={activeTeams.errorCount}
-                teamMembers={teamMembers}
-              />
+              shell.teamDetailState ? (
+                <TeamDetailView state={shell.teamDetailState} />
+              ) : (
+                <TeamPanel
+                  teams={activeTeams.activeTeams}
+                  runningCount={activeTeams.runningCount}
+                  doneCount={activeTeams.doneCount}
+                  errorCount={activeTeams.errorCount}
+                  teamMembers={teamMembers}
+                />
+              )
             )}
           </>
         )}
