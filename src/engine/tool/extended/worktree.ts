@@ -6,7 +6,7 @@ import path from 'node:path';
 import {promisify} from 'node:util';
 import {StructuredTool} from '@langchain/core/tools';
 import {z} from 'zod';
-import {formatError, getErrorMessage} from '@engine/tool/utils';
+import {formatError, getErrorMessage} from '@integration/tool/utils';
 
 const execFile = promisify(execFileCb);
 

@@ -2,7 +2,7 @@
 
 ## 概述
 
-`@engine/pipeline` 提供与 Agent loop 对齐的 6 个 hooks，用于注入日志、conversation context、工具拦截等横切逻辑。
+`@core/middleware` 提供与 Agent loop 对齐的 6 个 hooks，用于注入日志、conversation context、工具拦截等横切逻辑。
 
 生命周期顺序固定为：
 
@@ -13,8 +13,8 @@
 ## 快速开始
 
 ```typescript
-import {createAgent} from '@engine/agent';
-import {createLoggingMiddleware} from '@engine/pipeline';
+import {createAgent} from '@core/agent';
+import {createLoggingMiddleware} from '@core/middleware';
 
 const loggingMiddleware = createLoggingMiddleware({
   level: 'info',
@@ -49,7 +49,7 @@ const agent = createAgent({
 ### 示例：User Context Middleware
 
 ```typescript
-import {createMiddleware} from '@engine/pipeline';
+import {createMiddleware} from '@core/middleware';
 import {z} from 'zod';
 
 const contextSchema = z.object({
@@ -201,7 +201,7 @@ const loggingMiddleware = createLoggingMiddleware({
 - `resolveResume` / `handleResume`：由外部实现审批、编辑、拒绝、多页/tab 流程
 
 ```typescript
-import {createHILMiddleware} from '@engine/pipeline';
+import {createHILMiddleware} from '@core/middleware';
 import {ToolMessage} from '@langchain/core/messages';
 
 const hilMiddleware = createHILMiddleware({

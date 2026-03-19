@@ -160,24 +160,34 @@ export function resolveCommandCompletionMatch(
   };
 }
 
+function getCompletionValue(item: CompletionItem): string {
+  const legacyName = (item as CompletionItem & {name?: string}).name;
+  return item.value || legacyName || '';
+}
+
+function getCompletionAliases(item: CompletionItem): readonly string[] {
+  return item.aliases ?? [];
+}
+
 function scoreCommandItem(item: CompletionItem, prefix: string): number {
   const lower = prefix.toLowerCase();
-  const values = [item.value, ...item.aliases];
+  const primaryValue = getCompletionValue(item);
+  const values = [primaryValue, ...getCompletionAliases(item)];
 
   let best = -1;
   for (const value of values) {
     if (value.toLowerCase() === lower) {
-      best = Math.max(best, value === item.value ? 500 : 480);
+      best = Math.max(best, value === primaryValue ? 500 : 480);
       continue;
     }
 
     if (value.toLowerCase().startsWith(lower)) {
-      best = Math.max(best, value === item.value ? 400 : 380);
+      best = Math.max(best, value === primaryValue ? 400 : 380);
       continue;
     }
 
     if (value.toLowerCase().includes(lower)) {
-      best = Math.max(best, value === item.value ? 300 : 280);
+      best = Math.max(best, value === primaryValue ? 300 : 280);
     }
   }
 
@@ -203,8 +213,10 @@ export function filterCommands(commands: readonly CompletionItem[], prefix: stri
         return right.score - left.score;
       }
 
-      if (left.item.value.length !== right.item.value.length) {
-        return left.item.value.length - right.item.value.length;
+      const leftValue = getCompletionValue(left.item);
+      const rightValue = getCompletionValue(right.item);
+      if (leftValue.length !== rightValue.length) {
+        return leftValue.length - rightValue.length;
       }
 
       return left.index - right.index;

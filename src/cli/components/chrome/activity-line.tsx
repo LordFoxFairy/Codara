@@ -1,7 +1,7 @@
 import React from 'react';
 import {Box, Text} from 'ink';
 import type {CodaraRuntimeEvent} from '@/index';
-import type {SessionMetadata} from '@engine/session/types';
+import type {SessionMetadata} from '@durability/session/types';
 import type {CliActiveTurn, CliRunState} from '../../app/view-state';
 import {useStatusIndicator} from '../../hooks/use-status-indicator';
 import {formatTokenCount} from '../../utils/format';

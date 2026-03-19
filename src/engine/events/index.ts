@@ -5,4 +5,4 @@ export {
   type CodaraRuntimeEventPhase,
   type CodaraRuntimeEventStatus,
   type CodaraRuntimeEventListener,
-} from './runtime-events';
+} from '@observability/events';
