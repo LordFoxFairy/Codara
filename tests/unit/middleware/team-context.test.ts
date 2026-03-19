@@ -4,6 +4,8 @@ import {
   readTeamContext,
   TEAM_MIDDLEWARE_NAME,
 } from '../../../src/capability/team/middleware'
+import {TeamRegistry} from '../../../src/capability/team/coordination/team-registry'
+import {MemorySharedState} from '../../../src/capability/team/shared-state'
 import type {TeamRuntimeContext} from '../../../src/capability/team/middleware'
 import type {BeforeModelContext} from '@core/pipeline/types'
 
@@ -126,6 +128,63 @@ describe('TeamContextMiddleware', () => {
     expect(ctx.systemMessage[0]).toBe('# Worker Protocol\nYou are a worker.')
     expect(ctx.systemMessage[1]).toContain('--- Team Inbox ---')
     expect(ctx.systemMessage[1]).toContain('[leader] Start now')
+  })
+
+  test('leader context injects drained leader inbox for the active team', async () => {
+    const registry = new TeamRegistry()
+    const team = registry.createTeam({name: 'alpha', goal: 'Ship feature'})
+    const runtime = {
+      drainLeaderInbox: async (teamId: string) => {
+        expect(teamId).toBe(team.teamId)
+        return [
+          {
+            id: 'msg-1',
+            from: 'worker-1',
+            to: 'leader',
+            teamId,
+            type: 'question',
+            content: 'Need a decision on API shape',
+            timestamp: new Date().toISOString(),
+            read: false,
+          },
+        ]
+      },
+    } as unknown as Parameters<typeof createTeamMiddleware>[0] extends infer T
+      ? T extends {teamType: 'leader'; runtime: infer R}
+        ? R
+        : never
+      : never
+
+    const mw = createTeamMiddleware({
+      teamType: 'leader',
+      registry,
+      runtime,
+      sharedState: new MemorySharedState(),
+    })
+
+    const ctx = {
+      state: {messages: []},
+      messages: [],
+      runtime: {
+        context: {
+          teamSurface: {
+            activeTeamId: team.teamId,
+            teamRole: 'leader',
+            teamMode: 'leader',
+          },
+        },
+        shared: undefined,
+      },
+      systemMessage: [],
+      execution: {turn: 1, requestId: 'leader-req', sessionId: 'leader-session'},
+    } as unknown as BeforeModelContext
+
+    await mw.beforeModel!(ctx)
+
+    const inboxMsg = ctx.systemMessage.find((m) => m.includes('--- Team Leader Inbox ---'))
+    expect(inboxMsg).toBeDefined()
+    expect(inboxMsg).toContain('worker-1')
+    expect(inboxMsg).toContain('Need a decision on API shape')
   })
 })
 

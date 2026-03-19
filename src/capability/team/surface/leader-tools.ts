@@ -175,12 +175,8 @@ function createTeamSpawnMemberTool(ctx: TeamToolContext): StructuredToolInterfac
         joinedAt: new Date().toISOString(),
       };
 
-      if (ctx.runtime) {
+      if (ctx.runtime?.spawnMember) {
         const spawned = await ctx.runtime.spawnMember(ctx.teamId, input.name, input.role as 'worker', input.model);
-        ctx.emitEvent({
-          type: 'member.joined',
-          data: {teamId: ctx.teamId, memberId: spawned.memberId, name: spawned.name, role: spawned.role, mode: 'local'},
-        });
         return JSON.stringify(spawned);
       }
 
@@ -209,28 +205,38 @@ function createTeamSpawnMemberTool(ctx: TeamToolContext): StructuredToolInterfac
 function createTeamAssignJobTool(ctx: TeamToolContext): StructuredToolInterface {
   return tool(
     async (input) => {
-      const board = ctx.registry.getJobBoard(ctx.teamId);
-
-      let claimed: boolean;
       try {
-        claimed = board.claimJob(input.jobId, input.memberId);
+        if (ctx.runtime?.assignJob) {
+          await ctx.runtime.assignJob(ctx.teamId, input.jobId, input.memberId);
+          return JSON.stringify({assigned: true, jobId: input.jobId, memberId: input.memberId});
+        }
+
+        const board = ctx.registry.getJobBoard(ctx.teamId);
+        const claimed = board.claimJob(input.jobId, input.memberId);
+        if (!claimed) {
+          return JSON.stringify({error: `Cannot assign job ${input.jobId} to ${input.memberId}. Job may not be ready or member may already have an active job.`});
+        }
+
+        ctx.registry.updateMember(ctx.teamId, input.memberId, {
+          currentJobId: input.jobId,
+          status: 'working',
+        });
+
+        ctx.emitEvent({
+          type: 'job.claimed',
+          data: {teamId: ctx.teamId, jobId: input.jobId, memberId: input.memberId},
+        });
+        ctx.emitEvent({
+          type: 'member.working',
+          data: {teamId: ctx.teamId, memberId: input.memberId, jobId: input.jobId},
+        });
+
+        const msg = makeMessage(ctx, input.memberId, 'job_assigned', `You have been assigned job: ${input.jobId}`, {jobId: input.jobId});
+        await ctx.transport.send(input.memberId, msg);
+        return JSON.stringify({assigned: true, jobId: input.jobId, memberId: input.memberId});
       } catch (err: unknown) {
         return JSON.stringify({error: err instanceof Error ? err.message : String(err)});
       }
-
-      if (!claimed) {
-        return JSON.stringify({error: `Cannot assign job ${input.jobId} to ${input.memberId}. Job may not be ready or member may already have an active job.`});
-      }
-
-      ctx.emitEvent({
-        type: 'job.claimed',
-        data: {teamId: ctx.teamId, jobId: input.jobId, memberId: input.memberId},
-      });
-
-      const msg = makeMessage(ctx, input.memberId, 'job_assigned', `You have been assigned job: ${input.jobId}`, {jobId: input.jobId});
-      await ctx.transport.send(input.memberId, msg);
-
-      return JSON.stringify({assigned: true, jobId: input.jobId, memberId: input.memberId});
     },
     {
       name: 'team_assign_job',
@@ -367,15 +373,14 @@ function createTeamReportTool(ctx: TeamToolContext): StructuredToolInterface {
 function createTeamShutdownTool(ctx: TeamToolContext): StructuredToolInterface {
   return tool(
     async (input) => {
-      ctx.emitEvent({
-        type: 'team.completing',
-        data: {teamId: ctx.teamId},
-      });
-
-      try {
+      if (ctx.runtime?.shutdownTeam) {
+        await ctx.runtime.shutdownTeam(ctx.teamId);
+      } else {
         ctx.registry.updateTeamStatus(ctx.teamId, 'completing');
-      } catch {
-        // Team may already be in a transitional state.
+        ctx.emitEvent({
+          type: 'team.completing',
+          data: {teamId: ctx.teamId},
+        });
       }
 
       return JSON.stringify({shutdown: true, reason: input.reason ?? 'Leader initiated shutdown'});

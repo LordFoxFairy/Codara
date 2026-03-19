@@ -9,15 +9,18 @@ interface HilPanelProps {
 // ── Public API ──────────────────────────────────────────────
 
 export function HilPanel({review}: HilPanelProps): React.JSX.Element {
-  if (isPermissionReview(review)) {
-    return <PermissionView review={review} />;
-  }
+  const content = isPermissionReview(review)
+    ? <PermissionView review={review} />
+    : review.form
+      ? <AskUserView review={review} />
+      : <GenericReviewView review={review} />;
 
-  if (review.form) {
-    return <AskUserView review={review} />;
-  }
-
-  return <GenericReviewView review={review} />;
+  return (
+    <Box flexDirection="column" paddingX={1}>
+      <ApprovalQueueBanner review={review} />
+      {content}
+    </Box>
+  );
 }
 
 export function isPermissionReview(review: CliHilReviewState | undefined): boolean {
@@ -36,7 +39,7 @@ function PermissionView({review}: {review: CliHilReviewState}): React.JSX.Elemen
   if (stage === 'always-confirm') {
     const patterns = review.permissionAlwaysPatterns ?? [];
     return (
-      <Box flexDirection="column" paddingX={1}>
+      <Box flexDirection="column">
         <Text color="cyan" bold>Always allow</Text>
         {patterns.length > 0 && patterns[0] !== '*' ? (
           <Box flexDirection="column" paddingLeft={2}>
@@ -63,7 +66,7 @@ function PermissionView({review}: {review: CliHilReviewState}): React.JSX.Elemen
   // Stage 3: Reject feedback
   if (stage === 'reject-feedback') {
     return (
-      <Box flexDirection="column" paddingX={1}>
+      <Box flexDirection="column">
         <Text color="red" bold>Rejection feedback (optional):</Text>
         <Text color={review.draft ? 'green' : 'gray'}>Reason › {review.draft || '(empty)'}</Text>
         <Text dimColor>Enter send · Esc reject silently</Text>
@@ -74,7 +77,7 @@ function PermissionView({review}: {review: CliHilReviewState}): React.JSX.Elemen
 
   // Stage 1: Main prompt — inline, no bordered box
   return (
-    <Box flexDirection="column" paddingX={1}>
+    <Box flexDirection="column">
       <Text color="yellow" bold>{review.request.description}</Text>
       {review.actions.map((action, index) => (
         <Text key={index} color={resolveActionColor(action, index === review.selectedActionIndex)}>
@@ -95,7 +98,7 @@ function AskUserView({review}: {review: CliHilReviewState}): React.JSX.Element {
   const hasMultipleTabs = form.tabs.length > 1;
 
   return (
-    <Box flexDirection="column" paddingX={1}>
+    <Box flexDirection="column">
       {/* Tab navigation bar — always show */}
       {form.tabs.length > 0 && (
         <Box marginBottom={1}>
@@ -191,8 +194,8 @@ function AskUserView({review}: {review: CliHilReviewState}): React.JSX.Element {
             const isLastTab = form.activeTabIndex >= form.tabs.length - 1;
             const enterAction = isLastTab ? 'Enter submit' : 'Enter next';
             return hasMultipleTabs
-              ? `↑/↓ select · 1-9 quick pick · ${enterAction} · ←/→ tabs · Esc cancel`
-              : `↑/↓ select · 1-9 quick pick · ${enterAction} · Esc cancel`;
+              ? `↑/↓ select · 1-9 quick pick · ${enterAction} · ←/→ tabs · [ / ] approvals · Esc cancel`
+              : `↑/↓ select · 1-9 quick pick · ${enterAction} · [ / ] approvals · Esc cancel`;
           })()}
         </Text>
       </Box>
@@ -207,7 +210,7 @@ function AskUserView({review}: {review: CliHilReviewState}): React.JSX.Element {
 
 function GenericReviewView({review}: {review: CliHilReviewState}): React.JSX.Element {
   return (
-    <Box flexDirection="column" paddingX={1}>
+    <Box flexDirection="column">
       <Text color="cyan" bold>Review Required</Text>
       <Text>{review.request.description}</Text>
       {review.actions.map((action, index) => (
@@ -218,8 +221,21 @@ function GenericReviewView({review}: {review: CliHilReviewState}): React.JSX.Ele
       {review.draft !== undefined && review.focus === 'input' && (
         <Text color="cyan">Note › {review.draft || '(empty)'}</Text>
       )}
-      <Text dimColor>Up/Down select · Enter submit</Text>
+      <Text dimColor>Up/Down select · [ / ] approvals · Enter submit</Text>
       {review.busy && <Text color="cyan">Applying...</Text>}
+    </Box>
+  );
+}
+
+function ApprovalQueueBanner({review}: {review: CliHilReviewState}): React.JSX.Element | null {
+  if (review.approvalIndex === undefined || review.approvalCount === undefined) {
+    return null;
+  }
+
+  return (
+    <Box flexDirection="column" marginBottom={1}>
+      <Text color="cyan" bold>{`Approval ${review.approvalIndex}/${review.approvalCount}`}</Text>
+      <Text dimColor>Use [ and ] to switch approvals</Text>
     </Box>
   );
 }
@@ -251,4 +267,3 @@ function isAnswered(value: string | string[] | undefined): boolean {
   if (typeof value === 'string') return value.trim().length > 0;
   return Array.isArray(value) && value.some(e => e.trim().length > 0);
 }
-

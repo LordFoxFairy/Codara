@@ -9,6 +9,10 @@ import type { MemberSession, MemberSessionOptions } from '@capability/team/runti
 import { TeamPersistence } from '@capability/team/persistence';
 import type { TeamMessage } from '@capability/team/coordination/types';
 import type { CodaraRuntimeEvent, CodaraRuntimeEventPhase, CodaraRuntimeEventStatus } from '@observability/events';
+import type {ApprovalStore} from '@durability/approval-store';
+import type {PauseRequest, ResumePayload} from '@core/agent';
+
+const TEAM_LEADER_ENDPOINT = 'leader';
 
 // ─── Types ──────────────────────────────────────────────────────────
 
@@ -23,6 +27,8 @@ export interface TeamRuntimeOptions {
   onTeamEvent?: (event: CodaraRuntimeEvent) => void;
   /** Session ID (or getter) used when constructing CodaraRuntimeEvents. */
   sessionId?: string | (() => string);
+  /** Optional approval store for worker HIL queue integration. */
+  approvalStore?: ApprovalStore;
   /** Optional persistence — team/member state auto-saves on changes. */
   persistence?: TeamPersistence;
   /** Optional transport — defaults to LocalTransport per team. */
@@ -41,6 +47,8 @@ export class TeamRuntime {
   private readonly teamRootIds = new Map<string, string>();
   /** Cached metadata per team — for enriching runtime events. */
   private readonly teamMeta = new Map<string, { name: string; goal: string; memberCount: number; jobTotal: number; jobDone: number }>();
+  /** Whether a paused team was paused by a manual operator action or an approval wait. */
+  private readonly teamPauseOrigins = new Map<string, 'manual' | 'approval'>();
 
   /** Mutable callback — can be set after construction via setOnTeamEvent(). */
   private onTeamEventCallback?: (event: CodaraRuntimeEvent) => void;
@@ -74,6 +82,8 @@ export class TeamRuntime {
   // ── Runtime Event Mapping ─────────────────────────────────────────
 
   private emitTeamEvent(teamId: string, event: TeamBusEvent): void {
+    this.applyTeamControlPlaneEvent(teamId, event);
+
     // Notify domain event subscribers (SSE, etc.)
     for (const listener of this.eventSubscribers) {
       try { listener(teamId, event); } catch { /* swallow */ }
@@ -86,6 +96,56 @@ export class TeamRuntime {
     const runtimeEvent = this.mapBusEventToRuntimeEvent(teamId, event, sessionId);
     if (runtimeEvent) {
       this.onTeamEventCallback(runtimeEvent);
+    }
+  }
+
+  private applyTeamControlPlaneEvent(teamId: string, event: TeamBusEvent): void {
+    if (event.type === 'team.running') {
+      this.teamPauseOrigins.delete(teamId);
+      return;
+    }
+
+    if (event.type === 'team.paused') {
+      this.teamPauseOrigins.set(teamId, 'manual');
+      return;
+    }
+
+    if (event.type === 'member.paused' && event.data.pause) {
+      const team = this.options.registry.getTeam(teamId);
+      if (team?.status === 'running') {
+        this.options.registry.updateTeamStatus(teamId, 'paused');
+        this.persistTeam(teamId);
+      }
+      if (!this.teamPauseOrigins.has(teamId)) {
+        this.teamPauseOrigins.set(teamId, 'approval');
+      }
+
+      const sessionId = this.resolveSessionId();
+      if (sessionId) {
+        this.options.approvalStore?.upsertTeamMemberApproval({
+          sessionId,
+          teamId,
+          memberId: event.data.memberId,
+          memberName: this.options.registry.getMember(event.data.memberId)?.name,
+          pauseRequest: event.data.pause as PauseRequest,
+        });
+      }
+
+      const pauseTimer = this.healthTimers.get(teamId);
+      if (pauseTimer) clearInterval(pauseTimer);
+      this.healthTimers.delete(teamId);
+      return;
+    }
+
+    if (event.type === 'member.failed' || event.type === 'member.left') {
+      this.options.approvalStore?.removeByTeamMember(teamId, event.data.memberId);
+      this.syncApprovalPausedTeamState(teamId);
+      return;
+    }
+
+    if (event.type === 'team.completed' || event.type === 'team.failed' || event.type === 'team.archived') {
+      this.clearTeamApprovals(teamId);
+      this.teamPauseOrigins.delete(teamId);
     }
   }
 
@@ -340,10 +400,19 @@ export class TeamRuntime {
 
     const transport = this.options.transport ?? new LocalTransport();
     this.transports.set(teamId, transport);
+    if ('registerMember' in transport) {
+      (transport as LocalTransport).registerMember(TEAM_LEADER_ENDPOINT);
+    }
 
     // In-memory message buffer — persisted as part of TeamSnapshot
     if (!this.teamMessages.has(teamId)) {
       this.teamMessages.set(teamId, []);
+    }
+    if ('subscribe' in transport) {
+      (transport as LocalTransport).subscribe(TEAM_LEADER_ENDPOINT, (msg) => {
+        const msgs = this.teamMessages.get(teamId);
+        if (msgs) msgs.push(msg);
+      });
     }
 
     registry.updateTeamStatus(teamId, 'running');
@@ -427,6 +496,8 @@ export class TeamRuntime {
       }
     }
 
+    this.assertCanComplete(teamId);
+
     // Request shutdown for all runners belonging to this team
     for (const [memberId, runner] of this.runners) {
       const member = registry.getMember(memberId);
@@ -459,6 +530,12 @@ export class TeamRuntime {
       }
     }
 
+    const team = registry.getTeam(teamId);
+    if (team?.status === 'paused') {
+      // Paused teams are still finishable, but the registry only allows completing from running.
+      registry.updateTeamStatus(teamId, 'running');
+    }
+
     registry.updateTeamStatus(teamId, 'completing');
 
     registry.updateTeamStatus(teamId, 'completed');
@@ -474,6 +551,8 @@ export class TeamRuntime {
 
     this.transports.delete(teamId);
     this.teamMessages.delete(teamId);
+    this.clearTeamApprovals(teamId);
+    this.teamPauseOrigins.delete(teamId);
   }
 
   /** Force-kill a team. */
@@ -505,6 +584,8 @@ export class TeamRuntime {
 
     this.transports.delete(teamId);
     this.teamMessages.delete(teamId);
+    this.clearTeamApprovals(teamId);
+    this.teamPauseOrigins.delete(teamId);
   }
 
   /** Pause all members of a team. */
@@ -517,6 +598,7 @@ export class TeamRuntime {
     }
     this.options.registry.updateTeamStatus(teamId, 'paused');
     this.persistTeam(teamId);
+    this.teamPauseOrigins.set(teamId, 'manual');
     const pausedEvent: TeamBusEvent = { type: 'team.paused', data: { teamId, reason: 'User requested' } };
     this.emitTeamEvent(teamId, pausedEvent);
 
@@ -536,6 +618,7 @@ export class TeamRuntime {
     }
     this.options.registry.updateTeamStatus(teamId, 'running');
     this.persistTeam(teamId);
+    this.teamPauseOrigins.delete(teamId);
     const resumeEvent: TeamBusEvent = { type: 'team.running', data: { teamId } };
     this.emitTeamEvent(teamId, resumeEvent);
 
@@ -550,12 +633,130 @@ export class TeamRuntime {
     return this.runners.get(memberId);
   }
 
+  async resumeMemberApproval(memberId: string, payload: ResumePayload): Promise<void> {
+    const runner = this.runners.get(memberId);
+    if (!runner) {
+      throw new Error(`Member ${memberId} not found`);
+    }
+
+    this.options.approvalStore?.removeByTeamMember(this.requireMemberTeamId(memberId), memberId);
+    await runner.resumeApproval(payload);
+    this.syncApprovalPausedTeamState(this.requireMemberTeamId(memberId));
+  }
+
+  async *resumeMemberApprovalStream(memberId: string, payload: ResumePayload): AsyncGenerator<unknown, void, void> {
+    const runner = this.runners.get(memberId);
+    if (!runner) {
+      throw new Error(`Member ${memberId} not found`);
+    }
+
+    if (!runner.supportsApprovalResumeStream()) {
+      await this.resumeMemberApproval(memberId, payload);
+      return;
+    }
+
+    this.options.approvalStore?.removeByTeamMember(this.requireMemberTeamId(memberId), memberId);
+    yield* runner.resumeApprovalStream(payload);
+    this.syncApprovalPausedTeamState(this.requireMemberTeamId(memberId));
+  }
+
+  async resumeApprovalById(approvalId: string, payload: ResumePayload): Promise<void> {
+    const record = this.requireTeamApprovalRecord(approvalId);
+    await this.resumeMemberApproval(record.memberId, payload);
+  }
+
+  async *resumeApprovalByIdStream(approvalId: string, payload: ResumePayload): AsyncGenerator<unknown, void, void> {
+    const record = this.requireTeamApprovalRecord(approvalId);
+    yield* this.resumeMemberApprovalStream(record.memberId, payload);
+  }
+
   getTransport(teamId: string): TeamTransport | undefined {
     return this.transports.get(teamId);
   }
 
+  async drainLeaderInbox(teamId: string): Promise<TeamMessage[]> {
+    const transport = this.transports.get(teamId);
+    if (!transport) {
+      return [];
+    }
+
+    try {
+      return await transport.receive(TEAM_LEADER_ENDPOINT);
+    } catch {
+      return [];
+    }
+  }
+
   getTeamMessages(teamId: string): TeamMessage[] {
     return this.teamMessages.get(teamId) ?? [];
+  }
+
+  restoreTeamMessages(teamId: string, messages: readonly TeamMessage[]): void {
+    this.teamMessages.set(teamId, [...messages]);
+  }
+
+  getCompletionBlockers(teamId: string): {
+    openJobs: Array<{jobId: string; title: string; status: string; assignee?: string}>;
+    pendingApprovals: Array<{approvalId: string; memberId: string; memberName?: string; toolName: string}>;
+  } {
+    const board = this.options.registry.getJobBoard(teamId);
+    const openJobs = board.getAllJobs()
+      .filter((job) => job.status !== 'done' && job.status !== 'failed')
+      .map((job) => ({
+        jobId: job.id,
+        title: job.title,
+        status: job.status,
+        ...(job.assignee ? {assignee: job.assignee} : {}),
+      }));
+
+    const pendingApprovals = (this.options.approvalStore?.list() ?? [])
+      .filter((record) => record.source === 'team_member' && record.teamId === teamId && record.memberId)
+      .map((record) => ({
+        approvalId: record.approvalId,
+        memberId: record.memberId!,
+        ...(record.memberName ? {memberName: record.memberName} : {}),
+        toolName: record.toolName,
+      }));
+
+    return {openJobs, pendingApprovals};
+  }
+
+  async assignJob(teamId: string, jobId: string, memberId: string): Promise<void> {
+    const board = this.options.registry.getJobBoard(teamId);
+    const claimed = board.claimJob(jobId, memberId);
+    if (!claimed) {
+      throw new Error(`Cannot assign job ${jobId} — not ready or member already busy`);
+    }
+
+    this.options.registry.updateMember(teamId, memberId, {
+      currentJobId: jobId,
+      status: 'working',
+    });
+    this.emitTeamEvent(teamId, {
+      type: 'job.claimed',
+      data: {teamId, jobId, memberId},
+    });
+    this.emitTeamEvent(teamId, {
+      type: 'member.working',
+      data: {teamId, memberId, jobId},
+    });
+
+    const transport = this.transports.get(teamId);
+    if (transport) {
+      await transport.send(memberId, {
+        id: `msg_${crypto.randomUUID().slice(0, 8)}`,
+        from: TEAM_LEADER_ENDPOINT,
+        to: memberId,
+        teamId,
+        type: 'job_assigned',
+        content: `You have been assigned job: ${jobId}`,
+        metadata: {jobId},
+        timestamp: new Date().toISOString(),
+        read: false,
+      });
+    }
+
+    this.runners.get(memberId)?.wake();
   }
 
   /**
@@ -648,6 +849,88 @@ export class TeamRuntime {
         data: { teamId, memberId, error: String(error) },
       };
       this.emitTeamEvent(teamId, failEvent);
+    }
+  }
+
+  private resolveSessionId(): string | undefined {
+    if (!this.sessionIdGetter) {
+      return undefined;
+    }
+    return typeof this.sessionIdGetter === 'function' ? this.sessionIdGetter() : this.sessionIdGetter;
+  }
+
+  private clearTeamApprovals(teamId: string): void {
+    for (const member of this.options.registry.getMembersByTeam(teamId)) {
+      this.options.approvalStore?.removeByTeamMember(teamId, member.memberId);
+    }
+  }
+
+  private requireMemberTeamId(memberId: string): string {
+    const member = this.options.registry.getMember(memberId);
+    if (!member) {
+      throw new Error(`Member ${memberId} not found`);
+    }
+    return member.teamId;
+  }
+
+  private syncApprovalPausedTeamState(teamId: string): void {
+    if (this.teamPauseOrigins.get(teamId) !== 'approval') {
+      return;
+    }
+
+    const hasPendingApproval = this.options.registry.getMembersByTeam(teamId)
+      .some((member) => {
+        const runner = this.runners.get(member.memberId);
+        return runner?.getStatus() === 'paused' && Boolean(runner.getPendingPause());
+      });
+
+    if (hasPendingApproval) {
+      return;
+    }
+
+    const team = this.options.registry.getTeam(teamId);
+    if (team?.status === 'paused') {
+      this.options.registry.updateTeamStatus(teamId, 'running');
+      this.persistTeam(teamId);
+    }
+    this.teamPauseOrigins.delete(teamId);
+
+    if (!this.healthTimers.has(teamId)) {
+      const healthTimer = setInterval(() => {
+        this.checkTeamHealth(teamId);
+      }, 5_000);
+      this.healthTimers.set(teamId, healthTimer);
+    }
+  }
+
+  private requireTeamApprovalRecord(approvalId: string): {
+    approvalId: string;
+    memberId: string;
+  } {
+    const record = this.options.approvalStore?.get(approvalId);
+    if (!record || record.source !== 'team_member' || !record.memberId) {
+      throw new Error(`Team approval "${approvalId}" not found`);
+    }
+    return {
+      approvalId: record.approvalId,
+      memberId: record.memberId,
+    };
+  }
+
+  private assertCanComplete(teamId: string): void {
+    const blockers = this.getCompletionBlockers(teamId);
+    const parts: string[] = [];
+
+    if (blockers.openJobs.length > 0) {
+      parts.push(`outstanding jobs: ${blockers.openJobs.map((job) => `${job.jobId} (${job.status})`).join(', ')}`);
+    }
+
+    if (blockers.pendingApprovals.length > 0) {
+      parts.push(`pending approvals: ${blockers.pendingApprovals.map((approval) => approval.memberName ?? approval.memberId).join(', ')}`);
+    }
+
+    if (parts.length > 0) {
+      throw new Error(`Cannot complete team ${teamId}: ${parts.join(' | ')}`);
     }
   }
 

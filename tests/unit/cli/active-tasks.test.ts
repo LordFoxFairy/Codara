@@ -1,16 +1,19 @@
 import {describe, expect, it} from 'bun:test';
-import type {CodaraRuntimeEvent} from '@/index';
-import {deriveActiveTasks, extractTaskName} from '../../../src/cli/hooks/use-active-tasks';
+import {
+  deriveActiveTaskSnapshot,
+  deriveActiveTasks,
+  extractTaskName,
+  type TaskRunQuerySummary,
+} from '../../../src/cli/hooks/use-active-tasks';
 
-function createEvent(overrides: Partial<CodaraRuntimeEvent>): CodaraRuntimeEvent {
+function createTaskRun(overrides: Partial<TaskRunQuerySummary>): TaskRunQuerySummary {
   return {
-    id: 'evt-1',
-    sessionId: 'session-1',
-    timestamp: new Date().toISOString(),
-    kind: 'task',
-    phase: 'start',
-    status: 'running',
+    runId: 'run-1',
     label: 'Delegating task',
+    agentName: 'general-purpose',
+    status: 'running',
+    startedAt: new Date().toISOString(),
+    updatedAt: new Date().toISOString(),
     ...overrides,
   };
 }
@@ -37,137 +40,189 @@ describe('extractTaskName', () => {
 describe('deriveActiveTasks', () => {
   const baseTime = Date.parse('2026-03-16T00:00:00Z');
 
-  it('returns running task from start event', () => {
-    const events: CodaraRuntimeEvent[] = [
-      createEvent({
-        id: 'task-1',
-        timestamp: new Date(baseTime).toISOString(),
+  it('returns running task from stable run summary', () => {
+    const runs: TaskRunQuerySummary[] = [
+      createTaskRun({
+        runId: 'task-1',
+        startedAt: new Date(baseTime).toISOString(),
         label: 'Delegating research: find docs',
+        latestActivity: 'read_file(src/auth.ts)',
       }),
     ];
 
-    const tasks = deriveActiveTasks(events, baseTime + 5000);
+    const tasks = deriveActiveTasks(runs, baseTime + 5000);
     expect(tasks).toHaveLength(1);
     expect(tasks[0]!.status).toBe('running');
     expect(tasks[0]!.name).toBe('research: find docs');
     expect(tasks[0]!.elapsed).toBe(5000);
+    expect(tasks[0]!.detail).toBe('read_file(src/auth.ts)');
   });
 
-  it('marks task as done when end event arrives', () => {
-    const events: CodaraRuntimeEvent[] = [
-      createEvent({
-        id: 'task-1',
-        timestamp: new Date(baseTime).toISOString(),
+  it('marks task as done when run status is completed', () => {
+    const runs: TaskRunQuerySummary[] = [
+      createTaskRun({
+        runId: 'task-1',
+        startedAt: new Date(baseTime).toISOString(),
         label: 'Delegating research',
-      }),
-      createEvent({
-        id: 'end-1',
-        phase: 'end',
-        status: 'done',
-        timestamp: new Date(baseTime + 3000).toISOString(),
-        label: 'Delegated task completed',
-        parentId: 'task-1',
+        status: 'completed',
+        endedAt: new Date(baseTime + 3000).toISOString(),
       }),
     ];
 
-    const tasks = deriveActiveTasks(events, baseTime + 4000);
+    const tasks = deriveActiveTasks(runs, baseTime + 4000);
     expect(tasks).toHaveLength(1);
     expect(tasks[0]!.status).toBe('done');
     expect(tasks[0]!.elapsed).toBe(3000);
   });
 
   it('removes done tasks after linger period', () => {
-    const events: CodaraRuntimeEvent[] = [
-      createEvent({
-        id: 'task-1',
-        timestamp: new Date(baseTime).toISOString(),
+    const runs: TaskRunQuerySummary[] = [
+      createTaskRun({
+        runId: 'task-1',
+        startedAt: new Date(baseTime).toISOString(),
         label: 'Delegating research',
-      }),
-      createEvent({
-        id: 'end-1',
-        phase: 'end',
-        status: 'done',
-        timestamp: new Date(baseTime + 1000).toISOString(),
-        label: 'Delegated task completed',
-        parentId: 'task-1',
+        status: 'completed',
+        endedAt: new Date(baseTime + 1000).toISOString(),
       }),
     ];
 
     // Within linger
-    expect(deriveActiveTasks(events, baseTime + 2000)).toHaveLength(1);
+    expect(deriveActiveTasks(runs, baseTime + 2000)).toHaveLength(1);
     // After linger (3 seconds)
-    expect(deriveActiveTasks(events, baseTime + 5000)).toHaveLength(0);
+    expect(deriveActiveTasks(runs, baseTime + 5000)).toHaveLength(0);
   });
 
   it('marks task as error', () => {
-    const events: CodaraRuntimeEvent[] = [
-      createEvent({
-        id: 'task-1',
-        timestamp: new Date(baseTime).toISOString(),
+    const runs: TaskRunQuerySummary[] = [
+      createTaskRun({
+        runId: 'task-1',
+        startedAt: new Date(baseTime).toISOString(),
         label: 'Delegating build',
-      }),
-      createEvent({
-        id: 'end-1',
-        phase: 'end',
-        status: 'error',
-        timestamp: new Date(baseTime + 500).toISOString(),
-        label: 'Delegated task failed',
-        parentId: 'task-1',
+        status: 'failed',
+        endedAt: new Date(baseTime + 500).toISOString(),
       }),
     ];
 
-    const tasks = deriveActiveTasks(events, baseTime + 1000);
+    const tasks = deriveActiveTasks(runs, baseTime + 1000);
     expect(tasks).toHaveLength(1);
     expect(tasks[0]!.status).toBe('error');
   });
 
+  it('keeps approval-waiting task runs visible as paused tasks', () => {
+    const runs: TaskRunQuerySummary[] = [
+      createTaskRun({
+        runId: 'task-paused',
+        startedAt: new Date(baseTime).toISOString(),
+        label: 'Delegating approval: unsafe write',
+        status: 'paused',
+        latestActivity: 'Waiting for approval on dangerous_tool',
+      }),
+    ];
+
+    const tasks = deriveActiveTasks(runs, baseTime + 4000);
+    expect(tasks).toHaveLength(1);
+    expect(tasks[0]!.status).toBe('paused');
+    expect(tasks[0]!.detail).toBe('Waiting for approval on dangerous_tool');
+  });
+
   it('sorts running tasks before completed tasks', () => {
-    const events: CodaraRuntimeEvent[] = [
-      createEvent({
-        id: 'task-done',
-        timestamp: new Date(baseTime).toISOString(),
+    const runs: TaskRunQuerySummary[] = [
+      createTaskRun({
+        runId: 'task-done',
+        startedAt: new Date(baseTime).toISOString(),
         label: 'Delegating research',
+        status: 'completed',
+        endedAt: new Date(baseTime + 1000).toISOString(),
       }),
-      createEvent({
-        id: 'end-done',
-        phase: 'end',
-        status: 'done',
-        timestamp: new Date(baseTime + 1000).toISOString(),
-        label: 'done',
-        parentId: 'task-done',
-      }),
-      createEvent({
-        id: 'task-running',
-        timestamp: new Date(baseTime + 2000).toISOString(),
+      createTaskRun({
+        runId: 'task-running',
+        startedAt: new Date(baseTime + 2000).toISOString(),
         label: 'Delegating build',
       }),
     ];
 
-    const tasks = deriveActiveTasks(events, baseTime + 3000);
+    const tasks = deriveActiveTasks(runs, baseTime + 3000);
     expect(tasks[0]!.status).toBe('running');
     expect(tasks[1]!.status).toBe('done');
   });
 
+  it('sorts paused approval-waiting tasks after running tasks and before completed tasks', () => {
+    const runs: TaskRunQuerySummary[] = [
+      createTaskRun({
+        runId: 'task-running',
+        startedAt: new Date(baseTime + 2000).toISOString(),
+        label: 'Delegating build',
+      }),
+      createTaskRun({
+        runId: 'task-paused',
+        startedAt: new Date(baseTime + 1000).toISOString(),
+        label: 'Delegating approval: unsafe write',
+        status: 'paused',
+        latestActivity: 'Waiting for approval on dangerous_tool',
+      }),
+      createTaskRun({
+        runId: 'task-done',
+        startedAt: new Date(baseTime).toISOString(),
+        label: 'Delegating research',
+        status: 'completed',
+        endedAt: new Date(baseTime + 500).toISOString(),
+      }),
+    ];
+
+    const tasks = deriveActiveTasks(runs, baseTime + 3000);
+    expect(tasks.map((task) => task.status)).toEqual(['running', 'paused', 'done']);
+  });
+
   it('limits to 5 visible tasks', () => {
-    const events: CodaraRuntimeEvent[] = [];
+    const runs: TaskRunQuerySummary[] = [];
     for (let i = 0; i < 8; i++) {
-      events.push(createEvent({
-        id: `task-${i}`,
-        timestamp: new Date(baseTime + i * 100).toISOString(),
+      runs.push(createTaskRun({
+        runId: `task-${i}`,
+        startedAt: new Date(baseTime + i * 100).toISOString(),
         label: `Delegating task-${i}`,
       }));
     }
 
-    const tasks = deriveActiveTasks(events, baseTime + 10000);
+    const tasks = deriveActiveTasks(runs, baseTime + 10000);
     expect(tasks.length).toBeLessThanOrEqual(5);
   });
 
-  it('ignores non-task events', () => {
-    const events: CodaraRuntimeEvent[] = [
-      createEvent({id: 'model-1', kind: 'model', label: 'Thinking'}),
-      createEvent({id: 'tool-1', kind: 'tool', label: 'Reading file'}),
+  it('counts all matching tasks even when visible rows are capped', () => {
+    const runs: TaskRunQuerySummary[] = [
+      createTaskRun({runId: 'running-1', startedAt: new Date(baseTime + 5000).toISOString(), label: 'Delegating running-1'}),
+      createTaskRun({runId: 'running-2', startedAt: new Date(baseTime + 4000).toISOString(), label: 'Delegating running-2'}),
+      createTaskRun({runId: 'running-3', startedAt: new Date(baseTime + 3000).toISOString(), label: 'Delegating running-3'}),
+      createTaskRun({
+        runId: 'done-1',
+        startedAt: new Date(baseTime + 2000).toISOString(),
+        label: 'Delegating done-1',
+        status: 'completed',
+        endedAt: new Date(baseTime + 4500).toISOString(),
+      }),
+      createTaskRun({
+        runId: 'done-2',
+        startedAt: new Date(baseTime + 1000).toISOString(),
+        label: 'Delegating done-2',
+        status: 'completed',
+        endedAt: new Date(baseTime + 4200).toISOString(),
+      }),
+      createTaskRun({
+        runId: 'error-1',
+        startedAt: new Date(baseTime).toISOString(),
+        label: 'Delegating error-1',
+        status: 'failed',
+        endedAt: new Date(baseTime + 4100).toISOString(),
+      }),
     ];
 
-    expect(deriveActiveTasks(events, baseTime)).toHaveLength(0);
+    const snapshot = deriveActiveTaskSnapshot(runs, baseTime + 6000);
+    expect(snapshot.tasks).toHaveLength(5);
+    expect(snapshot.runningCount).toBe(3);
+    expect(snapshot.doneCount).toBe(2);
+    expect(snapshot.errorCount).toBe(1);
+  });
+
+  it('returns empty list for no task runs', () => {
+    expect(deriveActiveTasks([], baseTime)).toHaveLength(0);
   });
 });

@@ -4,17 +4,39 @@ import { TeamRegistry } from '@capability/team/coordination/team-registry';
 import { JobBoard } from '@capability/team/coordination/job-board';
 import type { TeamBusEvent } from '@capability/team/coordination/events';
 import type { MemberSession } from '@capability/team/runtime/member-runner';
+import type {PauseRequest, ResumePayload} from '@core/agent';
+import {createApprovalMemoryStore} from '@durability/approval-store';
 
 // ─── Helpers ────────────────────────────────────────────────────────
 
 function createMockSession(behavior?: {
-  invokeResult?: () => { reason: 'complete' | 'continue' | 'error' | 'idle'; error?: Error };
+  beforeInvoke?: () => Promise<void> | void;
+  beforeResume?: (payload: ResumePayload) => Promise<void> | void;
+  invokeResult?: () => { reason: 'complete' | 'continue' | 'error' | 'idle' | 'paused'; error?: Error; pause?: PauseRequest };
+  resumeResult?: (payload: ResumePayload) => { reason: 'complete' | 'continue' | 'error' | 'idle' | 'paused'; error?: Error; pause?: PauseRequest };
 }): MemberSession {
+  let pendingPause: PauseRequest | undefined;
   return {
     invoke: async () => {
-      if (behavior?.invokeResult) return behavior.invokeResult();
+      await behavior?.beforeInvoke?.();
+      if (behavior?.invokeResult) {
+        const result = behavior.invokeResult();
+        pendingPause = result.reason === 'paused' ? result.pause : undefined;
+        return result;
+      }
       return { reason: 'complete' as const };
     },
+    resumePause: async (payload: ResumePayload) => {
+      await behavior?.beforeResume?.(payload);
+      if (behavior?.resumeResult) {
+        const result = behavior.resumeResult(payload);
+        pendingPause = result.reason === 'paused' ? result.pause : undefined;
+        return result;
+      }
+      pendingPause = undefined;
+      return {reason: 'complete' as const};
+    },
+    getPendingPause: () => pendingPause,
     dispose: async () => {},
   };
 }
@@ -118,7 +140,7 @@ describe('TeamRuntime', () => {
     await expect(runtime.spawnMember(team.teamId, 'w', 'worker')).rejects.toThrow('not started');
   });
 
-  test('shutdownTeam terminates all members and sets completed', async () => {
+  test('shutdownTeam completes an idle team with no outstanding jobs or approvals', async () => {
     const team = createTestTeam();
     await runtime.startTeam(team.teamId);
 
@@ -129,6 +151,143 @@ describe('TeamRuntime', () => {
 
     const updatedTeam = registry.getTeam(team.teamId);
     expect(updatedTeam?.status).toBe('completed');
+  });
+
+  test('shutdownTeam completes a paused team with no outstanding jobs or approvals', async () => {
+    const team = createTestTeam();
+    await runtime.startTeam(team.teamId);
+
+    // Give leader time to enter loop
+    await new Promise(r => setTimeout(r, 20));
+
+    runtime.pauseTeam(team.teamId);
+    expect(registry.getTeam(team.teamId)?.status).toBe('paused');
+
+    const blockers = runtime.getCompletionBlockers(team.teamId);
+    expect(blockers.openJobs).toHaveLength(0);
+    expect(blockers.pendingApprovals).toHaveLength(0);
+
+    await runtime.shutdownTeam(team.teamId);
+
+    const updatedTeam = registry.getTeam(team.teamId);
+    expect(updatedTeam?.status).toBe('completed');
+  });
+
+  test('shutdownTeam refuses completion while jobs are still outstanding', async () => {
+    const team = createTestTeam();
+    await runtime.startTeam(team.teamId);
+
+    const board = registry.getJobBoard(team.teamId);
+    board.planJobs([{title: 'Still pending', description: 'Do not finish yet'}]);
+
+    await expect(runtime.shutdownTeam(team.teamId)).rejects.toThrow(/outstanding jobs/i);
+    expect(registry.getTeam(team.teamId)?.status).toBe('running');
+
+    await runtime.killTeam(team.teamId);
+  });
+
+  test('shutdownTeam refuses completion while worker approvals are still pending', async () => {
+    const pauseRequest: PauseRequest = {
+      id: 'pause-team-finish-1',
+      description: 'Need approval before finish',
+      action: {
+        toolCallId: 'call_team_finish_approval',
+        toolName: 'dangerous_tool',
+        toolArgs: {target: 'tmp/out.txt'},
+      },
+      review: {
+        actionName: 'dangerous_tool',
+        allowedDecisions: ['approve', 'reject'],
+      },
+      runtime: {
+        runId: 'run-team-finish-approval',
+        turn: 1,
+        requestId: 'req-team-finish-approval',
+        toolIndex: 0,
+      },
+    };
+    const approvalStore = createApprovalMemoryStore();
+    let firstInvoke = true;
+    setup(() => createMockSession({
+      beforeInvoke: async () => {
+        const teamId = registry.listTeams()[0]?.teamId;
+        const workerId = registry.getMembersByTeam(teamId ?? '')[0]?.memberId;
+        if (teamId && workerId) {
+          await runtime.getTransport(teamId)?.receive(workerId);
+        }
+      },
+      invokeResult: () => {
+        if (firstInvoke) {
+          firstInvoke = false;
+          return {reason: 'paused', pause: pauseRequest};
+        }
+        return {reason: 'complete'};
+      },
+    }));
+    runtime = new TeamRuntime({
+      registry,
+      projectRoot: '/tmp/test',
+      createSession: () => createMockSession({
+        beforeInvoke: async () => {
+          const teamId = registry.listTeams()[0]?.teamId;
+          const workerId = registry.getMembersByTeam(teamId ?? '')[0]?.memberId;
+          if (teamId && workerId) {
+            await runtime.getTransport(teamId)?.receive(workerId);
+          }
+        },
+        invokeResult: () => {
+          if (firstInvoke) {
+            firstInvoke = false;
+            return {reason: 'paused', pause: pauseRequest};
+          }
+          return {reason: 'complete'};
+        },
+      }),
+      approvalStore,
+      sessionId: 'team-finish-approval-session',
+    });
+    domainEvents = [];
+    runtime.subscribeDomainEvents((teamId, event) => {
+      domainEvents.push({ teamId, event });
+    });
+
+    const team = createTestTeam();
+    await runtime.startTeam(team.teamId);
+    const worker = await runtime.spawnMember(team.teamId, 'approval-worker', 'worker');
+    const transport = runtime.getTransport(team.teamId)!;
+
+    await transport.send(worker.memberId, {
+      id: 'msg-finish-approval-1',
+      from: 'leader',
+      to: worker.memberId,
+      teamId: team.teamId,
+      type: 'message',
+      content: 'perform the risky step',
+      timestamp: new Date().toISOString(),
+      read: false,
+    });
+
+    runtime.getRunner(worker.memberId)?.wake();
+    await new Promise((resolve) => setTimeout(resolve, 100));
+
+    await expect(runtime.shutdownTeam(team.teamId)).rejects.toThrow(/pending approvals/i);
+    expect(registry.getTeam(team.teamId)?.status).toBe('paused');
+
+    await runtime.killTeam(team.teamId);
+  });
+
+  test('shutdownTeam refuses completion while jobs remain unfinished', async () => {
+    const team = createTestTeam();
+    await runtime.startTeam(team.teamId);
+
+    const board = registry.getJobBoard(team.teamId);
+    const [job] = board.planJobs([{title: 'Ship feature', description: 'Still running'}]);
+
+    const blockers = runtime.getCompletionBlockers(team.teamId);
+    expect(blockers.openJobs.map((openJob) => openJob.jobId)).toContain(job.id);
+
+    await expect(runtime.shutdownTeam(team.teamId)).rejects.toThrow(/cannot complete team/i);
+    expect(registry.getTeam(team.teamId)?.status).toBe('running');
   });
 
   test('killTeam force terminates and sets failed', async () => {
@@ -162,7 +321,7 @@ describe('TeamRuntime', () => {
 
     // Cleanup: resume then shutdown
     runtime.resumeTeam(team.teamId);
-    await runtime.shutdownTeam(team.teamId);
+    await runtime.killTeam(team.teamId);
   });
 
   test('resumeTeam resumes from paused and sets running', async () => {
@@ -177,7 +336,7 @@ describe('TeamRuntime', () => {
     runtime.resumeTeam(team.teamId);
     expect(registry.getTeam(team.teamId)?.status).toBe('running');
 
-    await runtime.shutdownTeam(team.teamId);
+    await runtime.killTeam(team.teamId);
   });
 
   test('worker crash emits member.failed event', async () => {
@@ -211,6 +370,181 @@ describe('TeamRuntime', () => {
     expect(failEvents.length).toBeGreaterThanOrEqual(1);
 
     await runtime.shutdownTeam(team.teamId);
+  });
+
+  test('worker approval pauses the team, surfaces an approval record, and clears it after resume', async () => {
+    const pauseRequest: PauseRequest = {
+      id: 'pause-team-worker-1',
+      description: 'Worker approval required',
+      action: {
+        toolCallId: 'call_worker_approval',
+        toolName: 'dangerous_tool',
+        toolArgs: {target: 'tmp/out.txt'},
+      },
+      review: {
+        actionName: 'dangerous_tool',
+        allowedDecisions: ['approve', 'reject'],
+      },
+      runtime: {
+        runId: 'run-worker-approval',
+        turn: 1,
+        requestId: 'req-worker-approval',
+        toolIndex: 0,
+      },
+    };
+    const approvalStore = createApprovalMemoryStore();
+    let firstInvoke = true;
+    setup(() => createMockSession({
+      beforeInvoke: async () => {
+        const teamId = registry.listTeams()[0]?.teamId;
+        const workerId = registry.getMembersByTeam(teamId ?? '')[0]?.memberId;
+        if (teamId && workerId) {
+          await runtime.getTransport(teamId)?.receive(workerId);
+        }
+      },
+      invokeResult: () => {
+        if (firstInvoke) {
+          firstInvoke = false;
+          return {reason: 'paused', pause: pauseRequest};
+        }
+        return {reason: 'complete'};
+      },
+      resumeResult: (payload) => {
+        expect(payload).toMatchObject({action: 'allow_once'});
+        return {reason: 'complete'};
+      },
+    }));
+    runtime = new TeamRuntime({
+      registry,
+      projectRoot: '/tmp/test',
+      createSession: () => createMockSession({
+        beforeInvoke: async () => {
+          const teamId = registry.listTeams()[0]?.teamId;
+          const workerId = registry.getMembersByTeam(teamId ?? '')[0]?.memberId;
+          if (teamId && workerId) {
+            await runtime.getTransport(teamId)?.receive(workerId);
+          }
+        },
+        invokeResult: () => {
+          if (firstInvoke) {
+            firstInvoke = false;
+            return {reason: 'paused', pause: pauseRequest};
+          }
+          return {reason: 'complete'};
+        },
+        resumeResult: (payload) => {
+          expect(payload).toMatchObject({action: 'allow_once'});
+          return {reason: 'complete'};
+        },
+      }),
+      approvalStore,
+      sessionId: 'team-approval-session',
+    });
+    domainEvents = [];
+    runtime.subscribeDomainEvents((teamId, event) => {
+      domainEvents.push({ teamId, event });
+    });
+
+    const team = createTestTeam();
+    await runtime.startTeam(team.teamId);
+    const worker = await runtime.spawnMember(team.teamId, 'approval-worker', 'worker');
+    const transport = runtime.getTransport(team.teamId)!;
+
+    await transport.send(worker.memberId, {
+      id: 'msg-approval-1',
+      from: 'leader',
+      to: worker.memberId,
+      teamId: team.teamId,
+      type: 'message',
+      content: 'perform the risky step',
+      timestamp: new Date().toISOString(),
+      read: false,
+    });
+
+    runtime.getRunner(worker.memberId)?.wake();
+    await new Promise((resolve) => setTimeout(resolve, 100));
+
+    expect(registry.getTeam(team.teamId)?.status).toBe('paused');
+    expect(approvalStore.list('team-approval-session')).toEqual([
+      expect.objectContaining({
+        source: 'team_member',
+        teamId: team.teamId,
+        memberId: worker.memberId,
+        description: 'Worker approval required',
+      }),
+    ]);
+
+    await runtime.resumeMemberApproval(worker.memberId, {action: 'allow_once'});
+    await new Promise((resolve) => setTimeout(resolve, 20));
+
+    expect(approvalStore.list('team-approval-session')).toHaveLength(0);
+    expect(registry.getTeam(team.teamId)?.status).toBe('running');
+
+    await runtime.shutdownTeam(team.teamId);
+  });
+
+  test('shutdownTeam refuses completion while a worker approval is pending', async () => {
+    const pauseRequest: PauseRequest = {
+      id: 'pause-team-worker-blocker',
+      description: 'Approve risky change',
+      action: {
+        toolCallId: 'call_worker_blocker',
+        toolName: 'dangerous_tool',
+        toolArgs: {target: 'tmp/out.txt'},
+      },
+      review: {
+        actionName: 'dangerous_tool',
+        allowedDecisions: ['approve', 'reject'],
+      },
+      runtime: {
+        runId: 'run-worker-blocker',
+        turn: 1,
+        requestId: 'req-worker-blocker',
+        toolIndex: 0,
+      },
+    };
+    const approvalStore = createApprovalMemoryStore();
+    setup(() => createMockSession({
+      invokeResult: () => ({reason: 'paused', pause: pauseRequest}),
+    }));
+    runtime = new TeamRuntime({
+      registry,
+      projectRoot: '/tmp/test',
+      createSession: () => createMockSession({
+        invokeResult: () => ({reason: 'paused', pause: pauseRequest}),
+      }),
+      approvalStore,
+      sessionId: 'team-blocker-session',
+    });
+    runtime.subscribeDomainEvents((teamId, event) => {
+      domainEvents.push({teamId, event});
+    });
+
+    const team = createTestTeam();
+    await runtime.startTeam(team.teamId);
+    const worker = await runtime.spawnMember(team.teamId, 'worker-blocked', 'worker');
+    const transport = runtime.getTransport(team.teamId)!;
+
+    await transport.send(worker.memberId, {
+      id: 'msg-worker-blocked',
+      from: 'leader',
+      to: worker.memberId,
+      teamId: team.teamId,
+      type: 'message',
+      content: 'start work',
+      timestamp: new Date().toISOString(),
+      read: false,
+    });
+
+    runtime.getRunner(worker.memberId)?.wake();
+    await new Promise(r => setTimeout(r, 100));
+
+    const blockers = runtime.getCompletionBlockers(team.teamId);
+    expect(blockers.pendingApprovals).toHaveLength(1);
+    expect(blockers.pendingApprovals[0]?.memberId).toBe(worker.memberId);
+
+    await expect(runtime.shutdownTeam(team.teamId)).rejects.toThrow(/cannot complete team/i);
+    expect(registry.getTeam(team.teamId)?.status).toBe('paused');
   });
 
   test('getRunner returns the runner for a spawned member', async () => {
@@ -310,7 +644,7 @@ describe('TeamRuntime', () => {
     expect(deadlockEvents[0]!.event.data.teamId).toBe(team.teamId);
     expect((deadlockEvents[0]!.event.data as Record<string, unknown>).message).toContain('blocked');
 
-    await runtime.shutdownTeam(team.teamId);
+    await runtime.killTeam(team.teamId);
   });
 
   test('health check does not emit when no deadlock exists', async () => {
@@ -331,7 +665,7 @@ describe('TeamRuntime', () => {
     const deadlockEvents = domainEvents.filter(e => e.event.type === 'team.deadlock');
     expect(deadlockEvents.length).toBe(0);
 
-    await runtime.shutdownTeam(team.teamId);
+    await runtime.killTeam(team.teamId);
   });
 
   test('health check skips non-running teams', async () => {
@@ -383,7 +717,7 @@ describe('TeamRuntime', () => {
     expect(deadlockEvents.length).toBe(0);
 
     runtime.resumeTeam(team.teamId);
-    await runtime.shutdownTeam(team.teamId);
+    await runtime.killTeam(team.teamId);
   });
 
   test('health timer is cleared on shutdown (no timer leak)', async () => {

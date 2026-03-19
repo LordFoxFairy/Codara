@@ -6,8 +6,9 @@ import {z} from 'zod';
 import {createAgent} from '@core/agent';
 import {createHILMiddleware, createMiddleware} from '@core/middleware';
 import {createAgentMemoryCheckpointer} from '@durability/checkpoint';
-import {readDelegatedAgentResult} from '@capability/task/delegation';
+import {createTaskRunMemoryStore, createTaskRuntime, type TaskRunRecord} from '@capability/task';
 import {TASK_TOOL_NAME, createTaskTool} from '@capability/task/middleware';
+import {readTaskRunLaunchResult} from '@shared/task-run-launch';
 
 class ScriptedModel {
   private index = 0;
@@ -62,8 +63,28 @@ class ChildProbeModel {
   }
 }
 
+async function waitForTaskRunStatus(
+  runStore: {get(runId: string): TaskRunRecord | undefined},
+  runId: string,
+  status: TaskRunRecord['status'],
+): Promise<TaskRunRecord> {
+  const deadline = Date.now() + 500;
+
+  while (Date.now() < deadline) {
+    const record = runStore.get(runId);
+    if (record?.status === status) {
+      return record;
+    }
+
+    await new Promise((resolve) => setTimeout(resolve, 10));
+  }
+
+  throw new Error(`Task run "${runId}" did not reach status "${status}"`);
+}
+
 describe('Task delegation', () => {
-  it('应通过默认 delegate 创建隔离子代理并将摘要回传给父代理', async () => {
+  it('应通过默认 delegate 启动隔离子代理并在后台 run store 中收敛摘要', async () => {
+    const runStore = createTaskRunMemoryStore();
     const parentModel = new ScriptedModel([
       new AIMessage({
         content: '',
@@ -76,7 +97,10 @@ describe('Task delegation', () => {
       new AIMessage('parent_done'),
     ]);
     const childModel = new HumanCountModel();
-    const taskTool = createTaskTool({model: childModel as unknown as BaseChatModel});
+    const taskTool = createTaskTool({
+      model: childModel as unknown as BaseChatModel,
+      runStore,
+    });
 
     const parent = createAgent({
       model: parentModel as unknown as BaseChatModel,
@@ -85,16 +109,25 @@ describe('Task delegation', () => {
 
     const result = await parent.invoke({messages: [new HumanMessage('parent_request')]});
     const toolMessage = result.state.messages.find((message) => ToolMessage.isInstance(message)) as ToolMessage;
+    const launch = readTaskRunLaunchResult(toolMessage.artifact);
+    const completed = launch ? await waitForTaskRunStatus(runStore, launch.runId, 'completed') : undefined;
 
     expect(result.reason).toBe('complete');
-    expect(toolMessage.content).toContain('Delegated task completed.');
-    expect(toolMessage.content).toContain('summary:\nchild_humans:1');
-    expect(readDelegatedAgentResult(toolMessage.artifact)).toEqual({
-      type: 'delegated_agent_result',
+    expect(result.state.status).toBe('idle');
+    expect(result.state.pendingPause).toBeUndefined();
+    expect(String(toolMessage.content)).toContain('Delegated task started in background.');
+    expect(launch).toMatchObject({
+      type: 'task_run_started',
+      runId: 'call_task_1',
+      agentName: 'general-purpose',
+      label: 'Delegating general-purpose: Inspect the task in a fresh context',
       sessionId: expect.any(String),
-      turns: 1,
-      reason: 'complete',
+    });
+    expect(completed).toMatchObject({
+      runId: 'call_task_1',
+      status: 'completed',
       summary: 'child_humans:1',
+      reason: 'complete',
     });
   });
 
@@ -137,7 +170,8 @@ describe('Task delegation', () => {
     expect(childModel.boundToolNames).not.toContain(TASK_TOOL_NAME);
   });
 
-  it('应将 child 失败收敛成可解释的 Task 结果，而不是让父代理崩溃', async () => {
+  it('应将 child 失败收敛成可解释的后台 Task 结果，而不是让父代理崩溃', async () => {
+    const runStore = createTaskRunMemoryStore();
     const parentModel = new ScriptedModel([
       new AIMessage({
         content: '',
@@ -157,7 +191,10 @@ describe('Task delegation', () => {
         return this;
       },
     } as unknown as BaseChatModel;
-    const taskTool = createTaskTool({model: failingChildModel});
+    const taskTool = createTaskTool({
+      model: failingChildModel,
+      runStore,
+    });
 
     const parent = createAgent({
       model: parentModel as unknown as BaseChatModel,
@@ -166,22 +203,29 @@ describe('Task delegation', () => {
 
     const result = await parent.invoke('start');
     const toolMessage = result.state.messages.find((message) => ToolMessage.isInstance(message)) as ToolMessage;
+    const launch = readTaskRunLaunchResult(toolMessage.artifact);
+    const failed = launch ? await waitForTaskRunStatus(runStore, launch.runId, 'failed') : undefined;
 
     expect(result.reason).toBe('complete');
-    expect(toolMessage.content).toContain('Delegated task failed.');
-    expect(toolMessage.content).toContain('error: child boom');
-    expect(toolMessage.status).toBe('error');
-    expect(readDelegatedAgentResult(toolMessage.artifact)).toEqual({
-      type: 'delegated_agent_result',
+    expect(result.state.status).toBe('idle');
+    expect(result.state.pendingPause).toBeUndefined();
+    expect(String(toolMessage.content)).toContain('Delegated task started in background.');
+    expect(launch).toMatchObject({
+      type: 'task_run_started',
+      runId: 'call_task_3',
       sessionId: expect.any(String),
-      turns: 1,
-      reason: 'error',
+    });
+    expect(failed).toMatchObject({
+      runId: 'call_task_3',
+      status: 'failed',
       errorMessage: 'child boom',
+      reason: 'error',
     });
   });
 
   it('应为 delegated child 持久化 subagent checkpoint 身份', async () => {
     const checkpointer = createAgentMemoryCheckpointer();
+    const runStore = createTaskRunMemoryStore();
     const parent = createAgent({
       model: new ScriptedModel([
         new AIMessage({
@@ -198,21 +242,26 @@ describe('Task delegation', () => {
         createTaskTool({
           model: new ScriptedModel([new AIMessage('child_done')]) as unknown as BaseChatModel,
           checkpointer,
+          runStore,
         }),
       ],
     });
 
     const result = await parent.invoke('start');
     const toolMessage = result.state.messages.find((message) => ToolMessage.isInstance(message)) as ToolMessage;
-    const delegated = readDelegatedAgentResult(toolMessage.artifact);
-    const checkpoint = delegated ? await checkpointer.getLatest(delegated.sessionId) : undefined;
+    const launch = readTaskRunLaunchResult(toolMessage.artifact);
+    const completed = launch ? await waitForTaskRunStatus(runStore, launch.runId, 'completed') : undefined;
+    const checkpoint = launch ? await checkpointer.getLatest(launch.sessionId) : undefined;
 
     expect(result.reason).toBe('complete');
-    expect(delegated?.sessionId).toBeDefined();
+    expect(String(toolMessage.content)).toContain('Delegated task started in background.');
+    expect(launch?.sessionId).toBeDefined();
+    expect(completed?.status).toBe('completed');
     expect(checkpoint?.state.agentType).toBe('subagent');
   });
 
   it('应默认隔离父代理的 messages、context、values 和 runtime.shared', async () => {
+    const runStore = createTaskRunMemoryStore();
     const parentModel = new ScriptedModel([
       new AIMessage({
         content: '',
@@ -241,6 +290,7 @@ describe('Task delegation', () => {
     const taskTool = createTaskTool({
       model: new ChildProbeModel() as unknown as BaseChatModel,
       middleware: [childProbe],
+      runStore,
     });
 
     const parent = createAgent({
@@ -262,17 +312,24 @@ describe('Task delegation', () => {
 
     const result = await parent.invoke({messages: [new HumanMessage('parent_request')]});
     const toolMessage = result.state.messages.find((message) => ToolMessage.isInstance(message)) as ToolMessage;
+    const launch = readTaskRunLaunchResult(toolMessage.artifact);
+    const completed = launch ? await waitForTaskRunStatus(runStore, launch.runId, 'completed') : undefined;
 
     expect(result.reason).toBe('complete');
-    expect(String(toolMessage.content)).toContain('"durableContext":{}');
-    expect(String(toolMessage.content)).toContain('"runtimeContext":{}');
-    expect(String(toolMessage.content)).toContain('"runtimeShared":{}');
-    expect(String(toolMessage.content)).toContain('"values":{}');
-    expect(String(toolMessage.content)).toContain('child_humans:1');
-    expect(String(toolMessage.content)).not.toContain('parent_request');
+    expect(result.state.status).toBe('idle');
+    expect(result.state.pendingPause).toBeUndefined();
+    expect(String(toolMessage.content)).toContain('Delegated task started in background.');
+    expect(launch?.sessionId).toBeDefined();
+    expect(completed?.summary).toContain('"durableContext":{}');
+    expect(completed?.summary).toContain('"runtimeContext":{}');
+    expect(completed?.summary).toContain('"runtimeShared":{}');
+    expect(completed?.summary).toContain('"values":{}');
+    expect(completed?.summary).toContain('child_humans:1');
+    expect(completed?.summary).not.toContain('parent_request');
   });
 
   it('应只继承显式为 delegated child 提供的 context 和 values seed', async () => {
+    const runStore = createTaskRunMemoryStore();
     const parentModel = new ScriptedModel([
       new AIMessage({
         content: '',
@@ -301,6 +358,7 @@ describe('Task delegation', () => {
       middleware: [childProbe],
       context: {seededContext: 'child-only'},
       values: {seededValue: 1},
+      runStore,
     });
 
     const parent = createAgent({
@@ -312,15 +370,22 @@ describe('Task delegation', () => {
 
     const result = await parent.invoke({messages: [new HumanMessage('parent_request')]});
     const toolMessage = result.state.messages.find((message) => ToolMessage.isInstance(message)) as ToolMessage;
+    const launch = readTaskRunLaunchResult(toolMessage.artifact);
+    const completed = launch ? await waitForTaskRunStatus(runStore, launch.runId, 'completed') : undefined;
 
     expect(result.reason).toBe('complete');
-    expect(String(toolMessage.content)).toContain('"durableContext":{"seededContext":"child-only"}');
-    expect(String(toolMessage.content)).toContain('"values":{"seededValue":1}');
-    expect(String(toolMessage.content)).not.toContain('parentContext');
-    expect(String(toolMessage.content)).not.toContain('parentValue');
+    expect(result.state.status).toBe('idle');
+    expect(result.state.pendingPause).toBeUndefined();
+    expect(String(toolMessage.content)).toContain('Delegated task started in background.');
+    expect(completed?.summary).toContain('"durableContext":{"seededContext":"child-only"}');
+    expect(completed?.summary).toContain('"values":{"seededValue":1}');
+    expect(completed?.summary).not.toContain('parentContext');
+    expect(completed?.summary).not.toContain('parentValue');
   });
 
   it('应将 child HIL pause 提升到 parent，并在 resume 后继续 child checkpoint', async () => {
+    const runStore = createTaskRunMemoryStore();
+    const taskRuntime = createTaskRuntime({runStore});
     const parentModel = new ScriptedModel([
       new AIMessage({
         content: '',
@@ -362,6 +427,8 @@ describe('Task delegation', () => {
           interruptOn: {dangerous_tool: true},
         }),
       ],
+      runStore,
+      runtime: taskRuntime,
     });
 
     const parent = createAgent({
@@ -370,34 +437,26 @@ describe('Task delegation', () => {
     });
 
     const firstResult = await parent.invoke('start');
+    const firstToolMessage = firstResult.state.messages.find((message) => ToolMessage.isInstance(message)) as ToolMessage;
+    const launch = readTaskRunLaunchResult(firstToolMessage.artifact);
+    const paused = launch ? await waitForTaskRunStatus(runStore, launch.runId, 'paused') : undefined;
 
     expect(firstResult.reason).toBe('complete');
-    expect(firstResult.state.status).toBe('paused');
-    expect(firstResult.state.pendingPause?.metadata).toMatchObject({
-      codara: {
-        delegatedSubagent: {
-          childSessionId: expect.any(String),
-          parentToolName: TASK_TOOL_NAME,
-        },
-      },
+    expect(firstResult.state.status).toBe('idle');
+    expect(firstResult.state.pendingPause).toBeUndefined();
+    expect(String(firstToolMessage.content)).toContain('Delegated task started in background.');
+    expect(launch).toBeDefined();
+    expect(paused).toMatchObject({
+      status: 'paused',
+      childSessionId: expect.any(String),
     });
     expect(dangerousInvokeCount).toBe(0);
 
-    const secondResult = await parent.resume(
-      {decision: 'approve'},
-      {
-        recursionLimit: 4,
-      },
-    );
+    await taskRuntime.resumeRun(launch!.runId, {decision: 'approve'});
+    const completed = await waitForTaskRunStatus(runStore, launch!.runId, 'completed');
 
-    expect(secondResult.reason).toBe('complete');
-    expect(secondResult.state.status).toBe('idle');
-    expect(secondResult.state.pendingPause).toBeUndefined();
+    expect(completed.status).toBe('completed');
+    expect(completed.summary).toContain('child_done');
     expect(dangerousInvokeCount).toBe(1);
-
-    const delegatedToolMessages = secondResult.state.messages.filter((message) => ToolMessage.isInstance(message)) as ToolMessage[];
-    const delegatedResult = readDelegatedAgentResult(delegatedToolMessages[delegatedToolMessages.length - 1]?.artifact);
-    expect(delegatedResult?.reason).toBe('complete');
-    expect(delegatedResult?.summary).toBe('child_done');
   });
 });

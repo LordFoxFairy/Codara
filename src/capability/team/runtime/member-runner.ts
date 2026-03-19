@@ -2,6 +2,7 @@ import type { TeamMember, TeamMessage, MemberRole } from '@capability/team/coord
 import type { TeamTransport } from '@capability/team/local-transport';
 import type { TeamBusEvent } from '@capability/team/coordination/events';
 import type { TeamRegistry } from '@capability/team/coordination/team-registry';
+import type {PauseRequest, ResumePayload} from '@core/agent';
 import { buildLeaderProtocol, buildWorkerProtocol } from '@capability/team/prompts';
 
 // ─── Inbox Helpers (inlined from former message-injector.ts) ─────────
@@ -83,6 +84,9 @@ export interface MemberSession {
   invoke(input?: string): Promise<MemberInvokeResult>;
   /** Optional streaming interface — preferred by runLoop when available. */
   stream?(input?: string): AsyncGenerator<unknown, MemberInvokeResult, void>;
+  resumePause?(payload: ResumePayload): Promise<MemberInvokeResult>;
+  resumePauseStream?(payload: ResumePayload): AsyncGenerator<unknown, MemberInvokeResult, void>;
+  getPendingPause?(): PauseRequest | undefined;
   dispose(): Promise<void>;
 }
 
@@ -98,8 +102,9 @@ export interface MemberSessionOptions {
 }
 
 export interface MemberInvokeResult {
-  reason: 'complete' | 'continue' | 'error' | 'idle';
+  reason: 'complete' | 'continue' | 'error' | 'idle' | 'paused';
   error?: Error;
+  pause?: PauseRequest;
 }
 
 // ─── MemberRunner ───────────────────────────────────────────────────
@@ -109,6 +114,7 @@ export class MemberRunner {
   private session: MemberSession | null = null;
   private wakeResolve: (() => void) | null = null;
   private shutdownRequested = false;
+  private pauseMode: 'manual' | 'approval' | undefined;
 
   constructor(private readonly options: MemberRunnerOptions) {}
 
@@ -117,6 +123,8 @@ export class MemberRunner {
   getMemberName(): string { return this.options.member.name; }
   getRole(): MemberRole { return this.options.member.role; }
   isShutdownRequested(): boolean { return this.shutdownRequested; }
+  getPendingPause(): PauseRequest | undefined { return this.session?.getPendingPause?.(); }
+  supportsApprovalResumeStream(): boolean { return Boolean(this.session?.resumePauseStream); }
 
   /** Start the member's agent loop. Runs until shutdown or error. */
   async start(): Promise<void> {
@@ -162,6 +170,7 @@ export class MemberRunner {
 
   /** Pause the member. */
   pause(): void {
+    this.pauseMode = 'manual';
     this.status = 'paused';
     const { member, registry, emitEvent } = this.options;
     registry.updateMember(member.teamId, member.memberId, { status: 'paused' });
@@ -170,10 +179,27 @@ export class MemberRunner {
 
   /** Resume from paused state. */
   resume(): void {
-    if (this.status === 'paused') {
+    if (this.status === 'paused' && this.pauseMode === 'manual') {
+      this.pauseMode = undefined;
       this.status = 'idle';
       this.wake();
     }
+  }
+
+  async resumeApproval(payload: ResumePayload): Promise<MemberInvokeResult> {
+    if (!this.session?.resumePause) {
+      throw new Error('Member approval resume is not available for this session');
+    }
+    return this.runApprovalResume(async () => this.session!.resumePause!(payload));
+  }
+
+  async *resumeApprovalStream(payload: ResumePayload): AsyncGenerator<unknown, void, void> {
+    if (!this.session?.resumePauseStream) {
+      throw new Error('Member approval streaming resume is not available for this session');
+    }
+
+    const result = yield* this.runApprovalResumeStream(this.session.resumePauseStream(payload));
+    this.applyPostResumeState(result);
   }
 
   // ── Private ──────────────────────────────────────────────────────
@@ -217,6 +243,16 @@ export class MemberRunner {
     const { member, transport, registry, emitEvent } = this.options;
 
     while (!this.shutdownRequested) {
+      if (this.status === 'paused') {
+        await this.waitForWake();
+        if (this.shutdownRequested) {
+          break;
+        }
+        if (this.status === 'paused') {
+          continue;
+        }
+      }
+
       // Check for pending work without draining — messages are drained
       // by TeamContextMiddleware.drainInbox during session.invoke()
       const hasPending = transport.pendingCount(member.memberId) > 0;
@@ -243,6 +279,20 @@ export class MemberRunner {
             await this.handleInvokeError(result.error ?? new Error('Agent loop error'));
             // Yield to event loop after error recovery — prevents tight loop when inbox isn't drained
             await new Promise(r => setTimeout(r, 0));
+            continue;
+          }
+          if (result.reason === 'paused') {
+            this.pauseMode = 'approval';
+            this.status = 'paused';
+            registry.updateMember(member.teamId, member.memberId, {status: 'paused'});
+            emitEvent({
+              type: 'member.paused',
+              data: {
+                teamId: member.teamId,
+                memberId: member.memberId,
+                ...(result.pause ? {pause: result.pause} : {}),
+              },
+            });
             continue;
           }
         } catch (err) {
@@ -281,6 +331,61 @@ export class MemberRunner {
       return iterResult.value;
     }
     return this.session!.invoke();
+  }
+
+  private async runApprovalResume(run: () => Promise<MemberInvokeResult>): Promise<MemberInvokeResult> {
+    this.status = 'running';
+    this.pauseMode = 'approval';
+    this.options.registry.updateMember(this.options.member.teamId, this.options.member.memberId, {status: 'working'});
+    const result = await run();
+    this.applyPostResumeState(result);
+    return result;
+  }
+
+  private async *runApprovalResumeStream(
+    gen: AsyncGenerator<unknown, MemberInvokeResult, void>,
+  ): AsyncGenerator<unknown, MemberInvokeResult, void> {
+    this.status = 'running';
+    this.pauseMode = 'approval';
+    this.options.registry.updateMember(this.options.member.teamId, this.options.member.memberId, {status: 'working'});
+
+    let result: IteratorResult<unknown, MemberInvokeResult>;
+    do {
+      result = await gen.next();
+      if (!result.done) {
+        yield result.value;
+      }
+    } while (!result.done);
+    return result.value;
+  }
+
+  private applyPostResumeState(result: MemberInvokeResult): void {
+    const {member, registry, emitEvent} = this.options;
+
+    if (result.reason === 'error') {
+      void this.handleInvokeError(result.error ?? new Error('Agent loop error'));
+      return;
+    }
+
+    if (result.reason === 'paused') {
+      this.pauseMode = 'approval';
+      this.status = 'paused';
+      registry.updateMember(member.teamId, member.memberId, {status: 'paused'});
+      emitEvent({
+        type: 'member.paused',
+        data: {
+          teamId: member.teamId,
+          memberId: member.memberId,
+          ...(result.pause ? {pause: result.pause} : {}),
+        },
+      });
+      return;
+    }
+
+    this.pauseMode = undefined;
+    this.status = 'idle';
+    registry.updateMember(member.teamId, member.memberId, {status: 'idle'});
+    this.wake();
   }
 
   /** Maximum idle wait before re-checking loop condition (prevents indefinite hangs). */

@@ -955,6 +955,11 @@ describe('Agent', () => {
     expect(secondResult.state.pendingPause).toBeUndefined();
     expect(bashInvokeCount).toBe(1);
     expect(modelInvocations).toHaveLength(2);
+    const resumedToolMessages = secondResult.state.messages.filter((message) => (
+      ToolMessage.isInstance(message) && message.tool_call_id === 'call_resume_continue'
+    )) as ToolMessage[];
+    expect(resumedToolMessages).toHaveLength(1);
+    expect(String(resumedToolMessages[0]?.content)).toBe('executed:git status');
     expect(String(secondResult.state.messages[secondResult.state.messages.length - 1]?.content)).toBe('confirmed');
   });
 

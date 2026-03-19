@@ -5,7 +5,7 @@
  * - TeamRegistry + TeamRuntime + TeamEventBridge + event flow
  * - Resource cleanup (transport/emitter/bridge) on shutdown/kill
  * - Conversation tools (create_team, list_teams, team_status, shutdown_team)
- * - CLI hook: useActiveTeams derivation from runtime events
+ * - CLI hook: useActiveTeams derivation from stable team queries + member activity feed
  *
  * NOTE: These tests do NOT require a real LLM or MCP server.
  * Member sessions are stubbed to simulate agent behavior.
@@ -16,8 +16,7 @@ import {TeamRegistry} from '@capability/team/coordination/team-registry';
 import {TeamRuntime} from '@capability/team/runtime/team-runtime';
 import {MemorySharedState} from '@capability/team/shared-state';
 import {createConversationTeamTools} from '@capability/team/surface/conversation-tools';
-import type {CodaraRuntimeEvent} from '@observability/events';
-import {deriveActiveTeams} from '@/cli/hooks/use-active-teams';
+import {deriveActiveTeams, deriveMemberActivities, type TeamQuerySummary} from '@/cli/hooks/use-active-teams';
 
 // ─── Helpers ──────────────────────────────────────────────────────────
 
@@ -213,6 +212,41 @@ describe('Teams Case: Conversation Tools', () => {
     expect(registry.getTeam(teamId)?.status).toBe('completed');
   });
 
+  test('shutdown_team refuses completion while jobs are still outstanding', async () => {
+    const createResult = JSON.parse(await getTool('create_team').invoke({goal: 'Shutdown blockers'}) as string);
+    const teamId = createResult.teamId;
+
+    await getTool('plan_jobs').invoke({
+      teamId,
+      jobs: [{title: 'Unfinished job', description: 'Still pending'}],
+    });
+
+    const result = await getTool('shutdown_team').invoke({teamId});
+    const parsed = JSON.parse(result as string);
+
+    expect(parsed.error).toContain('outstanding jobs');
+    expect(registry.getTeam(teamId)?.status).toBe('running');
+
+    await runtime.killTeam(teamId);
+  });
+
+  test('shutdown_team refuses completion while the job board still has open work', async () => {
+    const createResult = JSON.parse(await getTool('create_team').invoke({goal: 'Blocked shutdown'}) as string);
+    const teamId = createResult.teamId;
+
+    const planned = JSON.parse(await getTool('plan_jobs').invoke({
+      teamId,
+      jobs: [{title: 'Implement API', description: 'Still pending'}],
+    }) as string);
+    expect(planned.planned).toBe(1);
+
+    const result = await getTool('shutdown_team').invoke({teamId});
+    const parsed = JSON.parse(result as string);
+
+    expect(parsed.error).toMatch(/cannot complete team/i);
+    expect(registry.getTeam(teamId)?.status).toBe('running');
+  });
+
   test('create_team updates shared state', async () => {
     const createResult = JSON.parse(await getTool('create_team').invoke({goal: 'State test'}) as string);
     const teamId = createResult.teamId;
@@ -231,30 +265,32 @@ describe('Teams Case: Conversation Tools', () => {
   });
 });
 
-// ─── 4. CLI Hook: deriveActiveTeams ──────────────────────────────────
+// ─── 4. CLI Hook: stable team query surface ──────────────────────────
 
-describe('Teams Case: deriveActiveTeams', () => {
-  const now = Date.now();
+describe('Teams Case: stable query surface', () => {
+  const now = Date.parse('2026-03-20T00:00:00Z');
 
-  function makeTeamEvent(overrides: Partial<CodaraRuntimeEvent>): CodaraRuntimeEvent {
+  function createTeamSummary(overrides: Partial<TeamQuerySummary>): TeamQuerySummary {
     return {
-      id: `evt-${Math.random().toString(36).slice(2, 8)}`,
-      sessionId: 'test-session',
-      timestamp: new Date(now).toISOString(),
-      kind: 'team',
-      phase: 'start',
+      teamId: 'team-1',
+      name: 'frontend',
       status: 'running',
-      label: 'Team test-team started',
+      goal: 'Build UI',
+      memberCount: 3,
+      jobProgress: {done: 1, total: 5},
+      startedAt: new Date(now).toISOString(),
       ...overrides,
     };
   }
 
-  test('derives running team from start event', () => {
-    const events: CodaraRuntimeEvent[] = [
-      makeTeamEvent({id: 'team-1', label: 'Team frontend: Build UI', detail: 'memberCount:3 jobTotal:5'}),
-    ];
+  test('derives running team from stable summary', () => {
+    const teams = deriveActiveTeams([
+      createTeamSummary({
+        teamId: 'team-frontend',
+        startedAt: new Date(now - 2000).toISOString(),
+      }),
+    ], now);
 
-    const teams = deriveActiveTeams(events, now);
     expect(teams).toHaveLength(1);
     expect(teams[0].status).toBe('running');
     expect(teams[0].name).toBe('frontend');
@@ -263,105 +299,101 @@ describe('Teams Case: deriveActiveTeams', () => {
     expect(teams[0].jobProgress.total).toBe(5);
   });
 
-  test('pairs start/end events correctly', () => {
-    const events: CodaraRuntimeEvent[] = [
-      makeTeamEvent({id: 'team-1', label: 'Team backend: API work'}),
-      makeTeamEvent({
-        id: 'end-1',
-        phase: 'end',
-        status: 'done',
-        parentId: 'team-1',
-        label: 'Team backend completed',
-        detail: 'done:4 total:5',
-        timestamp: new Date(now - 1000).toISOString(), // completed 1s ago
+  test('keeps completed teams during linger window, then hides them', () => {
+    const summaries = [
+      createTeamSummary({
+        status: 'completed',
+        startedAt: new Date(now - 6000).toISOString(),
+        completedAt: new Date(now - 1000).toISOString(),
       }),
     ];
 
-    const teams = deriveActiveTeams(events, now);
-    expect(teams).toHaveLength(1);
-    expect(teams[0].status).toBe('completed');
-    expect(teams[0].jobProgress.done).toBe(4);
-    expect(teams[0].jobProgress.total).toBe(5);
+    expect(deriveActiveTeams(summaries, now)).toHaveLength(1);
+    expect(deriveActiveTeams(summaries, now + 7000)).toHaveLength(0);
   });
 
-  test('completed teams disappear after linger period', () => {
-    const events: CodaraRuntimeEvent[] = [
-      makeTeamEvent({id: 'team-1', label: 'Team old: Done long ago'}),
-      makeTeamEvent({
-        id: 'end-1',
-        phase: 'end',
-        status: 'done',
-        parentId: 'team-1',
-        timestamp: new Date(now - 10_000).toISOString(), // 10s ago — past 5s linger
+  test('keeps failed teams visible during linger even without completedAt', () => {
+    const summaries = [
+      createTeamSummary({
+        status: 'failed',
+        startedAt: new Date(now - 1000).toISOString(),
       }),
     ];
 
-    const teams = deriveActiveTeams(events, now);
-    expect(teams).toHaveLength(0);
+    expect(deriveActiveTeams(summaries, now)).toHaveLength(1);
+    expect(deriveActiveTeams(summaries, now + 6000)).toHaveLength(0);
   });
 
-  test('failed teams shown within linger period', () => {
-    const events: CodaraRuntimeEvent[] = [
-      makeTeamEvent({id: 'team-1', label: 'Team broken: Fail test'}),
-      makeTeamEvent({
-        id: 'end-1',
-        phase: 'end',
-        status: 'error',
-        parentId: 'team-1',
-        timestamp: new Date(now - 2000).toISOString(), // 2s ago
+  test('uses startedAt when terminal timestamps are inconsistent', () => {
+    const summaries = [
+      createTeamSummary({
+        status: 'failed',
+        startedAt: new Date(now - 2000).toISOString(),
+        completedAt: new Date(now - 12000).toISOString(),
       }),
     ];
 
-    const teams = deriveActiveTeams(events, now);
-    expect(teams).toHaveLength(1);
-    expect(teams[0].status).toBe('failed');
+    expect(deriveActiveTeams(summaries, now)).toHaveLength(1);
   });
 
-  test('running teams sorted before completed', () => {
-    const events: CodaraRuntimeEvent[] = [
-      makeTeamEvent({id: 'team-done', label: 'Team done-team: A', timestamp: new Date(now - 5000).toISOString()}),
-      makeTeamEvent({
-        id: 'end-done',
-        phase: 'end',
-        status: 'done',
-        parentId: 'team-done',
-        timestamp: new Date(now - 1000).toISOString(),
+  test('sorts running teams before completed and caps visible rows', () => {
+    const summaries = [
+      createTeamSummary({
+        teamId: 'done',
+        name: 'done',
+        status: 'completed',
+        startedAt: new Date(now - 5000).toISOString(),
+        completedAt: new Date(now - 1000).toISOString(),
       }),
-      makeTeamEvent({id: 'team-running', label: 'Team running-team: B', timestamp: new Date(now - 3000).toISOString()}),
+      createTeamSummary({
+        teamId: 'run-1',
+        name: 'run-1',
+        startedAt: new Date(now - 2000).toISOString(),
+      }),
+      createTeamSummary({
+        teamId: 'run-2',
+        name: 'run-2',
+        startedAt: new Date(now - 3000).toISOString(),
+      }),
+      createTeamSummary({
+        teamId: 'run-3',
+        name: 'run-3',
+        startedAt: new Date(now - 4000).toISOString(),
+      }),
     ];
 
-    const teams = deriveActiveTeams(events, now);
-    expect(teams).toHaveLength(2);
-    expect(teams[0].status).toBe('running');
-    expect(teams[1].status).toBe('completed');
-  });
-
-  test('max 3 teams visible', () => {
-    const events: CodaraRuntimeEvent[] = [];
-    for (let i = 0; i < 5; i++) {
-      events.push(makeTeamEvent({
-        id: `team-${i}`,
-        label: `Team t${i}: Goal ${i}`,
-        timestamp: new Date(now - i * 1000).toISOString(),
-      }));
-    }
-
-    const teams = deriveActiveTeams(events, now);
+    const teams = deriveActiveTeams(summaries, now);
     expect(teams).toHaveLength(3);
+    expect(teams[0].status).toBe('running');
+    expect(teams[1].status).toBe('running');
+    expect(teams[2].status).toBe('running');
   });
 
-  test('empty events returns empty teams', () => {
-    expect(deriveActiveTeams([], now)).toHaveLength(0);
-  });
+  test('member activity comes from runtime events only as an add-on', () => {
+    const activities = deriveMemberActivities([
+      {
+        id: 'evt-1',
+        sessionId: 'test-session',
+        timestamp: new Date(now).toISOString(),
+        kind: 'team',
+        phase: 'update',
+        status: 'running',
+        label: 'member activity',
+        detail: 'member.activity:member-1:read_file(src/a.ts)',
+      },
+      {
+        id: 'evt-2',
+        sessionId: 'test-session',
+        timestamp: new Date(now + 1000).toISOString(),
+        kind: 'team',
+        phase: 'update',
+        status: 'running',
+        label: 'member activity',
+        detail: 'member.activity:member-1:write_file(src/b.ts)',
+      },
+    ]);
 
-  test('non-team events are ignored', () => {
-    const events: CodaraRuntimeEvent[] = [
-      makeTeamEvent({kind: 'task', id: 'task-1'}),
-      makeTeamEvent({kind: 'tool', id: 'tool-1'}),
-    ];
-
-    const teams = deriveActiveTeams(events, now);
-    expect(teams).toHaveLength(0);
+    expect(activities.get('member-1')).toBe('write_file(src/b.ts)');
   });
 });
 

@@ -6,20 +6,41 @@ import { LocalTransport } from '@capability/team/local-transport';
 import { TeamEventEmitter } from '@capability/team/coordination/events';
 import type { TeamBusEvent } from '@capability/team/coordination/events';
 import type { TeamMember } from '@capability/team/coordination/types';
+import type {PauseRequest, ResumePayload} from '@core/agent';
 
 // ─── Helpers ────────────────────────────────────────────────────────
 
 function createMockSession(behavior?: {
-  invokeResult?: () => { reason: 'complete' | 'continue' | 'error' | 'idle'; error?: Error };
+  beforeInvoke?: () => Promise<void> | void;
+  beforeResume?: (payload: ResumePayload) => Promise<void> | void;
+  invokeResult?: () => { reason: 'complete' | 'continue' | 'error' | 'idle' | 'paused'; error?: Error; pause?: PauseRequest };
+  resumeResult?: (payload: ResumePayload) => { reason: 'complete' | 'continue' | 'error' | 'idle' | 'paused'; error?: Error; pause?: PauseRequest };
 }): MemberSession & { invokeCount: number; disposed: boolean } {
   const session = {
     invokeCount: 0,
     disposed: false,
+    pendingPause: undefined as PauseRequest | undefined,
     invoke: async () => {
       session.invokeCount++;
-      if (behavior?.invokeResult) return behavior.invokeResult();
+      await behavior?.beforeInvoke?.();
+      if (behavior?.invokeResult) {
+        const result = behavior.invokeResult();
+        session.pendingPause = result.reason === 'paused' ? result.pause : undefined;
+        return result;
+      }
       return { reason: 'complete' as const };
     },
+    resumePause: async (payload: ResumePayload) => {
+      await behavior?.beforeResume?.(payload);
+      if (behavior?.resumeResult) {
+        const result = behavior.resumeResult(payload);
+        session.pendingPause = result.reason === 'paused' ? result.pause : undefined;
+        return result;
+      }
+      session.pendingPause = undefined;
+      return {reason: 'complete' as const};
+    },
+    getPendingPause: () => session.pendingPause,
     dispose: async () => {
       session.disposed = true;
     },
@@ -212,6 +233,71 @@ describe('MemberRunner', () => {
 
     runner.resume();
     await new Promise(r => setTimeout(r, 10));
+    expect(runner.getStatus()).toBe('idle');
+
+    runner.requestShutdown();
+    await startPromise;
+  });
+
+  test('approval pause enters paused state and resumeApproval returns the member to idle', async () => {
+    const pauseRequest: PauseRequest = {
+      id: 'pause-worker-approval',
+      description: 'Worker needs approval',
+      action: {
+        toolCallId: 'call_worker_approval',
+        toolName: 'dangerous_tool',
+        toolArgs: {target: 'tmp/out.txt'},
+      },
+      review: {
+        actionName: 'dangerous_tool',
+        allowedDecisions: ['approve', 'reject'],
+      },
+      runtime: {
+        runId: 'run-worker-approval',
+        turn: 1,
+        requestId: 'req-worker-approval',
+        toolIndex: 0,
+      },
+    };
+    const opts = buildOptions();
+    let firstInvoke = true;
+    const mockSession = createMockSession({
+      beforeInvoke: async () => {
+        await opts.transport.receive(opts.member.memberId);
+      },
+      invokeResult: () => {
+        if (firstInvoke) {
+          firstInvoke = false;
+          return {reason: 'paused', pause: pauseRequest};
+        }
+        return {reason: 'complete'};
+      },
+      resumeResult: (payload) => {
+        expect(payload).toMatchObject({action: 'allow_once'});
+        return {reason: 'complete'};
+      },
+    });
+    opts.createSession = () => mockSession;
+
+    await opts.transport.send(opts.member.memberId, {
+      id: 'msg-approval-1',
+      from: 'leader',
+      to: opts.member.memberId,
+      teamId: opts.member.teamId,
+      type: 'message',
+      content: 'perform the risky step',
+      timestamp: new Date().toISOString(),
+      read: false,
+    });
+
+    const runner = createRunner(opts);
+    const startPromise = runner.start();
+
+    await new Promise((resolve) => setTimeout(resolve, 50));
+    expect(runner.getStatus()).toBe('paused');
+
+    await runner.resumeApproval({action: 'allow_once'});
+    await new Promise((resolve) => setTimeout(resolve, 20));
     expect(runner.getStatus()).toBe('idle');
 
     runner.requestShutdown();

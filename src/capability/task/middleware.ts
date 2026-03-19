@@ -1,15 +1,18 @@
+import {ToolMessage} from '@langchain/core/messages';
 import {tool, type StructuredToolInterface} from '@langchain/core/tools';
 import {z} from 'zod';
 import {createMiddleware, type BaseMiddleware} from '@core/pipeline/types';
+import {resolveModel, type BootstrapAgentOptions} from '@core/agent/bootstrap';
 import {
+  buildDelegatedChildOptions,
+  createDelegatedAgentToolMessage,
+  type DelegatedAgentResult,
   type DelegatedAgentOptions,
   markDelegationTool,
   readDelegatedParentRuntimeMetadata,
-  runDelegatedAgent,
 } from '@capability/task/delegation';
 import {CHILD_ACTIVITY_CALLBACK_KEY, type ChildToolActivityCallback} from '@observability/events';
 import {createTaskTools} from '@capability/task/tools';
-import type {TaskStore} from '@capability/task/types';
 import {
   type SkillsRuntimeData,
   type SubagentDefinition,
@@ -21,6 +24,13 @@ import {
 import {readBaseSystemMessage} from '@context/session-bundle/base-system-message';
 import {filterToolsByReferences} from '@integration/tool';
 import {createAgentMemoryCheckpointer} from '@durability/checkpoint/agent';
+import type {ApprovalStore} from '@durability/approval-store';
+import {formatTaskRunLaunchResult} from '@shared/task-run-launch';
+import {createTaskRuntime, type TaskRuntime} from '@capability/task/runtime';
+import {createTaskRunMemoryStore} from '@capability/task/run-store';
+import type {TaskRunRecord, TaskRunStore, TaskStore} from '@capability/task/types';
+import {deepClone} from '@shared/clone';
+import {formatToolSummary} from '@shared/tool-display';
 
 export const TASK_TOOL_NAME = 'Task';
 
@@ -38,11 +48,16 @@ const TaskToolInputSchema = z.object({
 const taskToolConfigSchema = z.object({
   configurable: z.record(z.string(), z.unknown()).optional(),
 }).loose();
+const TASK_RUN_STORE_REBOUND = Symbol.for('codara.task.runStore.rebound');
+const TASK_TOOL_OPTIONS = Symbol.for('codara.task.tool.options');
 
 type TaskToolInput = z.infer<typeof TaskToolInputSchema>;
 
 export interface CreateTaskToolOptions extends DelegatedAgentOptions {
   description?: string;
+  runStore?: TaskRunStore;
+  approvalStore?: ApprovalStore;
+  runtime?: TaskRuntime;
 }
 
 export interface CreateTaskMiddlewareOptions extends CreateTaskToolOptions {
@@ -52,8 +67,16 @@ export interface CreateTaskMiddlewareOptions extends CreateTaskToolOptions {
 
 export function createTaskTool(options: CreateTaskToolOptions): StructuredToolInterface {
   const delegatedCheckpointer = options.checkpointer ?? createAgentMemoryCheckpointer();
-
-  return markDelegationTool(tool(
+  const runStore = rebindTaskRunStore(options.runStore ?? createTaskRunMemoryStore());
+  const approvalStore = options.approvalStore;
+  const runtime = options.runtime ?? createTaskRuntime({runStore, approvalStore});
+  runtime.registerRecoveryBuilder(async (run) => buildRecoveredTaskChildOptions(
+    options,
+    delegatedCheckpointer,
+    runtime,
+    run,
+  ));
+  const taskTool = markDelegationTool(tool(
     async ({prompt, subagent_type, max_turns}: TaskToolInput, config) => {
       const configurable = taskToolConfigSchema.parse(config).configurable ?? {};
       const delegated = readDelegatedParentRuntimeMetadata(configurable, TASK_TOOL_NAME);
@@ -63,25 +86,73 @@ export function createTaskTool(options: CreateTaskToolOptions): StructuredToolIn
       );
       const baseSystemMessage = readBaseSystemMessage(configurable.runtimeShared);
       const inheritedBaseMessageCount = baseSystemMessage?.systemMessage.length ?? 0;
-      // Read child activity callback injected by RuntimeEventsController
       const childActivityCallback = readChildActivityCallback(configurable.runtimeShared);
-      return runDelegatedAgent({
+      const runId = resolveTaskRunId(runStore, delegated);
+      const agentName = normalizeAgentName(subagent_type, profile.name);
+      const runLabel = `Delegating ${agentName}: ${prompt}`;
+      const childSessionId = `${delegated.parentExecution.sessionId}:task:${runId}`;
+      const childMaxTurns = max_turns ?? profile.maxTurns;
+      const existingRunMessage = readExistingTaskRunMessage(
+        runStore?.get(runId),
+        delegated.parentExecution.toolCallId,
+        {
+          runId,
+          agentName,
+          label: runLabel,
+          childSessionId,
+        },
+      );
+      if (existingRunMessage) {
+        return existingRunMessage;
+      }
+
+      const onChildToolActivity = runStore || childActivityCallback
+        ? ((info: {toolName: string; label: string}) => {
+            try {
+              runStore?.update(runId, {latestActivity: info.label});
+            } catch {
+              // Best-effort: task run tracking must not block delegated execution.
+            }
+
+            if (childActivityCallback) {
+              childActivityCallback(info);
+            }
+          }) as ChildToolActivityCallback
+        : undefined;
+      const childOptions = await buildDelegatedChildOptions({
         ...options,
         ...(baseSystemMessage?.systemMessage?.length || options.systemMessages?.length || options.systemPrompt
           ? {systemMessages: mergeTaskSystemMessages(baseSystemMessage?.systemMessage, options.systemMessages, options.systemPrompt)}
           : {}),
         prepareContext: wrapDelegatedPrepareContext(options.prepareContext, inheritedBaseMessageCount),
         checkpointer: delegatedCheckpointer,
-        ...(childActivityCallback ? {onChildToolActivity: childActivityCallback} : {}),
+        ...(onChildToolActivity ? {onChildToolActivity} : {}),
       }, {
         prompt,
         ...(subagent_type ? {subagentType: subagent_type} : {}),
-        maxTurns: max_turns ?? profile.maxTurns,
+        maxTurns: childMaxTurns,
         toolName: TASK_TOOL_NAME,
         parentExecution: delegated.parentExecution,
-        ...(delegated.resume ? {resume: delegated.resume} : {}),
         profileTools: resolveDefinitionTools(options.tools ?? [], profile),
         profileSystemPrompt: profile.systemPrompt,
+      });
+
+      const launched = await runtime.launch({
+        runId,
+        parentSessionId: delegated.parentExecution.sessionId,
+        childSessionId,
+        label: runLabel,
+        agentName,
+        prompt,
+        childOptions,
+        ...(typeof childMaxTurns === 'number' ? {maxTurns: childMaxTurns} : {}),
+      });
+
+      return new ToolMessage({
+        content: formatTaskRunLaunchResult(launched),
+        artifact: launched,
+        status: 'success',
+        tool_call_id: delegated.parentExecution.toolCallId,
       });
     },
     {
@@ -90,13 +161,32 @@ export function createTaskTool(options: CreateTaskToolOptions): StructuredToolIn
       schema: TaskToolInputSchema,
     },
   ));
+
+  Object.defineProperty(taskTool, TASK_TOOL_OPTIONS, {
+    value: {...options},
+    enumerable: false,
+    configurable: true,
+    writable: false,
+  });
+
+  return taskTool;
+}
+
+export function readTaskToolOptions(tool: StructuredToolInterface): CreateTaskToolOptions | undefined {
+  const record = tool as StructuredToolInterface & {[TASK_TOOL_OPTIONS]?: CreateTaskToolOptions};
+  return record[TASK_TOOL_OPTIONS];
 }
 
 export function createTaskMiddleware(options: CreateTaskMiddlewareOptions): BaseMiddleware {
+  const runStore = rebindTaskRunStore(options.runStore ?? createTaskRunMemoryStore());
+  const runtime = options.runtime ?? createTaskRuntime({
+    runStore,
+    approvalStore: options.approvalStore,
+  });
   return createMiddleware({
     name: options.name?.trim() || 'TaskMiddleware',
     tools: [
-      createTaskTool(options),
+      createTaskTool({...options, runStore, runtime}),
       ...(options.store ? createTaskTools({store: options.store}) : []),
     ],
     beforeModel(context) {
@@ -156,6 +246,69 @@ function readChildActivityCallback(runtimeShared: unknown): ChildToolActivityCal
   return typeof callback === 'function' ? callback as ChildToolActivityCallback : undefined;
 }
 
+function resolveTaskRunId(
+  runStore: TaskRunStore | undefined,
+  delegated: ReturnType<typeof readDelegatedParentRuntimeMetadata>,
+): string {
+  const baseRunId = delegated.parentExecution.toolCallId.trim();
+  if (!runStore) {
+    return baseRunId;
+  }
+
+  const existing = runStore.get(baseRunId);
+  if (!existing || existing.status === 'running' || existing.status === 'paused') {
+    return baseRunId;
+  }
+
+  return createDetachedTaskRunId(runStore, baseRunId);
+}
+
+function normalizeAgentName(subagentType: string | undefined, fallback: string): string {
+  const agentName = subagentType?.trim() || fallback.trim();
+  return agentName || 'general-purpose';
+}
+
+function createDetachedTaskRunId(runStore: TaskRunStore, baseRunId: string): string {
+  const prefix = `${baseRunId}__`;
+  const usedRunIds = new Set(runStore.list().map((record) => record.runId));
+  let suffix = 2;
+
+  while (usedRunIds.has(`${prefix}${suffix}`)) {
+    suffix += 1;
+  }
+
+  return `${prefix}${suffix}`;
+}
+
+function rebindTaskRunStore(runStore: TaskRunStore | undefined): TaskRunStore | undefined {
+  if (!runStore) {
+    return undefined;
+  }
+
+  const record = runStore as TaskRunStore & {[TASK_RUN_STORE_REBOUND]?: boolean};
+  if (record[TASK_RUN_STORE_REBOUND]) {
+    return record;
+  }
+
+  const list = runStore.list.bind(runStore);
+  const get = runStore.get.bind(runStore);
+  const start = runStore.start.bind(runStore);
+  const update = runStore.update.bind(runStore);
+  const resume = runStore.resume.bind(runStore);
+  const pause = runStore.pause.bind(runStore);
+  const finish = runStore.finish.bind(runStore);
+
+  record.list = (...args) => list(...args);
+  record.get = (...args) => get(...args);
+  record.start = (...args) => start(...args);
+  record.update = (...args) => update(...args);
+  record.resume = (...args) => resume(...args);
+  record.pause = (...args) => pause(...args);
+  record.finish = (...args) => finish(...args);
+  record[TASK_RUN_STORE_REBOUND] = true;
+  return record;
+}
+
 function wrapDelegatedPrepareContext(
   prepareContext: CreateTaskToolOptions['prepareContext'],
   inheritedBaseMessageCount: number,
@@ -173,3 +326,129 @@ function wrapDelegatedPrepareContext(
   };
 }
 
+function readExistingTaskRunMessage(
+  run: TaskRunRecord | undefined,
+  toolCallId: string,
+  fallback: {runId: string; agentName: string; label: string; childSessionId: string},
+): ToolMessage | undefined {
+  if (!run) {
+    return undefined;
+  }
+
+  const completed = toDelegatedAgentResult(run);
+  if (completed) {
+    return createDelegatedAgentToolMessage(completed, toolCallId);
+  }
+
+  const sessionId = run.childSessionId?.trim() || fallback.childSessionId;
+  const label = run.label?.trim() || fallback.label;
+  const agentName = run.agentName?.trim() || fallback.agentName;
+  const header = run.status === 'paused'
+    ? 'Delegated task is waiting for review.'
+    : 'Delegated task is already running in background.';
+  const detail = run.latestActivity?.trim();
+
+  return new ToolMessage({
+    content: [
+      header,
+      `run_id: ${run.runId}`,
+      `delegate_id: ${sessionId}`,
+      `agent: ${agentName}`,
+      ...(detail ? [`activity: ${detail}`] : []),
+    ].join('\n'),
+    artifact: {
+      type: 'task_run_started',
+      runId: run.runId,
+      sessionId,
+      agentName,
+      label,
+    },
+    status: 'success',
+    tool_call_id: toolCallId,
+  });
+}
+
+function toDelegatedAgentResult(run: TaskRunRecord): DelegatedAgentResult | undefined {
+  if ((run.status !== 'completed' && run.status !== 'failed') || !run.childSessionId) {
+    return undefined;
+  }
+
+  return {
+    type: 'delegated_agent_result',
+    sessionId: run.childSessionId,
+    turns: run.turns ?? 0,
+    reason: run.reason ?? (run.status === 'failed' ? 'error' : 'complete'),
+    ...(run.summary?.trim() ? {summary: run.summary.trim()} : {}),
+    ...(run.errorMessage?.trim() ? {errorMessage: run.errorMessage.trim()} : {}),
+    ...(typeof run.toolUseCount === 'number' ? {toolUseCount: run.toolUseCount} : {}),
+    ...(typeof run.totalTokens === 'number' ? {totalTokens: run.totalTokens} : {}),
+  };
+}
+
+async function buildRecoveredTaskChildOptions(
+  options: CreateTaskToolOptions,
+  checkpointer: NonNullable<CreateTaskToolOptions['checkpointer']>,
+  runtime: TaskRuntime,
+  run: TaskRunRecord,
+): Promise<BootstrapAgentOptions | undefined> {
+  if (!run.childSessionId) {
+    return undefined;
+  }
+
+  const recoveryTools = filterRecoveredTaskTools(options.tools ?? [], run.toolNames);
+  const recoveryMiddleware = [
+    ...(options.middleware ?? []),
+    createRecoveredTaskActivityMiddleware(runtime, run.runId),
+  ];
+
+  return {
+    model: await resolveModel(options.model),
+    agentType: 'subagent',
+    ...(run.systemMessages?.length ? {systemMessage: [...run.systemMessages]} : {}),
+    ...(recoveryTools.length > 0 ? {tools: recoveryTools} : {}),
+    ...(recoveryMiddleware.length > 0 ? {middleware: recoveryMiddleware} : {}),
+    handleToolErrors: options.handleToolErrors,
+    checkpointer,
+    inputBudget: options.inputBudget,
+    prepareContext: options.prepareContext,
+    ...(options.context ? {context: deepClone(options.context)} : {}),
+    ...(options.values ? {values: deepClone(options.values)} : {}),
+    ...(options.lifecycle ? {lifecycle: options.lifecycle} : {}),
+  };
+}
+
+function filterRecoveredTaskTools(
+  tools: StructuredToolInterface[],
+  toolNames: string[] | undefined,
+): StructuredToolInterface[] {
+  if (!toolNames?.length) {
+    return [...tools];
+  }
+
+  const allowed = new Set(toolNames);
+  return tools.filter((tool) => allowed.has(tool.name));
+}
+
+function createRecoveredTaskActivityMiddleware(
+  runtime: TaskRuntime,
+  runId: string,
+): BaseMiddleware {
+  return createMiddleware({
+    name: `TaskRecoveryActivity:${runId}`,
+    wrapToolCall: async (context, handler) => {
+      const toolName = context.toolCall.name ?? 'tool';
+      const summary = truncateTaskToolSummary(formatToolSummary(toolName, context.toolCall.args));
+      const label = summary ? `${toolName}(${summary})` : toolName;
+      runtime.recordActivity(runId, {toolName, label});
+      return handler(context);
+    },
+  });
+}
+
+function truncateTaskToolSummary(value: string | undefined, max = 60): string | undefined {
+  if (!value) {
+    return undefined;
+  }
+
+  return value.length > max ? `${value.slice(0, max - 1)}…` : value;
+}

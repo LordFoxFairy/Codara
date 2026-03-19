@@ -1,8 +1,11 @@
 import {existsSync} from 'node:fs';
 import path from 'node:path';
 import type {StructuredToolInterface} from '@langchain/core/tools';
+import type {AgentResumeStreamConfig, AgentStreamOutput, ResumePayload} from '@core/agent';
 import {createAgentFileCheckpointer} from '@durability/checkpoint';
+import {createApprovalFileStore, type ApprovalStore} from '@durability/approval-store';
 import {ensurePermissionSettingsFile} from '@core/middleware/permission';
+import {createTaskRunFileStore, createTaskRuntime, type TaskRunStore, type TaskRuntime} from '@capability/task';
 import {createTaskFileStore} from '@capability/task/store';
 import {loadModelRoutingConfigFromPath, resolveCodaraPath} from '@integration/provider';
 import {createCodaraGuidelinesSource, type GuidelinesSource} from '@context/instructions/guidelines';
@@ -27,7 +30,9 @@ import {
   createRuntimeDefaultMiddlewares,
   resolveRuntimeLoggingOptions,
 } from './assembly/middleware';
+import {getApprovalSummaries} from './assembly/approvals';
 import {assembleTeamSystem, getTeamSummaries, getTeamDetail} from './assembly/collaboration';
+import {getTaskRunSummaries} from './assembly/task-runs';
 import {
   createCodaraModelCatalog,
   DEFAULT_CODARA_MODEL_ALIAS,
@@ -35,6 +40,7 @@ import {
 import {createCodaraTools} from './assembly/tools';
 import {resolveCodaraAutoMemory, resolveCodaraSkills} from './assembly/context';
 import type {
+  ApprovalQueryReview,
   Codara, CodaraOptions, CodaraRuntimeOptions,
 } from './types';
 
@@ -43,6 +49,9 @@ export type {
   Codara, CodaraOptions, CodaraRuntimeOptions, CodaraAutoMemoryOptions,
   CodaraSkillOptions, CodaraMiddlewareOptions,
   CreateCodaraModelCatalogOptions, CreateCodaraChatModelOptions,
+  ApprovalQuerySummary,
+  ApprovalQueryReview,
+  TaskRunQuerySummary,
   TeamQuerySummary, TeamQueryMember, TeamQueryJob, TeamQueryDetail,
 } from './types';
 
@@ -62,8 +71,9 @@ export function createCodara(options: CodaraOptions = {}): Codara {
 }
 
 export async function createCodaraRuntime(options: CodaraRuntimeOptions = {}): Promise<Codara> {
-  const codaraPath = resolveCodaraRuntimePath(options);
   const projectRoot = resolveWorkspaceRoot({cwd: options.cwd, projectRoot: options.projectRoot});
+  const codaraPath = resolveCodaraRuntimePath(options);
+  const runtimeStatePath = path.join(projectRoot, '.codara');
 
   // 1. Infrastructure
   const guidelinesSource = createCodaraGuidelinesSource({
@@ -73,8 +83,18 @@ export async function createCodaraRuntime(options: CodaraRuntimeOptions = {}): P
     cwd: options.cwd, projectRoot: options.projectRoot, userHome: options.userHome,
   });
   const taskStore = options.taskStore ?? createTaskFileStore({
-    rootDir: path.join(projectRoot, '.codara', 'tasks'),
+    rootDir: path.join(runtimeStatePath, 'tasks'),
   });
+  const taskRunStore = options.taskRunStore ?? createTaskRunFileStore({
+    rootDir: path.join(runtimeStatePath, 'task-runs'),
+  });
+  const approvalStore = options.approvalStore ?? createApprovalFileStore({
+    rootDir: path.join(runtimeStatePath, 'approvals'),
+  });
+  const runtimeCheckpointer = options.checkpointer ?? createAgentFileCheckpointer({
+    rootDir: path.join(runtimeStatePath, 'sessions'),
+  });
+  const taskRuntime = createTaskRuntime({runStore: taskRunStore, approvalStore});
   ensurePermissionSettingsFile({
     cwd: options.cwd, projectRoot: options.projectRoot, userHome: options.userHome,
   });
@@ -91,7 +111,7 @@ export async function createCodaraRuntime(options: CodaraRuntimeOptions = {}): P
   });
 
   // 4. Hooks
-  const hookSources: HookSource[] = [{kind: 'project', path: path.join(codaraPath, 'hooks.json')}];
+  const hookSources: HookSource[] = [{kind: 'project', path: path.join(runtimeStatePath, 'hooks.json')}];
   const userHome = options.userHome ?? process.env.HOME ?? '';
   if (userHome) hookSources.push({kind: 'user', path: path.join(userHome, '.codara', 'hooks.json')});
   const hookRegistry = new HookRegistryImpl();
@@ -112,11 +132,11 @@ export async function createCodaraRuntime(options: CodaraRuntimeOptions = {}): P
   }
 
   // 6. Team system
-  const teamSystem = await assembleTeamSystem({options, codaraPath, projectRoot, catalog});
+  const teamSystem = await assembleTeamSystem({options, runtimeStatePath, projectRoot, catalog, approvalStore});
 
   // 7. Middleware chain
   const runtimeMiddlewares = createRuntimeDefaultMiddlewares({
-    options, runtimeTools, taskStore, logging, catalog, promptSource, guidelinesSource, hookPipeline,
+    options, runtimeTools, taskStore, taskRunStore, taskRuntime, taskCheckpointer: runtimeCheckpointer, approvalStore, logging, catalog, promptSource, guidelinesSource, hookPipeline,
     teamRegistry: teamSystem.teamRegistry, teamRuntime: teamSystem.teamRuntime, teamSharedState: teamSystem.sharedState,
     channelRegistry: options.channelRegistry,
   });
@@ -130,14 +150,15 @@ export async function createCodaraRuntime(options: CodaraRuntimeOptions = {}): P
     summary: options.summary === false ? false : (options.summary ?? {}),
     ...(logging === false ? {logging: false} : {logging}),
     ...(catalog ? {catalog} : {}),
-    ...(options.store ? {} : {store: new FileSessionStore({basePath: path.join(codaraPath, 'sessions')})}),
+    ...(options.store ? {} : {store: new FileSessionStore({basePath: path.join(runtimeStatePath, 'sessions')})}),
     ...(options.checkpointer ? {} : {
-      checkpointer: createAgentFileCheckpointer({rootDir: path.join(codaraPath, 'sessions')}),
+      checkpointer: runtimeCheckpointer,
     }),
     restore: options.restore ?? 'latest',
   }, undefined, {
     promptSource, guidelinesSource, hookPipeline, hookRegistry, mcpManager,
     teamRegistry: teamSystem.teamRegistry, teamRuntime: teamSystem.teamRuntime,
+    taskRunStore, taskRuntime, approvalStore,
     channelRegistry: options.channelRegistry,
   });
 }
@@ -172,6 +193,9 @@ export function assembleCodara(
     promptSource?: PromptSource; guidelinesSource?: GuidelinesSource;
     hookPipeline?: HookPipeline; hookRegistry?: HookRegistry;
     mcpManager?: McpManager; teamRegistry?: TeamRegistry; teamRuntime?: TeamRuntime;
+    taskRunStore?: TaskRunStore;
+    taskRuntime?: TaskRuntime;
+    approvalStore?: ApprovalStore;
     channelRegistry?: ChannelRegistry;
   },
 ): Codara {
@@ -205,6 +229,7 @@ export function assembleCodara(
     ...(options.inputBudget ? {inputBudget: options.inputBudget} : {}),
     ...(preloadedSources?.hookPipeline ? {lifecycle: preloadedSources.hookPipeline as SessionLifecycleHooks & AgentLifecycleHooks} : {}),
   });
+  preloadedSources?.taskRunStore?.recoverSession?.(session.getState().sessionId);
 
   // Extra properties for commands (/reload, /hooks, /mcp)
   const mcpManager = preloadedSources?.mcpManager;
@@ -254,11 +279,27 @@ export function assembleCodara(
       () => session.getState().sessionId,
     );
   }
+  if (preloadedSources?.taskRuntime) {
+    preloadedSources.taskRuntime.setOnTaskEvent(
+      (event) => { for (const listener of commandEventListeners) listener(event); },
+      () => session.getState().sessionId,
+    );
+  }
 
   const channelRegistry = preloadedSources?.channelRegistry;
 
   const teamRuntime = preloadedSources?.teamRuntime;
+  const taskRuntime = preloadedSources?.taskRuntime;
   const teamRegistry = preloadedSources?.teamRegistry;
+  const approvalStore = preloadedSources?.approvalStore;
+  let focusedApprovalId: string | undefined;
+  const readForegroundApprovalId = (): string | undefined => {
+    try {
+      return session.getAgentState().pendingPause?.id;
+    } catch {
+      return undefined;
+    }
+  };
 
   const dispose = async (): Promise<void> => {
     // Shut down all running teams before disposing session
@@ -274,15 +315,124 @@ export function assembleCodara(
         }
       }
     }
+    await taskRuntime?.dispose();
     await session.dispose();
     if (mcpManager) await mcpManager.dispose();
     if (channelRegistry) await channelRegistry.disposeAll();
+  };
+
+  const listCurrentApprovalRecords = () => approvalStore?.list(session.getState().sessionId) ?? [];
+
+  const resolveFocusedApprovalRecord = () => {
+    const approvals = listCurrentApprovalRecords();
+    if (approvals.length === 0) {
+      focusedApprovalId = undefined;
+      return undefined;
+    }
+
+    const focused = focusedApprovalId
+      ? approvals.find((record) => record.approvalId === focusedApprovalId)
+      : undefined;
+    if (focused) {
+      return focused;
+    }
+
+    focusedApprovalId = approvals[0]!.approvalId;
+    return approvals[0]!;
+  };
+
+  const getFocusedApprovalReview = (): ApprovalQueryReview | undefined => {
+    const record = resolveFocusedApprovalRecord();
+    if (!record) {
+      return undefined;
+    }
+
+    const summary = getApprovalSummaries(
+      approvalStore,
+      session.getState().sessionId,
+      record.approvalId,
+    ).find((approval) => approval.approvalId === record.approvalId);
+    if (!summary) {
+      return undefined;
+    }
+
+    return {
+      summary,
+      request: record.pauseRequest,
+    };
+  };
+
+  const resumeApprovalStream = async function* (
+    payload: ResumePayload,
+    config?: AgentResumeStreamConfig,
+  ): AsyncGenerator<AgentStreamOutput, void, void> {
+    const record = resolveFocusedApprovalRecord();
+    if (!record) {
+      throw new Error('No queued approval is available for the current session');
+    }
+
+    switch (record.source) {
+      case 'task_run': {
+        if (!taskRuntime) {
+          throw new Error('Task approval runtime is not available');
+        }
+        yield* taskRuntime.resumeApprovalByIdStream(record.approvalId, payload, config);
+        break;
+      }
+      case 'team_member': {
+        if (!teamRuntime) {
+          throw new Error('Team approval runtime is not available');
+        }
+        yield* teamRuntime.resumeApprovalByIdStream(record.approvalId, payload) as AsyncGenerator<AgentStreamOutput, void, void>;
+        break;
+      }
+    }
+
+    resolveFocusedApprovalRecord();
+  };
+
+  const resumeApproval = async (payload: ResumePayload, config?: AgentResumeStreamConfig): Promise<void> => {
+    const record = resolveFocusedApprovalRecord();
+    if (!record) {
+      throw new Error('No queued approval is available for the current session');
+    }
+
+    if (record.source === 'task_run') {
+      if (!taskRuntime) {
+        throw new Error('Task approval runtime is not available');
+      }
+      await taskRuntime.resumeApprovalById(record.approvalId, payload, config);
+      return;
+    }
+
+    if (!teamRuntime) {
+      throw new Error('Team approval runtime is not available');
+    }
+
+    await teamRuntime.resumeApprovalById(record.approvalId, payload);
+    resolveFocusedApprovalRecord();
   };
 
   return {
     ...session, subscribeRuntimeEvents, listCommands: commands.listCommands, executeCommand,
     listSessions: async (opts?: import('@durability/session').SessionListOptions) => options.store ? options.store.list(opts) : [],
     getMcpStatus: () => mcpManager?.status() ?? [],
+    getTaskRunSummaries: () => getTaskRunSummaries(preloadedSources?.taskRunStore, session.getState().sessionId),
+    getApprovalSummaries: () => getApprovalSummaries(
+      approvalStore,
+      session.getState().sessionId,
+      resolveFocusedApprovalRecord()?.approvalId ?? readForegroundApprovalId(),
+    ),
+    getFocusedApprovalReview,
+    focusApproval: async (approvalId: string) => {
+      const record = approvalStore?.get(approvalId);
+      if (!record || record.sessionId !== session.getState().sessionId) {
+        throw new Error(`Approval "${approvalId}" not found for current session`);
+      }
+      focusedApprovalId = approvalId;
+    },
+    resumeApproval,
+    resumeApprovalStream,
     getTeamSummaries: () => getTeamSummaries(preloadedSources?.teamRegistry),
     getTeamDetail: (teamId: string) => getTeamDetail(preloadedSources?.teamRegistry, teamId),
     getChannelRegistry: () => channelRegistry,

@@ -93,31 +93,11 @@ export async function runTools(
   toolCalls: ToolCall[],
   stream?: AgentStreamWriter,
 ): Promise<void> {
-  // Partition into concurrent-safe Task calls and sequential other calls.
-  // Task tool calls are independent subagents — safe to run in parallel.
-  // All other tools run sequentially (may depend on each other).
-  const taskIndices: number[] = [];
-  const otherIndices: number[] = [];
   for (let i = 0; i < toolCalls.length; i++) {
-    if (toolCalls[i]!.name === 'Task') {
-      taskIndices.push(i);
-    } else {
-      otherIndices.push(i);
+    const result = await runSingleTool(run, runtime, context, toolCalls, i, stream);
+    if (result === 'paused') {
+      return;
     }
-  }
-
-  // Run non-Task tools first (sequentially)
-  for (const toolIndex of otherIndices) {
-    const result = await runSingleTool(run, runtime, context, toolCalls, toolIndex, stream);
-    if (result === 'paused') return;
-  }
-
-  // Run Task tools concurrently
-  if (taskIndices.length > 0) {
-    const results = await Promise.all(
-      taskIndices.map((toolIndex) => runSingleTool(run, runtime, context, toolCalls, toolIndex, stream)),
-    );
-    if (results.includes('paused')) return;
   }
 }
 

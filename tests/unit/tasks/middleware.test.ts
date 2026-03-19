@@ -12,15 +12,32 @@ import {createCodaraPromptSource} from '@context/prompts/prompt-source';
 import {buildBaseSystemMessage} from '@context/session-bundle/base-system-message';
 import {
   createTaskMemoryStore,
+  createTaskRunMemoryStore,
   createTaskMiddleware,
   TASK_CREATE_TOOL_NAME,
   TASK_LIST_TOOL_NAME,
   TASK_TOOL_NAME,
 } from '@capability/task';
-import {
-  readDelegatedAgentResult,
-} from '@capability/task/delegation';
+import {readTaskRunLaunchResult} from '@shared/task-run-launch';
 import {createAgentSkillsMiddleware, createBuiltinSubagentStore} from '../agents/task-tool.fixtures';
+
+async function waitForCondition(
+  predicate: () => boolean,
+  options: {timeoutMs?: number; intervalMs?: number} = {},
+): Promise<void> {
+  const timeoutMs = options.timeoutMs ?? 500;
+  const intervalMs = options.intervalMs ?? 10;
+  const deadline = Date.now() + timeoutMs;
+
+  while (Date.now() <= deadline) {
+    if (predicate()) {
+      return;
+    }
+    await new Promise((resolve) => setTimeout(resolve, intervalMs));
+  }
+
+  throw new Error('Condition was not satisfied before timeout');
+}
 
 class ScriptedModel {
   private index = 0;
@@ -107,8 +124,10 @@ class ChildProgressiveDisclosureModel {
 describe('tasks middlewares', () => {
   it('should register the delegated Task tool through middleware', async () => {
     const store = createBuiltinSubagentStore();
+    const runStore = createTaskRunMemoryStore();
     const taskMiddleware = createTaskMiddleware({
       model: new ChildSummaryModel() as unknown as BaseChatModel,
+      runStore,
     });
     const model = new ScriptedModel([
       new AIMessage({
@@ -134,8 +153,18 @@ describe('tasks middlewares', () => {
 
     expect(taskMiddleware.tools?.map((tool) => tool.name)).toEqual([TASK_TOOL_NAME]);
     expect(result.reason).toBe('complete');
-    expect(String(toolMessage.content)).toContain('child middleware summary');
-    expect(readDelegatedAgentResult(toolMessage.artifact)?.summary).toBe('child middleware summary');
+    expect(String(toolMessage.content)).toContain('Delegated task started in background.');
+    expect(readTaskRunLaunchResult(toolMessage.artifact)).toEqual(expect.objectContaining({
+      type: 'task_run_started',
+      runId: 'call_task_middleware',
+    }));
+
+    await waitForCondition(() => runStore.get('call_task_middleware')?.status === 'completed');
+    expect(runStore.get('call_task_middleware')).toEqual(expect.objectContaining({
+      runId: 'call_task_middleware',
+      status: 'completed',
+      summary: 'child middleware summary',
+    }));
   });
 
   it('should inject available subagent definitions from skills runtime before model calls', async () => {
@@ -158,8 +187,10 @@ describe('tasks middlewares', () => {
   });
 
   it('should delegate through Task middleware without requiring skills runtime for the default delegate', async () => {
+    const runStore = createTaskRunMemoryStore();
     const taskMiddleware = createTaskMiddleware({
       model: new ChildSummaryModel() as unknown as BaseChatModel,
+      runStore,
     });
     const model = new ScriptedModel([
       new AIMessage({
@@ -185,8 +216,13 @@ describe('tasks middlewares', () => {
 
     expect(taskMiddleware.tools?.map((tool) => tool.name)).toEqual([TASK_TOOL_NAME]);
     expect(result.reason).toBe('complete');
-    expect(String(toolMessage.content)).toContain('child middleware summary');
-    expect(readDelegatedAgentResult(toolMessage.artifact)?.summary).toBe('child middleware summary');
+    expect(String(toolMessage.content)).toContain('Delegated task started in background.');
+    await waitForCondition(() => runStore.get('call_task_default_delegate')?.status === 'completed');
+    expect(runStore.get('call_task_default_delegate')).toEqual(expect.objectContaining({
+      runId: 'call_task_default_delegate',
+      status: 'completed',
+      summary: 'child middleware summary',
+    }));
   });
 
   it('should keep delegated children on the startup instruction chain even after read_file tool usage', async () => {
@@ -205,9 +241,11 @@ describe('tasks middlewares', () => {
 
     const guidelinesSource = createCodaraGuidelinesSource({projectRoot, cwd: projectRoot});
     const promptSource = createCodaraPromptSource({projectRoot, cwd: projectRoot});
+    const runStore = createTaskRunMemoryStore();
 
     const taskMiddleware = createTaskMiddleware({
       model: new ChildProgressiveDisclosureModel(targetFile) as unknown as BaseChatModel,
+      runStore,
       tools: [
         tool(async ({path: filePath}: {path: string}) => readFile(filePath, 'utf8'), {
           name: 'read_file',
@@ -245,7 +283,13 @@ describe('tasks middlewares', () => {
     const toolMessage = result.state.messages.find((message) => ToolMessage.isInstance(message)) as ToolMessage;
 
     expect(result.reason).toBe('complete');
-    expect(String(toolMessage.content)).toContain('child_visible:false');
+    expect(String(toolMessage.content)).toContain('Delegated task started in background.');
+    await waitForCondition(() => runStore.get('call_task_progressive_delegate')?.status === 'completed');
+    expect(runStore.get('call_task_progressive_delegate')).toEqual(expect.objectContaining({
+      runId: 'call_task_progressive_delegate',
+      status: 'completed',
+      summary: 'child_visible:false',
+    }));
   });
 
   it('should expose shared task coordination tools through the single Task middleware', async () => {
@@ -294,5 +338,49 @@ describe('tasks middlewares', () => {
     expect(result.reason).toBe('complete');
     expect(String(taskToolMessages[0]?.content)).toContain('Task created.');
     expect(String(taskToolMessages[1]?.content)).toContain('Write tests');
+  });
+
+  it('should write delegated task runs into the stable run store', async () => {
+    const store = createBuiltinSubagentStore();
+    const runStore = createTaskRunMemoryStore();
+    const taskMiddleware = createTaskMiddleware({
+      model: new ChildSummaryModel() as unknown as BaseChatModel,
+      runStore,
+    });
+    const model = new ScriptedModel([
+      new AIMessage({
+        content: '',
+        tool_calls: [{
+          id: 'call_task_run_store',
+          name: TASK_TOOL_NAME,
+          args: {
+            prompt: 'inspect the login flow',
+            subagent_type: 'Explore',
+          },
+        } as ToolCall],
+      }),
+      new AIMessage('done'),
+    ]) as unknown as BaseChatModel;
+
+    const agent = createAgent({
+      model,
+      middleware: [createAgentSkillsMiddleware(store), taskMiddleware],
+    });
+
+    const result = await agent.invoke([new HumanMessage('start')]);
+
+    expect(result.reason).toBe('complete');
+    await waitForCondition(() => runStore.get('call_task_run_store')?.status === 'completed');
+    expect(runStore.list()).toEqual([
+      expect.objectContaining({
+        runId: 'call_task_run_store',
+        sessionId: expect.any(String),
+        label: 'Delegating Explore: inspect the login flow',
+        agentName: 'Explore',
+        status: 'completed',
+        summary: 'child middleware summary',
+        childSessionId: expect.any(String),
+      }),
+    ]);
   });
 });

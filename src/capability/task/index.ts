@@ -1,5 +1,12 @@
 export type {
   CreateTaskInput,
+  TaskRunPauseInput,
+  TaskRunRecord,
+  TaskRunResumeInput,
+  TaskRunStartInput,
+  TaskRunStatus,
+  TaskRunStore,
+  TaskRunUpdateInput,
   TaskRecord,
   TaskStatus,
   TaskStore,
@@ -10,6 +17,17 @@ export {
   createTaskMemoryStore,
   type TaskFileStoreOptions,
 } from '@capability/task/store';
+export {
+  createTaskRunFileStore,
+  createTaskRunMemoryStore,
+  type TaskRunFileStoreOptions,
+} from '@capability/task/run-store';
+export {
+  createTaskRuntime,
+  type CreateTaskRuntimeOptions,
+  type TaskRuntime,
+  type TaskRuntimeLaunchInput,
+} from '@capability/task/runtime';
 export {
   TASK_CREATE_TOOL_NAME,
   TASK_LIST_TOOL_NAME,
