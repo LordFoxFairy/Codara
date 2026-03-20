@@ -16,6 +16,8 @@ const STATUS_COLORS: Record<string, string> = {
   paused: theme.status.paused,
   terminated: theme.role.error,
   initializing: theme.role.system,
+  disconnected: theme.role.error,
+  leaving: theme.chrome.dimmed,
 };
 
 /**
@@ -37,23 +39,44 @@ function deriveStatusLabel(m: TeamMemberInfo): string {
 interface MemberPanelProps {
   members: TeamMemberInfo[];
   jobs?: TeamJobInfo[];
+  focusedMemberId?: string;
 }
 
-export function MemberPanel({ members, jobs = [] }: MemberPanelProps) {
-  if (members.length === 0) return <Text dimColor>No members yet</Text>;
+export function MemberPanel({ members, jobs = [], focusedMemberId }: MemberPanelProps) {
+  if (members.length === 0) return <Text dimColor>No teammates yet</Text>;
 
   const jobMap = new Map(jobs.map(j => [j.id, j.title]));
+  const leader = members.find((member) => member.role === 'leader');
+  const workers = members.filter((member) => member.role !== 'leader');
 
   return (
     <Box flexDirection="column">
-      <Text bold>Members</Text>
-      {members.map(m => {
+      <Text bold>Leader &amp; Teammates</Text>
+      {leader ? (
+        <Box gap={1}>
+          <Text color={STATUS_COLORS[deriveStatusLabel(leader)] ?? 'white'}>{ROLE_ICONS.leader}</Text>
+          <Text bold>{leader.name}</Text>
+          <Text dimColor>leader</Text>
+          <Text color={STATUS_COLORS[deriveStatusLabel(leader)] ?? 'white'}>{deriveStatusLabel(leader)}</Text>
+          {leader.currentJobId && jobMap.get(leader.currentJobId) ? (
+            <Text dimColor>→ {jobMap.get(leader.currentJobId)}</Text>
+          ) : (
+            <Text dimColor>receives your messages in this workspace</Text>
+          )}
+        </Box>
+      ) : null}
+
+      <Box marginTop={leader ? 1 : 0}>
+        <Text bold>Teammates</Text>
+      </Box>
+      {workers.length === 0 ? <Text dimColor>No active teammates</Text> : workers.map(m => {
         const statusLabel = deriveStatusLabel(m);
         const statusColor = STATUS_COLORS[statusLabel] ?? 'white';
         const currentJobTitle = m.currentJobId ? jobMap.get(m.currentJobId) : undefined;
 
         return (
           <Box key={m.memberId} gap={1}>
+            <Text color={m.memberId === focusedMemberId ? theme.interactive.accent : 'transparent'}>▶</Text>
             <Text color={statusColor}>{ROLE_ICONS[m.role] ?? '?'}</Text>
             <Text bold>{m.name.padEnd(12)}</Text>
             <Text color={statusColor}>{statusLabel.padEnd(12)}</Text>
@@ -62,7 +85,7 @@ export function MemberPanel({ members, jobs = [] }: MemberPanelProps) {
             ) : (
               <Text dimColor>{m.model ?? 'default'}</Text>
             )}
-            <Text dimColor>{formatTokenCount(m.tokens)} tok</Text>
+            {m.tokens > 0 ? <Text dimColor>{formatTokenCount(m.tokens)} tok</Text> : null}
           </Box>
         );
       })}
