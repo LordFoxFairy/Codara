@@ -128,6 +128,7 @@ async function runSingleTool(
     toolCallId,
   };
 
+  const baseRuntime = requestRuntime(context);
   const toolMessage = await runtime.pipeline.wrapToolCall({
     ...context,
     execution: baseExecution,
@@ -138,18 +139,18 @@ async function runSingleTool(
     const nextCall = request?.toolCall ?? toolCall;
     const nextIndex = request?.toolIndex ?? toolIndex;
     const nextToolCallId = resolveToolCallId(nextCall, nextIndex);
+    const runtimeCarrier = createMutableToolRuntime(request?.runtime ?? baseRuntime, nextIndex, nextToolCallId, baseExecution);
     return executeToolCall(
       nextCall,
       nextToolCallId,
       request?.tool ?? runtime.tools.get(nextCall.name),
       runtime.handleToolErrors,
       run.state,
-      {
-        ...(request?.runtime ?? context.runtime),
-        execution: request?.execution ?? {...baseExecution, toolIndex: nextIndex, toolCallId: nextToolCallId},
-      },
+      request?.execution ? {...runtimeCarrier, execution: request.execution} : runtimeCarrier,
       (values) => runtime.pipeline.normalizeValues(values ?? {}),
-    );
+    ).finally(() => {
+      syncToolRuntimeBack(baseRuntime, request?.runtime, runtimeCarrier);
+    });
   });
 
   run.state.messages.push(toolMessage);
@@ -174,6 +175,40 @@ async function runSingleTool(
   }
 
   return 'ok';
+}
+
+function requestRuntime(context: BaseExecutionContext): BaseExecutionContext['runtime'] {
+  return context.runtime;
+}
+
+function createMutableToolRuntime(
+  source: BaseExecutionContext['runtime'],
+  toolIndex: number,
+  toolCallId: string,
+  baseExecution: BaseExecutionContext['execution'],
+): BaseExecutionContext['runtime'] & {execution: BaseExecutionContext['execution']} {
+  return {
+    context: source.context,
+    runtimeContext: source.runtimeContext,
+    shared: source.shared,
+    execution: {...baseExecution, toolIndex, toolCallId},
+  };
+}
+
+function syncToolRuntimeBack(
+  target: BaseExecutionContext['runtime'],
+  requestRuntime: BaseExecutionContext['runtime'] | undefined,
+  runtimeCarrier: BaseExecutionContext['runtime'] & {execution: BaseExecutionContext['execution']},
+): void {
+  target.context = runtimeCarrier.context;
+  target.runtimeContext = runtimeCarrier.runtimeContext;
+  target.shared = runtimeCarrier.shared;
+
+  if (requestRuntime && requestRuntime !== target) {
+    requestRuntime.context = runtimeCarrier.context;
+    requestRuntime.runtimeContext = runtimeCarrier.runtimeContext;
+    requestRuntime.shared = runtimeCarrier.shared;
+  }
 }
 
 export async function finishTurn(

@@ -1,6 +1,7 @@
 import {describe, expect, test} from 'bun:test';
 import {AIMessage, HumanMessage, SystemMessage, ToolMessage, type ToolCall} from '@langchain/core/messages';
 import {buildActiveItems, buildTranscriptItems, hasTranscriptContent} from '@/cli/transcript/model';
+import {createInternalSharedTaskCoordinationMessage} from '@/shared/task-coordination-result';
 
 describe('cli transcript model', () => {
   test('should build transcript items from notices, core messages, and active turn', () => {
@@ -41,7 +42,7 @@ describe('cli transcript model', () => {
     expect(items[6]?.content).toBe('streaming');
   });
 
-  test('should project task tool calls and task list results as task transcript items', () => {
+  test('should keep normal shared task coordination tool output visible outside team flows', () => {
     const taskListCall: ToolCall = {id: 'call_task_list_1', name: 'TaskList', args: {}};
     const items = buildTranscriptItems({
       notices: [],
@@ -58,11 +59,26 @@ describe('cli transcript model', () => {
       ],
     });
 
-    // Only the ToolMessage result is shown (tool calls from AIMessage are not rendered separately)
     expect(items.map((item) => item.role)).toEqual(['tool']);
     expect(items[0]?.content).toContain('Tasks:');
     expect(items[0]?.content).toContain('- id: task-1 | subject: Inspect transcript | status: in_progress');
     expect(items[0]?.content).toContain('- id: task-2 | subject: Report result | status: pending');
+  });
+
+  test('should suppress shared task coordination tool output when it is marked internal to a team workspace', () => {
+    const taskListCall: ToolCall = {id: 'call_task_list_2', name: 'TaskList', args: {}};
+    const items = buildTranscriptItems({
+      notices: [],
+      coreMessages: [
+        new AIMessage({content: '', tool_calls: [taskListCall]}),
+        createInternalSharedTaskCoordinationMessage([
+          'Tasks:',
+          '- id: task-1 | subject: Inspect transcript | status: in_progress | description: Verify task rendering | blockedBy: (none) | blocks: task-2',
+        ].join('\n'), 'call_task_list_2'),
+      ],
+    });
+
+    expect(items).toHaveLength(0);
   });
 
   test('should render tool results with friendly summaries from ToolMessages', () => {
@@ -86,6 +102,227 @@ describe('cli transcript model', () => {
     expect(items[0]?.toolMeta?.toolName).toBe('bash');
     expect(items[0]?.toolMeta?.displayName).toBe('Bash');
     expect(items[0]?.toolMeta?.args).toBe('git status');
+  });
+
+  test('should keep team conversation tool outputs out of the main transcript', () => {
+    const items = buildTranscriptItems({
+      notices: [],
+      coreMessages: [
+        new AIMessage({
+          content: '',
+          tool_calls: [
+            {id: 'call_spawn_teammate', name: 'spawn_teammate', args: {name: '架构分析员'}} as ToolCall,
+          ],
+        }),
+        new ToolMessage({
+          content: JSON.stringify({
+            memberId: 'member_a',
+            name: '架构分析员',
+            role: 'worker',
+            status: 'spawned',
+          }),
+          tool_call_id: 'call_spawn_teammate',
+          name: 'spawn_teammate',
+        }),
+      ],
+    });
+
+    expect(items).toHaveLength(0);
+  });
+
+  test('should suppress create_team and spawn_teammate tool summaries from the main transcript', () => {
+    const items = buildTranscriptItems({
+      notices: [],
+      coreMessages: [
+        new AIMessage({
+          content: '',
+          tool_calls: [
+            {id: 'call_spawn_teammate_1', name: 'spawn_teammate', args: {name: '架构分析员'}} as ToolCall,
+            {id: 'call_create_team_1', name: 'create_team', args: {name: '架构团队'}} as ToolCall,
+          ],
+        }),
+        new ToolMessage({
+          content: JSON.stringify({
+            memberId: 'member_a1',
+            name: '架构分析员',
+            role: 'worker',
+            status: 'spawned',
+          }),
+          tool_call_id: 'call_spawn_teammate_1',
+          name: 'spawn_teammate',
+        }),
+        new ToolMessage({
+          content: JSON.stringify({
+            teamId: 'team_a1',
+            name: '架构团队',
+            status: 'running',
+          }),
+          tool_call_id: 'call_create_team_1',
+          name: 'create_team',
+        }),
+      ],
+    });
+
+    expect(items).toHaveLength(0);
+  });
+
+  test('should suppress leader launch chatter when the assistant message also contains team surface tool calls', () => {
+    const items = buildTranscriptItems({
+      notices: [],
+      coreMessages: [
+        new AIMessage({
+          content: '我将立即在当前团队中组织 3 个只读 workers 开始分析工作！',
+          tool_calls: [
+            {id: 'call_team_status_1', name: 'team_status', args: {}} as ToolCall,
+            {id: 'call_plan_jobs_1', name: 'plan_jobs', args: {jobs: []}} as ToolCall,
+          ],
+        }),
+      ],
+    });
+
+    expect(items).toHaveLength(0);
+  });
+
+  test('should suppress standalone leader launch chatter once a live team runtime owns the workspace', () => {
+    const now = new Date().toISOString();
+    const items = buildTranscriptItems({
+      notices: [],
+      coreMessages: [],
+      activeTurn: {
+        id: 'turn-team-launch',
+        prompt: 'start the team',
+        response: '✅ 已启动团队协作分析！待所有 workers 完成后，我将在此输出最终统一总结。',
+        responseRole: 'assistant',
+      },
+      runtimeEvents: [
+        {
+          id: 'team-start',
+          sessionId: 'session-1',
+          timestamp: now,
+          kind: 'team',
+          phase: 'start',
+          status: 'running',
+          label: 'Team Codara',
+          detail: 'memberCount:3 jobTotal:3',
+        },
+      ],
+    });
+
+    expect(items.map((item) => item.role)).toEqual(['user']);
+    expect(items.some((item) => item.content.includes('已启动团队协作分析'))).toBe(false);
+  });
+
+  test('should keep team member runtime activity out of the main transcript stream', () => {
+    const now = new Date().toISOString();
+    const items = buildTranscriptItems({
+      notices: [],
+      coreMessages: [],
+      activeTurn: {
+        id: 'turn-teams',
+        prompt: 'coordinate the team',
+        response: '',
+        responseRole: 'assistant',
+      },
+      runtimeEvents: [
+        {
+          id: 'team-start',
+          sessionId: 'session-1',
+          timestamp: now,
+          kind: 'team',
+          phase: 'start',
+          status: 'running',
+          label: 'Team Codara',
+          detail: 'memberCount:2 jobTotal:3',
+        },
+        {
+          id: 'team-member-joined',
+          sessionId: 'session-1',
+          timestamp: now,
+          kind: 'team',
+          phase: 'update',
+          status: 'running',
+          label: '架构分析员 joined as worker',
+          parentId: 'team-start',
+        },
+        {
+          id: 'team-member-activity',
+          sessionId: 'session-1',
+          timestamp: now,
+          kind: 'team',
+          phase: 'update',
+          status: 'running',
+          label: 'member activity',
+          detail: 'member.activity:member-1:read_file(src/codara/facade.ts)',
+          parentId: 'team-start',
+        },
+      ],
+    });
+
+    expect(items.map((item) => item.role)).toEqual(['user']);
+    expect(items.some((item) => item.content.includes('joined as worker'))).toBe(false);
+    expect(items.some((item) => item.content.includes('member.activity:'))).toBe(false);
+  });
+
+  test('should keep team bookkeeping tool runtime events out of the main transcript stream', () => {
+    const now = new Date().toISOString();
+    const items = buildTranscriptItems({
+      notices: [],
+      coreMessages: [],
+      activeTurn: {
+        id: 'turn-teams-bookkeeping',
+        prompt: 'coordinate the team',
+        response: '',
+        responseRole: 'assistant',
+      },
+      runtimeEvents: [
+        {
+          id: 'evt_team_status_start',
+          sessionId: 'session-1',
+          timestamp: now,
+          kind: 'tool',
+          phase: 'start',
+          status: 'running',
+          label: 'Team Status()',
+          detail: 'team_status',
+        },
+        {
+          id: 'evt_team_status_end',
+          sessionId: 'session-1',
+          timestamp: now,
+          kind: 'tool',
+          phase: 'end',
+          status: 'done',
+          label: 'Team Status',
+          detail: '{"team":{"name":"Codara 分析团队"},"members":[],"jobs":[]}',
+          parentId: 'evt_team_status_start',
+        },
+        {
+          id: 'evt_plan_jobs_start',
+          sessionId: 'session-1',
+          timestamp: now,
+          kind: 'tool',
+          phase: 'start',
+          status: 'running',
+          label: 'Plan Jobs(3 jobs)',
+          detail: 'plan_jobs',
+        },
+        {
+          id: 'evt_plan_jobs_end',
+          sessionId: 'session-1',
+          timestamp: now,
+          kind: 'tool',
+          phase: 'end',
+          status: 'done',
+          label: 'Plan Jobs',
+          detail: '{"planned":3}',
+          parentId: 'evt_plan_jobs_start',
+        },
+      ],
+    });
+
+    expect(items.map((item) => item.role)).toEqual(['user']);
+    expect(items.some((item) => item.content.includes('Team Status'))).toBe(false);
+    expect(items.some((item) => item.content.includes('Plan Jobs'))).toBe(false);
   });
 
   test('should hide AskUser tool call groups because the HIL panel already renders the interaction', () => {
@@ -139,6 +376,58 @@ describe('cli transcript model', () => {
     });
 
     expect(items).toEqual([]);
+  });
+
+  test('should hide write_todos bookkeeping from the main transcript', () => {
+    const now = new Date().toISOString();
+    const items = buildTranscriptItems({
+      notices: [],
+      coreMessages: [
+        new AIMessage({
+          content: '',
+          tool_calls: [
+            {id: 'call_write_todos_1', name: 'write_todos', args: {todos: []}} as ToolCall,
+          ],
+        }),
+        new ToolMessage({
+          content: 'Updated todo list to [{"content":"等待 worker 完成","status":"in_progress"}]',
+          tool_call_id: 'call_write_todos_1',
+          name: 'write_todos',
+        }),
+      ],
+      activeTurn: {
+        id: 'turn-write-todos',
+        prompt: 'coordinate the team',
+        response: '',
+        responseRole: 'assistant',
+      },
+      runtimeEvents: [
+        {
+          id: 'evt_write_todos_start',
+          sessionId: 'session-1',
+          timestamp: now,
+          kind: 'tool',
+          phase: 'start',
+          status: 'running',
+          label: 'Write Todos(...)',
+          detail: 'write_todos',
+        },
+        {
+          id: 'evt_write_todos_end',
+          sessionId: 'session-1',
+          timestamp: now,
+          kind: 'tool',
+          phase: 'end',
+          status: 'done',
+          label: 'Write Todos',
+          detail: 'Updated todo list to [{"content":"等待 worker 完成","status":"in_progress"}]',
+          parentId: 'evt_write_todos_start',
+        },
+      ],
+    });
+
+    expect(items.map((item) => item.role)).toEqual(['user']);
+    expect(items.some((item) => item.content.includes('Updated todo list'))).toBe(false);
   });
 
   test('should prefer runtime step events during streaming (activeTurn present)', () => {

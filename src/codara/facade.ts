@@ -20,20 +20,16 @@ import {
 } from '@durability/session';
 import type {CodaraRuntimeEvent, CodaraRuntimeEventListener} from '@observability/events';
 import {resolveWorkspaceRoot} from '@config/workspace';
-import {resolveTeamsEnabled} from '@config/settings';
 import {HookRegistryImpl, HookPipeline, createHookExecutor} from '@observability/hook';
 import type {HookSource, HookRegistry, SessionLifecycleHooks, AgentLifecycleHooks} from '@observability/hook';
 import {loadMcpConfig, createMcpManager, createMcpLangChainTools, type McpManager} from '@integration/mcp';
 import type {ChannelRegistry} from '@integration/channel';
-import type {TeamRegistry} from '@capability/team/coordination/team-registry';
-import type {TeamRuntime} from '@capability/team/runtime/team-runtime';
 import {
   createCodaraMiddlewares,
   createRuntimeDefaultMiddlewares,
   resolveRuntimeLoggingOptions,
 } from './assembly/middleware';
 import {getApprovalSummaries} from './assembly/approvals';
-import {assembleTeamSystem, getTeamSummaries, getTeamDetail} from './assembly/collaboration';
 import {getTaskRunSummaries} from './assembly/task-runs';
 import {
   createCodaraModelCatalog,
@@ -54,7 +50,6 @@ export type {
   ApprovalQuerySummary,
   ApprovalQueryReview,
   TaskRunQuerySummary,
-  TeamQuerySummary, TeamQueryMember, TeamQueryJob, TeamQueryDetail,
 } from './types';
 
 export {createCodaraMiddlewares} from './assembly/middleware';
@@ -143,27 +138,14 @@ export async function createCodaraRuntime(options: CodaraRuntimeOptions = {}): P
     }
   }
 
-  // 6. Team system
-  const teamsEnabled = typeof options.teams === 'boolean'
-    ? options.teams
-    : resolveTeamsEnabled({
-        cwd: options.cwd,
-        projectRoot: options.projectRoot,
-        userHome: options.userHome,
-      });
-  const teamSystem = teamsEnabled
-    ? await assembleTeamSystem({options, runtimeStatePath, projectRoot, catalog, approvalStore, baseSystemMessage})
-    : undefined;
-
-  // 7. Middleware chain
+  // 6. Middleware chain
   const runtimeMiddlewares = createRuntimeDefaultMiddlewares({
     options, runtimeTools, taskStore, taskRunStore, taskRuntime, taskCheckpointer: runtimeCheckpointer, approvalStore, logging, catalog, promptSource, guidelinesSource, hookPipeline,
-    teamRegistry: teamSystem?.teamRegistry, teamRuntime: teamSystem?.teamRuntime, teamSharedState: teamSystem?.sharedState,
     channelRegistry: options.channelRegistry,
   });
 
-  // 8. Assemble facade
-  return assembleCodara({
+  // 7. Assemble facade
+  const runtime = assembleCodara({
     ...options,
     tools: runtimeTools, middleware: runtimeMiddlewares, hil: false,
     autoMemory: options.autoMemory === false ? false
@@ -178,10 +160,11 @@ export async function createCodaraRuntime(options: CodaraRuntimeOptions = {}): P
     restore: options.restore ?? 'latest',
   }, undefined, {
     promptSource, guidelinesSource, hookPipeline, hookRegistry, mcpManager,
-    teamRegistry: teamSystem?.teamRegistry, teamRuntime: teamSystem?.teamRuntime,
     taskRunStore, taskRuntime, approvalStore,
     channelRegistry: options.channelRegistry,
   });
+
+  return runtime;
 }
 
 // ── Session Openers ──
@@ -213,7 +196,7 @@ export function assembleCodara(
   preloadedSources?: {
     promptSource?: PromptSource; guidelinesSource?: GuidelinesSource;
     hookPipeline?: HookPipeline; hookRegistry?: HookRegistry;
-    mcpManager?: McpManager; teamRegistry?: TeamRegistry; teamRuntime?: TeamRuntime;
+    mcpManager?: McpManager;
     taskRunStore?: TaskRunStore;
     taskRuntime?: TaskRuntime;
     approvalStore?: ApprovalStore;
@@ -257,8 +240,6 @@ export function assembleCodara(
   const extraProps: Record<string, PropertyDescriptor> = {};
   if (preloadedSources?.hookRegistry) extraProps.hookRegistry = {value: preloadedSources.hookRegistry, writable: false};
   if (mcpManager) extraProps.getMcpStatus = {value: () => mcpManager.status(), writable: false};
-  if (preloadedSources?.teamRegistry) extraProps.teamRegistry = {value: preloadedSources.teamRegistry, writable: false};
-  if (preloadedSources?.teamRuntime) extraProps.teamRuntime = {value: preloadedSources.teamRuntime, writable: false};
   const commandAgent = Object.keys(extraProps).length > 0 ? Object.create(session, extraProps) : session;
 
   const commands = createCodaraCommandRunner({
@@ -293,13 +274,7 @@ export function assembleCodara(
     return result;
   };
 
-  // Wire team events into runtime event stream
-  if (preloadedSources?.teamRuntime) {
-    preloadedSources.teamRuntime.setOnTeamEvent(
-      (event) => { for (const listener of commandEventListeners) listener(event); },
-      () => session.getState().sessionId,
-    );
-  }
+  // Wire task events into runtime event stream
   if (preloadedSources?.taskRuntime) {
     preloadedSources.taskRuntime.setOnTaskEvent(
       (event) => { for (const listener of commandEventListeners) listener(event); },
@@ -309,9 +284,7 @@ export function assembleCodara(
 
   const channelRegistry = preloadedSources?.channelRegistry;
 
-  const teamRuntime = preloadedSources?.teamRuntime;
   const taskRuntime = preloadedSources?.taskRuntime;
-  const teamRegistry = preloadedSources?.teamRegistry;
   const approvalStore = preloadedSources?.approvalStore;
   let focusedApprovalId: string | undefined;
   const readForegroundApprovalId = (): string | undefined => {
@@ -323,19 +296,6 @@ export function assembleCodara(
   };
 
   const dispose = async (): Promise<void> => {
-    // Shut down all running teams before disposing session
-    if (teamRuntime && teamRegistry) {
-      const activeTeams = teamRegistry.listTeams().filter(
-        (t) => t.status === 'running' || t.status === 'paused',
-      );
-      for (const team of activeTeams) {
-        try {
-          await teamRuntime.shutdownTeam(team.teamId);
-        } catch {
-          // Best-effort — continue disposing other resources
-        }
-      }
-    }
     await taskRuntime?.dispose();
     await session.dispose();
     if (mcpManager) await mcpManager.dispose();
@@ -400,13 +360,6 @@ export function assembleCodara(
         yield* taskRuntime.resumeApprovalByIdStream(record.approvalId, payload, config);
         break;
       }
-      case 'team_member': {
-        if (!teamRuntime) {
-          throw new Error('Team approval runtime is not available');
-        }
-        yield* teamRuntime.resumeApprovalByIdStream(record.approvalId, payload) as AsyncGenerator<AgentStreamOutput, void, void>;
-        break;
-      }
     }
 
     resolveFocusedApprovalRecord();
@@ -418,19 +371,10 @@ export function assembleCodara(
       throw new Error('No queued approval is available for the current session');
     }
 
-    if (record.source === 'task_run') {
-      if (!taskRuntime) {
-        throw new Error('Task approval runtime is not available');
-      }
-      await taskRuntime.resumeApprovalById(record.approvalId, payload, config);
-      return;
+    if (!taskRuntime) {
+      throw new Error('Task approval runtime is not available');
     }
-
-    if (!teamRuntime) {
-      throw new Error('Team approval runtime is not available');
-    }
-
-    await teamRuntime.resumeApprovalById(record.approvalId, payload);
+    await taskRuntime.resumeApprovalById(record.approvalId, payload, config);
     resolveFocusedApprovalRecord();
   };
 
@@ -454,12 +398,6 @@ export function assembleCodara(
     },
     resumeApproval,
     resumeApprovalStream,
-    getTeamSummaries: () => getTeamSummaries(preloadedSources?.teamRegistry, session.getState().sessionId),
-    getTeamDetail: (teamId: string) => getTeamDetail(
-      preloadedSources?.teamRegistry,
-      teamId,
-      session.getState().sessionId,
-    ),
     getChannelRegistry: () => channelRegistry,
     dispose,
   };

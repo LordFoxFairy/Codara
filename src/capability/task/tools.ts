@@ -1,6 +1,7 @@
 import {tool, type StructuredToolInterface} from '@langchain/core/tools';
 import {z} from 'zod';
 import type {TaskRecord, TaskStore, TaskStatus} from '@capability/task/types';
+import {createInternalSharedTaskCoordinationMessage} from '@shared/task-coordination-result';
 
 export const TASK_CREATE_TOOL_NAME = 'TaskCreate';
 export const TASK_UPDATE_TOOL_NAME = 'TaskUpdate';
@@ -22,9 +23,13 @@ export function createTaskTools(options: TaskToolOptions): StructuredToolInterfa
 
 export function createTaskCreateTool(options: TaskToolOptions): StructuredToolInterface {
   return tool(
-    async ({subject, description, activeForm}) => {
+    async ({subject, description, activeForm}, config) => {
       const record = await options.store.create({subject, description, activeForm});
-      return formatSingleTaskResult('Task created.', record);
+      const content = formatSingleTaskResult('Task created.', record);
+      const toolCallId = typeof config?.toolCall?.id === 'string' ? config.toolCall.id : '';
+      return shouldHideSharedTaskCoordinationFromMainTranscript(config)
+        ? createInternalSharedTaskCoordinationMessage(content, toolCallId)
+        : content;
     },
     {
       name: TASK_CREATE_TOOL_NAME,
@@ -40,7 +45,7 @@ export function createTaskCreateTool(options: TaskToolOptions): StructuredToolIn
 
 export function createTaskUpdateTool(options: TaskToolOptions): StructuredToolInterface {
   return tool(
-    async ({taskId, status, owner, addBlocks, addBlockedBy}) => {
+    async ({taskId, status, owner, addBlocks, addBlockedBy}, config) => {
       const record = await options.store.update({
         taskId,
         status,
@@ -48,7 +53,11 @@ export function createTaskUpdateTool(options: TaskToolOptions): StructuredToolIn
         addBlocks,
         addBlockedBy,
       });
-      return formatSingleTaskResult('Task updated.', record);
+      const content = formatSingleTaskResult('Task updated.', record);
+      const toolCallId = typeof config?.toolCall?.id === 'string' ? config.toolCall.id : '';
+      return shouldHideSharedTaskCoordinationFromMainTranscript(config)
+        ? createInternalSharedTaskCoordinationMessage(content, toolCallId)
+        : content;
     },
     {
       name: TASK_UPDATE_TOOL_NAME,
@@ -66,13 +75,51 @@ export function createTaskUpdateTool(options: TaskToolOptions): StructuredToolIn
 
 export function createTaskListTool(options: TaskToolOptions): StructuredToolInterface {
   return tool(
-    async () => formatTaskListResult(await options.store.list()),
+    async (_input, config) => {
+      const content = formatTaskListResult(await options.store.list());
+      const toolCallId = typeof config?.toolCall?.id === 'string' ? config.toolCall.id : '';
+      return shouldHideSharedTaskCoordinationFromMainTranscript(config)
+        ? createInternalSharedTaskCoordinationMessage(content, toolCallId)
+        : content;
+    },
     {
       name: TASK_LIST_TOOL_NAME,
       description: 'List all shared tasks with status, owner, and dependency information.',
       schema: z.object({}),
     },
   );
+}
+
+function shouldHideSharedTaskCoordinationFromMainTranscript(config: unknown): boolean {
+  if (!config || typeof config !== 'object') {
+    return false;
+  }
+
+  const configurable = (config as {configurable?: unknown}).configurable;
+  if (!configurable || typeof configurable !== 'object') {
+    return false;
+  }
+
+  const record = configurable as Record<string, unknown>;
+  const runtimeShared = record.runtimeShared;
+  if (runtimeShared && typeof runtimeShared === 'object' && !Array.isArray(runtimeShared)) {
+    const teamContext = (runtimeShared as Record<string, unknown>).teamContext;
+    if (teamContext && typeof teamContext === 'object' && !Array.isArray(teamContext)) {
+      return true;
+    }
+  }
+
+  const context = record.context;
+  if (!context || typeof context !== 'object' || Array.isArray(context)) {
+    return false;
+  }
+
+  const teamSurface = (context as Record<string, unknown>).teamSurface;
+  if (!teamSurface || typeof teamSurface !== 'object' || Array.isArray(teamSurface)) {
+    return false;
+  }
+
+  return typeof (teamSurface as Record<string, unknown>).activeTeamId === 'string';
 }
 
 function formatSingleTaskResult(prefix: string, record: TaskRecord): string {
