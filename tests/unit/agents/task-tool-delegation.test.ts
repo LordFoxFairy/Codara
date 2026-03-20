@@ -5,12 +5,14 @@ import {tool} from '@langchain/core/tools';
 import {z} from 'zod';
 import {createAgent} from '@core/agent';
 import {createHILMiddleware} from '@core/middleware';
+import {createTaskRunMemoryStore} from '@capability/task';
 import {TASK_TOOL_NAME, createTaskTool} from '@capability/task/middleware';
-import {readDelegatedAgentResult} from '@capability/task/delegation';
+import {readTaskRunLaunchResult} from '@shared/task-run-launch';
 import {createBuiltinSubagentStore, createAgentSkillsMiddleware, ChildSummaryModel, ScriptedModel} from './task-tool.fixtures';
 
 describe('createTaskTool delegation', () => {
-  it('应通过正式 Task 工具委派子代理并回传摘要', async () => {
+  it('应通过正式 Task 工具启动后台子代理并立即返回 run handle', async () => {
+    const runStore = createTaskRunMemoryStore();
     const parent = createAgent({
       model: new ScriptedModel([
         new AIMessage({
@@ -30,23 +32,35 @@ describe('createTaskTool delegation', () => {
       tools: [
         createTaskTool({
           model: new ChildSummaryModel() as unknown as BaseChatModel,
+          runStore,
         }),
       ],
     });
 
     const result = await parent.invoke('delegate this');
     const toolMessage = result.state.messages.find((message) => ToolMessage.isInstance(message)) as ToolMessage;
+    const launch = readTaskRunLaunchResult(toolMessage.artifact);
 
     expect(result.reason).toBe('complete');
-    expect(String(toolMessage.content)).toContain('Delegated task completed.');
-    expect(String(toolMessage.content)).toContain('summary:\ntask_child_humans:1');
-    expect(readDelegatedAgentResult(toolMessage.artifact)).toEqual({
-      type: 'delegated_agent_result',
+    expect(result.state.status).toBe('idle');
+    expect(result.state.pendingPause).toBeUndefined();
+    expect(String(toolMessage.content)).toContain('Delegated task started in background.');
+    expect(launch).toEqual({
+      type: 'task_run_started',
+      runId: 'call_task_delegate',
       sessionId: expect.any(String),
-      turns: 1,
-      reason: 'complete',
-      summary: 'task_child_humans:1',
+      agentName: 'general-purpose',
+      label: 'Delegating general-purpose: Investigate the auth flow',
     });
+
+    await new Promise((resolve) => setTimeout(resolve, 20));
+
+    expect(runStore.get('call_task_delegate')).toEqual(expect.objectContaining({
+      runId: 'call_task_delegate',
+      childSessionId: launch?.sessionId,
+      status: 'completed',
+      summary: 'task_child_humans:1',
+    }));
   });
 
   it('应将 Task child 的 HIL pause 提升到 parent，并在 resume 后继续 child checkpoint', async () => {
@@ -99,6 +113,7 @@ describe('createTaskTool delegation', () => {
               },
             }),
           ],
+          runStore: createTaskRunMemoryStore(),
         }),
       ],
     });
@@ -106,25 +121,81 @@ describe('createTaskTool delegation', () => {
     const paused = await parent.invoke('delegate this');
 
     expect(paused.reason).toBe('complete');
-    expect(paused.state.status).toBe('paused');
-    expect(paused.state.pendingPause?.metadata).toMatchObject({
-      codara: {
-        delegatedSubagent: {
-          childSessionId: expect.any(String),
-          parentToolName: TASK_TOOL_NAME,
-        },
-      },
+    expect(paused.state.status).toBe('idle');
+    expect(paused.state.pendingPause).toBeUndefined();
+    expect(dangerousInvokeCount).toBe(0);
+  });
+
+  it('应在同一个 parent session 重复使用相同 Task tool_call id 时创建新的 detached run', async () => {
+    const runStore = createTaskRunMemoryStore();
+
+    class RepeatingParentModel {
+      private callCount = 0;
+
+      async invoke(): Promise<AIMessage> {
+        this.callCount += 1;
+        if (this.callCount % 2 === 0) {
+          return new AIMessage('done');
+        }
+
+        return new AIMessage({
+          content: '',
+          tool_calls: [{
+            id: 'call_task_repeat',
+            name: TASK_TOOL_NAME,
+            args: {
+              prompt: 'Repeat the detached task',
+              subagent_type: 'general-purpose',
+            },
+          } as ToolCall],
+        });
+      }
+
+      bindTools(): this {
+        return this;
+      }
+    }
+
+    class CountingChildModel {
+      private callCount = 0;
+
+      async invoke(): Promise<AIMessage> {
+        this.callCount += 1;
+        return new AIMessage(`child_done_${this.callCount}`);
+      }
+
+      bindTools(): this {
+        return this;
+      }
+    }
+
+    const parent = createAgent({
+      model: new RepeatingParentModel() as unknown as BaseChatModel,
+      middleware: [createAgentSkillsMiddleware(createBuiltinSubagentStore())],
+      tools: [
+        createTaskTool({
+          model: new CountingChildModel() as unknown as BaseChatModel,
+          runStore,
+        }),
+      ],
     });
 
-    const resumed = await parent.resume({decision: 'approve'});
-    const toolMessages = resumed.state.messages.filter((message) => ToolMessage.isInstance(message)) as ToolMessage[];
-    const toolMessage = toolMessages[toolMessages.length - 1] as ToolMessage;
+    await parent.invoke('first detached run');
+    await new Promise((resolve) => setTimeout(resolve, 20));
+    await parent.invoke('second detached run');
+    await new Promise((resolve) => setTimeout(resolve, 20));
 
-    expect(resumed.reason).toBe('complete');
-    expect(resumed.state.status).toBe('idle');
-    expect(resumed.state.pendingPause).toBeUndefined();
-    expect(dangerousInvokeCount).toBe(1);
-    expect(String(toolMessage.content)).toContain('Delegated task completed.');
-    expect(String(toolMessage.content)).toContain('summary:\ntask_child_done');
+    expect(runStore.list()).toEqual([
+      expect.objectContaining({
+        runId: 'call_task_repeat',
+        status: 'completed',
+        summary: 'child_done_1',
+      }),
+      expect.objectContaining({
+        runId: 'call_task_repeat__2',
+        status: 'completed',
+        summary: 'child_done_2',
+      }),
+    ]);
   });
 });

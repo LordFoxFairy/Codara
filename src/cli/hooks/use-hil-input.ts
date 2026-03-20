@@ -10,6 +10,8 @@ interface UseHilInputOptions {
   onMoveRight?: () => void;
   onSelectPrevious: () => void;
   onSelectNext: () => void;
+  onSelectPreviousApproval?: () => void;
+  onSelectNextApproval?: () => void;
   onToggleFocus: () => void;
   onInsertText: (input: string) => void;
   onInsertNewline: () => void;
@@ -24,6 +26,107 @@ interface UseHilInputOptions {
   onPermissionRejectSilent?: () => void;
 }
 
+export type HilInputAction =
+  | 'noop'
+  | 'exit'
+  | 'permission-back'
+  | 'permission-confirm'
+  | 'permission-reject-send'
+  | 'permission-reject-silent'
+  | 'select-previous-approval'
+  | 'select-next-approval'
+  | 'toggle-focus'
+  | 'move-left'
+  | 'move-right'
+  | 'insert-newline'
+  | 'submit'
+  | 'backspace'
+  | 'insert-text';
+
+export function resolveHilInputAction(
+  input: string,
+  key: {
+    ctrl?: boolean;
+    meta?: boolean;
+    shift?: boolean;
+    return?: boolean;
+    escape?: boolean;
+    tab?: boolean;
+    leftArrow?: boolean;
+    rightArrow?: boolean;
+    upArrow?: boolean;
+    downArrow?: boolean;
+    backspace?: boolean;
+    delete?: boolean;
+  },
+  permissionStage?: PermissionStage,
+): HilInputAction {
+  if (key.ctrl && input === 'c') {
+    return 'exit';
+  }
+
+  if (permissionStage === 'always-confirm') {
+    if (key.escape) {
+      return 'permission-back';
+    }
+    if (key.return || input === '\r' || input === '\n') {
+      return 'permission-confirm';
+    }
+    return 'noop';
+  }
+
+  if (permissionStage === 'reject-feedback') {
+    if (key.escape) {
+      return 'permission-reject-silent';
+    }
+    if (key.return || input === '\r' || input === '\n') {
+      return 'permission-reject-send';
+    }
+    if (key.backspace || input === '\b' || (key.delete && !key.ctrl && !key.meta && !key.shift) || (key.ctrl && input === 'h')) {
+      return 'backspace';
+    }
+    return !key.ctrl && !key.meta && input ? 'insert-text' : 'noop';
+  }
+
+  if (key.escape) {
+    return 'exit';
+  }
+
+  if (key.tab) {
+    return 'toggle-focus';
+  }
+
+  if (!key.ctrl && !key.meta && input === '[') {
+    return 'select-previous-approval';
+  }
+
+  if (!key.ctrl && !key.meta && input === ']') {
+    return 'select-next-approval';
+  }
+
+  if (key.leftArrow) {
+    return 'move-left';
+  }
+
+  if (key.rightArrow) {
+    return 'move-right';
+  }
+
+  if ((key.shift && key.return) || (key.meta && key.return) || (key.ctrl && (input === 'j' || key.return))) {
+    return 'insert-newline';
+  }
+
+  if (key.return || input === '\r' || input === '\n') {
+    return 'submit';
+  }
+
+  if (key.backspace || input === '\b' || (key.delete && !key.ctrl && !key.meta && !key.shift) || (key.ctrl && input === 'h')) {
+    return 'backspace';
+  }
+
+  return !key.ctrl && !key.meta && input ? 'insert-text' : 'noop';
+}
+
 export function useHilInput(options: UseHilInputOptions): void {
   const {
     active,
@@ -33,6 +136,8 @@ export function useHilInput(options: UseHilInputOptions): void {
     onMoveRight,
     onSelectPrevious,
     onSelectNext,
+    onSelectPreviousApproval,
+    onSelectNextApproval,
     onToggleFocus,
     onInsertText,
     onInsertNewline,
@@ -48,8 +153,9 @@ export function useHilInput(options: UseHilInputOptions): void {
   const {isRawModeSupported} = useStdin();
 
   useInput((input, key) => {
-    // Ctrl+C always exits
-    if (key.ctrl && input === 'c') {
+    const action = resolveHilInputAction(input, key, permissionStage);
+
+    if (action === 'exit' && key.ctrl && input === 'c') {
       onExit();
       return;
     }
@@ -58,47 +164,33 @@ export function useHilInput(options: UseHilInputOptions): void {
       return;
     }
 
-    // ── Permission stage 2: always-confirm (Claude Code style: Confirm/Cancel) ──
-    if (permissionStage === 'always-confirm') {
-      if (key.escape) {
-        onPermissionBack?.();
-        return;
-      }
-      if (key.return || input === '\r' || input === '\n') {
-        onPermissionConfirm?.();
-        return;
-      }
-      return;
-    }
-
-    // ── Permission stage 3: reject-feedback ──
-    if (permissionStage === 'reject-feedback') {
-      if (key.escape) {
-        onPermissionRejectSilent?.();
-        return;
-      }
-      if (key.return || input === '\r' || input === '\n') {
-        onPermissionRejectSend?.();
-        return;
-      }
-      if (key.backspace || input === '\b' || (key.delete && !key.ctrl && !key.meta && !key.shift) || (key.ctrl && input === 'h')) {
-        onBackspace();
-        return;
-      }
-      if (!key.ctrl && !key.meta && input) {
-        onInsertText(input);
-      }
-      return;
-    }
-
-    // ── Permission stage 1 (prompt) or general Esc ──
-    if (key.escape) {
+    if (action === 'exit') {
       onExit();
       return;
     }
 
+    if (action === 'permission-back') {
+      onPermissionBack?.();
+      return;
+    }
+
+    if (action === 'permission-confirm') {
+      onPermissionConfirm?.();
+      return;
+    }
+
+    if (action === 'permission-reject-silent') {
+      onPermissionRejectSilent?.();
+      return;
+    }
+
+    if (action === 'permission-reject-send') {
+      onPermissionRejectSend?.();
+      return;
+    }
+
     // Quick actions for permission prompt stage
-    if (!key.ctrl && !key.meta && onQuickAction) {
+    if (permissionStage !== 'always-confirm' && permissionStage !== 'reject-feedback' && !key.ctrl && !key.meta && onQuickAction) {
       if (input === 'y') {
         onQuickAction('allow_once');
         return;
@@ -113,17 +205,27 @@ export function useHilInput(options: UseHilInputOptions): void {
       }
     }
 
-    if (key.tab) {
+    if (action === 'toggle-focus') {
       onToggleFocus();
       return;
     }
 
-    if (key.leftArrow) {
+    if (action === 'select-previous-approval') {
+      onSelectPreviousApproval?.();
+      return;
+    }
+
+    if (action === 'select-next-approval') {
+      onSelectNextApproval?.();
+      return;
+    }
+
+    if (action === 'move-left') {
       (onMoveLeft ?? onToggleFocus)();
       return;
     }
 
-    if (key.rightArrow) {
+    if (action === 'move-right') {
       (onMoveRight ?? onToggleFocus)();
       return;
     }
@@ -138,22 +240,22 @@ export function useHilInput(options: UseHilInputOptions): void {
       return;
     }
 
-    if ((key.shift && key.return) || (key.meta && key.return) || (key.ctrl && key.return)) {
+    if (action === 'insert-newline') {
       onInsertNewline();
       return;
     }
 
-    if (key.return || input === '\r' || input === '\n') {
+    if (action === 'submit') {
       onSubmit();
       return;
     }
 
-    if (key.backspace || input === '\b' || (key.delete && !key.ctrl && !key.meta && !key.shift) || (key.ctrl && input === 'h')) {
+    if (action === 'backspace') {
       onBackspace();
       return;
     }
 
-    if (!key.ctrl && !key.meta && input) {
+    if (action === 'insert-text') {
       onInsertText(input);
     }
   }, {isActive: active && isRawModeSupported});

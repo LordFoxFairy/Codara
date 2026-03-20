@@ -2,7 +2,7 @@ import React, {useEffect, useState} from 'react';
 import {Box, Text} from 'ink';
 import type {ActiveTask} from '../../hooks/use-active-tasks';
 import {SPINNER_INTERVAL_MS} from '../../hooks/use-status-indicator';
-import {formatElapsedMs} from '../../utils/format';
+import {formatElapsedMs, formatTokenCount} from '../../utils/format';
 import {theme} from '../../utils/theme';
 
 const BRAILLE_FRAMES = ['⠋', '⠙', '⠹', '⠸', '⠼', '⠴', '⠦', '⠧', '⠇', '⠏'] as const;
@@ -10,13 +10,15 @@ const BRAILLE_FRAMES = ['⠋', '⠙', '⠹', '⠸', '⠼', '⠴', '⠦', '⠧', 
 interface TaskPanelProps {
   tasks: ActiveTask[];
   runningCount: number;
+  pausedCount: number;
   doneCount: number;
   errorCount: number;
 }
 
-function buildTaskSummary(runningCount: number, doneCount: number, errorCount: number): string {
+function buildTaskSummary(runningCount: number, pausedCount: number, doneCount: number, errorCount: number): string {
   const parts: string[] = [];
   if (runningCount > 0) parts.push(`${runningCount} running`);
+  if (pausedCount > 0) parts.push(`${pausedCount} paused`);
   if (doneCount > 0) parts.push(`${doneCount} done`);
   if (errorCount > 0) parts.push(`${errorCount} failed`);
   return parts.join(', ');
@@ -37,7 +39,7 @@ function TaskCheckbox({status, frame}: {status: ActiveTask['status']; frame: num
   }
 }
 
-export function TaskPanel({tasks, runningCount, doneCount, errorCount}: TaskPanelProps): React.JSX.Element | null {
+export function TaskPanel({tasks, runningCount, pausedCount, doneCount, errorCount}: TaskPanelProps): React.JSX.Element | null {
   const [frame, setFrame] = useState(0);
 
   useEffect(() => {
@@ -52,7 +54,7 @@ export function TaskPanel({tasks, runningCount, doneCount, errorCount}: TaskPane
 
   if (tasks.length === 0) return null;
 
-  const summary = buildTaskSummary(runningCount, doneCount, errorCount);
+  const summary = buildTaskSummary(runningCount, pausedCount, doneCount, errorCount);
 
   return (
     <Box flexDirection="column" borderStyle="single" borderColor={theme.chrome.border} paddingX={1}>
@@ -60,15 +62,18 @@ export function TaskPanel({tasks, runningCount, doneCount, errorCount}: TaskPane
       {tasks.map(task => {
         const statParts: string[] = [];
         if (task.toolUseCount) statParts.push(`${task.toolUseCount} tools`);
-        if (task.totalTokens) statParts.push(`${task.totalTokens} tok`);
+        if (task.totalTokens) statParts.push(`${formatTokenCount(task.totalTokens)} tok`);
         const elapsed = formatElapsedMs(task.elapsed);
         const stats = statParts.length > 0 ? `  ${statParts.join(' · ')}` : '';
 
         return (
-          <Box key={task.id} gap={1}>
-            <TaskCheckbox status={task.status} frame={frame} />
-            <Text wrap="truncate-end">{task.name}</Text>
-            <Text dimColor>{elapsed}{stats}</Text>
+          <Box key={task.id} flexDirection="column">
+            <Box gap={1}>
+              <TaskCheckbox status={task.status} frame={frame} />
+              <Text wrap="truncate-end">{task.name}</Text>
+              <Text dimColor>{elapsed}{stats}</Text>
+            </Box>
+            {task.detail ? <Text dimColor wrap="truncate-end">{task.detail}</Text> : null}
           </Box>
         );
       })}

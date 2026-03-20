@@ -22,6 +22,7 @@ import {
   createTaskFileStore,
   createTaskListTool,
   createTaskMiddleware,
+  createTaskRunFileStore,
   createTaskUpdateTool,
   TASK_CREATE_TOOL_NAME,
   TASK_LIST_TOOL_NAME,
@@ -73,13 +74,17 @@ export async function createCliRuntime(input: {
     case 'task-skill-delegate': {
       await seedProjectSkillFixtures(input.cwd);
       const store = createTaskFileStore({rootDir: path.join(input.cwd, '.codara', 'case-tasks')});
+      const runStore = createTaskRunFileStore({
+        rootDir: path.join(input.cwd, '.codara', 'case-task-runs'),
+      });
       return {
-        codara: await createCliCaseRuntime({
-          cwd: input.cwd,
-          projectRoot: input.cwd,
-          codaraPath: path.join(input.cwd, '.codara'),
-          ...(input.sessionId ? {sessionId: input.sessionId} : {}),
-          model: new ScriptedModel([
+          codara: await createCliCaseRuntime({
+            cwd: input.cwd,
+            projectRoot: input.cwd,
+            codaraPath: path.join(input.cwd, '.codara'),
+            ...(input.sessionId ? {sessionId: input.sessionId} : {}),
+            taskRunStore: runStore,
+            model: new ScriptedModel([
             new AIMessage({
               content: '',
               tool_calls: [{
@@ -115,12 +120,16 @@ export async function createCliRuntime(input: {
             createTaskTool({
               model: new SharedTaskReaderModel() as unknown as BaseChatModel,
               tools: [createTaskListTool({store})],
+              runStore,
             }),
           ],
         }),
       };
     }
-    case 'prompt-manual-inheritance':
+    case 'prompt-manual-inheritance': {
+      const promptRunStore = createTaskRunFileStore({
+        rootDir: path.join(input.cwd, '.codara', 'case-task-runs'),
+      });
       return {
         codara: await createCodaraRuntime({
           cwd: input.cwd,
@@ -139,13 +148,18 @@ export async function createCliRuntime(input: {
             createTaskMiddleware({
               model: new ChildPromptInspectorModel() as unknown as BaseChatModel,
               tools: [createNoopTool()],
+              runStore: promptRunStore,
             }),
           ],
         }),
       };
+    }
     case 'multi-profile-coordination': {
       await seedPermissions(input.cwd, ['Read(*)', 'Grep(*)', 'Fetch(*)', 'Search(*)']);
       const store = createTaskFileStore({rootDir: path.join(input.cwd, '.codara', 'case-tasks')});
+      const runStore = createTaskRunFileStore({
+        rootDir: path.join(input.cwd, '.codara', 'case-task-runs'),
+      });
       const childModel = new CoordinatedSubagentModel();
       return {
         codara: await createCodaraRuntime({
@@ -203,6 +217,7 @@ export async function createCliRuntime(input: {
             createSkillsMiddleware({store: createRepoSkillStore(repoRoot), loadRuntime: loadSkillsRuntimeData}),
             createTaskMiddleware({
               store,
+              runStore,
               model: childModel as unknown as BaseChatModel,
               tools: [
                 tool(async ({path: targetPath}: {path: string}) => `plan-doc:${targetPath}`, {
@@ -414,14 +429,18 @@ export async function createCliRuntime(input: {
           skills: false,
         }),
       };
-    case 'subagent-permission':
+    case 'subagent-permission': {
+      const permissionRunStore = createTaskRunFileStore({
+        rootDir: path.join(input.cwd, '.codara', 'case-task-runs'),
+      });
       return {
-        codara: await createCodaraRuntime({
-          cwd: input.cwd,
-          projectRoot: input.cwd,
-          codaraPath: path.join(input.cwd, '.codara'),
-          ...(input.sessionId ? {sessionId: input.sessionId} : {}),
-          model: new ParentDelegationCliModel() as unknown as BaseChatModel,
+          codara: await createCodaraRuntime({
+            cwd: input.cwd,
+            projectRoot: input.cwd,
+            codaraPath: path.join(input.cwd, '.codara'),
+            ...(input.sessionId ? {sessionId: input.sessionId} : {}),
+            taskRunStore: permissionRunStore,
+            model: new ParentDelegationCliModel() as unknown as BaseChatModel,
           builtinTools: false,
           skills: {
             store: createRepoSkillStore(repoRoot),
@@ -433,10 +452,12 @@ export async function createCliRuntime(input: {
               model: new ChildPermissionCliModel() as unknown as BaseChatModel,
               tools: [createPermissionBashTool()],
               middleware: [createPermissionCaseMiddleware(input.cwd)],
+              runStore: permissionRunStore,
             }),
           ],
         }),
       };
+    }
     case 'runtime-permission-repair':
       return {
         codara: await createCodaraRuntime({
@@ -842,7 +863,7 @@ class HilFormCliModel {
 class ParentDelegationCliModel {
   async invoke(messages: BaseMessage[]): Promise<AIMessage> {
     const text = messages.map((message) => stringifyMessage(message.content)).join('\n');
-    if (text.includes('Delegated task completed.')) {
+    if (text.includes('Delegated task started in background.')) {
       return new AIMessage('SUBAGENT_PERMISSION_PARENT_DONE');
     }
 
@@ -882,7 +903,7 @@ class ChildPermissionCliModel {
 class ParentTaskPromptModel {
   async invoke(messages: BaseMessage[]): Promise<AIMessage> {
     const text = messages.map((message) => stringifyMessage(message.content)).join('\n');
-    if (text.includes('Delegated task completed.')) {
+    if (text.includes('Delegated task started in background.')) {
       return new AIMessage('PARENT_PROMPT_DONE');
     }
 
@@ -956,11 +977,11 @@ class DefaultRuntimeWorkflowCliModel {
   async invoke(messages: BaseMessage[]): Promise<AIMessage> {
     const text = messages.map((message) => stringifyMessage(message.content)).join('\n');
 
-    if (text.includes('Inspect isolated child work') && !text.includes('Delegated task completed.')) {
+    if (text.includes('Inspect isolated child work') && !text.includes('Delegated task started in background.')) {
       return new AIMessage('CHILD_FLOW_DONE');
     }
 
-    if (text.includes('Delegated task completed.')) {
+    if (text.includes('Delegated task started in background.')) {
       return new AIMessage('DEFAULT_RUNTIME_FLOW_DONE');
     }
 

@@ -2,14 +2,16 @@ import {describe, expect, it} from 'bun:test';
 import {mkdir, mkdtemp, rm, writeFile} from 'node:fs/promises';
 import os from 'node:os';
 import path from 'node:path';
-import {AIMessage, type BaseMessage, type ToolCall} from '@langchain/core/messages';
+import {AIMessage, ToolMessage, type BaseMessage, type ToolCall} from '@langchain/core/messages';
 import type {BaseChatModel} from '@langchain/core/language_models/chat_models';
 import {tool} from '@langchain/core/tools';
 import {z} from 'zod';
 import {createAgent} from '@core/agent';
 import {createHILMiddleware} from '@core/middleware';
+import {createTaskRunMemoryStore, createTaskRuntime, type TaskRunRecord} from '@capability/task';
 import {TASK_TOOL_NAME, createTaskTool} from '@capability/task/middleware';
 import {FileSystemSkillStore} from '@capability/skill';
+import {readTaskRunLaunchResult} from '@shared/task-run-launch';
 import {createAgentSkillsMiddleware, ChildSummaryModel, ScriptedModel} from './task-tool.fixtures';
 
 class GuardedSystemEchoModel {
@@ -39,6 +41,25 @@ class GuardedSystemEchoModel {
     void tools;
     return this;
   }
+}
+
+async function waitForTaskRunStatus(
+  runStore: {get(runId: string): TaskRunRecord | undefined},
+  runId: string,
+  status: TaskRunRecord['status'],
+): Promise<TaskRunRecord> {
+  const deadline = Date.now() + 500;
+
+  while (Date.now() < deadline) {
+    const record = runStore.get(runId);
+    if (record?.status === status) {
+      return record;
+    }
+
+    await new Promise((resolve) => setTimeout(resolve, 10));
+  }
+
+  throw new Error(`Task run "${runId}" did not reach status "${status}"`);
 }
 
 describe('createTaskTool definitions', () => {
@@ -155,6 +176,8 @@ You are a Reviewer subagent loaded from a standalone agents root.
     const root = await mkdtemp(path.join(os.tmpdir(), 'codara-task-tool-resume-profile-'));
 
     try {
+      const runStore = createTaskRunMemoryStore();
+      const taskRuntime = createTaskRuntime({runStore});
       const skillDir = path.join(root, 'custom-agents');
       const agentsDir = path.join(skillDir, 'agents');
       await mkdir(agentsDir, {recursive: true});
@@ -198,23 +221,31 @@ You are a Researcher subagent.
               tool(async () => 'ok', {name: 'grep', description: 'grep', schema: z.object({})}),
             ],
             middleware: [createHILMiddleware({interruptOn: {read_file: true}})],
+            runStore,
+            runtime: taskRuntime,
           }),
         ],
       });
 
-      const paused = await parent.invoke('delegate this');
-      expect(paused.state.status).toBe('paused');
-      expect(paused.state.pendingPause?.action.toolArgs).toMatchObject({
-        prompt: 'Research the codebase',
-        subagent_type: 'Researcher',
+      const launched = await parent.invoke('delegate this');
+      const toolMessage = launched.state.messages.find((message) => ToolMessage.isInstance(message)) as ToolMessage;
+      const launch = readTaskRunLaunchResult(toolMessage.artifact);
+
+      expect(launched.reason).toBe('complete');
+      expect(launched.state.status).toBe('idle');
+      expect(launched.state.pendingPause).toBeUndefined();
+      expect(launch).toMatchObject({
+        type: 'task_run_started',
+        runId: 'call_task_resume_profile',
       });
 
-      const resumed = await parent.resume({decision: 'approve'});
-      const toolMessages = resumed.state.messages.filter((message) => message.type === 'tool');
-      const finalToolMessage = toolMessages[toolMessages.length - 1];
+      const paused = await waitForTaskRunStatus(runStore, 'call_task_resume_profile', 'paused');
+      expect(paused.latestActivity).toContain('Tool: read_file');
 
-      expect(resumed.reason).toBe('complete');
-      expect(String(finalToolMessage?.content)).toContain('You are a Researcher subagent.');
+      await taskRuntime.resumeRun('call_task_resume_profile', {decision: 'approve'});
+      const completed = await waitForTaskRunStatus(runStore, 'call_task_resume_profile', 'completed');
+
+      expect(completed.summary).toContain('You are a Researcher subagent.');
     } finally {
       await rm(root, {recursive: true, force: true});
     }

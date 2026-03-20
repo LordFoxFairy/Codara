@@ -1,8 +1,26 @@
 import {describe, expect, it} from 'bun:test';
-import {mkdir, mkdtemp, writeFile} from 'node:fs/promises';
+import {mkdir, mkdtemp, readFile, writeFile} from 'node:fs/promises';
 import {tmpdir} from 'node:os';
 import path from 'node:path';
 import {runRealCliCase} from '../helpers/real-cli';
+
+async function waitForCondition(
+  predicate: () => Promise<boolean> | boolean,
+  options: {timeoutMs?: number; intervalMs?: number} = {},
+): Promise<void> {
+  const timeoutMs = options.timeoutMs ?? 2000;
+  const intervalMs = options.intervalMs ?? 25;
+  const deadline = Date.now() + timeoutMs;
+
+  while (Date.now() <= deadline) {
+    if (await predicate()) {
+      return;
+    }
+    await new Promise((resolve) => setTimeout(resolve, intervalMs));
+  }
+
+  throw new Error('Condition was not satisfied before timeout');
+}
 
 describe('subagent prompt manual cases', () => {
   it('should make .codara/codara.md visible inside delegated child system prompts through the real CLI', async () => {
@@ -42,11 +60,27 @@ You are the default general-purpose subagent.
       prompt: 'delegate prompt check',
       scenario: 'prompt-manual-inheritance',
     });
+    const runRecordPath = path.join(codaraPath, 'case-task-runs', 'call_prompt_task.json');
 
     expect(result.exitCode).toBe(0);
+    expect(result.output).toContain('Delegated task started in background.');
     expect(result.output).toContain('PARENT_PROMPT_DONE');
-    const compact = result.output.replace(/\s+/g, '');
-    expect(compact).toContain('prompt_visible:true;guidelines_visible:true;skills_visible:true;profile_vi');
-    expect(compact).toContain('sible:true');
+
+    await waitForCondition(async () => {
+      try {
+        const raw = await readFile(runRecordPath, 'utf8');
+        const runRecord = JSON.parse(raw) as {status?: string};
+        return runRecord.status === 'completed';
+      } catch {
+        return false;
+      }
+    });
+
+    const runRecord = JSON.parse(await readFile(runRecordPath, 'utf8')) as {
+      status?: string;
+      summary?: string;
+    };
+    expect(runRecord.status).toBe('completed');
+    expect(runRecord.summary).toContain('prompt_visible:true;guidelines_visible:true;skills_visible:true;profile_visible:true');
   });
 });

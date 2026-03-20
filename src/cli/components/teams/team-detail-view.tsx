@@ -51,14 +51,14 @@ export function TeamDetailView({ state }: TeamDetailViewProps) {
 
       {/* Footer */}
       <Box marginTop={1}>
-        <Text dimColor>Type a message to send to this team · </Text>
-        <Text dimColor color={theme.interactive.secondaryButton}>[leave]</Text>
-        <Text dimColor> </Text>
-        <Text dimColor color={theme.status.paused}>[pause]</Text>
-        <Text dimColor> </Text>
-        <Text dimColor color={theme.status.responding}>[resume]</Text>
-        <Text dimColor> </Text>
-        <Text dimColor color={theme.interactive.danger}>[kill]</Text>
+        <Text dimColor>Use </Text>
+        <Text color={theme.interactive.secondaryButton}>/team leave</Text>
+        <Text dimColor>, </Text>
+        <Text color={theme.status.paused}>/team pause &lt;name&gt;</Text>
+        <Text dimColor>, </Text>
+        <Text color={theme.status.responding}>/team resume &lt;name&gt;</Text>
+        <Text dimColor>, or </Text>
+        <Text color={theme.interactive.danger}>/team kill &lt;name&gt;</Text>
       </Box>
     </Box>
   );

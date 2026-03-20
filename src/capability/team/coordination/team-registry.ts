@@ -101,7 +101,7 @@ export class TeamRegistry {
 
     team.status = status;
 
-    if (status === 'completed') {
+    if (status === 'completed' || status === 'failed') {
       team.completedAt = new Date().toISOString();
     }
   }

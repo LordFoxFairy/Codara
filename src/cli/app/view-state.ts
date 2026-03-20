@@ -58,4 +58,6 @@ export interface CliHilReviewState {
   permissionStage?: PermissionStage;
   /** Always-pattern candidates for permission stage 2 */
   permissionAlwaysPatterns?: string[];
+  approvalIndex?: number;
+  approvalCount?: number;
 }

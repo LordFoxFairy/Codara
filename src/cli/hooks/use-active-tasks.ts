@@ -1,5 +1,7 @@
 import {useEffect, useMemo, useState} from 'react';
-import type {CodaraRuntimeEvent} from '@/index';
+import type {ApprovalQuerySummary, TaskRunQuerySummary} from '@/index';
+
+export type {TaskRunQuerySummary};
 
 export interface ActiveTask {
   id: string;
@@ -9,20 +11,31 @@ export interface ActiveTask {
   endedAt?: number;
   elapsed: number;
   detail?: string;
+  approvalCount?: number;
   toolUseCount?: number;
-  totalTokens?: string;
+  totalTokens?: number;
 }
 
 export interface UseActiveTasksInput {
-  runtimeEvents: readonly CodaraRuntimeEvent[];
+  taskRunSummaries: readonly TaskRunQuerySummary[];
+  approvals?: readonly ApprovalQuerySummary[];
 }
 
 export interface UseActiveTasksOutput {
   tasks: ActiveTask[];
   runningCount: number;
+  pausedCount: number;
   doneCount: number;
   errorCount: number;
   hasActiveTasks: boolean;
+}
+
+export interface ActiveTaskSnapshot {
+  tasks: ActiveTask[];
+  runningCount: number;
+  pausedCount: number;
+  doneCount: number;
+  errorCount: number;
 }
 
 const MAX_VISIBLE_TASKS = 5;
@@ -41,127 +54,83 @@ export function extractTaskName(label: string): string {
 }
 
 export function deriveActiveTasks(
-  events: readonly CodaraRuntimeEvent[],
+  runs: readonly TaskRunQuerySummary[],
   now: number,
+  approvals: readonly ApprovalQuerySummary[] = [],
 ): ActiveTask[] {
-  // Collect task-level events (kind='task')
-  const taskStarts = new Map<string, CodaraRuntimeEvent>();
-  const taskEnds = new Map<string, CodaraRuntimeEvent>();
-  // Also collect tool-level Task events (kind='tool', detail='Task') for early display
-  const toolTaskStarts = new Map<string, CodaraRuntimeEvent>();
-  const toolTaskEnds = new Map<string, CodaraRuntimeEvent>();
-  // Map tool start ID → task start ID
-  const toolToTask = new Map<string, string>();
+  return deriveActiveTaskSnapshot(runs, now, approvals).tasks;
+}
 
-  for (const event of events) {
-    if (event.kind === 'task') {
-      if (event.phase === 'start') {
-        taskStarts.set(event.id, event);
-        // Link tool parent → task
-        if (event.parentId) {
-          toolToTask.set(event.parentId, event.id);
-        }
-      } else if (event.phase === 'end' && event.parentId) {
-        taskEnds.set(event.parentId, event);
-      }
+export function deriveActiveTaskSnapshot(
+  runs: readonly TaskRunQuerySummary[],
+  now: number,
+  approvals: readonly ApprovalQuerySummary[] = [],
+): ActiveTaskSnapshot {
+  const approvalsByTaskRun = new Map<string, ApprovalQuerySummary[]>();
+  for (const approval of approvals) {
+    if (approval.source !== 'task_run' || !approval.taskRunId) {
+      continue;
     }
-    // Tool-level Task calls — these fire BEFORE the task start event
-    if (event.kind === 'tool' && event.detail === 'Task') {
-      if (event.phase === 'start') {
-        toolTaskStarts.set(event.id, event);
-      } else if (event.phase === 'end' && event.parentId) {
-        toolTaskEnds.set(event.parentId, event);
-      }
-    }
+    const entries = approvalsByTaskRun.get(approval.taskRunId) ?? [];
+    entries.push(approval);
+    approvalsByTaskRun.set(approval.taskRunId, entries);
   }
 
   const tasks: ActiveTask[] = [];
-  const seenIds = new Set<string>();
+  for (const run of runs) {
+    const status = normalizeTaskStatus(run.status);
+    const startedAt = Date.parse(run.startedAt);
+    const endedAt = parseTaskFinishedAt(run);
+    const runApprovals = approvalsByTaskRun.get(run.runId) ?? [];
 
-  // First: add tasks from task-level events (these have richer info)
-  for (const [id, startEvent] of taskStarts) {
-    seenIds.add(id);
-    // Also mark the tool parent as seen
-    if (startEvent.parentId) {
-      seenIds.add(startEvent.parentId);
-    }
-    const endEvent = taskEnds.get(id);
-    const startedAt = Date.parse(startEvent.timestamp);
-    const endedAt = endEvent ? Date.parse(endEvent.timestamp) : undefined;
-    const status = endEvent?.status === 'error'
-      ? 'error'
-      : endEvent?.status === 'paused'
-        ? 'paused'
-        : endEvent
-          ? 'done'
-          : 'running';
-
-    if (status === 'done' && endedAt && now - endedAt > DONE_TASK_LINGER_MS) {
+    if ((status === 'done' || status === 'error') && endedAt && now - endedAt > DONE_TASK_LINGER_MS) {
       continue;
     }
 
-    const detail = endEvent?.detail ?? startEvent.detail;
-    const toolUseMatch = detail?.match(/(\d+)\s+tool uses?/);
-    const tokenMatch = detail?.match(/([\d.]+[kKmM]?)\s+tokens?/);
-
+    const detail = resolveTaskDetail(run, runApprovals);
     tasks.push({
-      id,
-      name: extractTaskName(startEvent.label),
+      id: run.runId,
+      name: extractTaskName(run.label),
       status,
       startedAt,
       endedAt,
       elapsed: (endedAt ?? now) - startedAt,
-      detail,
-      ...(toolUseMatch ? {toolUseCount: Number(toolUseMatch[1])} : {}),
-      ...(tokenMatch ? {totalTokens: tokenMatch[1]} : {}),
-    });
-  }
-
-  // Second: add tool-level Task calls that don't yet have a task-level event
-  // (these are tasks that haven't started executing yet — "pending" in the queue)
-  for (const [toolId, toolStartEvent] of toolTaskStarts) {
-    if (seenIds.has(toolId)) continue;
-    // Check if this tool call has a paired task start
-    if (toolToTask.has(toolId)) continue;
-
-    const toolEndEvent = toolTaskEnds.get(toolId);
-    const startedAt = Date.parse(toolStartEvent.timestamp);
-    const endedAt = toolEndEvent ? Date.parse(toolEndEvent.timestamp) : undefined;
-    const status: ActiveTask['status'] = toolEndEvent
-      ? (toolEndEvent.status === 'error' ? 'error' : 'done')
-      : 'running';
-
-    if (status === 'done' && endedAt && now - endedAt > DONE_TASK_LINGER_MS) {
-      continue;
-    }
-
-    tasks.push({
-      id: toolId,
-      name: extractTaskName(toolStartEvent.label),
-      status: status === 'running' ? 'paused' : status, // "paused" = pending/queued
-      startedAt,
-      endedAt,
-      elapsed: (endedAt ?? now) - startedAt,
+      ...(detail ? {detail} : {}),
+      ...(runApprovals.length > 0 ? {approvalCount: runApprovals.length} : {}),
+      ...(run.toolUseCount !== undefined ? {toolUseCount: run.toolUseCount} : {}),
+      ...(run.totalTokens !== undefined ? {totalTokens: run.totalTokens} : {}),
     });
   }
 
   // Running first, then by start time descending
   tasks.sort((a, b) => {
-    const aRunning = a.status === 'running' ? 0 : 1;
-    const bRunning = b.status === 'running' ? 0 : 1;
-    if (aRunning !== bRunning) return aRunning - bRunning;
+    const aPriority = taskSortPriority(a.status);
+    const bPriority = taskSortPriority(b.status);
+    if (aPriority !== bPriority) return aPriority - bPriority;
     return b.startedAt - a.startedAt;
   });
 
-  return tasks.slice(0, MAX_VISIBLE_TASKS);
+  const runningCount = tasks.filter((task) => task.status === 'running').length;
+  const pausedCount = tasks.filter((task) => task.status === 'paused').length;
+  const doneCount = tasks.filter((task) => task.status === 'done').length;
+  const errorCount = tasks.filter((task) => task.status === 'error').length;
+
+  return {
+    tasks: tasks.slice(0, MAX_VISIBLE_TASKS),
+    runningCount,
+    pausedCount,
+    doneCount,
+    errorCount,
+  };
 }
 
 export function useActiveTasks(input: UseActiveTasksInput): UseActiveTasksOutput {
   const [now, setNow] = useState(() => Date.now());
-  const tasks = useMemo(() => deriveActiveTasks(input.runtimeEvents, now), [input.runtimeEvents, now]);
-  const runningCount = useMemo(() => tasks.filter(t => t.status === 'running').length, [tasks]);
-  const doneCount = useMemo(() => tasks.filter(t => t.status === 'done').length, [tasks]);
-  const errorCount = useMemo(() => tasks.filter(t => t.status === 'error').length, [tasks]);
+  const snapshot = useMemo(
+    () => deriveActiveTaskSnapshot(input.taskRunSummaries, now, input.approvals),
+    [input.approvals, input.taskRunSummaries, now],
+  );
+  const {tasks, runningCount, pausedCount, doneCount, errorCount} = snapshot;
 
   useEffect(() => {
     if (runningCount === 0 && tasks.length === 0) return;
@@ -176,8 +145,59 @@ export function useActiveTasks(input: UseActiveTasksInput): UseActiveTasksOutput
   return {
     tasks,
     runningCount,
+    pausedCount,
     doneCount,
     errorCount,
     hasActiveTasks: tasks.length > 0,
   };
+}
+
+function normalizeTaskStatus(status: string): ActiveTask['status'] {
+  switch (status) {
+    case 'running':
+      return 'running';
+    case 'completed':
+      return 'done';
+    case 'failed':
+      return 'error';
+    case 'paused':
+      return 'paused';
+    default:
+      return 'running';
+  }
+}
+
+function taskSortPriority(status: ActiveTask['status']): number {
+  switch (status) {
+    case 'running':
+      return 0;
+    case 'paused':
+      return 1;
+    case 'done':
+    case 'error':
+      return 2;
+  }
+
+  return 2;
+}
+
+function parseTaskFinishedAt(run: TaskRunQuerySummary): number | undefined {
+  if (run.endedAt) return Date.parse(run.endedAt);
+  return undefined;
+}
+
+function resolveTaskDetail(
+  run: TaskRunQuerySummary,
+  approvals: readonly ApprovalQuerySummary[],
+): string | undefined {
+  if (approvals.length > 0) {
+    const lead = approvals[0]!;
+    if (approvals.length === 1) {
+      return `Waiting for approval on ${lead.toolName}`;
+    }
+    return `Waiting for approval on ${lead.toolName} (+${approvals.length - 1} more)`;
+  }
+
+  const detail = run.latestActivity?.trim() || run.summary?.trim();
+  return detail || undefined;
 }

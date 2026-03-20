@@ -96,6 +96,19 @@ describe('cli hil review helpers', () => {
     });
   });
 
+  it('should preserve approval position metadata when the same pause is resynced', () => {
+    const review: CliHilReviewState = {
+      ...createFormReview(),
+      approvalIndex: 2,
+      approvalCount: 3,
+    };
+
+    const synced = syncCliHilReviewState(review, review.request);
+
+    expect(synced?.approvalIndex).toBe(2);
+    expect(synced?.approvalCount).toBe(3);
+  });
+
   it('should map permission allow_tool auto actions to approve resumes', () => {
     const review: CliHilReviewState = {
       request: {

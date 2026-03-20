@@ -10,6 +10,8 @@ import {createWorkerTools} from '@capability/team/surface/worker-tools';
 import type {TeamMember} from '@capability/team/coordination/types';
 import type {TeamToolContext} from '@capability/team/surface/types';
 
+const TEAM_LEADER_ENDPOINT = 'leader';
+
 // ─── Helpers ──────────────────────────────────────────────────────────
 
 function makeMember(
@@ -372,6 +374,7 @@ describe('Worker Tools Integration', () => {
     leaderId = leader.memberId;
     registry.registerMember(teamId, leader);
     transport.registerMember(leaderId);
+    transport.registerMember(TEAM_LEADER_ENDPOINT);
 
     // Register worker
     const worker = makeMember(teamId, {role: 'worker', name: 'worker-1'});
@@ -411,7 +414,7 @@ describe('Worker Tools Integration', () => {
     expect(board.getJob(job.id)!.status).toBe('review');
 
     // Leader should have received notification
-    const leaderMessages = await transport.receive(leaderId);
+    const leaderMessages = await transport.receive(TEAM_LEADER_ENDPOINT);
     expect(leaderMessages.length).toBeGreaterThanOrEqual(1);
     expect(leaderMessages.some((m) => m.type === 'job_submitted')).toBe(true);
   });

@@ -19,6 +19,7 @@ describe('runtime default workflow cases', () => {
     expect(result.exitCode).toBe(0);
     expect(result.output).toContain('Write Todos');
     expect(result.output).toContain('Track default runtime workflow');
+    expect(result.output).toContain('Delegated task started in background.');
     expect(result.output).toContain('general-purpose');
     expect(result.output).toContain('DEFAULT_RUNTIME_FLOW_DONE');
   });

@@ -102,7 +102,7 @@ export interface DelegatedParentRuntimeMetadata {
   resume?: DelegatedResumeState;
 }
 
-interface DelegatedChildInput {
+export interface DelegatedChildInput {
   prompt: string;
   subagentType?: string;
   maxTurns?: number;
@@ -172,7 +172,7 @@ export async function runDelegatedAgent(
     result.reason,
     result.error,
     result.state.messages,
-  ));
+  ), input.parentExecution.toolCallId);
 }
 
 export function markDelegationTool<TTool extends StructuredToolInterface>(tool: TTool): TTool {
@@ -220,7 +220,7 @@ function createDelegatedAgentInput(prompt: string): BaseMessage[] {
   return messages;
 }
 
-async function buildDelegatedChildOptions(
+export async function buildDelegatedChildOptions(
   options: DelegatedAgentOptions,
   input: DelegatedChildInput,
 ): Promise<BootstrapAgentOptions> {
@@ -352,7 +352,7 @@ function isDelegationTool(tool: StructuredToolInterface | undefined): boolean {
   return DELEGATION_TOOL in obj && (obj as Record<PropertyKey, unknown>)[DELEGATION_TOOL] === true;
 }
 
-function createDelegatedAgentResult(
+export function createDelegatedAgentResult(
   sessionId: string,
   turns: number,
   reason: 'complete' | 'error' | 'max_turns',
@@ -388,12 +388,15 @@ function sumChildTokens(messages: BaseMessage[]): number {
   return total;
 }
 
-function createDelegatedAgentToolMessage(result: DelegatedAgentResult): ToolMessage {
+export function createDelegatedAgentToolMessage(
+  result: DelegatedAgentResult,
+  toolCallId = '',
+): ToolMessage {
   return new ToolMessage({
     content: formatDelegatedAgentResult(result),
     artifact: result,
     status: result.reason === 'error' ? 'error' : 'success',
-    tool_call_id: '',
+    tool_call_id: toolCallId,
   });
 }
 
@@ -438,7 +441,7 @@ function createDelegatedPauseToolMessage(
   });
 }
 
-function formatDelegatedAgentResult(result: DelegatedAgentResult): string {
+export function formatDelegatedAgentResult(result: DelegatedAgentResult): string {
   if (result.reason === 'error') {
     return [
       'Delegated task failed.',
@@ -567,4 +570,3 @@ function truncateStr(value: string | undefined, max = 60): string | undefined {
   if (!value) return undefined;
   return value.length > max ? `${value.slice(0, max - 1)}…` : value;
 }
-

@@ -14,6 +14,7 @@ import type {
   MemberSession,
   MemberSessionOptions,
 } from '@capability/team/runtime/member-runner';
+import type {PauseRequest} from '@core/agent';
 import {bootstrapAgent} from '@core/agent/bootstrap';
 import {TeamPersistence} from '@capability/team/persistence';
 import {createBuiltinTools} from '@integration/tool';
@@ -22,9 +23,10 @@ import type {CodaraModelCatalog} from './runtime';
 
 export interface TeamSystemAssemblyInput {
   options: CodaraRuntimeOptions;
-  codaraPath: string;
+  runtimeStatePath: string;
   projectRoot: string;
   catalog?: CodaraModelCatalog | Promise<CodaraModelCatalog>;
+  approvalStore?: import('@durability/approval-store').ApprovalStore;
 }
 
 export interface TeamSystemAssemblyResult {
@@ -34,7 +36,7 @@ export interface TeamSystemAssemblyResult {
 }
 
 export async function assembleTeamSystem(input: TeamSystemAssemblyInput): Promise<TeamSystemAssemblyResult> {
-  const {options, codaraPath, projectRoot, catalog} = input;
+  const {options, runtimeStatePath, projectRoot, catalog, approvalStore} = input;
 
   const teamRegistry = new TeamRegistry();
   const sharedState = new MemorySharedState();
@@ -93,6 +95,7 @@ export async function assembleTeamSystem(input: TeamSystemAssemblyInput): Promis
     memberMiddleware.push(createBudgetMiddleware());
 
     let agentReady: import('@core/agent/models/agent').Agent | undefined;
+    let pendingPause: PauseRequest | undefined;
 
     const ensureAgent = async () => {
       if (agentReady) {
@@ -123,19 +126,14 @@ export async function assembleTeamSystem(input: TeamSystemAssemblyInput): Promis
 
     function handleAgentResult(result: import('@shared/contracts/agent-types').AgentResult): import('@capability/team/runtime/member-runner').MemberInvokeResult {
       if (result.reason === 'error') {
+        pendingPause = undefined;
         return {reason: 'error' as const, error: result.error};
       }
       if (result.state.pendingPause) {
-        teamToolContext.emitEvent({
-          type: 'member.paused' as const,
-          data: {
-            teamId: memberOptions.teamId,
-            memberId: memberOptions.memberId,
-            pause: result.state.pendingPause,
-          },
-        });
-        return {reason: 'idle' as const};
+        pendingPause = result.state.pendingPause;
+        return {reason: 'paused' as const, pause: result.state.pendingPause};
       }
+      pendingPause = undefined;
       return {reason: 'complete' as const};
     }
 
@@ -171,19 +169,57 @@ export async function assembleTeamSystem(input: TeamSystemAssemblyInput): Promis
           };
         }
       },
+      async resumePause(payload) {
+        try {
+          const agent = await ensureAgent();
+          const result = await agent.resume(payload, {resumeMode: 'tool'});
+          return handleAgentResult(result);
+        } catch (error) {
+          pendingPause = undefined;
+          return {
+            reason: 'error' as const,
+            error: error instanceof Error ? error : new Error(String(error)),
+          };
+        }
+      },
+      async *resumePauseStream(payload) {
+        try {
+          const agent = await ensureAgent();
+          const gen = agent.resumeStream(payload, {resumeMode: 'tool'});
+          let iterResult: IteratorResult<unknown, import('@shared/contracts/agent-types').AgentResult>;
+          do {
+            iterResult = await gen.next();
+            if (!iterResult.done) {
+              yield iterResult.value;
+            }
+          } while (!iterResult.done);
+          return handleAgentResult(iterResult.value);
+        } catch (error) {
+          pendingPause = undefined;
+          return {
+            reason: 'error' as const,
+            error: error instanceof Error ? error : new Error(String(error)),
+          };
+        }
+      },
+      getPendingPause() {
+        return pendingPause;
+      },
       async dispose() {
+        pendingPause = undefined;
         agentReady = undefined;
       },
     };
   };
 
-  const teamPersistence = new TeamPersistence(codaraPath);
+  const teamPersistence = new TeamPersistence(runtimeStatePath);
 
   _teamRuntime = new TeamRuntime({
     registry: teamRegistry,
     projectRoot,
     createSession: teamSessionFactory,
     persistence: teamPersistence,
+    approvalStore,
   });
 
   try {
@@ -199,6 +235,9 @@ export async function assembleTeamSystem(input: TeamSystemAssemblyInput): Promis
         if (snapshot.jobs.length > 0) {
           const board = TeamPersistence.restoreJobBoard(summary.teamId, snapshot.jobs);
           teamRegistry.restoreJobBoard(summary.teamId, board);
+        }
+        if (snapshot.recentMessages.length > 0) {
+          getTeamRuntime().restoreTeamMessages(summary.teamId, snapshot.recentMessages);
         }
       }
     }
@@ -225,6 +264,8 @@ export function getTeamSummaries(registry: TeamRegistry | undefined): TeamQueryS
       goal: team.goal,
       memberCount: members.length,
       jobProgress: {done: progress.done, total: progress.total},
+      startedAt: team.createdAt,
+      ...(team.completedAt ? {completedAt: team.completedAt} : {}),
     };
   });
 }
@@ -297,4 +338,3 @@ function createWorkerActivityMiddleware(
     },
   });
 }
-

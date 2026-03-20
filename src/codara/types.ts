@@ -4,13 +4,17 @@ import type {AgentCheckpointer} from '@durability/checkpoint';
 import type {BaseMiddleware} from '@core/pipeline/types';
 import type {HILMiddlewareOptions, LoggingMiddlewareOptions} from '@core/middleware';
 import type {SummarySettings} from '@core/middleware/summary';
-import type {TaskStore} from '@capability/task';
+import type {TaskRunStore, TaskStore} from '@capability/task';
 import type {ModelRoutingConfig} from '@integration/provider';
 import type {SkillStore} from '@capability/skill';
 import type {CodaraCommandResult, CodaraCommandSpec} from '@capability/command';
 import type {Session, SessionState, SessionStore} from '@durability/session';
+import type {ApprovalStore} from '@durability/approval-store';
 import type {McpClientInfo, McpConfig} from '@integration/mcp';
 import type {ChannelRegistry} from '@integration/channel';
+import type {DelegatedAgentResult} from '@shared/delegation-result';
+import type {AgentResumeStreamConfig, AgentStreamOutput, ResumePayload} from '@core/agent';
+import type {PauseRequest} from '@shared/contracts/agent-types';
 import type {CodaraModelCatalog} from './assembly/runtime';
 
 // ── Skill & Memory Options ──
@@ -70,6 +74,8 @@ export interface CodaraOptions {
 export interface CodaraRuntimeOptions extends CodaraOptions {
   codaraPath?: string;
   taskStore?: TaskStore;
+  taskRunStore?: TaskRunStore;
+  approvalStore?: ApprovalStore;
   /** Optional pre-configured ChannelRegistry for multi-channel HIL routing. */
   channelRegistry?: ChannelRegistry;
 }
@@ -84,6 +90,44 @@ export type CodaraMiddlewareOptions = Pick<CodaraOptions, 'middleware' | 'hil' |
 
 // ── Query Types ──
 
+export interface TaskRunQuerySummary {
+  runId: string;
+  label: string;
+  agentName: string;
+  status: 'running' | 'paused' | 'completed' | 'failed';
+  startedAt: string;
+  updatedAt: string;
+  endedAt?: string;
+  childSessionId?: string;
+  latestActivity?: string;
+  summary?: string;
+  errorMessage?: string;
+  reason?: DelegatedAgentResult['reason'];
+  turns?: number;
+  toolUseCount?: number;
+  totalTokens?: number;
+}
+
+export interface ApprovalQuerySummary {
+  approvalId: string;
+  source: 'task_run' | 'team_member';
+  description: string;
+  toolName: string;
+  createdAt: string;
+  updatedAt: string;
+  taskRunId?: string;
+  childSessionId?: string;
+  teamId?: string;
+  memberId?: string;
+  memberName?: string;
+  isForeground: boolean;
+}
+
+export interface ApprovalQueryReview {
+  summary: ApprovalQuerySummary;
+  request: PauseRequest;
+}
+
 export interface TeamQuerySummary {
   teamId: string;
   name: string;
@@ -91,6 +135,8 @@ export interface TeamQuerySummary {
   goal: string;
   memberCount: number;
   jobProgress: { done: number; total: number };
+  startedAt: string;
+  completedAt?: string;
 }
 
 export interface TeamQueryMember {
@@ -126,6 +172,12 @@ export type Codara = Session & {
   executeCommand(input: string): Promise<CodaraCommandResult>;
   listSessions(options?: import('@durability/session').SessionListOptions): Promise<SessionState[]>;
   getMcpStatus(): McpClientInfo[];
+  getTaskRunSummaries(): TaskRunQuerySummary[];
+  getApprovalSummaries(): ApprovalQuerySummary[];
+  getFocusedApprovalReview(): ApprovalQueryReview | undefined;
+  focusApproval(approvalId: string): Promise<void>;
+  resumeApproval(payload: ResumePayload, config?: AgentResumeStreamConfig): Promise<void>;
+  resumeApprovalStream(payload: ResumePayload, config?: AgentResumeStreamConfig): AsyncGenerator<AgentStreamOutput, void, void>;
   getTeamSummaries(): TeamQuerySummary[];
   getTeamDetail(teamId: string): TeamQueryDetail | undefined;
   getChannelRegistry(): ChannelRegistry | undefined;

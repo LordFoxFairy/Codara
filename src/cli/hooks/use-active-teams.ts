@@ -1,6 +1,8 @@
 import {useEffect, useMemo, useState} from 'react';
-import type {CodaraRuntimeEvent} from '@/index';
+import type {CodaraRuntimeEvent, TeamQuerySummary} from '@/index';
 import type {TeamStatus} from '@capability/team/coordination/types';
+
+export type {TeamQuerySummary};
 
 export interface ActiveTeam {
   teamId: string;
@@ -15,7 +17,8 @@ export interface ActiveTeam {
 }
 
 export interface UseActiveTeamsInput {
-  runtimeEvents: readonly CodaraRuntimeEvent[];
+  teamSummaries: readonly TeamQuerySummary[];
+  runtimeEvents?: readonly CodaraRuntimeEvent[];
 }
 
 export interface MemberActivity {
@@ -34,106 +37,78 @@ export interface UseActiveTeamsOutput {
   memberActivities: Map<string, string>;
 }
 
+export interface ActiveTeamSnapshot {
+  activeTeams: ActiveTeam[];
+  runningCount: number;
+  doneCount: number;
+  errorCount: number;
+}
+
 const MAX_VISIBLE_TEAMS = 3;
 const DONE_TEAM_LINGER_MS = 5000;
 
-/**
- * Parse a team start/end label to extract metadata.
- * Expected label format for start: "Team <name>: <goal>"
- * Expected detail format for start: "memberCount:<n> jobTotal:<n>"
- * Expected detail format for end:   "done:<n> total:<n> [tokens:<n>]"
- */
-function parseTeamStartEvent(event: CodaraRuntimeEvent): {name: string; goal: string; memberCount: number; jobTotal: number} {
-  const label = event.label ?? '';
-  const detail = event.detail ?? '';
-
-  // Label: "Team frontend-refactor: Implement the frontend"
-  const labelMatch = label.match(/^Team\s+([^:]+?)(?::\s+(.*))?$/);
-  const name = labelMatch?.[1]?.trim() ?? label.slice(0, 30);
-  const goal = labelMatch?.[2]?.trim() ?? '';
-
-  const memberMatch = detail.match(/memberCount:(\d+)/);
-  const jobMatch = detail.match(/jobTotal:(\d+)/);
-  const memberCount = memberMatch ? Number(memberMatch[1]) : 0;
-  const jobTotal = jobMatch ? Number(jobMatch[1]) : 0;
-
-  return {name, goal, memberCount, jobTotal};
-}
-
-function parseTeamEndDetail(detail?: string): {done: number; total: number} {
-  if (!detail) return {done: 0, total: 0};
-  const doneMatch = detail.match(/done:(\d+)/);
-  const totalMatch = detail.match(/total:(\d+)/);
-  return {
-    done: doneMatch ? Number(doneMatch[1]) : 0,
-    total: totalMatch ? Number(totalMatch[1]) : 0,
-  };
-}
-
-function mapTeamStatus(event: CodaraRuntimeEvent): TeamStatus {
-  if (event.status === 'error') return 'failed';
-  if (event.status === 'paused') return 'paused';
-  if (event.status === 'done') return 'completed';
-  return 'running';
-}
-
 export function deriveActiveTeams(
-  events: readonly CodaraRuntimeEvent[],
+  summaries: readonly TeamQuerySummary[],
   now: number,
 ): ActiveTeam[] {
-  const teamStarts = new Map<string, CodaraRuntimeEvent>();
-  const teamEnds = new Map<string, CodaraRuntimeEvent>();
+  return deriveActiveTeamSnapshot(summaries, now).activeTeams;
+}
 
-  for (const event of events) {
-    if (event.kind !== 'team') continue;
-    if (event.phase === 'start') {
-      teamStarts.set(event.id, event);
-    } else if (event.phase === 'end' && event.parentId) {
-      teamEnds.set(event.parentId, event);
-    }
-  }
-
+export function deriveActiveTeamSnapshot(
+  summaries: readonly TeamQuerySummary[],
+  now: number,
+): ActiveTeamSnapshot {
   const teams: ActiveTeam[] = [];
 
-  for (const [id, startEvent] of teamStarts) {
-    const endEvent = teamEnds.get(id);
-    const startedAt = Date.parse(startEvent.timestamp);
-    const completedAt = endEvent ? Date.parse(endEvent.timestamp) : undefined;
-
-    const status: TeamStatus = endEvent ? mapTeamStatus(endEvent) : 'running';
-
-    // Remove completed/failed teams after linger period
-    if ((status === 'completed' || status === 'failed') && completedAt && now - completedAt > DONE_TEAM_LINGER_MS) {
+  for (const summary of summaries) {
+    const status = normalizeTeamStatus(summary.status);
+    if (!isVisibleTeamStatus(status)) {
       continue;
     }
 
-    const {name, goal, memberCount, jobTotal} = parseTeamStartEvent(startEvent);
-    const {done: jobsDone, total: jobsTotal} = endEvent
-      ? parseTeamEndDetail(endEvent.detail)
-      : {done: 0, total: jobTotal};
+    const startedAt = Date.parse(summary.startedAt);
+    const completedAt = summary.completedAt ? Date.parse(summary.completedAt) : undefined;
+    const terminalAt = resolveTerminalAt(startedAt, completedAt, now);
+
+    if ((status === 'completed' || status === 'failed') && now - terminalAt > DONE_TEAM_LINGER_MS) {
+      continue;
+    }
 
     teams.push({
-      teamId: id,
-      name,
+      teamId: summary.teamId,
+      name: summary.name,
       status,
-      goal,
-      memberCount,
-      jobProgress: {done: jobsDone, total: jobsTotal},
+      goal: summary.goal,
+      memberCount: summary.memberCount,
+      jobProgress: summary.jobProgress,
       startedAt,
       completedAt,
-      elapsed: (completedAt ?? now) - startedAt,
+      elapsed:
+        status === 'completed' || status === 'failed'
+          ? (terminalAt === startedAt ? now - startedAt : terminalAt - startedAt)
+          : now - startedAt,
     });
   }
 
-  // Running first, then by start time descending
   teams.sort((a, b) => {
-    const aRunning = a.status === 'running' || a.status === 'spawning' ? 0 : 1;
-    const bRunning = b.status === 'running' || b.status === 'spawning' ? 0 : 1;
-    if (aRunning !== bRunning) return aRunning - bRunning;
+    const aPriority = teamSortPriority(a.status);
+    const bPriority = teamSortPriority(b.status);
+    if (aPriority !== bPriority) return aPriority - bPriority;
     return b.startedAt - a.startedAt;
   });
 
-  return teams.slice(0, MAX_VISIBLE_TEAMS);
+  const runningCount = teams.filter((team) => (
+    team.status === 'running' || team.status === 'spawning' || team.status === 'completing'
+  )).length;
+  const doneCount = teams.filter((team) => team.status === 'completed').length;
+  const errorCount = teams.filter((team) => team.status === 'failed').length;
+
+  return {
+    activeTeams: teams.slice(0, MAX_VISIBLE_TEAMS),
+    runningCount,
+    doneCount,
+    errorCount,
+  };
 }
 
 /**
@@ -158,14 +133,9 @@ export function deriveMemberActivities(events: readonly CodaraRuntimeEvent[]): M
 
 export function useActiveTeams(input: UseActiveTeamsInput): UseActiveTeamsOutput {
   const [now, setNow] = useState(() => Date.now());
-  const activeTeams = useMemo(() => deriveActiveTeams(input.runtimeEvents, now), [input.runtimeEvents, now]);
-  const runningCount = useMemo(
-    () => activeTeams.filter(t => t.status === 'running' || t.status === 'spawning').length,
-    [activeTeams],
-  );
-  const doneCount = useMemo(() => activeTeams.filter(t => t.status === 'completed').length, [activeTeams]);
-  const errorCount = useMemo(() => activeTeams.filter(t => t.status === 'failed').length, [activeTeams]);
-  const memberActivities = useMemo(() => deriveMemberActivities(input.runtimeEvents), [input.runtimeEvents]);
+  const snapshot = useMemo(() => deriveActiveTeamSnapshot(input.teamSummaries, now), [input.teamSummaries, now]);
+  const {activeTeams, runningCount, doneCount, errorCount} = snapshot;
+  const memberActivities = useMemo(() => deriveMemberActivities(input.runtimeEvents ?? []), [input.runtimeEvents]);
 
   useEffect(() => {
     if (runningCount === 0 && activeTeams.length === 0) return;
@@ -185,4 +155,59 @@ export function useActiveTeams(input: UseActiveTeamsInput): UseActiveTeamsOutput
     errorCount,
     memberActivities,
   };
+}
+
+function normalizeTeamStatus(status: string): TeamStatus {
+  switch (status) {
+    case 'created':
+      return 'created';
+    case 'spawning':
+      return 'spawning';
+    case 'running':
+      return 'running';
+    case 'paused':
+      return 'paused';
+    case 'completing':
+      return 'completing';
+    case 'completed':
+      return 'completed';
+    case 'failed':
+      return 'failed';
+    case 'archived':
+      return 'archived';
+    default:
+      return 'running';
+  }
+}
+
+function isVisibleTeamStatus(status: TeamStatus): boolean {
+  return status !== 'archived' && status !== 'created';
+}
+
+function teamSortPriority(status: TeamStatus): number {
+  switch (status) {
+    case 'running':
+    case 'spawning':
+    case 'completing':
+      return 0;
+    case 'paused':
+      return 1;
+    case 'completed':
+    case 'failed':
+      return 2;
+    default:
+      return 3;
+  }
+}
+
+function resolveTerminalAt(startedAt: number, completedAt: number | undefined, now: number): number {
+  if (completedAt === undefined || !Number.isFinite(completedAt)) {
+    return startedAt;
+  }
+
+  if (completedAt < startedAt || completedAt > now) {
+    return startedAt;
+  }
+
+  return completedAt;
 }

@@ -185,9 +185,8 @@ export const teamCommand: CodaraCommandDefinition = {
         if (!name || !jobId || !memberId) return err(command.name, 'Usage: /team assign <name> <jobId> <memberId>');
         const team = registry.getTeamByName(name) ?? registry.getTeam(name);
         if (!team) return err(command.name, `Team "${name}" not found.`);
-        const jobBoard = registry.getJobBoard(team.teamId);
         try {
-          jobBoard.claimJob(jobId, memberId);
+          await runtime.assignJob(team.teamId, jobId, memberId);
           return ok(command.name, `Job ${jobId} assigned to ${memberId} in team "${team.name}".`);
         } catch (e) {
           return err(command.name, `Failed to assign job: ${e instanceof Error ? e.message : String(e)}`);

@@ -251,7 +251,7 @@ function sendMessageTool(deps: Pick<ConversationDeps, 'registry' | 'runtime'>): 
   );
 }
 
-function planJobsTool(deps: Pick<ConversationDeps, 'registry'>): StructuredToolInterface {
+function planJobsTool(deps: Pick<ConversationDeps, 'registry' | 'runtime'>): StructuredToolInterface {
   return tool(
     async (input, config) => {
       try {
@@ -259,6 +259,13 @@ function planJobsTool(deps: Pick<ConversationDeps, 'registry'>): StructuredToolI
         if (!team) return JSON.stringify({error: `Team "${input.teamId ?? '(active)'}" not found`});
         const board = deps.registry.getJobBoard(team.teamId);
         const created = board.planJobs(input.jobs);
+        const emitEvent = deps.runtime.createEmitEvent(team.teamId);
+        for (const job of created) {
+          emitEvent({
+            type: 'job.created',
+            data: {teamId: team.teamId, jobId: job.id, title: job.title, priority: job.priority},
+          });
+        }
         return JSON.stringify({
           planned: created.length,
           jobs: created.map((j) => ({id: j.id, title: j.title, status: j.status})),
@@ -289,29 +296,7 @@ function assignJobTool(deps: Pick<ConversationDeps, 'registry' | 'runtime'>): St
       try {
         const team = resolveTargetTeam(deps.registry, input.teamId, config);
         if (!team) return JSON.stringify({error: `Team "${input.teamId ?? '(active)'}" not found`});
-        const board = deps.registry.getJobBoard(team.teamId);
-        const claimed = board.claimJob(input.jobId, input.memberId);
-        if (!claimed) {
-          return JSON.stringify({error: `Cannot assign job ${input.jobId} — not ready or member already busy`});
-        }
-        deps.registry.updateMember(team.teamId, input.memberId, {
-          currentJobId: input.jobId,
-          status: 'working',
-        });
-        const transport = deps.runtime.getTransport(team.teamId);
-        if (transport) {
-          await transport.send(input.memberId, {
-            id: `msg_${crypto.randomUUID().slice(0, 8)}`,
-            from: 'leader',
-            to: input.memberId,
-            teamId: team.teamId,
-            type: 'job_assigned',
-            content: `You have been assigned job: ${input.jobId}`,
-            metadata: {jobId: input.jobId},
-            timestamp: new Date().toISOString(),
-            read: false,
-          });
-        }
+        await deps.runtime.assignJob(team.teamId, input.jobId, input.memberId);
         return JSON.stringify({assigned: true, jobId: input.jobId, memberId: input.memberId});
       } catch (e) {
         return JSON.stringify({error: e instanceof Error ? e.message : String(e)});
@@ -338,9 +323,14 @@ function reviewJobTool(deps: Pick<ConversationDeps, 'registry' | 'runtime'>): St
         const board = deps.registry.getJobBoard(team.teamId);
         const job = board.getJob(input.jobId);
         if (!job) return JSON.stringify({error: `Job ${input.jobId} not found`});
+        const emitEvent = deps.runtime.createEmitEvent(team.teamId);
 
         if (input.approved) {
           board.completeJob(input.jobId, 'leader');
+          emitEvent({
+            type: 'job.done',
+            data: {teamId: team.teamId, jobId: input.jobId},
+          });
           if (job.assignee) {
             const transport = deps.runtime.getTransport(team.teamId);
             if (transport) {
@@ -361,6 +351,10 @@ function reviewJobTool(deps: Pick<ConversationDeps, 'registry' | 'runtime'>): St
         }
 
         board.rejectJob(input.jobId, input.feedback ?? 'Rejected');
+        emitEvent({
+          type: 'job.reviewed',
+          data: {teamId: team.teamId, jobId: input.jobId, approved: false, reviewerId: 'leader'},
+        });
         if (job.assignee) {
           const transport = deps.runtime.getTransport(team.teamId);
           if (transport) {
@@ -418,7 +412,10 @@ function shutdownTeamTool(deps: Pick<ConversationDeps, 'runtime' | 'sharedState'
           }),
         ] as const;
       } catch (e) {
-        return JSON.stringify({error: e instanceof Error ? e.message : String(e)});
+        return [
+          JSON.stringify({error: e instanceof Error ? e.message : String(e)}),
+          undefined,
+        ] as const;
       }
     },
     {

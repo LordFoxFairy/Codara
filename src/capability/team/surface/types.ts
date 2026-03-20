@@ -12,6 +12,8 @@ export interface TeamToolContext {
   projectRoot: string;
   /** Runtime reference for spawning members. */
   runtime?: {
-    spawnMember(teamId: string, name: string, role: 'worker' | 'leader', model?: string): Promise<{memberId: string; name: string; role: string; status: string}>;
+    spawnMember?: (teamId: string, name: string, role: 'worker' | 'leader', model?: string) => Promise<{memberId: string; name: string; role: string; status: string}>;
+    assignJob?: (teamId: string, jobId: string, memberId: string) => Promise<void>;
+    shutdownTeam?: (teamId: string) => Promise<void>;
   };
 }
