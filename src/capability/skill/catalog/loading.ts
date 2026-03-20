@@ -221,7 +221,7 @@ export function parseMarkdownDocument(
   skillPath: string,
   options: ParseMarkdownDocumentOptions = {}
 ): MarkdownFrontmatterDocument | null {
-  const match = content.match(/^---\s*\n([\s\S]*?)\n---(?:\s*\n|$)([\s\S]*)$/)
+  const match = content.match(/^---[ \t]*\r?\n([\s\S]*?)\r?\n---(?:[ \t]*\r?\n|$)([\s\S]*)$/)
   if (!match) {
     if (options.requireFrontmatter) {
       console.warn(`Skipping ${skillPath}: no valid YAML frontmatter found`)

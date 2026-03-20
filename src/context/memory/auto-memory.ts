@@ -442,7 +442,7 @@ function collectToolPaths(toolCall: ToolCall): string[] {
 }
 
 function parseFrontmatterDocument(raw: string): {frontmatter: Record<string, unknown>; body: string} | undefined {
-  const match = raw.match(/^---\n([\s\S]*?)\n---\n?([\s\S]*)$/);
+  const match = raw.match(/^---[ \t]*\r?\n([\s\S]*?)\r?\n---(?:[ \t]*\r?\n|$)([\s\S]*)$/);
   if (!match) {
     return undefined;
   }
