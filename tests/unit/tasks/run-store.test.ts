@@ -39,6 +39,32 @@ describe('task run store', () => {
     ]);
   });
 
+  it('persists live tool counts while a delegated run is still active', () => {
+    const store = createTaskRunMemoryStore();
+
+    store.start({
+      runId: 'run-live-count',
+      sessionId: 'session-1',
+      label: 'Delegating research: inspect auth flow',
+      agentName: 'research',
+    });
+    store.update('run-live-count', {
+      latestActivity: 'read_file(src/auth.ts)',
+      toolUseCount: 1,
+    } as never);
+    store.update('run-live-count', {
+      latestActivity: 'glob(src/**/*)',
+      toolUseCount: 2,
+    } as never);
+
+    expect(store.get('run-live-count')).toEqual(expect.objectContaining({
+      runId: 'run-live-count',
+      status: 'running',
+      latestActivity: 'glob(src/**/*)',
+      toolUseCount: 2,
+    }));
+  });
+
   it('marks paused runs without replacing the original start time', () => {
     const store = createTaskRunMemoryStore();
 

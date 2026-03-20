@@ -93,6 +93,7 @@ export type CodaraMiddlewareOptions = Pick<CodaraOptions, 'middleware' | 'hil' |
 
 export interface TaskRunQuerySummary {
   runId: string;
+  sessionId: string;
   label: string;
   agentName: string;
   status: 'running' | 'paused' | 'completed' | 'failed';

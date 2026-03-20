@@ -20,6 +20,7 @@ export interface CliActiveTurn {
   prompt: string;
   response: string;
   responseRole: 'assistant' | 'system';
+  kind?: 'prompt' | 'task_completion';
   /** True once the current streaming model message includes a Task tool call. */
   pendingTaskLaunch?: boolean;
   /** Accumulated thinking/reasoning text (Extended Thinking). */

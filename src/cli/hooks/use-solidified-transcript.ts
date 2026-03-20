@@ -23,6 +23,21 @@ export interface UseSolidifiedTranscriptOutput {
   activeItems: TranscriptItem[];
 }
 
+export function orderActiveTranscriptItems(input: {
+  trailingItems: readonly TranscriptItem[];
+  runtimeItems: readonly TranscriptItem[];
+  activeNoticeItems: readonly TranscriptItem[];
+  latestCompletedTurnKind?: CliActiveTurn['kind'];
+}): TranscriptItem[] {
+  const placeRuntimeBeforeTrailing = input.latestCompletedTurnKind === 'task_completion'
+    && input.trailingItems.length > 0
+    && input.runtimeItems.length > 0;
+
+  return placeRuntimeBeforeTrailing
+    ? [...input.runtimeItems, ...input.trailingItems, ...input.activeNoticeItems]
+    : [...input.trailingItems, ...input.runtimeItems, ...input.activeNoticeItems];
+}
+
 /**
  * Manages the solidified/active transcript split.
  *
@@ -55,6 +70,7 @@ export function useSolidifiedTranscript(input: UseSolidifiedTranscriptInput): Us
   const welcomeEmittedRef = useRef(false);
   // Track previous activeTurn to detect transition
   const prevActiveTurnRef = useRef<CliActiveTurn | undefined>(undefined);
+  const lastCompletedTurnKindRef = useRef<CliActiveTurn['kind'] | undefined>(undefined);
 
   // Emit welcome item on first render
   if (!welcomeEmittedRef.current) {
@@ -71,7 +87,14 @@ export function useSolidifiedTranscript(input: UseSolidifiedTranscriptInput): Us
 
   // Solidify coreMessages — but ONLY when a new turn starts (activeTurn transitions from undefined → defined).
   // This keeps the latest completed turn visible in the active area.
-  const newTurnStarted = activeTurn !== undefined && prevActiveTurnRef.current === undefined;
+  const previousActiveTurn = prevActiveTurnRef.current;
+  const newTurnStarted = activeTurn !== undefined && previousActiveTurn === undefined;
+  if (activeTurn === undefined && previousActiveTurn !== undefined) {
+    lastCompletedTurnKindRef.current = previousActiveTurn.kind;
+  }
+  if (newTurnStarted) {
+    lastCompletedTurnKindRef.current = undefined;
+  }
   prevActiveTurnRef.current = activeTurn;
 
   if (newTurnStarted && coreMessages.length > lastSolidifiedCountRef.current) {
@@ -133,7 +156,7 @@ export function useSolidifiedTranscript(input: UseSolidifiedTranscriptInput): Us
     }
 
     // Current streaming turn + runtime events
-    const streamingItems = buildActiveItems({
+    const runtimeAndStreamingItems = buildActiveItems({
       activeTurn,
       runtimeEvents,
       nowTimestamp: new Date(now).toISOString(),
@@ -148,7 +171,12 @@ export function useSolidifiedTranscript(input: UseSolidifiedTranscriptInput): Us
       }))
       .filter((item) => item.content);
 
-    return [...trailingItems, ...streamingItems, ...activeNoticeItems];
+    return orderActiveTranscriptItems({
+      trailingItems,
+      runtimeItems: runtimeAndStreamingItems,
+      activeNoticeItems,
+      latestCompletedTurnKind: activeTurn?.kind ?? lastCompletedTurnKindRef.current,
+    });
   }, [activeTurn, coreMessages, notices, now, runtimeEvents, solidifiedCount]);
 
   useEffect(() => {

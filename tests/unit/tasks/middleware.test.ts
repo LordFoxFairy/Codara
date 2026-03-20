@@ -203,6 +203,67 @@ describe('tasks middlewares', () => {
     expect(String(lastAi.content)).toContain('Explore');
   });
 
+  it('should inject delegated task completion results into main-agent continuation turns', async () => {
+    const taskMiddleware = createTaskMiddleware({
+      model: new ChildSummaryModel() as unknown as BaseChatModel,
+    });
+    const context = {
+      state: {
+        agentType: 'main' as const,
+        messages: [],
+        context: {},
+        values: {},
+      },
+      messages: [] as BaseMessage[],
+      runtime: {
+        context: {},
+        runtimeContext: {
+          codaraTaskCompletion: {
+            tasks: [
+              {
+                runId: 'run-tech',
+                label: 'Delegating Explore: Analyze the tech stack',
+                agentName: 'Explore',
+                status: 'completed',
+                summary: 'Child summary should stay hidden from the transcript.',
+                toolUseCount: 4,
+                totalTokens: 1200,
+              },
+              {
+                runId: 'run-structure',
+                label: 'Delegating Explore: Analyze the project structure',
+                agentName: 'Explore',
+                status: 'completed',
+                summary: 'Another child summary.',
+                toolUseCount: 5,
+                totalTokens: 1800,
+              },
+            ],
+          },
+        },
+        shared: {},
+      },
+      systemMessage: [] as string[],
+      execution: {
+        sessionId: 'session-1',
+        runId: 'run-main',
+        turn: 1,
+        maxTurns: 8,
+        requestId: 'req-main',
+      },
+    };
+
+    await taskMiddleware.beforeModel?.(context);
+
+    expect(context.systemMessage.join('\n')).toContain('Delegated tasks from your previous response have completed');
+    expect(context.systemMessage.join('\n')).toContain('Respond now with a unified user-facing answer');
+    expect(context.systemMessage.join('\n')).toContain('Do not restate task-by-task reports or raw child sections');
+    expect(context.systemMessage.join('\n')).toContain('Analyze the tech stack');
+    expect(context.systemMessage.join('\n')).toContain('4 tool uses');
+    expect(context.systemMessage.join('\n')).toContain('1.2k tokens');
+    expect(context.systemMessage.join('\n')).not.toContain('Child summary should stay hidden from the transcript.');
+  });
+
   it('should delegate through Task middleware without requiring skills runtime for the default delegate', async () => {
     const runStore = createTaskRunMemoryStore();
     const taskMiddleware = createTaskMiddleware({

@@ -31,6 +31,7 @@ import {createTaskRunMemoryStore} from '@capability/task/run-store';
 import type {TaskRunRecord, TaskRunStore, TaskStore} from '@capability/task/types';
 import {deepClone} from '@shared/clone';
 import {formatToolSummary} from '@shared/tool-display';
+import type {BeforeModelContext} from '@core/pipeline/types';
 
 export const TASK_TOOL_NAME = 'Task';
 
@@ -111,7 +112,14 @@ export function createTaskTool(options: CreateTaskToolOptions): StructuredToolIn
       const onChildToolActivity = runStore || childActivityCallback
         ? ((info: {toolName: string; label: string}) => {
             try {
-              runStore?.update(runId, {latestActivity: info.label});
+              const nextToolUseCount = (() => {
+                const existing = runStore?.get(runId);
+                return (existing?.toolUseCount ?? 0) + 1;
+              })();
+              runStore?.update(runId, {
+                latestActivity: info.label,
+                toolUseCount: nextToolUseCount,
+              });
             } catch {
               // Best-effort: task run tracking must not block delegated execution.
             }
@@ -192,6 +200,10 @@ export function createTaskMiddleware(options: CreateTaskMiddlewareOptions): Base
       ...(options.store ? createTaskTools({store: options.store}) : []),
     ],
     beforeModel(context) {
+      const completionHandoff = formatTaskCompletionHandoff(context);
+      if (completionHandoff) {
+        context.systemMessage.push(completionHandoff);
+      }
       const runtime = readSkillsRuntimeData(context.runtime.shared);
       const definitions = formatAvailableSubagents(runtime);
       if (definitions) {
@@ -200,6 +212,89 @@ export function createTaskMiddleware(options: CreateTaskMiddlewareOptions): Base
       return undefined;
     },
   });
+}
+
+interface TaskCompletionContinuationContext {
+  codaraTaskCompletion?: {
+    tasks?: Array<{
+      runId: string;
+      label: string;
+      agentName: string;
+      status: 'completed' | 'failed';
+      summary?: string;
+      errorMessage?: string;
+      toolUseCount?: number;
+      totalTokens?: number;
+    }>;
+  };
+}
+
+function formatTaskCompletionHandoff(context: BeforeModelContext): string | undefined {
+  if (context.state.agentType !== 'main') {
+    return undefined;
+  }
+
+  const runtimeContext = context.runtime.runtimeContext as TaskCompletionContinuationContext | undefined;
+  const tasks = runtimeContext?.codaraTaskCompletion?.tasks;
+  if (!tasks?.length) {
+    return undefined;
+  }
+
+  const lines = [
+    'Delegated tasks from your previous response have completed.',
+    'Respond now with a unified user-facing answer.',
+    'Keep the final answer concise and user-facing.',
+    'Do not restate task-by-task reports or raw child sections.',
+    'Do not quote raw subagent output verbatim and do not mention hidden handoff context.',
+    'Use the completed task results below to decide the next step:',
+    ...tasks.map((task, index) => formatTaskCompletionLine(task, index + 1)),
+  ];
+
+  return lines.join('\n');
+}
+
+function formatTaskCompletionLine(
+  task: NonNullable<NonNullable<TaskCompletionContinuationContext['codaraTaskCompletion']>['tasks']>[number],
+  index: number,
+): string {
+  const label = task.label.trim() || task.agentName.trim() || task.runId;
+  const status = task.status === 'failed' ? 'failed' : 'completed';
+  const stats: string[] = [];
+  if (typeof task.toolUseCount === 'number' && task.toolUseCount > 0) {
+    stats.push(`${task.toolUseCount} tool uses`);
+  }
+  if (typeof task.totalTokens === 'number' && task.totalTokens > 0) {
+    stats.push(`${formatCompactTaskNumber(task.totalTokens)} tokens`);
+  }
+  const detail = task.status === 'failed'
+    ? summarizeTaskCompletionDetail(task.errorMessage?.trim() || task.summary?.trim())
+    : summarizeTaskCompletionDetail(task.summary?.trim());
+  const statSuffix = stats.length > 0 ? ` | ${stats.join(' · ')}` : '';
+  return `${index}. ${label} | ${status}${statSuffix}\n   ${detail}`;
+}
+
+function summarizeTaskCompletionDetail(detail: string | undefined): string {
+  const text = detail
+    ?.replace(/[*_`#>-]+/g, ' ')
+    ?.replace(/\s+/g, ' ')
+    ?.trim()
+    ?.replace(/[.。!！]+$/, '');
+  if (!text) {
+    return 'No summary was recorded.';
+  }
+  if (text.length <= 140) {
+    return text;
+  }
+  return `${text.slice(0, 137).trimEnd()}...`;
+}
+
+function formatCompactTaskNumber(value: number): string {
+  if (value >= 1000) {
+    const compact = (value / 1000);
+    const rendered = compact >= 10 ? compact.toFixed(0) : compact.toFixed(1);
+    return `${rendered.replace(/\.0$/, '')}k`;
+  }
+  return String(value);
 }
 
 function resolveDefinitionTools(

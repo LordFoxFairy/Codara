@@ -35,6 +35,12 @@ describe('extractTaskName', () => {
   it('falls back to raw label', () => {
     expect(extractTaskName('some random label')).toBe('some random label');
   });
+
+  it('extracts a concise first clause from verbose Chinese delegation labels', () => {
+    expect(
+      extractTaskName('Delegating Explore: 分析当前项目是做什么的。请执行以下只读检查：README、package.json、src 目录结构'),
+    ).toBe('Explore: 分析当前项目是做什么的');
+  });
 });
 
 describe('deriveActiveTasks', () => {
@@ -56,6 +62,23 @@ describe('deriveActiveTasks', () => {
     expect(tasks[0]!.name).toBe('research: find docs');
     expect(tasks[0]!.elapsed).toBe(5000);
     expect(tasks[0]!.detail).toBe('read_file(src/auth.ts)');
+  });
+
+  it('surfaces live tool counts from running task summaries', () => {
+    const runs: TaskRunQuerySummary[] = [
+      createTaskRun({
+        runId: 'task-1',
+        startedAt: new Date(baseTime).toISOString(),
+        label: 'Delegating Explore: 分析当前项目是做什么的。请执行以下只读检查：README、package.json、src 目录结构',
+        latestActivity: 'glob(src/**/*)',
+        toolUseCount: 3,
+      }),
+    ];
+
+    const tasks = deriveActiveTasks(runs, baseTime + 5000);
+    expect(tasks).toHaveLength(1);
+    expect(tasks[0]!.name).toBe('Explore: 分析当前项目是做什么的');
+    expect(tasks[0]!.toolUseCount).toBe(3);
   });
 
   it('marks task as done when run status is completed', () => {

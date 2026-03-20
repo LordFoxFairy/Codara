@@ -384,18 +384,17 @@ describe('UI alignment with Claude Code', () => {
       const {lastFrame} = render(<ActiveTranscript items={items} />);
 
       const frame = lastFrame()!;
-      expect(frame).toContain('Running 2 tasks');
-      expect(frame).toContain('Explore: Analyze README and package metadata · 35s');
-      expect(frame).toContain('Explore: Sync architecture docs · 28s');
+      expect(frame).toContain('Running 2 agents');
+      expect(frame).toContain('Explore: Analyze README and package metadata · 17 tool activities');
+      expect(frame).toContain('Explore: Sync architecture docs · 15 tool activities');
       expect(frame).toContain('⎿ Bash: Run test suite');
-      expect(frame).toContain('17 tool activities');
+      expect(frame).toContain('Explore: Sync architecture docs · 15 tool activities');
       expect(frame).toContain('⎿ Update: docs/architecture-next/01-global-architecture-overview.md');
-      expect(frame).toContain('15 tool activities');
       expect(frame).not.toContain('⚙ Explore(Analyze README and package metadata)');
       expect(frame).not.toContain('⚙ Explore(Sync architecture docs)');
     });
 
-    it('should prefer live task summary elapsed and latest activity for running task rows', () => {
+    it('should render a single running task as a stable execution block with summary and latest activity', () => {
       const items: TranscriptItem[] = [
         {
           id: 'active-task-run:run-1',
@@ -428,14 +427,88 @@ describe('UI alignment with Claude Code', () => {
       const {lastFrame} = render(<ActiveTranscript items={items} activeTasks={taskSummaries} />);
 
       const frame = lastFrame()!;
-      expect(frame).toContain('Running task');
-      expect(frame).toContain('Explore: Analyze README and package metadata · 61s');
+      expect(frame).toContain('Explore(Analyze README and package metadata)');
+      expect(frame).toContain('⎿ Running (17 tool uses · 32.3k tokens · 61s)');
       expect(frame).toContain('⎿ Bash: Run test suite');
-      expect(frame).toContain('17 tool uses · 32.3k tokens');
+      expect(frame).not.toContain('Running task');
       expect(frame).not.toContain('35s · 17 tool activities');
     });
 
-    it('should phrase paused single-task blocks as waiting for review', () => {
+    it('should fall back to runtime activity stats when live task summaries have no tool/token counts yet', () => {
+      const items: TranscriptItem[] = [
+        {
+          id: 'active-task-run:run-fallback',
+          role: 'task',
+          content: '⚙ Explore(Analyze README and package metadata)\nRunning (35s · 17 tool activities)',
+          toolMeta: {
+            toolName: 'Task',
+            displayName: 'Explore',
+            icon: '⚙',
+            args: 'Analyze README and package metadata',
+            status: 'running',
+            elapsed: '35s',
+            summaryLine: 'Running (35s · 17 tool activities)',
+          },
+        },
+      ];
+      const taskSummaries: ActiveTask[] = [
+        {
+          id: 'run-fallback',
+          name: 'Explore: Analyze README and package metadata',
+          status: 'running',
+          startedAt: Date.parse('2026-03-16T00:00:00Z'),
+          elapsed: 12000,
+          detail: 'glob(src/*)',
+        },
+      ];
+
+      const {lastFrame} = render(<ActiveTranscript items={items} activeTasks={taskSummaries} />);
+
+      const frame = lastFrame()!;
+      expect(frame).toContain('Explore(Analyze README and package metadata)');
+      expect(frame).toContain('⎿ Running (17 tool activities · 12s)');
+      expect(frame).toContain('⎿ glob(src/*)');
+    });
+
+    it('should prefer live task detail over stale runtime activity lines', () => {
+      const items: TranscriptItem[] = [
+        {
+          id: 'active-task-run:run-live-detail',
+          role: 'task',
+          content: '⚙ Explore(Analyze README and package metadata)\nRunning (35s · 2 tool activities)',
+          toolMeta: {
+            toolName: 'Task',
+            displayName: 'Explore',
+            icon: '⚙',
+            args: 'Analyze README and package metadata',
+            status: 'running',
+            elapsed: '35s',
+            summaryLine: 'Running (35s · 2 tool activities)',
+            outputLines: ['read_file(README.md)'],
+            allOutputLines: ['read_file(README.md)', 'read_file(package.json)'],
+            totalOutputLines: 2,
+          },
+        },
+      ];
+      const taskSummaries: ActiveTask[] = [
+        {
+          id: 'run-live-detail',
+          name: 'Explore: Analyze README and package metadata',
+          status: 'running',
+          startedAt: Date.parse('2026-03-16T00:00:00Z'),
+          elapsed: 36000,
+          detail: 'glob(src/**/*)',
+        },
+      ];
+
+      const {lastFrame} = render(<ActiveTranscript items={items} activeTasks={taskSummaries} />);
+
+      const frame = lastFrame()!;
+      expect(frame).toContain('⎿ glob(src/**/*)');
+      expect(frame).not.toContain('⎿ read_file(package.json)');
+    });
+
+    it('should render paused single-task blocks with the same execution header and a waiting summary', () => {
       const items: TranscriptItem[] = [
         {
           id: 'active-task-run:run-paused',
@@ -466,13 +539,13 @@ describe('UI alignment with Claude Code', () => {
       const {lastFrame} = render(<ActiveTranscript items={items} activeTasks={taskSummaries} />);
 
       const frame = lastFrame()!;
-      expect(frame).toContain('Task waiting for review');
-      expect(frame).toContain('Explore: Inspect guarded task · Waiting for review · 53s');
+      expect(frame).toContain('Explore(Inspect guarded task)');
+      expect(frame).toContain('⎿ Waiting for review (53s)');
       expect(frame).toContain('⎿ Waiting for approval on glob');
-      expect(frame).not.toContain('53s)');
+      expect(frame).not.toContain('Task waiting for review');
     });
 
-    it('should render completed tasks as lighter hierarchy summaries instead of generic tool result blocks', () => {
+    it('should render completed tasks using the original hierarchical task shape with a done summary line', () => {
       const items: TranscriptItem[] = [
         {
           id: 'active-task-run:run-done',
@@ -496,10 +569,9 @@ describe('UI alignment with Claude Code', () => {
       const {lastFrame} = render(<ActiveTranscript items={items} />);
 
       const frame = lastFrame()!;
-      expect(frame).toContain('✓ Explore: Analyze README and package metadata · 38s');
+      expect(frame).toContain('⏺ Explore(Analyze README and package metadata)');
+      expect(frame).toContain('⎿ Done (38s)');
       expect(frame).toContain('⎿ Read(package.json)');
-      expect(frame).not.toContain('⚙ Explore(Analyze README and package metadata) (38s)');
-      expect(frame).not.toContain('  ⎿ Done (38s)');
       expect(frame).not.toContain('CHILD_DONE');
     });
   });

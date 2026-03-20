@@ -5,7 +5,9 @@ import {
   buildSolidifiedItemsFromRange,
   buildActiveItems,
   createToolCallLookup,
+  type TranscriptItem,
 } from '@/cli/transcript/model';
+import {orderActiveTranscriptItems} from '@/cli/hooks/use-solidified-transcript';
 
 describe('solidified transcript model', () => {
   describe('buildSolidifiedItemsFromRange', () => {
@@ -157,7 +159,7 @@ describe('solidified transcript model', () => {
         },
         runtimeEvents: [
           {
-            id: 'evt_task_start',
+            id: 'task-run:run-1',
             sessionId: 'session-1',
             timestamp: '2026-03-20T10:00:00.000Z',
             kind: 'task',
@@ -212,6 +214,37 @@ describe('solidified transcript model', () => {
     test('should return empty array with no activeTurn and no events', () => {
       const items = buildActiveItems({});
       expect(items).toHaveLength(0);
+    });
+  });
+
+  describe('orderActiveTranscriptItems', () => {
+    test('should place task-completion runtime execution items before the trailing main-agent continuation reply', () => {
+      const trailingItems: TranscriptItem[] = [
+        {id: 'assistant-final', role: 'assistant', content: 'Unified main-agent summary'},
+      ];
+      const runtimeItems: TranscriptItem[] = [
+        {
+          id: 'active-task-run:run-1',
+          role: 'task',
+          content: '⏺ Explore(Analyze structure)\n  ⎿ Done (5 tool uses · 1.2k tokens · 31s)',
+        },
+      ];
+      const noticeItems: TranscriptItem[] = [
+        {id: 'notice-1', role: 'system', content: 'ready'},
+      ];
+
+      const ordered = orderActiveTranscriptItems({
+        trailingItems,
+        runtimeItems,
+        activeNoticeItems: noticeItems,
+        latestCompletedTurnKind: 'task_completion',
+      });
+
+      expect(ordered.map((item) => item.id)).toEqual([
+        'active-task-run:run-1',
+        'assistant-final',
+        'notice-1',
+      ]);
     });
   });
 

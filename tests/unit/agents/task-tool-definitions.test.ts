@@ -241,6 +241,7 @@ You are a Researcher subagent.
 
       const paused = await waitForTaskRunStatus(runStore, 'call_task_resume_profile', 'paused');
       expect(paused.latestActivity).toContain('Tool: read_file');
+      expect(paused.toolUseCount).toBe(1);
 
       await taskRuntime.resumeRun('call_task_resume_profile', {decision: 'approve'});
       const completed = await waitForTaskRunStatus(runStore, 'call_task_resume_profile', 'completed');

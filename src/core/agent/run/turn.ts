@@ -96,14 +96,18 @@ export async function runTools(
   toolCalls: ToolCall[],
   stream?: AgentStreamWriter,
 ): Promise<'ok' | 'paused' | 'detached'> {
+  let sawDetached = false;
   for (let i = 0; i < toolCalls.length; i++) {
     const result = await runSingleTool(run, runtime, context, toolCalls, i, stream);
-    if (result !== 'ok') {
+    if (result === 'paused') {
       return result;
+    }
+    if (result === 'detached') {
+      sawDetached = true;
     }
   }
 
-  return 'ok';
+  return sawDetached ? 'detached' : 'ok';
 }
 
 async function runSingleTool(

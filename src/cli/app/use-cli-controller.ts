@@ -1,6 +1,6 @@
 import {randomUUID} from 'node:crypto';
 import {useCallback, useEffect, useMemo, useRef, useState} from 'react';
-import type {ApprovalQuerySummary, Codara, CodaraRuntimeEvent, SessionState, TeamQueryDetail} from '@/index';
+import type {ApprovalQuerySummary, Codara, CodaraRuntimeEvent, SessionState, TaskRunQuerySummary, TeamQueryDetail} from '@/index';
 import {AIMessageChunk, type BaseMessage} from '@langchain/core/messages';
 import {
   backspaceComposerText,
@@ -164,11 +164,105 @@ function summarizeBackgroundTaskAssistantFollowup(event: CodaraRuntimeEvent): Cl
   }
 
   const detail = event.detail?.trim();
+  if (!detail) {
+    return undefined;
+  }
   return {
     id: `task-followup:${event.id}`,
     level: 'assistant',
-    content: detail || 'Task finished.',
+    content: detail,
   };
+}
+
+function parseTaskRunIdFromEvent(event: CodaraRuntimeEvent): string | undefined {
+  const candidate = event.parentId ?? event.id;
+  const prefix = 'task-run:';
+  return candidate.startsWith(prefix) ? candidate.slice(prefix.length) : undefined;
+}
+
+interface TrackedTaskBatch {
+  sessionId: string;
+  runIds: Set<string>;
+  continuationStarted: boolean;
+}
+
+interface TaskCompletionHandoff {
+  runId: string;
+  label: string;
+  agentName: string;
+  status: 'completed' | 'failed';
+  summary?: string;
+  errorMessage?: string;
+  toolUseCount?: number;
+  totalTokens?: number;
+}
+
+interface TaskCompletionContinuation {
+  sessionId: string;
+  tasks: TaskCompletionHandoff[];
+}
+
+function isRunIdBackedTaskStartEvent(event: CodaraRuntimeEvent): boolean {
+  return event.kind === 'task'
+    && event.phase === 'start'
+    && event.status === 'running'
+    && Boolean(parseTaskRunIdFromEvent(event));
+}
+
+function isTaskRunTerminal(run: TaskRunQuerySummary): boolean {
+  return run.status === 'completed' || run.status === 'failed';
+}
+
+function toTaskCompletionHandoff(run: TaskRunQuerySummary): TaskCompletionHandoff {
+  return {
+    runId: run.runId,
+    label: run.label,
+    agentName: run.agentName,
+    status: run.status === 'failed' ? 'failed' : 'completed',
+    ...(run.summary?.trim() ? {summary: run.summary.trim()} : {}),
+    ...(run.errorMessage?.trim() ? {errorMessage: run.errorMessage.trim()} : {}),
+    ...(typeof run.toolUseCount === 'number' ? {toolUseCount: run.toolUseCount} : {}),
+    ...(typeof run.totalTokens === 'number' ? {totalTokens: run.totalTokens} : {}),
+  };
+}
+
+function resolveTaskCompletionContinuation(
+  codara: Codara,
+  event: CodaraRuntimeEvent,
+  batch: TrackedTaskBatch | undefined,
+): TaskCompletionContinuation | undefined {
+  if (event.kind !== 'task' || event.phase !== 'end') {
+    return undefined;
+  }
+
+  const runId = parseTaskRunIdFromEvent(event);
+  if (!runId || !batch || batch.continuationStarted || batch.sessionId !== event.sessionId || !batch.runIds.has(runId)) {
+    return undefined;
+  }
+
+  const taskRuns = codara.getTaskRunSummaries();
+  const batchRuns = [...batch.runIds]
+    .map((batchRunId) => taskRuns.find((run) => run.runId === batchRunId && run.sessionId === event.sessionId))
+    .filter((run): run is TaskRunQuerySummary => Boolean(run));
+  if (batchRuns.length !== batch.runIds.size || batchRuns.some((run) => !isTaskRunTerminal(run))) {
+    return undefined;
+  }
+
+  return {
+    sessionId: event.sessionId,
+    tasks: batchRuns.map(toTaskCompletionHandoff),
+  };
+}
+
+function shouldEmitTaskCompletionFollowup(codara: Codara, event: CodaraRuntimeEvent): boolean {
+  const runId = parseTaskRunIdFromEvent(event);
+  const taskRuns = codara.getTaskRunSummaries();
+  const hasSiblingStillActive = taskRuns.some((run) => (
+    run.runId !== runId
+      && run.sessionId === event.sessionId
+      && (run.status === 'running' || run.status === 'paused')
+  ));
+  return !hasSiblingStillActive;
 }
 
 function appendUniqueNotices(current: CliNotice[], incoming: readonly CliNotice[]): CliNotice[] {
@@ -222,6 +316,8 @@ export function useCliController(options: UseCliControllerOptions): CliControlle
   const autoActionsRef = useRef([...hilAutoActions]);
   const handledAutoPauseIdsRef = useRef<Set<string>>(new Set());
   const pendingBackgroundNoticesRef = useRef<CliNotice[]>([]);
+  const trackedTaskBatchRef = useRef<TrackedTaskBatch | undefined>(undefined);
+  const pendingTaskContinuationRef = useRef<TaskCompletionContinuation | undefined>(undefined);
 
   useEffect(() => {
     hilReviewRef.current = hilReview;
@@ -302,52 +398,6 @@ export function useCliController(options: UseCliControllerOptions): CliControlle
     syncTeamDetailState();
   }, [codara, syncTeamDetailState]);
 
-  useEffect(() => {
-    setRuntimeEvents([]);
-    return codara.subscribeRuntimeEvents((event: CodaraRuntimeEvent) => {
-      const foregroundDelegatedReview = isDelegatedTaskReviewPause(event);
-      setRuntimeEvents((current) => [...current, event].slice(-40));
-      if (!isRunningRef.current && !foregroundDelegatedReview) {
-        const followup = summarizeBackgroundTaskAssistantFollowup(event);
-        const notice = summarizeBackgroundTaskNotice(event);
-        if (followup || notice) {
-          setNotices((current) => appendUniqueNotices(current, [
-            ...(followup ? [followup] : []),
-            ...(notice ? [notice] : []),
-          ]));
-        }
-      } else if (!foregroundDelegatedReview) {
-        const followup = summarizeBackgroundTaskAssistantFollowup(event);
-        const notice = summarizeBackgroundTaskNotice(event);
-        const queued = [
-          ...(followup ? [followup] : []),
-          ...(notice ? [notice] : []),
-        ];
-        if (queued.length > 0) {
-          pendingBackgroundNoticesRef.current = appendUniqueNotices(
-            pendingBackgroundNoticesRef.current,
-            queued,
-          );
-        }
-      }
-
-      if (foregroundDelegatedReview) {
-        isRunningRef.current = false;
-        setRunState({status: 'paused'});
-        refreshAuxiliaryState();
-        return;
-      }
-
-      if (!isRunningRef.current && shouldRefreshAuxiliaryState(event)) {
-        refreshAuxiliaryState();
-      }
-    });
-  }, [codara, refreshAuxiliaryState]);
-
-  useEffect(() => {
-    syncTeamDetailState();
-  }, [syncTeamDetailState]);
-
   const refreshCoreState = useCallback(async () => {
     const nextAgentState = await codara.hydrate();
     if (!nextAgentState.pendingPause) {
@@ -366,6 +416,169 @@ export function useCliController(options: UseCliControllerOptions): CliControlle
     syncTeamDetailState();
     return nextAgentState;
   }, [codara, syncTeamDetailState]);
+
+  const runTaskCompletionContinuation = useCallback(async (continuation: TaskCompletionContinuation) => {
+    if (isRunningRef.current) {
+      pendingTaskContinuationRef.current = continuation;
+      return;
+    }
+
+    isRunningRef.current = true;
+    setRunState({status: 'running'});
+    setActiveTurn({
+      id: `task-continuation-${randomUUID()}`,
+      prompt: '',
+      response: '',
+      responseRole: 'assistant',
+      kind: 'task_completion',
+    });
+
+    let sawText = false;
+
+    try {
+      for await (const chunk of codara.stream(undefined, {
+        streamMode: 'messages',
+        context: {
+          codaraTaskCompletion: {
+            tasks: continuation.tasks,
+          },
+        },
+      })) {
+        if (!AIMessageChunk.isInstance(chunk)) {
+          continue;
+        }
+
+        const usageMeta = chunk.usage_metadata as Record<string, unknown> | undefined;
+        if (usageMeta) {
+          const inputDelta = typeof usageMeta.input_tokens === 'number' ? usageMeta.input_tokens : 0;
+          const outputDelta = typeof usageMeta.output_tokens === 'number' ? usageMeta.output_tokens : 0;
+          if (inputDelta > 0 || outputDelta > 0) {
+            setActiveTurn((current) => {
+              if (!current) return current;
+              const prev = current.streamingTokens ?? {input: 0, output: 0};
+              return {
+                ...current,
+                streamingTokens: {
+                  input: Math.max(prev.input, inputDelta),
+                  output: Math.max(prev.output, outputDelta),
+                },
+              };
+            });
+          }
+        }
+
+        const text = chunk.text;
+        if (!text) {
+          continue;
+        }
+
+        sawText = true;
+        setActiveTurn((current) => current ? {...current, response: current.response + text} : current);
+      }
+
+      if (!sawText) {
+        setActiveTurn((current) => current ? {...current, response: '(no output)'} : current);
+      }
+
+      setActiveTurn(undefined);
+      trackedTaskBatchRef.current = undefined;
+      const nextAgentState = await refreshCoreState();
+      setRunState(nextAgentState.status === 'paused' ? {status: 'paused'} : {status: 'done'});
+    } catch (error) {
+      setActiveTurn(undefined);
+      reportError(error);
+      await refreshCoreState().catch(() => undefined);
+    } finally {
+      isRunningRef.current = false;
+    }
+  }, [codara, refreshCoreState, reportError]);
+
+  const drainPendingTaskContinuation = useCallback(() => {
+    if (isRunningRef.current || !pendingTaskContinuationRef.current) {
+      return;
+    }
+    const continuation = pendingTaskContinuationRef.current;
+    pendingTaskContinuationRef.current = undefined;
+    void runTaskCompletionContinuation(continuation);
+  }, [runTaskCompletionContinuation]);
+
+  useEffect(() => {
+    setRuntimeEvents([]);
+    return codara.subscribeRuntimeEvents((event: CodaraRuntimeEvent) => {
+      const foregroundDelegatedReview = isDelegatedTaskReviewPause(event);
+      if (isRunIdBackedTaskStartEvent(event)) {
+        const runId = parseTaskRunIdFromEvent(event)!;
+        const currentBatch = trackedTaskBatchRef.current;
+        if (!currentBatch || currentBatch.sessionId !== event.sessionId || currentBatch.continuationStarted) {
+          trackedTaskBatchRef.current = {
+            sessionId: event.sessionId,
+            runIds: new Set([runId]),
+            continuationStarted: false,
+          };
+        } else {
+          currentBatch.runIds.add(runId);
+        }
+      }
+      setRuntimeEvents((current) => [...current, event].slice(-40));
+      const completionContinuation = resolveTaskCompletionContinuation(codara, event, trackedTaskBatchRef.current);
+      if (completionContinuation && trackedTaskBatchRef.current) {
+        trackedTaskBatchRef.current.continuationStarted = true;
+      }
+      if (!isRunningRef.current && !foregroundDelegatedReview) {
+        const followup = shouldEmitTaskCompletionFollowup(codara, event)
+          && !completionContinuation
+          ? summarizeBackgroundTaskAssistantFollowup(event)
+          : undefined;
+        const notice = summarizeBackgroundTaskNotice(event);
+        if (followup || notice) {
+          setNotices((current) => appendUniqueNotices(current, [
+            ...(followup ? [followup] : []),
+            ...(notice ? [notice] : []),
+          ]));
+        }
+        if (completionContinuation) {
+          void runTaskCompletionContinuation(completionContinuation);
+        }
+      } else if (!foregroundDelegatedReview) {
+        const followup = shouldEmitTaskCompletionFollowup(codara, event)
+          && !completionContinuation
+          ? summarizeBackgroundTaskAssistantFollowup(event)
+          : undefined;
+        const notice = summarizeBackgroundTaskNotice(event);
+        const queued = [
+          ...(followup ? [followup] : []),
+          ...(notice ? [notice] : []),
+        ];
+        if (queued.length > 0) {
+          pendingBackgroundNoticesRef.current = appendUniqueNotices(
+            pendingBackgroundNoticesRef.current,
+            queued,
+          );
+        }
+        if (completionContinuation) {
+          pendingTaskContinuationRef.current = completionContinuation;
+          queueMicrotask(() => {
+            drainPendingTaskContinuation();
+          });
+        }
+      }
+
+      if (foregroundDelegatedReview) {
+        isRunningRef.current = false;
+        setRunState({status: 'paused'});
+        refreshAuxiliaryState();
+        return;
+      }
+
+      if (!isRunningRef.current && shouldRefreshAuxiliaryState(event)) {
+        refreshAuxiliaryState();
+      }
+    });
+  }, [codara, drainPendingTaskContinuation, refreshAuxiliaryState, runTaskCompletionContinuation]);
+
+  useEffect(() => {
+    syncTeamDetailState();
+  }, [syncTeamDetailState]);
 
   const enterTeam = useCallback((teamId: string) => {
     setTeamDashboardState(prev => ({ ...prev, activeTeamId: teamId, viewMode: 'observe' as const }));
@@ -479,6 +692,7 @@ export function useCliController(options: UseCliControllerOptions): CliControlle
       prompt,
       response: '',
       responseRole: 'assistant',
+      kind: 'prompt',
     });
 
     let sawText = false;
@@ -568,8 +782,11 @@ export function useCliController(options: UseCliControllerOptions): CliControlle
         pendingBackgroundNoticesRef.current = [];
         setNotices((current) => appendUniqueNotices(current, queued));
       }
+      if (pendingTaskContinuationRef.current) {
+        drainPendingTaskContinuation();
+      }
     }
-  }, [refreshCoreState, reportError, runAgentPrompt, runSlashCommand]);
+  }, [drainPendingTaskContinuation, refreshCoreState, reportError, runAgentPrompt, runSlashCommand]);
 
   useEffect(() => {
     return () => {
@@ -869,8 +1086,11 @@ export function useCliController(options: UseCliControllerOptions): CliControlle
       await refreshCoreState().catch(() => undefined);
     } finally {
       isRunningRef.current = false;
+      if (pendingTaskContinuationRef.current) {
+        drainPendingTaskContinuation();
+      }
     }
-  }, [appendNotice, codara, refreshCoreState, reportError]);
+  }, [appendNotice, codara, drainPendingTaskContinuation, refreshCoreState, reportError]);
 
   const quickHilAction = useCallback((actionId: string) => {
     // Three-stage permission flow: intercept dont_ask_again and deny

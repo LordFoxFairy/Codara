@@ -1,6 +1,7 @@
 import {describe, expect, it} from 'bun:test';
 import {
   isFloatingHilReview,
+  shouldShowFloatingTaskPanel,
   resolveCliForegroundSurface,
   shouldShowActivityLine,
   shouldShowTaskPanel,
@@ -50,6 +51,24 @@ describe('CLI foreground surface', () => {
 
   it('should show the task panel when there are multiple tasks', () => {
     expect(shouldShowTaskPanel({taskPanelVisible: true, taskCount: 2})).toBe(true);
+  });
+
+  it('should render the task panel as a floating panel when conversation is active and no stronger overlay is open', () => {
+    expect(shouldShowFloatingTaskPanel({
+      hasConversation: true,
+      taskPanelVisible: true,
+      taskCount: 2,
+      hasBlockingOverlay: false,
+    })).toBe(true);
+  });
+
+  it('should hide the floating task panel while a stronger overlay is visible', () => {
+    expect(shouldShowFloatingTaskPanel({
+      hasConversation: true,
+      taskPanelVisible: true,
+      taskCount: 2,
+      hasBlockingOverlay: true,
+    })).toBe(false);
   });
 
   it('should hide the activity line when a running task block already owns task/tool progress', () => {

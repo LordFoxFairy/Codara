@@ -205,7 +205,7 @@ describe('cli transcript model', () => {
       },
       runtimeEvents: [
         {
-          id: 'runtime-task-root-2',
+          id: 'task-run:run-2',
           sessionId: 'session-1',
           timestamp: now,
           kind: 'task',
@@ -369,7 +369,7 @@ describe('cli transcript model', () => {
           parentId: 'tool-root-1',
         },
         {
-          id: 'runtime-task-root-1',
+          id: 'task-run:run-1',
           sessionId: 'session-1',
           timestamp: now,
           kind: 'task',
@@ -408,7 +408,7 @@ describe('cli transcript model', () => {
           status: 'paused',
           label: 'Delegated task waiting for review',
           detail: 'Need confirmation',
-          parentId: 'runtime-task-root-1',
+          parentId: 'task-run:run-1',
         },
       ],
     });
@@ -417,6 +417,88 @@ describe('cli transcript model', () => {
     expect(exploreItems).toHaveLength(1);
     expect(exploreItems[0]?.content).toContain('Waiting for review');
     expect(exploreItems[0]?.content).not.toContain('Done (0s)');
+  });
+
+  test('should ignore pre-registered pending task placeholders once real parallel task roots exist', () => {
+    const now = '2026-03-20T10:00:00.000Z';
+    const later = '2026-03-20T10:01:08.000Z';
+    const items = buildTranscriptItems({
+      notices: [],
+      coreMessages: [],
+      activeTurn: {
+        id: 'turn-parallel-pending-dedupe',
+        prompt: 'delegate two tasks',
+        response: '',
+        responseRole: 'assistant',
+      },
+      runtimeEvents: [
+        {
+          id: 'turn-root',
+          sessionId: 'session-1',
+          timestamp: now,
+          kind: 'turn',
+          phase: 'start',
+          status: 'running',
+          label: 'turn',
+        },
+        {
+          id: 'pending-task-tech',
+          sessionId: 'session-1',
+          timestamp: now,
+          kind: 'task',
+          phase: 'start',
+          status: 'running',
+          label: 'Delegating Explore: 分析当前项目的技术栈、主要依赖和运行方式。请只读检查：',
+          detail: 'pending',
+          parentId: 'turn-root',
+        },
+        {
+          id: 'pending-task-tech-end',
+          sessionId: 'session-1',
+          timestamp: now,
+          kind: 'task',
+          phase: 'end',
+          status: 'done',
+          label: 'Task started',
+          parentId: 'pending-task-tech',
+        },
+        {
+          id: 'task-run:run-tech',
+          sessionId: 'session-1',
+          timestamp: now,
+          kind: 'task',
+          phase: 'start',
+          status: 'running',
+          label: 'Delegating Explore: 分析当前项目的技术栈、主要依赖和运行方式。请只读检查：',
+        },
+        {
+          id: 'runtime-task-tech-end',
+          sessionId: 'session-1',
+          timestamp: later,
+          kind: 'task',
+          phase: 'end',
+          status: 'done',
+          label: 'Delegated task completed',
+          detail: 'tech summary',
+          parentId: 'task-run:run-tech',
+        },
+        {
+          id: 'task-run:run-structure',
+          sessionId: 'session-1',
+          timestamp: now,
+          kind: 'task',
+          phase: 'start',
+          status: 'running',
+          label: 'Delegating Explore: 分析当前项目的目录结构、核心模块和主要入口。请只读检查：',
+        },
+      ],
+    });
+
+    const exploreItems = items.filter((item) => item.content.includes('⚙ Explore('));
+    expect(exploreItems).toHaveLength(2);
+    const techItems = exploreItems.filter((item) => item.content.includes('技术栈、主要依赖和运行方式'));
+    expect(techItems).toHaveLength(1);
+    expect(techItems[0]?.content).not.toContain('Done (0s)');
   });
 
   test('should render running tasks with recent activity lines and a collapsed activity count', () => {
@@ -433,7 +515,7 @@ describe('cli transcript model', () => {
       },
       runtimeEvents: [
         {
-          id: 'evt_task_start',
+          id: 'task-run:evt-task-start',
           sessionId: 'session-1',
           timestamp: start,
           kind: 'task',
@@ -450,7 +532,7 @@ describe('cli transcript model', () => {
           status: 'running',
           label: 'glob(README*)',
           detail: 'glob',
-          parentId: 'evt_task_start',
+          parentId: 'task-run:evt-task-start',
         },
         {
           id: 'evt_task_b',
@@ -461,7 +543,7 @@ describe('cli transcript model', () => {
           status: 'running',
           label: 'Read(package.json)',
           detail: 'read',
-          parentId: 'evt_task_start',
+          parentId: 'task-run:evt-task-start',
         },
         {
           id: 'evt_task_c',
@@ -472,7 +554,7 @@ describe('cli transcript model', () => {
           status: 'running',
           label: 'Read(src/index.ts)',
           detail: 'read',
-          parentId: 'evt_task_start',
+          parentId: 'task-run:evt-task-start',
         },
         {
           id: 'evt_task_d',
@@ -483,7 +565,7 @@ describe('cli transcript model', () => {
           status: 'running',
           label: 'Read(src/core/agent.ts)',
           detail: 'read',
-          parentId: 'evt_task_start',
+          parentId: 'task-run:evt-task-start',
         },
       ],
     });
@@ -514,7 +596,7 @@ describe('cli transcript model', () => {
       },
       runtimeEvents: [
         {
-          id: 'evt_task_start',
+          id: 'task-run:evt-task-start',
           sessionId: 'session-1',
           timestamp: start,
           kind: 'task',
@@ -531,7 +613,7 @@ describe('cli transcript model', () => {
           status: 'running',
           label: 'glob(README*)',
           detail: 'glob',
-          parentId: 'evt_task_start',
+          parentId: 'task-run:evt-task-start',
         },
         {
           id: 'evt_task_activity_2',
@@ -542,7 +624,7 @@ describe('cli transcript model', () => {
           status: 'running',
           label: 'Read(package.json)',
           detail: 'read',
-          parentId: 'evt_task_start',
+          parentId: 'task-run:evt-task-start',
         },
         {
           id: 'evt_task_end',
@@ -553,7 +635,7 @@ describe('cli transcript model', () => {
           status: 'done',
           label: 'Delegated task completed',
           detail: 'Codara is a terminal-first AI agent runtime.',
-          parentId: 'evt_task_start',
+          parentId: 'task-run:evt-task-start',
         },
       ],
     });

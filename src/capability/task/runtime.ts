@@ -157,7 +157,14 @@ class InMemoryTaskRuntime implements TaskRuntime {
       return;
     }
 
-    this.options.runStore?.update(runId, {latestActivity: info.label});
+    const nextToolUseCount = (() => {
+      const existing = this.options.runStore?.get(runId);
+      return (existing?.toolUseCount ?? 0) + 1;
+    })();
+    this.options.runStore?.update(runId, {
+      latestActivity: info.label,
+      toolUseCount: nextToolUseCount,
+    });
     this.emitTaskEvent({
       kind: 'task',
       phase: 'update',

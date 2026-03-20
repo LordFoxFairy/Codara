@@ -2,6 +2,7 @@ import {describe, expect, it} from 'bun:test';
 import React, {useEffect} from 'react';
 import {Text} from 'ink';
 import {render} from 'ink-testing-library';
+import {AIMessageChunk} from '@langchain/core/messages';
 import type {
   ApprovalQueryReview,
   ApprovalQuerySummary,
@@ -99,6 +100,205 @@ describe('useCliController background refresh', () => {
       await waitFor(() => (rendered.lastFrame() ?? '').includes('latestAssistantNotice:Codara is a terminal-first AI agent runtime.'));
       const frame = rendered.lastFrame() ?? '';
       expect(frame).toContain('terminal-first AI agent runtime');
+    } finally {
+      rendered.unmount();
+    }
+  });
+
+  it('does not add a child follow-up while sibling tasks in the same session are still active', async () => {
+    const codara = new FakeCodara();
+    codara.setTaskRunSummaries([
+      {
+        runId: 'run-done',
+        label: 'Delegating Explore: Analyze the tech stack',
+        agentName: 'Explore',
+        status: 'completed',
+        startedAt: new Date(Date.now() - 10_000).toISOString(),
+        updatedAt: new Date().toISOString(),
+        endedAt: new Date().toISOString(),
+      },
+      {
+        runId: 'run-still-running',
+        label: 'Delegating Explore: Analyze the project structure',
+        agentName: 'Explore',
+        status: 'running',
+        startedAt: new Date(Date.now() - 8_000).toISOString(),
+        updatedAt: new Date().toISOString(),
+      },
+    ]);
+    const rendered = render(<ControllerProbe codara={codara as unknown as Codara} />);
+
+    try {
+      await waitFor(() => (rendered.lastFrame() ?? '').includes('latestAssistantNotice:none'));
+
+      codara.emit({
+        id: 'task-event-followup-with-sibling',
+        sessionId: 'session-1',
+        timestamp: new Date().toISOString(),
+        kind: 'task',
+        phase: 'end',
+        status: 'done',
+        label: 'Delegated task completed',
+        detail: 'Tech stack child summary',
+        parentId: 'task-run:run-done',
+      });
+
+      await waitFor(() => (rendered.lastFrame() ?? '').includes('latestAssistantNotice:none'));
+      expect(rendered.lastFrame() ?? '').not.toContain('Tech stack child summary');
+    } finally {
+      rendered.unmount();
+    }
+  });
+
+  it('re-enters the main agent after the tracked task batch completes instead of surfacing child summaries directly', async () => {
+    const codara = new FakeCodara();
+    codara.blockNextStream();
+    codara.queueStreamText('Unified final answer from the main agent.');
+    const rendered = render(<BackgroundFollowupProbe codara={codara as unknown as Codara} />);
+
+    try {
+      await waitFor(() => (rendered.lastFrame() ?? '').includes('runState:running'));
+
+      codara.setTaskRunSummaries([
+        {
+          runId: 'run-tech',
+          sessionId: 'session-1',
+          label: 'Delegating Explore: Analyze the tech stack',
+          agentName: 'Explore',
+          status: 'running',
+          startedAt: new Date(Date.now() - 10_000).toISOString(),
+          updatedAt: new Date().toISOString(),
+          summary: 'Tech stack child summary',
+          toolUseCount: 4,
+          totalTokens: 1200,
+        },
+        {
+          runId: 'run-structure',
+          sessionId: 'session-1',
+          label: 'Delegating Explore: Analyze the project structure',
+          agentName: 'Explore',
+          status: 'running',
+          startedAt: new Date(Date.now() - 8_000).toISOString(),
+          updatedAt: new Date().toISOString(),
+          summary: 'Structure child summary',
+          toolUseCount: 5,
+          totalTokens: 1800,
+        },
+      ]);
+      codara.emit({
+        id: 'task-run:run-tech',
+        sessionId: 'session-1',
+        timestamp: new Date().toISOString(),
+        kind: 'task',
+        phase: 'start',
+        status: 'running',
+        label: 'Delegating Explore: Analyze the tech stack',
+      });
+      codara.emit({
+        id: 'task-run:run-structure',
+        sessionId: 'session-1',
+        timestamp: new Date().toISOString(),
+        kind: 'task',
+        phase: 'start',
+        status: 'running',
+        label: 'Delegating Explore: Analyze the project structure',
+      });
+
+      codara.releaseBlockedStream();
+      await waitFor(() => (rendered.lastFrame() ?? '').includes('runState:done'));
+
+      codara.setTaskRunSummaries([
+        {
+          runId: 'run-tech',
+          sessionId: 'session-1',
+          label: 'Delegating Explore: Analyze the tech stack',
+          agentName: 'Explore',
+          status: 'completed',
+          startedAt: new Date(Date.now() - 10_000).toISOString(),
+          updatedAt: new Date().toISOString(),
+          endedAt: new Date().toISOString(),
+          summary: 'Tech stack child summary',
+          toolUseCount: 4,
+          totalTokens: 1200,
+        },
+        {
+          runId: 'run-structure',
+          sessionId: 'session-1',
+          label: 'Delegating Explore: Analyze the project structure',
+          agentName: 'Explore',
+          status: 'completed',
+          startedAt: new Date(Date.now() - 8_000).toISOString(),
+          updatedAt: new Date().toISOString(),
+          endedAt: new Date().toISOString(),
+          summary: 'Structure child summary',
+          toolUseCount: 5,
+          totalTokens: 1800,
+        },
+      ]);
+      codara.emit({
+        id: 'task-event-batch-complete',
+        sessionId: 'session-1',
+        timestamp: new Date().toISOString(),
+        kind: 'task',
+        phase: 'end',
+        status: 'done',
+        label: 'Delegated task completed',
+        detail: 'Structure child summary',
+        parentId: 'task-run:run-structure',
+      });
+
+      await waitFor(() => codara.getStreamCallCount() === 2);
+      await waitFor(() => (rendered.lastFrame() ?? '').includes('streamCalls:2'));
+      const continuationCall = codara.getStreamCalls()[1];
+      expect(continuationCall?.input).toBeUndefined();
+      expect(continuationCall?.config).toEqual(expect.objectContaining({
+        streamMode: 'messages',
+        context: {
+          codaraTaskCompletion: {
+            tasks: [
+              expect.objectContaining({
+                runId: 'run-tech',
+                summary: 'Tech stack child summary',
+              }),
+              expect.objectContaining({
+                runId: 'run-structure',
+                summary: 'Structure child summary',
+              }),
+            ],
+          },
+        },
+      }));
+      const frame = rendered.lastFrame() ?? '';
+      expect(frame).toContain('streamCalls:2');
+      expect(frame).toContain('latestAssistantNotice:none');
+      expect(frame).not.toContain('Structure child summary');
+    } finally {
+      codara.releaseBlockedStream();
+      rendered.unmount();
+    }
+  });
+
+  it('does not add a generic assistant follow-up when a background task completes without detail', async () => {
+    const codara = new FakeCodara();
+    const rendered = render(<ControllerProbe codara={codara as unknown as Codara} />);
+
+    try {
+      await waitFor(() => (rendered.lastFrame() ?? '').includes('latestAssistantNotice:none'));
+
+      codara.emit({
+        id: 'task-event-empty-followup',
+        sessionId: 'session-1',
+        timestamp: new Date().toISOString(),
+        kind: 'task',
+        phase: 'end',
+        status: 'done',
+        label: 'Delegated task completed',
+      });
+
+      await waitFor(() => (rendered.lastFrame() ?? '').includes('latestNotice:none'));
+      const frame = rendered.lastFrame() ?? '';
+      expect(frame).toContain('latestAssistantNotice:none');
+      expect(frame).not.toContain('Task finished.');
     } finally {
       rendered.unmount();
     }
@@ -267,6 +467,7 @@ function BackgroundFollowupProbe({codara}: {codara: Codara}): React.JSX.Element 
     <Text>
       {`runState:${controller.runState.status}`}
       {` latestAssistantNotice:${[...controller.notices].reverse().find((notice) => notice.level === 'assistant')?.content ?? 'none'}`}
+      {` streamCalls:${(codara as unknown as FakeCodara).getStreamCallCount()}`}
     </Text>
   );
 }
@@ -284,8 +485,23 @@ class FakeCodara {
     jobs: [],
   };
   private pendingPause: PauseRequest | undefined;
+  private taskRunSummaries: Array<{
+    runId: string;
+    sessionId: string;
+    label: string;
+    agentName: string;
+    status: string;
+    startedAt: string;
+    updatedAt: string;
+    endedAt?: string;
+    summary?: string;
+    toolUseCount?: number;
+    totalTokens?: number;
+  }> = [];
   private blockStream = false;
   private releaseBlockedStreamResolver: (() => void) | undefined;
+  private readonly streamCalls: Array<{input: unknown; config: unknown}> = [];
+  private readonly queuedStreamChunks: AIMessageChunk[][] = [];
   public resumeCount = 0;
   private readonly sessionState: SessionState = {
     sessionId: 'session-1',
@@ -321,6 +537,36 @@ class FakeCodara {
 
   setPauseRequest(request: PauseRequest | undefined): void {
     this.pendingPause = request;
+  }
+
+  setTaskRunSummaries(
+    taskRunSummaries: Array<{
+      runId: string;
+      sessionId: string;
+      label: string;
+      agentName: string;
+      status: string;
+      startedAt: string;
+      updatedAt: string;
+      endedAt?: string;
+      summary?: string;
+      toolUseCount?: number;
+      totalTokens?: number;
+    }>,
+  ): void {
+    this.taskRunSummaries = taskRunSummaries;
+  }
+
+  queueStreamText(text: string): void {
+    this.queuedStreamChunks.push([new AIMessageChunk({content: text})]);
+  }
+
+  getStreamCalls(): Array<{input: unknown; config: unknown}> {
+    return [...this.streamCalls];
+  }
+
+  getStreamCallCount(): number {
+    return this.streamCalls.length;
   }
 
   blockNextStream(): void {
@@ -395,7 +641,7 @@ class FakeCodara {
   }
 
   getTaskRunSummaries() {
-    return [];
+    return this.taskRunSummaries;
   }
 
   getMcpStatus() {
@@ -410,14 +656,16 @@ class FakeCodara {
     return {ok: true, output: '', command: ''};
   }
 
-  async *stream() {
+  async *stream(input?: unknown, config?: unknown) {
+    this.streamCalls.push({input, config});
     if (this.blockStream) {
       await new Promise<void>((resolve) => {
         this.releaseBlockedStreamResolver = resolve;
       });
     }
-    if (Math.random() < 0) {
-      yield new AIMessageChunk({content: ''});
+    const chunks = this.queuedStreamChunks.shift() ?? [];
+    for (const chunk of chunks) {
+      yield chunk;
     }
   }
 

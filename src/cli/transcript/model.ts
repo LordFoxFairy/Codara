@@ -147,24 +147,25 @@ export function buildActiveItems(input: {
         content: `💭 Thinking…\n${input.activeTurn.thinking.slice(-200)}`,
       }]
     : [];
-  const items: TranscriptItem[] = [
-    ...(input.activeTurn
-      ? [
-          {
-            id: `${input.activeTurn.id}-prompt`,
-            role: 'user' as const,
-            content: input.activeTurn.prompt,
-          },
-          ...thinkingItem,
-          {
-            id: `${input.activeTurn.id}-response`,
-            role: input.activeTurn.responseRole,
-            content: suppressActiveTurnResponse ? '' : input.activeTurn.response,
-          },
-        ]
-      : []),
-    ...(preferRuntimeSteps ? buildRuntimeEventItems(input.runtimeEvents ?? [], input.nowTimestamp) : []),
-  ];
+  const runtimeItems = preferRuntimeSteps ? buildRuntimeEventItems(input.runtimeEvents ?? [], input.nowTimestamp) : [];
+  const promptAndResponseItems: TranscriptItem[] = input.activeTurn
+    ? [
+        {
+          id: `${input.activeTurn.id}-prompt`,
+          role: 'user' as const,
+          content: input.activeTurn.prompt,
+        },
+        ...thinkingItem,
+        {
+          id: `${input.activeTurn.id}-response`,
+          role: input.activeTurn.responseRole,
+          content: suppressActiveTurnResponse ? '' : input.activeTurn.response,
+        },
+      ]
+    : [];
+  const items: TranscriptItem[] = input.activeTurn?.kind === 'task_completion'
+    ? [...runtimeItems, ...promptAndResponseItems]
+    : [...promptAndResponseItems, ...runtimeItems];
   return items.filter((item) => item.content);
 }
 
@@ -364,6 +365,12 @@ function buildRuntimeEventItems(events: readonly CodaraRuntimeEvent[], nowTimest
       const startEvent = startEvents.get(event.parentId);
       if (startEvent) {
         pairedEndIds.add(event.id);
+        if (isPendingTaskPlaceholderStart(startEvent)) {
+          continue;
+        }
+        if (!isRunIdBackedTaskStart(startEvent)) {
+          continue;
+        }
         if (isSyntheticTaskStart(startEvent, startEvents) && runtimeTaskLabels.has(startEvent.label)) {
           continue;
         }
@@ -483,6 +490,12 @@ function buildRuntimeEventItems(events: readonly CodaraRuntimeEvent[], nowTimest
 
     // Unpaired task start → collected below for grouped rendering
     if (startEvent.kind === 'task') {
+      if (isPendingTaskPlaceholderStart(startEvent)) {
+        continue;
+      }
+      if (!isRunIdBackedTaskStart(startEvent)) {
+        continue;
+      }
       if (isSyntheticTaskStart(startEvent, startEvents) && runtimeTaskLabels.has(startEvent.label)) {
         continue;
       }
@@ -546,6 +559,18 @@ function isSyntheticTaskStart(
   }
 
   return startEvents.get(startEvent.parentId)?.kind === 'tool';
+}
+
+function isPendingTaskPlaceholderStart(startEvent: CodaraRuntimeEvent): boolean {
+  return startEvent.kind === 'task'
+    && startEvent.phase === 'start'
+    && startEvent.detail === 'pending';
+}
+
+function isRunIdBackedTaskStart(startEvent: CodaraRuntimeEvent): boolean {
+  return startEvent.kind === 'task'
+    && startEvent.phase === 'start'
+    && startEvent.id.startsWith('task-run:');
 }
 
 function buildRunningTaskDisplay(

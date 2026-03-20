@@ -78,6 +78,22 @@ export function shouldShowTaskPanel(input: {
   return input.taskPanelVisible && input.taskCount > 1;
 }
 
+export function shouldShowFloatingTaskPanel(input: {
+  hasConversation: boolean;
+  taskPanelVisible: boolean;
+  taskCount: number;
+  hasBlockingOverlay: boolean;
+}): boolean {
+  if (input.hasBlockingOverlay || !input.hasConversation) {
+    return false;
+  }
+
+  return shouldShowTaskPanel({
+    taskPanelVisible: input.taskPanelVisible,
+    taskCount: input.taskCount,
+  });
+}
+
 export function shouldShowActivityLine(input: {
   hilReview?: CliHilReviewState;
   runStateStatus: 'idle' | 'running' | 'paused' | 'done' | 'error';
@@ -218,6 +234,12 @@ export function CodaraCliApp(props: CodaraCliAppProps): React.JSX.Element {
   const hasHilReview = Boolean(shell.hilReview);
   const floatingHilReview = isFloatingHilReview(shell.hilReview) ? shell.hilReview : undefined;
   const inlineHilReview = shell.hilReview && !floatingHilReview ? shell.hilReview : undefined;
+  const hasBlockingOverlay = Boolean(
+    shell.commandOutput
+    || completion.completion.visible
+    || sessionPicker.state.visible
+    || floatingHilReview,
+  );
   const showPromptFrame = shouldShowPromptFrame({
     hilReview: shell.hilReview,
     hasCommandOutput: Boolean(shell.commandOutput),
@@ -343,34 +365,6 @@ export function CodaraCliApp(props: CodaraCliAppProps): React.JSX.Element {
         {/* 动态区 */}
         {activeItems.length > 0 && <ActiveTranscript items={activeItems} activeTasks={activeTasks.tasks} expandedAll={shell.expandedAll} />}
 
-        {/* Unified Task/Team Panel (Ctrl+T toggle) */}
-        {shell.hasConversation && shell.taskPanelVisible && (
-          <>
-            {shouldShowTaskPanel({taskPanelVisible: shell.taskPanelVisible, taskCount: activeTasks.tasks.length}) && (
-              <TaskPanel
-                tasks={activeTasks.tasks}
-                runningCount={activeTasks.runningCount}
-                pausedCount={activeTasks.pausedCount}
-                doneCount={activeTasks.doneCount}
-                errorCount={activeTasks.errorCount}
-              />
-            )}
-            {activeTeams.hasActiveTeams && (
-              shell.teamDetailState ? (
-                <TeamDetailView state={shell.teamDetailState} />
-              ) : (
-                <TeamPanel
-                  teams={activeTeams.activeTeams}
-                  runningCount={activeTeams.runningCount}
-                  doneCount={activeTeams.doneCount}
-                  errorCount={activeTeams.errorCount}
-                  teamMembers={teamMembers}
-                />
-              )
-            )}
-          </>
-        )}
-
         {/* HIL 内联显示在对话流下方（不替换整个界面） */}
         {inlineHilReview && <HilPanel review={inlineHilReview} />}
 
@@ -422,6 +416,37 @@ export function CodaraCliApp(props: CodaraCliAppProps): React.JSX.Element {
               </Box>
             )}
             <CompletionMenu completion={completion.completion} terminalWidth={terminalWidth} />
+            {shouldShowFloatingTaskPanel({
+              hasConversation: shell.hasConversation,
+              taskPanelVisible: shell.taskPanelVisible,
+              taskCount: activeTasks.tasks.length,
+              hasBlockingOverlay,
+            }) && (
+              <Box marginTop={1}>
+                <TaskPanel
+                  tasks={activeTasks.tasks}
+                  runningCount={activeTasks.runningCount}
+                  pausedCount={activeTasks.pausedCount}
+                  doneCount={activeTasks.doneCount}
+                  errorCount={activeTasks.errorCount}
+                />
+              </Box>
+            )}
+            {shell.hasConversation && shell.taskPanelVisible && !hasBlockingOverlay && activeTeams.hasActiveTeams && (
+              <Box marginTop={1}>
+                {shell.teamDetailState ? (
+                  <TeamDetailView state={shell.teamDetailState} />
+                ) : (
+                  <TeamPanel
+                    teams={activeTeams.activeTeams}
+                    runningCount={activeTeams.runningCount}
+                    doneCount={activeTeams.doneCount}
+                    errorCount={activeTeams.errorCount}
+                    teamMembers={teamMembers}
+                  />
+                )}
+              </Box>
+            )}
             {floatingHilReview && !shell.commandOutput && !completion.completion.visible && !sessionPicker.state.visible && (
               <Box marginTop={1}>
                 <HilPanel review={floatingHilReview} presentation="floating" />

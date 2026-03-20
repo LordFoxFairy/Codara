@@ -244,4 +244,59 @@ describe('createTaskTool delegation', () => {
       }),
     ]);
   });
+
+  it('should launch every Task tool call in the same parent response before detaching the turn', async () => {
+    const runStore = createTaskRunMemoryStore();
+
+    const parent = createAgent({
+      model: new ScriptedModel([
+        new AIMessage({
+          content: '',
+          tool_calls: [
+            {
+              id: 'call_task_parallel_1',
+              name: TASK_TOOL_NAME,
+              args: {
+                prompt: 'Analyze the tech stack',
+                subagent_type: 'Explore',
+              },
+            } as ToolCall,
+            {
+              id: 'call_task_parallel_2',
+              name: TASK_TOOL_NAME,
+              args: {
+                prompt: 'Analyze the project structure',
+                subagent_type: 'Explore',
+              },
+            } as ToolCall,
+          ],
+        }),
+        new AIMessage('done'),
+      ]) as unknown as BaseChatModel,
+      middleware: [createAgentSkillsMiddleware(createBuiltinSubagentStore())],
+      tools: [
+        createTaskTool({
+          model: new ChildSummaryModel() as unknown as BaseChatModel,
+          runStore,
+        }),
+      ],
+    });
+
+    const result = await parent.invoke('delegate both');
+    expect(result.reason).toBe('complete');
+
+    await new Promise((resolve) => setTimeout(resolve, 30));
+
+    const runs = runStore.list();
+    expect(runs).toEqual(expect.arrayContaining([
+      expect.objectContaining({
+        runId: 'call_task_parallel_1',
+        status: 'completed',
+      }),
+      expect.objectContaining({
+        runId: 'call_task_parallel_2',
+        status: 'completed',
+      }),
+    ]));
+  });
 });
