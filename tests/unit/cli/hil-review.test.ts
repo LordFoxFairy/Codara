@@ -1,8 +1,12 @@
 import {describe, expect, it} from 'bun:test';
 import {
+  activateCliHilFocusedSelection,
   applyCliHilFormShortcut,
+  confirmCliHilFocusedSelection,
+  prepareCliHilDraftInput,
   prepareCliHilSubmission,
   syncCliHilReviewState,
+  toggleCliHilFocus,
   type CliHilAutoAction,
 } from '../../../src/cli/app/hil-review';
 import type {CliHilReviewState} from '../../../src/cli/app/view-state';
@@ -46,10 +50,116 @@ describe('cli hil review helpers', () => {
     expect(review?.form?.tabs[0]?.input).toBe('select');
   });
 
-  it('should auto-advance to the next unanswered tab after choosing a single-select answer', () => {
+  it('should default option tabs with placeholders to select when no explicit input is provided', () => {
+    const review = syncCliHilReviewState(undefined, {
+      id: 'pause-mixed',
+      description: 'Collect output format.',
+      action: {
+        toolCallId: 'call_mixed',
+        toolName: 'AskUserQuestion',
+        toolArgs: {},
+      },
+      review: {
+        actionName: 'AskUserQuestion',
+        allowedDecisions: ['approve'],
+      },
+      runtime: {
+        runId: 'run-mixed',
+        turn: 1,
+        requestId: 'req-mixed',
+        toolIndex: 0,
+      },
+      ui: {
+        actions: [{id: 'submit', label: 'Submit', kind: 'primary'}],
+        form: {
+          tabs: [
+            {
+              id: 'format',
+              label: 'Output Format',
+              question: 'How should the result be delivered?',
+              options: [{id: 'doc', label: 'Markdown Doc'}],
+              placeholder: 'Type your own output format.',
+            },
+          ],
+        },
+      },
+    });
+
+    expect(review?.form?.tabs[0]?.input).toBe('select');
+  });
+
+  it('should route mixed AskUser typing into the custom placeholder path', () => {
+    const review = syncCliHilReviewState(undefined, {
+      id: 'pause-mixed-draft',
+      description: 'Collect output format.',
+      action: {
+        toolCallId: 'call_mixed_draft',
+        toolName: 'AskUserQuestion',
+        toolArgs: {},
+      },
+      review: {
+        actionName: 'AskUserQuestion',
+        allowedDecisions: ['approve'],
+      },
+      runtime: {
+        runId: 'run-mixed-draft',
+        turn: 1,
+        requestId: 'req-mixed-draft',
+        toolIndex: 0,
+      },
+      ui: {
+        actions: [{id: 'submit', label: 'Submit', kind: 'primary'}],
+        form: {
+          tabs: [
+            {
+              id: 'format',
+              label: 'Output Format',
+              question: 'How should the result be delivered?',
+              input: 'mixed',
+              options: [{id: 'doc', label: 'Markdown Doc'}],
+              placeholder: 'Type your own output format.',
+            },
+          ],
+        },
+      },
+    }) as CliHilReviewState;
+
+    const prepared = prepareCliHilDraftInput(review) as CliHilReviewState;
+
+    expect(prepared.selectedActionIndex).toBe(0);
+  });
+
+  it('should allow free-text AskUser input even on plain select tabs', () => {
+    const prepared = prepareCliHilDraftInput(createFormReview());
+
+    expect(prepared).toBeDefined();
+    expect(prepared?.selectedActionIndex).toBe(0);
+  });
+
+  it('should keep single-select answers on the current tab until the user explicitly confirms next', () => {
     const review = createFormReview();
 
     const next = applyCliHilFormShortcut(review, '1');
+
+    expect(next?.form?.answers).toEqual({language: 'Python'});
+    expect(next?.form?.activeTabIndex).toBe(0);
+    expect(next?.draft).toBe('Python');
+  });
+
+  it('should activate the currently highlighted option without advancing tabs', () => {
+    const review = createFormReview();
+
+    const next = activateCliHilFocusedSelection(review);
+
+    expect(next?.form?.answers).toEqual({language: 'Python'});
+    expect(next?.form?.activeTabIndex).toBe(0);
+    expect(next?.draft).toBe('Python');
+  });
+
+  it('should advance to the next unanswered tab only after explicit confirmation', () => {
+    const review = activateCliHilFocusedSelection(createFormReview()) as CliHilReviewState;
+
+    const next = confirmCliHilFocusedSelection(review);
 
     expect(next?.form?.answers).toEqual({language: 'Python'});
     expect(next?.form?.activeTabIndex).toBe(1);
@@ -65,6 +175,45 @@ describe('cli hil review helpers', () => {
     expect(prepared.review.focus).toBe('input');
     expect(prepared.review.form?.activeTabIndex).toBe(1);
     expect(prepared.review.validationMessage).toContain('Complexity');
+  });
+
+  it('should not submit directly from option focus before all tabs are complete', () => {
+    const review = createFormReview();
+    const progressed = confirmCliHilFocusedSelection(
+      activateCliHilFocusedSelection(review) as CliHilReviewState,
+    ) as CliHilReviewState;
+    const prepared = prepareCliHilSubmission(progressed);
+
+    expect(prepared.payload).toBeUndefined();
+    expect(prepared.review.form?.activeTabIndex).toBe(1);
+    expect(prepared.review.validationMessage).toContain('Complexity');
+  });
+
+  it('should focus the explicit submit action after completing the final AskUser tab', () => {
+    const first = confirmCliHilFocusedSelection(
+      activateCliHilFocusedSelection(createFormReview()) as CliHilReviewState,
+    ) as CliHilReviewState;
+    const second = confirmCliHilFocusedSelection(
+      activateCliHilFocusedSelection(first) as CliHilReviewState,
+    ) as CliHilReviewState;
+
+    expect(second.form?.answers).toEqual({
+      language: 'Python',
+      complexity: 'Simple',
+    });
+    expect(second.form?.endStep).toBe(true);
+    expect(second.focus).toBe('actions');
+    expect(second.selectedActionIndex).toBe(0);
+  });
+
+  it('should let question steps focus a dedicated next footer before the final submit step', () => {
+    const review = createFormReview();
+
+    const next = toggleCliHilFocus(review);
+
+    expect(next.focus).toBe('actions');
+    expect(next.form?.endStep).toBe(false);
+    expect(next.selectedActionIndex).toBe(0);
   });
 
   it('should allow auto actions to supply form answers before submit', () => {
@@ -243,6 +392,7 @@ function createFormReview(): CliHilReviewState {
       ],
       activeTabIndex: 0,
       answers: {},
+      endStep: false,
     },
   };
 }

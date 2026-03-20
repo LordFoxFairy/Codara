@@ -18,6 +18,7 @@ import type {PauseRequest} from '@core/agent';
 import {bootstrapAgent} from '@core/agent/bootstrap';
 import {TeamPersistence} from '@capability/team/persistence';
 import {createBuiltinTools} from '@integration/tool';
+import type {BaseSystemMessageBundle} from '@context/session-bundle/base-system-message';
 import type {CodaraRuntimeOptions, TeamQuerySummary, TeamQueryDetail} from '../types';
 import type {CodaraModelCatalog} from './runtime';
 
@@ -27,6 +28,7 @@ export interface TeamSystemAssemblyInput {
   projectRoot: string;
   catalog?: CodaraModelCatalog | Promise<CodaraModelCatalog>;
   approvalStore?: import('@durability/approval-store').ApprovalStore;
+  baseSystemMessage?: BaseSystemMessageBundle;
 }
 
 export interface TeamSystemAssemblyResult {
@@ -115,11 +117,8 @@ export async function assembleTeamSystem(input: TeamSystemAssemblyInput): Promis
         agentType: 'subagent',
         tools: memberTools,
         middleware: memberMiddleware,
-        systemMessage:
-          memberOptions.systemMessage.length > 0
-            ? memberOptions.systemMessage
-            : undefined,
-        runtimeShared: memberOptions.runtimeShared,
+        systemMessage: [...(input.baseSystemMessage?.systemMessage ?? []), ...memberOptions.systemMessage],
+        runtimeShared: {...(input.baseSystemMessage?.runtimeShared ?? {}), ...memberOptions.runtimeShared},
       });
       return agentReady;
     };
@@ -249,16 +248,21 @@ export async function assembleTeamSystem(input: TeamSystemAssemblyInput): Promis
   return {teamRegistry, teamRuntime, sharedState};
 }
 
-export function getTeamSummaries(registry: TeamRegistry | undefined): TeamQuerySummary[] {
+export function getTeamSummaries(
+  registry: TeamRegistry | undefined,
+  sessionId?: string,
+): TeamQuerySummary[] {
   if (!registry) {
     return [];
   }
-  return registry.listTeams().map((team) => {
-    const board = registry.getJobBoard(team.teamId);
-    const progress = board.getProgress();
-    const members = registry.getMembersByTeam(team.teamId);
-    return {
-      teamId: team.teamId,
+  return registry.listTeams()
+    .filter((team) => teamBelongsToSession(team.createdBy, sessionId))
+    .map((team) => {
+      const board = registry.getJobBoard(team.teamId);
+      const progress = board.getProgress();
+      const members = registry.getMembersByTeam(team.teamId);
+      return {
+        teamId: team.teamId,
       name: team.name,
       status: team.status,
       goal: team.goal,
@@ -266,19 +270,20 @@ export function getTeamSummaries(registry: TeamRegistry | undefined): TeamQueryS
       jobProgress: {done: progress.done, total: progress.total},
       startedAt: team.createdAt,
       ...(team.completedAt ? {completedAt: team.completedAt} : {}),
-    };
-  });
+      };
+    });
 }
 
 export function getTeamDetail(
   registry: TeamRegistry | undefined,
   teamId: string,
+  sessionId?: string,
 ): TeamQueryDetail | undefined {
   if (!registry) {
     return undefined;
   }
   const team = registry.getTeam(teamId) ?? registry.getTeamByName(teamId);
-  if (!team) {
+  if (!team || !teamBelongsToSession(team.createdBy, sessionId)) {
     return undefined;
   }
   const members = registry.getMembersByTeam(team.teamId);
@@ -305,6 +310,13 @@ export function getTeamDetail(
       blockedBy: job.blockedBy,
     })),
   };
+}
+
+function teamBelongsToSession(teamCreatedBy: string | undefined, sessionId: string | undefined): boolean {
+  if (!sessionId) {
+    return true;
+  }
+  return teamCreatedBy === sessionId;
 }
 
 /**

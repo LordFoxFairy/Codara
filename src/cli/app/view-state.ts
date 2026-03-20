@@ -11,7 +11,7 @@ export interface CliRunState {
 
 export interface CliNotice {
   id: string;
-  level: 'system' | 'warning' | 'error' | 'command';
+  level: 'system' | 'warning' | 'error' | 'command' | 'assistant';
   content: string;
 }
 
@@ -20,6 +20,9 @@ export interface CliActiveTurn {
   prompt: string;
   response: string;
   responseRole: 'assistant' | 'system';
+  kind?: 'prompt' | 'task_completion';
+  /** True once the current streaming model message includes a Task tool call. */
+  pendingTaskLaunch?: boolean;
   /** Accumulated thinking/reasoning text (Extended Thinking). */
   thinking?: string;
   /** Real-time token counts from streaming chunks. */
@@ -43,6 +46,7 @@ export interface CliHilFormState {
   tabs: CliHilFormTab[];
   activeTabIndex: number;
   answers: Record<string, CliHilAnswerValue>;
+  endStep?: boolean;
 }
 
 export interface CliHilReviewState {

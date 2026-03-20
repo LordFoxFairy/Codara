@@ -1,5 +1,6 @@
 import type {AgentResult, AgentState} from '@shared/contracts/agent-types';
 import type {CompactOptions} from '@durability/checkpoint/types';
+import type {ConversationCompactionResult} from '@durability/session';
 import type {HookRegistry} from '@observability/hook/registry';
 import type {TeamRegistry} from '@capability/team/coordination/team-registry';
 import type {TeamRuntime} from '@capability/team/runtime/team-runtime';
@@ -61,7 +62,7 @@ export interface CodaraCommandResult {
 export interface CodaraCommandAgent {
   compactConversation(options?: {
     instructions?: string;
-  }): Promise<AgentState>;
+  }): Promise<ConversationCompactionResult>;
   compactCheckpoints(options?: CompactOptions): Promise<void>;
   getAvailableToolNames(): string[];
   hydrate(): Promise<AgentState>;

@@ -13,6 +13,7 @@ export function getTaskRunSummaries(
     .filter((run) => !sessionId || run.sessionId === sessionId)
     .map((run) => ({
       runId: run.runId,
+      sessionId: run.sessionId,
       label: run.label,
       agentName: run.agentName,
       status: run.status,

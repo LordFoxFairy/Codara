@@ -17,6 +17,7 @@ import {
 } from '@core/pipeline/types';
 import {parseHILToolMessagePayload} from '@core/middleware/hil';
 import {toError} from './errors';
+import {readTaskRunLaunchResult} from '@shared/task-run-launch';
 
 export type AgentTurnOutcome = 'continue' | 'complete';
 
@@ -41,8 +42,10 @@ export async function runAgentTurn(
     if (!response.tool_calls?.length) {
       result = {reason: 'complete', turns: turn};
     } else {
-      await runTools(run, runtime, context, response.tool_calls, stream);
-      if (run.state.pendingPause) {
+      const toolOutcome = await runTools(run, runtime, context, response.tool_calls, stream);
+      if (toolOutcome === 'paused' || run.state.pendingPause) {
+        result = {reason: 'complete', turns: turn};
+      } else if (toolOutcome === 'detached') {
         result = {reason: 'complete', turns: turn};
       }
     }
@@ -92,13 +95,19 @@ export async function runTools(
   context: BaseExecutionContext,
   toolCalls: ToolCall[],
   stream?: AgentStreamWriter,
-): Promise<void> {
+): Promise<'ok' | 'paused' | 'detached'> {
+  let sawDetached = false;
   for (let i = 0; i < toolCalls.length; i++) {
     const result = await runSingleTool(run, runtime, context, toolCalls, i, stream);
     if (result === 'paused') {
-      return;
+      return result;
+    }
+    if (result === 'detached') {
+      sawDetached = true;
     }
   }
+
+  return sawDetached ? 'detached' : 'ok';
 }
 
 async function runSingleTool(
@@ -108,7 +117,7 @@ async function runSingleTool(
   toolCalls: ToolCall[],
   toolIndex: number,
   stream?: AgentStreamWriter,
-): Promise<'ok' | 'paused'> {
+): Promise<'ok' | 'paused' | 'detached'> {
   const toolCall = toolCalls[toolIndex] as ToolCall;
   const toolCallId = resolveToolCallId(toolCall, toolIndex);
   const tool = runtime.tools.get(toolCall.name);
@@ -158,6 +167,10 @@ async function runSingleTool(
   if (pausePayload?.type === 'hil_pause') {
     run.state.pendingPause = pausePayload.request;
     return 'paused';
+  }
+
+  if (readTaskRunLaunchResult(toolMessage.artifact)) {
+    return 'detached';
   }
 
   return 'ok';

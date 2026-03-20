@@ -74,6 +74,7 @@ export interface TaskRunStartInput {
 
 export interface TaskRunUpdateInput {
   latestActivity?: string;
+  toolUseCount?: number;
 }
 
 export interface TaskRunResumeInput {

@@ -13,4 +13,8 @@ describe('cli HIL input shortcuts', () => {
     expect(resolveHilInputAction('', {escape: true}, 'reject-feedback')).toBe('permission-reject-silent');
     expect(resolveHilInputAction('\r', {return: true}, 'reject-feedback')).toBe('permission-reject-send');
   });
+
+  it('should treat space as selection activation during AskUser reviews', () => {
+    expect(resolveHilInputAction(' ', {})).toBe('activate-selection');
+  });
 });

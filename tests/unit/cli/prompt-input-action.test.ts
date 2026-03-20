@@ -14,7 +14,18 @@ describe('cli prompt input action', () => {
   });
 
   test('should keep plain enter as submit', () => {
-    expect(resolvePromptInputAction('\r', {})).toBe('submit');
+    expect(resolvePromptInputAction('', {return: true})).toBe('submit');
+    expect(resolvePromptInputAction('\r', {return: true})).toBe('submit');
+    expect(resolvePromptInputAction('\n', {return: true})).toBe('submit');
+  });
+
+  test('should treat bare newline chunks without enter metadata as pasted text', () => {
+    expect(resolvePromptInputAction('\n', {})).toBe('insert-text');
+    expect(resolvePromptInputAction('\r', {})).toBe('insert-text');
+  });
+
+  test('should treat pasted chunks with enter metadata as text when they contain content', () => {
+    expect(resolvePromptInputAction('line 1\nline 2', {return: true})).toBe('insert-text');
   });
 
   test('should treat delete key as backspace for current terminal compatibility', () => {
@@ -34,5 +45,9 @@ describe('cli prompt input action', () => {
 
   test('should treat plain text as insert action', () => {
     expect(resolvePromptInputAction('x', {})).toBe('insert-text');
+  });
+
+  test('should treat multi-line paste payloads as text instead of submit', () => {
+    expect(resolvePromptInputAction('line 1\nline 2', {})).toBe('insert-text');
   });
 });

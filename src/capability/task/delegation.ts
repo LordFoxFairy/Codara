@@ -229,7 +229,7 @@ export async function buildDelegatedChildOptions(
 
   // Inject activity forward middleware if parent provided a callback
   if (options.onChildToolActivity) {
-    baseMiddleware.push(createActivityForwardMiddleware(options.onChildToolActivity));
+    baseMiddleware.unshift(createActivityForwardMiddleware(options.onChildToolActivity));
   }
 
   return {

@@ -3,6 +3,7 @@ import type {CodaraRuntimeEvent} from '@/index';
 import {parseAskUserResult} from '@core/middleware';
 import {parseHILToolMessagePayload} from '@core/middleware/hil';
 import {readMessageText} from '@shared/messages';
+import {readTaskRunLaunchResult} from '@shared/task-run-launch';
 import {TOOL_NAMES} from '@shared/tool-display';
 import type {CliActiveTurn, CliNotice} from '../app/view-state';
 import {formatTokenCount} from '../utils/format';
@@ -47,6 +48,7 @@ export interface BuildTranscriptItemsInput {
   notices: readonly CliNotice[];
   activeTurn?: CliActiveTurn;
   runtimeEvents?: readonly CodaraRuntimeEvent[];
+  nowTimestamp?: string;
   limit?: number;
 }
 
@@ -63,13 +65,25 @@ export const DEFAULT_TRANSCRIPT_LIMIT = 20;
 export function buildTranscriptItems(input: BuildTranscriptItemsInput): TranscriptItem[] {
   const toolLookup = createToolCallLookup(input.coreMessages);
   const preferRuntimeSteps = (input.runtimeEvents?.length ?? 0) > 0 && input.activeTurn !== undefined;
+  const suppressActiveTurnResponse = shouldSuppressAssistantTaskLaunchChatter(
+    input.activeTurn?.response,
+    input.activeTurn?.responseRole,
+    input.runtimeEvents,
+    input.activeTurn?.pendingTaskLaunch,
+  );
   const items = [
     ...input.notices.map((notice) => ({
       id: notice.id,
       role: notice.level,
       content: notice.content,
     })),
-    ...input.coreMessages.flatMap((message, index) => buildCoreMessageItems(message, index, toolLookup, preferRuntimeSteps)),
+    ...input.coreMessages.flatMap((message, index) => buildCoreMessageItems(
+      message,
+      index,
+      input.coreMessages,
+      toolLookup,
+      preferRuntimeSteps,
+    )),
     ...(input.activeTurn
       ? [
           {
@@ -80,11 +94,11 @@ export function buildTranscriptItems(input: BuildTranscriptItemsInput): Transcri
           {
             id: `${input.activeTurn.id}-response`,
             role: input.activeTurn.responseRole,
-            content: input.activeTurn.response,
+            content: suppressActiveTurnResponse ? '' : input.activeTurn.response,
           },
         ]
       : []),
-    ...(preferRuntimeSteps ? buildRuntimeEventItems(input.runtimeEvents ?? []) : []),
+    ...(preferRuntimeSteps ? buildRuntimeEventItems(input.runtimeEvents ?? [], input.nowTimestamp) : []),
   ];
 
   return items
@@ -106,7 +120,7 @@ export function buildSolidifiedItemsFromRange(
   for (let i = startIndex; i < endIndex; i++) {
     const message = coreMessages[i];
     if (!message) continue;
-    items.push(...buildCoreMessageItems(message, i, toolLookup, false));
+    items.push(...buildCoreMessageItems(message, i, coreMessages, toolLookup, false));
   }
   return items.filter((item) => item.content);
 }
@@ -117,8 +131,15 @@ export function buildSolidifiedItemsFromRange(
 export function buildActiveItems(input: {
   activeTurn?: CliActiveTurn;
   runtimeEvents?: readonly CodaraRuntimeEvent[];
+  nowTimestamp?: string;
 }): TranscriptItem[] {
-  const preferRuntimeSteps = (input.runtimeEvents?.length ?? 0) > 0 && input.activeTurn !== undefined;
+  const preferRuntimeSteps = (input.runtimeEvents?.length ?? 0) > 0;
+  const suppressActiveTurnResponse = shouldSuppressAssistantTaskLaunchChatter(
+    input.activeTurn?.response,
+    input.activeTurn?.responseRole,
+    input.runtimeEvents,
+    input.activeTurn?.pendingTaskLaunch,
+  );
   const thinkingItem = input.activeTurn?.thinking
     ? [{
         id: `${input.activeTurn.id}-thinking`,
@@ -126,24 +147,25 @@ export function buildActiveItems(input: {
         content: `💭 Thinking…\n${input.activeTurn.thinking.slice(-200)}`,
       }]
     : [];
-  const items: TranscriptItem[] = [
-    ...(input.activeTurn
-      ? [
-          {
-            id: `${input.activeTurn.id}-prompt`,
-            role: 'user' as const,
-            content: input.activeTurn.prompt,
-          },
-          ...thinkingItem,
-          {
-            id: `${input.activeTurn.id}-response`,
-            role: input.activeTurn.responseRole,
-            content: input.activeTurn.response,
-          },
-        ]
-      : []),
-    ...(preferRuntimeSteps ? buildRuntimeEventItems(input.runtimeEvents ?? []) : []),
-  ];
+  const runtimeItems = preferRuntimeSteps ? buildRuntimeEventItems(input.runtimeEvents ?? [], input.nowTimestamp) : [];
+  const promptAndResponseItems: TranscriptItem[] = input.activeTurn
+    ? [
+        {
+          id: `${input.activeTurn.id}-prompt`,
+          role: 'user' as const,
+          content: input.activeTurn.prompt,
+        },
+        ...thinkingItem,
+        {
+          id: `${input.activeTurn.id}-response`,
+          role: input.activeTurn.responseRole,
+          content: suppressActiveTurnResponse ? '' : input.activeTurn.response,
+        },
+      ]
+    : [];
+  const items: TranscriptItem[] = input.activeTurn?.kind === 'task_completion'
+    ? [...runtimeItems, ...promptAndResponseItems]
+    : [...promptAndResponseItems, ...runtimeItems];
   return items.filter((item) => item.content);
 }
 
@@ -178,7 +200,71 @@ export function hasTranscriptContent(input: HasTranscriptContentInput): boolean 
 
 const MAX_CHILD_ACTIVITY_LINES = 3;
 
-function buildRuntimeEventItems(events: readonly CodaraRuntimeEvent[]): TranscriptItem[] {
+function shouldSuppressAssistantTaskLaunchChatter(
+  response: string | undefined,
+  role: TranscriptRole | undefined,
+  runtimeEvents: readonly CodaraRuntimeEvent[] | undefined,
+  pendingTaskLaunch: boolean | undefined = false,
+): boolean {
+  if (role !== 'assistant') {
+    return false;
+  }
+
+  const text = response?.trim();
+  if (!text) {
+    return false;
+  }
+
+  if (pendingTaskLaunch) {
+    return true;
+  }
+
+  const hasLiveTaskRuntime = (runtimeEvents ?? []).some((event) => (
+    event.kind === 'task'
+    && ((event.phase === 'start' && event.status === 'running') || (event.phase === 'update' && event.status === 'paused'))
+  ));
+  if (!hasLiveTaskRuntime) {
+    return false;
+  }
+
+  return containsTaskLaunchChatter(text);
+}
+
+function shouldSuppressSolidifiedTaskLaunchChatter(
+  message: AIMessage,
+  previousMessage: BaseMessage | undefined,
+  toolLookup: Map<string, ToolCall>,
+): boolean {
+  const text = readMessageText(message);
+  if (!text) {
+    return false;
+  }
+
+  if (messageContainsTaskToolCall(message)) {
+    return true;
+  }
+
+  if (!ToolMessage.isInstance(previousMessage)) {
+    return false;
+  }
+
+  const previousToolName = resolveToolMessageName(previousMessage, toolLookup);
+  if (!isTaskToolName(previousToolName) || !readTaskRunLaunchResult(previousMessage.artifact)) {
+    return false;
+  }
+
+  return shouldSuppressAssistantTaskLaunchChatter(text, 'assistant', [{
+    id: 'task-launch',
+    sessionId: 'task-launch',
+    timestamp: new Date(0).toISOString(),
+    kind: 'task',
+    phase: 'start',
+    status: 'running',
+    label: 'Delegating task',
+  }]);
+}
+
+function buildRuntimeEventItems(events: readonly CodaraRuntimeEvent[], nowTimestamp?: string): TranscriptItem[] {
   const startEvents = new Map<string, CodaraRuntimeEvent>();
   const pairedEndIds = new Set<string>();
   const taskToolIds = new Set<string>();
@@ -205,6 +291,12 @@ function buildRuntimeEventItems(events: readonly CodaraRuntimeEvent[]): Transcri
       taskChildActivity.set(event.parentId, activities);
     }
   }
+
+  const runtimeTaskLabels = new Set(
+    Array.from(startEvents.values())
+      .filter((event) => event.kind === 'task' && event.phase === 'start' && !event.parentId)
+      .map((event) => event.label),
+  );
 
   // Inject team event items early so they appear before tool/task items in the stream
   for (const event of events) {
@@ -273,6 +365,15 @@ function buildRuntimeEventItems(events: readonly CodaraRuntimeEvent[]): Transcri
       const startEvent = startEvents.get(event.parentId);
       if (startEvent) {
         pairedEndIds.add(event.id);
+        if (isPendingTaskPlaceholderStart(startEvent)) {
+          continue;
+        }
+        if (!isRunIdBackedTaskStart(startEvent)) {
+          continue;
+        }
+        if (isSyntheticTaskStart(startEvent, startEvents) && runtimeTaskLabels.has(startEvent.label)) {
+          continue;
+        }
         pairedTaskEnds.push({startEvent, endEvent: event});
         continue;
       }
@@ -321,12 +422,18 @@ function buildRuntimeEventItems(events: readonly CodaraRuntimeEvent[]): Transcri
     const elapsed = formatElapsed(startEvent.timestamp, endEvent.timestamp);
     const status = endEvent.status === 'error' ? 'error' : 'done';
     const elapsedSec = computeElapsedSeconds(startEvent.timestamp, endEvent.timestamp);
+    const childActivities = taskChildActivity.get(startEvent.id) ?? [];
+    const toolActivityLabels = childActivities
+      .filter((activity) => !isTaskLifecycleUpdate(activity.label))
+      .map((activity) => activity.label);
     const summary = endEvent.status === 'error'
       ? `Failed (${elapsedSec}s)`
       : endEvent.status === 'paused'
         ? 'Waiting for review'
         : formatTaskDoneSummary(elapsedSec, endEvent.detail);
-    const {outputLines, allOutputLines, totalOutputLines} = buildToolOutput(TOOL_NAMES.TASK, status, endEvent.detail);
+    const taskOutput = toolActivityLabels.length > 0
+      ? buildTaskActivityOutput(toolActivityLabels)
+      : {outputLines: undefined, allOutputLines: undefined, totalOutputLines: 0};
     items.push({
       id: activeId(startEvent.id),
       role: 'task',
@@ -339,9 +446,9 @@ function buildRuntimeEventItems(events: readonly CodaraRuntimeEvent[]): Transcri
         status: status as 'done' | 'error',
         elapsed,
         summaryLine: summary,
-        outputLines,
-        allOutputLines,
-        totalOutputLines,
+        ...(taskOutput.outputLines ? {outputLines: taskOutput.outputLines} : {}),
+        ...(taskOutput.allOutputLines ? {allOutputLines: taskOutput.allOutputLines} : {}),
+        ...(typeof taskOutput.totalOutputLines === 'number' ? {totalOutputLines: taskOutput.totalOutputLines} : {}),
       },
     });
   }
@@ -383,6 +490,15 @@ function buildRuntimeEventItems(events: readonly CodaraRuntimeEvent[]): Transcri
 
     // Unpaired task start → collected below for grouped rendering
     if (startEvent.kind === 'task') {
+      if (isPendingTaskPlaceholderStart(startEvent)) {
+        continue;
+      }
+      if (!isRunIdBackedTaskStart(startEvent)) {
+        continue;
+      }
+      if (isSyntheticTaskStart(startEvent, startEvents) && runtimeTaskLabels.has(startEvent.label)) {
+        continue;
+      }
       unpairedTaskStarts.push({id, startEvent});
       continue;
     }
@@ -411,19 +527,22 @@ function buildRuntimeEventItems(events: readonly CodaraRuntimeEvent[]): Transcri
   for (const {id: taskId, startEvent} of unpairedTaskStarts) {
     const agentType = extractSubagentType(startEvent.label);
     const childActivities = taskChildActivity.get(taskId) ?? [];
-    const activityLines = formatChildActivityLines(childActivities);
-    const summaryLine = activityLines.length > 0 ? activityLines.join('\n') : '…';
+    const runningDisplay = buildRunningTaskDisplay(startEvent, childActivities, nowTimestamp);
     items.push({
       id: activeId(taskId),
       role: 'task',
-      content: `⚙ ${agentType}(${extractTaskArgs(startEvent.label)})\n${summaryLine}`,
+      content: `⚙ ${agentType}(${extractTaskArgs(startEvent.label)})\n${runningDisplay.summaryLine}`,
       toolMeta: {
         toolName: TOOL_NAMES.TASK,
         displayName: agentType,
         icon: '⚙',
         args: extractTaskArgs(startEvent.label),
         status: 'running',
-        summaryLine,
+        ...(runningDisplay.elapsed ? {elapsed: runningDisplay.elapsed} : {}),
+        summaryLine: runningDisplay.summaryLine,
+        ...(runningDisplay.outputLines ? {outputLines: runningDisplay.outputLines} : {}),
+        ...(runningDisplay.allOutputLines ? {allOutputLines: runningDisplay.allOutputLines} : {}),
+        ...(typeof runningDisplay.totalOutputLines === 'number' ? {totalOutputLines: runningDisplay.totalOutputLines} : {}),
       },
     });
   }
@@ -431,17 +550,78 @@ function buildRuntimeEventItems(events: readonly CodaraRuntimeEvent[]): Transcri
   return items;
 }
 
-/** Format child agent tool activity lines for display under a running task. */
-function formatChildActivityLines(activities: CodaraRuntimeEvent[]): string[] {
-  if (activities.length === 0) return [];
-  // Show the most recent activities (tail)
-  const recent = activities.slice(-MAX_CHILD_ACTIVITY_LINES);
-  const lines = recent.map(a => `  ⎿ ${a.label}`);
-  const overflow = activities.length - MAX_CHILD_ACTIVITY_LINES;
-  if (overflow > 0) {
-    lines.unshift(`  … +${overflow} more`);
+function isSyntheticTaskStart(
+  startEvent: CodaraRuntimeEvent,
+  startEvents: ReadonlyMap<string, CodaraRuntimeEvent>,
+): boolean {
+  if (startEvent.kind !== 'task' || startEvent.phase !== 'start' || !startEvent.parentId) {
+    return false;
   }
-  return lines;
+
+  return startEvents.get(startEvent.parentId)?.kind === 'tool';
+}
+
+function isPendingTaskPlaceholderStart(startEvent: CodaraRuntimeEvent): boolean {
+  return startEvent.kind === 'task'
+    && startEvent.phase === 'start'
+    && startEvent.detail === 'pending';
+}
+
+function isRunIdBackedTaskStart(startEvent: CodaraRuntimeEvent): boolean {
+  return startEvent.kind === 'task'
+    && startEvent.phase === 'start'
+    && startEvent.id.startsWith('task-run:');
+}
+
+function buildRunningTaskDisplay(
+  startEvent: CodaraRuntimeEvent,
+  activities: CodaraRuntimeEvent[],
+  nowTimestamp?: string,
+): {
+  summaryLine: string;
+  elapsed?: string;
+  outputLines?: string[];
+  allOutputLines?: string[];
+  totalOutputLines?: number;
+} {
+  const lifecycleUpdate = [...activities].reverse().find((activity) => isTaskLifecycleUpdate(activity.label));
+  const toolActivities = activities.filter((activity) => !isTaskLifecycleUpdate(activity.label));
+  const activityLabels = toolActivities.map((activity) => activity.label);
+  const recentLabels = activityLabels.slice(-MAX_CHILD_ACTIVITY_LINES);
+  const latestTimestamp = activities[activities.length - 1]?.timestamp ?? nowTimestamp ?? startEvent.timestamp;
+  const elapsed = formatElapsed(startEvent.timestamp, latestTimestamp);
+  const statusLabel = lifecycleUpdate?.label === 'Delegated task waiting for review'
+    ? 'Waiting for review'
+    : 'Running';
+  const statParts = [`${elapsed}`];
+  if (toolActivities.length > 0) {
+    statParts.push(`${toolActivities.length} tool activit${toolActivities.length === 1 ? 'y' : 'ies'}`);
+  }
+
+  return {
+    summaryLine: `${statusLabel} (${statParts.join(' · ')})`,
+    elapsed,
+    ...(recentLabels.length > 0 ? {outputLines: recentLabels} : {}),
+    ...(activityLabels.length > 0 ? {allOutputLines: activityLabels} : {}),
+    ...(activityLabels.length > 0 ? {totalOutputLines: activityLabels.length} : {}),
+  };
+}
+
+function buildTaskActivityOutput(activityLabels: string[]): {
+  outputLines?: string[];
+  allOutputLines?: string[];
+  totalOutputLines?: number;
+} {
+  const visible = activityLabels.slice(-MAX_CHILD_ACTIVITY_LINES);
+  return {
+    ...(visible.length > 0 ? {outputLines: visible} : {}),
+    ...(activityLabels.length > 0 ? {allOutputLines: activityLabels} : {}),
+    ...(activityLabels.length > 0 ? {totalOutputLines: activityLabels.length} : {}),
+  };
+}
+
+function isTaskLifecycleUpdate(label: string): boolean {
+  return label.startsWith('Delegated task ');
 }
 
 function extractSubagentType(label: string): string {
@@ -741,13 +921,15 @@ function mapCoreMessageRole(message: BaseMessage): TranscriptRole {
 function buildCoreMessageItems(
   message: BaseMessage,
   index: number,
+  allMessages: readonly BaseMessage[],
   toolLookup: Map<string, ToolCall>,
   preferRuntimeSteps: boolean,
 ): TranscriptItem[] {
   const messageId = String(message.id ?? `${message.type}-${index}`);
 
   if (AIMessage.isInstance(message)) {
-    return buildAssistantItems(message, messageId);
+    const previousMessage = index > 0 ? allMessages[index - 1] : undefined;
+    return buildAssistantItems(message, messageId, previousMessage, toolLookup);
   }
 
   if (ToolMessage.isInstance(message)) {
@@ -765,10 +947,15 @@ function buildCoreMessageItems(
   }] : [];
 }
 
-function buildAssistantItems(message: AIMessage, messageId: string): TranscriptItem[] {
+function buildAssistantItems(
+  message: AIMessage,
+  messageId: string,
+  previousMessage: BaseMessage | undefined,
+  toolLookup: Map<string, ToolCall>,
+): TranscriptItem[] {
   const items: TranscriptItem[] = [];
   const text = readMessageText(message);
-  if (text) {
+  if (text && !shouldSuppressSolidifiedTaskLaunchChatter(message, previousMessage, toolLookup)) {
     items.push({
       id: messageId,
       role: 'assistant',
@@ -780,6 +967,25 @@ function buildAssistantItems(message: AIMessage, messageId: string): TranscriptI
   // Tool calls are rendered via ToolMessage results (buildToolResultItems)
   // or via runtime events during streaming — no need to show them separately here.
   return items;
+}
+
+function containsTaskLaunchChatter(text: string): boolean {
+  const launchChatterSignals = [
+    '任务已启动',
+    '委派信息',
+    '正在等待 subagent',
+    'subagent 已启动',
+    '我已使用 Task 工具委派',
+    'I used the Task tool',
+    'Delegated task started',
+    'waiting for the subagent',
+  ];
+
+  return launchChatterSignals.some((signal) => text.includes(signal));
+}
+
+function messageContainsTaskToolCall(message: AIMessage): boolean {
+  return Array.isArray(message.tool_calls) && message.tool_calls.some((toolCall) => isTaskToolName(toolCall?.name));
 }
 
 function readTokenAnnotation(message: AIMessage): string | undefined {
@@ -820,6 +1026,9 @@ function buildToolResultItems(
 
   const resolvedName = resolveToolMessageName(message, toolLookup);
   if (isInteractionToolName(resolvedName) || parseAskUserResult(text)) {
+    return [];
+  }
+  if (isTaskToolName(resolvedName) && readTaskRunLaunchResult(message.artifact)) {
     return [];
   }
   const role: TranscriptRole = isTaskToolName(resolvedName) ? 'task' : 'tool';
@@ -1146,5 +1355,8 @@ function toTitleCase(value: string): string {
 }
 
 function isTaskToolName(toolName: string | undefined): boolean {
-  return toolName === TOOL_NAMES.TASK_CREATE || toolName === TOOL_NAMES.TASK_UPDATE || toolName === TOOL_NAMES.TASK_LIST;
+  return toolName === TOOL_NAMES.TASK
+    || toolName === TOOL_NAMES.TASK_CREATE
+    || toolName === TOOL_NAMES.TASK_UPDATE
+    || toolName === TOOL_NAMES.TASK_LIST;
 }

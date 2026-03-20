@@ -10,6 +10,7 @@ import {createTaskFileStore} from '@capability/task/store';
 import {loadModelRoutingConfigFromPath, resolveCodaraPath} from '@integration/provider';
 import {createCodaraGuidelinesSource, type GuidelinesSource} from '@context/instructions/guidelines';
 import {createCodaraPromptSource, type PromptSource} from '@context/prompts/prompt-source';
+import {buildBaseSystemMessage} from '@context/session-bundle/base-system-message';
 import {createCodaraSkillsSource} from '@capability/skill';
 import {createSkillCodaraCommands} from '@capability/command/runtime/skill-commands';
 import {createCodaraCommandRunner, type CodaraCommandResult} from '@capability/command';
@@ -19,6 +20,7 @@ import {
 } from '@durability/session';
 import type {CodaraRuntimeEvent, CodaraRuntimeEventListener} from '@observability/events';
 import {resolveWorkspaceRoot} from '@config/workspace';
+import {resolveTeamsEnabled} from '@config/settings';
 import {HookRegistryImpl, HookPipeline, createHookExecutor} from '@observability/hook';
 import type {HookSource, HookRegistry, SessionLifecycleHooks, AgentLifecycleHooks} from '@observability/hook';
 import {loadMcpConfig, createMcpManager, createMcpLangChainTools, type McpManager} from '@integration/mcp';
@@ -82,6 +84,16 @@ export async function createCodaraRuntime(options: CodaraRuntimeOptions = {}): P
   const promptSource = createCodaraPromptSource({
     cwd: options.cwd, projectRoot: options.projectRoot, userHome: options.userHome,
   });
+  const skills = resolveCodaraSkills(options);
+  const skillsSource = skills ? createCodaraSkillsSource(skills) : undefined;
+  const autoMemory = resolveCodaraAutoMemory(options);
+  const baseSystemMessage = await buildBaseSystemMessage({
+    promptSource,
+    guidelinesSource,
+    skillsSource,
+    autoMemorySource: autoMemory?.source,
+    memoryRootDir: autoMemory?.rootDir,
+  });
   const taskStore = options.taskStore ?? createTaskFileStore({
     rootDir: path.join(runtimeStatePath, 'tasks'),
   });
@@ -132,12 +144,21 @@ export async function createCodaraRuntime(options: CodaraRuntimeOptions = {}): P
   }
 
   // 6. Team system
-  const teamSystem = await assembleTeamSystem({options, runtimeStatePath, projectRoot, catalog, approvalStore});
+  const teamsEnabled = typeof options.teams === 'boolean'
+    ? options.teams
+    : resolveTeamsEnabled({
+        cwd: options.cwd,
+        projectRoot: options.projectRoot,
+        userHome: options.userHome,
+      });
+  const teamSystem = teamsEnabled
+    ? await assembleTeamSystem({options, runtimeStatePath, projectRoot, catalog, approvalStore, baseSystemMessage})
+    : undefined;
 
   // 7. Middleware chain
   const runtimeMiddlewares = createRuntimeDefaultMiddlewares({
     options, runtimeTools, taskStore, taskRunStore, taskRuntime, taskCheckpointer: runtimeCheckpointer, approvalStore, logging, catalog, promptSource, guidelinesSource, hookPipeline,
-    teamRegistry: teamSystem.teamRegistry, teamRuntime: teamSystem.teamRuntime, teamSharedState: teamSystem.sharedState,
+    teamRegistry: teamSystem?.teamRegistry, teamRuntime: teamSystem?.teamRuntime, teamSharedState: teamSystem?.sharedState,
     channelRegistry: options.channelRegistry,
   });
 
@@ -157,7 +178,7 @@ export async function createCodaraRuntime(options: CodaraRuntimeOptions = {}): P
     restore: options.restore ?? 'latest',
   }, undefined, {
     promptSource, guidelinesSource, hookPipeline, hookRegistry, mcpManager,
-    teamRegistry: teamSystem.teamRegistry, teamRuntime: teamSystem.teamRuntime,
+    teamRegistry: teamSystem?.teamRegistry, teamRuntime: teamSystem?.teamRuntime,
     taskRunStore, taskRuntime, approvalStore,
     channelRegistry: options.channelRegistry,
   });
@@ -433,8 +454,12 @@ export function assembleCodara(
     },
     resumeApproval,
     resumeApprovalStream,
-    getTeamSummaries: () => getTeamSummaries(preloadedSources?.teamRegistry),
-    getTeamDetail: (teamId: string) => getTeamDetail(preloadedSources?.teamRegistry, teamId),
+    getTeamSummaries: () => getTeamSummaries(preloadedSources?.teamRegistry, session.getState().sessionId),
+    getTeamDetail: (teamId: string) => getTeamDetail(
+      preloadedSources?.teamRegistry,
+      teamId,
+      session.getState().sessionId,
+    ),
     getChannelRegistry: () => channelRegistry,
     dispose,
   };

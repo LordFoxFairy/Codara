@@ -78,7 +78,7 @@ describe('deriveActiveTeams', () => {
     expect(deriveActiveTeams(summaries, baseTime + 2000)).toHaveLength(1);
   });
 
-  it('sorts running teams before completed teams and limits to 3', () => {
+  it('shows the current session teams in priority order when multiple active teams exist', () => {
     const summaries = [
       createTeamSummary({
         teamId: 'done',
@@ -106,9 +106,8 @@ describe('deriveActiveTeams', () => {
 
     const teams = deriveActiveTeams(summaries, baseTime + 5000);
     expect(teams).toHaveLength(3);
+    expect(teams.map((team) => team.teamId)).toEqual(['run-3', 'run-2', 'run-1']);
     expect(teams[0]!.status).toBe('running');
-    expect(teams[1]!.status).toBe('running');
-    expect(teams[2]!.status).toBe('running');
   });
 
   it('counts all matching teams even when visible rows are capped', () => {
@@ -146,6 +145,7 @@ describe('deriveActiveTeams', () => {
 
     const snapshot = deriveActiveTeamSnapshot(summaries, baseTime + 6000);
     expect(snapshot.activeTeams).toHaveLength(3);
+    expect(snapshot.activeTeams.map((team) => team.teamId)).toEqual(['run-1', 'run-2', 'run-3']);
     expect(snapshot.runningCount).toBe(3);
     expect(snapshot.doneCount).toBe(1);
     expect(snapshot.errorCount).toBe(1);

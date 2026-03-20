@@ -100,7 +100,7 @@ export interface Session {
   getAvailableToolNames(): string[];
   subscribeRuntimeEvents(listener: CodaraRuntimeEventListener): () => void;
   hydrate(): Promise<AgentState>;
-  compactConversation(options?: {instructions?: string}): Promise<AgentState>;
+  compactConversation(options?: {instructions?: string}): Promise<ConversationCompactionResult>;
   fork(options?: {id?: string; sessionId?: string; store?: SessionStore}): Promise<Session>;
   invoke(input?: AgentInput, config?: AgentInvokeConfig): Promise<AgentResult>;
   stream(input?: AgentInput, config?: AgentStreamConfig): AsyncGenerator<AgentStreamOutput, AgentResult, void>;
@@ -113,6 +113,12 @@ export interface Session {
   compactCheckpoints(options?: CompactOptions): Promise<void>;
   reset(): Promise<void>;
   dispose(): Promise<void>;
+}
+
+export interface ConversationCompactionResult {
+  state: AgentState;
+  outcome: 'compacted' | 'skipped';
+  reason?: 'hook' | 'noop';
 }
 
 export function createSession(options: CreateSessionOptions): Session {
@@ -494,7 +500,11 @@ export function createSession(options: CreateSessionOptions): Session {
       );
       if (preResult?.vetoed) {
         runtimeEvents.summaryFinished(summaryEventId, 'done', 'Context compact skipped by hook');
-        return current;
+        return {
+          state: current,
+          outcome: 'skipped',
+          reason: 'hook',
+        } satisfies ConversationCompactionResult;
       }
     }
 
@@ -514,7 +524,11 @@ export function createSession(options: CreateSessionOptions): Session {
     if (!compacted) {
       await sync(current);
       runtimeEvents.summaryFinished(summaryEventId, 'done', 'Context compact skipped');
-      return current;
+      return {
+        state: current,
+        outcome: 'skipped',
+        reason: 'noop',
+      } satisfies ConversationCompactionResult;
     }
 
     await putManualCheckpoint(checkpointer, sessionId, {
@@ -540,7 +554,10 @@ export function createSession(options: CreateSessionOptions): Session {
     }
 
     runtimeEvents.summaryFinished(summaryEventId, 'done', 'Context compacted');
-    return next;
+    return {
+      state: next,
+      outcome: 'compacted',
+    } satisfies ConversationCompactionResult;
   }
 
   async function runHilResume<T>(operation: () => Promise<T>, pendingDescription: string | undefined): Promise<T> {

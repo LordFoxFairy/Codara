@@ -43,7 +43,6 @@ import type {
   CodaraMiddlewareOptions,
   CodaraRuntimeOptions,
 } from '../types';
-import {createInstructionContextPreparer} from './context';
 import {createCodaraChatModel, type CodaraModelCatalog} from './runtime';
 
 const DEFAULT_RUNTIME_FILE_LOGGING_ENABLED = true;
@@ -158,10 +157,6 @@ export function createRuntimeDefaultMiddlewares(input: {
           ...(input.catalog ? {catalog: input.catalog} : {}),
         })),
         tools: input.runtimeTools,
-        prepareContext: createInstructionContextPreparer({
-          promptSource: input.promptSource,
-          guidelinesSource: input.guidelinesSource,
-        }),
         middleware: createDelegatedRuntimeMiddlewares({
           ...input,
           tools: input.runtimeTools,

@@ -350,6 +350,7 @@ function applyTaskRunUpdate(record: TaskRunRecord, input: TaskRunUpdateInput, no
   return {
     ...record,
     ...(input.latestActivity !== undefined ? {latestActivity: normalizeOptionalText(input.latestActivity)} : {}),
+    ...(typeof input.toolUseCount === 'number' ? {toolUseCount: input.toolUseCount} : {}),
     updatedAt: now,
   };
 }

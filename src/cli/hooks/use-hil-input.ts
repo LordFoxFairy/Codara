@@ -13,6 +13,7 @@ interface UseHilInputOptions {
   onSelectPreviousApproval?: () => void;
   onSelectNextApproval?: () => void;
   onToggleFocus: () => void;
+  onActivateSelection?: () => void;
   onInsertText: (input: string) => void;
   onInsertNewline: () => void;
   onBackspace: () => void;
@@ -38,6 +39,7 @@ export type HilInputAction =
   | 'toggle-focus'
   | 'move-left'
   | 'move-right'
+  | 'activate-selection'
   | 'insert-newline'
   | 'submit'
   | 'backspace'
@@ -104,6 +106,10 @@ export function resolveHilInputAction(
     return 'select-next-approval';
   }
 
+  if (!key.ctrl && !key.meta && input === ' ') {
+    return 'activate-selection';
+  }
+
   if (key.leftArrow) {
     return 'move-left';
   }
@@ -139,6 +145,7 @@ export function useHilInput(options: UseHilInputOptions): void {
     onSelectPreviousApproval,
     onSelectNextApproval,
     onToggleFocus,
+    onActivateSelection,
     onInsertText,
     onInsertNewline,
     onBackspace,
@@ -207,6 +214,15 @@ export function useHilInput(options: UseHilInputOptions): void {
 
     if (action === 'toggle-focus') {
       onToggleFocus();
+      return;
+    }
+
+    if (action === 'activate-selection') {
+      if (onActivateSelection) {
+        onActivateSelection();
+        return;
+      }
+      onInsertText(input);
       return;
     }
 

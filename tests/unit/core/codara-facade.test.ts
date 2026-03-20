@@ -23,6 +23,7 @@ const createRuntimeForTest = (options: Parameters<typeof createCodaraRuntime>[0]
   createCodaraRuntime({
     ...options,
     autoMemory: false,
+    teams: options?.teams ?? true,
   })
 );
 
@@ -746,14 +747,59 @@ describe('Codara facade runtime', () => {
     }));
   });
 
+  it('should scope team summaries and detail to the current session runtime teams', async () => {
+    const registry = new TeamRegistry();
+    const ownTeam = registry.createTeam({
+      name: 'own-team',
+      goal: 'Visible in this session',
+      createdBy: 'session-own',
+    });
+    const foreignTeam = registry.createTeam({
+      name: 'foreign-team',
+      goal: 'Hidden from this session',
+      createdBy: 'session-other',
+    });
+    registry.updateTeamStatus(ownTeam.teamId, 'running');
+    registry.updateTeamStatus(foreignTeam.teamId, 'running');
+
+    const codara = assembleCodara({
+      sessionId: 'session-own',
+      model: new EchoModel() as unknown as BaseChatModel,
+      skills: false,
+      autoMemory: false,
+      hil: false,
+    }, undefined, {
+      teamRegistry: registry,
+    });
+
+    try {
+      expect(codara.getTeamSummaries()).toEqual([
+        expect.objectContaining({
+          teamId: ownTeam.teamId,
+          name: 'own-team',
+          status: 'running',
+        }),
+      ]);
+      expect(codara.getTeamDetail(ownTeam.teamId)).toEqual(expect.objectContaining({
+        teamId: ownTeam.teamId,
+        name: 'own-team',
+      }));
+      expect(codara.getTeamDetail(foreignTeam.teamId)).toBeUndefined();
+    } finally {
+      await codara.dispose();
+    }
+  });
+
   it('should restore persisted team recent messages into reopened runtime logs', async () => {
     const projectRoot = await mkdtemp(path.join(tmpdir(), 'codara-runtime-team-logs-reopen-'));
     const runtimeStatePath = path.join(projectRoot, '.codara');
+    const sessionId = 'runtime-team-logs-reopen-session';
     const persistence = new TeamPersistence(runtimeStatePath);
     const registry = new TeamRegistry();
     const team = registry.createTeam({
       name: 'restored-team',
       goal: 'Review restored logs',
+      createdBy: sessionId,
     });
     registry.updateTeamStatus(team.teamId, 'running');
     registry.updateTeamStatus(team.teamId, 'paused');
@@ -777,7 +823,7 @@ describe('Codara facade runtime', () => {
     const runtime = await createRuntimeForTest({
       cwd: projectRoot,
       projectRoot,
-      sessionId: 'runtime-team-logs-reopen-session',
+      sessionId,
       model: new EchoModel() as unknown as BaseChatModel,
       skills: false,
     });
@@ -795,6 +841,61 @@ describe('Codara facade runtime', () => {
       expect(logs.output).toContain('restored handoff payload');
     } finally {
       await runtime.dispose();
+      await rm(projectRoot, {recursive: true, force: true});
+    }
+  });
+
+  it('should keep the team command unavailable when teams are disabled', async () => {
+    const projectRoot = await mkdtemp(path.join(tmpdir(), 'codara-runtime-teams-disabled-'));
+
+    try {
+      const runtime = await createCodaraRuntime({
+        cwd: projectRoot,
+        projectRoot,
+        autoMemory: false,
+        teams: false,
+        model: new EchoModel() as unknown as BaseChatModel,
+        skills: false,
+      });
+
+      const result = await runtime.executeCommand('/team list');
+
+      expect(result.ok).toBe(false);
+      expect(result.output).toContain('Team system not initialized');
+      expect(runtime.getTeamSummaries()).toEqual([]);
+
+      await runtime.dispose();
+    } finally {
+      await rm(projectRoot, {recursive: true, force: true});
+    }
+  });
+
+  it('should enable teams from project settings when teams.enabled=true', async () => {
+    const projectRoot = await mkdtemp(path.join(tmpdir(), 'codara-runtime-teams-enabled-'));
+
+    try {
+      await mkdir(path.join(projectRoot, '.codara'), {recursive: true});
+      await writeFile(path.join(projectRoot, '.codara', 'settings.json'), JSON.stringify({
+        teams: {
+          enabled: true,
+        },
+      }, null, 2));
+
+      const runtime = await createCodaraRuntime({
+        cwd: projectRoot,
+        projectRoot,
+        autoMemory: false,
+        model: new EchoModel() as unknown as BaseChatModel,
+        skills: false,
+      });
+
+      const result = await runtime.executeCommand('/team list');
+
+      expect(result.ok).toBe(true);
+      expect(result.output).toContain('No active teams.');
+
+      await runtime.dispose();
+    } finally {
       await rm(projectRoot, {recursive: true, force: true});
     }
   });

@@ -39,18 +39,35 @@ export interface ActiveTaskSnapshot {
 }
 
 const MAX_VISIBLE_TASKS = 5;
-const DONE_TASK_LINGER_MS = 3000;
+const DONE_TASK_LINGER_MS = 15000;
 
 export function extractTaskName(label: string): string {
   // Take first line only
   const firstLine = label.split('\n')[0]!.trim();
   // Strip "Delegating " prefix
   const text = firstLine.startsWith('Delegating ') ? firstLine.slice('Delegating '.length) : firstLine;
+  const concise = summarizeTaskLabel(text);
   // "Plan: some long description" → "Plan: some long desc…"
-  if (text.length > 40) {
-    return `${text.slice(0, 37)}…`;
+  if (concise.length > 40) {
+    return `${concise.slice(0, 37)}…`;
   }
-  return text;
+  return concise;
+}
+
+function summarizeTaskLabel(text: string): string {
+  const colonIndex = text.indexOf(': ');
+  if (colonIndex <= 0) {
+    return text;
+  }
+
+  const prefix = text.slice(0, colonIndex).trim();
+  const body = text.slice(colonIndex + 2).trim();
+  const sentenceBoundary = body.search(/[。！？.!?]/);
+  if (sentenceBoundary <= 0) {
+    return `${prefix}: ${body}`;
+  }
+
+  return `${prefix}: ${body.slice(0, sentenceBoundary).trim()}`;
 }
 
 export function deriveActiveTasks(
