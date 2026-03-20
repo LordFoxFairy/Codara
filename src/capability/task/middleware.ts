@@ -244,10 +244,14 @@ function formatTaskCompletionHandoff(context: BeforeModelContext): string | unde
     'Delegated tasks from your previous response have completed.',
     'Respond now with a unified user-facing answer.',
     'Keep the final answer concise and user-facing.',
+    'Do not mention subagents, delegated tasks, hidden handoff context, or orchestration stages in the user-visible answer.',
+    'Do not structure the reply as per-task, per-subagent, or per-phase sections.',
+    'Never write headings such as "Subagent report", "Phase 1", "First subagent", or similar orchestration labels.',
     'Do not restate task-by-task reports or raw child sections.',
     'Do not quote raw subagent output verbatim and do not mention hidden handoff context.',
-    'Use the completed task results below to decide the next step:',
-    ...tasks.map((task, index) => formatTaskCompletionLine(task, index + 1)),
+    'The execution tree already showed the delegated work; your job is to synthesize the result for the user, not to replay child output.',
+    'Use the completed task results below only as internal synthesis context:',
+    ...tasks.map((task) => formatTaskCompletionLine(task)),
   ];
 
   return lines.join('\n');
@@ -255,9 +259,8 @@ function formatTaskCompletionHandoff(context: BeforeModelContext): string | unde
 
 function formatTaskCompletionLine(
   task: NonNullable<NonNullable<TaskCompletionContinuationContext['codaraTaskCompletion']>['tasks']>[number],
-  index: number,
 ): string {
-  const label = task.label.trim() || task.agentName.trim() || task.runId;
+  const topic = extractTaskTopic(task.label, task.agentName, task.runId);
   const status = task.status === 'failed' ? 'failed' : 'completed';
   const stats: string[] = [];
   if (typeof task.toolUseCount === 'number' && task.toolUseCount > 0) {
@@ -269,8 +272,8 @@ function formatTaskCompletionLine(
   const detail = task.status === 'failed'
     ? summarizeTaskCompletionDetail(task.errorMessage?.trim() || task.summary?.trim())
     : summarizeTaskCompletionDetail(task.summary?.trim());
-  const statSuffix = stats.length > 0 ? ` | ${stats.join(' · ')}` : '';
-  return `${index}. ${label} | ${status}${statSuffix}\n   ${detail}`;
+  const statSuffix = stats.length > 0 ? ` | stats: ${stats.join(' · ')}` : '';
+  return `- topic: ${topic} | status: ${status}${statSuffix}\n  finding: ${detail}`;
 }
 
 function summarizeTaskCompletionDetail(detail: string | undefined): string {
@@ -286,6 +289,15 @@ function summarizeTaskCompletionDetail(detail: string | undefined): string {
     return text;
   }
   return `${text.slice(0, 137).trimEnd()}...`;
+}
+
+function extractTaskTopic(label: string | undefined, agentName: string | undefined, runId: string): string {
+  const raw = label?.trim() || agentName?.trim() || runId;
+  const stripped = raw
+    .replace(/^Delegating\s+[^:]+:\s*/i, '')
+    .replace(/^Delegating\s+/i, '')
+    .trim();
+  return stripped || raw;
 }
 
 function formatCompactTaskNumber(value: number): string {

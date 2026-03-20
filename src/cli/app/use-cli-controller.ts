@@ -40,6 +40,8 @@ import type {TeamDetailState} from '../hooks/use-team-detail';
 
 const STARTUP_MESSAGE = '';
 const HIL_AUTO_ACTION_DELAY_MS = 30;
+const APPROVAL_QUEUE_HANDOFF_TIMEOUT_MS = 500;
+const APPROVAL_QUEUE_HANDOFF_POLL_MS = 10;
 
 export interface UseCliControllerOptions {
   codara: Codara;
@@ -158,22 +160,6 @@ function summarizeBackgroundTaskNotice(event: CodaraRuntimeEvent): CliNotice | u
   return undefined;
 }
 
-function summarizeBackgroundTaskAssistantFollowup(event: CodaraRuntimeEvent): CliNotice | undefined {
-  if (event.kind !== 'task' || event.phase !== 'end' || event.status !== 'done') {
-    return undefined;
-  }
-
-  const detail = event.detail?.trim();
-  if (!detail) {
-    return undefined;
-  }
-  return {
-    id: `task-followup:${event.id}`,
-    level: 'assistant',
-    content: detail,
-  };
-}
-
 function parseTaskRunIdFromEvent(event: CodaraRuntimeEvent): string | undefined {
   const candidate = event.parentId ?? event.id;
   const prefix = 'task-run:';
@@ -182,6 +168,7 @@ function parseTaskRunIdFromEvent(event: CodaraRuntimeEvent): string | undefined 
 
 interface TrackedTaskBatch {
   sessionId: string;
+  expectedCount: number;
   runIds: Set<string>;
   continuationStarted: boolean;
 }
@@ -207,6 +194,12 @@ function isRunIdBackedTaskStartEvent(event: CodaraRuntimeEvent): boolean {
     && event.phase === 'start'
     && event.status === 'running'
     && Boolean(parseTaskRunIdFromEvent(event));
+}
+
+function isPendingTaskPlaceholderStartEvent(event: CodaraRuntimeEvent): boolean {
+  return event.kind === 'task'
+    && event.phase === 'start'
+    && event.detail === 'pending';
 }
 
 function isTaskRunTerminal(run: TaskRunQuerySummary): boolean {
@@ -244,7 +237,11 @@ function resolveTaskCompletionContinuation(
   const batchRuns = [...batch.runIds]
     .map((batchRunId) => taskRuns.find((run) => run.runId === batchRunId && run.sessionId === event.sessionId))
     .filter((run): run is TaskRunQuerySummary => Boolean(run));
-  if (batchRuns.length !== batch.runIds.size || batchRuns.some((run) => !isTaskRunTerminal(run))) {
+  if (
+    batch.runIds.size < batch.expectedCount
+    || batchRuns.length !== batch.runIds.size
+    || batchRuns.some((run) => !isTaskRunTerminal(run))
+  ) {
     return undefined;
   }
 
@@ -252,17 +249,6 @@ function resolveTaskCompletionContinuation(
     sessionId: event.sessionId,
     tasks: batchRuns.map(toTaskCompletionHandoff),
   };
-}
-
-function shouldEmitTaskCompletionFollowup(codara: Codara, event: CodaraRuntimeEvent): boolean {
-  const runId = parseTaskRunIdFromEvent(event);
-  const taskRuns = codara.getTaskRunSummaries();
-  const hasSiblingStillActive = taskRuns.some((run) => (
-    run.runId !== runId
-      && run.sessionId === event.sessionId
-      && (run.status === 'running' || run.status === 'paused')
-  ));
-  return !hasSiblingStillActive;
 }
 
 function appendUniqueNotices(current: CliNotice[], incoming: readonly CliNotice[]): CliNotice[] {
@@ -273,6 +259,12 @@ function appendUniqueNotices(current: CliNotice[], incoming: readonly CliNotice[
   const seen = new Set(current.map((notice) => notice.id));
   const unique = incoming.filter((notice) => !seen.has(notice.id));
   return unique.length > 0 ? [...current, ...unique] : current;
+}
+
+function deriveRunStateFromAgentState(nextAgentState: {status: string; pendingPause?: unknown}): CliRunState {
+  return nextAgentState.pendingPause || nextAgentState.status === 'paused'
+    ? {status: 'paused'}
+    : {status: 'done'};
 }
 
 export function useCliController(options: UseCliControllerOptions): CliController {
@@ -506,17 +498,32 @@ export function useCliController(options: UseCliControllerOptions): CliControlle
     setRuntimeEvents([]);
     return codara.subscribeRuntimeEvents((event: CodaraRuntimeEvent) => {
       const foregroundDelegatedReview = isDelegatedTaskReviewPause(event);
+      if (isPendingTaskPlaceholderStartEvent(event)) {
+        const currentBatch = trackedTaskBatchRef.current;
+        if (!currentBatch || currentBatch.sessionId !== event.sessionId || currentBatch.continuationStarted) {
+          trackedTaskBatchRef.current = {
+            sessionId: event.sessionId,
+            expectedCount: 1,
+            runIds: new Set(),
+            continuationStarted: false,
+          };
+        } else {
+          currentBatch.expectedCount += 1;
+        }
+      }
       if (isRunIdBackedTaskStartEvent(event)) {
         const runId = parseTaskRunIdFromEvent(event)!;
         const currentBatch = trackedTaskBatchRef.current;
         if (!currentBatch || currentBatch.sessionId !== event.sessionId || currentBatch.continuationStarted) {
           trackedTaskBatchRef.current = {
             sessionId: event.sessionId,
+            expectedCount: 1,
             runIds: new Set([runId]),
             continuationStarted: false,
           };
         } else {
           currentBatch.runIds.add(runId);
+          currentBatch.expectedCount = Math.max(currentBatch.expectedCount, currentBatch.runIds.size);
         }
       }
       setRuntimeEvents((current) => [...current, event].slice(-40));
@@ -525,28 +532,18 @@ export function useCliController(options: UseCliControllerOptions): CliControlle
         trackedTaskBatchRef.current.continuationStarted = true;
       }
       if (!isRunningRef.current && !foregroundDelegatedReview) {
-        const followup = shouldEmitTaskCompletionFollowup(codara, event)
-          && !completionContinuation
-          ? summarizeBackgroundTaskAssistantFollowup(event)
-          : undefined;
         const notice = summarizeBackgroundTaskNotice(event);
-        if (followup || notice) {
+        if (notice) {
           setNotices((current) => appendUniqueNotices(current, [
-            ...(followup ? [followup] : []),
-            ...(notice ? [notice] : []),
+            notice,
           ]));
         }
         if (completionContinuation) {
           void runTaskCompletionContinuation(completionContinuation);
         }
       } else if (!foregroundDelegatedReview) {
-        const followup = shouldEmitTaskCompletionFollowup(codara, event)
-          && !completionContinuation
-          ? summarizeBackgroundTaskAssistantFollowup(event)
-          : undefined;
         const notice = summarizeBackgroundTaskNotice(event);
         const queued = [
-          ...(followup ? [followup] : []),
           ...(notice ? [notice] : []),
         ];
         if (queued.length > 0) {
@@ -1046,8 +1043,6 @@ export function useCliController(options: UseCliControllerOptions): CliControlle
 
     isRunningRef.current = true;
     setRunState({status: 'running'});
-    // Clear HIL panel immediately — don't show "Running..." while model processes
-    setHilReview(undefined);
 
     try {
       const selectedAction = autoAction
@@ -1060,6 +1055,70 @@ export function useCliController(options: UseCliControllerOptions): CliControlle
       // Use streaming resume for immediate UI feedback (like Claude Code)
       const focusedApproval = codara.getFocusedApprovalReview();
       const approvalMatchesCurrentReview = focusedApproval?.request.id === prepared.review.request.id;
+      if (approvalMatchesCurrentReview) {
+        const queuedApprovalCount = codara.getApprovalSummaries().length;
+        if (queuedApprovalCount <= 1) {
+          setHilReview(undefined);
+          setRunState({status: 'done'});
+          isRunningRef.current = false;
+          void codara.resumeApproval(prepared.payload, {streamMode: 'messages'})
+            .catch((error) => {
+              reportError(error);
+            })
+            .finally(() => {
+              void refreshCoreState().catch(() => undefined);
+              if (pendingTaskContinuationRef.current) {
+                drainPendingTaskContinuation();
+              }
+            });
+          return;
+        }
+
+        setHilReview((current) => current ? {...current, busy: true} : current);
+        void (async () => {
+          try {
+            const currentApprovalId = prepared.review.request.id;
+            void codara.resumeApproval(prepared.payload, {streamMode: 'messages'}).catch((error) => {
+              reportError(error);
+            });
+
+            const deadline = Date.now() + APPROVAL_QUEUE_HANDOFF_TIMEOUT_MS;
+            while (Date.now() <= deadline) {
+              const nextAgentState = await refreshCoreState();
+              const approvals = codara.getApprovalSummaries();
+              const activePause = codara.getFocusedApprovalReview()?.request ?? nextAgentState.pendingPause;
+              const stillShowingCurrent = approvals.some((approval) => approval.approvalId === currentApprovalId);
+              if (!stillShowingCurrent) {
+                setHilReview((current) => applyApprovalMetadata(
+                  syncCliHilReviewState(current, activePause),
+                  approvals,
+                ));
+                setRunState(deriveRunStateFromAgentState(nextAgentState));
+                return;
+              }
+              await new Promise((resolve) => setTimeout(resolve, APPROVAL_QUEUE_HANDOFF_POLL_MS));
+            }
+
+            const nextAgentState = await refreshCoreState();
+            const activePause = codara.getFocusedApprovalReview()?.request ?? nextAgentState.pendingPause;
+            setHilReview((current) => applyApprovalMetadata(
+              syncCliHilReviewState(current, activePause),
+              codara.getApprovalSummaries(),
+            ));
+            setRunState(deriveRunStateFromAgentState(nextAgentState));
+          } catch (error) {
+            reportError(error);
+            await refreshCoreState().catch(() => undefined);
+          } finally {
+            isRunningRef.current = false;
+            if (pendingTaskContinuationRef.current) {
+              drainPendingTaskContinuation();
+            }
+          }
+        })();
+        return;
+      }
+
       const resumeStream = approvalMatchesCurrentReview
         ? codara.resumeApprovalStream(prepared.payload, {streamMode: 'messages'})
         : codara.resumePauseStream(prepared.payload, {streamMode: 'messages'});

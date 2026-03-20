@@ -55,7 +55,7 @@ export function resolveCliForegroundSurface(input: {
 }
 
 export function isFloatingHilReview(review: CliHilReviewState | undefined): boolean {
-  return Boolean(review?.form) && !isPermissionReview(review);
+  return Boolean(review);
 }
 
 export function shouldShowPromptFrame(input: {
@@ -99,6 +99,8 @@ export function shouldShowActivityLine(input: {
   runStateStatus: 'idle' | 'running' | 'paused' | 'done' | 'error';
   latestRuntimeEventKind?: CodaraRuntimeEvent['kind'];
   activeItems: readonly TranscriptItem[];
+  activeTaskCount?: number;
+  pausedTaskCount?: number;
 }): boolean {
   if (input.hilReview) {
     return false;
@@ -113,7 +115,7 @@ export function shouldShowActivityLine(input: {
   ));
 
   if (!transcriptOwnsTaskExecution) {
-    return true;
+    return (input.activeTaskCount ?? 0) === 0 && (input.pausedTaskCount ?? 0) === 0;
   }
 
   return input.latestRuntimeEventKind !== 'task' && input.latestRuntimeEventKind !== 'tool';
@@ -233,12 +235,10 @@ export function CodaraCliApp(props: CodaraCliAppProps): React.JSX.Element {
   const hasInitialPrompt = Boolean(initialPrompt?.trim());
   const hasHilReview = Boolean(shell.hilReview);
   const floatingHilReview = isFloatingHilReview(shell.hilReview) ? shell.hilReview : undefined;
-  const inlineHilReview = shell.hilReview && !floatingHilReview ? shell.hilReview : undefined;
   const hasBlockingOverlay = Boolean(
     shell.commandOutput
     || completion.completion.visible
     || sessionPicker.state.visible
-    || floatingHilReview,
   );
   const showPromptFrame = shouldShowPromptFrame({
     hilReview: shell.hilReview,
@@ -365,9 +365,6 @@ export function CodaraCliApp(props: CodaraCliAppProps): React.JSX.Element {
         {/* 动态区 */}
         {activeItems.length > 0 && <ActiveTranscript items={activeItems} activeTasks={activeTasks.tasks} expandedAll={shell.expandedAll} />}
 
-        {/* HIL 内联显示在对话流下方（不替换整个界面） */}
-        {inlineHilReview && <HilPanel review={inlineHilReview} />}
-
         {/* Activity / Prompt / Status — 始终渲染 */}
         <>
             {shouldShowActivityLine({
@@ -375,6 +372,8 @@ export function CodaraCliApp(props: CodaraCliAppProps): React.JSX.Element {
               runStateStatus: shell.runState.status,
               latestRuntimeEventKind: shell.latestRuntimeEvent?.kind,
               activeItems,
+              activeTaskCount: activeTasks.runningCount,
+              pausedTaskCount: activeTasks.pausedCount,
             }) && (
               <ActivityLine
                 runState={shell.runState}
@@ -397,25 +396,6 @@ export function CodaraCliApp(props: CodaraCliAppProps): React.JSX.Element {
             {shell.commandOutput && (
               <CommandOutputPanel content={shell.commandOutput.content} commandName={shell.commandOutput.commandName} scrollOffset={shell.commandOutput.scrollOffset} />
             )}
-            {showPromptFrame && (
-              <Box>
-                <Box flexGrow={1}>
-                  <PromptFrame
-                    composer={shell.composer}
-                    cursorActivityVersion={shell.composerActivityVersion}
-                    isRunning={shell.runState.status === 'running'}
-                    placeholder={shell.hasConversation ? 'Reply to Codara...' : 'Ask Codara...'}
-                    terminalWidth={terminalWidth}
-                  />
-                </Box>
-                {selectedMemberName && activeTeams.hasActiveTeams && (
-                  <Box>
-                    <Text color="green" bold>@{selectedMemberName}</Text>
-                  </Box>
-                )}
-              </Box>
-            )}
-            <CompletionMenu completion={completion.completion} terminalWidth={terminalWidth} />
             {shouldShowFloatingTaskPanel({
               hasConversation: shell.hasConversation,
               taskPanelVisible: shell.taskPanelVisible,
@@ -447,11 +427,30 @@ export function CodaraCliApp(props: CodaraCliAppProps): React.JSX.Element {
                 )}
               </Box>
             )}
+            {showPromptFrame && (
+              <Box>
+                <Box flexGrow={1}>
+                  <PromptFrame
+                    composer={shell.composer}
+                    cursorActivityVersion={shell.composerActivityVersion}
+                    isRunning={shell.runState.status === 'running'}
+                    placeholder={shell.hasConversation ? 'Reply to Codara...' : 'Ask Codara...'}
+                    terminalWidth={terminalWidth}
+                  />
+                </Box>
+                {selectedMemberName && activeTeams.hasActiveTeams && (
+                  <Box>
+                    <Text color="green" bold>@{selectedMemberName}</Text>
+                  </Box>
+                )}
+              </Box>
+            )}
             {floatingHilReview && !shell.commandOutput && !completion.completion.visible && !sessionPicker.state.visible && (
               <Box marginTop={1}>
                 <HilPanel review={floatingHilReview} presentation="floating" />
               </Box>
             )}
+            <CompletionMenu completion={completion.completion} terminalWidth={terminalWidth} />
             {shell.hasConversation && (
               <StatusBar
                 layoutMode={layoutMode}

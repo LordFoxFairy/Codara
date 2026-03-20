@@ -3,6 +3,7 @@ import type {CodaraRuntimeEvent} from '@/index';
 import {parseAskUserResult} from '@core/middleware';
 import {parseHILToolMessagePayload} from '@core/middleware/hil';
 import {readMessageText} from '@shared/messages';
+import {readDelegatedAgentResult} from '@shared/delegation-result';
 import {readTaskRunLaunchResult} from '@shared/task-run-launch';
 import {TOOL_NAMES} from '@shared/tool-display';
 import type {CliActiveTurn, CliNotice} from '../app/view-state';
@@ -1028,11 +1029,24 @@ function buildToolResultItems(
   if (isInteractionToolName(resolvedName) || parseAskUserResult(text)) {
     return [];
   }
-  if (isTaskToolName(resolvedName) && readTaskRunLaunchResult(message.artifact)) {
+  if (resolvedName === TOOL_NAMES.TASK && readTaskRunLaunchResult(message.artifact)) {
     return [];
   }
-  const role: TranscriptRole = isTaskToolName(resolvedName) ? 'task' : 'tool';
-  const formattedContent = role === 'task' ? formatTaskResultText(text) : text;
+  if (resolvedName === TOOL_NAMES.TASK) {
+    const taskMeta = buildTaskToolMetaFromCoreMessage(message, toolLookup);
+    if (!taskMeta) {
+      return [];
+    }
+
+    return [{
+      id: messageId,
+      role: 'task',
+      content: `${taskMeta.icon} ${taskMeta.displayName}(${taskMeta.args ?? ''})\n${taskMeta.summaryLine}`,
+      toolMeta: taskMeta,
+    }];
+  }
+  const role: TranscriptRole = 'tool';
+  const formattedContent = text;
   const lineCount = formattedContent.split('\n').length;
 
   // Build toolMeta for non-task tool results
@@ -1069,6 +1083,79 @@ function buildToolMetaFromCoreMessage(
   const diffData = toolCall ? tryComputeDiff(rawToolName, toolCall.args) : undefined;
 
   return {toolName: rawToolName, displayName, icon, args, status: status as 'done' | 'error', summaryLine, outputLines, allOutputLines, totalOutputLines, diffData};
+}
+
+function buildTaskToolMetaFromCoreMessage(
+  message: ToolMessage,
+  toolLookup: Map<string, ToolCall>,
+): ToolResultMeta | undefined {
+  const toolCallId = typeof message.tool_call_id === 'string' ? message.tool_call_id.trim() : '';
+  const toolCall = toolCallId ? toolLookup.get(toolCallId) : undefined;
+  const displayName = formatTaskToolAgentName(toolCall);
+  const args = formatTaskToolPrompt(toolCall);
+  const delegated = readDelegatedAgentResult(message.artifact);
+
+  if (delegated) {
+    const parts: string[] = [];
+    if (typeof delegated.toolUseCount === 'number' && delegated.toolUseCount > 0) {
+      parts.push(`${delegated.toolUseCount} tool uses`);
+    }
+    if (typeof delegated.totalTokens === 'number' && delegated.totalTokens > 0) {
+      parts.push(`${formatTokenCount(delegated.totalTokens)} tokens`);
+    }
+    const summaryLine = delegated.reason === 'error'
+      ? parts.length > 0 ? `Failed (${parts.join(' · ')})` : 'Failed'
+      : parts.length > 0 ? `Done (${parts.join(' · ')})` : 'Done';
+    return {
+      toolName: TOOL_NAMES.TASK,
+      displayName,
+      icon: '⚙',
+      args,
+      status: delegated.reason === 'error' ? 'error' : 'done',
+      summaryLine,
+    };
+  }
+
+  const fallbackText = readMessageText(message)?.trim();
+  if (!fallbackText) {
+    return undefined;
+  }
+
+  return {
+    toolName: TOOL_NAMES.TASK,
+    displayName,
+    icon: '⚙',
+    args,
+    status: message.status === 'error' ? 'error' : 'done',
+    summaryLine: message.status === 'error' ? 'Failed' : 'Done',
+  };
+}
+
+function formatTaskToolAgentName(toolCall: ToolCall | undefined): string {
+  const subagentType = readTaskToolArg(toolCall?.args, 'subagent_type');
+  if (!subagentType) {
+    return 'Task';
+  }
+  if (subagentType === 'general-purpose') {
+    return 'Agent';
+  }
+  return subagentType.charAt(0).toUpperCase() + subagentType.slice(1);
+}
+
+function formatTaskToolPrompt(toolCall: ToolCall | undefined): string | undefined {
+  const prompt = readTaskToolArg(toolCall?.args, 'prompt');
+  if (!prompt) {
+    return undefined;
+  }
+  return prompt.length > 50 ? `${prompt.slice(0, 47)}…` : prompt;
+}
+
+function readTaskToolArg(args: unknown, key: string): string | undefined {
+  if (!args || typeof args !== 'object' || Array.isArray(args)) {
+    return undefined;
+  }
+  const value = (args as Record<string, unknown>)[key];
+  return typeof value === 'string' && value.trim() ? value.trim() : undefined;
 }
 
 function tryComputeDiff(toolName: string, toolArgs: unknown): DiffData | undefined {
@@ -1123,6 +1210,10 @@ function tryComputeDiff(toolName: string, toolArgs: unknown): DiffData | undefin
 function shouldHideRuntimeEvent(event: CodaraRuntimeEvent): boolean {
   if (event.kind === 'hil') {
     return true;
+  }
+
+  if (event.kind === 'task') {
+    return event.label === 'Task started' || event.label === 'Delegated task running in background';
   }
 
   if (event.kind !== 'tool') {
@@ -1237,20 +1328,6 @@ function formatFriendlyToolSummary(toolName: string, args: unknown): string | un
 
 function isInteractionToolName(toolName: string | undefined): boolean {
   return (toolName || '').trim() === TOOL_NAMES.ASK_USER;
-}
-
-function formatTaskResultText(content: string): string {
-  return content
-    .split('\n')
-    .map((line) => {
-      if (!line.includes(' | ')) {
-        return line;
-      }
-
-      const [first, ...rest] = line.split(' | ');
-      return [first, ...rest.map((part) => `  ${part}`)].join('\n');
-    })
-    .join('\n');
 }
 
 function serializeValue(value: unknown): string | undefined {

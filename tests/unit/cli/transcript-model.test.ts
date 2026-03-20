@@ -59,10 +59,10 @@ describe('cli transcript model', () => {
     });
 
     // Only the ToolMessage result is shown (tool calls from AIMessage are not rendered separately)
-    expect(items.map((item) => item.role)).toEqual(['task']);
+    expect(items.map((item) => item.role)).toEqual(['tool']);
     expect(items[0]?.content).toContain('Tasks:');
-    expect(items[0]?.content).toContain('- id: task-1\n  subject: Inspect transcript\n  status: in_progress');
-    expect(items[0]?.content).toContain('- id: task-2\n  subject: Report result\n  status: pending');
+    expect(items[0]?.content).toContain('- id: task-1 | subject: Inspect transcript | status: in_progress');
+    expect(items[0]?.content).toContain('- id: task-2 | subject: Report result | status: pending');
   });
 
   test('should render tool results with friendly summaries from ToolMessages', () => {
@@ -307,15 +307,31 @@ describe('cli transcript model', () => {
     }]);
   });
 
-  test('should use core messages after turn completes (no activeTurn)', () => {
+  test('should render completed task tool results as compact execution summaries instead of raw child output', () => {
     const items = buildTranscriptItems({
       notices: [],
       coreMessages: [
         new AIMessage({
           content: '',
-          tool_calls: [{id: 'call_task_1', name: 'Task', args: {prompt: 'Inspect child work'}} as ToolCall],
+          tool_calls: [{
+            id: 'call_task_1',
+            name: 'Task',
+            args: {prompt: 'Inspect child work', subagent_type: 'Explore'},
+          } as ToolCall],
         }),
-        new ToolMessage({content: 'Delegated task completed.\nsummary:\nCHILD_DONE', tool_call_id: 'call_task_1'}),
+        new ToolMessage({
+          content: 'Delegated task completed.\nsummary:\nCHILD_DONE',
+          tool_call_id: 'call_task_1',
+          artifact: {
+            type: 'delegated_agent_result',
+            sessionId: 'session:task:call_task_1',
+            turns: 4,
+            reason: 'complete',
+            summary: 'CHILD_DONE',
+            toolUseCount: 3,
+            totalTokens: 14400,
+          },
+        }),
       ],
       runtimeEvents: [
         {
@@ -330,10 +346,12 @@ describe('cli transcript model', () => {
       ],
     });
 
-    // After turn completes, ToolMessage provides the definitive result
     expect(items).toHaveLength(1);
     expect(items[0]?.role).toBe('task');
-    expect(items[0]?.content).toContain('Delegated task completed');
+    expect(items[0]?.content).toContain('⚙ Explore(Inspect child work)');
+    expect(items[0]?.content).toContain('Done (3 tool uses · 14.4k tokens)');
+    expect(items[0]?.content).not.toContain('CHILD_DONE');
+    expect(items[0]?.toolMeta?.summaryLine).toBe('Done (3 tool uses · 14.4k tokens)');
   });
 
   test('should suppress synthetic task launch blocks when a runtime task root for the same delegation exists', () => {
@@ -417,6 +435,45 @@ describe('cli transcript model', () => {
     expect(exploreItems).toHaveLength(1);
     expect(exploreItems[0]?.content).toContain('Waiting for review');
     expect(exploreItems[0]?.content).not.toContain('Done (0s)');
+  });
+
+  test('should hide bookkeeping task runtime events like Task started and background-launch status lines', () => {
+    const now = new Date().toISOString();
+    const items = buildActiveItems({
+      activeTurn: {
+        id: 'turn-task-bookkeeping',
+        prompt: 'delegate it',
+        response: '',
+        responseRole: 'assistant',
+      },
+      runtimeEvents: [
+        {
+          id: 'pending-call-1',
+          sessionId: 'session-1',
+          timestamp: now,
+          kind: 'task',
+          phase: 'end',
+          status: 'done',
+          label: 'Task started',
+          parentId: 'pending-call-1',
+        },
+        {
+          id: 'evt-task-launch-finished',
+          sessionId: 'session-1',
+          timestamp: now,
+          kind: 'task',
+          phase: 'end',
+          status: 'done',
+          label: 'Delegated task running in background',
+          detail: 'Delegated task started in background.',
+          parentId: 'tool-call-1',
+        },
+      ],
+    });
+
+    expect(items.some((item) => item.content.includes('Task started'))).toBe(false);
+    expect(items.some((item) => item.content.includes('Delegated task running in background'))).toBe(false);
+    expect(items.some((item) => item.content.includes('Delegated task started in background.'))).toBe(false);
   });
 
   test('should ignore pre-registered pending task placeholders once real parallel task roots exist', () => {

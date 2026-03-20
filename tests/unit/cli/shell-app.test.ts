@@ -27,6 +27,10 @@ describe('CLI foreground surface', () => {
     expect(isFloatingHilReview(createAskReview())).toBe(true);
   });
 
+  it('should also treat permission reviews as floating review windows', () => {
+    expect(isFloatingHilReview(createPermissionReview())).toBe(true);
+  });
+
   it('should hide the prompt frame while a floating AskUser review is active', () => {
     expect(shouldShowPromptFrame({
       hilReview: createAskReview(),
@@ -71,6 +75,15 @@ describe('CLI foreground surface', () => {
     })).toBe(false);
   });
 
+  it('should still show the floating task panel while a HIL review overlay is visible', () => {
+    expect(shouldShowFloatingTaskPanel({
+      hasConversation: true,
+      taskPanelVisible: true,
+      taskCount: 2,
+      hasBlockingOverlay: false,
+    })).toBe(true);
+  });
+
   it('should hide the activity line when a running task block already owns task/tool progress', () => {
     const activeItems: TranscriptItem[] = [{
       id: 'active-task-run:run-1',
@@ -93,11 +106,23 @@ describe('CLI foreground surface', () => {
     })).toBe(false);
   });
 
+  it('should hide the activity line whenever active tasks are still running or paused, even if no running task block is currently projected', () => {
+    expect(shouldShowActivityLine({
+      runStateStatus: 'running',
+      latestRuntimeEventKind: 'tool',
+      activeItems: [],
+      activeTaskCount: 2,
+      pausedTaskCount: 1,
+    })).toBe(false);
+  });
+
   it('should keep the activity line for normal model thinking states', () => {
     expect(shouldShowActivityLine({
       runStateStatus: 'running',
       latestRuntimeEventKind: 'model',
       activeItems: [],
+      activeTaskCount: 0,
+      pausedTaskCount: 0,
     })).toBe(true);
   });
 });

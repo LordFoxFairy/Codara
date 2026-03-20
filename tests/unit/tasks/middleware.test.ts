@@ -258,9 +258,13 @@ describe('tasks middlewares', () => {
     expect(context.systemMessage.join('\n')).toContain('Delegated tasks from your previous response have completed');
     expect(context.systemMessage.join('\n')).toContain('Respond now with a unified user-facing answer');
     expect(context.systemMessage.join('\n')).toContain('Do not restate task-by-task reports or raw child sections');
+    expect(context.systemMessage.join('\n')).toContain('Do not mention subagents, delegated tasks, hidden handoff context, or orchestration stages');
+    expect(context.systemMessage.join('\n')).toContain('Never write headings such as "Subagent report", "Phase 1", "First subagent"');
     expect(context.systemMessage.join('\n')).toContain('Analyze the tech stack');
     expect(context.systemMessage.join('\n')).toContain('4 tool uses');
     expect(context.systemMessage.join('\n')).toContain('1.2k tokens');
+    expect(context.systemMessage.join('\n')).toContain('- topic: Analyze the tech stack | status: completed');
+    expect(context.systemMessage.join('\n')).not.toContain('Delegating Explore: Analyze the tech stack');
     expect(context.systemMessage.join('\n')).not.toContain('Child summary should stay hidden from the transcript.');
   });
 

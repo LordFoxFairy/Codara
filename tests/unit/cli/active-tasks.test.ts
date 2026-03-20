@@ -115,6 +115,29 @@ describe('deriveActiveTasks', () => {
     expect(deriveActiveTasks(runs, baseTime + 17000)).toHaveLength(0);
   });
 
+  it('keeps completed tasks visible while sibling tasks are still running or paused', () => {
+    const runs: TaskRunQuerySummary[] = [
+      createTaskRun({
+        runId: 'task-done',
+        startedAt: new Date(baseTime).toISOString(),
+        label: 'Delegating Explore: Analyze architecture',
+        status: 'completed',
+        endedAt: new Date(baseTime + 1000).toISOString(),
+      }),
+      createTaskRun({
+        runId: 'task-running',
+        startedAt: new Date(baseTime + 2000).toISOString(),
+        label: 'Delegating Explore: Analyze tech stack',
+        status: 'running',
+      }),
+    ];
+
+    const tasks = deriveActiveTasks(runs, baseTime + 18000);
+    expect(tasks).toHaveLength(2);
+    expect(tasks.some((task) => task.id === 'task-done' && task.status === 'done')).toBe(true);
+    expect(tasks.some((task) => task.id === 'task-running' && task.status === 'running')).toBe(true);
+  });
+
   it('keeps recently completed background tasks visible long enough to read the result', () => {
     const runs: TaskRunQuerySummary[] = [
       createTaskRun({
