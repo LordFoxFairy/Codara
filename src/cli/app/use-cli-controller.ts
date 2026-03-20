@@ -913,8 +913,17 @@ export function useCliController(options: UseCliControllerOptions): CliControlle
       return;
     }
 
+    // Route plain text to focused member if one is selected
+    let actualDraft = prompt;
+    if (focusedMemberId && !actualDraft.startsWith('/') && !actualDraft.startsWith('@')) {
+      const member = teamDetailState?.members.find(m => m.memberId === focusedMemberId);
+      if (member && member.role !== 'leader') {
+        actualDraft = `@${member.name} ${actualDraft}`;
+      }
+    }
+
     // Check for @team mention shorthand: "@team-name rest of message"
-    const teamMentionMatch = prompt.match(/^@(\S+)\s+([\s\S]*)/);
+    const teamMentionMatch = actualDraft.match(/^@(\S+)\s+([\s\S]*)/);
     if (teamMentionMatch) {
       const teamName = teamMentionMatch[1]!;
       const message = teamMentionMatch[2]!;
@@ -951,8 +960,8 @@ export function useCliController(options: UseCliControllerOptions): CliControlle
 
     setComposer(createComposerState());
     setComposerActivityVersion((current) => current + 1);
-    void submitPrompt(prompt);
-  }, [appendNotice, codara, composer.text, runSlashCommand, submitPrompt, teamDetailState]);
+    void submitPrompt(actualDraft);
+  }, [appendNotice, codara, composer.text, focusedMemberId, runSlashCommand, submitPrompt, teamDetailState]);
 
   const submitText = useCallback((text: string) => {
     const prompt = text.trim();
