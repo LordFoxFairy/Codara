@@ -18,13 +18,13 @@ Codara 是一条**可恢复、可扩展、可协作的 Agent 执行链路**。
 
 | # | 原则 | 含义 |
 |---|------|------|
-| 1 | Agent Loop 是唯一执行推进器 | 所有执行（含子 agent、team worker）复用同一 loop |
+| 1 | Agent Loop 是唯一执行推进器 | 所有执行（含子 agent）复用同一 loop |
 | 2 | Pipeline 是执行阶段骨架 | 定义阶段顺序和契约，不是另一套扩展系统 |
 | 3 | Middleware 是第一扩展机制 | Hook 和 Skill 都通过 middleware 接入执行链 |
 | 4 | Hook 是生命周期桥接 | 通过 hooks-bridge middleware 接入，不直接控制执行 |
 | 5 | 展示层是入口/出口边界 | 不属于运行时内部，不参与执行决策 |
 | 6 | Context 分为来源层和执行态 | 来源层提供材料，执行态贴近 pipeline 消费 |
-| 7 | Task/Team 是主链路扩展 | 复用统一执行模型，不是第二套平行 runtime |
+| 7 | Task 是主链路扩展 | 复用统一执行模型，不是第二套平行 runtime |
 
 ---
 
@@ -42,7 +42,7 @@ Codara 划分为 **10 个限界上下文**，每个对应一个顶层目录：
 │  └───────────────────────────────────────────────────────────┘  │
 │                                                                 │
 │  ┌─ 支撑域 ──────────────────────────────────────────────────┐  │
-│  │  capability/     可插拔领域能力（skill, task, team, command）│  │
+│  │  capability/     可插拔领域能力（skill, task, command）      │  │
 │  │  durability/     持久化（session, checkpoint）             │  │
 │  │  observability/  观测（events, hook）                      │  │
 │  └───────────────────────────────────────────────────────────┘  │
@@ -77,7 +77,7 @@ Codara 划分为 **10 个限界上下文**，每个对应一个顶层目录：
 | 类型 | 上下文 | 职责 | DDD 角色 |
 |------|--------|------|----------|
 | 核心域 | `core/` | Agent Loop + Pipeline + Middleware | 聚合根 + 领域服务 |
-| 支撑域 | `capability/` | 技能、任务、团队、命令 | 子域聚合 |
+| 支撑域 | `capability/` | 技能、任务、命令 | 子域聚合 |
 | 支撑域 | `durability/` | 会话持久化 + 检查点 | 仓储 |
 | 支撑域 | `observability/` | 运行时事件 + 生命周期钩子 | 领域事件 |
 | 基础设施 | `integration/` | 工具、MCP、通道、模型提供商 | 适配器 |
@@ -192,16 +192,6 @@ src/
 │   │   ├── middleware.ts          #   任务中间件
 │   │   ├── types.ts               #   任务类型
 │   │   └── index.ts
-│   │
-│   ├── team/                      # 团队协作子域
-│   │   ├── coordination/          #   leader-worker 协调（events, job-board, types...）
-│   │   ├── runtime/               #   MemberRunner + MemberSession
-│   │   ├── surface/               #   团队 UI 数据（leader/worker tools, filter）
-│   │   ├── middleware.ts          #   团队中间件
-│   │   ├── local-transport.ts     #   本地传输
-│   │   ├── persistence.ts         #   持久化
-│   │   ├── prompts.ts             #   团队提示
-│   │   └── shared-state.ts        #   共享状态
 │   │
 │   └── command/                   # CLI 命令子域
 │       ├── builtin/               #   内置命令
@@ -342,8 +332,7 @@ src/
 │   │   ├── chrome/                #   外框（header, footer）
 │   │   ├── conversation/          #   对话流
 │   │   ├── permission/            #   权限审批面板
-│   │   ├── prompt/                #   输入区
-│   │   └── teams/                 #   团队 UI
+│   │   └── prompt/                #   输入区
 │   ├── composer/                  # 输入编辑器模型
 │   ├── hooks/                     # Ink hooks
 │   ├── transcript/                # 消息转录渲染
@@ -367,7 +356,6 @@ src/
 │   ├── bus-manager.ts             # Bus 单例 + 事件分发
 │   ├── channel.ts                 # SSEChannel 实现
 │   ├── sse.ts                     # SSE 格式化
-│   ├── teams-api.ts               # Teams API 路由
 │   └── index.ts
 │
 ├── bus/                           # ═══ 通信基础设施 ═══
@@ -433,8 +421,7 @@ src/
 │  core/                 capability/                          │
 │  ├── agent/     (AR)   ├── skill/       技能发现+执行        │
 │  ├── pipeline/  (VO)   ├── task/        单代理派发           │
-│  └── middleware/ (DS)  ├── team/        多代理协作           │
-│                        └── command/     CLI 命令             │
+│  └── middleware/ (DS)  └── command/     CLI 命令             │
 │                                                             │
 │  durability/           observability/                       │
 │  ├── session/   (AG)   ├── events/      运行时事件          │
@@ -598,10 +585,6 @@ Middleware 是 Codara 的**第一且唯一的执行拦截机制**：
 | `todo` | ToolCall | 任务清单工具处理 |
 | `logging` | AfterModel | 日志记录 + 文件日志 sink |
 | `task` | ToolCall | 任务派发拦截 + 子 agent 调度 |
-| `team` | BeforeAgent | 团队协作拦截 + worker 调度 |
-
----
-
 ## 7. 能力域详解（capability/）
 
 ### 7.1 Skill 子域
@@ -649,25 +632,9 @@ Task 是**单代理异步派发**：
   → 写回 TaskStore
 ```
 
-**关键裁决：** 子 agent 复用统一 Agent Loop，不拥有独立 runtime。子 agent 不应有 Team 工具。
+**关键裁决：** 子 agent 复用统一 Agent Loop，不拥有独立 runtime。协作默认通过 Task delegation 完成，不再维护第二套协作 runtime。
 
-### 7.3 Team 子域
-
-Team 是**多代理协作单元**：
-
-```text
-Leader Agent
-  → team middleware 拦截
-  → TeamCoordinator 启动
-  → MemberRunner.start() 启动 worker（stream-first）
-  → worker 通过 MemberSession.stream() 执行
-  → leader 协调推进，至少 spawn 一个 worker
-  → 结果回流到 leader context
-```
-
-**关键裁决：** Team 不另起一套 runtime，leader 和 worker 都走统一 Agent Loop。使用 Teams 时必须至少 spawn 一个 worker，leader 负责协调而非直接执行。
-
-### 7.4 Command 子域
+### 7.3 Command 子域
 
 Command 是 CLI 命令的发现、注册和执行：
 
@@ -905,7 +872,6 @@ Codara 的扩展机制分为**三层递进**，所有扩展最终通过 Middlewa
 
 ⑦ 协作分支
    task/delegation → 单代理子执行（stream-first）
-   team/coordination → 多代理协作（leader + worker）
    子 agent 复用统一 Agent Loop
 
 ⑧ 落盘与观测
@@ -936,7 +902,6 @@ Codara 的扩展机制分为**三层递进**，所有扩展最终通过 Middlewa
 | `pause:request` | core/middleware/hil | integration/channel → presentation |
 | `pause:resume` | integration/channel | core/middleware/hil |
 | `task:delegated` | capability/task | observability, presentation |
-| `team:member:joined` | capability/team | observability, presentation |
 
 ### 事件流向
 
@@ -1025,7 +990,7 @@ shared/contracts/
 ```
 
 > **注意：** middleware、durability、observability、collaboration 的类型定义保留在各自规范源
-> （`@core/pipeline/types`、`@durability/*`、`@observability/*`、`@capability/task`、`@capability/team/*`），
+> （`@core/pipeline/types`、`@durability/*`、`@observability/*`、`@capability/task`），
 > 消费方直接从规范源导入，不经过 shared/contracts 中转。
 
 **契约设计原则：**
