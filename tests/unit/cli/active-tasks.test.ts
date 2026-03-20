@@ -81,7 +81,7 @@ describe('deriveActiveTasks', () => {
     expect(tasks[0]!.toolUseCount).toBe(3);
   });
 
-  it('marks task as done when run status is completed', () => {
+  it('keeps a lone completed task visible until a later batch starts', () => {
     const runs: TaskRunQuerySummary[] = [
       createTaskRun({
         runId: 'task-1',
@@ -95,24 +95,29 @@ describe('deriveActiveTasks', () => {
     const tasks = deriveActiveTasks(runs, baseTime + 4000);
     expect(tasks).toHaveLength(1);
     expect(tasks[0]!.status).toBe('done');
-    expect(tasks[0]!.elapsed).toBe(3000);
   });
 
-  it('removes done tasks after linger period', () => {
+  it('replaces the previous completed batch when a new batch starts', () => {
     const runs: TaskRunQuerySummary[] = [
       createTaskRun({
-        runId: 'task-1',
+        runId: 'task-old',
         startedAt: new Date(baseTime).toISOString(),
         label: 'Delegating research',
         status: 'completed',
         endedAt: new Date(baseTime + 1000).toISOString(),
       }),
+      createTaskRun({
+        runId: 'task-new',
+        startedAt: new Date(baseTime + 5000).toISOString(),
+        label: 'Delegating build',
+        status: 'running',
+      }),
     ];
 
-    // Within linger
-    expect(deriveActiveTasks(runs, baseTime + 2000)).toHaveLength(1);
-    // After linger window
-    expect(deriveActiveTasks(runs, baseTime + 17000)).toHaveLength(0);
+    const tasks = deriveActiveTasks(runs, baseTime + 6000);
+    expect(tasks).toHaveLength(1);
+    expect(tasks[0]!.id).toBe('task-new');
+    expect(tasks[0]!.status).toBe('running');
   });
 
   it('keeps completed tasks visible while sibling tasks are still running or paused', () => {
@@ -122,7 +127,7 @@ describe('deriveActiveTasks', () => {
         startedAt: new Date(baseTime).toISOString(),
         label: 'Delegating Explore: Analyze architecture',
         status: 'completed',
-        endedAt: new Date(baseTime + 1000).toISOString(),
+        endedAt: new Date(baseTime + 4000).toISOString(),
       }),
       createTaskRun({
         runId: 'task-running',
@@ -138,23 +143,7 @@ describe('deriveActiveTasks', () => {
     expect(tasks.some((task) => task.id === 'task-running' && task.status === 'running')).toBe(true);
   });
 
-  it('keeps recently completed background tasks visible long enough to read the result', () => {
-    const runs: TaskRunQuerySummary[] = [
-      createTaskRun({
-        runId: 'task-1',
-        startedAt: new Date(baseTime).toISOString(),
-        label: 'Delegating explore: inspect the repo',
-        status: 'completed',
-        endedAt: new Date(baseTime + 1000).toISOString(),
-        summary: 'Found the key architecture files',
-      }),
-    ];
-
-    expect(deriveActiveTasks(runs, baseTime + 9000)).toHaveLength(1);
-    expect(deriveActiveTasks(runs, baseTime + 9000)[0]!.detail).toBe('Found the key architecture files');
-  });
-
-  it('marks task as error', () => {
+  it('keeps a lone failed task visible until a later batch starts', () => {
     const runs: TaskRunQuerySummary[] = [
       createTaskRun({
         runId: 'task-1',
@@ -194,7 +183,7 @@ describe('deriveActiveTasks', () => {
         startedAt: new Date(baseTime).toISOString(),
         label: 'Delegating research',
         status: 'completed',
-        endedAt: new Date(baseTime + 1000).toISOString(),
+        endedAt: new Date(baseTime + 4000).toISOString(),
       }),
       createTaskRun({
         runId: 'task-running',
@@ -227,7 +216,7 @@ describe('deriveActiveTasks', () => {
         startedAt: new Date(baseTime).toISOString(),
         label: 'Delegating research',
         status: 'completed',
-        endedAt: new Date(baseTime + 500).toISOString(),
+        endedAt: new Date(baseTime + 4000).toISOString(),
       }),
     ];
 

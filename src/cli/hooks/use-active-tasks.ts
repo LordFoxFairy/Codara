@@ -39,8 +39,6 @@ export interface ActiveTaskSnapshot {
 }
 
 const MAX_VISIBLE_TASKS = 5;
-const DONE_TASK_LINGER_MS = 15000;
-
 export function extractTaskName(label: string): string {
   // Take first line only
   const firstLine = label.split('\n')[0]!.trim();
@@ -83,7 +81,7 @@ export function deriveActiveTaskSnapshot(
   now: number,
   approvals: readonly ApprovalQuerySummary[] = [],
 ): ActiveTaskSnapshot {
-  const hasLiveRuns = runs.some((run) => run.status === 'running' || run.status === 'paused');
+  const activeBatchRunIds = selectLatestBatchRunIds(runs);
   const approvalsByTaskRun = new Map<string, ApprovalQuerySummary[]>();
   for (const approval of approvals) {
     if (approval.source !== 'task_run' || !approval.taskRunId) {
@@ -96,14 +94,14 @@ export function deriveActiveTaskSnapshot(
 
   const tasks: ActiveTask[] = [];
   for (const run of runs) {
+    if (!activeBatchRunIds.has(run.runId)) {
+      continue;
+    }
+
     const status = normalizeTaskStatus(run.status);
     const startedAt = Date.parse(run.startedAt);
     const endedAt = parseTaskFinishedAt(run);
     const runApprovals = approvalsByTaskRun.get(run.runId) ?? [];
-
-    if (!hasLiveRuns && (status === 'done' || status === 'error') && endedAt && now - endedAt > DONE_TASK_LINGER_MS) {
-      continue;
-    }
 
     const detail = resolveTaskDetail(run, runApprovals);
     tasks.push({
@@ -218,4 +216,41 @@ function resolveTaskDetail(
 
   const detail = run.latestActivity?.trim() || run.summary?.trim();
   return detail || undefined;
+}
+
+function selectLatestBatchRunIds(runs: readonly TaskRunQuerySummary[]): Set<string> {
+  if (runs.length === 0) {
+    return new Set<string>();
+  }
+
+  const sortedRuns = [...runs].sort((a, b) => {
+    const startedDiff = Date.parse(a.startedAt) - Date.parse(b.startedAt);
+    if (startedDiff !== 0) return startedDiff;
+    return a.runId.localeCompare(b.runId);
+  });
+
+  const batches: TaskRunQuerySummary[][] = [];
+  let currentBatch: TaskRunQuerySummary[] = [];
+  let currentBatchTerminalAt = Number.NEGATIVE_INFINITY;
+
+  for (const run of sortedRuns) {
+    const startedAt = Date.parse(run.startedAt);
+    const endedAt = parseTaskFinishedAt(run) ?? Number.POSITIVE_INFINITY;
+
+    if (currentBatch.length === 0 || startedAt <= currentBatchTerminalAt) {
+      currentBatch.push(run);
+      currentBatchTerminalAt = Math.max(currentBatchTerminalAt, endedAt);
+      continue;
+    }
+
+    batches.push(currentBatch);
+    currentBatch = [run];
+    currentBatchTerminalAt = endedAt;
+  }
+
+  if (currentBatch.length > 0) {
+    batches.push(currentBatch);
+  }
+
+  return new Set(batches.at(-1)?.map((run) => run.runId) ?? []);
 }
