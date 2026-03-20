@@ -225,4 +225,13 @@ describe('deriveActiveTasks', () => {
   it('returns empty list for no task runs', () => {
     expect(deriveActiveTasks([], baseTime)).toHaveLength(0);
   });
+
+  it('treats missing task runs as an empty list', () => {
+    const snapshot = deriveActiveTaskSnapshot(undefined, baseTime);
+    expect(snapshot.tasks).toEqual([]);
+    expect(snapshot.runningCount).toBe(0);
+    expect(snapshot.pausedCount).toBe(0);
+    expect(snapshot.doneCount).toBe(0);
+    expect(snapshot.errorCount).toBe(0);
+  });
 });

@@ -1,6 +1,6 @@
 import {randomUUID} from 'node:crypto';
-import {useCallback, useMemo, useRef, useState} from 'react';
-import type {Codara, CodaraRuntimeEvent, SessionState} from '@/index';
+import {useCallback, useEffect, useMemo, useRef, useState} from 'react';
+import type {ApprovalQuerySummary, Codara, CodaraRuntimeEvent, SessionState, TeamQueryDetail} from '@/index';
 import {AIMessageChunk, type BaseMessage} from '@langchain/core/messages';
 import type {CliComposerState} from '../composer/types';
 import {hasTranscriptContent} from '../transcript/model';
@@ -27,6 +27,8 @@ import {
 } from './streaming-active-turn';
 import {useCliComposerState} from '../hooks/use-cli-composer-state';
 import {useCommandOutputState} from '../hooks/use-command-output-state';
+import type {TeamDashboardState} from '../hooks/use-team-dashboard';
+import type {TeamDetailState} from '../hooks/use-team-detail';
 import type {CliCollapsedPasteSummary} from '../composer/collapsed-paste';
 
 const STARTUP_MESSAGE = '';
@@ -93,6 +95,32 @@ export interface CliController {
   permissionConfirm: () => void;
   permissionRejectSend: () => void;
   permissionRejectSilent: () => void;
+  selectPreviousApproval: () => void;
+  selectNextApproval: () => void;
+  teamDashboardState: TeamDashboardState;
+  teamDetailState?: TeamDetailState;
+  enterTeam: (teamId: string) => void;
+  leaveTeam: () => void;
+}
+
+function shouldRefreshAuxiliaryState(event: CodaraRuntimeEvent): boolean {
+  return event.kind === 'task' || event.kind === 'team' || event.kind === 'hil';
+}
+
+function applyApprovalMetadata(
+  review: CliHilReviewState | undefined,
+  approvals: readonly ApprovalQuerySummary[],
+): CliHilReviewState | undefined {
+  if (!review) {
+    return undefined;
+  }
+
+  const currentIndex = approvals.findIndex((approval) => approval.approvalId === review.request.id);
+  return {
+    ...review,
+    approvalIndex: currentIndex >= 0 ? currentIndex + 1 : undefined,
+    approvalCount: approvals.length > 0 ? approvals.length : undefined,
+  };
 }
 
 export function useCliController(options: UseCliControllerOptions): CliController {
@@ -125,6 +153,8 @@ export function useCliController(options: UseCliControllerOptions): CliControlle
   const [sessionState, setSessionState] = useState<SessionState>(() => codara.getState());
   const [taskPanelVisible, setTaskPanelVisible] = useState(true);
   const [expandedAll, setExpandedAll] = useState(false);
+  const [teamDashboardState, setTeamDashboardState] = useState<TeamDashboardState>({teams: [], viewMode: 'dashboard'});
+  const [teamDetailState, setTeamDetailState] = useState<TeamDetailState | undefined>();
   const isRunningRef = useRef(false);
   const initialPromptSentRef = useRef(false);
   const hilReviewRef = useRef<CliHilReviewState | undefined>(undefined);
@@ -183,13 +213,75 @@ export function useCliController(options: UseCliControllerOptions): CliControlle
     return message;
   }, [appendNotice]);
 
+  const syncTeamDetailState = useCallback(() => {
+    const activeTeamId = teamDashboardState.activeTeamId;
+    if (!activeTeamId) {
+      return;
+    }
+
+    const detail: TeamQueryDetail | undefined = codara.getTeamDetail(activeTeamId);
+    if (!detail) {
+      return;
+    }
+
+    setTeamDetailState((current) => current ? {
+      ...current,
+      status: detail.status,
+      members: detail.members.map((member) => ({
+        memberId: member.memberId,
+        name: member.name,
+        role: member.role,
+        status: member.status,
+        model: member.model,
+        currentJobId: member.currentJobId,
+        tokens: 0,
+      })),
+      jobs: detail.jobs.map((job) => ({
+        id: job.id,
+        title: job.title,
+        status: job.status,
+        assignee: job.assignee,
+        blockedBy: job.blockedBy,
+      })),
+    } : current);
+  }, [codara, teamDashboardState.activeTeamId]);
+
+  const refreshAuxiliaryState = useCallback(() => {
+    const focusedApproval = codara.getFocusedApprovalReview?.();
+    const approvals = codara.getApprovalSummaries?.() ?? [];
+    let foregroundPause;
+    try {
+      foregroundPause = codara.getAgentState().pendingPause;
+    } catch {
+      foregroundPause = undefined;
+    }
+
+    setSessionState(codara.getState());
+    setHilReview((current) => applyApprovalMetadata(
+      syncCliHilReviewState(current, focusedApproval?.request ?? foregroundPause),
+      approvals,
+    ));
+    syncTeamDetailState();
+  }, [codara, syncTeamDetailState]);
+
+  const handleRuntimeEvent = useCallback((event: CodaraRuntimeEvent) => {
+    if (!isRunningRef.current && shouldRefreshAuxiliaryState(event)) {
+      refreshAuxiliaryState();
+    }
+  }, [refreshAuxiliaryState]);
+
   const refreshCoreState = useCallback(async () => {
     const nextAgentState = await codara.hydrate();
     setCoreMessages(nextAgentState.messages);
     setSessionState(codara.getState());
-    setHilReview((current) => syncCliHilReviewState(current, nextAgentState.pendingPause));
+    const focusedApproval = codara.getFocusedApprovalReview?.();
+    setHilReview((current) => applyApprovalMetadata(
+      syncCliHilReviewState(current, focusedApproval?.request ?? nextAgentState.pendingPause),
+      codara.getApprovalSummaries?.() ?? [],
+    ));
+    syncTeamDetailState();
     return nextAgentState;
-  }, [codara]);
+  }, [codara, syncTeamDetailState]);
 
   const runSlashCommand = useCallback(async (prompt: string) => {
     const result = await codara.executeCommand(prompt);
@@ -298,7 +390,51 @@ export function useCliController(options: UseCliControllerOptions): CliControlle
     initialPrompt,
     initialPromptSentRef,
     submitPrompt,
+    onRuntimeEvent: handleRuntimeEvent,
   });
+
+  useEffect(() => {
+    syncTeamDetailState();
+  }, [syncTeamDetailState]);
+
+  const enterTeam = useCallback((teamId: string) => {
+    setTeamDashboardState((current) => ({...current, activeTeamId: teamId, viewMode: 'observe'}));
+    const detail: TeamQueryDetail | undefined = codara.getTeamDetail(teamId);
+    if (!detail) {
+      return;
+    }
+
+    setTeamDetailState({
+      teamId: detail.teamId,
+      teamName: detail.name,
+      goal: detail.goal,
+      status: detail.status,
+      members: detail.members.map((member) => ({
+        memberId: member.memberId,
+        name: member.name,
+        role: member.role,
+        status: member.status,
+        model: member.model,
+        currentJobId: member.currentJobId,
+        tokens: 0,
+      })),
+      jobs: detail.jobs.map((job) => ({
+        id: job.id,
+        title: job.title,
+        status: job.status,
+        assignee: job.assignee,
+        blockedBy: job.blockedBy,
+      })),
+      activity: [],
+      tokenUsage: 0,
+      estimatedCost: 0,
+    });
+  }, [codara]);
+
+  const leaveTeam = useCallback(() => {
+    setTeamDashboardState((current) => ({...current, activeTeamId: undefined, viewMode: 'dashboard'}));
+    setTeamDetailState(undefined);
+  }, []);
 
   const toggleTaskPanel = useCallback(() => {
     setTaskPanelVisible(current => !current);
@@ -399,6 +535,38 @@ export function useCliController(options: UseCliControllerOptions): CliControlle
     submitHilAction,
   }), [submitHilAction]);
 
+  const shiftApprovalFocus = useCallback(async (direction: -1 | 1) => {
+    const approvals = codara.getApprovalSummaries?.() ?? [];
+    if (approvals.length < 2) {
+      return;
+    }
+
+    const currentApprovalId = hilReviewRef.current?.request.id;
+    const currentIndex = approvals.findIndex((approval) => approval.approvalId === currentApprovalId);
+    const baseIndex = currentIndex >= 0 ? currentIndex : 0;
+    const nextIndex = (baseIndex + direction + approvals.length) % approvals.length;
+    const nextApproval = approvals[nextIndex];
+    if (!nextApproval) {
+      return;
+    }
+
+    await codara.focusApproval?.(nextApproval.approvalId);
+    const nextAgentState = await refreshCoreState();
+    const focusedApproval = codara.getFocusedApprovalReview?.();
+    setHilReview((current) => applyApprovalMetadata(
+      syncCliHilReviewState(current, focusedApproval?.request ?? nextAgentState.pendingPause),
+      codara.getApprovalSummaries?.() ?? [],
+    ));
+  }, [codara, refreshCoreState]);
+
+  const selectPreviousApproval = useCallback(() => {
+    void shiftApprovalFocus(-1);
+  }, [shiftApprovalFocus]);
+
+  const selectNextApproval = useCallback(() => {
+    void shiftApprovalFocus(1);
+  }, [shiftApprovalFocus]);
+
   useCliHilAutoActions({
     review: hilReview,
     isRunningRef,
@@ -472,5 +640,11 @@ export function useCliController(options: UseCliControllerOptions): CliControlle
     permissionConfirm: hilControls.permissionConfirm,
     permissionRejectSend: hilControls.permissionRejectSend,
     permissionRejectSilent: hilControls.permissionRejectSilent,
+    selectPreviousApproval,
+    selectNextApproval,
+    teamDashboardState,
+    teamDetailState,
+    enterTeam,
+    leaveTeam,
   };
 }

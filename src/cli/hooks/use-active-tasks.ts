@@ -54,20 +54,22 @@ export function extractTaskName(label: string): string {
 }
 
 export function deriveActiveTasks(
-  runs: readonly TaskRunQuerySummary[],
+  runs: readonly TaskRunQuerySummary[] | undefined,
   now: number,
-  approvals: readonly ApprovalQuerySummary[] = [],
+  approvals: readonly ApprovalQuerySummary[] | undefined = [],
 ): ActiveTask[] {
   return deriveActiveTaskSnapshot(runs, now, approvals).tasks;
 }
 
 export function deriveActiveTaskSnapshot(
-  runs: readonly TaskRunQuerySummary[],
+  runs: readonly TaskRunQuerySummary[] | undefined,
   now: number,
-  approvals: readonly ApprovalQuerySummary[] = [],
+  approvals: readonly ApprovalQuerySummary[] | undefined = [],
 ): ActiveTaskSnapshot {
+  const safeRuns = runs ?? [];
+  const safeApprovals = approvals ?? [];
   const approvalsByTaskRun = new Map<string, ApprovalQuerySummary[]>();
-  for (const approval of approvals) {
+  for (const approval of safeApprovals) {
     if (approval.source !== 'task_run' || !approval.taskRunId) {
       continue;
     }
@@ -77,7 +79,7 @@ export function deriveActiveTaskSnapshot(
   }
 
   const tasks: ActiveTask[] = [];
-  for (const run of runs) {
+  for (const run of safeRuns) {
     const status = normalizeTaskStatus(run.status);
     const startedAt = Date.parse(run.startedAt);
     const endedAt = parseTaskFinishedAt(run);
@@ -127,7 +129,7 @@ export function deriveActiveTaskSnapshot(
 export function useActiveTasks(input: UseActiveTasksInput): UseActiveTasksOutput {
   const [now, setNow] = useState(() => Date.now());
   const snapshot = useMemo(
-    () => deriveActiveTaskSnapshot(input.taskRunSummaries, now, input.approvals),
+    () => deriveActiveTaskSnapshot(input.taskRunSummaries ?? [], now, input.approvals ?? []),
     [input.approvals, input.taskRunSummaries, now],
   );
   const {tasks, runningCount, pausedCount, doneCount, errorCount} = snapshot;

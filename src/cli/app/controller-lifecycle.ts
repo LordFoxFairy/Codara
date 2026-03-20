@@ -18,6 +18,7 @@ export interface UseCliControllerLifecycleInput {
   initialPrompt: string;
   initialPromptSentRef: MutableRefObject<boolean>;
   submitPrompt: (prompt: string) => Promise<void>;
+  onRuntimeEvent?: (event: CodaraRuntimeEvent) => void;
 }
 
 export function appendCliRuntimeEvent(
@@ -40,8 +41,9 @@ export function useCliControllerLifecycle(input: UseCliControllerLifecycleInput)
     input.setRuntimeEvents(() => []);
     return input.codara.subscribeRuntimeEvents((event) => {
       input.setRuntimeEvents((current) => appendCliRuntimeEvent(current, event));
+      input.onRuntimeEvent?.(event);
     });
-  }, [input.codara, input.setRuntimeEvents]);
+  }, [input.codara, input.onRuntimeEvent, input.setRuntimeEvents]);
 
   useEffect(() => {
     return () => {
