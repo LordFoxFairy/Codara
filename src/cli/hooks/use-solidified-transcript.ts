@@ -9,6 +9,7 @@ import {
   buildSolidifiedItemsFromRange,
   buildActiveItems,
   createToolCallLookup,
+  normalizeVisibleAssistantText,
 } from '../transcript/model';
 
 export interface UseSolidifiedTranscriptInput {
@@ -71,6 +72,7 @@ export function useSolidifiedTranscript(input: UseSolidifiedTranscriptInput): Us
   // Track previous activeTurn to detect transition
   const prevActiveTurnRef = useRef<CliActiveTurn | undefined>(undefined);
   const lastCompletedTurnKindRef = useRef<CliActiveTurn['kind'] | undefined>(undefined);
+  const visibleAssistantTextsRef = useRef<Set<string>>(new Set());
 
   // Emit welcome item on first render
   if (!welcomeEmittedRef.current) {
@@ -104,6 +106,7 @@ export function useSolidifiedTranscript(input: UseSolidifiedTranscriptInput): Us
       lastSolidifiedCountRef.current,
       coreMessages.length,
       toolLookup,
+      visibleAssistantTextsRef.current,
     );
     if (newItems.length > 0) {
       solidifiedItemsRef.current = [
@@ -152,6 +155,7 @@ export function useSolidifiedTranscript(input: UseSolidifiedTranscriptInput): Us
         solidifiedCount,
         coreMessages.length,
         toolLookup,
+        visibleAssistantTextsRef.current,
       ));
     }
 
@@ -178,6 +182,25 @@ export function useSolidifiedTranscript(input: UseSolidifiedTranscriptInput): Us
       latestCompletedTurnKind: activeTurn?.kind ?? lastCompletedTurnKindRef.current,
     });
   }, [activeTurn, coreMessages, notices, now, runtimeEvents, solidifiedCount]);
+
+  useEffect(() => {
+    const visibleAssistantItems = activeItems.filter((item) => item.role === 'assistant' && item.content.trim());
+    if (visibleAssistantItems.length === 0) {
+      return;
+    }
+
+    for (const item of visibleAssistantItems) {
+      visibleAssistantTextsRef.current.add(normalizeVisibleAssistantText(item.content));
+    }
+
+    while (visibleAssistantTextsRef.current.size > 50) {
+      const oldest = visibleAssistantTextsRef.current.values().next().value as string | undefined;
+      if (!oldest) {
+        break;
+      }
+      visibleAssistantTextsRef.current.delete(oldest);
+    }
+  }, [activeItems]);
 
   useEffect(() => {
     const endedIds = new Set(

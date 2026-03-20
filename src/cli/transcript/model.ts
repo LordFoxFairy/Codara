@@ -7,6 +7,7 @@ import {readDelegatedAgentResult} from '@shared/delegation-result';
 import {readTaskRunLaunchResult} from '@shared/task-run-launch';
 import {TOOL_NAMES} from '@shared/tool-display';
 import type {CliActiveTurn, CliNotice} from '../app/view-state';
+import {isInvalidTaskCloseoutResponse} from '../task-closeout';
 import {formatTokenCount} from '../utils/format';
 import {computeEditDiff, type DiffData} from './diff-compute';
 
@@ -51,6 +52,7 @@ export interface BuildTranscriptItemsInput {
   runtimeEvents?: readonly CodaraRuntimeEvent[];
   nowTimestamp?: string;
   limit?: number;
+  preserveVisibleAssistantTexts?: ReadonlySet<string>;
 }
 
 export interface HasTranscriptContentInput {
@@ -71,6 +73,7 @@ export function buildTranscriptItems(input: BuildTranscriptItemsInput): Transcri
     input.activeTurn?.responseRole,
     input.runtimeEvents,
     input.activeTurn?.pendingTaskLaunch,
+    input.activeTurn?.suppressTaskLaunchResponse,
   );
   const items = [
     ...input.notices.map((notice) => ({
@@ -84,6 +87,7 @@ export function buildTranscriptItems(input: BuildTranscriptItemsInput): Transcri
       input.coreMessages,
       toolLookup,
       preferRuntimeSteps,
+      input.preserveVisibleAssistantTexts,
     )),
     ...(input.activeTurn
       ? [
@@ -116,12 +120,13 @@ export function buildSolidifiedItemsFromRange(
   startIndex: number,
   endIndex: number,
   toolLookup: Map<string, ToolCall>,
+  preserveVisibleAssistantTexts?: ReadonlySet<string>,
 ): TranscriptItem[] {
   const items: TranscriptItem[] = [];
   for (let i = startIndex; i < endIndex; i++) {
     const message = coreMessages[i];
     if (!message) continue;
-    items.push(...buildCoreMessageItems(message, i, coreMessages, toolLookup, false));
+    items.push(...buildCoreMessageItems(message, i, coreMessages, toolLookup, false, preserveVisibleAssistantTexts));
   }
   return items.filter((item) => item.content);
 }
@@ -140,6 +145,7 @@ export function buildActiveItems(input: {
     input.activeTurn?.responseRole,
     input.runtimeEvents,
     input.activeTurn?.pendingTaskLaunch,
+    input.activeTurn?.suppressTaskLaunchResponse,
   );
   const thinkingItem = input.activeTurn?.thinking
     ? [{
@@ -199,13 +205,12 @@ export function hasTranscriptContent(input: HasTranscriptContentInput): boolean 
   });
 }
 
-const MAX_CHILD_ACTIVITY_LINES = 3;
-
 function shouldSuppressAssistantTaskLaunchChatter(
   response: string | undefined,
   role: TranscriptRole | undefined,
   runtimeEvents: readonly CodaraRuntimeEvent[] | undefined,
   pendingTaskLaunch: boolean | undefined = false,
+  suppressTaskLaunchResponse: boolean | undefined = false,
 ): boolean {
   if (role !== 'assistant') {
     return false;
@@ -216,7 +221,7 @@ function shouldSuppressAssistantTaskLaunchChatter(
     return false;
   }
 
-  if (pendingTaskLaunch) {
+  if (pendingTaskLaunch && suppressTaskLaunchResponse) {
     return true;
   }
 
@@ -224,7 +229,7 @@ function shouldSuppressAssistantTaskLaunchChatter(
     event.kind === 'task'
     && ((event.phase === 'start' && event.status === 'running') || (event.phase === 'update' && event.status === 'paused'))
   ));
-  if (!hasLiveTaskRuntime) {
+  if (!hasLiveTaskRuntime || suppressTaskLaunchResponse === false) {
     return false;
   }
 
@@ -254,15 +259,7 @@ function shouldSuppressSolidifiedTaskLaunchChatter(
     return false;
   }
 
-  return shouldSuppressAssistantTaskLaunchChatter(text, 'assistant', [{
-    id: 'task-launch',
-    sessionId: 'task-launch',
-    timestamp: new Date(0).toISOString(),
-    kind: 'task',
-    phase: 'start',
-    status: 'running',
-    label: 'Delegating task',
-  }]);
+  return shouldSuppressAssistantTaskLaunchChatter(text, 'assistant', undefined, true, true);
 }
 
 function buildRuntimeEventItems(events: readonly CodaraRuntimeEvent[], nowTimestamp?: string): TranscriptItem[] {
@@ -432,9 +429,6 @@ function buildRuntimeEventItems(events: readonly CodaraRuntimeEvent[], nowTimest
       : endEvent.status === 'paused'
         ? 'Waiting for review'
         : formatTaskDoneSummary(elapsedSec, endEvent.detail);
-    const taskOutput = toolActivityLabels.length > 0
-      ? buildTaskActivityOutput(toolActivityLabels)
-      : {outputLines: undefined, allOutputLines: undefined, totalOutputLines: 0};
     items.push({
       id: activeId(startEvent.id),
       role: 'task',
@@ -447,9 +441,6 @@ function buildRuntimeEventItems(events: readonly CodaraRuntimeEvent[], nowTimest
         status: status as 'done' | 'error',
         elapsed,
         summaryLine: summary,
-        ...(taskOutput.outputLines ? {outputLines: taskOutput.outputLines} : {}),
-        ...(taskOutput.allOutputLines ? {allOutputLines: taskOutput.allOutputLines} : {}),
-        ...(typeof taskOutput.totalOutputLines === 'number' ? {totalOutputLines: taskOutput.totalOutputLines} : {}),
       },
     });
   }
@@ -541,9 +532,6 @@ function buildRuntimeEventItems(events: readonly CodaraRuntimeEvent[], nowTimest
         status: 'running',
         ...(runningDisplay.elapsed ? {elapsed: runningDisplay.elapsed} : {}),
         summaryLine: runningDisplay.summaryLine,
-        ...(runningDisplay.outputLines ? {outputLines: runningDisplay.outputLines} : {}),
-        ...(runningDisplay.allOutputLines ? {allOutputLines: runningDisplay.allOutputLines} : {}),
-        ...(typeof runningDisplay.totalOutputLines === 'number' ? {totalOutputLines: runningDisplay.totalOutputLines} : {}),
       },
     });
   }
@@ -581,14 +569,9 @@ function buildRunningTaskDisplay(
 ): {
   summaryLine: string;
   elapsed?: string;
-  outputLines?: string[];
-  allOutputLines?: string[];
-  totalOutputLines?: number;
 } {
   const lifecycleUpdate = [...activities].reverse().find((activity) => isTaskLifecycleUpdate(activity.label));
   const toolActivities = activities.filter((activity) => !isTaskLifecycleUpdate(activity.label));
-  const activityLabels = toolActivities.map((activity) => activity.label);
-  const recentLabels = activityLabels.slice(-MAX_CHILD_ACTIVITY_LINES);
   const latestTimestamp = activities[activities.length - 1]?.timestamp ?? nowTimestamp ?? startEvent.timestamp;
   const elapsed = formatElapsed(startEvent.timestamp, latestTimestamp);
   const statusLabel = lifecycleUpdate?.label === 'Delegated task waiting for review'
@@ -602,22 +585,6 @@ function buildRunningTaskDisplay(
   return {
     summaryLine: `${statusLabel} (${statParts.join(' · ')})`,
     elapsed,
-    ...(recentLabels.length > 0 ? {outputLines: recentLabels} : {}),
-    ...(activityLabels.length > 0 ? {allOutputLines: activityLabels} : {}),
-    ...(activityLabels.length > 0 ? {totalOutputLines: activityLabels.length} : {}),
-  };
-}
-
-function buildTaskActivityOutput(activityLabels: string[]): {
-  outputLines?: string[];
-  allOutputLines?: string[];
-  totalOutputLines?: number;
-} {
-  const visible = activityLabels.slice(-MAX_CHILD_ACTIVITY_LINES);
-  return {
-    ...(visible.length > 0 ? {outputLines: visible} : {}),
-    ...(activityLabels.length > 0 ? {allOutputLines: activityLabels} : {}),
-    ...(activityLabels.length > 0 ? {totalOutputLines: activityLabels.length} : {}),
   };
 }
 
@@ -884,7 +851,11 @@ function mapRuntimeEventRole(kind: CodaraRuntimeEvent['kind']): TranscriptRole {
 }
 
 function formatRuntimeEvent(event: CodaraRuntimeEvent): string {
-  if (event.kind === 'tool' || event.kind === 'task') {
+  if (event.kind === 'task') {
+    return event.label.trim();
+  }
+
+  if (event.kind === 'tool') {
     if (event.phase === 'end') {
       if (event.status === 'done' && event.detail?.trim()) {
         return event.detail.trim();
@@ -925,12 +896,14 @@ function buildCoreMessageItems(
   allMessages: readonly BaseMessage[],
   toolLookup: Map<string, ToolCall>,
   preferRuntimeSteps: boolean,
+  preserveVisibleAssistantTexts?: ReadonlySet<string>,
 ): TranscriptItem[] {
   const messageId = String(message.id ?? `${message.type}-${index}`);
 
   if (AIMessage.isInstance(message)) {
     const previousMessage = index > 0 ? allMessages[index - 1] : undefined;
-    return buildAssistantItems(message, messageId, previousMessage, toolLookup);
+    const nextMessage = index + 1 < allMessages.length ? allMessages[index + 1] : undefined;
+    return buildAssistantItems(message, messageId, previousMessage, nextMessage, toolLookup, preserveVisibleAssistantTexts);
   }
 
   if (ToolMessage.isInstance(message)) {
@@ -952,11 +925,17 @@ function buildAssistantItems(
   message: AIMessage,
   messageId: string,
   previousMessage: BaseMessage | undefined,
+  nextMessage: BaseMessage | undefined,
   toolLookup: Map<string, ToolCall>,
+  preserveVisibleAssistantTexts?: ReadonlySet<string>,
 ): TranscriptItem[] {
   const items: TranscriptItem[] = [];
   const text = readMessageText(message);
-  if (text && !shouldSuppressSolidifiedTaskLaunchChatter(message, previousMessage, toolLookup)) {
+  const preserveVisibleText = text ? preserveVisibleAssistantTexts?.has(normalizeVisibleAssistantText(text)) ?? false : false;
+  if (text && (preserveVisibleText || (
+    !shouldSuppressSolidifiedTaskLaunchChatter(message, previousMessage, toolLookup)
+    && !shouldSuppressSupersededTaskCloseout(message, nextMessage)
+  ))) {
     items.push({
       id: messageId,
       role: 'assistant',
@@ -968,6 +947,22 @@ function buildAssistantItems(
   // Tool calls are rendered via ToolMessage results (buildToolResultItems)
   // or via runtime events during streaming — no need to show them separately here.
   return items;
+}
+
+export function normalizeVisibleAssistantText(text: string): string {
+  return text.replace(/\s+/g, ' ').trim();
+}
+
+function shouldSuppressSupersededTaskCloseout(
+  message: AIMessage,
+  nextMessage: BaseMessage | undefined,
+): boolean {
+  if (!AIMessage.isInstance(nextMessage)) {
+    return false;
+  }
+
+  const text = readMessageText(message);
+  return isInvalidTaskCloseoutResponse(text);
 }
 
 function containsTaskLaunchChatter(text: string): boolean {

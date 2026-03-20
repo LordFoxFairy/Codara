@@ -19,6 +19,7 @@ export interface ActiveTask {
 export interface UseActiveTasksInput {
   taskRunSummaries: readonly TaskRunQuerySummary[];
   approvals?: readonly ApprovalQuerySummary[];
+  preferredRunIds?: readonly string[];
 }
 
 export interface UseActiveTasksOutput {
@@ -27,6 +28,7 @@ export interface UseActiveTasksOutput {
   pausedCount: number;
   doneCount: number;
   errorCount: number;
+  hiddenCount: number;
   hasActiveTasks: boolean;
 }
 
@@ -36,6 +38,7 @@ export interface ActiveTaskSnapshot {
   pausedCount: number;
   doneCount: number;
   errorCount: number;
+  hiddenCount: number;
 }
 
 const MAX_VISIBLE_TASKS = 5;
@@ -72,16 +75,18 @@ export function deriveActiveTasks(
   runs: readonly TaskRunQuerySummary[],
   now: number,
   approvals: readonly ApprovalQuerySummary[] = [],
+  preferredRunIds: readonly string[] = [],
 ): ActiveTask[] {
-  return deriveActiveTaskSnapshot(runs, now, approvals).tasks;
+  return deriveActiveTaskSnapshot(runs, now, approvals, preferredRunIds).tasks;
 }
 
 export function deriveActiveTaskSnapshot(
   runs: readonly TaskRunQuerySummary[],
   now: number,
   approvals: readonly ApprovalQuerySummary[] = [],
+  preferredRunIds: readonly string[] = [],
 ): ActiveTaskSnapshot {
-  const activeBatchRunIds = selectLatestBatchRunIds(runs);
+  const activeBatchRunIds = selectVisibleRunIds(runs, preferredRunIds);
   const approvalsByTaskRun = new Map<string, ApprovalQuerySummary[]>();
   for (const approval of approvals) {
     if (approval.source !== 'task_run' || !approval.taskRunId) {
@@ -130,23 +135,25 @@ export function deriveActiveTaskSnapshot(
   const pausedCount = tasks.filter((task) => task.status === 'paused').length;
   const doneCount = tasks.filter((task) => task.status === 'done').length;
   const errorCount = tasks.filter((task) => task.status === 'error').length;
+  const visibleTasks = tasks.slice(0, MAX_VISIBLE_TASKS);
 
   return {
-    tasks: tasks.slice(0, MAX_VISIBLE_TASKS),
+    tasks: visibleTasks,
     runningCount,
     pausedCount,
     doneCount,
     errorCount,
+    hiddenCount: Math.max(tasks.length - visibleTasks.length, 0),
   };
 }
 
 export function useActiveTasks(input: UseActiveTasksInput): UseActiveTasksOutput {
   const [now, setNow] = useState(() => Date.now());
   const snapshot = useMemo(
-    () => deriveActiveTaskSnapshot(input.taskRunSummaries, now, input.approvals),
-    [input.approvals, input.taskRunSummaries, now],
+    () => deriveActiveTaskSnapshot(input.taskRunSummaries, now, input.approvals, input.preferredRunIds),
+    [input.approvals, input.preferredRunIds, input.taskRunSummaries, now],
   );
-  const {tasks, runningCount, pausedCount, doneCount, errorCount} = snapshot;
+  const {tasks, runningCount, pausedCount, doneCount, errorCount, hiddenCount} = snapshot;
 
   useEffect(() => {
     if (runningCount === 0 && tasks.length === 0) return;
@@ -164,6 +171,7 @@ export function useActiveTasks(input: UseActiveTasksInput): UseActiveTasksOutput
     pausedCount,
     doneCount,
     errorCount,
+    hiddenCount,
     hasActiveTasks: tasks.length > 0,
   };
 }
@@ -216,6 +224,25 @@ function resolveTaskDetail(
 
   const detail = run.latestActivity?.trim() || run.summary?.trim();
   return detail || undefined;
+}
+
+function selectVisibleRunIds(
+  runs: readonly TaskRunQuerySummary[],
+  preferredRunIds: readonly string[] = [],
+): Set<string> {
+  if (preferredRunIds.length > 0) {
+    const preferred = new Set(preferredRunIds);
+    const visibleRunIds = new Set(
+      runs
+        .filter((run) => preferred.has(run.runId))
+        .map((run) => run.runId),
+    );
+    if (visibleRunIds.size > 0) {
+      return visibleRunIds;
+    }
+  }
+
+  return selectLatestBatchRunIds(runs);
 }
 
 function selectLatestBatchRunIds(runs: readonly TaskRunQuerySummary[]): Set<string> {

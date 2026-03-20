@@ -168,6 +168,7 @@ export function CodaraCliApp(props: CodaraCliAppProps): React.JSX.Element {
   const activeTasks = useActiveTasks({
     taskRunSummaries: codara.getTaskRunSummaries(),
     approvals: codara.getApprovalSummaries(),
+    preferredRunIds: shell.visibleTaskRunIds,
   });
   const activeTeams = useActiveTeams({
     teamSummaries: codara.getTeamSummaries(),
@@ -409,6 +410,7 @@ export function CodaraCliApp(props: CodaraCliAppProps): React.JSX.Element {
                   pausedCount={activeTasks.pausedCount}
                   doneCount={activeTasks.doneCount}
                   errorCount={activeTasks.errorCount}
+                  hiddenCount={activeTasks.hiddenCount}
                 />
               </Box>
             )}

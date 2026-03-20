@@ -194,23 +194,6 @@ function parseTaskRunId(itemId: string): string | undefined {
   return itemId.startsWith(prefix) ? itemId.slice(prefix.length) : undefined;
 }
 
-function renderTaskActivityLines(meta: ToolResultMeta, expanded: boolean): {lines: string[]; hiddenCount: number} {
-  const allLines = meta.allOutputLines ?? meta.outputLines ?? [];
-  if (allLines.length === 0) {
-    return {lines: [], hiddenCount: 0};
-  }
-
-  if (expanded) {
-    return {lines: allLines, hiddenCount: 0};
-  }
-
-  const latestLine = allLines[allLines.length - 1];
-  return {
-    lines: latestLine ? [latestLine] : [],
-    hiddenCount: Math.max(allLines.length - 1, 0),
-  };
-}
-
 function renderTaskStatsLine(task: ActiveTask | undefined, meta: ToolResultMeta): string | undefined {
   const parts: string[] = [];
   if (task) {
@@ -234,22 +217,6 @@ function renderTaskStatsLine(task: ActiveTask | undefined, meta: ToolResultMeta)
   }
 
   return parts.length > 0 ? parts.join(' · ') : undefined;
-}
-
-function renderTaskActivityLine(
-  lines: string[],
-  activeTask: ActiveTask | undefined,
-  status: 'running' | 'paused' | 'done' | 'error',
-): string | undefined {
-  if ((status === 'running' || status === 'paused') && activeTask?.detail) {
-    return activeTask.detail;
-  }
-
-  if (lines.length > 0) {
-    return lines[lines.length - 1];
-  }
-
-  return undefined;
 }
 
 function formatTaskExecutionHeader(
@@ -307,11 +274,9 @@ function formatSingleTaskSummaryLine(meta: ToolResultMeta, activeTask: ActiveTas
 function SingleTaskExecutionBlock({
   item,
   activeTask,
-  expanded = false,
 }: {
   item: import('../../transcript/model').TranscriptItem & {toolMeta: ToolResultMeta};
   activeTask?: ActiveTask;
-  expanded?: boolean;
 }): React.JSX.Element {
   const [frame, setFrame] = React.useState(0);
   React.useEffect(() => {
@@ -326,27 +291,21 @@ function SingleTaskExecutionBlock({
     return () => clearInterval(timer);
   }, [item.toolMeta.status, activeTask?.status]);
 
-  const {lines, hiddenCount} = renderTaskActivityLines(item.toolMeta, expanded);
-  const status = item.toolMeta.status === 'done'
-    ? 'done'
-    : activeTask?.status === 'paused'
-      ? 'paused'
-      : item.toolMeta.status;
-  const latestActivity = renderTaskActivityLine(lines, activeTask, status);
-  const summaryLine = item.toolMeta.status === 'done'
-    ? item.toolMeta.summaryLine
+  const status = activeTask?.status === 'paused'
+    ? 'paused'
+    : activeTask?.status === 'error'
+      ? 'error'
+      : activeTask?.status === 'done'
+        ? 'done'
+        : item.toolMeta.status;
+  const summaryLine = status === 'done' || status === 'error'
+    ? formatSyntheticTaskSummaryLine(activeTask, item.toolMeta.summaryLine)
     : formatSingleTaskSummaryLine(item.toolMeta, activeTask);
 
   return (
     <Box marginBottom={1} flexDirection="column">
       <Text bold wrap="truncate-end">{formatTaskExecutionHeader(item.toolMeta, status, activeTask, frame)}</Text>
       <Text dimColor wrap="truncate-end">{`  ⎿ ${summaryLine}`}</Text>
-      {latestActivity ? (
-        <Text dimColor wrap="truncate-end">{`    ⎿ ${latestActivity}`}</Text>
-      ) : null}
-      {hiddenCount > 0 ? (
-        <Text dimColor wrap="truncate-end">{`    … +${hiddenCount} more activity line${hiddenCount === 1 ? '' : 's'} (ctrl+o to expand)`}</Text>
-      ) : null}
     </Box>
   );
 }
@@ -357,11 +316,9 @@ const TASK_SPINNER_INTERVAL_MS = 80;
 function RunningTaskGroupBlock({
   items,
   activeTasks = [],
-  expanded = false,
 }: {
   items: Array<import('../../transcript/model').TranscriptItem & {toolMeta: ToolResultMeta}>;
   activeTasks?: readonly ActiveTask[];
-  expanded?: boolean;
 }): React.JSX.Element {
   const [frame, setFrame] = React.useState(0);
   React.useEffect(() => {
@@ -374,7 +331,6 @@ function RunningTaskGroupBlock({
 
   const total = items.length;
   const activeTasksById = new Map(activeTasks.map((task) => [task.id, task]));
-  const hasExpandableContent = items.some((item) => (item.toolMeta.allOutputLines?.length ?? item.toolMeta.outputLines?.length ?? 0) > 1);
   const firstRunId = parseTaskRunId(items[0]?.id ?? '');
   const singleTask = total === 1 && firstRunId ? activeTasksById.get(firstRunId) : undefined;
   if (total === 1) {
@@ -382,7 +338,6 @@ function RunningTaskGroupBlock({
       <SingleTaskExecutionBlock
         item={items[0]!}
         activeTask={singleTask}
-        expanded={expanded}
       />
     );
   }
@@ -393,17 +348,14 @@ function RunningTaskGroupBlock({
   });
   const spinner = TASK_SPINNER_FRAMES[((frame % TASK_SPINNER_FRAMES.length) + TASK_SPINNER_FRAMES.length) % TASK_SPINNER_FRAMES.length];
   const headerBase = hasLiveTask ? `${spinner} Running ${total} agents...` : `⏺ Completed ${total} agents...`;
-  const headerSuffix = !expanded && hasExpandableContent ? ' (ctrl+o to expand)' : expanded && hasExpandableContent ? ' (ctrl+o to collapse)' : '';
-
   return (
     <Box marginBottom={1} flexDirection="column">
-      <Text bold>{`${headerBase}${headerSuffix}`}</Text>
+      <Text bold>{headerBase}</Text>
       {items.map((item, index) => {
         const rowPrefix = index === items.length - 1 ? '└─ ' : '├─ ';
         const branchPrefix = index === items.length - 1 ? '   ' : '│  ';
         const runId = parseTaskRunId(item.id);
         const activeTask = runId ? activeTasksById.get(runId) : undefined;
-        const {lines, hiddenCount} = renderTaskActivityLines(item.toolMeta, expanded);
         const rowLabel = formatTaskExecutionLabel(item.toolMeta, activeTask);
         const rowStatus = activeTask?.status === 'paused'
           ? 'paused'
@@ -415,7 +367,6 @@ function RunningTaskGroupBlock({
         const rowSummary = rowStatus === 'done' || rowStatus === 'error'
           ? formatSyntheticTaskSummaryLine(activeTask, item.toolMeta.summaryLine)
           : formatSingleTaskSummaryLine(item.toolMeta, activeTask);
-        const latestActivity = renderTaskActivityLine(lines, activeTask, rowStatus);
 
         return (
           <Box key={item.id} flexDirection="column">
@@ -423,16 +374,6 @@ function RunningTaskGroupBlock({
             <Text dimColor wrap="truncate-end">
               {`${branchPrefix}⎿ ${rowSummary}`}
             </Text>
-            {latestActivity && rowStatus !== 'done' && rowStatus !== 'error' ? (
-              <Text dimColor wrap="truncate-end">
-                {`${branchPrefix}  ⎿ ${latestActivity}`}
-              </Text>
-            ) : null}
-            {hiddenCount > 0 ? (
-              <Text dimColor wrap="truncate-end">
-                {`${branchPrefix}… +${hiddenCount} more activity line${hiddenCount === 1 ? '' : 's'}`}
-              </Text>
-            ) : null}
           </Box>
         );
       })}
@@ -598,7 +539,6 @@ export function TranscriptItemsView({
           key={item.id}
           items={groupedItems}
           activeTasks={activeTasks}
-          expanded={expandedAll}
         />,
       );
       index = cursor - 1;
@@ -618,7 +558,6 @@ export function TranscriptItemsView({
           key={item.id}
           items={groupedItems}
           activeTasks={activeTasks}
-          expanded={expandedAll}
         />,
       );
       index = cursor - 1;
@@ -630,7 +569,6 @@ export function TranscriptItemsView({
         <SingleTaskExecutionBlock
           key={item.id}
           item={item}
-          expanded={expandedAll}
         />,
       );
       continue;

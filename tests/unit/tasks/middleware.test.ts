@@ -256,7 +256,15 @@ describe('tasks middlewares', () => {
     await taskMiddleware.beforeModel?.(context);
 
     expect(context.systemMessage.join('\n')).toContain('Delegated tasks from your previous response have completed');
-    expect(context.systemMessage.join('\n')).toContain('Respond now with a unified user-facing answer');
+    expect(context.systemMessage.join('\n')).toContain('Continue the parent task using these completed delegated results');
+    expect(context.systemMessage.join('\n')).toContain('If more work is still needed, immediately take the next step, including launching more delegated tasks if appropriate');
+    expect(context.systemMessage.join('\n')).toContain('Only give a final user-facing answer once the entire original user request is satisfied');
+    expect(context.systemMessage.join('\n')).toContain('A completed delegated batch does not by itself mean the overall request is complete');
+    expect(context.systemMessage.join('\n')).toContain('If the user explicitly required later phases, serial follow-up steps, or additional analysis after this batch, do that next before answering');
+    expect(context.systemMessage.join('\n')).toContain('If the work is complete, respond with a unified user-facing answer');
+    expect(context.systemMessage.join('\n')).toContain('Treat the completed delegated results below as finished work products, not as tasks to be restarted');
+    expect(context.systemMessage.join('\n')).toContain('Do not restart the plan from the beginning, do not relaunch the initial batch, and do not repeat a completed phase');
+    expect(context.systemMessage.join('\n')).toContain('Do not launch another delegated task that repeats, paraphrases, or only lightly rewords a completed topic listed below');
     expect(context.systemMessage.join('\n')).toContain('Do not restate task-by-task reports or raw child sections');
     expect(context.systemMessage.join('\n')).toContain('Do not mention subagents, delegated tasks, hidden handoff context, or orchestration stages');
     expect(context.systemMessage.join('\n')).toContain('Never write headings such as "Subagent report", "Phase 1", "First subagent"');

@@ -13,6 +13,7 @@ import type {
 } from '@/index';
 import type {PauseRequest} from '@shared/contracts/agent-types';
 import {useCliController} from '../../../src/cli/app/use-cli-controller';
+import {useActiveTasks} from '../../../src/cli/hooks/use-active-tasks';
 
 describe('useCliController background refresh', () => {
   it('refreshes queued approvals and active team detail when background events arrive', async () => {
@@ -348,6 +349,879 @@ describe('useCliController background refresh', () => {
       expect(frame).toContain('streamCalls:2');
       expect(frame).toContain('latestAssistantNotice:none');
       expect(frame).not.toContain('Structure child summary');
+    } finally {
+      codara.releaseBlockedStream();
+      rendered.unmount();
+    }
+  });
+
+  it('retries task closeout once when the first continuation keeps describing the batch as still waiting', async () => {
+    const codara = new FakeCodara();
+    codara.blockNextStream();
+    const rendered = render(<BackgroundFollowupProbe codara={codara as unknown as Codara} />);
+
+    try {
+      await waitFor(() => (rendered.lastFrame() ?? '').includes('runState:running'));
+
+      codara.setTaskRunSummaries([
+        {
+          runId: 'run-tech',
+          sessionId: 'session-1',
+          label: 'Delegating Explore: Analyze the tech stack',
+          agentName: 'Explore',
+          status: 'running',
+          startedAt: new Date(Date.now() - 10_000).toISOString(),
+          updatedAt: new Date().toISOString(),
+          summary: 'Tech stack child summary',
+        },
+        {
+          runId: 'run-structure',
+          sessionId: 'session-1',
+          label: 'Delegating Explore: Analyze the project structure',
+          agentName: 'Explore',
+          status: 'running',
+          startedAt: new Date(Date.now() - 8_000).toISOString(),
+          updatedAt: new Date().toISOString(),
+          summary: 'Structure child summary',
+        },
+      ]);
+      codara.emit({
+        id: 'task-run:run-tech',
+        sessionId: 'session-1',
+        timestamp: new Date().toISOString(),
+        kind: 'task',
+        phase: 'start',
+        status: 'running',
+        label: 'Delegating Explore: Analyze the tech stack',
+      });
+      codara.emit({
+        id: 'task-run:run-structure',
+        sessionId: 'session-1',
+        timestamp: new Date().toISOString(),
+        kind: 'task',
+        phase: 'start',
+        status: 'running',
+        label: 'Delegating Explore: Analyze the project structure',
+      });
+
+      codara.releaseBlockedStream();
+      await waitFor(() => (rendered.lastFrame() ?? '').includes('runState:done'));
+      codara.queueStreamText('第一阶段已启动 3 个并行子代理，等待子代理返回结果。');
+      codara.queueStreamText('Unified final answer from the main agent.');
+
+      codara.setTaskRunSummaries([
+        {
+          runId: 'run-tech',
+          sessionId: 'session-1',
+          label: 'Delegating Explore: Analyze the tech stack',
+          agentName: 'Explore',
+          status: 'completed',
+          startedAt: new Date(Date.now() - 10_000).toISOString(),
+          updatedAt: new Date().toISOString(),
+          endedAt: new Date().toISOString(),
+          summary: 'Tech stack child summary',
+        },
+        {
+          runId: 'run-structure',
+          sessionId: 'session-1',
+          label: 'Delegating Explore: Analyze the project structure',
+          agentName: 'Explore',
+          status: 'completed',
+          startedAt: new Date(Date.now() - 8_000).toISOString(),
+          updatedAt: new Date().toISOString(),
+          endedAt: new Date().toISOString(),
+          summary: 'Structure child summary',
+        },
+      ]);
+      codara.emit({
+        id: 'task-event-batch-complete-retry',
+        sessionId: 'session-1',
+        timestamp: new Date().toISOString(),
+        kind: 'task',
+        phase: 'end',
+        status: 'done',
+        label: 'Delegated task completed',
+        detail: 'Structure child summary',
+        parentId: 'task-run:run-structure',
+      });
+
+      await waitFor(() => codara.getStreamCallCount() === 3);
+      const retryCall = codara.getStreamCalls()[2];
+      expect(retryCall?.input).toBeUndefined();
+      expect(retryCall?.config).toEqual(expect.objectContaining({
+        streamMode: 'messages',
+        context: {
+          codaraTaskCompletion: expect.objectContaining({
+            attempt: 2,
+            previousInvalidResponse: '第一阶段已启动 3 个并行子代理，等待子代理返回结果。',
+          }),
+        },
+      }));
+      expect(rendered.lastFrame() ?? '').toContain('streamCalls:3');
+    } finally {
+      codara.releaseBlockedStream();
+      rendered.unmount();
+    }
+  });
+
+  it('keeps earlier task phases visible when a later phase starts in the same orchestration', async () => {
+    const codara = new FakeCodara();
+    const rendered = render(<TrackedTaskProjectionProbe codara={codara as unknown as Codara} />);
+
+    try {
+      await waitFor(() => (rendered.lastFrame() ?? '').includes('taskIds:none'));
+
+      codara.setTaskRunSummaries([
+        {
+          runId: 'phase-1-a',
+          sessionId: 'session-1',
+          label: 'Delegating Explore: Analyze product scope',
+          agentName: 'Explore',
+          status: 'completed',
+          startedAt: new Date(Date.now() - 12_000).toISOString(),
+          updatedAt: new Date().toISOString(),
+          endedAt: new Date(Date.now() - 10_000).toISOString(),
+        },
+        {
+          runId: 'phase-1-b',
+          sessionId: 'session-1',
+          label: 'Delegating Explore: Analyze tech stack',
+          agentName: 'Explore',
+          status: 'completed',
+          startedAt: new Date(Date.now() - 11_000).toISOString(),
+          updatedAt: new Date().toISOString(),
+          endedAt: new Date(Date.now() - 9_000).toISOString(),
+        },
+      ]);
+      codara.emit({
+        id: 'task-run:phase-1-a',
+        sessionId: 'session-1',
+        timestamp: new Date().toISOString(),
+        kind: 'task',
+        phase: 'start',
+        status: 'running',
+        label: 'Delegating Explore: Analyze product scope',
+      });
+      codara.emit({
+        id: 'task-run:phase-1-b',
+        sessionId: 'session-1',
+        timestamp: new Date().toISOString(),
+        kind: 'task',
+        phase: 'start',
+        status: 'running',
+        label: 'Delegating Explore: Analyze tech stack',
+      });
+
+      await waitFor(() => (rendered.lastFrame() ?? '').includes('taskCount:2'));
+
+      codara.setTaskRunSummaries([
+        {
+          runId: 'phase-1-a',
+          sessionId: 'session-1',
+          label: 'Delegating Explore: Analyze product scope',
+          agentName: 'Explore',
+          status: 'completed',
+          startedAt: new Date(Date.now() - 12_000).toISOString(),
+          updatedAt: new Date().toISOString(),
+          endedAt: new Date(Date.now() - 10_000).toISOString(),
+        },
+        {
+          runId: 'phase-1-b',
+          sessionId: 'session-1',
+          label: 'Delegating Explore: Analyze tech stack',
+          agentName: 'Explore',
+          status: 'completed',
+          startedAt: new Date(Date.now() - 11_000).toISOString(),
+          updatedAt: new Date().toISOString(),
+          endedAt: new Date(Date.now() - 9_000).toISOString(),
+        },
+        {
+          runId: 'phase-2-a',
+          sessionId: 'session-1',
+          label: 'Delegating Explore: Analyze CLI rendering',
+          agentName: 'Explore',
+          status: 'running',
+          startedAt: new Date(Date.now() - 1_000).toISOString(),
+          updatedAt: new Date().toISOString(),
+        },
+      ]);
+      codara.emit({
+        id: 'task-run:phase-2-a',
+        sessionId: 'session-1',
+        timestamp: new Date().toISOString(),
+        kind: 'task',
+        phase: 'start',
+        status: 'running',
+        label: 'Delegating Explore: Analyze CLI rendering',
+      });
+
+      await waitFor(() => (rendered.lastFrame() ?? '').includes('taskCount:3'));
+      expect(rendered.lastFrame() ?? '').toContain('visibleRunIds:phase-1-a,phase-1-b,phase-2-a');
+      expect(rendered.lastFrame() ?? '').toContain('taskIds:phase-2-a,phase-1-b,phase-1-a');
+    } finally {
+      rendered.unmount();
+    }
+  });
+
+  it('re-enters the main agent again after a later task phase finishes if that phase was launched during an earlier continuation', async () => {
+    const codara = new FakeCodara();
+    codara.blockNextStream();
+    const rendered = render(<BackgroundFollowupProbe codara={codara as unknown as Codara} />);
+
+    try {
+      await waitFor(() => (rendered.lastFrame() ?? '').includes('runState:running'));
+
+      codara.setTaskRunSummaries([
+        {
+          runId: 'phase-1-a',
+          sessionId: 'session-1',
+          label: 'Delegating Explore: Analyze product scope',
+          agentName: 'Explore',
+          status: 'running',
+          startedAt: new Date(Date.now() - 12_000).toISOString(),
+          updatedAt: new Date().toISOString(),
+          summary: 'Product scope summary',
+        },
+        {
+          runId: 'phase-1-b',
+          sessionId: 'session-1',
+          label: 'Delegating Explore: Analyze tech stack',
+          agentName: 'Explore',
+          status: 'running',
+          startedAt: new Date(Date.now() - 11_000).toISOString(),
+          updatedAt: new Date().toISOString(),
+          summary: 'Tech stack summary',
+        },
+        {
+          runId: 'phase-1-c',
+          sessionId: 'session-1',
+          label: 'Delegating Explore: Analyze architecture',
+          agentName: 'Explore',
+          status: 'running',
+          startedAt: new Date(Date.now() - 10_000).toISOString(),
+          updatedAt: new Date().toISOString(),
+          summary: 'Architecture summary',
+        },
+      ]);
+      codara.emit({
+        id: 'task-run:phase-1-a',
+        sessionId: 'session-1',
+        timestamp: new Date().toISOString(),
+        kind: 'task',
+        phase: 'start',
+        status: 'running',
+        label: 'Delegating Explore: Analyze product scope',
+      });
+      codara.emit({
+        id: 'task-run:phase-1-b',
+        sessionId: 'session-1',
+        timestamp: new Date().toISOString(),
+        kind: 'task',
+        phase: 'start',
+        status: 'running',
+        label: 'Delegating Explore: Analyze tech stack',
+      });
+      codara.emit({
+        id: 'task-run:phase-1-c',
+        sessionId: 'session-1',
+        timestamp: new Date().toISOString(),
+        kind: 'task',
+        phase: 'start',
+        status: 'running',
+        label: 'Delegating Explore: Analyze architecture',
+      });
+
+      codara.releaseBlockedStream();
+      await waitFor(() => (rendered.lastFrame() ?? '').includes('runState:done'));
+
+      codara.blockNextStream();
+      codara.queueStreamText('Launching the second phase based on the first phase results.');
+
+      codara.setTaskRunSummaries([
+        {
+          runId: 'phase-1-a',
+          sessionId: 'session-1',
+          label: 'Delegating Explore: Analyze product scope',
+          agentName: 'Explore',
+          status: 'completed',
+          startedAt: new Date(Date.now() - 12_000).toISOString(),
+          updatedAt: new Date().toISOString(),
+          endedAt: new Date(Date.now() - 9_000).toISOString(),
+          summary: 'Product scope summary',
+        },
+        {
+          runId: 'phase-1-b',
+          sessionId: 'session-1',
+          label: 'Delegating Explore: Analyze tech stack',
+          agentName: 'Explore',
+          status: 'completed',
+          startedAt: new Date(Date.now() - 11_000).toISOString(),
+          updatedAt: new Date().toISOString(),
+          endedAt: new Date(Date.now() - 8_000).toISOString(),
+          summary: 'Tech stack summary',
+        },
+        {
+          runId: 'phase-1-c',
+          sessionId: 'session-1',
+          label: 'Delegating Explore: Analyze architecture',
+          agentName: 'Explore',
+          status: 'completed',
+          startedAt: new Date(Date.now() - 10_000).toISOString(),
+          updatedAt: new Date().toISOString(),
+          endedAt: new Date().toISOString(),
+          summary: 'Architecture summary',
+        },
+      ]);
+      codara.emit({
+        id: 'task-end-phase-1-c',
+        sessionId: 'session-1',
+        timestamp: new Date().toISOString(),
+        kind: 'task',
+        phase: 'end',
+        status: 'done',
+        label: 'Delegated task completed',
+        detail: 'Architecture summary',
+        parentId: 'task-run:phase-1-c',
+      });
+
+      await waitFor(() => codara.getStreamCallCount() === 2);
+
+      codara.setTaskRunSummaries([
+        {
+          runId: 'phase-1-a',
+          sessionId: 'session-1',
+          label: 'Delegating Explore: Analyze product scope',
+          agentName: 'Explore',
+          status: 'completed',
+          startedAt: new Date(Date.now() - 12_000).toISOString(),
+          updatedAt: new Date().toISOString(),
+          endedAt: new Date(Date.now() - 9_000).toISOString(),
+          summary: 'Product scope summary',
+        },
+        {
+          runId: 'phase-1-b',
+          sessionId: 'session-1',
+          label: 'Delegating Explore: Analyze tech stack',
+          agentName: 'Explore',
+          status: 'completed',
+          startedAt: new Date(Date.now() - 11_000).toISOString(),
+          updatedAt: new Date().toISOString(),
+          endedAt: new Date(Date.now() - 8_000).toISOString(),
+          summary: 'Tech stack summary',
+        },
+        {
+          runId: 'phase-1-c',
+          sessionId: 'session-1',
+          label: 'Delegating Explore: Analyze architecture',
+          agentName: 'Explore',
+          status: 'completed',
+          startedAt: new Date(Date.now() - 10_000).toISOString(),
+          updatedAt: new Date().toISOString(),
+          endedAt: new Date().toISOString(),
+          summary: 'Architecture summary',
+        },
+        {
+          runId: 'phase-2-a',
+          sessionId: 'session-1',
+          label: 'Delegating Explore: Analyze task boundaries',
+          agentName: 'Explore',
+          status: 'running',
+          startedAt: new Date(Date.now() - 2_000).toISOString(),
+          updatedAt: new Date().toISOString(),
+          summary: 'Task boundary summary',
+        },
+      ]);
+      codara.emit({
+        id: 'task-run:phase-2-a',
+        sessionId: 'session-1',
+        timestamp: new Date().toISOString(),
+        kind: 'task',
+        phase: 'start',
+        status: 'running',
+        label: 'Delegating Explore: Analyze task boundaries',
+      });
+
+      codara.releaseBlockedStream();
+      await waitFor(() => (rendered.lastFrame() ?? '').includes('runState:done'));
+      await new Promise((resolve) => setTimeout(resolve, 20));
+
+      codara.queueStreamText('Unified final answer from the main agent.');
+      codara.setTaskRunSummaries([
+        {
+          runId: 'phase-1-a',
+          sessionId: 'session-1',
+          label: 'Delegating Explore: Analyze product scope',
+          agentName: 'Explore',
+          status: 'completed',
+          startedAt: new Date(Date.now() - 12_000).toISOString(),
+          updatedAt: new Date().toISOString(),
+          endedAt: new Date(Date.now() - 9_000).toISOString(),
+          summary: 'Product scope summary',
+        },
+        {
+          runId: 'phase-1-b',
+          sessionId: 'session-1',
+          label: 'Delegating Explore: Analyze tech stack',
+          agentName: 'Explore',
+          status: 'completed',
+          startedAt: new Date(Date.now() - 11_000).toISOString(),
+          updatedAt: new Date().toISOString(),
+          endedAt: new Date(Date.now() - 8_000).toISOString(),
+          summary: 'Tech stack summary',
+        },
+        {
+          runId: 'phase-1-c',
+          sessionId: 'session-1',
+          label: 'Delegating Explore: Analyze architecture',
+          agentName: 'Explore',
+          status: 'completed',
+          startedAt: new Date(Date.now() - 10_000).toISOString(),
+          updatedAt: new Date().toISOString(),
+          endedAt: new Date().toISOString(),
+          summary: 'Architecture summary',
+        },
+        {
+          runId: 'phase-2-a',
+          sessionId: 'session-1',
+          label: 'Delegating Explore: Analyze task boundaries',
+          agentName: 'Explore',
+          status: 'completed',
+          startedAt: new Date(Date.now() - 2_000).toISOString(),
+          updatedAt: new Date().toISOString(),
+          endedAt: new Date().toISOString(),
+          summary: 'Task boundary summary',
+        },
+      ]);
+      codara.emit({
+        id: 'task-end-phase-2-a',
+        sessionId: 'session-1',
+        timestamp: new Date().toISOString(),
+        kind: 'task',
+        phase: 'end',
+        status: 'done',
+        label: 'Delegated task completed',
+        detail: 'Task boundary summary',
+        parentId: 'task-run:phase-2-a',
+      });
+
+      await waitFor(() => codara.getStreamCallCount() === 3);
+      const finalContinuationCall = codara.getStreamCalls()[2];
+      expect(finalContinuationCall?.config).toEqual(expect.objectContaining({
+        streamMode: 'messages',
+        context: {
+          codaraTaskCompletion: {
+            tasks: [
+              expect.objectContaining({
+                runId: 'phase-2-a',
+                summary: 'Task boundary summary',
+              }),
+            ],
+          },
+        },
+      }));
+    } finally {
+      codara.releaseBlockedStream();
+      rendered.unmount();
+    }
+  });
+
+  it('re-enters through both serial second-phase steps and produces a final continuation after the last task finishes', async () => {
+    const codara = new FakeCodara();
+    codara.blockNextStream();
+    const rendered = render(<BackgroundFollowupProbe codara={codara as unknown as Codara} />);
+
+    try {
+      await waitFor(() => (rendered.lastFrame() ?? '').includes('runState:running'));
+
+      codara.setTaskRunSummaries([
+        {
+          runId: 'phase-1-a',
+          sessionId: 'session-1',
+          label: 'Delegating Explore: Analyze product scope',
+          agentName: 'Explore',
+          status: 'running',
+          startedAt: new Date(Date.now() - 12_000).toISOString(),
+          updatedAt: new Date().toISOString(),
+          summary: 'Product scope summary',
+        },
+        {
+          runId: 'phase-1-b',
+          sessionId: 'session-1',
+          label: 'Delegating Explore: Analyze tech stack',
+          agentName: 'Explore',
+          status: 'running',
+          startedAt: new Date(Date.now() - 11_000).toISOString(),
+          updatedAt: new Date().toISOString(),
+          summary: 'Tech stack summary',
+        },
+        {
+          runId: 'phase-1-c',
+          sessionId: 'session-1',
+          label: 'Delegating Explore: Analyze architecture',
+          agentName: 'Explore',
+          status: 'running',
+          startedAt: new Date(Date.now() - 10_000).toISOString(),
+          updatedAt: new Date().toISOString(),
+          summary: 'Architecture summary',
+        },
+      ]);
+      codara.emit({
+        id: 'task-run:phase-1-a',
+        sessionId: 'session-1',
+        timestamp: new Date().toISOString(),
+        kind: 'task',
+        phase: 'start',
+        status: 'running',
+        label: 'Delegating Explore: Analyze product scope',
+      });
+      codara.emit({
+        id: 'task-run:phase-1-b',
+        sessionId: 'session-1',
+        timestamp: new Date().toISOString(),
+        kind: 'task',
+        phase: 'start',
+        status: 'running',
+        label: 'Delegating Explore: Analyze tech stack',
+      });
+      codara.emit({
+        id: 'task-run:phase-1-c',
+        sessionId: 'session-1',
+        timestamp: new Date().toISOString(),
+        kind: 'task',
+        phase: 'start',
+        status: 'running',
+        label: 'Delegating Explore: Analyze architecture',
+      });
+
+      codara.releaseBlockedStream();
+      await waitFor(() => (rendered.lastFrame() ?? '').includes('runState:done'));
+
+      codara.blockNextStream();
+      codara.queueStreamText('Launching the first serial step based on the completed phase-1 results.');
+      codara.setTaskRunSummaries([
+        {
+          runId: 'phase-1-a',
+          sessionId: 'session-1',
+          label: 'Delegating Explore: Analyze product scope',
+          agentName: 'Explore',
+          status: 'completed',
+          startedAt: new Date(Date.now() - 12_000).toISOString(),
+          updatedAt: new Date().toISOString(),
+          endedAt: new Date(Date.now() - 9_000).toISOString(),
+          summary: 'Product scope summary',
+        },
+        {
+          runId: 'phase-1-b',
+          sessionId: 'session-1',
+          label: 'Delegating Explore: Analyze tech stack',
+          agentName: 'Explore',
+          status: 'completed',
+          startedAt: new Date(Date.now() - 11_000).toISOString(),
+          updatedAt: new Date().toISOString(),
+          endedAt: new Date(Date.now() - 8_000).toISOString(),
+          summary: 'Tech stack summary',
+        },
+        {
+          runId: 'phase-1-c',
+          sessionId: 'session-1',
+          label: 'Delegating Explore: Analyze architecture',
+          agentName: 'Explore',
+          status: 'completed',
+          startedAt: new Date(Date.now() - 10_000).toISOString(),
+          updatedAt: new Date().toISOString(),
+          endedAt: new Date().toISOString(),
+          summary: 'Architecture summary',
+        },
+      ]);
+      codara.emit({
+        id: 'task-end-phase-1-c-trigger-step-4',
+        sessionId: 'session-1',
+        timestamp: new Date().toISOString(),
+        kind: 'task',
+        phase: 'end',
+        status: 'done',
+        label: 'Delegated task completed',
+        detail: 'Architecture summary',
+        parentId: 'task-run:phase-1-c',
+      });
+
+      await waitFor(() => codara.getStreamCallCount() === 2);
+
+      codara.setTaskRunSummaries([
+        {
+          runId: 'phase-1-a',
+          sessionId: 'session-1',
+          label: 'Delegating Explore: Analyze product scope',
+          agentName: 'Explore',
+          status: 'completed',
+          startedAt: new Date(Date.now() - 12_000).toISOString(),
+          updatedAt: new Date().toISOString(),
+          endedAt: new Date(Date.now() - 9_000).toISOString(),
+          summary: 'Product scope summary',
+        },
+        {
+          runId: 'phase-1-b',
+          sessionId: 'session-1',
+          label: 'Delegating Explore: Analyze tech stack',
+          agentName: 'Explore',
+          status: 'completed',
+          startedAt: new Date(Date.now() - 11_000).toISOString(),
+          updatedAt: new Date().toISOString(),
+          endedAt: new Date(Date.now() - 8_000).toISOString(),
+          summary: 'Tech stack summary',
+        },
+        {
+          runId: 'phase-1-c',
+          sessionId: 'session-1',
+          label: 'Delegating Explore: Analyze architecture',
+          agentName: 'Explore',
+          status: 'completed',
+          startedAt: new Date(Date.now() - 10_000).toISOString(),
+          updatedAt: new Date().toISOString(),
+          endedAt: new Date().toISOString(),
+          summary: 'Architecture summary',
+        },
+        {
+          runId: 'phase-2-a',
+          sessionId: 'session-1',
+          label: 'Delegating Explore: Analyze task / subagent / team boundaries',
+          agentName: 'Explore',
+          status: 'running',
+          startedAt: new Date(Date.now() - 2_000).toISOString(),
+          updatedAt: new Date().toISOString(),
+          summary: 'Task boundary summary',
+        },
+      ]);
+      codara.emit({
+        id: 'task-run:phase-2-a',
+        sessionId: 'session-1',
+        timestamp: new Date().toISOString(),
+        kind: 'task',
+        phase: 'start',
+        status: 'running',
+        label: 'Delegating Explore: Analyze task / subagent / team boundaries',
+      });
+
+      codara.releaseBlockedStream();
+      await waitFor(() => (rendered.lastFrame() ?? '').includes('runState:done'));
+
+      codara.blockNextStream();
+      codara.queueStreamText('Launching the second serial step after the first serial result.');
+      codara.setTaskRunSummaries([
+        {
+          runId: 'phase-1-a',
+          sessionId: 'session-1',
+          label: 'Delegating Explore: Analyze product scope',
+          agentName: 'Explore',
+          status: 'completed',
+          startedAt: new Date(Date.now() - 12_000).toISOString(),
+          updatedAt: new Date().toISOString(),
+          endedAt: new Date(Date.now() - 9_000).toISOString(),
+          summary: 'Product scope summary',
+        },
+        {
+          runId: 'phase-1-b',
+          sessionId: 'session-1',
+          label: 'Delegating Explore: Analyze tech stack',
+          agentName: 'Explore',
+          status: 'completed',
+          startedAt: new Date(Date.now() - 11_000).toISOString(),
+          updatedAt: new Date().toISOString(),
+          endedAt: new Date(Date.now() - 8_000).toISOString(),
+          summary: 'Tech stack summary',
+        },
+        {
+          runId: 'phase-1-c',
+          sessionId: 'session-1',
+          label: 'Delegating Explore: Analyze architecture',
+          agentName: 'Explore',
+          status: 'completed',
+          startedAt: new Date(Date.now() - 10_000).toISOString(),
+          updatedAt: new Date().toISOString(),
+          endedAt: new Date().toISOString(),
+          summary: 'Architecture summary',
+        },
+        {
+          runId: 'phase-2-a',
+          sessionId: 'session-1',
+          label: 'Delegating Explore: Analyze task / subagent / team boundaries',
+          agentName: 'Explore',
+          status: 'completed',
+          startedAt: new Date(Date.now() - 2_000).toISOString(),
+          updatedAt: new Date().toISOString(),
+          endedAt: new Date().toISOString(),
+          summary: 'Task boundary summary',
+        },
+      ]);
+      codara.emit({
+        id: 'task-end-phase-2-a-trigger-step-5',
+        sessionId: 'session-1',
+        timestamp: new Date().toISOString(),
+        kind: 'task',
+        phase: 'end',
+        status: 'done',
+        label: 'Delegated task completed',
+        detail: 'Task boundary summary',
+        parentId: 'task-run:phase-2-a',
+      });
+
+      await waitFor(() => codara.getStreamCallCount() === 3);
+
+      codara.setTaskRunSummaries([
+        {
+          runId: 'phase-1-a',
+          sessionId: 'session-1',
+          label: 'Delegating Explore: Analyze product scope',
+          agentName: 'Explore',
+          status: 'completed',
+          startedAt: new Date(Date.now() - 12_000).toISOString(),
+          updatedAt: new Date().toISOString(),
+          endedAt: new Date(Date.now() - 9_000).toISOString(),
+          summary: 'Product scope summary',
+        },
+        {
+          runId: 'phase-1-b',
+          sessionId: 'session-1',
+          label: 'Delegating Explore: Analyze tech stack',
+          agentName: 'Explore',
+          status: 'completed',
+          startedAt: new Date(Date.now() - 11_000).toISOString(),
+          updatedAt: new Date().toISOString(),
+          endedAt: new Date(Date.now() - 8_000).toISOString(),
+          summary: 'Tech stack summary',
+        },
+        {
+          runId: 'phase-1-c',
+          sessionId: 'session-1',
+          label: 'Delegating Explore: Analyze architecture',
+          agentName: 'Explore',
+          status: 'completed',
+          startedAt: new Date(Date.now() - 10_000).toISOString(),
+          updatedAt: new Date().toISOString(),
+          endedAt: new Date().toISOString(),
+          summary: 'Architecture summary',
+        },
+        {
+          runId: 'phase-2-a',
+          sessionId: 'session-1',
+          label: 'Delegating Explore: Analyze task / subagent / team boundaries',
+          agentName: 'Explore',
+          status: 'completed',
+          startedAt: new Date(Date.now() - 2_000).toISOString(),
+          updatedAt: new Date().toISOString(),
+          endedAt: new Date().toISOString(),
+          summary: 'Task boundary summary',
+        },
+        {
+          runId: 'phase-2-b',
+          sessionId: 'session-1',
+          label: 'Delegating Explore: Analyze CLI task list / execution tree / HIL',
+          agentName: 'Explore',
+          status: 'running',
+          startedAt: new Date(Date.now() - 1_000).toISOString(),
+          updatedAt: new Date().toISOString(),
+          summary: 'CLI relationship summary',
+        },
+      ]);
+      codara.emit({
+        id: 'task-run:phase-2-b',
+        sessionId: 'session-1',
+        timestamp: new Date().toISOString(),
+        kind: 'task',
+        phase: 'start',
+        status: 'running',
+        label: 'Delegating Explore: Analyze CLI task list / execution tree / HIL',
+      });
+
+      codara.releaseBlockedStream();
+      await waitFor(() => (rendered.lastFrame() ?? '').includes('runState:done'));
+      await new Promise((resolve) => setTimeout(resolve, 20));
+
+      codara.queueStreamText('Unified final answer from the main agent.');
+      codara.setTaskRunSummaries([
+        {
+          runId: 'phase-1-a',
+          sessionId: 'session-1',
+          label: 'Delegating Explore: Analyze product scope',
+          agentName: 'Explore',
+          status: 'completed',
+          startedAt: new Date(Date.now() - 12_000).toISOString(),
+          updatedAt: new Date().toISOString(),
+          endedAt: new Date(Date.now() - 9_000).toISOString(),
+          summary: 'Product scope summary',
+        },
+        {
+          runId: 'phase-1-b',
+          sessionId: 'session-1',
+          label: 'Delegating Explore: Analyze tech stack',
+          agentName: 'Explore',
+          status: 'completed',
+          startedAt: new Date(Date.now() - 11_000).toISOString(),
+          updatedAt: new Date().toISOString(),
+          endedAt: new Date(Date.now() - 8_000).toISOString(),
+          summary: 'Tech stack summary',
+        },
+        {
+          runId: 'phase-1-c',
+          sessionId: 'session-1',
+          label: 'Delegating Explore: Analyze architecture',
+          agentName: 'Explore',
+          status: 'completed',
+          startedAt: new Date(Date.now() - 10_000).toISOString(),
+          updatedAt: new Date().toISOString(),
+          endedAt: new Date().toISOString(),
+          summary: 'Architecture summary',
+        },
+        {
+          runId: 'phase-2-a',
+          sessionId: 'session-1',
+          label: 'Delegating Explore: Analyze task / subagent / team boundaries',
+          agentName: 'Explore',
+          status: 'completed',
+          startedAt: new Date(Date.now() - 2_000).toISOString(),
+          updatedAt: new Date().toISOString(),
+          endedAt: new Date().toISOString(),
+          summary: 'Task boundary summary',
+        },
+        {
+          runId: 'phase-2-b',
+          sessionId: 'session-1',
+          label: 'Delegating Explore: Analyze CLI task list / execution tree / HIL',
+          agentName: 'Explore',
+          status: 'completed',
+          startedAt: new Date(Date.now() - 1_000).toISOString(),
+          updatedAt: new Date().toISOString(),
+          endedAt: new Date().toISOString(),
+          summary: 'CLI relationship summary',
+        },
+      ]);
+      codara.emit({
+        id: 'task-end-phase-2-b-final',
+        sessionId: 'session-1',
+        timestamp: new Date().toISOString(),
+        kind: 'task',
+        phase: 'end',
+        status: 'done',
+        label: 'Delegated task completed',
+        detail: 'CLI relationship summary',
+        parentId: 'task-run:phase-2-b',
+      });
+
+      await waitFor(() => codara.getStreamCallCount() === 4);
+      const finalContinuationCall = codara.getStreamCalls()[3];
+      expect(finalContinuationCall?.config).toEqual(expect.objectContaining({
+        streamMode: 'messages',
+        context: {
+          codaraTaskCompletion: {
+            tasks: [
+              expect.objectContaining({
+                runId: 'phase-2-b',
+                summary: 'CLI relationship summary',
+              }),
+            ],
+          },
+        },
+      }));
     } finally {
       codara.releaseBlockedStream();
       rendered.unmount();
@@ -732,6 +1606,22 @@ function BackgroundFollowupProbe({codara}: {codara: Codara}): React.JSX.Element 
   );
 }
 
+function TrackedTaskProjectionProbe({codara}: {codara: Codara}): React.JSX.Element {
+  const controller = useCliController({codara});
+  const activeTasks = useActiveTasks({
+    taskRunSummaries: codara.getTaskRunSummaries(),
+    preferredRunIds: controller.visibleTaskRunIds,
+  });
+
+  return (
+    <Text>
+      {`visibleRunIds:${controller.visibleTaskRunIds.join(',') || 'none'}`}
+      {` taskCount:${activeTasks.tasks.length}`}
+      {` taskIds:${activeTasks.tasks.map((task) => task.id).join(',') || 'none'}`}
+    </Text>
+  );
+}
+
 class FakeCodara {
   private listeners = new Set<(event: CodaraRuntimeEvent) => void>();
   private approvals: ApprovalQuerySummary[] = [];
@@ -824,6 +1714,7 @@ class FakeCodara {
   queueStreamText(text: string): void {
     this.queuedStreamChunks.push([new AIMessageChunk({content: text})]);
   }
+
 
   getStreamCalls(): Array<{input: unknown; config: unknown}> {
     return [...this.streamCalls];

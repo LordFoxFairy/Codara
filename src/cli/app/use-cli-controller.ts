@@ -22,6 +22,7 @@ import {
   advanceCliHilToNextStep,
   applyCliHilFormShortcut,
   confirmCliHilFocusedSelection,
+  isPermissionReviewState,
   prepareCliHilDraftInput,
   prepareCliHilSubmission,
   selectNextCliHilTab,
@@ -31,12 +32,12 @@ import {
   syncCliHilReviewState,
   toggleCliHilFocus,
   updateCliHilDraft,
-  setPermissionStage,
   type CliHilAutoAction,
 } from './hil-review';
 import type {CliActiveTurn, CliHilReviewState, CliNotice, CliRunState} from './view-state';
 import type {TeamDashboardState} from '../hooks/use-team-dashboard';
 import type {TeamDetailState} from '../hooks/use-team-detail';
+import {shouldRetryTaskCloseoutResponse} from '../task-closeout';
 
 const STARTUP_MESSAGE = '';
 const HIL_AUTO_ACTION_DELAY_MS = 30;
@@ -68,6 +69,7 @@ export interface CliController {
   hasConversation: boolean;
   runState: CliRunState;
   sessionState: SessionState;
+  visibleTaskRunIds: readonly string[];
   taskPanelVisible: boolean;
   toggleTaskPanel: () => void;
   expandedAll: boolean;
@@ -187,7 +189,11 @@ interface TaskCompletionHandoff {
 interface TaskCompletionContinuation {
   sessionId: string;
   tasks: TaskCompletionHandoff[];
+  attempt?: number;
+  previousInvalidResponse?: string;
 }
+
+const MAX_TASK_CLOSEOUT_ATTEMPTS = 2;
 
 function isRunIdBackedTaskStartEvent(event: CodaraRuntimeEvent): boolean {
   return event.kind === 'task'
@@ -217,6 +223,17 @@ function toTaskCompletionHandoff(run: TaskRunQuerySummary): TaskCompletionHandof
     ...(typeof run.toolUseCount === 'number' ? {toolUseCount: run.toolUseCount} : {}),
     ...(typeof run.totalTokens === 'number' ? {totalTokens: run.totalTokens} : {}),
   };
+}
+
+function isTrackedBatchForContinuation(
+  batch: TrackedTaskBatch | undefined,
+  continuation: TaskCompletionContinuation,
+): boolean {
+  if (!batch || batch.sessionId !== continuation.sessionId || batch.runIds.size !== continuation.tasks.length) {
+    return false;
+  }
+
+  return continuation.tasks.every((task) => batch.runIds.has(task.runId));
 }
 
 function resolveTaskCompletionContinuation(
@@ -310,6 +327,8 @@ export function useCliController(options: UseCliControllerOptions): CliControlle
   const pendingBackgroundNoticesRef = useRef<CliNotice[]>([]);
   const trackedTaskBatchRef = useRef<TrackedTaskBatch | undefined>(undefined);
   const pendingTaskContinuationRef = useRef<TaskCompletionContinuation | undefined>(undefined);
+  const visibleTaskRunIdsRef = useRef<Set<string>>(new Set());
+  const [visibleTaskRunIds, setVisibleTaskRunIds] = useState<string[]>([]);
 
   useEffect(() => {
     hilReviewRef.current = hilReview;
@@ -338,6 +357,22 @@ export function useCliController(options: UseCliControllerOptions): CliControlle
     appendNotice('error', message);
     return message;
   }, [appendNotice]);
+
+  const resetVisibleTaskRunIds = useCallback(() => {
+    visibleTaskRunIdsRef.current = new Set();
+    setVisibleTaskRunIds([]);
+  }, []);
+
+  const addVisibleTaskRunId = useCallback((runId: string) => {
+    if (visibleTaskRunIdsRef.current.has(runId)) {
+      return;
+    }
+
+    const next = new Set(visibleTaskRunIdsRef.current);
+    next.add(runId);
+    visibleTaskRunIdsRef.current = next;
+    setVisibleTaskRunIds([...next]);
+  }, []);
 
   const syncTeamDetailState = useCallback(() => {
     const activeTeamId = teamDashboardState.activeTeamId;
@@ -425,55 +460,84 @@ export function useCliController(options: UseCliControllerOptions): CliControlle
       kind: 'task_completion',
     });
 
-    let sawText = false;
-
     try {
-      for await (const chunk of codara.stream(undefined, {
-        streamMode: 'messages',
-        context: {
-          codaraTaskCompletion: {
-            tasks: continuation.tasks,
+      let attempt = continuation.attempt ?? 1;
+      let previousInvalidResponse = continuation.previousInvalidResponse;
+      while (attempt <= MAX_TASK_CLOSEOUT_ATTEMPTS) {
+        let sawText = false;
+        let sawTaskToolCall = false;
+        let streamedResponse = '';
+        setActiveTurn((current) => current ? {...current, response: '', streamingTokens: undefined} : current);
+
+        for await (const chunk of codara.stream(undefined, {
+          streamMode: 'messages',
+          context: {
+            codaraTaskCompletion: {
+              tasks: continuation.tasks,
+              ...(attempt > 1 ? {attempt} : {}),
+              ...(previousInvalidResponse ? {previousInvalidResponse} : {}),
+            },
           },
-        },
-      })) {
-        if (!AIMessageChunk.isInstance(chunk)) {
-          continue;
-        }
-
-        const usageMeta = chunk.usage_metadata as Record<string, unknown> | undefined;
-        if (usageMeta) {
-          const inputDelta = typeof usageMeta.input_tokens === 'number' ? usageMeta.input_tokens : 0;
-          const outputDelta = typeof usageMeta.output_tokens === 'number' ? usageMeta.output_tokens : 0;
-          if (inputDelta > 0 || outputDelta > 0) {
-            setActiveTurn((current) => {
-              if (!current) return current;
-              const prev = current.streamingTokens ?? {input: 0, output: 0};
-              return {
-                ...current,
-                streamingTokens: {
-                  input: Math.max(prev.input, inputDelta),
-                  output: Math.max(prev.output, outputDelta),
-                },
-              };
-            });
+        })) {
+          if (!AIMessageChunk.isInstance(chunk)) {
+            continue;
           }
+
+          if (Array.isArray(chunk.tool_calls) && chunk.tool_calls.some((toolCall) => toolCall?.name === 'Task')) {
+            sawTaskToolCall = true;
+          }
+
+          const usageMeta = chunk.usage_metadata as Record<string, unknown> | undefined;
+          if (usageMeta) {
+            const inputDelta = typeof usageMeta.input_tokens === 'number' ? usageMeta.input_tokens : 0;
+            const outputDelta = typeof usageMeta.output_tokens === 'number' ? usageMeta.output_tokens : 0;
+            if (inputDelta > 0 || outputDelta > 0) {
+              setActiveTurn((current) => {
+                if (!current) return current;
+                const prev = current.streamingTokens ?? {input: 0, output: 0};
+                return {
+                  ...current,
+                  streamingTokens: {
+                    input: Math.max(prev.input, inputDelta),
+                    output: Math.max(prev.output, outputDelta),
+                  },
+                };
+              });
+            }
+          }
+
+          const text = chunk.text;
+          if (!text) {
+            continue;
+          }
+
+          sawText = true;
+          streamedResponse += text;
+          setActiveTurn((current) => current ? {...current, response: current.response + text} : current);
         }
 
-        const text = chunk.text;
-        if (!text) {
-          continue;
+        const finalResponse = sawText ? streamedResponse : '(no output)';
+        if (!sawText) {
+          setActiveTurn((current) => current ? {...current, response: finalResponse} : current);
         }
 
-        sawText = true;
-        setActiveTurn((current) => current ? {...current, response: current.response + text} : current);
-      }
+        if (!shouldRetryTaskCloseoutResponse({
+          text: finalResponse,
+          launchedTaskToolCall: sawTaskToolCall,
+          attempt,
+          maxAttempts: MAX_TASK_CLOSEOUT_ATTEMPTS,
+        })) {
+          break;
+        }
 
-      if (!sawText) {
-        setActiveTurn((current) => current ? {...current, response: '(no output)'} : current);
+        previousInvalidResponse = finalResponse.trim();
+        attempt += 1;
       }
 
       setActiveTurn(undefined);
-      trackedTaskBatchRef.current = undefined;
+      if (isTrackedBatchForContinuation(trackedTaskBatchRef.current, continuation)) {
+        trackedTaskBatchRef.current = undefined;
+      }
       const nextAgentState = await refreshCoreState();
       setRunState(nextAgentState.status === 'paused' ? {status: 'paused'} : {status: 'done'});
     } catch (error) {
@@ -482,6 +546,13 @@ export function useCliController(options: UseCliControllerOptions): CliControlle
       await refreshCoreState().catch(() => undefined);
     } finally {
       isRunningRef.current = false;
+      const pending = pendingTaskContinuationRef.current;
+      if (pending) {
+        pendingTaskContinuationRef.current = undefined;
+        queueMicrotask(() => {
+          void runTaskCompletionContinuation(pending);
+        });
+      }
     }
   }, [codara, refreshCoreState, reportError]);
 
@@ -513,6 +584,7 @@ export function useCliController(options: UseCliControllerOptions): CliControlle
       }
       if (isRunIdBackedTaskStartEvent(event)) {
         const runId = parseTaskRunIdFromEvent(event)!;
+        addVisibleTaskRunId(runId);
         const currentBatch = trackedTaskBatchRef.current;
         if (!currentBatch || currentBatch.sessionId !== event.sessionId || currentBatch.continuationStarted) {
           trackedTaskBatchRef.current = {
@@ -571,7 +643,7 @@ export function useCliController(options: UseCliControllerOptions): CliControlle
         refreshAuxiliaryState();
       }
     });
-  }, [codara, drainPendingTaskContinuation, refreshAuxiliaryState, runTaskCompletionContinuation]);
+  }, [addVisibleTaskRunId, codara, drainPendingTaskContinuation, refreshAuxiliaryState, runTaskCompletionContinuation]);
 
   useEffect(() => {
     syncTeamDetailState();
@@ -728,7 +800,11 @@ export function useCliController(options: UseCliControllerOptions): CliControlle
       }
 
       if (Array.isArray(chunk.tool_calls) && chunk.tool_calls.some((toolCall) => toolCall?.name === 'Task')) {
-        setActiveTurn((current) => current ? {...current, pendingTaskLaunch: true} : current);
+        setActiveTurn((current) => current ? {
+          ...current,
+          pendingTaskLaunch: true,
+          suppressTaskLaunchResponse: current.response.length === 0,
+        } : current);
       }
 
       const text = chunk.text;
@@ -737,7 +813,11 @@ export function useCliController(options: UseCliControllerOptions): CliControlle
       }
 
       sawText = true;
-      setActiveTurn((current) => current ? {...current, response: current.response + text} : current);
+      setActiveTurn((current) => current ? {
+        ...current,
+        response: current.response + text,
+        ...(current.pendingTaskLaunch ? {} : {suppressTaskLaunchResponse: false}),
+      } : current);
     }
 
     if (!sawText) {
@@ -758,6 +838,7 @@ export function useCliController(options: UseCliControllerOptions): CliControlle
     isRunningRef.current = true;
     setRunState({status: 'running'});
     setRuntimeEvents([]);
+    resetVisibleTaskRunIds();
     setCommandOutput(undefined);
 
     try {
@@ -783,7 +864,7 @@ export function useCliController(options: UseCliControllerOptions): CliControlle
         drainPendingTaskContinuation();
       }
     }
-  }, [drainPendingTaskContinuation, refreshCoreState, reportError, runAgentPrompt, runSlashCommand]);
+  }, [drainPendingTaskContinuation, refreshCoreState, reportError, resetVisibleTaskRunIds, runAgentPrompt, runSlashCommand]);
 
   useEffect(() => {
     return () => {
@@ -1152,15 +1233,6 @@ export function useCliController(options: UseCliControllerOptions): CliControlle
   }, [appendNotice, codara, drainPendingTaskContinuation, refreshCoreState, reportError]);
 
   const quickHilAction = useCallback((actionId: string) => {
-    // Three-stage permission flow: intercept dont_ask_again and deny
-    if (actionId === 'dont_ask_again') {
-      setHilReview((current) => current ? setPermissionStage(current, 'always-confirm') : current);
-      return;
-    }
-    if (actionId === 'deny') {
-      setHilReview((current) => current ? setPermissionStage(current, 'reject-feedback') : current);
-      return;
-    }
     void submitHilAction({action: actionId});
   }, [submitHilAction]);
 
@@ -1231,6 +1303,7 @@ export function useCliController(options: UseCliControllerOptions): CliControlle
     hasConversation,
     runState,
     sessionState,
+    visibleTaskRunIds,
     insertText,
     replaceText,
     insertNewline,
@@ -1274,9 +1347,7 @@ export function useCliController(options: UseCliControllerOptions): CliControlle
 }
 
 function isPermissionReview(review: CliHilReviewState): boolean {
-  return review.request.ui?.modal === 'permission-review'
-    || review.request.channel === 'permission-center'
-    || review.request.description.toLowerCase().includes('permission review');
+  return isPermissionReviewState(review);
 }
 
 /**

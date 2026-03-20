@@ -23,6 +23,8 @@ export interface CliActiveTurn {
   kind?: 'prompt' | 'task_completion';
   /** True once the current streaming model message includes a Task tool call. */
   pendingTaskLaunch?: boolean;
+  /** True only when task launch chatter was detected before any visible response text was emitted. */
+  suppressTaskLaunchResponse?: boolean;
   /** Accumulated thinking/reasoning text (Extended Thinking). */
   thinking?: string;
   /** Real-time token counts from streaming chunks. */
