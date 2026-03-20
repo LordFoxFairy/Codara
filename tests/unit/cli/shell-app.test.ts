@@ -2,6 +2,7 @@ import {describe, expect, it} from 'bun:test';
 import {
   isFloatingHilReview,
   shouldShowFloatingTaskPanel,
+  shouldShowFocusedTeamDetail,
   resolveCliForegroundSurface,
   shouldShowActivityLine,
   shouldShowTaskPanel,
@@ -84,6 +85,22 @@ describe('CLI foreground surface', () => {
     })).toBe(true);
   });
 
+  it('should show focused team detail when conversation is active and no blocking overlay is open', () => {
+    expect(shouldShowFocusedTeamDetail({
+      hasConversation: true,
+      hasFocusedTeamDetail: true,
+      hasBlockingOverlay: false,
+    })).toBe(true);
+  });
+
+  it('should hide focused team detail while a blocking overlay is open', () => {
+    expect(shouldShowFocusedTeamDetail({
+      hasConversation: true,
+      hasFocusedTeamDetail: true,
+      hasBlockingOverlay: true,
+    })).toBe(false);
+  });
+
   it('should hide the activity line when a running task block already owns task/tool progress', () => {
     const activeItems: TranscriptItem[] = [{
       id: 'active-task-run:run-1',
@@ -116,6 +133,18 @@ describe('CLI foreground surface', () => {
     })).toBe(false);
   });
 
+  it('should hide the activity line whenever active teams are still running or paused, even if no task block is projected', () => {
+    expect(shouldShowActivityLine({
+      runStateStatus: 'running',
+      latestRuntimeEventKind: 'team',
+      activeItems: [],
+      activeTaskCount: 0,
+      pausedTaskCount: 0,
+      activeTeamCount: 1,
+      pausedTeamCount: 1,
+    })).toBe(false);
+  });
+
   it('should keep the activity line for normal model thinking states', () => {
     expect(shouldShowActivityLine({
       runStateStatus: 'running',
@@ -123,6 +152,8 @@ describe('CLI foreground surface', () => {
       activeItems: [],
       activeTaskCount: 0,
       pausedTaskCount: 0,
+      activeTeamCount: 0,
+      pausedTeamCount: 0,
     })).toBe(true);
   });
 });

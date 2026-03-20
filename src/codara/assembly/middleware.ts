@@ -28,10 +28,6 @@ import {
   readTaskToolOptions,
   TASK_TOOL_NAME,
 } from '@capability/task/middleware';
-import {createTeamMiddleware} from '@capability/team/middleware';
-import type {TeamRegistry} from '@capability/team/coordination/team-registry';
-import type {TeamRuntime} from '@capability/team/runtime/team-runtime';
-import type {SharedState} from '@capability/team/shared-state';
 import type {HookPipeline} from '@observability/hook';
 import {createToolHooksBridge} from '@observability/hook';
 import type {GuidelinesSource} from '@context/instructions/guidelines';
@@ -106,9 +102,6 @@ export function createRuntimeDefaultMiddlewares(input: {
   promptSource: PromptSource;
   guidelinesSource: GuidelinesSource;
   hookPipeline?: HookPipeline;
-  teamRegistry?: TeamRegistry;
-  teamRuntime?: TeamRuntime;
-  teamSharedState?: SharedState;
   channelRegistry?: ChannelRegistry;
 }): BaseMiddleware[] {
   const callerMiddlewares = input.options.middleware ?? [];
@@ -165,20 +158,6 @@ export function createRuntimeDefaultMiddlewares(input: {
         ...(input.hookPipeline ? {lifecycle: input.hookPipeline} : {}),
       }),
     );
-  }
-
-  if (
-    input.teamRegistry &&
-    input.teamRuntime &&
-    input.teamSharedState &&
-    !byName.has(MIDDLEWARE_NAMES.Team)
-  ) {
-    byName.set(MIDDLEWARE_NAMES.Team, createTeamMiddleware({
-      teamType: 'leader',
-      registry: input.teamRegistry,
-      runtime: input.teamRuntime,
-      sharedState: input.teamSharedState,
-    }));
   }
 
   if (input.options.hil !== false && !byName.has(MIDDLEWARE_NAMES.AskUserQuestion)) {
@@ -247,7 +226,7 @@ function createDelegatedRuntimeMiddlewares(input: {
 }): BaseMiddleware[] {
   const middlewares: BaseMiddleware[] = [];
   const callerMiddlewares = (input.options.middleware ?? [])
-    .filter((middleware) => middleware.name !== MIDDLEWARE_NAMES.Task && middleware.name !== MIDDLEWARE_NAMES.Team);
+    .filter((middleware) => middleware.name !== MIDDLEWARE_NAMES.Task);
   const providedToolNames = collectProvidedToolNames({
     tools: input.tools,
     middlewares: callerMiddlewares,

@@ -9,6 +9,7 @@ import {
 function createTaskRun(overrides: Partial<TaskRunQuerySummary>): TaskRunQuerySummary {
   return {
     runId: 'run-1',
+    sessionId: 'session-1',
     label: 'Delegating task',
     agentName: 'general-purpose',
     status: 'running',

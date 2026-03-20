@@ -1,9 +1,8 @@
 import type {AgentResult, AgentState} from '@shared/contracts/agent-types';
+import type {AgentRuntimeContext} from '@shared/contracts/agent-types';
 import type {CompactOptions} from '@durability/checkpoint/types';
 import type {ConversationCompactionResult} from '@durability/session';
 import type {HookRegistry} from '@observability/hook/registry';
-import type {TeamRegistry} from '@capability/team/coordination/team-registry';
-import type {TeamRuntime} from '@capability/team/runtime/team-runtime';
 export interface ParsedCodaraCommand {
   raw: string;
   name: string;
@@ -51,11 +50,6 @@ export interface CodaraCommandResult {
     sessionId: string;
   } | {
     type: 'show_session_picker';
-  } | {
-    type: 'enter_team';
-    teamId: string;
-  } | {
-    type: 'leave_team';
   };
 }
 
@@ -64,6 +58,7 @@ export interface CodaraCommandAgent {
     instructions?: string;
   }): Promise<ConversationCompactionResult>;
   compactCheckpoints(options?: CompactOptions): Promise<void>;
+  updateContext(context: AgentRuntimeContext): Promise<AgentState>;
   getAvailableToolNames(): string[];
   hydrate(): Promise<AgentState>;
   getAgentState(): AgentState;
@@ -95,8 +90,6 @@ export interface CodaraCommandAgent {
   reset(): Promise<void>;
   hookRegistry?: HookRegistry;
   getMcpStatus?(): import('@integration/mcp').McpClientInfo[];
-  teamRegistry?: TeamRegistry;
-  teamRuntime?: TeamRuntime;
 }
 
 export interface CodaraCommandEnvironment {

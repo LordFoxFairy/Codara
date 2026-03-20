@@ -1,6 +1,6 @@
 import {randomUUID} from 'node:crypto';
 import {useCallback, useEffect, useMemo, useRef, useState} from 'react';
-import type {ApprovalQuerySummary, Codara, CodaraRuntimeEvent, SessionState, TaskRunQuerySummary, TeamQueryDetail} from '@/index';
+import type {ApprovalQuerySummary, Codara, CodaraRuntimeEvent, SessionState, TaskRunQuerySummary} from '@/index';
 import {AIMessageChunk, type BaseMessage} from '@langchain/core/messages';
 import {
   backspaceComposerText,
@@ -35,25 +35,6 @@ import {
   type CliHilAutoAction,
 } from './hil-review';
 import type {CliActiveTurn, CliHilReviewState, CliNotice, CliRunState} from './view-state';
-import {deriveTeamDetailState, type TeamDetailState} from '../hooks/use-team-detail';
-import type {TeamSurfaceState} from '@capability/team/middleware';
-
-interface TeamSummaryView {
-  teamId: string;
-  name: string;
-  status: string;
-  progress: {done: number; total: number};
-  memberCount: number;
-  tokenUsage: number;
-  health: 'healthy' | 'degraded' | 'failing';
-  lastActivity: string;
-}
-
-interface TeamDashboardState {
-  teams: TeamSummaryView[];
-  activeTeamId?: string;
-  viewMode: 'dashboard' | 'observe';
-}
 
 const STARTUP_MESSAGE = '';
 const HIL_AUTO_ACTION_DELAY_MS = 30;
@@ -118,28 +99,14 @@ export interface CliController {
   permissionConfirm: () => void;
   permissionRejectSend: () => void;
   permissionRejectSilent: () => void;
-  teamDashboardState: TeamDashboardState;
-  teamDetailState?: TeamDetailState;
-  enterTeam: (teamId: string) => void;
-  leaveTeam: () => void;
-  focusNextTeamMember: () => void;
-  focusPreviousTeamMember: () => void;
-  focusMember: (memberId: string | undefined) => void;
-  activeMemberId?: string;
-  enterMember: (memberId: string | undefined) => void;
-  exitMember: () => void;
 }
 
 function shouldRefreshAuxiliaryState(event: CodaraRuntimeEvent): boolean {
-  return event.kind === 'task' || event.kind === 'team' || event.kind === 'hil';
+  return event.kind === 'task' || event.kind === 'hil';
 }
 
 function isDelegatedTaskReviewPause(event: CodaraRuntimeEvent): boolean {
   return event.kind === 'task' && event.phase === 'update' && event.status === 'paused';
-}
-
-function isTeamReviewPause(event: CodaraRuntimeEvent): boolean {
-  return event.kind === 'team' && event.phase === 'update' && event.status === 'paused';
 }
 
 function applyApprovalMetadata(
@@ -294,34 +261,6 @@ function deriveRunStateFromAgentState(nextAgentState: {status: string; pendingPa
     : {status: 'done'};
 }
 
-function readFocusedTeamIdFromCodara(codara: Codara): string | undefined {
-  try {
-    const surface = codara.getAgentState().context?.teamSurface as TeamSurfaceState | undefined;
-    return typeof surface?.activeTeamId === 'string' && surface.activeTeamId.trim()
-      ? surface.activeTeamId
-      : undefined;
-  } catch {
-    return undefined;
-  }
-}
-
-function isVisibleTeamStatus(status: string): boolean {
-  return status !== 'created' && status !== 'archived';
-}
-
-function resolvePrimaryTeamId(codara: Codara, focusedTeamId: string | undefined): string | undefined {
-  if (focusedTeamId) {
-    return focusedTeamId;
-  }
-
-  const visibleTeams = codara.getTeamSummaries().filter((team) => isVisibleTeamStatus(team.status));
-  if (visibleTeams.length === 1) {
-    return visibleTeams[0]!.teamId;
-  }
-
-  return undefined;
-}
-
 export function useCliController(options: UseCliControllerOptions): CliController {
   const {
     codara,
@@ -355,9 +294,6 @@ export function useCliController(options: UseCliControllerOptions): CliControlle
   const [taskPanelVisible, setTaskPanelVisible] = useState(true);
   const [expandedAll, setExpandedAll] = useState(false);
   const [commandOutput, setCommandOutput] = useState<{content: string; commandName?: string; scrollOffset: number} | undefined>();
-  const [focusedMemberId, setFocusedMemberId] = useState<string | undefined>(undefined);
-  const [activeMemberId, setActiveMemberId] = useState<string | undefined>(undefined);
-  const [memberMessages, setMemberMessages] = useState<readonly BaseMessage[]>([]);
   const isRunningRef = useRef(false);
   const initialPromptSentRef = useRef(false);
   const initialCoreStateLoadedRef = useRef(false);
@@ -371,12 +307,6 @@ export function useCliController(options: UseCliControllerOptions): CliControlle
   useEffect(() => {
     hilReviewRef.current = hilReview;
   }, [hilReview]);
-
-  // Refresh member messages on team runtime events (event-driven, no polling)
-  useEffect(() => {
-    if (!activeMemberId) return;
-    setMemberMessages(codara.getMemberMessages(activeMemberId));
-  }, [activeMemberId, codara, runtimeEvents]);
 
   const appendNotice = useCallback((level: CliNotice['level'], content: string) => {
     const message = content.trim();
@@ -401,44 +331,6 @@ export function useCliController(options: UseCliControllerOptions): CliControlle
     appendNotice('error', message);
     return message;
   }, [appendNotice]);
-
-  const focusedTeamId = readFocusedTeamIdFromCodara(codara);
-  const primaryTeamId = resolvePrimaryTeamId(codara, focusedTeamId);
-
-  const teamDashboardState = useMemo<TeamDashboardState>(() => {
-    const teams: TeamSummaryView[] = primaryTeamId
-      ? codara
-        .getTeamSummaries()
-        .filter((team) => team.teamId === primaryTeamId || team.name === primaryTeamId)
-        .map((team) => ({
-          teamId: team.teamId,
-          name: team.name,
-          status: team.status,
-          progress: team.jobProgress,
-          memberCount: team.memberCount,
-          tokenUsage: 0,
-          health: team.status === 'failed' ? 'failing' : team.status === 'paused' ? 'degraded' : 'healthy',
-          lastActivity: team.completedAt ?? team.startedAt,
-        }))
-      : [];
-
-    return {
-      teams,
-      activeTeamId: primaryTeamId,
-      viewMode: primaryTeamId ? 'observe' : 'dashboard',
-    };
-  }, [codara, primaryTeamId]);
-
-  const teamDetailState = useMemo<TeamDetailState | undefined>(() => {
-    if (!primaryTeamId) {
-      return undefined;
-    }
-    const detail: TeamQueryDetail | undefined = codara.getTeamDetail(primaryTeamId);
-    if (!detail) {
-      return undefined;
-    }
-    return { ...deriveTeamDetailState(detail, runtimeEvents), focusedMemberId };
-  }, [codara, primaryTeamId, runtimeEvents, focusedMemberId]);
 
   const refreshAuxiliaryState = useCallback(() => {
     const focusedApproval = codara.getFocusedApprovalReview();
@@ -563,7 +455,7 @@ export function useCliController(options: UseCliControllerOptions): CliControlle
   useEffect(() => {
     setRuntimeEvents([]);
     return codara.subscribeRuntimeEvents((event: CodaraRuntimeEvent) => {
-      const foregroundDelegatedReview = isDelegatedTaskReviewPause(event) || isTeamReviewPause(event);
+      const foregroundDelegatedReview = isDelegatedTaskReviewPause(event);
       if (isPendingTaskPlaceholderStartEvent(event)) {
         const currentBatch = trackedTaskBatchRef.current;
         if (!currentBatch || currentBatch.sessionId !== event.sessionId || currentBatch.continuationStarted) {
@@ -638,77 +530,6 @@ export function useCliController(options: UseCliControllerOptions): CliControlle
       }
     });
   }, [codara, drainPendingTaskContinuation, refreshAuxiliaryState, runTaskCompletionContinuation]);
-
-  const enterTeam = useCallback((teamId: string) => {
-    void codara.updateContext({
-      teamSurface: {
-        activeTeamId: teamId,
-        teamRole: 'leader',
-        teamMode: 'leader',
-      },
-    }).then(() => {
-      refreshAuxiliaryState();
-    }).catch(() => undefined);
-  }, [codara, refreshAuxiliaryState]);
-
-  const leaveTeam = useCallback(() => {
-    void codara.updateContext({
-      teamSurface: undefined,
-    }).then(() => {
-      refreshAuxiliaryState();
-    }).catch(() => undefined);
-  }, [codara, refreshAuxiliaryState]);
-
-  const focusNextTeamMember = useCallback(() => {
-    const members = teamDetailState?.members ?? [];
-    const workers = members.filter(m => m.role !== 'leader');
-    if (workers.length === 0) return;
-    if (focusedMemberId === undefined) {
-      setFocusedMemberId(workers[0]?.memberId);
-      return;
-    }
-    const currentIndex = workers.findIndex(m => m.memberId === focusedMemberId);
-    if (currentIndex === workers.length - 1) {
-      setFocusedMemberId(undefined); // back to leader
-    } else {
-      setFocusedMemberId(workers[currentIndex + 1]?.memberId);
-    }
-  }, [focusedMemberId, teamDetailState?.members]);
-
-  const focusPreviousTeamMember = useCallback(() => {
-    const members = teamDetailState?.members ?? [];
-    const workers = members.filter(m => m.role !== 'leader');
-    if (workers.length === 0) return;
-    if (focusedMemberId === undefined) {
-      setFocusedMemberId(workers[workers.length - 1]?.memberId);
-      return;
-    }
-    const currentIndex = workers.findIndex(m => m.memberId === focusedMemberId);
-    if (currentIndex <= 0) {
-      setFocusedMemberId(undefined); // back to leader
-    } else {
-      setFocusedMemberId(workers[currentIndex - 1]?.memberId);
-    }
-  }, [focusedMemberId, teamDetailState?.members]);
-
-  const focusMember = useCallback((memberId: string | undefined) => {
-    setFocusedMemberId(memberId);
-  }, []);
-
-  const enterMember = useCallback((memberId: string | undefined) => {
-    setActiveMemberId(memberId);
-    if (memberId) {
-      // Immediately load messages
-      setMemberMessages(codara.getMemberMessages(memberId));
-    } else {
-      setMemberMessages([]);
-    }
-  }, [codara]);
-
-  const exitMember = useCallback(() => {
-    setActiveMemberId(undefined);
-    setMemberMessages([]);
-  }, []);
 
   const runSlashCommand = useCallback(async (prompt: string) => {
     const result = await codara.executeCommand(prompt);
@@ -964,55 +785,10 @@ export function useCliController(options: UseCliControllerOptions): CliControlle
       return;
     }
 
-    // Route plain text to focused member if one is selected
-    let actualDraft = prompt;
-    if (focusedMemberId && !actualDraft.startsWith('/') && !actualDraft.startsWith('@')) {
-      const member = teamDetailState?.members.find(m => m.memberId === focusedMemberId);
-      if (member && member.role !== 'leader') {
-        actualDraft = `@${member.name} ${actualDraft}`;
-      }
-    }
-
-    // Check for @team mention shorthand: "@team-name rest of message"
-    const teamMentionMatch = actualDraft.match(/^@(\S+)\s+([\s\S]*)/);
-    if (teamMentionMatch) {
-      const teamName = teamMentionMatch[1]!;
-      const message = teamMentionMatch[2]!;
-      const teams = codara.getTeamSummaries();
-      const matchedTeam = teams.find(t => t.name === teamName);
-      if (matchedTeam) {
-        setComposer(createComposerState());
-        setComposerActivityVersion((current) => current + 1);
-        void runSlashCommand(`/team message ${teamName} ${message}`);
-        return;
-      }
-      // check if this is a @member mention before treating as unknown team
-      if (!matchedTeam && teamDetailState) {
-        const member = teamDetailState.members.find(
-          m => m.name.toLowerCase() === teamName.toLowerCase()
-        );
-        if (member && member.role !== 'leader') {
-          setComposer(createComposerState());
-          setComposerActivityVersion((current) => current + 1);
-          void runSlashCommand(`/team message ${member.memberId} ${message}`);
-          return;
-        }
-      }
-
-      // Team not found — show error with available team names
-      const available = teams.map(t => t.name);
-      if (available.length > 0) {
-        appendNotice('error', `Team "${teamName}" not found. Available: ${available.join(', ')}`);
-      } else {
-        appendNotice('error', `Team "${teamName}" not found. No active teams.`);
-      }
-      return;
-    }
-
     setComposer(createComposerState());
     setComposerActivityVersion((current) => current + 1);
-    void submitPrompt(actualDraft);
-  }, [appendNotice, codara, composer.text, focusedMemberId, runSlashCommand, submitPrompt, teamDetailState]);
+    void submitPrompt(prompt);
+  }, [composer.text, submitPrompt]);
 
   const submitText = useCallback((text: string) => {
     const prompt = text.trim();
@@ -1310,18 +1086,15 @@ export function useCliController(options: UseCliControllerOptions): CliControlle
     return () => clearTimeout(timer);
   }, [hilReview, submitHilAction]);
 
-  // When a member view is active, show that member's messages; otherwise show main session messages
-  const displayedMessages = activeMemberId ? memberMessages : coreMessages;
-
   const hasConversation = useMemo(
     () => hasTranscriptContent({
-      coreMessages: displayedMessages,
+      coreMessages,
       notices,
-      activeTurn: activeMemberId ? undefined : activeTurn,
-      runtimeEvents: activeMemberId ? [] : runtimeEvents,
+      activeTurn,
+      runtimeEvents,
       initialNoticeCount,
     }),
-    [activeMemberId, activeTurn, displayedMessages, initialNoticeCount, notices, runtimeEvents],
+    [activeTurn, coreMessages, initialNoticeCount, notices, runtimeEvents],
   );
 
   const submitHilActionCommand = useCallback(() => {
@@ -1335,13 +1108,12 @@ export function useCliController(options: UseCliControllerOptions): CliControlle
     commandOutput,
     dismissCommandOutput,
     scrollCommandOutput,
-    activeTurn: activeMemberId ? undefined : activeTurn,
+    activeTurn,
     hilReview,
-    coreMessages: displayedMessages,
-    runtimeEvents: activeMemberId ? [] : runtimeEvents,
-    latestRuntimeEvent: activeMemberId ? undefined : runtimeEvents[runtimeEvents.length - 1],
+    coreMessages,
+    runtimeEvents,
+    latestRuntimeEvent: runtimeEvents[runtimeEvents.length - 1],
     hasConversation,
-    activeMemberId,
     runState,
     sessionState,
     insertText,
@@ -1377,17 +1149,7 @@ export function useCliController(options: UseCliControllerOptions): CliControlle
     permissionConfirm,
     permissionRejectSend,
     permissionRejectSilent,
-    teamDashboardState,
-    teamDetailState,
-    enterTeam,
-    leaveTeam,
-    focusNextTeamMember,
-    focusPreviousTeamMember,
-    focusMember,
-    enterMember,
-    exitMember,
   }), [
-    activeMemberId,
     activeTurn,
     activateHilSelection,
     backspace,
@@ -1396,20 +1158,13 @@ export function useCliController(options: UseCliControllerOptions): CliControlle
     composer,
     composerActivityVersion,
     dismissCommandOutput,
-    enterMember,
-    enterTeam,
     expandedAll,
-    exitMember,
-    focusMember,
-    focusNextTeamMember,
-    focusPreviousTeamMember,
     hasConversation,
     hilReview,
     insertHilNewline,
     insertHilText,
     insertNewline,
     insertText,
-    leaveTeam,
     moveCursorDown,
     moveCursorEnd,
     moveCursorHome,
@@ -1437,14 +1192,10 @@ export function useCliController(options: UseCliControllerOptions): CliControlle
     submitHilActionCommand,
     submitText,
     taskPanelVisible,
-    teamDashboardState,
-    teamDetailState,
     toggleExpand,
     toggleHilFocus,
     toggleTaskPanel,
-    displayedMessages,
-    enterMember,
-    exitMember,
+    coreMessages,
   ]);
 }
 

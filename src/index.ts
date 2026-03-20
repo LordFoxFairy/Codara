@@ -13,10 +13,6 @@ export {
   type ApprovalQuerySummary,
   type ApprovalQueryReview,
   type TaskRunQuerySummary,
-  type TeamQuerySummary,
-  type TeamQueryMember,
-  type TeamQueryJob,
-  type TeamQueryDetail,
 } from '@codara/index';
 export {
   bootstrapAgent,

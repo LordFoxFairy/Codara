@@ -17,7 +17,8 @@ import {useCliController} from '../../../src/cli/app/use-cli-controller';
 describe('useCliController background refresh', () => {
   it('refreshes queued approvals and active team detail when background events arrive', async () => {
     const codara = new FakeCodara();
-    const rendered = render(<ControllerProbe codara={codara as unknown as Codara} teamId="team-1" />);
+    codara.setFocusedTeam('team-1');
+    const rendered = render(<ControllerProbe codara={codara as unknown as Codara} />);
 
     try {
       await waitFor(() => (rendered.lastFrame() ?? '').includes('teamStatus:running'));
@@ -45,6 +46,66 @@ describe('useCliController background refresh', () => {
       await waitFor(() => (rendered.lastFrame() ?? '').includes('approvalCount:2'));
       expect(rendered.lastFrame() ?? '').toContain('approvalId:approval-1');
       expect(rendered.lastFrame() ?? '').toContain('teamStatus:paused');
+    } finally {
+      rendered.unmount();
+    }
+  });
+
+  it('derives the focused team detail from runtime teamSurface instead of local dashboard focus', async () => {
+    const codara = new FakeCodara();
+    codara.setTeamDetails([
+      {
+        teamId: 'team-1',
+        name: 'Team One',
+        status: 'running',
+        goal: 'Ship it',
+        members: [],
+        jobs: [],
+      },
+      {
+        teamId: 'team-2',
+        name: 'Team Two',
+        status: 'paused',
+        goal: 'Review it',
+        members: [],
+        jobs: [],
+      },
+    ]);
+    codara.setFocusedTeam('team-2');
+    const rendered = render(<ControllerProbe codara={codara as unknown as Codara} />);
+
+    try {
+      await waitFor(() => (rendered.lastFrame() ?? '').includes('teamId:team-2'));
+      const frame = rendered.lastFrame() ?? '';
+      expect(frame).toContain('teamId:team-2');
+      expect(frame).toContain('teamName:Team Two');
+      expect(frame).toContain('teamStatus:paused');
+      expect(frame).not.toContain('teamId:team-1');
+    } finally {
+      rendered.unmount();
+    }
+  });
+
+  it('treats the only visible team as the default current team detail even without explicit focus', async () => {
+    const codara = new FakeCodara();
+    codara.setTeamDetails([
+      {
+        teamId: 'team-1',
+        name: 'Solo Team',
+        status: 'running',
+        goal: 'Ship it',
+        members: [],
+        jobs: [],
+      },
+    ]);
+    const rendered = render(<ControllerProbe codara={codara as unknown as Codara} />);
+
+    try {
+      await waitFor(() => (rendered.lastFrame() ?? '').includes('teamId:team-1'));
+      const frame = rendered.lastFrame() ?? '';
+      expect(frame).toContain('teamId:team-1');
+      expect(frame).toContain('teamName:Solo Team');
+      expect(frame).toContain('teamStatus:running');
     } finally {
       rendered.unmount();
     }
@@ -110,6 +171,7 @@ describe('useCliController background refresh', () => {
     codara.setTaskRunSummaries([
       {
         runId: 'run-done',
+        sessionId: 'session-1',
         label: 'Delegating Explore: Analyze the tech stack',
         agentName: 'Explore',
         status: 'completed',
@@ -119,6 +181,7 @@ describe('useCliController background refresh', () => {
       },
       {
         runId: 'run-still-running',
+        sessionId: 'session-1',
         label: 'Delegating Explore: Analyze the project structure',
         agentName: 'Explore',
         status: 'running',
@@ -536,6 +599,38 @@ describe('useCliController background refresh', () => {
     }
   });
 
+  it('surfaces team-member review immediately even while the parent turn is still marked running', async () => {
+    const codara = new FakeCodara();
+    codara.blockNextStream();
+    const rendered = render(<BackgroundReviewProbe codara={codara as unknown as Codara} />);
+
+    try {
+      await waitFor(() => (rendered.lastFrame() ?? '').includes('runState:running'));
+      codara.setApprovals([
+        createTeamApprovalSummary('approval-team-review', 'team-1', 'member-1', 'Waiting for approval on read_file'),
+      ]);
+      codara.emit({
+        id: 'team-event-review',
+        sessionId: 'session-1',
+        timestamp: new Date().toISOString(),
+        kind: 'team',
+        phase: 'update',
+        status: 'paused',
+        label: 'Worker member-1 paused: Waiting for approval on read_file',
+        detail: JSON.stringify(createPauseRequest('approval-team-review', 'Waiting for approval on read_file')),
+        parentId: 'team-root:team-1',
+      });
+
+      await waitFor(() => (rendered.lastFrame() ?? '').includes('hil:approval-team-review'));
+      const frame = rendered.lastFrame() ?? '';
+      expect(frame).toContain('runState:paused');
+      expect(frame).toContain('desc:Waiting for approval on read_file');
+    } finally {
+      codara.releaseBlockedStream();
+      rendered.unmount();
+    }
+  });
+
   it('advances to the next queued approval after the current approval is submitted', async () => {
     const codara = new FakeCodara();
     codara.blockNextResumeApproval();
@@ -559,6 +654,28 @@ describe('useCliController background refresh', () => {
       expect(frame).toContain('approvalCount:1');
       expect(frame).toContain('approvalId:approval-2');
       expect(frame).toContain('resumeCount:1');
+    } finally {
+      rendered.unmount();
+    }
+  });
+
+  it('advances to the next queued team-member approval while only the approved member resumes', async () => {
+    const codara = new FakeCodara();
+    codara.blockNextResumeApproval();
+    codara.setApprovals([
+      createTeamApprovalSummary('approval-team-1', 'team-1', 'member-1', 'Waiting for approval on read_file'),
+      createTeamApprovalSummary('approval-team-2', 'team-1', 'member-2', 'Waiting for approval on glob'),
+    ]);
+    const rendered = render(<SingleApprovalProbe codara={codara as unknown as Codara} />);
+
+    try {
+      await waitFor(() => (rendered.lastFrame() ?? '').includes('approvalId:approval-team-1'));
+      expect(rendered.lastFrame() ?? '').toContain('resumeCount:1');
+      codara.releaseBlockedResumeApproval();
+      await waitFor(() => (rendered.lastFrame() ?? '').includes('approvalId:approval-team-2'));
+      const frame = rendered.lastFrame() ?? '';
+      expect(frame).toContain('resumeCount:1');
+      expect(frame).toContain('approvalId:approval-team-2');
     } finally {
       rendered.unmount();
     }
@@ -618,6 +735,8 @@ function ControllerProbe(
     <Text>
       {`approvalCount:${controller.hilReview?.approvalCount ?? 0}`}
       {` approvalId:${controller.hilReview?.request.id ?? 'none'}`}
+      {` teamId:${controller.teamDetailState?.teamId ?? 'none'}`}
+      {` teamName:${controller.teamDetailState?.teamName ?? 'none'}`}
       {` teamStatus:${controller.teamDetailState?.status ?? 'none'}`}
       {` latestNotice:${controller.notices[controller.notices.length - 1]?.content ?? 'none'}`}
       {` latestAssistantNotice:${[...controller.notices].reverse().find((notice) => notice.level === 'assistant')?.content ?? 'none'}`}
@@ -736,14 +855,17 @@ class FakeCodara {
   private listeners = new Set<(event: CodaraRuntimeEvent) => void>();
   private approvals: ApprovalQuerySummary[] = [];
   private approvalRequests = new Map<string, PauseRequest>();
-  private teamDetail: TeamQueryDetail | undefined = {
-    teamId: 'team-1',
-    name: 'Team One',
-    status: 'running',
-    goal: 'Ship it',
-    members: [],
-    jobs: [],
-  };
+  private teamDetails = new Map<string, TeamQueryDetail>([
+    ['team-1', {
+      teamId: 'team-1',
+      name: 'Team One',
+      status: 'running',
+      goal: 'Ship it',
+      members: [],
+      jobs: [],
+    }],
+  ]);
+  private agentContext: Record<string, unknown> = {};
   private pendingPause: PauseRequest | undefined;
   private focusedApprovalId: string | undefined;
   private taskRunSummaries: Array<{
@@ -796,7 +918,23 @@ class FakeCodara {
   }
 
   setTeamDetail(detail: TeamQueryDetail | undefined): void {
-    this.teamDetail = detail;
+    this.teamDetails = new Map(detail ? [[detail.teamId, detail]] : []);
+  }
+
+  setTeamDetails(details: TeamQueryDetail[]): void {
+    this.teamDetails = new Map(details.map((detail) => [detail.teamId, detail]));
+  }
+
+  setFocusedTeam(teamId: string | undefined): void {
+    this.agentContext = {
+      ...(teamId ? {
+        teamSurface: {
+          activeTeamId: teamId,
+          teamRole: 'leader',
+          teamMode: 'leader',
+        },
+      } : {}),
+    };
   }
 
   setPauseRequest(request: PauseRequest | undefined): void {
@@ -861,6 +999,17 @@ class FakeCodara {
     };
   }
 
+  async updateContext(context: Record<string, unknown>) {
+    for (const [key, value] of Object.entries(context)) {
+      if (value === undefined) {
+        delete this.agentContext[key];
+      } else {
+        this.agentContext[key] = value;
+      }
+    }
+    return this.getAgentState();
+  }
+
   getState(): SessionState {
     return this.sessionState;
   }
@@ -870,6 +1019,7 @@ class FakeCodara {
       pendingPause: this.pendingPause,
       messages: [],
       status: 'idle',
+      context: this.agentContext,
     };
   }
 
@@ -903,19 +1053,19 @@ class FakeCodara {
   }
 
   getTeamSummaries() {
-    return this.teamDetail ? [{
-      teamId: this.teamDetail.teamId,
-      name: this.teamDetail.name,
-      status: this.teamDetail.status,
-      goal: this.teamDetail.goal,
-      memberCount: this.teamDetail.members.length,
-      jobProgress: {done: 0, total: this.teamDetail.jobs.length},
+    return [...this.teamDetails.values()].map((detail) => ({
+      teamId: detail.teamId,
+      name: detail.name,
+      status: detail.status,
+      goal: detail.goal,
+      memberCount: detail.members.length,
+      jobProgress: {done: 0, total: detail.jobs.length},
       startedAt: new Date().toISOString(),
-    }] : [];
+    }));
   }
 
   getTeamDetail(teamId: string): TeamQueryDetail | undefined {
-    return this.teamDetail?.teamId === teamId ? this.teamDetail : undefined;
+    return this.teamDetails.get(teamId);
   }
 
   getTaskRunSummaries() {
@@ -1005,6 +1155,27 @@ function createApprovalSummary(
     updatedAt: now,
     taskRunId,
     childSessionId: `${taskRunId}:child`,
+    isForeground: false,
+  };
+}
+
+function createTeamApprovalSummary(
+  approvalId: string,
+  teamId: string,
+  memberId: string,
+  description: string,
+): ApprovalQuerySummary {
+  const now = new Date().toISOString();
+  return {
+    approvalId,
+    source: 'team_member',
+    description,
+    toolName: 'read_file',
+    createdAt: now,
+    updatedAt: now,
+    teamId,
+    memberId,
+    memberName: memberId,
     isForeground: false,
   };
 }

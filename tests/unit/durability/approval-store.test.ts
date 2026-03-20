@@ -80,4 +80,47 @@ describe('FileApprovalStore', () => {
       await rm(rootDir, {recursive: true, force: true});
     }
   });
+
+  test('removes only the targeted team-member approval ownership without disturbing siblings', async () => {
+    const rootDir = await mkdtemp(path.join(tmpdir(), 'codara-approval-team-member-siblings-'));
+    try {
+      const store = createApprovalFileStore({rootDir});
+
+      store.upsertTeamMemberApproval({
+        sessionId: 'session-team-member',
+        teamId: 'team-1',
+        memberId: 'member-1',
+        memberName: 'Alice',
+        pauseRequest: makePauseRequest('approval-team-member-1', 'Team approval required', 'team_tool'),
+      });
+      store.upsertTeamMemberApproval({
+        sessionId: 'session-team-member',
+        teamId: 'team-1',
+        memberId: 'member-2',
+        memberName: 'Bob',
+        pauseRequest: makePauseRequest('approval-team-member-2', 'Team approval required', 'team_tool'),
+      });
+      store.upsertTeamMemberApproval({
+        sessionId: 'session-team-member',
+        teamId: 'team-2',
+        memberId: 'member-3',
+        memberName: 'Carol',
+        pauseRequest: makePauseRequest('approval-team-member-3', 'Team approval required', 'team_tool'),
+      });
+
+      store.removeByTeamMember('team-1', 'member-1');
+
+      expect(store.get('approval-team-member-1')).toBeUndefined();
+      expect(store.get('approval-team-member-2')).toEqual(expect.objectContaining({
+        teamId: 'team-1',
+        memberId: 'member-2',
+      }));
+      expect(store.get('approval-team-member-3')).toEqual(expect.objectContaining({
+        teamId: 'team-2',
+        memberId: 'member-3',
+      }));
+    } finally {
+      await rm(rootDir, {recursive: true, force: true});
+    }
+  });
 });

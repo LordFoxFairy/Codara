@@ -1,6 +1,12 @@
 {
   "permissions": {
     "allow": [
+      "Bash(git add:*)",
+      "Bash(git commit:*)",
+      "Bash(bun test:*)",
+      "Bash(bun run:*)",
+      "Bash(git:*)",
+      "Bash(find /Users/nako/WebstormProjects/github/thefoxfairy/Codara/tests -name *team* -o -name *teams*)"
     ]
   }
 }

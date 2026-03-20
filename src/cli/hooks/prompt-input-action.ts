@@ -12,8 +12,6 @@ export type PromptInputAction =
   | 'insert-text'
   | 'toggle-task-panel'
   | 'toggle-expand'
-  | 'select-member-up'
-  | 'select-member-down'
   | 'tab'
   | 'noop';
 
@@ -73,14 +71,6 @@ export function resolvePromptInputAction(input: string, key: PromptInputKey): Pr
 
   if (key.rightArrow) {
     return 'move-right';
-  }
-
-  if (key.shift && key.upArrow) {
-    return 'select-member-up';
-  }
-
-  if (key.shift && key.downArrow) {
-    return 'select-member-down';
   }
 
   if (key.upArrow) {

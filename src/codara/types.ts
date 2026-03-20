@@ -12,7 +12,6 @@ import type {Session, SessionState, SessionStore} from '@durability/session';
 import type {ApprovalStore} from '@durability/approval-store';
 import type {McpClientInfo, McpConfig} from '@integration/mcp';
 import type {ChannelRegistry} from '@integration/channel';
-import type {DelegatedAgentResult} from '@shared/delegation-result';
 import type {AgentResumeStreamConfig, AgentStreamOutput, ResumePayload} from '@core/agent';
 import type {PauseRequest} from '@shared/contracts/agent-types';
 import type {CodaraModelCatalog} from './assembly/runtime';
@@ -76,7 +75,6 @@ export interface CodaraRuntimeOptions extends CodaraOptions {
   taskStore?: TaskStore;
   taskRunStore?: TaskRunStore;
   approvalStore?: ApprovalStore;
-  teams?: boolean;
   /** Optional pre-configured ChannelRegistry for multi-channel HIL routing. */
   channelRegistry?: ChannelRegistry;
 }
@@ -104,7 +102,6 @@ export interface TaskRunQuerySummary {
   latestActivity?: string;
   summary?: string;
   errorMessage?: string;
-  reason?: DelegatedAgentResult['reason'];
   turns?: number;
   toolUseCount?: number;
   totalTokens?: number;
@@ -119,52 +116,12 @@ export interface ApprovalQuerySummary {
   updatedAt: string;
   taskRunId?: string;
   childSessionId?: string;
-  teamId?: string;
-  memberId?: string;
-  memberName?: string;
   isForeground: boolean;
 }
 
 export interface ApprovalQueryReview {
   summary: ApprovalQuerySummary;
   request: PauseRequest;
-}
-
-export interface TeamQuerySummary {
-  teamId: string;
-  name: string;
-  status: string;
-  goal: string;
-  memberCount: number;
-  jobProgress: { done: number; total: number };
-  startedAt: string;
-  completedAt?: string;
-}
-
-export interface TeamQueryMember {
-  memberId: string;
-  name: string;
-  role: string;
-  status: string;
-  model?: string;
-  currentJobId?: string;
-}
-
-export interface TeamQueryJob {
-  id: string;
-  title: string;
-  status: string;
-  assignee?: string;
-  blockedBy: string[];
-}
-
-export interface TeamQueryDetail {
-  teamId: string;
-  name: string;
-  status: string;
-  goal: string;
-  members: TeamQueryMember[];
-  jobs: TeamQueryJob[];
 }
 
 // ── Codara API Type ──
@@ -180,8 +137,5 @@ export type Codara = Session & {
   focusApproval(approvalId: string): Promise<void>;
   resumeApproval(payload: ResumePayload, config?: AgentResumeStreamConfig): Promise<void>;
   resumeApprovalStream(payload: ResumePayload, config?: AgentResumeStreamConfig): AsyncGenerator<AgentStreamOutput, void, void>;
-  getTeamSummaries(): TeamQuerySummary[];
-  getTeamDetail(teamId: string): TeamQueryDetail | undefined;
-  getMemberMessages(memberId: string): import('@langchain/core/messages').BaseMessage[];
   getChannelRegistry(): ChannelRegistry | undefined;
 };

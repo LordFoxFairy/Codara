@@ -5,6 +5,7 @@ import {parseHILToolMessagePayload} from '@core/middleware/hil';
 import {readMessageText} from '@shared/messages';
 import {readDelegatedAgentResult} from '@shared/delegation-result';
 import {readTaskRunLaunchResult} from '@shared/task-run-launch';
+import {readSharedTaskCoordinationArtifact} from '@shared/task-coordination-result';
 import {TOOL_NAMES} from '@shared/tool-display';
 import type {CliActiveTurn, CliNotice} from '../app/view-state';
 import {formatTokenCount} from '../utils/format';
@@ -200,6 +201,7 @@ export function hasTranscriptContent(input: HasTranscriptContentInput): boolean 
 }
 
 const MAX_CHILD_ACTIVITY_LINES = 3;
+const TODO_TOOL_NAME = 'write_todos';
 
 function shouldSuppressAssistantTaskLaunchChatter(
   response: string | undefined,
@@ -224,11 +226,8 @@ function shouldSuppressAssistantTaskLaunchChatter(
     event.kind === 'task'
     && ((event.phase === 'start' && event.status === 'running') || (event.phase === 'update' && event.status === 'paused'))
   ));
-  if (!hasLiveTaskRuntime) {
-    return false;
-  }
 
-  return containsTaskLaunchChatter(text);
+  return hasLiveTaskRuntime && containsTaskLaunchChatter(text);
 }
 
 function shouldSuppressSolidifiedTaskLaunchChatter(
@@ -299,54 +298,10 @@ function buildRuntimeEventItems(events: readonly CodaraRuntimeEvent[], nowTimest
       .map((event) => event.label),
   );
 
-  // Inject team event items early so they appear before tool/task items in the stream
-  for (const event of events) {
-    if (event.kind !== 'team') continue;
-
-    if (event.phase === 'end' && event.parentId) {
-      const startEvent = startEvents.get(event.parentId);
-      if (startEvent) {
-        pairedEndIds.add(event.id);
-        const teamName = extractTeamDisplayName(startEvent.label);
-        const elapsed = computeElapsedSeconds(startEvent.timestamp, event.timestamp);
-        const summary = event.status === 'error'
-          ? formatTeamFailedSummary(elapsed, event.detail)
-          : event.status === 'paused'
-            ? 'Paused'
-            : formatTeamDoneSummary(elapsed, event.detail);
-        items.push({
-          id: activeId(startEvent.id),
-          role: 'task',
-          content: `⏺ Team "${teamName}"\n${summary}`,
-        });
-        continue;
-      }
-    }
-
-    if (event.phase === 'start') {
-      // Will be rendered in third pass (unpaired start events)
-      continue;
-    }
-
-    // Team update events — selectively show key milestones as sub-items
-    if (event.phase === 'update' && event.parentId) {
-      const label = event.label;
-      const isJoinedEvent = label.includes('joined as');
-      const isJobDoneEvent = label.includes('Job') && label.includes('completed');
-      if (isJoinedEvent || isJobDoneEvent) {
-        items.push({
-          id: activeId(event.id),
-          role: 'task',
-          content: `${label}`,
-        });
-      }
-    }
-  }
-
   // Second pass: pair end events with start events, build items
   const pairedTaskEnds: Array<{startEvent: CodaraRuntimeEvent; endEvent: CodaraRuntimeEvent}> = [];
   for (const event of events) {
-    if (event.kind === 'turn' || event.kind === 'model' || shouldHideRuntimeEvent(event)) {
+    if (event.kind === 'turn' || event.kind === 'model' || event.kind === 'team' || shouldHideRuntimeEvent(event)) {
       continue;
     }
 
@@ -384,8 +339,12 @@ function buildRuntimeEventItems(events: readonly CodaraRuntimeEvent[], nowTimest
     if (event.kind === 'tool' && event.phase === 'end' && event.parentId) {
       const startEvent = startEvents.get(event.parentId);
       if (startEvent) {
+        const rawToolName = (startEvent.detail ?? '').trim();
+        if (TEAM_SURFACE_TOOL_NAMES.has(rawToolName) || rawToolName === TODO_TOOL_NAME) {
+          pairedEndIds.add(event.id);
+          continue;
+        }
         pairedEndIds.add(event.id);
-        const rawToolName = startEvent.detail ?? '';
         const toolMeta = buildToolMetaFromEvents(rawToolName, startEvent, event);
         const content = toolMeta
           ? `${toolMeta.icon} ${toolMeta.displayName}(${toolMeta.args ?? ''})\n${toolMeta.summaryLine}`
@@ -400,13 +359,8 @@ function buildRuntimeEventItems(events: readonly CodaraRuntimeEvent[], nowTimest
       }
     }
 
-    // Skip start events that have been paired, and team events (handled separately)
-    if (event.phase === 'start' && (event.kind === 'tool' || event.kind === 'task' || event.kind === 'team')) {
-      continue;
-    }
-
-    // Skip team end events (already handled in the team-specific pass above)
-    if (event.kind === 'team' && event.phase === 'end') {
+    // Skip start events that have been paired.
+    if (event.phase === 'start' && (event.kind === 'tool' || event.kind === 'task')) {
       continue;
     }
 
@@ -464,28 +418,6 @@ function buildRuntimeEventItems(events: readonly CodaraRuntimeEvent[], nowTimest
       (e) => e.phase === 'end' && e.parentId === id && (e.kind === 'tool' || e.kind === 'task' || e.kind === 'team'),
     );
     if (wasPaired) {
-      continue;
-    }
-
-    // Unpaired team start → running team block
-    if (startEvent.kind === 'team') {
-      const teamName = extractTeamDisplayName(startEvent.label);
-      const teamGoal = extractTeamGoal(startEvent.label);
-      const {memberCount, jobTotal} = parseTeamStartDetail(startEvent.detail);
-      const runningStats: string[] = [];
-      if (memberCount > 0) runningStats.push(`${memberCount} member${memberCount === 1 ? '' : 's'}`);
-      if (jobTotal > 0) runningStats.push(`${jobTotal} jobs planned`);
-      const runningLine = runningStats.length > 0
-        ? `Running… (${runningStats.join(' · ')})`
-        : 'Running…';
-      const contentLines = [`⏺ Team "${teamName}"`];
-      if (teamGoal) contentLines.push(`  Goal: ${teamGoal}`);
-      contentLines.push(runningLine);
-      items.push({
-        id: activeId(startEvent.id),
-        role: 'task',
-        content: contentLines.join('\n'),
-      });
       continue;
     }
 
@@ -644,70 +576,6 @@ function extractTaskArgs(label: string): string {
 }
 
 
-function extractTeamDisplayName(label: string): string {
-  // "Team frontend-refactor: Implement the frontend" → "frontend-refactor"
-  const match = label.match(/^Team\s+([^:]+?)(?::\s+.*)?$/);
-  if (match?.[1]) {
-    return match[1].trim().slice(0, 40);
-  }
-  return label.slice(0, 40);
-}
-
-function extractTeamGoal(label: string): string | undefined {
-  // "Team frontend-refactor: Build UI components" → "Build UI components"
-  const colonIdx = label.indexOf(': ');
-  if (colonIdx > 0) {
-    const goal = label.slice(colonIdx + 2).trim();
-    return goal.length > 80 ? `${goal.slice(0, 77)}...` : goal;
-  }
-  return undefined;
-}
-
-function parseTeamStartDetail(detail?: string): {memberCount: number; jobTotal: number} {
-  const memberMatch = detail?.match(/memberCount:(\d+)/);
-  const jobTotalMatch = detail?.match(/jobTotal:(\d+)/);
-  return {
-    memberCount: memberMatch ? parseInt(memberMatch[1]!, 10) : 0,
-    jobTotal: jobTotalMatch ? parseInt(jobTotalMatch[1]!, 10) : 0,
-  };
-}
-
-function formatTeamDoneSummary(elapsed: number, detail?: string): string {
-  const parts: string[] = [];
-  if (detail) {
-    const doneMatch = detail.match(/done:(\d+)/);
-    const totalMatch = detail.match(/total:(\d+)/);
-    const membersMatch = detail.match(/members:(\d+)/);
-    const tokenMatch = detail.match(/([\d.]+[kKmM]?)\s+tokens?/);
-    if (doneMatch && totalMatch) parts.push(`${doneMatch[1]}/${totalMatch[1]} jobs`);
-    if (membersMatch) parts.push(`${membersMatch[1]} members`);
-    if (tokenMatch) parts.push(`${tokenMatch[1]} tokens`);
-  }
-  const minutes = Math.floor(elapsed / 60);
-  const seconds = elapsed % 60;
-  const timeStr = minutes > 0 ? `${minutes}m ${seconds}s` : `${seconds}s`;
-  parts.push(timeStr);
-  return `Done (${parts.join(' · ')})`;
-}
-
-function formatTeamFailedSummary(elapsed: number, detail?: string): string {
-  const parts: string[] = [];
-  if (detail) {
-    const doneMatch = detail.match(/done:(\d+)/);
-    const totalMatch = detail.match(/total:(\d+)/);
-    // Extract error reason: "error:<reason>" — strip the structured parts first
-    const errorMatch = detail.match(/error:(.+?)(?:\s+\w+:\S+|$)/);
-    const errorReason = errorMatch?.[1]?.trim();
-    if (errorReason) parts.unshift(errorReason);
-    if (doneMatch && totalMatch) parts.push(`${doneMatch[1]}/${totalMatch[1]} jobs`);
-  }
-  const minutes = Math.floor(elapsed / 60);
-  const seconds = elapsed % 60;
-  const timeStr = minutes > 0 ? `${minutes}m ${seconds}s` : `${seconds}s`;
-  parts.push(timeStr);
-  return `Failed: ${parts.join(' · ')}`;
-}
-
 function computeElapsedSeconds(startTimestamp: string, endTimestamp: string): number {
   const start = new Date(startTimestamp).getTime();
   const end = new Date(endTimestamp).getTime();
@@ -791,6 +659,10 @@ function buildToolOutput(
   }
 
   const trimmed = detail?.trim() ?? '';
+  const compactTeamSummary = buildCompactTeamToolSummary(toolName, trimmed);
+  if (compactTeamSummary) {
+    return {summaryLine: compactTeamSummary};
+  }
 
   switch (toolName) {
     case TOOL_NAMES.WRITE_FILE:
@@ -829,6 +701,100 @@ function buildToolOutput(
       const lines = truncateOutput(trimmed);
       return {summaryLine: lines.visible[0] ?? 'Done', outputLines: lines.visible.slice(1), allOutputLines: lines.all.slice(1), totalOutputLines: lines.total};
     }
+  }
+}
+
+function buildCompactTeamToolSummary(toolName: string, detail: string): string | undefined {
+  if (!detail || !TEAM_SURFACE_TOOL_NAMES.has(toolName)) {
+    return undefined;
+  }
+
+  const parsed = parseJsonValue(detail);
+  if (!parsed) {
+    return undefined;
+  }
+
+  if (Array.isArray(parsed)) {
+    if (toolName === 'list_teams') {
+      return parsed.length === 0 ? 'No teams' : `Found ${parsed.length} team${parsed.length === 1 ? '' : 's'}`;
+    }
+    if (toolName === 'team_plan_jobs') {
+      return `Planned ${parsed.length} job${parsed.length === 1 ? '' : 's'}`;
+    }
+    return undefined;
+  }
+
+  const record = parsed as Record<string, unknown>;
+  const error = asString(record.error);
+  if (error) {
+    return error;
+  }
+
+  switch (toolName) {
+    case 'create_team':
+      return asString(record.name) ? `Created team "${asString(record.name)}"` : 'Created team';
+    case 'spawn_teammate': {
+      const name = asString(record.name);
+      const role = asString(record.role);
+      return name && role ? `${name} joined as ${role}` : name ? `${name} joined` : 'Spawned teammate';
+    }
+    case 'team_status': {
+      const team = record.team as Record<string, unknown> | undefined;
+      const name = asString(team?.name);
+      const members = Array.isArray(record.members) ? record.members.length : 0;
+      const jobs = Array.isArray(record.jobs) ? record.jobs.length : 0;
+      return name ? `${name} · ${members} members · ${jobs} jobs` : 'Fetched team status';
+    }
+    case 'send_message': {
+      const sentTo = asString(record.sentTo);
+      return sentTo ? `Sent message to ${sentTo}` : 'Sent message';
+    }
+    case 'plan_jobs': {
+      const planned = typeof record.planned === 'number' ? record.planned : undefined;
+      return typeof planned === 'number' ? `Planned ${planned} job${planned === 1 ? '' : 's'}` : 'Planned jobs';
+    }
+    case 'assign_job': {
+      const jobId = asString(record.jobId);
+      const memberId = asString(record.memberId);
+      if (jobId && memberId) {
+        return `Assigned ${jobId} to ${memberId}`;
+      }
+      return 'Assigned job';
+    }
+    case 'review_job': {
+      const approved = typeof record.approved === 'boolean' ? record.approved : undefined;
+      const jobId = asString(record.jobId);
+      const verdict = approved === false ? 'Rejected' : 'Reviewed';
+      return jobId ? `${verdict} ${jobId}` : verdict;
+    }
+    case 'shutdown_team':
+    case 'team_shutdown':
+      return 'Shut down team';
+    case 'team_plan_jobs':
+      return 'Planned jobs';
+    case 'team_spawn_member': {
+      const name = asString(record.name);
+      const role = asString(record.role);
+      return name && role ? `${name} joined as ${role}` : name ? `${name} joined` : 'Spawned teammate';
+    }
+    case 'team_assign_job': {
+      const jobId = asString(record.jobId);
+      const memberId = asString(record.memberId);
+      return jobId && memberId ? `Assigned ${jobId} to ${memberId}` : 'Assigned job';
+    }
+    case 'team_review_job': {
+      const approved = typeof record.approved === 'boolean' ? record.approved : undefined;
+      const jobId = asString(record.jobId);
+      const verdict = approved === false ? 'Rejected' : 'Reviewed';
+      return jobId ? `${verdict} ${jobId}` : verdict;
+    }
+    case 'team_send_message':
+    case 'team_broadcast':
+      return 'Sent message';
+    case 'team_report':
+      return 'Reported to leader';
+    default:
+      return undefined;
   }
 }
 
@@ -956,7 +922,12 @@ function buildAssistantItems(
 ): TranscriptItem[] {
   const items: TranscriptItem[] = [];
   const text = readMessageText(message);
-  if (text && !shouldSuppressSolidifiedTaskLaunchChatter(message, previousMessage, toolLookup)) {
+  if (
+    text
+    && !shouldSuppressSolidifiedTaskLaunchChatter(message, previousMessage, toolLookup)
+    && !messageContainsTeamSurfaceToolCall(message)
+    && !containsTeamLaunchChatter(text)
+  ) {
     items.push({
       id: messageId,
       role: 'assistant',
@@ -985,8 +956,30 @@ function containsTaskLaunchChatter(text: string): boolean {
   return launchChatterSignals.some((signal) => text.includes(signal));
 }
 
+function containsTeamLaunchChatter(text: string): boolean {
+  const teamLaunchChatterSignals = [
+    '我将立即在当前团队中组织',
+    '已启动团队协作分析',
+    '待所有 workers 完成后',
+    '只读 workers 已开始工作',
+    '当前会话 main agent',
+    'Workers: 3',
+    'Leader: 当前会话 main agent',
+  ];
+
+  return teamLaunchChatterSignals.some((signal) => text.includes(signal));
+}
+
 function messageContainsTaskToolCall(message: AIMessage): boolean {
   return Array.isArray(message.tool_calls) && message.tool_calls.some((toolCall) => isTaskToolName(toolCall?.name));
+}
+
+function messageContainsTeamSurfaceToolCall(message: AIMessage): boolean {
+  return Array.isArray(message.tool_calls)
+    && message.tool_calls.some((toolCall) => {
+      const name = typeof toolCall?.name === 'string' ? toolCall.name.trim() : '';
+      return TEAM_SURFACE_TOOL_NAMES.has(name);
+    });
 }
 
 function readTokenAnnotation(message: AIMessage): string | undefined {
@@ -1032,6 +1025,12 @@ function buildToolResultItems(
   if (resolvedName === TOOL_NAMES.TASK && readTaskRunLaunchResult(message.artifact)) {
     return [];
   }
+  if (readSharedTaskCoordinationArtifact(message.artifact)) {
+    return [];
+  }
+  if (resolvedName === TODO_TOOL_NAME) {
+    return [];
+  }
   if (resolvedName === TOOL_NAMES.TASK) {
     const taskMeta = buildTaskToolMetaFromCoreMessage(message, toolLookup);
     if (!taskMeta) {
@@ -1044,6 +1043,9 @@ function buildToolResultItems(
       content: `${taskMeta.icon} ${taskMeta.displayName}(${taskMeta.args ?? ''})\n${taskMeta.summaryLine}`,
       toolMeta: taskMeta,
     }];
+  }
+  if (resolvedName && TEAM_SURFACE_TOOL_NAMES.has(resolvedName)) {
+    return [];
   }
   const role: TranscriptRole = 'tool';
   const formattedContent = text;
@@ -1221,6 +1223,14 @@ function shouldHideRuntimeEvent(event: CodaraRuntimeEvent): boolean {
   }
 
   if (event.label.includes(TOOL_NAMES.ASK_USER)) {
+    return true;
+  }
+
+  const rawToolName = (event.detail ?? '').trim();
+  if (TEAM_SURFACE_TOOL_NAMES.has(rawToolName)) {
+    return true;
+  }
+  if (rawToolName === TODO_TOOL_NAME) {
     return true;
   }
 
@@ -1413,6 +1423,14 @@ function asString(value: unknown): string | undefined {
   }
   const trimmed = value.trim();
   return trimmed || undefined;
+}
+
+function parseJsonValue(value: string): unknown {
+  try {
+    return JSON.parse(value);
+  } catch {
+    return undefined;
+  }
 }
 
 function limitSummary(value: string | undefined, maxLength = 72): string | undefined {

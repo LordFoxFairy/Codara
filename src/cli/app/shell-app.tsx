@@ -1,13 +1,11 @@
 import React, {useCallback, useEffect, useState} from 'react';
-import {Box, Static, Text, useApp} from 'ink';
+import {Box, Static, useApp} from 'ink';
 import type {Codara, CodaraRuntimeEvent} from '@/index';
-import {theme} from '../utils/theme';
 import {CommandOutputPanel} from '../components/chrome/command-output-panel';
 import {Footer} from '../components/chrome/footer';
 import {StatusBar} from '../components/chrome/header';
 import {ActivityLine} from '../components/chrome/activity-line';
 import {TaskPanel} from '../components/chrome/task-panel';
-import {TeamDetailView} from '../components/teams/team-detail-view';
 import {HilPanel, isPermissionReview} from '../components/conversation/hil-panel';
 import {SessionPicker} from '../components/conversation/session-picker';
 import {ActiveTranscript} from '../components/conversation/transcript';
@@ -19,7 +17,6 @@ import type {CliHilAutoAction} from './hil-review';
 import {resolveCliLayoutMode} from './layout-mode';
 import {useCliController} from './use-cli-controller';
 import {useActiveTasks} from '../hooks/use-active-tasks';
-import {useActiveTeams} from '../hooks/use-active-teams';
 import {useCommandCompletion} from '../hooks/use-command-completion';
 import {useHilInput} from '../hooks/use-hil-input';
 import {usePromptInput} from '../hooks/use-prompt-input';
@@ -94,14 +91,6 @@ export function shouldShowFloatingTaskPanel(input: {
   });
 }
 
-export function shouldShowFocusedTeamDetail(input: {
-  hasConversation: boolean;
-  hasFocusedTeamDetail: boolean;
-  hasBlockingOverlay: boolean;
-}): boolean {
-  return input.hasConversation && input.hasFocusedTeamDetail && !input.hasBlockingOverlay;
-}
-
 export function shouldShowActivityLine(input: {
   hilReview?: CliHilReviewState;
   runStateStatus: 'idle' | 'running' | 'paused' | 'done' | 'error';
@@ -109,8 +98,6 @@ export function shouldShowActivityLine(input: {
   activeItems: readonly TranscriptItem[];
   activeTaskCount?: number;
   pausedTaskCount?: number;
-  activeTeamCount?: number;
-  pausedTeamCount?: number;
 }): boolean {
   if (input.hilReview) {
     return false;
@@ -126,9 +113,7 @@ export function shouldShowActivityLine(input: {
 
   if (!transcriptOwnsTaskExecution) {
     return (input.activeTaskCount ?? 0) === 0
-      && (input.pausedTaskCount ?? 0) === 0
-      && (input.activeTeamCount ?? 0) === 0
-      && (input.pausedTeamCount ?? 0) === 0;
+      && (input.pausedTaskCount ?? 0) === 0;
   }
 
   return input.latestRuntimeEventKind !== 'task' && input.latestRuntimeEventKind !== 'tool';
@@ -182,11 +167,6 @@ export function CodaraCliApp(props: CodaraCliAppProps): React.JSX.Element {
     taskRunSummaries: codara.getTaskRunSummaries(),
     approvals: codara.getApprovalSummaries(),
   });
-  const activeTeams = useActiveTeams({
-    teamSummaries: codara.getTeamSummaries(),
-    runtimeEvents: shell.runtimeEvents,
-    focusedTeamId: shell.teamDashboardState.activeTeamId,
-  });
   const listCommands = React.useCallback(() => codara.listCommands(), [codara]);
   const completion = useCommandCompletion({
     text: shell.composer.text,
@@ -219,7 +199,6 @@ export function CodaraCliApp(props: CodaraCliAppProps): React.JSX.Element {
     hasSessionPicker: sessionPicker.state.visible,
   });
 
-  // 输入监听挂在组装层；展示组件不直接感知键盘事件。
   usePromptInput({
     interactive: !hasHilReview && !sessionPicker.state.visible && !(autoExitOnSettledPrompt && hasInitialPrompt),
     disabled: hasHilReview || sessionPicker.state.visible || shell.runState.status === 'running',
@@ -249,29 +228,16 @@ export function CodaraCliApp(props: CodaraCliAppProps): React.JSX.Element {
         }
         return;
       }
-      // Enter on a focused worker (no text) → enter that member's view
-      if (shell.teamDetailState && shell.teamDetailState.focusedMemberId && !shell.composer.text.trim()) {
-        shell.enterMember(shell.teamDetailState.focusedMemberId);
-        return;
-      }
       shell.submitDraft();
     },
     onExit: () => {
-      if (shell.activeMemberId) { shell.exitMember(); return; }
-      if (shell.teamDetailState?.focusedMemberId) { shell.focusMember(undefined); return; }
       if (completion.completion.visible) { completion.dismiss(); return; }
       if (shell.commandOutput) { shell.dismissCommandOutput(); return; }
       exit();
     },
     onToggleTaskPanel: shell.toggleTaskPanel,
     onToggleExpand: shell.toggleExpand,
-    onSelectMemberUp: () => { shell.focusPreviousTeamMember(); },
-    onSelectMemberDown: () => { shell.focusNextTeamMember(); },
     onTab: () => {
-      if (shell.teamDetailState && !completion.completion.visible && !hasHilReview) {
-        shell.focusNextTeamMember();
-        return;
-      }
       if (completion.completion.visible) {
         const accepted = completion.accept();
         if (accepted) shell.replaceText(accepted);
@@ -330,7 +296,6 @@ export function CodaraCliApp(props: CodaraCliAppProps): React.JSX.Element {
 
   return (
       <Box flexDirection="column" paddingX={1}>
-        {/* 固化区：渲染一次，永久留在滚动缓冲区 */}
         <Static items={solidifiedItems}>
           {(turn) => (
             <SolidifiedBlock
@@ -343,18 +308,9 @@ export function CodaraCliApp(props: CodaraCliAppProps): React.JSX.Element {
             />
           )}
         </Static>
-
-        {/* 动态区 */}
-        {shell.activeMemberId && (
-          <Box paddingX={1}>
-            <Text color={theme.interactive.accent}>▶ </Text>
-            <Text bold>{shell.teamDetailState?.members.find(m => m.memberId === shell.activeMemberId)?.name ?? shell.activeMemberId}</Text>
-            <Text dimColor> — Esc to return to leader</Text>
-          </Box>
-        )}
         {activeItems.length > 0 && <ActiveTranscript items={activeItems} activeTasks={activeTasks.tasks} expandedAll={shell.expandedAll} />}
 
-        {/* Activity / Prompt / Status — 始终渲染 */}
+        {/* Activity / Prompt / Status */}
         <>
             {shouldShowActivityLine({
               hilReview: shell.hilReview,
@@ -363,8 +319,6 @@ export function CodaraCliApp(props: CodaraCliAppProps): React.JSX.Element {
               activeItems,
               activeTaskCount: activeTasks.runningCount,
               pausedTaskCount: activeTasks.pausedCount,
-              activeTeamCount: activeTeams.isFocusedTeamRunning ? 1 : 0,
-              pausedTeamCount: activeTeams.isFocusedTeamPaused ? 1 : 0,
             }) && (
               <ActivityLine
                 runState={shell.runState}
@@ -403,19 +357,6 @@ export function CodaraCliApp(props: CodaraCliAppProps): React.JSX.Element {
                 />
               </Box>
             )}
-            {shouldShowFocusedTeamDetail({
-              hasConversation: shell.hasConversation,
-              hasFocusedTeamDetail: Boolean(shell.teamDetailState),
-              hasBlockingOverlay,
-            }) && shell.teamDetailState && (
-              <Box marginTop={1}>
-                <TeamDetailView
-                  state={shell.teamDetailState}
-                  focusedMemberId={shell.teamDetailState.focusedMemberId}
-                  onFocusNext={shell.focusNextTeamMember}
-                />
-              </Box>
-            )}
             {showPromptFrame && (
               <Box>
                 <Box flexGrow={1}>
@@ -449,7 +390,6 @@ export function CodaraCliApp(props: CodaraCliAppProps): React.JSX.Element {
             <Footer
               layoutMode={layoutMode}
               hasCommandOutput={Boolean(shell.commandOutput)}
-              hasActiveTeams={Boolean(shell.teamDetailState)}
             />
         </>
       </Box>

@@ -1,7 +1,7 @@
 import {type BaseMessage, type ToolCall, ToolMessage} from '@langchain/core/messages';
 import {ToolInputParsingException, type StructuredToolInterface} from '@langchain/core/tools';
 import {ToolInvocationError} from 'langchain';
-import {Command, applyAgentStateUpdate, isCommand} from '../models/command';
+import {Command, applyAgentStateUpdate, isCommand, mergeContext} from '../models/command';
 import type {AgentState, ToolErrorHandler} from '../models/agent';
 import type {ExecutionContextMetadata} from '@core/pipeline/types';
 
@@ -43,7 +43,7 @@ export async function executeToolCall(
         execution,
         agentType: state.agentType,
         durableContext: state.context,
-        context: runtime?.context ?? state.context,
+        context: mergeContext(state.context ?? {}, runtime?.runtimeContext),
         runtimeContext: runtime?.runtimeContext ?? {},
         runtimeShared: runtime?.shared ?? {},
       },
