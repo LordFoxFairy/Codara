@@ -372,14 +372,11 @@ export function useCliController(options: UseCliControllerOptions): CliControlle
     hilReviewRef.current = hilReview;
   }, [hilReview]);
 
-  // Poll worker messages while a member view is active
+  // Refresh member messages on team runtime events (event-driven, no polling)
   useEffect(() => {
     if (!activeMemberId) return;
-    const id = setInterval(() => {
-      setMemberMessages(codara.getMemberMessages(activeMemberId));
-    }, 500);
-    return () => clearInterval(id);
-  }, [activeMemberId, codara]);
+    setMemberMessages(codara.getMemberMessages(activeMemberId));
+  }, [activeMemberId, codara, runtimeEvents]);
 
   const appendNotice = useCallback((level: CliNotice['level'], content: string) => {
     const message = content.trim();
