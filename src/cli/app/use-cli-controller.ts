@@ -650,19 +650,34 @@ export function useCliController(options: UseCliControllerOptions): CliControlle
 
   const focusNextTeamMember = useCallback(() => {
     const members = teamDetailState?.members ?? [];
-    if (members.length === 0) return;
-    const currentIndex = members.findIndex(m => m.memberId === focusedMemberId);
-    const next = members[(currentIndex + 1) % members.length];
-    setFocusedMemberId(next?.memberId === members[0]?.memberId ? undefined : next?.memberId);
+    const workers = members.filter(m => m.role !== 'leader');
+    if (workers.length === 0) return;
+    if (focusedMemberId === undefined) {
+      setFocusedMemberId(workers[0]?.memberId);
+      return;
+    }
+    const currentIndex = workers.findIndex(m => m.memberId === focusedMemberId);
+    if (currentIndex === workers.length - 1) {
+      setFocusedMemberId(undefined); // back to leader
+    } else {
+      setFocusedMemberId(workers[currentIndex + 1]?.memberId);
+    }
   }, [focusedMemberId, teamDetailState?.members]);
 
   const focusPreviousTeamMember = useCallback(() => {
     const members = teamDetailState?.members ?? [];
-    if (members.length === 0) return;
-    const currentIndex = members.findIndex(m => m.memberId === focusedMemberId);
-    const prevIndex = currentIndex <= 0 ? members.length - 1 : currentIndex - 1;
-    const prev = members[prevIndex];
-    setFocusedMemberId(prev?.memberId === members[0]?.memberId ? undefined : prev?.memberId);
+    const workers = members.filter(m => m.role !== 'leader');
+    if (workers.length === 0) return;
+    if (focusedMemberId === undefined) {
+      setFocusedMemberId(workers[workers.length - 1]?.memberId);
+      return;
+    }
+    const currentIndex = workers.findIndex(m => m.memberId === focusedMemberId);
+    if (currentIndex <= 0) {
+      setFocusedMemberId(undefined); // back to leader
+    } else {
+      setFocusedMemberId(workers[currentIndex - 1]?.memberId);
+    }
   }, [focusedMemberId, teamDetailState?.members]);
 
   const focusMember = useCallback((memberId: string | undefined) => {
