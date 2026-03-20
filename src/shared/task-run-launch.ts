@@ -22,10 +22,10 @@ export function readTaskRunLaunchResult(value: unknown): TaskRunLaunchResult | u
 }
 
 export function formatTaskRunLaunchResult(result: TaskRunLaunchResult): string {
+  void result;
   return [
     'Delegated task started in background.',
-    `run_id: ${result.runId}`,
-    `delegate_id: ${result.sessionId}`,
-    `agent: ${result.agentName}`,
+    'Do not restate launch metadata or promise follow-up.',
+    'Wait for runtime updates, review requests, or the delegated result.',
   ].join('\n');
 }

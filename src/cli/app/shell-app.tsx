@@ -26,6 +26,8 @@ import {usePromptInput} from '../hooks/use-prompt-input';
 import {useSessionPicker} from '../hooks/use-session-picker';
 import {useSolidifiedTranscript} from '../hooks/use-solidified-transcript';
 import {useTerminalWidth} from '../hooks/use-terminal-width';
+import type {CliHilReviewState} from './view-state';
+import type {TranscriptItem} from '../transcript/model';
 
 export interface CodaraCliAppProps {
   codara: Codara;
@@ -50,6 +52,55 @@ export function resolveCliForegroundSurface(input: {
   }
 
   return input.hasConversation ? 'transcript' : 'welcome';
+}
+
+export function isFloatingHilReview(review: CliHilReviewState | undefined): boolean {
+  return Boolean(review?.form) && !isPermissionReview(review);
+}
+
+export function shouldShowPromptFrame(input: {
+  hilReview?: CliHilReviewState;
+  hasCommandOutput: boolean;
+  hasCompletion: boolean;
+  hasSessionPicker: boolean;
+}): boolean {
+  if (input.hasCommandOutput || input.hasCompletion || input.hasSessionPicker) {
+    return false;
+  }
+
+  return !input.hilReview;
+}
+
+export function shouldShowTaskPanel(input: {
+  taskPanelVisible: boolean;
+  taskCount: number;
+}): boolean {
+  return input.taskPanelVisible && input.taskCount > 1;
+}
+
+export function shouldShowActivityLine(input: {
+  hilReview?: CliHilReviewState;
+  runStateStatus: 'idle' | 'running' | 'paused' | 'done' | 'error';
+  latestRuntimeEventKind?: CodaraRuntimeEvent['kind'];
+  activeItems: readonly TranscriptItem[];
+}): boolean {
+  if (input.hilReview) {
+    return false;
+  }
+
+  if (input.runStateStatus !== 'running') {
+    return true;
+  }
+
+  const transcriptOwnsTaskExecution = input.activeItems.some((item) => (
+    item.role === 'task' && item.toolMeta?.status === 'running'
+  ));
+
+  if (!transcriptOwnsTaskExecution) {
+    return true;
+  }
+
+  return input.latestRuntimeEventKind !== 'task' && input.latestRuntimeEventKind !== 'tool';
 }
 
 export function CodaraCliApp(props: CodaraCliAppProps): React.JSX.Element {
@@ -165,6 +216,14 @@ export function CodaraCliApp(props: CodaraCliAppProps): React.JSX.Element {
 
   const hasInitialPrompt = Boolean(initialPrompt?.trim());
   const hasHilReview = Boolean(shell.hilReview);
+  const floatingHilReview = isFloatingHilReview(shell.hilReview) ? shell.hilReview : undefined;
+  const inlineHilReview = shell.hilReview && !floatingHilReview ? shell.hilReview : undefined;
+  const showPromptFrame = shouldShowPromptFrame({
+    hilReview: shell.hilReview,
+    hasCommandOutput: Boolean(shell.commandOutput),
+    hasCompletion: completion.completion.visible,
+    hasSessionPicker: sessionPicker.state.visible,
+  });
 
   // 输入监听挂在组装层；展示组件不直接感知键盘事件。
   usePromptInput({
@@ -229,6 +288,7 @@ export function CodaraCliApp(props: CodaraCliAppProps): React.JSX.Element {
     onSelectPreviousApproval: shell.selectPreviousApproval,
     onSelectNextApproval: shell.selectNextApproval,
     onToggleFocus: shell.toggleHilFocus,
+    onActivateSelection: shell.activateHilSelection,
     onInsertText: shell.insertHilText,
     onInsertNewline: shell.insertHilNewline,
     onBackspace: shell.backspaceHilInput,
@@ -281,12 +341,12 @@ export function CodaraCliApp(props: CodaraCliAppProps): React.JSX.Element {
         </Static>
 
         {/* 动态区 */}
-        {activeItems.length > 0 && <ActiveTranscript items={activeItems} expandedAll={shell.expandedAll} />}
+        {activeItems.length > 0 && <ActiveTranscript items={activeItems} activeTasks={activeTasks.tasks} expandedAll={shell.expandedAll} />}
 
         {/* Unified Task/Team Panel (Ctrl+T toggle) */}
         {shell.hasConversation && shell.taskPanelVisible && (
           <>
-            {activeTasks.hasActiveTasks && (
+            {shouldShowTaskPanel({taskPanelVisible: shell.taskPanelVisible, taskCount: activeTasks.tasks.length}) && (
               <TaskPanel
                 tasks={activeTasks.tasks}
                 runningCount={activeTasks.runningCount}
@@ -312,11 +372,16 @@ export function CodaraCliApp(props: CodaraCliAppProps): React.JSX.Element {
         )}
 
         {/* HIL 内联显示在对话流下方（不替换整个界面） */}
-        {shell.hilReview && <HilPanel review={shell.hilReview} />}
+        {inlineHilReview && <HilPanel review={inlineHilReview} />}
 
         {/* Activity / Prompt / Status — 始终渲染 */}
         <>
-            {!shell.hilReview && (
+            {shouldShowActivityLine({
+              hilReview: shell.hilReview,
+              runStateStatus: shell.runState.status,
+              latestRuntimeEventKind: shell.latestRuntimeEvent?.kind,
+              activeItems,
+            }) && (
               <ActivityLine
                 runState={shell.runState}
                 activeTurn={shell.activeTurn}
@@ -338,7 +403,7 @@ export function CodaraCliApp(props: CodaraCliAppProps): React.JSX.Element {
             {shell.commandOutput && (
               <CommandOutputPanel content={shell.commandOutput.content} commandName={shell.commandOutput.commandName} scrollOffset={shell.commandOutput.scrollOffset} />
             )}
-            {!shell.commandOutput && !completion.completion.visible && !shell.hilReview && (
+            {showPromptFrame && (
               <Box>
                 <Box flexGrow={1}>
                   <PromptFrame
@@ -356,7 +421,12 @@ export function CodaraCliApp(props: CodaraCliAppProps): React.JSX.Element {
                 )}
               </Box>
             )}
-            <CompletionMenu completion={completion.completion} />
+            <CompletionMenu completion={completion.completion} terminalWidth={terminalWidth} />
+            {floatingHilReview && !shell.commandOutput && !completion.completion.visible && !sessionPicker.state.visible && (
+              <Box marginTop={1}>
+                <HilPanel review={floatingHilReview} presentation="floating" />
+              </Box>
+            )}
             {shell.hasConversation && (
               <StatusBar
                 layoutMode={layoutMode}

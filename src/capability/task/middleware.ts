@@ -36,6 +36,8 @@ export const TASK_TOOL_NAME = 'Task';
 
 export const TASK_TOOL_DESCRIPTION = `Delegate a focused task to an isolated subagent.
 Use this tool when a sub-problem should run in a fresh context window and return only a concise summary.
+After calling Task, do not post a second "task started" confirmation, do not restate run metadata, and do not promise future updates.
+Let the task/runtime UI carry launch and progress; only respond again with the delegated result or when review is required.
 
 Subagent definitions are loaded from markdown files such as .codara/skills/*/agents/*.md or explicit subagent roots.
 Use TaskCreate/TaskUpdate/TaskList for shared task coordination, not this delegation tool.`;
@@ -351,9 +353,7 @@ function readExistingTaskRunMessage(
   return new ToolMessage({
     content: [
       header,
-      `run_id: ${run.runId}`,
-      `delegate_id: ${sessionId}`,
-      `agent: ${agentName}`,
+      'Do not restate launch metadata or promise follow-up.',
       ...(detail ? [`activity: ${detail}`] : []),
     ].join('\n'),
     artifact: {

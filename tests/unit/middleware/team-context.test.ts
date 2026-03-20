@@ -69,6 +69,17 @@ describe('TeamContextMiddleware', () => {
     expect(ctx.systemMessage).toContain('# Worker Protocol\nYou are a worker.')
   })
 
+  test('missing protocol function does not crash worker middleware', async () => {
+    const mw = createTeamMiddleware({teamType: 'worker'})
+    const teamCtx = createMockTeamContext({
+      getProtocol: undefined as unknown as () => string,
+    })
+    const ctx = createMockContext(teamCtx)
+
+    await expect(mw.beforeModel!(ctx)).resolves.toBeUndefined()
+    expect(ctx.systemMessage).toEqual([])
+  })
+
   test('team session subsequent calls: protocol NOT injected again', async () => {
     const mw = createTeamMiddleware({teamType: 'worker'})
     const teamCtx = createMockTeamContext()

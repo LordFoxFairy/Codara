@@ -1,19 +1,31 @@
 import React from 'react';
 import {Box, Text} from 'ink';
 import type {CliHilReviewAction, CliHilReviewState} from '../../app/view-state';
+import {theme} from '../../utils/theme';
 
 interface HilPanelProps {
   review: CliHilReviewState;
+  presentation?: 'inline' | 'floating';
 }
 
 // ── Public API ──────────────────────────────────────────────
 
-export function HilPanel({review}: HilPanelProps): React.JSX.Element {
+export function HilPanel({review, presentation = 'inline'}: HilPanelProps): React.JSX.Element {
   const content = isPermissionReview(review)
     ? <PermissionView review={review} />
     : review.form
       ? <AskUserView review={review} />
       : <GenericReviewView review={review} />;
+
+  if (presentation === 'floating') {
+    return (
+      <Box flexDirection="column" borderStyle="round" borderColor={theme.chrome.border} paddingX={1}>
+        <FloatingHilHeader review={review} />
+        <ApprovalQueueBanner review={review} />
+        {content}
+      </Box>
+    );
+  }
 
   return (
     <Box flexDirection="column" paddingX={1}>
@@ -94,54 +106,40 @@ function PermissionView({review}: {review: CliHilReviewState}): React.JSX.Elemen
 
 function AskUserView({review}: {review: CliHilReviewState}): React.JSX.Element {
   const form = review.form!;
-  const activeTab = form.tabs[form.activeTabIndex];
+  const activeTab = form.endStep ? undefined : form.tabs[form.activeTabIndex];
   const hasMultipleTabs = form.tabs.length > 1;
+  const activeOptions = activeTab?.options ?? [];
+  const showSubmitActions = form.endStep && review.focus === 'actions';
+  const showNextFooter = !form.endStep;
+  const helperLabel = describeAskUserInput(activeTab);
 
   return (
     <Box flexDirection="column">
-      {/* Tab navigation bar — always show */}
       {form.tabs.length > 0 && (
-        <Box marginBottom={1}>
-          <Text dimColor>← </Text>
-          {form.tabs.map((tab, index) => {
-            const isActive = index === form.activeTabIndex;
-            const isDone = isAnswered(form.answers[tab.id]);
-            return (
-              <React.Fragment key={tab.id}>
-                {index > 0 && <Text dimColor>  </Text>}
-                {isActive ? (
-                  <Text color="cyan" bold underline>{`□ ${tab.label}`}</Text>
-                ) : isDone ? (
-                  <Text color="green">{`✓ ${tab.label}`}</Text>
-                ) : (
-                  <Text dimColor>{`□ ${tab.label}`}</Text>
-                )}
-              </React.Fragment>
-            );
-          })}
-          <Text dimColor>  </Text>
-          <Text color="green">✓Submit</Text>
-          <Text dimColor> →</Text>
-        </Box>
+        <AskUserTabStrip form={form} />
       )}
 
-      {/* Question title */}
       {activeTab?.question && (
         <Text bold>{activeTab.question}</Text>
       )}
 
-      {/* Options list — vertical, ↑/↓ navigable */}
+      {!showSubmitActions && helperLabel && (
+        <Text dimColor>{helperLabel}</Text>
+      )}
+
       {activeTab && (
         <Box flexDirection="column" marginTop={1}>
-          {(activeTab.options ?? []).map((option, index) => {
+          {activeOptions.map((option, index) => {
             const answer = activeTab.id ? form.answers[activeTab.id] : undefined;
             const isSelected = isOptionSelected(option.label, answer);
             const isFocused = review.focus !== 'actions' && review.selectedActionIndex === index;
-            const checkbox = isSelected ? '[✓]' : '[ ]';
+            const marker = activeTab.input === 'multiselect'
+              ? isSelected ? '[x]' : '[ ]'
+              : isSelected ? '(*)' : '( )';
             return (
               <Box key={index} flexDirection="column">
                 <Text color={isFocused ? 'green' : isSelected ? 'cyan' : undefined}>
-                  {isFocused ? '› ' : '  '}{checkbox} {index + 1}. {option.label}
+                  {isFocused ? '› ' : '  '}{marker} {index + 1}. {option.label}
                 </Text>
                 {option.description && (
                   <Text dimColor>{'        '}{option.description}</Text>
@@ -149,53 +147,50 @@ function AskUserView({review}: {review: CliHilReviewState}): React.JSX.Element {
               </Box>
             );
           })}
-
-          {/* Free text option — also navigable */}
-          {activeTab.placeholder && (() => {
-            const freeIdx = (activeTab.options?.length ?? 0);
-            const isFocused = review.focus !== 'actions' && review.selectedActionIndex === freeIdx;
-            return (
-              <Text color={isFocused ? 'green' : undefined} dimColor={!isFocused}>
-                {isFocused ? '› ' : '  '}{freeIdx + 1}. {activeTab.placeholder}
-              </Text>
-            );
-          })()}
-
-          {/* Actions as numbered items below a separator */}
-          {review.actions.length > 0 && (
-            <Box marginTop={1} flexDirection="column">
-              {review.actions.map((action, index) => {
-                const actionIdx = (activeTab.options?.length ?? 0) + (activeTab.placeholder ? 1 : 0) + index;
-                const isFocused = review.focus === 'actions' && index === review.selectedActionIndex;
-                return (
-                  <Text key={index} color={isFocused ? 'cyan' : undefined} dimColor={!isFocused}>
-                    {isFocused ? '› ' : '  '}{actionIdx + 1}. {action.label}
-                  </Text>
-                );
-              })}
-            </Box>
-          )}
         </Box>
       )}
 
-      {/* Input line — visible when typing or focused */}
-      {(review.focus === 'input' || review.draft.trim()) && (
-        <Box marginTop={1}>
-          <Text color={review.focus === 'input' ? 'cyan' : 'gray'}>
-            Answer › {review.draft || '(empty)'}
+      {!form.endStep && review.draft.trim() && (
+        <Box marginTop={1} flexDirection="column">
+          <Text dimColor>Custom answer</Text>
+          <Text color="cyan">{review.draft}</Text>
+        </Box>
+      )}
+
+      {showNextFooter && (
+        <Box marginTop={1} flexWrap="wrap">
+          <Text color={review.focus === 'actions' ? 'green' : undefined} dimColor={review.focus !== 'actions'} bold={review.focus === 'actions'}>
+            {review.focus === 'actions' ? '› ' : ''}[Next]
           </Text>
         </Box>
       )}
 
-      {/* Hint */}
+      {showSubmitActions && review.actions.length > 0 && (
+        <Box marginTop={1} flexWrap="wrap">
+            {review.actions.map((action, index) => {
+              const isFocused = review.focus === 'actions' && index === review.selectedActionIndex;
+              return (
+                <React.Fragment key={action.id}>
+                  {index > 0 && <Text dimColor>{'  '}</Text>}
+                  <Text color={resolveActionColor(action, isFocused)} dimColor={!isFocused} bold={isFocused}>
+                    {isFocused ? '› ' : ''}[{action.label}]
+                  </Text>
+                </React.Fragment>
+              );
+            })}
+        </Box>
+      )}
+
       <Box marginTop={1}>
         <Text dimColor>
           {(() => {
-            const isLastTab = form.activeTabIndex >= form.tabs.length - 1;
-            const enterAction = isLastTab ? 'Enter submit' : 'Enter next';
+            if (form.endStep && review.focus === 'actions') {
+              return '↑/↓ select · Enter submit · Tab back · [ / ] approvals · Esc cancel';
+            }
+            const selectVerb = activeTab?.input === 'multiselect' ? 'Space toggle' : 'Space select';
             return hasMultipleTabs
-              ? `↑/↓ select · 1-9 quick pick · ${enterAction} · ←/→ tabs · [ / ] approvals · Esc cancel`
-              : `↑/↓ select · 1-9 quick pick · ${enterAction} · [ / ] approvals · Esc cancel`;
+              ? `↑/↓ select · 1-9 quick pick · ${selectVerb} · Enter next · Tab next · ←/→ tabs · [ / ] approvals · Esc cancel`
+              : `↑/↓ select · 1-9 quick pick · ${selectVerb} · Enter next · Tab next · [ / ] approvals · Esc cancel`;
           })()}
         </Text>
       </Box>
@@ -240,6 +235,55 @@ function ApprovalQueueBanner({review}: {review: CliHilReviewState}): React.JSX.E
   );
 }
 
+function FloatingHilHeader({review}: {review: CliHilReviewState}): React.JSX.Element {
+  const title = review.form ? 'Ask User' : isPermissionReview(review) ? 'Permission Review' : 'Review Required';
+  const hints = review.form
+    ? review.form.endStep && review.focus === 'actions'
+      ? 'Enter submit  Esc cancel'
+      : `${review.form.tabs[review.form.activeTabIndex]?.input === 'multiselect' ? 'Space toggle' : 'Space select'}  Enter next  Tab next  Esc cancel`
+    : 'Enter apply  Esc cancel';
+
+  return (
+    <Box justifyContent="space-between" marginBottom={1}>
+      <Text bold color={theme.interactive.title}>{title}</Text>
+      <Text dimColor>{hints}</Text>
+    </Box>
+  );
+}
+
+function AskUserTabStrip(
+  {form}: {form: NonNullable<CliHilReviewState['form']>},
+): React.JSX.Element {
+  const onEndStep = Boolean(form.endStep);
+  const currentStepIndex = onEndStep ? form.tabs.length : form.activeTabIndex;
+  const labels = [
+    ...form.tabs.map((tab) => ({kind: 'question' as const, label: tab.label})),
+    {kind: 'submit' as const, label: 'Submit'},
+  ];
+
+  return (
+    <Box marginBottom={1} flexWrap="nowrap">
+      <Text dimColor>← </Text>
+      {labels.map((item, index) => {
+        const isActive = index === currentStepIndex;
+        const isDone = item.kind === 'submit'
+          ? onEndStep
+          : isAnswered(form.answers[form.tabs[index]?.id ?? '']);
+        const prefix = item.kind === 'submit' ? '✔ ' : isDone ? '☑ ' : '☐ ';
+        return (
+          <React.Fragment key={`${item.kind}:${item.label}`}>
+            {index > 0 && <Text dimColor>{'  '}</Text>}
+            <Text color={isActive ? 'cyan' : isDone ? 'green' : undefined} bold={isActive}>
+              {`${prefix}${truncateLabel(item.label, 14)}`}
+            </Text>
+          </React.Fragment>
+        );
+      })}
+      <Text dimColor>{'  →'}</Text>
+    </Box>
+  );
+}
+
 // ── Helpers ──────────────────────────────────────────────────
 
 function formatPermissionShortcut(action: CliHilReviewAction): string {
@@ -266,4 +310,30 @@ function isOptionSelected(label: string, answer: string | string[] | undefined):
 function isAnswered(value: string | string[] | undefined): boolean {
   if (typeof value === 'string') return value.trim().length > 0;
   return Array.isArray(value) && value.some(e => e.trim().length > 0);
+}
+
+function truncateLabel(label: string, maxLength: number): string {
+  return label.length > maxLength ? `${label.slice(0, Math.max(0, maxLength - 3))}...` : label;
+}
+
+function describeAskUserInput(
+  tab: NonNullable<CliHilReviewState['form']>['tabs'][number] | undefined,
+): string | undefined {
+  if (!tab) {
+    return undefined;
+  }
+
+  if (tab.input === 'multiselect') {
+    return 'Choose one or more, or type your own answer.';
+  }
+
+  if (tab.input === 'mixed') {
+    return 'Choose one or type your own answer.';
+  }
+
+  if (tab.input === 'text') {
+    return 'Type your answer.';
+  }
+
+  return 'Choose one or type your own answer.';
 }

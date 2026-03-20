@@ -20,7 +20,7 @@ export interface TeamRuntimeContext {
   teamId: string;
   memberId: string;
   memberName: string;
-  role: 'leader' | 'worker' | 'reviewer';
+  role: 'leader' | 'worker';
   teamName: string;
   goal: string;
   depth: number;
@@ -65,11 +65,14 @@ export function createTeamMiddleware(
         if (!teamCtx) return;
 
         if (!protocolInjected) {
-          context.systemMessage.push(teamCtx.getProtocol());
-          protocolInjected = true;
+          const protocol = typeof teamCtx.getProtocol === 'function' ? teamCtx.getProtocol() : undefined;
+          if (protocol?.trim()) {
+            context.systemMessage.push(protocol);
+            protocolInjected = true;
+          }
         }
 
-        const formattedMessages = await teamCtx.drainInbox();
+        const formattedMessages = typeof teamCtx.drainInbox === 'function' ? await teamCtx.drainInbox() : [];
         if (formattedMessages.length > 0) {
           context.systemMessage.push([
             '--- Team Inbox ---',

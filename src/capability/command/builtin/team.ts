@@ -28,7 +28,11 @@ export const teamCommand: CodaraCommandDefinition = {
         if (!goal) return err(command.name, 'Usage: /team create <goal>');
         try {
           const name = `team-${Date.now().toString(36)}`;
-          const team = registry.createTeam({name, goal});
+          const team = registry.createTeam({
+            name,
+            goal,
+            createdBy: agent.getState().sessionId,
+          });
           await runtime.startTeam(team.teamId);
           return ok(command.name, `Team created and started.\n  ID: ${team.teamId}\n  Name: ${team.name}\n  Goal: ${goal}\n  Status: running`);
         } catch (e) {

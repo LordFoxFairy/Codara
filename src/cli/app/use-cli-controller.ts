@@ -18,7 +18,11 @@ import {
 import type {CliComposerState} from '../composer/types';
 import {hasTranscriptContent} from '../transcript/model';
 import {
+  activateCliHilFocusedSelection,
+  advanceCliHilToNextStep,
   applyCliHilFormShortcut,
+  confirmCliHilFocusedSelection,
+  prepareCliHilDraftInput,
   prepareCliHilSubmission,
   selectNextCliHilTab,
   selectNextCliHilAction,
@@ -85,6 +89,7 @@ export interface CliController {
   selectPreviousApproval: () => void;
   selectNextApproval: () => void;
   toggleHilFocus: () => void;
+  activateHilSelection: () => void;
   insertHilText: (input: string) => void;
   insertHilNewline: () => void;
   backspaceHilInput: () => void;
@@ -104,6 +109,10 @@ function shouldRefreshAuxiliaryState(event: CodaraRuntimeEvent): boolean {
   return event.kind === 'task' || event.kind === 'team' || event.kind === 'hil';
 }
 
+function isDelegatedTaskReviewPause(event: CodaraRuntimeEvent): boolean {
+  return event.kind === 'task' && event.phase === 'update' && event.status === 'paused';
+}
+
 function applyApprovalMetadata(
   review: CliHilReviewState | undefined,
   approvals: readonly ApprovalQuerySummary[],
@@ -118,6 +127,58 @@ function applyApprovalMetadata(
     approvalIndex: currentIndex >= 0 ? currentIndex + 1 : undefined,
     approvalCount: approvals.length > 0 ? approvals.length : undefined,
   };
+}
+
+function summarizeBackgroundTaskNotice(event: CodaraRuntimeEvent): CliNotice | undefined {
+  if (event.kind !== 'task') {
+    return undefined;
+  }
+
+  const detail = event.detail?.trim();
+  const suffix = detail ? `: ${detail}` : '';
+
+  if (event.phase === 'end') {
+    if (event.status === 'error') {
+      return {
+        id: `task-notice:${event.id}`,
+        level: 'error',
+        content: `Background task failed${suffix}`,
+      };
+    }
+  }
+
+  if (event.phase === 'update' && event.status === 'paused') {
+    return {
+      id: `task-notice:${event.id}`,
+      level: 'warning',
+      content: `Background task waiting for review${suffix}`,
+    };
+  }
+
+  return undefined;
+}
+
+function summarizeBackgroundTaskAssistantFollowup(event: CodaraRuntimeEvent): CliNotice | undefined {
+  if (event.kind !== 'task' || event.phase !== 'end' || event.status !== 'done') {
+    return undefined;
+  }
+
+  const detail = event.detail?.trim();
+  return {
+    id: `task-followup:${event.id}`,
+    level: 'assistant',
+    content: detail || 'Task finished.',
+  };
+}
+
+function appendUniqueNotices(current: CliNotice[], incoming: readonly CliNotice[]): CliNotice[] {
+  if (incoming.length === 0) {
+    return current;
+  }
+
+  const seen = new Set(current.map((notice) => notice.id));
+  const unique = incoming.filter((notice) => !seen.has(notice.id));
+  return unique.length > 0 ? [...current, ...unique] : current;
 }
 
 export function useCliController(options: UseCliControllerOptions): CliController {
@@ -160,6 +221,7 @@ export function useCliController(options: UseCliControllerOptions): CliControlle
   const hilReviewRef = useRef<CliHilReviewState | undefined>(undefined);
   const autoActionsRef = useRef([...hilAutoActions]);
   const handledAutoPauseIdsRef = useRef<Set<string>>(new Set());
+  const pendingBackgroundNoticesRef = useRef<CliNotice[]>([]);
 
   useEffect(() => {
     hilReviewRef.current = hilReview;
@@ -243,7 +305,39 @@ export function useCliController(options: UseCliControllerOptions): CliControlle
   useEffect(() => {
     setRuntimeEvents([]);
     return codara.subscribeRuntimeEvents((event: CodaraRuntimeEvent) => {
+      const foregroundDelegatedReview = isDelegatedTaskReviewPause(event);
       setRuntimeEvents((current) => [...current, event].slice(-40));
+      if (!isRunningRef.current && !foregroundDelegatedReview) {
+        const followup = summarizeBackgroundTaskAssistantFollowup(event);
+        const notice = summarizeBackgroundTaskNotice(event);
+        if (followup || notice) {
+          setNotices((current) => appendUniqueNotices(current, [
+            ...(followup ? [followup] : []),
+            ...(notice ? [notice] : []),
+          ]));
+        }
+      } else if (!foregroundDelegatedReview) {
+        const followup = summarizeBackgroundTaskAssistantFollowup(event);
+        const notice = summarizeBackgroundTaskNotice(event);
+        const queued = [
+          ...(followup ? [followup] : []),
+          ...(notice ? [notice] : []),
+        ];
+        if (queued.length > 0) {
+          pendingBackgroundNoticesRef.current = appendUniqueNotices(
+            pendingBackgroundNoticesRef.current,
+            queued,
+          );
+        }
+      }
+
+      if (foregroundDelegatedReview) {
+        isRunningRef.current = false;
+        setRunState({status: 'paused'});
+        refreshAuxiliaryState();
+        return;
+      }
+
       if (!isRunningRef.current && shouldRefreshAuxiliaryState(event)) {
         refreshAuxiliaryState();
       }
@@ -255,7 +349,7 @@ export function useCliController(options: UseCliControllerOptions): CliControlle
   }, [syncTeamDetailState]);
 
   const refreshCoreState = useCallback(async () => {
-    let nextAgentState = await codara.hydrate();
+    const nextAgentState = await codara.hydrate();
     if (!nextAgentState.pendingPause) {
       const queuedApprovals = codara.getApprovalSummaries();
       if (queuedApprovals.length > 0) {
@@ -422,6 +516,10 @@ export function useCliController(options: UseCliControllerOptions): CliControlle
         }
       }
 
+      if (Array.isArray(chunk.tool_calls) && chunk.tool_calls.some((toolCall) => toolCall?.name === 'Task')) {
+        setActiveTurn((current) => current ? {...current, pendingTaskLaunch: true} : current);
+      }
+
       const text = chunk.text;
       if (!text) {
         continue;
@@ -465,6 +563,11 @@ export function useCliController(options: UseCliControllerOptions): CliControlle
       await refreshCoreState().catch(() => undefined);
     } finally {
       isRunningRef.current = false;
+      if (pendingBackgroundNoticesRef.current.length > 0) {
+        const queued = pendingBackgroundNoticesRef.current;
+        pendingBackgroundNoticesRef.current = [];
+        setNotices((current) => appendUniqueNotices(current, queued));
+      }
     }
   }, [refreshCoreState, reportError, runAgentPrompt, runSlashCommand]);
 
@@ -655,6 +758,11 @@ export function useCliController(options: UseCliControllerOptions): CliControlle
     setHilReview((current) => current ? toggleCliHilFocus(current) : current);
   }, []);
 
+  const activateHilSelection = useCallback(() => {
+    setHilReview((current) => current ? activateCliHilFocusedSelection(current) ?? current : current);
+    setRunState({status: 'paused'});
+  }, []);
+
   const insertHilText = useCallback((input: string) => {
     setHilReview((current) => {
       if (!current) {
@@ -667,7 +775,8 @@ export function useCliController(options: UseCliControllerOptions): CliControlle
       if (current.focus !== 'input') {
         return current;
       }
-      return updateCliHilDraft(current, current.draft + input);
+      const prepared = prepareCliHilDraftInput(current) ?? current;
+      return updateCliHilDraft(prepared, prepared.draft + input);
     });
   }, []);
 
@@ -692,6 +801,22 @@ export function useCliController(options: UseCliControllerOptions): CliControlle
   const submitHilAction = useCallback(async (autoAction?: CliHilAutoAction) => {
     const review = hilReviewRef.current;
     if (!review || isRunningRef.current) {
+      return;
+    }
+
+    if (!autoAction && review.form && review.focus !== 'actions') {
+      const activated = confirmCliHilFocusedSelection(review);
+      if (activated) {
+        setHilReview(activated);
+        setRunState({status: 'paused'});
+        return;
+      }
+    }
+
+    if (!autoAction && review.form && !review.form.endStep && review.focus === 'actions') {
+      const advanced = advanceCliHilToNextStep(review);
+      setHilReview(advanced);
+      setRunState({status: 'paused'});
       return;
     }
 
@@ -850,6 +975,7 @@ export function useCliController(options: UseCliControllerOptions): CliControlle
     selectPreviousApproval,
     selectNextApproval,
     toggleHilFocus,
+    activateHilSelection,
     insertHilText,
     insertHilNewline,
     backspaceHilInput,

@@ -16,6 +16,9 @@ type ConversationDeps = {
 const configurableSchema = z.object({
   configurable: z.object({
     context: z.record(z.string(), z.unknown()).optional(),
+    execution: z.object({
+      sessionId: z.string().optional(),
+    }).optional(),
   }).optional(),
 }).loose();
 
@@ -37,10 +40,14 @@ export function createConversationTeamTools(deps: ConversationDeps): StructuredT
 
 function createTeamTool(deps: ConversationDeps): StructuredToolInterface {
   return tool(
-    async (input) => {
+    async (input, config) => {
       try {
         const name = input.name ?? `team-${Date.now().toString(36)}`;
-        const team = deps.registry.createTeam({name, goal: input.goal});
+        const team = deps.registry.createTeam({
+          name,
+          goal: input.goal,
+          createdBy: readExecutionSessionId(config),
+        });
         await deps.runtime.startTeam(team.teamId);
         deps.sharedState.updateTeamState(team.teamId, {
           status: 'running',
@@ -436,6 +443,12 @@ function readActiveTeamId(config: unknown): string | undefined {
   return teamSurface && typeof teamSurface === 'object' && 'activeTeamId' in teamSurface && typeof teamSurface.activeTeamId === 'string'
     ? teamSurface.activeTeamId
     : undefined;
+}
+
+function readExecutionSessionId(config: unknown): string | undefined {
+  const parsed = configurableSchema.safeParse(config);
+  const sessionId = parsed.success ? parsed.data.configurable?.execution?.sessionId : undefined;
+  return typeof sessionId === 'string' && sessionId.trim() ? sessionId : undefined;
 }
 
 function resolveTargetTeam(registry: TeamRegistry, requestedTeamId: string | undefined, config: unknown) {

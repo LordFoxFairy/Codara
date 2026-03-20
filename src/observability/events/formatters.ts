@@ -67,7 +67,7 @@ export function summarizeToolMessage(message: ToolMessage): string | undefined {
 export function summarizeDelegatedTask(message: ToolMessage): string | undefined {
   const launched = readTaskRunLaunchResult(message.artifact);
   if (launched) {
-    return `run_id: ${launched.runId}\ndelegate_id: ${launched.sessionId}`;
+    return undefined;
   }
 
   const delegated = readDelegatedAgentResult(message.artifact);

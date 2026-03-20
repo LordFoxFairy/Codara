@@ -454,6 +454,24 @@ describe('Codara slash commands', () => {
     expect(seenInstructions).toBe('focus on decisions and pending risks');
   });
 
+  it('should report a skipped compact when there is not enough conversation to compact', async () => {
+    const codara = createCodara({
+      model: new SystemEchoModel() as unknown as BaseChatModel,
+      skills: false,
+      builtinTools: false,
+      summary: {
+        summarize: () => 'manual compact summary',
+      },
+    });
+
+    await codara.invoke('one');
+
+    const result = await codara.executeCommand('/compact');
+
+    expect(result.ok).toBe(true);
+    expect(result.output).toBe('Conversation context already compact enough.');
+  });
+
   it('should compact checkpoint history through the slash command agent surface', async () => {
     const codara = createCodara({
       model: new EchoModel() as unknown as BaseChatModel,

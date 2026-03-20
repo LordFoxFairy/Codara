@@ -51,4 +51,41 @@ describe('cli composer viewport', () => {
 
     expect(viewport.lines.map(line => line.isCursorLine)).toEqual([false, true]);
   });
+
+  test('viewport should wrap CJK text by display width instead of raw string length', () => {
+    const state = createComposerState('你好世界再见', 6);
+    const viewport = buildComposerViewport(state, 6, undefined, 10);
+
+    expect(viewport.lines.map(line => `${line.beforeCursor}|${line.afterCursor}|${line.isCursorLine ? 'cursor' : 'plain'}`)).toEqual([
+      '你好世界||plain',
+      '再见||cursor',
+    ]);
+  });
+
+  test('viewport should keep pasted mixed-language lines intact across wraps', () => {
+    const state = createComposerState('你现在是需求收集助手。不要直接分析项目。', 20);
+    const viewport = buildComposerViewport(state, 6, undefined, 18);
+
+    expect(viewport.lines.length).toBeGreaterThan(1);
+    expect(viewport.lines.some((line) => line.beforeCursor.includes('需求'))).toBe(true);
+    expect(viewport.lines.some((line) => `${line.beforeCursor}${line.afterCursor}`.includes('分析项目'))).toBe(true);
+  });
+
+  test('default viewport should keep ordinary multi-line pasted prompts visible without truncating to six lines', () => {
+    const state = createComposerState('l1\nl2\nl3\nl4\nl5\nl6\nl7\nl8', 23);
+    const viewport = buildComposerViewport(state);
+
+    expect(viewport.lines.map((line) => `${line.beforeCursor}${line.afterCursor}`)).toEqual([
+      'l1',
+      'l2',
+      'l3',
+      'l4',
+      'l5',
+      'l6',
+      'l7',
+      'l8',
+    ]);
+    expect(viewport.hasOverflowAbove).toBe(false);
+    expect(viewport.hasOverflowBelow).toBe(false);
+  });
 });

@@ -39,7 +39,7 @@ export interface ActiveTaskSnapshot {
 }
 
 const MAX_VISIBLE_TASKS = 5;
-const DONE_TASK_LINGER_MS = 3000;
+const DONE_TASK_LINGER_MS = 15000;
 
 export function extractTaskName(label: string): string {
   // Take first line only

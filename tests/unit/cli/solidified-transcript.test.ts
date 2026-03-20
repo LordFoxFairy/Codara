@@ -59,6 +59,39 @@ describe('solidified transcript model', () => {
       expect(items[0]?.toolMeta?.toolName).toBe('bash');
     });
 
+    test('should suppress raw delegated task launch tool messages from the transcript', () => {
+      const taskCall: ToolCall = {
+        id: 'call_task_1',
+        name: 'Task',
+        args: {prompt: 'Analyze the repo', subagent_type: 'Explore'},
+      };
+      const messages = [
+        new AIMessage({content: '', tool_calls: [taskCall]}),
+        new ToolMessage({
+          content: [
+            'Delegated task started in background.',
+            'run_id: call_123',
+            'delegate_id: session:task:call_123',
+            'agent: Explore',
+          ].join('\n'),
+          tool_call_id: 'call_task_1',
+          name: 'Task',
+          artifact: {
+            type: 'task_run_started',
+            runId: 'call_123',
+            sessionId: 'session:task:call_123',
+            agentName: 'Explore',
+            label: 'Delegating Explore: Analyze the repo',
+          },
+        }),
+      ];
+      const toolLookup = createToolCallLookup(messages);
+
+      const items = buildSolidifiedItemsFromRange(messages, 0, 2, toolLookup);
+
+      expect(items).toHaveLength(0);
+    });
+
     test('should return empty array for empty range', () => {
       const messages = [new HumanMessage('hello')];
       const toolLookup = createToolCallLookup(messages);
@@ -114,7 +147,34 @@ describe('solidified transcript model', () => {
       expect(items.some((i) => i.role === 'tool')).toBe(true);
     });
 
-    test('should not include runtime events without activeTurn', () => {
+    test('should advance running task elapsed time from the supplied clock even without new events', () => {
+      const items = buildActiveItems({
+        activeTurn: {
+          id: 'turn-running-elapsed',
+          prompt: 'go',
+          response: '',
+          responseRole: 'assistant',
+        },
+        runtimeEvents: [
+          {
+            id: 'evt_task_start',
+            sessionId: 'session-1',
+            timestamp: '2026-03-20T10:00:00.000Z',
+            kind: 'task',
+            phase: 'start',
+            status: 'running',
+            label: 'Delegating Explore: Analyze project',
+          },
+        ],
+        nowTimestamp: '2026-03-20T10:00:03.000Z',
+      });
+
+      const taskItem = items.find((item) => item.toolMeta?.toolName === 'Task');
+      expect(taskItem?.toolMeta?.summaryLine).toContain('Running (3.0s)');
+      expect(taskItem?.toolMeta?.elapsed).toBe('3.0s');
+    });
+
+    test('should include runtime events even without activeTurn', () => {
       const now = new Date().toISOString();
       const items = buildActiveItems({
         runtimeEvents: [
@@ -131,7 +191,8 @@ describe('solidified transcript model', () => {
         ],
       });
 
-      expect(items).toHaveLength(0);
+      expect(items).toHaveLength(1);
+      expect(items[0]?.role).toBe('tool');
     });
 
     test('should filter empty content items', () => {

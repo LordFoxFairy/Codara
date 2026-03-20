@@ -88,8 +88,24 @@ describe('deriveActiveTasks', () => {
 
     // Within linger
     expect(deriveActiveTasks(runs, baseTime + 2000)).toHaveLength(1);
-    // After linger (3 seconds)
-    expect(deriveActiveTasks(runs, baseTime + 5000)).toHaveLength(0);
+    // After linger window
+    expect(deriveActiveTasks(runs, baseTime + 17000)).toHaveLength(0);
+  });
+
+  it('keeps recently completed background tasks visible long enough to read the result', () => {
+    const runs: TaskRunQuerySummary[] = [
+      createTaskRun({
+        runId: 'task-1',
+        startedAt: new Date(baseTime).toISOString(),
+        label: 'Delegating explore: inspect the repo',
+        status: 'completed',
+        endedAt: new Date(baseTime + 1000).toISOString(),
+        summary: 'Found the key architecture files',
+      }),
+    ];
+
+    expect(deriveActiveTasks(runs, baseTime + 9000)).toHaveLength(1);
+    expect(deriveActiveTasks(runs, baseTime + 9000)[0]!.detail).toBe('Found the key architecture files');
   });
 
   it('marks task as error', () => {

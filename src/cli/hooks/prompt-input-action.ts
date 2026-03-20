@@ -55,8 +55,16 @@ export function resolvePromptInputAction(input: string, key: PromptInputKey): Pr
     return 'insert-newline';
   }
 
-  if (key.return || input === '\r' || input === '\n') {
+  if (key.return && input && input !== '\r' && input !== '\n') {
+    return 'insert-text';
+  }
+
+  if (key.return) {
     return 'submit';
+  }
+
+  if (input === '\r' || input === '\n') {
+    return 'insert-text';
   }
 
   if (key.leftArrow) {

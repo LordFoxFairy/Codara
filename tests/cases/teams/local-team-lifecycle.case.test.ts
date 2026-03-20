@@ -159,6 +159,16 @@ describe('Teams Case: Conversation Tools', () => {
     expect(parsed.name).toBe('db-team');
   });
 
+  test('create_team stamps the owning session when invoked from a live session', async () => {
+    const result = await getTool('create_team').invoke(
+      {goal: 'Scoped team'},
+      {configurable: {execution: {sessionId: 'session-owned'}}},
+    );
+    const parsed = JSON.parse(result as string);
+
+    expect(registry.getTeam(parsed.teamId)?.createdBy).toBe('session-owned');
+  });
+
   test('list_teams returns all teams', async () => {
     await getTool('create_team').invoke({goal: 'Team 1', name: 'list-test-a'});
     await getTool('create_team').invoke({goal: 'Team 2', name: 'list-test-b'});

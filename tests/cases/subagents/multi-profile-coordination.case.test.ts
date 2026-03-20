@@ -15,8 +15,10 @@ describe('subagent multi-profile cases', () => {
     });
 
     expect(result.exitCode).toBe(0);
-    expect(result.output).toContain('Delegated task started in background.');
     expect(result.output).toContain('PARENT_DONE');
+    expect(result.output).toContain('✓ Plan: Create the implementation plan');
+    expect(result.output).toContain('✓ Explore: Explore the current codebase state');
+    expect(result.output).toContain('✓ Agent: Inspect the shared tasks');
 
     const taskDir = path.join(projectRoot, '.codara', 'case-tasks');
     const entries = (await readdir(taskDir)).filter((entry) => entry.endsWith('.json'));

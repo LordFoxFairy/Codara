@@ -2,7 +2,6 @@ import React, {useEffect, useState} from 'react';
 import {Box, Text} from 'ink';
 import type {ActiveTask} from '../../hooks/use-active-tasks';
 import {SPINNER_INTERVAL_MS} from '../../hooks/use-status-indicator';
-import {formatElapsedMs, formatTokenCount} from '../../utils/format';
 import {theme} from '../../utils/theme';
 
 const BRAILLE_FRAMES = ['⠋', '⠙', '⠹', '⠸', '⠼', '⠴', '⠦', '⠧', '⠇', '⠏'] as const;
@@ -60,20 +59,10 @@ export function TaskPanel({tasks, runningCount, pausedCount, doneCount, errorCou
     <Box flexDirection="column" borderStyle="single" borderColor={theme.chrome.border} paddingX={1}>
       <Text dimColor bold>Tasks ({summary})</Text>
       {tasks.map(task => {
-        const statParts: string[] = [];
-        if (task.toolUseCount) statParts.push(`${task.toolUseCount} tools`);
-        if (task.totalTokens) statParts.push(`${formatTokenCount(task.totalTokens)} tok`);
-        const elapsed = formatElapsedMs(task.elapsed);
-        const stats = statParts.length > 0 ? `  ${statParts.join(' · ')}` : '';
-
         return (
-          <Box key={task.id} flexDirection="column">
-            <Box gap={1}>
-              <TaskCheckbox status={task.status} frame={frame} />
-              <Text wrap="truncate-end">{task.name}</Text>
-              <Text dimColor>{elapsed}{stats}</Text>
-            </Box>
-            {task.detail ? <Text dimColor wrap="truncate-end">{task.detail}</Text> : null}
+          <Box key={task.id} gap={1}>
+            <TaskCheckbox status={task.status} frame={frame} />
+            <Text wrap="truncate-end">{task.name}</Text>
           </Box>
         );
       })}

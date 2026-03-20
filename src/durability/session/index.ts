@@ -1,5 +1,6 @@
 export type {
   Session,
+  ConversationCompactionResult,
 } from '@durability/session/session';
 export type {
   SessionMetadata,

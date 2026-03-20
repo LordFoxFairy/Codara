@@ -10,6 +10,9 @@ export interface CodaraSettingsRecord {
   memory?: {
     autoGlobal?: boolean;
   };
+  teams?: {
+    enabled?: boolean;
+  };
 }
 
 export interface CodaraSettingsEnvironment extends WorkspaceRootOptions {
@@ -39,6 +42,7 @@ export function readCodaraSettings(filePath: string): CodaraSettingsRecord {
     return {
       plugins: readPluginSettings(parsed.plugins),
       memory: readMemorySettings(parsed.memory),
+      teams: readTeamSettings(parsed.teams),
     };
   } catch {
     return {};
@@ -86,6 +90,17 @@ export function resolveAutoMemoryGlobal(environment: CodaraSettingsEnvironment):
   return true;
 }
 
+export function resolveTeamsEnabled(environment: CodaraSettingsEnvironment): boolean {
+  const settings = loadScopedCodaraSettings(environment);
+  if (typeof settings.project.teams?.enabled === 'boolean') {
+    return settings.project.teams.enabled;
+  }
+  if (typeof settings.user.teams?.enabled === 'boolean') {
+    return settings.user.teams.enabled;
+  }
+  return false;
+}
+
 function readPluginSettings(value: unknown): CodaraSettingsRecord['plugins'] {
   if (!isRecord(value)) {
     return undefined;
@@ -103,6 +118,16 @@ function readMemorySettings(value: unknown): CodaraSettingsRecord['memory'] {
 
   return {
     ...(typeof value.autoGlobal === 'boolean' ? {autoGlobal: value.autoGlobal} : {}),
+  };
+}
+
+function readTeamSettings(value: unknown): CodaraSettingsRecord['teams'] {
+  if (!isRecord(value)) {
+    return undefined;
+  }
+
+  return {
+    ...(typeof value.enabled === 'boolean' ? {enabled: value.enabled} : {}),
   };
 }
 

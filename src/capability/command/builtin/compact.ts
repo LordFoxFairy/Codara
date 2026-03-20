@@ -1,4 +1,5 @@
 import type {CodaraCommandDefinition} from '@capability/command/runtime/types';
+import type {ConversationCompactionResult} from '@durability/session';
 
 const BUILTIN_SOURCE = {type: 'builtin'} as const;
 
@@ -25,12 +26,12 @@ export const compactCommand: CodaraCommandDefinition = {
     }
 
     try {
-      const state = await agent.compactConversation(command.argsText ? {instructions: command.argsText} : undefined);
+      const compacted = await agent.compactConversation(command.argsText ? {instructions: command.argsText} : undefined);
       return {
         ok: true,
         command: command.name,
-        output: 'Conversation context compacted.',
-        state,
+        output: describeCompactOutcome(compacted),
+        state: compacted.state,
       };
     } catch (error) {
       return {
@@ -49,4 +50,14 @@ function normalizeKeepLast(value: string | undefined): number | undefined {
 
   const parsed = Number.parseInt(value, 10);
   return Number.isFinite(parsed) && parsed > 0 ? parsed : undefined;
+}
+
+function describeCompactOutcome(result: ConversationCompactionResult): string {
+  if (result.outcome === 'compacted') {
+    return 'Conversation context compacted.';
+  }
+
+  return result.reason === 'hook'
+    ? 'Conversation compaction skipped by hook.'
+    : 'Conversation context already compact enough.';
 }

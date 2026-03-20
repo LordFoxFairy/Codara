@@ -30,7 +30,13 @@ export function syncCliHilReviewState(
       ...current,
       request,
       actions,
-      selectedActionIndex: Math.min(current.selectedActionIndex, Math.max(actions.length - 1, 0)),
+      selectedActionIndex: form
+        ? current.focus === 'actions'
+          ? form.endStep
+            ? Math.min(current.selectedActionIndex, Math.max(actions.length - 1, 0))
+            : 0
+          : resolveHilInputSelectionIndex(form, current.selectedActionIndex)
+        : Math.min(current.selectedActionIndex, Math.max(actions.length - 1, 0)),
       form,
       draft: form ? readHilFormDraft(form) : current.draft,
       validationMessage: undefined,
@@ -41,7 +47,7 @@ export function syncCliHilReviewState(
     request,
     actions,
     selectedActionIndex: 0,
-    focus: form ? 'input' : 'actions',
+    focus: form ? (form.endStep ? 'actions' : 'input') : 'actions',
     draft: form ? readHilFormDraft(form) : '',
     busy: false,
     ...(form ? {form} : {}),
@@ -69,17 +75,14 @@ export function selectNextCliHilAction(current: CliHilReviewState): CliHilReview
 /** Count options + placeholder + actions as one unified navigable list. */
 function countTotalNavigableItems(current: CliHilReviewState): number {
   if (!current.form) return current.actions.length;
-  const activeTab = current.form.tabs[current.form.activeTabIndex];
-  const optionCount = (activeTab?.options?.length ?? 0) + (activeTab?.placeholder ? 1 : 0);
-  return optionCount + current.actions.length;
+  const activeTab = getActiveHilTab(current.form);
+  return current.focus === 'actions'
+    ? current.form.endStep ? current.actions.length : 1
+    : Math.max(activeTab?.options?.length ?? 0, 1);
 }
 
 /** Convert focus+selectedActionIndex to a single absolute index in the unified list. */
 function toAbsoluteIndex(current: CliHilReviewState): number {
-  if (!current.form) return current.selectedActionIndex;
-  const activeTab = current.form.tabs[current.form.activeTabIndex];
-  const optionCount = (activeTab?.options?.length ?? 0) + (activeTab?.placeholder ? 1 : 0);
-  if (current.focus === 'actions') return optionCount + current.selectedActionIndex;
   return current.selectedActionIndex;
 }
 
@@ -91,26 +94,28 @@ function applyAbsoluteIndex(current: CliHilReviewState, absoluteIndex: number): 
       selectedActionIndex: absoluteIndex % Math.max(current.actions.length, 1),
     };
   }
-  const activeTab = current.form.tabs[current.form.activeTabIndex];
-  const optionCount = (activeTab?.options?.length ?? 0) + (activeTab?.placeholder ? 1 : 0);
-  if (absoluteIndex < optionCount) {
-    return {
-      ...clearCliHilValidation(current),
-      focus: 'input',
-      selectedActionIndex: absoluteIndex,
-    };
-  }
   return {
     ...clearCliHilValidation(current),
-    focus: 'actions',
-    selectedActionIndex: absoluteIndex - optionCount,
+    selectedActionIndex: absoluteIndex,
   };
 }
 
 export function toggleCliHilFocus(current: CliHilReviewState): CliHilReviewState {
+  if (current.focus === 'actions') {
+    if (current.form?.endStep) {
+      return current;
+    }
+    return {
+      ...clearCliHilValidation(current),
+      focus: 'input',
+      selectedActionIndex: current.form ? resolveHilInputSelectionIndex(current.form) : current.selectedActionIndex,
+    };
+  }
+
   return {
     ...clearCliHilValidation(current),
-    focus: current.focus === 'actions' ? 'input' : 'actions',
+    focus: 'actions',
+    selectedActionIndex: 0,
   };
 }
 
@@ -135,8 +140,24 @@ export function selectPreviousCliHilTab(current: CliHilReviewState): CliHilRevie
     return current;
   }
 
+  if (current.form.endStep) {
+    const nextForm = {
+      ...current.form,
+      endStep: false,
+      activeTabIndex: Math.max(current.form.tabs.length - 1, 0),
+    };
+    return {
+      ...clearCliHilValidation(current),
+      form: nextForm,
+      draft: readHilFormDraft(nextForm),
+      focus: 'input',
+      selectedActionIndex: resolveHilInputSelectionIndex(nextForm),
+    };
+  }
+
   const nextForm = {
     ...current.form,
+    endStep: false,
     activeTabIndex: (current.form.activeTabIndex - 1 + current.form.tabs.length) % current.form.tabs.length,
   };
 
@@ -144,6 +165,8 @@ export function selectPreviousCliHilTab(current: CliHilReviewState): CliHilRevie
     ...clearCliHilValidation(current),
     form: nextForm,
     draft: readHilFormDraft(nextForm),
+    focus: 'input',
+    selectedActionIndex: resolveHilInputSelectionIndex(nextForm),
   };
 }
 
@@ -152,8 +175,38 @@ export function selectNextCliHilTab(current: CliHilReviewState): CliHilReviewSta
     return current;
   }
 
+  if (current.form.endStep) {
+    const nextForm = {
+      ...current.form,
+      endStep: false,
+      activeTabIndex: 0,
+    };
+    return {
+      ...clearCliHilValidation(current),
+      form: nextForm,
+      draft: readHilFormDraft(nextForm),
+      focus: 'input',
+      selectedActionIndex: resolveHilInputSelectionIndex(nextForm),
+    };
+  }
+
+  if (current.form.activeTabIndex === current.form.tabs.length - 1 && findFirstIncompleteTabIndex(current.form) < 0) {
+    const nextForm = {
+      ...current.form,
+      endStep: true,
+    };
+    return {
+      ...clearCliHilValidation(current),
+      form: nextForm,
+      draft: '',
+      focus: 'actions',
+      selectedActionIndex: 0,
+    };
+  }
+
   const nextForm = {
     ...current.form,
+    endStep: false,
     activeTabIndex: (current.form.activeTabIndex + 1) % current.form.tabs.length,
   };
 
@@ -161,6 +214,8 @@ export function selectNextCliHilTab(current: CliHilReviewState): CliHilReviewSta
     ...clearCliHilValidation(current),
     form: nextForm,
     draft: readHilFormDraft(nextForm),
+    focus: 'input',
+    selectedActionIndex: resolveHilInputSelectionIndex(nextForm),
   };
 }
 
@@ -169,7 +224,7 @@ export function applyCliHilFormShortcut(current: CliHilReviewState, input: strin
     return undefined;
   }
 
-  const activeTab = current.form.tabs[current.form.activeTabIndex];
+  const activeTab = getActiveHilTab(current.form);
   if (!activeTab || activeTab.options.length === 0) {
     return undefined;
   }
@@ -184,24 +239,68 @@ export function applyCliHilFormShortcut(current: CliHilReviewState, input: strin
     return undefined;
   }
 
-  const answer = activeTab.input === 'multiselect'
-    ? toggleHilFormSelection(current.form, option.label)
-    : option.label;
-  let nextForm = updateHilFormAnswer(current.form, answer);
-  if (activeTab.input !== 'multiselect') {
-    const nextIncompleteTabIndex = findNextIncompleteTabIndex(nextForm, current.form.activeTabIndex);
-    if (nextIncompleteTabIndex >= 0) {
-      nextForm = {
-        ...nextForm,
-        activeTabIndex: nextIncompleteTabIndex,
-      };
-    }
+  return applyCliHilOptionSelection(current, option.label);
+}
+
+export function activateCliHilFocusedSelection(current: CliHilReviewState): CliHilReviewState | undefined {
+  if (!current.form || current.focus === 'actions') {
+    return undefined;
+  }
+
+  const activeTab = getActiveHilTab(current.form);
+  if (!activeTab) {
+    return undefined;
+  }
+
+  const optionCount = activeTab.options.length;
+  const selectedIndex = current.selectedActionIndex;
+
+  if (selectedIndex < optionCount) {
+    return applyCliHilOptionSelection(current, activeTab.options[selectedIndex]?.label);
+  }
+
+  if (!acceptsHilDraftInput(activeTab)) {
+    return undefined;
+  }
+
+  return applyCliHilDraftSelection(current);
+}
+
+export function confirmCliHilFocusedSelection(current: CliHilReviewState): CliHilReviewState | undefined {
+  if (!current.form || current.focus === 'actions') {
+    return undefined;
+  }
+
+  const activeTab = getActiveHilTab(current.form);
+  if (!activeTab) {
+    return undefined;
+  }
+
+  if (activeTab.input === 'multiselect') {
+    return isHilAnswerComplete(current.form.answers[activeTab.id])
+      ? advanceCliHilToNextStep(current)
+      : current;
+  }
+
+  const selected = activateCliHilFocusedSelection(current) ?? current;
+  return isHilAnswerComplete(selected.form?.answers[activeTab.id])
+    ? advanceCliHilToNextStep(selected)
+    : selected;
+}
+
+export function prepareCliHilDraftInput(current: CliHilReviewState): CliHilReviewState | undefined {
+  if (!current.form || current.focus !== 'input') {
+    return undefined;
+  }
+
+  const activeTab = getActiveHilTab(current.form);
+  if (!activeTab || !acceptsHilDraftInput(activeTab)) {
+    return undefined;
   }
 
   return {
     ...clearCliHilValidation(current),
-    draft: readHilFormDraft(nextForm),
-    form: nextForm,
+    selectedActionIndex: Math.min(current.selectedActionIndex, Math.max(activeTab.options.length - 1, 0)),
   };
 }
 
@@ -360,6 +459,89 @@ function parseEditedToolArgs(raw: string): Record<string, unknown> {
   return parsed as Record<string, unknown>;
 }
 
+function applyCliHilOptionSelection(
+  current: CliHilReviewState,
+  optionLabel: string | undefined,
+): CliHilReviewState | undefined {
+  if (!current.form || !optionLabel) {
+    return undefined;
+  }
+
+  const activeTab = current.form.tabs[current.form.activeTabIndex];
+  if (!activeTab) {
+    return undefined;
+  }
+
+  const answer = activeTab.input === 'multiselect'
+    ? toggleHilFormSelection(current.form, optionLabel)
+    : optionLabel;
+  return commitCliHilAnswer(current, answer);
+}
+
+function applyCliHilDraftSelection(current: CliHilReviewState): CliHilReviewState {
+  return commitCliHilAnswer(current, current.draft);
+}
+
+function commitCliHilAnswer(
+  current: CliHilReviewState,
+  answer: CliHilAnswerValue,
+): CliHilReviewState {
+  if (!current.form) {
+    return current;
+  }
+
+  const nextForm = updateHilFormAnswer(current.form, answer);
+  return {
+    ...clearCliHilValidation(current),
+    draft: readHilFormDraft(nextForm),
+    form: nextForm,
+    focus: 'input',
+    selectedActionIndex: resolveHilInputSelectionIndex(nextForm, current.selectedActionIndex),
+  };
+}
+
+export function advanceCliHilToNextStep(current: CliHilReviewState): CliHilReviewState {
+  if (!current.form) {
+    return current;
+  }
+
+  const currentTab = getActiveHilTab(current.form);
+  if (currentTab && !isHilAnswerComplete(current.form.answers[currentTab.id])) {
+    return {
+      ...current,
+      validationMessage: `Complete ${currentTab.label} before continuing.`,
+    };
+  }
+
+  let nextForm = current.form;
+  const nextIncompleteTabIndex = findNextIncompleteTabIndex(nextForm, current.form.activeTabIndex);
+  if (nextIncompleteTabIndex >= 0) {
+    nextForm = {
+      ...nextForm,
+      endStep: false,
+      activeTabIndex: nextIncompleteTabIndex,
+    };
+    return {
+      ...clearCliHilValidation(current),
+      draft: readHilFormDraft(nextForm),
+      form: nextForm,
+      focus: 'input',
+      selectedActionIndex: resolveHilInputSelectionIndex(nextForm),
+    };
+  }
+
+  return {
+    ...clearCliHilValidation(current),
+    draft: '',
+    form: {
+      ...nextForm,
+      endStep: true,
+    },
+    focus: 'actions',
+    selectedActionIndex: 0,
+  };
+}
+
 function defaultActionForDecision(decision: PauseReviewDecision): CliHilReviewAction {
   switch (decision) {
     case 'approve':
@@ -406,6 +588,7 @@ function resolveCliHilFormState(
       ? Math.min(current.activeTabIndex, Math.max(parsed.tabs.length - 1, 0))
       : 0,
     answers: current?.answers ?? {},
+    endStep: current?.endStep ?? false,
   };
 }
 
@@ -413,13 +596,14 @@ function updateHilFormAnswer(
   form: CliHilFormState,
   answer: CliHilAnswerValue,
 ): CliHilFormState {
-  const activeTab = form.tabs[form.activeTabIndex];
+  const activeTab = getActiveHilTab(form);
   if (!activeTab) {
     return form;
   }
 
   return {
     ...form,
+    endStep: false,
     answers: {
       ...form.answers,
       [activeTab.id]: answer,
@@ -428,11 +612,37 @@ function updateHilFormAnswer(
 }
 
 function readHilFormDraft(form: CliHilFormState): string {
-  const activeTab = form.tabs[form.activeTabIndex];
+  const activeTab = getActiveHilTab(form);
   if (!activeTab) {
     return '';
   }
   return formatHilAnswerValue(form.answers[activeTab.id] ?? '');
+}
+
+function acceptsHilDraftInput(
+  tab: CliHilFormState['tabs'][number] | undefined,
+): boolean {
+  return Boolean(tab);
+}
+
+function resolveHilInputSelectionIndex(
+  form: CliHilFormState,
+  fallbackIndex = 0,
+): number {
+  const activeTab = form.tabs[form.activeTabIndex];
+  if (!activeTab || form.endStep) {
+    return fallbackIndex;
+  }
+
+  const answer = form.answers[activeTab.id];
+  if (typeof answer === 'string' && answer.trim()) {
+    const optionIndex = activeTab.options.findIndex((option) => option.label === answer);
+    if (optionIndex >= 0) {
+      return optionIndex;
+    }
+  }
+
+  return Math.min(fallbackIndex, Math.max(activeTab.options.length - 1, 0));
 }
 
 function readHilFormConfig(ui: PauseRequest['ui']): CliHilFormState | undefined {
@@ -480,7 +690,9 @@ function normalizeHilFormTab(tab: unknown) {
       ? input
       : Array.isArray(record.options) && record.options.length > 0
         ? 'select'
-        : undefined;
+        : typeof record.placeholder === 'string' && record.placeholder.trim()
+          ? 'text'
+          : undefined;
 
   const options = Array.isArray(record.options)
     ? record.options
@@ -538,6 +750,15 @@ function toggleHilFormSelection(form: CliHilFormState, label: string): string[] 
 
 function formatHilAnswerValue(value: CliHilAnswerValue): string {
   return Array.isArray(value) ? value.join(', ') : value;
+}
+
+function getActiveHilTab(
+  form: CliHilFormState,
+): CliHilFormState['tabs'][number] | undefined {
+  if (form.endStep) {
+    return undefined;
+  }
+  return form.tabs[form.activeTabIndex];
 }
 
 function clearCliHilValidation(current: CliHilReviewState): CliHilReviewState {
@@ -630,4 +851,3 @@ export function setPermissionStage(current: CliHilReviewState, stage: Permission
     permissionStage: 'prompt',
   };
 }
-

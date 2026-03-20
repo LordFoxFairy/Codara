@@ -23,6 +23,11 @@ describe('cli composer state', () => {
     expect(insertComposerNewline(state)).toEqual({text: 'hello\n', cursorOffset: 6});
   });
 
+  test('insertComposerText should normalize pasted CRLF into plain newlines', () => {
+    const state = createComposerState('hello', 5);
+    expect(insertComposerText(state, '\r\nworld\rnext')).toEqual({text: 'hello\nworld\nnext', cursorOffset: 16});
+  });
+
   test('backspaceComposerText should remove before cursor', () => {
     const state = createComposerState('hello', 5);
     expect(backspaceComposerText(state)).toEqual({text: 'hell', cursorOffset: 4});

@@ -1,5 +1,5 @@
 /* eslint-disable react-hooks/refs */
-import {useRef, useMemo} from 'react';
+import {useEffect, useRef, useMemo, useState} from 'react';
 import type {BaseMessage} from '@langchain/core/messages';
 import type {CodaraRuntimeEvent} from '@/index';
 import type {CliActiveTurn, CliNotice} from '../app/view-state';
@@ -41,6 +41,7 @@ export interface UseSolidifiedTranscriptOutput {
  */
 export function useSolidifiedTranscript(input: UseSolidifiedTranscriptInput): UseSolidifiedTranscriptOutput {
   const {coreMessages, notices, activeTurn, runtimeEvents} = input;
+  const [now, setNow] = useState(() => Date.now());
 
   // Instance-level ID counter
   const idCounterRef = useRef(0);
@@ -66,28 +67,6 @@ export function useSolidifiedTranscript(input: UseSolidifiedTranscriptInput): Us
         items: [],
       },
     ];
-  }
-
-  // Solidify new notices (always immediate — notices don't need to stay active)
-  if (notices.length > lastSolidifiedNoticeCountRef.current) {
-    const newNotices = notices.slice(lastSolidifiedNoticeCountRef.current);
-    const noticeItems: TranscriptItem[] = newNotices.map((notice) => ({
-      id: notice.id,
-      role: notice.level,
-      content: notice.content,
-    }));
-    const filteredNoticeItems = noticeItems.filter((item) => item.content);
-    if (filteredNoticeItems.length > 0) {
-      solidifiedItemsRef.current = [
-        ...solidifiedItemsRef.current,
-        {
-          id: `solid-notice-${idCounterRef.current++}`,
-          kind: 'notice',
-          items: filteredNoticeItems,
-        },
-      ];
-    }
-    lastSolidifiedNoticeCountRef.current = notices.length;
   }
 
   // Solidify coreMessages — but ONLY when a new turn starts (activeTurn transitions from undefined → defined).
@@ -116,6 +95,28 @@ export function useSolidifiedTranscript(input: UseSolidifiedTranscriptInput): Us
     lastSolidifiedCountRef.current = coreMessages.length;
   }
 
+  if (newTurnStarted && notices.length > lastSolidifiedNoticeCountRef.current) {
+    const newNotices = notices.slice(lastSolidifiedNoticeCountRef.current);
+    const noticeItems: TranscriptItem[] = newNotices
+      .map((notice) => ({
+        id: notice.id,
+        role: notice.level,
+        content: notice.content,
+      }))
+      .filter((item) => item.content);
+    if (noticeItems.length > 0) {
+      solidifiedItemsRef.current = [
+        ...solidifiedItemsRef.current,
+        {
+          id: `solid-notice-${idCounterRef.current++}`,
+          kind: 'notice',
+          items: noticeItems,
+        },
+      ];
+    }
+    lastSolidifiedNoticeCountRef.current = notices.length;
+  }
+
   // Build active items: activeTurn (if streaming) + un-solidified coreMessages + runtime events
   const solidifiedCount = lastSolidifiedCountRef.current;
   const activeItems = useMemo(() => {
@@ -132,10 +133,49 @@ export function useSolidifiedTranscript(input: UseSolidifiedTranscriptInput): Us
     }
 
     // Current streaming turn + runtime events
-    const streamingItems = buildActiveItems({activeTurn, runtimeEvents});
+    const streamingItems = buildActiveItems({
+      activeTurn,
+      runtimeEvents,
+      nowTimestamp: new Date(now).toISOString(),
+    });
 
-    return [...trailingItems, ...streamingItems];
-  }, [activeTurn, coreMessages, runtimeEvents, solidifiedCount]);
+    const activeNoticeItems: TranscriptItem[] = notices
+      .slice(lastSolidifiedNoticeCountRef.current)
+      .map((notice) => ({
+        id: notice.id,
+        role: notice.level,
+        content: notice.content,
+      }))
+      .filter((item) => item.content);
+
+    return [...trailingItems, ...streamingItems, ...activeNoticeItems];
+  }, [activeTurn, coreMessages, notices, now, runtimeEvents, solidifiedCount]);
+
+  useEffect(() => {
+    const endedIds = new Set(
+      (runtimeEvents ?? [])
+        .filter((event) => event.phase === 'end' && event.parentId)
+        .map((event) => event.parentId as string),
+    );
+    const hasRunningRuntimeItem = (runtimeEvents ?? []).some((event) => {
+      if (event.phase === 'update' && event.status === 'running') {
+        return true;
+      }
+      if (event.phase !== 'start') {
+        return false;
+      }
+      return !endedIds.has(event.id);
+    });
+    if (!hasRunningRuntimeItem) {
+      return;
+    }
+
+    const timer = setInterval(() => {
+      setNow(Date.now());
+    }, 1000);
+
+    return () => clearInterval(timer);
+  }, [runtimeEvents]);
 
   return {
     solidifiedItems: solidifiedItemsRef.current,

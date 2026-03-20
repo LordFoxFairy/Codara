@@ -76,6 +76,7 @@ export interface CodaraRuntimeOptions extends CodaraOptions {
   taskStore?: TaskStore;
   taskRunStore?: TaskRunStore;
   approvalStore?: ApprovalStore;
+  teams?: boolean;
   /** Optional pre-configured ChannelRegistry for multi-channel HIL routing. */
   channelRegistry?: ChannelRegistry;
 }

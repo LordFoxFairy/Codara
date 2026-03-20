@@ -1,9 +1,10 @@
 ﻿import type {CliComposerState} from './types';
 
 export function createComposerState(text = '', cursorOffset = text.length): CliComposerState {
+  const normalizedText = normalizeComposerText(text);
   return {
-    text,
-    cursorOffset: clampCursorOffset(cursorOffset, text),
+    text: normalizedText,
+    cursorOffset: clampCursorOffset(cursorOffset, normalizedText),
   };
 }
 
@@ -12,20 +13,22 @@ export function clampCursorOffset(cursorOffset: number, text: string): number {
 }
 
 export function insertComposerText(state: CliComposerState, input: string): CliComposerState {
+  const normalizedInput = normalizeComposerText(input);
   const before = state.text.slice(0, state.cursorOffset);
   const after = state.text.slice(state.cursorOffset);
-  const text = `${before}${input}${after}`;
+  const text = `${before}${normalizedInput}${after}`;
 
   return {
     text,
-    cursorOffset: state.cursorOffset + input.length,
+    cursorOffset: state.cursorOffset + normalizedInput.length,
   };
 }
 
 export function replaceComposerText(newText: string): CliComposerState {
+  const normalizedText = normalizeComposerText(newText);
   return {
-    text: newText,
-    cursorOffset: newText.length,
+    text: normalizedText,
+    cursorOffset: normalizedText.length,
   };
 }
 
@@ -56,6 +59,10 @@ export function moveComposerCursorRight(state: CliComposerState): CliComposerSta
     ...state,
     cursorOffset: clampCursorOffset(state.cursorOffset + 1, state.text),
   };
+}
+
+function normalizeComposerText(text: string): string {
+  return text.replace(/\r\n/g, '\n').replace(/\r/g, '\n');
 }
 
 function getCurrentLineStart(text: string, cursorOffset: number): number {

@@ -63,8 +63,8 @@ You are the default general-purpose subagent.
     const runRecordPath = path.join(codaraPath, 'case-task-runs', 'call_prompt_task.json');
 
     expect(result.exitCode).toBe(0);
-    expect(result.output).toContain('Delegated task started in background.');
     expect(result.output).toContain('PARENT_PROMPT_DONE');
+    expect(result.output).toContain('✓ Agent: Inspect your system prompt');
 
     await waitForCondition(async () => {
       try {

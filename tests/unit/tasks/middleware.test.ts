@@ -18,7 +18,7 @@ import {
   TASK_LIST_TOOL_NAME,
   TASK_TOOL_NAME,
 } from '@capability/task';
-import {readTaskRunLaunchResult} from '@shared/task-run-launch';
+import {formatTaskRunLaunchResult, readTaskRunLaunchResult} from '@shared/task-run-launch';
 import {createAgentSkillsMiddleware, createBuiltinSubagentStore} from '../agents/task-tool.fixtures';
 
 async function waitForCondition(
@@ -122,6 +122,22 @@ class ChildProgressiveDisclosureModel {
 }
 
 describe('tasks middlewares', () => {
+  it('should keep task launch text terse and directive for parent agents', () => {
+    const launchText = formatTaskRunLaunchResult({
+      type: 'task_run_started',
+      runId: 'run-1',
+      sessionId: 'session-1:task:run-1',
+      agentName: 'Explore',
+      label: 'Delegating Explore: Inspect the project',
+    });
+
+    expect(launchText).toContain('Delegated task started in background.');
+    expect(launchText).toContain('Do not restate launch metadata');
+    expect(launchText).not.toContain('run_id:');
+    expect(launchText).not.toContain('delegate_id:');
+    expect(launchText).not.toContain('agent:');
+  });
+
   it('should register the delegated Task tool through middleware', async () => {
     const store = createBuiltinSubagentStore();
     const runStore = createTaskRunMemoryStore();
@@ -154,6 +170,7 @@ describe('tasks middlewares', () => {
     expect(taskMiddleware.tools?.map((tool) => tool.name)).toEqual([TASK_TOOL_NAME]);
     expect(result.reason).toBe('complete');
     expect(String(toolMessage.content)).toContain('Delegated task started in background.');
+    expect(String(toolMessage.content)).not.toContain('run_id:');
     expect(readTaskRunLaunchResult(toolMessage.artifact)).toEqual(expect.objectContaining({
       type: 'task_run_started',
       runId: 'call_task_middleware',
@@ -217,6 +234,7 @@ describe('tasks middlewares', () => {
     expect(taskMiddleware.tools?.map((tool) => tool.name)).toEqual([TASK_TOOL_NAME]);
     expect(result.reason).toBe('complete');
     expect(String(toolMessage.content)).toContain('Delegated task started in background.');
+    expect(String(toolMessage.content)).not.toContain('run_id:');
     await waitForCondition(() => runStore.get('call_task_default_delegate')?.status === 'completed');
     expect(runStore.get('call_task_default_delegate')).toEqual(expect.objectContaining({
       runId: 'call_task_default_delegate',

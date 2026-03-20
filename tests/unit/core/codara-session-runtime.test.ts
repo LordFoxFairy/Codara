@@ -389,7 +389,8 @@ describe('Codara session lifecycle', () => {
     const compacted = await codara.compactConversation();
     const latest = await checkpointer.getLatest('codara-session-manual-compact-session');
 
-    expect(readSummaryMessage(compacted.messages)?.text).toBe('Summary:\nsession compact summary');
+    expect(compacted.outcome).toBe('compacted');
+    expect(readSummaryMessage(compacted.state.messages)?.text).toBe('Summary:\nsession compact summary');
     expect(latest?.info.source).toBe('manual');
   });
 
@@ -408,6 +409,7 @@ describe('Codara session lifecycle', () => {
 
     const compacted = await codara.compactConversation();
 
-    expect(readSummaryMessage(compacted.messages)?.text).toBe('Summary:\ndefault model summary');
+    expect(compacted.outcome).toBe('compacted');
+    expect(readSummaryMessage(compacted.state.messages)?.text).toBe('Summary:\ndefault model summary');
   });
 });

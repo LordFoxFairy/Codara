@@ -1,6 +1,6 @@
 import {describe, expect, test} from 'bun:test';
 import {AIMessage, HumanMessage, SystemMessage, ToolMessage, type ToolCall} from '@langchain/core/messages';
-import {buildTranscriptItems, hasTranscriptContent} from '@/cli/transcript/model';
+import {buildActiveItems, buildTranscriptItems, hasTranscriptContent} from '@/cli/transcript/model';
 
 describe('cli transcript model', () => {
   test('should build transcript items from notices, core messages, and active turn', () => {
@@ -186,6 +186,127 @@ describe('cli transcript model', () => {
     expect(items.some((item) => item.content.includes('CHILD_DONE'))).toBe(true);
   });
 
+  test('should suppress assistant launch chatter while a delegated task runtime block is active', () => {
+    const now = new Date().toISOString();
+    const items = buildTranscriptItems({
+      notices: [],
+      coreMessages: [],
+      activeTurn: {
+        id: 'turn-task-launch-chatter',
+        prompt: 'delegate it',
+        response: [
+          '✅ 任务已启动！',
+          '我已使用 Task 工具委派了一个 Explore subagent 来分析 Codara 项目。',
+          '委派信息：',
+          '  • 🤖 Subagent 类型: Explore（只读探索代理）',
+          '正在等待 subagent 完成分析...',
+        ].join('\n'),
+        responseRole: 'assistant',
+      },
+      runtimeEvents: [
+        {
+          id: 'runtime-task-root-2',
+          sessionId: 'session-1',
+          timestamp: now,
+          kind: 'task',
+          phase: 'start',
+          status: 'running',
+          label: 'Delegating Explore: Analyze project',
+        },
+      ],
+    });
+
+    expect(items.map((item) => item.role)).toEqual(['user', 'task']);
+    expect(items.some((item) => item.content.includes('任务已启动'))).toBe(false);
+  });
+
+  test('should suppress active launch chatter when the streaming response already contains a Task tool call', () => {
+    const items = buildActiveItems({
+      activeTurn: {
+        id: 'turn-task-launch-stream',
+        prompt: 'delegate it',
+        response: [
+          '✅ 任务已启动！',
+          '我已使用 Task 工具委派了一个 Explore subagent 来分析项目。',
+          '委派信息：',
+        ].join('\n'),
+        responseRole: 'assistant',
+        pendingTaskLaunch: true,
+      },
+      runtimeEvents: [],
+    });
+
+    expect(items.map((item) => item.role)).toEqual(['user']);
+    expect(items.some((item) => item.content.includes('任务已启动'))).toBe(false);
+  });
+
+  test('should suppress solidified assistant launch chatter that only repeats a delegated task launch', () => {
+    const taskCall: ToolCall = {
+      id: 'call_task_launch_noise',
+      name: 'Task',
+      args: {prompt: 'Analyze the repo', subagent_type: 'Explore'},
+    };
+    const items = buildTranscriptItems({
+      notices: [],
+      coreMessages: [
+        new AIMessage({content: '', tool_calls: [taskCall]}),
+        new ToolMessage({
+          content: [
+            'Delegated task started in background.',
+            'Do not restate launch metadata or promise follow-up.',
+            'Wait for runtime updates, review requests, or the delegated result.',
+          ].join('\n'),
+          tool_call_id: 'call_task_launch_noise',
+          name: 'Task',
+          artifact: {
+            type: 'task_run_started',
+            runId: 'call_task_launch_noise',
+            sessionId: 'session:task:call_task_launch_noise',
+            agentName: 'Explore',
+            label: 'Delegating Explore: Analyze the repo',
+          },
+        }),
+        new AIMessage([
+          '✅ 任务已启动！',
+          '我已使用 Task 工具委派了一个 Explore subagent 来分析项目。',
+          '委派信息：',
+          '正在等待 subagent 完成分析...',
+        ].join('\n')),
+      ],
+    });
+
+    expect(items).toEqual([]);
+  });
+
+  test('should suppress solidified launch chatter on an AI message that also contains a Task tool call', () => {
+    const taskCall: ToolCall = {
+      id: 'call_task_launch_inline',
+      name: 'Task',
+      args: {prompt: 'Analyze the repo', subagent_type: 'Explore'},
+    };
+    const items = buildTranscriptItems({
+      notices: [],
+      coreMessages: [
+        new HumanMessage('delegate it'),
+        new AIMessage({
+          content: [
+            '✅ 任务已启动！',
+            '我已使用 Task 工具委派了一个 Explore subagent 来分析项目。',
+            '委派信息：',
+            '正在等待 subagent 完成分析...',
+          ].join('\n'),
+          tool_calls: [taskCall],
+        }),
+      ],
+    });
+
+    expect(items).toEqual([{
+      id: 'human-0',
+      role: 'user',
+      content: 'delegate it',
+    }]);
+  });
+
   test('should use core messages after turn completes (no activeTurn)', () => {
     const items = buildTranscriptItems({
       notices: [],
@@ -211,8 +332,236 @@ describe('cli transcript model', () => {
 
     // After turn completes, ToolMessage provides the definitive result
     expect(items).toHaveLength(1);
-    expect(items[0]?.role).toBe('tool');
+    expect(items[0]?.role).toBe('task');
     expect(items[0]?.content).toContain('Delegated task completed');
+  });
+
+  test('should suppress synthetic task launch blocks when a runtime task root for the same delegation exists', () => {
+    const now = new Date().toISOString();
+    const items = buildTranscriptItems({
+      notices: [],
+      coreMessages: [],
+      activeTurn: {
+        id: 'turn-dedupe-task',
+        prompt: 'analyze it',
+        response: '',
+        responseRole: 'assistant',
+      },
+      runtimeEvents: [
+        {
+          id: 'tool-root-1',
+          sessionId: 'session-1',
+          timestamp: now,
+          kind: 'tool',
+          phase: 'start',
+          status: 'running',
+          label: 'Delegating task(prompt: Analyze project)',
+          detail: 'Task',
+        },
+        {
+          id: 'synthetic-task-root-1',
+          sessionId: 'session-1',
+          timestamp: now,
+          kind: 'task',
+          phase: 'start',
+          status: 'running',
+          label: 'Delegating Explore: Analyze project',
+          parentId: 'tool-root-1',
+        },
+        {
+          id: 'runtime-task-root-1',
+          sessionId: 'session-1',
+          timestamp: now,
+          kind: 'task',
+          phase: 'start',
+          status: 'running',
+          label: 'Delegating Explore: Analyze project',
+        },
+        {
+          id: 'tool-end-1',
+          sessionId: 'session-1',
+          timestamp: now,
+          kind: 'tool',
+          phase: 'end',
+          status: 'done',
+          label: 'Tool completed',
+          detail: 'run_id: run-1\ndelegate_id: session-1:task:run-1',
+          parentId: 'tool-root-1',
+        },
+        {
+          id: 'synthetic-task-end-1',
+          sessionId: 'session-1',
+          timestamp: now,
+          kind: 'task',
+          phase: 'end',
+          status: 'done',
+          label: 'Delegated task running in background',
+          detail: 'run_id: run-1\ndelegate_id: session-1:task:run-1',
+          parentId: 'synthetic-task-root-1',
+        },
+        {
+          id: 'runtime-task-update-1',
+          sessionId: 'session-1',
+          timestamp: now,
+          kind: 'task',
+          phase: 'update',
+          status: 'paused',
+          label: 'Delegated task waiting for review',
+          detail: 'Need confirmation',
+          parentId: 'runtime-task-root-1',
+        },
+      ],
+    });
+
+    const exploreItems = items.filter((item) => item.content.includes('⚙ Explore('));
+    expect(exploreItems).toHaveLength(1);
+    expect(exploreItems[0]?.content).toContain('Waiting for review');
+    expect(exploreItems[0]?.content).not.toContain('Done (0s)');
+  });
+
+  test('should render running tasks with recent activity lines and a collapsed activity count', () => {
+    const start = '2026-03-20T10:00:00.000Z';
+    const update = '2026-03-20T10:00:05.000Z';
+    const items = buildTranscriptItems({
+      notices: [],
+      coreMessages: [],
+      activeTurn: {
+        id: 'turn-running-task',
+        prompt: 'analyze it',
+        response: '',
+        responseRole: 'assistant',
+      },
+      runtimeEvents: [
+        {
+          id: 'evt_task_start',
+          sessionId: 'session-1',
+          timestamp: start,
+          kind: 'task',
+          phase: 'start',
+          status: 'running',
+          label: 'Delegating Explore: Analyze the repo',
+        },
+        {
+          id: 'evt_task_a',
+          sessionId: 'session-1',
+          timestamp: update,
+          kind: 'task',
+          phase: 'update',
+          status: 'running',
+          label: 'glob(README*)',
+          detail: 'glob',
+          parentId: 'evt_task_start',
+        },
+        {
+          id: 'evt_task_b',
+          sessionId: 'session-1',
+          timestamp: update,
+          kind: 'task',
+          phase: 'update',
+          status: 'running',
+          label: 'Read(package.json)',
+          detail: 'read',
+          parentId: 'evt_task_start',
+        },
+        {
+          id: 'evt_task_c',
+          sessionId: 'session-1',
+          timestamp: update,
+          kind: 'task',
+          phase: 'update',
+          status: 'running',
+          label: 'Read(src/index.ts)',
+          detail: 'read',
+          parentId: 'evt_task_start',
+        },
+        {
+          id: 'evt_task_d',
+          sessionId: 'session-1',
+          timestamp: update,
+          kind: 'task',
+          phase: 'update',
+          status: 'running',
+          label: 'Read(src/core/agent.ts)',
+          detail: 'read',
+          parentId: 'evt_task_start',
+        },
+      ],
+    });
+
+    const runningTask = items.find((item) => item.content.includes('⚙ Explore('));
+    expect(runningTask?.toolMeta?.status).toBe('running');
+    expect(runningTask?.toolMeta?.summaryLine).toContain('Running');
+    expect(runningTask?.toolMeta?.summaryLine).toContain('4 tool activities');
+    expect(runningTask?.toolMeta?.outputLines).toEqual([
+      'Read(package.json)',
+      'Read(src/index.ts)',
+      'Read(src/core/agent.ts)',
+    ]);
+    expect(runningTask?.toolMeta?.totalOutputLines).toBe(4);
+  });
+
+  test('should render completed tasks with child tool activity lines instead of repeating the final summary body', () => {
+    const start = '2026-03-20T10:00:00.000Z';
+    const end = '2026-03-20T10:00:38.000Z';
+    const items = buildTranscriptItems({
+      notices: [],
+      coreMessages: [],
+      activeTurn: {
+        id: 'turn-completed-task',
+        prompt: 'analyze it',
+        response: '',
+        responseRole: 'assistant',
+      },
+      runtimeEvents: [
+        {
+          id: 'evt_task_start',
+          sessionId: 'session-1',
+          timestamp: start,
+          kind: 'task',
+          phase: 'start',
+          status: 'running',
+          label: 'Delegating Explore: Analyze project',
+        },
+        {
+          id: 'evt_task_activity_1',
+          sessionId: 'session-1',
+          timestamp: '2026-03-20T10:00:04.000Z',
+          kind: 'task',
+          phase: 'update',
+          status: 'running',
+          label: 'glob(README*)',
+          detail: 'glob',
+          parentId: 'evt_task_start',
+        },
+        {
+          id: 'evt_task_activity_2',
+          sessionId: 'session-1',
+          timestamp: '2026-03-20T10:00:10.000Z',
+          kind: 'task',
+          phase: 'update',
+          status: 'running',
+          label: 'Read(package.json)',
+          detail: 'read',
+          parentId: 'evt_task_start',
+        },
+        {
+          id: 'evt_task_end',
+          sessionId: 'session-1',
+          timestamp: end,
+          kind: 'task',
+          phase: 'end',
+          status: 'done',
+          label: 'Delegated task completed',
+          detail: 'Codara is a terminal-first AI agent runtime.',
+          parentId: 'evt_task_start',
+        },
+      ],
+    });
+
+    const completedTask = items.find((item) => item.content.includes('⚙ Explore('));
+    expect(completedTask?.toolMeta?.summaryLine).toContain('Done');
+    expect(completedTask?.toolMeta?.allOutputLines).toEqual(['glob(README*)', 'Read(package.json)']);
+    expect(completedTask?.toolMeta?.allOutputLines).not.toContain('Codara is a terminal-first AI agent runtime.');
   });
 
   test('should include elapsed time in tool meta when paired start/end events exist', () => {
@@ -366,6 +715,23 @@ describe('cli transcript model', () => {
       ],
       initialNoticeCount: 1,
     })).toBe(true);
+  });
+
+  test('should render assistant-style background task follow-ups as assistant transcript items', () => {
+    const items = buildTranscriptItems({
+      notices: [
+        {
+          id: 'task-followup-1',
+          level: 'assistant',
+          content: 'Codara is a terminal-first AI agent runtime.',
+        },
+      ],
+      coreMessages: [],
+    });
+
+    expect(items).toHaveLength(1);
+    expect(items[0]?.role).toBe('assistant');
+    expect(items[0]?.content).toContain('terminal-first AI agent runtime');
   });
 
   test('should treat non-empty core system messages as transcript content', () => {
