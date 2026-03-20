@@ -18,46 +18,60 @@ const TEAM_STATUS_COLORS: Record<string, string> = {
 
 interface TeamDetailViewProps {
   state: TeamDetailState;
+  focusedMemberId?: string;
+  onFocusNext?: () => void;
 }
 
-export function TeamDetailView({ state }: TeamDetailViewProps) {
+export function TeamDetailView({ state, focusedMemberId, onFocusNext: _onFocusNext }: TeamDetailViewProps) {
   const doneCount = state.jobs.filter(j => j.status === 'done').length;
   const totalJobs = state.jobs.length;
   const statusColor = TEAM_STATUS_COLORS[state.status] ?? 'white';
+  const showCost = state.estimatedCost > 0;
+  const showTokens = state.tokenUsage > 0;
+  const workerCount = state.members.filter((member) => member.role !== 'leader').length;
 
   return (
     <Box flexDirection="column" borderStyle="round" borderColor={theme.interactive.accent} paddingX={1}>
-      {/* Header row */}
-      <Box gap={2}>
-        <Text bold color={theme.interactive.accent}>Team: {state.teamName}</Text>
+      <Box gap={2} flexWrap="nowrap">
+        <Text bold color={theme.interactive.accent}>{state.teamName}</Text>
         <Text color={statusColor}>{state.status}</Text>
+        <Text dimColor>{workerCount} {workerCount === 1 ? 'worker' : 'workers'}</Text>
         <Text dimColor>{doneCount}/{totalJobs} jobs done</Text>
-        <Text dimColor>${state.estimatedCost.toFixed(2)}</Text>
-        <Text dimColor>{formatTokenCount(state.tokenUsage)} tok</Text>
+        {showCost ? <Text dimColor>${state.estimatedCost.toFixed(2)}</Text> : null}
+        {showTokens ? <Text dimColor>{formatTokenCount(state.tokenUsage)} tok</Text> : null}
       </Box>
-
-      {/* Goal */}
       {state.goal && (
         <Text dimColor>Goal: {state.goal}</Text>
       )}
+      {focusedMemberId ? (
+        <Text dimColor>Speaking to: <Text color={theme.interactive.accent}>{
+          state.members.find(m => m.memberId === focusedMemberId)?.name ?? focusedMemberId
+        }</Text> (Tab to switch, Esc for leader)</Text>
+      ) : (
+        <Text dimColor>Speaking to: <Text bold>Leader</Text> · Tab to focus a worker · @name to message directly</Text>
+      )}
 
-      {/* Panels */}
       <Box flexDirection="column" gap={1} marginTop={1}>
-        <MemberPanel members={state.members} jobs={state.jobs} />
+        <MemberPanel members={state.members} jobs={state.jobs} focusedMemberId={focusedMemberId} />
         <JobBoardPanel jobs={state.jobs} />
         <TeamActivityLog activity={state.activity} />
       </Box>
 
-      {/* Footer */}
-      <Box marginTop={1}>
-        <Text dimColor>Use </Text>
-        <Text color={theme.interactive.secondaryButton}>/team leave</Text>
-        <Text dimColor>, </Text>
-        <Text color={theme.status.paused}>/team pause &lt;name&gt;</Text>
-        <Text dimColor>, </Text>
-        <Text color={theme.status.responding}>/team resume &lt;name&gt;</Text>
-        <Text dimColor>, or </Text>
-        <Text color={theme.interactive.danger}>/team kill &lt;name&gt;</Text>
+      <Box marginTop={1} gap={1}>
+        <Text dimColor>Team:</Text>
+        <Text color={theme.interactive.secondaryButton}>spawn_teammate</Text>
+        <Text dimColor>·</Text>
+        <Text color={theme.interactive.secondaryButton}>assign_job</Text>
+        <Text dimColor>·</Text>
+        <Text color={theme.status.ready}>review_job</Text>
+        {state.status === 'running' ? (
+          <>
+            <Text dimColor>·</Text>
+            <Text color={theme.status.paused}>pause</Text>
+          </>
+        ) : null}
+        <Text dimColor>·</Text>
+        <Text color={theme.interactive.danger}>shutdown_team</Text>
       </Box>
     </Box>
   );
