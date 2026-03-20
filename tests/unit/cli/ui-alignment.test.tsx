@@ -2,6 +2,7 @@ import {describe, expect, it} from 'bun:test';
 import {render} from 'ink-testing-library';
 import {StatusBar} from '../../../src/cli/components/chrome/header';
 import {ActiveTranscript, Transcript} from '../../../src/cli/components/conversation/transcript';
+import {SolidifiedBlock} from '../../../src/cli/components/conversation/solidified-block';
 import {StaticWelcome, deriveRecentSessions} from '../../../src/cli/components/conversation/welcome-state';
 import {SessionPicker} from '../../../src/cli/components/conversation/session-picker';
 import {resolveCliForegroundSurface} from '../../../src/cli/app/shell-app';
@@ -385,13 +386,12 @@ describe('UI alignment with Claude Code', () => {
 
       const frame = lastFrame()!;
       expect(frame).toContain('Running 2 agents');
-      expect(frame).toContain('Explore: Analyze README and package metadata · 17 tool activities');
-      expect(frame).toContain('Explore: Sync architecture docs · 15 tool activities');
+      expect(frame).toContain('Explore(Analyze README and package metadata)');
+      expect(frame).toContain('⎿ Running (17 tool activities · 35s)');
       expect(frame).toContain('⎿ Bash: Run test suite');
-      expect(frame).toContain('Explore: Sync architecture docs · 15 tool activities');
+      expect(frame).toContain('Explore(Sync architecture docs)');
+      expect(frame).toContain('⎿ Running (15 tool activities · 28s)');
       expect(frame).toContain('⎿ Update: docs/architecture-next/01-global-architecture-overview.md');
-      expect(frame).not.toContain('⚙ Explore(Analyze README and package metadata)');
-      expect(frame).not.toContain('⚙ Explore(Sync architecture docs)');
     });
 
     it('should render a single running task as a stable execution block with summary and latest activity', () => {
@@ -573,6 +573,163 @@ describe('UI alignment with Claude Code', () => {
       expect(frame).toContain('⎿ Done (38s)');
       expect(frame).toContain('⎿ Read(package.json)');
       expect(frame).not.toContain('CHILD_DONE');
+    });
+
+    it('should keep completed execution blocks visible while sibling tasks continue running in parallel', () => {
+      const now = '2026-03-16T10:00:00.000Z';
+      const {lastFrame} = render(
+        <Transcript
+          coreMessages={[]}
+          notices={[]}
+          activeTurn={{
+            id: 'turn-mixed-task-states',
+            prompt: 'analyze project',
+            response: '',
+            responseRole: 'assistant',
+          }}
+          runtimeEvents={[
+            {
+              id: 'task-run:run-done',
+              sessionId: 'session-1',
+              timestamp: now,
+              kind: 'task',
+              phase: 'start',
+              status: 'running',
+              label: 'Delegating Explore: Analyze architecture',
+            },
+            {
+              id: 'task-run:run-running',
+              sessionId: 'session-1',
+              timestamp: now,
+              kind: 'task',
+              phase: 'start',
+              status: 'running',
+              label: 'Delegating Explore: Analyze tech stack',
+            },
+            {
+              id: 'evt-task-running-activity',
+              sessionId: 'session-1',
+              timestamp: '2026-03-16T10:00:12.000Z',
+              kind: 'task',
+              phase: 'update',
+              status: 'running',
+              label: 'glob(vite.config.{ts,js})',
+              detail: 'glob',
+              parentId: 'task-run:run-running',
+            },
+            {
+              id: 'evt-task-done',
+              sessionId: 'session-1',
+              timestamp: '2026-03-16T10:00:38.000Z',
+              kind: 'task',
+              phase: 'end',
+              status: 'done',
+              label: 'Delegated task completed',
+              detail: '2 tool uses · 14.4k tokens',
+              parentId: 'task-run:run-done',
+            },
+          ]}
+        />,
+      );
+
+      const frame = lastFrame()!;
+      expect(frame).toContain('Explore(Analyze tech stack)');
+      expect(frame).toContain('⎿ Running (1 tool activity · 12s)');
+      expect(frame).toContain('glob(vite.config.{ts,js})');
+      expect(frame).toContain('⏺ Explore(Analyze architecture)');
+      expect(frame).toContain('⎿ Done (2 tool uses · 14.4k tokens · 38s)');
+    });
+
+    it('should keep completed task blocks in the same execution-tree shape after they move into the solidified transcript', () => {
+      const {lastFrame} = render(
+        <SolidifiedBlock
+          turn={{
+            id: 'solid-turn-task-done',
+            kind: 'turn',
+            items: [
+              {
+                id: 'active-task-run:run-solid-done',
+                role: 'task',
+                content: '⚙ Explore(Analyze architecture)\nDone (2 tool uses · 14.4k tokens · 38s)',
+                toolMeta: {
+                  toolName: 'Task',
+                  displayName: 'Explore',
+                  icon: '⚙',
+                  args: 'Analyze architecture',
+                  status: 'done',
+                  elapsed: '38s',
+                  summaryLine: 'Done (2 tool uses · 14.4k tokens · 38s)',
+                  outputLines: ['glob(vite.config.{ts,js})'],
+                  allOutputLines: ['read_file(package.json)', 'glob(vite.config.{ts,js})'],
+                  totalOutputLines: 2,
+                },
+              },
+            ],
+          }}
+          layoutMode="cozy"
+          cwd="/Users/nako/WebstormProjects/github/thefoxfairy/Codara"
+          modelAlias="default"
+          tip="Tip"
+        />,
+      );
+
+      const frame = lastFrame()!;
+      expect(frame).toContain('⏺ Explore(Analyze architecture)');
+      expect(frame).toContain('⎿ Done (2 tool uses · 14.4k tokens · 38s)');
+      expect(frame).toContain('⎿ glob(vite.config.{ts,js})');
+      expect(frame).not.toContain('⚙ Explore(Analyze architecture) (38s)');
+    });
+
+    it('should synthesize missing completed execution blocks from active task summaries without leaking child summaries', () => {
+      const items: TranscriptItem[] = [{
+        id: 'active-task-run:run-running',
+        role: 'task',
+        content: '⚙ Explore(Analyze tech stack)\nRunning (1 tool use · 12s)',
+        toolMeta: {
+          toolName: 'Task',
+          displayName: 'Explore',
+          icon: '⚙',
+          args: 'Analyze tech stack',
+          status: 'running',
+          summaryLine: 'Running (1 tool use · 12s)',
+          outputLines: ['glob(vite.config.{ts,js})'],
+          allOutputLines: ['glob(vite.config.{ts,js})'],
+          totalOutputLines: 1,
+        },
+      }];
+
+      const activeTasks: ActiveTask[] = [
+        {
+          id: 'run-running',
+          name: 'Explore: Analyze tech stack',
+          status: 'running',
+          startedAt: Date.now() - 12_000,
+          elapsed: 12_000,
+          detail: 'glob(vite.config.{ts,js})',
+          toolUseCount: 1,
+        },
+        {
+          id: 'run-done',
+          name: 'Explore: Analyze architecture',
+          status: 'done',
+          startedAt: Date.now() - 38_000,
+          endedAt: Date.now() - 1_000,
+          elapsed: 38_000,
+          detail: 'Codara is a terminal-first AI agent runtime.',
+          toolUseCount: 2,
+          totalTokens: 14_400,
+        },
+      ];
+
+      const {lastFrame} = render(<ActiveTranscript items={items} activeTasks={activeTasks} />);
+
+      const frame = lastFrame()!;
+      expect(frame).toContain('Running 2 agents');
+      expect(frame).toContain('Explore(Analyze architecture)');
+      expect(frame).toContain('⎿ Done (2 tool uses · 14.4k tokens · 38s)');
+      expect(frame).toContain('Explore(Analyze tech stack)');
+      expect(frame).toContain('glob(vite.config.{ts,js})');
+      expect(frame).not.toContain('terminal-first AI agent runtime');
     });
   });
 });

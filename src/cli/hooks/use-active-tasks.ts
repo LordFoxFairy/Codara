@@ -83,6 +83,7 @@ export function deriveActiveTaskSnapshot(
   now: number,
   approvals: readonly ApprovalQuerySummary[] = [],
 ): ActiveTaskSnapshot {
+  const hasLiveRuns = runs.some((run) => run.status === 'running' || run.status === 'paused');
   const approvalsByTaskRun = new Map<string, ApprovalQuerySummary[]>();
   for (const approval of approvals) {
     if (approval.source !== 'task_run' || !approval.taskRunId) {
@@ -100,7 +101,7 @@ export function deriveActiveTaskSnapshot(
     const endedAt = parseTaskFinishedAt(run);
     const runApprovals = approvalsByTaskRun.get(run.runId) ?? [];
 
-    if ((status === 'done' || status === 'error') && endedAt && now - endedAt > DONE_TASK_LINGER_MS) {
+    if (!hasLiveRuns && (status === 'done' || status === 'error') && endedAt && now - endedAt > DONE_TASK_LINGER_MS) {
       continue;
     }
 
