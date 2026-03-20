@@ -10,6 +10,7 @@ import {createTaskFileStore} from '@capability/task/store';
 import {loadModelRoutingConfigFromPath, resolveCodaraPath} from '@integration/provider';
 import {createCodaraGuidelinesSource, type GuidelinesSource} from '@context/instructions/guidelines';
 import {createCodaraPromptSource, type PromptSource} from '@context/prompts/prompt-source';
+import {buildBaseSystemMessage} from '@context/session-bundle/base-system-message';
 import {createCodaraSkillsSource} from '@capability/skill';
 import {createSkillCodaraCommands} from '@capability/command/runtime/skill-commands';
 import {createCodaraCommandRunner, type CodaraCommandResult} from '@capability/command';
@@ -82,6 +83,16 @@ export async function createCodaraRuntime(options: CodaraRuntimeOptions = {}): P
   const promptSource = createCodaraPromptSource({
     cwd: options.cwd, projectRoot: options.projectRoot, userHome: options.userHome,
   });
+  const skills = resolveCodaraSkills(options);
+  const skillsSource = skills ? createCodaraSkillsSource(skills) : undefined;
+  const autoMemory = resolveCodaraAutoMemory(options);
+  const baseSystemMessage = await buildBaseSystemMessage({
+    promptSource,
+    guidelinesSource,
+    skillsSource,
+    autoMemorySource: autoMemory?.source,
+    memoryRootDir: autoMemory?.rootDir,
+  });
   const taskStore = options.taskStore ?? createTaskFileStore({
     rootDir: path.join(runtimeStatePath, 'tasks'),
   });
@@ -132,7 +143,7 @@ export async function createCodaraRuntime(options: CodaraRuntimeOptions = {}): P
   }
 
   // 6. Team system
-  const teamSystem = await assembleTeamSystem({options, runtimeStatePath, projectRoot, catalog, approvalStore});
+  const teamSystem = await assembleTeamSystem({options, runtimeStatePath, projectRoot, catalog, approvalStore, baseSystemMessage});
 
   // 7. Middleware chain
   const runtimeMiddlewares = createRuntimeDefaultMiddlewares({

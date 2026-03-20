@@ -18,6 +18,7 @@ import type {PauseRequest} from '@core/agent';
 import {bootstrapAgent} from '@core/agent/bootstrap';
 import {TeamPersistence} from '@capability/team/persistence';
 import {createBuiltinTools} from '@integration/tool';
+import type {BaseSystemMessageBundle} from '@context/session-bundle/base-system-message';
 import type {CodaraRuntimeOptions, TeamQuerySummary, TeamQueryDetail} from '../types';
 import type {CodaraModelCatalog} from './runtime';
 
@@ -27,6 +28,7 @@ export interface TeamSystemAssemblyInput {
   projectRoot: string;
   catalog?: CodaraModelCatalog | Promise<CodaraModelCatalog>;
   approvalStore?: import('@durability/approval-store').ApprovalStore;
+  baseSystemMessage?: BaseSystemMessageBundle;
 }
 
 export interface TeamSystemAssemblyResult {
@@ -115,11 +117,8 @@ export async function assembleTeamSystem(input: TeamSystemAssemblyInput): Promis
         agentType: 'subagent',
         tools: memberTools,
         middleware: memberMiddleware,
-        systemMessage:
-          memberOptions.systemMessage.length > 0
-            ? memberOptions.systemMessage
-            : undefined,
-        runtimeShared: memberOptions.runtimeShared,
+        systemMessage: [...(input.baseSystemMessage?.systemMessage ?? []), ...memberOptions.systemMessage],
+        runtimeShared: {...(input.baseSystemMessage?.runtimeShared ?? {}), ...memberOptions.runtimeShared},
       });
       return agentReady;
     };
