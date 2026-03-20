@@ -1,13 +1,14 @@
 import {describe, expect, it} from 'bun:test';
 import {render} from 'ink-testing-library';
 import {StatusBar} from '../../../src/cli/components/chrome/header';
-import {Transcript} from '../../../src/cli/components/conversation/transcript';
+import {ToolResultBlock, Transcript, TranscriptBlock} from '../../../src/cli/components/conversation/transcript';
 import {StaticWelcome, deriveRecentSessions} from '../../../src/cli/components/conversation/welcome-state';
 import {SessionPicker} from '../../../src/cli/components/conversation/session-picker';
 import {resolveCliForegroundSurface} from '../../../src/cli/app/shell-app';
 import {HumanMessage, AIMessage} from '@langchain/core/messages';
 import type {SessionState} from '@/index';
 import type {SessionPickerItem} from '../../../src/cli/hooks/use-session-picker';
+import type {ToolResultMeta} from '../../../src/cli/transcript/model';
 
 describe('UI alignment with Claude Code', () => {
   describe('Welcome → Conversation transition', () => {
@@ -116,6 +117,26 @@ describe('UI alignment with Claude Code', () => {
       expect(frame).toContain('Hi there!');
       // Should NOT use old "codara" label
       expect(frame).not.toContain('codara  ');
+    });
+
+    it('should render task transcript content through markdown formatting', () => {
+      const {lastFrame} = render(
+        <TranscriptBlock
+          role="task"
+          content={[
+            '**Codara 项目改动分析报告**',
+            '',
+            '1.宿主层简化 (shell-app.tsx)',
+            '2.控制器层瘦身 (use-cli-controller.ts)',
+          ].join('\n')}
+        />,
+      );
+
+      const frame = lastFrame()!;
+      expect(frame).toContain('Codara 项目改动分析报告');
+      expect(frame).not.toContain('**Codara 项目改动分析报告**');
+      expect(frame).toContain('1. 宿主层简化 (shell-app.tsx)');
+      expect(frame).toContain('2. 控制器层瘦身 (use-cli-controller.ts)');
     });
   });
 
@@ -337,6 +358,34 @@ describe('UI alignment with Claude Code', () => {
 
       const frame = lastFrame()!;
       expect(frame).toContain('ctrl+o to expand');
+    });
+
+    it('should render delegated task results with markdown formatting', () => {
+      const meta: ToolResultMeta = {
+        toolName: 'task',
+        displayName: 'Agent',
+        icon: '⏺',
+        args: '分析项目改动',
+        status: 'done',
+        summaryLine: '**改动性质**',
+        outputLines: [
+          '1.宿主层简化 (shell-app.tsx)',
+          '2.控制器层瘦身 (use-cli-controller.ts)',
+        ],
+        allOutputLines: [
+          '1.宿主层简化 (shell-app.tsx)',
+          '2.控制器层瘦身 (use-cli-controller.ts)',
+        ],
+        totalOutputLines: 2,
+      };
+
+      const {lastFrame} = render(<ToolResultBlock meta={meta} />);
+
+      const frame = lastFrame()!;
+      expect(frame).toContain('改动性质');
+      expect(frame).not.toContain('**改动性质**');
+      expect(frame).toContain('1. 宿主层简化 (shell-app.tsx)');
+      expect(frame).toContain('2. 控制器层瘦身 (use-cli-controller.ts)');
     });
   });
 });

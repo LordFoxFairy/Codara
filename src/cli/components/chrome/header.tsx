@@ -69,7 +69,7 @@ export function describeStatusBar(props: StatusBarProps): StatusBarModel {
     if (isMinimal) {
       segments.push(`${total} tok`);
     } else {
-      segments.push(`in ${formatTokenCount(usage.promptTokens)} / out ${formatTokenCount(usage.completionTokens)} / ${total}`);
+      segments.push(`↑ ${formatTokenCount(usage.promptTokens)} / ↓ ${formatTokenCount(usage.completionTokens)} / ${total}`);
     }
   }
 

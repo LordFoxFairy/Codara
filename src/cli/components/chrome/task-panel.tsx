@@ -1,11 +1,17 @@
-import React, {useEffect, useState} from 'react';
+import React from 'react';
 import {Box, Text} from 'ink';
 import type {ActiveTask} from '../../hooks/use-active-tasks';
-import {SPINNER_INTERVAL_MS} from '../../hooks/use-status-indicator';
-import {formatElapsedMs, formatTokenCount} from '../../utils/format';
-import {theme} from '../../utils/theme';
+import {formatTokenCount} from '../../utils/format';
 
-const BRAILLE_FRAMES = ['⠋', '⠙', '⠹', '⠸', '⠼', '⠴', '⠦', '⠧', '⠇', '⠏'] as const;
+const COLORS = {
+  bullet: '#E5E510',
+  tree: '#89B4FA',
+  tool: '#E5E510',
+  text: '#FFFFFF',
+  meta: '#94A3B8',
+} as const;
+
+const MAX_VISIBLE_DETAIL_LINES = 3;
 
 interface TaskPanelProps {
   tasks: ActiveTask[];
@@ -13,70 +19,158 @@ interface TaskPanelProps {
   pausedCount: number;
   doneCount: number;
   errorCount: number;
+  expanded?: boolean;
 }
 
-function buildTaskSummary(runningCount: number, pausedCount: number, doneCount: number, errorCount: number): string {
-  const parts: string[] = [];
-  if (runningCount > 0) parts.push(`${runningCount} running`);
-  if (pausedCount > 0) parts.push(`${pausedCount} paused`);
-  if (doneCount > 0) parts.push(`${doneCount} done`);
-  if (errorCount > 0) parts.push(`${errorCount} failed`);
-  return parts.join(', ');
-}
-
-function TaskCheckbox({status, frame}: {status: ActiveTask['status']; frame: number}): React.JSX.Element {
-  switch (status) {
-    case 'running': {
-      const spinner = BRAILLE_FRAMES[((frame % BRAILLE_FRAMES.length) + BRAILLE_FRAMES.length) % BRAILLE_FRAMES.length];
-      return <Text color={theme.status.running}>[{spinner}]</Text>;
-    }
-    case 'done':
-      return <Text color={theme.status.done}>[✓]</Text>;
-    case 'error':
-      return <Text color={theme.status.error}>[✕]</Text>;
-    case 'paused':
-      return <Text color={theme.status.paused}>[⏸]</Text>;
+function buildHeader(runningCount: number, pausedCount: number, errorCount: number, taskCount: number): string {
+  if (runningCount > 0) {
+    return `Running ${runningCount} agent${runningCount === 1 ? '' : 's'}…`;
   }
+
+  if (pausedCount > 0) {
+    return `${pausedCount} agent${pausedCount === 1 ? '' : 's'} waiting…`;
+  }
+
+  if (errorCount > 0) {
+    return `Recent ${taskCount} agent${taskCount === 1 ? '' : 's'}`;
+  }
+
+  return `Recent ${taskCount} agent${taskCount === 1 ? '' : 's'}`;
 }
 
-export function TaskPanel({tasks, runningCount, pausedCount, doneCount, errorCount}: TaskPanelProps): React.JSX.Element | null {
-  const [frame, setFrame] = useState(0);
+function buildSummary(task: ActiveTask): string {
+  const parts = [task.name];
+  if (task.toolUseCount !== undefined) {
+    parts.push(`${task.toolUseCount} tool uses`);
+  }
+  if (task.totalTokens !== undefined) {
+    parts.push(`${formatTokenCount(task.totalTokens)} tokens`);
+  }
+  return parts.join(' · ');
+}
 
-  useEffect(() => {
-    if (runningCount === 0) return;
+function splitDetailLines(detail?: string): string[] {
+  if (!detail) {
+    return [];
+  }
 
-    const timer = setInterval(() => {
-      setFrame(current => current + 1);
-    }, SPINNER_INTERVAL_MS);
+  return detail
+    .split('\n')
+    .map((line) => line.trim())
+    .filter(Boolean);
+}
 
-    return () => clearInterval(timer);
-  }, [runningCount]);
+function parseToolLine(line: string): {toolLabel?: string; content: string} {
+  const typedAction = line.match(/^([A-Za-z][A-Za-z /_-]{1,24}):(.*)$/);
+  if (typedAction) {
+    return {
+      toolLabel: typedAction[1]!.trim(),
+      content: typedAction[2]!.trim(),
+    };
+  }
 
-  if (tasks.length === 0) return null;
+  const callStyle = line.match(/^([A-Za-z][A-Za-z /_-]{1,24})\((.*)\)$/);
+  if (callStyle) {
+    return {
+      toolLabel: callStyle[1]!.trim(),
+      content: callStyle[2]!.trim(),
+    };
+  }
 
-  const summary = buildTaskSummary(runningCount, pausedCount, doneCount, errorCount);
+  return {content: line};
+}
+
+function StepLine({line, isLastTask}: {line: string; isLastTask: boolean}): React.JSX.Element {
+  const parsed = parseToolLine(line);
 
   return (
-    <Box flexDirection="column" borderStyle="single" borderColor={theme.chrome.border} paddingX={1}>
-      <Text dimColor bold>Tasks ({summary})</Text>
-      {tasks.map(task => {
-        const statParts: string[] = [];
-        if (task.toolUseCount) statParts.push(`${task.toolUseCount} tools`);
-        if (task.totalTokens) statParts.push(`${formatTokenCount(task.totalTokens)} tok`);
-        const elapsed = formatElapsedMs(task.elapsed);
-        const stats = statParts.length > 0 ? `  ${statParts.join(' · ')}` : '';
+    <Box>
+      <Text color={COLORS.tree}>{isLastTask ? '   ' : '│  '}</Text>
+      <Text color={COLORS.bullet}>{'⎿ '}</Text>
+      {parsed.toolLabel ? <Text color={COLORS.tool}>{`${parsed.toolLabel}: `}</Text> : null}
+      <Text color={COLORS.text} wrap="truncate-end">{parsed.content}</Text>
+    </Box>
+  );
+}
 
-        return (
-          <Box key={task.id} flexDirection="column">
-            <Box gap={1}>
-              <TaskCheckbox status={task.status} frame={frame} />
-              <Text wrap="truncate-end">{task.name}</Text>
-              <Text dimColor>{elapsed}{stats}</Text>
-            </Box>
-            {task.detail ? <Text dimColor wrap="truncate-end">{task.detail}</Text> : null}
-          </Box>
-        );
-      })}
+function MoreLine({count, expanded, isLastTask}: {count: number; expanded: boolean; isLastTask: boolean}): React.JSX.Element {
+  return (
+    <Box>
+      <Text color={COLORS.tree}>{isLastTask ? '   ' : '│  '}</Text>
+      <Text color={COLORS.meta}>
+        {expanded ? '(ctrl+o to collapse)' : `+${count} more tool uses (ctrl+o to expand)`}
+      </Text>
+    </Box>
+  );
+}
+
+function AgentRow({
+  task,
+  isLastTask,
+  expanded,
+}: {
+  task: ActiveTask;
+  isLastTask: boolean;
+  expanded: boolean;
+}): React.JSX.Element {
+  const allDetailLines = splitDetailLines(task.detail);
+  const visibleDetailLines = expanded ? allDetailLines : allDetailLines.slice(0, 1);
+  const hiddenCount = expanded
+    ? 0
+    : Math.max(
+        0,
+        task.toolUseCount !== undefined
+          ? task.toolUseCount - visibleDetailLines.length
+          : allDetailLines.length - visibleDetailLines.length,
+      );
+
+  return (
+    <Box flexDirection="column">
+      <Box>
+        <Text color={COLORS.tree}>{`   ${isLastTask ? '└─' : '├─'} `}</Text>
+        <Text color={COLORS.text} wrap="truncate-end">{buildSummary(task)}</Text>
+      </Box>
+      {visibleDetailLines.map((line, index) => (
+        <StepLine key={`${task.id}-detail-${index}`} line={line} isLastTask={isLastTask} />
+      ))}
+      {(hiddenCount > 0 || (expanded && allDetailLines.length > 1)) ? (
+        <MoreLine
+          count={hiddenCount}
+          expanded={expanded}
+          isLastTask={isLastTask}
+        />
+      ) : null}
+    </Box>
+  );
+}
+
+export function TaskPanel({
+  tasks,
+  runningCount,
+  pausedCount,
+  doneCount: _doneCount,
+  errorCount,
+  expanded = false,
+}: TaskPanelProps): React.JSX.Element | null {
+  if (tasks.length === 0) {
+    return null;
+  }
+
+  return (
+    <Box flexDirection="column" marginBottom={1}>
+      <Box>
+        <Text color={COLORS.bullet}>{'⏺ '}</Text>
+        <Text color={COLORS.text}>{buildHeader(runningCount, pausedCount, errorCount, tasks.length)}</Text>
+        <Text color={COLORS.meta}>{expanded ? ' (ctrl+o to collapse)' : ' (ctrl+o to expand)'}</Text>
+      </Box>
+      {tasks.map((task, index) => (
+        <AgentRow
+          key={task.id}
+          task={task}
+          isLastTask={index === tasks.length - 1}
+          expanded={expanded}
+        />
+      ))}
     </Box>
   );
 }

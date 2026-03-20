@@ -95,9 +95,9 @@ export function CodaraCliApp(props: CodaraCliAppProps): React.JSX.Element {
   });
   const terminalWidth = useTerminalWidth();
   const layoutMode = resolveCliLayoutMode(terminalWidth);
-  const taskRunSummaries = codara.getTaskRunSummaries();
-  const approvals = codara.getApprovalSummaries();
-  const teamSummaries = codara.getTeamSummaries();
+  const taskRunSummaries = useMemo(() => codara.getTaskRunSummaries(), [codara, shell.runtimeEvents]);
+  const approvals = useMemo(() => codara.getApprovalSummaries(), [codara, shell.runtimeEvents]);
+  const teamSummaries = useMemo(() => codara.getTeamSummaries(), [codara, shell.runtimeEvents]);
   const activeTasks = useActiveTasks({taskRunSummaries, approvals});
   const activeTeams = useActiveTeams({teamSummaries, runtimeEvents: shell.runtimeEvents});
   const teamPanelState = useTeamPanelState({codara, activeTeams});
@@ -225,6 +225,7 @@ export function CodaraCliApp(props: CodaraCliAppProps): React.JSX.Element {
               pausedCount={activeTasks.pausedCount}
               doneCount={activeTasks.doneCount}
               errorCount={activeTasks.errorCount}
+              expanded={shell.expandedAll}
             />
           )}
           {activeTeams.hasActiveTeams && (

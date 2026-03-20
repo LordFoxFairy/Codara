@@ -1,10 +1,6 @@
-import {useEffect, useState} from 'react';
 import type {CodaraRuntimeEvent} from '@/index';
 import type {CliActiveTurn, CliRunState} from '../app/view-state';
 import {theme} from '../utils/theme';
-
-const SPINNER_FRAMES = ['-', '\\', '|', '/'] as const;
-export const SPINNER_INTERVAL_MS = 80;
 
 export interface StatusIndicatorInput {
   runState: CliRunState;
@@ -18,27 +14,8 @@ export interface StatusIndicatorModel {
   color: string;
 }
 
-function buildSpinnerBanner(label: string, frame: number): string {
-  const spinner = SPINNER_FRAMES[((frame % SPINNER_FRAMES.length) + SPINNER_FRAMES.length) % SPINNER_FRAMES.length];
-  return `${spinner} ${label}`;
-}
-
 export function useStatusIndicator(input: StatusIndicatorInput): StatusIndicatorModel {
-  const [frame, setFrame] = useState(0);
-
-  useEffect(() => {
-    if (input.runState.status !== 'running') {
-      return;
-    }
-
-    const timer = setInterval(() => {
-      setFrame((current) => current + 1);
-    }, SPINNER_INTERVAL_MS);
-
-    return () => clearInterval(timer);
-  }, [input.runState.status]);
-
-  return describeStatusIndicator(input, input.runState.status === 'running' ? frame : 0);
+  return describeStatusIndicator(input);
 }
 
 function truncateLabel(label: string | undefined, maxLength = 60): string | undefined {
@@ -54,7 +31,7 @@ function truncateLabel(label: string | undefined, maxLength = 60): string | unde
   return text.length > maxLength ? `${text.slice(0, maxLength - 3)}...` : text;
 }
 
-export function describeStatusIndicator(input: StatusIndicatorInput, frame = 0): StatusIndicatorModel {
+export function describeStatusIndicator(input: StatusIndicatorInput): StatusIndicatorModel {
   const {runState, activeTurn, latestRuntimeEvent} = input;
   const activeEventLabel = truncateLabel(latestRuntimeEvent?.label);
 
@@ -63,14 +40,14 @@ export function describeStatusIndicator(input: StatusIndicatorInput, frame = 0):
       if (latestRuntimeEvent?.kind === 'model') {
         if (activeTurn?.response.trim()) {
           return {
-            banner: buildSpinnerBanner('Responding...', frame),
+            banner: 'Responding...',
             status: 'Responding',
             color: theme.status.responding,
           };
         }
 
         return {
-          banner: buildSpinnerBanner('Thinking...', frame),
+          banner: 'Thinking...',
           status: 'Thinking',
           color: theme.status.thinking,
         };
@@ -82,7 +59,7 @@ export function describeStatusIndicator(input: StatusIndicatorInput, frame = 0):
         const statusWord = isTask ? 'delegating' : isTool ? activeEventLabel : activeEventLabel;
         const shortStatus = statusWord.length > 30 ? `${statusWord.slice(0, 27)}...` : statusWord;
         return {
-          banner: buildSpinnerBanner(activeEventLabel, frame),
+          banner: activeEventLabel,
           status: shortStatus,
           color: latestRuntimeEvent?.kind === 'command' || latestRuntimeEvent?.kind === 'summary'
             ? theme.status.paused
@@ -92,14 +69,14 @@ export function describeStatusIndicator(input: StatusIndicatorInput, frame = 0):
 
       if (activeTurn?.response.trim()) {
         return {
-          banner: buildSpinnerBanner('Responding...', frame),
+          banner: 'Responding...',
           status: 'Responding',
           color: theme.status.responding,
         };
       }
 
       return {
-        banner: buildSpinnerBanner('Thinking...', frame),
+        banner: 'Thinking...',
         status: 'Thinking',
         color: theme.status.thinking,
       };

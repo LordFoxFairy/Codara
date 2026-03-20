@@ -57,11 +57,19 @@ function getRolePrefix(role: TranscriptRole): { text: string; width: number } {
 }
 
 export function TranscriptBlock({role, content, renderHint, tokenAnnotation}: {role: TranscriptRole; content: string; renderHint?: 'inline' | 'block'; tokenAnnotation?: string}): React.JSX.Element {
+  if (role === 'task') {
+    return (
+      <Box marginBottom={1} flexDirection="column">
+        <MarkdownText content={content} />
+      </Box>
+    );
+  }
+
   const lines = content.split('\n');
   const prefix = getRolePrefix(role);
   const firstLine = lines[0] || '(empty)';
   const trailingLines = lines.slice(1);
-  const isToolResult = role === 'tool' || role === 'task';
+  const isToolResult = role === 'tool';
   // Tool results use ⎿ tree connector style
   if (isToolResult && trailingLines.length > 0) {
     return (
@@ -140,6 +148,10 @@ const EDIT_LINE_COLORS: Record<string, React.ComponentProps<typeof Text>['color'
   '-': theme.diff.deletion,
 };
 
+function isTaskToolName(toolName: string): boolean {
+  return toolName.toLowerCase().startsWith('task');
+}
+
 export function ToolResultBlock({meta, expanded = false}: {meta: ToolResultMeta; expanded?: boolean}): React.JSX.Element {
   const {icon, displayName, args, summaryLine, outputLines, allOutputLines, totalOutputLines, status, elapsed, diffData} = meta;
   const elapsedSuffix = elapsed ? ` (${elapsed})` : '';
@@ -147,17 +159,32 @@ export function ToolResultBlock({meta, expanded = false}: {meta: ToolResultMeta;
   const visibleLines = expanded && allOutputLines?.length ? allOutputLines : outputLines;
   const hiddenLines = expanded ? 0 : (totalOutputLines ?? 0) - (outputLines?.length ?? 0);
   const isEdit = meta.toolName === 'edit' || meta.toolName === 'edit_file';
+  const isTaskResult = isTaskToolName(meta.toolName);
+  const taskMarkdownContent = isTaskResult
+    ? [summaryLine, ...(visibleLines ?? [])].filter(Boolean).join('\n')
+    : '';
   return (
     <Box marginBottom={1} flexDirection="column">
       <Text bold>{header}</Text>
-      <Box>
-        <Text dimColor color={status === 'error' ? 'red' : undefined}>
-          {'  ⎿ '}{summaryLine}
-        </Text>
-      </Box>
+      {isTaskResult ? (
+        <Box paddingLeft={2} flexDirection="column">
+          <MarkdownText content={taskMarkdownContent} />
+          {hiddenLines > 0 ? (
+            <Text dimColor>{`+${hiddenLines} lines (ctrl+o to expand)`}</Text>
+          ) : expanded && (totalOutputLines ?? 0) > (outputLines?.length ?? 0) ? (
+            <Text dimColor>{'(ctrl+o to collapse)'}</Text>
+          ) : null}
+        </Box>
+      ) : (
+        <Box>
+          <Text dimColor color={status === 'error' ? 'red' : undefined}>
+            {'  ⎿ '}{summaryLine}
+          </Text>
+        </Box>
+      )}
       {diffData ? (
         <DiffView diff={diffData} />
-      ) : visibleLines && visibleLines.length > 0 ? (
+      ) : !isTaskResult && visibleLines && visibleLines.length > 0 ? (
         <Box paddingLeft={4} flexDirection="column">
           {visibleLines.map((line, index) => {
             const lineColor = isEdit ? EDIT_LINE_COLORS[line.charAt(0)] : undefined;

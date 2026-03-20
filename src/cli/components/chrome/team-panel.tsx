@@ -1,7 +1,6 @@
-import React, {useEffect, useState} from 'react';
+import React from 'react';
 import {Box, Text} from 'ink';
 import type {ActiveTeam} from '../../hooks/use-active-teams';
-import {SPINNER_INTERVAL_MS} from '../../hooks/use-status-indicator';
 import {formatElapsedMs} from '../../utils/format';
 import {theme} from '../../utils/theme';
 
@@ -60,12 +59,12 @@ const TEAM_STATUS_COLOR: Record<TeamDisplayStatus, string> = {
   paused: theme.status.paused,
 };
 
-function TeamIcon({status, frame}: {status: ActiveTeam['status']; frame: number}): React.JSX.Element {
+function TeamIcon({status}: {status: ActiveTeam['status']}): React.JSX.Element {
   const displayStatus = resolveDisplayStatus(status);
   const color = TEAM_STATUS_COLOR[displayStatus];
   switch (displayStatus) {
     case 'running':
-      return <Text color={color}>{BRAILLE_FRAMES[((frame % BRAILLE_FRAMES.length) + BRAILLE_FRAMES.length) % BRAILLE_FRAMES.length]}</Text>;
+      return <Text color={color}>{BRAILLE_FRAMES[0]}</Text>;
     case 'completed':
       return <Text color={color}>✓</Text>;
     case 'failed':
@@ -123,9 +122,8 @@ function MemberRow({member, isLast}: {
   );
 }
 
-function TeamRow({team, frame, members}: {
+function TeamRow({team, members}: {
   team: ActiveTeam;
-  frame: number;
   members?: TeamMemberInfo[];
 }): React.JSX.Element {
   const progressParts: string[] = [];
@@ -140,7 +138,7 @@ function TeamRow({team, frame, members}: {
   return (
     <Box flexDirection="column">
       <Box gap={1}>
-        <TeamIcon status={team.status} frame={frame} />
+        <TeamIcon status={team.status} />
         <Text bold wrap="truncate-end">{team.name}</Text>
         {team.goal ? <Text dimColor wrap="truncate-end">{team.goal}</Text> : null}
         <Text dimColor>{formatElapsedMs(team.elapsed)}{statSuffix}</Text>
@@ -157,18 +155,6 @@ function TeamRow({team, frame, members}: {
 }
 
 export function TeamPanel({teams, runningCount, doneCount, errorCount, teamMembers}: TeamPanelProps): React.JSX.Element | null {
-  const [frame, setFrame] = useState(0);
-
-  useEffect(() => {
-    if (runningCount === 0) return;
-
-    const timer = setInterval(() => {
-      setFrame(current => current + 1);
-    }, SPINNER_INTERVAL_MS);
-
-    return () => clearInterval(timer);
-  }, [runningCount]);
-
   if (teams.length === 0) return null;
 
   const summary = buildTeamSummary(runningCount, doneCount, errorCount);
@@ -180,7 +166,6 @@ export function TeamPanel({teams, runningCount, doneCount, errorCount, teamMembe
         <TeamRow
           key={team.teamId}
           team={team}
-          frame={frame}
           members={teamMembers?.get(team.teamId)}
         />
       ))}

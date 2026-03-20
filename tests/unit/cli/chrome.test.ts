@@ -50,6 +50,32 @@ describe('CLI chrome', () => {
     expect(model.pathLine).toBe('/tmp/codara-demo');
   });
 
+  it('should render token usage with arrow glyphs in wide mode', () => {
+    const session: SessionState = {
+      sessionId: '12345678-aaaa-bbbb-cccc-1234567890ab',
+      sessionStatus: 'ready',
+      createdAt: new Date().toISOString(),
+      updatedAt: new Date().toISOString(),
+      metadata: {
+        usage: {
+          promptTokens: 143700,
+          completionTokens: 3300,
+          totalTokens: 147000,
+        },
+      },
+    };
+
+    const model = describeStatusBar({
+      layoutMode: 'wide',
+      session,
+      cwd: '/tmp/codara-demo',
+      modelAlias: 'default',
+      runState: {status: 'idle'},
+    });
+
+    expect(model.subtitle).toContain('↑ 143.7k / ↓ 3.3k / 147.0k');
+  });
+
   it('should show MCP indicator when all servers connected', () => {
     const session: SessionState = {
       sessionId: 'test-session',

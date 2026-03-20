@@ -25,7 +25,7 @@ export function ActivityLine({runState, activeTurn, latestRuntimeEvent, sessionM
   let tokenSuffix = '';
   if (runState.status === 'running') {
     if (streaming && (streaming.input > 0 || streaming.output > 0)) {
-      tokenSuffix = ` | in ${formatTokenCount(streaming.input)} | out ${formatTokenCount(streaming.output)}`;
+      tokenSuffix = ` | ↑ ${formatTokenCount(streaming.input)} | ↓ ${formatTokenCount(streaming.output)}`;
     } else {
       const lastTokens = sessionMetadata?.usage?.lastTotalTokens;
       if (lastTokens && lastTokens > 0) {

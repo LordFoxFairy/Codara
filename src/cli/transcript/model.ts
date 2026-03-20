@@ -793,7 +793,7 @@ function readTokenAnnotation(message: AIMessage): string | undefined {
 
   if (input === 0 && output === 0) return undefined;
 
-  return `↓${formatTokenCount(input)} ↑${formatTokenCount(output)}`;
+  return `↑${formatTokenCount(input)} ↓${formatTokenCount(output)}`;
 }
 
 function buildToolResultItems(
