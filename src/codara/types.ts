@@ -182,5 +182,6 @@ export type Codara = Session & {
   resumeApprovalStream(payload: ResumePayload, config?: AgentResumeStreamConfig): AsyncGenerator<AgentStreamOutput, void, void>;
   getTeamSummaries(): TeamQuerySummary[];
   getTeamDetail(teamId: string): TeamQueryDetail | undefined;
+  getMemberMessages(memberId: string): import('@langchain/core/messages').BaseMessage[];
   getChannelRegistry(): ChannelRegistry | undefined;
 };

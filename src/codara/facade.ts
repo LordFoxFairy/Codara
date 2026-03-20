@@ -27,6 +27,7 @@ import {loadMcpConfig, createMcpManager, createMcpLangChainTools, type McpManage
 import type {ChannelRegistry} from '@integration/channel';
 import type {TeamRegistry} from '@capability/team/coordination/team-registry';
 import type {TeamRuntime} from '@capability/team/runtime/team-runtime';
+import type {TeamSurfaceState} from '@capability/team/middleware';
 import {
   createCodaraMiddlewares,
   createRuntimeDefaultMiddlewares,
@@ -154,6 +155,7 @@ export async function createCodaraRuntime(options: CodaraRuntimeOptions = {}): P
   const teamSystem = teamsEnabled
     ? await assembleTeamSystem({options, runtimeStatePath, projectRoot, catalog, approvalStore, baseSystemMessage})
     : undefined;
+  const initialRuntimeContext = deriveInitialRuntimeContext(options.context, teamSystem?.restoredActiveTeamId);
 
   // 7. Middleware chain
   const runtimeMiddlewares = createRuntimeDefaultMiddlewares({
@@ -163,7 +165,7 @@ export async function createCodaraRuntime(options: CodaraRuntimeOptions = {}): P
   });
 
   // 8. Assemble facade
-  return assembleCodara({
+  const runtime = assembleCodara({
     ...options,
     tools: runtimeTools, middleware: runtimeMiddlewares, hil: false,
     autoMemory: options.autoMemory === false ? false
@@ -171,6 +173,7 @@ export async function createCodaraRuntime(options: CodaraRuntimeOptions = {}): P
     summary: options.summary === false ? false : (options.summary ?? {}),
     ...(logging === false ? {logging: false} : {logging}),
     ...(catalog ? {catalog} : {}),
+    ...(initialRuntimeContext ? {context: initialRuntimeContext} : {}),
     ...(options.store ? {} : {store: new FileSessionStore({basePath: path.join(runtimeStatePath, 'sessions')})}),
     ...(options.checkpointer ? {} : {
       checkpointer: runtimeCheckpointer,
@@ -182,6 +185,55 @@ export async function createCodaraRuntime(options: CodaraRuntimeOptions = {}): P
     taskRunStore, taskRuntime, approvalStore,
     channelRegistry: options.channelRegistry,
   });
+
+  if (teamSystem && !hasPreconfiguredTeamSurface(options.context)) {
+    const resumableTeams = getTeamSummaries(teamSystem.teamRegistry)
+      .filter((team) => team.status === 'running' || team.status === 'paused');
+    if (resumableTeams.length === 1) {
+      const [team] = resumableTeams;
+      await runtime.updateContext({
+        teamSurface: {
+          activeTeamId: team!.teamId,
+          teamRole: 'leader',
+          teamMode: 'leader',
+        },
+      });
+    }
+  }
+
+  return runtime;
+}
+
+function hasPreconfiguredTeamSurface(context: CodaraOptions['context']): boolean {
+  if (!context || typeof context !== 'object') {
+    return false;
+  }
+
+  const teamSurface = (context as Record<string, unknown>).teamSurface;
+  return Boolean(teamSurface && typeof teamSurface === 'object');
+}
+
+function deriveInitialRuntimeContext(
+  context: CodaraRuntimeOptions['context'],
+  restoredActiveTeamId: string | undefined,
+) {
+  if (!restoredActiveTeamId) {
+    return context;
+  }
+
+  const existingSurface = context?.teamSurface as TeamSurfaceState | undefined;
+  if (existingSurface?.activeTeamId) {
+    return context;
+  }
+
+  return {
+    ...(context ?? {}),
+    teamSurface: {
+      activeTeamId: restoredActiveTeamId,
+      teamRole: 'leader',
+      teamMode: 'leader',
+    } satisfies TeamSurfaceState,
+  };
 }
 
 // ── Session Openers ──
@@ -454,12 +506,12 @@ export function assembleCodara(
     },
     resumeApproval,
     resumeApprovalStream,
-    getTeamSummaries: () => getTeamSummaries(preloadedSources?.teamRegistry, session.getState().sessionId),
+    getTeamSummaries: () => getTeamSummaries(preloadedSources?.teamRegistry),
     getTeamDetail: (teamId: string) => getTeamDetail(
       preloadedSources?.teamRegistry,
       teamId,
-      session.getState().sessionId,
     ),
+    getMemberMessages: (memberId: string) => teamRuntime?.getMemberMessages(memberId) ?? [],
     getChannelRegistry: () => channelRegistry,
     dispose,
   };

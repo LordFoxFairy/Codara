@@ -35,6 +35,7 @@ export interface TeamSystemAssemblyResult {
   teamRegistry: TeamRegistry;
   teamRuntime: TeamRuntime;
   sharedState: MemorySharedState;
+  restoredActiveTeamId?: string;
 }
 
 export async function assembleTeamSystem(input: TeamSystemAssemblyInput): Promise<TeamSystemAssemblyResult> {
@@ -204,6 +205,9 @@ export async function assembleTeamSystem(input: TeamSystemAssemblyInput): Promis
       getPendingPause() {
         return pendingPause;
       },
+      getMessages() {
+        return agentReady?.getState().messages ?? [];
+      },
       async dispose() {
         pendingPause = undefined;
         agentReady = undefined;
@@ -221,11 +225,14 @@ export async function assembleTeamSystem(input: TeamSystemAssemblyInput): Promis
     approvalStore,
   });
 
+  const restorableTeamIds: string[] = [];
+
   try {
     const savedSnapshots = teamPersistence.list();
     for (const summary of savedSnapshots) {
       const snapshot = teamPersistence.load(summary.teamId);
       if (snapshot && (snapshot.team.status === 'running' || snapshot.team.status === 'paused')) {
+        restorableTeamIds.push(snapshot.team.teamId);
         snapshot.team.status = 'paused';
         teamRegistry.restoreTeam(snapshot.team);
         for (const member of snapshot.members) {
@@ -245,18 +252,21 @@ export async function assembleTeamSystem(input: TeamSystemAssemblyInput): Promis
   }
 
   const teamRuntime = _teamRuntime;
-  return {teamRegistry, teamRuntime, sharedState};
+  return {
+    teamRegistry,
+    teamRuntime,
+    sharedState,
+    ...(restorableTeamIds.length === 1 ? {restoredActiveTeamId: restorableTeamIds[0]} : {}),
+  };
 }
 
 export function getTeamSummaries(
   registry: TeamRegistry | undefined,
-  sessionId?: string,
 ): TeamQuerySummary[] {
   if (!registry) {
     return [];
   }
   return registry.listTeams()
-    .filter((team) => teamBelongsToSession(team.createdBy, sessionId))
     .map((team) => {
       const board = registry.getJobBoard(team.teamId);
       const progress = board.getProgress();
@@ -277,13 +287,12 @@ export function getTeamSummaries(
 export function getTeamDetail(
   registry: TeamRegistry | undefined,
   teamId: string,
-  sessionId?: string,
 ): TeamQueryDetail | undefined {
   if (!registry) {
     return undefined;
   }
   const team = registry.getTeam(teamId) ?? registry.getTeamByName(teamId);
-  if (!team || !teamBelongsToSession(team.createdBy, sessionId)) {
+  if (!team) {
     return undefined;
   }
   const members = registry.getMembersByTeam(team.teamId);
@@ -310,13 +319,6 @@ export function getTeamDetail(
       blockedBy: job.blockedBy,
     })),
   };
-}
-
-function teamBelongsToSession(teamCreatedBy: string | undefined, sessionId: string | undefined): boolean {
-  if (!sessionId) {
-    return true;
-  }
-  return teamCreatedBy === sessionId;
 }
 
 /**

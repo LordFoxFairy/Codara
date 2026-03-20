@@ -1,6 +1,7 @@
 import React, {useCallback, useEffect, useState} from 'react';
-import {Box, Static, useApp} from 'ink';
+import {Box, Static, Text, useApp} from 'ink';
 import type {Codara, CodaraRuntimeEvent} from '@/index';
+import {theme} from '../utils/theme';
 import {CommandOutputPanel} from '../components/chrome/command-output-panel';
 import {Footer} from '../components/chrome/footer';
 import {StatusBar} from '../components/chrome/header';
@@ -244,14 +245,19 @@ export function CodaraCliApp(props: CodaraCliAppProps): React.JSX.Element {
         const accepted = completion.accept();
         completion.dismiss();
         if (accepted) {
-          // Use submitText to bypass stale closure on composer.text
           shell.submitText(accepted);
         }
+        return;
+      }
+      // Enter on a focused worker (no text) → enter that member's view
+      if (shell.teamDetailState && shell.teamDetailState.focusedMemberId && !shell.composer.text.trim()) {
+        shell.enterMember(shell.teamDetailState.focusedMemberId);
         return;
       }
       shell.submitDraft();
     },
     onExit: () => {
+      if (shell.activeMemberId) { shell.exitMember(); return; }
       if (shell.teamDetailState?.focusedMemberId) { shell.focusMember(undefined); return; }
       if (completion.completion.visible) { completion.dismiss(); return; }
       if (shell.commandOutput) { shell.dismissCommandOutput(); return; }
@@ -339,6 +345,13 @@ export function CodaraCliApp(props: CodaraCliAppProps): React.JSX.Element {
         </Static>
 
         {/* 动态区 */}
+        {shell.activeMemberId && (
+          <Box paddingX={1}>
+            <Text color={theme.interactive.accent}>▶ </Text>
+            <Text bold>{shell.teamDetailState?.members.find(m => m.memberId === shell.activeMemberId)?.name ?? shell.activeMemberId}</Text>
+            <Text dimColor> — Esc to return to leader</Text>
+          </Box>
+        )}
         {activeItems.length > 0 && <ActiveTranscript items={activeItems} activeTasks={activeTasks.tasks} expandedAll={shell.expandedAll} />}
 
         {/* Activity / Prompt / Status — 始终渲染 */}

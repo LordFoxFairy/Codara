@@ -648,6 +648,10 @@ export class TeamRuntime {
     return this.runners.get(memberId);
   }
 
+  getMemberMessages(memberId: string): import('@langchain/core/messages').BaseMessage[] {
+    return this.runners.get(memberId)?.getMessages() ?? [];
+  }
+
   async resumeMemberApproval(memberId: string, payload: ResumePayload): Promise<void> {
     const runner = this.runners.get(memberId);
     if (!runner) {

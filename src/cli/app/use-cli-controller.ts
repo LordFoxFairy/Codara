@@ -125,6 +125,9 @@ export interface CliController {
   focusNextTeamMember: () => void;
   focusPreviousTeamMember: () => void;
   focusMember: (memberId: string | undefined) => void;
+  activeMemberId?: string;
+  enterMember: (memberId: string | undefined) => void;
+  exitMember: () => void;
 }
 
 function shouldRefreshAuxiliaryState(event: CodaraRuntimeEvent): boolean {
@@ -353,6 +356,8 @@ export function useCliController(options: UseCliControllerOptions): CliControlle
   const [expandedAll, setExpandedAll] = useState(false);
   const [commandOutput, setCommandOutput] = useState<{content: string; commandName?: string; scrollOffset: number} | undefined>();
   const [focusedMemberId, setFocusedMemberId] = useState<string | undefined>(undefined);
+  const [activeMemberId, setActiveMemberId] = useState<string | undefined>(undefined);
+  const [memberMessages, setMemberMessages] = useState<readonly BaseMessage[]>([]);
   const isRunningRef = useRef(false);
   const initialPromptSentRef = useRef(false);
   const initialCoreStateLoadedRef = useRef(false);
@@ -366,6 +371,15 @@ export function useCliController(options: UseCliControllerOptions): CliControlle
   useEffect(() => {
     hilReviewRef.current = hilReview;
   }, [hilReview]);
+
+  // Poll worker messages while a member view is active
+  useEffect(() => {
+    if (!activeMemberId) return;
+    const id = setInterval(() => {
+      setMemberMessages(codara.getMemberMessages(activeMemberId));
+    }, 500);
+    return () => clearInterval(id);
+  }, [activeMemberId, codara]);
 
   const appendNotice = useCallback((level: CliNotice['level'], content: string) => {
     const message = content.trim();
@@ -682,6 +696,21 @@ export function useCliController(options: UseCliControllerOptions): CliControlle
 
   const focusMember = useCallback((memberId: string | undefined) => {
     setFocusedMemberId(memberId);
+  }, []);
+
+  const enterMember = useCallback((memberId: string | undefined) => {
+    setActiveMemberId(memberId);
+    if (memberId) {
+      // Immediately load messages
+      setMemberMessages(codara.getMemberMessages(memberId));
+    } else {
+      setMemberMessages([]);
+    }
+  }, [codara]);
+
+  const exitMember = useCallback(() => {
+    setActiveMemberId(undefined);
+    setMemberMessages([]);
   }, []);
 
   const runSlashCommand = useCallback(async (prompt: string) => {
@@ -1284,15 +1313,18 @@ export function useCliController(options: UseCliControllerOptions): CliControlle
     return () => clearTimeout(timer);
   }, [hilReview, submitHilAction]);
 
+  // When a member view is active, show that member's messages; otherwise show main session messages
+  const displayedMessages = activeMemberId ? memberMessages : coreMessages;
+
   const hasConversation = useMemo(
     () => hasTranscriptContent({
-      coreMessages,
+      coreMessages: displayedMessages,
       notices,
-      activeTurn,
-      runtimeEvents,
+      activeTurn: activeMemberId ? undefined : activeTurn,
+      runtimeEvents: activeMemberId ? [] : runtimeEvents,
       initialNoticeCount,
     }),
-    [activeTurn, coreMessages, initialNoticeCount, notices, runtimeEvents],
+    [activeMemberId, activeTurn, displayedMessages, initialNoticeCount, notices, runtimeEvents],
   );
 
   const submitHilActionCommand = useCallback(() => {
@@ -1306,12 +1338,13 @@ export function useCliController(options: UseCliControllerOptions): CliControlle
     commandOutput,
     dismissCommandOutput,
     scrollCommandOutput,
-    activeTurn,
+    activeTurn: activeMemberId ? undefined : activeTurn,
     hilReview,
-    coreMessages,
-    runtimeEvents,
-    latestRuntimeEvent: runtimeEvents[runtimeEvents.length - 1],
+    coreMessages: displayedMessages,
+    runtimeEvents: activeMemberId ? [] : runtimeEvents,
+    latestRuntimeEvent: activeMemberId ? undefined : runtimeEvents[runtimeEvents.length - 1],
     hasConversation,
+    activeMemberId,
     runState,
     sessionState,
     insertText,
@@ -1354,7 +1387,10 @@ export function useCliController(options: UseCliControllerOptions): CliControlle
     focusNextTeamMember,
     focusPreviousTeamMember,
     focusMember,
+    enterMember,
+    exitMember,
   }), [
+    activeMemberId,
     activeTurn,
     activateHilSelection,
     backspace,
@@ -1362,10 +1398,11 @@ export function useCliController(options: UseCliControllerOptions): CliControlle
     commandOutput,
     composer,
     composerActivityVersion,
-    coreMessages,
     dismissCommandOutput,
+    enterMember,
     enterTeam,
     expandedAll,
+    exitMember,
     focusMember,
     focusNextTeamMember,
     focusPreviousTeamMember,
@@ -1408,6 +1445,9 @@ export function useCliController(options: UseCliControllerOptions): CliControlle
     toggleExpand,
     toggleHilFocus,
     toggleTaskPanel,
+    displayedMessages,
+    enterMember,
+    exitMember,
   ]);
 }
 

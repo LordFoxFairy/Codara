@@ -87,6 +87,7 @@ export interface MemberSession {
   resumePause?(payload: ResumePayload): Promise<MemberInvokeResult>;
   resumePauseStream?(payload: ResumePayload): AsyncGenerator<unknown, MemberInvokeResult, void>;
   getPendingPause?(): PauseRequest | undefined;
+  getMessages?(): import('@langchain/core/messages').BaseMessage[];
   dispose(): Promise<void>;
 }
 
@@ -124,6 +125,7 @@ export class MemberRunner {
   getRole(): MemberRole { return this.options.member.role; }
   isShutdownRequested(): boolean { return this.shutdownRequested; }
   getPendingPause(): PauseRequest | undefined { return this.session?.getPendingPause?.(); }
+  getMessages(): import('@langchain/core/messages').BaseMessage[] { return this.session?.getMessages?.() ?? []; }
   supportsApprovalResumeStream(): boolean { return Boolean(this.session?.resumePauseStream); }
 
   /** Start the member's agent loop. Runs until shutdown or error. */
