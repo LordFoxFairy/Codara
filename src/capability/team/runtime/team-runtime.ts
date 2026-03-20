@@ -376,6 +376,18 @@ export class TeamRuntime {
         });
       }
 
+      case 'member.idle': {
+        const parentId = this.teamRootIds.get(teamId);
+        return this.makeRuntimeEvent(sessionId, {
+          kind: 'team',
+          phase: 'update',
+          status: 'running',
+          label: `${event.data.memberId} idle`,
+          detail: `member.idle:${event.data.memberId}`,
+          ...(parentId ? { parentId } : {}),
+        });
+      }
+
       default: {
         if (event.type === 'job.created') {
           const meta = this.teamMeta.get(teamId);
@@ -530,6 +542,8 @@ export class TeamRuntime {
       }
     }
 
+    this.cleanupTeamWorkers(teamId);
+
     const team = registry.getTeam(teamId);
     if (team?.status === 'paused') {
       // Paused teams are still finishable, but the registry only allows completing from running.
@@ -573,6 +587,7 @@ export class TeamRuntime {
         this.runners.delete(memberId);
       }
     }
+    this.cleanupTeamWorkers(teamId);
     this.options.registry.updateTeamStatus(teamId, 'failed');
     this.persistTeam(teamId);
     const failedEvent: TeamBusEvent = { type: 'team.failed', data: { teamId, error: 'Killed by user' } };
@@ -807,6 +822,13 @@ export class TeamRuntime {
     return this.options.registry.listTeams()
       .filter(t => t.parentTeamId === teamId)
       .map(t => t.teamId);
+  }
+
+  private cleanupTeamWorkers(teamId: string): void {
+    const workers = this.options.registry.getMembersByTeam(teamId);
+    for (const worker of workers) {
+      this.options.registry.removeMember(teamId, worker.memberId);
+    }
   }
 
   private checkTeamHealth(teamId: string): void {
