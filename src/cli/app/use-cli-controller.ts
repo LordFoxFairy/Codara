@@ -123,6 +123,7 @@ export interface CliController {
   enterTeam: (teamId: string) => void;
   leaveTeam: () => void;
   focusNextTeamMember: () => void;
+  focusPreviousTeamMember: () => void;
   focusMember: (memberId: string | undefined) => void;
 }
 
@@ -653,6 +654,15 @@ export function useCliController(options: UseCliControllerOptions): CliControlle
     const currentIndex = members.findIndex(m => m.memberId === focusedMemberId);
     const next = members[(currentIndex + 1) % members.length];
     setFocusedMemberId(next?.memberId === members[0]?.memberId ? undefined : next?.memberId);
+  }, [focusedMemberId, teamDetailState?.members]);
+
+  const focusPreviousTeamMember = useCallback(() => {
+    const members = teamDetailState?.members ?? [];
+    if (members.length === 0) return;
+    const currentIndex = members.findIndex(m => m.memberId === focusedMemberId);
+    const prevIndex = currentIndex <= 0 ? members.length - 1 : currentIndex - 1;
+    const prev = members[prevIndex];
+    setFocusedMemberId(prev?.memberId === members[0]?.memberId ? undefined : prev?.memberId);
   }, [focusedMemberId, teamDetailState?.members]);
 
   const focusMember = useCallback((memberId: string | undefined) => {
@@ -1327,6 +1337,7 @@ export function useCliController(options: UseCliControllerOptions): CliControlle
     enterTeam,
     leaveTeam,
     focusNextTeamMember,
+    focusPreviousTeamMember,
     focusMember,
   }), [
     activeTurn,
@@ -1342,6 +1353,7 @@ export function useCliController(options: UseCliControllerOptions): CliControlle
     expandedAll,
     focusMember,
     focusNextTeamMember,
+    focusPreviousTeamMember,
     hasConversation,
     hilReview,
     insertHilNewline,

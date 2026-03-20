@@ -1,7 +1,5 @@
 import { Box, Text } from 'ink';
 import { MemberPanel } from './member-panel.js';
-import { JobBoardPanel } from './job-board-panel.js';
-import { TeamActivityLog } from './team-activity-log.js';
 import type { TeamDetailState } from '../../hooks/use-team-detail.js';
 import { theme } from '../../utils/theme.js';
 import { formatTokenCount } from '../../utils/format.js';
@@ -43,35 +41,9 @@ export function TeamDetailView({ state, focusedMemberId, onFocusNext: _onFocusNe
       {state.goal && (
         <Text dimColor>Goal: {state.goal}</Text>
       )}
-      {focusedMemberId ? (
-        <Text dimColor>Speaking to: <Text color={theme.interactive.accent}>{
-          state.members.find(m => m.memberId === focusedMemberId)?.name ?? focusedMemberId
-        }</Text> (Tab to switch, Esc for leader)</Text>
-      ) : (
-        <Text dimColor>Speaking to: <Text bold>Leader</Text> · Tab to focus a worker · @name to message directly</Text>
-      )}
 
-      <Box flexDirection="column" gap={1} marginTop={1}>
+      <Box flexDirection="column" marginTop={1}>
         <MemberPanel members={state.members} jobs={state.jobs} focusedMemberId={focusedMemberId} />
-        <JobBoardPanel jobs={state.jobs} />
-        <TeamActivityLog activity={state.activity} />
-      </Box>
-
-      <Box marginTop={1} gap={1}>
-        <Text dimColor>Team:</Text>
-        <Text color={theme.interactive.secondaryButton}>spawn_teammate</Text>
-        <Text dimColor>·</Text>
-        <Text color={theme.interactive.secondaryButton}>assign_job</Text>
-        <Text dimColor>·</Text>
-        <Text color={theme.status.ready}>review_job</Text>
-        {state.status === 'running' ? (
-          <>
-            <Text dimColor>·</Text>
-            <Text color={theme.status.paused}>pause</Text>
-          </>
-        ) : null}
-        <Text dimColor>·</Text>
-        <Text color={theme.interactive.danger}>shutdown_team</Text>
       </Box>
     </Box>
   );

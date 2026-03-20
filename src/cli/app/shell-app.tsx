@@ -259,10 +259,10 @@ export function CodaraCliApp(props: CodaraCliAppProps): React.JSX.Element {
     },
     onToggleTaskPanel: shell.toggleTaskPanel,
     onToggleExpand: shell.toggleExpand,
-    onSelectMemberUp: () => {},
-    onSelectMemberDown: () => {},
+    onSelectMemberUp: () => { shell.focusPreviousTeamMember(); },
+    onSelectMemberDown: () => { shell.focusNextTeamMember(); },
     onTab: () => {
-      if (shell.teamDetailState && !completion.completion.visible) {
+      if (shell.teamDetailState && !completion.completion.visible && !hasHilReview) {
         shell.focusNextTeamMember();
         return;
       }

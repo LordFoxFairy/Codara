@@ -76,7 +76,7 @@ export function MemberPanel({ members, jobs = [], focusedMemberId }: MemberPanel
 
         return (
           <Box key={m.memberId} gap={1}>
-            <Text color={m.memberId === focusedMemberId ? theme.interactive.accent : 'transparent'}>▶</Text>
+            <Text color={theme.interactive.accent}>{m.memberId === focusedMemberId ? '▶' : ' '}</Text>
             <Text color={statusColor}>{ROLE_ICONS[m.role] ?? '?'}</Text>
             <Text bold>{m.name.padEnd(12)}</Text>
             <Text color={statusColor}>{statusLabel.padEnd(12)}</Text>
