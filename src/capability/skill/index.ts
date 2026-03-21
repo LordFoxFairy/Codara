@@ -16,7 +16,7 @@ export {
   skillsMetadataReducer,
 } from '@capability/skill/catalog/metadata';
 export {
-  DEFAULT_SUBAGENT_TYPE,
+  AGENT_SUBAGENT_TYPE,
   loadSkillsRuntimeData,
   readSkillsRuntimeData,
   resolveSubagentDefinition,

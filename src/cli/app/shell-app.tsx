@@ -6,24 +6,24 @@ import {Footer} from '../components/chrome/footer';
 import {StatusBar} from '../components/chrome/header';
 import {ActivityLine} from '../components/chrome/activity-line';
 import {TaskPanel} from '../components/chrome/task-panel';
-import {HilPanel, isPermissionReview} from '../components/conversation/hil-panel';
+import {ReviewPanel, isPermissionReview} from '../components/conversation/review-panel';
 import {SessionPicker} from '../components/conversation/session-picker';
 import {ActiveTranscript} from '../components/conversation/transcript';
 import {SolidifiedBlock} from '../components/conversation/solidified-block';
 import {TIPS} from '../hooks/use-rotating-tip';
 import {CompletionMenu} from '../components/prompt/completion-menu';
 import {PromptFrame} from '../components/prompt/prompt-frame';
-import type {CliHilAutoAction} from './hil-review';
+import type {CliReviewAutoAction} from './review-state';
 import {resolveCliLayoutMode} from './layout-mode';
 import {useCliController} from './use-cli-controller';
 import {useActiveTasks} from '../hooks/use-active-tasks';
 import {useCommandCompletion} from '../hooks/use-command-completion';
-import {useHilInput} from '../hooks/use-hil-input';
+import {useReviewInput} from '../hooks/use-review-input';
 import {usePromptInput} from '../hooks/use-prompt-input';
 import {useSessionPicker} from '../hooks/use-session-picker';
 import {useSolidifiedTranscript} from '../hooks/use-solidified-transcript';
 import {useTerminalWidth} from '../hooks/use-terminal-width';
-import type {CliHilReviewState} from './view-state';
+import type {CliReviewState} from './view-state';
 import type {TranscriptItem} from '../transcript/model';
 
 export interface CodaraCliAppProps {
@@ -32,31 +32,30 @@ export interface CodaraCliAppProps {
   modelAlias: string;
   initialPrompt?: string;
   startupMessage?: string;
-  hilAutoActions?: CliHilAutoAction[];
+  reviewAutoActions?: CliReviewAutoAction[];
   autoExitOnSettledPrompt?: boolean;
   reopenSession?: (sessionId: string) => Promise<void>;
   openFile?: (targetPath: string) => Promise<boolean>;
 }
 
-export type CliForegroundSurface = 'hil' | 'transcript' | 'welcome';
+export type CliForegroundSurface = 'transcript' | 'welcome';
 
 export function resolveCliForegroundSurface(input: {
-  hasHilReview: boolean;
+  hasReview: boolean;
   hasConversation: boolean;
 }): CliForegroundSurface {
-  if (input.hasHilReview) {
-    return 'hil';
+  if (input.hasConversation || input.hasReview) {
+    return 'transcript';
   }
-
-  return input.hasConversation ? 'transcript' : 'welcome';
+  return 'welcome';
 }
 
-export function isFloatingHilReview(review: CliHilReviewState | undefined): boolean {
+export function isFloatingReview(review: CliReviewState | undefined): boolean {
   return Boolean(review);
 }
 
 export function shouldShowPromptFrame(input: {
-  hilReview?: CliHilReviewState;
+  review?: CliReviewState;
   hasCommandOutput: boolean;
   hasCompletion: boolean;
   hasSessionPicker: boolean;
@@ -65,7 +64,7 @@ export function shouldShowPromptFrame(input: {
     return false;
   }
 
-  return !input.hilReview;
+  return input.review?.blockingScope !== 'session';
 }
 
 export function shouldShowTaskPanel(input: {
@@ -92,14 +91,14 @@ export function shouldShowFloatingTaskPanel(input: {
 }
 
 export function shouldShowActivityLine(input: {
-  hilReview?: CliHilReviewState;
+  review?: CliReviewState;
   runStateStatus: 'idle' | 'running' | 'paused' | 'done' | 'error';
   latestRuntimeEventKind?: CodaraRuntimeEvent['kind'];
   activeItems: readonly TranscriptItem[];
   activeTaskCount?: number;
   pausedTaskCount?: number;
 }): boolean {
-  if (input.hilReview) {
+  if (input.review) {
     return false;
   }
 
@@ -126,7 +125,7 @@ export function CodaraCliApp(props: CodaraCliAppProps): React.JSX.Element {
     initialPrompt,
     modelAlias,
     startupMessage,
-    hilAutoActions,
+    reviewAutoActions,
     autoExitOnSettledPrompt = false,
     reopenSession,
     openFile,
@@ -156,7 +155,7 @@ export function CodaraCliApp(props: CodaraCliAppProps): React.JSX.Element {
     codara,
     initialPrompt,
     startupMessage,
-    hilAutoActions,
+    reviewAutoActions,
     reopenSession,
     openFile,
     onShowSessionPicker: sessionPicker.show,
@@ -165,7 +164,7 @@ export function CodaraCliApp(props: CodaraCliAppProps): React.JSX.Element {
   const layoutMode = resolveCliLayoutMode(terminalWidth);
   const activeTasks = useActiveTasks({
     taskRunSummaries: codara.getTaskRunSummaries(),
-    approvals: codara.getApprovalSummaries(),
+    reviews: codara.listReviewItems(),
   });
   const listCommands = React.useCallback(() => codara.listCommands(), [codara]);
   const completion = useCommandCompletion({
@@ -185,23 +184,24 @@ export function CodaraCliApp(props: CodaraCliAppProps): React.JSX.Element {
   const [frozenTip] = useState(() => TIPS[Math.floor(Math.random() * TIPS.length)]!);
 
   const hasInitialPrompt = Boolean(initialPrompt?.trim());
-  const hasHilReview = Boolean(shell.hilReview);
-  const floatingHilReview = isFloatingHilReview(shell.hilReview) ? shell.hilReview : undefined;
+  const hasReview = Boolean(shell.review);
+  const reviewBlocksSession = shell.review?.blockingScope === 'session';
+  const floatingReview = isFloatingReview(shell.review) ? shell.review : undefined;
   const hasBlockingOverlay = Boolean(
     shell.commandOutput
     || completion.completion.visible
     || sessionPicker.state.visible
   );
   const showPromptFrame = shouldShowPromptFrame({
-    hilReview: shell.hilReview,
+    review: shell.review,
     hasCommandOutput: Boolean(shell.commandOutput),
     hasCompletion: completion.completion.visible,
     hasSessionPicker: sessionPicker.state.visible,
   });
 
   usePromptInput({
-    interactive: !hasHilReview && !sessionPicker.state.visible && !(autoExitOnSettledPrompt && hasInitialPrompt),
-    disabled: hasHilReview || sessionPicker.state.visible || shell.runState.status === 'running',
+    interactive: shell.inputTarget === 'prompt' && !sessionPicker.state.visible && !(autoExitOnSettledPrompt && hasInitialPrompt),
+    disabled: reviewBlocksSession || shell.inputTarget !== 'prompt' || sessionPicker.state.visible || shell.runState.status === 'running',
     onInsertText: shell.insertText,
     onInsertNewline: shell.insertNewline,
     onBackspace: shell.backspace,
@@ -237,6 +237,7 @@ export function CodaraCliApp(props: CodaraCliAppProps): React.JSX.Element {
     },
     onToggleTaskPanel: shell.toggleTaskPanel,
     onToggleExpand: shell.toggleExpand,
+    onFocusReview: hasReview ? shell.focusReviewWindow : undefined,
     onTab: () => {
       if (completion.completion.visible) {
         const accepted = completion.accept();
@@ -247,24 +248,25 @@ export function CodaraCliApp(props: CodaraCliAppProps): React.JSX.Element {
     },
   });
 
-  useHilInput({
-    active: hasHilReview,
-    disabled: shell.hilReview?.busy ?? false,
-    permissionStage: isPermissionReview(shell.hilReview) ? (shell.hilReview?.permissionStage ?? 'prompt') : undefined,
-    onMoveLeft: shell.moveHilLeft,
-    onMoveRight: shell.moveHilRight,
-    onSelectPrevious: shell.selectPreviousHilAction,
-    onSelectNext: shell.selectNextHilAction,
-    onSelectPreviousApproval: shell.selectPreviousApproval,
-    onSelectNextApproval: shell.selectNextApproval,
-    onToggleFocus: shell.toggleHilFocus,
-    onActivateSelection: shell.activateHilSelection,
-    onInsertText: shell.insertHilText,
-    onInsertNewline: shell.insertHilNewline,
-    onBackspace: shell.backspaceHilInput,
-    onSubmit: shell.submitHilAction,
+  useReviewInput({
+    active: hasReview && shell.inputTarget === 'review',
+    disabled: shell.review?.busy ?? false,
+    permissionStage: isPermissionReview(shell.review) ? (shell.review?.permissionStage ?? 'prompt') : undefined,
+    onMoveLeft: shell.moveReviewLeft,
+    onMoveRight: shell.moveReviewRight,
+    onSelectPrevious: shell.selectPreviousReviewAction,
+    onSelectNext: shell.selectNextReviewAction,
+    onSelectPreviousReview: shell.selectPreviousReview,
+    onSelectNextReview: shell.selectNextReview,
+    onToggleFocus: shell.toggleReviewFocus,
+    onActivateSelection: shell.activateReviewSelection,
+    onInsertText: shell.insertReviewText,
+    onInsertNewline: shell.insertReviewNewline,
+    onBackspace: shell.backspaceReviewInput,
+    onSubmit: shell.submitReviewAction,
     onExit: exit,
-    onQuickAction: isPermissionReview(shell.hilReview) ? shell.quickHilAction : undefined,
+    onQuickAction: isPermissionReview(shell.review) ? shell.quickReviewAction : undefined,
+    onToggleInputTarget: shell.focusPromptWindow,
     onPermissionBack: shell.permissionBack,
     onPermissionConfirm: shell.permissionConfirm,
     onPermissionRejectSend: shell.permissionRejectSend,
@@ -285,14 +287,14 @@ export function CodaraCliApp(props: CodaraCliAppProps): React.JSX.Element {
       || !shell.hasConversation
       || shell.runState.status === 'running'
       || shell.runState.status === 'paused'
-      || shell.hilReview?.busy
+      || shell.review?.busy
     ) {
       return;
     }
 
     const timer = setTimeout(() => exit(), 50);
     return () => clearTimeout(timer);
-  }, [autoExitOnSettledPrompt, exit, hasInitialPrompt, shell.hasConversation, shell.hilReview?.busy, shell.runState.status]);
+  }, [autoExitOnSettledPrompt, exit, hasInitialPrompt, shell.hasConversation, shell.review?.busy, shell.runState.status]);
 
   return (
       <Box flexDirection="column" paddingX={1}>
@@ -313,7 +315,7 @@ export function CodaraCliApp(props: CodaraCliAppProps): React.JSX.Element {
         {/* Activity / Prompt / Status */}
         <>
             {shouldShowActivityLine({
-              hilReview: shell.hilReview,
+              review: shell.review,
               runStateStatus: shell.runState.status,
               latestRuntimeEventKind: shell.latestRuntimeEvent?.kind,
               activeItems,
@@ -370,9 +372,9 @@ export function CodaraCliApp(props: CodaraCliAppProps): React.JSX.Element {
                 </Box>
               </Box>
             )}
-            {floatingHilReview && !shell.commandOutput && !completion.completion.visible && !sessionPicker.state.visible && (
+            {floatingReview && !shell.commandOutput && !completion.completion.visible && !sessionPicker.state.visible && (
               <Box marginTop={1}>
-                <HilPanel review={floatingHilReview} presentation="floating" />
+                <ReviewPanel review={floatingReview} presentation="floating" />
               </Box>
             )}
             <CompletionMenu completion={completion.completion} terminalWidth={terminalWidth} />

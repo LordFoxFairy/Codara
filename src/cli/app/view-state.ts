@@ -1,8 +1,10 @@
 import type {PauseRequest, PauseUIActionOption, PauseUIFormOption, PauseUIFormTab} from '@core/agent';
+import type {ReviewBlockingScope} from '../../codara/types';
 import type {PermissionStage} from '../components/permission/types';
 
 export type CliStatus = 'idle' | 'running' | 'paused' | 'done' | 'error';
-export type CliHilAnswerValue = string | string[];
+export type CliReviewAnswerValue = string | string[];
+export type CliInputTarget = 'prompt' | 'review';
 
 export interface CliRunState {
   status: CliStatus;
@@ -29,39 +31,40 @@ export interface CliActiveTurn {
   streamingTokens?: { input: number; output: number };
 }
 
-export type CliHilFocus = 'actions' | 'input';
+export type CliReviewFocus = 'actions' | 'input';
 
-export interface CliHilReviewAction extends PauseUIActionOption {
+export interface CliReviewAction extends PauseUIActionOption {
   kind: 'primary' | 'secondary' | 'danger';
 }
 
-export type CliHilFormOption = PauseUIFormOption;
+export type CliReviewFormOption = PauseUIFormOption;
 
-export type CliHilFormTab = Omit<PauseUIFormTab, 'options'> & {
-  options: CliHilFormOption[];
+export type CliReviewFormTab = Omit<PauseUIFormTab, 'options'> & {
+  options: CliReviewFormOption[];
 };
 
-export interface CliHilFormState {
+export interface CliReviewFormState {
   summary?: string;
-  tabs: CliHilFormTab[];
+  tabs: CliReviewFormTab[];
   activeTabIndex: number;
-  answers: Record<string, CliHilAnswerValue>;
+  answers: Record<string, CliReviewAnswerValue>;
   endStep?: boolean;
 }
 
-export interface CliHilReviewState {
+export interface CliReviewState {
   request: PauseRequest;
-  actions: CliHilReviewAction[];
+  blockingScope: ReviewBlockingScope;
+  actions: CliReviewAction[];
   selectedActionIndex: number;
-  focus: CliHilFocus;
+  focus: CliReviewFocus;
   draft: string;
   busy: boolean;
   validationMessage?: string;
-  form?: CliHilFormState;
+  form?: CliReviewFormState;
   /** Permission three-stage flow state */
   permissionStage?: PermissionStage;
   /** Always-pattern candidates for permission stage 2 */
   permissionAlwaysPatterns?: string[];
-  approvalIndex?: number;
-  approvalCount?: number;
+  reviewIndex?: number;
+  reviewCount?: number;
 }

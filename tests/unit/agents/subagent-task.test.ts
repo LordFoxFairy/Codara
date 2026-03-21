@@ -95,7 +95,7 @@ async function waitForTaskRunStatus(
 }
 
 describe('task delegation + task store', () => {
-  it('主代理创建的 shared task 应能被默认 delegated child 读取到', async () => {
+  it('主代理创建的 shared task 应能被 Agent 基础 child 读取到', async () => {
     const store = createTaskMemoryStore();
     const runStore = createTaskRunMemoryStore();
     const parentModel = new ScriptedModel([
@@ -115,7 +115,7 @@ describe('task delegation + task store', () => {
         tool_calls: [{
           id: 'call_task_delegate_default',
           name: TASK_TOOL_NAME,
-          args: {prompt: 'Inspect shared tasks'},
+          args: {prompt: 'Inspect shared tasks', subagent_type: 'Agent'},
         } as ToolCall],
       }),
       new AIMessage('parent_done'),
@@ -176,7 +176,7 @@ describe('task delegation + task store', () => {
           name: TASK_TOOL_NAME,
           args: {
             prompt: 'Inspect shared tasks',
-            subagent_type: 'general-purpose',
+            subagent_type: 'Agent',
           },
         } as ToolCall],
       }),
@@ -212,9 +212,75 @@ describe('task delegation + task store', () => {
     expect(launch).toMatchObject({
       type: 'task_run_started',
       runId: 'call_task_delegate_formal',
-      agentName: 'general-purpose',
+      agentName: 'Agent',
       sessionId: expect.any(String),
     });
     expect(completed?.summary).toContain('shared_tasks_visible:true');
+  });
+
+  it('应在同一个 parent response 中同时执行 shared task coordination 和多个 delegated Task', async () => {
+    const store = createTaskMemoryStore();
+    const runStore = createTaskRunMemoryStore();
+    const parentModel = new ScriptedModel([
+      new AIMessage({
+        content: '',
+        tool_calls: [
+          {
+            id: 'call_task_create_mixed',
+            name: TASK_CREATE_TOOL_NAME,
+            args: {
+              subject: 'Coordinate release work',
+              description: 'Track planning and implementation delegates',
+            },
+          } as ToolCall,
+          {
+            id: 'call_task_delegate_mixed_1',
+            name: TASK_TOOL_NAME,
+            args: {
+              prompt: 'Inspect shared tasks',
+              subagent_type: 'Agent',
+            },
+          } as ToolCall,
+          {
+            id: 'call_task_delegate_mixed_2',
+            name: TASK_TOOL_NAME,
+            args: {
+              prompt: 'Inspect shared tasks again',
+              subagent_type: 'Agent',
+            },
+          } as ToolCall,
+        ],
+      }),
+      new AIMessage('this response should not be consumed after delegation'),
+    ]) as unknown as BaseChatModel;
+
+    const taskCreateTool = createTaskCreateTool({store});
+    const taskListTool = createTaskListTool({store});
+    const taskTool = createTaskTool({
+      model: new SharedTaskReaderModel() as unknown as BaseChatModel,
+      tools: [taskListTool],
+      runStore,
+    });
+
+    const parent = createAgent({
+      model: parentModel,
+      middleware: [createSkillsMiddleware({store: createBuiltinSubagentStore(), loadRuntime: loadSkillsRuntimeData})],
+      tools: [taskCreateTool, taskTool],
+    });
+
+    const result = await parent.invoke({messages: [new HumanMessage('Coordinate release work')]});
+    const records = await store.list();
+    const firstRun = await waitForTaskRunStatus(runStore, 'call_task_delegate_mixed_1', 'completed');
+    const secondRun = await waitForTaskRunStatus(runStore, 'call_task_delegate_mixed_2', 'completed');
+
+    expect(result.reason).toBe('complete');
+    expect(records).toEqual([
+      expect.objectContaining({
+        subject: 'Coordinate release work',
+        description: 'Track planning and implementation delegates',
+      }),
+    ]);
+    expect(firstRun.summary).toContain('shared_tasks_visible:true');
+    expect(secondRun.summary).toContain('shared_tasks_visible:true');
   });
 });

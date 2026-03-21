@@ -145,12 +145,12 @@ describe('GatewayRouter', () => {
 
     test('matches binding by channel + group', () => {
       const config = makeConfig({
-        bindings: [{channel: 'telegram', group: 'group1', profile: 'team'}],
+        bindings: [{channel: 'telegram', group: 'group1', profile: 'group-profile'}],
       });
       const router = createGatewayRouter(config);
       expect(
         router.resolveProfile(makeMsg({peer: {kind: 'group', id: 'group1'}})),
-      ).toBe('team');
+      ).toBe('group-profile');
     });
 
     test('skips non-matching binding', () => {

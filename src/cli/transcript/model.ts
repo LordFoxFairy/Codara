@@ -7,11 +7,12 @@ import {readDelegatedAgentResult} from '@shared/delegation-result';
 import {readTaskRunLaunchResult} from '@shared/task-run-launch';
 import {readSharedTaskCoordinationArtifact} from '@shared/task-coordination-result';
 import {TOOL_NAMES} from '@shared/tool-display';
+import {formatSubagentDisplayName, normalizeSubagentType} from '@context/skills/runtime-shared';
 import type {CliActiveTurn, CliNotice} from '../app/view-state';
 import {formatTokenCount} from '../utils/format';
 import {computeEditDiff, type DiffData} from './diff-compute';
 
-export type TranscriptRole = 'system' | 'warning' | 'user' | 'assistant' | 'tool' | 'task' | 'hil' | 'command' | 'error';
+export type TranscriptRole = 'system' | 'warning' | 'user' | 'assistant' | 'tool' | 'task' | 'review' | 'command' | 'error';
 
 export interface SolidifiedItem {
   id: string;
@@ -301,7 +302,7 @@ function buildRuntimeEventItems(events: readonly CodaraRuntimeEvent[], nowTimest
   // Second pass: pair end events with start events, build items
   const pairedTaskEnds: Array<{startEvent: CodaraRuntimeEvent; endEvent: CodaraRuntimeEvent}> = [];
   for (const event of events) {
-    if (event.kind === 'turn' || event.kind === 'model' || event.kind === 'team' || shouldHideRuntimeEvent(event)) {
+    if (event.kind === 'turn' || event.kind === 'model' || shouldHideRuntimeEvent(event)) {
       continue;
     }
 
@@ -340,7 +341,7 @@ function buildRuntimeEventItems(events: readonly CodaraRuntimeEvent[], nowTimest
       const startEvent = startEvents.get(event.parentId);
       if (startEvent) {
         const rawToolName = (startEvent.detail ?? '').trim();
-        if (TEAM_SURFACE_TOOL_NAMES.has(rawToolName) || rawToolName === TODO_TOOL_NAME) {
+        if (rawToolName === TODO_TOOL_NAME) {
           pairedEndIds.add(event.id);
           continue;
         }
@@ -415,7 +416,7 @@ function buildRuntimeEventItems(events: readonly CodaraRuntimeEvent[], nowTimest
       continue;
     }
     const wasPaired = events.some(
-      (e) => e.phase === 'end' && e.parentId === id && (e.kind === 'tool' || e.kind === 'task' || e.kind === 'team'),
+      (e) => e.phase === 'end' && e.parentId === id && (e.kind === 'tool' || e.kind === 'task'),
     );
     if (wasPaired) {
       continue;
@@ -561,9 +562,7 @@ function extractSubagentType(label: string): string {
   // "Delegating Plan: some description" → "Plan"
   const match = label.match(/^Delegating\s+([\w-]+)/);
   if (!match) return 'Task';
-  const type = match[1]!;
-  if (type === 'general-purpose') return 'Agent';
-  return type.charAt(0).toUpperCase() + type.slice(1);
+  return formatSubagentDisplayName(match[1]!);
 }
 
 /** Extract just the description (without agent type prefix) for toolMeta.args. */
@@ -659,11 +658,6 @@ function buildToolOutput(
   }
 
   const trimmed = detail?.trim() ?? '';
-  const compactTeamSummary = buildCompactTeamToolSummary(toolName, trimmed);
-  if (compactTeamSummary) {
-    return {summaryLine: compactTeamSummary};
-  }
-
   switch (toolName) {
     case TOOL_NAMES.WRITE_FILE:
     case TOOL_NAMES.WRITE: {
@@ -701,100 +695,6 @@ function buildToolOutput(
       const lines = truncateOutput(trimmed);
       return {summaryLine: lines.visible[0] ?? 'Done', outputLines: lines.visible.slice(1), allOutputLines: lines.all.slice(1), totalOutputLines: lines.total};
     }
-  }
-}
-
-function buildCompactTeamToolSummary(toolName: string, detail: string): string | undefined {
-  if (!detail || !TEAM_SURFACE_TOOL_NAMES.has(toolName)) {
-    return undefined;
-  }
-
-  const parsed = parseJsonValue(detail);
-  if (!parsed) {
-    return undefined;
-  }
-
-  if (Array.isArray(parsed)) {
-    if (toolName === 'list_teams') {
-      return parsed.length === 0 ? 'No teams' : `Found ${parsed.length} team${parsed.length === 1 ? '' : 's'}`;
-    }
-    if (toolName === 'team_plan_jobs') {
-      return `Planned ${parsed.length} job${parsed.length === 1 ? '' : 's'}`;
-    }
-    return undefined;
-  }
-
-  const record = parsed as Record<string, unknown>;
-  const error = asString(record.error);
-  if (error) {
-    return error;
-  }
-
-  switch (toolName) {
-    case 'create_team':
-      return asString(record.name) ? `Created team "${asString(record.name)}"` : 'Created team';
-    case 'spawn_teammate': {
-      const name = asString(record.name);
-      const role = asString(record.role);
-      return name && role ? `${name} joined as ${role}` : name ? `${name} joined` : 'Spawned teammate';
-    }
-    case 'team_status': {
-      const team = record.team as Record<string, unknown> | undefined;
-      const name = asString(team?.name);
-      const members = Array.isArray(record.members) ? record.members.length : 0;
-      const jobs = Array.isArray(record.jobs) ? record.jobs.length : 0;
-      return name ? `${name} · ${members} members · ${jobs} jobs` : 'Fetched team status';
-    }
-    case 'send_message': {
-      const sentTo = asString(record.sentTo);
-      return sentTo ? `Sent message to ${sentTo}` : 'Sent message';
-    }
-    case 'plan_jobs': {
-      const planned = typeof record.planned === 'number' ? record.planned : undefined;
-      return typeof planned === 'number' ? `Planned ${planned} job${planned === 1 ? '' : 's'}` : 'Planned jobs';
-    }
-    case 'assign_job': {
-      const jobId = asString(record.jobId);
-      const memberId = asString(record.memberId);
-      if (jobId && memberId) {
-        return `Assigned ${jobId} to ${memberId}`;
-      }
-      return 'Assigned job';
-    }
-    case 'review_job': {
-      const approved = typeof record.approved === 'boolean' ? record.approved : undefined;
-      const jobId = asString(record.jobId);
-      const verdict = approved === false ? 'Rejected' : 'Reviewed';
-      return jobId ? `${verdict} ${jobId}` : verdict;
-    }
-    case 'shutdown_team':
-    case 'team_shutdown':
-      return 'Shut down team';
-    case 'team_plan_jobs':
-      return 'Planned jobs';
-    case 'team_spawn_member': {
-      const name = asString(record.name);
-      const role = asString(record.role);
-      return name && role ? `${name} joined as ${role}` : name ? `${name} joined` : 'Spawned teammate';
-    }
-    case 'team_assign_job': {
-      const jobId = asString(record.jobId);
-      const memberId = asString(record.memberId);
-      return jobId && memberId ? `Assigned ${jobId} to ${memberId}` : 'Assigned job';
-    }
-    case 'team_review_job': {
-      const approved = typeof record.approved === 'boolean' ? record.approved : undefined;
-      const jobId = asString(record.jobId);
-      const verdict = approved === false ? 'Rejected' : 'Reviewed';
-      return jobId ? `${verdict} ${jobId}` : verdict;
-    }
-    case 'team_send_message':
-    case 'team_broadcast':
-      return 'Sent message';
-    case 'team_report':
-      return 'Reported to leader';
-    default:
-      return undefined;
   }
 }
 
@@ -838,7 +738,7 @@ function mapRuntimeEventRole(kind: CodaraRuntimeEvent['kind']): TranscriptRole {
     case 'task':
       return 'task';
     case 'hil':
-      return 'hil';
+      return 'review';
     case 'command':
     case 'summary':
       return 'command';
@@ -925,8 +825,6 @@ function buildAssistantItems(
   if (
     text
     && !shouldSuppressSolidifiedTaskLaunchChatter(message, previousMessage, toolLookup)
-    && !messageContainsTeamSurfaceToolCall(message)
-    && !containsTeamLaunchChatter(text)
   ) {
     items.push({
       id: messageId,
@@ -956,30 +854,8 @@ function containsTaskLaunchChatter(text: string): boolean {
   return launchChatterSignals.some((signal) => text.includes(signal));
 }
 
-function containsTeamLaunchChatter(text: string): boolean {
-  const teamLaunchChatterSignals = [
-    '我将立即在当前团队中组织',
-    '已启动团队协作分析',
-    '待所有 workers 完成后',
-    '只读 workers 已开始工作',
-    '当前会话 main agent',
-    'Workers: 3',
-    'Leader: 当前会话 main agent',
-  ];
-
-  return teamLaunchChatterSignals.some((signal) => text.includes(signal));
-}
-
 function messageContainsTaskToolCall(message: AIMessage): boolean {
   return Array.isArray(message.tool_calls) && message.tool_calls.some((toolCall) => isTaskToolName(toolCall?.name));
-}
-
-function messageContainsTeamSurfaceToolCall(message: AIMessage): boolean {
-  return Array.isArray(message.tool_calls)
-    && message.tool_calls.some((toolCall) => {
-      const name = typeof toolCall?.name === 'string' ? toolCall.name.trim() : '';
-      return TEAM_SURFACE_TOOL_NAMES.has(name);
-    });
 }
 
 function readTokenAnnotation(message: AIMessage): string | undefined {
@@ -1043,9 +919,6 @@ function buildToolResultItems(
       content: `${taskMeta.icon} ${taskMeta.displayName}(${taskMeta.args ?? ''})\n${taskMeta.summaryLine}`,
       toolMeta: taskMeta,
     }];
-  }
-  if (resolvedName && TEAM_SURFACE_TOOL_NAMES.has(resolvedName)) {
-    return [];
   }
   const role: TranscriptRole = 'tool';
   const formattedContent = text;
@@ -1134,14 +1007,11 @@ function buildTaskToolMetaFromCoreMessage(
 }
 
 function formatTaskToolAgentName(toolCall: ToolCall | undefined): string {
-  const subagentType = readTaskToolArg(toolCall?.args, 'subagent_type');
+  const subagentType = normalizeSubagentType(readTaskToolArg(toolCall?.args, 'subagent_type'));
   if (!subagentType) {
-    return 'Task';
-  }
-  if (subagentType === 'general-purpose') {
     return 'Agent';
   }
-  return subagentType.charAt(0).toUpperCase() + subagentType.slice(1);
+  return formatSubagentDisplayName(subagentType);
 }
 
 function formatTaskToolPrompt(toolCall: ToolCall | undefined): string | undefined {
@@ -1227,9 +1097,6 @@ function shouldHideRuntimeEvent(event: CodaraRuntimeEvent): boolean {
   }
 
   const rawToolName = (event.detail ?? '').trim();
-  if (TEAM_SURFACE_TOOL_NAMES.has(rawToolName)) {
-    return true;
-  }
   if (rawToolName === TODO_TOOL_NAME) {
     return true;
   }
@@ -1423,14 +1290,6 @@ function asString(value: unknown): string | undefined {
   }
   const trimmed = value.trim();
   return trimmed || undefined;
-}
-
-function parseJsonValue(value: string): unknown {
-  try {
-    return JSON.parse(value);
-  } catch {
-    return undefined;
-  }
 }
 
 function limitSummary(value: string | undefined, maxLength = 72): string | undefined {

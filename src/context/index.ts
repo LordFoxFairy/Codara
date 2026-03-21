@@ -66,7 +66,8 @@ export type {
   SubagentDefinitionHints,
 } from '@context/skills/contracts';
 export {
+  AGENT_SUBAGENT_TYPE,
+  isReservedSubagentName,
   readSkillsRuntimeData,
   resolveSubagentDefinition,
-  DEFAULT_SUBAGENT_TYPE,
 } from '@context/skills/runtime-shared';

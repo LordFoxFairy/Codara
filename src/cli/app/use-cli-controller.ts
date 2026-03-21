@@ -1,6 +1,6 @@
 import {randomUUID} from 'node:crypto';
 import {useCallback, useEffect, useMemo, useRef, useState} from 'react';
-import type {ApprovalQuerySummary, Codara, CodaraRuntimeEvent, SessionState, TaskRunQuerySummary} from '@/index';
+import type {Codara, CodaraRuntimeEvent, SessionState, TaskRunQuerySummary} from '@/index';
 import {AIMessageChunk, type BaseMessage} from '@langchain/core/messages';
 import {
   backspaceComposerText,
@@ -18,34 +18,35 @@ import {
 import type {CliComposerState} from '../composer/types';
 import {hasTranscriptContent} from '../transcript/model';
 import {
-  activateCliHilFocusedSelection,
-  advanceCliHilToNextStep,
-  applyCliHilFormShortcut,
-  confirmCliHilFocusedSelection,
-  prepareCliHilDraftInput,
-  prepareCliHilSubmission,
-  selectNextCliHilTab,
-  selectNextCliHilAction,
-  selectPreviousCliHilTab,
-  selectPreviousCliHilAction,
-  syncCliHilReviewState,
-  toggleCliHilFocus,
-  updateCliHilDraft,
+  activateCliReviewFocusedSelection,
+  advanceCliReviewToNextStep,
+  applyCliReviewFormShortcut,
+  confirmCliReviewFocusedSelection,
+  prepareCliReviewDraftInput,
+  prepareCliReviewSubmission,
+  selectNextCliReviewTab,
+  selectNextCliReviewAction,
+  selectPreviousCliReviewTab,
+  selectPreviousCliReviewAction,
+  toggleCliReviewFocus,
+  updateCliReviewDraft,
   setPermissionStage,
-  type CliHilAutoAction,
-} from './hil-review';
-import type {CliActiveTurn, CliHilReviewState, CliNotice, CliRunState} from './view-state';
+  type CliReviewAutoAction,
+} from './review-state';
+import {appendInteractionText, applyInteractionChunkToTurn} from './interaction-turn';
+import {readCliReviewProjection, syncProjectedReview} from './runtime-projection';
+import type {CliActiveTurn, CliInputTarget, CliReviewState, CliNotice, CliRunState} from './view-state';
 
 const STARTUP_MESSAGE = '';
-const HIL_AUTO_ACTION_DELAY_MS = 30;
-const APPROVAL_QUEUE_HANDOFF_TIMEOUT_MS = 500;
-const APPROVAL_QUEUE_HANDOFF_POLL_MS = 10;
+const REVIEW_AUTO_ACTION_DELAY_MS = 30;
+const REVIEW_QUEUE_HANDOFF_TIMEOUT_MS = 500;
+const REVIEW_QUEUE_HANDOFF_POLL_MS = 10;
 
 export interface UseCliControllerOptions {
   codara: Codara;
   initialPrompt?: string;
   startupMessage?: string;
-  hilAutoActions?: CliHilAutoAction[];
+  reviewAutoActions?: CliReviewAutoAction[];
   reopenSession?: (sessionId: string) => Promise<void>;
   openFile?: (targetPath: string) => Promise<boolean>;
   onShowSessionPicker?: () => void;
@@ -59,12 +60,13 @@ export interface CliController {
   dismissCommandOutput: () => void;
   scrollCommandOutput: (delta: number) => void;
   activeTurn?: CliActiveTurn;
-  hilReview?: CliHilReviewState;
+  review?: CliReviewState;
   coreMessages: readonly BaseMessage[];
   runtimeEvents: readonly CodaraRuntimeEvent[];
   latestRuntimeEvent?: CodaraRuntimeEvent;
   hasConversation: boolean;
   runState: CliRunState;
+  inputTarget: CliInputTarget;
   sessionState: SessionState;
   taskPanelVisible: boolean;
   toggleTaskPanel: () => void;
@@ -82,19 +84,21 @@ export interface CliController {
   moveCursorEnd: () => void;
   submitDraft: () => void;
   submitText: (text: string) => void;
-  moveHilLeft: () => void;
-  moveHilRight: () => void;
-  selectPreviousHilAction: () => void;
-  selectNextHilAction: () => void;
-  selectPreviousApproval: () => void;
-  selectNextApproval: () => void;
-  toggleHilFocus: () => void;
-  activateHilSelection: () => void;
-  insertHilText: (input: string) => void;
-  insertHilNewline: () => void;
-  backspaceHilInput: () => void;
-  submitHilAction: () => void;
-  quickHilAction: (actionId: string) => void;
+  focusReviewWindow: () => void;
+  focusPromptWindow: () => void;
+  moveReviewLeft: () => void;
+  moveReviewRight: () => void;
+  selectPreviousReviewAction: () => void;
+  selectNextReviewAction: () => void;
+  selectPreviousReview: () => void;
+  selectNextReview: () => void;
+  toggleReviewFocus: () => void;
+  activateReviewSelection: () => void;
+  insertReviewText: (input: string) => void;
+  insertReviewNewline: () => void;
+  backspaceReviewInput: () => void;
+  submitReviewAction: () => void;
+  quickReviewAction: (actionId: string) => void;
   permissionBack: () => void;
   permissionConfirm: () => void;
   permissionRejectSend: () => void;
@@ -107,22 +111,6 @@ function shouldRefreshAuxiliaryState(event: CodaraRuntimeEvent): boolean {
 
 function isDelegatedTaskReviewPause(event: CodaraRuntimeEvent): boolean {
   return event.kind === 'task' && event.phase === 'update' && event.status === 'paused';
-}
-
-function applyApprovalMetadata(
-  review: CliHilReviewState | undefined,
-  approvals: readonly ApprovalQuerySummary[],
-): CliHilReviewState | undefined {
-  if (!review) {
-    return undefined;
-  }
-
-  const currentIndex = approvals.findIndex((approval) => approval.approvalId === review.request.id);
-  return {
-    ...review,
-    approvalIndex: currentIndex >= 0 ? currentIndex + 1 : undefined,
-    approvalCount: approvals.length > 0 ? approvals.length : undefined,
-  };
 }
 
 function summarizeBackgroundTaskNotice(event: CodaraRuntimeEvent): CliNotice | undefined {
@@ -261,12 +249,25 @@ function deriveRunStateFromAgentState(nextAgentState: {status: string; pendingPa
     : {status: 'done'};
 }
 
+function resolveInputTarget(
+  current: CliInputTarget,
+  review: CliReviewState | undefined,
+): CliInputTarget {
+  if (!review) {
+    return 'prompt';
+  }
+  if (review.blockingScope === 'session') {
+    return 'review';
+  }
+  return current;
+}
+
 export function useCliController(options: UseCliControllerOptions): CliController {
   const {
     codara,
     initialPrompt = '',
     startupMessage = STARTUP_MESSAGE,
-    hilAutoActions = [],
+    reviewAutoActions = [],
     reopenSession,
     openFile,
     onShowSessionPicker,
@@ -286,7 +287,8 @@ export function useCliController(options: UseCliControllerOptions): CliControlle
   const [composerActivityVersion, setComposerActivityVersion] = useState(0);
   const [notices, setNotices] = useState<CliNotice[]>(initialNotices);
   const [activeTurn, setActiveTurn] = useState<CliActiveTurn | undefined>();
-  const [hilReview, setHilReview] = useState<CliHilReviewState | undefined>();
+  const [review, setReview] = useState<CliReviewState | undefined>();
+  const [inputTarget, setInputTarget] = useState<CliInputTarget>('prompt');
   const [coreMessages, setCoreMessages] = useState<readonly BaseMessage[]>([]);
   const [runtimeEvents, setRuntimeEvents] = useState<readonly CodaraRuntimeEvent[]>([]);
   const [runState, setRunState] = useState<CliRunState>({status: 'idle'});
@@ -297,16 +299,16 @@ export function useCliController(options: UseCliControllerOptions): CliControlle
   const isRunningRef = useRef(false);
   const initialPromptSentRef = useRef(false);
   const initialCoreStateLoadedRef = useRef(false);
-  const hilReviewRef = useRef<CliHilReviewState | undefined>(undefined);
-  const autoActionsRef = useRef([...hilAutoActions]);
+  const reviewRef = useRef<CliReviewState | undefined>(undefined);
+  const autoActionsRef = useRef([...reviewAutoActions]);
   const handledAutoPauseIdsRef = useRef<Set<string>>(new Set());
   const pendingBackgroundNoticesRef = useRef<CliNotice[]>([]);
   const trackedTaskBatchRef = useRef<TrackedTaskBatch | undefined>(undefined);
   const pendingTaskContinuationRef = useRef<TaskCompletionContinuation | undefined>(undefined);
 
   useEffect(() => {
-    hilReviewRef.current = hilReview;
-  }, [hilReview]);
+    reviewRef.current = review;
+  }, [review]);
 
   const appendNotice = useCallback((level: CliNotice['level'], content: string) => {
     const message = content.trim();
@@ -333,37 +335,30 @@ export function useCliController(options: UseCliControllerOptions): CliControlle
   }, [appendNotice]);
 
   const refreshAuxiliaryState = useCallback(() => {
-    const focusedApproval = codara.getFocusedApprovalReview();
-    const approvals = codara.getApprovalSummaries();
-    let foregroundPause;
-    try {
-      foregroundPause = codara.getAgentState().pendingPause;
-    } catch {
-      foregroundPause = undefined;
-    }
-
+    const projection = readCliReviewProjection(codara);
+    const nextReview = syncProjectedReview(codara, reviewRef.current, {
+      pendingPause: projection.activePause,
+    });
     setSessionState(codara.getState());
-    setHilReview((current) => applyApprovalMetadata(
-      syncCliHilReviewState(current, focusedApproval?.request ?? foregroundPause),
-      approvals,
-    ));
+    setReview(nextReview);
+    setInputTarget((current) => resolveInputTarget(current, nextReview));
   }, [codara]);
 
   const refreshCoreState = useCallback(async () => {
     const nextAgentState = await codara.hydrate();
     if (!nextAgentState.pendingPause) {
-      const queuedApprovals = codara.getApprovalSummaries();
-      if (queuedApprovals.length > 0) {
-        await codara.focusApproval(queuedApprovals[0]!.approvalId);
+      const queuedReviews = codara.listReviewItems();
+      if (queuedReviews.length > 0) {
+        await codara.focusReview(queuedReviews[0]!.reviewId);
       }
     }
-    const focusedApproval = codara.getFocusedApprovalReview();
     setCoreMessages(nextAgentState.messages);
     setSessionState(codara.getState());
-    setHilReview((current) => applyApprovalMetadata(
-      syncCliHilReviewState(current, focusedApproval?.request ?? nextAgentState.pendingPause),
-      codara.getApprovalSummaries(),
-    ));
+    const nextReview = syncProjectedReview(codara, reviewRef.current, {
+      pendingPause: nextAgentState.pendingPause,
+    });
+    setReview(nextReview);
+    setInputTarget((current) => resolveInputTarget(current, nextReview));
     return nextAgentState;
   }, [codara]);
 
@@ -386,44 +381,27 @@ export function useCliController(options: UseCliControllerOptions): CliControlle
     let sawText = false;
 
     try {
-      for await (const chunk of codara.stream(undefined, {
-        streamMode: 'messages',
+      for await (const chunk of codara.streamInteraction({
+        kind: 'continuation',
         context: {
           codaraTaskCompletion: {
             tasks: continuation.tasks,
           },
         },
+        config: {
+          streamMode: 'messages',
+        },
       })) {
         if (!AIMessageChunk.isInstance(chunk)) {
           continue;
         }
-
-        const usageMeta = chunk.usage_metadata as Record<string, unknown> | undefined;
-        if (usageMeta) {
-          const inputDelta = typeof usageMeta.input_tokens === 'number' ? usageMeta.input_tokens : 0;
-          const outputDelta = typeof usageMeta.output_tokens === 'number' ? usageMeta.output_tokens : 0;
-          if (inputDelta > 0 || outputDelta > 0) {
-            setActiveTurn((current) => {
-              if (!current) return current;
-              const prev = current.streamingTokens ?? {input: 0, output: 0};
-              return {
-                ...current,
-                streamingTokens: {
-                  input: Math.max(prev.input, inputDelta),
-                  output: Math.max(prev.output, outputDelta),
-                },
-              };
-            });
+        setActiveTurn((current) => {
+          const result = applyInteractionChunkToTurn(current, chunk);
+          if (result.sawText) {
+            sawText = true;
           }
-        }
-
-        const text = chunk.text;
-        if (!text) {
-          continue;
-        }
-
-        sawText = true;
-        setActiveTurn((current) => current ? {...current, response: current.response + text} : current);
+          return result.turn;
+        });
       }
 
       if (!sawText) {
@@ -594,50 +572,24 @@ export function useCliController(options: UseCliControllerOptions): CliControlle
 
     let sawText = false;
 
-    for await (const chunk of codara.stream(prompt, {streamMode: 'messages'})) {
+    for await (const chunk of codara.streamInteraction({
+      kind: 'prompt',
+      input: prompt,
+      config: {streamMode: 'messages'},
+    })) {
       if (!AIMessageChunk.isInstance(chunk)) {
         continue;
       }
-
-      // Extract thinking blocks (Extended Thinking / reasoning)
-      const thinkingText = extractThinkingText(chunk);
-      if (thinkingText) {
-        setActiveTurn((current) => current
-          ? {...current, thinking: (current.thinking ?? '') + thinkingText}
-          : current);
-      }
-
-      // Accumulate streaming token counts from usage_metadata
-      const usageMeta = chunk.usage_metadata as Record<string, unknown> | undefined;
-      if (usageMeta) {
-        const inputDelta = typeof usageMeta.input_tokens === 'number' ? usageMeta.input_tokens : 0;
-        const outputDelta = typeof usageMeta.output_tokens === 'number' ? usageMeta.output_tokens : 0;
-        if (inputDelta > 0 || outputDelta > 0) {
-          setActiveTurn((current) => {
-            if (!current) return current;
-            const prev = current.streamingTokens ?? {input: 0, output: 0};
-            return {
-              ...current,
-              streamingTokens: {
-                input: Math.max(prev.input, inputDelta),
-                output: Math.max(prev.output, outputDelta),
-              },
-            };
-          });
+      setActiveTurn((current) => {
+        const result = applyInteractionChunkToTurn(current, chunk, {
+          captureThinking: true,
+          detectTaskLaunch: true,
+        });
+        if (result.sawText) {
+          sawText = true;
         }
-      }
-
-      if (Array.isArray(chunk.tool_calls) && chunk.tool_calls.some((toolCall) => toolCall?.name === 'Task')) {
-        setActiveTurn((current) => current ? {...current, pendingTaskLaunch: true} : current);
-      }
-
-      const text = chunk.text;
-      if (!text) {
-        continue;
-      }
-
-      sawText = true;
-      setActiveTurn((current) => current ? {...current, response: current.response + text} : current);
+        return result.turn;
+      });
     }
 
     if (!sawText) {
@@ -801,123 +753,132 @@ export function useCliController(options: UseCliControllerOptions): CliControlle
     void submitPrompt(prompt);
   }, [submitPrompt]);
 
-  const selectPreviousHilAction = useCallback(() => {
-    setHilReview((current) => current ? selectPreviousCliHilAction(current) : current);
+  const focusReviewWindow = useCallback(() => {
+    if (!reviewRef.current) {
+      return;
+    }
+    setInputTarget('review');
   }, []);
 
-  const selectNextHilAction = useCallback(() => {
-    setHilReview((current) => current ? selectNextCliHilAction(current) : current);
+  const focusPromptWindow = useCallback(() => {
+    if (reviewRef.current?.blockingScope === 'session') {
+      return;
+    }
+    setInputTarget('prompt');
   }, []);
 
-  const shiftApprovalFocus = useCallback(async (direction: -1 | 1) => {
-    const approvals = codara.getApprovalSummaries();
-    if (approvals.length < 2) {
+  const selectPreviousReviewAction = useCallback(() => {
+    setReview((current) => current ? selectPreviousCliReviewAction(current) : current);
+  }, []);
+
+  const selectNextReviewAction = useCallback(() => {
+    setReview((current) => current ? selectNextCliReviewAction(current) : current);
+  }, []);
+
+  const shiftReviewFocus = useCallback(async (direction: -1 | 1) => {
+    const reviews = codara.listReviewItems();
+    if (reviews.length < 2) {
       return;
     }
 
-    const currentApprovalId = hilReviewRef.current?.request.id;
-    const currentIndex = approvals.findIndex((approval) => approval.approvalId === currentApprovalId);
+    const currentReviewId = reviewRef.current?.request.id;
+    const currentIndex = reviews.findIndex((review) => review.reviewId === currentReviewId);
     const baseIndex = currentIndex >= 0 ? currentIndex : 0;
-    const nextIndex = (baseIndex + direction + approvals.length) % approvals.length;
-    const nextApproval = approvals[nextIndex];
-    if (!nextApproval) {
+    const nextIndex = (baseIndex + direction + reviews.length) % reviews.length;
+    const nextReview = reviews[nextIndex];
+    if (!nextReview) {
       return;
     }
 
-    await codara.focusApproval(nextApproval.approvalId);
-    const nextAgentState = await refreshCoreState();
-    const focusedApproval = codara.getFocusedApprovalReview();
-    setHilReview((current) => applyApprovalMetadata(
-      syncCliHilReviewState(current, focusedApproval?.request ?? nextAgentState.pendingPause),
-      codara.getApprovalSummaries(),
-    ));
+    await codara.focusReview(nextReview.reviewId);
+    await refreshCoreState();
   }, [codara, refreshCoreState]);
 
-  const selectPreviousApproval = useCallback(() => {
-    void shiftApprovalFocus(-1);
-  }, [shiftApprovalFocus]);
+  const selectPreviousReview = useCallback(() => {
+    void shiftReviewFocus(-1);
+  }, [shiftReviewFocus]);
 
-  const selectNextApproval = useCallback(() => {
-    void shiftApprovalFocus(1);
-  }, [shiftApprovalFocus]);
+  const selectNextReview = useCallback(() => {
+    void shiftReviewFocus(1);
+  }, [shiftReviewFocus]);
 
-  const moveHilLeft = useCallback(() => {
-    setHilReview((current) => current?.form ? selectPreviousCliHilTab(current) : current ? toggleCliHilFocus(current) : current);
+  const moveReviewLeft = useCallback(() => {
+    setReview((current) => current?.form ? selectPreviousCliReviewTab(current) : current ? toggleCliReviewFocus(current) : current);
   }, []);
 
-  const moveHilRight = useCallback(() => {
-    setHilReview((current) => current?.form ? selectNextCliHilTab(current) : current ? toggleCliHilFocus(current) : current);
+  const moveReviewRight = useCallback(() => {
+    setReview((current) => current?.form ? selectNextCliReviewTab(current) : current ? toggleCliReviewFocus(current) : current);
   }, []);
 
-  const toggleHilFocus = useCallback(() => {
-    setHilReview((current) => current ? toggleCliHilFocus(current) : current);
+  const toggleReviewFocus = useCallback(() => {
+    setReview((current) => current ? toggleCliReviewFocus(current) : current);
   }, []);
 
-  const activateHilSelection = useCallback(() => {
-    setHilReview((current) => current ? activateCliHilFocusedSelection(current) ?? current : current);
+  const activateReviewSelection = useCallback(() => {
+    setReview((current) => current ? activateCliReviewFocusedSelection(current) ?? current : current);
     setRunState({status: 'paused'});
   }, []);
 
-  const insertHilText = useCallback((input: string) => {
-    setHilReview((current) => {
+  const insertReviewText = useCallback((input: string) => {
+    setReview((current) => {
       if (!current) {
         return current;
       }
-      const shortcut = applyCliHilFormShortcut(current, input);
+      const shortcut = applyCliReviewFormShortcut(current, input);
       if (shortcut) {
         return shortcut;
       }
       if (current.focus !== 'input') {
         return current;
       }
-      const prepared = prepareCliHilDraftInput(current) ?? current;
-      return updateCliHilDraft(prepared, prepared.draft + input);
+      const prepared = prepareCliReviewDraftInput(current) ?? current;
+      return updateCliReviewDraft(prepared, prepared.draft + input);
     });
   }, []);
 
-  const insertHilNewline = useCallback(() => {
-    setHilReview((current) => {
+  const insertReviewNewline = useCallback(() => {
+    setReview((current) => {
       if (!current || current.focus !== 'input') {
         return current;
       }
-      return updateCliHilDraft(current, `${current.draft}\n`);
+      return updateCliReviewDraft(current, `${current.draft}\n`);
     });
   }, []);
 
-  const backspaceHilInput = useCallback(() => {
-    setHilReview((current) => {
+  const backspaceReviewInput = useCallback(() => {
+    setReview((current) => {
       if (!current || current.focus !== 'input' || current.draft.length === 0) {
         return current;
       }
-      return updateCliHilDraft(current, current.draft.slice(0, -1));
+      return updateCliReviewDraft(current, current.draft.slice(0, -1));
     });
   }, []);
 
-  const submitHilAction = useCallback(async (autoAction?: CliHilAutoAction) => {
-    const review = hilReviewRef.current;
-    if (!review || isRunningRef.current) {
+  const submitReviewAction = useCallback(async (autoAction?: CliReviewAutoAction) => {
+    const currentReview = reviewRef.current ?? review;
+    if (!currentReview || isRunningRef.current) {
       return;
     }
 
-    if (!autoAction && review.form && review.focus !== 'actions') {
-      const activated = confirmCliHilFocusedSelection(review);
+    if (!autoAction && currentReview.form && currentReview.focus !== 'actions') {
+      const activated = confirmCliReviewFocusedSelection(currentReview);
       if (activated) {
-        setHilReview(activated);
+        setReview(activated);
         setRunState({status: 'paused'});
         return;
       }
     }
 
-    if (!autoAction && review.form && !review.form.endStep && review.focus === 'actions') {
-      const advanced = advanceCliHilToNextStep(review);
-      setHilReview(advanced);
+    if (!autoAction && currentReview.form && !currentReview.form.endStep && currentReview.focus === 'actions') {
+      const advanced = advanceCliReviewToNextStep(currentReview);
+      setReview(advanced);
       setRunState({status: 'paused'});
       return;
     }
 
-    const prepared = prepareCliHilSubmission(review, autoAction);
+    const prepared = prepareCliReviewSubmission(currentReview, autoAction);
     if (!prepared.payload) {
-      setHilReview(prepared.review);
+      setReview(prepared.review);
       setRunState({status: 'paused'});
       return;
     }
@@ -930,19 +891,20 @@ export function useCliController(options: UseCliControllerOptions): CliControlle
         ? prepared.review.actions.find((action) => action.id.toLowerCase() === autoAction.action.trim().toLowerCase())
         : prepared.review.actions[prepared.review.selectedActionIndex];
       if (!prepared.review.form && !isPermissionReview(prepared.review)) {
-        appendNotice('system', `HIL action: ${selectedAction?.label ?? autoAction?.action ?? 'resume'}`);
+        appendNotice('system', `Review action: ${selectedAction?.label ?? autoAction?.action ?? 'resume'}`);
       }
 
       // Use streaming resume for immediate UI feedback (like Claude Code)
-      const focusedApproval = codara.getFocusedApprovalReview();
-      const approvalMatchesCurrentReview = focusedApproval?.request.id === prepared.review.request.id;
-      if (approvalMatchesCurrentReview) {
-        const queuedApprovalCount = codara.getApprovalSummaries().length;
-        if (queuedApprovalCount <= 1) {
-          setHilReview(undefined);
+      const focusedReview = codara.getFocusedReview();
+      const reviewMatchesCurrentReview = focusedReview?.request.id === prepared.review.request.id;
+      if (reviewMatchesCurrentReview) {
+        const queuedReviewCount = codara.listReviewItems().length;
+        if (queuedReviewCount <= 1) {
+          setReview(undefined);
+          setInputTarget('prompt');
           setRunState({status: 'done'});
           isRunningRef.current = false;
-          void codara.resumeApproval(prepared.payload, {streamMode: 'messages'})
+          void codara.resumeReview(prepared.payload, {streamMode: 'messages'})
             .catch((error) => {
               reportError(error);
             })
@@ -955,37 +917,37 @@ export function useCliController(options: UseCliControllerOptions): CliControlle
           return;
         }
 
-        setHilReview((current) => current ? {...current, busy: true} : current);
+        const busyReview = reviewRef.current?.request.id === prepared.review.request.id
+          ? {...reviewRef.current, busy: true}
+          : {...prepared.review, busy: true};
+        reviewRef.current = busyReview;
+        setReview(busyReview);
         void (async () => {
           try {
-            const currentApprovalId = prepared.review.request.id;
-            void codara.resumeApproval(prepared.payload, {streamMode: 'messages'}).catch((error) => {
+            const currentReviewId = prepared.review.request.id;
+            void codara.resumeReview(prepared.payload, {streamMode: 'messages'}).catch((error) => {
               reportError(error);
             });
 
-            const deadline = Date.now() + APPROVAL_QUEUE_HANDOFF_TIMEOUT_MS;
+            const deadline = Date.now() + REVIEW_QUEUE_HANDOFF_TIMEOUT_MS;
             while (Date.now() <= deadline) {
               const nextAgentState = await refreshCoreState();
-              const approvals = codara.getApprovalSummaries();
-              const activePause = codara.getFocusedApprovalReview()?.request ?? nextAgentState.pendingPause;
-              const stillShowingCurrent = approvals.some((approval) => approval.approvalId === currentApprovalId);
+              const reviews = codara.listReviewItems();
+              const activePause = readCliReviewProjection(codara, {
+                pendingPause: nextAgentState.pendingPause,
+              }).activePause;
+              const stillShowingCurrent = reviews.some((review) => review.reviewId === currentReviewId);
               if (!stillShowingCurrent) {
-                setHilReview((current) => applyApprovalMetadata(
-                  syncCliHilReviewState(current, activePause),
-                  approvals,
-                ));
+                const nextReview = syncProjectedReview(codara, reviewRef.current, {pendingPause: activePause});
+                setReview(nextReview);
+                setInputTarget((current) => resolveInputTarget(current, nextReview));
                 setRunState(deriveRunStateFromAgentState(nextAgentState));
                 return;
               }
-              await new Promise((resolve) => setTimeout(resolve, APPROVAL_QUEUE_HANDOFF_POLL_MS));
+              await new Promise((resolve) => setTimeout(resolve, REVIEW_QUEUE_HANDOFF_POLL_MS));
             }
 
             const nextAgentState = await refreshCoreState();
-            const activePause = codara.getFocusedApprovalReview()?.request ?? nextAgentState.pendingPause;
-            setHilReview((current) => applyApprovalMetadata(
-              syncCliHilReviewState(current, activePause),
-              codara.getApprovalSummaries(),
-            ));
             setRunState(deriveRunStateFromAgentState(nextAgentState));
           } catch (error) {
             reportError(error);
@@ -1000,27 +962,28 @@ export function useCliController(options: UseCliControllerOptions): CliControlle
         return;
       }
 
-      const resumeStream = approvalMatchesCurrentReview
-        ? codara.resumeApprovalStream(prepared.payload, {streamMode: 'messages'})
-        : codara.resumePauseStream(prepared.payload, {streamMode: 'messages'});
+      const resumeStream = codara.streamInteraction({
+        kind: reviewMatchesCurrentReview ? 'review' : 'pause',
+        payload: prepared.payload,
+        config: {streamMode: 'messages'},
+      });
       for await (const chunk of resumeStream) {
         if (!AIMessageChunk.isInstance(chunk)) continue;
         const text = chunk.text;
         if (text) {
-          setActiveTurn((current) => current
-            ? {...current, response: current.response + text}
-            : {id: `turn-resume-${Date.now()}`, prompt: '', response: text, responseRole: 'assistant'});
+          setActiveTurn((current) => appendInteractionText(current, text, {
+            id: `turn-resume-${Date.now()}`,
+            prompt: '',
+            responseRole: 'assistant',
+          }));
         }
       }
 
       setActiveTurn(undefined);
       const nextAgentState = await refreshCoreState();
-      const activePause = codara.getFocusedApprovalReview()?.request ?? nextAgentState.pendingPause;
-      setHilReview((current) => applyApprovalMetadata(
-        syncCliHilReviewState(current, activePause),
-        codara.getApprovalSummaries(),
-      ));
-      setRunState(activePause ? {status: 'paused'} : nextAgentState.status === 'paused' ? {status: 'paused'} : {status: 'done'});
+      setRunState(nextAgentState.pendingPause || nextAgentState.status === 'paused'
+        ? {status: 'paused'}
+        : {status: 'done'});
     } catch (error) {
       reportError(error);
       await refreshCoreState().catch(() => undefined);
@@ -1030,61 +993,61 @@ export function useCliController(options: UseCliControllerOptions): CliControlle
         drainPendingTaskContinuation();
       }
     }
-  }, [appendNotice, codara, drainPendingTaskContinuation, refreshCoreState, reportError]);
+  }, [appendNotice, codara, drainPendingTaskContinuation, refreshCoreState, reportError, review]);
 
-  const quickHilAction = useCallback((actionId: string) => {
+  const quickReviewAction = useCallback((actionId: string) => {
     // Three-stage permission flow: intercept dont_ask_again and deny
     if (actionId === 'dont_ask_again') {
-      setHilReview((current) => current ? setPermissionStage(current, 'always-confirm') : current);
+      setReview((current) => current ? setPermissionStage(current, 'always-confirm') : current);
       return;
     }
     if (actionId === 'deny') {
-      setHilReview((current) => current ? setPermissionStage(current, 'reject-feedback') : current);
+      setReview((current) => current ? setPermissionStage(current, 'reject-feedback') : current);
       return;
     }
-    void submitHilAction({action: actionId});
-  }, [submitHilAction]);
+    void submitReviewAction({action: actionId});
+  }, [submitReviewAction]);
 
   const permissionBack = useCallback(() => {
-    setHilReview((current) => current ? setPermissionStage(current, 'prompt') : current);
+    setReview((current) => current ? setPermissionStage(current, 'prompt') : current);
   }, []);
 
   const permissionConfirm = useCallback(() => {
     // Claude Code style: confirm adds all patterns to session memory
-    void submitHilAction({action: 'dont_ask_again'});
-  }, [submitHilAction]);
+    void submitReviewAction({action: 'dont_ask_again'});
+  }, [submitReviewAction]);
 
   const permissionRejectSend = useCallback(() => {
-    const review = hilReviewRef.current;
+    const review = reviewRef.current;
     if (!review) return;
-    void submitHilAction({action: 'deny', comment: review.draft.trim() || undefined});
-  }, [submitHilAction]);
+    void submitReviewAction({action: 'deny', comment: review.draft.trim() || undefined});
+  }, [submitReviewAction]);
 
   const permissionRejectSilent = useCallback(() => {
-    void submitHilAction({action: 'deny'});
-  }, [submitHilAction]);
+    void submitReviewAction({action: 'deny'});
+  }, [submitReviewAction]);
 
   useEffect(() => {
-    if (!hilReview || isRunningRef.current || autoActionsRef.current.length === 0) {
+    if (!review || isRunningRef.current || autoActionsRef.current.length === 0) {
       return;
     }
 
-    if (handledAutoPauseIdsRef.current.has(hilReview.request.id)) {
+    if (handledAutoPauseIdsRef.current.has(review.request.id)) {
       return;
     }
 
-    handledAutoPauseIdsRef.current.add(hilReview.request.id);
+    handledAutoPauseIdsRef.current.add(review.request.id);
     const nextAction = autoActionsRef.current.shift();
     if (!nextAction) {
       return;
     }
 
     const timer = setTimeout(() => {
-      void submitHilAction(nextAction);
-    }, HIL_AUTO_ACTION_DELAY_MS);
+      void submitReviewAction(nextAction);
+    }, REVIEW_AUTO_ACTION_DELAY_MS);
 
     return () => clearTimeout(timer);
-  }, [hilReview, submitHilAction]);
+  }, [review, submitReviewAction]);
 
   const hasConversation = useMemo(
     () => hasTranscriptContent({
@@ -1097,9 +1060,9 @@ export function useCliController(options: UseCliControllerOptions): CliControlle
     [activeTurn, coreMessages, initialNoticeCount, notices, runtimeEvents],
   );
 
-  const submitHilActionCommand = useCallback(() => {
-    void submitHilAction();
-  }, [submitHilAction]);
+  const submitReviewActionCommand = useCallback(() => {
+    void submitReviewAction();
+  }, [submitReviewAction]);
 
   return useMemo(() => ({
     composer,
@@ -1109,12 +1072,13 @@ export function useCliController(options: UseCliControllerOptions): CliControlle
     dismissCommandOutput,
     scrollCommandOutput,
     activeTurn,
-    hilReview,
+    review,
     coreMessages,
     runtimeEvents,
     latestRuntimeEvent: runtimeEvents[runtimeEvents.length - 1],
     hasConversation,
     runState,
+    inputTarget,
     sessionState,
     insertText,
     replaceText,
@@ -1128,41 +1092,46 @@ export function useCliController(options: UseCliControllerOptions): CliControlle
     moveCursorEnd,
     submitDraft,
     submitText,
+    focusReviewWindow,
+    focusPromptWindow,
     taskPanelVisible,
     toggleTaskPanel,
     expandedAll,
     toggleExpand,
-    moveHilLeft,
-    moveHilRight,
-    selectPreviousHilAction,
-    selectNextHilAction,
-    selectPreviousApproval,
-    selectNextApproval,
-    toggleHilFocus,
-    activateHilSelection,
-    insertHilText,
-    insertHilNewline,
-    backspaceHilInput,
-    submitHilAction: submitHilActionCommand,
-    quickHilAction,
+    moveReviewLeft,
+    moveReviewRight,
+    selectPreviousReviewAction,
+    selectNextReviewAction,
+    selectPreviousReview,
+    selectNextReview,
+    toggleReviewFocus,
+    activateReviewSelection,
+    insertReviewText,
+    insertReviewNewline,
+    backspaceReviewInput,
+    submitReviewAction: submitReviewActionCommand,
+    quickReviewAction,
     permissionBack,
     permissionConfirm,
     permissionRejectSend,
     permissionRejectSilent,
   }), [
     activeTurn,
-    activateHilSelection,
+    activateReviewSelection,
     backspace,
-    backspaceHilInput,
+    backspaceReviewInput,
     commandOutput,
     composer,
     composerActivityVersion,
     dismissCommandOutput,
     expandedAll,
+    focusPromptWindow,
+    focusReviewWindow,
     hasConversation,
-    hilReview,
-    insertHilNewline,
-    insertHilText,
+    inputTarget,
+    review,
+    insertReviewNewline,
+    insertReviewText,
     insertNewline,
     insertText,
     moveCursorDown,
@@ -1171,58 +1140,36 @@ export function useCliController(options: UseCliControllerOptions): CliControlle
     moveCursorLeft,
     moveCursorRight,
     moveCursorUp,
-    moveHilLeft,
-    moveHilRight,
+    moveReviewLeft,
+    moveReviewRight,
     notices,
     permissionBack,
     permissionConfirm,
     permissionRejectSend,
     permissionRejectSilent,
-    quickHilAction,
+    quickReviewAction,
     replaceText,
     runState,
     runtimeEvents,
     scrollCommandOutput,
-    selectNextApproval,
-    selectNextHilAction,
-    selectPreviousApproval,
-    selectPreviousHilAction,
+    selectNextReview,
+    selectNextReviewAction,
+    selectPreviousReview,
+    selectPreviousReviewAction,
     sessionState,
     submitDraft,
-    submitHilActionCommand,
+    submitReviewActionCommand,
     submitText,
     taskPanelVisible,
     toggleExpand,
-    toggleHilFocus,
+    toggleReviewFocus,
     toggleTaskPanel,
     coreMessages,
   ]);
 }
 
-function isPermissionReview(review: CliHilReviewState): boolean {
+function isPermissionReview(review: CliReviewState): boolean {
   return review.request.ui?.modal === 'permission-review'
     || review.request.channel === 'permission-center'
     || review.request.description.toLowerCase().includes('permission review');
-}
-
-/**
- * Extract thinking/reasoning text from an AIMessageChunk.
- * Anthropic Extended Thinking emits content blocks with type "thinking".
- */
-function extractThinkingText(chunk: AIMessageChunk): string | undefined {
-  const content = chunk.content;
-  if (!Array.isArray(content)) {
-    return undefined;
-  }
-
-  let thinking = '';
-  for (const block of content) {
-    if (typeof block === 'object' && block !== null && 'type' in block) {
-      const typed = block as {type: string; thinking?: string; text?: string};
-      if (typed.type === 'thinking' && typed.thinking) {
-        thinking += typed.thinking;
-      }
-    }
-  }
-  return thinking || undefined;
 }

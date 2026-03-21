@@ -14,6 +14,7 @@ export function getTaskRunSummaries(
     .map((run) => ({
       runId: run.runId,
       sessionId: run.sessionId,
+      ...(run.parentSessionId ? {parentSessionId: run.parentSessionId} : {parentSessionId: run.sessionId}),
       label: run.label,
       agentName: run.agentName,
       status: run.status,

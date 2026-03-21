@@ -8,10 +8,16 @@ export {
   openLatestCodaraSession,
   type Codara,
   type CodaraAutoMemoryOptions,
+  type CodaraContinuationStreamRequest,
   type CodaraRuntimeOptions,
   type CodaraOptions,
-  type ApprovalQuerySummary,
-  type ApprovalQueryReview,
+  type CodaraPauseStreamRequest,
+  type CodaraPromptStreamRequest,
+  type CodaraReviewStreamRequest,
+  type CodaraStreamRequest,
+  type ReviewBlockingScope,
+  type ReviewQueryItem,
+  type FocusedReviewQuery,
   type TaskRunQuerySummary,
 } from '@codara/index';
 export {
@@ -139,7 +145,8 @@ export {
   type SubagentDefinition,
 } from '@context/skills/contracts';
 export {
-  DEFAULT_SUBAGENT_TYPE,
+  AGENT_SUBAGENT_TYPE,
+  isReservedSubagentName,
   readSkillsRuntimeData,
   resolveSubagentDefinition,
 } from '@context/skills/runtime-shared';

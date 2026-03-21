@@ -6,7 +6,7 @@ import type {PauseRequest} from '@shared/contracts/agent-types';
 export interface ApprovalRecord {
   approvalId: string;
   sessionId: string;
-  source: 'task_run' | 'team_member';
+  source: 'task_run';
   description: string;
   toolName: string;
   createdAt: string;
@@ -14,9 +14,6 @@ export interface ApprovalRecord {
   pauseRequest: PauseRequest;
   taskRunId?: string;
   childSessionId?: string;
-  teamId?: string;
-  memberId?: string;
-  memberName?: string;
 }
 
 export interface ApprovalTaskRunInput {
@@ -26,22 +23,12 @@ export interface ApprovalTaskRunInput {
   childSessionId?: string;
 }
 
-export interface ApprovalTeamMemberInput {
-  sessionId: string;
-  teamId: string;
-  memberId: string;
-  pauseRequest: PauseRequest;
-  memberName?: string;
-}
-
 export interface ApprovalStore {
   list(sessionId?: string): ApprovalRecord[];
   get(approvalId: string): ApprovalRecord | undefined;
   upsertTaskRunApproval(input: ApprovalTaskRunInput): ApprovalRecord;
-  upsertTeamMemberApproval(input: ApprovalTeamMemberInput): ApprovalRecord;
   remove(approvalId: string): void;
   removeByTaskRunId(taskRunId: string): void;
-  removeByTeamMember(teamId: string, memberId: string): void;
 }
 
 export interface ApprovalFileStoreOptions {
@@ -60,7 +47,6 @@ class InMemoryApprovalStore implements ApprovalStore {
   private readonly records = new Map<string, ApprovalRecord>();
   private readonly sessionIndex = new Map<string, Set<string>>();
   private readonly taskRunIndex = new Map<string, Set<string>>();
-  private readonly teamMemberIndex = new Map<string, Set<string>>();
 
   list(sessionId?: string): ApprovalRecord[] {
     const records = sessionId
@@ -95,29 +81,6 @@ class InMemoryApprovalStore implements ApprovalStore {
     return cloneApprovalRecord(next);
   }
 
-  upsertTeamMemberApproval(input: ApprovalTeamMemberInput): ApprovalRecord {
-    const normalizedTeamId = normalizeTeamId(input.teamId);
-    const normalizedMemberId = normalizeMemberId(input.memberId);
-    const approvalId = normalizeApprovalId(input.pauseRequest.id);
-    const existing = this.records.get(approvalId);
-    const now = new Date().toISOString();
-    const next: ApprovalRecord = {
-      approvalId,
-      sessionId: normalizeSessionId(input.sessionId),
-      source: 'team_member',
-      description: input.pauseRequest.description,
-      toolName: input.pauseRequest.action.toolName,
-      createdAt: existing?.createdAt ?? now,
-      updatedAt: now,
-      teamId: normalizedTeamId,
-      memberId: normalizedMemberId,
-      ...(input.memberName ? {memberName: input.memberName.trim()} : {}),
-      pauseRequest: clonePauseRequest(input.pauseRequest),
-    };
-    this.store(next, existing);
-    return cloneApprovalRecord(next);
-  }
-
   remove(approvalId: string): void {
     const normalizedApprovalId = normalizeApprovalId(approvalId);
     const record = this.records.get(normalizedApprovalId);
@@ -131,14 +94,6 @@ class InMemoryApprovalStore implements ApprovalStore {
   removeByTaskRunId(taskRunId: string): void {
     const normalizedTaskRunId = normalizeTaskRunId(taskRunId);
     const approvalIds = [...(this.taskRunIndex.get(normalizedTaskRunId) ?? [])];
-    for (const approvalId of approvalIds) {
-      this.remove(approvalId);
-    }
-  }
-
-  removeByTeamMember(teamId: string, memberId: string): void {
-    const teamMemberKey = createTeamMemberKey(teamId, memberId);
-    const approvalIds = [...(this.teamMemberIndex.get(teamMemberKey) ?? [])];
     for (const approvalId of approvalIds) {
       this.remove(approvalId);
     }
@@ -168,18 +123,12 @@ class InMemoryApprovalStore implements ApprovalStore {
     if (record.taskRunId) {
       indexValue(this.taskRunIndex, normalizeTaskRunId(record.taskRunId), record.approvalId);
     }
-    if (record.teamId && record.memberId) {
-      indexValue(this.teamMemberIndex, createTeamMemberKey(record.teamId, record.memberId), record.approvalId);
-    }
   }
 
   private unindex(record: ApprovalRecord): void {
     unindexValue(this.sessionIndex, normalizeSessionId(record.sessionId), record.approvalId);
     if (record.taskRunId) {
       unindexValue(this.taskRunIndex, normalizeTaskRunId(record.taskRunId), record.approvalId);
-    }
-    if (record.teamId && record.memberId) {
-      unindexValue(this.teamMemberIndex, createTeamMemberKey(record.teamId, record.memberId), record.approvalId);
     }
   }
 }
@@ -188,7 +137,6 @@ class FileApprovalStore implements ApprovalStore {
   private readonly records = new Map<string, ApprovalRecord>();
   private readonly sessionIndex = new Map<string, Set<string>>();
   private readonly taskRunIndex = new Map<string, Set<string>>();
-  private readonly teamMemberIndex = new Map<string, Set<string>>();
   private loaded = false;
 
   constructor(private readonly rootDir: string) {}
@@ -226,35 +174,7 @@ class FileApprovalStore implements ApprovalStore {
       pauseRequest: clonePauseRequest(input.pauseRequest),
     };
     this.store(next, existing);
-    this.persist(next, existing);
-    return cloneApprovalRecord(next);
-  }
-
-  upsertTeamMemberApproval(input: ApprovalTeamMemberInput): ApprovalRecord {
-    this.ensureLoaded();
-    const normalizedTeamId = normalizeTeamId(input.teamId);
-    const normalizedMemberId = normalizeMemberId(input.memberId);
-    const approvalId = normalizeApprovalId(input.pauseRequest.id);
-    const existing = this.records.get(approvalId);
-    const now = new Date().toISOString();
-    const next: ApprovalRecord = {
-      approvalId,
-      sessionId: normalizeSessionId(input.sessionId),
-      source: 'team_member',
-      description: input.pauseRequest.description,
-      toolName: input.pauseRequest.action.toolName,
-      createdAt: existing?.createdAt ?? now,
-      updatedAt: now,
-      teamId: normalizedTeamId,
-      memberId: normalizedMemberId,
-      ...(input.memberName ? {memberName: input.memberName.trim()} : {}),
-      pauseRequest: clonePauseRequest(input.pauseRequest),
-    };
-    this.store(next, existing);
-    // Team-member approvals are runtime-only because worker sessions are not recoverable across restarts.
-    if (existing?.source === 'task_run') {
-      rmSync(this.recordPath(approvalId), {force: true});
-    }
+    this.persist(next);
     return cloneApprovalRecord(next);
   }
 
@@ -275,15 +195,6 @@ class FileApprovalStore implements ApprovalStore {
     this.ensureLoaded();
     const normalizedTaskRunId = normalizeTaskRunId(taskRunId);
     const approvalIds = [...(this.taskRunIndex.get(normalizedTaskRunId) ?? [])];
-    for (const approvalId of approvalIds) {
-      this.remove(approvalId);
-    }
-  }
-
-  removeByTeamMember(teamId: string, memberId: string): void {
-    this.ensureLoaded();
-    const teamMemberKey = createTeamMemberKey(teamId, memberId);
-    const approvalIds = [...(this.teamMemberIndex.get(teamMemberKey) ?? [])];
     for (const approvalId of approvalIds) {
       this.remove(approvalId);
     }
@@ -358,19 +269,9 @@ class FileApprovalStore implements ApprovalStore {
     if (record.taskRunId) {
       indexValue(this.taskRunIndex, normalizeTaskRunId(record.taskRunId), record.approvalId);
     }
-    if (record.teamId && record.memberId) {
-      indexValue(this.teamMemberIndex, createTeamMemberKey(record.teamId, record.memberId), record.approvalId);
-    }
   }
 
-  private persist(record: ApprovalRecord, previous?: ApprovalRecord): void {
-    if (record.source !== 'task_run') {
-      if (previous?.source === 'task_run') {
-        rmSync(this.recordPath(previous.approvalId), {force: true});
-      }
-      return;
-    }
-
+  private persist(record: ApprovalRecord): void {
     mkdirSync(this.rootDir, {recursive: true});
     const filePath = this.recordPath(record.approvalId);
     const tempPath = `${filePath}.tmp-${randomUUID()}`;
@@ -383,9 +284,6 @@ class FileApprovalStore implements ApprovalStore {
     unindexValue(this.sessionIndex, normalizeSessionId(record.sessionId), record.approvalId);
     if (record.taskRunId) {
       unindexValue(this.taskRunIndex, normalizeTaskRunId(record.taskRunId), record.approvalId);
-    }
-    if (record.teamId && record.memberId) {
-      unindexValue(this.teamMemberIndex, createTeamMemberKey(record.teamId, record.memberId), record.approvalId);
     }
   }
 }
@@ -429,22 +327,6 @@ function normalizeTaskRunId(taskRunId: string): string {
   return normalized;
 }
 
-function normalizeTeamId(teamId: string): string {
-  const normalized = teamId.trim();
-  if (!normalized) {
-    throw new Error('Team id is required');
-  }
-  return normalized;
-}
-
-function normalizeMemberId(memberId: string): string {
-  const normalized = memberId.trim();
-  if (!normalized) {
-    throw new Error('Member id is required');
-  }
-  return normalized;
-}
-
 function normalizeSessionId(sessionId: string): string {
   const normalized = sessionId.trim();
   if (!normalized) {
@@ -459,15 +341,13 @@ function parseApprovalRecord(value: unknown): ApprovalRecord | undefined {
   }
 
   const record = value as Partial<ApprovalRecord>;
-  if (record.source !== 'task_run' && record.source !== 'team_member') {
+  if (record.source !== 'task_run') {
     return undefined;
   }
 
-  if (record.source === 'task_run') {
-    normalizeApprovalId(record.approvalId ?? '');
-    normalizeSessionId(record.sessionId ?? '');
-    normalizeTaskRunId(record.taskRunId ?? '');
-  }
+  normalizeApprovalId(record.approvalId ?? '');
+  normalizeSessionId(record.sessionId ?? '');
+  normalizeTaskRunId(record.taskRunId ?? '');
 
   return record as ApprovalRecord;
 }
@@ -479,10 +359,6 @@ function isMissingFile(error: unknown): boolean {
     && 'code' in error
     && (error as {code?: string}).code === 'ENOENT',
   );
-}
-
-function createTeamMemberKey(teamId: string, memberId: string): string {
-  return `${normalizeTeamId(teamId)}::${normalizeMemberId(memberId)}`;
 }
 
 function indexValue(index: Map<string, Set<string>>, key: string, value: string): void {

@@ -1,16 +1,16 @@
 import React from 'react';
 import {Box, Text} from 'ink';
-import type {CliHilReviewAction, CliHilReviewState} from '../../app/view-state';
+import type {CliReviewAction, CliReviewState} from '../../app/view-state';
 import {theme} from '../../utils/theme';
 
-interface HilPanelProps {
-  review: CliHilReviewState;
+interface ReviewPanelProps {
+  review: CliReviewState;
   presentation?: 'inline' | 'floating';
 }
 
 // ── Public API ──────────────────────────────────────────────
 
-export function HilPanel({review, presentation = 'inline'}: HilPanelProps): React.JSX.Element {
+export function ReviewPanel({review, presentation = 'inline'}: ReviewPanelProps): React.JSX.Element {
   const content = isPermissionReview(review)
     ? <PermissionView review={review} />
     : review.form
@@ -20,8 +20,8 @@ export function HilPanel({review, presentation = 'inline'}: HilPanelProps): Reac
   if (presentation === 'floating') {
     return (
       <Box flexDirection="column" borderStyle="round" borderColor={theme.chrome.border} paddingX={1}>
-        <FloatingHilHeader review={review} />
-        <ApprovalQueueBanner review={review} />
+        <FloatingReviewHeader review={review} />
+        <ReviewQueueBanner review={review} />
         {content}
       </Box>
     );
@@ -29,13 +29,13 @@ export function HilPanel({review, presentation = 'inline'}: HilPanelProps): Reac
 
   return (
     <Box flexDirection="column" paddingX={1}>
-      <ApprovalQueueBanner review={review} />
+      <ReviewQueueBanner review={review} />
       {content}
     </Box>
   );
 }
 
-export function isPermissionReview(review: CliHilReviewState | undefined): boolean {
+export function isPermissionReview(review: CliReviewState | undefined): boolean {
   if (!review) return false;
   return review.request.ui?.modal === 'permission-review'
     || review.request.channel === 'permission-center'
@@ -44,7 +44,7 @@ export function isPermissionReview(review: CliHilReviewState | undefined): boole
 
 // ── Permission View (Claude Code style) ─────────────────────
 
-function PermissionView({review}: {review: CliHilReviewState}): React.JSX.Element {
+function PermissionView({review}: {review: CliReviewState}): React.JSX.Element {
   const stage = review.permissionStage ?? 'prompt';
 
   // Stage 2: Always-confirm
@@ -104,7 +104,7 @@ function PermissionView({review}: {review: CliHilReviewState}): React.JSX.Elemen
 
 // ── AskUser View (Claude Code / ZCode style) ────────────────
 
-function AskUserView({review}: {review: CliHilReviewState}): React.JSX.Element {
+function AskUserView({review}: {review: CliReviewState}): React.JSX.Element {
   const form = review.form!;
   const activeTab = form.endStep ? undefined : form.tabs[form.activeTabIndex];
   const hasMultipleTabs = form.tabs.length > 1;
@@ -185,12 +185,12 @@ function AskUserView({review}: {review: CliHilReviewState}): React.JSX.Element {
         <Text dimColor>
           {(() => {
             if (form.endStep && review.focus === 'actions') {
-              return '↑/↓ select · Enter submit · Tab back · [ / ] approvals · Esc cancel';
+              return '↑/↓ select · Enter submit · Tab back · [ / ] reviews · Esc cancel';
             }
             const selectVerb = activeTab?.input === 'multiselect' ? 'Space toggle' : 'Space select';
             return hasMultipleTabs
-              ? `↑/↓ select · 1-9 quick pick · ${selectVerb} · Enter next · Tab next · ←/→ tabs · [ / ] approvals · Esc cancel`
-              : `↑/↓ select · 1-9 quick pick · ${selectVerb} · Enter next · Tab next · [ / ] approvals · Esc cancel`;
+              ? `↑/↓ select · 1-9 quick pick · ${selectVerb} · Enter next · Tab next · ←/→ tabs · [ / ] reviews · Esc cancel`
+              : `↑/↓ select · 1-9 quick pick · ${selectVerb} · Enter next · Tab next · [ / ] reviews · Esc cancel`;
           })()}
         </Text>
       </Box>
@@ -203,7 +203,7 @@ function AskUserView({review}: {review: CliHilReviewState}): React.JSX.Element {
 
 // ── Generic Review View ─────────────────────────────────────
 
-function GenericReviewView({review}: {review: CliHilReviewState}): React.JSX.Element {
+function GenericReviewView({review}: {review: CliReviewState}): React.JSX.Element {
   return (
     <Box flexDirection="column">
       <Text color="cyan" bold>Review Required</Text>
@@ -216,26 +216,26 @@ function GenericReviewView({review}: {review: CliHilReviewState}): React.JSX.Ele
       {review.draft !== undefined && review.focus === 'input' && (
         <Text color="cyan">Note › {review.draft || '(empty)'}</Text>
       )}
-      <Text dimColor>Up/Down select · [ / ] approvals · Enter submit</Text>
+      <Text dimColor>Up/Down select · [ / ] reviews · Enter submit</Text>
       {review.busy && <Text color="cyan">Applying...</Text>}
     </Box>
   );
 }
 
-function ApprovalQueueBanner({review}: {review: CliHilReviewState}): React.JSX.Element | null {
-  if (review.approvalIndex === undefined || review.approvalCount === undefined) {
+function ReviewQueueBanner({review}: {review: CliReviewState}): React.JSX.Element | null {
+  if (review.reviewIndex === undefined || review.reviewCount === undefined) {
     return null;
   }
 
   return (
     <Box flexDirection="column" marginBottom={1}>
-      <Text color="cyan" bold>{`Approval ${review.approvalIndex}/${review.approvalCount}`}</Text>
-      <Text dimColor>Use [ and ] to switch approvals</Text>
+      <Text color="cyan" bold>{`Review ${review.reviewIndex}/${review.reviewCount}`}</Text>
+      <Text dimColor>Use [ and ] to switch reviews</Text>
     </Box>
   );
 }
 
-function FloatingHilHeader({review}: {review: CliHilReviewState}): React.JSX.Element {
+function FloatingReviewHeader({review}: {review: CliReviewState}): React.JSX.Element {
   const title = review.form ? 'Ask User' : isPermissionReview(review) ? 'Permission Review' : 'Review Required';
   const hints = review.form
     ? review.form.endStep && review.focus === 'actions'
@@ -252,7 +252,7 @@ function FloatingHilHeader({review}: {review: CliHilReviewState}): React.JSX.Ele
 }
 
 function AskUserTabStrip(
-  {form}: {form: NonNullable<CliHilReviewState['form']>},
+  {form}: {form: NonNullable<CliReviewState['form']>},
 ): React.JSX.Element {
   const onEndStep = Boolean(form.endStep);
   const currentStepIndex = onEndStep ? form.tabs.length : form.activeTabIndex;
@@ -286,7 +286,7 @@ function AskUserTabStrip(
 
 // ── Helpers ──────────────────────────────────────────────────
 
-function formatPermissionShortcut(action: CliHilReviewAction): string {
+function formatPermissionShortcut(action: CliReviewAction): string {
   switch (action.label) {
     case 'Allow once': return '(y) Allow once';
     case 'Allow always': return '(a) Allow always';
@@ -295,7 +295,7 @@ function formatPermissionShortcut(action: CliHilReviewAction): string {
   }
 }
 
-function resolveActionColor(action: CliHilReviewAction, selected: boolean): string | undefined {
+function resolveActionColor(action: CliReviewAction, selected: boolean): string | undefined {
   if (!selected) return undefined;
   if (action.kind === 'danger') return 'red';
   return action.kind === 'primary' ? 'green' : 'cyan';
@@ -317,7 +317,7 @@ function truncateLabel(label: string, maxLength: number): string {
 }
 
 function describeAskUserInput(
-  tab: NonNullable<CliHilReviewState['form']>['tabs'][number] | undefined,
+  tab: NonNullable<CliReviewState['form']>['tabs'][number] | undefined,
 ): string | undefined {
   if (!tab) {
     return undefined;

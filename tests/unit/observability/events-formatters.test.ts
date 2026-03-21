@@ -10,6 +10,7 @@ describe('observability event formatters', () => {
       artifact: {
         type: 'task_run_started',
         runId: 'run-1',
+        parentSessionId: 'session-1',
         sessionId: 'session-1:task:run-1',
         agentName: 'Explore',
         label: 'Delegating Explore: Inspect the repo',

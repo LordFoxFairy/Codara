@@ -18,7 +18,6 @@ interface StatusBarProps {
   runState: CliRunState;
   latestRuntimeEvent?: CodaraRuntimeEvent;
   mcpStatus?: McpStatusSummary;
-  activeTeamCount?: number;
 }
 
 export interface StatusBarModel {
@@ -30,7 +29,7 @@ import {formatTokenCount} from '../../utils/format';
 
 
 export function describeStatusBar(props: StatusBarProps): StatusBarModel {
-  const {layoutMode, session, cwd, modelAlias, runState, latestRuntimeEvent, mcpStatus, activeTeamCount} = props;
+  const {layoutMode, session, cwd, modelAlias, runState, latestRuntimeEvent, mcpStatus} = props;
   const isMinimal = layoutMode === 'minimal';
   const messageCount = session.metadata?.messageCount ?? 0;
   const status = describeStatusIndicator({runState, latestRuntimeEvent});
@@ -42,11 +41,6 @@ export function describeStatusBar(props: StatusBarProps): StatusBarModel {
   if (!isMinimal) {
     segments.push(shortenSessionId(session.sessionId));
     segments.push(`${messageCount} msgs`);
-  }
-
-  // Active teams indicator
-  if (activeTeamCount && activeTeamCount > 0) {
-    segments.push(`${activeTeamCount} ${activeTeamCount === 1 ? 'team' : 'teams'}`);
   }
 
   // MCP indicator: show when servers are configured

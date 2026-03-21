@@ -1,10 +1,10 @@
 import {describe, expect, it} from 'bun:test';
 import {render} from 'ink-testing-library';
-import {HilPanel} from '@/cli/components/conversation/hil-panel';
-import type {CliHilReviewState} from '@/cli/app/view-state';
+import {ReviewPanel} from '@/cli/components/conversation/review-panel';
+import type {CliReviewState} from '@/cli/app/view-state';
 
-describe('HilPanel approval queue banner', () => {
-  it('should show approval position and queue-switch hint', () => {
+describe('ReviewPanel review queue banner', () => {
+  it('should show review position and queue-switch hint', () => {
     const review = {
       request: {
         id: 'pause-2',
@@ -40,14 +40,15 @@ describe('HilPanel approval queue banner', () => {
       focus: 'actions',
       draft: '',
       busy: false,
-      approvalIndex: 2,
-      approvalCount: 5,
-    } satisfies CliHilReviewState;
+      blockingScope: 'task',
+      reviewIndex: 2,
+      reviewCount: 5,
+    } satisfies CliReviewState;
 
-    const {lastFrame} = render(<HilPanel review={review} />);
+    const {lastFrame} = render(<ReviewPanel review={review} />);
 
-    expect(lastFrame()).toContain('Approval 2/5');
-    expect(lastFrame()).toContain('Use [ and ] to switch approvals');
+    expect(lastFrame()).toContain('Review 2/5');
+    expect(lastFrame()).toContain('Use [ and ] to switch reviews');
     expect(lastFrame()).toContain('Permission review required for git push.');
   });
 
@@ -108,6 +109,7 @@ describe('HilPanel approval queue banner', () => {
       focus: 'input',
       draft: '',
       busy: false,
+      blockingScope: 'session',
       form: {
         tabs: [
           {
@@ -131,9 +133,9 @@ describe('HilPanel approval queue banner', () => {
         activeTabIndex: 0,
         answers: {},
       },
-    } satisfies CliHilReviewState;
+    } satisfies CliReviewState;
 
-    const {lastFrame} = render(<HilPanel review={review} />);
+    const {lastFrame} = render(<ReviewPanel review={review} />);
     const frame = lastFrame();
 
     expect(frame).toContain('Spec Source');
@@ -154,9 +156,9 @@ describe('HilPanel approval queue banner', () => {
     const review = {
       ...createAskUserReview(),
       focus: 'actions' as const,
-    } satisfies CliHilReviewState;
+    } satisfies CliReviewState;
 
-    const {lastFrame} = render(<HilPanel review={review} presentation="floating" />);
+    const {lastFrame} = render(<ReviewPanel review={review} presentation="floating" />);
     const frame = lastFrame();
 
     expect(frame).toContain('[Next]');
@@ -173,9 +175,9 @@ describe('HilPanel approval queue banner', () => {
         ...createAskUserReview().form!,
         endStep: true,
       },
-    } satisfies CliHilReviewState;
+    } satisfies CliReviewState;
 
-    const {lastFrame} = render(<HilPanel review={review} presentation="floating" />);
+    const {lastFrame} = render(<ReviewPanel review={review} presentation="floating" />);
     const frame = lastFrame();
 
     expect(frame).toContain('Ask User');
@@ -231,6 +233,7 @@ describe('HilPanel approval queue banner', () => {
       focus: 'input',
       draft: '',
       busy: false,
+      blockingScope: 'session',
       form: {
         tabs: [{
           id: 'spec_source',
@@ -241,9 +244,9 @@ describe('HilPanel approval queue banner', () => {
         activeTabIndex: 0,
         answers: {},
       },
-    } satisfies CliHilReviewState;
+    } satisfies CliReviewState;
 
-    const {lastFrame} = render(<HilPanel review={review} presentation="floating" />);
+    const {lastFrame} = render(<ReviewPanel review={review} presentation="floating" />);
     const frame = lastFrame();
 
     expect(frame).toContain('Space select');
@@ -254,15 +257,15 @@ describe('HilPanel approval queue banner', () => {
   });
 
   it('renders select tabs with radio markers and multiselect tabs with checkboxes', () => {
-    const {lastFrame: singleFrame} = render(<HilPanel review={createAskUserReview({input: 'select'})} presentation="floating" />);
-    const {lastFrame: multiFrame} = render(<HilPanel review={createAskUserReview({input: 'multiselect'})} presentation="floating" />);
+    const {lastFrame: singleFrame} = render(<ReviewPanel review={createAskUserReview({input: 'select'})} presentation="floating" />);
+    const {lastFrame: multiFrame} = render(<ReviewPanel review={createAskUserReview({input: 'multiselect'})} presentation="floating" />);
 
     expect(singleFrame()).toContain('( ) 1. Existing spec file');
     expect(multiFrame()).toContain('[ ] 1. Existing spec file');
   });
 
   it('collapses long AskUser tab headers into a compact step navigator', () => {
-    const {lastFrame} = render(<HilPanel review={createAskUserReview({
+    const {lastFrame} = render(<ReviewPanel review={createAskUserReview({
       tabs: [
         {id: 'p1', label: '需求来源优先级', question: 'Q1', options: [{id: 'a', label: 'A'}]},
         {id: 'p2', label: '功能名称', question: 'Q2', options: [{id: 'b', label: 'B'}]},
@@ -289,7 +292,7 @@ function createAskUserReview(
     activeTabIndex?: number;
     endStep?: boolean;
   } = {},
-): CliHilReviewState {
+): CliReviewState {
   const tabs = options.tabs ?? [{
     id: 'spec_source',
     label: 'Spec Source',
@@ -336,6 +339,7 @@ function createAskUserReview(
     focus: 'input',
     draft: '',
     busy: false,
+    blockingScope: 'session',
     form: {
       tabs,
       activeTabIndex: options.activeTabIndex ?? 0,

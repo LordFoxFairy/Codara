@@ -4,7 +4,7 @@ import {pathToFileURL} from 'node:url';
 import React from 'react';
 import {render} from 'ink';
 import {createCodaraRuntime, DEFAULT_CODARA_MODEL_ALIAS, type Codara} from '@/index';
-import type {CliHilAutoAction} from './app/hil-review';
+import type {CliReviewAutoAction} from './app/review-state';
 import {parseCliArgs} from '@cli/cli-args';
 import {runHeadless} from '@cli/headless';
 
@@ -38,7 +38,7 @@ const initialRuntime = await createCliRuntime({
   sessionId: cliArgs.resumeSessionId,
 });
 const autoExitOnSettledPrompt = process.env.CODARA_CLI_AUTO_EXIT_AFTER_INITIAL_PROMPT === '1';
-const hilAutoActions = readHilAutoActions(process.env.CODARA_CLI_HIL_AUTO_ACTIONS);
+const reviewAutoActions = readReviewAutoActions(process.env.CODARA_CLI_REVIEW_AUTO_ACTIONS);
 
 render(
   <CliRuntimeRoot
@@ -46,7 +46,7 @@ render(
     initialPrompt={cliArgs.initialPrompt}
     initialRuntime={initialRuntime}
     modelAlias={modelAlias}
-    hilAutoActions={hilAutoActions}
+    reviewAutoActions={reviewAutoActions}
     autoExitOnSettledPrompt={autoExitOnSettledPrompt}
     startupMessage={cliArgs.resumeSessionId ? `Resumed session ${cliArgs.resumeSessionId}.` : undefined}
     openFile={openFileInHost}
@@ -112,7 +112,7 @@ interface CliRuntimeRootProps {
   initialPrompt: string;
   initialRuntime: CliRuntimeFactoryResult;
   modelAlias: string;
-  hilAutoActions: CliHilAutoAction[];
+  reviewAutoActions: CliReviewAutoAction[];
   autoExitOnSettledPrompt: boolean;
   startupMessage?: string;
   openFile: (targetPath: string) => Promise<boolean>;
@@ -146,7 +146,7 @@ function CliRuntimeRoot(props: CliRuntimeRootProps): React.JSX.Element {
       modelAlias={runtime.modelAlias ?? props.modelAlias}
       initialPrompt={appInitialPrompt}
       startupMessage={startupMessage}
-      hilAutoActions={props.hilAutoActions}
+      reviewAutoActions={props.reviewAutoActions}
       autoExitOnSettledPrompt={props.autoExitOnSettledPrompt}
       reopenSession={reopenSession}
       openFile={props.openFile}
@@ -170,21 +170,21 @@ async function openFileInHost(targetPath: string): Promise<boolean> {
   });
 }
 
-function readHilAutoActions(raw: string | undefined): CliHilAutoAction[] {
+function readReviewAutoActions(raw: string | undefined): CliReviewAutoAction[] {
   const value = raw?.trim();
   if (!value) {
     return [];
   }
 
   if (value.startsWith('[')) {
-    const parsed = JSON.parse(value) as Array<string | CliHilAutoAction>;
-    return parsed.map(normalizeHilAutoAction);
+    const parsed = JSON.parse(value) as Array<string | CliReviewAutoAction>;
+    return parsed.map(normalizeReviewAutoAction);
   }
 
-  return [normalizeHilAutoAction(value)];
+  return [normalizeReviewAutoAction(value)];
 }
 
-function normalizeHilAutoAction(value: string | CliHilAutoAction): CliHilAutoAction {
+function normalizeReviewAutoAction(value: string | CliReviewAutoAction): CliReviewAutoAction {
   if (typeof value === 'string') {
     switch (value) {
       case 'always':

@@ -146,7 +146,7 @@ describe('dingtalkPlugin', () => {
         const ctx: PausePromptContext = {
           accountId: 'acc',
           to: 'cid-123',
-          text: 'Approval needed',
+          text: 'Review needed',
           pause: {id: 'pause-001'} as PauseRequest,
           actions: [
             {id: 'approve', label: 'Approve', style: 'approve' as const},

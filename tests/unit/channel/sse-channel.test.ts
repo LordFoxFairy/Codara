@@ -41,10 +41,10 @@ describe('SSEChannel', () => {
     expect(events[0].event).toBe('message');
   });
 
-  test('showPauseRequest sends SSE paused event', async () => {
+  test('showPauseRequest sends SSE review_required event', async () => {
     const pausePromise = channel.showPauseRequest(createPauseRequest());
     expect(events.length).toBe(1);
-    expect(events[0].event).toBe('paused');
+    expect(events[0].event).toBe('review_required');
     expect((events[0].data as {id: string}).id).toBe('pause-1');
 
     // Resolve

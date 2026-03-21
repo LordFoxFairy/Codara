@@ -15,15 +15,15 @@ import type {TranscriptItem} from '../../../src/cli/transcript/model';
 describe('UI alignment with Claude Code', () => {
   describe('Welcome → Conversation transition', () => {
     it('should show welcome when no conversation', () => {
-      expect(resolveCliForegroundSurface({hasHilReview: false, hasConversation: false})).toBe('welcome');
+      expect(resolveCliForegroundSurface({hasReview: false, hasConversation: false})).toBe('welcome');
     });
 
     it('should show transcript when conversation exists', () => {
-      expect(resolveCliForegroundSurface({hasHilReview: false, hasConversation: true})).toBe('transcript');
+      expect(resolveCliForegroundSurface({hasReview: false, hasConversation: true})).toBe('transcript');
     });
 
-    it('should show hil when review is active', () => {
-      expect(resolveCliForegroundSurface({hasHilReview: true, hasConversation: true})).toBe('hil');
+    it('should keep transcript foreground when review is active', () => {
+      expect(resolveCliForegroundSurface({hasReview: true, hasConversation: true})).toBe('transcript');
     });
   });
 

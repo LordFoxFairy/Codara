@@ -11,7 +11,7 @@ function createTaskRun(overrides: Partial<TaskRunQuerySummary>): TaskRunQuerySum
     runId: 'run-1',
     sessionId: 'session-1',
     label: 'Delegating task',
-    agentName: 'general-purpose',
+    agentName: 'Agent',
     status: 'running',
     startedAt: new Date().toISOString(),
     updatedAt: new Date().toISOString(),

@@ -24,7 +24,7 @@ const ROLE_LABEL_MAP: Record<TranscriptRole, string> = {
   assistant: 'codara',
   tool: 'tools',
   task: 'tasks',
-  hil: 'review',
+  review: 'review',
   command: 'command',
   error: 'error',
 };

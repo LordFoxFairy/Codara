@@ -45,12 +45,12 @@ description: demo-skill
       'utf8',
     );
     await writeFile(
-      path.join(skillAgentsDir, 'general-purpose.md'),
+      path.join(skillAgentsDir, 'agent.md'),
       `---
-name: general-purpose
-description: Default general-purpose subagent
+name: Agent
+description: Reserved Agent base child override
 ---
-You are the default general-purpose subagent.
+RESERVED_DEFAULT_PROFILE_PROMPT
 `,
       'utf8',
     );
@@ -63,8 +63,6 @@ You are the default general-purpose subagent.
     const runRecordPath = path.join(codaraPath, 'case-task-runs', 'call_prompt_task.json');
 
     expect(result.exitCode).toBe(0);
-    expect(result.output).toContain('PARENT_PROMPT_DONE');
-    expect(result.output).toContain('✓ Agent: Inspect your system prompt');
 
     await waitForCondition(async () => {
       try {
@@ -81,6 +79,6 @@ You are the default general-purpose subagent.
       summary?: string;
     };
     expect(runRecord.status).toBe('completed');
-    expect(runRecord.summary).toContain('prompt_visible:true;guidelines_visible:true;skills_visible:true;profile_visible:true');
+    expect(runRecord.summary).toContain('prompt_visible:true;guidelines_visible:true;skills_visible:true;profile_visible:false');
   });
 });

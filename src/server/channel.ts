@@ -1,7 +1,7 @@
 /**
  * SSE Channel — implements the Channel interface over Server-Sent Events.
  *
- * Pause requests are sent as SSE `paused` events. Resumes arrive via
+ * Pause requests are sent as SSE `review_required` events. Resumes arrive via
  * an external HTTP endpoint (POST /api/resume) that calls `resolveResume()`.
  */
 
@@ -36,7 +36,7 @@ interface PendingPause {
  *
  * Lifecycle:
  * 1. Client connects via SSE → server creates SSEChannel
- * 2. HIL middleware pauses → `showPauseRequest()` sends SSE `paused` event
+ * 2. HIL middleware pauses → `showPauseRequest()` sends SSE `review_required` event
  * 3. Client responds via POST → server calls `resolveResume(requestId, payload)`
  * 4. Promise resolves → HIL middleware continues
  */
@@ -67,10 +67,10 @@ export class SSEChannel implements Channel {
       return {decision: 'reject', reason: 'Channel disposed'};
     }
 
-    // Send the pause as an SSE event
+    // Send the review request as an SSE event
     try {
       this.send({
-        event: 'paused',
+        event: 'review_required',
         data: {
           id: request.id,
           description: request.description,

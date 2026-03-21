@@ -34,13 +34,13 @@ describe('normalizeTelegramMessage', () => {
 
   test('normalizes group message', () => {
     const msg = makeMessage({
-      chat: {id: -100123, type: 'group', title: 'Dev Team'},
+      chat: {id: -100123, type: 'group', title: 'Dev Group'},
     });
     const result = normalizeTelegramMessage(msg, accountId);
 
     expect(result.peer.kind).toBe('group');
     expect(result.peer.id).toBe('-100123');
-    expect(result.peer.name).toBe('Dev Team');
+    expect(result.peer.name).toBe('Dev Group');
   });
 
   test('normalizes supergroup message', () => {

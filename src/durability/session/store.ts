@@ -7,7 +7,7 @@ import type {SessionState} from './types';
 
 export interface SessionListOptions {
   includeArchived?: boolean;
-  /** Include internal sessions (delegated tasks, team workers). Defaults to false. */
+  /** Include internal sessions (delegated tasks, background helpers). Defaults to false. */
   includeInternal?: boolean;
   sortBy?: 'createdAt' | 'updatedAt' | 'lastActivity';
   sortOrder?: 'asc' | 'desc';

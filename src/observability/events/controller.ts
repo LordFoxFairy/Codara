@@ -222,7 +222,6 @@ export class RuntimeEventsController {
               const tc = taskCalls[i]!;
               const tcId = typeof tc.id === 'string' ? tc.id : `pending-task-${i}`;
               const args = tc.args as Record<string, unknown> | undefined;
-              const subagentType = typeof args?.subagent_type === 'string' ? args.subagent_type : 'general-purpose';
               const prompt = typeof args?.prompt === 'string' ? args.prompt.split('\n')[0]!.slice(0, 50) : '';
               this.pendingTaskIds.add(tcId);
               this.emit({
@@ -230,7 +229,7 @@ export class RuntimeEventsController {
                 kind: 'task',
                 phase: 'start',
                 status: 'running',
-                label: `Delegating ${subagentType}: ${prompt}`,
+                label: formatTaskStartLabel({...args, ...(prompt ? {prompt} : {})}),
                 detail: 'pending',
                 parentId: turnId,
               });

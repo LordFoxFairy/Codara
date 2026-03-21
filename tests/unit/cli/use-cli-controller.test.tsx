@@ -4,35 +4,28 @@ import {Text} from 'ink';
 import {render} from 'ink-testing-library';
 import {AIMessageChunk} from '@langchain/core/messages';
 import type {
-  ApprovalQueryReview,
-  ApprovalQuerySummary,
   Codara,
+  CodaraStreamRequest,
   CodaraRuntimeEvent,
+  FocusedReviewQuery,
+  ReviewQueryItem,
   SessionState,
-  TeamQueryDetail,
 } from '@/index';
 import type {PauseRequest} from '@shared/contracts/agent-types';
 import {useCliController} from '../../../src/cli/app/use-cli-controller';
 
 describe('useCliController background refresh', () => {
-  it('refreshes queued approvals and active team detail when background events arrive', async () => {
+  it('refreshes queued reviews when delegated-task review events arrive in the background', async () => {
     const codara = new FakeCodara();
-    codara.setFocusedTeam('team-1');
     const rendered = render(<ControllerProbe codara={codara as unknown as Codara} />);
 
     try {
-      await waitFor(() => (rendered.lastFrame() ?? '').includes('teamStatus:running'));
-      expect(rendered.lastFrame() ?? '').toContain('approvalCount:0');
-      expect(rendered.lastFrame() ?? '').toContain('teamStatus:running');
+      await waitFor(() => (rendered.lastFrame() ?? '').includes('reviewCount:0'));
 
-      codara.setApprovals([
-        createApprovalSummary('approval-1', 'run-1', 'Approve alpha'),
-        createApprovalSummary('approval-2', 'run-2', 'Approve beta'),
+      codara.setReviews([
+        createReviewItem('approval-1', 'run-1', 'Approve alpha'),
+        createReviewItem('approval-2', 'run-2', 'Approve beta'),
       ]);
-      codara.setTeamDetail({
-        ...codara.getTeamDetail('team-1')!,
-        status: 'paused',
-      });
       codara.emit({
         id: 'task-event-1',
         sessionId: 'session-1',
@@ -43,69 +36,11 @@ describe('useCliController background refresh', () => {
         label: 'Delegated task waiting for review',
       });
 
-      await waitFor(() => (rendered.lastFrame() ?? '').includes('approvalCount:2'));
-      expect(rendered.lastFrame() ?? '').toContain('approvalId:approval-1');
-      expect(rendered.lastFrame() ?? '').toContain('teamStatus:paused');
-    } finally {
-      rendered.unmount();
-    }
-  });
-
-  it('derives the focused team detail from runtime teamSurface instead of local dashboard focus', async () => {
-    const codara = new FakeCodara();
-    codara.setTeamDetails([
-      {
-        teamId: 'team-1',
-        name: 'Team One',
-        status: 'running',
-        goal: 'Ship it',
-        members: [],
-        jobs: [],
-      },
-      {
-        teamId: 'team-2',
-        name: 'Team Two',
-        status: 'paused',
-        goal: 'Review it',
-        members: [],
-        jobs: [],
-      },
-    ]);
-    codara.setFocusedTeam('team-2');
-    const rendered = render(<ControllerProbe codara={codara as unknown as Codara} />);
-
-    try {
-      await waitFor(() => (rendered.lastFrame() ?? '').includes('teamId:team-2'));
+      await waitFor(() => (rendered.lastFrame() ?? '').includes('reviewCount:2'));
       const frame = rendered.lastFrame() ?? '';
-      expect(frame).toContain('teamId:team-2');
-      expect(frame).toContain('teamName:Team Two');
-      expect(frame).toContain('teamStatus:paused');
-      expect(frame).not.toContain('teamId:team-1');
-    } finally {
-      rendered.unmount();
-    }
-  });
-
-  it('treats the only visible team as the default current team detail even without explicit focus', async () => {
-    const codara = new FakeCodara();
-    codara.setTeamDetails([
-      {
-        teamId: 'team-1',
-        name: 'Solo Team',
-        status: 'running',
-        goal: 'Ship it',
-        members: [],
-        jobs: [],
-      },
-    ]);
-    const rendered = render(<ControllerProbe codara={codara as unknown as Codara} />);
-
-    try {
-      await waitFor(() => (rendered.lastFrame() ?? '').includes('teamId:team-1'));
-      const frame = rendered.lastFrame() ?? '';
-      expect(frame).toContain('teamId:team-1');
-      expect(frame).toContain('teamName:Solo Team');
-      expect(frame).toContain('teamStatus:running');
+      expect(frame).toContain('reviewCount:2');
+      expect(frame).toContain('reviewId:approval-1');
+      expect(frame).toContain('latestNotice:none');
     } finally {
       rendered.unmount();
     }
@@ -389,9 +324,11 @@ describe('useCliController background refresh', () => {
       await waitFor(() => codara.getStreamCallCount() === 2);
       await waitFor(() => (rendered.lastFrame() ?? '').includes('streamCalls:2'));
       const continuationCall = codara.getStreamCalls()[1];
-      expect(continuationCall?.input).toBeUndefined();
-      expect(continuationCall?.config).toEqual(expect.objectContaining({
-        streamMode: 'messages',
+      expect(continuationCall).toEqual(expect.objectContaining({
+        kind: 'continuation',
+        config: {
+          streamMode: 'messages',
+        },
         context: {
           codaraTaskCompletion: {
             tasks: [
@@ -574,8 +511,8 @@ describe('useCliController background refresh', () => {
 
     try {
       await waitFor(() => (rendered.lastFrame() ?? '').includes('runState:running'));
-      codara.setApprovals([
-        createApprovalSummary('approval-review', 'run-review', 'Waiting for approval on glob'),
+      codara.setReviews([
+        createReviewItem('approval-review', 'run-review', 'Waiting for approval on glob'),
       ]);
       codara.emit({
         id: 'task-event-review',
@@ -589,7 +526,7 @@ describe('useCliController background refresh', () => {
         parentId: 'task-run:run-review',
       });
 
-      await waitFor(() => (rendered.lastFrame() ?? '').includes('hil:approval-review'));
+      await waitFor(() => (rendered.lastFrame() ?? '').includes('review:approval-review'));
       const frame = rendered.lastFrame() ?? '';
       expect(frame).toContain('runState:paused');
       expect(frame).toContain('desc:Waiting for approval on glob');
@@ -599,83 +536,29 @@ describe('useCliController background refresh', () => {
     }
   });
 
-  it('surfaces team-member review immediately even while the parent turn is still marked running', async () => {
-    const codara = new FakeCodara();
-    codara.blockNextStream();
-    const rendered = render(<BackgroundReviewProbe codara={codara as unknown as Codara} />);
-
-    try {
-      await waitFor(() => (rendered.lastFrame() ?? '').includes('runState:running'));
-      codara.setApprovals([
-        createTeamApprovalSummary('approval-team-review', 'team-1', 'member-1', 'Waiting for approval on read_file'),
-      ]);
-      codara.emit({
-        id: 'team-event-review',
-        sessionId: 'session-1',
-        timestamp: new Date().toISOString(),
-        kind: 'team',
-        phase: 'update',
-        status: 'paused',
-        label: 'Worker member-1 paused: Waiting for approval on read_file',
-        detail: JSON.stringify(createPauseRequest('approval-team-review', 'Waiting for approval on read_file')),
-        parentId: 'team-root:team-1',
-      });
-
-      await waitFor(() => (rendered.lastFrame() ?? '').includes('hil:approval-team-review'));
-      const frame = rendered.lastFrame() ?? '';
-      expect(frame).toContain('runState:paused');
-      expect(frame).toContain('desc:Waiting for approval on read_file');
-    } finally {
-      codara.releaseBlockedStream();
-      rendered.unmount();
-    }
-  });
-
   it('advances to the next queued approval after the current approval is submitted', async () => {
     const codara = new FakeCodara();
     codara.blockNextResumeApproval();
-    codara.setApprovals([
-      createApprovalSummary('approval-1', 'run-1', 'Waiting for approval on glob'),
-      createApprovalSummary('approval-2', 'run-2', 'Waiting for approval on read_file'),
+    codara.setReviews([
+      createReviewItem('approval-1', 'run-1', 'Waiting for approval on glob'),
+      createReviewItem('approval-2', 'run-2', 'Waiting for approval on read_file'),
     ]);
-    const rendered = render(<ApprovalQueueProbe codara={codara as unknown as Codara} />);
+    const rendered = render(<ReviewQueueProbe codara={codara as unknown as Codara} />);
 
     try {
       await waitFor(() => (rendered.lastFrame() ?? '').includes('busy:true'));
       const busyFrame = rendered.lastFrame() ?? '';
-      expect(busyFrame).toContain('approvalCount:2');
-      expect(busyFrame).toContain('approvalId:approval-1');
+      expect(busyFrame).toContain('reviewCount:2');
+      expect(busyFrame).toContain('reviewId:approval-1');
       expect(busyFrame).toContain('busy:true');
       expect(busyFrame).toContain('resumeCount:1');
 
       codara.releaseBlockedResumeApproval();
-      await waitFor(() => (rendered.lastFrame() ?? '').includes('approvalId:approval-2'));
+      await waitFor(() => (rendered.lastFrame() ?? '').includes('reviewId:approval-2'));
       const frame = rendered.lastFrame() ?? '';
-      expect(frame).toContain('approvalCount:1');
-      expect(frame).toContain('approvalId:approval-2');
+      expect(frame).toContain('reviewCount:1');
+      expect(frame).toContain('reviewId:approval-2');
       expect(frame).toContain('resumeCount:1');
-    } finally {
-      rendered.unmount();
-    }
-  });
-
-  it('advances to the next queued team-member approval while only the approved member resumes', async () => {
-    const codara = new FakeCodara();
-    codara.blockNextResumeApproval();
-    codara.setApprovals([
-      createTeamApprovalSummary('approval-team-1', 'team-1', 'member-1', 'Waiting for approval on read_file'),
-      createTeamApprovalSummary('approval-team-2', 'team-1', 'member-2', 'Waiting for approval on glob'),
-    ]);
-    const rendered = render(<SingleApprovalProbe codara={codara as unknown as Codara} />);
-
-    try {
-      await waitFor(() => (rendered.lastFrame() ?? '').includes('approvalId:approval-team-1'));
-      expect(rendered.lastFrame() ?? '').toContain('resumeCount:1');
-      codara.releaseBlockedResumeApproval();
-      await waitFor(() => (rendered.lastFrame() ?? '').includes('approvalId:approval-team-2'));
-      const frame = rendered.lastFrame() ?? '';
-      expect(frame).toContain('resumeCount:1');
-      expect(frame).toContain('approvalId:approval-team-2');
     } finally {
       rendered.unmount();
     }
@@ -684,16 +567,16 @@ describe('useCliController background refresh', () => {
   it('dismisses a single permission approval immediately after submit while the delegated task resumes in the background', async () => {
     const codara = new FakeCodara();
     codara.blockNextResumeApproval();
-    codara.setApprovals([
-      createApprovalSummary('approval-1', 'run-1', 'Waiting for approval on read_file'),
+    codara.setReviews([
+      createReviewItem('approval-1', 'run-1', 'Waiting for approval on read_file'),
     ]);
-    const rendered = render(<SingleApprovalProbe codara={codara as unknown as Codara} />);
+    const rendered = render(<SingleReviewProbe codara={codara as unknown as Codara} />);
 
     try {
       await waitFor(() => (rendered.lastFrame() ?? '').includes('resumeCount:1'));
-      await waitFor(() => (rendered.lastFrame() ?? '').includes('approvalId:none'));
+      await waitFor(() => (rendered.lastFrame() ?? '').includes('reviewId:none'));
       const frame = rendered.lastFrame() ?? '';
-      expect(frame).toContain('approvalId:none');
+      expect(frame).toContain('reviewId:none');
       expect(frame).toContain('runState:done');
       expect(frame).toContain('resumeCount:1');
     } finally {
@@ -705,7 +588,7 @@ describe('useCliController background refresh', () => {
   it('activates the highlighted AskUser option before attempting a final submit', async () => {
     const codara = new FakeCodara();
     codara.setPauseRequest(createAskUserPauseRequest());
-    const rendered = render(<HilSubmitProbe codara={codara as unknown as Codara} />);
+    const rendered = render(<ReviewSubmitProbe codara={codara as unknown as Codara} />);
 
     try {
       await waitFor(() => (rendered.lastFrame() ?? '').includes('focus:input'));
@@ -717,50 +600,72 @@ describe('useCliController background refresh', () => {
       rendered.unmount();
     }
   });
+
+  it('keeps prompt input as the active target for task-scoped reviews', async () => {
+    const codara = new FakeCodara();
+    codara.setReviews([
+      createReviewItem('approval-1', 'run-1', 'Waiting for approval on glob'),
+    ]);
+    const rendered = render(<ReviewInputTargetProbe codara={codara as unknown as Codara} />);
+
+    try {
+      await waitFor(() => (rendered.lastFrame() ?? '').includes('blockingScope:task'));
+      const frame = rendered.lastFrame() ?? '';
+      expect(frame).toContain('reviewId:approval-1');
+      expect(frame).toContain('blockingScope:task');
+      expect(frame).toContain('inputTarget:prompt');
+    } finally {
+      rendered.unmount();
+    }
+  });
+
+  it('switches to review input for session-scoped pauses', async () => {
+    const codara = new FakeCodara();
+    codara.setPauseRequest(createAskUserPauseRequest());
+    const rendered = render(<ReviewInputTargetProbe codara={codara as unknown as Codara} />);
+
+    try {
+      await waitFor(() => (rendered.lastFrame() ?? '').includes('blockingScope:session'));
+      const frame = rendered.lastFrame() ?? '';
+      expect(frame).toContain('reviewId:ask-user-pause');
+      expect(frame).toContain('blockingScope:session');
+      expect(frame).toContain('inputTarget:review');
+    } finally {
+      rendered.unmount();
+    }
+  });
 });
 
-function ControllerProbe(
-  {codara, teamId}: {codara: Codara; teamId?: string},
-): React.JSX.Element {
+function ControllerProbe({codara}: {codara: Codara}): React.JSX.Element {
   const controller = useCliController({codara});
-  const {enterTeam} = controller;
-
-  useEffect(() => {
-    if (teamId) {
-      enterTeam(teamId);
-    }
-  }, [enterTeam, teamId]);
 
   return (
     <Text>
-      {`approvalCount:${controller.hilReview?.approvalCount ?? 0}`}
-      {` approvalId:${controller.hilReview?.request.id ?? 'none'}`}
-      {` teamId:${controller.teamDetailState?.teamId ?? 'none'}`}
-      {` teamName:${controller.teamDetailState?.teamName ?? 'none'}`}
-      {` teamStatus:${controller.teamDetailState?.status ?? 'none'}`}
+      {`reviewCount:${controller.review?.reviewCount ?? 0}`}
+      {` reviewId:${controller.review?.request.id ?? 'none'}`}
       {` latestNotice:${controller.notices[controller.notices.length - 1]?.content ?? 'none'}`}
       {` latestAssistantNotice:${[...controller.notices].reverse().find((notice) => notice.level === 'assistant')?.content ?? 'none'}`}
     </Text>
   );
 }
 
-function HilSubmitProbe({codara}: {codara: Codara}): React.JSX.Element {
+function ReviewSubmitProbe({codara}: {codara: Codara}): React.JSX.Element {
   const controller = useCliController({codara});
   const firedRef = React.useRef(false);
 
   useEffect(() => {
-    if (!controller.hilReview || firedRef.current) {
+    if (!controller.review || firedRef.current) {
       return;
     }
     firedRef.current = true;
-    controller.submitHilAction();
+    controller.submitReviewAction();
   }, [controller]);
 
   return (
     <Text>
-      {`focus:${controller.hilReview?.focus ?? 'none'}`}
-      {` activeTab:${controller.hilReview?.form?.activeTabIndex ?? -1}`}
-      {` answer:${String(controller.hilReview?.form?.answers.language ?? '')}`}
+      {`focus:${controller.review?.focus ?? 'none'}`}
+      {` activeTab:${controller.review?.form?.activeTabIndex ?? -1}`}
+      {` answer:${String(controller.review?.form?.answers.language ?? '')}`}
       {` resumeCount:${(codara as unknown as FakeCodara).resumeCount}`}
     </Text>
   );
@@ -781,49 +686,61 @@ function BackgroundReviewProbe({codara}: {codara: Codara}): React.JSX.Element {
   return (
     <Text>
       {`runState:${controller.runState.status}`}
-      {` hil:${controller.hilReview?.request.id ?? 'none'}`}
-      {` desc:${controller.hilReview?.request.description ?? 'none'}`}
+      {` review:${controller.review?.request.id ?? 'none'}`}
+      {` desc:${controller.review?.request.description ?? 'none'}`}
     </Text>
   );
 }
 
-function ApprovalQueueProbe({codara}: {codara: Codara}): React.JSX.Element {
+function ReviewInputTargetProbe({codara}: {codara: Codara}): React.JSX.Element {
+  const controller = useCliController({codara});
+
+  return (
+    <Text>
+      {`reviewId:${controller.review?.request.id ?? 'none'}`}
+      {` blockingScope:${controller.review?.blockingScope ?? 'none'}`}
+      {` inputTarget:${controller.inputTarget}`}
+    </Text>
+  );
+}
+
+function ReviewQueueProbe({codara}: {codara: Codara}): React.JSX.Element {
   const controller = useCliController({codara});
   const firedRef = React.useRef(false);
 
   useEffect(() => {
-    if (!controller.hilReview || firedRef.current || controller.hilReview.request.id !== 'approval-1') {
+    if (!controller.review || firedRef.current || controller.review.request.id !== 'approval-1') {
       return;
     }
     firedRef.current = true;
-    controller.submitHilAction();
+    controller.submitReviewAction();
   }, [controller]);
 
   return (
     <Text>
-      {`approvalCount:${controller.hilReview?.approvalCount ?? 0}`}
-      {` approvalId:${controller.hilReview?.request.id ?? 'none'}`}
-      {` busy:${controller.hilReview?.busy ? 'true' : 'false'}`}
+      {`reviewCount:${controller.review?.reviewCount ?? 0}`}
+      {` reviewId:${controller.review?.request.id ?? 'none'}`}
+      {` busy:${controller.review?.busy ? 'true' : 'false'}`}
       {` resumeCount:${(codara as unknown as FakeCodara).resumeCount}`}
     </Text>
   );
 }
 
-function SingleApprovalProbe({codara}: {codara: Codara}): React.JSX.Element {
+function SingleReviewProbe({codara}: {codara: Codara}): React.JSX.Element {
   const controller = useCliController({codara});
   const firedRef = React.useRef(false);
 
   useEffect(() => {
-    if (!controller.hilReview || firedRef.current) {
+    if (!controller.review || firedRef.current) {
       return;
     }
     firedRef.current = true;
-    controller.submitHilAction();
+    controller.submitReviewAction();
   }, [controller]);
 
   return (
     <Text>
-      {`approvalId:${controller.hilReview?.request.id ?? 'none'}`}
+      {`reviewId:${controller.review?.request.id ?? 'none'}`}
       {` runState:${controller.runState.status}`}
       {` resumeCount:${(codara as unknown as FakeCodara).resumeCount}`}
     </Text>
@@ -853,21 +770,11 @@ function BackgroundFollowupProbe({codara}: {codara: Codara}): React.JSX.Element 
 
 class FakeCodara {
   private listeners = new Set<(event: CodaraRuntimeEvent) => void>();
-  private approvals: ApprovalQuerySummary[] = [];
+  private reviews: ReviewQueryItem[] = [];
   private approvalRequests = new Map<string, PauseRequest>();
-  private teamDetails = new Map<string, TeamQueryDetail>([
-    ['team-1', {
-      teamId: 'team-1',
-      name: 'Team One',
-      status: 'running',
-      goal: 'Ship it',
-      members: [],
-      jobs: [],
-    }],
-  ]);
   private agentContext: Record<string, unknown> = {};
   private pendingPause: PauseRequest | undefined;
-  private focusedApprovalId: string | undefined;
+  private focusedReviewId: string | undefined;
   private taskRunSummaries: Array<{
     runId: string;
     sessionId: string;
@@ -885,7 +792,7 @@ class FakeCodara {
   private releaseBlockedStreamResolver: (() => void) | undefined;
   private blockApprovalResume = false;
   private releaseBlockedApprovalResumeResolver: (() => void) | undefined;
-  private readonly streamCalls: Array<{input: unknown; config: unknown}> = [];
+  private readonly streamCalls: CodaraStreamRequest[] = [];
   private readonly queuedStreamChunks: AIMessageChunk[][] = [];
   public resumeCount = 0;
   private readonly sessionState: SessionState = {
@@ -908,33 +815,13 @@ class FakeCodara {
     }
   }
 
-  setApprovals(approvals: ApprovalQuerySummary[]): void {
-    this.approvals = approvals;
-    this.approvalRequests = new Map(approvals.map((approval) => [
-      approval.approvalId,
-      createPauseRequest(approval.approvalId, approval.description),
+  setReviews(reviews: ReviewQueryItem[]): void {
+    this.reviews = reviews;
+    this.approvalRequests = new Map(reviews.map((review) => [
+      review.reviewId,
+      createPauseRequest(review.reviewId, review.description),
     ]));
-    this.focusedApprovalId = approvals[0]?.approvalId;
-  }
-
-  setTeamDetail(detail: TeamQueryDetail | undefined): void {
-    this.teamDetails = new Map(detail ? [[detail.teamId, detail]] : []);
-  }
-
-  setTeamDetails(details: TeamQueryDetail[]): void {
-    this.teamDetails = new Map(details.map((detail) => [detail.teamId, detail]));
-  }
-
-  setFocusedTeam(teamId: string | undefined): void {
-    this.agentContext = {
-      ...(teamId ? {
-        teamSurface: {
-          activeTeamId: teamId,
-          teamRole: 'leader',
-          teamMode: 'leader',
-        },
-      } : {}),
-    };
+    this.focusedReviewId = reviews[0]?.reviewId;
   }
 
   setPauseRequest(request: PauseRequest | undefined): void {
@@ -963,7 +850,7 @@ class FakeCodara {
     this.queuedStreamChunks.push([new AIMessageChunk({content: text})]);
   }
 
-  getStreamCalls(): Array<{input: unknown; config: unknown}> {
+  getStreamCalls(): CodaraStreamRequest[] {
     return [...this.streamCalls];
   }
 
@@ -1023,49 +910,33 @@ class FakeCodara {
     };
   }
 
-  getApprovalSummaries(): ApprovalQuerySummary[] {
-    const focused = this.getFocusedApprovalReview()?.summary.approvalId;
-    return this.approvals.map((approval) => ({
-      ...approval,
-      isForeground: approval.approvalId === focused,
+  listReviewItems(): ReviewQueryItem[] {
+    const focused = this.getFocusedReview()?.item.reviewId;
+    return this.reviews.map((review) => ({
+      ...review,
+      isFocused: review.reviewId === focused,
     }));
   }
 
-  getFocusedApprovalReview(): ApprovalQueryReview | undefined {
-    const focused = this.focusedApprovalId
-      ? this.approvals.find((approval) => approval.approvalId === this.focusedApprovalId)
-      : this.approvals[0];
+  getFocusedReview(): FocusedReviewQuery | undefined {
+    const focused = this.focusedReviewId
+      ? this.reviews.find((review) => review.reviewId === this.focusedReviewId)
+      : this.reviews[0];
     if (!focused) {
       return undefined;
     }
 
     return {
-      summary: {
+      item: {
         ...focused,
-        isForeground: true,
+        isFocused: true,
       },
-      request: this.approvalRequests.get(focused.approvalId)!,
+      request: this.approvalRequests.get(focused.reviewId)!,
     };
   }
 
-  async focusApproval(approvalId: string): Promise<void> {
-    this.focusedApprovalId = approvalId;
-  }
-
-  getTeamSummaries() {
-    return [...this.teamDetails.values()].map((detail) => ({
-      teamId: detail.teamId,
-      name: detail.name,
-      status: detail.status,
-      goal: detail.goal,
-      memberCount: detail.members.length,
-      jobProgress: {done: 0, total: detail.jobs.length},
-      startedAt: new Date().toISOString(),
-    }));
-  }
-
-  getTeamDetail(teamId: string): TeamQueryDetail | undefined {
-    return this.teamDetails.get(teamId);
+  async focusReview(reviewId: string): Promise<void> {
+    this.focusedReviewId = reviewId;
   }
 
   getTaskRunSummaries() {
@@ -1084,8 +955,7 @@ class FakeCodara {
     return {ok: true, output: '', command: ''};
   }
 
-  async *stream(input?: unknown, config?: unknown) {
-    this.streamCalls.push({input, config});
+  async *stream(_input?: unknown, _config?: unknown) {
     if (this.blockStream) {
       await new Promise<void>((resolve) => {
         this.releaseBlockedStreamResolver = resolve;
@@ -1094,6 +964,27 @@ class FakeCodara {
     const chunks = this.queuedStreamChunks.shift() ?? [];
     for (const chunk of chunks) {
       yield chunk;
+    }
+  }
+
+  async *streamInteraction(request: CodaraStreamRequest) {
+    this.streamCalls.push(request);
+    switch (request.kind) {
+      case 'prompt':
+        yield* this.stream(request.input, request.config);
+        return;
+      case 'continuation':
+        yield* this.stream(undefined, {
+          ...request.config,
+          context: request.context,
+        });
+        return;
+      case 'pause':
+        yield* this.resumePauseStream(request.payload, request.config);
+        return;
+      case 'review':
+        yield* this.resumeApprovalStream(request.payload, request.config);
+        return;
     }
   }
 
@@ -1109,28 +1000,28 @@ class FakeCodara {
         this.releaseBlockedApprovalResumeResolver = resolve;
       });
     }
-    const currentApprovalId = this.focusedApprovalId ?? this.approvals[0]?.approvalId;
+    const currentApprovalId = this.focusedReviewId ?? this.reviews[0]?.reviewId;
     if (currentApprovalId) {
-      this.approvals = this.approvals.filter((approval) => approval.approvalId !== currentApprovalId);
+      this.reviews = this.reviews.filter((review) => review.reviewId !== currentApprovalId);
       this.approvalRequests.delete(currentApprovalId);
     }
-    this.focusedApprovalId = this.approvals[0]?.approvalId;
+    this.focusedReviewId = this.reviews[0]?.reviewId;
     yield* [];
   }
 
-  async resumeApproval() {
+  async resumeReview() {
     this.resumeCount += 1;
     if (this.blockApprovalResume) {
       await new Promise<void>((resolve) => {
         this.releaseBlockedApprovalResumeResolver = resolve;
       });
     }
-    const currentApprovalId = this.focusedApprovalId ?? this.approvals[0]?.approvalId;
+    const currentApprovalId = this.focusedReviewId ?? this.reviews[0]?.reviewId;
     if (currentApprovalId) {
-      this.approvals = this.approvals.filter((approval) => approval.approvalId !== currentApprovalId);
+      this.reviews = this.reviews.filter((review) => review.reviewId !== currentApprovalId);
       this.approvalRequests.delete(currentApprovalId);
     }
-    this.focusedApprovalId = this.approvals[0]?.approvalId;
+    this.focusedReviewId = this.reviews[0]?.reviewId;
   }
 
   async dispose() {}
@@ -1140,43 +1031,28 @@ class FakeCodara {
   }
 }
 
-function createApprovalSummary(
-  approvalId: string,
+function createReviewItem(
+  reviewId: string,
   taskRunId: string,
   description: string,
-): ApprovalQuerySummary {
+): ReviewQueryItem {
   const now = new Date().toISOString();
   return {
-    approvalId,
+    reviewId,
     source: 'task_run',
+    kind: 'approval',
+    interactionMode: 'approval',
+    blockingScope: 'task',
     description,
     toolName: 'bash',
     createdAt: now,
     updatedAt: now,
-    taskRunId,
-    childSessionId: `${taskRunId}:child`,
-    isForeground: false,
-  };
-}
-
-function createTeamApprovalSummary(
-  approvalId: string,
-  teamId: string,
-  memberId: string,
-  description: string,
-): ApprovalQuerySummary {
-  const now = new Date().toISOString();
-  return {
-    approvalId,
-    source: 'team_member',
-    description,
-    toolName: 'read_file',
-    createdAt: now,
-    updatedAt: now,
-    teamId,
-    memberId,
-    memberName: memberId,
-    isForeground: false,
+    anchor: {
+      origin: 'delegated',
+      taskRunId,
+      childSessionId: `${taskRunId}:child`,
+    },
+    isFocused: false,
   };
 }
 

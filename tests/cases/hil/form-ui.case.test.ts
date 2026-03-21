@@ -15,7 +15,7 @@ describe('case: generic HIL form UI', () => {
       prompt: 'Start planning',
       scenario: 'hil-form',
       env: {
-        CODARA_CLI_HIL_AUTO_ACTIONS: JSON.stringify([{
+        CODARA_CLI_REVIEW_AUTO_ACTIONS: JSON.stringify([{
           action: 'submit',
           answers: {
             domain: 'SaaS product',

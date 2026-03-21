@@ -81,6 +81,7 @@ describe('solidified transcript model', () => {
           artifact: {
             type: 'task_run_started',
             runId: 'call_123',
+            parentSessionId: 'session-1',
             sessionId: 'session:task:call_123',
             agentName: 'Explore',
             label: 'Delegating Explore: Analyze the repo',

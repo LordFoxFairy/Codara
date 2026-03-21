@@ -126,6 +126,7 @@ describe('tasks middlewares', () => {
     const launchText = formatTaskRunLaunchResult({
       type: 'task_run_started',
       runId: 'run-1',
+      parentSessionId: 'session-1',
       sessionId: 'session-1:task:run-1',
       agentName: 'Explore',
       label: 'Delegating Explore: Inspect the project',
@@ -153,6 +154,7 @@ describe('tasks middlewares', () => {
           name: TASK_TOOL_NAME,
           args: {
             prompt: 'delegate this',
+            subagent_type: 'Agent',
           },
         } as ToolCall],
       }),
@@ -199,7 +201,7 @@ describe('tasks middlewares', () => {
     const lastAi = result.state.messages[result.state.messages.length - 1] as AIMessage;
 
     expect(String(lastAi.content)).toContain('Available Subagents');
-    expect(String(lastAi.content)).toContain('general-purpose');
+    expect(String(lastAi.content)).toContain('Agent: built-in child that inherits the main-agent baseline');
     expect(String(lastAi.content)).toContain('Explore');
   });
 
@@ -268,7 +270,7 @@ describe('tasks middlewares', () => {
     expect(context.systemMessage.join('\n')).not.toContain('Child summary should stay hidden from the transcript.');
   });
 
-  it('should delegate through Task middleware without requiring skills runtime for the default delegate', async () => {
+  it('should delegate through Task middleware without requiring skills runtime for the built-in Agent child', async () => {
     const runStore = createTaskRunMemoryStore();
     const taskMiddleware = createTaskMiddleware({
       model: new ChildSummaryModel() as unknown as BaseChatModel,
@@ -281,7 +283,8 @@ describe('tasks middlewares', () => {
           id: 'call_task_default_delegate',
           name: TASK_TOOL_NAME,
           args: {
-            prompt: 'delegate with the default child',
+            prompt: 'delegate with the Agent child',
+            subagent_type: 'Agent',
           },
         } as ToolCall],
       }),
@@ -351,6 +354,7 @@ describe('tasks middlewares', () => {
           name: TASK_TOOL_NAME,
           args: {
             prompt: 'inspect the deeper feature file',
+            subagent_type: 'Agent',
           },
         } as ToolCall],
       }),

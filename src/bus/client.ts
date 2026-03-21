@@ -102,7 +102,7 @@ export class BusClient {
 
   /**
    * Send a chat message. Returns an async generator of BusEvents.
-   * Yields streaming events (token, thinking, tool_call, runtime_event, paused)
+   * Yields streaming events (token, thinking, tool_call, runtime_event, review_required)
    * and returns when `done` or `error` is received.
    */
   async *chat(prompt: string, sessionId?: string): AsyncGenerator<BusEvent> {
@@ -117,7 +117,7 @@ export class BusClient {
   }
 
   /**
-   * Resume a paused session. Returns an async generator of BusEvents.
+   * Resume a blocked review. Returns an async generator of BusEvents.
    */
   async *resume(sessionId: string, action: string, input?: string): AsyncGenerator<BusEvent> {
     const requestId = crypto.randomUUID();

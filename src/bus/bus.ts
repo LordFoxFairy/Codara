@@ -200,7 +200,11 @@ export class CodaraBus {
       payload.input = request.input;
     }
 
-    const generator = runtime.resumePauseStream(payload, {streamMode: 'messages'});
+    const generator = runtime.streamInteraction({
+      kind: 'review',
+      payload,
+      config: {streamMode: 'messages'},
+    });
     await this.pipeStream(sessionId, request.requestId, runtime, generator);
   }
 
@@ -320,13 +324,14 @@ export class CodaraBus {
             state?: {pendingPause?: unknown};
           } | undefined;
 
-          // Emit paused if HIL is active — don't emit 'done' since session is paused, not finished.
+          // Emit review_required if a blocking review is active.
+          // Don't emit 'done' since the session is paused, not finished.
           if (result?.state?.pendingPause) {
             const pause = result.state.pendingPause as {
               review?: {allowedDecisions?: unknown[]};
             };
             this.events.emit({
-              type: 'paused',
+              type: 'review_required',
               sessionId,
               requestId,
               request: result.state.pendingPause,
@@ -418,7 +423,7 @@ export class CodaraBus {
       if (chunk.type === 'hil_event' && chunk.payload) {
         const payload = chunk.payload as {type?: string; request?: unknown};
         if (payload.type === 'hil_pause') {
-          // The paused event will be emitted from the result handler in pipeStream.
+          // The review_required event is emitted from the result handler in pipeStream.
           // This is an in-flight notification; no separate event needed here.
         }
       }

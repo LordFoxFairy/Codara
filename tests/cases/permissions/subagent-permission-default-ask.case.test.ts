@@ -15,7 +15,7 @@ describe('case: subagent permission default ask', () => {
       prompt: 'Delegate the guarded task',
       scenario: 'subagent-permission',
       env: {
-        CODARA_CLI_HIL_AUTO_ACTIONS: 'always',
+        CODARA_CLI_REVIEW_AUTO_ACTIONS: 'always',
       },
     });
 

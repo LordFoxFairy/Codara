@@ -17,7 +17,7 @@ describe('case: runtime permission default ask', () => {
       prompt: 'Run touch guarded.txt',
       scenario: 'runtime-permission',
       env: {
-        CODARA_CLI_HIL_AUTO_ACTIONS: 'always',
+        CODARA_CLI_REVIEW_AUTO_ACTIONS: 'always',
       },
     });
 
@@ -116,7 +116,7 @@ describe('case: runtime permission default ask', () => {
       prompt: 'Run cd ./tmp/repo && git fetch origin && git push origin main',
       scenario: 'runtime-git-compound',
       env: {
-        CODARA_CLI_HIL_AUTO_ACTIONS: 'allow_tool',
+        CODARA_CLI_REVIEW_AUTO_ACTIONS: 'allow_tool',
       },
     });
 
@@ -152,7 +152,7 @@ describe('case: runtime permission default ask', () => {
       prompt: 'Run touch guarded.txt',
       scenario: 'runtime-permission',
       env: {
-        CODARA_CLI_HIL_AUTO_ACTIONS: 'allow_project',
+        CODARA_CLI_REVIEW_AUTO_ACTIONS: 'allow_project',
       },
     });
 
@@ -236,7 +236,7 @@ describe('case: runtime permission default ask', () => {
       prompt: 'Write the plan file',
       scenario: 'runtime-write-permission',
       env: {
-        CODARA_CLI_HIL_AUTO_ACTIONS: 'allow_once',
+        CODARA_CLI_REVIEW_AUTO_ACTIONS: 'allow_once',
       },
     });
 
@@ -257,7 +257,7 @@ describe('case: runtime permission default ask', () => {
       prompt: 'Run mkdir tmp/demo2',
       scenario: 'runtime-permission-mkdir-path',
       env: {
-        CODARA_CLI_HIL_AUTO_ACTIONS: 'allow_path',
+        CODARA_CLI_REVIEW_AUTO_ACTIONS: 'allow_path',
       },
     });
 
@@ -292,7 +292,7 @@ describe('case: runtime permission default ask', () => {
       prompt: 'Write the plan through a heredoc',
       scenario: 'runtime-permission-heredoc-path',
       env: {
-        CODARA_CLI_HIL_AUTO_ACTIONS: 'allow_path',
+        CODARA_CLI_REVIEW_AUTO_ACTIONS: 'allow_path',
       },
     });
 

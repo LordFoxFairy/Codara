@@ -112,7 +112,7 @@ describe('CLI chrome', () => {
 
   it('should keep the footer to a single compact hint line', () => {
     expect(describeFooter('wide')).toBe('Enter send  ·  Ctrl+C exit  ·  / commands  ·  Ctrl+T tasks  ·  Ctrl+O expand');
-    expect(describeFooter('wide', false, true)).toBe('Enter send  ·  Ctrl+C exit  ·  / commands  ·  Ctrl+T tasks  ·  Ctrl+O expand  ·  shift+↑/↓ select member');
+    expect(describeFooter('wide', true)).toBe('Esc close output  ·  ↑↓ scroll  ·  Enter send  ·  / commands');
     expect(describeFooter('minimal')).toBe('Enter send  ·  ? shortcuts  ·  Ctrl+C exit');
   });
 });

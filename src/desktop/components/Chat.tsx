@@ -115,10 +115,6 @@ function describeRuntimeStatus(status: StreamStatus, event: RuntimeEvent | null)
       if (event.phase === "start") return "Delegating to subagent...";
       if (event.phase === "end") return "Subagent completed";
       return "Subagent working...";
-    case "team":
-      if (event.phase === "start") return "Team coordinating...";
-      if (event.phase === "update") return event.label.length > 50 ? `${event.label.slice(0, 47)}...` : event.label;
-      return "Team completed";
     default:
       return "Working...";
   }

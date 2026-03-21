@@ -24,13 +24,15 @@ const runtimeSharedSchema = z.object({
   skills: z.unknown().optional(),
 }).loose();
 
-export const DEFAULT_SUBAGENT_TYPE = 'general-purpose';
+export const AGENT_SUBAGENT_TYPE = 'Agent';
 
-const DEFAULT_SUBAGENT_DEFINITION: SubagentDefinition = {
-  name: DEFAULT_SUBAGENT_TYPE,
-  description: 'General-purpose delegate',
+const AGENT_SUBAGENT_DEFINITION: SubagentDefinition = {
+  name: AGENT_SUBAGENT_TYPE,
+  description: 'Built-in Agent child that inherits the main-agent baseline',
   systemPrompt: '',
 };
+
+const RESERVED_SUBAGENT_NAMES = new Set(['general-purpose', 'default', 'agent']);
 
 export function readSkillsRuntimeData(shared: unknown): SkillsRuntimeData | undefined {
   const runtime = runtimeSharedSchema.safeParse(shared);
@@ -42,16 +44,33 @@ export function resolveSubagentDefinition(
   runtime: SkillsRuntimeData | undefined,
   subagentType: string | undefined,
 ): SubagentDefinition {
-  const normalized = subagentType?.trim() || DEFAULT_SUBAGENT_TYPE;
-  const definition = runtime?.subagentDefinitions?.[normalized];
+  const normalized = normalizeSubagentType(subagentType);
+  if (!normalized) {
+    throw new Error('Task requires subagent_type. Use "Agent" for the base child or a named profile such as "Explore".');
+  }
 
+  if (normalized.toLowerCase() === AGENT_SUBAGENT_TYPE.toLowerCase()) {
+    return AGENT_SUBAGENT_DEFINITION;
+  }
+
+  const definition = runtime?.subagentDefinitions?.[normalized];
   if (definition) {
     return definition;
   }
 
-  if (normalized === DEFAULT_SUBAGENT_TYPE) {
-    return DEFAULT_SUBAGENT_DEFINITION;
-  }
-
   throw new Error(`Unknown subagent_type "${normalized}"`);
+}
+
+export function normalizeSubagentType(subagentType: string | undefined): string | undefined {
+  const normalized = subagentType?.trim();
+  return normalized || undefined;
+}
+
+export function formatSubagentDisplayName(subagentType: string | undefined): string {
+  return normalizeSubagentType(subagentType) ?? AGENT_SUBAGENT_TYPE;
+}
+
+export function isReservedSubagentName(name: string | undefined): boolean {
+  const normalized = name?.trim().toLowerCase();
+  return Boolean(normalized && RESERVED_SUBAGENT_NAMES.has(normalized));
 }

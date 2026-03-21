@@ -1,49 +1,48 @@
 import {describe, expect, it} from 'bun:test';
 import {
-  isFloatingHilReview,
+  isFloatingReview,
   shouldShowFloatingTaskPanel,
-  shouldShowFocusedTeamDetail,
   resolveCliForegroundSurface,
   shouldShowActivityLine,
   shouldShowTaskPanel,
   shouldShowPromptFrame,
 } from '../../../src/cli/app/shell-app';
-import type {CliHilReviewState} from '../../../src/cli/app/view-state';
+import type {CliReviewState} from '../../../src/cli/app/view-state';
 import type {TranscriptItem} from '../../../src/cli/transcript/model';
 
 describe('CLI foreground surface', () => {
-  it('should prioritize HIL over the transcript when a review is active', () => {
-    expect(resolveCliForegroundSurface({hasHilReview: true, hasConversation: true})).toBe('hil');
+  it('should keep the transcript foreground when a review is active', () => {
+    expect(resolveCliForegroundSurface({hasReview: true, hasConversation: true})).toBe('transcript');
   });
 
   it('should show the transcript when conversation exists and no review is active', () => {
-    expect(resolveCliForegroundSurface({hasHilReview: false, hasConversation: true})).toBe('transcript');
+    expect(resolveCliForegroundSurface({hasReview: false, hasConversation: true})).toBe('transcript');
   });
 
   it('should fall back to the welcome state when there is no conversation or review', () => {
-    expect(resolveCliForegroundSurface({hasHilReview: false, hasConversation: false})).toBe('welcome');
+    expect(resolveCliForegroundSurface({hasReview: false, hasConversation: false})).toBe('welcome');
   });
 
   it('should treat AskUser forms as floating review windows', () => {
-    expect(isFloatingHilReview(createAskReview())).toBe(true);
+    expect(isFloatingReview(createAskReview())).toBe(true);
   });
 
   it('should also treat permission reviews as floating review windows', () => {
-    expect(isFloatingHilReview(createPermissionReview())).toBe(true);
+    expect(isFloatingReview(createPermissionReview())).toBe(true);
   });
 
-  it('should hide the prompt frame while a floating AskUser review is active', () => {
+  it('should keep the prompt frame visible for task-scoped review windows', () => {
     expect(shouldShowPromptFrame({
-      hilReview: createAskReview(),
+      review: createAskReview(),
       hasCommandOutput: false,
       hasCompletion: false,
       hasSessionPicker: false,
-    })).toBe(false);
+    })).toBe(true);
   });
 
-  it('should still hide the prompt frame for inline permission reviews', () => {
+  it('should hide the prompt frame only for session-scoped reviews', () => {
     expect(shouldShowPromptFrame({
-      hilReview: createPermissionReview(),
+      review: createSessionReview(),
       hasCommandOutput: false,
       hasCompletion: false,
       hasSessionPicker: false,
@@ -85,22 +84,6 @@ describe('CLI foreground surface', () => {
     })).toBe(true);
   });
 
-  it('should show focused team detail when conversation is active and no blocking overlay is open', () => {
-    expect(shouldShowFocusedTeamDetail({
-      hasConversation: true,
-      hasFocusedTeamDetail: true,
-      hasBlockingOverlay: false,
-    })).toBe(true);
-  });
-
-  it('should hide focused team detail while a blocking overlay is open', () => {
-    expect(shouldShowFocusedTeamDetail({
-      hasConversation: true,
-      hasFocusedTeamDetail: true,
-      hasBlockingOverlay: true,
-    })).toBe(false);
-  });
-
   it('should hide the activity line when a running task block already owns task/tool progress', () => {
     const activeItems: TranscriptItem[] = [{
       id: 'active-task-run:run-1',
@@ -133,18 +116,6 @@ describe('CLI foreground surface', () => {
     })).toBe(false);
   });
 
-  it('should hide the activity line whenever active teams are still running or paused, even if no task block is projected', () => {
-    expect(shouldShowActivityLine({
-      runStateStatus: 'running',
-      latestRuntimeEventKind: 'team',
-      activeItems: [],
-      activeTaskCount: 0,
-      pausedTaskCount: 0,
-      activeTeamCount: 1,
-      pausedTeamCount: 1,
-    })).toBe(false);
-  });
-
   it('should keep the activity line for normal model thinking states', () => {
     expect(shouldShowActivityLine({
       runStateStatus: 'running',
@@ -152,13 +123,11 @@ describe('CLI foreground surface', () => {
       activeItems: [],
       activeTaskCount: 0,
       pausedTaskCount: 0,
-      activeTeamCount: 0,
-      pausedTeamCount: 0,
     })).toBe(true);
   });
 });
 
-function createAskReview(): CliHilReviewState {
+function createAskReview(): CliReviewState {
   return {
     request: {
       id: 'pause-form',
@@ -196,6 +165,7 @@ function createAskReview(): CliHilReviewState {
     focus: 'input',
     draft: '',
     busy: false,
+    blockingScope: 'task',
     form: {
       tabs: [{
         id: 'spec',
@@ -209,7 +179,7 @@ function createAskReview(): CliHilReviewState {
   };
 }
 
-function createPermissionReview(): CliHilReviewState {
+function createPermissionReview(): CliReviewState {
   return {
     request: {
       id: 'pause-permission',
@@ -239,5 +209,13 @@ function createPermissionReview(): CliHilReviewState {
     focus: 'actions',
     draft: '',
     busy: false,
+    blockingScope: 'task',
+  };
+}
+
+function createSessionReview(): CliReviewState {
+  return {
+    ...createAskReview(),
+    blockingScope: 'session',
   };
 }

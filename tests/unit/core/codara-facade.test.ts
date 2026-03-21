@@ -1,10 +1,5 @@
 import {describe, expect, it} from 'bun:test';
 import {createAgentFileCheckpointer, createAgentMemoryCheckpointer, createCodara, createCodaraRuntime} from '@/index';
-import {assembleCodara} from '@/codara/facade';
-import {TeamRegistry} from '@capability/team/coordination/team-registry';
-import {TeamRuntime} from '@capability/team/runtime/team-runtime';
-import type {MemberSession} from '@capability/team/runtime/member-runner';
-import {TeamPersistence} from '@capability/team/persistence';
 import {putManualCheckpoint} from '@durability/checkpoint';
 import {createApprovalFileStore, createApprovalMemoryStore} from '@durability/approval-store';
 import {createHILMiddleware} from '@core/middleware';
@@ -23,42 +18,8 @@ const createRuntimeForTest = (options: Parameters<typeof createCodaraRuntime>[0]
   createCodaraRuntime({
     ...options,
     autoMemory: false,
-    teams: options?.teams ?? true,
   })
 );
-
-async function persistRestorableTeam(
-  projectRoot: string,
-  {
-    name,
-    goal,
-    status,
-  }: {
-    name: string;
-    goal: string;
-    status: 'running' | 'paused';
-  },
-) {
-  const registry = new TeamRegistry();
-  const team = registry.createTeam({name, goal, createdBy: 'test'});
-  registry.updateTeamStatus(team.teamId, 'running');
-  if (status === 'paused') {
-    registry.updateTeamStatus(team.teamId, 'paused');
-  }
-
-  const persistence = new TeamPersistence(path.join(projectRoot, '.codara'));
-  persistence.save(
-    team.teamId,
-    TeamPersistence.buildSnapshot(
-      registry.getTeam(team.teamId)!,
-      [],
-      registry.getJobBoard(team.teamId),
-      [],
-    ),
-  );
-
-  return team;
-}
 
 async function waitForCondition(
   predicate: () => boolean,
@@ -98,7 +59,7 @@ class DefaultRuntimeWorkflowModel {
           name: 'Task',
           args: {
             prompt: 'Inspect isolated child work',
-            subagent_type: 'general-purpose',
+            subagent_type: 'Agent',
           },
         } as ToolCall],
       });
@@ -199,7 +160,7 @@ class DefaultRuntimeProgressiveDisclosureModel {
         name: 'Task',
         args: {
           prompt: 'Inspect deeper child feature',
-          subagent_type: 'general-purpose',
+          subagent_type: 'Agent',
         },
       } as ToolCall],
     });
@@ -251,7 +212,7 @@ class MultiDelegatedApprovalModel {
           name: 'Task',
           args: {
             prompt: 'Inspect alpha approval path',
-            subagent_type: 'general-purpose',
+            subagent_type: 'Agent',
           },
         } as ToolCall,
         {
@@ -259,7 +220,7 @@ class MultiDelegatedApprovalModel {
           name: 'Task',
           args: {
             prompt: 'Inspect beta approval path',
-            subagent_type: 'general-purpose',
+            subagent_type: 'Agent',
           },
         } as ToolCall,
       ],
@@ -271,30 +232,6 @@ class MultiDelegatedApprovalModel {
   }
 }
 
-function createTeamApprovalSession(behavior?: {
-  beforeInvoke?: () => Promise<void> | void;
-  beforeResume?: () => Promise<void> | void;
-  invokeResult?: () => {reason: 'complete' | 'continue' | 'error' | 'idle' | 'paused'; pause?: import('@core/agent').PauseRequest};
-  resumeResult?: () => {reason: 'complete' | 'continue' | 'error' | 'idle' | 'paused'; pause?: import('@core/agent').PauseRequest};
-}): MemberSession {
-  let pendingPause: import('@core/agent').PauseRequest | undefined;
-  return {
-    invoke: async () => {
-      await behavior?.beforeInvoke?.();
-      const result = behavior?.invokeResult?.() ?? {reason: 'complete' as const};
-      pendingPause = result.reason === 'paused' ? result.pause : undefined;
-      return result;
-    },
-    resumePause: async () => {
-      await behavior?.beforeResume?.();
-      const result = behavior?.resumeResult?.() ?? {reason: 'complete' as const};
-      pendingPause = result.reason === 'paused' ? result.pause : undefined;
-      return result;
-    },
-    getPendingPause: () => pendingPause,
-    dispose: async () => {},
-  };
-}
 
 describe('Codara facade runtime', () => {
   it('should create a Codara session through the facade', async () => {
@@ -343,8 +280,8 @@ describe('Codara facade runtime', () => {
     taskRunStore.start({
       runId: 'run-session-a',
       sessionId: 'runtime-task-run-session-a',
-      label: 'Delegating general-purpose: Inspect isolated child work',
-      agentName: 'general-purpose',
+      label: 'Delegating Agent: Inspect isolated child work',
+      agentName: 'Agent',
     });
     taskRunStore.finish('run-session-a', {
       type: 'delegated_agent_result',
@@ -357,8 +294,8 @@ describe('Codara facade runtime', () => {
     taskRunStore.start({
       runId: 'run-session-b',
       sessionId: 'runtime-task-run-session-b',
-      label: 'Delegating general-purpose: Inspect another child work',
-      agentName: 'general-purpose',
+      label: 'Delegating Agent: Inspect another child work',
+      agentName: 'Agent',
     });
     taskRunStore.finish('run-session-b', {
       type: 'delegated_agent_result',
@@ -379,8 +316,9 @@ describe('Codara facade runtime', () => {
 
     expect(runtime.getTaskRunSummaries()).toEqual([
       expect.objectContaining({
-        label: 'Delegating general-purpose: Inspect isolated child work',
-        agentName: 'general-purpose',
+        parentSessionId: 'runtime-task-run-session-a',
+        label: 'Delegating Agent: Inspect isolated child work',
+        agentName: 'Agent',
         status: 'completed',
       }),
     ]);
@@ -435,7 +373,7 @@ describe('Codara facade runtime', () => {
             name: TASK_TOOL_NAME,
             args: {
               prompt: 'Inspect custom runtime rebinding',
-              subagent_type: 'general-purpose',
+              subagent_type: 'Agent',
             },
           } as ToolCall],
         });
@@ -491,8 +429,8 @@ describe('Codara facade runtime', () => {
       expect(runtime.getTaskRunSummaries()).toEqual([
         expect.objectContaining({
           runId: 'call_runtime_rebound_task',
-          label: 'Delegating general-purpose: Inspect custom runtime rebinding',
-          agentName: 'general-purpose',
+          label: 'Delegating Agent: Inspect custom runtime rebinding',
+          agentName: 'Agent',
           status: 'completed',
           summary: expect.stringContaining('child-tool:child_echo:delegated child hello'),
         }),
@@ -503,7 +441,7 @@ describe('Codara facade runtime', () => {
           kind: 'task',
           phase: 'start',
           status: 'running',
-          label: 'Delegating general-purpose: Inspect custom runtime rebinding',
+          label: 'Delegating Agent: Inspect custom runtime rebinding',
         }),
         expect.objectContaining({
           kind: 'task',
@@ -530,8 +468,8 @@ describe('Codara facade runtime', () => {
     taskRunStore.start({
       runId: 'run-live',
       sessionId: 'runtime-live-task-run-session',
-      label: 'Delegating general-purpose: Inspect live query behavior',
-      agentName: 'general-purpose',
+      label: 'Delegating Agent: Inspect live query behavior',
+      agentName: 'Agent',
     });
 
     expect(runtime.getTaskRunSummaries()).toEqual([
@@ -582,10 +520,10 @@ describe('Codara facade runtime', () => {
       expect(launched.state.status).not.toBe('paused');
       expect(launched.state.pendingPause).toBeUndefined();
 
-      await waitForCondition(() => runtime.getApprovalSummaries().length === 2);
-      const approvals = runtime.getApprovalSummaries();
-      expect(approvals).toHaveLength(2);
-      expect(approvals.map((approval) => approval.taskRunId).sort()).toEqual(['call_task_alpha', 'call_task_beta']);
+      await waitForCondition(() => runtime.listReviewItems().length === 2);
+      const reviews = runtime.listReviewItems();
+      expect(reviews).toHaveLength(2);
+      expect(reviews.map((review) => review.anchor.taskRunId).sort()).toEqual(['call_task_alpha', 'call_task_beta']);
       expect(runtime.getAgentState().pendingPause).toBeUndefined();
       await waitForCondition(() => (
         runtimeEvents.filter((event) => (
@@ -596,25 +534,25 @@ describe('Codara facade runtime', () => {
         )).length >= 2
       ));
 
-      const alternateApproval = approvals[1];
-      expect(alternateApproval).toBeDefined();
+      const alternateReview = reviews[1];
+      expect(alternateReview).toBeDefined();
 
-      await runtime.focusApproval(alternateApproval!.approvalId);
-      expect(runtime.getFocusedApprovalReview()?.summary.approvalId).toBe(alternateApproval!.approvalId);
-      expect(runtime.getApprovalSummaries().find((approval) => approval.approvalId === alternateApproval!.approvalId)?.isForeground).toBe(true);
+      await runtime.focusReview(alternateReview!.reviewId);
+      expect(runtime.getFocusedReview()?.item.reviewId).toBe(alternateReview!.reviewId);
+      expect(runtime.listReviewItems().find((review) => review.reviewId === alternateReview!.reviewId)?.isFocused).toBe(true);
 
-      await runtime.resumeApproval({action: 'allow_once'});
-      await waitForCondition(() => runtime.getApprovalSummaries().length === 1);
+      await runtime.resumeReview({action: 'allow_once'});
+      await waitForCondition(() => runtime.listReviewItems().length === 1);
 
-      const remainingApprovals = runtime.getApprovalSummaries();
-      expect(remainingApprovals).toHaveLength(1);
-      expect(remainingApprovals[0]?.approvalId).not.toBe(alternateApproval!.approvalId);
-      expect(runtime.getFocusedApprovalReview()?.summary.approvalId).toBe(remainingApprovals[0]?.approvalId);
+      const remainingReviews = runtime.listReviewItems();
+      expect(remainingReviews).toHaveLength(1);
+      expect(remainingReviews[0]?.reviewId).not.toBe(alternateReview!.reviewId);
+      expect(runtime.getFocusedReview()?.item.reviewId).toBe(remainingReviews[0]?.reviewId);
 
       const taskRuns = runtime.getTaskRunSummaries();
       expect(taskRuns).toEqual(expect.arrayContaining([
         expect.objectContaining({
-          runId: alternateApproval!.taskRunId,
+          runId: alternateReview!.anchor.taskRunId,
           status: 'completed',
         }),
         expect.objectContaining({
@@ -629,121 +567,6 @@ describe('Codara facade runtime', () => {
       ))).toBe(true);
     } finally {
       unsubscribe();
-    }
-  });
-
-  it('should resume a queued team-member approval through the Codara facade and clear the queue entry', async () => {
-    const approvalStore = createApprovalMemoryStore();
-    const registry = new TeamRegistry();
-    const pauseRequest: import('@core/agent').PauseRequest = {
-      id: 'pause-team-facade-worker',
-      description: 'Worker approval required',
-      action: {
-        toolCallId: 'call_worker_approval',
-        toolName: 'dangerous_tool',
-        toolArgs: {target: 'tmp/out.txt'},
-      },
-      review: {
-        actionName: 'dangerous_tool',
-        allowedDecisions: ['approve', 'reject'],
-      },
-      runtime: {
-        runId: 'run-worker-approval',
-        turn: 1,
-        requestId: 'req-worker-approval',
-        toolIndex: 0,
-      },
-    };
-
-    let firstInvoke = true;
-    let teamId = '';
-    let workerId = '';
-    const teamRuntime = new TeamRuntime({
-      registry,
-      projectRoot: '/tmp/test',
-      approvalStore,
-      sessionId: 'team-facade-approval-session',
-      createSession: () => createTeamApprovalSession({
-        beforeInvoke: async () => {
-          if (teamId && workerId) {
-            await teamRuntime.getTransport(teamId)?.receive(workerId);
-          }
-        },
-        invokeResult: () => {
-          if (firstInvoke) {
-            firstInvoke = false;
-            return {reason: 'paused', pause: pauseRequest};
-          }
-          return {reason: 'complete'};
-        },
-        resumeResult: () => ({reason: 'complete'}),
-      }),
-    });
-
-    const codara = assembleCodara({
-      sessionId: 'team-facade-approval-session',
-      model: new EchoModel() as unknown as BaseChatModel,
-      skills: false,
-      autoMemory: false,
-      hil: false,
-    }, undefined, {
-      teamRegistry: registry,
-      teamRuntime,
-      approvalStore,
-    });
-
-    try {
-      const team = registry.createTeam({
-        name: 'facade-team',
-        goal: 'verify approval resume',
-        config: {
-          maxDepth: 2,
-          allowSubTeams: true,
-          maxMembers: 10,
-          modelCascade: {},
-          autoShutdown: true,
-        },
-      });
-      teamId = team.teamId;
-
-      await teamRuntime.startTeam(team.teamId);
-      const worker = await teamRuntime.spawnMember(team.teamId, 'approval-worker', 'worker');
-      workerId = worker.memberId;
-
-      await teamRuntime.getTransport(team.teamId)!.send(worker.memberId, {
-        id: 'msg-approval-1',
-        from: 'leader',
-        to: worker.memberId,
-        teamId: team.teamId,
-        type: 'message',
-        content: 'perform the risky step',
-        timestamp: new Date().toISOString(),
-        read: false,
-      });
-
-      teamRuntime.getRunner(worker.memberId)?.wake();
-      await new Promise((resolve) => setTimeout(resolve, 100));
-
-      expect(codara.getApprovalSummaries()).toEqual([
-        expect.objectContaining({
-          source: 'team_member',
-          teamId: team.teamId,
-          memberId: worker.memberId,
-          description: 'Worker approval required',
-          isForeground: true,
-        }),
-      ]);
-      expect(codara.getFocusedApprovalReview()?.summary.approvalId).toBe('pause-team-facade-worker');
-      expect(registry.getTeam(team.teamId)?.status).toBe('paused');
-
-      await codara.resumeApproval({action: 'allow_once'});
-      await new Promise((resolve) => setTimeout(resolve, 20));
-
-      expect(codara.getApprovalSummaries()).toHaveLength(0);
-      expect(codara.getFocusedApprovalReview()).toBeUndefined();
-      expect(registry.getTeam(team.teamId)?.status).toBe('running');
-    } finally {
-      await codara.dispose();
     }
   });
 
@@ -780,438 +603,6 @@ describe('Codara facade runtime', () => {
     }));
   });
 
-  it('should expose global team summaries and details consistently across sessions', async () => {
-    const registry = new TeamRegistry();
-    const ownTeam = registry.createTeam({
-      name: 'own-team',
-      goal: 'Visible in this session',
-      createdBy: 'session-own',
-    });
-    const foreignTeam = registry.createTeam({
-      name: 'foreign-team',
-      goal: 'Hidden from this session',
-      createdBy: 'session-other',
-    });
-    registry.updateTeamStatus(ownTeam.teamId, 'running');
-    registry.updateTeamStatus(foreignTeam.teamId, 'running');
-
-    const codara = assembleCodara({
-      sessionId: 'session-own',
-      model: new EchoModel() as unknown as BaseChatModel,
-      skills: false,
-      autoMemory: false,
-      hil: false,
-    }, undefined, {
-      teamRegistry: registry,
-    });
-
-    try {
-      expect(codara.getTeamSummaries()).toEqual([
-        expect.objectContaining({
-          teamId: ownTeam.teamId,
-          name: 'own-team',
-          status: 'running',
-        }),
-        expect.objectContaining({
-          teamId: foreignTeam.teamId,
-          name: 'foreign-team',
-          status: 'running',
-        }),
-      ]);
-      expect(codara.getTeamDetail(ownTeam.teamId)).toEqual(expect.objectContaining({
-        teamId: ownTeam.teamId,
-        name: 'own-team',
-      }));
-      expect(codara.getTeamDetail(foreignTeam.teamId)).toEqual(expect.objectContaining({
-        teamId: foreignTeam.teamId,
-        name: 'foreign-team',
-      }));
-    } finally {
-      await codara.dispose();
-    }
-  });
-
-  it('should restore persisted team recent messages into reopened runtime logs', async () => {
-    const projectRoot = await mkdtemp(path.join(tmpdir(), 'codara-runtime-team-logs-reopen-'));
-    const runtimeStatePath = path.join(projectRoot, '.codara');
-    const sessionId = 'runtime-team-logs-reopen-session';
-    const persistence = new TeamPersistence(runtimeStatePath);
-    const registry = new TeamRegistry();
-    const team = registry.createTeam({
-      name: 'restored-team',
-      goal: 'Review restored logs',
-      createdBy: sessionId,
-    });
-    registry.updateTeamStatus(team.teamId, 'running');
-    registry.updateTeamStatus(team.teamId, 'paused');
-
-    persistence.save(team.teamId, TeamPersistence.buildSnapshot(
-      registry.getTeam(team.teamId)!,
-      [],
-      registry.getJobBoard(team.teamId),
-      [{
-        id: 'msg-restored-1',
-        from: 'worker-1',
-        to: 'leader',
-        teamId: team.teamId,
-        type: 'message',
-        content: 'restored handoff payload',
-        timestamp: new Date().toISOString(),
-        read: false,
-      }],
-    ));
-
-    const runtime = await createRuntimeForTest({
-      cwd: projectRoot,
-      projectRoot,
-      sessionId,
-      model: new EchoModel() as unknown as BaseChatModel,
-      skills: false,
-    });
-
-    try {
-      expect(runtime.getTeamSummaries()).toEqual([
-        expect.objectContaining({
-          name: 'restored-team',
-          status: 'paused',
-        }),
-      ]);
-
-      const logs = await runtime.executeCommand('/team logs restored-team 5');
-      expect(logs.ok).toBe(true);
-      expect(logs.output).toContain('restored handoff payload');
-    } finally {
-      await runtime.dispose();
-      await rm(projectRoot, {recursive: true, force: true});
-    }
-  });
-
-  it('should auto-focus the single restored paused team on startup', async () => {
-    const projectRoot = await mkdtemp(path.join(tmpdir(), 'codara-runtime-team-autofocus-single-'));
-    const runtimeStatePath = path.join(projectRoot, '.codara');
-    const sessionId = 'runtime-team-autofocus-single-session';
-    const persistence = new TeamPersistence(runtimeStatePath);
-    const registry = new TeamRegistry();
-    const team = registry.createTeam({
-      name: 'restored-single-team',
-      goal: 'Resume focused team automatically',
-      createdBy: sessionId,
-    });
-    registry.updateTeamStatus(team.teamId, 'running');
-    registry.updateTeamStatus(team.teamId, 'paused');
-
-    persistence.save(team.teamId, TeamPersistence.buildSnapshot(
-      registry.getTeam(team.teamId)!,
-      [],
-      registry.getJobBoard(team.teamId),
-      [],
-    ));
-
-    const runtime = await createRuntimeForTest({
-      cwd: projectRoot,
-      projectRoot,
-      sessionId,
-      model: new EchoModel() as unknown as BaseChatModel,
-      skills: false,
-    });
-
-    try {
-      await runtime.hydrate();
-      expect(runtime.getAgentState().context.teamSurface).toEqual(expect.objectContaining({
-        activeTeamId: team.teamId,
-        teamRole: 'leader',
-        teamMode: 'leader',
-      }));
-    } finally {
-      await runtime.dispose();
-      await rm(projectRoot, {recursive: true, force: true});
-    }
-  });
-
-  it('should not auto-pick a focused team when multiple restored teams are resumable', async () => {
-    const projectRoot = await mkdtemp(path.join(tmpdir(), 'codara-runtime-team-autofocus-multi-'));
-    const runtimeStatePath = path.join(projectRoot, '.codara');
-    const sessionId = 'runtime-team-autofocus-multi-session';
-    const persistence = new TeamPersistence(runtimeStatePath);
-    const registry = new TeamRegistry();
-
-    const alpha = registry.createTeam({
-      name: 'restored-alpha',
-      goal: 'Alpha team',
-      createdBy: sessionId,
-    });
-    registry.updateTeamStatus(alpha.teamId, 'running');
-    registry.updateTeamStatus(alpha.teamId, 'paused');
-    persistence.save(alpha.teamId, TeamPersistence.buildSnapshot(
-      registry.getTeam(alpha.teamId)!,
-      [],
-      registry.getJobBoard(alpha.teamId),
-      [],
-    ));
-
-    const beta = registry.createTeam({
-      name: 'restored-beta',
-      goal: 'Beta team',
-      createdBy: sessionId,
-    });
-    registry.updateTeamStatus(beta.teamId, 'running');
-    registry.updateTeamStatus(beta.teamId, 'paused');
-    persistence.save(beta.teamId, TeamPersistence.buildSnapshot(
-      registry.getTeam(beta.teamId)!,
-      [],
-      registry.getJobBoard(beta.teamId),
-      [],
-    ));
-
-    const runtime = await createRuntimeForTest({
-      cwd: projectRoot,
-      projectRoot,
-      sessionId,
-      model: new EchoModel() as unknown as BaseChatModel,
-      skills: false,
-    });
-
-    try {
-      await runtime.hydrate();
-      expect(runtime.getTeamSummaries()).toHaveLength(2);
-      expect(runtime.getAgentState().context.teamSurface).toBeUndefined();
-    } finally {
-      await runtime.dispose();
-      await rm(projectRoot, {recursive: true, force: true});
-    }
-  });
-
-  it('should keep the team command unavailable when teams are disabled', async () => {
-    const projectRoot = await mkdtemp(path.join(tmpdir(), 'codara-runtime-teams-disabled-'));
-
-    try {
-      const runtime = await createCodaraRuntime({
-        cwd: projectRoot,
-        projectRoot,
-        autoMemory: false,
-        teams: false,
-        model: new EchoModel() as unknown as BaseChatModel,
-        skills: false,
-      });
-
-      const result = await runtime.executeCommand('/team list');
-
-      expect(result.ok).toBe(false);
-      expect(result.output).toContain('Team system not initialized');
-      expect(runtime.getTeamSummaries()).toEqual([]);
-
-      await runtime.dispose();
-    } finally {
-      await rm(projectRoot, {recursive: true, force: true});
-    }
-  });
-
-  it('should enable teams from project settings when teams.enabled=true', async () => {
-    const projectRoot = await mkdtemp(path.join(tmpdir(), 'codara-runtime-teams-enabled-'));
-
-    try {
-      await mkdir(path.join(projectRoot, '.codara'), {recursive: true});
-      await writeFile(path.join(projectRoot, '.codara', 'settings.json'), JSON.stringify({
-        teams: {
-          enabled: true,
-        },
-      }, null, 2));
-
-      const runtime = await createCodaraRuntime({
-        cwd: projectRoot,
-        projectRoot,
-        autoMemory: false,
-        model: new EchoModel() as unknown as BaseChatModel,
-        skills: false,
-      });
-
-      const result = await runtime.executeCommand('/team list');
-
-      expect(result.ok).toBe(true);
-      expect(result.output).toContain('No recoverable teams yet.');
-
-      await runtime.dispose();
-    } finally {
-      await rm(projectRoot, {recursive: true, force: true});
-    }
-  });
-
-  it('should move slash-team focus through the canonical runtime teamSurface context', async () => {
-    const projectRoot = await mkdtemp(path.join(tmpdir(), 'codara-runtime-team-focus-'));
-
-    try {
-      const runtime = await createRuntimeForTest({
-        cwd: projectRoot,
-        projectRoot,
-        sessionId: 'runtime-team-focus-session',
-        model: new EchoModel() as unknown as BaseChatModel,
-        skills: false,
-      });
-      await runtime.hydrate();
-
-      const created = await runtime.executeCommand('/team create Investigate architecture drift');
-      expect(created.ok).toBe(true);
-
-      const [createdTeam] = runtime.getTeamSummaries();
-      expect(createdTeam).toBeDefined();
-      expect(runtime.getAgentState().context.teamSurface).toEqual(expect.objectContaining({
-        activeTeamId: createdTeam!.teamId,
-        teamRole: 'leader',
-        teamMode: 'leader',
-      }));
-
-      const left = await runtime.executeCommand('/team leave');
-      expect(left.ok).toBe(true);
-      expect(runtime.getAgentState().context.teamSurface).toBeUndefined();
-
-      await runtime.dispose();
-    } finally {
-      await rm(projectRoot, {recursive: true, force: true});
-    }
-  });
-
-  it('should auto-focus the only restorable running or paused team on startup', async () => {
-    const projectRoot = await mkdtemp(path.join(tmpdir(), 'codara-runtime-team-autofocus-'));
-
-    try {
-      await mkdir(path.join(projectRoot, '.codara'), {recursive: true});
-      const restored = await persistRestorableTeam(projectRoot, {
-        name: 'restored-team',
-        goal: 'Resume previously focused work',
-        status: 'running',
-      });
-
-      const runtime = await createRuntimeForTest({
-        cwd: projectRoot,
-        projectRoot,
-        sessionId: 'runtime-team-autofocus-session',
-        model: new EchoModel() as unknown as BaseChatModel,
-        skills: false,
-      });
-
-      try {
-        await runtime.hydrate();
-
-        expect(runtime.getAgentState().context.teamSurface).toEqual(expect.objectContaining({
-          activeTeamId: restored.teamId,
-          teamRole: 'leader',
-          teamMode: 'leader',
-        }));
-        expect(runtime.getTeamSummaries()).toEqual([
-          expect.objectContaining({
-            teamId: restored.teamId,
-            name: 'restored-team',
-            status: 'paused',
-          }),
-        ]);
-      } finally {
-        await runtime.dispose();
-      }
-    } finally {
-      await rm(projectRoot, {recursive: true, force: true});
-    }
-  });
-
-  it('should not auto-focus a team on startup when multiple restorable teams exist', async () => {
-    const projectRoot = await mkdtemp(path.join(tmpdir(), 'codara-runtime-team-multifocus-'));
-
-    try {
-      await mkdir(path.join(projectRoot, '.codara'), {recursive: true});
-      await persistRestorableTeam(projectRoot, {
-        name: 'restored-team-a',
-        goal: 'Resume A',
-        status: 'running',
-      });
-      await persistRestorableTeam(projectRoot, {
-        name: 'restored-team-b',
-        goal: 'Resume B',
-        status: 'paused',
-      });
-
-      const runtime = await createRuntimeForTest({
-        cwd: projectRoot,
-        projectRoot,
-        sessionId: 'runtime-team-multifocus-session',
-        model: new EchoModel() as unknown as BaseChatModel,
-        skills: false,
-      });
-
-      try {
-        await runtime.hydrate();
-
-        expect(runtime.getAgentState().context.teamSurface).toBeUndefined();
-        expect(runtime.getTeamSummaries()).toHaveLength(2);
-      } finally {
-        await runtime.dispose();
-      }
-    } finally {
-      await rm(projectRoot, {recursive: true, force: true});
-    }
-  });
-
-  it('should update runtime focus when entering an existing team via slash command', async () => {
-    const projectRoot = await mkdtemp(path.join(tmpdir(), 'codara-runtime-team-enter-'));
-
-    try {
-      const runtime = await createRuntimeForTest({
-        cwd: projectRoot,
-        projectRoot,
-        sessionId: 'runtime-team-enter-session',
-        model: new EchoModel() as unknown as BaseChatModel,
-        skills: false,
-      });
-      await runtime.hydrate();
-
-      const created = await runtime.executeCommand('/team create Review task runtime');
-      expect(created.ok).toBe(true);
-      const [team] = runtime.getTeamSummaries();
-      expect(team).toBeDefined();
-
-      await runtime.executeCommand('/team leave');
-      expect(runtime.getAgentState().context.teamSurface).toBeUndefined();
-
-      const entered = await runtime.executeCommand(`/team enter ${team!.name}`);
-      expect(entered.ok).toBe(true);
-      expect(runtime.getAgentState().context.teamSurface).toEqual(expect.objectContaining({
-        activeTeamId: team!.teamId,
-        teamRole: 'leader',
-        teamMode: 'leader',
-      }));
-
-      await runtime.dispose();
-    } finally {
-      await rm(projectRoot, {recursive: true, force: true});
-    }
-  });
-
-  it('should refuse creating a second peer team while the current session is already leading one', async () => {
-    const projectRoot = await mkdtemp(path.join(tmpdir(), 'codara-runtime-team-single-active-'));
-
-    try {
-      const runtime = await createRuntimeForTest({
-        cwd: projectRoot,
-        projectRoot,
-        sessionId: 'runtime-team-single-active-session',
-        model: new EchoModel() as unknown as BaseChatModel,
-        skills: false,
-      });
-      await runtime.hydrate();
-
-      const created = await runtime.executeCommand('/team create Review current runtime');
-      expect(created.ok).toBe(true);
-
-      const second = await runtime.executeCommand('/team create Build another peer team');
-      expect(second.ok).toBe(false);
-      expect(second.output).toContain('Already leading team');
-      expect(second.output).toContain('current team');
-      expect(runtime.getTeamSummaries()).toHaveLength(1);
-
-      await runtime.dispose();
-    } finally {
-      await rm(projectRoot, {recursive: true, force: true});
-    }
-  });
-
   it('should resume a reopened persisted task approval through the task runtime control plane', async () => {
     const projectRoot = await mkdtemp(path.join(tmpdir(), 'codara-runtime-paused-task-reopen-'));
     const taskRunStore = createTaskRunFileStore({
@@ -1234,7 +625,7 @@ describe('Codara facade runtime', () => {
             name: TASK_TOOL_NAME,
             args: {
               prompt: 'Inspect the guarded child flow',
-              subagent_type: 'general-purpose',
+              subagent_type: 'Agent',
             },
           } as ToolCall],
         });
@@ -1308,7 +699,7 @@ describe('Codara facade runtime', () => {
       const first = await firstRuntime.invoke('start paused delegated task');
       expect(first.reason).toBe('complete');
 
-      await waitForCondition(() => firstRuntime.getApprovalSummaries().length === 1);
+      await waitForCondition(() => firstRuntime.listReviewItems().length === 1);
       expect(firstRuntime.getTaskRunSummaries()).toEqual([
         expect.objectContaining({
           runId: 'call_reopen_task',
@@ -1332,17 +723,17 @@ describe('Codara facade runtime', () => {
     });
 
     try {
-      const approvals = reopened.getApprovalSummaries();
-      expect(approvals).toEqual([
+      const reviews = reopened.listReviewItems();
+      expect(reviews).toEqual([
         expect.objectContaining({
-          taskRunId: 'call_reopen_task',
+          anchor: expect.objectContaining({taskRunId: 'call_reopen_task'}),
           source: 'task_run',
           toolName: 'dangerous_tool',
         }),
       ]);
 
-      await reopened.focusApproval(approvals[0]!.approvalId);
-      await reopened.resumeApproval({decision: 'approve'});
+      await reopened.focusReview(reviews[0]!.reviewId);
+      await reopened.resumeReview({decision: 'approve'});
       await waitForCondition(() => reopened.getTaskRunSummaries().some((run) => (
         run.runId === 'call_reopen_task' && run.status === 'completed'
       )));
@@ -1354,7 +745,7 @@ describe('Codara facade runtime', () => {
           summary: expect.stringContaining('recovered_child_done:danger:reopen-guarded.txt'),
         }),
       ]);
-      expect(reopened.getApprovalSummaries()).toEqual([]);
+      expect(reopened.listReviewItems()).toEqual([]);
     } finally {
       await reopened.dispose();
       await rm(projectRoot, {recursive: true, force: true});
@@ -1490,7 +881,7 @@ describe('Codara facade runtime', () => {
     expect(String(agentState.messages[1]?.content)).toBe('seen_humans:1');
   });
 
-  it('should stream through the top-level Codara facade for CLI consumers', async () => {
+  it('should expose a unified interaction stream through the top-level Codara facade', async () => {
     const model = new StreamingEchoModel();
     const codara = createCodara({
       model: model as unknown as BaseChatModel,
@@ -1499,7 +890,11 @@ describe('Codara facade runtime', () => {
     });
 
     const chunks: string[] = [];
-    for await (const chunk of codara.stream('hello', {streamMode: 'messages'})) {
+    for await (const chunk of codara.streamInteraction({
+      kind: 'prompt',
+      input: 'hello',
+      config: {streamMode: 'messages'},
+    })) {
       const messageChunk = chunk as AIMessageChunk;
       chunks.push(String(messageChunk.content));
     }
