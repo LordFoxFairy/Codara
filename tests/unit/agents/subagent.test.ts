@@ -1,11 +1,14 @@
 import {describe, expect, it} from 'bun:test';
+import {mkdtemp} from 'node:fs/promises';
+import {tmpdir} from 'node:os';
+import path from 'node:path';
 import {AIMessage, HumanMessage, ToolMessage, type BaseMessage, type ToolCall} from '@langchain/core/messages';
 import type {BaseChatModel} from '@langchain/core/language_models/chat_models';
 import {tool, type StructuredToolInterface} from '@langchain/core/tools';
 import {z} from 'zod';
 import {createAgent} from '@core/agent';
 import {createHILMiddleware, createMiddleware} from '@core/middleware';
-import {createAgentMemoryCheckpointer} from '@durability/checkpoint';
+import {createAgentFileCheckpointer, createAgentMemoryCheckpointer} from '@durability/checkpoint';
 import {createTaskRunMemoryStore, createTaskRuntime, type TaskRunRecord} from '@capability/task';
 import {TASK_TOOL_NAME, createTaskTool} from '@capability/task/middleware';
 import {readTaskRunLaunchResult} from '@shared/task-run-launch';
@@ -256,6 +259,44 @@ describe('Task delegation', () => {
     expect(result.reason).toBe('complete');
     expect(String(toolMessage.content)).toContain('Delegated task started in background.');
     expect(launch?.sessionId).toBeDefined();
+    expect(completed?.status).toBe('completed');
+    expect(checkpoint?.state.agentType).toBe('subagent');
+  });
+
+  it('should complete delegated child runs with a file checkpointer even when the parent session id contains Windows-invalid path characters', async () => {
+    const rootDir = await mkdtemp(path.join(tmpdir(), 'codara-task-file-checkpointer-'));
+    const checkpointer = createAgentFileCheckpointer({rootDir});
+    const runStore = createTaskRunMemoryStore();
+    const parent = createAgent({
+      sessionId: 'parent:session/run\\child?*',
+      model: new ScriptedModel([
+        new AIMessage({
+          content: '',
+          tool_calls: [{
+            id: 'call_task_windows_safe',
+            name: TASK_TOOL_NAME,
+            args: {prompt: 'Persist the child checkpoint with a file checkpointer'},
+          } as ToolCall],
+        }),
+        new AIMessage('done'),
+      ]) as unknown as BaseChatModel,
+      tools: [
+        createTaskTool({
+          model: new ScriptedModel([new AIMessage('child_done')]) as unknown as BaseChatModel,
+          checkpointer,
+          runStore,
+        }),
+      ],
+    });
+
+    const result = await parent.invoke('start');
+    const toolMessage = result.state.messages.find((message) => ToolMessage.isInstance(message)) as ToolMessage;
+    const launch = readTaskRunLaunchResult(toolMessage.artifact);
+    const completed = launch ? await waitForTaskRunStatus(runStore, launch.runId, 'completed') : undefined;
+    const checkpoint = launch ? await checkpointer.getLatest(launch.sessionId) : undefined;
+
+    expect(result.reason).toBe('complete');
+    expect(String(toolMessage.content)).toContain('Delegated task started in background.');
     expect(completed?.status).toBe('completed');
     expect(checkpoint?.state.agentType).toBe('subagent');
   });

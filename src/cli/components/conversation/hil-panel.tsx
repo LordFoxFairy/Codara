@@ -1,6 +1,7 @@
 import React from 'react';
 import {Box, Text} from 'ink';
 import type {CliHilReviewAction, CliHilReviewState} from '../../app/view-state';
+import {isPermissionPauseRequest} from '../../app/hil-kind';
 import {theme} from '../../utils/theme';
 
 interface HilPanelProps {
@@ -8,14 +9,22 @@ interface HilPanelProps {
   presentation?: 'inline' | 'floating';
 }
 
-// ── Public API ──────────────────────────────────────────────
-
 export function HilPanel({review, presentation = 'inline'}: HilPanelProps): React.JSX.Element {
-  const content = isPermissionReview(review)
+  const permissionReview = isPermissionReview(review);
+  const content = permissionReview
     ? <PermissionView review={review} />
     : review.form
       ? <AskUserView review={review} />
       : <GenericReviewView review={review} />;
+
+  if (permissionReview) {
+    return (
+      <Box flexDirection="column">
+        <ApprovalQueueBanner review={review} />
+        {content}
+      </Box>
+    );
+  }
 
   if (presentation === 'floating') {
     return (
@@ -37,72 +46,52 @@ export function HilPanel({review, presentation = 'inline'}: HilPanelProps): Reac
 
 export function isPermissionReview(review: CliHilReviewState | undefined): boolean {
   if (!review) return false;
-  return review.request.ui?.modal === 'permission-review'
-    || review.request.channel === 'permission-center'
-    || review.request.description.toLowerCase().includes('permission review');
+  return isPermissionPauseRequest(review.request);
 }
 
-// ── Permission View (Claude Code style) ─────────────────────
-
 function PermissionView({review}: {review: CliHilReviewState}): React.JSX.Element {
-  const stage = review.permissionStage ?? 'prompt';
+  const bodyLines = readPermissionBodyLines(review);
 
-  // Stage 2: Always-confirm
-  if (stage === 'always-confirm') {
-    const patterns = review.permissionAlwaysPatterns ?? [];
-    return (
-      <Box flexDirection="column">
-        <Text color="cyan" bold>Always allow</Text>
-        {patterns.length > 0 && patterns[0] !== '*' ? (
-          <Box flexDirection="column" paddingLeft={2}>
-            {patterns.map((p, i) => <Text key={i} dimColor>- {p}</Text>)}
-          </Box>
-        ) : (
-          <Text dimColor>This will allow the permission until Codara is restarted.</Text>
-        )}
-        <Box marginTop={1}>
-          <Text color={review.selectedActionIndex === 0 ? 'green' : undefined}>
-            {review.selectedActionIndex === 0 ? '❯ ' : '  '}Confirm
-          </Text>
-          <Text>{'  '}</Text>
-          <Text color={review.selectedActionIndex === 1 ? 'cyan' : undefined}>
-            {review.selectedActionIndex === 1 ? '❯ ' : '  '}Cancel
-          </Text>
-        </Box>
-        <Text dimColor>Enter confirm · Esc cancel</Text>
-        {review.busy && <Text color="cyan">Running...</Text>}
-      </Box>
-    );
-  }
-
-  // Stage 3: Reject feedback
-  if (stage === 'reject-feedback') {
-    return (
-      <Box flexDirection="column">
-        <Text color="red" bold>Rejection feedback (optional):</Text>
-        <Text color={review.draft ? 'green' : 'gray'}>Reason › {review.draft || '(empty)'}</Text>
-        <Text dimColor>Enter send · Esc reject silently</Text>
-        {review.busy && <Text color="red">Running...</Text>}
-      </Box>
-    );
-  }
-
-  // Stage 1: Main prompt — inline, no bordered box
   return (
     <Box flexDirection="column">
-      <Text color="yellow" bold>{review.request.description}</Text>
-      {review.actions.map((action, index) => (
-        <Text key={index} color={resolveActionColor(action, index === review.selectedActionIndex)}>
-          {index === review.selectedActionIndex ? '❯ ' : '  '}{formatPermissionShortcut(action)}
-        </Text>
-      ))}
-      <Text dimColor>y allow · a always · n reject</Text>
-      {review.busy && <Text color="yellow">Running...</Text>}
+      <Text bold>{describePermissionTitle(review)}</Text>
+
+      {bodyLines.length > 0 && (
+        <Box flexDirection="column" marginTop={1}>
+          {bodyLines.map((line, index) => (
+            <Text key={`${line}-${index}`}>{`    ${line}`}</Text>
+          ))}
+        </Box>
+      )}
+
+      <Box marginTop={1}>
+        <Text>Do you want to proceed?</Text>
+      </Box>
+
+      <Box flexDirection="column" marginTop={1}>
+        {review.actions.map((action, index) => {
+          const selected = index === review.selectedActionIndex;
+          const marker = selected ? '❯' : ' ';
+          return (
+            <Text key={action.id} color={selected ? theme.interactive.secondaryButton : undefined} bold={selected}>
+              {`${marker} ${index + 1}. ${formatPermissionActionLabel(review, action)}`}
+            </Text>
+          );
+        })}
+      </Box>
+
+      <Box marginTop={1}>
+        <Text dimColor>{describePermissionFooter(review)}</Text>
+      </Box>
+
+      {review.busy && (
+        <Box marginTop={1}>
+          <Text dimColor>Running...</Text>
+        </Box>
+      )}
     </Box>
   );
 }
-
-// ── AskUser View (Claude Code / ZCode style) ────────────────
 
 function AskUserView({review}: {review: CliHilReviewState}): React.JSX.Element {
   const form = review.form!;
@@ -139,10 +128,10 @@ function AskUserView({review}: {review: CliHilReviewState}): React.JSX.Element {
             return (
               <Box key={index} flexDirection="column">
                 <Text color={isFocused ? 'green' : isSelected ? 'cyan' : undefined}>
-                  {isFocused ? '› ' : '  '}{marker} {index + 1}. {option.label}
+                  {isFocused ? '>' : ' '} {marker} {index + 1}. {option.label}
                 </Text>
                 {option.description && (
-                  <Text dimColor>{'        '}{option.description}</Text>
+                  <Text dimColor>{`        ${option.description}`}</Text>
                 )}
               </Box>
             );
@@ -159,25 +148,29 @@ function AskUserView({review}: {review: CliHilReviewState}): React.JSX.Element {
 
       {showNextFooter && (
         <Box marginTop={1} flexWrap="wrap">
-          <Text color={review.focus === 'actions' ? 'green' : undefined} dimColor={review.focus !== 'actions'} bold={review.focus === 'actions'}>
-            {review.focus === 'actions' ? '› ' : ''}[Next]
+          <Text
+            color={review.focus === 'actions' ? 'green' : undefined}
+            dimColor={review.focus !== 'actions'}
+            bold={review.focus === 'actions'}
+          >
+            {review.focus === 'actions' ? '>' : ''}[Next]
           </Text>
         </Box>
       )}
 
       {showSubmitActions && review.actions.length > 0 && (
         <Box marginTop={1} flexWrap="wrap">
-            {review.actions.map((action, index) => {
-              const isFocused = review.focus === 'actions' && index === review.selectedActionIndex;
-              return (
-                <React.Fragment key={action.id}>
-                  {index > 0 && <Text dimColor>{'  '}</Text>}
-                  <Text color={resolveActionColor(action, isFocused)} dimColor={!isFocused} bold={isFocused}>
-                    {isFocused ? '› ' : ''}[{action.label}]
-                  </Text>
-                </React.Fragment>
-              );
-            })}
+          {review.actions.map((action, index) => {
+            const isFocused = review.focus === 'actions' && index === review.selectedActionIndex;
+            return (
+              <React.Fragment key={action.id}>
+                {index > 0 && <Text dimColor>{'  '}</Text>}
+                <Text color={resolveActionColor(action, isFocused)} dimColor={!isFocused} bold={isFocused}>
+                  {isFocused ? '>' : ''}[{action.label}]
+                </Text>
+              </React.Fragment>
+            );
+          })}
         </Box>
       )}
 
@@ -185,12 +178,12 @@ function AskUserView({review}: {review: CliHilReviewState}): React.JSX.Element {
         <Text dimColor>
           {(() => {
             if (form.endStep && review.focus === 'actions') {
-              return '↑/↓ select · Enter submit · Tab back · [ / ] approvals · Esc cancel';
+              return 'Up/Down select · Enter submit · Tab back · [ / ] approvals · Esc cancel';
             }
             const selectVerb = activeTab?.input === 'multiselect' ? 'Space toggle' : 'Space select';
             return hasMultipleTabs
-              ? `↑/↓ select · 1-9 quick pick · ${selectVerb} · Enter next · Tab next · ←/→ tabs · [ / ] approvals · Esc cancel`
-              : `↑/↓ select · 1-9 quick pick · ${selectVerb} · Enter next · Tab next · [ / ] approvals · Esc cancel`;
+              ? `Up/Down select · 1-9 quick pick · ${selectVerb} · Enter next · Tab next · Left/Right tabs · [ / ] approvals · Esc cancel`
+              : `Up/Down select · 1-9 quick pick · ${selectVerb} · Enter next · Tab next · [ / ] approvals · Esc cancel`;
           })()}
         </Text>
       </Box>
@@ -201,20 +194,18 @@ function AskUserView({review}: {review: CliHilReviewState}): React.JSX.Element {
   );
 }
 
-// ── Generic Review View ─────────────────────────────────────
-
 function GenericReviewView({review}: {review: CliHilReviewState}): React.JSX.Element {
   return (
     <Box flexDirection="column">
       <Text color="cyan" bold>Review Required</Text>
       <Text>{review.request.description}</Text>
       {review.actions.map((action, index) => (
-        <Text key={index} color={resolveActionColor(action, index === review.selectedActionIndex)}>
-          {index === review.selectedActionIndex ? '❯ ' : '  '}{action.label}
+        <Text key={action.id} color={resolveActionColor(action, index === review.selectedActionIndex)}>
+          {index === review.selectedActionIndex ? '>' : ' '} {action.label}
         </Text>
       ))}
       {review.draft !== undefined && review.focus === 'input' && (
-        <Text color="cyan">Note › {review.draft || '(empty)'}</Text>
+        <Text color="cyan">Note - {review.draft || '(empty)'}</Text>
       )}
       <Text dimColor>Up/Down select · [ / ] approvals · Enter submit</Text>
       {review.busy && <Text color="cyan">Applying...</Text>}
@@ -223,7 +214,7 @@ function GenericReviewView({review}: {review: CliHilReviewState}): React.JSX.Ele
 }
 
 function ApprovalQueueBanner({review}: {review: CliHilReviewState}): React.JSX.Element | null {
-  if (review.approvalIndex === undefined || review.approvalCount === undefined) {
+  if (review.approvalIndex === undefined || review.approvalCount === undefined || review.approvalCount <= 1) {
     return null;
   }
 
@@ -236,7 +227,7 @@ function ApprovalQueueBanner({review}: {review: CliHilReviewState}): React.JSX.E
 }
 
 function FloatingHilHeader({review}: {review: CliHilReviewState}): React.JSX.Element {
-  const title = review.form ? 'Ask User' : isPermissionReview(review) ? 'Permission Review' : 'Review Required';
+  const title = review.form ? 'Ask User' : 'Review Required';
   const hints = review.form
     ? review.form.endStep && review.focus === 'actions'
       ? 'Enter submit  Esc cancel'
@@ -263,13 +254,13 @@ function AskUserTabStrip(
 
   return (
     <Box marginBottom={1} flexWrap="nowrap">
-      <Text dimColor>← </Text>
+      <Text dimColor>{'<'}</Text>
       {labels.map((item, index) => {
         const isActive = index === currentStepIndex;
         const isDone = item.kind === 'submit'
           ? onEndStep
           : isAnswered(form.answers[form.tabs[index]?.id ?? '']);
-        const prefix = item.kind === 'submit' ? '✔ ' : isDone ? '☑ ' : '☐ ';
+        const prefix = item.kind === 'submit' ? '[S]' : isDone ? '[x]' : '[ ]';
         return (
           <React.Fragment key={`${item.kind}:${item.label}`}>
             {index > 0 && <Text dimColor>{'  '}</Text>}
@@ -279,20 +270,174 @@ function AskUserTabStrip(
           </React.Fragment>
         );
       })}
-      <Text dimColor>{'  →'}</Text>
+      <Text dimColor>{'  >'}</Text>
     </Box>
   );
 }
 
-// ── Helpers ──────────────────────────────────────────────────
+function formatPermissionActionLabel(review: CliHilReviewState, action: CliHilReviewAction): string {
+  const normalized = action.id.trim().toLowerCase();
 
-function formatPermissionShortcut(action: CliHilReviewAction): string {
-  switch (action.label) {
-    case 'Allow once': return '(y) Allow once';
-    case 'Allow always': return '(a) Allow always';
-    case 'Reject': return '(n) Reject';
-    default: return action.label;
+  if (normalized === 'allow_once' || normalized === 'allow' || normalized === 'approve') {
+    return 'Yes';
   }
+
+  if (normalized === 'dont_ask_again' || normalized === 'always') {
+    return describeAlwaysAllowLabel(review, action);
+  }
+
+  if (normalized === 'deny' || normalized === 'reject') {
+    return 'No';
+  }
+
+  return action.label;
+}
+
+function describePermissionTitle(review: CliHilReviewState): string {
+  const toolName = review.request.action.toolName.trim().toLowerCase();
+
+  if (toolName === 'bash') {
+    return 'Bash command';
+  }
+  if (toolName === 'edit' || toolName === 'write') {
+    return 'File change';
+  }
+  if (toolName === 'read') {
+    return 'File access';
+  }
+
+  return `${review.request.action.toolName} request`;
+}
+
+function describeAlwaysAllowLabel(review: CliHilReviewState, action: CliHilReviewAction): string {
+  if (/^yes\b/i.test(action.label.trim())) {
+    return action.label.trim();
+  }
+
+  const reason = readPermissionReason(review);
+  const writeMatch = reason.match(/^Writes to (.+)$/i);
+  if (writeMatch?.[1]) {
+    return `Yes, and always allow access to ${writeMatch[1].trim()} from this project`;
+  }
+
+  const pattern = readPermissionAlwaysPatterns(review)[0];
+  if (pattern) {
+    const scope = describePermissionPattern(pattern);
+    if (scope) {
+      return `Yes, and always allow ${scope} from this project`;
+    }
+  }
+
+  return 'Yes, and always allow this from this project';
+}
+
+function readPermissionBodyLines(review: CliHilReviewState): string[] {
+  const lines: string[] = [];
+  const toolArgs = readPermissionToolArgs(review);
+  const command = typeof toolArgs.command === 'string' ? toolArgs.command.trim() : '';
+
+  if (command) {
+    lines.push(...command.split(/\r?\n/).map((line) => line.trimEnd()).filter(Boolean));
+  }
+
+  const description = typeof toolArgs.description === 'string' ? toolArgs.description.trim() : '';
+  if (description && !lines.includes(description)) {
+    lines.push(description);
+  }
+
+  const reason = readPermissionReason(review);
+  if (reason && !lines.includes(reason)) {
+    lines.push(reason);
+  }
+
+  if (lines.length === 0) {
+    const expression = readPermissionExpression(review);
+    if (expression) {
+      lines.push(expression);
+    }
+  }
+
+  if (lines.length === 0) {
+    const descriptionText = review.request.description.trim();
+    if (!isGenericPermissionDescription(descriptionText)) {
+      lines.push(descriptionText);
+    }
+  }
+
+  return lines;
+}
+
+function describePermissionFooter(review: CliHilReviewState): string {
+  const count = review.actions.length;
+  const selectionHint = count > 1 ? `1-${count} choose` : 'Enter confirm';
+  const queueHint = review.approvalCount && review.approvalCount > 1 ? ' · [ / ] approvals' : '';
+  return `Esc cancel · ${selectionHint}${queueHint}`;
+}
+
+function readPermissionToolArgs(review: CliHilReviewState): Record<string, unknown> {
+  const toolArgs = review.request.action.toolArgs;
+  if (!toolArgs || typeof toolArgs !== 'object' || Array.isArray(toolArgs)) {
+    return {};
+  }
+  return toolArgs as Record<string, unknown>;
+}
+
+function readPermissionExpression(review: CliHilReviewState): string {
+  const policy = readPermissionPolicy(review.request.metadata);
+  const expression = policy.expression;
+  return typeof expression === 'string' ? expression.trim() : '';
+}
+
+function readPermissionReason(review: CliHilReviewState): string {
+  const policy = readPermissionPolicy(review.request.metadata);
+  const reason = policy.reason;
+  return typeof reason === 'string' ? reason.trim() : '';
+}
+
+function readPermissionAlwaysPatterns(review: CliHilReviewState): string[] {
+  const policy = readPermissionPolicy(review.request.metadata);
+  const patterns = policy.alwaysPatterns;
+  return Array.isArray(patterns)
+    ? patterns.filter((value): value is string => typeof value === 'string' && value.trim().length > 0)
+    : [];
+}
+
+function readPermissionPolicy(metadata: unknown): Record<string, unknown> {
+  if (!metadata || typeof metadata !== 'object' || Array.isArray(metadata)) {
+    return {};
+  }
+
+  const policy = (metadata as Record<string, unknown>).permissionPolicy;
+  if (!policy || typeof policy !== 'object' || Array.isArray(policy)) {
+    return {};
+  }
+
+  return policy as Record<string, unknown>;
+}
+
+function describePermissionPattern(pattern: string): string | undefined {
+  const trimmed = pattern.trim();
+  const match = trimmed.match(/^[^(]+\((.*)\)$/);
+  const specifier = (match?.[1] ?? trimmed).trim();
+
+  if (!specifier || specifier === '*') {
+    return undefined;
+  }
+
+  if (specifier.endsWith('/*')) {
+    return `access to ${specifier.slice(0, -1)}`;
+  }
+
+  if (specifier.endsWith(' *')) {
+    return `${specifier.slice(0, -2)} commands`;
+  }
+
+  return specifier;
+}
+
+function isGenericPermissionDescription(value: string): boolean {
+  const normalized = value.trim().toLowerCase();
+  return normalized.includes('wants to run') || normalized.includes('permission review required');
 }
 
 function resolveActionColor(action: CliHilReviewAction, selected: boolean): string | undefined {
@@ -309,7 +454,7 @@ function isOptionSelected(label: string, answer: string | string[] | undefined):
 
 function isAnswered(value: string | string[] | undefined): boolean {
   if (typeof value === 'string') return value.trim().length > 0;
-  return Array.isArray(value) && value.some(e => e.trim().length > 0);
+  return Array.isArray(value) && value.some((entry) => entry.trim().length > 0);
 }
 
 function truncateLabel(label: string, maxLength: number): string {

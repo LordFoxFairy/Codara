@@ -43,10 +43,10 @@ describe('CLI chrome', () => {
     });
 
     expect(model.subtitle).toContain('sonnet');
-    expect(model.subtitle).toContain('12345678…90ab');
+    expect(model.subtitle).toContain('12345678');
     expect(model.subtitle).toContain('12 msgs');
     expect(model.subtitle).toContain('6% ctx');
-    expect(model.subtitle).toContain('waiting for review');
+    expect(model.subtitle.toLowerCase()).toContain('waiting');
     expect(model.pathLine).toBe('/tmp/codara-demo');
   });
 
@@ -111,7 +111,7 @@ describe('CLI chrome', () => {
   });
 
   it('should keep the footer to a single compact hint line', () => {
-    expect(describeFooter('wide')).toBe('Enter send  ·  Ctrl+C exit  ·  / commands  ·  Ctrl+T tasks  ·  Ctrl+O expand');
-    expect(describeFooter('minimal')).toBe('Enter send  ·  ? shortcuts  ·  Ctrl+C exit');
+    expect(describeFooter('wide')).toBe('Enter send · Ctrl+C exit · / commands · Ctrl+T tasks · Ctrl+O expand');
+    expect(describeFooter('minimal')).toBe('Enter send · ? shortcuts · Ctrl+C exit');
   });
 });

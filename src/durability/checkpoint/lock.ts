@@ -7,12 +7,13 @@
 
 import {mkdir, readFile, unlink, writeFile} from 'node:fs/promises';
 import path from 'node:path';
+import {toFilesystemSafeId} from '@durability/storage-key';
 
 /** Default lock time-to-live: 5 minutes. */
 export const LOCK_TTL_MS = 300_000;
 
 function lockFilePath(rootDir: string, sessionId: string): string {
-  return path.join(rootDir, `${sessionId}.lock`);
+  return path.join(rootDir, `${toFilesystemSafeId(sessionId)}.lock`);
 }
 
 /**

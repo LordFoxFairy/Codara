@@ -4,6 +4,7 @@ import {randomUUID} from 'node:crypto';
 import path from 'node:path';
 import {homedir} from 'node:os';
 import type {SessionState} from './types';
+import {resolveDurableStoragePath, resolveDurableStoragePathCandidates} from '@durability/storage-key';
 
 export interface SessionListOptions {
   includeArchived?: boolean;
@@ -30,7 +31,7 @@ export class FileSessionStore implements SessionStore {
   }
 
   async save(sessionId: string, state: SessionState): Promise<void> {
-    const sessionDir = path.join(this.basePath, sessionId);
+    const sessionDir = this.sessionDir(sessionId);
     const metadataPath = path.join(sessionDir, 'metadata.json');
     const tmpPath = `${metadataPath}.${randomUUID()}.tmp`;
 
@@ -40,22 +41,25 @@ export class FileSessionStore implements SessionStore {
   }
 
   async get(sessionId: string): Promise<SessionState | undefined> {
-    const metadataPath = path.join(this.basePath, sessionId, 'metadata.json');
-
-    if (!existsSync(metadataPath)) {
-      return undefined;
+    for (const metadataPath of this.metadataPathCandidates(sessionId)) {
+      const state = await this.readState(metadataPath);
+      if (state) {
+        return state;
+      }
     }
 
-    try {
-      const content = await readFile(metadataPath, 'utf8');
-      return JSON.parse(content) as SessionState;
-    } catch {
-      return undefined;
-    }
+    return undefined;
   }
 
   async list(options: SessionListOptions = {}): Promise<SessionState[]> {
-    const {includeArchived = false, includeInternal = false, sortBy = 'updatedAt', sortOrder = 'desc', limit, tags} = options;
+    const {
+      includeArchived = false,
+      includeInternal = false,
+      sortBy = 'updatedAt',
+      sortOrder = 'desc',
+      limit,
+      tags,
+    } = options;
 
     if (!existsSync(this.basePath)) {
       return [];
@@ -64,9 +68,9 @@ export class FileSessionStore implements SessionStore {
     const entries = await readdir(this.basePath, {withFileTypes: true});
     const sessionDirs = entries.filter((entry) => entry.isDirectory());
 
-    const sessions: SessionState[] = [];
+    const sessions = new Map<string, SessionState>();
     for (const dir of sessionDirs) {
-      const state = await this.get(dir.name);
+      const state = await this.readState(path.join(this.basePath, dir.name, 'metadata.json'));
       if (!state) continue;
 
       if (!includeArchived && state.metadata?.archived) {
@@ -84,10 +88,15 @@ export class FileSessionStore implements SessionStore {
         }
       }
 
-      sessions.push(state);
+      const existing = sessions.get(state.sessionId);
+      if (!existing || state.updatedAt.localeCompare(existing.updatedAt) >= 0) {
+        sessions.set(state.sessionId, state);
+      }
     }
 
-    sessions.sort((a, b) => {
+    const visible = [...sessions.values()];
+
+    visible.sort((a, b) => {
       let aValue: string;
       let bValue: string;
 
@@ -103,16 +112,41 @@ export class FileSessionStore implements SessionStore {
       return sortOrder === 'asc' ? comparison : -comparison;
     });
 
-    return limit ? sessions.slice(0, limit) : sessions;
+    return limit ? visible.slice(0, limit) : visible;
   }
 
   async delete(sessionId: string): Promise<void> {
-    const sessionDir = path.join(this.basePath, sessionId);
+    for (const sessionDir of this.sessionDirCandidates(sessionId)) {
+      if (!existsSync(sessionDir)) {
+        continue;
+      }
 
-    if (!existsSync(sessionDir)) {
-      return;
+      await rm(sessionDir, {recursive: true, force: true});
+    }
+  }
+
+  private sessionDir(sessionId: string): string {
+    return resolveDurableStoragePath(this.basePath, sessionId);
+  }
+
+  private sessionDirCandidates(sessionId: string): string[] {
+    return resolveDurableStoragePathCandidates(this.basePath, sessionId);
+  }
+
+  private metadataPathCandidates(sessionId: string): string[] {
+    return this.sessionDirCandidates(sessionId).map((sessionDir) => path.join(sessionDir, 'metadata.json'));
+  }
+
+  private async readState(metadataPath: string): Promise<SessionState | undefined> {
+    if (!existsSync(metadataPath)) {
+      return undefined;
     }
 
-    await rm(sessionDir, {recursive: true, force: true});
+    try {
+      const content = await readFile(metadataPath, 'utf8');
+      return JSON.parse(content) as SessionState;
+    } catch {
+      return undefined;
+    }
   }
 }

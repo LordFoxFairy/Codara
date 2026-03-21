@@ -233,6 +233,18 @@ describe('createHILMiddleware', () => {
     expect(payload.editedToolArgs).toEqual({command: 'git diff --stat'});
   });
 
+  it('should normalize Claude Code style allow/deny decisions and updatedInput payloads', () => {
+    const payload = parseHILResumeActionPayload({
+      decision: 'allow',
+      updatedInput: {command: 'git diff --stat'},
+      reason: 'approved after edit',
+    });
+
+    expect(payload.decision).toBe('approve');
+    expect(payload.comment).toBe('approved after edit');
+    expect(payload.editedToolArgs).toEqual({command: 'git diff --stat'});
+  });
+
   it('should apply generic tool edits from resume payload', () => {
     const context = createToolContext({id: 'call_edit_1', name: 'bash', args: {command: 'git status'}});
     const edited = applyHILResumeToolEdits(context, {
@@ -277,6 +289,30 @@ describe('createHILMiddleware', () => {
       async (request) => {
         const command = (request?.toolCall.args as {command: string}).command;
         return new ToolMessage({content: command, tool_call_id: 'call_resume_edit_1'});
+      }
+    );
+
+    expect(String(result?.content)).toBe('git diff --stat');
+  });
+
+  it('should apply Claude Code style updatedInput via the default resume handler', async () => {
+    const middleware = createHILMiddleware({
+      interruptOn: {bash: true},
+    });
+
+    const toolCall: ToolCall = {id: 'call_resume_allow_1', name: 'bash', args: {command: 'git status'}};
+    const result = await middleware.wrapToolCall?.(
+      createToolContext(toolCall, {
+        hil: {
+          resume: {
+            decision: 'allow',
+            updatedInput: {command: 'git diff --stat'},
+          },
+        },
+      }),
+      async (request) => {
+        const command = (request?.toolCall.args as {command: string}).command;
+        return new ToolMessage({content: command, tool_call_id: 'call_resume_allow_1'});
       }
     );
 

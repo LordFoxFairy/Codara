@@ -113,6 +113,18 @@ function shouldRefreshAuxiliaryState(event: CodaraRuntimeEvent): boolean {
   return event.kind === 'task' || event.kind === 'team' || event.kind === 'hil';
 }
 
+function createOptimisticHilResumeEvent(): CodaraRuntimeEvent {
+  return {
+    id: `hil-resume-${randomUUID()}`,
+    sessionId: '',
+    timestamp: new Date().toISOString(),
+    kind: 'hil',
+    phase: 'start',
+    status: 'running',
+    label: 'Applying review selection...',
+  };
+}
+
 function isDelegatedTaskReviewPause(event: CodaraRuntimeEvent): boolean {
   return event.kind === 'task' && event.phase === 'update' && event.status === 'paused';
 }
@@ -193,7 +205,7 @@ interface TaskCompletionContinuation {
   previousInvalidResponse?: string;
 }
 
-const MAX_TASK_CLOSEOUT_ATTEMPTS = 2;
+const MAX_TASK_CLOSEOUT_ATTEMPTS = 3;
 
 function isRunIdBackedTaskStartEvent(event: CodaraRuntimeEvent): boolean {
   return event.kind === 'task'
@@ -223,6 +235,32 @@ function toTaskCompletionHandoff(run: TaskRunQuerySummary): TaskCompletionHandof
     ...(typeof run.toolUseCount === 'number' ? {toolUseCount: run.toolUseCount} : {}),
     ...(typeof run.totalTokens === 'number' ? {totalTokens: run.totalTokens} : {}),
   };
+}
+
+function resolveVisiblePauseRequest(input: {
+  candidate: CliHilReviewState['request'] | undefined;
+  approvals: readonly ApprovalQuerySummary[];
+  suppressedPauseIdRef: {current: string | undefined};
+}): CliHilReviewState['request'] | undefined {
+  const {candidate, approvals, suppressedPauseIdRef} = input;
+  const suppressedPauseId = suppressedPauseIdRef.current;
+
+  if (!candidate) {
+    if (suppressedPauseId && !approvals.some((approval) => approval.approvalId === suppressedPauseId)) {
+      suppressedPauseIdRef.current = undefined;
+    }
+    return undefined;
+  }
+
+  if (suppressedPauseId && candidate.id === suppressedPauseId) {
+    return undefined;
+  }
+
+  if (suppressedPauseId && !approvals.some((approval) => approval.approvalId === suppressedPauseId)) {
+    suppressedPauseIdRef.current = undefined;
+  }
+
+  return candidate;
 }
 
 function isTrackedBatchForContinuation(
@@ -313,6 +351,8 @@ export function useCliController(options: UseCliControllerOptions): CliControlle
   const [coreMessages, setCoreMessages] = useState<readonly BaseMessage[]>([]);
   const [runtimeEvents, setRuntimeEvents] = useState<readonly CodaraRuntimeEvent[]>([]);
   const [runState, setRunState] = useState<CliRunState>({status: 'idle'});
+  const [optimisticHilRunState, setOptimisticHilRunState] = useState<CliRunState | undefined>(undefined);
+  const [optimisticHilEvent, setOptimisticHilEvent] = useState<CodaraRuntimeEvent | undefined>(undefined);
   const [sessionState, setSessionState] = useState<SessionState>(() => codara.getState());
   const [taskPanelVisible, setTaskPanelVisible] = useState(true);
   const [expandedAll, setExpandedAll] = useState(false);
@@ -320,6 +360,7 @@ export function useCliController(options: UseCliControllerOptions): CliControlle
   const [teamDashboardState, setTeamDashboardState] = useState<TeamDashboardState>({ teams: [], viewMode: 'dashboard' });
   const [teamDetailState, setTeamDetailState] = useState<TeamDetailState | undefined>();
   const isRunningRef = useRef(false);
+  const hilResumeInFlightRef = useRef(false);
   const initialPromptSentRef = useRef(false);
   const hilReviewRef = useRef<CliHilReviewState | undefined>(undefined);
   const autoActionsRef = useRef([...hilAutoActions]);
@@ -329,6 +370,7 @@ export function useCliController(options: UseCliControllerOptions): CliControlle
   const pendingTaskContinuationRef = useRef<TaskCompletionContinuation | undefined>(undefined);
   const visibleTaskRunIdsRef = useRef<Set<string>>(new Set());
   const [visibleTaskRunIds, setVisibleTaskRunIds] = useState<string[]>([]);
+  const suppressedHilRequestIdRef = useRef<string | undefined>(undefined);
 
   useEffect(() => {
     hilReviewRef.current = hilReview;
@@ -352,15 +394,32 @@ export function useCliController(options: UseCliControllerOptions): CliControlle
 
   const reportError = useCallback((error: unknown) => {
     const message = error instanceof Error ? error.message : String(error);
+    hilResumeInFlightRef.current = false;
+    setOptimisticHilRunState(undefined);
+    setOptimisticHilEvent(undefined);
     setRunState({status: 'error', error: message});
     setActiveTurn(undefined);
     appendNotice('error', message);
     return message;
   }, [appendNotice]);
 
+  const showHilResumeFeedback = useCallback(() => {
+    setOptimisticHilRunState({status: 'running'});
+    setOptimisticHilEvent(createOptimisticHilResumeEvent());
+  }, []);
+
+  const clearHilResumeFeedback = useCallback(() => {
+    setOptimisticHilRunState(undefined);
+    setOptimisticHilEvent(undefined);
+  }, []);
+
   const resetVisibleTaskRunIds = useCallback(() => {
     visibleTaskRunIdsRef.current = new Set();
     setVisibleTaskRunIds([]);
+  }, []);
+
+  const isControllerBusy = useCallback(() => {
+    return isRunningRef.current || hilResumeInFlightRef.current;
   }, []);
 
   const addVisibleTaskRunId = useCallback((runId: string) => {
@@ -419,7 +478,11 @@ export function useCliController(options: UseCliControllerOptions): CliControlle
 
     setSessionState(codara.getState());
     setHilReview((current) => applyApprovalMetadata(
-      syncCliHilReviewState(current, focusedApproval?.request ?? foregroundPause),
+      syncCliHilReviewState(current, resolveVisiblePauseRequest({
+        candidate: focusedApproval?.request ?? foregroundPause,
+        approvals,
+        suppressedPauseIdRef: suppressedHilRequestIdRef,
+      })),
       approvals,
     ));
     syncTeamDetailState();
@@ -436,16 +499,21 @@ export function useCliController(options: UseCliControllerOptions): CliControlle
     const focusedApproval = codara.getFocusedApprovalReview();
     setCoreMessages(nextAgentState.messages);
     setSessionState(codara.getState());
+    const approvals = codara.getApprovalSummaries();
     setHilReview((current) => applyApprovalMetadata(
-      syncCliHilReviewState(current, focusedApproval?.request ?? nextAgentState.pendingPause),
-      codara.getApprovalSummaries(),
+      syncCliHilReviewState(current, resolveVisiblePauseRequest({
+        candidate: focusedApproval?.request ?? nextAgentState.pendingPause,
+        approvals,
+        suppressedPauseIdRef: suppressedHilRequestIdRef,
+      })),
+      approvals,
     ));
     syncTeamDetailState();
     return nextAgentState;
   }, [codara, syncTeamDetailState]);
 
   const runTaskCompletionContinuation = useCallback(async (continuation: TaskCompletionContinuation) => {
-    if (isRunningRef.current) {
+    if (isControllerBusy()) {
       pendingTaskContinuationRef.current = continuation;
       return;
     }
@@ -485,6 +553,11 @@ export function useCliController(options: UseCliControllerOptions): CliControlle
 
           if (Array.isArray(chunk.tool_calls) && chunk.tool_calls.some((toolCall) => toolCall?.name === 'Task')) {
             sawTaskToolCall = true;
+            setActiveTurn((current) => current ? {
+              ...current,
+              pendingTaskLaunch: true,
+              suppressTaskLaunchResponse: true,
+            } : current);
           }
 
           const usageMeta = chunk.usage_metadata as Record<string, unknown> | undefined;
@@ -513,7 +586,11 @@ export function useCliController(options: UseCliControllerOptions): CliControlle
 
           sawText = true;
           streamedResponse += text;
-          setActiveTurn((current) => current ? {...current, response: current.response + text} : current);
+          setActiveTurn((current) => current ? {
+            ...current,
+            response: current.response + text,
+            ...(current.pendingTaskLaunch ? {suppressTaskLaunchResponse: true} : {}),
+          } : current);
         }
 
         const finalResponse = sawText ? streamedResponse : '(no output)';
@@ -554,16 +631,16 @@ export function useCliController(options: UseCliControllerOptions): CliControlle
         });
       }
     }
-  }, [codara, refreshCoreState, reportError]);
+  }, [codara, isControllerBusy, refreshCoreState, reportError]);
 
   const drainPendingTaskContinuation = useCallback(() => {
-    if (isRunningRef.current || !pendingTaskContinuationRef.current) {
+    if (isControllerBusy() || !pendingTaskContinuationRef.current) {
       return;
     }
     const continuation = pendingTaskContinuationRef.current;
     pendingTaskContinuationRef.current = undefined;
     void runTaskCompletionContinuation(continuation);
-  }, [runTaskCompletionContinuation]);
+  }, [isControllerBusy, runTaskCompletionContinuation]);
 
   useEffect(() => {
     setRuntimeEvents([]);
@@ -603,7 +680,7 @@ export function useCliController(options: UseCliControllerOptions): CliControlle
       if (completionContinuation && trackedTaskBatchRef.current) {
         trackedTaskBatchRef.current.continuationStarted = true;
       }
-      if (!isRunningRef.current && !foregroundDelegatedReview) {
+      if (!isControllerBusy() && !foregroundDelegatedReview) {
         const notice = summarizeBackgroundTaskNotice(event);
         if (notice) {
           setNotices((current) => appendUniqueNotices(current, [
@@ -639,11 +716,11 @@ export function useCliController(options: UseCliControllerOptions): CliControlle
         return;
       }
 
-      if (!isRunningRef.current && shouldRefreshAuxiliaryState(event)) {
+      if (!isControllerBusy() && shouldRefreshAuxiliaryState(event)) {
         refreshAuxiliaryState();
       }
     });
-  }, [addVisibleTaskRunId, codara, drainPendingTaskContinuation, refreshAuxiliaryState, runTaskCompletionContinuation]);
+  }, [addVisibleTaskRunId, codara, drainPendingTaskContinuation, isControllerBusy, refreshAuxiliaryState, runTaskCompletionContinuation]);
 
   useEffect(() => {
     syncTeamDetailState();
@@ -831,7 +908,7 @@ export function useCliController(options: UseCliControllerOptions): CliControlle
 
   const submitPrompt = useCallback(async (rawPrompt: string): Promise<void> => {
     const prompt = rawPrompt.trim();
-    if (!prompt || isRunningRef.current) {
+    if (!prompt || isControllerBusy()) {
       return;
     }
 
@@ -864,7 +941,7 @@ export function useCliController(options: UseCliControllerOptions): CliControlle
         drainPendingTaskContinuation();
       }
     }
-  }, [drainPendingTaskContinuation, refreshCoreState, reportError, resetVisibleTaskRunIds, runAgentPrompt, runSlashCommand]);
+  }, [drainPendingTaskContinuation, isControllerBusy, refreshCoreState, reportError, resetVisibleTaskRunIds, runAgentPrompt, runSlashCommand]);
 
   useEffect(() => {
     return () => {
@@ -1027,10 +1104,15 @@ export function useCliController(options: UseCliControllerOptions): CliControlle
     await codara.focusApproval(nextApproval.approvalId);
     const nextAgentState = await refreshCoreState();
     const focusedApproval = codara.getFocusedApprovalReview();
+    const refreshedApprovals = codara.getApprovalSummaries();
     setHilReview((current) => applyApprovalMetadata(
-      syncCliHilReviewState(current, focusedApproval?.request ?? nextAgentState.pendingPause),
-      codara.getApprovalSummaries(),
-    ));
+        syncCliHilReviewState(current, resolveVisiblePauseRequest({
+          candidate: focusedApproval?.request ?? nextAgentState.pendingPause,
+          approvals: refreshedApprovals,
+          suppressedPauseIdRef: suppressedHilRequestIdRef,
+        })),
+        refreshedApprovals,
+      ));
   }, [codara, refreshCoreState]);
 
   const selectPreviousApproval = useCallback(() => {
@@ -1095,7 +1177,7 @@ export function useCliController(options: UseCliControllerOptions): CliControlle
 
   const submitHilAction = useCallback(async (autoAction?: CliHilAutoAction) => {
     const review = hilReviewRef.current;
-    if (!review || isRunningRef.current) {
+    if (!review || isControllerBusy()) {
       return;
     }
 
@@ -1123,7 +1205,6 @@ export function useCliController(options: UseCliControllerOptions): CliControlle
     }
 
     isRunningRef.current = true;
-    setRunState({status: 'running'});
 
     try {
       const selectedAction = autoAction
@@ -1135,19 +1216,37 @@ export function useCliController(options: UseCliControllerOptions): CliControlle
 
       // Use streaming resume for immediate UI feedback (like Claude Code)
       const focusedApproval = codara.getFocusedApprovalReview();
+      const approvalSummaries = codara.getApprovalSummaries();
       const approvalMatchesCurrentReview = focusedApproval?.request.id === prepared.review.request.id;
-      if (approvalMatchesCurrentReview) {
-        const queuedApprovalCount = codara.getApprovalSummaries().length;
+      const reviewExistsInApprovalQueue = approvalSummaries.some((approval) => approval.approvalId === prepared.review.request.id);
+      const shouldUseApprovalResume = approvalMatchesCurrentReview || reviewExistsInApprovalQueue;
+      const usesOptimisticHilFeedback = shouldUseApprovalResume
+        ? approvalSummaries.length <= 1
+        : isPermissionReview(prepared.review);
+
+      if (!usesOptimisticHilFeedback) {
+        setRunState({status: 'running'});
+      }
+
+      if (shouldUseApprovalResume) {
+        const queuedApprovalCount = approvalSummaries.length;
         if (queuedApprovalCount <= 1) {
+          hilResumeInFlightRef.current = true;
+          suppressedHilRequestIdRef.current = prepared.review.request.id;
           setHilReview(undefined);
-          setRunState({status: 'done'});
+          showHilResumeFeedback();
           isRunningRef.current = false;
           void codara.resumeApproval(prepared.payload, {streamMode: 'messages'})
             .catch((error) => {
               reportError(error);
             })
-            .finally(() => {
-              void refreshCoreState().catch(() => undefined);
+            .finally(async () => {
+              const nextAgentState = await refreshCoreState().catch(() => undefined);
+              hilResumeInFlightRef.current = false;
+              clearHilResumeFeedback();
+              if (nextAgentState) {
+                setRunState(deriveRunStateFromAgentState(nextAgentState));
+              }
               if (pendingTaskContinuationRef.current) {
                 drainPendingTaskContinuation();
               }
@@ -1200,7 +1299,35 @@ export function useCliController(options: UseCliControllerOptions): CliControlle
         return;
       }
 
-      const resumeStream = approvalMatchesCurrentReview
+      if (isPermissionReview(prepared.review)) {
+        hilResumeInFlightRef.current = true;
+        suppressedHilRequestIdRef.current = prepared.review.request.id;
+        setHilReview(undefined);
+        showHilResumeFeedback();
+        isRunningRef.current = false;
+        void (async () => {
+          try {
+            for await (const _chunk of codara.resumePauseStream(prepared.payload, {streamMode: 'messages'})) {
+              // Foreground permission approvals should disappear immediately; any follow-up state is rehydrated after resume.
+            }
+          } catch (error) {
+            reportError(error);
+          } finally {
+            const nextAgentState = await refreshCoreState().catch(() => undefined);
+            hilResumeInFlightRef.current = false;
+            clearHilResumeFeedback();
+            if (nextAgentState) {
+              setRunState(deriveRunStateFromAgentState(nextAgentState));
+            }
+            if (pendingTaskContinuationRef.current) {
+              drainPendingTaskContinuation();
+            }
+          }
+        })();
+        return;
+      }
+
+      const resumeStream = shouldUseApprovalResume
         ? codara.resumeApprovalStream(prepared.payload, {streamMode: 'messages'})
         : codara.resumePauseStream(prepared.payload, {streamMode: 'messages'});
       for await (const chunk of resumeStream) {
@@ -1230,7 +1357,7 @@ export function useCliController(options: UseCliControllerOptions): CliControlle
         drainPendingTaskContinuation();
       }
     }
-  }, [appendNotice, codara, drainPendingTaskContinuation, refreshCoreState, reportError]);
+  }, [appendNotice, clearHilResumeFeedback, codara, drainPendingTaskContinuation, isControllerBusy, refreshCoreState, reportError, showHilResumeFeedback]);
 
   const quickHilAction = useCallback((actionId: string) => {
     void submitHilAction({action: actionId});
@@ -1256,7 +1383,7 @@ export function useCliController(options: UseCliControllerOptions): CliControlle
   }, [submitHilAction]);
 
   useEffect(() => {
-    if (!hilReview || isRunningRef.current || autoActionsRef.current.length === 0) {
+    if (!hilReview || isControllerBusy() || autoActionsRef.current.length === 0) {
       return;
     }
 
@@ -1275,7 +1402,7 @@ export function useCliController(options: UseCliControllerOptions): CliControlle
     }, HIL_AUTO_ACTION_DELAY_MS);
 
     return () => clearTimeout(timer);
-  }, [hilReview, submitHilAction]);
+  }, [hilReview, isControllerBusy, submitHilAction]);
 
   const hasConversation = useMemo(
     () => hasTranscriptContent({
@@ -1288,6 +1415,9 @@ export function useCliController(options: UseCliControllerOptions): CliControlle
     [activeTurn, coreMessages, initialNoticeCount, notices, runtimeEvents],
   );
 
+  const visibleRunState = optimisticHilRunState ?? runState;
+  const visibleLatestRuntimeEvent = optimisticHilEvent ?? runtimeEvents[runtimeEvents.length - 1];
+
   return {
     composer,
     composerActivityVersion,
@@ -1299,9 +1429,9 @@ export function useCliController(options: UseCliControllerOptions): CliControlle
     hilReview,
     coreMessages,
     runtimeEvents,
-    latestRuntimeEvent: runtimeEvents[runtimeEvents.length - 1],
+    latestRuntimeEvent: visibleLatestRuntimeEvent,
     hasConversation,
-    runState,
+    runState: visibleRunState,
     sessionState,
     visibleTaskRunIds,
     insertText,

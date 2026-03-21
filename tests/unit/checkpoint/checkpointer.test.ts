@@ -3,6 +3,7 @@ import {access, mkdtemp} from 'node:fs/promises';
 import os from 'node:os';
 import path from 'node:path';
 import {FileCheckpointer, InMemoryCheckpointer} from '@durability/checkpoint';
+import {toFilesystemSafeId} from '@durability/storage-key';
 
 interface TestState {
   counter: number;
@@ -111,5 +112,33 @@ describe('Checkpointer', () => {
       expect(await checkpointer.getLatest('session-delete')).toBeUndefined();
       expect(await checkpointer.list('session-delete')).toEqual([]);
     }
+  });
+
+  it('should persist checkpoints under a filesystem-safe storage key for Windows-invalid session ids', async () => {
+    const rootDir = await mkdtemp(path.join(os.tmpdir(), 'codara-checkpointer-safe-key-'));
+    const checkpointer = new FileCheckpointer<TestState, TestInfo>({
+      rootDir,
+      state: {
+        serialize: (value) => value,
+        deserialize: (raw) => raw as TestState,
+      },
+      info: {
+        serialize: (value) => value,
+        deserialize: (raw) => raw as TestInfo,
+      },
+    });
+    const sessionId = 'parent:task/run\\child?*';
+
+    await checkpointer.put({
+      sessionId,
+      ...createRecord(1, 1),
+    });
+
+    const safeLatestPath = path.join(rootDir, toFilesystemSafeId(sessionId), 'checkpoints', 'latest.json');
+    const rawLatestPath = path.join(rootDir, sessionId, 'checkpoints', 'latest.json');
+
+    await expect(access(safeLatestPath)).resolves.toBeNull();
+    await expect(access(rawLatestPath)).rejects.toHaveProperty('code', 'ENOENT');
+    expect((await checkpointer.getLatest(sessionId))?.state.counter).toBe(1);
   });
 });

@@ -8,6 +8,7 @@ import type {
   PutCheckpointInput,
 } from '@durability/checkpoint/types';
 import {acquireSessionLock, releaseSessionLock} from '@durability/checkpoint/lock';
+import {resolveDurableStoragePath, resolveDurableStoragePathCandidates} from '@durability/storage-key';
 
 interface JsonCodec<T> {
   serialize(value: T): unknown;
@@ -48,14 +49,21 @@ export class FileCheckpointer<TState = unknown, TInfo = unknown>
   }
 
   async getLatest(sessionId: string): Promise<CheckpointRecord<TState, TInfo> | undefined> {
-    const record = await readJsonFile<PersistedCheckpointRecord>(this.latestCheckpointPath(sessionId));
-    if (!record) return undefined;
-    try {
-      return this.decodeRecord(record);
-    } catch {
-      // Corrupted checkpoint state — treat as missing to allow session recovery
-      return undefined;
+    for (const latestPath of this.latestCheckpointPathCandidates(sessionId)) {
+      const record = await readJsonFile<PersistedCheckpointRecord>(latestPath);
+      if (!record) {
+        continue;
+      }
+
+      try {
+        return this.decodeRecord(record);
+      } catch {
+        // Corrupted checkpoint state: treat as missing to allow session recovery.
+        return undefined;
+      }
     }
+
+    return undefined;
   }
 
   async get(ref: {
@@ -98,7 +106,9 @@ export class FileCheckpointer<TState = unknown, TInfo = unknown>
   }
 
   async deleteSession(sessionId: string): Promise<void> {
-    await rm(this.sessionDir(sessionId), {recursive: true, force: true});
+    for (const sessionDir of this.sessionDirCandidates(sessionId)) {
+      await rm(sessionDir, {recursive: true, force: true});
+    }
   }
 
   async compact(sessionId: string, options?: CompactOptions): Promise<void> {
@@ -108,9 +118,6 @@ export class FileCheckpointer<TState = unknown, TInfo = unknown>
     const keepLast = options?.keepLast ?? 20;
     const threshold = Math.max(keepLast, 50);
 
-    // Determine if compaction is needed:
-    // 1. Always clear parentCheckpointId if present
-    // 2. Truncate messages array if state has one and it exceeds the threshold
     const state = latest.state as Record<string, unknown>;
     const hasMessages = Array.isArray(state?.messages);
     const messages = hasMessages ? (state.messages as unknown[]) : [];
@@ -119,13 +126,11 @@ export class FileCheckpointer<TState = unknown, TInfo = unknown>
 
     if (!needsMessageTruncation && !needsParentClear) return;
 
-    // Build compacted state as a shallow copy to avoid mutating the caller's reference
     const compactedState = {...state};
     if (needsMessageTruncation) {
       compactedState.messages = messages.slice(-keepLast);
     }
 
-    // Write compacted checkpoint with cleared parent reference
     const lockDir = path.join(this.rootDir, '.locks');
     await acquireSessionLock(lockDir, sessionId);
     try {
@@ -144,7 +149,11 @@ export class FileCheckpointer<TState = unknown, TInfo = unknown>
   }
 
   private sessionDir(sessionId: string): string {
-    return path.join(this.rootDir, sessionId);
+    return resolveDurableStoragePath(this.rootDir, sessionId);
+  }
+
+  private sessionDirCandidates(sessionId: string): string[] {
+    return resolveDurableStoragePathCandidates(this.rootDir, sessionId);
   }
 
   private checkpointsDir(sessionId: string): string {
@@ -153,6 +162,10 @@ export class FileCheckpointer<TState = unknown, TInfo = unknown>
 
   private latestCheckpointPath(sessionId: string): string {
     return path.join(this.checkpointsDir(sessionId), 'latest.json');
+  }
+
+  private latestCheckpointPathCandidates(sessionId: string): string[] {
+    return this.sessionDirCandidates(sessionId).map((sessionDir) => path.join(sessionDir, 'checkpoints', 'latest.json'));
   }
 
   private encodeRecord(record: CheckpointRecord<TState, TInfo>): PersistedCheckpointRecord {
@@ -186,14 +199,13 @@ async function readJsonFile<T>(filePath: string): Promise<T | undefined> {
   try {
     return JSON.parse(raw) as T;
   } catch {
-    // Corrupted JSON — treat as missing rather than crashing the session
+    // Corrupted JSON: treat as missing rather than crashing the session.
     return undefined;
   }
 }
 
 async function writeJsonFile(filePath: string, value: unknown): Promise<void> {
   await mkdir(path.dirname(filePath), {recursive: true});
-  // Atomic write: write to temp file, then rename to target
   const tmpPath = `${filePath}.${randomUUID().slice(0, 8)}.tmp`;
   await writeFile(tmpPath, `${JSON.stringify(value, null, 2)}\n`, 'utf8');
   await rename(tmpPath, filePath);

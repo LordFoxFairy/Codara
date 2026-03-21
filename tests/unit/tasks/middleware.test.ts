@@ -219,6 +219,8 @@ describe('tasks middlewares', () => {
         context: {},
         runtimeContext: {
           codaraTaskCompletion: {
+            attempt: 3,
+            previousInvalidResponse: 'Waiting for the last delegated result before I summarize.',
             tasks: [
               {
                 runId: 'run-tech',
@@ -261,6 +263,11 @@ describe('tasks middlewares', () => {
     expect(context.systemMessage.join('\n')).toContain('Only give a final user-facing answer once the entire original user request is satisfied');
     expect(context.systemMessage.join('\n')).toContain('A completed delegated batch does not by itself mean the overall request is complete');
     expect(context.systemMessage.join('\n')).toContain('If the user explicitly required later phases, serial follow-up steps, or additional analysis after this batch, do that next before answering');
+    expect(context.systemMessage.join('\n')).toContain('A progress-only update is not a valid completion');
+    expect(context.systemMessage.join('\n')).toContain('If your draft says work will continue later');
+    expect(context.systemMessage.join('\n')).toContain('Your previous continuation was invalid because it still described the delegated work as waiting or staged');
+    expect(context.systemMessage.join('\n')).toContain('This is a repeated correction attempt');
+    expect(context.systemMessage.join('\n')).toContain('If you do not need to launch a new Task tool call right now, respond with the actual final answer for the user in this turn');
     expect(context.systemMessage.join('\n')).toContain('If the work is complete, respond with a unified user-facing answer');
     expect(context.systemMessage.join('\n')).toContain('Treat the completed delegated results below as finished work products, not as tasks to be restarted');
     expect(context.systemMessage.join('\n')).toContain('Do not restart the plan from the beginning, do not relaunch the initial batch, and do not repeat a completed phase');
@@ -272,8 +279,248 @@ describe('tasks middlewares', () => {
     expect(context.systemMessage.join('\n')).toContain('4 tool uses');
     expect(context.systemMessage.join('\n')).toContain('1.2k tokens');
     expect(context.systemMessage.join('\n')).toContain('- topic: Analyze the tech stack | status: completed');
+    expect(context.systemMessage.join('\n')).toContain('Invalid previous draft (for correction only): Waiting for the last delegated result before I summarize');
     expect(context.systemMessage.join('\n')).not.toContain('Delegating Explore: Analyze the tech stack');
     expect(context.systemMessage.join('\n')).not.toContain('Child summary should stay hidden from the transcript.');
+  });
+
+  it('blocks internal memory writes during delegated-task completion continuations', async () => {
+    const taskMiddleware = createTaskMiddleware({
+      model: new ChildSummaryModel() as unknown as BaseChatModel,
+      runStore: createTaskRunMemoryStore(),
+    });
+    let handlerCalled = false;
+
+    const result = await taskMiddleware.wrapToolCall?.({
+      state: {
+        agentType: 'main',
+        messages: [],
+        context: {},
+        values: {},
+      },
+      messages: [],
+      runtime: {
+        context: {},
+        runtimeContext: {
+          codaraTaskCompletion: {
+            tasks: [{
+              runId: 'run-tech',
+              label: 'Delegating Explore: Analyze the tech stack',
+              agentName: 'Explore',
+              status: 'completed',
+            }],
+          },
+        },
+        shared: {},
+      },
+      systemMessage: [],
+      execution: {
+        sessionId: 'session-1',
+        runId: 'run-main',
+        turn: 1,
+        maxTurns: 8,
+        requestId: 'req-main',
+      },
+      toolCall: {
+        id: 'call_memory_write',
+        name: 'write_file',
+        args: {
+          file_path: path.join('C:\\Users\\天皓\\.codara\\projects\\codara-b3e17b0ec6bd\\memory\\topics\\topic.md'),
+          content: 'memory content',
+        },
+      } as ToolCall,
+      toolIndex: 0,
+      tool: undefined,
+    }, async () => {
+      handlerCalled = true;
+      return new ToolMessage({content: 'should not run', tool_call_id: 'call_memory_write'});
+    });
+
+    expect(handlerCalled).toBe(false);
+    expect(result).toEqual(expect.objectContaining({
+      status: 'error',
+      tool_call_id: 'call_memory_write',
+    }));
+    expect(String(result?.content)).toContain('Internal memory updates are deferred');
+  });
+
+  it('allows normal project file writes during delegated-task completion continuations', async () => {
+    const taskMiddleware = createTaskMiddleware({
+      model: new ChildSummaryModel() as unknown as BaseChatModel,
+      runStore: createTaskRunMemoryStore(),
+    });
+    let handlerCalled = false;
+
+    const result = await taskMiddleware.wrapToolCall?.({
+      state: {
+        agentType: 'main',
+        messages: [],
+        context: {},
+        values: {},
+      },
+      messages: [],
+      runtime: {
+        context: {},
+        runtimeContext: {
+          codaraTaskCompletion: {
+            tasks: [{
+              runId: 'run-docs',
+              label: 'Delegating Explore: Analyze the docs flow',
+              agentName: 'Explore',
+              status: 'completed',
+            }],
+          },
+        },
+        shared: {},
+      },
+      systemMessage: [],
+      execution: {
+        sessionId: 'session-1',
+        runId: 'run-main',
+        turn: 1,
+        maxTurns: 8,
+        requestId: 'req-main',
+      },
+      toolCall: {
+        id: 'call_project_write',
+        name: 'write_file',
+        args: {
+          file_path: path.join('C:\\Users\\天皓\\Desktop\\Codara\\README.md'),
+          content: 'updated content',
+        },
+      } as ToolCall,
+      toolIndex: 0,
+      tool: undefined,
+    }, async () => {
+      handlerCalled = true;
+      return new ToolMessage({content: 'project write ok', tool_call_id: 'call_project_write'});
+    });
+
+    expect(handlerCalled).toBe(true);
+    expect(result).toEqual(expect.objectContaining({
+      content: 'project write ok',
+      tool_call_id: 'call_project_write',
+    }));
+  });
+
+  it('blocks repeated Task launches for already completed delegated topics during task completion continuations', async () => {
+    const taskMiddleware = createTaskMiddleware({
+      model: new ChildSummaryModel() as unknown as BaseChatModel,
+      runStore: createTaskRunMemoryStore(),
+    });
+    let handlerCalled = false;
+
+    const result = await taskMiddleware.wrapToolCall?.({
+      state: {
+        agentType: 'main',
+        messages: [],
+        context: {},
+        values: {},
+      },
+      messages: [],
+      runtime: {
+        context: {},
+        runtimeContext: {
+          codaraTaskCompletion: {
+            tasks: [{
+              runId: 'run-tech',
+              label: 'Delegating Explore: Analyze the tech stack',
+              agentName: 'Explore',
+              status: 'completed',
+            }],
+          },
+        },
+        shared: {},
+      },
+      systemMessage: [],
+      execution: {
+        sessionId: 'session-1',
+        runId: 'run-main',
+        turn: 1,
+        maxTurns: 8,
+        requestId: 'req-main',
+      },
+      toolCall: {
+        id: 'call_repeat_task',
+        name: TASK_TOOL_NAME,
+        args: {
+          prompt: 'Analyze the tech stack',
+          subagent_type: 'Explore',
+        },
+      } as ToolCall,
+      toolIndex: 0,
+      tool: undefined,
+    }, async () => {
+      handlerCalled = true;
+      return new ToolMessage({content: 'should not run', tool_call_id: 'call_repeat_task'});
+    });
+
+    expect(handlerCalled).toBe(false);
+    expect(result).toEqual(expect.objectContaining({
+      status: 'error',
+      tool_call_id: 'call_repeat_task',
+    }));
+    expect(String(result?.content)).toContain('repeats already completed work');
+    expect(String(result?.content)).toContain('Analyze the tech stack');
+  });
+
+  it('allows new Task launches for missing next-step work during task completion continuations', async () => {
+    const taskMiddleware = createTaskMiddleware({
+      model: new ChildSummaryModel() as unknown as BaseChatModel,
+      runStore: createTaskRunMemoryStore(),
+    });
+    let handlerCalled = false;
+
+    const result = await taskMiddleware.wrapToolCall?.({
+      state: {
+        agentType: 'main',
+        messages: [],
+        context: {},
+        values: {},
+      },
+      messages: [],
+      runtime: {
+        context: {},
+        runtimeContext: {
+          codaraTaskCompletion: {
+            tasks: [{
+              runId: 'run-tech',
+              label: 'Delegating Explore: Analyze the tech stack',
+              agentName: 'Explore',
+              status: 'completed',
+            }],
+          },
+        },
+        shared: {},
+      },
+      systemMessage: [],
+      execution: {
+        sessionId: 'session-1',
+        runId: 'run-main',
+        turn: 1,
+        maxTurns: 8,
+        requestId: 'req-main',
+      },
+      toolCall: {
+        id: 'call_next_step_task',
+        name: TASK_TOOL_NAME,
+        args: {
+          prompt: 'Analyze the task / subagent / team boundaries',
+          subagent_type: 'Explore',
+        },
+      } as ToolCall,
+      toolIndex: 0,
+      tool: undefined,
+    }, async () => {
+      handlerCalled = true;
+      return new ToolMessage({content: 'delegation ok', tool_call_id: 'call_next_step_task'});
+    });
+
+    expect(handlerCalled).toBe(true);
+    expect(result).toEqual(expect.objectContaining({
+      content: 'delegation ok',
+      tool_call_id: 'call_next_step_task',
+    }));
   });
 
   it('should delegate through Task middleware without requiring skills runtime for the default delegate', async () => {

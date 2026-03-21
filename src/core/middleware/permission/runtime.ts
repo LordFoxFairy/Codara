@@ -214,6 +214,9 @@ async function resolvePermissionDecision(
       actor: {
         agentType: context.state.agentType ?? 'main',
       },
+      interaction: {
+        kind: 'permission',
+      },
     },
     permissionPolicy: {
       expression: evaluation.input,

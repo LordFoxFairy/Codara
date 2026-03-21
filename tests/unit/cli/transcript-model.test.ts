@@ -248,6 +248,34 @@ describe('cli transcript model', () => {
     expect(items.some((item) => item.role === 'assistant')).toBe(false);
   });
 
+  test('should suppress active task-completion progress text once that continuation has already launched another Task', () => {
+    const items = buildActiveItems({
+      activeTurn: {
+        id: 'turn-task-completion-launch',
+        prompt: '',
+        response: 'Waiting for the first batch to finish before I start the next phase.',
+        responseRole: 'assistant',
+        kind: 'task_completion',
+        pendingTaskLaunch: true,
+        suppressTaskLaunchResponse: true,
+      },
+      runtimeEvents: [
+        {
+          id: 'task-run:run-next-phase',
+          sessionId: 'session-1',
+          timestamp: new Date().toISOString(),
+          kind: 'task',
+          phase: 'start',
+          status: 'running',
+          label: 'Delegating Explore: Analyze CLI rendering',
+        },
+      ],
+    });
+
+    expect(items.some((item) => item.role === 'assistant')).toBe(false);
+    expect(items.some((item) => item.role === 'task')).toBe(true);
+  });
+
   test('should keep already-visible assistant text even after a Task tool call and runtime task block appear', () => {
     const items = buildActiveItems({
       activeTurn: {

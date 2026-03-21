@@ -1,5 +1,6 @@
 import type {PauseRequest, PauseReviewDecision, ResumePayload} from '@core/agent';
 import type {PermissionStage} from '../components/permission/types';
+import {isPermissionPauseRequest} from './hil-kind';
 import type {
   CliHilAnswerValue,
   CliHilFormState,
@@ -822,8 +823,7 @@ export function readPermissionAlwaysPatterns(metadata: unknown): string[] {
 
 /** Check if the current review is a permission review. */
 export function isPermissionReviewState(review: CliHilReviewState): boolean {
-  return review.request.ui?.modal === 'permission-review'
-    || review.request.channel === 'permission-center';
+  return isPermissionPauseRequest(review.request);
 }
 
 /** Transition to a permission stage. */

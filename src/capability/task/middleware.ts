@@ -1,3 +1,4 @@
+import path from 'node:path';
 import {ToolMessage} from '@langchain/core/messages';
 import {tool, type StructuredToolInterface} from '@langchain/core/tools';
 import {z} from 'zod';
@@ -31,7 +32,8 @@ import {createTaskRunMemoryStore} from '@capability/task/run-store';
 import type {TaskRunRecord, TaskRunStore, TaskStore} from '@capability/task/types';
 import {deepClone} from '@shared/clone';
 import {formatToolSummary} from '@shared/tool-display';
-import type {BeforeModelContext} from '@core/pipeline/types';
+import type {BeforeModelContext, ToolCallContext, ToolCallHandler} from '@core/pipeline/types';
+import {resolveToolCallId} from '@core/agent/run/tool-executor';
 
 export const TASK_TOOL_NAME = 'Task';
 
@@ -211,6 +213,26 @@ export function createTaskMiddleware(options: CreateTaskMiddlewareOptions): Base
       }
       return undefined;
     },
+    async wrapToolCall(context: ToolCallContext, handler: ToolCallHandler): Promise<ToolMessage> {
+      if (shouldBlockInternalMemoryWriteDuringTaskCompletion(context)) {
+        return new ToolMessage({
+          content: 'Internal memory updates are deferred while completing delegated-task results. Finish the user request first by launching the next required Task or by giving the final user-facing answer.',
+          tool_call_id: resolveToolCallId(context.toolCall, context.toolIndex),
+          status: 'error',
+        });
+      }
+
+      const repeatedTaskTopic = readRepeatedTaskCompletionTopic(context);
+      if (repeatedTaskTopic) {
+        return new ToolMessage({
+          content: `This delegated task repeats already completed work (${repeatedTaskTopic}). Do not relaunch a completed phase or topic. Launch only the missing next-step Task, or give the final user-facing answer if nothing remains.`,
+          tool_call_id: resolveToolCallId(context.toolCall, context.toolIndex),
+          status: 'error',
+        });
+      }
+
+      return handler(context);
+    },
   });
 }
 
@@ -251,6 +273,9 @@ function formatTaskCompletionHandoff(context: BeforeModelContext): string | unde
     'Only give a final user-facing answer once the entire original user request is satisfied.',
     'A completed delegated batch does not by itself mean the overall request is complete.',
     'If the user explicitly required later phases, serial follow-up steps, or additional analysis after this batch, do that next before answering.',
+    'A progress-only update is not a valid completion.',
+    'If your draft says work will continue later, that another phase will start later, or that you will answer after more results arrive, that draft is invalid.',
+    'Either launch the required next-step work now or give the final answer only if no requested work remains.',
     'If the work is complete, respond with a unified user-facing answer.',
     'Do not claim the delegated work is still pending or that you are waiting for results that are already complete.',
     'Treat the completed delegated results below as finished work products, not as tasks to be restarted.',
@@ -277,7 +302,100 @@ function formatTaskCompletionHandoff(context: BeforeModelContext): string | unde
     }
   }
 
+  if (attempt > 2) {
+    lines.splice(5, 0,
+      'This is a repeated correction attempt.',
+      'Do not provide another orchestration-status update, waiting update, or future-work promise.',
+      'If you do not need to launch a new Task tool call right now, respond with the actual final answer for the user in this turn.',
+    );
+  }
+
   return lines.join('\n');
+}
+
+function shouldBlockInternalMemoryWriteDuringTaskCompletion(context: ToolCallContext): boolean {
+  const taskCompletion = readTaskCompletionRuntimeContext(context);
+  if (!taskCompletion?.tasks?.length) {
+    return false;
+  }
+
+  const toolName = context.toolCall.name?.trim();
+  if (toolName !== 'write_file' && toolName !== 'edit_file') {
+    return false;
+  }
+
+  const targetPath = readToolTargetPath(context.toolCall.args);
+  return Boolean(targetPath && isInternalCodaraMemoryPath(targetPath));
+}
+
+function readRepeatedTaskCompletionTopic(context: ToolCallContext): string | undefined {
+  const taskCompletion = readTaskCompletionRuntimeContext(context);
+  if (!taskCompletion?.tasks?.length) {
+    return undefined;
+  }
+
+  if (context.toolCall.name?.trim() !== TASK_TOOL_NAME) {
+    return undefined;
+  }
+
+  const prompt = readTaskPrompt(context.toolCall.args);
+  const normalizedPrompt = normalizeTaskReplayText(prompt);
+  if (!normalizedPrompt) {
+    return undefined;
+  }
+
+  for (const task of taskCompletion.tasks) {
+    if (task.status !== 'completed') {
+      continue;
+    }
+
+    const topic = extractTaskTopic(task.label, task.agentName, task.runId);
+    const normalizedTopic = normalizeTaskReplayText(topic);
+    if (!normalizedTopic) {
+      continue;
+    }
+
+    if (isRepeatedTaskReplay(normalizedPrompt, normalizedTopic)) {
+      return topic;
+    }
+  }
+
+  return undefined;
+}
+
+function readTaskCompletionRuntimeContext(
+  context: Pick<ToolCallContext, 'runtime'>,
+): TaskCompletionContinuationContext['codaraTaskCompletion'] | undefined {
+  return (context.runtime.runtimeContext as TaskCompletionContinuationContext | undefined)?.codaraTaskCompletion;
+}
+
+function readTaskPrompt(args: unknown): string | undefined {
+  if (!args || typeof args !== 'object' || Array.isArray(args)) {
+    return undefined;
+  }
+
+  const prompt = (args as Record<string, unknown>).prompt;
+  return typeof prompt === 'string' ? prompt.trim() || undefined : undefined;
+}
+
+function readToolTargetPath(args: unknown): string | undefined {
+  if (!args || typeof args !== 'object' || Array.isArray(args)) {
+    return undefined;
+  }
+
+  const record = args as Record<string, unknown>;
+  const candidate = typeof record.file_path === 'string'
+    ? record.file_path
+    : typeof record.path === 'string'
+      ? record.path
+      : undefined;
+  return candidate?.trim() || undefined;
+}
+
+function isInternalCodaraMemoryPath(filePath: string): boolean {
+  const normalized = path.resolve(filePath).replace(/\\/g, '/').toLowerCase();
+  return /(?:^|\/)\.codara\/memory(?:\/|$)/.test(normalized)
+    || /(?:^|\/)\.codara\/projects\/[^/]+\/memory(?:\/|$)/.test(normalized);
 }
 
 function formatTaskCompletionLine(
@@ -321,6 +439,27 @@ function extractTaskTopic(label: string | undefined, agentName: string | undefin
     .replace(/^Delegating\s+/i, '')
     .trim();
   return stripped || raw;
+}
+
+function normalizeTaskReplayText(text: string | undefined): string | undefined {
+  const normalized = text
+    ?.toLocaleLowerCase()
+    .replace(/[^\p{L}\p{N}]+/gu, ' ')
+    .replace(/\s+/g, ' ')
+    .trim();
+  return normalized || undefined;
+}
+
+function isRepeatedTaskReplay(prompt: string, topic: string): boolean {
+  if (prompt === topic) {
+    return true;
+  }
+
+  if (prompt.length >= 48 && topic.length >= 48) {
+    return prompt.includes(topic) || topic.includes(prompt);
+  }
+
+  return false;
 }
 
 function formatCompactTaskNumber(value: number): string {

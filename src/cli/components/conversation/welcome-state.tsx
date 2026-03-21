@@ -23,8 +23,6 @@ export function deriveRecentSessions(sessions: SessionState[], now = Date.now())
   }));
 }
 
-/* ── Static variants: pure render, no hooks ── */
-
 export interface StaticWelcomeProps {
   layoutMode: CliLayoutMode;
   cwd?: string;
@@ -35,22 +33,22 @@ export interface StaticWelcomeProps {
 export function StaticWelcome({layoutMode, cwd, modelAlias, tip}: StaticWelcomeProps): React.JSX.Element {
   if (layoutMode === 'minimal') {
     return (
-      <Text dimColor>Codara v{VERSION} · {modelAlias || 'default'} · /help for help</Text>
+      <Text dimColor>{`Codara v${VERSION} · ${modelAlias || 'default'} · /help for help`}</Text>
     );
   }
 
   return (
-    <Box flexDirection="column">
-      <Box borderStyle="round" borderColor={theme.chrome.border} flexDirection="column" paddingX={1}>
-        <Text bold>{'\u2733'} Welcome to Codara v{VERSION}</Text>
+    <Box flexDirection="column" marginBottom={1}>
+      <Box borderStyle="round" borderColor={theme.chrome.border} flexDirection="column" paddingX={2}>
+        <Text bold>{`* Welcome to Codara v${VERSION}`}</Text>
         <Text> </Text>
-        <Text dimColor>  /help for help</Text>
+        <Text dimColor>/help for help</Text>
         <Text> </Text>
-        <Text dimColor>  cwd: <Text dimColor wrap="truncate-end">{cwd || process.cwd()}</Text></Text>
-        <Text dimColor>  model: {modelAlias || 'default'}</Text>
+        <Text dimColor wrap="truncate-end">{`cwd: ${cwd || process.cwd()}`}</Text>
+        <Text dimColor>{`model: ${modelAlias || 'default'}`}</Text>
       </Box>
-      <Box marginTop={1} paddingX={1}>
-        <Text dimColor>Tip: {tip}</Text>
+      <Box paddingX={1}>
+        <Text dimColor>{`Tip: ${tip}`}</Text>
       </Box>
     </Box>
   );

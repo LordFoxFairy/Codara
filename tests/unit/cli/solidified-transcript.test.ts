@@ -7,7 +7,7 @@ import {
   createToolCallLookup,
   type TranscriptItem,
 } from '@/cli/transcript/model';
-import {orderActiveTranscriptItems} from '@/cli/hooks/use-solidified-transcript';
+import {filterTaskCompletionTranscriptItems, orderActiveTranscriptItems} from '@/cli/hooks/use-solidified-transcript';
 
 describe('solidified transcript model', () => {
   describe('buildSolidifiedItemsFromRange', () => {
@@ -245,6 +245,32 @@ describe('solidified transcript model', () => {
         'assistant-final',
         'notice-1',
       ]);
+    });
+  });
+
+  describe('filterTaskCompletionTranscriptItems', () => {
+    test('filters invalid task-completion waiting narration from transcript items', () => {
+      const items = filterTaskCompletionTranscriptItems({
+        completedTurnKind: 'task_completion',
+        items: [
+          {id: 'assistant-invalid', role: 'assistant', content: 'Phase 1 has started. Waiting for subagent results.'},
+          {id: 'task-1', role: 'task', content: 'Explore(Analyze CLI)\nRunning...'},
+          {id: 'assistant-valid', role: 'assistant', content: 'Unified final answer from the main agent.'},
+        ],
+      });
+
+      expect(items.map((item) => item.id)).toEqual(['task-1', 'assistant-valid']);
+    });
+
+    test('keeps assistant items untouched outside task-completion turns', () => {
+      const items = filterTaskCompletionTranscriptItems({
+        completedTurnKind: 'prompt',
+        items: [
+          {id: 'assistant-1', role: 'assistant', content: 'Phase 1 has started. Waiting for subagent results.'},
+        ],
+      });
+
+      expect(items.map((item) => item.id)).toEqual(['assistant-1']);
     });
   });
 
