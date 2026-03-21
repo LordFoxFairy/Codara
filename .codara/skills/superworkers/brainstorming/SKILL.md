@@ -7,7 +7,7 @@ description: "You MUST use this before any creative work - creating features, bu
 
 Help turn ideas into fully formed designs and specs through natural collaborative dialogue.
 
-Start by understanding the current project context, then ask questions one at a time to refine the idea. Once you understand what you're building, present the design and get user approval.
+Start by understanding the current project context, then refine the idea through the smallest effective clarification step. If the user explicitly asked for structured options, single-select, multi-select, or questionnaire-style exploration, the first clarification step should be one bounded `AskUserQuestion` batch, not explanatory prose. Once you understand what you're building, present the design and get user approval.
 
 <HARD-GATE>
 Do NOT invoke any implementation skill, write any code, scaffold any project, or take any implementation action until you have presented a design and the user has approved it. This applies to EVERY project regardless of perceived simplicity.
@@ -21,15 +21,16 @@ Every project goes through this process. A todo list, a single-function utility,
 
 You MUST create a task for each of these items and complete them in order:
 
-1. **Explore project context** — check files, docs, recent commits
-2. **Offer visual companion** (if topic will involve visual questions) — this is its own message, not combined with a clarifying question. See the Visual Companion section below.
-3. **Ask clarifying questions** — one at a time, understand purpose/constraints/success criteria
-4. **Propose 2-3 approaches** — with trade-offs and your recommendation
-5. **Present design** — in sections scaled to their complexity, get user approval after each section
-6. **Write design doc** — save to `docs/superpowers/specs/YYYY-MM-DD-<topic>-design.md` and commit
-7. **Spec review loop** — dispatch spec-document-reviewer subagent with precisely crafted review context (never your session history); fix issues and re-dispatch until approved (max 3 iterations, then surface to human)
-8. **User reviews written spec** — ask user to review the spec file before proceeding
-9. **Transition to implementation** — invoke writing-plans skill to create implementation plan
+1. **Decide the first clarification path** — if the user explicitly asked for options, single-select, multi-select, or other structured choices, your first clarifying step should be one bounded `AskUserQuestion` batch, not a prose reply
+2. **Explore project context** — check files, docs, recent commits only after the first bounded clarification, unless the user asked a codebase-specific question that truly requires local context first
+3. **Offer visual companion** (if topic will involve visual questions) — this is its own message, not combined with a clarifying question. See the Visual Companion section below.
+4. **Ask clarifying questions** — one at a time, understand purpose/constraints/success criteria
+5. **Propose 2-3 approaches** — with trade-offs and your recommendation
+6. **Present design** — in sections scaled to their complexity, get user approval after each section
+7. **Write design doc** — save to `docs/superpowers/specs/YYYY-MM-DD-<topic>-design.md` and commit
+8. **Spec review loop** — dispatch spec-document-reviewer subagent with precisely crafted review context (never your session history); fix issues and re-dispatch until approved (max 3 iterations, then surface to human)
+9. **User reviews written spec** — ask user to review the spec file before proceeding
+10. **Transition to implementation** — invoke writing-plans skill to create implementation plan
 
 ## Process Flow
 
@@ -72,10 +73,14 @@ digraph brainstorming {
 
 **Understanding the idea:**
 
-- Check out the current project state first (files, docs, recent commits)
+- If the user explicitly asks for structured choices or says they want single-select / multi-select / option-based exploration, ask the first bounded clarification through `AskUserQuestion` immediately. Do not preface it with explanatory prose, and do not read project files first unless their prompt is specifically about existing code constraints.
+- If you are calling `AskUserQuestion`, that response should contain only the questionnaire tool call. Do not add assistant text before or alongside it.
+- In that structured-choice path, batch the highest-leverage clarification set into one questionnaire whenever possible, typically 2-4 questions that cover the core axes needed to move forward. Do not split that batch into one-question-at-a-time `AskUserQuestion` calls.
+- After that questionnaire is answered, continue with those answers. Do not open another `AskUserQuestion` in the same flow unless the user explicitly asked for another questionnaire or the first questionnaire truly failed to capture a required axis.
+- Check out the current project state after that first bounded clarification, or immediately if the request is clearly codebase-specific.
 - Before asking detailed questions, assess scope: if the request describes multiple independent subsystems (e.g., "build a platform with chat, file storage, billing, and analytics"), flag this immediately. Don't spend questions refining details of a project that needs to be decomposed first.
 - If the project is too large for a single spec, help the user decompose into sub-projects: what are the independent pieces, how do they relate, what order should they be built? Then brainstorm the first sub-project through the normal design flow. Each sub-project gets its own spec → plan → implementation cycle.
-- For appropriately-scoped projects, ask questions one at a time to refine the idea
+- For appropriately-scoped projects, ask questions one at a time to refine the idea when you are asking in prose. This does not override the structured-choice `AskUserQuestion` batch rule above.
 - Prefer multiple choice questions when possible, but open-ended is fine too
 - Only one question per message - if a topic needs more exploration, break it into multiple questions
 - Focus on understanding: purpose, constraints, success criteria

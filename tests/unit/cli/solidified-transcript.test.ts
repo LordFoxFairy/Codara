@@ -1,15 +1,37 @@
+import React from 'react';
 import {describe, expect, test} from 'bun:test';
 import {AIMessage, HumanMessage, ToolMessage, type ToolCall} from '@langchain/core/messages';
+import {Text} from 'ink';
+import {render} from 'ink-testing-library';
 import {
   type SolidifiedItem,
   buildSolidifiedItemsFromRange,
   buildActiveItems,
   createToolCallLookup,
+  dedupeTrailingTranscriptItemsCoveredByRuntime,
   type TranscriptItem,
 } from '@/cli/transcript/model';
-import {filterTaskCompletionTranscriptItems, orderActiveTranscriptItems} from '@/cli/hooks/use-solidified-transcript';
+import {
+  filterTaskCompletionTranscriptItems,
+  orderActiveTranscriptItems,
+  useSolidifiedTranscript,
+} from '@/cli/hooks/use-solidified-transcript';
 
 describe('solidified transcript model', () => {
+  function ActiveItemsProbe(props: Parameters<typeof useSolidifiedTranscript>[0]) {
+    const {activeItems} = useSolidifiedTranscript(props);
+    return React.createElement(
+      Text,
+      null,
+      JSON.stringify(activeItems.map((item) => ({
+        role: item.role,
+        content: item.content,
+        toolName: item.toolMeta?.toolName,
+        summaryLine: item.toolMeta?.summaryLine,
+      }))),
+    );
+  }
+
   describe('buildSolidifiedItemsFromRange', () => {
     test('should build items from a range of core messages', () => {
       const messages = [
@@ -150,6 +172,77 @@ describe('solidified transcript model', () => {
       expect(items.some((i) => i.role === 'tool')).toBe(true);
     });
 
+    test('should place assistant text before and after runtime blocks according to the runtime boundary', () => {
+      const now = new Date().toISOString();
+      const items = buildActiveItems({
+        activeTurn: {
+          id: 'turn-ordered',
+          prompt: 'inspect it',
+          responseBeforeRuntime: 'I will inspect the repo first.',
+          response: 'I found the issue in the transcript ordering.',
+          responseRole: 'assistant',
+        },
+        runtimeEvents: [
+          {
+            id: 'evt_bash_start',
+            sessionId: 'session-1',
+            timestamp: now,
+            kind: 'tool',
+            phase: 'start',
+            status: 'running',
+            label: 'Bash(ls)',
+            detail: 'bash',
+          },
+        ],
+      });
+
+      expect(items.map((item) => item.role)).toEqual(['user', 'assistant', 'tool', 'assistant']);
+      expect(items[1]?.content).toBe('I will inspect the repo first.');
+      expect(items[3]?.content).toBe('I found the issue in the transcript ordering.');
+    });
+
+    test('should hide internal Skill runtime blocks from the active transcript', () => {
+      const now = new Date().toISOString();
+      const items = buildActiveItems({
+        activeTurn: {
+          id: 'turn-skill-ordered',
+          prompt: 'brainstorm',
+          responseBeforeRuntime: 'I will load the brainstorming skill first.',
+          response: 'Now I can continue with the actual design discussion.',
+          responseRole: 'assistant',
+        },
+        runtimeEvents: [
+          {
+            id: 'evt_skill_start',
+            sessionId: 'session-1',
+            timestamp: now,
+            kind: 'tool',
+            phase: 'start',
+            status: 'running',
+            label: 'Skill(superworkers:brainstorming)',
+            detail: 'Skill',
+          },
+        ],
+      });
+
+      expect(items.map((item) => item.role)).toEqual(['user']);
+    });
+
+    test('should hide active assistant prose once the turn has been handed off to an AskUser review', () => {
+      const items = buildActiveItems({
+        activeTurn: {
+          id: 'turn-ask-handoff',
+          prompt: 'brainstorm',
+          responseBeforeRuntime: '让我先了解一些基础信息。',
+          response: '这段文字不应继续显示。',
+          responseRole: 'assistant',
+          suppressInteractionResponse: true,
+        },
+      });
+
+      expect(items.map((item) => item.role)).toEqual(['user']);
+    });
+
     test('should advance running task elapsed time from the supplied clock even without new events', () => {
       const items = buildActiveItems({
         activeTurn: {
@@ -218,6 +311,52 @@ describe('solidified transcript model', () => {
     });
   });
 
+  test('should not surface a completed Skill tool result in the active transcript while runtime events are still settling', () => {
+    const skillToolCall: ToolCall = {
+      id: 'call_skill_1',
+      name: 'Skill',
+      args: {skill: 'superworkers:brainstorming'},
+    };
+    const now = new Date().toISOString();
+    const {lastFrame} = render(React.createElement(ActiveItemsProbe, {
+      notices: [],
+      coreMessages: [
+        new AIMessage({content: '', tool_calls: [skillToolCall]}),
+        new ToolMessage({
+          content: '<command-name>superworkers:brainstorming</command-name>\n---\nname: brainstorming',
+          tool_call_id: 'call_skill_1',
+          name: 'Skill',
+        }),
+      ],
+      runtimeEvents: [
+        {
+          id: 'evt_skill_start',
+          sessionId: 'session-1',
+          timestamp: now,
+          kind: 'tool',
+          phase: 'start',
+          status: 'running',
+          label: 'Skill(superworkers:brainstorming)',
+          detail: 'Skill',
+        },
+        {
+          id: 'evt_skill_end',
+          sessionId: 'session-1',
+          timestamp: now,
+          kind: 'tool',
+          phase: 'end',
+          status: 'done',
+          label: 'Skill(superworkers:brainstorming)',
+          detail: '<command-name>superworkers:brainstorming</command-name>\n---\nname: brainstorming',
+          parentId: 'evt_skill_start',
+        },
+      ],
+    }));
+
+    const serialized = lastFrame();
+    expect(serialized.includes('"toolName":"Skill"')).toBe(false);
+  });
+
   describe('orderActiveTranscriptItems', () => {
     test('should place task-completion runtime execution items before the trailing main-agent continuation reply', () => {
       const trailingItems: TranscriptItem[] = [
@@ -246,6 +385,42 @@ describe('solidified transcript model', () => {
         'assistant-final',
         'notice-1',
       ]);
+    });
+
+    test('should remove trailing tool items already covered by active runtime items', () => {
+      const trailingItems: TranscriptItem[] = [
+        {
+          id: 'core-skill-result',
+          role: 'tool',
+          content: '⚙ Skill(superworkers:brainstorming)\n---',
+          toolMeta: {
+            toolName: 'Skill',
+            displayName: 'Skill',
+            icon: '⚙',
+            args: 'superworkers:brainstorming',
+            status: 'done',
+            summaryLine: '---',
+          },
+        },
+      ];
+      const runtimeItems: TranscriptItem[] = [
+        {
+          id: 'active-skill-result',
+          role: 'tool',
+          content: '⚙ Skill(superworkers:brainstorming)\n---',
+          toolMeta: {
+            toolName: 'Skill',
+            displayName: 'Skill',
+            icon: '⚙',
+            args: 'superworkers:brainstorming',
+            status: 'done',
+            summaryLine: '---',
+            elapsed: '15ms',
+          },
+        },
+      ];
+
+      expect(dedupeTrailingTranscriptItemsCoveredByRuntime(trailingItems, runtimeItems)).toEqual([]);
     });
   });
 

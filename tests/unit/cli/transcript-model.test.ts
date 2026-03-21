@@ -161,9 +161,28 @@ describe('cli transcript model', () => {
       ],
     });
 
-    expect(items).toHaveLength(1);
-    expect(items[0]?.role).toBe('assistant');
-    expect(items[0]?.content).toBe('Need a little more information before I continue.');
+    expect(items).toEqual([]);
+  });
+
+  test('should hide Skill tool results from the transcript because skill loading is internal', () => {
+    const items = buildTranscriptItems({
+      notices: [],
+      coreMessages: [
+        new AIMessage({
+          content: '',
+          tool_calls: [
+            {id: 'call_skill_1', name: 'Skill', args: {skill: 'superworkers:brainstorming'}} as ToolCall,
+          ],
+        }),
+        new ToolMessage({
+          content: '<command-name>superworkers:brainstorming</command-name>\n---\nname: brainstorming',
+          tool_call_id: 'call_skill_1',
+          name: 'Skill',
+        }),
+      ],
+    });
+
+    expect(items).toEqual([]);
   });
 
   test('should hide AskUser tool results and HIL runtime noise after the interaction completes', () => {
@@ -199,6 +218,93 @@ describe('cli transcript model', () => {
     });
 
     expect(items).toEqual([]);
+  });
+
+  test('should hide internal AskUser continuation-guard tool messages from the transcript', () => {
+    const items = buildTranscriptItems({
+      notices: [],
+      coreMessages: [
+        new ToolMessage({
+          content: [
+            'AskUserQuestion was just answered in this flow. Do not open another questionnaire immediately.',
+            'Collected answers: {"interaction":"对话式（Chat）"}',
+          ].join('\n'),
+          tool_call_id: 'call_ask_repeat_block',
+          name: 'AskUserQuestion',
+          artifact: {
+            type: 'ask_user_internal',
+            visibility: 'hidden',
+            reason: 'continuation_guard',
+          },
+        }),
+      ],
+    });
+
+    expect(items).toEqual([]);
+  });
+
+  test('should hide internal AskUser continuation-guard tool messages even without tool-name resolution', () => {
+    const items = buildTranscriptItems({
+      notices: [],
+      coreMessages: [
+        new ToolMessage({
+          content: [
+            'AskUserQuestion was just answered in this flow. Do not open another questionnaire immediately.',
+            'Collected answers: {"interaction":"对话式（Chat）"}',
+          ].join('\n'),
+          tool_call_id: 'call_ask_repeat_block_unresolved',
+          artifact: {
+            type: 'ask_user_internal',
+            visibility: 'hidden',
+            reason: 'continuation_guard',
+          },
+        }),
+      ],
+    });
+
+    expect(items).toEqual([]);
+  });
+
+  test('should hide blocked repeat AskUser runtime tool chatter while streaming', () => {
+    const items = buildTranscriptItems({
+      notices: [],
+      coreMessages: [],
+      activeTurn: {
+        id: 'turn-ask-repeat',
+        prompt: 'continue',
+        response: '',
+        responseRole: 'assistant',
+      },
+      runtimeEvents: [
+        {
+          id: 'evt_ask_repeat_start',
+          sessionId: 'session-1',
+          timestamp: new Date().toISOString(),
+          kind: 'tool',
+          phase: 'start',
+          status: 'running',
+          label: 'AskUserQuestion(summary: Clarify the brief)',
+          detail: 'AskUserQuestion',
+        },
+        {
+          id: 'evt_ask_repeat_end',
+          sessionId: 'session-1',
+          timestamp: new Date().toISOString(),
+          kind: 'tool',
+          phase: 'end',
+          status: 'done',
+          label: 'Tool completed',
+          detail: [
+            'AskUserQuestion was just answered in this flow. Do not open another questionnaire immediately.',
+            'Use the collected answers below and continue the original task unless the user explicitly asked for another form.',
+          ].join(' '),
+          parentId: 'evt_ask_repeat_start',
+        },
+      ],
+    });
+
+    expect(items.map((item) => item.role)).toEqual(['user']);
+    expect(items.some((item) => item.content.includes('AskUserQuestion was just answered in this flow'))).toBe(false);
   });
 
   test('should hide write_todos bookkeeping from the main transcript', () => {

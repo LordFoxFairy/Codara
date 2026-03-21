@@ -1,10 +1,15 @@
 import {describe, expect, it} from 'bun:test';
-import {resolveReviewInputAction} from '../../../src/cli/hooks/use-review-input';
+import {resolveReviewInputAction} from '../../../src/cli/hooks/review-input-action';
 
 describe('cli review input shortcuts', () => {
   it('should map bracket keys to review queue navigation', () => {
     expect(resolveReviewInputAction('[', {})).toBe('select-previous-review');
     expect(resolveReviewInputAction(']', {})).toBe('select-next-review');
+  });
+
+  it('should use Tab and Shift+Tab to navigate AskUser selections', () => {
+    expect(resolveReviewInputAction('\t', {tab: true})).toBe('select-next');
+    expect(resolveReviewInputAction('\t', {tab: true, shift: true})).toBe('select-previous');
   });
 
   it('should keep permission-stage shortcuts explicit', () => {
@@ -16,5 +21,9 @@ describe('cli review input shortcuts', () => {
 
   it('should treat space as selection activation during AskUser reviews', () => {
     expect(resolveReviewInputAction(' ', {})).toBe('activate-selection');
+  });
+
+  it('should allow spaces to be typed when the review is editing free text', () => {
+    expect(resolveReviewInputAction(' ', {}, undefined, true)).toBe('insert-text');
   });
 });

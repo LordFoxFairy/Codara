@@ -9,6 +9,7 @@ import {
   buildSolidifiedItemsFromRange,
   buildActiveItems,
   createToolCallLookup,
+  dedupeTrailingTranscriptItemsCoveredByRuntime,
   normalizeVisibleAssistantText,
 } from '../transcript/model';
 import {isInvalidTaskCloseoutResponse} from '../task-closeout';
@@ -198,8 +199,10 @@ export function useSolidifiedTranscript(input: UseSolidifiedTranscriptInput): Us
       }))
       .filter((item) => item.content);
 
+    const dedupedTrailingItems = dedupeTrailingTranscriptItemsCoveredByRuntime(trailingItems, runtimeAndStreamingItems);
+
     return orderActiveTranscriptItems({
-      trailingItems,
+      trailingItems: dedupedTrailingItems,
       runtimeItems: runtimeAndStreamingItems,
       activeNoticeItems,
       latestCompletedTurnKind: activeTurn?.kind ?? lastCompletedTurnKindRef.current,

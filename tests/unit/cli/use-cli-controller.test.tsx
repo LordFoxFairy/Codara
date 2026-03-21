@@ -564,7 +564,7 @@ describe('useCliController background refresh', () => {
     }
   });
 
-  it('dismisses a single permission approval immediately after submit while the delegated task resumes in the background', async () => {
+  it('dismisses a single permission approval immediately after submit while the delegated task keeps running in the background', async () => {
     const codara = new FakeCodara();
     codara.blockNextResumeApproval();
     codara.setReviews([
@@ -575,27 +575,104 @@ describe('useCliController background refresh', () => {
     try {
       await waitFor(() => (rendered.lastFrame() ?? '').includes('resumeCount:1'));
       await waitFor(() => (rendered.lastFrame() ?? '').includes('reviewId:none'));
-      const frame = rendered.lastFrame() ?? '';
-      expect(frame).toContain('reviewId:none');
-      expect(frame).toContain('runState:done');
-      expect(frame).toContain('resumeCount:1');
+      await waitFor(() => (rendered.lastFrame() ?? '').includes('runState:running'));
+      const runningFrame = rendered.lastFrame() ?? '';
+      expect(runningFrame).toContain('reviewId:none');
+      expect(runningFrame).toContain('runState:running');
+      expect(runningFrame).toContain('resumeCount:1');
+
+      codara.releaseBlockedResumeApproval();
+      await waitFor(() => (rendered.lastFrame() ?? '').includes('runState:done'));
+      const settledFrame = rendered.lastFrame() ?? '';
+      expect(settledFrame).toContain('reviewId:none');
+      expect(settledFrame).toContain('runState:done');
+      expect(settledFrame).toContain('resumeCount:1');
     } finally {
       codara.releaseBlockedResumeApproval();
       rendered.unmount();
     }
   });
 
-  it('activates the highlighted AskUser option before attempting a final submit', async () => {
+  it('activates the highlighted AskUser option without auto-advancing the questionnaire', async () => {
     const codara = new FakeCodara();
     codara.setPauseRequest(createAskUserPauseRequest());
     const rendered = render(<ReviewSubmitProbe codara={codara as unknown as Codara} />);
 
     try {
       await waitFor(() => (rendered.lastFrame() ?? '').includes('focus:input'));
-      await waitFor(() => (rendered.lastFrame() ?? '').includes('activeTab:1'));
+      await waitFor(() => (rendered.lastFrame() ?? '').includes('answer:Python'));
       const frame = rendered.lastFrame() ?? '';
       expect(frame).toContain('answer:Python');
+      expect(frame).toContain('activeTab:0');
       expect(frame).toContain('resumeCount:0');
+    } finally {
+      rendered.unmount();
+    }
+  });
+
+  it('keeps unanswered AskUser steps on the current question when Next is activated', async () => {
+    const codara = new FakeCodara();
+    codara.setPauseRequest(createAskUserPauseRequest());
+    const rendered = render(<ReviewNextProbe codara={codara as unknown as Codara} />);
+
+    try {
+      await waitFor(() => (rendered.lastFrame() ?? '').includes('validation:Complete Language before continuing.'));
+      const frame = rendered.lastFrame() ?? '';
+      expect(frame).toContain('focus:actions');
+      expect(frame).toContain('activeTab:0');
+      expect(frame).toContain('resumeCount:0');
+      expect(frame).toContain('validation:Complete Language before continuing.');
+    } finally {
+      rendered.unmount();
+    }
+  });
+
+  it('does not turn a highlighted preset option into a custom answer when typing before Type something is selected', async () => {
+    const codara = new FakeCodara();
+    codara.setPauseRequest(createAskUserPauseRequest());
+    const rendered = render(<ReviewCustomTypingProbe codara={codara as unknown as Codara} />);
+
+    try {
+      await waitFor(() => (rendered.lastFrame() ?? '').includes('selectedIndex:0'));
+      const frame = rendered.lastFrame() ?? '';
+      expect(frame).toContain('selectedIndex:0');
+      expect(frame).toContain('customInputActive:false');
+      expect(frame).toContain('draft:');
+      expect(frame).toContain('answer:none');
+    } finally {
+      rendered.unmount();
+    }
+  });
+
+  it('lets numeric shortcuts switch away from the custom row after option 5 is selected', async () => {
+    const codara = new FakeCodara();
+    codara.setPauseRequest(createAskUserPauseRequest());
+    const rendered = render(<ReviewCustomShortcutProbe codara={codara as unknown as Codara} />);
+
+    try {
+      await waitFor(() => (rendered.lastFrame() ?? '').includes('answer:Python'));
+      const frame = rendered.lastFrame() ?? '';
+      expect(frame).toContain('selectedIndex:0');
+      expect(frame).toContain('customInputActive:false');
+      expect(frame).toContain('answer:Python');
+      expect(frame).toContain('draft:Python');
+    } finally {
+      rendered.unmount();
+    }
+  });
+
+  it('keeps multiselect custom focus empty after selecting a preset option, then allows switching back to another preset', async () => {
+    const codara = new FakeCodara();
+    codara.setPauseRequest(createMultiselectAskUserPauseRequest());
+    const rendered = render(<ReviewMultiselectCustomProbe codara={codara as unknown as Codara} />);
+
+    try {
+      await waitFor(() => (rendered.lastFrame() ?? '').includes('answer:["独立开发者","开发团队"]'));
+      const frame = rendered.lastFrame() ?? '';
+      expect(frame).toContain('selectedIndex:1');
+      expect(frame).toContain('customInputActive:false');
+      expect(frame).toContain('draft:独立开发者, 开发团队');
+      expect(frame).toContain('answer:["独立开发者","开发团队"]');
     } finally {
       rendered.unmount();
     }
@@ -613,7 +690,7 @@ describe('useCliController background refresh', () => {
       const frame = rendered.lastFrame() ?? '';
       expect(frame).toContain('reviewId:approval-1');
       expect(frame).toContain('blockingScope:task');
-      expect(frame).toContain('inputTarget:prompt');
+      expect(frame).toContain('focusedSurface:prompt');
     } finally {
       rendered.unmount();
     }
@@ -629,8 +706,151 @@ describe('useCliController background refresh', () => {
       const frame = rendered.lastFrame() ?? '';
       expect(frame).toContain('reviewId:ask-user-pause');
       expect(frame).toContain('blockingScope:session');
-      expect(frame).toContain('inputTarget:review');
+      expect(frame).toContain('focusedSurface:review');
     } finally {
+      rendered.unmount();
+    }
+  });
+
+  it('waits for a foreground AskUser pause to settle before submitting the final review action', async () => {
+    const codara = new FakeCodara();
+    codara.setPauseRequest(createAskUserPauseRequest());
+    codara.setHydrateSequence([
+      {
+        status: 'running',
+        pendingPause: createAskUserPauseRequest(),
+      },
+      {
+        status: 'paused',
+        pendingPause: createAskUserPauseRequest(),
+      },
+      {
+        status: 'idle',
+        pendingPause: undefined,
+      },
+    ]);
+    codara.failResumePauseWhileRunning();
+    const rendered = render(<FinalAskUserSubmitProbe codara={codara as unknown as Codara} />);
+
+    try {
+      await waitFor(() => (rendered.lastFrame() ?? '').includes('resumeCount:1'));
+      const frame = rendered.lastFrame() ?? '';
+      expect(frame).toContain('resumeCount:1');
+      expect(frame).toContain('runState:done');
+      expect(frame).toContain('error:none');
+    } finally {
+      rendered.unmount();
+    }
+  });
+
+  it('keeps the completed AskUser review dismissed while runtime removal settles after Submit answers', async () => {
+    const codara = new FakeCodara();
+    codara.setFocusedReviewRequest(
+      {
+        ...createReviewItem('ask-user-pause', 'run-ask-user', 'Clarify the request'),
+        kind: 'ask_user',
+        interactionMode: 'structured',
+        blockingScope: 'session',
+      },
+      createAskUserPauseRequest(),
+    );
+    codara.deferCurrentReviewRemovalOnResume(1);
+    const rendered = render(<FinalAskUserSubmitProbe codara={codara as unknown as Codara} />);
+
+    try {
+      await waitFor(() => (rendered.lastFrame() ?? '').includes('resumeCount:1'));
+      await waitFor(() => (rendered.lastFrame() ?? '').includes('review:none'));
+      const frame = rendered.lastFrame() ?? '';
+      expect(frame).toContain('resumeCount:1');
+      expect(frame).toContain('runState:done');
+      expect(frame).toContain('review:none');
+      expect(frame).toContain('activeTab:-1');
+    } finally {
+      rendered.unmount();
+    }
+  });
+
+  it('keeps a running state visible while the final AskUser submit is still resuming', async () => {
+    const codara = new FakeCodara();
+    const pauseRequest = createAskUserPauseRequest();
+    codara.setFocusedReviewRequest(
+      {
+        reviewId: pauseRequest.id,
+        source: 'session_pause',
+        kind: 'ask_user',
+        interactionMode: 'structured',
+        blockingScope: 'session',
+        description: pauseRequest.description,
+        toolName: pauseRequest.action.toolName,
+        createdAt: new Date().toISOString(),
+        updatedAt: new Date().toISOString(),
+        anchor: {origin: 'main'},
+        isFocused: true,
+      },
+      pauseRequest,
+    );
+    codara.blockNextResumeApproval();
+    const rendered = render(<FinalAskUserSubmitProbe codara={codara as unknown as Codara} />);
+
+    try {
+      await waitFor(() => (rendered.lastFrame() ?? '').includes('resumeCount:1'));
+      await waitFor(() => (rendered.lastFrame() ?? '').includes('runState:running'));
+      const frame = rendered.lastFrame() ?? '';
+      expect(frame).toContain('runState:running');
+      expect(frame).toContain('review:none');
+
+      codara.releaseBlockedResumeApproval();
+
+      await waitFor(() => (rendered.lastFrame() ?? '').includes('runState:done'));
+    } finally {
+      codara.releaseBlockedResumeApproval();
+      rendered.unmount();
+    }
+  });
+
+  it('queues a new session prompt submitted while the current stream is still running and drains it after settle', async () => {
+    const codara = new FakeCodara();
+    codara.blockNextStream();
+    codara.queueStreamText('First response');
+    codara.queueStreamText('Second response');
+    const rendered = render(<QueuedPromptProbe codara={codara as unknown as Codara} />);
+
+    try {
+      await waitFor(() => (rendered.lastFrame() ?? '').includes('runState:running'));
+      await waitFor(() => codara.getStreamCallCount() === 1);
+
+      codara.releaseBlockedStream();
+
+      await waitFor(() => codara.getStreamCallCount() === 2);
+      await waitFor(() => (rendered.lastFrame() ?? '').includes('runState:done'));
+      const frame = rendered.lastFrame() ?? '';
+      expect(frame).toContain('streamCalls:2');
+    } finally {
+      codara.releaseBlockedStream();
+      rendered.unmount();
+    }
+  });
+
+  it('queues a task-scoped review response submitted while another stream is still running and drains it after settle', async () => {
+    const codara = new FakeCodara();
+    codara.blockNextStream();
+    codara.queueStreamText('Foreground response');
+    codara.setReviews([
+      createReviewItem('approval-queued', 'run-queued', 'Approve queued review'),
+    ]);
+    const rendered = render(<QueuedReviewResponseProbe codara={codara as unknown as Codara} />);
+
+    try {
+      await waitFor(() => (rendered.lastFrame() ?? '').includes('runState:running'));
+      await waitFor(() => codara.getStreamCallCount() === 1);
+
+      codara.releaseBlockedStream();
+
+      await waitFor(() => (rendered.lastFrame() ?? '').includes('resumeCount:1'));
+      const frame = rendered.lastFrame() ?? '';
+      expect(frame).toContain('resumeCount:1');
+    } finally {
+      codara.releaseBlockedStream();
       rendered.unmount();
     }
   });
@@ -671,6 +891,37 @@ function ReviewSubmitProbe({codara}: {codara: Codara}): React.JSX.Element {
   );
 }
 
+function ReviewNextProbe({codara}: {codara: Codara}): React.JSX.Element {
+  const controller = useCliController({codara});
+  const focusToggledRef = React.useRef(false);
+  const submittedRef = React.useRef(false);
+
+  useEffect(() => {
+    if (!controller.review || focusToggledRef.current) {
+      return;
+    }
+    focusToggledRef.current = true;
+    controller.toggleReviewFocus();
+  }, [controller]);
+
+  useEffect(() => {
+    if (!controller.review || submittedRef.current || controller.review.focus !== 'actions') {
+      return;
+    }
+    submittedRef.current = true;
+    controller.submitReviewAction();
+  }, [controller]);
+
+  return (
+    <Text>
+      {`focus:${controller.review?.focus ?? 'none'}`}
+      {` activeTab:${controller.review?.form?.activeTabIndex ?? -1}`}
+      {` validation:${controller.review?.validationMessage ?? 'none'}`}
+      {` resumeCount:${(codara as unknown as FakeCodara).resumeCount}`}
+    </Text>
+  );
+}
+
 function BackgroundReviewProbe({codara}: {codara: Codara}): React.JSX.Element {
   const controller = useCliController({codara});
   const firedRef = React.useRef(false);
@@ -699,7 +950,147 @@ function ReviewInputTargetProbe({codara}: {codara: Codara}): React.JSX.Element {
     <Text>
       {`reviewId:${controller.review?.request.id ?? 'none'}`}
       {` blockingScope:${controller.review?.blockingScope ?? 'none'}`}
-      {` inputTarget:${controller.inputTarget}`}
+      {` focusedSurface:${controller.interactionState.focusedSurface}`}
+    </Text>
+  );
+}
+
+function FinalAskUserSubmitProbe({codara}: {codara: Codara}): React.JSX.Element {
+  const controller = useCliController({codara});
+  const stepRef = React.useRef(0);
+
+  useEffect(() => {
+    if (!controller.review) {
+      return;
+    }
+    if (stepRef.current === 0 && controller.review.focus === 'input' && controller.review.form?.activeTabIndex === 0) {
+      stepRef.current = 1;
+      controller.insertReviewText('1');
+      return;
+    }
+    if (stepRef.current === 1 && controller.review.form?.answers.language === 'Python') {
+      stepRef.current = 2;
+      controller.toggleReviewFocus();
+      return;
+    }
+    if (stepRef.current === 2 && controller.review.focus === 'actions') {
+      stepRef.current = 3;
+      controller.submitReviewAction();
+      return;
+    }
+    if (stepRef.current === 3 && controller.review.focus === 'input' && controller.review.form?.activeTabIndex === 1) {
+      stepRef.current = 4;
+      controller.insertReviewText('1');
+      return;
+    }
+    if (stepRef.current === 4 && controller.review.form?.answers.complexity === 'Simple') {
+      stepRef.current = 5;
+      controller.toggleReviewFocus();
+      return;
+    }
+    if (stepRef.current === 5 && controller.review.focus === 'actions' && !controller.review.form?.endStep) {
+      stepRef.current = 6;
+      controller.submitReviewAction();
+      return;
+    }
+    if (stepRef.current === 6 && controller.review.form?.endStep && controller.review.focus === 'actions') {
+      stepRef.current = 7;
+      controller.submitReviewAction();
+    }
+  }, [controller]);
+
+  return (
+    <Text>
+      {`runState:${controller.runState.status}`}
+      {` error:${controller.runState.error ?? 'none'}`}
+      {` resumeCount:${(codara as unknown as FakeCodara).resumeCount}`}
+      {` review:${controller.review?.request.id ?? 'none'}`}
+      {` activeTab:${controller.review?.form?.activeTabIndex ?? -1}`}
+    </Text>
+  );
+}
+
+function ReviewCustomTypingProbe({codara}: {codara: Codara}): React.JSX.Element {
+  const controller = useCliController({codara});
+  const firedRef = React.useRef(false);
+
+  useEffect(() => {
+    if (!controller.review || firedRef.current) {
+      return;
+    }
+    firedRef.current = true;
+    controller.insertReviewText('x');
+  }, [controller]);
+
+  return (
+    <Text>
+      {`selectedIndex:${controller.review?.selectedActionIndex ?? -1}`}
+      {` customInputActive:${controller.review?.customInputActive ? 'true' : 'false'}`}
+      {` draft:${controller.review?.draft ?? ''}`}
+      {` answer:${String(controller.review?.form?.answers.language ?? 'none')}`}
+    </Text>
+  );
+}
+
+function ReviewCustomShortcutProbe({codara}: {codara: Codara}): React.JSX.Element {
+  const controller = useCliController({codara});
+  const stepRef = React.useRef(0);
+
+  useEffect(() => {
+    if (!controller.review) {
+      return;
+    }
+    if (stepRef.current === 0) {
+      stepRef.current = 1;
+      controller.insertReviewText('3');
+      return;
+    }
+    if (stepRef.current === 1 && controller.review.customInputActive) {
+      stepRef.current = 2;
+      controller.insertReviewText('1');
+    }
+  }, [controller]);
+
+  return (
+    <Text>
+      {`selectedIndex:${controller.review?.selectedActionIndex ?? -1}`}
+      {` customInputActive:${controller.review?.customInputActive ? 'true' : 'false'}`}
+      {` draft:${controller.review?.draft ?? ''}`}
+      {` answer:${String(controller.review?.form?.answers.language ?? 'none')}`}
+    </Text>
+  );
+}
+
+function ReviewMultiselectCustomProbe({codara}: {codara: Codara}): React.JSX.Element {
+  const controller = useCliController({codara});
+  const stepRef = React.useRef(0);
+
+  useEffect(() => {
+    if (!controller.review) {
+      return;
+    }
+    if (stepRef.current === 0) {
+      stepRef.current = 1;
+      controller.insertReviewText('1');
+      return;
+    }
+    if (stepRef.current === 1 && Array.isArray(controller.review.form?.answers.audience)) {
+      stepRef.current = 2;
+      controller.insertReviewText('5');
+      return;
+    }
+    if (stepRef.current === 2 && controller.review.customInputActive) {
+      stepRef.current = 3;
+      controller.insertReviewText('2');
+    }
+  }, [controller]);
+
+  return (
+    <Text>
+      {`selectedIndex:${controller.review?.selectedActionIndex ?? -1}`}
+      {` customInputActive:${controller.review?.customInputActive ? 'true' : 'false'}`}
+      {` draft:${controller.review?.draft ?? ''}`}
+      {` answer:${JSON.stringify(controller.review?.form?.answers.audience ?? null)}`}
     </Text>
   );
 }
@@ -768,6 +1159,57 @@ function BackgroundFollowupProbe({codara}: {codara: Codara}): React.JSX.Element 
   );
 }
 
+function QueuedPromptProbe({codara}: {codara: Codara}): React.JSX.Element {
+  const controller = useCliController({codara});
+  const stepRef = React.useRef(0);
+
+  useEffect(() => {
+    if (stepRef.current === 0) {
+      stepRef.current = 1;
+      controller.submitText('first prompt');
+      return;
+    }
+
+    if (stepRef.current === 1 && controller.runState.status === 'running') {
+      stepRef.current = 2;
+      controller.submitText('second prompt');
+    }
+  }, [controller]);
+
+  return (
+    <Text>
+      {`runState:${controller.runState.status}`}
+      {` streamCalls:${(codara as unknown as FakeCodara).getStreamCallCount()}`}
+    </Text>
+  );
+}
+
+function QueuedReviewResponseProbe({codara}: {codara: Codara}): React.JSX.Element {
+  const controller = useCliController({codara});
+  const stepRef = React.useRef(0);
+
+  useEffect(() => {
+    if (stepRef.current === 0) {
+      stepRef.current = 1;
+      controller.submitText('foreground prompt');
+      return;
+    }
+
+    if (stepRef.current === 1 && controller.runState.status === 'running' && controller.review) {
+      stepRef.current = 2;
+      controller.submitReviewAction();
+    }
+  }, [controller]);
+
+  return (
+    <Text>
+      {`runState:${controller.runState.status}`}
+      {` review:${controller.review?.request.id ?? 'none'}`}
+      {` resumeCount:${(codara as unknown as FakeCodara).resumeCount}`}
+    </Text>
+  );
+}
+
 class FakeCodara {
   private listeners = new Set<(event: CodaraRuntimeEvent) => void>();
   private reviews: ReviewQueryItem[] = [];
@@ -792,6 +1234,11 @@ class FakeCodara {
   private releaseBlockedStreamResolver: (() => void) | undefined;
   private blockApprovalResume = false;
   private releaseBlockedApprovalResumeResolver: (() => void) | undefined;
+  private failPauseResumeWhileRunning = false;
+  private hydrateSequence: Array<{status: string; pendingPause?: PauseRequest}> = [];
+  private deferredResumeReviewId: string | undefined;
+  private deferredResumeRemovalHydratesRemaining = -1;
+  private deferredPauseClearHydratesRemaining = -1;
   private readonly streamCalls: CodaraStreamRequest[] = [];
   private readonly queuedStreamChunks: AIMessageChunk[][] = [];
   public resumeCount = 0;
@@ -826,6 +1273,28 @@ class FakeCodara {
 
   setPauseRequest(request: PauseRequest | undefined): void {
     this.pendingPause = request;
+  }
+
+  setFocusedReviewRequest(review: ReviewQueryItem, request: PauseRequest): void {
+    this.reviews = [review];
+    this.approvalRequests.set(review.reviewId, request);
+    this.focusedReviewId = review.reviewId;
+  }
+
+  setHydrateSequence(states: Array<{status: string; pendingPause?: PauseRequest}>): void {
+    this.hydrateSequence = [...states];
+  }
+
+  failResumePauseWhileRunning(): void {
+    this.failPauseResumeWhileRunning = true;
+  }
+
+  deferPendingPauseClearOnResume(hydratesBeforeClear = 1): void {
+    this.deferredPauseClearHydratesRemaining = Math.max(0, hydratesBeforeClear);
+  }
+
+  deferCurrentReviewRemovalOnResume(hydratesBeforeRemoval = 1): void {
+    this.deferredResumeRemovalHydratesRemaining = Math.max(0, hydratesBeforeRemoval);
   }
 
   setTaskRunSummaries(
@@ -879,6 +1348,32 @@ class FakeCodara {
   }
 
   async hydrate() {
+    if (this.deferredResumeReviewId && this.deferredResumeRemovalHydratesRemaining === 0) {
+      this.reviews = this.reviews.filter((review) => review.reviewId !== this.deferredResumeReviewId);
+      this.approvalRequests.delete(this.deferredResumeReviewId);
+      this.focusedReviewId = this.reviews[0]?.reviewId;
+      this.deferredResumeReviewId = undefined;
+      this.deferredResumeRemovalHydratesRemaining = -1;
+    } else if (this.deferredResumeReviewId) {
+      this.deferredResumeRemovalHydratesRemaining -= 1;
+    }
+
+    if (this.deferredPauseClearHydratesRemaining > 0) {
+      this.deferredPauseClearHydratesRemaining -= 1;
+    } else if (this.deferredPauseClearHydratesRemaining === 0 && this.pendingPause) {
+      this.pendingPause = undefined;
+      this.deferredPauseClearHydratesRemaining = -1;
+    }
+
+    if (this.hydrateSequence.length > 0) {
+      const next = this.hydrateSequence.shift()!;
+      this.pendingPause = next.pendingPause;
+      return {
+        status: next.status,
+        pendingPause: next.pendingPause,
+        messages: [],
+      };
+    }
     return {
       status: 'idle',
       pendingPause: this.pendingPause,
@@ -989,7 +1484,13 @@ class FakeCodara {
   }
 
   async *resumePauseStream() {
+    if (this.failPauseResumeWhileRunning && this.hydrateSequence.length > 0 && this.hydrateSequence[0]?.status === 'running') {
+      throw new Error('Agent is currently running.');
+    }
     this.resumeCount += 1;
+    if (this.deferredPauseClearHydratesRemaining < 0) {
+      this.pendingPause = undefined;
+    }
     yield* [];
   }
 
@@ -1018,10 +1519,16 @@ class FakeCodara {
     }
     const currentApprovalId = this.focusedReviewId ?? this.reviews[0]?.reviewId;
     if (currentApprovalId) {
-      this.reviews = this.reviews.filter((review) => review.reviewId !== currentApprovalId);
-      this.approvalRequests.delete(currentApprovalId);
+      if (this.deferredResumeRemovalHydratesRemaining >= 0) {
+        this.deferredResumeReviewId = currentApprovalId;
+      } else {
+        this.reviews = this.reviews.filter((review) => review.reviewId !== currentApprovalId);
+        this.approvalRequests.delete(currentApprovalId);
+      }
     }
-    this.focusedReviewId = this.reviews[0]?.reviewId;
+    if (!this.deferredResumeReviewId) {
+      this.focusedReviewId = this.reviews[0]?.reviewId;
+    }
   }
 
   async dispose() {}
@@ -1101,7 +1608,7 @@ function createAskUserPauseRequest(): PauseRequest {
     ui: {
       actions: [
         {id: 'submit', label: 'Submit', kind: 'primary'},
-        {id: 'chat', label: 'Chat about this', kind: 'secondary'},
+        {id: 'cancel', label: 'Cancel', kind: 'secondary'},
       ],
       form: {
         tabs: [
@@ -1123,6 +1630,51 @@ function createAskUserPauseRequest(): PauseRequest {
             options: [
               {id: 'simple', label: 'Simple'},
               {id: 'standard', label: 'Standard'},
+            ],
+          },
+        ],
+      },
+    },
+  };
+}
+
+function createMultiselectAskUserPauseRequest(): PauseRequest {
+  return {
+    id: 'ask-user-multiselect-pause',
+    description: 'Collect target users.',
+    action: {
+      toolCallId: 'ask-user-multiselect-tool',
+      toolName: 'AskUserQuestion',
+      toolArgs: {},
+    },
+    review: {
+      actionName: 'AskUserQuestion',
+      allowedDecisions: ['approve'],
+    },
+    runtime: {
+      runId: 'ask-user-multiselect-run',
+      turn: 1,
+      requestId: 'ask-user-multiselect-request',
+      toolIndex: 0,
+    },
+    channel: 'interaction-center',
+    ui: {
+      actions: [
+        {id: 'submit', label: 'Submit', kind: 'primary'},
+        {id: 'cancel', label: 'Cancel', kind: 'secondary'},
+      ],
+      form: {
+        tabs: [
+          {
+            id: 'audience',
+            label: 'Audience',
+            question: 'Who is this for?',
+            input: 'multiselect',
+            options: [
+              {id: 'solo', label: '独立开发者'},
+              {id: 'team', label: '开发团队'},
+              {id: 'enterprise', label: '企业客户'},
+              {id: 'non-tech', label: '非技术用户'},
             ],
           },
         ],

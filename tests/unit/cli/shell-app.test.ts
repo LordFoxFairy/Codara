@@ -4,6 +4,7 @@ import {
   shouldShowFloatingTaskPanel,
   resolveCliForegroundSurface,
   shouldShowActivityLine,
+  shouldDisablePromptInput,
   shouldShowTaskPanel,
   shouldShowPromptFrame,
 } from '../../../src/cli/app/shell-app';
@@ -49,6 +50,14 @@ describe('CLI foreground surface', () => {
     })).toBe(false);
   });
 
+  it('should keep prompt input enabled while the agent is running if no session-scoped review owns the interaction', () => {
+    expect(shouldDisablePromptInput({
+      review: undefined,
+      focusedSurface: 'prompt',
+      hasSessionPicker: false,
+    })).toBe(false);
+  });
+
   it('should hide the task panel when there is only one task', () => {
     expect(shouldShowTaskPanel({taskPanelVisible: true, taskCount: 1})).toBe(false);
   });
@@ -75,7 +84,7 @@ describe('CLI foreground surface', () => {
     })).toBe(false);
   });
 
-  it('should still show the floating task panel while a HIL review overlay is visible', () => {
+  it('should still show the floating task panel while a review overlay is visible', () => {
     expect(shouldShowFloatingTaskPanel({
       hasConversation: true,
       taskPanelVisible: true,

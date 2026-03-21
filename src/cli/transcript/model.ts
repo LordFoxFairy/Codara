@@ -67,6 +67,26 @@ export interface HasTranscriptContentInput {
 
 export const DEFAULT_TRANSCRIPT_LIMIT = 20;
 
+export function dedupeTrailingTranscriptItemsCoveredByRuntime(
+  trailingItems: readonly TranscriptItem[],
+  runtimeItems: readonly TranscriptItem[],
+): TranscriptItem[] {
+  const runtimeFingerprints = new Set(
+    runtimeItems
+      .map(buildRuntimeCoverageFingerprint)
+      .filter((fingerprint): fingerprint is string => Boolean(fingerprint)),
+  );
+
+  if (runtimeFingerprints.size === 0) {
+    return [...trailingItems];
+  }
+
+  return trailingItems.filter((item) => {
+    const fingerprint = buildRuntimeCoverageFingerprint(item);
+    return !fingerprint || !runtimeFingerprints.has(fingerprint);
+  });
+}
+
 export function buildTranscriptItems(input: BuildTranscriptItemsInput): TranscriptItem[] {
   const toolLookup = createToolCallLookup(input.coreMessages);
   const preferRuntimeSteps = (input.runtimeEvents?.length ?? 0) > 0 && input.activeTurn !== undefined;
@@ -142,6 +162,10 @@ export function buildActiveItems(input: {
   nowTimestamp?: string;
 }): TranscriptItem[] {
   const preferRuntimeSteps = (input.runtimeEvents?.length ?? 0) > 0;
+  const suppressInternalInteractionResponse = shouldSuppressActiveTurnInteractionPreamble(
+    input.activeTurn?.responseRole,
+    input.runtimeEvents,
+  );
   const suppressActiveTurnResponse = shouldSuppressAssistantTaskLaunchChatter(
     input.activeTurn?.response,
     input.activeTurn?.responseRole,
@@ -157,24 +181,40 @@ export function buildActiveItems(input: {
       }]
     : [];
   const runtimeItems = preferRuntimeSteps ? buildRuntimeEventItems(input.runtimeEvents ?? [], input.nowTimestamp) : [];
-  const promptAndResponseItems: TranscriptItem[] = input.activeTurn
-    ? [
-        {
-          id: `${input.activeTurn.id}-prompt`,
-          role: 'user' as const,
-          content: input.activeTurn.prompt,
-        },
-        ...thinkingItem,
-        {
-          id: `${input.activeTurn.id}-response`,
-          role: input.activeTurn.responseRole,
-          content: suppressActiveTurnResponse ? '' : input.activeTurn.response,
-        },
-      ]
+  const promptAndResponseItems: TranscriptItem[] = [];
+  if (input.activeTurn) {
+    promptAndResponseItems.push({
+      id: `${input.activeTurn.id}-prompt`,
+      role: 'user' as const,
+      content: input.activeTurn.prompt,
+    });
+    promptAndResponseItems.push(...thinkingItem);
+  }
+
+  const preRuntimeAssistantItems: TranscriptItem[] = input.activeTurn?.responseBeforeRuntime
+    && !suppressActiveTurnResponse
+    && !suppressInternalInteractionResponse
+    && !input.activeTurn?.suppressInteractionResponse
+    ? [{
+        id: `${input.activeTurn.id}-response-before-runtime`,
+        role: input.activeTurn.responseRole,
+        content: input.activeTurn.responseBeforeRuntime,
+      }]
+    : [];
+  const currentAssistantItems: TranscriptItem[] = input.activeTurn
+    ? [{
+        id: `${input.activeTurn.id}-response`,
+        role: input.activeTurn.responseRole,
+        content: suppressActiveTurnResponse || suppressInternalInteractionResponse || input.activeTurn.suppressInteractionResponse
+          ? ''
+          : input.activeTurn.response,
+      }]
     : [];
   const items: TranscriptItem[] = input.activeTurn?.kind === 'task_completion'
-    ? [...runtimeItems, ...promptAndResponseItems]
-    : [...promptAndResponseItems, ...runtimeItems];
+    ? [...runtimeItems, ...promptAndResponseItems, ...currentAssistantItems]
+    : preRuntimeAssistantItems.length > 0
+      ? [...promptAndResponseItems, ...preRuntimeAssistantItems, ...runtimeItems, ...currentAssistantItems]
+      : [...promptAndResponseItems, ...currentAssistantItems, ...runtimeItems];
   return items.filter((item) => item.content);
 }
 
@@ -313,7 +353,7 @@ function buildRuntimeEventItems(events: readonly CodaraRuntimeEvent[], nowTimest
   // Second pass: pair end events with start events, build items
   const pairedTaskEnds: Array<{startEvent: CodaraRuntimeEvent; endEvent: CodaraRuntimeEvent}> = [];
   for (const event of events) {
-    if (event.kind === 'turn' || event.kind === 'model' || shouldHideRuntimeEvent(event)) {
+    if (event.kind === 'turn' || event.kind === 'model' || shouldHideRuntimeEventForTranscript(event)) {
       continue;
     }
 
@@ -352,7 +392,15 @@ function buildRuntimeEventItems(events: readonly CodaraRuntimeEvent[], nowTimest
       const startEvent = startEvents.get(event.parentId);
       if (startEvent) {
         const rawToolName = (startEvent.detail ?? '').trim();
+        if (isInteractionToolName(rawToolName)) {
+          pairedEndIds.add(event.id);
+          continue;
+        }
         if (rawToolName === TODO_TOOL_NAME) {
+          pairedEndIds.add(event.id);
+          continue;
+        }
+        if (isRepeatedAskUserContinuationNotice(event.detail)) {
           pairedEndIds.add(event.id);
           continue;
         }
@@ -423,7 +471,7 @@ function buildRuntimeEventItems(events: readonly CodaraRuntimeEvent[], nowTimest
   // Third pass: show unpaired start events as "running"
   const unpairedTaskStarts: Array<{id: string; startEvent: CodaraRuntimeEvent}> = [];
   for (const [id, startEvent] of startEvents) {
-    if (shouldHideRuntimeEvent(startEvent)) {
+    if (shouldHideRuntimeEventForTranscript(startEvent)) {
       continue;
     }
     const wasPaired = events.some(
@@ -837,6 +885,9 @@ function buildAssistantItems(
 ): TranscriptItem[] {
   const items: TranscriptItem[] = [];
   const text = readMessageText(message);
+  if (text && containsHiddenInteractionToolCall(message)) {
+    return items;
+  }
   const preserveVisibleText = text ? preserveVisibleAssistantTexts?.has(normalizeVisibleAssistantText(text)) ?? false : false;
   if (
     text
@@ -916,6 +967,10 @@ function buildToolResultItems(
   messageId: string,
   toolLookup: Map<string, ToolCall>,
 ): TranscriptItem[] {
+  if (shouldHideInternalToolMessage(message)) {
+    return [];
+  }
+
   const hilPayload = parseHILToolMessagePayload(message.content);
   if (hilPayload?.type === 'hil_pause') {
     return [];
@@ -932,8 +987,14 @@ function buildToolResultItems(
   if (!text) {
     return [];
   }
+  if (isRepeatedAskUserContinuationNotice(text)) {
+    return [];
+  }
 
   const resolvedName = resolveToolMessageName(message, toolLookup);
+  if (isHiddenTranscriptToolName(resolvedName)) {
+    return [];
+  }
   if (isInteractionToolName(resolvedName) || parseAskUserResult(text)) {
     return [];
   }
@@ -1118,7 +1179,7 @@ function tryComputeDiff(toolName: string, toolArgs: unknown): DiffData | undefin
   }
 }
 
-function shouldHideRuntimeEvent(event: CodaraRuntimeEvent): boolean {
+export function shouldHideRuntimeEventForTranscript(event: CodaraRuntimeEvent): boolean {
   if (event.kind === 'hil') {
     return true;
   }
@@ -1136,6 +1197,9 @@ function shouldHideRuntimeEvent(event: CodaraRuntimeEvent): boolean {
   }
 
   const rawToolName = (event.detail ?? '').trim();
+  if (isHiddenTranscriptToolName(rawToolName)) {
+    return true;
+  }
   if (rawToolName === TODO_TOOL_NAME) {
     return true;
   }
@@ -1143,9 +1207,43 @@ function shouldHideRuntimeEvent(event: CodaraRuntimeEvent): boolean {
   if (parseAskUserResult(event.detail)) {
     return true;
   }
+  if (isRepeatedAskUserContinuationNotice(event.detail)) {
+    return true;
+  }
 
   const hilPayload = parseHILToolMessagePayload(event.detail);
   return hilPayload?.type === 'hil_pause';
+}
+
+function buildRuntimeCoverageFingerprint(item: TranscriptItem): string | undefined {
+  if ((item.role !== 'tool' && item.role !== 'task') || !item.toolMeta) {
+    return undefined;
+  }
+
+  const outputLines = item.toolMeta.allOutputLines ?? item.toolMeta.outputLines ?? [];
+  return [
+    item.role,
+    item.toolMeta.toolName,
+    item.toolMeta.args ?? '',
+    item.toolMeta.status,
+    item.toolMeta.summaryLine,
+    outputLines.join('\n'),
+  ].join('|');
+}
+
+function isRepeatedAskUserContinuationNotice(detail: unknown): boolean {
+  return typeof detail === 'string' && detail.includes('AskUserQuestion was just answered in this flow.');
+}
+
+function containsHiddenInteractionToolCall(message: AIMessage): boolean {
+  if (!Array.isArray(message.tool_calls)) {
+    return false;
+  }
+
+  return message.tool_calls.some((toolCall) => (
+    isInteractionToolName(toolCall?.name)
+    || isHiddenTranscriptToolName(toolCall?.name)
+  ));
 }
 
 function createToolCallLookup(messages: readonly BaseMessage[]): Map<string, ToolCall> {
@@ -1165,6 +1263,16 @@ function createToolCallLookup(messages: readonly BaseMessage[]): Map<string, Too
   return lookup;
 }
 
+function shouldHideInternalToolMessage(message: ToolMessage): boolean {
+  const artifact = message.artifact;
+  if (!artifact || typeof artifact !== 'object' || Array.isArray(artifact)) {
+    return false;
+  }
+
+  const record = artifact as Record<string, unknown>;
+  return record.type === 'ask_user_internal' && record.visibility === 'hidden';
+}
+
 function resolveToolMessageName(message: ToolMessage, toolLookup: Map<string, ToolCall>): string | undefined {
   const explicitName = typeof message.name === 'string' ? message.name.trim() : '';
   if (explicitName) {
@@ -1181,6 +1289,8 @@ function resolveToolMessageName(message: ToolMessage, toolLookup: Map<string, To
 
 function toolIcon(toolName: string): string {
   switch (toolName) {
+    case TOOL_NAMES.SKILL:
+      return '⚙';
     case TOOL_NAMES.BASH:
       return '⚡';
     case TOOL_NAMES.READ_FILE:
@@ -1217,6 +1327,8 @@ function formatFriendlyToolSummary(toolName: string, args: unknown): string | un
 
   const record = args as Record<string, unknown>;
   switch (toolName) {
+    case TOOL_NAMES.SKILL:
+      return limitSummary(asString(record.skill));
     case TOOL_NAMES.BASH:
       return limitSummary(asString(record.command) || asString(record.description));
     case TOOL_NAMES.READ_FILE:
@@ -1246,6 +1358,10 @@ function isInteractionToolName(toolName: string | undefined): boolean {
   return (toolName || '').trim() === TOOL_NAMES.ASK_USER;
 }
 
+function isHiddenTranscriptToolName(toolName: string | undefined): boolean {
+  return (toolName || '').trim() === TOOL_NAMES.SKILL;
+}
+
 function serializeValue(value: unknown): string | undefined {
   if (value === undefined) {
     return undefined;
@@ -1264,6 +1380,8 @@ function serializeValue(value: unknown): string | undefined {
 
 function formatToolDisplayName(toolName: string): string {
   switch (toolName) {
+    case TOOL_NAMES.SKILL:
+      return 'Skill';
     case TOOL_NAMES.BASH:
       return 'Bash';
     case TOOL_NAMES.READ_FILE:
@@ -1352,4 +1470,21 @@ function isTaskToolName(toolName: string | undefined): boolean {
     || toolName === TOOL_NAMES.TASK_CREATE
     || toolName === TOOL_NAMES.TASK_UPDATE
     || toolName === TOOL_NAMES.TASK_LIST;
+}
+
+function shouldSuppressActiveTurnInteractionPreamble(
+  role: TranscriptRole | undefined,
+  runtimeEvents: readonly CodaraRuntimeEvent[] | undefined,
+): boolean {
+  if (role !== 'assistant' || !runtimeEvents?.length) {
+    return false;
+  }
+
+  return runtimeEvents.some((event) => {
+    if (event.kind !== 'tool') {
+      return false;
+    }
+    const detail = typeof event.detail === 'string' ? event.detail.trim() : '';
+    return isInteractionToolName(detail) || isHiddenTranscriptToolName(detail);
+  });
 }

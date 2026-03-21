@@ -472,25 +472,23 @@ export function createSession(options: CreateSessionOptions): Session {
     if (!options.summary) {
       throw new Error('Conversation compaction is not configured for this session.');
     }
-    const summaryEventId = runtimeEvents.summaryStarted('Compacting context');
 
     const instance = await getAgent();
     const summary = summaryOptions;
 
     if (!summary) {
-      runtimeEvents.summaryFinished(summaryEventId, 'error', 'Context compaction failed', 'Summary middleware is not configured.');
       throw new Error('Conversation compaction is not configured for this session.');
     }
 
     const current = instance.getState();
     if (current.status === 'running') {
-      runtimeEvents.summaryFinished(summaryEventId, 'error', 'Context compaction failed', 'Agent is currently running.');
       throw new Error('Agent is currently running.');
     }
     if (current.status === 'paused') {
-      runtimeEvents.summaryFinished(summaryEventId, 'error', 'Context compaction failed', 'Agent is paused.');
       throw new Error('Agent is paused; resume(...) or reset() before compacting the conversation.');
     }
+
+    const summaryEventId = runtimeEvents.summaryStarted('Compacting context');
 
     if (lifecycle) {
       const preResult = await safeLifecycleCall(() =>

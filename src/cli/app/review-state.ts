@@ -30,6 +30,8 @@ export function syncCliReviewState(
       ...current,
       request,
       actions,
+      customInputSelected: current.customInputSelected ?? (form ? hasCustomAnswerForActiveTab(form) : false),
+      customInputActive: current.customInputActive,
       selectedActionIndex: form
         ? current.focus === 'actions'
           ? form.endStep
@@ -50,6 +52,8 @@ export function syncCliReviewState(
     selectedActionIndex: 0,
     focus: form ? (form.endStep ? 'actions' : 'input') : 'actions',
     draft: form ? readReviewFormDraft(form) : '',
+    customInputSelected: form ? hasCustomAnswerForActiveTab(form) : false,
+    customInputActive: false,
     busy: false,
     ...(form ? {form} : {}),
   };
@@ -75,15 +79,27 @@ export function selectNextCliReviewAction(current: CliReviewState): CliReviewSta
 
 /** Count options + placeholder + actions as one unified navigable list. */
 function countTotalNavigableItems(current: CliReviewState): number {
-  if (!current.form) return current.actions.length;
+  if (!current.form) {
+    return current.actions.length;
+  }
+
   const activeTab = getActiveReviewTab(current.form);
-  return current.focus === 'actions'
-    ? current.form.endStep ? current.actions.length : 1
-    : Math.max(activeTab?.options?.length ?? 0, 1);
+  if (!current.form.endStep) {
+    return Math.max(getQuestionSelectableItemCount(activeTab) + 1, 1);
+  }
+
+  return Math.max(getVisibleReviewFooterActions(current).length, 1);
 }
 
 /** Convert focus+selectedActionIndex to a single absolute index in the unified list. */
 function toAbsoluteIndex(current: CliReviewState): number {
+  if (current.form && !current.form.endStep) {
+    const inputCount = getQuestionSelectableItemCount(getActiveReviewTab(current.form));
+    return current.focus === 'actions'
+      ? inputCount + current.selectedActionIndex
+      : current.selectedActionIndex;
+  }
+
   return current.selectedActionIndex;
 }
 
@@ -95,6 +111,38 @@ function applyAbsoluteIndex(current: CliReviewState, absoluteIndex: number): Cli
       selectedActionIndex: absoluteIndex % Math.max(current.actions.length, 1),
     };
   }
+
+  if (!current.form.endStep) {
+    const activeTab = getActiveReviewTab(current.form);
+    const inputCount = getQuestionSelectableItemCount(getActiveReviewTab(current.form));
+    if (absoluteIndex < inputCount) {
+      if (
+        activeTab
+        && activeTab.input !== 'multiselect'
+        && absoluteIndex < activeTab.options.length
+        && isCustomAnswerValue(activeTab, current.form.answers[activeTab.id])
+      ) {
+        return commitCliReviewAnswer(current, activeTab.options[absoluteIndex]?.label ?? '', absoluteIndex);
+      }
+
+      return {
+        ...clearCliReviewValidation(current),
+        focus: 'input',
+        selectedActionIndex: absoluteIndex,
+        customInputSelected: current.customInputSelected,
+        customInputActive: isCustomSelectionIndex(current.form, absoluteIndex) ? current.customInputActive : false,
+      };
+    }
+
+    return {
+      ...clearCliReviewValidation(current),
+      focus: 'actions',
+      selectedActionIndex: absoluteIndex - inputCount,
+      customInputSelected: current.customInputSelected,
+      customInputActive: false,
+    };
+  }
+
   return {
     ...clearCliReviewValidation(current),
     selectedActionIndex: absoluteIndex,
@@ -103,13 +151,12 @@ function applyAbsoluteIndex(current: CliReviewState, absoluteIndex: number): Cli
 
 export function toggleCliReviewFocus(current: CliReviewState): CliReviewState {
   if (current.focus === 'actions') {
-    if (current.form?.endStep) {
-      return current;
-    }
     return {
       ...clearCliReviewValidation(current),
       focus: 'input',
       selectedActionIndex: current.form ? resolveReviewInputSelectionIndex(current.form) : current.selectedActionIndex,
+      customInputSelected: current.customInputSelected,
+      customInputActive: false,
     };
   }
 
@@ -117,6 +164,8 @@ export function toggleCliReviewFocus(current: CliReviewState): CliReviewState {
     ...clearCliReviewValidation(current),
     focus: 'actions',
     selectedActionIndex: 0,
+    customInputSelected: current.customInputSelected,
+    customInputActive: false,
   };
 }
 
@@ -126,6 +175,8 @@ export function updateCliReviewDraft(current: CliReviewState, draft: string): Cl
     return {
       ...clearCliReviewValidation(current),
       draft,
+      customInputSelected: current.customInputSelected ?? hasCustomAnswerForActiveTab(nextForm),
+      customInputActive: true,
       form: nextForm,
     };
   }
@@ -153,6 +204,8 @@ export function selectPreviousCliReviewTab(current: CliReviewState): CliReviewSt
       draft: readReviewFormDraft(nextForm),
       focus: 'input',
       selectedActionIndex: resolveReviewInputSelectionIndex(nextForm),
+      customInputSelected: hasCustomAnswerForActiveTab(nextForm),
+      customInputActive: false,
     };
   }
 
@@ -168,6 +221,8 @@ export function selectPreviousCliReviewTab(current: CliReviewState): CliReviewSt
     draft: readReviewFormDraft(nextForm),
     focus: 'input',
     selectedActionIndex: resolveReviewInputSelectionIndex(nextForm),
+    customInputSelected: hasCustomAnswerForActiveTab(nextForm),
+    customInputActive: false,
   };
 }
 
@@ -188,10 +243,11 @@ export function selectNextCliReviewTab(current: CliReviewState): CliReviewState 
       draft: readReviewFormDraft(nextForm),
       focus: 'input',
       selectedActionIndex: resolveReviewInputSelectionIndex(nextForm),
+      customInputActive: false,
     };
   }
 
-  if (current.form.activeTabIndex === current.form.tabs.length - 1 && findFirstIncompleteTabIndex(current.form) < 0) {
+  if (current.form.activeTabIndex === current.form.tabs.length - 1) {
     const nextForm = {
       ...current.form,
       endStep: true,
@@ -202,6 +258,8 @@ export function selectNextCliReviewTab(current: CliReviewState): CliReviewState 
       draft: '',
       focus: 'actions',
       selectedActionIndex: 0,
+      customInputSelected: false,
+      customInputActive: false,
     };
   }
 
@@ -217,6 +275,8 @@ export function selectNextCliReviewTab(current: CliReviewState): CliReviewState 
     draft: readReviewFormDraft(nextForm),
     focus: 'input',
     selectedActionIndex: resolveReviewInputSelectionIndex(nextForm),
+    customInputSelected: hasCustomAnswerForActiveTab(nextForm),
+    customInputActive: false,
   };
 }
 
@@ -226,21 +286,35 @@ export function applyCliReviewFormShortcut(current: CliReviewState, input: strin
   }
 
   const activeTab = getActiveReviewTab(current.form);
-  if (!activeTab || activeTab.options.length === 0) {
+  if (!activeTab) {
     return undefined;
   }
 
   const optionIndex = Number.parseInt(input, 10) - 1;
-  if (!Number.isFinite(optionIndex) || optionIndex < 0 || optionIndex >= activeTab.options.length) {
+  if (!Number.isFinite(optionIndex) || optionIndex < 0) {
     return undefined;
   }
 
-  const option = activeTab.options[optionIndex];
-  if (!option) {
+  if (optionIndex < activeTab.options.length) {
+    const option = activeTab.options[optionIndex];
+    if (!option) {
+      return undefined;
+    }
+
+    return applyCliReviewOptionSelection(current, option.label);
+  }
+
+  if (!supportsCustomReviewAnswer(activeTab) || optionIndex !== activeTab.options.length) {
     return undefined;
   }
 
-  return applyCliReviewOptionSelection(current, option.label);
+  return {
+    ...clearCliReviewValidation(current),
+    selectedActionIndex: optionIndex,
+    draft: readReviewCustomDraft(current.form),
+    customInputSelected: true,
+    customInputActive: true,
+  };
 }
 
 export function activateCliReviewFocusedSelection(current: CliReviewState): CliReviewState | undefined {
@@ -260,11 +334,18 @@ export function activateCliReviewFocusedSelection(current: CliReviewState): CliR
     return applyCliReviewOptionSelection(current, activeTab.options[selectedIndex]?.label);
   }
 
-  if (!acceptsReviewDraftInput(activeTab)) {
+  if (!acceptsReviewDraftInput(activeTab, selectedIndex) || selectedIndex !== optionCount) {
     return undefined;
   }
 
-  return applyCliReviewDraftSelection(current);
+  return {
+    ...clearCliReviewValidation(current),
+    focus: 'input',
+    selectedActionIndex: selectedIndex,
+    draft: readReviewCustomDraft(current.form),
+    customInputSelected: true,
+    customInputActive: true,
+  };
 }
 
 export function confirmCliReviewFocusedSelection(current: CliReviewState): CliReviewState | undefined {
@@ -295,14 +376,45 @@ export function prepareCliReviewDraftInput(current: CliReviewState): CliReviewSt
   }
 
   const activeTab = getActiveReviewTab(current.form);
-  if (!activeTab || !acceptsReviewDraftInput(activeTab)) {
+  if (!activeTab || !acceptsReviewDraftInput(activeTab, current.selectedActionIndex)) {
     return undefined;
   }
 
   return {
     ...clearCliReviewValidation(current),
-    selectedActionIndex: Math.min(current.selectedActionIndex, Math.max(activeTab.options.length - 1, 0)),
+    selectedActionIndex: resolveDraftInputSelectionIndex(activeTab, current.selectedActionIndex),
+    draft: readReviewCustomDraft(current.form),
+    customInputSelected: true,
+    customInputActive: true,
   };
+}
+
+export function resolveCliReviewFocusedFooterAction(current: CliReviewState): CliReviewAction | undefined {
+  const footerActions = getVisibleReviewFooterActions(current);
+  return footerActions[current.selectedActionIndex];
+}
+
+export function shouldSpaceInsertIntoCliReviewDraft(review: CliReviewState | undefined): boolean {
+  if (!review?.form || review.focus !== 'input') {
+    return false;
+  }
+
+  const activeTab = getActiveReviewTab(review.form);
+  if (!activeTab || !supportsCustomReviewAnswer(activeTab)) {
+    return false;
+  }
+
+  const customIndex = activeTab.options.length;
+  if (review.selectedActionIndex === customIndex) {
+    return true;
+  }
+
+  const answer = review.form.answers[activeTab.id];
+  if (typeof answer !== 'string' || !answer.trim()) {
+    return false;
+  }
+
+  return activeTab.options.every((option) => option.label !== answer);
 }
 
 export function resolveCliReviewActions(request: PauseRequest): CliReviewAction[] {
@@ -312,6 +424,9 @@ export function resolveCliReviewActions(request: PauseRequest): CliReviewAction[
   })) ?? [];
 
   if (configured.length > 0) {
+    if (request.action.toolName === 'AskUserQuestion' && !configured.some((action) => action.id === 'cancel')) {
+      return [...configured, {id: 'cancel', label: 'Cancel', kind: 'secondary'}];
+    }
     return configured;
   }
 
@@ -324,7 +439,7 @@ export function buildCliReviewResumePayload(
 ): ResumePayload {
   const action = actionOverride
     ? resolveRequestedAction(review.actions, actionOverride.action)
-    : review.actions[review.selectedActionIndex];
+    : resolveCliReviewFocusedFooterAction(review) ?? review.actions[review.selectedActionIndex];
 
   if (!action) {
     throw new Error('No review action is available for the current pause.');
@@ -372,23 +487,31 @@ export function prepareCliReviewSubmission(
   const nextReview = applyCliReviewAutoAnswers(review, actionOverride?.answers);
   const action = actionOverride
     ? resolveRequestedAction(nextReview.actions, actionOverride.action)
-    : nextReview.actions[nextReview.selectedActionIndex];
+    : resolveCliReviewFocusedFooterAction(nextReview) ?? nextReview.actions[nextReview.selectedActionIndex];
+
+  if (nextReview.form && !nextReview.form.endStep) {
+    if (!actionOverride && nextReview.focus !== 'actions') {
+      return {
+        review: clearCliReviewValidation(nextReview),
+      };
+    }
+
+    if (action?.id === 'next') {
+      return {
+        review: advanceCliReviewToNextStep(nextReview),
+      };
+    }
+  }
 
   if (action?.id === 'submit' && nextReview.form) {
     const firstIncompleteTabIndex = findFirstIncompleteTabIndex(nextReview.form);
     if (firstIncompleteTabIndex >= 0) {
-      const nextForm = {
-        ...nextReview.form,
-        activeTabIndex: firstIncompleteTabIndex,
-      };
-      const tab = nextForm.tabs[firstIncompleteTabIndex];
       return {
         review: {
           ...nextReview,
-          focus: 'input',
-          draft: readReviewFormDraft(nextForm),
-          form: nextForm,
-          validationMessage: tab ? `Complete ${tab.label} before submitting.` : 'Complete each question before submitting.',
+          focus: 'actions',
+          customInputActive: false,
+          validationMessage: 'You have not answered all questions',
         },
       };
     }
@@ -438,6 +561,8 @@ function applyCliReviewAutoAnswers(
     ...clearCliReviewValidation(review),
     form: nextForm,
     draft: readReviewFormDraft(nextForm),
+    customInputSelected: hasCustomAnswerForActiveTab(nextForm),
+    customInputActive: hasCustomAnswerForActiveTab(nextForm),
   };
 }
 
@@ -476,28 +601,29 @@ function applyCliReviewOptionSelection(
   const answer = activeTab.input === 'multiselect'
     ? toggleReviewFormSelection(current.form, optionLabel)
     : optionLabel;
-  return commitCliReviewAnswer(current, answer);
-}
-
-function applyCliReviewDraftSelection(current: CliReviewState): CliReviewState {
-  return commitCliReviewAnswer(current, current.draft);
+  const selectedIndex = activeTab.options.findIndex((option) => option.label === optionLabel);
+  return commitCliReviewAnswer(current, answer, selectedIndex >= 0 ? selectedIndex : current.selectedActionIndex);
 }
 
 function commitCliReviewAnswer(
   current: CliReviewState,
   answer: CliReviewAnswerValue,
+  selectedIndexOverride?: number,
 ): CliReviewState {
   if (!current.form) {
     return current;
   }
 
   const nextForm = updateReviewFormAnswer(current.form, answer);
+  const nextSelectedIndex = selectedIndexOverride ?? resolveReviewInputSelectionIndex(nextForm, current.selectedActionIndex);
   return {
     ...clearCliReviewValidation(current),
     draft: readReviewFormDraft(nextForm),
     form: nextForm,
     focus: 'input',
-    selectedActionIndex: resolveReviewInputSelectionIndex(nextForm, current.selectedActionIndex),
+    selectedActionIndex: nextSelectedIndex,
+    customInputSelected: resolveCustomSelectionState(current, nextForm, nextSelectedIndex),
+    customInputActive: isCustomSelectionIndex(nextForm, nextSelectedIndex) && hasCustomAnswerForActiveTab(nextForm),
   };
 }
 
@@ -528,6 +654,8 @@ export function advanceCliReviewToNextStep(current: CliReviewState): CliReviewSt
       form: nextForm,
       focus: 'input',
       selectedActionIndex: resolveReviewInputSelectionIndex(nextForm),
+      customInputSelected: hasCustomAnswerForActiveTab(nextForm),
+      customInputActive: false,
     };
   }
 
@@ -540,7 +668,28 @@ export function advanceCliReviewToNextStep(current: CliReviewState): CliReviewSt
     },
     focus: 'actions',
     selectedActionIndex: 0,
+    customInputSelected: false,
+    customInputActive: false,
   };
+}
+
+function resolveCustomSelectionState(
+  current: CliReviewState,
+  nextForm: CliReviewFormState,
+  nextSelectedIndex: number,
+): boolean {
+  const activeTab = getActiveReviewTab(nextForm);
+  if (!activeTab) {
+    return false;
+  }
+
+  if (activeTab.input !== 'multiselect') {
+    return isCustomSelectionIndex(nextForm, nextSelectedIndex) && hasCustomAnswerForActiveTab(nextForm);
+  }
+
+  return current.customInputSelected === true
+    || isCustomSelectionIndex(nextForm, nextSelectedIndex)
+    || hasCustomAnswerForActiveTab(nextForm);
 }
 
 function defaultActionForDecision(decision: PauseReviewDecision): CliReviewAction {
@@ -602,12 +751,14 @@ function updateReviewFormAnswer(
     return form;
   }
 
+  const normalizedAnswer = normalizeReviewAnswerValue(form, activeTab, answer);
+
   return {
     ...form,
     endStep: false,
     answers: {
       ...form.answers,
-      [activeTab.id]: answer,
+      [activeTab.id]: normalizedAnswer,
     },
   };
 }
@@ -620,10 +771,107 @@ function readReviewFormDraft(form: CliReviewFormState): string {
   return formatReviewAnswerValue(form.answers[activeTab.id] ?? '');
 }
 
+function readReviewCustomDraft(form: CliReviewFormState): string {
+  const activeTab = getActiveReviewTab(form);
+  if (!activeTab) {
+    return '';
+  }
+
+  const answer = form.answers[activeTab.id];
+  if (Array.isArray(answer)) {
+    return answer.find((entry) => activeTab.options.every((option) => option.label !== entry)) ?? '';
+  }
+  if (typeof answer === 'string' && activeTab.options.every((option) => option.label !== answer)) {
+    return answer;
+  }
+  return '';
+}
+
+function normalizeReviewAnswerValue(
+  form: CliReviewFormState,
+  activeTab: CliReviewFormState['tabs'][number],
+  answer: CliReviewAnswerValue,
+): CliReviewAnswerValue {
+  if (activeTab.input !== 'multiselect' || Array.isArray(answer)) {
+    return answer;
+  }
+
+  const current = form.answers[activeTab.id];
+  const currentValues = Array.isArray(current)
+    ? current
+    : typeof current === 'string' && current.trim()
+      ? [current]
+      : [];
+  const presetValues = currentValues.filter((entry) => activeTab.options.some((option) => option.label === entry));
+  const customValue = answer.trim();
+
+  return customValue ? [...presetValues, customValue] : presetValues;
+}
+
 function acceptsReviewDraftInput(
+  tab: CliReviewFormState['tabs'][number] | undefined,
+  selectedIndex?: number,
+): boolean {
+  if (!tab) {
+    return false;
+  }
+
+  if (tab.input === 'text') {
+    return true;
+  }
+
+  if (!supportsCustomReviewAnswer(tab)) {
+    return false;
+  }
+
+  return selectedIndex === tab.options.length;
+}
+
+function supportsCustomReviewAnswer(
   tab: CliReviewFormState['tabs'][number] | undefined,
 ): boolean {
   return Boolean(tab);
+}
+
+function resolveDraftInputSelectionIndex(
+  tab: CliReviewFormState['tabs'][number],
+  selectedIndex: number,
+): number {
+  if (tab.input === 'text') {
+    return 0;
+  }
+
+  return Math.min(selectedIndex, Math.max(getQuestionSelectableItemCount(tab) - 1, 0));
+}
+
+function getQuestionSelectableItemCount(
+  tab: CliReviewFormState['tabs'][number] | undefined,
+): number {
+  if (!tab) {
+    return 0;
+  }
+
+  return tab.options.length + (supportsCustomReviewAnswer(tab) ? 1 : 0);
+}
+
+function getVisibleReviewFooterActions(current: CliReviewState): CliReviewAction[] {
+  if (!current.form) {
+    return [...current.actions];
+  }
+
+  if (current.form.endStep) {
+    return current.actions
+      .filter((action) => action.id === 'submit' || action.id === 'cancel')
+      .map((action) => ({
+        ...action,
+        label: action.id === 'submit' ? 'Submit answers' : action.label,
+      }));
+  }
+
+  const footerActions: CliReviewAction[] = [];
+  footerActions.push({id: 'next', label: 'Next', kind: 'primary'});
+
+  return footerActions;
 }
 
 function resolveReviewInputSelectionIndex(
@@ -641,9 +889,43 @@ function resolveReviewInputSelectionIndex(
     if (optionIndex >= 0) {
       return optionIndex;
     }
+
+    if (supportsCustomReviewAnswer(activeTab)) {
+      return activeTab.options.length;
+    }
   }
 
-  return Math.min(fallbackIndex, Math.max(activeTab.options.length - 1, 0));
+  return Math.min(fallbackIndex, Math.max(getQuestionSelectableItemCount(activeTab) - 1, 0));
+}
+
+function isCustomSelectionIndex(form: CliReviewFormState, selectedIndex: number): boolean {
+  const activeTab = getActiveReviewTab(form);
+  if (!activeTab || !supportsCustomReviewAnswer(activeTab)) {
+    return false;
+  }
+
+  return selectedIndex === activeTab.options.length;
+}
+
+function hasCustomAnswerForActiveTab(form: CliReviewFormState): boolean {
+  const activeTab = getActiveReviewTab(form);
+  if (!activeTab) {
+    return false;
+  }
+
+  return isCustomAnswerValue(activeTab, form.answers[activeTab.id]);
+}
+
+function isCustomAnswerValue(
+  tab: CliReviewFormState['tabs'][number],
+  answer: CliReviewAnswerValue | undefined,
+): boolean {
+  if (!answer) {
+    return false;
+  }
+
+  const selected = Array.isArray(answer) ? answer : [answer];
+  return selected.some((entry) => entry.trim().length > 0 && tab.options.every((option) => option.label !== entry));
 }
 
 function readReviewFormConfig(ui: PauseRequest['ui']): CliReviewFormState | undefined {
@@ -686,14 +968,12 @@ function normalizeReviewFormTab(tab: unknown) {
     return undefined;
   }
   const input = typeof record.input === 'string' ? record.input.trim() : '';
-  const normalizedInput: 'select' | 'multiselect' | 'text' | 'mixed' | undefined =
-    input === 'select' || input === 'multiselect' || input === 'text' || input === 'mixed'
-      ? input
-      : Array.isArray(record.options) && record.options.length > 0
-        ? 'select'
-        : typeof record.placeholder === 'string' && record.placeholder.trim()
-          ? 'text'
-          : undefined;
+  const normalizedInput: 'select' | 'multiselect' | 'text' =
+    input === 'multiselect'
+      ? 'multiselect'
+      : input === 'text'
+        ? 'text'
+        : 'select';
 
   const options = Array.isArray(record.options)
     ? record.options

@@ -4,11 +4,19 @@ import type {PermissionStage} from '../components/permission/types';
 
 export type CliStatus = 'idle' | 'running' | 'paused' | 'done' | 'error';
 export type CliReviewAnswerValue = string | string[];
-export type CliInputTarget = 'prompt' | 'review';
+export type CliInteractionSurface = 'prompt' | 'review' | 'completion' | 'command-output' | 'session-picker';
+export type CliInteractionKind = 'session_prompt' | 'task_continuation' | 'review_response';
 
 export interface CliRunState {
   status: CliStatus;
   error?: string;
+}
+
+export interface CliInteractionState {
+  focusedSurface: CliInteractionSurface;
+  activeKind?: CliInteractionKind;
+  pendingCount: number;
+  promptBlocked: boolean;
 }
 
 export interface CliNotice {
@@ -20,9 +28,13 @@ export interface CliNotice {
 export interface CliActiveTurn {
   id: string;
   prompt: string;
+  pendingResponse?: string;
+  responseBeforeRuntime?: string;
   response: string;
   responseRole: 'assistant' | 'system';
   kind?: 'prompt' | 'task_completion';
+  /** True once the current streaming turn delegates the foreground to an internal interaction surface. */
+  suppressInteractionResponse?: boolean;
   /** True once the current streaming model message includes a Task tool call. */
   pendingTaskLaunch?: boolean;
   /** True only when task launch chatter was detected before any visible response text was emitted. */
@@ -60,6 +72,8 @@ export interface CliReviewState {
   selectedActionIndex: number;
   focus: CliReviewFocus;
   draft: string;
+  customInputSelected?: boolean;
+  customInputActive?: boolean;
   busy: boolean;
   validationMessage?: string;
   form?: CliReviewFormState;

@@ -52,7 +52,7 @@ export interface PauseUIFormTab {
   id: string;
   label: string;
   question: string;
-  input?: 'select' | 'multiselect' | 'text' | 'mixed';
+  input?: 'select' | 'multiselect' | 'text';
   options?: PauseUIFormOption[];
   placeholder?: string;
 }

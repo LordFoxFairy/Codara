@@ -18,12 +18,12 @@ import {resolveCliLayoutMode} from './layout-mode';
 import {useCliController} from './use-cli-controller';
 import {useActiveTasks} from '../hooks/use-active-tasks';
 import {useCommandCompletion} from '../hooks/use-command-completion';
-import {useReviewInput} from '../hooks/use-review-input';
-import {usePromptInput} from '../hooks/use-prompt-input';
+import {useCliInteractionInput} from '../hooks/use-cli-interaction-input';
 import {useSessionPicker} from '../hooks/use-session-picker';
 import {useSolidifiedTranscript} from '../hooks/use-solidified-transcript';
 import {useTerminalWidth} from '../hooks/use-terminal-width';
-import type {CliReviewState} from './view-state';
+import type {CliInteractionSurface, CliReviewState} from './view-state';
+import {shouldSpaceInsertIntoCliReviewDraft} from './review-state';
 import type {TranscriptItem} from '../transcript/model';
 
 export interface CodaraCliAppProps {
@@ -65,6 +65,34 @@ export function shouldShowPromptFrame(input: {
   }
 
   return input.review?.blockingScope !== 'session';
+}
+
+export function shouldDisablePromptInput(input: {
+  review?: CliReviewState;
+  focusedSurface: CliInteractionSurface;
+  hasSessionPicker: boolean;
+}): boolean {
+  return input.review?.blockingScope === 'session'
+    || input.focusedSurface !== 'prompt'
+    || input.hasSessionPicker;
+}
+
+export function resolveActiveInteractionSurface(input: {
+  focusedSurface: CliInteractionSurface;
+  hasCommandOutput: boolean;
+  hasCompletion: boolean;
+  hasSessionPicker: boolean;
+}): CliInteractionSurface {
+  if (input.hasSessionPicker) {
+    return 'session-picker';
+  }
+  if (input.hasCommandOutput) {
+    return 'command-output';
+  }
+  if (input.hasCompletion) {
+    return 'completion';
+  }
+  return input.focusedSurface;
 }
 
 export function shouldShowTaskPanel(input: {
@@ -185,7 +213,6 @@ export function CodaraCliApp(props: CodaraCliAppProps): React.JSX.Element {
 
   const hasInitialPrompt = Boolean(initialPrompt?.trim());
   const hasReview = Boolean(shell.review);
-  const reviewBlocksSession = shell.review?.blockingScope === 'session';
   const floatingReview = isFloatingReview(shell.review) ? shell.review : undefined;
   const hasBlockingOverlay = Boolean(
     shell.commandOutput
@@ -198,79 +225,83 @@ export function CodaraCliApp(props: CodaraCliAppProps): React.JSX.Element {
     hasCompletion: completion.completion.visible,
     hasSessionPicker: sessionPicker.state.visible,
   });
-
-  usePromptInput({
-    interactive: shell.inputTarget === 'prompt' && !sessionPicker.state.visible && !(autoExitOnSettledPrompt && hasInitialPrompt),
-    disabled: reviewBlocksSession || shell.inputTarget !== 'prompt' || sessionPicker.state.visible || shell.runState.status === 'running',
-    onInsertText: shell.insertText,
-    onInsertNewline: shell.insertNewline,
-    onBackspace: shell.backspace,
-    onMoveCursorLeft: shell.moveCursorLeft,
-    onMoveCursorRight: shell.moveCursorRight,
-    onMoveCursorUp: () => {
-      if (shell.commandOutput && !shell.composer.text.trim()) { shell.scrollCommandOutput(-1); return; }
-      if (completion.completion.visible) { completion.moveUp(); return; }
-      shell.moveCursorUp();
-    },
-    onMoveCursorDown: () => {
-      if (shell.commandOutput && !shell.composer.text.trim()) { shell.scrollCommandOutput(1); return; }
-      if (completion.completion.visible) { completion.moveDown(); return; }
-      shell.moveCursorDown();
-    },
-    onMoveCursorHome: shell.moveCursorHome,
-    onMoveCursorEnd: shell.moveCursorEnd,
-    onSubmit: () => {
-      if (completion.completion.visible) {
-        const accepted = completion.accept();
-        completion.dismiss();
-        if (accepted) {
-          shell.submitText(accepted);
-        }
-        return;
-      }
-      shell.submitDraft();
-    },
+  const activeSurface = resolveActiveInteractionSurface({
+    focusedSurface: shell.interactionState.focusedSurface,
+    hasCommandOutput: Boolean(shell.commandOutput),
+    hasCompletion: completion.completion.visible,
+    hasSessionPicker: sessionPicker.state.visible,
+  });
+  const promptInputDisabled = shouldDisablePromptInput({
+    review: shell.review,
+    focusedSurface: shell.interactionState.focusedSurface,
+    hasSessionPicker: sessionPicker.state.visible,
+  });
+  useCliInteractionInput({
+    activeSurface,
+    interactive: !(autoExitOnSettledPrompt && hasInitialPrompt),
+    reviewDisabled: shell.review?.busy ?? false,
+    reviewSpaceInsertsText: shouldSpaceInsertIntoCliReviewDraft(shell.review),
+    reviewPermissionStage: isPermissionReview(shell.review) ? (shell.review?.permissionStage ?? 'prompt') : undefined,
+    onPromptInsertText: shell.insertText,
+    onPromptInsertNewline: shell.insertNewline,
+    onPromptBackspace: shell.backspace,
+    onPromptMoveCursorLeft: shell.moveCursorLeft,
+    onPromptMoveCursorRight: shell.moveCursorRight,
+    onPromptMoveCursorUp: shell.moveCursorUp,
+    onPromptMoveCursorDown: shell.moveCursorDown,
+    onPromptMoveCursorHome: shell.moveCursorHome,
+    onPromptMoveCursorEnd: shell.moveCursorEnd,
+    onPromptSubmit: shell.submitDraft,
     onExit: () => {
-      if (completion.completion.visible) { completion.dismiss(); return; }
-      if (shell.commandOutput) { shell.dismissCommandOutput(); return; }
+      if (activeSurface === 'completion') { completion.dismiss(); return; }
+      if (activeSurface === 'command-output') { shell.dismissCommandOutput(); return; }
+      if (activeSurface === 'session-picker') { sessionPicker.hide(); return; }
       exit();
     },
     onToggleTaskPanel: shell.toggleTaskPanel,
     onToggleExpand: shell.toggleExpand,
     onFocusReview: hasReview ? shell.focusReviewWindow : undefined,
-    onTab: () => {
-      if (completion.completion.visible) {
-        const accepted = completion.accept();
-        if (accepted) shell.replaceText(accepted);
-        completion.dismiss();
-        return;
-      }
-    },
-  });
-
-  useReviewInput({
-    active: hasReview && shell.inputTarget === 'review',
-    disabled: shell.review?.busy ?? false,
-    permissionStage: isPermissionReview(shell.review) ? (shell.review?.permissionStage ?? 'prompt') : undefined,
-    onMoveLeft: shell.moveReviewLeft,
-    onMoveRight: shell.moveReviewRight,
-    onSelectPrevious: shell.selectPreviousReviewAction,
-    onSelectNext: shell.selectNextReviewAction,
-    onSelectPreviousReview: shell.selectPreviousReview,
-    onSelectNextReview: shell.selectNextReview,
-    onToggleFocus: shell.toggleReviewFocus,
-    onActivateSelection: shell.activateReviewSelection,
-    onInsertText: shell.insertReviewText,
-    onInsertNewline: shell.insertReviewNewline,
-    onBackspace: shell.backspaceReviewInput,
-    onSubmit: shell.submitReviewAction,
-    onExit: exit,
-    onQuickAction: isPermissionReview(shell.review) ? shell.quickReviewAction : undefined,
-    onToggleInputTarget: shell.focusPromptWindow,
+    onReviewMoveLeft: shell.moveReviewLeft,
+    onReviewMoveRight: shell.moveReviewRight,
+    onReviewSelectPrevious: shell.selectPreviousReviewAction,
+    onReviewSelectNext: shell.selectNextReviewAction,
+    onReviewSelectPreviousReview: shell.selectPreviousReview,
+    onReviewSelectNextReview: shell.selectNextReview,
+    onReviewToggleFocus: shell.toggleReviewFocus,
+    onReviewActivateSelection: shell.activateReviewSelection,
+    onReviewInsertText: shell.insertReviewText,
+    onReviewInsertNewline: shell.insertReviewNewline,
+    onReviewBackspace: shell.backspaceReviewInput,
+    onReviewSubmit: shell.submitReviewAction,
+    onReviewQuickAction: isPermissionReview(shell.review) ? shell.quickReviewAction : undefined,
+    onFocusPrompt: shell.focusPromptWindow,
     onPermissionBack: shell.permissionBack,
     onPermissionConfirm: shell.permissionConfirm,
     onPermissionRejectSend: shell.permissionRejectSend,
     onPermissionRejectSilent: shell.permissionRejectSilent,
+    onCompletionMoveUp: completion.moveUp,
+    onCompletionMoveDown: completion.moveDown,
+    onCompletionAcceptSubmit: () => {
+      const accepted = completion.accept();
+      completion.dismiss();
+      if (accepted) {
+        shell.submitText(accepted);
+      }
+    },
+    onCompletionAcceptReplace: () => {
+      const accepted = completion.accept();
+      if (accepted) {
+        shell.replaceText(accepted);
+      }
+      completion.dismiss();
+    },
+    onCompletionDismiss: completion.dismiss,
+    onCommandOutputScroll: shell.scrollCommandOutput,
+    onCommandOutputClose: shell.dismissCommandOutput,
+    onSessionPickerMoveUp: sessionPicker.moveUp,
+    onSessionPickerMoveDown: sessionPicker.moveDown,
+    onSessionPickerSelect: sessionPicker.select,
+    onSessionPickerCancel: sessionPicker.hide,
   });
 
   const {solidifiedItems, activeItems} = useSolidifiedTranscript({
@@ -365,7 +396,7 @@ export function CodaraCliApp(props: CodaraCliAppProps): React.JSX.Element {
                   <PromptFrame
                     composer={shell.composer}
                     cursorActivityVersion={shell.composerActivityVersion}
-                    isRunning={shell.runState.status === 'running'}
+                    isRunning={promptInputDisabled}
                     placeholder={shell.hasConversation ? 'Reply to Codara...' : 'Ask Codara...'}
                     terminalWidth={terminalWidth}
                   />
@@ -374,7 +405,7 @@ export function CodaraCliApp(props: CodaraCliAppProps): React.JSX.Element {
             )}
             {floatingReview && !shell.commandOutput && !completion.completion.visible && !sessionPicker.state.visible && (
               <Box marginTop={1}>
-                <ReviewPanel review={floatingReview} presentation="floating" />
+                <ReviewPanel review={floatingReview} terminalWidth={terminalWidth} />
               </Box>
             )}
             <CompletionMenu completion={completion.completion} terminalWidth={terminalWidth} />
@@ -392,6 +423,7 @@ export function CodaraCliApp(props: CodaraCliAppProps): React.JSX.Element {
             <Footer
               layoutMode={layoutMode}
               hasCommandOutput={Boolean(shell.commandOutput)}
+              focusedSurface={activeSurface}
             />
         </>
       </Box>

@@ -2,6 +2,7 @@ import {formatSubagentDisplayName, normalizeSubagentType} from '@context/skills/
 
 /** Canonical tool name constants to avoid magic strings across the codebase. */
 export const TOOL_NAMES = {
+  SKILL: 'Skill',
   BASH: 'bash',
   READ_FILE: 'read_file',
   READ: 'read',
