@@ -12,7 +12,14 @@ import type {Session, SessionState, SessionStore} from '@durability/session';
 import type {ApprovalStore} from '@durability/approval-store';
 import type {McpClientInfo, McpConfig} from '@integration/mcp';
 import type {ChannelRegistry} from '@integration/channel';
-import type {AgentResumeStreamConfig, AgentStreamOutput, ResumePayload} from '@core/agent';
+import type {
+  AgentInput,
+  AgentResumeStreamConfig,
+  AgentRuntimeContext,
+  AgentStreamConfig,
+  AgentStreamOutput,
+  ResumePayload,
+} from '@core/agent';
 import type {PauseRequest} from '@shared/contracts/agent-types';
 import type {CodaraModelCatalog} from './assembly/runtime';
 
@@ -92,6 +99,7 @@ export type CodaraMiddlewareOptions = Pick<CodaraOptions, 'middleware' | 'hil' |
 export interface TaskRunQuerySummary {
   runId: string;
   sessionId: string;
+  parentSessionId?: string;
   label: string;
   agentName: string;
   status: 'running' | 'paused' | 'completed' | 'failed';
@@ -107,22 +115,66 @@ export interface TaskRunQuerySummary {
   totalTokens?: number;
 }
 
-export interface ApprovalQuerySummary {
-  approvalId: string;
-  source: 'task_run' | 'team_member';
+export type ReviewQuerySource = 'task_run' | 'session_pause';
+export type ReviewQueryKind = 'approval' | 'permission' | 'ask_user' | 'generic';
+export type ReviewInteractionMode = 'approval' | 'structured' | 'freeform' | 'hybrid';
+export type ReviewBlockingScope = 'session' | 'task' | 'none';
+
+export interface ReviewQueryAnchor {
+  origin: 'main' | 'delegated';
+  taskRunId?: string;
+  childSessionId?: string;
+  parentSessionId?: string;
+}
+
+export interface ReviewQueryItem {
+  reviewId: string;
+  source: ReviewQuerySource;
+  kind: ReviewQueryKind;
+  interactionMode: ReviewInteractionMode;
+  blockingScope: ReviewBlockingScope;
   description: string;
   toolName: string;
   createdAt: string;
   updatedAt: string;
-  taskRunId?: string;
-  childSessionId?: string;
-  isForeground: boolean;
+  anchor: ReviewQueryAnchor;
+  isFocused: boolean;
 }
 
-export interface ApprovalQueryReview {
-  summary: ApprovalQuerySummary;
+export interface FocusedReviewQuery {
+  item: ReviewQueryItem;
   request: PauseRequest;
 }
+
+export interface CodaraPromptStreamRequest {
+  kind: 'prompt';
+  input?: AgentInput;
+  config?: AgentStreamConfig;
+}
+
+export interface CodaraContinuationStreamRequest {
+  kind: 'continuation';
+  context: AgentRuntimeContext;
+  config?: Omit<AgentStreamConfig, 'context'>;
+}
+
+export interface CodaraPauseStreamRequest {
+  kind: 'pause';
+  payload: ResumePayload;
+  config?: AgentResumeStreamConfig;
+}
+
+export interface CodaraReviewStreamRequest {
+  kind: 'review';
+  payload: ResumePayload;
+  config?: AgentResumeStreamConfig;
+}
+
+export type CodaraStreamRequest =
+  | CodaraPromptStreamRequest
+  | CodaraContinuationStreamRequest
+  | CodaraPauseStreamRequest
+  | CodaraReviewStreamRequest;
 
 // ── Codara API Type ──
 
@@ -132,10 +184,10 @@ export type Codara = Session & {
   listSessions(options?: import('@durability/session').SessionListOptions): Promise<SessionState[]>;
   getMcpStatus(): McpClientInfo[];
   getTaskRunSummaries(): TaskRunQuerySummary[];
-  getApprovalSummaries(): ApprovalQuerySummary[];
-  getFocusedApprovalReview(): ApprovalQueryReview | undefined;
-  focusApproval(approvalId: string): Promise<void>;
-  resumeApproval(payload: ResumePayload, config?: AgentResumeStreamConfig): Promise<void>;
-  resumeApprovalStream(payload: ResumePayload, config?: AgentResumeStreamConfig): AsyncGenerator<AgentStreamOutput, void, void>;
+  listReviewItems(): ReviewQueryItem[];
+  getFocusedReview(): FocusedReviewQuery | undefined;
+  focusReview(reviewId: string): Promise<void>;
+  streamInteraction(request: CodaraStreamRequest): AsyncGenerator<AgentStreamOutput, void, void>;
+  resumeReview(payload: ResumePayload, config?: AgentResumeStreamConfig): Promise<void>;
   getChannelRegistry(): ChannelRegistry | undefined;
 };

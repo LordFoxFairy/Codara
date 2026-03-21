@@ -4,6 +4,7 @@ import {readExecutionMetadata, type BaseExecutionContext} from '@core/pipeline/t
 import {readDelegatedAgentResult} from '@shared/delegation-result';
 import {readTaskRunLaunchResult} from '@shared/task-run-launch';
 import {TOOL_NAMES, formatToolSummary, readString} from '@shared/tool-display';
+import {formatSubagentDisplayName, normalizeSubagentType} from '@context/skills/runtime-shared';
 
 export function turnKey(context: BaseExecutionContext): string {
   const execution = readExecutionMetadata(context);
@@ -104,18 +105,18 @@ export function formatTaskStartLabel(args: unknown): string {
   }
 
   const record = args as Record<string, unknown>;
-  const subagentType = readString(record.subagent_type);
+  const subagentType = normalizeSubagentType(readString(record.subagent_type));
   const prompt = readString(record.prompt);
   if (subagentType && prompt) {
-    return `Delegating ${subagentType}: ${prompt}`;
+    return `Delegating ${formatSubagentDisplayName(subagentType)}: ${prompt}`;
   }
   if (subagentType) {
-    return `Delegating ${subagentType}`;
+    return `Delegating ${formatSubagentDisplayName(subagentType)}`;
   }
   if (prompt) {
-    return `Delegating task: ${prompt}`;
+    return `Delegating Agent: ${prompt}`;
   }
-  return 'Delegating task';
+  return 'Delegating Agent';
 }
 
 export function summarizePauseLabel(description: string): string {

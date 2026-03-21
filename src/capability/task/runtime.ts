@@ -89,6 +89,7 @@ class InMemoryTaskRuntime implements TaskRuntime {
       return {
         type: 'task_run_started',
         runId: existingHandle.runId,
+        parentSessionId: existingHandle.parentSessionId,
         sessionId: existingHandle.childSessionId,
         agentName: existingHandle.agentName,
         label: existingHandle.label,
@@ -100,6 +101,7 @@ class InMemoryTaskRuntime implements TaskRuntime {
       return {
         type: 'task_run_started',
         runId: existingRun.runId,
+        parentSessionId: existingRun.parentSessionId ?? existingRun.sessionId,
         sessionId: existingRun.childSessionId ?? input.childSessionId,
         agentName: existingRun.agentName,
         label: existingRun.label,
@@ -110,6 +112,7 @@ class InMemoryTaskRuntime implements TaskRuntime {
     this.options.runStore?.start({
       runId: input.runId,
       sessionId: input.parentSessionId,
+      parentSessionId: input.parentSessionId,
       label: input.label,
       agentName: input.agentName,
       childSessionId: input.childSessionId,
@@ -145,6 +148,7 @@ class InMemoryTaskRuntime implements TaskRuntime {
     return {
       type: 'task_run_started',
       runId: input.runId,
+      parentSessionId: input.parentSessionId,
       sessionId: input.childSessionId,
       agentName: input.agentName,
       label: input.label,
@@ -371,7 +375,7 @@ class InMemoryTaskRuntime implements TaskRuntime {
 
     const recovered: TaskHandle = {
       runId: record.runId,
-      parentSessionId: record.sessionId,
+      parentSessionId: record.parentSessionId ?? record.sessionId,
       childSessionId: record.childSessionId,
       label: record.label,
       agentName: record.agentName,

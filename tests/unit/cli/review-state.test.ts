@@ -1,19 +1,19 @@
 import {describe, expect, it} from 'bun:test';
 import {
-  activateCliHilFocusedSelection,
-  applyCliHilFormShortcut,
-  confirmCliHilFocusedSelection,
-  prepareCliHilDraftInput,
-  prepareCliHilSubmission,
-  syncCliHilReviewState,
-  toggleCliHilFocus,
-  type CliHilAutoAction,
-} from '../../../src/cli/app/hil-review';
-import type {CliHilReviewState} from '../../../src/cli/app/view-state';
+  activateCliReviewFocusedSelection,
+  applyCliReviewFormShortcut,
+  confirmCliReviewFocusedSelection,
+  prepareCliReviewDraftInput,
+  prepareCliReviewSubmission,
+  syncCliReviewState,
+  toggleCliReviewFocus,
+  type CliReviewAutoAction,
+} from '../../../src/cli/app/review-state';
+import type {CliReviewState} from '../../../src/cli/app/view-state';
 
 describe('cli hil review helpers', () => {
   it('should default AskUser forms to input focus', () => {
-    const review = syncCliHilReviewState(undefined, {
+    const review = syncCliReviewState(undefined, {
       id: 'pause-1',
       description: 'Collect details',
       action: {
@@ -51,7 +51,7 @@ describe('cli hil review helpers', () => {
   });
 
   it('should default option tabs with placeholders to select when no explicit input is provided', () => {
-    const review = syncCliHilReviewState(undefined, {
+    const review = syncCliReviewState(undefined, {
       id: 'pause-mixed',
       description: 'Collect output format.',
       action: {
@@ -89,7 +89,7 @@ describe('cli hil review helpers', () => {
   });
 
   it('should route mixed AskUser typing into the custom placeholder path', () => {
-    const review = syncCliHilReviewState(undefined, {
+    const review = syncCliReviewState(undefined, {
       id: 'pause-mixed-draft',
       description: 'Collect output format.',
       action: {
@@ -122,15 +122,15 @@ describe('cli hil review helpers', () => {
           ],
         },
       },
-    }) as CliHilReviewState;
+    }) as CliReviewState;
 
-    const prepared = prepareCliHilDraftInput(review) as CliHilReviewState;
+    const prepared = prepareCliReviewDraftInput(review) as CliReviewState;
 
     expect(prepared.selectedActionIndex).toBe(0);
   });
 
   it('should allow free-text AskUser input even on plain select tabs', () => {
-    const prepared = prepareCliHilDraftInput(createFormReview());
+    const prepared = prepareCliReviewDraftInput(createFormReview());
 
     expect(prepared).toBeDefined();
     expect(prepared?.selectedActionIndex).toBe(0);
@@ -139,7 +139,7 @@ describe('cli hil review helpers', () => {
   it('should keep single-select answers on the current tab until the user explicitly confirms next', () => {
     const review = createFormReview();
 
-    const next = applyCliHilFormShortcut(review, '1');
+    const next = applyCliReviewFormShortcut(review, '1');
 
     expect(next?.form?.answers).toEqual({language: 'Python'});
     expect(next?.form?.activeTabIndex).toBe(0);
@@ -149,7 +149,7 @@ describe('cli hil review helpers', () => {
   it('should activate the currently highlighted option without advancing tabs', () => {
     const review = createFormReview();
 
-    const next = activateCliHilFocusedSelection(review);
+    const next = activateCliReviewFocusedSelection(review);
 
     expect(next?.form?.answers).toEqual({language: 'Python'});
     expect(next?.form?.activeTabIndex).toBe(0);
@@ -157,9 +157,9 @@ describe('cli hil review helpers', () => {
   });
 
   it('should advance to the next unanswered tab only after explicit confirmation', () => {
-    const review = activateCliHilFocusedSelection(createFormReview()) as CliHilReviewState;
+    const review = activateCliReviewFocusedSelection(createFormReview()) as CliReviewState;
 
-    const next = confirmCliHilFocusedSelection(review);
+    const next = confirmCliReviewFocusedSelection(review);
 
     expect(next?.form?.answers).toEqual({language: 'Python'});
     expect(next?.form?.activeTabIndex).toBe(1);
@@ -167,9 +167,9 @@ describe('cli hil review helpers', () => {
   });
 
   it('should block submit until every form tab has an answer', () => {
-    const review = applyCliHilFormShortcut(createFormReview(), '1') as CliHilReviewState;
+    const review = applyCliReviewFormShortcut(createFormReview(), '1') as CliReviewState;
 
-    const prepared = prepareCliHilSubmission(review);
+    const prepared = prepareCliReviewSubmission(review);
 
     expect(prepared.payload).toBeUndefined();
     expect(prepared.review.focus).toBe('input');
@@ -179,10 +179,10 @@ describe('cli hil review helpers', () => {
 
   it('should not submit directly from option focus before all tabs are complete', () => {
     const review = createFormReview();
-    const progressed = confirmCliHilFocusedSelection(
-      activateCliHilFocusedSelection(review) as CliHilReviewState,
-    ) as CliHilReviewState;
-    const prepared = prepareCliHilSubmission(progressed);
+    const progressed = confirmCliReviewFocusedSelection(
+      activateCliReviewFocusedSelection(review) as CliReviewState,
+    ) as CliReviewState;
+    const prepared = prepareCliReviewSubmission(progressed);
 
     expect(prepared.payload).toBeUndefined();
     expect(prepared.review.form?.activeTabIndex).toBe(1);
@@ -190,12 +190,12 @@ describe('cli hil review helpers', () => {
   });
 
   it('should focus the explicit submit action after completing the final AskUser tab', () => {
-    const first = confirmCliHilFocusedSelection(
-      activateCliHilFocusedSelection(createFormReview()) as CliHilReviewState,
-    ) as CliHilReviewState;
-    const second = confirmCliHilFocusedSelection(
-      activateCliHilFocusedSelection(first) as CliHilReviewState,
-    ) as CliHilReviewState;
+    const first = confirmCliReviewFocusedSelection(
+      activateCliReviewFocusedSelection(createFormReview()) as CliReviewState,
+    ) as CliReviewState;
+    const second = confirmCliReviewFocusedSelection(
+      activateCliReviewFocusedSelection(first) as CliReviewState,
+    ) as CliReviewState;
 
     expect(second.form?.answers).toEqual({
       language: 'Python',
@@ -209,7 +209,7 @@ describe('cli hil review helpers', () => {
   it('should let question steps focus a dedicated next footer before the final submit step', () => {
     const review = createFormReview();
 
-    const next = toggleCliHilFocus(review);
+    const next = toggleCliReviewFocus(review);
 
     expect(next.focus).toBe('actions');
     expect(next.form?.endStep).toBe(false);
@@ -218,7 +218,7 @@ describe('cli hil review helpers', () => {
 
   it('should allow auto actions to supply form answers before submit', () => {
     const review = createFormReview();
-    const autoAction: CliHilAutoAction = {
+    const autoAction: CliReviewAutoAction = {
       action: 'submit',
       answers: {
         language: 'Python',
@@ -226,7 +226,7 @@ describe('cli hil review helpers', () => {
       },
     };
 
-    const prepared = prepareCliHilSubmission(review, autoAction);
+    const prepared = prepareCliReviewSubmission(review, autoAction);
 
     expect(prepared.review.form?.answers).toEqual({
       language: 'Python',
@@ -245,21 +245,21 @@ describe('cli hil review helpers', () => {
     });
   });
 
-  it('should preserve approval position metadata when the same pause is resynced', () => {
-    const review: CliHilReviewState = {
+  it('should preserve review position metadata when the same pause is resynced', () => {
+    const review: CliReviewState = {
       ...createFormReview(),
-      approvalIndex: 2,
-      approvalCount: 3,
+      reviewIndex: 2,
+      reviewCount: 3,
     };
 
-    const synced = syncCliHilReviewState(review, review.request);
+    const synced = syncCliReviewState(review, review.request);
 
-    expect(synced?.approvalIndex).toBe(2);
-    expect(synced?.approvalCount).toBe(3);
+    expect(synced?.reviewIndex).toBe(2);
+    expect(synced?.reviewCount).toBe(3);
   });
 
   it('should map permission allow_tool auto actions to approve resumes', () => {
-    const review: CliHilReviewState = {
+    const review: CliReviewState = {
       request: {
         id: 'pause-permission',
         description: 'Permission review required for Bash(cd ./tmp/repo && git fetch origin && git push origin main)',
@@ -296,9 +296,10 @@ describe('cli hil review helpers', () => {
       focus: 'actions',
       draft: '',
       busy: false,
+      blockingScope: 'task',
     };
 
-    const prepared = prepareCliHilSubmission(review, {action: 'allow_tool'});
+    const prepared = prepareCliReviewSubmission(review, {action: 'allow_tool'});
 
     expect(prepared.payload).toMatchObject({
       action: 'allow_tool',
@@ -307,7 +308,7 @@ describe('cli hil review helpers', () => {
   });
 });
 
-function createFormReview(): CliHilReviewState {
+function createFormReview(): CliReviewState {
   return {
     request: {
       id: 'pause-form',
@@ -359,6 +360,7 @@ function createFormReview(): CliHilReviewState {
         },
       },
     },
+    blockingScope: 'session',
     actions: [
       {id: 'submit', label: 'Submit', kind: 'primary'},
       {id: 'chat', label: 'Chat about this', kind: 'secondary'},

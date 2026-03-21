@@ -19,6 +19,7 @@ export interface TaskRecord {
 export interface TaskRunRecord {
   runId: string;
   sessionId: string;
+  parentSessionId?: string;
   label: string;
   agentName: string;
   status: TaskRunStatus;
@@ -63,6 +64,7 @@ export interface TaskStore {
 export interface TaskRunStartInput {
   runId: string;
   sessionId: string;
+  parentSessionId?: string;
   label: string;
   agentName: string;
   childSessionId?: string;

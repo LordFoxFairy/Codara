@@ -56,7 +56,7 @@ export async function resolveModel(model: ModelResolver): Promise<BaseChatModel>
  * Bootstrap an agent with unified model resolution.
  *
  * This is the SINGLE entry point for agent creation.
- * Used by Session, Task delegation, and Team runtime.
+ * Used by sessions and delegated task runs.
  */
 export async function bootstrapAgent(options: BootstrapAgentOptions): Promise<Agent> {
   const model = await resolveModel(options.model);

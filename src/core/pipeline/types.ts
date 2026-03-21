@@ -143,7 +143,6 @@ export const MIDDLEWARE_NAMES = {
   Permission: 'PermissionMiddleware',
   Logging: 'LoggingMiddleware',
   Task: 'TaskMiddleware',
-  Team: 'TeamMiddleware',
   TodoList: 'TodoListMiddleware',
   ToolHooks: 'ToolHooksMiddleware',
 } as const;

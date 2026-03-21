@@ -143,7 +143,7 @@ class ParentActivityModel {
         {
           id: 'parent_task_1',
           name: 'Task',
-          args: {prompt: 'Analyze the codebase architecture', subagent_type: 'general-purpose'},
+          args: {prompt: 'Analyze the codebase architecture', subagent_type: 'Agent'},
         } as ToolCall,
       ],
     }),

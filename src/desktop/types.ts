@@ -30,7 +30,7 @@ export type StreamStatus = "idle" | "streaming" | "thinking" | "paused";
 
 /** Lightweight runtime event received via SSE for UI status display. */
 export interface RuntimeEvent {
-  kind: "model" | "tool" | "task" | "team" | "turn" | "hil" | "command" | "summary" | "hook";
+  kind: "model" | "tool" | "task" | "turn" | "hil" | "command" | "summary" | "hook";
   phase: "start" | "update" | "end";
   status: "running" | "done" | "paused" | "error";
   label: string;

@@ -1,10 +1,16 @@
 export type {
   Codara,
   CodaraAutoMemoryOptions,
+  CodaraContinuationStreamRequest,
   CodaraRuntimeOptions,
   CodaraOptions,
-  ApprovalQuerySummary,
-  ApprovalQueryReview,
+  CodaraPauseStreamRequest,
+  CodaraPromptStreamRequest,
+  CodaraReviewStreamRequest,
+  CodaraStreamRequest,
+  ReviewBlockingScope,
+  ReviewQueryItem,
+  FocusedReviewQuery,
   TaskRunQuerySummary,
 } from '@codara/facade';
 export {

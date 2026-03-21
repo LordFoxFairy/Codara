@@ -20,11 +20,60 @@ describe('skill subagent definitions', () => {
     const store = createBuiltinSubagentStore();
     const runtime = await loadSkillsRuntimeData(store);
     const explore = resolveSubagentDefinition(runtime, 'Explore');
-    const general = resolveSubagentDefinition(runtime, undefined);
+    const plan = resolveSubagentDefinition(runtime, 'Plan');
+    const general = resolveSubagentDefinition(runtime, 'Agent');
 
     expect(explore.name).toBe('Explore');
     expect(explore.tools).toEqual(['read', 'glob', 'grep', 'fetch', 'search']);
-    expect(general.name).toBe('general-purpose');
+    expect(explore.systemPrompt).toContain('You are an Explore subagent.');
+    expect(explore.systemPrompt).toContain('fresh child session');
+    expect(explore.systemPrompt).toContain('Do not edit files');
+    expect(explore.systemPrompt).toContain('Do not delegate further');
+    expect(plan.name).toBe('Plan');
+    expect(plan.tools).toEqual(['read', 'glob', 'grep', 'fetch', 'search']);
+    expect(plan.systemPrompt).toContain('You are a Plan subagent.');
+    expect(plan.systemPrompt).toContain('fresh child session');
+    expect(plan.systemPrompt).toContain('Do not edit files');
+    expect(plan.systemPrompt).toContain('Do not delegate further');
+    expect(general.name).toBe('Agent');
+    expect(general.systemPrompt).toBe('');
+  });
+
+  it('应忽略保留的 Agent 基础 child profile 文件，并拒绝旧的隐式或 legacy 名称', async () => {
+    const root = await mkdtemp(path.join(os.tmpdir(), 'codara-agent-reserved-default-profile-'));
+
+    try {
+      const skillDir = path.join(root, 'custom-agents');
+      const agentsDir = path.join(skillDir, 'agents');
+      await mkdir(agentsDir, {recursive: true});
+      await writeFile(path.join(skillDir, 'SKILL.md'), `---
+name: custom-agents
+description: custom subagent profiles
+---
+# Custom agents
+`, 'utf8');
+      await writeFile(path.join(agentsDir, 'general-purpose.md'), `---
+name: general-purpose
+description: custom general-purpose override
+---
+You are a custom general-purpose subagent.
+`, 'utf8');
+
+      const runtime = await loadSkillsRuntimeData(new FileSystemSkillStore({sources: [root], cacheTtlMs: 0}));
+      const general = resolveSubagentDefinition(runtime, 'Agent');
+
+      expect(general.name).toBe('Agent');
+      expect(general.systemPrompt).toBe('');
+      expect(general.description).not.toContain('custom general-purpose override');
+      expect(() => resolveSubagentDefinition(runtime, undefined)).toThrow(
+        'Task requires subagent_type. Use "Agent" for the base child or a named profile such as "Explore".',
+      );
+      expect(() => resolveSubagentDefinition(runtime, 'general-purpose')).toThrow(
+        'Unknown subagent_type "general-purpose"',
+      );
+    } finally {
+      await rm(root, {recursive: true, force: true});
+    }
   });
 
   it('应让 subagent definition 工具引用匹配 Codara 默认工具名', async () => {

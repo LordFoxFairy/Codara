@@ -19,6 +19,7 @@ export interface TaskRunFileStoreOptions {
 const taskRunRecordSchema = z.object({
   runId: z.string(),
   sessionId: z.string(),
+  parentSessionId: z.string().optional(),
   label: z.string(),
   agentName: z.string(),
   status: z.enum(['running', 'paused', 'completed', 'failed']),
@@ -290,6 +291,7 @@ function createTaskRunRecord(runId: string, input: TaskRunStartInput, now: strin
   return {
     runId,
     sessionId: normalizeSessionId(input.sessionId),
+    parentSessionId: normalizeParentSessionId(input.parentSessionId, input.sessionId),
     label: normalizeText(input.label),
     agentName: normalizeText(input.agentName),
     status: 'running',
@@ -326,6 +328,7 @@ function applyTaskRunStart(
     ...(existing ? cloneTaskRun(existing) : createTaskRunRecord(runId, input, now)),
     runId,
     sessionId: normalizeSessionId(input.sessionId),
+    parentSessionId: normalizeParentSessionId(input.parentSessionId, input.sessionId),
     label: normalizeText(input.label),
     agentName: normalizeText(input.agentName),
     status: 'running',
@@ -412,6 +415,10 @@ function normalizeSessionId(value: string): string {
     throw new Error('Task run session id is required');
   }
   return sessionId;
+}
+
+function normalizeParentSessionId(value: string | undefined, fallbackSessionId: string): string {
+  return normalizeSessionId(value ?? fallbackSessionId);
 }
 
 function normalizeText(value: string): string {

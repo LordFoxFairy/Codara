@@ -1,3 +1,5 @@
+import {formatSubagentDisplayName, normalizeSubagentType} from '@context/skills/runtime-shared';
+
 /** Canonical tool name constants to avoid magic strings across the codebase. */
 export const TOOL_NAMES = {
   BASH: 'bash',
@@ -53,9 +55,9 @@ export function formatToolSummary(toolName: string, args: unknown): string | und
     case TOOL_NAMES.SEARCH:
       return readString(record.query);
     case TOOL_NAMES.TASK:
-      return readString(record.subagent_type)
-        ? `Delegating ${readString(record.subagent_type)}`
-        : 'Delegating task';
+      return normalizeSubagentType(readString(record.subagent_type))
+        ? `Delegating ${formatSubagentDisplayName(readString(record.subagent_type))}`
+        : 'Delegating Agent';
     case TOOL_NAMES.TASK_CREATE:
     case TOOL_NAMES.TASK_UPDATE:
       return readString(record.subject) ?? readString(record.taskId);

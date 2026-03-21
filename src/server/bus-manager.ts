@@ -84,8 +84,8 @@ export function pipeBusEventsToSSE(
         case 'runtime_event':
           send({event: 'runtime_event', data: {kind: event.kind, phase: event.phase, status: event.status, label: event.label, detail: event.detail}});
           break;
-        case 'paused':
-          send({event: 'paused', data: {request: event.request, actions: event.actions}});
+        case 'review_required':
+          send({event: 'review_required', data: {request: event.request, actions: event.actions}});
           unsubscribe();
           resolve();
           break;

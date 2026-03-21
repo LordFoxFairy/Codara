@@ -86,7 +86,7 @@ async function waitForTaskRunStatus(
 }
 
 describe('Task delegation', () => {
-  it('应通过默认 delegate 启动隔离子代理并在后台 run store 中收敛摘要', async () => {
+  it('应通过 Agent 基础 child 启动隔离子代理并在后台 run store 中收敛摘要', async () => {
     const runStore = createTaskRunMemoryStore();
     const parentModel = new ScriptedModel([
       new AIMessage({
@@ -94,7 +94,7 @@ describe('Task delegation', () => {
         tool_calls: [{
           id: 'call_task_1',
           name: TASK_TOOL_NAME,
-          args: {prompt: 'Inspect the task in a fresh context'},
+          args: {prompt: 'Inspect the task in a fresh context', subagent_type: 'Agent'},
         } as ToolCall],
       }),
       new AIMessage('parent_done'),
@@ -122,12 +122,14 @@ describe('Task delegation', () => {
     expect(launch).toMatchObject({
       type: 'task_run_started',
       runId: 'call_task_1',
-      agentName: 'general-purpose',
-      label: 'Delegating general-purpose: Inspect the task in a fresh context',
+      parentSessionId: result.state.sessionId,
+      agentName: 'Agent',
+      label: 'Delegating Agent: Inspect the task in a fresh context',
       sessionId: expect.any(String),
     });
     expect(completed).toMatchObject({
       runId: 'call_task_1',
+      parentSessionId: result.state.sessionId,
       status: 'completed',
       summary: 'child_humans:1',
       reason: 'complete',
@@ -141,7 +143,7 @@ describe('Task delegation', () => {
         tool_calls: [{
           id: 'call_task_2',
           name: TASK_TOOL_NAME,
-          args: {prompt: 'Run a child task'},
+          args: {prompt: 'Run a child task', subagent_type: 'Agent'},
         } as ToolCall],
       }),
       new AIMessage('parent_done'),
@@ -181,7 +183,7 @@ describe('Task delegation', () => {
         tool_calls: [{
           id: 'call_task_3',
           name: TASK_TOOL_NAME,
-          args: {prompt: 'This child will fail'},
+          args: {prompt: 'This child will fail', subagent_type: 'Agent'},
         } as ToolCall],
       }),
       new AIMessage('parent_done'),
@@ -236,7 +238,7 @@ describe('Task delegation', () => {
           tool_calls: [{
             id: 'call_task_checkpoint',
             name: TASK_TOOL_NAME,
-            args: {prompt: 'Persist the child checkpoint'},
+            args: {prompt: 'Persist the child checkpoint', subagent_type: 'Agent'},
           } as ToolCall],
         }),
         new AIMessage('done'),
@@ -275,7 +277,7 @@ describe('Task delegation', () => {
           tool_calls: [{
             id: 'call_task_windows_safe',
             name: TASK_TOOL_NAME,
-            args: {prompt: 'Persist the child checkpoint with a file checkpointer'},
+          args: {prompt: 'Persist the child checkpoint with a file checkpointer', subagent_type: 'Agent'},
           } as ToolCall],
         }),
         new AIMessage('done'),
@@ -309,7 +311,7 @@ describe('Task delegation', () => {
         tool_calls: [{
           id: 'call_task_isolation',
           name: TASK_TOOL_NAME,
-          args: {prompt: 'Inspect isolation'},
+          args: {prompt: 'Inspect isolation', subagent_type: 'Agent'},
         } as ToolCall],
       }),
       new AIMessage('parent_done'),
@@ -377,7 +379,7 @@ describe('Task delegation', () => {
         tool_calls: [{
           id: 'call_task_seeded',
           name: TASK_TOOL_NAME,
-          args: {prompt: 'Inspect seeds'},
+          args: {prompt: 'Inspect seeds', subagent_type: 'Agent'},
         } as ToolCall],
       }),
       new AIMessage('parent_done'),
@@ -433,7 +435,7 @@ describe('Task delegation', () => {
         tool_calls: [{
           id: 'call_task_pause',
           name: TASK_TOOL_NAME,
-          args: {prompt: 'Run guarded child task'},
+          args: {prompt: 'Run guarded child task', subagent_type: 'Agent'},
           } as ToolCall],
       }),
       new AIMessage('parent_done'),

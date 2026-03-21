@@ -24,6 +24,7 @@ import {deepClone} from '@shared/clone';
 import {formatToolSummary} from '@shared/tool-display';
 import {readLatestAssistantText} from '@shared/messages';
 import type {DelegatedAgentResult} from '@shared/delegation-result';
+import {formatSubagentDisplayName} from '@context/skills/runtime-shared';
 export {readDelegatedAgentResult, type DelegatedAgentResult} from '@shared/delegation-result';
 
 export type DelegatedAgentModelResolver =
@@ -144,7 +145,7 @@ export async function runDelegatedAgent(
       await options.lifecycle.onSubagentStop({
         hookEvent: 'SubagentStop',
         sessionId: input.parentExecution.sessionId,
-        agentName: input.subagentType ?? 'general-purpose',
+        agentName: formatSubagentDisplayName(input.subagentType),
         taskId: result.state.sessionId,
         reason: result.reason,
         timestamp: new Date().toISOString(),

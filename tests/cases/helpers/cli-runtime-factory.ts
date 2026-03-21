@@ -103,7 +103,7 @@ export async function createCliRuntime(input: {
                 name: TASK_TOOL_NAME,
                 args: {
                   prompt: 'Inspect shared tasks',
-                  subagent_type: 'general-purpose',
+                  subagent_type: 'Agent',
                 },
               } as ToolCall],
             }),
@@ -170,43 +170,35 @@ export async function createCliRuntime(input: {
           model: new ParentScriptedModel([
             new AIMessage({
               content: '',
-              tool_calls: [{
-                id: 'call_parent_task_create',
-                name: 'TaskCreate',
-                args: {
-                  subject: 'Coordinate multi-subagent run',
-                  description: 'Track plan, exploration, and implementation follow-up',
-                },
-              } as ToolCall],
+              tool_calls: [
+                {
+                  id: 'call_parent_task_create',
+                  name: 'TaskCreate',
+                  args: {
+                    subject: 'Coordinate multi-subagent run',
+                    description: 'Track plan, exploration, and implementation follow-up',
+                  },
+                } as ToolCall,
+                {
+                  id: 'call_parent_plan',
+                  name: 'Task',
+                  args: {prompt: 'Create the implementation plan', subagent_type: 'Plan'},
+                } as ToolCall,
+                {
+                  id: 'call_parent_explore',
+                  name: 'Task',
+                  args: {prompt: 'Explore the current codebase state', subagent_type: 'Explore'},
+                } as ToolCall,
+                {
+                  id: 'call_parent_general',
+                  name: 'Task',
+                  args: {
+                    prompt: 'Inspect the shared tasks and mark the active item in progress',
+                    subagent_type: 'Agent',
+                  },
+                } as ToolCall,
+              ],
             }),
-            new AIMessage({
-              content: '',
-              tool_calls: [{
-                id: 'call_parent_plan',
-                name: 'Task',
-                args: {prompt: 'Create the implementation plan', subagent_type: 'Plan'},
-              } as ToolCall],
-            }),
-            new AIMessage({
-              content: '',
-              tool_calls: [{
-                id: 'call_parent_explore',
-                name: 'Task',
-                args: {prompt: 'Explore the current codebase state', subagent_type: 'Explore'},
-              } as ToolCall],
-            }),
-            new AIMessage({
-              content: '',
-              tool_calls: [{
-                id: 'call_parent_general',
-                name: 'Task',
-                args: {
-                  prompt: 'Inspect the shared tasks and mark the active item in progress',
-                  subagent_type: 'general-purpose',
-                },
-              } as ToolCall],
-            }),
-            new AIMessage('PARENT_DONE'),
           ]) as unknown as BaseChatModel,
           builtinTools: false,
           skills: {
@@ -872,7 +864,7 @@ class ParentDelegationCliModel {
       tool_calls: [{
         id: 'call_case_task_delegate',
         name: 'Task',
-        args: {prompt: 'Inspect the repo and run touch guarded.txt'},
+        args: {prompt: 'Inspect the repo and run touch guarded.txt', subagent_type: 'Agent'},
       } as ToolCall],
     });
   }
@@ -914,7 +906,7 @@ class ParentTaskPromptModel {
         name: 'Task',
         args: {
           prompt: 'Inspect your system prompt and report if the product handbook is visible.',
-          subagent_type: 'general-purpose',
+          subagent_type: 'Agent',
         },
       } as ToolCall],
     });
@@ -935,7 +927,7 @@ class ChildPromptInspectorModel {
     const sawPrompt = systemMessages.includes('PROJECT_HANDBOOK_RULE');
     const sawGuidelines = systemMessages.includes('PROJECT_AGENTS_RULE');
     const sawSkillsPrompt = systemMessages.includes('demo-skill');
-    const sawProfilePrompt = systemMessages.includes('You are the default general-purpose subagent');
+    const sawProfilePrompt = systemMessages.includes('RESERVED_DEFAULT_PROFILE_PROMPT');
 
     return new AIMessage(
       `prompt_visible:${sawPrompt};guidelines_visible:${sawGuidelines};skills_visible:${sawSkillsPrompt};profile_visible:${sawProfilePrompt}`,
@@ -993,7 +985,7 @@ class DefaultRuntimeWorkflowCliModel {
           name: 'Task',
           args: {
             prompt: 'Inspect isolated child work',
-            subagent_type: 'general-purpose',
+            subagent_type: 'Agent',
           },
         } as ToolCall],
       });
@@ -1079,7 +1071,7 @@ class CoordinatedSubagentModel {
         tool_calls: [{
           id: 'call_general_task_update',
           name: 'TaskUpdate',
-          args: {taskId, status: 'in_progress', owner: 'general-purpose'},
+          args: {taskId, status: 'in_progress', owner: 'Agent'},
         } as ToolCall],
       });
     }

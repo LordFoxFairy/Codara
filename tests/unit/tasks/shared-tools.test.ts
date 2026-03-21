@@ -86,4 +86,30 @@ describe('task tools', () => {
     expect(refreshedPrerequisite?.blocks).toEqual([blocked?.id]);
     expect(refreshedBlocked?.blockedBy).toEqual([prerequisite?.id]);
   });
+
+  it('不应再因遗留上下文元数据把共享任务协调结果隐藏成内部消息', async () => {
+    const store = createTaskMemoryStore();
+    const createTool = createTaskCreateTool({store});
+
+    const created = await createTool.invoke(
+      {
+        subject: 'Align task semantics',
+        description: 'Keep shared coordination visible to the caller',
+      },
+      {
+        configurable: {
+          runtimeShared: {
+            legacyFocus: {id: 'legacy-workspace'},
+          },
+          context: {
+            currentWorkspace: {id: 'legacy-workspace'},
+          },
+        },
+      },
+    );
+
+    expect(String(created)).toContain('Task created.');
+    expect(String(created)).toContain('Align task semantics');
+    expect(String(created)).not.toContain('"type":"internal_shared_task_coordination"');
+  });
 });

@@ -1,7 +1,6 @@
 import {existsSync} from 'node:fs';
 import path from 'node:path';
 import type {StructuredToolInterface} from '@langchain/core/tools';
-import type {AgentResumeStreamConfig, AgentStreamOutput, ResumePayload} from '@core/agent';
 import {createAgentFileCheckpointer} from '@durability/checkpoint';
 import {createApprovalFileStore, type ApprovalStore} from '@durability/approval-store';
 import {ensurePermissionSettingsFile} from '@core/middleware/permission';
@@ -29,7 +28,6 @@ import {
   createRuntimeDefaultMiddlewares,
   resolveRuntimeLoggingOptions,
 } from './assembly/middleware';
-import {getApprovalSummaries} from './assembly/approvals';
 import {getTaskRunSummaries} from './assembly/task-runs';
 import {
   createCodaraModelCatalog,
@@ -37,8 +35,9 @@ import {
 } from './assembly/runtime';
 import {createCodaraTools} from './assembly/tools';
 import {resolveCodaraAutoMemory, resolveCodaraSkills} from './assembly/context';
+import {createCodaraReviewControl} from './review-control';
+import {createCodaraInteractionStream} from './interaction-stream';
 import type {
-  ApprovalQueryReview,
   Codara, CodaraOptions, CodaraRuntimeOptions,
 } from './types';
 
@@ -47,8 +46,11 @@ export type {
   Codara, CodaraOptions, CodaraRuntimeOptions, CodaraAutoMemoryOptions,
   CodaraSkillOptions, CodaraMiddlewareOptions,
   CreateCodaraModelCatalogOptions, CreateCodaraChatModelOptions,
-  ApprovalQuerySummary,
-  ApprovalQueryReview,
+  CodaraPromptStreamRequest, CodaraContinuationStreamRequest,
+  CodaraPauseStreamRequest, CodaraReviewStreamRequest, CodaraStreamRequest,
+  ReviewBlockingScope,
+  ReviewQueryItem,
+  FocusedReviewQuery,
   TaskRunQuerySummary,
 } from './types';
 
@@ -82,7 +84,7 @@ export async function createCodaraRuntime(options: CodaraRuntimeOptions = {}): P
   const skills = resolveCodaraSkills(options);
   const skillsSource = skills ? createCodaraSkillsSource(skills) : undefined;
   const autoMemory = resolveCodaraAutoMemory(options);
-  const baseSystemMessage = await buildBaseSystemMessage({
+  await buildBaseSystemMessage({
     promptSource,
     guidelinesSource,
     skillsSource,
@@ -285,15 +287,15 @@ export function assembleCodara(
   const channelRegistry = preloadedSources?.channelRegistry;
 
   const taskRuntime = preloadedSources?.taskRuntime;
-  const approvalStore = preloadedSources?.approvalStore;
-  let focusedApprovalId: string | undefined;
-  const readForegroundApprovalId = (): string | undefined => {
-    try {
-      return session.getAgentState().pendingPause?.id;
-    } catch {
-      return undefined;
-    }
-  };
+  const reviewControl = createCodaraReviewControl({
+    session,
+    approvalStore: preloadedSources?.approvalStore,
+    taskRuntime,
+  });
+  const streamInteraction = createCodaraInteractionStream({
+    session,
+    reviewControl,
+  });
 
   const dispose = async (): Promise<void> => {
     await taskRuntime?.dispose();
@@ -302,102 +304,16 @@ export function assembleCodara(
     if (channelRegistry) await channelRegistry.disposeAll();
   };
 
-  const listCurrentApprovalRecords = () => approvalStore?.list(session.getState().sessionId) ?? [];
-
-  const resolveFocusedApprovalRecord = () => {
-    const approvals = listCurrentApprovalRecords();
-    if (approvals.length === 0) {
-      focusedApprovalId = undefined;
-      return undefined;
-    }
-
-    const focused = focusedApprovalId
-      ? approvals.find((record) => record.approvalId === focusedApprovalId)
-      : undefined;
-    if (focused) {
-      return focused;
-    }
-
-    focusedApprovalId = approvals[0]!.approvalId;
-    return approvals[0]!;
-  };
-
-  const getFocusedApprovalReview = (): ApprovalQueryReview | undefined => {
-    const record = resolveFocusedApprovalRecord();
-    if (!record) {
-      return undefined;
-    }
-
-    const summary = getApprovalSummaries(
-      approvalStore,
-      session.getState().sessionId,
-      record.approvalId,
-    ).find((approval) => approval.approvalId === record.approvalId);
-    if (!summary) {
-      return undefined;
-    }
-
-    return {
-      summary,
-      request: record.pauseRequest,
-    };
-  };
-
-  const resumeApprovalStream = async function* (
-    payload: ResumePayload,
-    config?: AgentResumeStreamConfig,
-  ): AsyncGenerator<AgentStreamOutput, void, void> {
-    const record = resolveFocusedApprovalRecord();
-    if (!record) {
-      throw new Error('No queued approval is available for the current session');
-    }
-
-    switch (record.source) {
-      case 'task_run': {
-        if (!taskRuntime) {
-          throw new Error('Task approval runtime is not available');
-        }
-        yield* taskRuntime.resumeApprovalByIdStream(record.approvalId, payload, config);
-        break;
-      }
-    }
-
-    resolveFocusedApprovalRecord();
-  };
-
-  const resumeApproval = async (payload: ResumePayload, config?: AgentResumeStreamConfig): Promise<void> => {
-    const record = resolveFocusedApprovalRecord();
-    if (!record) {
-      throw new Error('No queued approval is available for the current session');
-    }
-
-    if (!taskRuntime) {
-      throw new Error('Task approval runtime is not available');
-    }
-    await taskRuntime.resumeApprovalById(record.approvalId, payload, config);
-    resolveFocusedApprovalRecord();
-  };
-
   return {
     ...session, subscribeRuntimeEvents, listCommands: commands.listCommands, executeCommand,
     listSessions: async (opts?: import('@durability/session').SessionListOptions) => options.store ? options.store.list(opts) : [],
     getMcpStatus: () => mcpManager?.status() ?? [],
     getTaskRunSummaries: () => getTaskRunSummaries(preloadedSources?.taskRunStore, session.getState().sessionId),
-    getApprovalSummaries: () => getApprovalSummaries(
-      approvalStore,
-      session.getState().sessionId,
-      resolveFocusedApprovalRecord()?.approvalId ?? readForegroundApprovalId(),
-    ),
-    getFocusedApprovalReview,
-    focusApproval: async (approvalId: string) => {
-      const record = approvalStore?.get(approvalId);
-      if (!record || record.sessionId !== session.getState().sessionId) {
-        throw new Error(`Approval "${approvalId}" not found for current session`);
-      }
-      focusedApprovalId = approvalId;
-    },
-    resumeApproval,
-    resumeApprovalStream,
+    listReviewItems: reviewControl.listReviewItems,
+    getFocusedReview: reviewControl.getFocusedReview,
+    focusReview: reviewControl.focusReview,
+    streamInteraction,
+    resumeReview: reviewControl.resumeReview,
     getChannelRegistry: () => channelRegistry,
     dispose,
   };

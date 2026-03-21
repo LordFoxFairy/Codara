@@ -4,10 +4,12 @@ import {z} from 'zod';
 import {parseMarkdownDocument} from '@capability/skill/catalog/loading';
 import {normalizeDiscoveredSkills} from '@capability/skill/catalog/metadata';
 import type {SkillMetadata, SkillStore, SubagentDefinition} from '@context/skills/contracts';
+import {isReservedSubagentName} from '@context/skills/runtime-shared';
 
 // Re-export contracts so existing consumers continue to work
 export {
-  DEFAULT_SUBAGENT_TYPE,
+  AGENT_SUBAGENT_TYPE,
+  isReservedSubagentName,
   readSkillsRuntimeData,
   resolveSubagentDefinition,
 } from '@context/skills/runtime-shared';
@@ -51,6 +53,9 @@ async function loadSubagentDefinitions(
   for (const skill of discovered) {
     const definition = await loadDefinitionFile(path.join(path.dirname(skill.path), 'agents'));
     for (const [name, value] of definition) {
+      if (isReservedSubagentName(name)) {
+        continue;
+      }
       byName.set(name, value);
     }
   }
@@ -58,6 +63,9 @@ async function loadSubagentDefinitions(
   for (const root of subagentRoots) {
     const definition = await loadDefinitionFile(root);
     for (const [name, value] of definition) {
+      if (isReservedSubagentName(name)) {
+        continue;
+      }
       byName.set(name, value);
     }
   }

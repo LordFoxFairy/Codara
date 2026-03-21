@@ -29,7 +29,7 @@ describe('task-skills cases', () => {
 
     expect(result.exitCode).toBe(0);
     expect(result.output).toContain('parent_done');
-    expect(result.output).toContain('✓ Agent: Inspect shared tasks');
+    expect(result.output).toContain('Agent(Inspect shared tasks)');
 
     const taskDir = path.join(projectRoot, '.codara', 'case-tasks');
     const entries = (await readdir(taskDir)).filter((entry) => entry.endsWith('.json'));

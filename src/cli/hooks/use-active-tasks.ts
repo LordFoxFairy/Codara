@@ -1,5 +1,5 @@
 import {useEffect, useMemo, useState} from 'react';
-import type {ApprovalQuerySummary, TaskRunQuerySummary} from '@/index';
+import type {ReviewQueryItem, TaskRunQuerySummary} from '@/index';
 
 export type {TaskRunQuerySummary};
 
@@ -11,14 +11,14 @@ export interface ActiveTask {
   endedAt?: number;
   elapsed: number;
   detail?: string;
-  approvalCount?: number;
+  reviewCount?: number;
   toolUseCount?: number;
   totalTokens?: number;
 }
 
 export interface UseActiveTasksInput {
   taskRunSummaries: readonly TaskRunQuerySummary[];
-  approvals?: readonly ApprovalQuerySummary[];
+  reviews?: readonly ReviewQueryItem[];
   preferredRunIds?: readonly string[];
 }
 
@@ -74,27 +74,27 @@ function summarizeTaskLabel(text: string): string {
 export function deriveActiveTasks(
   runs: readonly TaskRunQuerySummary[],
   now: number,
-  approvals: readonly ApprovalQuerySummary[] = [],
+  reviews: readonly ReviewQueryItem[] = [],
   preferredRunIds: readonly string[] = [],
 ): ActiveTask[] {
-  return deriveActiveTaskSnapshot(runs, now, approvals, preferredRunIds).tasks;
+  return deriveActiveTaskSnapshot(runs, now, reviews, preferredRunIds).tasks;
 }
 
 export function deriveActiveTaskSnapshot(
   runs: readonly TaskRunQuerySummary[],
   now: number,
-  approvals: readonly ApprovalQuerySummary[] = [],
+  reviews: readonly ReviewQueryItem[] = [],
   preferredRunIds: readonly string[] = [],
 ): ActiveTaskSnapshot {
   const activeBatchRunIds = selectVisibleRunIds(runs, preferredRunIds);
-  const approvalsByTaskRun = new Map<string, ApprovalQuerySummary[]>();
-  for (const approval of approvals) {
-    if (approval.source !== 'task_run' || !approval.taskRunId) {
+  const reviewsByTaskRun = new Map<string, ReviewQueryItem[]>();
+  for (const review of reviews) {
+    if (review.source !== 'task_run' || !review.anchor.taskRunId) {
       continue;
     }
-    const entries = approvalsByTaskRun.get(approval.taskRunId) ?? [];
-    entries.push(approval);
-    approvalsByTaskRun.set(approval.taskRunId, entries);
+    const entries = reviewsByTaskRun.get(review.anchor.taskRunId) ?? [];
+    entries.push(review);
+    reviewsByTaskRun.set(review.anchor.taskRunId, entries);
   }
 
   const tasks: ActiveTask[] = [];
@@ -106,9 +106,9 @@ export function deriveActiveTaskSnapshot(
     const status = normalizeTaskStatus(run.status);
     const startedAt = Date.parse(run.startedAt);
     const endedAt = parseTaskFinishedAt(run);
-    const runApprovals = approvalsByTaskRun.get(run.runId) ?? [];
+    const runReviews = reviewsByTaskRun.get(run.runId) ?? [];
 
-    const detail = resolveTaskDetail(run, runApprovals);
+    const detail = resolveTaskDetail(run, runReviews);
     tasks.push({
       id: run.runId,
       name: extractTaskName(run.label),
@@ -117,7 +117,7 @@ export function deriveActiveTaskSnapshot(
       endedAt,
       elapsed: (endedAt ?? now) - startedAt,
       ...(detail ? {detail} : {}),
-      ...(runApprovals.length > 0 ? {approvalCount: runApprovals.length} : {}),
+      ...(runReviews.length > 0 ? {reviewCount: runReviews.length} : {}),
       ...(run.toolUseCount !== undefined ? {toolUseCount: run.toolUseCount} : {}),
       ...(run.totalTokens !== undefined ? {totalTokens: run.totalTokens} : {}),
     });
@@ -150,8 +150,8 @@ export function deriveActiveTaskSnapshot(
 export function useActiveTasks(input: UseActiveTasksInput): UseActiveTasksOutput {
   const [now, setNow] = useState(() => Date.now());
   const snapshot = useMemo(
-    () => deriveActiveTaskSnapshot(input.taskRunSummaries, now, input.approvals, input.preferredRunIds),
-    [input.approvals, input.preferredRunIds, input.taskRunSummaries, now],
+    () => deriveActiveTaskSnapshot(input.taskRunSummaries, now, input.reviews, input.preferredRunIds),
+    [input.preferredRunIds, input.reviews, input.taskRunSummaries, now],
   );
   const {tasks, runningCount, pausedCount, doneCount, errorCount, hiddenCount} = snapshot;
 
@@ -212,14 +212,14 @@ function parseTaskFinishedAt(run: TaskRunQuerySummary): number | undefined {
 
 function resolveTaskDetail(
   run: TaskRunQuerySummary,
-  approvals: readonly ApprovalQuerySummary[],
+  reviews: readonly ReviewQueryItem[],
 ): string | undefined {
-  if (approvals.length > 0) {
-    const lead = approvals[0]!;
-    if (approvals.length === 1) {
+  if (reviews.length > 0) {
+    const lead = reviews[0]!;
+    if (reviews.length === 1) {
       return `Waiting for approval on ${lead.toolName}`;
     }
-    return `Waiting for approval on ${lead.toolName} (+${approvals.length - 1} more)`;
+    return `Waiting for approval on ${lead.toolName} (+${reviews.length - 1} more)`;
   }
 
   const detail = run.latestActivity?.trim() || run.summary?.trim();

@@ -1,7 +1,7 @@
 import {useInput, useStdin} from 'ink';
 import type {PermissionStage} from '../components/permission/types';
 
-interface UseHilInputOptions {
+interface UseReviewInputOptions {
   active: boolean;
   disabled?: boolean;
   /** Current permission stage (undefined = not a permission review) */
@@ -10,8 +10,8 @@ interface UseHilInputOptions {
   onMoveRight?: () => void;
   onSelectPrevious: () => void;
   onSelectNext: () => void;
-  onSelectPreviousApproval?: () => void;
-  onSelectNextApproval?: () => void;
+  onSelectPreviousReview?: () => void;
+  onSelectNextReview?: () => void;
   onToggleFocus: () => void;
   onActivateSelection?: () => void;
   onInsertText: (input: string) => void;
@@ -20,6 +20,7 @@ interface UseHilInputOptions {
   onSubmit: () => void;
   onExit: () => void;
   onQuickAction?: (actionId: string) => void;
+  onToggleInputTarget?: () => void;
   /** Permission stage transitions */
   onPermissionBack?: () => void;
   onPermissionConfirm?: () => void;
@@ -27,15 +28,16 @@ interface UseHilInputOptions {
   onPermissionRejectSilent?: () => void;
 }
 
-export type HilInputAction =
+export type ReviewInputAction =
   | 'noop'
   | 'exit'
   | 'permission-back'
   | 'permission-confirm'
   | 'permission-reject-send'
   | 'permission-reject-silent'
-  | 'select-previous-approval'
-  | 'select-next-approval'
+  | 'toggle-input-target'
+  | 'select-previous-review'
+  | 'select-next-review'
   | 'toggle-focus'
   | 'move-left'
   | 'move-right'
@@ -45,7 +47,7 @@ export type HilInputAction =
   | 'backspace'
   | 'insert-text';
 
-export function resolveHilInputAction(
+export function resolveReviewInputAction(
   input: string,
   key: {
     ctrl?: boolean;
@@ -62,9 +64,13 @@ export function resolveHilInputAction(
     delete?: boolean;
   },
   permissionStage?: PermissionStage,
-): HilInputAction {
+): ReviewInputAction {
   if (key.ctrl && input === 'c') {
     return 'exit';
+  }
+
+  if (key.ctrl && input === 'r') {
+    return 'toggle-input-target';
   }
 
   if (permissionStage === 'always-confirm') {
@@ -99,11 +105,11 @@ export function resolveHilInputAction(
   }
 
   if (!key.ctrl && !key.meta && input === '[') {
-    return 'select-previous-approval';
+    return 'select-previous-review';
   }
 
   if (!key.ctrl && !key.meta && input === ']') {
-    return 'select-next-approval';
+    return 'select-next-review';
   }
 
   if (!key.ctrl && !key.meta && input === ' ') {
@@ -133,7 +139,7 @@ export function resolveHilInputAction(
   return !key.ctrl && !key.meta && input ? 'insert-text' : 'noop';
 }
 
-export function useHilInput(options: UseHilInputOptions): void {
+export function useReviewInput(options: UseReviewInputOptions): void {
   const {
     active,
     disabled = false,
@@ -142,8 +148,8 @@ export function useHilInput(options: UseHilInputOptions): void {
     onMoveRight,
     onSelectPrevious,
     onSelectNext,
-    onSelectPreviousApproval,
-    onSelectNextApproval,
+    onSelectPreviousReview,
+    onSelectNextReview,
     onToggleFocus,
     onActivateSelection,
     onInsertText,
@@ -152,6 +158,7 @@ export function useHilInput(options: UseHilInputOptions): void {
     onSubmit,
     onExit,
     onQuickAction,
+    onToggleInputTarget,
     onPermissionBack,
     onPermissionConfirm,
     onPermissionRejectSend,
@@ -160,7 +167,7 @@ export function useHilInput(options: UseHilInputOptions): void {
   const {isRawModeSupported} = useStdin();
 
   useInput((input, key) => {
-    const action = resolveHilInputAction(input, key, permissionStage);
+    const action = resolveReviewInputAction(input, key, permissionStage);
 
     if (action === 'exit' && key.ctrl && input === 'c') {
       onExit();
@@ -193,6 +200,11 @@ export function useHilInput(options: UseHilInputOptions): void {
 
     if (action === 'permission-reject-send') {
       onPermissionRejectSend?.();
+      return;
+    }
+
+    if (action === 'toggle-input-target') {
+      onToggleInputTarget?.();
       return;
     }
 
@@ -238,13 +250,13 @@ export function useHilInput(options: UseHilInputOptions): void {
       return;
     }
 
-    if (action === 'select-previous-approval') {
-      onSelectPreviousApproval?.();
+    if (action === 'select-previous-review') {
+      onSelectPreviousReview?.();
       return;
     }
 
-    if (action === 'select-next-approval') {
-      onSelectNextApproval?.();
+    if (action === 'select-next-review') {
+      onSelectNextReview?.();
       return;
     }
 

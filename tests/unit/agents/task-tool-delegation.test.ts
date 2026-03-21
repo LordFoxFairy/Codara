@@ -27,7 +27,7 @@ describe('createTaskTool delegation', () => {
               name: TASK_TOOL_NAME,
               args: {
                 prompt: 'Inspect the project layout',
-                subagent_type: 'general-purpose',
+                subagent_type: 'Agent',
               },
             } as ToolCall],
           });
@@ -75,7 +75,7 @@ describe('createTaskTool delegation', () => {
             name: TASK_TOOL_NAME,
             args: {
               prompt: 'Investigate the auth flow',
-              subagent_type: 'general-purpose',
+              subagent_type: 'Agent',
             },
           } as ToolCall],
         }),
@@ -101,9 +101,10 @@ describe('createTaskTool delegation', () => {
     expect(launch).toEqual({
       type: 'task_run_started',
       runId: 'call_task_delegate',
+      parentSessionId: result.state.sessionId,
       sessionId: expect.any(String),
-      agentName: 'general-purpose',
-      label: 'Delegating general-purpose: Investigate the auth flow',
+      agentName: 'Agent',
+      label: 'Delegating Agent: Investigate the auth flow',
     });
 
     await new Promise((resolve) => setTimeout(resolve, 20));
@@ -127,7 +128,7 @@ describe('createTaskTool delegation', () => {
             name: TASK_TOOL_NAME,
             args: {
               prompt: 'Investigate the guarded flow',
-              subagent_type: 'general-purpose',
+              subagent_type: 'Agent',
             },
           } as ToolCall],
         }),
@@ -191,7 +192,7 @@ describe('createTaskTool delegation', () => {
             name: TASK_TOOL_NAME,
             args: {
               prompt: 'Repeat the detached task',
-              subagent_type: 'general-purpose',
+              subagent_type: 'Agent',
             },
           } as ToolCall],
         });

@@ -1,0 +1,133 @@
+import type {AgentResumeStreamConfig, AgentStreamOutput, PauseRequest, ResumePayload} from '@core/agent';
+import type {TaskRuntime} from '@capability/task';
+import type {ApprovalStore} from '@durability/approval-store';
+import type {Session} from '@durability/session';
+import {getReviewItems} from './assembly/reviews';
+import type {FocusedReviewQuery, ReviewQueryItem} from './types';
+
+export interface CodaraReviewControl {
+  listReviewItems(): ReviewQueryItem[];
+  getFocusedReview(): FocusedReviewQuery | undefined;
+  focusReview(reviewId: string): Promise<void>;
+  resumeReview(payload: ResumePayload, config?: AgentResumeStreamConfig): Promise<void>;
+  streamReview(payload: ResumePayload, config?: AgentResumeStreamConfig): AsyncGenerator<AgentStreamOutput, void, void>;
+}
+
+export function createCodaraReviewControl(options: {
+  session: Session;
+  approvalStore?: ApprovalStore;
+  taskRuntime?: TaskRuntime;
+}): CodaraReviewControl {
+  const {session, approvalStore, taskRuntime} = options;
+  let focusedReviewId: string | undefined;
+
+  const listQueuedApprovalRecords = () => approvalStore?.list(session.getState().sessionId) ?? [];
+
+  const readForegroundPause = (): PauseRequest | undefined => {
+    try {
+      return session.getAgentState().pendingPause;
+    } catch {
+      return undefined;
+    }
+  };
+
+  const listReviewItemsForSession = (): ReviewQueryItem[] => {
+    const queuedRecords = listQueuedApprovalRecords();
+    const foregroundPause = readForegroundPause();
+    const resolvedFocusedReviewId = focusedReviewId
+      ?? queuedRecords[0]?.approvalId
+      ?? foregroundPause?.id;
+    return getReviewItems({
+      sessionId: session.getState().sessionId,
+      approvalStore,
+      focusedReviewId: resolvedFocusedReviewId,
+      foregroundPause,
+    });
+  };
+
+  const resolveFocusedReview = (): FocusedReviewQuery | undefined => {
+    const queuedRecords = listQueuedApprovalRecords();
+    const foregroundPause = readForegroundPause();
+    const items = listReviewItemsForSession();
+
+    if (items.length === 0) {
+      focusedReviewId = undefined;
+      return undefined;
+    }
+
+    const focusedItem = focusedReviewId
+      ? items.find((item) => item.reviewId === focusedReviewId)
+      : items[0];
+    const item = focusedItem ?? items[0]!;
+    focusedReviewId = item.reviewId;
+
+    if (item.source === 'task_run') {
+      const record = queuedRecords.find((candidate) => candidate.approvalId === item.reviewId);
+      if (!record) {
+        return undefined;
+      }
+      return {
+        item,
+        request: record.pauseRequest,
+      };
+    }
+
+    if (foregroundPause?.id === item.reviewId) {
+      return {
+        item,
+        request: foregroundPause,
+      };
+    }
+
+    return undefined;
+  };
+
+  return {
+    listReviewItems: listReviewItemsForSession,
+    getFocusedReview: resolveFocusedReview,
+    focusReview: async (reviewId: string): Promise<void> => {
+      const item = listReviewItemsForSession().find((candidate) => candidate.reviewId === reviewId);
+      if (!item) {
+        throw new Error(`Review "${reviewId}" not found for current session`);
+      }
+      focusedReviewId = reviewId;
+    },
+    resumeReview: async (payload: ResumePayload, config?: AgentResumeStreamConfig): Promise<void> => {
+      const focused = resolveFocusedReview();
+      if (!focused) {
+        throw new Error('No queued review is available for the current session');
+      }
+
+      if (focused.item.source === 'task_run') {
+        if (!taskRuntime) {
+          throw new Error('Task review runtime is not available');
+        }
+        await taskRuntime.resumeApprovalById(focused.item.reviewId, payload, config);
+      } else {
+        await session.resumePause(payload, config);
+      }
+
+      resolveFocusedReview();
+    },
+    streamReview: async function* (
+      payload: ResumePayload,
+      config?: AgentResumeStreamConfig,
+    ): AsyncGenerator<AgentStreamOutput, void, void> {
+      const focused = resolveFocusedReview();
+      if (!focused) {
+        throw new Error('No queued review is available for the current session');
+      }
+
+      if (focused.item.source === 'task_run') {
+        if (!taskRuntime) {
+          throw new Error('Task review runtime is not available');
+        }
+        yield* taskRuntime.resumeApprovalByIdStream(focused.item.reviewId, payload, config);
+      } else {
+        yield* session.resumePauseStream(payload, config);
+      }
+
+      resolveFocusedReview();
+    },
+  };
+}

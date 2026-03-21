@@ -59,65 +59,40 @@ describe('FileApprovalStore', () => {
     }
   });
 
-  test('keeps team-member approvals runtime-only across reopened stores', async () => {
-    const rootDir = await mkdtemp(path.join(tmpdir(), 'codara-approval-team-member-'));
-    try {
-      const store = createApprovalFileStore({rootDir});
-      store.upsertTeamMemberApproval({
-        sessionId: 'session-team-member',
-        teamId: 'team-1',
-        memberId: 'member-1',
-        memberName: 'Alice',
-        pauseRequest: makePauseRequest('approval-team-member', 'Team approval required', 'team_tool'),
-      });
-
-      expect(store.list('session-team-member')).toHaveLength(1);
-
-      const reopened = createApprovalFileStore({rootDir});
-      expect(reopened.get('approval-team-member')).toBeUndefined();
-      expect(reopened.list('session-team-member')).toHaveLength(0);
-    } finally {
-      await rm(rootDir, {recursive: true, force: true});
-    }
-  });
-
-  test('removes only the targeted team-member approval ownership without disturbing siblings', async () => {
-    const rootDir = await mkdtemp(path.join(tmpdir(), 'codara-approval-team-member-siblings-'));
+  test('removes only the targeted task-run approval without disturbing siblings', async () => {
+    const rootDir = await mkdtemp(path.join(tmpdir(), 'codara-approval-task-run-siblings-'));
     try {
       const store = createApprovalFileStore({rootDir});
 
-      store.upsertTeamMemberApproval({
-        sessionId: 'session-team-member',
-        teamId: 'team-1',
-        memberId: 'member-1',
-        memberName: 'Alice',
-        pauseRequest: makePauseRequest('approval-team-member-1', 'Team approval required', 'team_tool'),
+      store.upsertTaskRunApproval({
+        sessionId: 'session-task-run',
+        taskRunId: 'task-run-1',
+        childSessionId: 'child-session-1',
+        pauseRequest: makePauseRequest('approval-task-run-1', 'Task approval required', 'dangerous_tool'),
       });
-      store.upsertTeamMemberApproval({
-        sessionId: 'session-team-member',
-        teamId: 'team-1',
-        memberId: 'member-2',
-        memberName: 'Bob',
-        pauseRequest: makePauseRequest('approval-team-member-2', 'Team approval required', 'team_tool'),
+      store.upsertTaskRunApproval({
+        sessionId: 'session-task-run',
+        taskRunId: 'task-run-2',
+        childSessionId: 'child-session-2',
+        pauseRequest: makePauseRequest('approval-task-run-2', 'Task approval required', 'dangerous_tool'),
       });
-      store.upsertTeamMemberApproval({
-        sessionId: 'session-team-member',
-        teamId: 'team-2',
-        memberId: 'member-3',
-        memberName: 'Carol',
-        pauseRequest: makePauseRequest('approval-team-member-3', 'Team approval required', 'team_tool'),
+      store.upsertTaskRunApproval({
+        sessionId: 'session-task-run',
+        taskRunId: 'task-run-3',
+        childSessionId: 'child-session-3',
+        pauseRequest: makePauseRequest('approval-task-run-3', 'Task approval required', 'dangerous_tool'),
       });
 
-      store.removeByTeamMember('team-1', 'member-1');
+      store.removeByTaskRunId('task-run-1');
 
-      expect(store.get('approval-team-member-1')).toBeUndefined();
-      expect(store.get('approval-team-member-2')).toEqual(expect.objectContaining({
-        teamId: 'team-1',
-        memberId: 'member-2',
+      expect(store.get('approval-task-run-1')).toBeUndefined();
+      expect(store.get('approval-task-run-2')).toEqual(expect.objectContaining({
+        taskRunId: 'task-run-2',
+        childSessionId: 'child-session-2',
       }));
-      expect(store.get('approval-team-member-3')).toEqual(expect.objectContaining({
-        teamId: 'team-2',
-        memberId: 'member-3',
+      expect(store.get('approval-task-run-3')).toEqual(expect.objectContaining({
+        taskRunId: 'task-run-3',
+        childSessionId: 'child-session-3',
       }));
     } finally {
       await rm(rootDir, {recursive: true, force: true});

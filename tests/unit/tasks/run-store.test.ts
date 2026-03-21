@@ -8,6 +8,7 @@ describe('task run store', () => {
     store.start({
       runId: 'run-1',
       sessionId: 'session-1',
+      parentSessionId: 'session-1',
       label: 'Delegating research: inspect auth flow',
       agentName: 'research',
     });
@@ -28,6 +29,7 @@ describe('task run store', () => {
       expect.objectContaining({
         runId: 'run-1',
         sessionId: 'session-1',
+        parentSessionId: 'session-1',
         status: 'completed',
         childSessionId: 'child-1',
         latestActivity: 'read_file(src/auth.ts)',
@@ -45,6 +47,7 @@ describe('task run store', () => {
     store.start({
       runId: 'run-live-count',
       sessionId: 'session-1',
+      parentSessionId: 'session-1',
       label: 'Delegating research: inspect auth flow',
       agentName: 'research',
     });
@@ -71,6 +74,7 @@ describe('task run store', () => {
     const started = store.start({
       runId: 'run-2',
       sessionId: 'session-2',
+      parentSessionId: 'session-2',
       label: 'Delegating plan',
       agentName: 'Plan',
     });
@@ -82,6 +86,7 @@ describe('task run store', () => {
     expect(paused).toEqual(expect.objectContaining({
       runId: 'run-2',
       sessionId: 'session-2',
+      parentSessionId: 'session-2',
       status: 'paused',
       childSessionId: 'child-2',
       latestActivity: 'Waiting for review',
