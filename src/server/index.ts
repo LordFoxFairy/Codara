@@ -12,7 +12,6 @@
 import type {BusEvent, BusRequest, ClientId} from '../bus/types';
 import {corsHeaders, errorResponse} from './sse';
 import {getBus, disposeBus} from './bus-manager';
-import {createTeamsApiHandler} from './teams-api';
 
 // Routes
 import {handleChat, handleResume} from './routes/chat';
@@ -22,10 +21,6 @@ import {handleExecuteCommand, handleStatus} from './routes/command';
 // ── Configuration ────────────────────────────────────────────────────
 
 const PORT = Number(process.env.CODARA_SERVER_PORT) || 23981;
-
-// ── Teams API handler (lazy singleton) ───────────────────────────────
-
-const handleTeamsRequest = createTeamsApiHandler();
 
 // ── WebSocket state ──────────────────────────────────────────────────
 
@@ -68,12 +63,6 @@ async function route(req: Request, server: ReturnType<typeof Bun.serve>): Promis
   const sessionsMatch = pathname.match(/^\/api\/sessions\/([^/]+)\/messages$/);
   if (method === 'GET' && sessionsMatch) {
     return handleSessionMessages(sessionsMatch[1]);
-  }
-
-  // Teams / Remotes API — delegates to teams-api handler.
-  if (pathname.startsWith('/api/teams') || pathname.startsWith('/api/remotes')) {
-    const teamsResponse = await handleTeamsRequest(req);
-    if (teamsResponse) return teamsResponse;
   }
 
   return errorResponse('Not Found', 404);

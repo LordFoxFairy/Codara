@@ -549,7 +549,7 @@ export function TranscriptItemsView({
       const groupedItems = [item];
       let cursor = index + 1;
       while (cursor < projectedItems.length && isRunningTaskTranscriptItem(projectedItems[cursor]!)) {
-        groupedItems.push(projectedItems[cursor]!);
+        groupedItems.push(projectedItems[cursor]! as import('../../transcript/model').TranscriptItem & {toolMeta: ToolResultMeta});
         cursor += 1;
       }
 

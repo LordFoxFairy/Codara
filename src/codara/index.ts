@@ -6,10 +6,6 @@ export type {
   ApprovalQuerySummary,
   ApprovalQueryReview,
   TaskRunQuerySummary,
-  TeamQuerySummary,
-  TeamQueryMember,
-  TeamQueryJob,
-  TeamQueryDetail,
 } from '@codara/facade';
 export {
   CodaraModelCatalog,

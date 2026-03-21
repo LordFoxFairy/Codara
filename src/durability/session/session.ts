@@ -61,6 +61,8 @@ import {
   type CodaraRuntimeEventListener,
 } from '@observability/events';
 import type {SessionMetadata, SessionState, SessionStatus} from './types';
+import type {AgentRuntimeContext} from '@shared/contracts/agent-types';
+import {mergeContext as mergeAgentContext} from '@core/agent/models/command';
 export type {CodaraRuntimeEvent, CodaraRuntimeEventListener} from '@observability/events';
 
 export interface SessionModelCatalog {
@@ -97,6 +99,7 @@ export interface CreateSessionOptions {
 export interface Session {
   getState(): SessionState;
   getAgentState(): AgentState;
+  updateContext(context: AgentRuntimeContext): Promise<AgentState>;
   getAvailableToolNames(): string[];
   subscribeRuntimeEvents(listener: CodaraRuntimeEventListener): () => void;
   hydrate(): Promise<AgentState>;
@@ -602,6 +605,25 @@ export function createSession(options: CreateSessionOptions): Session {
     return next;
   }
 
+  async function updateContext(contextPatch: AgentRuntimeContext): Promise<AgentState> {
+    ensureReady();
+    const current = (await getAgent()).getState();
+    const nextContext = applyContextPatch(current.context, contextPatch);
+
+    await putManualCheckpoint(checkpointer, sessionId, {
+      agentType: current.agentType,
+      messages: current.messages,
+      context: nextContext,
+      values: current.values,
+      ...(current.pendingPause ? {pendingPause: current.pendingPause} : {}),
+    }, await getLatestCheckpoint());
+
+    clearAgentCache();
+    const next = (await getAgent()).getState();
+    await sync(next, {touchActivity: false});
+    return next;
+  }
+
   const session: Session & {
     focusPause: (request: PauseRequest) => Promise<AgentState>;
   } = {
@@ -609,6 +631,7 @@ export function createSession(options: CreateSessionOptions): Session {
     getAgentState() {
       return requireAgent().getState();
     },
+    updateContext,
     getAvailableToolNames,
     subscribeRuntimeEvents(listener) {
       return runtimeEvents.subscribe(listener);
@@ -734,6 +757,24 @@ export function createSession(options: CreateSessionOptions): Session {
   };
 
   return session;
+}
+
+function applyContextPatch(current: AgentRuntimeContext, patch: AgentRuntimeContext): AgentRuntimeContext {
+  const normalizedPatch: AgentRuntimeContext = {};
+
+  for (const [key, value] of Object.entries(patch)) {
+    if (value !== undefined) {
+      normalizedPatch[key] = value;
+    }
+  }
+
+  const merged = mergeAgentContext(current ?? {}, normalizedPatch);
+  for (const [key, value] of Object.entries(patch)) {
+    if (value === undefined) {
+      delete merged[key];
+    }
+  }
+  return merged;
 }
 
 function readResponseMetadataString(

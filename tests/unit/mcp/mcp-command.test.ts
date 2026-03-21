@@ -10,6 +10,7 @@ function createMockContext(overrides: Partial<CodaraCommandAgent> = {}): CodaraC
     agent: {
       compactConversation: async () => ({} as never),
       compactCheckpoints: async () => {},
+      updateContext: async () => ({} as never),
       getAvailableToolNames: () => [],
       hydrate: async () => ({} as never),
       getAgentState: () => ({} as never),

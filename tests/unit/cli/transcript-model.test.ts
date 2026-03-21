@@ -8,6 +8,7 @@ import {
   hasTranscriptContent,
   normalizeVisibleAssistantText,
 } from '@/cli/transcript/model';
+import {createInternalSharedTaskCoordinationMessage} from '@/shared/task-coordination-result';
 
 describe('cli transcript model', () => {
   test('should build transcript items from notices, core messages, and active turn', () => {
@@ -70,6 +71,22 @@ describe('cli transcript model', () => {
     expect(items[0]?.content).toContain('Tasks:');
     expect(items[0]?.content).toContain('- id: task-1 | subject: Inspect transcript | status: in_progress');
     expect(items[0]?.content).toContain('- id: task-2 | subject: Report result | status: pending');
+  });
+
+  test('should suppress shared task coordination tool output when it is marked internal to a team workspace', () => {
+    const taskListCall: ToolCall = {id: 'call_task_list_2', name: 'TaskList', args: {}};
+    const items = buildTranscriptItems({
+      notices: [],
+      coreMessages: [
+        new AIMessage({content: '', tool_calls: [taskListCall]}),
+        createInternalSharedTaskCoordinationMessage([
+          'Tasks:',
+          '- id: task-1 | subject: Inspect transcript | status: in_progress | description: Verify task rendering | blockedBy: (none) | blocks: task-2',
+        ].join('\n'), 'call_task_list_2'),
+      ],
+    });
+
+    expect(items).toHaveLength(0);
   });
 
   test('should render tool results with friendly summaries from ToolMessages', () => {
@@ -146,6 +163,58 @@ describe('cli transcript model', () => {
     });
 
     expect(items).toEqual([]);
+  });
+
+  test('should hide write_todos bookkeeping from the main transcript', () => {
+    const now = new Date().toISOString();
+    const items = buildTranscriptItems({
+      notices: [],
+      coreMessages: [
+        new AIMessage({
+          content: '',
+          tool_calls: [
+            {id: 'call_write_todos_1', name: 'write_todos', args: {todos: []}} as ToolCall,
+          ],
+        }),
+        new ToolMessage({
+          content: 'Updated todo list to [{"content":"等待 worker 完成","status":"in_progress"}]',
+          tool_call_id: 'call_write_todos_1',
+          name: 'write_todos',
+        }),
+      ],
+      activeTurn: {
+        id: 'turn-write-todos',
+        prompt: 'coordinate the team',
+        response: '',
+        responseRole: 'assistant',
+      },
+      runtimeEvents: [
+        {
+          id: 'evt_write_todos_start',
+          sessionId: 'session-1',
+          timestamp: now,
+          kind: 'tool',
+          phase: 'start',
+          status: 'running',
+          label: 'Write Todos(...)',
+          detail: 'write_todos',
+        },
+        {
+          id: 'evt_write_todos_end',
+          sessionId: 'session-1',
+          timestamp: now,
+          kind: 'tool',
+          phase: 'end',
+          status: 'done',
+          label: 'Write Todos',
+          detail: 'Updated todo list to [{"content":"等待 worker 完成","status":"in_progress"}]',
+          parentId: 'evt_write_todos_start',
+        },
+      ],
+    });
+
+    expect(items.map((item) => item.role)).toEqual(['user']);
+    expect(items.some((item) => item.content.includes('Updated todo list'))).toBe(false);
   });
 
   test('should prefer runtime task blocks during streaming without surfacing child summaries', () => {

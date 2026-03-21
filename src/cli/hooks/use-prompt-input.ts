@@ -1,4 +1,4 @@
-﻿import {useInput, useStdin} from 'ink';
+import {useInput, useStdin} from 'ink';
 import {resolvePromptInputAction} from './prompt-input-action';
 
 interface UsePromptInputOptions {
@@ -17,12 +17,9 @@ interface UsePromptInputOptions {
   onExit: () => void;
   onToggleTaskPanel?: () => void;
   onToggleExpand?: () => void;
-  onSelectMemberUp?: () => void;
-  onSelectMemberDown?: () => void;
   onTab?: () => void;
 }
 
-// 输入监听独立成 hook，避免展示组件和编辑动作混在一起。
 export function usePromptInput(options: UsePromptInputOptions): void {
   const {
     interactive = true,
@@ -40,8 +37,6 @@ export function usePromptInput(options: UsePromptInputOptions): void {
     onExit,
     onToggleTaskPanel,
     onToggleExpand,
-    onSelectMemberUp,
-    onSelectMemberDown,
     onTab,
   } = options;
   const {isRawModeSupported} = useStdin();
@@ -61,16 +56,6 @@ export function usePromptInput(options: UsePromptInputOptions): void {
 
     if (action === 'toggle-expand') {
       onToggleExpand?.();
-      return;
-    }
-
-    if (action === 'select-member-up') {
-      onSelectMemberUp?.();
-      return;
-    }
-
-    if (action === 'select-member-down') {
-      onSelectMemberDown?.();
       return;
     }
 

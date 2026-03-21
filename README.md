@@ -40,7 +40,7 @@ DDD 轻量分层，10 个限界上下文，严格单向依赖：
 ```
 src/
 ├── core/              执行引擎（Agent Loop + Pipeline + Middleware）
-├── capability/        领域能力（Skill · Task · Team · Command）
+├── capability/        领域能力（Skill · Task · Command）
 ├── durability/        持久化（Session · Checkpoint）
 ├── observability/     观测（Runtime Events · Lifecycle Hooks）
 ├── integration/       集成适配（Tool · MCP · Channel · Provider）
@@ -132,7 +132,7 @@ src/
 
 ### Agent Loop
 
-每个 Agent 运行 `model → tools → model` 循环。所有路径 **Stream-First**（AsyncGenerator），delegation 和 team worker 均走 `stream()`。
+每个 Agent 运行 `model → tools → model` 循环。所有路径 **Stream-First**（AsyncGenerator），delegation 走统一 `stream()` 链路。
 
 ### Middleware Pipeline — 6 个拦截点
 
@@ -151,10 +151,9 @@ src/
 
 支持 CLI 终端审批、Desktop 对话框、IM 按钮（7 渠道均支持）。
 
-### Task & Team
+### Task Delegation
 
-- **Task** — 单代理派发。主 Agent spawn 子 Agent，stream 化执行，活动实时上报。
-- **Team** — 多代理协作。Leader 创建团队、分派 Job，Worker 独立执行，通过 LocalTransport 通信。
+- **Task** — 单代理派发。主 Agent spawn 子 Agent，stream 化执行，活动实时上报；需要并行时由主 Agent 调度多个 delegated subagents，而不是再引入第二套协作 runtime。
 
 ### 三层扩展体系
 

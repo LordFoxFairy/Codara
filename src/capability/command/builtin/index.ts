@@ -16,7 +16,6 @@ import {reloadCommand} from './reload';
 import {resumeCommand} from './resume';
 import {rewindCommand} from './rewind';
 import {statusCommand} from './status';
-import {teamCommand} from './team';
 
 export function createBuiltInCommands(): readonly CodaraCommandDefinition[] {
   return [
@@ -37,6 +36,5 @@ export function createBuiltInCommands(): readonly CodaraCommandDefinition[] {
     configCommand,
     diffCommand,
     rewindCommand,
-    teamCommand,
   ];
 }
