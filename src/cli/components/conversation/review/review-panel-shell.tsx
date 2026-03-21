@@ -2,7 +2,7 @@ import React from 'react';
 import {Box, Text} from 'ink';
 import {theme} from '../../../utils/theme';
 import type {CliReviewState} from '../../../app/view-state';
-import {isPermissionReviewState} from '../../../app/review-permission-state';
+import {getCliReviewKind} from '../../../app/review-kind';
 
 export function ReviewQueueBanner({review}: {review: CliReviewState}): React.JSX.Element | null {
   if (review.form) {
@@ -24,7 +24,7 @@ export function ReviewQueueBanner({review}: {review: CliReviewState}): React.JSX
 export function FloatingReviewShell(
   {review, children}: React.PropsWithChildren<{review: CliReviewState}>,
 ): React.JSX.Element {
-  const title = isPermissionReviewState(review) ? 'Permission Review' : 'Review Required';
+  const title = resolveFloatingReviewTitle(review);
   const hints = 'Enter apply  Esc cancel';
 
   return (
@@ -37,4 +37,27 @@ export function FloatingReviewShell(
       {children}
     </Box>
   );
+}
+
+function resolveFloatingReviewTitle(review: CliReviewState): string {
+  const kind = getCliReviewKind(review);
+  if (kind === 'permission') {
+    return 'Permission Review';
+  }
+
+  if (kind !== 'tool-review') {
+    return 'Review Required';
+  }
+
+  const toolName = review.request.action.toolName.trim().toLowerCase();
+  if (toolName === 'skill') {
+    return 'Skill Review';
+  }
+
+  if (toolName === 'read_file' || toolName === 'write_file' || toolName === 'edit_file'
+    || toolName === 'read' || toolName === 'write' || toolName === 'edit') {
+    return 'File Review';
+  }
+
+  return 'Tool Review';
 }

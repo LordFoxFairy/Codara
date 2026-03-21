@@ -1,5 +1,5 @@
-import type {PermissionStage} from '../components/permission/types';
 import type {CliReviewState} from './view-state';
+import type {PermissionStage} from './review-types';
 
 /** Read alwaysPatterns from permission pause metadata. */
 export function readPermissionAlwaysPatterns(metadata: unknown): string[] {
@@ -8,17 +8,6 @@ export function readPermissionAlwaysPatterns(metadata: unknown): string[] {
   if (!policy || typeof policy !== 'object' || Array.isArray(policy)) return [];
   const patterns = (policy as Record<string, unknown>).alwaysPatterns;
   return Array.isArray(patterns) ? patterns.filter((p): p is string => typeof p === 'string') : [];
-}
-
-/** Check if the current review is a permission review. */
-export function isPermissionReviewState(review: CliReviewState | undefined): boolean {
-  if (!review) {
-    return false;
-  }
-
-  return review.request.ui?.modal === 'permission-review'
-    || review.request.channel === 'permission-center'
-    || review.request.description.toLowerCase().includes('permission review');
 }
 
 /** Transition to a permission stage. */

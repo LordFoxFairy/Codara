@@ -49,7 +49,104 @@ describe('ReviewPanel review queue banner', () => {
 
     expect(lastFrame()).toContain('Review 2/5');
     expect(lastFrame()).toContain('Use [ and ] to switch reviews');
+    expect(lastFrame()).toContain('Permission Review');
     expect(lastFrame()).toContain('Permission review required for git push.');
+  });
+
+  it('renders file/tool review requests with a typed review shell instead of the generic catch-all body', () => {
+    const review = {
+      request: {
+        id: 'pause-file',
+        description: 'Review the file edit before continuing.',
+        action: {
+          toolCallId: 'call-file',
+          toolName: 'edit_file',
+          toolArgs: {file_path: '/tmp/demo.ts', old_string: 'foo', new_string: 'bar'},
+        },
+        review: {
+          actionName: 'edit_file',
+          allowedDecisions: ['approve', 'reject'],
+        },
+        runtime: {
+          runId: 'run-file',
+          turn: 2,
+          requestId: 'req-file',
+          toolIndex: 0,
+        },
+        ui: {
+          actions: [
+            {id: 'approve', label: 'Apply edit', kind: 'primary'},
+            {id: 'reject', label: 'Cancel', kind: 'secondary'},
+          ],
+        },
+      },
+      actions: [
+        {id: 'approve', label: 'Apply edit', kind: 'primary'},
+        {id: 'reject', label: 'Cancel', kind: 'secondary'},
+      ],
+      selectedActionIndex: 0,
+      focus: 'actions',
+      draft: '',
+      busy: false,
+      blockingScope: 'session',
+    } satisfies CliReviewState;
+
+    const {lastFrame} = render(<ReviewPanel review={review} />);
+    const frame = lastFrame();
+
+    expect(frame).toContain('File Review');
+    expect(frame).toContain('edit_file');
+    expect(frame).toContain('Apply edit');
+    expect(frame).not.toContain('Review Required');
+  });
+
+  it('renders file-gated reviews with a typed shell title and tool summary instead of the generic catch-all body', () => {
+    const review = {
+      request: {
+        id: 'pause-file',
+        description: 'Review the proposed file edit before continuing.',
+        action: {
+          toolCallId: 'call-file',
+          toolName: 'edit_file',
+          toolArgs: {file_path: 'src/app.ts'},
+        },
+        review: {
+          actionName: 'edit_file',
+          allowedDecisions: ['approve', 'reject'],
+        },
+        runtime: {
+          runId: 'run-file',
+          turn: 3,
+          requestId: 'req-file',
+          toolIndex: 0,
+        },
+        ui: {
+          actions: [
+            {id: 'edit', label: 'Edit and continue', kind: 'secondary', requiresToolEdit: true},
+            {id: 'approve', label: 'Continue', kind: 'primary'},
+          ],
+        },
+      },
+      actions: [
+        {id: 'edit', label: 'Edit and continue', kind: 'secondary', requiresToolEdit: true},
+        {id: 'approve', label: 'Continue', kind: 'primary'},
+      ],
+      selectedActionIndex: 0,
+      focus: 'input',
+      draft: '{"file_path":"src/app.ts"}',
+      busy: false,
+      blockingScope: 'task',
+    } satisfies CliReviewState;
+
+    const {lastFrame} = render(<ReviewPanel review={review} />);
+    const frame = lastFrame();
+
+    expect(frame).toContain('File Review');
+    expect(frame).toContain('edit_file');
+    expect(frame).toContain('src/app.ts');
+    expect(frame).toContain('Edit and continue');
+    expect(frame).toContain('Edited arguments');
+    expect(frame).not.toContain('Review Required');
   });
 
   it('separates AskUser tabs from the final submit step while keeping question pages on a Next-only footer', () => {

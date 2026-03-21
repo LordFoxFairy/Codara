@@ -1,10 +1,11 @@
 import React from 'react';
 import {Box} from 'ink';
 import type {CliReviewState} from '../../app/view-state';
-import {isPermissionReviewState} from '../../app/review-permission-state';
+import {getCliReviewKind, isPermissionReviewState} from '../../app/review-kind';
 import {AskUserReviewBody} from './review/ask-user-review';
 import {GenericReviewBody} from './review/generic-review';
 import {PermissionReviewBody} from './review/permission-review';
+import {ToolReviewBody} from './review/tool-review';
 import {FloatingReviewShell, ReviewQueueBanner} from './review/review-panel-shell';
 
 interface ReviewPanelProps {
@@ -15,13 +16,16 @@ interface ReviewPanelProps {
 // ── Public API ──────────────────────────────────────────────
 
 export function ReviewPanel({review, terminalWidth}: ReviewPanelProps): React.JSX.Element {
-  const content = isPermissionReview(review)
+  const kind = getCliReviewKind(review);
+  const content = kind === 'permission'
     ? <PermissionReviewBody review={review} />
-    : review.form
+    : kind === 'ask-user'
       ? <AskUserReviewBody review={review} terminalWidth={terminalWidth} />
-      : <GenericReviewBody review={review} />;
+      : kind === 'tool-review'
+        ? <ToolReviewBody review={review} />
+        : <GenericReviewBody review={review} />;
 
-  if (review.form) {
+  if (kind === 'ask-user') {
     return (
       <Box flexDirection="column">
         <ReviewQueueBanner review={review} />

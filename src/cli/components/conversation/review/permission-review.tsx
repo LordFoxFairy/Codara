@@ -1,6 +1,7 @@
 import React from 'react';
 import {Box, Text} from 'ink';
 import type {CliReviewState} from '../../../app/view-state';
+import {formatToolSummary} from '../../../../shared/tool-display';
 import {formatPermissionShortcut, resolveActionColor} from './review-panel-helpers';
 
 export function PermissionReviewBody({review}: {review: CliReviewState}): React.JSX.Element {
@@ -46,7 +47,13 @@ export function PermissionReviewBody({review}: {review: CliReviewState}): React.
 
   return (
     <Box flexDirection="column">
-      <Text color="yellow" bold>{review.request.description}</Text>
+      <Text color="cyan" bold>{review.request.action.toolName}</Text>
+      {formatToolSummary(review.request.action.toolName, review.request.action.toolArgs) && (
+        <Text dimColor>{formatToolSummary(review.request.action.toolName, review.request.action.toolArgs)}</Text>
+      )}
+      <Box marginTop={1}>
+        <Text color="yellow" bold>{review.request.description}</Text>
+      </Box>
       {review.actions.map((action, index) => (
         <Text key={index} color={resolveActionColor(action, index === review.selectedActionIndex)}>
           {index === review.selectedActionIndex ? '❯ ' : '  '}{formatPermissionShortcut(action)}

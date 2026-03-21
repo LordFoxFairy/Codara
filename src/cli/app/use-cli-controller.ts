@@ -22,6 +22,7 @@ import {
   activateCliReviewFocusedSelection,
   advanceCliReviewToNextStep,
   applyCliReviewFormShortcut,
+  isPermissionReviewState,
   prepareCliReviewDraftInput,
   prepareCliReviewSubmission,
   resolveCliReviewFocusedFooterAction,
@@ -1184,7 +1185,7 @@ export function useCliController(options: UseCliControllerOptions): CliControlle
       const selectedAction = autoAction
         ? prepared.review.actions.find((action) => action.id.toLowerCase() === autoAction.action.trim().toLowerCase())
         : prepared.review.actions[prepared.review.selectedActionIndex];
-      if (!prepared.review.form && !isPermissionReview(prepared.review)) {
+      if (!prepared.review.form && !isPermissionReviewState(prepared.review)) {
         appendNotice('system', `Review action: ${selectedAction?.label ?? autoAction?.action ?? 'resume'}`);
       }
 
@@ -1477,10 +1478,4 @@ export function useCliController(options: UseCliControllerOptions): CliControlle
     toggleTaskPanel,
     coreMessages,
   ]);
-}
-
-function isPermissionReview(review: CliReviewState): boolean {
-  return review.request.ui?.modal === 'permission-review'
-    || review.request.channel === 'permission-center'
-    || review.request.description.toLowerCase().includes('permission review');
 }

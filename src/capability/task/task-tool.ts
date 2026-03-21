@@ -22,7 +22,7 @@ import {
   resolveDefinitionTools,
   resolveTaskRunId,
   wrapDelegatedPrepareContext,
-} from '@capability/task/task-tool-support';
+} from '@capability/task/task-run-support';
 import {type ChildToolActivityCallback} from '@observability/events';
 
 export const TASK_TOOL_NAME = 'Task';

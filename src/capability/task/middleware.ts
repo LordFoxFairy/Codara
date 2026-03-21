@@ -8,7 +8,8 @@ import {createTaskRunMemoryStore} from '@capability/task/run-store';
 import type {CreateTaskMiddlewareOptions} from '@capability/task/tool-types';
 import {buildAvailableSubagentsMessage, buildTaskCompletionHandoff} from '@capability/task/task-prompting';
 import {createTaskTool} from '@capability/task/task-tool';
-import {maybeHandleTaskCompletionToolCall, rebindTaskRunStore} from '@capability/task/task-tool-support';
+import {maybeHandleTaskCompletionToolCall} from '@capability/task/task-completion-guard';
+import {rebindTaskRunStore} from '@capability/task/task-run-support';
 
 export {createTaskTool, readTaskToolOptions, TASK_TOOL_DESCRIPTION, TASK_TOOL_NAME} from '@capability/task/task-tool';
 export type {CreateTaskToolOptions, CreateTaskMiddlewareOptions} from '@capability/task/tool-types';

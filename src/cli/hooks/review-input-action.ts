@@ -1,4 +1,4 @@
-import type {PermissionStage} from '../components/permission/types';
+import type {PermissionStage} from '../app/review-types';
 
 export type ReviewInputAction =
   | 'noop'

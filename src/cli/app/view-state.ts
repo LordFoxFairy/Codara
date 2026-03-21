@@ -1,6 +1,6 @@
 import type {PauseRequest, PauseUIActionOption, PauseUIFormOption, PauseUIFormTab} from '@core/agent';
 import type {ReviewBlockingScope} from '../../codara/types';
-import type {PermissionStage} from '../components/permission/types';
+import type {PermissionStage} from './review-types';
 
 export type CliStatus = 'idle' | 'running' | 'paused' | 'done' | 'error';
 export type CliReviewAnswerValue = string | string[];

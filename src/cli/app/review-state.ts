@@ -24,10 +24,10 @@ export {
   hasCustomAnswerForActiveTab,
 } from './review-form-state';
 export {
-  isPermissionReviewState,
   readPermissionAlwaysPatterns,
   setPermissionStage,
 } from './review-permission-state';
+export {getCliReviewKind, isPermissionReviewState, isToolReviewState} from './review-kind';
 import {
   hasCustomAnswerForActiveTab,
   readReviewFormDraft,
