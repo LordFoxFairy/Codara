@@ -402,6 +402,16 @@ export function useCliController(options: UseCliControllerOptions): CliControlle
     reviewRef.current = review;
   }, [review]);
 
+  const setReviewState = useCallback((
+    input: CliReviewState | undefined | ((current: CliReviewState | undefined) => CliReviewState | undefined),
+  ) => {
+    const next = typeof input === 'function'
+      ? (input as (current: CliReviewState | undefined) => CliReviewState | undefined)(reviewRef.current)
+      : input;
+    reviewRef.current = next;
+    setReview(next);
+  }, []);
+
   const appendNotice = useCallback((level: CliNotice['level'], content: string) => {
     const message = content.trim();
     if (!message) {
@@ -504,11 +514,10 @@ export function useCliController(options: UseCliControllerOptions): CliControlle
       pendingPause: projection.activePause,
     }), projection.activePause);
     setSessionState(codara.getState());
-    reviewRef.current = nextReview;
-    setReview(nextReview);
+    setReviewState(nextReview);
     setActiveTurn((current) => suppressActiveTurnForReview(current, nextReview));
     syncInteractionState();
-  }, [codara, suppressSettlingDismissedReview, syncInteractionState]);
+  }, [codara, setReviewState, suppressSettlingDismissedReview, syncInteractionState]);
 
   const refreshCoreState = useCallback(async () => {
     const nextAgentState = await codara.hydrate();
@@ -523,12 +532,11 @@ export function useCliController(options: UseCliControllerOptions): CliControlle
     const nextReview = suppressSettlingDismissedReview(syncProjectedReview(codara, reviewRef.current, {
       pendingPause: nextAgentState.pendingPause,
     }), nextAgentState.pendingPause);
-    reviewRef.current = nextReview;
-    setReview(nextReview);
+    setReviewState(nextReview);
     setActiveTurn((current) => suppressActiveTurnForReview(current, nextReview));
     syncInteractionState();
     return nextAgentState;
-  }, [codara, suppressSettlingDismissedReview, syncInteractionState]);
+  }, [codara, setReviewState, suppressSettlingDismissedReview, syncInteractionState]);
 
   const runTaskCompletionContinuation = useCallback(async (continuation: TaskCompletionContinuation) => {
     if (isRunningRef.current) {
@@ -1020,12 +1028,12 @@ export function useCliController(options: UseCliControllerOptions): CliControlle
   }, []);
 
   const selectPreviousReviewAction = useCallback(() => {
-    setReview((current) => current ? selectPreviousCliReviewAction(current) : current);
-  }, []);
+    setReviewState((current) => current ? selectPreviousCliReviewAction(current) : current);
+  }, [setReviewState]);
 
   const selectNextReviewAction = useCallback(() => {
-    setReview((current) => current ? selectNextCliReviewAction(current) : current);
-  }, []);
+    setReviewState((current) => current ? selectNextCliReviewAction(current) : current);
+  }, [setReviewState]);
 
   const shiftReviewFocus = useCallback(async (direction: -1 | 1) => {
     const reviews = codara.listReviewItems();
@@ -1055,24 +1063,24 @@ export function useCliController(options: UseCliControllerOptions): CliControlle
   }, [shiftReviewFocus]);
 
   const moveReviewLeft = useCallback(() => {
-    setReview((current) => current?.form ? selectPreviousCliReviewTab(current) : current ? toggleCliReviewFocus(current) : current);
-  }, []);
+    setReviewState((current) => current?.form ? selectPreviousCliReviewTab(current) : current ? toggleCliReviewFocus(current) : current);
+  }, [setReviewState]);
 
   const moveReviewRight = useCallback(() => {
-    setReview((current) => current?.form ? selectNextCliReviewTab(current) : current ? toggleCliReviewFocus(current) : current);
-  }, []);
+    setReviewState((current) => current?.form ? selectNextCliReviewTab(current) : current ? toggleCliReviewFocus(current) : current);
+  }, [setReviewState]);
 
   const toggleReviewFocus = useCallback(() => {
-    setReview((current) => current ? toggleCliReviewFocus(current) : current);
-  }, []);
+    setReviewState((current) => current ? toggleCliReviewFocus(current) : current);
+  }, [setReviewState]);
 
   const activateReviewSelection = useCallback(() => {
-    setReview((current) => current ? activateCliReviewFocusedSelection(current) ?? current : current);
+    setReviewState((current) => current ? activateCliReviewFocusedSelection(current) ?? current : current);
     setRunState({status: 'paused'});
-  }, []);
+  }, [setReviewState]);
 
   const insertReviewText = useCallback((input: string) => {
-    setReview((current) => {
+    setReviewState((current) => {
       if (!current) {
         return current;
       }
@@ -1103,25 +1111,25 @@ export function useCliController(options: UseCliControllerOptions): CliControlle
       }
       return updateCliReviewDraft(prepared, prepared.draft + input);
     });
-  }, []);
+  }, [setReviewState]);
 
   const insertReviewNewline = useCallback(() => {
-    setReview((current) => {
+    setReviewState((current) => {
       if (!current || current.focus !== 'input') {
         return current;
       }
       return updateCliReviewDraft(current, `${current.draft}\n`);
     });
-  }, []);
+  }, [setReviewState]);
 
   const backspaceReviewInput = useCallback(() => {
-    setReview((current) => {
+    setReviewState((current) => {
       if (!current || current.focus !== 'input' || current.draft.length === 0) {
         return current;
       }
       return updateCliReviewDraft(current, current.draft.slice(0, -1));
     });
-  }, []);
+  }, [setReviewState]);
 
   const submitReviewAction = useCallback(async (autoAction?: CliReviewAutoAction) => {
     const currentReview = reviewRef.current ?? review;
@@ -1132,7 +1140,7 @@ export function useCliController(options: UseCliControllerOptions): CliControlle
     if (!autoAction && currentReview.form && currentReview.focus !== 'actions') {
       const activated = activateCliReviewFocusedSelection(currentReview);
       if (activated) {
-        setReview(activated);
+        setReviewState(activated);
         setRunState({status: 'paused'});
       }
       return;
@@ -1142,7 +1150,7 @@ export function useCliController(options: UseCliControllerOptions): CliControlle
       const footerAction = resolveCliReviewFocusedFooterAction(currentReview);
       if (footerAction?.id === 'next') {
         const advanced = advanceCliReviewToNextStep(currentReview);
-        setReview(advanced);
+        setReviewState(advanced);
         setRunState({status: 'paused'});
         return;
       }
@@ -1150,7 +1158,7 @@ export function useCliController(options: UseCliControllerOptions): CliControlle
 
     const prepared = prepareCliReviewSubmission(currentReview, autoAction);
     if (!prepared.payload) {
-      setReview(prepared.review);
+      setReviewState(prepared.review);
       setRunState({status: 'paused'});
       return;
     }
@@ -1160,8 +1168,7 @@ export function useCliController(options: UseCliControllerOptions): CliControlle
 
     if (isRunningRef.current) {
       const busyReview = {...prepared.review, busy: true};
-      reviewRef.current = busyReview;
-      setReview(busyReview);
+      setReviewState(busyReview);
       enqueueReviewResponse({
         reviewId: prepared.review.request.id,
         payload: prepared.payload,
@@ -1186,8 +1193,7 @@ export function useCliController(options: UseCliControllerOptions): CliControlle
         const queuedReviewCount = codara.listReviewItems().length;
         if (queuedReviewCount <= 1) {
           settlingDismissedReviewIdRef.current = prepared.review.request.id;
-          setReview(undefined);
-          reviewRef.current = undefined;
+          setReviewState(undefined);
           syncInteractionState();
           setActiveTurn({
             id: `turn-review-${randomUUID()}`,
@@ -1227,8 +1233,7 @@ export function useCliController(options: UseCliControllerOptions): CliControlle
         const busyReview = reviewRef.current?.request.id === prepared.review.request.id
           ? {...reviewRef.current, busy: true}
           : {...prepared.review, busy: true};
-        reviewRef.current = busyReview;
-        setReview(busyReview);
+        setReviewState(busyReview);
         void (async () => {
           try {
             const currentReviewId = prepared.review.request.id;
@@ -1246,8 +1251,7 @@ export function useCliController(options: UseCliControllerOptions): CliControlle
               const stillShowingCurrent = reviews.some((review) => review.reviewId === currentReviewId);
               if (!stillShowingCurrent) {
                 const nextReview = syncProjectedReview(codara, reviewRef.current, {pendingPause: activePause});
-                reviewRef.current = nextReview;
-                setReview(nextReview);
+                setReviewState(nextReview);
                 syncInteractionState();
                 setRunState(deriveRunStateFromAgentState(nextAgentState));
                 return;
@@ -1300,24 +1304,24 @@ export function useCliController(options: UseCliControllerOptions): CliControlle
       endInteraction();
       drainScheduledInteractions();
     }
-  }, [appendNotice, beginInteraction, codara, drainScheduledInteractions, endInteraction, enqueueReviewResponse, refreshCoreState, reportError, review, syncInteractionState]);
+  }, [appendNotice, beginInteraction, codara, drainScheduledInteractions, endInteraction, enqueueReviewResponse, refreshCoreState, reportError, review, setReviewState, syncInteractionState]);
 
   const quickReviewAction = useCallback((actionId: string) => {
     // Three-stage permission flow: intercept dont_ask_again and deny
     if (actionId === 'dont_ask_again') {
-      setReview((current) => current ? setPermissionStage(current, 'always-confirm') : current);
+      setReviewState((current) => current ? setPermissionStage(current, 'always-confirm') : current);
       return;
     }
     if (actionId === 'deny') {
-      setReview((current) => current ? setPermissionStage(current, 'reject-feedback') : current);
+      setReviewState((current) => current ? setPermissionStage(current, 'reject-feedback') : current);
       return;
     }
     void submitReviewAction({action: actionId});
-  }, [submitReviewAction]);
+  }, [setReviewState, submitReviewAction]);
 
   const permissionBack = useCallback(() => {
-    setReview((current) => current ? setPermissionStage(current, 'prompt') : current);
-  }, []);
+    setReviewState((current) => current ? setPermissionStage(current, 'prompt') : current);
+  }, [setReviewState]);
 
   const permissionConfirm = useCallback(() => {
     // Claude Code style: confirm adds all patterns to session memory
