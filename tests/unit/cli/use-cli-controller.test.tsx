@@ -424,7 +424,7 @@ describe('useCliController background refresh', () => {
           }),
         },
       }));
-      expect(rendered.lastFrame() ?? '').toContain('streamCalls:3');
+      await waitFor(() => (rendered.lastFrame() ?? '').includes('streamCalls:3'));
     } finally {
       codara.releaseBlockedStream();
       rendered.unmount();
