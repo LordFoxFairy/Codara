@@ -1,7 +1,7 @@
 import type {ApprovalStore} from '@durability/approval-store';
-import type {TaskRuntime} from '@capability/task/runtime';
+import type {TaskRuntime} from '@capability/task/delegation/runtime';
 import type {TaskRunStore, TaskStore} from '@capability/task/types';
-import type {DelegatedAgentOptions} from '@capability/task/delegation';
+import type {DelegatedAgentOptions} from '@capability/task/delegation/agent';
 
 export interface CreateTaskToolOptions extends DelegatedAgentOptions {
   description?: string;

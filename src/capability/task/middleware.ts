@@ -1,17 +1,17 @@
 import {createMiddleware, type BaseMiddleware} from '@core/pipeline/types';
-import {createTaskTools} from '@capability/task/tools';
+import {createTaskTools} from '@capability/task/coordination/tools';
 import {
   readSkillsRuntimeData,
 } from '@context/skills/runtime-shared';
-import {createTaskRuntime} from '@capability/task/runtime';
-import {createTaskRunMemoryStore} from '@capability/task/run-store';
+import {createTaskRuntime} from '@capability/task/delegation/runtime';
+import {createTaskRunMemoryStore} from '@capability/task/delegation/store';
+import {buildAvailableSubagentsMessage, buildTaskCompletionHandoff} from '@capability/task/delegation/prompting';
 import type {CreateTaskMiddlewareOptions} from '@capability/task/tool-types';
-import {buildAvailableSubagentsMessage, buildTaskCompletionHandoff} from '@capability/task/task-prompting';
-import {createTaskTool} from '@capability/task/task-tool';
-import {maybeHandleTaskCompletionToolCall} from '@capability/task/internal/task-completion-guard';
-import {rebindTaskRunStore} from '@capability/task/internal/task-run-support';
+import {createTaskTool} from '@capability/task/delegation/tool';
+import {maybeHandleTaskCompletionToolCall} from '@capability/task/delegation/completion-guard';
+import {rebindTaskRunStore} from '@capability/task/delegation/support';
 
-export {createTaskTool, readTaskToolOptions, TASK_TOOL_DESCRIPTION, TASK_TOOL_NAME} from '@capability/task/task-tool';
+export {createTaskTool, readTaskToolOptions, TASK_TOOL_DESCRIPTION, TASK_TOOL_NAME} from '@capability/task/delegation/tool';
 export type {CreateTaskToolOptions, CreateTaskMiddlewareOptions} from '@capability/task/tool-types';
 
 export function createTaskMiddleware(options: CreateTaskMiddlewareOptions): BaseMiddleware {

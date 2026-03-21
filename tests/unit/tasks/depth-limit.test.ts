@@ -1,7 +1,7 @@
 import {describe, test, expect} from 'bun:test';
 import {tool} from '@langchain/core/tools';
 import {z} from 'zod';
-import {markDelegationTool} from '@capability/task/delegation';
+import {markDelegationTool} from '@capability/task/delegation/agent';
 
 describe('Task delegation recursion prevention', () => {
   test('markDelegationTool returns the same tool instance', () => {

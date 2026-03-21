@@ -5,7 +5,7 @@ import {createAgentFileCheckpointer} from '@durability/checkpoint';
 import {createApprovalFileStore, type ApprovalStore} from '@durability/approval-store';
 import {ensurePermissionSettingsFile} from '@core/middleware/permission';
 import {createTaskRunFileStore, createTaskRuntime, type TaskRunStore, type TaskRuntime} from '@capability/task';
-import {createTaskFileStore} from '@capability/task/store';
+import {createTaskFileStore} from '@capability/task/coordination/store';
 import {loadModelRoutingConfigFromPath, resolveCodaraPath} from '@integration/provider';
 import {createCodaraGuidelinesSource, type GuidelinesSource} from '@context/instructions/guidelines';
 import {createCodaraPromptSource, type PromptSource} from '@context/prompts/prompt-source';

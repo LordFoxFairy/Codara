@@ -1,7 +1,7 @@
 import {ToolMessage} from '@langchain/core/messages';
 import {readBaseSystemMessage} from '@context/session-bundle/base-system-message';
 import {readSkillsRuntimeData, resolveSubagentDefinition, normalizeSubagentType} from '@context/skills/runtime-shared';
-import {buildDelegatedChildOptions, readDelegatedParentRuntimeMetadata} from '@capability/task/delegation';
+import {buildDelegatedChildOptions, readDelegatedParentRuntimeMetadata} from '@capability/task/delegation/agent';
 import type {CreateTaskToolOptions} from '@capability/task/tool-types';
 import type {TaskRunStore} from '@capability/task/types';
 import type {BootstrapAgentOptions} from '@core/agent/bootstrap';
@@ -13,7 +13,7 @@ import {
   resolveDefinitionTools,
   resolveTaskRunId,
   wrapDelegatedPrepareContext,
-} from '@capability/task/internal/task-run-support';
+} from '@capability/task/delegation/support';
 import {type ChildToolActivityCallback} from '@observability/events';
 
 export interface PrepareTaskLaunchInput {

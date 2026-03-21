@@ -4,7 +4,7 @@ import type {Agent} from '@core/agent/models/agent';
 import {bootstrapAgent, type BootstrapAgentOptions} from '@core/agent/bootstrap';
 import type {AgentResult} from '@shared/contracts/agent-types';
 import type {ApprovalStore} from '@durability/approval-store';
-import {createDelegatedAgentResult} from '@capability/task/delegation';
+import {createDelegatedAgentResult} from '@capability/task/delegation/agent';
 import type {ChildToolActivityCallback} from '@observability/events';
 import type {CodaraRuntimeEventListener, EmitRuntimeEventInput} from '@observability/events';
 import type {TaskRunRecord, TaskRunStore} from '@capability/task/types';

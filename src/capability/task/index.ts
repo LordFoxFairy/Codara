@@ -16,18 +16,18 @@ export {
   createTaskFileStore,
   createTaskMemoryStore,
   type TaskFileStoreOptions,
-} from '@capability/task/store';
+} from '@capability/task/coordination/store';
 export {
   createTaskRunFileStore,
   createTaskRunMemoryStore,
   type TaskRunFileStoreOptions,
-} from '@capability/task/run-store';
+} from '@capability/task/delegation/store';
 export {
   createTaskRuntime,
   type CreateTaskRuntimeOptions,
   type TaskRuntime,
   type TaskRuntimeLaunchInput,
-} from '@capability/task/runtime';
+} from '@capability/task/delegation/runtime';
 export {
   TASK_CREATE_TOOL_NAME,
   TASK_LIST_TOOL_NAME,
@@ -37,7 +37,7 @@ export {
   createTaskTools,
   createTaskUpdateTool,
   type TaskToolOptions,
-} from '@capability/task/tools';
+} from '@capability/task/coordination/tools';
 export {
   TASK_TOOL_DESCRIPTION,
   TASK_TOOL_NAME,

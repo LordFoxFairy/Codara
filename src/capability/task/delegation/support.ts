@@ -6,11 +6,11 @@ import {CHILD_ACTIVITY_CALLBACK_KEY, type ChildToolActivityCallback} from '@obse
 import {
   createDelegatedAgentToolMessage,
   type DelegatedAgentResult,
-} from '@capability/task/delegation';
+} from '@capability/task/delegation/agent';
 import type {SubagentDefinition} from '@context/skills/contracts';
 import {formatSubagentDisplayName} from '@context/skills/runtime-shared';
 import {filterToolsByReferences} from '@integration/tool';
-import type {TaskRuntime} from '@capability/task/runtime';
+import type {TaskRuntime} from '@capability/task/delegation/runtime';
 import type {TaskRunRecord, TaskRunStore} from '@capability/task/types';
 import {deepClone} from '@shared/clone';
 import {formatToolSummary} from '@shared/tool-display';

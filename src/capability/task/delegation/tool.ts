@@ -3,15 +3,15 @@ import {tool, type StructuredToolInterface} from '@langchain/core/tools';
 import {z} from 'zod';
 import {createAgentMemoryCheckpointer} from '@durability/checkpoint/agent';
 import {formatTaskRunLaunchResult} from '@shared/task-run-launch';
-import {createTaskRuntime} from '@capability/task/runtime';
-import {createTaskRunMemoryStore} from '@capability/task/run-store';
-import {markDelegationTool} from '@capability/task/delegation';
+import {createTaskRuntime} from '@capability/task/delegation/runtime';
+import {createTaskRunMemoryStore} from '@capability/task/delegation/store';
+import {markDelegationTool} from '@capability/task/delegation/agent';
 import type {CreateTaskToolOptions} from '@capability/task/tool-types';
 import {
   buildRecoveredTaskChildOptions,
   rebindTaskRunStore,
-} from '@capability/task/internal/task-run-support';
-import {prepareTaskLaunch} from '@capability/task/internal/task-launch-preparation';
+} from '@capability/task/delegation/support';
+import {prepareTaskLaunch} from '@capability/task/delegation/launch-preparation';
 
 export const TASK_TOOL_NAME = 'Task';
 
