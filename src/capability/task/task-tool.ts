@@ -10,8 +10,8 @@ import type {CreateTaskToolOptions} from '@capability/task/tool-types';
 import {
   buildRecoveredTaskChildOptions,
   rebindTaskRunStore,
-} from '@capability/task/task-run-support';
-import {prepareTaskLaunch} from '@capability/task/task-launch-preparation';
+} from '@capability/task/internal/task-run-support';
+import {prepareTaskLaunch} from '@capability/task/internal/task-launch-preparation';
 
 export const TASK_TOOL_NAME = 'Task';
 

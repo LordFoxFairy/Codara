@@ -13,7 +13,7 @@ import {
   resolveDefinitionTools,
   resolveTaskRunId,
   wrapDelegatedPrepareContext,
-} from '@capability/task/task-run-support';
+} from '@capability/task/internal/task-run-support';
 import {type ChildToolActivityCallback} from '@observability/events';
 
 export interface PrepareTaskLaunchInput {
