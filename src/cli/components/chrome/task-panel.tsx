@@ -12,6 +12,7 @@ interface TaskPanelProps {
   pausedCount: number;
   doneCount: number;
   errorCount: number;
+  hiddenCount?: number;
 }
 
 function buildTaskSummary(runningCount: number, pausedCount: number, doneCount: number, errorCount: number): string {
@@ -38,7 +39,7 @@ function TaskCheckbox({status, frame}: {status: ActiveTask['status']; frame: num
   }
 }
 
-export function TaskPanel({tasks, runningCount, pausedCount, doneCount, errorCount}: TaskPanelProps): React.JSX.Element | null {
+export function TaskPanel({tasks, runningCount, pausedCount, doneCount, errorCount, hiddenCount = 0}: TaskPanelProps): React.JSX.Element | null {
   const [frame, setFrame] = useState(0);
 
   useEffect(() => {
@@ -66,6 +67,9 @@ export function TaskPanel({tasks, runningCount, pausedCount, doneCount, errorCou
           </Box>
         );
       })}
+      {hiddenCount > 0 ? (
+        <Text dimColor>{`+${hiddenCount} more`}</Text>
+      ) : null}
     </Box>
   );
 }

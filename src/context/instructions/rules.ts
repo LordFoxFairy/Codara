@@ -41,7 +41,7 @@ export function matchRulesForPath(
 }
 
 function parseFrontmatter(raw: string): {globs: string[]; content: string} {
-  const match = raw.match(/^---\n([\s\S]*?)\n---\n?([\s\S]*)/);
+  const match = raw.match(/^---[ \t]*\r?\n([\s\S]*?)\r?\n---(?:[ \t]*\r?\n|$)([\s\S]*)/);
   if (!match) return {globs: [], content: raw};
 
   const frontmatter = match[1]!;

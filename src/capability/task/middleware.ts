@@ -8,7 +8,7 @@ import {createTaskRunMemoryStore} from '@capability/task/run-store';
 import type {CreateTaskMiddlewareOptions} from '@capability/task/tool-types';
 import {buildAvailableSubagentsMessage, buildTaskCompletionHandoff} from '@capability/task/task-prompting';
 import {createTaskTool} from '@capability/task/task-tool';
-import {rebindTaskRunStore} from '@capability/task/task-tool-support';
+import {maybeHandleTaskCompletionToolCall, rebindTaskRunStore} from '@capability/task/task-tool-support';
 
 export {createTaskTool, readTaskToolOptions, TASK_TOOL_DESCRIPTION, TASK_TOOL_NAME} from '@capability/task/task-tool';
 export type {CreateTaskToolOptions, CreateTaskMiddlewareOptions} from '@capability/task/tool-types';
@@ -36,6 +36,13 @@ export function createTaskMiddleware(options: CreateTaskMiddlewareOptions): Base
         context.systemMessage.push(definitions);
       }
       return undefined;
+    },
+    async wrapToolCall(context, handler) {
+      const blocked = maybeHandleTaskCompletionToolCall(context);
+      if (blocked) {
+        return blocked;
+      }
+      return handler(context);
     },
   });
 }

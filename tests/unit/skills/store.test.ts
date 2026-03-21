@@ -91,6 +91,24 @@ describe('FileSystemSkillStore', () => {
     expect(skills).toHaveLength(0)
   })
 
+  it('should parse skill frontmatter with CRLF line endings', async () => {
+    const root = await mkdtemp(path.join(tmpdir(), 'codara-skills-store-crlf-'))
+    const skillDir = path.join(root, 'brainstorming')
+    await mkdir(skillDir, {recursive: true})
+    await writeFile(
+      path.join(skillDir, 'SKILL.md'),
+      '---\r\nname: brainstorming\r\ndescription: "CRLF frontmatter should parse."\r\n---\r\n\r\n# Brainstorming\r\n',
+      'utf8'
+    )
+
+    const store = new FileSystemSkillStore({sources: [root], cacheTtlMs: 0})
+    const skills = await store.discover()
+
+    expect(skills).toHaveLength(1)
+    expect(skills[0]?.name).toBe('brainstorming')
+    expect(skills[0]?.description).toBe('CRLF frontmatter should parse.')
+  })
+
   it('should always use real SKILL.md path instead of frontmatter path', async () => {
     const root = await mkdtemp(path.join(tmpdir(), 'codara-skills-store-path-'))
     const skillDir = path.join(root, 'path-skill')

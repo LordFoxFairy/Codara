@@ -210,6 +210,18 @@ export function useReviewInput(options: UseReviewInputOptions): void {
 
     // Quick actions for permission prompt stage
     if (permissionStage !== 'always-confirm' && permissionStage !== 'reject-feedback' && !key.ctrl && !key.meta && onQuickAction) {
+      if (input === '1') {
+        onQuickAction('allow_once');
+        return;
+      }
+      if (input === '2') {
+        onQuickAction('dont_ask_again');
+        return;
+      }
+      if (input === '3') {
+        onQuickAction('deny');
+        return;
+      }
       if (input === 'y') {
         onQuickAction('allow_once');
         return;

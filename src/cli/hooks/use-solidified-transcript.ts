@@ -9,7 +9,9 @@ import {
   buildSolidifiedItemsFromRange,
   buildActiveItems,
   createToolCallLookup,
+  normalizeVisibleAssistantText,
 } from '../transcript/model';
+import {isInvalidTaskCloseoutResponse} from '../task-closeout';
 
 export interface UseSolidifiedTranscriptInput {
   coreMessages: readonly BaseMessage[];
@@ -36,6 +38,20 @@ export function orderActiveTranscriptItems(input: {
   return placeRuntimeBeforeTrailing
     ? [...input.runtimeItems, ...input.trailingItems, ...input.activeNoticeItems]
     : [...input.trailingItems, ...input.runtimeItems, ...input.activeNoticeItems];
+}
+
+export function filterTaskCompletionTranscriptItems(input: {
+  items: readonly TranscriptItem[];
+  completedTurnKind?: CliActiveTurn['kind'];
+}): TranscriptItem[] {
+  if (input.completedTurnKind !== 'task_completion') {
+    return [...input.items];
+  }
+
+  return input.items.filter((item) => !(
+    item.role === 'assistant'
+    && isInvalidTaskCloseoutResponse(item.content)
+  ));
 }
 
 /**
@@ -71,6 +87,7 @@ export function useSolidifiedTranscript(input: UseSolidifiedTranscriptInput): Us
   // Track previous activeTurn to detect transition
   const prevActiveTurnRef = useRef<CliActiveTurn | undefined>(undefined);
   const lastCompletedTurnKindRef = useRef<CliActiveTurn['kind'] | undefined>(undefined);
+  const visibleAssistantTextsRef = useRef<Set<string>>(new Set());
 
   // Emit welcome item on first render
   if (!welcomeEmittedRef.current) {
@@ -88,6 +105,7 @@ export function useSolidifiedTranscript(input: UseSolidifiedTranscriptInput): Us
   // Solidify coreMessages — but ONLY when a new turn starts (activeTurn transitions from undefined → defined).
   // This keeps the latest completed turn visible in the active area.
   const previousActiveTurn = prevActiveTurnRef.current;
+  const lastCompletedTurnKind = lastCompletedTurnKindRef.current;
   const newTurnStarted = activeTurn !== undefined && previousActiveTurn === undefined;
   if (activeTurn === undefined && previousActiveTurn !== undefined) {
     lastCompletedTurnKindRef.current = previousActiveTurn.kind;
@@ -104,14 +122,19 @@ export function useSolidifiedTranscript(input: UseSolidifiedTranscriptInput): Us
       lastSolidifiedCountRef.current,
       coreMessages.length,
       toolLookup,
+      visibleAssistantTextsRef.current,
     );
-    if (newItems.length > 0) {
+    const filteredNewItems = filterTaskCompletionTranscriptItems({
+      items: newItems,
+      completedTurnKind: lastCompletedTurnKind,
+    });
+    if (filteredNewItems.length > 0) {
       solidifiedItemsRef.current = [
         ...solidifiedItemsRef.current,
         {
           id: `solid-turn-${idCounterRef.current++}`,
           kind: 'turn',
-          items: newItems,
+          items: filteredNewItems,
         },
       ];
     }
@@ -147,12 +170,16 @@ export function useSolidifiedTranscript(input: UseSolidifiedTranscriptInput): Us
     const trailingItems: TranscriptItem[] = [];
     if (solidifiedCount < coreMessages.length) {
       const toolLookup = createToolCallLookup(coreMessages);
-      trailingItems.push(...buildSolidifiedItemsFromRange(
-        coreMessages,
-        solidifiedCount,
-        coreMessages.length,
-        toolLookup,
-      ));
+      trailingItems.push(...filterTaskCompletionTranscriptItems({
+        items: buildSolidifiedItemsFromRange(
+          coreMessages,
+          solidifiedCount,
+          coreMessages.length,
+          toolLookup,
+          visibleAssistantTextsRef.current,
+        ),
+        completedTurnKind: lastCompletedTurnKindRef.current,
+      }));
     }
 
     // Current streaming turn + runtime events
@@ -178,6 +205,28 @@ export function useSolidifiedTranscript(input: UseSolidifiedTranscriptInput): Us
       latestCompletedTurnKind: activeTurn?.kind ?? lastCompletedTurnKindRef.current,
     });
   }, [activeTurn, coreMessages, notices, now, runtimeEvents, solidifiedCount]);
+
+  useEffect(() => {
+    const visibleAssistantItems = activeItems.filter((item) => item.role === 'assistant' && item.content.trim());
+    if (visibleAssistantItems.length === 0) {
+      return;
+    }
+
+    for (const item of visibleAssistantItems) {
+      if (isInvalidTaskCloseoutResponse(item.content)) {
+        continue;
+      }
+      visibleAssistantTextsRef.current.add(normalizeVisibleAssistantText(item.content));
+    }
+
+    while (visibleAssistantTextsRef.current.size > 50) {
+      const oldest = visibleAssistantTextsRef.current.values().next().value as string | undefined;
+      if (!oldest) {
+        break;
+      }
+      visibleAssistantTextsRef.current.delete(oldest);
+    }
+  }, [activeItems]);
 
   useEffect(() => {
     const endedIds = new Set(

@@ -24,6 +24,18 @@ describe('Conditional rules', () => {
     expect(rules[0]!.content).toContain('strict TypeScript');
   });
 
+  test('loads rules with CRLF frontmatter', () => {
+    const root = createTempRulesDir();
+    writeFileSync(
+      join(root, '.codara', 'rules', 'windows.md'),
+      '---\r\nglobs: ["**/*.md"]\r\n---\r\nUse markdown rules.\r\n',
+    );
+    const rules = loadConditionalRules(root);
+    expect(rules).toHaveLength(1);
+    expect(rules[0]!.globs).toEqual(['**/*.md']);
+    expect(rules[0]!.content).toBe('Use markdown rules.');
+  });
+
   test('matchRulesForPath filters by glob', () => {
     const rules = [
       {globs: ['**/*.ts'], content: 'TS rule', name: 'ts'},

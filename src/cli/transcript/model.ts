@@ -9,6 +9,7 @@ import {readSharedTaskCoordinationArtifact} from '@shared/task-coordination-resu
 import {TOOL_NAMES} from '@shared/tool-display';
 import {formatSubagentDisplayName, normalizeSubagentType} from '@context/skills/runtime-shared';
 import type {CliActiveTurn, CliNotice} from '../app/view-state';
+import {isInvalidTaskCloseoutResponse} from '../task-closeout';
 import {formatTokenCount} from '../utils/format';
 import {computeEditDiff, type DiffData} from './diff-compute';
 
@@ -53,6 +54,7 @@ export interface BuildTranscriptItemsInput {
   runtimeEvents?: readonly CodaraRuntimeEvent[];
   nowTimestamp?: string;
   limit?: number;
+  preserveVisibleAssistantTexts?: ReadonlySet<string>;
 }
 
 export interface HasTranscriptContentInput {
@@ -73,6 +75,7 @@ export function buildTranscriptItems(input: BuildTranscriptItemsInput): Transcri
     input.activeTurn?.responseRole,
     input.runtimeEvents,
     input.activeTurn?.pendingTaskLaunch,
+    input.activeTurn?.suppressTaskLaunchResponse,
   );
   const items = [
     ...input.notices.map((notice) => ({
@@ -86,6 +89,7 @@ export function buildTranscriptItems(input: BuildTranscriptItemsInput): Transcri
       input.coreMessages,
       toolLookup,
       preferRuntimeSteps,
+      input.preserveVisibleAssistantTexts,
     )),
     ...(input.activeTurn
       ? [
@@ -118,12 +122,13 @@ export function buildSolidifiedItemsFromRange(
   startIndex: number,
   endIndex: number,
   toolLookup: Map<string, ToolCall>,
+  preserveVisibleAssistantTexts?: ReadonlySet<string>,
 ): TranscriptItem[] {
   const items: TranscriptItem[] = [];
   for (let i = startIndex; i < endIndex; i++) {
     const message = coreMessages[i];
     if (!message) continue;
-    items.push(...buildCoreMessageItems(message, i, coreMessages, toolLookup, false));
+    items.push(...buildCoreMessageItems(message, i, coreMessages, toolLookup, false, preserveVisibleAssistantTexts));
   }
   return items.filter((item) => item.content);
 }
@@ -142,6 +147,7 @@ export function buildActiveItems(input: {
     input.activeTurn?.responseRole,
     input.runtimeEvents,
     input.activeTurn?.pendingTaskLaunch,
+    input.activeTurn?.suppressTaskLaunchResponse,
   );
   const thinkingItem = input.activeTurn?.thinking
     ? [{
@@ -209,6 +215,7 @@ function shouldSuppressAssistantTaskLaunchChatter(
   role: TranscriptRole | undefined,
   runtimeEvents: readonly CodaraRuntimeEvent[] | undefined,
   pendingTaskLaunch: boolean | undefined = false,
+  suppressTaskLaunchResponse: boolean | undefined = false,
 ): boolean {
   if (role !== 'assistant') {
     return false;
@@ -219,7 +226,7 @@ function shouldSuppressAssistantTaskLaunchChatter(
     return false;
   }
 
-  if (pendingTaskLaunch) {
+  if (pendingTaskLaunch && (suppressTaskLaunchResponse || containsTaskLaunchChatter(text))) {
     return true;
   }
 
@@ -228,7 +235,11 @@ function shouldSuppressAssistantTaskLaunchChatter(
     && ((event.phase === 'start' && event.status === 'running') || (event.phase === 'update' && event.status === 'paused'))
   ));
 
-  return hasLiveTaskRuntime && containsTaskLaunchChatter(text);
+  if (!hasLiveTaskRuntime) {
+    return false;
+  }
+
+  return containsTaskLaunchChatter(text);
 }
 
 function shouldSuppressSolidifiedTaskLaunchChatter(
@@ -791,12 +802,14 @@ function buildCoreMessageItems(
   allMessages: readonly BaseMessage[],
   toolLookup: Map<string, ToolCall>,
   preferRuntimeSteps: boolean,
+  preserveVisibleAssistantTexts?: ReadonlySet<string>,
 ): TranscriptItem[] {
   const messageId = String(message.id ?? `${message.type}-${index}`);
 
   if (AIMessage.isInstance(message)) {
     const previousMessage = index > 0 ? allMessages[index - 1] : undefined;
-    return buildAssistantItems(message, messageId, previousMessage, toolLookup);
+    const nextMessage = index < allMessages.length - 1 ? allMessages[index + 1] : undefined;
+    return buildAssistantItems(message, messageId, previousMessage, nextMessage, toolLookup, preserveVisibleAssistantTexts);
   }
 
   if (ToolMessage.isInstance(message)) {
@@ -818,13 +831,19 @@ function buildAssistantItems(
   message: AIMessage,
   messageId: string,
   previousMessage: BaseMessage | undefined,
+  nextMessage: BaseMessage | undefined,
   toolLookup: Map<string, ToolCall>,
+  preserveVisibleAssistantTexts?: ReadonlySet<string>,
 ): TranscriptItem[] {
   const items: TranscriptItem[] = [];
   const text = readMessageText(message);
+  const preserveVisibleText = text ? preserveVisibleAssistantTexts?.has(normalizeVisibleAssistantText(text)) ?? false : false;
   if (
     text
-    && !shouldSuppressSolidifiedTaskLaunchChatter(message, previousMessage, toolLookup)
+    && (preserveVisibleText || (
+      !shouldSuppressSolidifiedTaskLaunchChatter(message, previousMessage, toolLookup)
+      && !shouldSuppressSupersededTaskCloseout(message, nextMessage)
+    ))
   ) {
     items.push({
       id: messageId,
@@ -856,6 +875,26 @@ function containsTaskLaunchChatter(text: string): boolean {
 
 function messageContainsTaskToolCall(message: AIMessage): boolean {
   return Array.isArray(message.tool_calls) && message.tool_calls.some((toolCall) => isTaskToolName(toolCall?.name));
+}
+
+export function normalizeVisibleAssistantText(text: string): string {
+  return text.trim().replace(/\s+/g, ' ');
+}
+
+function shouldSuppressSupersededTaskCloseout(
+  message: AIMessage,
+  nextMessage: BaseMessage | undefined,
+): boolean {
+  if (!nextMessage || !AIMessage.isInstance(nextMessage)) {
+    return false;
+  }
+
+  const text = readMessageText(message);
+  if (!text) {
+    return false;
+  }
+
+  return isInvalidTaskCloseoutResponse(text);
 }
 
 function readTokenAnnotation(message: AIMessage): string | undefined {

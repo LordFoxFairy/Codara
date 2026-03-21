@@ -57,7 +57,7 @@ export function PromptFrame({
 
         return (
           <Box key={`prompt-line-${index}`}>
-            <Text color="greenBright" bold>{index === 0 ? '> ' : '  '}</Text>
+            <Text color="green" bold>{index === 0 ? '> ' : '  '}</Text>
             <Box flexGrow={1} flexShrink={1}>
               {line.isCursorLine ? (
                 <Text dimColor={renderParts.dimColor}>
@@ -73,11 +73,11 @@ export function PromptFrame({
         );
       })}
       {viewport.hasOverflowBelow ? <Text dimColor>  ...</Text> : null}
-      {!isRunning && hasText && !isMultiLine && (
+      {!isRunning && hasText && !isMultiLine ? (
         <Box justifyContent="flex-end">
-          <Text dimColor>shift+enter for newline  ·  enter to send</Text>
+          <Text dimColor>Shift+Enter newline · Enter send</Text>
         </Box>
-      )}
+      ) : null}
     </Box>
   );
 }

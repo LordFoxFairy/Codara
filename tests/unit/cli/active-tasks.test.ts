@@ -274,6 +274,87 @@ describe('deriveActiveTasks', () => {
     expect(snapshot.errorCount).toBe(1);
   });
 
+  it('keeps done-only batches visible in the current batch projection', () => {
+    const runs: TaskRunQuerySummary[] = [
+      createTaskRun({
+        runId: 'done-1',
+        startedAt: new Date(baseTime).toISOString(),
+        label: 'Delegating done-1',
+        status: 'completed',
+        endedAt: new Date(baseTime + 1000).toISOString(),
+      }),
+      createTaskRun({
+        runId: 'done-2',
+        startedAt: new Date(baseTime + 100).toISOString(),
+        label: 'Delegating done-2',
+        status: 'completed',
+        endedAt: new Date(baseTime + 1200).toISOString(),
+      }),
+    ];
+
+    const snapshot = deriveActiveTaskSnapshot(runs, baseTime + 3000);
+    expect(snapshot.tasks).toHaveLength(2);
+    expect(snapshot.tasks.every((task) => task.status === 'done')).toBe(true);
+    expect(snapshot.doneCount).toBe(2);
+    expect(snapshot.hiddenCount).toBe(0);
+  });
+
+  it('keeps the latest active work in view and reports overflow beyond 5 tasks', () => {
+    const runs: TaskRunQuerySummary[] = [
+      createTaskRun({runId: 'done-1', startedAt: new Date(baseTime).toISOString(), label: 'Delegating done-1', status: 'completed', endedAt: new Date(baseTime + 1000).toISOString()}),
+      createTaskRun({runId: 'done-2', startedAt: new Date(baseTime + 100).toISOString(), label: 'Delegating done-2', status: 'completed', endedAt: new Date(baseTime + 1100).toISOString()}),
+      createTaskRun({runId: 'done-3', startedAt: new Date(baseTime + 200).toISOString(), label: 'Delegating done-3', status: 'completed', endedAt: new Date(baseTime + 1200).toISOString()}),
+      createTaskRun({runId: 'done-4', startedAt: new Date(baseTime + 300).toISOString(), label: 'Delegating done-4', status: 'completed', endedAt: new Date(baseTime + 1300).toISOString()}),
+      createTaskRun({runId: 'paused-1', startedAt: new Date(baseTime + 400).toISOString(), label: 'Delegating paused-1', status: 'paused'}),
+      createTaskRun({runId: 'running-1', startedAt: new Date(baseTime + 500).toISOString(), label: 'Delegating running-1', status: 'running'}),
+    ];
+
+    const snapshot = deriveActiveTaskSnapshot(runs, baseTime + 3000);
+    expect(snapshot.tasks).toHaveLength(5);
+    expect(snapshot.tasks[0]?.id).toBe('running-1');
+    expect(snapshot.tasks[1]?.id).toBe('paused-1');
+    expect(snapshot.hiddenCount).toBe(1);
+  });
+
+  it('preserves explicitly tracked multi-phase task runs instead of collapsing to only the latest inferred batch', () => {
+    const runs: TaskRunQuerySummary[] = [
+      createTaskRun({
+        runId: 'phase-1-a',
+        sessionId: 'session-1',
+        startedAt: new Date(baseTime).toISOString(),
+        label: 'Delegating Explore: Analyze product scope',
+        status: 'completed',
+        endedAt: new Date(baseTime + 1000).toISOString(),
+      }),
+      createTaskRun({
+        runId: 'phase-1-b',
+        sessionId: 'session-1',
+        startedAt: new Date(baseTime + 100).toISOString(),
+        label: 'Delegating Explore: Analyze tech stack',
+        status: 'completed',
+        endedAt: new Date(baseTime + 1100).toISOString(),
+      }),
+      createTaskRun({
+        runId: 'phase-2-a',
+        sessionId: 'session-1',
+        startedAt: new Date(baseTime + 5000).toISOString(),
+        label: 'Delegating Explore: Analyze CLI rendering',
+        status: 'running',
+      }),
+    ];
+
+    const snapshot = deriveActiveTaskSnapshot(
+      runs,
+      baseTime + 7000,
+      [],
+      ['phase-1-a', 'phase-1-b', 'phase-2-a'],
+    );
+
+    expect(snapshot.tasks.map((task) => task.id)).toEqual(['phase-2-a', 'phase-1-b', 'phase-1-a']);
+    expect(snapshot.runningCount).toBe(1);
+    expect(snapshot.doneCount).toBe(2);
+  });
+
   it('returns empty list for no task runs', () => {
     expect(deriveActiveTasks([], baseTime)).toHaveLength(0);
   });

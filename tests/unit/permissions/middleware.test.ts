@@ -70,6 +70,11 @@ describe('createPermissionMiddleware', () => {
         ? (payload.request.metadata as {codara?: {actor?: {agentType?: string}}}).codara?.actor?.agentType
         : '',
     ).toBe('main');
+    expect(
+      payload?.type === 'hil_pause'
+        ? (payload.request.metadata as {codara?: {interaction?: {kind?: string}}}).codara?.interaction?.kind
+        : '',
+    ).toBe('permission');
   });
 
   it('should resume through the generic HIL payload contract', async () => {

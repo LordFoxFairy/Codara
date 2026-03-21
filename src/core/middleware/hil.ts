@@ -449,13 +449,21 @@ function defaultResumeResolver(request: PauseRequest, context: ToolCallContext):
  */
 export function parseHILResumeActionPayload(payload: ResumePayload): HILResumeActionPayload {
   const root = readRecord(payload);
+  const normalizedDecision = normalizeResumeDecision(root.decision);
+  const editedToolArgs = isRecord(root.editedToolArgs)
+    ? root.editedToolArgs
+    : isRecord(root.updatedInput)
+      ? root.updatedInput
+      : undefined;
+  const normalizedComment = readOptionalString(root.comment) ?? readOptionalString(root.reason);
+
   return {
-    ...(isReviewDecision(root.decision) ? {decision: root.decision} : {}),
+    ...(normalizedDecision ? {decision: normalizedDecision} : {}),
     ...(readOptionalString(root.action) ? {action: readOptionalString(root.action)} : {}),
     ...(readOptionalString(root.scope) ? {scope: readOptionalString(root.scope)} : {}),
-    ...(readOptionalString(root.comment) ? {comment: readOptionalString(root.comment)} : {}),
+    ...(normalizedComment ? {comment: normalizedComment} : {}),
     ...(readOptionalString(root.editedToolName) ? {editedToolName: readOptionalString(root.editedToolName)} : {}),
-    ...(isRecord(root.editedToolArgs) ? {editedToolArgs: root.editedToolArgs} : {}),
+    ...(editedToolArgs ? {editedToolArgs} : {}),
     ...(isRecord(root.metadata) ? {metadata: root.metadata} : {}),
   };
 }
@@ -688,6 +696,16 @@ function readOptionalString(value: unknown): string | undefined {
   }
   const normalized = value.trim();
   return normalized.length > 0 ? normalized : undefined;
+}
+
+function normalizeResumeDecision(value: unknown): PauseReviewDecision | undefined {
+  if (value === 'allow') {
+    return 'approve';
+  }
+  if (value === 'deny') {
+    return 'reject';
+  }
+  return isReviewDecision(value) ? value : undefined;
 }
 
 function isReviewDecision(value: unknown): value is PauseReviewDecision {

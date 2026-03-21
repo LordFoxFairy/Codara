@@ -48,6 +48,49 @@ describe('auto memory runtime', () => {
     expect(content).toContain('Truncated after 200 lines');
   });
 
+  it('includes existing topic files with CRLF frontmatter when rewriting the memory index', async () => {
+    const rootDir = await mkdtemp(path.join(tmpdir(), 'codara-auto-memory-crlf-'));
+    const topicsDir = path.join(rootDir, 'topics');
+    await mkdir(topicsDir, {recursive: true});
+    await writeFile(
+      path.join(topicsDir, 'existing-topic.md'),
+      [
+        '---',
+        'name: Existing Topic',
+        'description: Existing topic loaded from CRLF frontmatter',
+        'type: project',
+        'fingerprint: existing-topic',
+        'area: src/existing',
+        'tool_names:',
+        '  - read_file',
+        'touched_paths:',
+        '  - src/existing.ts',
+        'created_at: 2026-03-20T00:00:00.000Z',
+        'updated_at: 2026-03-20T00:00:00.000Z',
+        '---',
+        '',
+        '## Outcome',
+        'Existing memory body.',
+        '',
+      ].join('\r\n'),
+      'utf8'
+    );
+
+    const runtime = createAutoMemoryRuntime({rootDir});
+    await runtime.recordTurn({
+      previousMessages: [],
+      nextMessages: [
+        new HumanMessage('Add a fresh memory entry'),
+        new AIMessage('Recorded a new memory item for verification.'),
+      ],
+      sessionId: 'session-crlf-frontmatter',
+    });
+
+    const index = await readFile(path.join(rootDir, 'MEMORY.md'), 'utf8');
+    expect(index).toContain('Existing Topic');
+    expect(index).toContain('Existing topic loaded from CRLF frontmatter');
+  });
+
   it('writes topic files and regenerates the MEMORY.md index after a successful turn', async () => {
     const rootDir = await mkdtemp(path.join(tmpdir(), 'codara-auto-memory-write-'));
     const runtime = createAutoMemoryRuntime({rootDir});

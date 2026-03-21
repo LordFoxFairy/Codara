@@ -1,6 +1,7 @@
 import {describe, expect, it} from 'bun:test';
 import {render} from 'ink-testing-library';
 import {StatusBar} from '../../../src/cli/components/chrome/header';
+import {TaskPanel} from '../../../src/cli/components/chrome/task-panel';
 import {ActiveTranscript, Transcript} from '../../../src/cli/components/conversation/transcript';
 import {SolidifiedBlock} from '../../../src/cli/components/conversation/solidified-block';
 import {StaticWelcome, deriveRecentSessions} from '../../../src/cli/components/conversation/welcome-state';
@@ -343,6 +344,35 @@ describe('UI alignment with Claude Code', () => {
     });
   });
 
+  describe('Task panel truncation', () => {
+    it('should show at most five rows and a +N more overflow hint', () => {
+      const tasks: ActiveTask[] = [
+        {id: 'run-1', name: 'Explore: One', status: 'running', startedAt: 1, elapsed: 1000},
+        {id: 'run-2', name: 'Explore: Two', status: 'paused', startedAt: 2, elapsed: 1000},
+        {id: 'run-3', name: 'Explore: Three', status: 'error', startedAt: 3, elapsed: 1000},
+        {id: 'run-4', name: 'Explore: Four', status: 'done', startedAt: 4, elapsed: 1000},
+        {id: 'run-5', name: 'Explore: Five', status: 'done', startedAt: 5, elapsed: 1000},
+      ];
+
+      const {lastFrame} = render(
+        <TaskPanel
+          tasks={tasks}
+          runningCount={1}
+          pausedCount={1}
+          doneCount={2}
+          errorCount={1}
+          hiddenCount={2}
+        />,
+      );
+
+      const frame = lastFrame()!;
+      expect(frame).toContain('Tasks (1 running, 1 paused, 2 done, 1 failed)');
+      expect(frame).toContain('Explore: One');
+      expect(frame).toContain('Explore: Five');
+      expect(frame).toContain('+2 more');
+    });
+  });
+
   describe('Active transcript running task grouping', () => {
     it('should group parallel running tasks into a single transcript block', () => {
       const items: TranscriptItem[] = [
@@ -388,13 +418,13 @@ describe('UI alignment with Claude Code', () => {
       expect(frame).toContain('Running 2 agents');
       expect(frame).toContain('Explore(Analyze README and package metadata)');
       expect(frame).toContain('⎿ Running (17 tool activities · 35s)');
-      expect(frame).toContain('⎿ Bash: Run test suite');
+      expect(frame).not.toContain('Bash: Run test suite');
       expect(frame).toContain('Explore(Sync architecture docs)');
       expect(frame).toContain('⎿ Running (15 tool activities · 28s)');
-      expect(frame).toContain('⎿ Update: docs/architecture-next/01-global-architecture-overview.md');
+      expect(frame).not.toContain('Update: docs/architecture-next/01-global-architecture-overview.md');
     });
 
-    it('should render a single running task as a stable execution block with summary and latest activity', () => {
+    it('should render a single running task as a stable execution block without child activity detail', () => {
       const items: TranscriptItem[] = [
         {
           id: 'active-task-run:run-1',
@@ -429,7 +459,7 @@ describe('UI alignment with Claude Code', () => {
       const frame = lastFrame()!;
       expect(frame).toContain('Explore(Analyze README and package metadata)');
       expect(frame).toContain('⎿ Running (17 tool uses · 32.3k tokens · 61s)');
-      expect(frame).toContain('⎿ Bash: Run test suite');
+      expect(frame).not.toContain('Bash: Run test suite');
       expect(frame).not.toContain('Running task');
       expect(frame).not.toContain('35s · 17 tool activities');
     });
@@ -467,7 +497,7 @@ describe('UI alignment with Claude Code', () => {
       const frame = lastFrame()!;
       expect(frame).toContain('Explore(Analyze README and package metadata)');
       expect(frame).toContain('⎿ Running (17 tool activities · 12s)');
-      expect(frame).toContain('⎿ glob(src/*)');
+      expect(frame).not.toContain('glob(src/*)');
     });
 
     it('should prefer live task detail over stale runtime activity lines', () => {
@@ -504,7 +534,7 @@ describe('UI alignment with Claude Code', () => {
       const {lastFrame} = render(<ActiveTranscript items={items} activeTasks={taskSummaries} />);
 
       const frame = lastFrame()!;
-      expect(frame).toContain('⎿ glob(src/**/*)');
+      expect(frame).not.toContain('glob(src/**/*)');
       expect(frame).not.toContain('⎿ read_file(package.json)');
     });
 
@@ -541,7 +571,7 @@ describe('UI alignment with Claude Code', () => {
       const frame = lastFrame()!;
       expect(frame).toContain('Explore(Inspect guarded task)');
       expect(frame).toContain('⎿ Waiting for review (53s)');
-      expect(frame).toContain('⎿ Waiting for approval on glob');
+      expect(frame).not.toContain('Waiting for approval on glob');
       expect(frame).not.toContain('Task waiting for review');
     });
 
@@ -571,8 +601,48 @@ describe('UI alignment with Claude Code', () => {
       const frame = lastFrame()!;
       expect(frame).toContain('⏺ Explore(Analyze README and package metadata)');
       expect(frame).toContain('⎿ Done (38s)');
-      expect(frame).toContain('⎿ Read(package.json)');
+      expect(frame).not.toContain('Read(package.json)');
       expect(frame).not.toContain('CHILD_DONE');
+    });
+
+    it('should switch a single task block to done when the live task summary has completed', () => {
+      const items: TranscriptItem[] = [
+        {
+          id: 'active-task-run:run-single-done',
+          role: 'task',
+          content: '⚙ Explore(Analyze architecture)\nRunning (12s · 2 tool activities)',
+          toolMeta: {
+            toolName: 'Task',
+            displayName: 'Explore',
+            icon: '⚙',
+            args: 'Analyze architecture',
+            status: 'running',
+            elapsed: '12s',
+            summaryLine: 'Running (12s · 2 tool activities)',
+          },
+        },
+      ];
+      const activeTasks: ActiveTask[] = [
+        {
+          id: 'run-single-done',
+          name: 'Explore: Analyze architecture',
+          status: 'done',
+          startedAt: Date.now() - 38_000,
+          endedAt: Date.now() - 1_000,
+          elapsed: 38_000,
+          detail: 'internal child summary that should stay hidden',
+          toolUseCount: 2,
+          totalTokens: 14_400,
+        },
+      ];
+
+      const {lastFrame} = render(<ActiveTranscript items={items} activeTasks={activeTasks} />);
+
+      const frame = lastFrame()!;
+      expect(frame).toContain('⏺ Explore(Analyze architecture)');
+      expect(frame).toContain('⎿ Done (2 tool uses · 14.4k tokens · 38s)');
+      expect(frame).not.toContain('⎿ Running');
+      expect(frame).not.toContain('internal child summary');
     });
 
     it('should keep completed execution blocks visible while sibling tasks continue running in parallel', () => {
@@ -635,7 +705,7 @@ describe('UI alignment with Claude Code', () => {
       const frame = lastFrame()!;
       expect(frame).toContain('Explore(Analyze tech stack)');
       expect(frame).toContain('⎿ Running (1 tool activity · 12s)');
-      expect(frame).toContain('glob(vite.config.{ts,js})');
+      expect(frame).not.toContain('glob(vite.config.{ts,js})');
       expect(frame).toContain('⏺ Explore(Analyze architecture)');
       expect(frame).toContain('⎿ Done (2 tool uses · 14.4k tokens · 38s)');
     });
@@ -676,7 +746,7 @@ describe('UI alignment with Claude Code', () => {
       const frame = lastFrame()!;
       expect(frame).toContain('⏺ Explore(Analyze architecture)');
       expect(frame).toContain('⎿ Done (2 tool uses · 14.4k tokens · 38s)');
-      expect(frame).toContain('⎿ glob(vite.config.{ts,js})');
+      expect(frame).not.toContain('glob(vite.config.{ts,js})');
       expect(frame).not.toContain('⚙ Explore(Analyze architecture) (38s)');
     });
 
@@ -728,7 +798,7 @@ describe('UI alignment with Claude Code', () => {
       expect(frame).toContain('Explore(Analyze architecture)');
       expect(frame).toContain('⎿ Done (2 tool uses · 14.4k tokens · 38s)');
       expect(frame).toContain('Explore(Analyze tech stack)');
-      expect(frame).toContain('glob(vite.config.{ts,js})');
+      expect(frame).not.toContain('glob(vite.config.{ts,js})');
       expect(frame).not.toContain('terminal-first AI agent runtime');
     });
   });
