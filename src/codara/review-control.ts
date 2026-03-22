@@ -1,5 +1,5 @@
 import type {AgentResult, AgentResumeStreamConfig, AgentStreamOutput, ReviewRequest, ReviewResumePayload} from '@core/agent';
-import type {AgentRuntime} from '@capability/subagent';
+import type {SubagentReviewResumer} from '@capability/subagent';
 import type {ApprovalStore} from '@durability/approval-store';
 import type {Session} from '@durability/session';
 import {getReviewItems} from './assembly/reviews';
@@ -16,9 +16,9 @@ export interface CodaraReviewControl {
 export function createCodaraReviewControl(options: {
   session: Session;
   approvalStore?: ApprovalStore;
-  agentRuntime?: AgentRuntime;
+  subagentReviewResumer?: SubagentReviewResumer;
 }): CodaraReviewControl {
-  const {session, approvalStore, agentRuntime} = options;
+  const {session, approvalStore, subagentReviewResumer} = options;
   let focusedReviewId: string | undefined;
 
   const listQueuedApprovalRecords = () => approvalStore?.list(session.getState().sessionId) ?? [];
@@ -61,7 +61,7 @@ export function createCodaraReviewControl(options: {
     const item = focusedItem ?? items[0]!;
     focusedReviewId = item.reviewId;
 
-    if (item.source === 'agent_run') {
+    if (item.source === 'subagent_run') {
       const record = queuedRecords.find((candidate) => candidate.approvalId === item.reviewId);
       if (!record) {
         return undefined;
@@ -98,11 +98,11 @@ export function createCodaraReviewControl(options: {
         throw new Error('No queued review is available for the current session');
       }
 
-      if (focused.item.source === 'agent_run') {
-        if (!agentRuntime) {
-          throw new Error('Agent review runtime is not available');
+      if (focused.item.source === 'subagent_run') {
+        if (!subagentReviewResumer) {
+          throw new Error('Subagent review run manager is not available');
         }
-        await agentRuntime.resumeApprovalById(focused.item.reviewId, payload, config);
+        await subagentReviewResumer.resumeApprovalById(focused.item.reviewId, payload, config);
         resolveFocusedReview();
         return undefined;
       } else {
@@ -120,11 +120,11 @@ export function createCodaraReviewControl(options: {
         throw new Error('No queued review is available for the current session');
       }
 
-      if (focused.item.source === 'agent_run') {
-        if (!agentRuntime) {
-          throw new Error('Agent review runtime is not available');
+      if (focused.item.source === 'subagent_run') {
+        if (!subagentReviewResumer) {
+          throw new Error('Subagent review run manager is not available');
         }
-        yield* agentRuntime.resumeApprovalByIdStream(focused.item.reviewId, payload, config);
+        yield* subagentReviewResumer.resumeApprovalByIdStream(focused.item.reviewId, payload, config);
       } else {
         yield* session.resumeReviewStream(payload, config);
       }

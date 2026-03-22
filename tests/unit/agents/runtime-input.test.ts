@@ -1,11 +1,11 @@
 import {describe, expect, it} from 'bun:test';
 import {HumanMessage, ToolMessage} from '@langchain/core/messages';
+import {mergeContext} from '@core/agent/models/command';
 import {
   injectReviewResumePayload,
-  mergeContext,
   normalizeAgentInput,
   readLatestReview,
-} from '@core/agent';
+} from '@core/agent/run/agent-loop';
 import type {ReviewRequest} from '@core/middleware/review';
 
 describe('agent runtime input helpers', () => {
@@ -60,10 +60,10 @@ describe('agent runtime input helpers', () => {
       },
     };
 
-    const merged = injectReviewResumePayload({review: {existing: true}}, pause, {decision: 'approve'});
+    const merged = injectReviewResumePayload({review: {existing: true}}, review, {decision: 'approve'});
     expect(merged.review).toEqual({
       existing: true,
-      currentPause: pause,
+      currentReview: review,
       resume: {decision: 'approve'},
       resumes: {
         pause_1: {decision: 'approve'},

@@ -4,7 +4,7 @@ import type {StructuredToolInterface} from '@langchain/core/tools';
 import {createAgentFileCheckpointer} from '@durability/checkpoint';
 import {createApprovalFileStore, type ApprovalStore} from '@durability/approval-store';
 import {ensurePermissionSettingsFile} from '@core/middleware/permission';
-import {createAgentRunFileStore, createAgentRuntime, type AgentRunStore, type AgentRuntime} from '@capability/subagent';
+import {createSubagentRunFileStore, createSubagentRunManager, type SubagentRunStore, type SubagentRunManager} from '@capability/subagent';
 import {createTaskFileStore} from '@capability/task';
 import {loadModelRoutingConfigFromPath, resolveCodaraPath} from '@integration/provider';
 import {createCodaraGuidelinesSource, type GuidelinesSource} from '@context/instructions/guidelines';
@@ -28,7 +28,7 @@ import {
   createRuntimeDefaultMiddlewares,
   resolveRuntimeLoggingOptions,
 } from './assembly/middleware';
-import {getAgentRunSummaries} from './assembly/agent-runs';
+import {getSubagentRunSummaries} from './assembly/subagent-runs';
 import {
   createCodaraModelCatalog,
   DEFAULT_CODARA_MODEL_ALIAS,
@@ -51,7 +51,7 @@ export type {
   ReviewBlockingScope,
   ReviewQueryItem,
   FocusedReviewQuery,
-  AgentRunQuerySummary,
+  SubagentRunQuerySummary,
 } from './types';
 
 export {createCodaraMiddlewares} from './assembly/middleware';
@@ -94,7 +94,7 @@ export async function createCodaraRuntime(options: CodaraRuntimeOptions = {}): P
   const taskStore = options.taskStore ?? createTaskFileStore({
     rootDir: path.join(runtimeStatePath, 'tasks'),
   });
-  const agentRunStore = options.agentRunStore ?? createAgentRunFileStore({
+  const subagentRunStore = options.subagentRunStore ?? createSubagentRunFileStore({
     rootDir: path.join(runtimeStatePath, 'agent-runs'),
   });
   const approvalStore = options.approvalStore ?? createApprovalFileStore({
@@ -103,7 +103,7 @@ export async function createCodaraRuntime(options: CodaraRuntimeOptions = {}): P
   const runtimeCheckpointer = options.checkpointer ?? createAgentFileCheckpointer({
     rootDir: path.join(runtimeStatePath, 'sessions'),
   });
-  const agentRuntime = createAgentRuntime({runStore: agentRunStore, approvalStore});
+  const subagentRunManager = createSubagentRunManager({runStore: subagentRunStore, approvalStore});
   ensurePermissionSettingsFile({
     cwd: options.cwd, projectRoot: options.projectRoot, userHome: options.userHome,
   });
@@ -145,9 +145,9 @@ export async function createCodaraRuntime(options: CodaraRuntimeOptions = {}): P
     options,
     runtimeTools,
     taskStore,
-    agentRunStore,
-    agentRuntime,
-    taskCheckpointer: runtimeCheckpointer,
+    subagentRunStore,
+    subagentRunManager,
+    subagentCheckpointer: runtimeCheckpointer,
     approvalStore,
     logging,
     catalog,
@@ -176,7 +176,7 @@ export async function createCodaraRuntime(options: CodaraRuntimeOptions = {}): P
     restore: options.restore ?? 'latest',
   }, undefined, {
     promptSource, guidelinesSource, hookPipeline, hookRegistry, mcpManager,
-    agentRunStore, agentRuntime, approvalStore,
+    subagentRunStore, subagentRunManager, approvalStore,
     channelRegistry: options.channelRegistry,
   });
 
@@ -213,8 +213,8 @@ export function assembleCodara(
     promptSource?: PromptSource; guidelinesSource?: GuidelinesSource;
     hookPipeline?: HookPipeline; hookRegistry?: HookRegistry;
     mcpManager?: McpManager;
-    agentRunStore?: AgentRunStore;
-    agentRuntime?: AgentRuntime;
+    subagentRunStore?: SubagentRunStore;
+    subagentRunManager?: SubagentRunManager;
     approvalStore?: ApprovalStore;
     channelRegistry?: ChannelRegistry;
   },
@@ -249,7 +249,7 @@ export function assembleCodara(
     ...(options.inputBudget ? {inputBudget: options.inputBudget} : {}),
     ...(preloadedSources?.hookPipeline ? {lifecycle: preloadedSources.hookPipeline as SessionLifecycleHooks & AgentLifecycleHooks} : {}),
   });
-  preloadedSources?.agentRunStore?.recoverSession?.(session.getState().sessionId);
+  preloadedSources?.subagentRunStore?.recoverSession?.(session.getState().sessionId);
 
   // Extra properties for commands (/reload, /hooks, /mcp)
   const mcpManager = preloadedSources?.mcpManager;
@@ -291,8 +291,8 @@ export function assembleCodara(
   };
 
   // Wire subagent events into runtime event stream
-  if (preloadedSources?.agentRuntime) {
-    preloadedSources.agentRuntime.setOnAgentEvent(
+  if (preloadedSources?.subagentRunManager) {
+    preloadedSources.subagentRunManager.setOnAgentEvent(
       (event) => { for (const listener of commandEventListeners) listener(event); },
       () => session.getState().sessionId,
     );
@@ -300,11 +300,11 @@ export function assembleCodara(
 
   const channelRegistry = preloadedSources?.channelRegistry;
 
-  const agentRuntime = preloadedSources?.agentRuntime;
+  const subagentRunManager = preloadedSources?.subagentRunManager;
   const reviewControl = createCodaraReviewControl({
     session,
     approvalStore: preloadedSources?.approvalStore,
-    agentRuntime,
+    subagentReviewResumer: subagentRunManager,
   });
   const streamInteraction = createCodaraInteractionStream({
     session,
@@ -312,7 +312,7 @@ export function assembleCodara(
   });
 
   const dispose = async (): Promise<void> => {
-    await agentRuntime?.dispose();
+    await subagentRunManager?.dispose();
     await session.dispose();
     if (mcpManager) await mcpManager.dispose();
     if (channelRegistry) await channelRegistry.disposeAll();
@@ -322,7 +322,7 @@ export function assembleCodara(
     ...session, subscribeRuntimeEvents, listCommands: commands.listCommands, executeCommand,
     listSessions: async (opts?: import('@durability/session').SessionListOptions) => options.store ? options.store.list(opts) : [],
     getMcpStatus: () => mcpManager?.status() ?? [],
-    getAgentRunSummaries: () => getAgentRunSummaries(preloadedSources?.agentRunStore, session.getState().sessionId),
+    getSubagentRunSummaries: () => getSubagentRunSummaries(preloadedSources?.subagentRunStore, session.getState().sessionId),
     listReviewItems: reviewControl.listReviewItems,
     getFocusedReview: reviewControl.getFocusedReview,
     focusReview: reviewControl.focusReview,

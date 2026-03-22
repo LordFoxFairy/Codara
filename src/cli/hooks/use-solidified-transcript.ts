@@ -32,7 +32,7 @@ export function orderActiveTranscriptItems(input: {
   activeNoticeItems: readonly TranscriptItem[];
   latestCompletedTurnKind?: CliActiveTurn['kind'];
 }): TranscriptItem[] {
-  const placeRuntimeBeforeTrailing = input.latestCompletedTurnKind === 'agent_completion'
+  const placeRuntimeBeforeTrailing = input.latestCompletedTurnKind === 'subagent_completion'
     && input.trailingItems.length > 0
     && input.runtimeItems.length > 0;
 
@@ -41,11 +41,11 @@ export function orderActiveTranscriptItems(input: {
     : [...input.trailingItems, ...input.runtimeItems, ...input.activeNoticeItems];
 }
 
-export function filterAgentCompletionTranscriptItems(input: {
+export function filterSubagentCompletionTranscriptItems(input: {
   items: readonly TranscriptItem[];
   completedTurnKind?: CliActiveTurn['kind'];
 }): TranscriptItem[] {
-  if (input.completedTurnKind !== 'agent_completion') {
+  if (input.completedTurnKind !== 'subagent_completion') {
     return [...input.items];
   }
 
@@ -125,7 +125,7 @@ export function useSolidifiedTranscript(input: UseSolidifiedTranscriptInput): Us
       toolLookup,
       visibleAssistantTextsRef.current,
     );
-    const filteredNewItems = filterAgentCompletionTranscriptItems({
+    const filteredNewItems = filterSubagentCompletionTranscriptItems({
       items: newItems,
       completedTurnKind: lastCompletedTurnKind,
     });
@@ -171,7 +171,7 @@ export function useSolidifiedTranscript(input: UseSolidifiedTranscriptInput): Us
     const trailingItems: TranscriptItem[] = [];
     if (solidifiedCount < coreMessages.length) {
       const toolLookup = createToolCallLookup(coreMessages);
-      trailingItems.push(...filterAgentCompletionTranscriptItems({
+      trailingItems.push(...filterSubagentCompletionTranscriptItems({
         items: buildSolidifiedItemsFromRange(
           coreMessages,
           solidifiedCount,

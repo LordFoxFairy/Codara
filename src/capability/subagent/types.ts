@@ -1,14 +1,14 @@
-import type {DelegatedAgentResult} from '@shared/delegation-result';
+import type {SubagentResult} from '@shared/subagent-result';
 
-export type AgentRunStatus = 'running' | 'paused' | 'completed' | 'failed';
+export type SubagentRunStatus = 'running' | 'paused' | 'completed' | 'failed';
 
-export interface AgentRunRecord {
+export interface SubagentRunRecord {
   runId: string;
   parentSessionId: string;
   label: string;
   agentName: string;
   subagentType?: string;
-  status: AgentRunStatus;
+  status: SubagentRunStatus;
   startedAt: string;
   updatedAt: string;
   endedAt?: string;
@@ -16,13 +16,13 @@ export interface AgentRunRecord {
   latestActivity?: string;
   summary?: string;
   errorMessage?: string;
-  reason?: DelegatedAgentResult['reason'];
+  reason?: SubagentResult['reason'];
   turns?: number;
   toolUseCount?: number;
   totalTokens?: number;
 }
 
-export interface AgentRunStartInput {
+export interface SubagentRunStartInput {
   runId: string;
   parentSessionId: string;
   label: string;
@@ -31,28 +31,28 @@ export interface AgentRunStartInput {
   childSessionId?: string;
 }
 
-export interface AgentRunUpdateInput {
+export interface SubagentRunUpdateInput {
   latestActivity?: string;
   toolUseCount?: number;
 }
 
-export interface AgentRunResumeInput {
+export interface SubagentRunResumeInput {
   childSessionId?: string;
   latestActivity?: string;
 }
 
-export interface AgentRunPauseInput {
+export interface SubagentRunPauseInput {
   childSessionId?: string;
   latestActivity?: string;
 }
 
-export interface AgentRunStore {
-  list(): AgentRunRecord[];
-  get(runId: string): AgentRunRecord | undefined;
-  start(input: AgentRunStartInput): AgentRunRecord;
-  update(runId: string, input: AgentRunUpdateInput): AgentRunRecord;
-  resume(runId: string, input?: AgentRunResumeInput): AgentRunRecord;
-  pause(runId: string, input?: AgentRunPauseInput): AgentRunRecord;
-  finish(runId: string, result: DelegatedAgentResult): AgentRunRecord;
+export interface SubagentRunStore {
+  list(): SubagentRunRecord[];
+  get(runId: string): SubagentRunRecord | undefined;
+  start(input: SubagentRunStartInput): SubagentRunRecord;
+  update(runId: string, input: SubagentRunUpdateInput): SubagentRunRecord;
+  resume(runId: string, input?: SubagentRunResumeInput): SubagentRunRecord;
+  pause(runId: string, input?: SubagentRunPauseInput): SubagentRunRecord;
+  finish(runId: string, result: SubagentResult): SubagentRunRecord;
   recoverSession?(sessionId: string): void;
 }

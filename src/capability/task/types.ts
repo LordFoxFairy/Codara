@@ -7,8 +7,8 @@ export interface TaskRecord {
   activeForm?: string;
   status: TaskStatus;
   owner?: string;
-  blocks: string[];
   blockedBy: string[];
+  blocks: string[];
   createdAt: string;
   updatedAt: string;
 }

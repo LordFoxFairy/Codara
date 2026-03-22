@@ -5,14 +5,14 @@ import {tool} from '@langchain/core/tools';
 import {z} from 'zod';
 import {createAgent} from '@core/agent';
 import {createReviewMiddleware} from '@core/middleware';
-import {createAgentRunMemoryStore} from '@capability/subagent';
-import {AGENT_TOOL_NAME, createAgentTool} from '@capability/subagent/middleware';
-import {readAgentRunLaunchResult} from '@shared/agent-run-launch';
+import {createSubagentRunMemoryStore} from '@capability/subagent';
+import {AGENT_TOOL_NAME, createSubagentTool} from '@capability/subagent/tool';
+import {readSubagentRunLaunchResult} from '@shared/subagent-run-launch';
 import {createBuiltinSubagentStore, createAgentSkillsMiddleware, ChildSummaryModel, ScriptedModel} from './task-tool.fixtures';
 
-describe('createAgentTool delegation', () => {
+describe('createSubagentTool delegation', () => {
   it('should stop the parent turn immediately after task launch instead of consuming a second assistant reply', async () => {
-    const runStore = createAgentRunMemoryStore();
+    const runStore = createSubagentRunMemoryStore();
 
     class CountingParentModel {
       invokeCount = 0;
@@ -46,7 +46,7 @@ describe('createAgentTool delegation', () => {
       model: parentModel as unknown as BaseChatModel,
       middleware: [createAgentSkillsMiddleware(createBuiltinSubagentStore())],
       tools: [
-        createAgentTool({
+        createSubagentTool({
           model: new ChildSummaryModel() as unknown as BaseChatModel,
           runStore,
         }),
@@ -58,14 +58,14 @@ describe('createAgentTool delegation', () => {
 
     expect(result.reason).toBe('complete');
     expect(parentModel.invokeCount).toBe(1);
-    expect(readAgentRunLaunchResult(toolMessage.artifact)).toMatchObject({
-      type: 'agent_run_started',
+    expect(readSubagentRunLaunchResult(toolMessage.artifact)).toMatchObject({
+      type: 'subagent_run_started',
       runId: 'call_task_detached',
     });
   });
 
   it('应通过正式 Task 工具启动后台子代理并立即返回 run handle', async () => {
-    const runStore = createAgentRunMemoryStore();
+    const runStore = createSubagentRunMemoryStore();
     const parent = createAgent({
       model: new ScriptedModel([
         new AIMessage({
@@ -83,7 +83,7 @@ describe('createAgentTool delegation', () => {
       ]) as unknown as BaseChatModel,
       middleware: [createAgentSkillsMiddleware(createBuiltinSubagentStore())],
       tools: [
-        createAgentTool({
+        createSubagentTool({
           model: new ChildSummaryModel() as unknown as BaseChatModel,
           runStore,
         }),
@@ -92,14 +92,14 @@ describe('createAgentTool delegation', () => {
 
     const result = await parent.invoke('delegate this');
     const toolMessage = result.state.messages.find((message) => ToolMessage.isInstance(message)) as ToolMessage;
-    const launch = readAgentRunLaunchResult(toolMessage.artifact);
+    const launch = readSubagentRunLaunchResult(toolMessage.artifact);
 
     expect(result.reason).toBe('complete');
     expect(result.state.status).toBe('idle');
     expect(result.state.pendingReview).toBeUndefined();
     expect(String(toolMessage.content)).toContain('Subagent started in background.');
     expect(launch).toEqual({
-      type: 'agent_run_started',
+      type: 'subagent_run_started',
       runId: 'call_task_delegate',
       parentSessionId: result.state.sessionId,
       sessionId: expect.any(String),
@@ -136,7 +136,7 @@ describe('createAgentTool delegation', () => {
       ]) as unknown as BaseChatModel,
       middleware: [createAgentSkillsMiddleware(createBuiltinSubagentStore())],
       tools: [
-        createAgentTool({
+        createSubagentTool({
           model: new ScriptedModel([
             new AIMessage({
               content: '',
@@ -167,7 +167,7 @@ describe('createAgentTool delegation', () => {
               },
             }),
           ],
-          runStore: createAgentRunMemoryStore(),
+          runStore: createSubagentRunMemoryStore(),
         }),
       ],
     });
@@ -181,7 +181,7 @@ describe('createAgentTool delegation', () => {
   });
 
   it('应在同一个 parent session 重复使用相同 Agent tool_call id 时创建新的 detached run', async () => {
-    const runStore = createAgentRunMemoryStore();
+    const runStore = createSubagentRunMemoryStore();
 
     class RepeatingParentModel {
       async invoke(): Promise<AIMessage> {
@@ -220,7 +220,7 @@ describe('createAgentTool delegation', () => {
       model: new RepeatingParentModel() as unknown as BaseChatModel,
       middleware: [createAgentSkillsMiddleware(createBuiltinSubagentStore())],
       tools: [
-        createAgentTool({
+        createSubagentTool({
           model: new CountingChildModel() as unknown as BaseChatModel,
           runStore,
         }),
@@ -247,7 +247,7 @@ describe('createAgentTool delegation', () => {
   });
 
   it('should launch every Agent tool call in the same parent response before detaching the turn', async () => {
-    const runStore = createAgentRunMemoryStore();
+    const runStore = createSubagentRunMemoryStore();
 
     const parent = createAgent({
       model: new ScriptedModel([
@@ -276,7 +276,7 @@ describe('createAgentTool delegation', () => {
       ]) as unknown as BaseChatModel,
       middleware: [createAgentSkillsMiddleware(createBuiltinSubagentStore())],
       tools: [
-        createAgentTool({
+        createSubagentTool({
           model: new ChildSummaryModel() as unknown as BaseChatModel,
           runStore,
         }),

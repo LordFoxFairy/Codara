@@ -43,7 +43,7 @@ import {
 } from './interaction-turn';
 import {
   CliInteractionScheduler,
-  type AgentCompletionContinuation,
+  type SubagentCompletionContinuation,
   type QueuedReviewResponseInteraction,
 } from './interaction-scheduler';
 import {readCliReviewProjection, syncProjectedReview} from './runtime-projection';
@@ -91,8 +91,8 @@ export interface CliController {
   runState: CliRunState;
   interactionState: CliInteractionState;
   sessionState: SessionState;
-  agentRunPanelVisible: boolean;
-  toggleAgentRunsPanel: () => void;
+  subagentRunPanelVisible: boolean;
+  toggleSubagentRunsPanel: () => void;
   expandedAll: boolean;
   toggleExpand: () => void;
   insertText: (input: string) => void;
@@ -234,10 +234,10 @@ export function useCliController(options: UseCliControllerOptions): CliControlle
     promptBlocked: false,
   });
   const [sessionState, setSessionState] = useState<SessionState>(() => codara.getState());
-  const [agentRunPanelVisible, setAgentRunPanelVisible] = useState(true);
+  const [subagentRunPanelVisible, setSubagentRunPanelVisible] = useState(true);
   const [expandedAll, setExpandedAll] = useState(false);
   const [commandOutput, setCommandOutput] = useState<{content: string; commandName?: string; scrollOffset: number} | undefined>();
-  const interactionScheduler = useMemo(() => new CliInteractionScheduler<AgentCompletionContinuation>(), []);
+  const interactionScheduler = useMemo(() => new CliInteractionScheduler<SubagentCompletionContinuation>(), []);
   const initialPromptSentRef = useRef(false);
   const initialCoreStateLoadedRef = useRef(false);
   const reviewRef = useRef<CliReviewState | undefined>(undefined);
@@ -384,7 +384,7 @@ export function useCliController(options: UseCliControllerOptions): CliControlle
     return nextAgentState;
   }, [codara, setReviewState, suppressSettlingDismissedReview, syncInteractionState]);
 
-  const runAgentCompletionContinuation = useCallback(async (continuation: AgentCompletionContinuation) => {
+  const runSubagentCompletionContinuation = useCallback(async (continuation: SubagentCompletionContinuation) => {
     if (interactionScheduler.isRunning()) {
       interactionScheduler.setPendingContinuation(continuation);
       syncInteractionState();
@@ -398,7 +398,7 @@ export function useCliController(options: UseCliControllerOptions): CliControlle
       prompt: '',
       response: '',
       responseRole: 'assistant',
-      kind: 'agent_completion',
+      kind: 'subagent_completion',
     });
 
     let sawText = false;
@@ -407,7 +407,7 @@ export function useCliController(options: UseCliControllerOptions): CliControlle
       for await (const chunk of codara.streamInteraction({
         kind: 'continuation',
         context: {
-          codaraAgentCompletion: {
+          codaraSubagentCompletion: {
             runs: continuation.runs,
           },
         },
@@ -509,11 +509,11 @@ export function useCliController(options: UseCliControllerOptions): CliControlle
     }
     syncInteractionState();
     void (async () => {
-      await runAgentCompletionContinuation(continuation);
+      await runSubagentCompletionContinuation(continuation);
       flushPendingBackgroundNotices();
       drainScheduledInteractions();
     })();
-  }, [flushPendingBackgroundNotices, interactionScheduler, runQueuedReviewResponse, runAgentCompletionContinuation, syncInteractionState]);
+  }, [flushPendingBackgroundNotices, interactionScheduler, runQueuedReviewResponse, runSubagentCompletionContinuation, syncInteractionState]);
 
   useEffect(() => {
     setRuntimeEvents([]);
@@ -542,7 +542,7 @@ export function useCliController(options: UseCliControllerOptions): CliControlle
       }
       if (route.completionContinuation) {
         if (route.runContinuationImmediately) {
-          void runAgentCompletionContinuation(route.completionContinuation);
+          void runSubagentCompletionContinuation(route.completionContinuation);
         } else {
           interactionScheduler.setPendingContinuation(route.completionContinuation);
           syncInteractionState();
@@ -552,7 +552,7 @@ export function useCliController(options: UseCliControllerOptions): CliControlle
         }
       }
 
-      if (route.foregroundDelegatedReview) {
+      if (route.foregroundSubagentReview) {
         endInteraction();
         setRunState({status: 'paused'});
         refreshAuxiliaryState();
@@ -563,7 +563,7 @@ export function useCliController(options: UseCliControllerOptions): CliControlle
         refreshAuxiliaryState();
       }
     });
-  }, [codara, drainScheduledInteractions, endInteraction, interactionScheduler, refreshAuxiliaryState, runAgentCompletionContinuation, syncInteractionState]);
+  }, [codara, drainScheduledInteractions, endInteraction, interactionScheduler, refreshAuxiliaryState, runSubagentCompletionContinuation, syncInteractionState]);
 
   const runSlashCommand = useCallback(async (prompt: string) => {
     const result = await codara.executeCommand(prompt);
@@ -769,8 +769,8 @@ export function useCliController(options: UseCliControllerOptions): CliControlle
     applyComposerChange((current) => moveComposerCursorEnd(current));
   }, [applyComposerChange]);
 
-  const toggleAgentRunsPanel = useCallback(() => {
-    setAgentRunPanelVisible(current => !current);
+  const toggleSubagentRunsPanel = useCallback(() => {
+    setSubagentRunPanelVisible(current => !current);
   }, []);
 
   const toggleExpand = useCallback(() => {
@@ -1212,8 +1212,8 @@ export function useCliController(options: UseCliControllerOptions): CliControlle
     submitText,
     focusReviewWindow,
     focusPromptWindow,
-    agentRunPanelVisible,
-    toggleAgentRunsPanel,
+    subagentRunPanelVisible,
+    toggleSubagentRunsPanel,
     expandedAll,
     toggleExpand,
     moveReviewLeft,
@@ -1278,10 +1278,10 @@ export function useCliController(options: UseCliControllerOptions): CliControlle
     submitDraft,
     submitReviewActionCommand,
     submitText,
-    agentRunPanelVisible,
+    subagentRunPanelVisible,
     toggleExpand,
     toggleReviewFocus,
-    toggleAgentRunsPanel,
+    toggleSubagentRunsPanel,
     coreMessages,
   ]);
 }

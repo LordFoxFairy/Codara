@@ -1,4 +1,4 @@
-import type {Codara, CodaraRuntimeEvent, AgentRunQuerySummary} from '@/index';
+import type {Codara, CodaraRuntimeEvent, SubagentRunQuerySummary} from '@/index';
 import {shouldHideRuntimeEventForTranscript} from '../transcript/model';
 import type {CliNotice} from './view-state';
 
@@ -9,7 +9,7 @@ export interface TrackedTaskBatch {
   continuationStarted: boolean;
 }
 
-export interface AgentCompletionHandoff {
+export interface SubagentCompletionHandoff {
   runId: string;
   label: string;
   agentName: string;
@@ -20,19 +20,19 @@ export interface AgentCompletionHandoff {
   totalTokens?: number;
 }
 
-export interface AgentCompletionContinuation {
+export interface SubagentCompletionContinuation {
   parentSessionId: string;
-  runs: AgentCompletionHandoff[];
+  runs: SubagentCompletionHandoff[];
 }
 
 export interface RuntimeEventRouteResult {
   trackedTaskBatch: TrackedTaskBatch | undefined;
-  foregroundDelegatedReview: boolean;
+  foregroundSubagentReview: boolean;
   shouldSealActiveTurn: boolean;
   shouldRefreshAuxiliaryState: boolean;
   immediateNotice?: CliNotice;
   queuedNotice?: CliNotice;
-  completionContinuation?: AgentCompletionContinuation;
+  completionContinuation?: SubagentCompletionContinuation;
   runContinuationImmediately: boolean;
 }
 
@@ -44,22 +44,22 @@ export function routeCliRuntimeEvent(input: {
 }): RuntimeEventRouteResult {
   const {codara, event, interactionRunning} = input;
   const trackedTaskBatch = updateTrackedTaskBatch(event, input.trackedTaskBatch);
-  const foregroundDelegatedReview = isDelegatedTaskReviewEvent(event);
-  const completionContinuation = resolveAgentCompletionContinuation(codara, event, trackedTaskBatch);
+  const foregroundSubagentReview = isSubagentReviewEvent(event);
+  const completionContinuation = resolveSubagentCompletionContinuation(codara, event, trackedTaskBatch);
   if (completionContinuation && trackedTaskBatch) {
     trackedTaskBatch.continuationStarted = true;
   }
 
   const notice = summarizeBackgroundTaskNotice(event);
-  const runContinuationImmediately = Boolean(completionContinuation) && !interactionRunning && !foregroundDelegatedReview;
+  const runContinuationImmediately = Boolean(completionContinuation) && !interactionRunning && !foregroundSubagentReview;
 
   return {
     trackedTaskBatch,
-    foregroundDelegatedReview,
+    foregroundSubagentReview,
     shouldSealActiveTurn: shouldSealActiveTurnForRuntimeEvent(event),
-    shouldRefreshAuxiliaryState: !interactionRunning && !foregroundDelegatedReview && shouldRefreshAuxiliaryState(event),
-    ...(notice && !interactionRunning && !foregroundDelegatedReview ? {immediateNotice: notice} : {}),
-    ...(notice && (interactionRunning || foregroundDelegatedReview === false) && (interactionRunning && !foregroundDelegatedReview)
+    shouldRefreshAuxiliaryState: !interactionRunning && !foregroundSubagentReview && shouldRefreshAuxiliaryState(event),
+    ...(notice && !interactionRunning && !foregroundSubagentReview ? {immediateNotice: notice} : {}),
+    ...(notice && (interactionRunning || foregroundSubagentReview === false) && (interactionRunning && !foregroundSubagentReview)
       ? {queuedNotice: notice}
       : {}),
     ...(completionContinuation ? {completionContinuation} : {}),
@@ -79,7 +79,7 @@ function shouldSealActiveTurnForRuntimeEvent(event: CodaraRuntimeEvent): boolean
   return event.phase === 'start' || event.phase === 'end';
 }
 
-function isDelegatedTaskReviewEvent(event: CodaraRuntimeEvent): boolean {
+function isSubagentReviewEvent(event: CodaraRuntimeEvent): boolean {
   return event.kind === 'agent' && event.phase === 'update' && event.status === 'paused';
 }
 
@@ -110,9 +110,9 @@ function summarizeBackgroundTaskNotice(event: CodaraRuntimeEvent): CliNotice | u
   return undefined;
 }
 
-function parseAgentRunIdFromEvent(event: CodaraRuntimeEvent): string | undefined {
+function parseSubagentRunIdFromEvent(event: CodaraRuntimeEvent): string | undefined {
   const candidate = event.parentId ?? event.id;
-  const prefix = 'agent-run:';
+  const prefix = 'subagent-run:';
   return candidate.startsWith(prefix) ? candidate.slice(prefix.length) : undefined;
 }
 
@@ -120,7 +120,7 @@ function isRunIdBackedTaskStartEvent(event: CodaraRuntimeEvent): boolean {
   return event.kind === 'agent'
     && event.phase === 'start'
     && event.status === 'running'
-    && Boolean(parseAgentRunIdFromEvent(event));
+    && Boolean(parseSubagentRunIdFromEvent(event));
 }
 
 function isPendingTaskPlaceholderStartEvent(event: CodaraRuntimeEvent): boolean {
@@ -153,7 +153,7 @@ function updateTrackedTaskBatch(
     return currentBatch;
   }
 
-  const runId = parseAgentRunIdFromEvent(event)!;
+  const runId = parseSubagentRunIdFromEvent(event)!;
   if (!currentBatch || currentBatch.parentSessionId !== event.sessionId || currentBatch.continuationStarted) {
     return {
       parentSessionId: event.sessionId,
@@ -172,11 +172,11 @@ function updateTrackedTaskBatch(
   };
 }
 
-function isAgentRunTerminal(run: AgentRunQuerySummary): boolean {
+function isSubagentRunTerminal(run: SubagentRunQuerySummary): boolean {
   return run.status === 'completed' || run.status === 'failed';
 }
 
-function toAgentCompletionHandoff(run: AgentRunQuerySummary): AgentCompletionHandoff {
+function toSubagentCompletionHandoff(run: SubagentRunQuerySummary): SubagentCompletionHandoff {
   return {
     runId: run.runId,
     label: run.label,
@@ -189,34 +189,34 @@ function toAgentCompletionHandoff(run: AgentRunQuerySummary): AgentCompletionHan
   };
 }
 
-function resolveAgentCompletionContinuation(
+function resolveSubagentCompletionContinuation(
   codara: Codara,
   event: CodaraRuntimeEvent,
   batch: TrackedTaskBatch | undefined,
-): AgentCompletionContinuation | undefined {
+): SubagentCompletionContinuation | undefined {
   if (event.kind !== 'agent' || event.phase !== 'end') {
     return undefined;
   }
 
-  const runId = parseAgentRunIdFromEvent(event);
+  const runId = parseSubagentRunIdFromEvent(event);
   if (!runId || !batch || batch.continuationStarted || batch.parentSessionId !== event.sessionId || !batch.runIds.has(runId)) {
     return undefined;
   }
 
-  const agentRuns = codara.getAgentRunSummaries();
+  const agentRuns = codara.getSubagentRunSummaries();
   const batchRuns = [...batch.runIds]
     .map((batchRunId) => agentRuns.find((run) => run.runId === batchRunId && run.parentSessionId === event.sessionId))
-    .filter((run): run is AgentRunQuerySummary => Boolean(run));
+    .filter((run): run is SubagentRunQuerySummary => Boolean(run));
   if (
     batch.runIds.size < batch.expectedCount
     || batchRuns.length !== batch.runIds.size
-    || batchRuns.some((run) => !isAgentRunTerminal(run))
+    || batchRuns.some((run) => !isSubagentRunTerminal(run))
   ) {
     return undefined;
   }
 
   return {
     parentSessionId: event.sessionId,
-    runs: batchRuns.map(toAgentCompletionHandoff),
+    runs: batchRuns.map(toSubagentCompletionHandoff),
   };
 }

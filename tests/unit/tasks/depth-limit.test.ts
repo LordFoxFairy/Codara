@@ -1,25 +1,30 @@
 import {describe, test, expect} from 'bun:test';
 import {tool} from '@langchain/core/tools';
 import {z} from 'zod';
-import {markDelegationTool} from '@capability/subagent/delegated-child';
+import {buildSubagentChildOptions} from '@capability/subagent/bootstrap';
+import {AGENT_TOOL_NAME} from '@capability/subagent/tool';
 
 describe('Task delegation recursion prevention', () => {
-  test('markDelegationTool returns the same tool instance', () => {
-    const myTool = tool(async () => 'ok', {name: 'Agent', schema: z.object({})});
-    const marked = markDelegationTool(myTool);
-    expect(marked).toBe(myTool);
-  });
+  test('buildSubagentChildOptions removes Agent delegation tools from child tool sets', async () => {
+    const agentTool = tool(async () => 'ok', {name: AGENT_TOOL_NAME, schema: z.object({})});
+    const bashTool = tool(async () => 'ok', {name: 'bash', schema: z.object({})});
 
-  test('markDelegationTool sets the delegation symbol', () => {
-    const myTool = tool(async () => 'ok', {name: 'Agent', schema: z.object({})});
-    markDelegationTool(myTool);
-    const sym = Symbol.for('codara.subagent.delegation.tool');
-    expect((myTool as unknown as Record<symbol, unknown>)[sym]).toBe(true);
-  });
+    const child = await buildSubagentChildOptions({
+      model: async () => ({}) as never,
+      tools: [agentTool, bashTool],
+    }, {
+      prompt: 'child prompt',
+      toolName: AGENT_TOOL_NAME,
+      parentExecution: {
+        sessionId: 'session',
+        runId: 'run',
+        turn: 1,
+        requestId: 'request',
+        toolIndex: 0,
+        toolCallId: 'tool-call',
+      },
+    });
 
-  test('unmarked tools do not have delegation symbol', () => {
-    const myTool = tool(async () => 'ok', {name: 'bash', schema: z.object({})});
-    const sym = Symbol.for('codara.subagent.delegation.tool');
-    expect((myTool as unknown as Record<symbol, unknown>)[sym]).toBeUndefined();
+    expect(child.tools.map((entry) => entry.name)).toEqual(['bash']);
   });
 });

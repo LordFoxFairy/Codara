@@ -32,9 +32,9 @@ describe('FileApprovalStore', () => {
     const rootDir = await mkdtemp(path.join(tmpdir(), 'codara-approval-agent-run-'));
     try {
       const store = createApprovalFileStore({rootDir});
-      store.upsertAgentRunApproval({
+      store.upsertSubagentRunApproval({
         sessionId: 'session-task-run',
-        agentRunId: 'task-run-1',
+        subagentRunId: 'task-run-1',
         childSessionId: 'child-session-1',
         reviewRequest: makeReviewRequest('approval-task-run', 'Subagent approval required', 'dangerous_tool'),
       });
@@ -42,9 +42,9 @@ describe('FileApprovalStore', () => {
       const reopened = createApprovalFileStore({rootDir});
       expect(reopened.get('approval-task-run')).toEqual(expect.objectContaining({
         approvalId: 'approval-task-run',
-        source: 'agent_run',
+        source: 'subagent_run',
         sessionId: 'session-task-run',
-        agentRunId: 'task-run-1',
+        subagentRunId: 'task-run-1',
         childSessionId: 'child-session-1',
         description: 'Subagent approval required',
         toolName: 'dangerous_tool',
@@ -64,34 +64,34 @@ describe('FileApprovalStore', () => {
     try {
       const store = createApprovalFileStore({rootDir});
 
-      store.upsertAgentRunApproval({
+      store.upsertSubagentRunApproval({
         sessionId: 'session-task-run',
-        agentRunId: 'task-run-1',
+        subagentRunId: 'task-run-1',
         childSessionId: 'child-session-1',
         reviewRequest: makeReviewRequest('approval-task-run-1', 'Subagent approval required', 'dangerous_tool'),
       });
-      store.upsertAgentRunApproval({
+      store.upsertSubagentRunApproval({
         sessionId: 'session-task-run',
-        agentRunId: 'task-run-2',
+        subagentRunId: 'task-run-2',
         childSessionId: 'child-session-2',
         reviewRequest: makeReviewRequest('approval-task-run-2', 'Subagent approval required', 'dangerous_tool'),
       });
-      store.upsertAgentRunApproval({
+      store.upsertSubagentRunApproval({
         sessionId: 'session-task-run',
-        agentRunId: 'task-run-3',
+        subagentRunId: 'task-run-3',
         childSessionId: 'child-session-3',
         reviewRequest: makeReviewRequest('approval-task-run-3', 'Subagent approval required', 'dangerous_tool'),
       });
 
-      store.removeByAgentRunId('task-run-1');
+      store.removeBySubagentRunId('task-run-1');
 
       expect(store.get('approval-task-run-1')).toBeUndefined();
       expect(store.get('approval-task-run-2')).toEqual(expect.objectContaining({
-        agentRunId: 'task-run-2',
+        subagentRunId: 'task-run-2',
         childSessionId: 'child-session-2',
       }));
       expect(store.get('approval-task-run-3')).toEqual(expect.objectContaining({
-        agentRunId: 'task-run-3',
+        subagentRunId: 'task-run-3',
         childSessionId: 'child-session-3',
       }));
     } finally {

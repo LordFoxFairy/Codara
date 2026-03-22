@@ -32,7 +32,7 @@ export interface CliActiveTurn {
   responseBeforeRuntime?: string;
   response: string;
   responseRole: 'assistant' | 'system';
-  kind?: 'prompt' | 'agent_completion';
+  kind?: 'prompt' | 'subagent_completion';
   /** True once the current streaming turn delegates the foreground to an internal interaction surface. */
   suppressInteractionResponse?: boolean;
   /** True once the current streaming model message includes an Agent tool call. */

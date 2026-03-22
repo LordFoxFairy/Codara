@@ -1,11 +1,11 @@
 import {describe, expect, it} from 'bun:test';
 import {render} from 'ink-testing-library';
-import {AgentRunPanel} from '@/cli/components/chrome/agent-run-panel';
-import type {ActiveAgentRun} from '@/cli/hooks/use-agent-runs';
+import {SubagentRunPanel} from '@/cli/components/chrome/subagent-run-panel';
+import type {ActiveSubagentRun} from '@/cli/hooks/use-subagent-runs';
 
-describe('AgentRunPanel', () => {
+describe('SubagentRunPanel', () => {
   it('renders paused approval-waiting tasks with a paused marker', () => {
-    const runs: ActiveAgentRun[] = [
+    const runs: ActiveSubagentRun[] = [
       {
         id: 'task-paused',
         name: 'approval: unsafe write',
@@ -17,7 +17,7 @@ describe('AgentRunPanel', () => {
     ];
 
     const {lastFrame} = render(
-      <AgentRunPanel runs={runs} runningCount={0} pausedCount={1} doneCount={0} errorCount={0} />,
+      <SubagentRunPanel runs={runs} runningCount={0} pausedCount={1} doneCount={0} errorCount={0} />,
     );
 
     const frame = lastFrame()!;
@@ -27,7 +27,7 @@ describe('AgentRunPanel', () => {
   });
 
   it('keeps the panel as a pure task list without elapsed or token stats', () => {
-    const runs: ActiveAgentRun[] = [
+    const runs: ActiveSubagentRun[] = [
       {
         id: 'task-running',
         name: 'explore: inspect project structure',
@@ -40,7 +40,7 @@ describe('AgentRunPanel', () => {
     ];
 
     const {lastFrame} = render(
-      <AgentRunPanel runs={runs} runningCount={1} pausedCount={0} doneCount={0} errorCount={0} />,
+      <SubagentRunPanel runs={runs} runningCount={1} pausedCount={0} doneCount={0} errorCount={0} />,
     );
 
     const frame = lastFrame()!;

@@ -576,7 +576,6 @@ function buildObservabilityMetadata(
 ): Record<string, unknown> {
   const skill = extractSkillFromMetadata(metadata);
   const actorType = extractActorType(metadata);
-  const delegatedChildSessionId = extractDelegatedChildSessionId(metadata);
   const actionIds = extractActionIds(ui);
   return {
     toolResultType,
@@ -584,7 +583,6 @@ function buildObservabilityMetadata(
     ...(channel ? {interactionChannel: channel} : {}),
     ...(skill ? {interactionSkill: skill} : {}),
     ...(actorType ? {interactionActorType: actorType} : {}),
-    ...(delegatedChildSessionId ? {delegatedChildSessionId} : {}),
     ...(actionIds.length > 0 ? {interactionActionIds: actionIds} : {}),
   };
 }
@@ -606,22 +604,6 @@ function extractActorType(metadata: Record<string, unknown> | undefined): string
 
   return typeof (actor as Record<string, unknown>).agentType === 'string'
     ? String((actor as Record<string, unknown>).agentType)
-    : undefined;
-}
-
-function extractDelegatedChildSessionId(metadata: Record<string, unknown> | undefined): string | undefined {
-  const codara = metadata?.codara;
-  if (!codara || typeof codara !== 'object' || Array.isArray(codara)) {
-    return undefined;
-  }
-
-  const delegated = (codara as Record<string, unknown>).delegatedSubagent;
-  if (!delegated || typeof delegated !== 'object' || Array.isArray(delegated)) {
-    return undefined;
-  }
-
-  return typeof (delegated as Record<string, unknown>).childSessionId === 'string'
-    ? String((delegated as Record<string, unknown>).childSessionId)
     : undefined;
 }
 

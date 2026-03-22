@@ -17,7 +17,7 @@ import {
 } from '@core/pipeline/types';
 import {parseReviewToolMessagePayload} from '@core/middleware/review';
 import {toError} from './errors';
-import {readAgentRunLaunchResult} from '@shared/agent-run-launch';
+import {readSubagentRunLaunchResult} from '@shared/subagent-run-launch';
 
 export type AgentTurnOutcome = 'continue' | 'complete';
 
@@ -170,7 +170,7 @@ async function runSingleTool(
     return 'paused';
   }
 
-  if (readAgentRunLaunchResult(toolMessage.artifact)) {
+  if (readSubagentRunLaunchResult(toolMessage.artifact)) {
     return 'detached';
   }
 

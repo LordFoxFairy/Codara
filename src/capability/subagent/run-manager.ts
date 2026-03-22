@@ -1,16 +1,17 @@
 import {HumanMessage} from '@langchain/core/messages';
 import type {AgentResumeStreamConfig, AgentStreamOutput, ReviewRequest, ReviewResumePayload} from '@core/agent';
 import type {Agent} from '@core/agent/models/agent';
-import {bootstrapAgent, type BootstrapAgentOptions} from '@core/agent/bootstrap';
+import type {BootstrapAgentOptions} from '@core/agent/bootstrap';
 import type {AgentResult} from '@shared/contracts/agent-types';
 import type {ApprovalRecord, ApprovalStore} from '@durability/approval-store';
-import {createDelegatedAgentResult} from '@capability/subagent/delegated-child';
+import {bootstrapSubagent, createSubagentResult} from '@capability/subagent/bootstrap';
+import {mergeSubagentRunRecoveryMetadata} from '@capability/subagent/review-metadata';
 import type {ChildToolActivityCallback} from '@observability/events';
 import type {CodaraRuntimeEventListener, EmitRuntimeEventInput} from '@observability/events';
-import type {AgentRunRecord, AgentRunStore} from '@capability/subagent/types';
-import type {AgentRunLaunchResult} from '@shared/agent-run-launch';
+import type {SubagentRunRecord, SubagentRunStore} from '@capability/subagent/types';
+import type {SubagentRunLaunchResult} from '@shared/subagent-run-launch';
 
-export interface AgentRuntimeLaunchInput {
+export interface SubagentLaunchInput {
   runId: string;
   parentSessionId: string;
   childSessionId: string;
@@ -22,9 +23,9 @@ export interface AgentRuntimeLaunchInput {
   maxTurns?: number;
 }
 
-export interface AgentRuntime {
-  launch(input: AgentRuntimeLaunchInput): Promise<AgentRunLaunchResult>;
-  registerRecoveryBuilder(builder: AgentRuntimeRecoveryBuilder): void;
+export interface SubagentRunManager {
+  launch(input: SubagentLaunchInput): Promise<SubagentRunLaunchResult>;
+  registerRecoveryBuilder(builder: SubagentRecoveryBuilder): void;
   setOnAgentEvent(listener: CodaraRuntimeEventListener, sessionId: string | (() => string)): void;
   recordActivity(runId: string, info: Parameters<ChildToolActivityCallback>[0]): void;
   resumeRun(runId: string, payload: ReviewResumePayload, config?: AgentResumeStreamConfig): Promise<void>;
@@ -42,7 +43,16 @@ export interface AgentRuntime {
   dispose(): Promise<void>;
 }
 
-interface AgentRunHandle {
+export interface SubagentReviewResumer {
+  resumeApprovalById(approvalId: string, payload: ReviewResumePayload, config?: AgentResumeStreamConfig): Promise<void>;
+  resumeApprovalByIdStream(
+    approvalId: string,
+    payload: ReviewResumePayload,
+    config?: AgentResumeStreamConfig,
+  ): AsyncGenerator<AgentStreamOutput, void, void>;
+}
+
+interface SubagentRunHandle {
   runId: string;
   parentSessionId: string;
   childSessionId: string;
@@ -55,47 +65,47 @@ interface AgentRunHandle {
   agentPromise?: Promise<Agent>;
 }
 
-export interface CreateAgentRuntimeOptions {
-  runStore?: AgentRunStore;
+export interface CreateSubagentRunManagerOptions {
+  runStore?: SubagentRunStore;
   approvalStore?: ApprovalStore;
 }
 
-export interface AgentRuntimeRecoverySpec {
+export interface SubagentRecoverySpec {
   childOptions: BootstrapAgentOptions;
   maxTurns?: number;
 }
 
-export type AgentRuntimeRecoveryBuilder = (
-  run: AgentRunRecord,
+export type SubagentRecoveryBuilder = (
+  run: SubagentRunRecord,
   approval?: ApprovalRecord,
-) => Promise<AgentRuntimeRecoverySpec | undefined> | AgentRuntimeRecoverySpec | undefined;
+) => Promise<SubagentRecoverySpec | undefined> | SubagentRecoverySpec | undefined;
 
-export function createAgentRuntime(options: CreateAgentRuntimeOptions): AgentRuntime {
-  return new InMemoryAgentRuntime(options);
+export function createSubagentRunManager(options: CreateSubagentRunManagerOptions): SubagentRunManager {
+  return new InMemorySubagentRunManager(options);
 }
 
-class InMemoryAgentRuntime implements AgentRuntime {
-  private readonly handles = new Map<string, AgentRunHandle>();
+class InMemorySubagentRunManager implements SubagentRunManager {
+  private readonly handles = new Map<string, SubagentRunHandle>();
   private onAgentEventCallback?: CodaraRuntimeEventListener;
   private sessionIdGetter?: string | (() => string);
-  private recoveryBuilder?: AgentRuntimeRecoveryBuilder;
+  private recoveryBuilder?: SubagentRecoveryBuilder;
 
-  constructor(private readonly options: CreateAgentRuntimeOptions) {}
+  constructor(private readonly options: CreateSubagentRunManagerOptions) {}
 
   setOnAgentEvent(listener: CodaraRuntimeEventListener, sessionId: string | (() => string)): void {
     this.onAgentEventCallback = listener;
     this.sessionIdGetter = sessionId;
   }
 
-  registerRecoveryBuilder(builder: AgentRuntimeRecoveryBuilder): void {
+  registerRecoveryBuilder(builder: SubagentRecoveryBuilder): void {
     this.recoveryBuilder = builder;
   }
 
-  async launch(input: AgentRuntimeLaunchInput): Promise<AgentRunLaunchResult> {
+  async launch(input: SubagentLaunchInput): Promise<SubagentRunLaunchResult> {
     const existingHandle = this.handles.get(input.runId);
     if (existingHandle) {
       return {
-        type: 'agent_run_started',
+        type: 'subagent_run_started',
         runId: existingHandle.runId,
         parentSessionId: existingHandle.parentSessionId,
         sessionId: existingHandle.childSessionId,
@@ -107,7 +117,7 @@ class InMemoryAgentRuntime implements AgentRuntime {
     const existingRun = this.options.runStore?.get(input.runId);
     if (existingRun && (existingRun.status === 'running' || existingRun.status === 'paused')) {
       return {
-        type: 'agent_run_started',
+        type: 'subagent_run_started',
         runId: existingRun.runId,
         parentSessionId: existingRun.parentSessionId,
         sessionId: existingRun.childSessionId ?? input.childSessionId,
@@ -116,7 +126,7 @@ class InMemoryAgentRuntime implements AgentRuntime {
       };
     }
 
-    this.options.approvalStore?.removeByAgentRunId(input.runId);
+    this.options.approvalStore?.removeBySubagentRunId(input.runId);
     this.options.runStore?.start({
       runId: input.runId,
       parentSessionId: input.parentSessionId,
@@ -126,7 +136,7 @@ class InMemoryAgentRuntime implements AgentRuntime {
       childSessionId: input.childSessionId,
     });
 
-    const handle: AgentRunHandle = {
+    const handle: SubagentRunHandle = {
       runId: input.runId,
       parentSessionId: input.parentSessionId,
       childSessionId: input.childSessionId,
@@ -138,16 +148,16 @@ class InMemoryAgentRuntime implements AgentRuntime {
     };
     this.handles.set(input.runId, handle);
     this.emitAgentEvent({
-      id: agentRootEventId(input.runId),
+      id: subagentRunEventId(input.runId),
       kind: 'agent',
       phase: 'start',
       status: 'running',
       label: input.label,
     });
-    void this.runLaunch(handle, input.prompt);
+    void this.runPromptInBackground(handle, input.prompt);
 
     return {
-      type: 'agent_run_started',
+      type: 'subagent_run_started',
       runId: input.runId,
       parentSessionId: input.parentSessionId,
       sessionId: input.childSessionId,
@@ -176,7 +186,7 @@ class InMemoryAgentRuntime implements AgentRuntime {
       status: 'running',
       label: info.label,
       detail: info.toolName,
-      parentId: agentRootEventId(handle.runId),
+      parentId: subagentRunEventId(handle.runId),
     });
   }
 
@@ -192,8 +202,8 @@ class InMemoryAgentRuntime implements AgentRuntime {
     config?: AgentResumeStreamConfig,
   ): AsyncGenerator<AgentStreamOutput, void, void> {
     const handle = await this.resolveHandle(runId);
-    const agent = await this.ensureAgent(handle);
-    this.options.approvalStore?.removeByAgentRunId(runId);
+    const agent = await this.ensureChildAgent(handle);
+    this.options.approvalStore?.removeBySubagentRunId(runId);
     this.options.runStore?.resume(runId, {
       childSessionId: handle.childSessionId,
       latestActivity: 'Resuming review',
@@ -202,9 +212,9 @@ class InMemoryAgentRuntime implements AgentRuntime {
       kind: 'agent',
       phase: 'update',
       status: 'running',
-      label: 'Delegated agent resumed',
+      label: 'Subagent resumed',
       detail: handle.label,
-      parentId: agentRootEventId(handle.runId),
+      parentId: subagentRunEventId(handle.runId),
     });
 
     const stream = agent.resumeStream(payload, {
@@ -212,14 +222,14 @@ class InMemoryAgentRuntime implements AgentRuntime {
       resumeMode: 'tool',
       ...(typeof handle.maxTurns === 'number' ? {recursionLimit: handle.maxTurns} : {}),
     });
-    const result = yield* forwardAgentStream(stream);
+    const result = yield* forwardSubagentStream(stream);
 
     await this.applyResult(handle, result);
   }
 
   async resumeApprovalById(approvalId: string, payload: ReviewResumePayload, config?: AgentResumeStreamConfig): Promise<void> {
     const record = this.requireApprovalRecord(approvalId);
-    await this.resumeRun(record.agentRunId!, payload, config);
+    await this.resumeRun(record.subagentRunId!, payload, config);
   }
 
   async *resumeApprovalByIdStream(
@@ -228,7 +238,7 @@ class InMemoryAgentRuntime implements AgentRuntime {
     config?: AgentResumeStreamConfig,
   ): AsyncGenerator<AgentStreamOutput, void, void> {
     const record = this.requireApprovalRecord(approvalId);
-    yield* this.resumeRunStream(record.agentRunId!, payload, config);
+    yield* this.resumeRunStream(record.subagentRunId!, payload, config);
   }
 
   async dispose(): Promise<void> {
@@ -248,10 +258,10 @@ class InMemoryAgentRuntime implements AgentRuntime {
     }));
   }
 
-  private async runLaunch(handle: AgentRunHandle, prompt: string): Promise<void> {
+  private async runPromptInBackground(handle: SubagentRunHandle, prompt: string): Promise<void> {
     try {
-      const agent = await this.ensureAgent(handle);
-      const result = await consumeAgentStream(agent.stream({
+      const agent = await this.ensureChildAgent(handle);
+      const result = await consumeSubagentStream(agent.stream({
         messages: [new HumanMessage(prompt)],
       }, {
         ...(typeof handle.maxTurns === 'number' ? {recursionLimit: handle.maxTurns} : {}),
@@ -259,9 +269,9 @@ class InMemoryAgentRuntime implements AgentRuntime {
 
       await this.applyResult(handle, result);
     } catch (error) {
-      this.options.approvalStore?.removeByAgentRunId(handle.runId);
+      this.options.approvalStore?.removeBySubagentRunId(handle.runId);
       this.options.runStore?.finish(handle.runId, {
-        type: 'delegated_agent_result',
+        type: 'subagent_result',
         sessionId: handle.childSessionId,
         turns: 0,
         reason: 'error',
@@ -271,26 +281,23 @@ class InMemoryAgentRuntime implements AgentRuntime {
         kind: 'agent',
         phase: 'end',
         status: 'error',
-        label: 'Delegated agent failed',
+        label: 'Subagent failed',
         detail: error instanceof Error ? error.message : String(error),
-        parentId: agentRootEventId(handle.runId),
+        parentId: subagentRunEventId(handle.runId),
       });
       await this.disposeHandle(handle);
     }
   }
 
-  private async ensureAgent(handle: AgentRunHandle): Promise<Agent> {
+  private async ensureChildAgent(handle: SubagentRunHandle): Promise<Agent> {
     if (handle.agent) {
       return handle.agent;
     }
     if (!handle.agentPromise) {
       handle.agentPromise = (async () => {
-        const checkpoint = await handle.childOptions.checkpointer?.getLatest(handle.childSessionId);
-        return bootstrapAgent({
-          ...handle.childOptions,
-          sessionId: handle.childSessionId,
-          ...(checkpoint ? {checkpoint} : {}),
-        });
+        // This is still the single core agent bootstrap path:
+        // subagent run manager -> bootstrapSubagent -> bootstrapAgent -> createAgent.
+        return bootstrapSubagent(handle.childSessionId, handle.childOptions);
       })().then((agent) => {
         handle.agent = agent;
         return agent;
@@ -299,17 +306,17 @@ class InMemoryAgentRuntime implements AgentRuntime {
     return handle.agentPromise;
   }
 
-  private async applyResult(handle: AgentRunHandle, result: AgentResult): Promise<void> {
+  private async applyResult(handle: SubagentRunHandle, result: AgentResult): Promise<void> {
     const pause = result.state.pendingReview as ReviewRequest | undefined;
     if (pause) {
-      const persistedPause = withAgentRecoveryMetadata(pause, handle);
+      const persistedPause = withSubagentRecoveryMetadata(pause, handle);
       this.options.runStore?.pause(handle.runId, {
         childSessionId: handle.childSessionId,
         latestActivity: persistedPause.description,
       });
-      this.options.approvalStore?.upsertAgentRunApproval({
+      this.options.approvalStore?.upsertSubagentRunApproval({
         sessionId: handle.parentSessionId,
-        agentRunId: handle.runId,
+        subagentRunId: handle.runId,
         reviewRequest: persistedPause,
         childSessionId: handle.childSessionId,
       });
@@ -317,34 +324,34 @@ class InMemoryAgentRuntime implements AgentRuntime {
         kind: 'agent',
         phase: 'update',
         status: 'paused',
-        label: 'Delegated agent waiting for review',
+        label: 'Subagent waiting for review',
         detail: persistedPause.description,
-        parentId: agentRootEventId(handle.runId),
+        parentId: subagentRunEventId(handle.runId),
       });
       return;
     }
 
-    this.options.approvalStore?.removeByAgentRunId(handle.runId);
-    const delegatedResult = createDelegatedAgentResult(
+    this.options.approvalStore?.removeBySubagentRunId(handle.runId);
+    const subagentResult = createSubagentResult(
       handle.childSessionId,
       result.turns,
       result.reason,
       result.error,
       result.state.messages,
     );
-    this.options.runStore?.finish(handle.runId, delegatedResult);
+    this.options.runStore?.finish(handle.runId, subagentResult);
     this.emitAgentEvent({
       kind: 'agent',
       phase: 'end',
-      status: delegatedResult.reason === 'error' ? 'error' : 'done',
-      label: delegatedResult.reason === 'error' ? 'Delegated agent failed' : 'Delegated agent completed',
-      detail: delegatedResult.summary ?? delegatedResult.errorMessage,
-      parentId: agentRootEventId(handle.runId),
+      status: subagentResult.reason === 'error' ? 'error' : 'done',
+      label: subagentResult.reason === 'error' ? 'Subagent failed' : 'Subagent completed',
+      detail: subagentResult.summary ?? subagentResult.errorMessage,
+      parentId: subagentRunEventId(handle.runId),
     });
     await this.disposeHandle(handle);
   }
 
-  private async disposeHandle(handle: AgentRunHandle): Promise<void> {
+  private async disposeHandle(handle: SubagentRunHandle): Promise<void> {
     this.handles.delete(handle.runId);
     try {
       const agent = handle.agent ?? await handle.agentPromise;
@@ -354,7 +361,7 @@ class InMemoryAgentRuntime implements AgentRuntime {
     }
   }
 
-  private async resolveHandle(runId: string): Promise<AgentRunHandle> {
+  private async resolveHandle(runId: string): Promise<SubagentRunHandle> {
     const normalizedRunId = runId.trim();
     const existing = this.handles.get(normalizedRunId);
     if (existing) {
@@ -363,20 +370,20 @@ class InMemoryAgentRuntime implements AgentRuntime {
 
     const record = this.options.runStore?.get(normalizedRunId);
     if (!record || !record.childSessionId) {
-      throw new Error(`Agent run "${runId}" is not active in this runtime`);
+      throw new Error(`Subagent run "${runId}" is not active in this run manager`);
     }
 
     if (!this.recoveryBuilder) {
-      throw new Error(`Agent run "${runId}" cannot be resumed after restart because no recovery builder is registered`);
+      throw new Error(`Subagent run "${runId}" cannot be resumed after restart because no recovery builder is registered`);
     }
 
     const approval = this.findRunApproval(record);
     const recovery = await this.recoveryBuilder(record, approval);
     if (!recovery) {
-      throw new Error(`Agent run "${runId}" cannot be resumed because recovery metadata is incomplete`);
+      throw new Error(`Subagent run "${runId}" cannot be resumed because recovery metadata is incomplete`);
     }
 
-    const recovered: AgentRunHandle = {
+    const recovered: SubagentRunHandle = {
       runId: record.runId,
       parentSessionId: record.parentSessionId,
       childSessionId: record.childSessionId,
@@ -392,16 +399,16 @@ class InMemoryAgentRuntime implements AgentRuntime {
 
   private requireApprovalRecord(approvalId: string) {
     const record = this.options.approvalStore?.get(approvalId);
-    if (!record || record.source !== 'agent_run' || !record.agentRunId) {
-      throw new Error(`Agent approval "${approvalId}" is not available`);
+    if (!record || record.source !== 'subagent_run' || !record.subagentRunId) {
+      throw new Error(`Subagent approval "${approvalId}" is not available`);
     }
     return record;
   }
 
-  private findRunApproval(run: AgentRunRecord): ApprovalRecord | undefined {
+  private findRunApproval(run: SubagentRunRecord): ApprovalRecord | undefined {
     return this.options.approvalStore
       ?.list(run.parentSessionId)
-      .find((record) => record.source === 'agent_run' && record.agentRunId === run.runId);
+      .find((record) => record.source === 'subagent_run' && record.subagentRunId === run.runId);
   }
 
   private emitAgentEvent(event: EmitRuntimeEventInput): void {
@@ -421,7 +428,7 @@ class InMemoryAgentRuntime implements AgentRuntime {
   }
 }
 
-async function consumeAgentStream(
+async function consumeSubagentStream(
   gen: AsyncGenerator<AgentStreamOutput, AgentResult, void>,
 ): Promise<AgentResult> {
   let result: IteratorResult<AgentStreamOutput, AgentResult>;
@@ -431,7 +438,7 @@ async function consumeAgentStream(
   return result.value;
 }
 
-async function* forwardAgentStream(
+async function* forwardSubagentStream(
   gen: AsyncGenerator<AgentStreamOutput, AgentResult, void>,
 ): AsyncGenerator<AgentStreamOutput, AgentResult, void> {
   let result: IteratorResult<AgentStreamOutput, AgentResult>;
@@ -444,11 +451,11 @@ async function* forwardAgentStream(
   return result.value;
 }
 
-function agentRootEventId(runId: string): string {
-  return `agent-run:${runId}`;
+function subagentRunEventId(runId: string): string {
+  return `subagent-run:${runId}`;
 }
 
-function withAgentRecoveryMetadata(review: ReviewRequest, handle: AgentRunHandle): ReviewRequest {
+function withSubagentRecoveryMetadata(review: ReviewRequest, handle: SubagentRunHandle): ReviewRequest {
   const recovery = {
     ...(handle.childOptions.tools?.length
       ? {toolNames: handle.childOptions.tools.map((tool) => tool.name)}
@@ -466,18 +473,12 @@ function withAgentRecoveryMetadata(review: ReviewRequest, handle: AgentRunHandle
   const base = review.metadata && typeof review.metadata === 'object'
     ? review.metadata as Record<string, unknown>
     : {};
-  const codara = base.codara && typeof base.codara === 'object'
-    ? base.codara as Record<string, unknown>
-    : {};
 
   return {
     ...review,
-    metadata: {
-      ...base,
-      codara: {
-        ...codara,
-        agentRecovery: recovery,
-      },
-    },
+    metadata: mergeSubagentRunRecoveryMetadata(base, {
+      childSessionId: handle.childSessionId,
+      recovery,
+    }),
   };
 }

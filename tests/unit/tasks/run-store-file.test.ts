@@ -3,12 +3,12 @@ import {mkdtemp, readdir} from 'node:fs/promises';
 import {tmpdir} from 'node:os';
 import path from 'node:path';
 import {describe, expect, it, spyOn} from 'bun:test';
-import {createAgentRunFileStore} from '@capability/subagent';
+import {createSubagentRunFileStore} from '@capability/subagent';
 
 describe('agent run file store', () => {
   it('persists delegated runs to disk and reloads them', async () => {
     const rootDir = await mkdtemp(path.join(tmpdir(), 'codara-agent-run-file-store-'));
-    const store = createAgentRunFileStore({rootDir});
+    const store = createSubagentRunFileStore({rootDir});
 
     store.start({
       runId: 'run-1',
@@ -20,7 +20,7 @@ describe('agent run file store', () => {
       latestActivity: 'read_file(src/auth.ts)',
     });
     store.finish('run-1', {
-      type: 'delegated_agent_result',
+      type: 'subagent_result',
       sessionId: 'child-1',
       turns: 2,
       reason: 'complete',
@@ -32,7 +32,7 @@ describe('agent run file store', () => {
     const files = await readdir(rootDir);
     expect(files).toContain('run-1.json');
 
-    const reopened = createAgentRunFileStore({rootDir});
+    const reopened = createSubagentRunFileStore({rootDir});
     expect(reopened.get('run-1')).toEqual(expect.objectContaining({
       runId: 'run-1',
       parentSessionId: 'session-1',
@@ -55,7 +55,7 @@ describe('agent run file store', () => {
     const readFileSpy = spyOn(fs, 'readFileSync');
 
     try {
-      const store = createAgentRunFileStore({rootDir});
+      const store = createSubagentRunFileStore({rootDir});
 
       store.start({
         runId: 'run-cache',

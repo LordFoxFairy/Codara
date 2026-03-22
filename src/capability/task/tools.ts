@@ -12,7 +12,6 @@ export interface TaskToolOptions {
   store: TaskStore;
 }
 
-/** Shared task coordination records are distinct from delegated Task runs. */
 export function createTaskTools(options: TaskToolOptions): StructuredToolInterface[] {
   return [
     createTaskCreateTool(options),

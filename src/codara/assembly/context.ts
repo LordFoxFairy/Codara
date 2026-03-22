@@ -1,10 +1,14 @@
 import type {AgentContextPreparer} from '@core/agent';
+import type {BaseMiddleware} from '@core/pipeline/types';
 import {FileSystemSkillStore, type SkillStore} from '@capability/skill';
 import {
   buildBaseSystemMessage,
+  createBaseSystemMessageLoader,
   mergePreparedInstructionContext,
+  type BaseSystemMessageLoader,
   type BuildBaseSystemMessageOptions,
 } from '@context/session-bundle/base-system-message';
+import {createPathInstructionsMiddleware} from '@core/middleware/path-instructions';
 import {
   createAutoMemoryRuntime,
   type AutoMemoryRuntime,
@@ -70,6 +74,42 @@ export function createInstructionContextPreparer(sources: {
       memoryRootDir: sources.memoryRootDir,
     });
     mergePreparedInstructionContext(context, next);
+  };
+}
+
+export interface InstructionContextRuntime {
+  prepareContext?: AgentContextPreparer;
+  loadBaseSystemMessage?: BaseSystemMessageLoader;
+  middlewares?: BaseMiddleware[];
+}
+
+export function createInstructionContextRuntime(sources: {
+  promptSource?: PromptSource;
+  guidelinesSource?: GuidelinesSource;
+  skillsSource?: BuildBaseSystemMessageOptions['skillsSource'];
+  autoMemorySource?: BuildBaseSystemMessageOptions['autoMemorySource'];
+  memoryRootDir?: BuildBaseSystemMessageOptions['memoryRootDir'];
+}): InstructionContextRuntime {
+  const loadBaseSystemMessage = createBaseSystemMessageLoader({
+    promptSource: sources.promptSource,
+    guidelinesSource: sources.guidelinesSource,
+    skillsSource: sources.skillsSource,
+    autoMemorySource: sources.autoMemorySource,
+    memoryRootDir: sources.memoryRootDir,
+  });
+
+  const middlewares: BaseMiddleware[] = [];
+  if (sources.promptSource || sources.guidelinesSource) {
+    middlewares.push(createPathInstructionsMiddleware({
+      promptSource: sources.promptSource,
+      guidelinesSource: sources.guidelinesSource,
+    }));
+  }
+
+  return {
+    loadBaseSystemMessage,
+    prepareContext: createInstructionContextPreparer(sources),
+    ...(middlewares.length > 0 ? {middlewares} : {}),
   };
 }
 

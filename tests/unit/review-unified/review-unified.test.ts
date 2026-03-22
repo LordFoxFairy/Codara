@@ -79,7 +79,7 @@ describe('delegated-task activity display', () => {
 
   test('transcript renders child activity under running delegated subagent runs', () => {
     const now = new Date().toISOString();
-    const taskId = 'agent-run:task-root-1';
+    const taskId = 'subagent-run:task-root-1';
     const events: CodaraRuntimeEvent[] = [
       {
         id: taskId,
@@ -131,7 +131,7 @@ describe('delegated-task activity display', () => {
       runtimeEvents: events,
     });
 
-    const taskItem = items.find((item) => item.role === 'task' && item.content.includes('⚙ Plan('));
+    const taskItem = items.find((item) => item.role === 'agent' && item.content.includes('⚙ Plan('));
     expect(taskItem).toBeDefined();
     expect(taskItem!.toolMeta?.outputLines).toEqual([
       'read(src/engine/agent.ts)',
@@ -142,7 +142,7 @@ describe('delegated-task activity display', () => {
 
   test('transcript shows overflow indicator for many child activities', () => {
     const now = new Date().toISOString();
-    const taskId = 'agent-run:task-root-2';
+    const taskId = 'subagent-run:task-root-2';
     const events: CodaraRuntimeEvent[] = [
       {
         id: taskId,
@@ -175,7 +175,7 @@ describe('delegated-task activity display', () => {
       runtimeEvents: events,
     });
 
-    const taskItem = items.find((item) => item.role === 'task');
+    const taskItem = items.find((item) => item.role === 'agent');
     expect(taskItem).toBeDefined();
     expect(taskItem!.toolMeta?.summaryLine).toContain('6 tool activities');
     expect(taskItem!.toolMeta?.outputLines).toEqual([
@@ -196,7 +196,7 @@ describe('delegated-task activity display', () => {
       status: 'paused',
       label: 'Subagent waiting for review',
       detail: 'Waiting for approval on read_file',
-      parentId: 'agent-run:run-1',
+      parentId: 'subagent-run:run-1',
     };
 
     expect(event.kind).toBe('agent');

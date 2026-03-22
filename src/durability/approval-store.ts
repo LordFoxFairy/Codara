@@ -6,19 +6,19 @@ import type {ReviewRequest} from '@shared/contracts/agent-types';
 export interface ApprovalRecord {
   approvalId: string;
   sessionId: string;
-  source: 'agent_run';
+  source: 'subagent_run';
   description: string;
   toolName: string;
   createdAt: string;
   updatedAt: string;
   reviewRequest: ReviewRequest;
-  agentRunId?: string;
+  subagentRunId?: string;
   childSessionId?: string;
 }
 
-export interface ApprovalAgentRunInput {
+export interface ApprovalSubagentRunInput {
   sessionId: string;
-  agentRunId: string;
+  subagentRunId: string;
   reviewRequest: ReviewRequest;
   childSessionId?: string;
 }
@@ -26,9 +26,9 @@ export interface ApprovalAgentRunInput {
 export interface ApprovalStore {
   list(sessionId?: string): ApprovalRecord[];
   get(approvalId: string): ApprovalRecord | undefined;
-  upsertAgentRunApproval(input: ApprovalAgentRunInput): ApprovalRecord;
+  upsertSubagentRunApproval(input: ApprovalSubagentRunInput): ApprovalRecord;
   remove(approvalId: string): void;
-  removeByAgentRunId(agentRunId: string): void;
+  removeBySubagentRunId(subagentRunId: string): void;
 }
 
 export interface ApprovalFileStoreOptions {
@@ -46,7 +46,7 @@ export function createApprovalFileStore(options: ApprovalFileStoreOptions): Appr
 class InMemoryApprovalStore implements ApprovalStore {
   private readonly records = new Map<string, ApprovalRecord>();
   private readonly sessionIndex = new Map<string, Set<string>>();
-  private readonly agentRunIndex = new Map<string, Set<string>>();
+  private readonly subagentRunIndex = new Map<string, Set<string>>();
 
   list(sessionId?: string): ApprovalRecord[] {
     const records = sessionId
@@ -60,16 +60,16 @@ class InMemoryApprovalStore implements ApprovalStore {
     return record ? cloneApprovalRecord(record) : undefined;
   }
 
-  upsertAgentRunApproval(input: ApprovalAgentRunInput): ApprovalRecord {
-    const normalizedAgentRunId = normalizeAgentRunId(input.agentRunId);
+  upsertSubagentRunApproval(input: ApprovalSubagentRunInput): ApprovalRecord {
+    const normalizedSubagentRunId = normalizeSubagentRunId(input.subagentRunId);
     const approvalId = normalizeApprovalId(input.reviewRequest.id);
     const existing = this.records.get(approvalId);
     const now = new Date().toISOString();
     const next: ApprovalRecord = {
       approvalId,
       sessionId: normalizeSessionId(input.sessionId),
-      source: 'agent_run',
-      agentRunId: normalizedAgentRunId,
+      source: 'subagent_run',
+      subagentRunId: normalizedSubagentRunId,
       description: input.reviewRequest.description,
       toolName: input.reviewRequest.action.toolName,
       createdAt: existing?.createdAt ?? now,
@@ -91,9 +91,9 @@ class InMemoryApprovalStore implements ApprovalStore {
     this.unindex(record);
   }
 
-  removeByAgentRunId(agentRunId: string): void {
-    const normalizedAgentRunId = normalizeAgentRunId(agentRunId);
-    const approvalIds = [...(this.agentRunIndex.get(normalizedAgentRunId) ?? [])];
+  removeBySubagentRunId(subagentRunId: string): void {
+    const normalizedSubagentRunId = normalizeSubagentRunId(subagentRunId);
+    const approvalIds = [...(this.subagentRunIndex.get(normalizedSubagentRunId) ?? [])];
     for (const approvalId of approvalIds) {
       this.remove(approvalId);
     }
@@ -120,15 +120,15 @@ class InMemoryApprovalStore implements ApprovalStore {
 
   private index(record: ApprovalRecord): void {
     indexValue(this.sessionIndex, normalizeSessionId(record.sessionId), record.approvalId);
-    if (record.agentRunId) {
-      indexValue(this.agentRunIndex, normalizeAgentRunId(record.agentRunId), record.approvalId);
+    if (record.subagentRunId) {
+      indexValue(this.subagentRunIndex, normalizeSubagentRunId(record.subagentRunId), record.approvalId);
     }
   }
 
   private unindex(record: ApprovalRecord): void {
     unindexValue(this.sessionIndex, normalizeSessionId(record.sessionId), record.approvalId);
-    if (record.agentRunId) {
-      unindexValue(this.agentRunIndex, normalizeAgentRunId(record.agentRunId), record.approvalId);
+    if (record.subagentRunId) {
+      unindexValue(this.subagentRunIndex, normalizeSubagentRunId(record.subagentRunId), record.approvalId);
     }
   }
 }
@@ -136,7 +136,7 @@ class InMemoryApprovalStore implements ApprovalStore {
 class FileApprovalStore implements ApprovalStore {
   private readonly records = new Map<string, ApprovalRecord>();
   private readonly sessionIndex = new Map<string, Set<string>>();
-  private readonly agentRunIndex = new Map<string, Set<string>>();
+  private readonly subagentRunIndex = new Map<string, Set<string>>();
   private loaded = false;
 
   constructor(private readonly rootDir: string) {}
@@ -155,17 +155,17 @@ class FileApprovalStore implements ApprovalStore {
     return record ? cloneApprovalRecord(record) : undefined;
   }
 
-  upsertAgentRunApproval(input: ApprovalAgentRunInput): ApprovalRecord {
+  upsertSubagentRunApproval(input: ApprovalSubagentRunInput): ApprovalRecord {
     this.ensureLoaded();
-    const normalizedAgentRunId = normalizeAgentRunId(input.agentRunId);
+    const normalizedSubagentRunId = normalizeSubagentRunId(input.subagentRunId);
     const approvalId = normalizeApprovalId(input.reviewRequest.id);
     const existing = this.records.get(approvalId);
     const now = new Date().toISOString();
     const next: ApprovalRecord = {
       approvalId,
       sessionId: normalizeSessionId(input.sessionId),
-      source: 'agent_run',
-      agentRunId: normalizedAgentRunId,
+      source: 'subagent_run',
+      subagentRunId: normalizedSubagentRunId,
       description: input.reviewRequest.description,
       toolName: input.reviewRequest.action.toolName,
       createdAt: existing?.createdAt ?? now,
@@ -191,10 +191,10 @@ class FileApprovalStore implements ApprovalStore {
     rmSync(this.recordPath(normalizedApprovalId), {force: true});
   }
 
-  removeByAgentRunId(agentRunId: string): void {
+  removeBySubagentRunId(subagentRunId: string): void {
     this.ensureLoaded();
-    const normalizedAgentRunId = normalizeAgentRunId(agentRunId);
-    const approvalIds = [...(this.agentRunIndex.get(normalizedAgentRunId) ?? [])];
+    const normalizedSubagentRunId = normalizeSubagentRunId(subagentRunId);
+    const approvalIds = [...(this.subagentRunIndex.get(normalizedSubagentRunId) ?? [])];
     for (const approvalId of approvalIds) {
       this.remove(approvalId);
     }
@@ -214,7 +214,7 @@ class FileApprovalStore implements ApprovalStore {
         }
 
         const record = this.readRecord(path.join(this.rootDir, entry.name));
-        if (!record || record.source !== 'agent_run') {
+        if (!record || record.source !== 'subagent_run') {
           continue;
         }
 
@@ -266,8 +266,8 @@ class FileApprovalStore implements ApprovalStore {
 
   private index(record: ApprovalRecord): void {
     indexValue(this.sessionIndex, normalizeSessionId(record.sessionId), record.approvalId);
-    if (record.agentRunId) {
-      indexValue(this.agentRunIndex, normalizeAgentRunId(record.agentRunId), record.approvalId);
+    if (record.subagentRunId) {
+      indexValue(this.subagentRunIndex, normalizeSubagentRunId(record.subagentRunId), record.approvalId);
     }
   }
 
@@ -282,8 +282,8 @@ class FileApprovalStore implements ApprovalStore {
 
   private unindex(record: ApprovalRecord): void {
     unindexValue(this.sessionIndex, normalizeSessionId(record.sessionId), record.approvalId);
-    if (record.agentRunId) {
-      unindexValue(this.agentRunIndex, normalizeAgentRunId(record.agentRunId), record.approvalId);
+    if (record.subagentRunId) {
+      unindexValue(this.subagentRunIndex, normalizeSubagentRunId(record.subagentRunId), record.approvalId);
     }
   }
 }
@@ -319,8 +319,8 @@ function normalizeApprovalId(approvalId: string): string {
   return normalized;
 }
 
-function normalizeAgentRunId(agentRunId: string): string {
-  const normalized = agentRunId.trim();
+function normalizeSubagentRunId(subagentRunId: string): string {
+  const normalized = subagentRunId.trim();
   if (!normalized) {
     throw new Error('Agent run id is required');
   }
@@ -341,13 +341,13 @@ function parseApprovalRecord(value: unknown): ApprovalRecord | undefined {
   }
 
   const record = value as Partial<ApprovalRecord>;
-  if (record.source !== 'agent_run') {
+  if (record.source !== 'subagent_run') {
     return undefined;
   }
 
   normalizeApprovalId(record.approvalId ?? '');
   normalizeSessionId(record.sessionId ?? '');
-  normalizeAgentRunId(record.agentRunId ?? '');
+  normalizeSubagentRunId(record.subagentRunId ?? '');
 
   return record as ApprovalRecord;
 }

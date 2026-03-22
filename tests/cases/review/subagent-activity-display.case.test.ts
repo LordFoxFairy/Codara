@@ -9,7 +9,7 @@ import type {StructuredToolInterface} from '@langchain/core/tools';
 import {tool} from '@langchain/core/tools';
 import {z} from 'zod';
 import {createCodaraRuntime} from '@/index';
-import {createAgentTool} from '@capability/subagent/middleware';
+import {createSubagentMiddleware} from '@capability/subagent/middleware';
 import type {CodaraRuntimeEvent} from '@observability/events';
 
 /**
@@ -61,8 +61,8 @@ describe('sub-agent activity display pipeline', () => {
       builtinTools: false,
       skills: false,
       review: false,
-      tools: [
-        createAgentTool({
+      middleware: [
+        createSubagentMiddleware({
           model: childModel as unknown as BaseChatModel,
           tools: [readTool, grepTool],
         }),

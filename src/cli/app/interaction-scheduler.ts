@@ -1,7 +1,7 @@
 import type {ReviewResumePayload} from '@core/agent';
 import type {CliInteractionKind} from './view-state';
 
-export interface AgentCompletionHandoff {
+export interface SubagentCompletionHandoff {
   runId: string;
   label: string;
   agentName: string;
@@ -12,9 +12,9 @@ export interface AgentCompletionHandoff {
   totalTokens?: number;
 }
 
-export interface AgentCompletionContinuation {
+export interface SubagentCompletionContinuation {
   parentSessionId: string;
-  runs: AgentCompletionHandoff[];
+  runs: SubagentCompletionHandoff[];
 }
 
 export interface QueuedSessionPromptInteraction {
@@ -35,7 +35,7 @@ export interface CliInteractionSchedulerSnapshot {
   pendingCount: number;
 }
 
-export class CliInteractionScheduler<TContinuation = AgentCompletionContinuation> {
+export class CliInteractionScheduler<TContinuation = SubagentCompletionContinuation> {
   private running = false;
   private activeKind: CliInteractionKind | undefined;
   private readonly queuedInteractions: QueuedCliInteraction[] = [];

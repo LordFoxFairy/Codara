@@ -18,7 +18,7 @@ export {
   type ReviewBlockingScope,
   type ReviewQueryItem,
   type FocusedReviewQuery,
-  type AgentRunQuerySummary,
+  type SubagentRunQuerySummary,
 } from '@codara/index';
 export {
   bootstrapAgent,
@@ -41,25 +41,20 @@ export {
   type CreateAgentOptions,
 } from '@core/agent';
 export {
-  TASK_CREATE_TOOL_NAME,
-  TASK_LIST_TOOL_NAME,
-  TASK_UPDATE_TOOL_NAME,
-  createTaskCreateTool,
   createTaskFileStore,
-  createTaskListTool,
   createTaskMemoryStore,
-  createTaskMiddleware,
-  createTaskTools,
-  createTaskUpdateTool,
   type CreateTaskInput,
-  type CreateTaskMiddlewareOptions,
   type TaskFileStoreOptions,
   type TaskRecord,
   type TaskStatus,
   type TaskStore,
-  type TaskToolOptions,
   type UpdateTaskInput,
 } from '@capability/task';
+export {
+  createSubagentMiddleware,
+  type SubagentChildRuntimeOptions,
+  type CreateSubagentMiddlewareOptions,
+} from '@capability/subagent';
 export {
   createDailySessionFileLogSink,
   createBudgetMiddleware,

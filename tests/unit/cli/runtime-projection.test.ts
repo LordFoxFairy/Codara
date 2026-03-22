@@ -7,7 +7,7 @@ describe('CLI runtime projection helpers', () => {
       getFocusedReview: () => ({
         item: {
           reviewId: 'approval-1',
-          source: 'agent_run',
+          source: 'subagent_run',
           kind: 'approval',
           interactionMode: 'approval',
           blockingScope: 'task',
@@ -28,7 +28,7 @@ describe('CLI runtime projection helpers', () => {
       }),
       listReviewItems: () => [{
         reviewId: 'approval-1',
-        source: 'agent_run',
+        source: 'subagent_run',
         kind: 'approval',
         interactionMode: 'approval',
         blockingScope: 'task',
@@ -59,7 +59,7 @@ describe('CLI runtime projection helpers', () => {
       getFocusedReview: () => ({
         item: {
           reviewId: 'approval-2',
-          source: 'agent_run',
+          source: 'subagent_run',
           kind: 'approval',
           interactionMode: 'approval',
           blockingScope: 'task',
@@ -81,7 +81,7 @@ describe('CLI runtime projection helpers', () => {
       listReviewItems: () => [
         {
           reviewId: 'approval-1',
-          source: 'agent_run',
+          source: 'subagent_run',
           kind: 'approval',
           interactionMode: 'approval',
           blockingScope: 'task',
@@ -94,7 +94,7 @@ describe('CLI runtime projection helpers', () => {
         },
         {
           reviewId: 'approval-2',
-          source: 'agent_run',
+          source: 'subagent_run',
           kind: 'approval',
           interactionMode: 'approval',
           blockingScope: 'task',

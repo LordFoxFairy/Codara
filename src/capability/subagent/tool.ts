@@ -3,25 +3,24 @@ import {tool, type StructuredToolInterface} from '@langchain/core/tools';
 import {z} from 'zod';
 import {readSkillsRuntimeData, resolveSubagentDefinition, normalizeSubagentType} from '@capability/skill';
 import {createAgentMemoryCheckpointer} from '@durability/checkpoint/agent';
-import {formatAgentRunLaunchResult} from '@shared/agent-run-launch';
-import {createAgentRuntime} from '@capability/subagent/runtime';
-import {createAgentRunMemoryStore} from '@capability/subagent/run-store';
+import {formatSubagentRunLaunchResult} from '@shared/subagent-run-launch';
+import {createSubagentRunManager, type SubagentRunManager} from '@capability/subagent/run-manager';
+import {createSubagentRunMemoryStore} from '@capability/subagent/run-store';
 import {
-  buildDelegatedChildOptions,
-  markDelegationTool,
-  type DelegatedAgentOptions,
-} from '@capability/subagent/delegated-child';
+  buildRecoveredSubagentChildOptions,
+  buildSubagentChildOptions,
+  formatSubagentResult,
+  type SubagentResult,
+  type SubagentOptions,
+} from '@capability/subagent/bootstrap';
 import {
-  readDelegatedParentRuntimeMetadata,
-  type DelegatedParentRuntimeMetadata,
+  readSubagentParentRuntimeMetadata,
+  type SubagentParentRuntimeMetadata,
 } from '@capability/subagent/review-metadata';
-import {resolveAgentRunId, readExistingAgentRunMessage} from '@capability/subagent/launch-reuse';
-import {buildRecoveredAgentChildOptions} from '@capability/subagent/recovery';
-import type {AgentRunStore} from '@capability/subagent/types';
+import type {SubagentRunRecord, SubagentRunStore} from '@capability/subagent/types';
 import type {BootstrapAgentOptions} from '@core/agent/bootstrap';
 import type {AgentCheckpointer} from '@durability/checkpoint/agent';
 import {AGENT_ACTIVITY_CALLBACK_KEY, type ChildToolActivityCallback} from '@observability/events';
-import type {AgentRuntime} from '@capability/subagent/runtime';
 import {filterToolsByReferences} from '@integration/tool';
 import {formatSubagentDisplayName, type SubagentDefinition} from '@capability/skill';
 import type {ApprovalStore} from '@durability/approval-store';
@@ -31,38 +30,36 @@ export const AGENT_TOOL_NAME = 'Agent';
 export const AGENT_TOOL_DESCRIPTION = `Delegate a focused subproblem to an isolated subagent.
 Use this tool when a sub-problem should run in a fresh context window and return only a concise summary.
 After calling Agent, do not post a second "agent started" confirmation, do not restate run metadata, and do not promise future updates.
-Let the subagent/runtime UI carry launch and progress; only respond again with the delegated result or when review is required.
+Let the subagent/runtime UI carry launch and progress; only respond again with the child result or when review is required.
 
 Subagent definitions are loaded from markdown files such as .codara/skills/*/agents/*.md or explicit subagent roots.
 Use TaskCreate/TaskUpdate/TaskList for shared task coordination, not this delegation tool.`;
 
-const AgentToolInputSchema = z.object({
-  prompt: z.string().min(1).describe('The task for the delegated subagent'),
+const SubagentToolInputSchema = z.object({
+  prompt: z.string().min(1).describe('The task for the subagent'),
   subagent_type: z.string({
     error: 'subagent_type is required. Use "Agent" for the base child or a named profile such as "Explore".',
   }).trim().min(1).describe('Subagent profile name. Use "Agent" for the built-in baseline child, or a named profile such as "Explore" or "Plan".'),
-  max_turns: z.number().int().positive().max(100).optional().describe('Optional max turns for the delegated subagent'),
+  max_turns: z.number().int().positive().max(100).optional().describe('Optional max turns for the subagent'),
 });
 
-const agentToolConfigSchema = z.object({
+const subagentToolConfigSchema = z.object({
   configurable: z.record(z.string(), z.unknown()).optional(),
 }).loose();
 
-const AGENT_TOOL_OPTIONS = Symbol.for('codara.subagent.tool.options');
+type SubagentToolInput = z.infer<typeof SubagentToolInputSchema>;
 
-type AgentToolInput = z.infer<typeof AgentToolInputSchema>;
-
-interface PrepareAgentLaunchInput {
+interface PrepareSubagentLaunchInput {
   prompt: string;
   subagentType: string;
   maxTurns?: number;
   configurable: Record<string, unknown>;
-  toolOptions: CreateAgentToolOptions;
-  runStore: AgentRunStore | undefined;
+  toolOptions: CreateSubagentToolOptions;
+  runStore: SubagentRunStore | undefined;
   checkpointer: AgentCheckpointer;
 }
 
-interface PreparedAgentLaunch {
+interface PreparedSubagentLaunch {
   runId: string;
   toolCallId: string;
   parentSessionId: string;
@@ -75,50 +72,52 @@ interface PreparedAgentLaunch {
   childOptions?: BootstrapAgentOptions;
 }
 
-interface CompiledAgentLaunchSpec {
+interface CompiledSubagentLaunchSpec {
   agentName: string;
   subagentType?: string;
   childMaxTurns?: number;
   childOptions: BootstrapAgentOptions;
 }
 
-export interface CreateAgentToolOptions extends DelegatedAgentOptions {
+export interface CreateSubagentToolOptions extends SubagentOptions {
   description?: string;
-  runStore?: AgentRunStore;
+  runStore?: SubagentRunStore;
   approvalStore?: ApprovalStore;
-  runtime?: AgentRuntime;
+  runManager?: SubagentRunManager;
 }
 
-export function createAgentTool(options: CreateAgentToolOptions): StructuredToolInterface {
-  const delegatedCheckpointer = options.checkpointer ?? createAgentMemoryCheckpointer();
-  const runStore = options.runStore ?? createAgentRunMemoryStore();
+export function createSubagentTool(options: CreateSubagentToolOptions): StructuredToolInterface {
+  const subagentCheckpointer = options.checkpointer ?? createAgentMemoryCheckpointer();
+  const runStore = options.runStore ?? createSubagentRunMemoryStore();
   const approvalStore = options.approvalStore;
-  const runtime = options.runtime ?? createAgentRuntime({runStore, approvalStore});
-  runtime.registerRecoveryBuilder(async (run, approval) => buildRecoveredAgentChildOptions(
-    {...options, checkpointer: delegatedCheckpointer},
-    runtime,
+  const runManager = options.runManager ?? createSubagentRunManager({runStore, approvalStore});
+  runManager.registerRecoveryBuilder(async (run, approval) => buildRecoveredSubagentChildOptions(
+    {...options, checkpointer: subagentCheckpointer},
+    runManager,
     run,
     approval,
   ));
 
-  const agentTool = markDelegationTool(tool(
-    async ({prompt, subagent_type, max_turns}: AgentToolInput, config) => {
-      const configurable = agentToolConfigSchema.parse(config).configurable ?? {};
-      const prepared = await prepareAgentLaunch({
+  // The outward Agent tool only validates input and prepares a child launch spec.
+  // Actual child creation remains on the core bootstrap/createAgent path via the run manager.
+  const subagentTool = tool(
+    async ({prompt, subagent_type, max_turns}: SubagentToolInput, config) => {
+      const configurable = subagentToolConfigSchema.parse(config).configurable ?? {};
+      const prepared = await prepareSubagentLaunch({
         prompt,
         subagentType: subagent_type,
         ...(typeof max_turns === 'number' ? {maxTurns: max_turns} : {}),
         configurable,
         toolOptions: options,
         runStore,
-        checkpointer: delegatedCheckpointer,
+        checkpointer: subagentCheckpointer,
       });
 
       if (prepared.existingRunMessage) {
         return prepared.existingRunMessage;
       }
 
-      const launched = await runtime.launch({
+      const launched = await runManager.launch({
         runId: prepared.runId,
         parentSessionId: prepared.parentSessionId,
         childSessionId: prepared.childSessionId,
@@ -131,7 +130,7 @@ export function createAgentTool(options: CreateAgentToolOptions): StructuredTool
       });
 
       return new ToolMessage({
-        content: formatAgentRunLaunchResult(launched),
+        content: formatSubagentRunLaunchResult(launched),
         artifact: launched,
         status: 'success',
         tool_call_id: prepared.toolCallId,
@@ -140,26 +139,14 @@ export function createAgentTool(options: CreateAgentToolOptions): StructuredTool
     {
       name: AGENT_TOOL_NAME,
       description: options.description ?? AGENT_TOOL_DESCRIPTION,
-      schema: AgentToolInputSchema,
+      schema: SubagentToolInputSchema,
     },
-  ));
+  );
 
-  Object.defineProperty(agentTool, AGENT_TOOL_OPTIONS, {
-    value: {...options},
-    enumerable: false,
-    configurable: true,
-    writable: false,
-  });
-
-  return agentTool;
+  return subagentTool;
 }
 
-export function readAgentToolOptions(tool: StructuredToolInterface): CreateAgentToolOptions | undefined {
-  const record = tool as StructuredToolInterface & {[AGENT_TOOL_OPTIONS]?: CreateAgentToolOptions};
-  return record[AGENT_TOOL_OPTIONS];
-}
-
-async function prepareAgentLaunch(input: PrepareAgentLaunchInput): Promise<PreparedAgentLaunch> {
+async function prepareSubagentLaunch(input: PrepareSubagentLaunchInput): Promise<PreparedSubagentLaunch> {
   const {
     prompt,
     subagentType,
@@ -169,13 +156,13 @@ async function prepareAgentLaunch(input: PrepareAgentLaunchInput): Promise<Prepa
     runStore,
     checkpointer,
   } = input;
-  const delegated = readDelegatedParentRuntimeMetadata(configurable, 'Agent');
-  const runId = resolveAgentRunId(runStore, delegated.parentExecution.toolCallId);
-  const compiled = await compileAgentLaunchSpec({
+  const parentRuntime = readSubagentParentRuntimeMetadata(configurable);
+  const runId = resolveSubagentRunId(runStore, parentRuntime.parentExecution.toolCallId);
+  const compiled = await compileSubagentLaunchSpec({
     prompt,
     subagentType,
     maxTurns,
-    delegated,
+    parentRuntime,
     toolOptions,
     checkpointer,
     runStore,
@@ -183,24 +170,24 @@ async function prepareAgentLaunch(input: PrepareAgentLaunchInput): Promise<Prepa
     runtimeShared: configurable.runtimeShared,
   });
   const runLabel = `Delegating ${compiled.agentName}: ${prompt}`;
-  const childSessionId = `${delegated.parentExecution.sessionId}:agent:${runId}`;
+  const childSessionId = `${parentRuntime.parentExecution.sessionId}:agent:${runId}`;
 
-  const existingRunMessage = readExistingAgentRunMessage(
+  const existingRunMessage = readExistingSubagentRunMessage(
     runStore?.get(runId),
-    delegated.parentExecution.toolCallId,
+    parentRuntime.parentExecution.toolCallId,
     {
       runId,
       agentName: compiled.agentName,
       label: runLabel,
       childSessionId,
-      parentSessionId: delegated.parentExecution.sessionId,
+      parentSessionId: parentRuntime.parentExecution.sessionId,
     },
   );
   if (existingRunMessage) {
     return {
       runId,
-      toolCallId: delegated.parentExecution.toolCallId,
-      parentSessionId: delegated.parentExecution.sessionId,
+      toolCallId: parentRuntime.parentExecution.toolCallId,
+      parentSessionId: parentRuntime.parentExecution.sessionId,
       childSessionId,
       agentName: compiled.agentName,
       ...(compiled.subagentType ? {subagentType: compiled.subagentType} : {}),
@@ -212,8 +199,8 @@ async function prepareAgentLaunch(input: PrepareAgentLaunchInput): Promise<Prepa
 
   return {
     runId,
-    toolCallId: delegated.parentExecution.toolCallId,
-    parentSessionId: delegated.parentExecution.sessionId,
+    toolCallId: parentRuntime.parentExecution.toolCallId,
+    parentSessionId: parentRuntime.parentExecution.sessionId,
     childSessionId,
     agentName: compiled.agentName,
     ...(compiled.subagentType ? {subagentType: compiled.subagentType} : {}),
@@ -223,17 +210,114 @@ async function prepareAgentLaunch(input: PrepareAgentLaunchInput): Promise<Prepa
   };
 }
 
-async function compileAgentLaunchSpec(input: {
+function resolveSubagentRunId(
+  runStore: SubagentRunStore | undefined,
+  toolCallId: string,
+): string {
+  const baseRunId = toolCallId.trim();
+  if (!runStore) {
+    return baseRunId;
+  }
+
+  const existing = runStore.get(baseRunId);
+  if (!existing || existing.status === 'running' || existing.status === 'paused') {
+    return baseRunId;
+  }
+
+  const prefix = `${baseRunId}__`;
+  const usedRunIds = new Set(runStore.list().map((record) => record.runId));
+  let suffix = 2;
+
+  while (usedRunIds.has(`${prefix}${suffix}`)) {
+    suffix += 1;
+  }
+
+  return `${prefix}${suffix}`;
+}
+
+function readExistingSubagentRunMessage(
+  run: SubagentRunRecord | undefined,
+  toolCallId: string,
+  fallback: {
+    runId: string;
+    agentName: string;
+    label: string;
+    childSessionId: string;
+    parentSessionId: string;
+  },
+): ToolMessage | undefined {
+  if (!run) {
+    return undefined;
+  }
+
+  const completed = toSubagentResult(run);
+  if (completed) {
+    return new ToolMessage({
+      content: formatSubagentResult(completed),
+      artifact: completed,
+      status: completed.reason === 'error' ? 'error' : 'success',
+      tool_call_id: toolCallId,
+    });
+  }
+
+  const sessionId = run.childSessionId?.trim() || fallback.childSessionId;
+  const parentSessionId = run.parentSessionId.trim() || fallback.parentSessionId;
+  const label = run.label?.trim() || fallback.label;
+  const agentName = run.agentName?.trim() || fallback.agentName;
+  const header = run.status === 'paused'
+    ? 'Subagent is waiting for review.'
+    : 'Subagent is already running in background.';
+  const detail = run.latestActivity?.trim();
+
+  return new ToolMessage({
+    content: [
+      header,
+      'Do not restate launch metadata or promise follow-up.',
+      ...(detail ? [`activity: ${detail}`] : []),
+    ].join('\n'),
+    artifact: {
+      type: 'subagent_run_started',
+      runId: run.runId,
+      parentSessionId,
+      sessionId,
+      agentName,
+      label,
+    },
+    status: 'success',
+    tool_call_id: toolCallId,
+  });
+}
+
+function toSubagentResult(
+  run: SubagentRunRecord,
+): SubagentResult | undefined {
+  if ((run.status !== 'completed' && run.status !== 'failed') || !run.childSessionId) {
+    return undefined;
+  }
+
+  return {
+    type: 'subagent_result',
+    sessionId: run.childSessionId,
+    turns: run.turns ?? 0,
+    reason: run.reason ?? (run.status === 'failed' ? 'error' : 'complete'),
+    ...(run.summary?.trim() ? {summary: run.summary.trim()} : {}),
+    ...(run.errorMessage?.trim() ? {errorMessage: run.errorMessage.trim()} : {}),
+    ...(typeof run.toolUseCount === 'number' ? {toolUseCount: run.toolUseCount} : {}),
+    ...(typeof run.totalTokens === 'number' ? {totalTokens: run.totalTokens} : {}),
+  };
+}
+
+async function compileSubagentLaunchSpec(input: {
   prompt: string;
   subagentType: string | undefined;
   maxTurns?: number;
-  delegated: DelegatedParentRuntimeMetadata;
-  toolOptions: CreateAgentToolOptions;
+  parentRuntime: SubagentParentRuntimeMetadata;
+  toolOptions: CreateSubagentToolOptions;
   checkpointer: AgentCheckpointer;
-  runStore: AgentRunStore | undefined;
+  runStore: SubagentRunStore | undefined;
   runId: string;
   runtimeShared: unknown;
-}): Promise<CompiledAgentLaunchSpec> {
+}): Promise<CompiledSubagentLaunchSpec> {
   const requestedSubagentType = normalizeSubagentType(input.subagentType);
   const profile = resolveSubagentDefinition(
     readSkillsRuntimeData(input.runtimeShared),
@@ -242,30 +326,18 @@ async function compileAgentLaunchSpec(input: {
   const childActivityCallback = readChildActivityCallback(input.runtimeShared);
   const childMaxTurns = input.maxTurns ?? profile.maxTurns;
   const onChildToolActivity = createChildToolActivityCallback(input.runId, input.runStore, childActivityCallback);
-  const childOptions = await buildDelegatedChildOptions({
+  const childOptions = await buildSubagentChildOptions({
     ...input.toolOptions,
-    ...(input.toolOptions.childSystemMessages?.length || input.toolOptions.childSystemPrompt
-      ? {
-          childSystemMessages: mergeAgentSystemMessages(
-            input.toolOptions.childSystemMessages,
-            input.toolOptions.childSystemPrompt,
-          ),
-        }
-      : {}),
     checkpointer: input.checkpointer,
     ...(onChildToolActivity ? {onChildToolActivity} : {}),
   }, {
-    prompt: input.prompt,
     ...(requestedSubagentType ? {subagentType: requestedSubagentType} : {}),
-    maxTurns: childMaxTurns,
-    toolName: AGENT_TOOL_NAME,
-    parentExecution: input.delegated.parentExecution,
     profileTools: resolveDefinitionTools(input.toolOptions.tools ?? [], profile),
     profileSystemPrompt: profile.systemPrompt,
   });
 
   return {
-    agentName: normalizeAgentName(requestedSubagentType, profile.name),
+    agentName: normalizeSubagentName(requestedSubagentType, profile.name),
     ...(requestedSubagentType ? {subagentType: requestedSubagentType} : {}),
     ...(typeof childMaxTurns === 'number' ? {childMaxTurns} : {}),
     childOptions,
@@ -274,7 +346,7 @@ async function compileAgentLaunchSpec(input: {
 
 function createChildToolActivityCallback(
   runId: string,
-  runStore: AgentRunStore | undefined,
+  runStore: SubagentRunStore | undefined,
   childActivityCallback: ChildToolActivityCallback | undefined,
 ): ChildToolActivityCallback | undefined {
   if (!runStore && !childActivityCallback) {
@@ -292,21 +364,11 @@ function createChildToolActivityCallback(
         toolUseCount: nextToolUseCount,
       });
     } catch {
-      // Best-effort: subagent-run tracking must not block delegated execution.
+      // Best-effort: run tracking must not block child execution.
     }
 
     childActivityCallback?.(info);
   };
-}
-
-function mergeAgentSystemMessages(
-  providedMessages: string[] | undefined,
-  baseSystemPrompt: string | undefined,
-): string[] {
-  return [
-    ...(providedMessages ?? []),
-    ...(baseSystemPrompt?.trim() ? [baseSystemPrompt.trim()] : []),
-  ];
 }
 
 function resolveDefinitionTools(
@@ -329,7 +391,7 @@ function readChildActivityCallback(runtimeShared: unknown): ChildToolActivityCal
   return typeof callback === 'function' ? callback as ChildToolActivityCallback : undefined;
 }
 
-function normalizeAgentName(subagentType: string | undefined, fallback: string): string {
+function normalizeSubagentName(subagentType: string | undefined, fallback: string): string {
   const agentName = formatSubagentDisplayName(subagentType) || fallback.trim();
   return agentName || 'Agent';
 }

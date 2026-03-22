@@ -12,12 +12,14 @@ import {createCodaraPromptSource} from '@context/prompts/prompt-source';
 import {buildBaseSystemMessage} from '@context/session-bundle/base-system-message';
 import {
   createTaskMemoryStore,
-  createTaskMiddleware,
+  createTaskTools,
   TASK_CREATE_TOOL_NAME,
   TASK_LIST_TOOL_NAME,
 } from '@capability/task';
-import {createAgentRunMemoryStore, AGENT_TOOL_NAME, createAgentMiddleware} from '@capability/subagent';
-import {formatAgentRunLaunchResult, readAgentRunLaunchResult} from '@shared/agent-run-launch';
+import {createMiddleware} from '@core/pipeline/types';
+import {createSubagentRunMemoryStore, createSubagentMiddleware} from '@capability/subagent';
+import {AGENT_TOOL_NAME} from '@capability/subagent/tool';
+import {formatSubagentRunLaunchResult, readSubagentRunLaunchResult} from '@shared/subagent-run-launch';
 import {createAgentSkillsMiddleware, createBuiltinSubagentStore} from '../agents/task-tool.fixtures';
 
 async function waitForCondition(
@@ -122,8 +124,8 @@ class ChildProgressiveDisclosureModel {
 
 describe('tasks middlewares', () => {
   it('should keep task launch text terse and directive for parent agents', () => {
-    const launchText = formatAgentRunLaunchResult({
-      type: 'agent_run_started',
+    const launchText = formatSubagentRunLaunchResult({
+      type: 'subagent_run_started',
       runId: 'run-1',
       parentSessionId: 'session-1',
       sessionId: 'session-1:task:run-1',
@@ -139,8 +141,8 @@ describe('tasks middlewares', () => {
 
   it('should register the delegated Agent tool through middleware', async () => {
     const store = createBuiltinSubagentStore();
-    const runStore = createAgentRunMemoryStore();
-    const taskMiddleware = createAgentMiddleware({
+    const runStore = createSubagentRunMemoryStore();
+    const taskMiddleware = createSubagentMiddleware({
       model: new ChildSummaryModel() as unknown as BaseChatModel,
       runStore,
     });
@@ -171,8 +173,8 @@ describe('tasks middlewares', () => {
     expect(result.reason).toBe('complete');
     expect(String(toolMessage.content)).toContain('Subagent started in background.');
     expect(String(toolMessage.content)).toContain('run_id: call_task_middleware');
-    expect(readAgentRunLaunchResult(toolMessage.artifact)).toEqual(expect.objectContaining({
-      type: 'agent_run_started',
+    expect(readSubagentRunLaunchResult(toolMessage.artifact)).toEqual(expect.objectContaining({
+      type: 'subagent_run_started',
       runId: 'call_task_middleware',
     }));
 
@@ -186,7 +188,7 @@ describe('tasks middlewares', () => {
 
   it('should inject available subagent definitions from skills runtime before model calls', async () => {
     const store = createBuiltinSubagentStore();
-    const taskMiddleware = createAgentMiddleware({
+    const taskMiddleware = createSubagentMiddleware({
       model: new ChildSummaryModel() as unknown as BaseChatModel,
     });
 
@@ -204,7 +206,7 @@ describe('tasks middlewares', () => {
   });
 
   it('should inject delegated subagent completion results into main-agent continuation turns', async () => {
-    const taskMiddleware = createAgentMiddleware({
+    const taskMiddleware = createSubagentMiddleware({
       model: new ChildSummaryModel() as unknown as BaseChatModel,
     });
     const context = {
@@ -218,7 +220,7 @@ describe('tasks middlewares', () => {
       runtime: {
         context: {},
         runtimeContext: {
-          codaraAgentCompletion: {
+          codaraSubagentCompletion: {
             attempt: 3,
             previousInvalidResponse: 'I will wait for the next phase before answering.',
             runs: [
@@ -258,7 +260,7 @@ describe('tasks middlewares', () => {
     await taskMiddleware.beforeModel?.(context);
 
     expect(context.systemMessage.join('\n')).toContain('Completed subagent runs from your previous response are now available.');
-    expect(context.systemMessage.join('\n')).toContain('Continue the parent task using these completed delegated results');
+    expect(context.systemMessage.join('\n')).toContain('Continue the parent task using these completed subagent results');
     expect(context.systemMessage.join('\n')).toContain('If more work is still needed, immediately take the next step');
     expect(context.systemMessage.join('\n')).toContain('This is a repeated correction attempt.');
     expect(context.systemMessage.join('\n')).toContain('Invalid previous draft (for correction only): I will wait for the next phase before answering');
@@ -274,8 +276,8 @@ describe('tasks middlewares', () => {
   });
 
   it('should delegate through Task middleware without requiring skills runtime for the built-in Agent child', async () => {
-    const runStore = createAgentRunMemoryStore();
-    const taskMiddleware = createAgentMiddleware({
+    const runStore = createSubagentRunMemoryStore();
+    const taskMiddleware = createSubagentMiddleware({
       model: new ChildSummaryModel() as unknown as BaseChatModel,
       runStore,
     });
@@ -330,9 +332,9 @@ describe('tasks middlewares', () => {
 
     const guidelinesSource = createCodaraGuidelinesSource({projectRoot, cwd: projectRoot});
     const promptSource = createCodaraPromptSource({projectRoot, cwd: projectRoot});
-    const runStore = createAgentRunMemoryStore();
+    const runStore = createSubagentRunMemoryStore();
 
-    const taskMiddleware = createAgentMiddleware({
+    const taskMiddleware = createSubagentMiddleware({
       model: new ChildProgressiveDisclosureModel(targetFile) as unknown as BaseChatModel,
       runStore,
       tools: [
@@ -342,11 +344,14 @@ describe('tasks middlewares', () => {
           schema: z.object({path: z.string()}),
         }),
       ],
-      childPrepareContext: async (context) => {
-        const next = await buildBaseSystemMessage(promptSource, guidelinesSource);
-        context.systemMessage = [...next.systemMessage];
-        context.runtime.shared = next.runtimeShared ? {...next.runtimeShared} : {};
-        context.messages = context.state.messages;
+      childInstructionContext: {
+        loadBaseSystemMessage: () => buildBaseSystemMessage(promptSource, guidelinesSource),
+        prepareContext: async (context) => {
+          const next = await buildBaseSystemMessage(promptSource, guidelinesSource);
+          context.systemMessage = [...next.systemMessage];
+          context.runtime.shared = next.runtimeShared ? {...next.runtimeShared} : {};
+          context.messages = context.state.messages;
+        },
       },
     });
     const parentModel = new ScriptedModel([
@@ -384,7 +389,7 @@ describe('tasks middlewares', () => {
 
   it('should expose shared task coordination tools through the single Task middleware', async () => {
     const store = createTaskMemoryStore();
-    const taskMiddleware = createTaskMiddleware({store});
+    const taskMiddleware = createMiddleware({name: 'TaskMiddleware', tools: createTaskTools({store})});
     const model = new ScriptedModel([
       new AIMessage({
         content: '',
@@ -428,8 +433,8 @@ describe('tasks middlewares', () => {
 
   it('should write delegated subagent runs into the stable run store', async () => {
     const store = createBuiltinSubagentStore();
-    const runStore = createAgentRunMemoryStore();
-    const taskMiddleware = createAgentMiddleware({
+    const runStore = createSubagentRunMemoryStore();
+    const taskMiddleware = createSubagentMiddleware({
       model: new ChildSummaryModel() as unknown as BaseChatModel,
       runStore,
     });

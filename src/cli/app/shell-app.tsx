@@ -5,7 +5,7 @@ import {CommandOutputPanel} from '../components/chrome/command-output-panel';
 import {Footer} from '../components/chrome/footer';
 import {StatusBar} from '../components/chrome/header';
 import {ActivityLine} from '../components/chrome/activity-line';
-import {AgentRunPanel} from '../components/chrome/agent-run-panel';
+import {SubagentRunPanel} from '../components/chrome/subagent-run-panel';
 import {ReviewPanel, isPermissionReview} from '../components/conversation/review-panel';
 import {SessionPicker} from '../components/conversation/session-picker';
 import {ActiveTranscript} from '../components/conversation/transcript';
@@ -16,7 +16,7 @@ import {PromptFrame} from '../components/prompt/prompt-frame';
 import type {CliReviewAutoAction} from './review-state';
 import {resolveCliLayoutMode} from './layout-mode';
 import {useCliController} from './use-cli-controller';
-import {useAgentRuns} from '../hooks/use-agent-runs';
+import {useSubagentRuns} from '../hooks/use-subagent-runs';
 import {useCommandCompletion} from '../hooks/use-command-completion';
 import {useCliInteractionInput} from '../hooks/use-cli-interaction-input';
 import {useSessionPicker} from '../hooks/use-session-picker';
@@ -95,26 +95,26 @@ export function resolveActiveInteractionSurface(input: {
   return input.focusedSurface;
 }
 
-export function shouldShowAgentRunPanel(input: {
-  agentRunPanelVisible: boolean;
-  agentRunCount: number;
+export function shouldShowSubagentRunPanel(input: {
+  subagentRunPanelVisible: boolean;
+  subagentRunCount: number;
 }): boolean {
-  return input.agentRunPanelVisible && input.agentRunCount > 1;
+  return input.subagentRunPanelVisible && input.subagentRunCount > 1;
 }
 
-export function shouldShowFloatingAgentRunPanel(input: {
+export function shouldShowFloatingSubagentRunPanel(input: {
   hasConversation: boolean;
-  agentRunPanelVisible: boolean;
-  agentRunCount: number;
+  subagentRunPanelVisible: boolean;
+  subagentRunCount: number;
   hasBlockingOverlay: boolean;
 }): boolean {
   if (input.hasBlockingOverlay || !input.hasConversation) {
     return false;
   }
 
-  return shouldShowAgentRunPanel({
-    agentRunPanelVisible: input.agentRunPanelVisible,
-    agentRunCount: input.agentRunCount,
+  return shouldShowSubagentRunPanel({
+    subagentRunPanelVisible: input.subagentRunPanelVisible,
+    subagentRunCount: input.subagentRunCount,
   });
 }
 
@@ -123,8 +123,8 @@ export function shouldShowActivityLine(input: {
   runStateStatus: 'idle' | 'running' | 'paused' | 'done' | 'error';
   latestRuntimeEventKind?: CodaraRuntimeEvent['kind'];
   activeItems: readonly TranscriptItem[];
-  runningAgentRunCount?: number;
-  pausedAgentRunCount?: number;
+  runningSubagentRunCount?: number;
+  pausedSubagentRunCount?: number;
 }): boolean {
   if (input.review) {
     return false;
@@ -139,8 +139,8 @@ export function shouldShowActivityLine(input: {
   ));
 
   if (!transcriptOwnsTaskExecution) {
-    return (input.runningAgentRunCount ?? 0) === 0
-      && (input.pausedAgentRunCount ?? 0) === 0;
+    return (input.runningSubagentRunCount ?? 0) === 0
+      && (input.pausedSubagentRunCount ?? 0) === 0;
   }
 
   return input.latestRuntimeEventKind !== 'agent' && input.latestRuntimeEventKind !== 'tool';
@@ -190,8 +190,8 @@ export function CodaraCliApp(props: CodaraCliAppProps): React.JSX.Element {
   });
   const terminalWidth = useTerminalWidth();
   const layoutMode = resolveCliLayoutMode(terminalWidth);
-  const agentRuns = useAgentRuns({
-    agentRunSummaries: codara.getAgentRunSummaries(),
+  const subagentRuns = useSubagentRuns({
+    subagentRunSummaries: codara.getSubagentRunSummaries(),
     reviews: codara.listReviewItems(),
   });
   const listCommands = React.useCallback(() => codara.listCommands(), [codara]);
@@ -258,7 +258,7 @@ export function CodaraCliApp(props: CodaraCliAppProps): React.JSX.Element {
       if (activeSurface === 'session-picker') { sessionPicker.hide(); return; }
       exit();
     },
-    onToggleAgentRunsPanel: shell.toggleAgentRunsPanel,
+    onToggleAgentRunsPanel: shell.toggleSubagentRunsPanel,
     onToggleExpand: shell.toggleExpand,
     onFocusReview: hasReview ? shell.focusReviewWindow : undefined,
     onReviewMoveLeft: shell.moveReviewLeft,
@@ -341,7 +341,7 @@ export function CodaraCliApp(props: CodaraCliAppProps): React.JSX.Element {
             />
           )}
         </Static>
-        {activeItems.length > 0 && <ActiveTranscript items={activeItems} activeAgentRuns={agentRuns.runs} expandedAll={shell.expandedAll} />}
+        {activeItems.length > 0 && <ActiveTranscript items={activeItems} activeSubagentRuns={subagentRuns.runs} expandedAll={shell.expandedAll} />}
 
         {/* Activity / Prompt / Status */}
         <>
@@ -350,8 +350,8 @@ export function CodaraCliApp(props: CodaraCliAppProps): React.JSX.Element {
               runStateStatus: shell.runState.status,
               latestRuntimeEventKind: shell.latestRuntimeEvent?.kind,
               activeItems,
-              runningAgentRunCount: agentRuns.runningCount,
-              pausedAgentRunCount: agentRuns.pausedCount,
+              runningSubagentRunCount: subagentRuns.runningCount,
+              pausedSubagentRunCount: subagentRuns.pausedCount,
             }) && (
               <ActivityLine
                 runState={shell.runState}
@@ -374,19 +374,19 @@ export function CodaraCliApp(props: CodaraCliAppProps): React.JSX.Element {
             {shell.commandOutput && (
               <CommandOutputPanel content={shell.commandOutput.content} commandName={shell.commandOutput.commandName} scrollOffset={shell.commandOutput.scrollOffset} />
             )}
-            {shouldShowFloatingAgentRunPanel({
+            {shouldShowFloatingSubagentRunPanel({
               hasConversation: shell.hasConversation,
-              agentRunPanelVisible: shell.agentRunPanelVisible,
-              agentRunCount: agentRuns.runs.length,
+              subagentRunPanelVisible: shell.subagentRunPanelVisible,
+              subagentRunCount: subagentRuns.runs.length,
               hasBlockingOverlay,
             }) && (
               <Box marginTop={1}>
-                <AgentRunPanel
-                  runs={agentRuns.runs}
-                  runningCount={agentRuns.runningCount}
-                  pausedCount={agentRuns.pausedCount}
-                  doneCount={agentRuns.doneCount}
-                  errorCount={agentRuns.errorCount}
+                <SubagentRunPanel
+                  runs={subagentRuns.runs}
+                  runningCount={subagentRuns.runningCount}
+                  pausedCount={subagentRuns.pausedCount}
+                  doneCount={subagentRuns.doneCount}
+                  errorCount={subagentRuns.errorCount}
                 />
               </Box>
             )}

@@ -1,9 +1,9 @@
 import {describe, expect, it} from 'bun:test';
-import {createAgentRunMemoryStore} from '@capability/subagent';
+import {createSubagentRunMemoryStore} from '@capability/subagent';
 
 describe('agent run store', () => {
   it('tracks start, activity, and completion for delegated runs', () => {
-    const store = createAgentRunMemoryStore();
+    const store = createSubagentRunMemoryStore();
 
     store.start({
       runId: 'run-1',
@@ -15,7 +15,7 @@ describe('agent run store', () => {
       latestActivity: 'read_file(src/auth.ts)',
     });
     store.finish('run-1', {
-      type: 'delegated_agent_result',
+      type: 'subagent_result',
       sessionId: 'child-1',
       turns: 2,
       reason: 'complete',
@@ -40,7 +40,7 @@ describe('agent run store', () => {
   });
 
   it('persists live tool counts while a delegated run is still active', () => {
-    const store = createAgentRunMemoryStore();
+    const store = createSubagentRunMemoryStore();
 
     store.start({
       runId: 'run-live-count',
@@ -66,7 +66,7 @@ describe('agent run store', () => {
   });
 
   it('marks paused runs without replacing the original start time', () => {
-    const store = createAgentRunMemoryStore();
+    const store = createSubagentRunMemoryStore();
 
     const started = store.start({
       runId: 'run-2',

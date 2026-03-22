@@ -14,6 +14,8 @@ export interface BaseSystemMessageBundle {
   runtimeShared?: Record<string, unknown>;
 }
 
+export type BaseSystemMessageLoader = () => Promise<BaseSystemMessageBundle>;
+
 export interface BaseSystemMessageRuntimeData {
   systemMessage: string[];
 }
@@ -76,6 +78,34 @@ export async function buildBaseSystemMessage(
   return {
     systemMessage,
     ...(Object.keys(runtimeShared).length > 0 ? {runtimeShared} : {}),
+  };
+}
+
+export function createBaseSystemMessageLoader(
+  options: BuildBaseSystemMessageOptions,
+): BaseSystemMessageLoader {
+  return () => buildBaseSystemMessage(options);
+}
+
+export function extendBaseSystemMessage(
+  base: BaseSystemMessageBundle | undefined,
+  additions: {
+    systemMessages?: string[];
+    prompts?: string[];
+  } = {},
+): BaseSystemMessageBundle {
+  const extraSystemMessages = additions.systemMessages?.filter((value): value is string => Boolean(value?.trim()))
+    .map((value) => value.trim()) ?? [];
+  const extraPrompts = additions.prompts?.filter((value): value is string => Boolean(value?.trim()))
+    .map((value) => value.trim()) ?? [];
+
+  return {
+    systemMessage: [
+      ...(base?.systemMessage ?? []),
+      ...extraSystemMessages,
+      ...extraPrompts,
+    ],
+    ...(base?.runtimeShared ? {runtimeShared: {...base.runtimeShared}} : {}),
   };
 }
 

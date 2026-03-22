@@ -11,7 +11,8 @@ import {mkdtemp, mkdir, readFile, rm, stat, writeFile} from 'node:fs/promises';
 import {tmpdir} from 'node:os';
 import path from 'node:path';
 import {EchoModel, StreamingEchoModel} from './codara-fixtures';
-import {createAgentRunFileStore, createAgentRunMemoryStore, createAgentRuntime, AGENT_TOOL_NAME, createAgentTool} from '@/capability/subagent';
+import {createSubagentRunFileStore, createSubagentRunMemoryStore, createSubagentMiddleware} from '@/capability/subagent';
+import {AGENT_TOOL_NAME} from '@/capability/subagent/tool';
 
 const createRuntimeForTest = (options: Parameters<typeof createCodaraRuntime>[0]) => (
   createCodaraRuntime({
@@ -272,32 +273,32 @@ describe('Codara facade runtime', () => {
 
   it('should filter persisted task run summaries to the current runtime session', async () => {
     const projectRoot = await mkdtemp(path.join(tmpdir(), 'codara-runtime-agent-runs-'));
-    const agentRunStore = createAgentRunFileStore({
+    const subagentRunStore = createSubagentRunFileStore({
       rootDir: path.join(projectRoot, '.codara', 'agent-runs'),
     });
 
-    agentRunStore.start({
+    subagentRunStore.start({
       runId: 'run-session-a',
       parentSessionId: 'runtime-agent-run-session-a',
       label: 'Delegating Agent: Inspect isolated child work',
       agentName: 'Agent',
     });
-    agentRunStore.finish('run-session-a', {
-      type: 'delegated_agent_result',
+    subagentRunStore.finish('run-session-a', {
+      type: 'subagent_result',
       sessionId: 'child-a',
       turns: 1,
       reason: 'complete',
       summary: 'done a',
     });
 
-    agentRunStore.start({
+    subagentRunStore.start({
       runId: 'run-session-b',
       parentSessionId: 'runtime-agent-run-session-b',
       label: 'Delegating Agent: Inspect another child work',
       agentName: 'Agent',
     });
-    agentRunStore.finish('run-session-b', {
-      type: 'delegated_agent_result',
+    subagentRunStore.finish('run-session-b', {
+      type: 'subagent_result',
       sessionId: 'child-b',
       turns: 1,
       reason: 'complete',
@@ -308,12 +309,12 @@ describe('Codara facade runtime', () => {
       cwd: projectRoot,
       projectRoot,
       sessionId: 'runtime-agent-run-session-a',
-      agentRunStore,
+      subagentRunStore,
       model: new EchoModel() as unknown as BaseChatModel,
       skills: false,
     });
 
-    expect(runtime.getAgentRunSummaries()).toEqual([
+    expect(runtime.getSubagentRunSummaries()).toEqual([
       expect.objectContaining({
         parentSessionId: 'runtime-agent-run-session-a',
         label: 'Delegating Agent: Inspect isolated child work',
@@ -321,16 +322,15 @@ describe('Codara facade runtime', () => {
         status: 'completed',
       }),
     ]);
-    expect(runtime.getAgentRunSummaries()).toHaveLength(1);
-    expect(runtime.getAgentRunSummaries()[0]).not.toHaveProperty('sessionId');
+    expect(runtime.getSubagentRunSummaries()).toHaveLength(1);
+    expect(runtime.getSubagentRunSummaries()[0]).not.toHaveProperty('sessionId');
   });
 
-  it('should rebind a caller-provided Agent tool to the runtime stores while preserving child tools', async () => {
+  it('should accept a caller-provided Agent middleware while preserving child tools', async () => {
     const projectRoot = await mkdtemp(path.join(tmpdir(), 'codara-runtime-custom-task-'));
-    const runtimeAgentRunStore = createAgentRunMemoryStore();
+    const runtimeSubagentRunStore = createSubagentRunMemoryStore();
     const runtimeApprovalStore = createApprovalMemoryStore();
-    const customAgentRunStore = createAgentRunMemoryStore();
-    const customApprovalStore = createApprovalMemoryStore();
+    const customSubagentRunStore = createSubagentRunMemoryStore();
     const runtimeEvents: import('@/index').CodaraRuntimeEvent[] = [];
 
     class RuntimeReboundTaskChildModel {
@@ -388,13 +388,13 @@ describe('Codara facade runtime', () => {
       cwd: projectRoot,
       projectRoot,
       sessionId: 'runtime-custom-task-session',
-      agentRunStore: runtimeAgentRunStore,
+      subagentRunStore: runtimeSubagentRunStore,
       approvalStore: runtimeApprovalStore,
       model: new RuntimeReboundTaskParentModel() as unknown as BaseChatModel,
       skills: false,
       builtinTools: false,
-      tools: [
-        createAgentTool({
+      middleware: [
+        createSubagentMiddleware({
           model: new RuntimeReboundTaskChildModel() as unknown as BaseChatModel,
           tools: [
             tool(async ({value}: {value: string}) => `child_echo:${value}`, {
@@ -405,12 +405,6 @@ describe('Codara facade runtime', () => {
               }),
             }),
           ],
-          runStore: customAgentRunStore,
-          approvalStore: customApprovalStore,
-          runtime: createAgentRuntime({
-            runStore: customAgentRunStore,
-            approvalStore: customApprovalStore,
-          }),
         }),
       ],
     });
@@ -422,11 +416,11 @@ describe('Codara facade runtime', () => {
       const result = await runtime.invoke('start the custom task runtime flow');
       expect(result.reason).toBe('complete');
 
-      await waitForCondition(() => runtime.getAgentRunSummaries().some((run) => (
+      await waitForCondition(() => runtime.getSubagentRunSummaries().some((run) => (
         run.runId === 'call_runtime_rebound_task' && run.status === 'completed'
       )));
 
-      expect(runtime.getAgentRunSummaries()).toEqual([
+      expect(runtime.getSubagentRunSummaries()).toEqual([
         expect.objectContaining({
           runId: 'call_runtime_rebound_task',
           label: 'Delegating Agent: Inspect custom runtime rebinding',
@@ -435,7 +429,7 @@ describe('Codara facade runtime', () => {
           summary: expect.stringContaining('child-tool:child_echo:delegated child hello'),
         }),
       ]);
-      expect(customAgentRunStore.list()).toHaveLength(0);
+      expect(customSubagentRunStore.list()).toHaveLength(0);
       expect(runtimeEvents).toEqual(expect.arrayContaining([
         expect.objectContaining({
           kind: 'agent',
@@ -456,37 +450,59 @@ describe('Codara facade runtime', () => {
     }
   });
 
+  it('should reject raw Agent tools in Codara runtime options.tools', async () => {
+    const projectRoot = await mkdtemp(path.join(tmpdir(), 'codara-runtime-raw-agent-tool-'));
+    await expect(createRuntimeForTest({
+      cwd: projectRoot,
+      projectRoot,
+      sessionId: 'runtime-raw-agent-tool-session',
+      model: new EchoModel() as unknown as BaseChatModel,
+      skills: false,
+      builtinTools: false,
+      tools: [
+        createSubagentMiddleware({
+          model: new EchoModel() as unknown as BaseChatModel,
+        }).tools![0]!,
+      ],
+    })).rejects.toThrow(
+      'Codara runtime does not accept raw Agent tools in options.tools. '
+      + 'Register subagent delegation through createSubagentMiddleware() instead.',
+    );
+
+    await rm(projectRoot, {recursive: true, force: true});
+  });
+
   it('should not mutate live running task runs when reading summaries', async () => {
-    const agentRunStore = createAgentRunMemoryStore();
+    const subagentRunStore = createSubagentRunMemoryStore();
     const runtime = await createRuntimeForTest({
       sessionId: 'runtime-live-task-run-session',
-      agentRunStore,
+      subagentRunStore,
       model: new EchoModel() as unknown as BaseChatModel,
       skills: false,
     });
 
-    agentRunStore.start({
+    subagentRunStore.start({
       runId: 'run-live',
       parentSessionId: 'runtime-live-task-run-session',
       label: 'Delegating Agent: Inspect live query behavior',
       agentName: 'Agent',
     });
 
-    expect(runtime.getAgentRunSummaries()).toEqual([
+    expect(runtime.getSubagentRunSummaries()).toEqual([
       expect.objectContaining({
         runId: 'run-live',
         status: 'running',
       }),
     ]);
-    expect(agentRunStore.get('run-live')?.status).toBe('running');
+    expect(subagentRunStore.get('run-live')?.status).toBe('running');
 
-    expect(runtime.getAgentRunSummaries()).toEqual([
+    expect(runtime.getSubagentRunSummaries()).toEqual([
       expect.objectContaining({
         runId: 'run-live',
         status: 'running',
       }),
     ]);
-    expect(agentRunStore.get('run-live')?.status).toBe('running');
+    expect(subagentRunStore.get('run-live')?.status).toBe('running');
   });
 
   it('should surface concurrent delegated approvals, switch approval focus, and keep task approval resume behavior working', async () => {
@@ -523,14 +539,14 @@ describe('Codara facade runtime', () => {
       await waitForCondition(() => runtime.listReviewItems().length === 2);
       const reviews = runtime.listReviewItems();
       expect(reviews).toHaveLength(2);
-      expect(reviews.map((review) => review.anchor.agentRunId).sort()).toEqual(['call_task_alpha', 'call_task_beta']);
+      expect(reviews.map((review) => review.anchor.subagentRunId).sort()).toEqual(['call_task_alpha', 'call_task_beta']);
       expect(runtime.getAgentState().pendingReview).toBeUndefined();
       await waitForCondition(() => (
         runtimeEvents.filter((event) => (
           event.kind === 'agent'
           && event.phase === 'update'
           && event.status === 'paused'
-                && event.label === 'Delegated agent waiting for review'
+                && event.label === 'Subagent waiting for review'
         )).length >= 2
       ));
 
@@ -549,10 +565,10 @@ describe('Codara facade runtime', () => {
       expect(remainingReviews[0]?.reviewId).not.toBe(alternateReview!.reviewId);
       expect(runtime.getFocusedReview()?.item.reviewId).toBe(remainingReviews[0]?.reviewId);
 
-      const taskRuns = runtime.getAgentRunSummaries();
+      const taskRuns = runtime.getSubagentRunSummaries();
       expect(taskRuns).toEqual(expect.arrayContaining([
         expect.objectContaining({
-          runId: alternateReview!.anchor.agentRunId,
+          runId: alternateReview!.anchor.subagentRunId,
           status: 'completed',
         }),
         expect.objectContaining({
@@ -563,7 +579,7 @@ describe('Codara facade runtime', () => {
         event.kind === 'agent'
         && event.phase === 'end'
         && event.status === 'done'
-        && event.label === 'Delegated agent completed'
+        && event.label === 'Subagent completed'
       ))).toBe(true);
     } finally {
       unsubscribe();
@@ -574,7 +590,7 @@ describe('Codara facade runtime', () => {
     const projectRoot = await mkdtemp(path.join(tmpdir(), 'codara-runtime-agent-run-recovery-'));
     const rootDir = path.join(projectRoot, '.codara', 'agent-runs');
 
-    const originalStore = createAgentRunFileStore({rootDir});
+    const originalStore = createSubagentRunFileStore({rootDir});
     originalStore.start({
       runId: 'run-recovery',
       parentSessionId: 'runtime-agent-run-recovery-session',
@@ -582,17 +598,17 @@ describe('Codara facade runtime', () => {
       agentName: 'research',
     });
 
-    const reopenedStore = createAgentRunFileStore({rootDir});
+    const reopenedStore = createSubagentRunFileStore({rootDir});
     const runtime = await createRuntimeForTest({
       cwd: projectRoot,
       projectRoot,
       sessionId: 'runtime-agent-run-recovery-session',
-      agentRunStore: reopenedStore,
+      subagentRunStore: reopenedStore,
       model: new EchoModel() as unknown as BaseChatModel,
       skills: false,
     });
 
-    expect(runtime.getAgentRunSummaries()).toEqual([
+    expect(runtime.getSubagentRunSummaries()).toEqual([
       expect.objectContaining({
         runId: 'run-recovery',
         status: 'paused',
@@ -605,7 +621,7 @@ describe('Codara facade runtime', () => {
 
   it('should resume a reopened persisted task approval through the task runtime control plane', async () => {
     const projectRoot = await mkdtemp(path.join(tmpdir(), 'codara-runtime-paused-task-reopen-'));
-    const agentRunStore = createAgentRunFileStore({
+    const subagentRunStore = createSubagentRunFileStore({
       rootDir: path.join(projectRoot, '.codara', 'agent-runs'),
     });
     const approvalStore = createApprovalFileStore({
@@ -663,7 +679,7 @@ describe('Codara facade runtime', () => {
       }
     }
 
-    const customTaskTool = () => createAgentTool({
+    const customTaskMiddleware = () => createSubagentMiddleware({
       model: new ReopenableTaskChildModel() as unknown as BaseChatModel,
       tools: [
         tool(async ({target}: {target: string}) => `danger:${target}`, {
@@ -687,12 +703,12 @@ describe('Codara facade runtime', () => {
       cwd: projectRoot,
       projectRoot,
       sessionId: 'runtime-paused-task-session',
-      agentRunStore,
+      subagentRunStore,
       approvalStore,
       model: new ReopenableTaskParentModel() as unknown as BaseChatModel,
       skills: false,
       builtinTools: false,
-      tools: [customTaskTool()],
+      middleware: [customTaskMiddleware()],
     });
 
     try {
@@ -700,7 +716,7 @@ describe('Codara facade runtime', () => {
       expect(first.reason).toBe('complete');
 
       await waitForCondition(() => firstRuntime.listReviewItems().length === 1);
-      expect(firstRuntime.getAgentRunSummaries()).toEqual([
+      expect(firstRuntime.getSubagentRunSummaries()).toEqual([
         expect.objectContaining({
           runId: 'call_reopen_task',
           status: 'paused',
@@ -714,31 +730,31 @@ describe('Codara facade runtime', () => {
       cwd: projectRoot,
       projectRoot,
       sessionId: 'runtime-paused-task-session',
-      agentRunStore,
+      subagentRunStore,
       approvalStore,
       model: new EchoModel() as unknown as BaseChatModel,
       skills: false,
       builtinTools: false,
-      tools: [customTaskTool()],
+      middleware: [customTaskMiddleware()],
     });
 
     try {
       const reviews = reopened.listReviewItems();
       expect(reviews).toEqual([
         expect.objectContaining({
-          anchor: expect.objectContaining({agentRunId: 'call_reopen_task'}),
-          source: 'agent_run',
+          anchor: expect.objectContaining({subagentRunId: 'call_reopen_task'}),
+          source: 'subagent_run',
           toolName: 'dangerous_tool',
         }),
       ]);
 
       await reopened.focusReview(reviews[0]!.reviewId);
       await reopened.resumeReview({decision: 'approve'});
-      await waitForCondition(() => reopened.getAgentRunSummaries().some((run) => (
+      await waitForCondition(() => reopened.getSubagentRunSummaries().some((run) => (
         run.runId === 'call_reopen_task' && run.status === 'completed'
       )));
 
-      expect(reopened.getAgentRunSummaries()).toEqual([
+      expect(reopened.getSubagentRunSummaries()).toEqual([
         expect.objectContaining({
           runId: 'call_reopen_task',
           status: 'completed',

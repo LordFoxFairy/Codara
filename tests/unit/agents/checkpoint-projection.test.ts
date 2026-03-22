@@ -1,17 +1,17 @@
 import {describe, expect, it} from 'bun:test';
 import {HumanMessage} from '@langchain/core/messages';
 import type {AgentResult} from '@core/agent';
+import {createRunContext} from '@core/agent/run/agent-loop';
 import {
   applyAgentStateSnapshot,
   cloneAgentState,
   createInitialAgentState,
-  createRunContext,
   restoreCheckpointMetadata,
   toAgentState,
   toCheckpointInfo,
   toCheckpointState,
   type MutableAgentState,
-} from '@core/agent';
+} from '@core/agent/models/state';
 import type {AgentCheckpoint} from '@durability/checkpoint';
 
 describe('agent checkpoint state helpers', () => {
