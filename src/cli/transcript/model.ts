@@ -1185,8 +1185,7 @@ export function shouldHideRuntimeEventForTranscript(event: CodaraRuntimeEvent): 
   }
 
   if (event.kind === 'agent') {
-    return event.label === 'Task started'
-      || event.label === 'Subagent started'
+    return event.label === 'Subagent started'
       || event.label === 'Subagent running in background';
   }
 

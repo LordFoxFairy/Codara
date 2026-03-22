@@ -33,21 +33,21 @@ export function createCodaraReviewControl(options: {
 
   const listReviewItemsForSession = (): ReviewQueryItem[] => {
     const queuedRecords = listQueuedApprovalRecords();
-    const foregroundPause = readForegroundReview();
+    const foregroundReview = readForegroundReview();
     const resolvedFocusedReviewId = focusedReviewId
       ?? queuedRecords[0]?.approvalId
-      ?? foregroundPause?.id;
+      ?? foregroundReview?.id;
     return getReviewItems({
       sessionId: session.getState().sessionId,
       approvalStore,
       focusedReviewId: resolvedFocusedReviewId,
-      foregroundPause,
+      foregroundReview,
     });
   };
 
   const resolveFocusedReview = (): FocusedReviewQuery | undefined => {
     const queuedRecords = listQueuedApprovalRecords();
-    const foregroundPause = readForegroundReview();
+    const foregroundReview = readForegroundReview();
     const items = listReviewItemsForSession();
 
     if (items.length === 0) {
@@ -72,10 +72,10 @@ export function createCodaraReviewControl(options: {
       };
     }
 
-    if (foregroundPause?.id === item.reviewId) {
+    if (foregroundReview?.id === item.reviewId) {
       return {
         item,
-        request: foregroundPause,
+        request: foregroundReview,
       };
     }
 

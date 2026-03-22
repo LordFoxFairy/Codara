@@ -656,7 +656,7 @@ describe('cli transcript model', () => {
     expect(exploreItems[0]?.content).not.toContain('Done (0s)');
   });
 
-  test('should hide bookkeeping task runtime events like Task started and background-launch status lines', () => {
+  test('should hide bookkeeping subagent runtime events like Subagent started and background-launch status lines', () => {
     const now = new Date().toISOString();
     const items = buildActiveItems({
       activeTurn: {
@@ -673,7 +673,7 @@ describe('cli transcript model', () => {
           kind: 'agent',
           phase: 'end',
           status: 'done',
-          label: 'Task started',
+          label: 'Subagent started',
           parentId: 'pending-call-1',
         },
         {
@@ -690,7 +690,7 @@ describe('cli transcript model', () => {
       ],
     });
 
-    expect(items.some((item) => item.content.includes('Task started'))).toBe(false);
+    expect(items.some((item) => item.content.includes('Subagent started'))).toBe(false);
     expect(items.some((item) => item.content.includes('Subagent running in background'))).toBe(false);
     expect(items.some((item) => item.content.includes('Subagent started in background.'))).toBe(false);
   });
@@ -735,7 +735,7 @@ describe('cli transcript model', () => {
           kind: 'agent',
           phase: 'end',
           status: 'done',
-          label: 'Task started',
+          label: 'Subagent started',
           parentId: 'pending-task-tech',
         },
         {

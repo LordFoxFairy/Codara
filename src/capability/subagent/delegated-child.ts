@@ -1,15 +1,13 @@
 import {AIMessage, HumanMessage, ToolMessage, type BaseMessage} from '@langchain/core/messages';
 import type {BaseChatModel} from '@langchain/core/language_models/chat_models';
 import type {StructuredToolInterface} from '@langchain/core/tools';
-import {z} from 'zod';
-import {
-  type AgentInputBudget,
-  type AgentRuntimeContext,
-  type AgentContextPreparer,
-  type AgentRuntimeValues,
-  type ReviewRequest,
-  type ReviewResumePayload,
-  type ToolErrorHandler,
+import type {
+  AgentInputBudget,
+  AgentRuntimeContext,
+  AgentContextPreparer,
+  AgentRuntimeValues,
+  ReviewRequest,
+  ToolErrorHandler,
 } from '@core/agent/models/agent';
 import type {AgentResult, AgentStreamOutput} from '@core/agent/models/agent';
 import type {BootstrapAgentOptions} from '@core/agent/bootstrap';
@@ -17,53 +15,26 @@ import {bootstrapAgent, resolveModel} from '@core/agent/bootstrap';
 import {createMiddleware, type BaseMiddleware} from '@core/pipeline/types';
 import type {ChildToolActivityCallback} from '@observability/events';
 import type {ReviewToolMessagePayload} from '@core/middleware/review';
-import type {ExecutionContextMetadata} from '@core/pipeline/types';
 import type {AgentCheckpointer} from '@durability/checkpoint/agent';
 import type {AgentLifecycleHooks} from '@observability/hook/types';
 import {deepClone} from '@shared/clone';
 import {formatToolSummary} from '@shared/tool-display';
 import {readLatestAssistantText} from '@shared/messages';
-import type {DelegatedAgentResult} from '@shared/delegation-result';
 import {formatSubagentDisplayName} from '@context/skills/runtime-shared';
+import type {DelegatedAgentResult} from '@shared/delegation-result';
+import {
+  mergeDelegatedPauseMetadata,
+  type DelegatedParentRuntimeMetadata,
+  type DelegatedPauseRecoverySpec,
+  type DelegatedResumeState,
+} from './review-metadata';
+
 export {readDelegatedAgentResult, type DelegatedAgentResult} from '@shared/delegation-result';
 
 export type DelegatedAgentModelResolver =
   | BaseChatModel
   | Promise<BaseChatModel>
   | (() => BaseChatModel | Promise<BaseChatModel>);
-
-const parentExecutionSchema = z.object({
-  sessionId: z.string().trim().min(1),
-  runId: z.string().trim().min(1),
-  requestId: z.string().trim().min(1),
-  toolCallId: z.string().trim().min(1),
-  turn: z.number(),
-  maxTurns: z.number(),
-  toolIndex: z.number(),
-});
-
-const delegatedPauseMetadataSchema = z.object({
-  codara: z.object({
-    delegatedSubagent: z.object({
-      childSessionId: z.string().trim().min(1),
-      parentToolName: z.string().trim().min(1),
-      recovery: z.object({
-        toolNames: z.array(z.string().trim().min(1)).optional(),
-        systemMessages: z.array(z.string()).optional(),
-        maxTurns: z.number().int().positive().optional(),
-      }).optional(),
-    }).optional(),
-  }).loose().optional(),
-}).loose();
-
-const delegatedRuntimeContextSchema = z.object({
-  review: z.object({
-    currentPause: z.object({
-      metadata: z.unknown().optional(),
-    }).loose().optional(),
-    resume: z.unknown().optional(),
-  }).loose().optional(),
-}).loose();
 
 export interface DelegatedAgentOptions {
   model: DelegatedAgentModelResolver;
@@ -79,40 +50,7 @@ export interface DelegatedAgentOptions {
   childSystemPrompt?: string;
   blockedToolNames?: string[];
   childLifecycle?: AgentLifecycleHooks;
-  /** Optional callback for forwarding child tool activity to parent runtime events. */
   onChildToolActivity?: ChildToolActivityCallback;
-}
-
-interface DelegatedPauseMetadata {
-  childSessionId: string;
-  parentToolName: string;
-  recovery?: DelegatedPauseRecoverySpec;
-}
-
-export interface DelegatedPauseRecoverySpec {
-  toolNames?: string[];
-  systemMessages?: string[];
-  maxTurns?: number;
-}
-
-interface ParentExecution {
-  sessionId: string;
-  runId: string;
-  requestId: string;
-  toolCallId: string;
-  turn: number;
-  maxTurns: number;
-  toolIndex: number;
-}
-
-interface DelegatedResumeState {
-  childSessionId: string;
-  payload: ReviewResumePayload;
-}
-
-export interface DelegatedParentRuntimeMetadata {
-  parentExecution: ParentExecution;
-  resume?: DelegatedResumeState;
 }
 
 export interface DelegatedChildInput {
@@ -120,7 +58,7 @@ export interface DelegatedChildInput {
   subagentType?: string;
   maxTurns?: number;
   toolName: string;
-  parentExecution: ParentExecution;
+  parentExecution: DelegatedParentRuntimeMetadata['parentExecution'];
   profileModel?: DelegatedAgentModelResolver;
   profileMiddleware?: BaseMiddleware[];
   profileContext?: AgentRuntimeContext;
@@ -129,18 +67,12 @@ export interface DelegatedChildInput {
   resume?: DelegatedResumeState;
 }
 
-interface ParentPauseContext {
-  execution: ParentExecution;
+interface ParentReviewContext {
+  execution: DelegatedParentRuntimeMetadata['parentExecution'];
   prompt: string;
   subagentType?: string;
   maxTurns?: number;
 }
-
-/**
- * Delegation depth protection is handled by `resolveDelegatedAgentTools()` which
- * physically removes all `isDelegationTool`-marked tools from child agents.
- * No depth counter is needed — subagents simply cannot access delegation tools.
- */
 
 const DELEGATION_TOOL = Symbol.for('codara.subagent.delegation.tool');
 
@@ -151,7 +83,6 @@ export async function runDelegatedAgent(
   const childOptions = await buildDelegatedChildOptions(options, input);
   const result = await runDelegatedChild(childOptions, input);
 
-  // SubagentStop hook — best-effort notification after delegated agent completes
   if (options.childLifecycle && !result.state.pendingReview) {
     try {
       await options.childLifecycle.onSubagentStop({
@@ -163,12 +94,12 @@ export async function runDelegatedAgent(
         timestamp: new Date().toISOString(),
       });
     } catch {
-      // Fail-open: SubagentStop hooks are best-effort
+      // Best-effort hook.
     }
   }
 
   if (result.state.pendingReview) {
-    return createDelegatedPauseToolMessage(result.state.pendingReview, {
+    return createDelegatedReviewToolMessage(result.state.pendingReview, {
       childSessionId: result.state.sessionId,
       parentToolName: input.toolName,
       recovery: buildDelegatedPauseRecoverySpec(childOptions, input.maxTurns),
@@ -199,41 +130,6 @@ export function markDelegationTool<TTool extends StructuredToolInterface>(tool: 
   return tool;
 }
 
-// readDelegatedAgentResult is re-exported from @shared/delegation-result above.
-
-export function readDelegatedParentRuntimeMetadata(
-  configurable: unknown,
-  toolName: string,
-): DelegatedParentRuntimeMetadata {
-  const record = delegatedRuntimeContextSchema.safeParse(readDelegatedRuntimeContext(configurable));
-  const runtimeContext = record.success ? record.data : undefined;
-  const resume = readDelegatedResumeState(runtimeContext, toolName);
-
-  return {
-    parentExecution: readParentExecution(
-      configurable && typeof configurable === 'object' && 'execution' in configurable
-        ? configurable.execution
-        : undefined
-    ),
-    ...(resume ? {resume} : {}),
-  };
-}
-
-function readDelegatedRuntimeContext(configurable: unknown): unknown {
-  if (!configurable || typeof configurable !== 'object') {
-    return configurable;
-  }
-
-  const record = configurable as Record<string, unknown>;
-  return record.context ?? record.runtimeContext ?? configurable;
-}
-
-function createDelegatedAgentInput(prompt: string): BaseMessage[] {
-  const messages: BaseMessage[] = [];
-  messages.push(new HumanMessage(prompt));
-  return messages;
-}
-
 export async function buildDelegatedChildOptions(
   options: DelegatedAgentOptions,
   input: DelegatedChildInput,
@@ -241,7 +137,6 @@ export async function buildDelegatedChildOptions(
   const mergedContext = mergeRuntimeContext(options.childContext, input.profileContext);
   const baseMiddleware = [...(input.profileMiddleware ?? options.childMiddleware ?? [])];
 
-  // Inject activity forward middleware if parent provided a callback
   if (options.onChildToolActivity) {
     baseMiddleware.unshift(createActivityForwardMiddleware(options.onChildToolActivity));
   }
@@ -267,6 +162,61 @@ export async function buildDelegatedChildOptions(
   };
 }
 
+export function createDelegatedAgentResult(
+  sessionId: string,
+  turns: number,
+  reason: 'complete' | 'error' | 'max_turns',
+  error: Error | undefined,
+  messages: BaseMessage[],
+): DelegatedAgentResult {
+  const summary = readLatestAssistantText(messages);
+  const toolUseCount = messages.filter((m) => ToolMessage.isInstance(m)).length;
+  const totalTokens = sumChildTokens(messages);
+
+  return {
+    type: 'delegated_agent_result',
+    sessionId,
+    turns,
+    reason,
+    ...(summary ? {summary} : {}),
+    ...(error?.message ? {errorMessage: error.message} : {}),
+    ...(toolUseCount > 0 ? {toolUseCount} : {}),
+    ...(totalTokens > 0 ? {totalTokens} : {}),
+  };
+}
+
+export function createDelegatedAgentToolMessage(
+  result: DelegatedAgentResult,
+  toolCallId = '',
+): ToolMessage {
+  return new ToolMessage({
+    content: formatDelegatedAgentResult(result),
+    artifact: result,
+    status: result.reason === 'error' ? 'error' : 'success',
+    tool_call_id: toolCallId,
+  });
+}
+
+export function formatDelegatedAgentResult(result: DelegatedAgentResult): string {
+  if (result.reason === 'error') {
+    return [
+      'Subagent failed.',
+      `delegate_id: ${result.sessionId}`,
+      `turns: ${result.turns}`,
+      `error: ${result.errorMessage ?? 'Unknown error'}`,
+      ...(result.summary ? [`summary:\n${result.summary}`] : []),
+    ].join('\n');
+  }
+
+  return [
+    'Subagent completed.',
+    `delegate_id: ${result.sessionId}`,
+    `turns: ${result.turns}`,
+    `reason: ${result.reason}`,
+    ...(result.summary ? [`summary:\n${result.summary}`] : []),
+  ].join('\n');
+}
+
 async function runDelegatedChild(
   childOptions: BootstrapAgentOptions,
   input: DelegatedChildInput,
@@ -280,8 +230,9 @@ async function runDelegatedChild(
   }
 
   const child = await bootstrapAgent(childOptions);
-  const messages = createDelegatedAgentInput(input.prompt);
-  return consumeAgentStream(child.stream({messages}, childConfig));
+  return consumeAgentStream(child.stream({
+    messages: [new HumanMessage(input.prompt)],
+  }, childConfig));
 }
 
 function resolveDelegatedAgentTools(
@@ -311,11 +262,6 @@ async function resumeDelegatedChild(
   ));
 }
 
-/**
- * Drain an AsyncGenerator produced by agent.stream() / agent.resumeStream(),
- * discarding intermediate chunks (middleware already handles them in real-time),
- * and return the final AgentResult.
- */
 async function consumeAgentStream(
   gen: AsyncGenerator<AgentStreamOutput, AgentResult, void>,
 ): Promise<AgentResult> {
@@ -326,17 +272,12 @@ async function consumeAgentStream(
   return result.value;
 }
 
-function mergeSystemPrompt(profileSystemPrompt: string | undefined, toolSystemPrompt: string | undefined): string | undefined {
-  const parts = [profileSystemPrompt?.trim(), toolSystemPrompt?.trim()].filter(Boolean);
-  return parts.length > 0 ? parts.join('\n\n') : undefined;
-}
-
 function mergeDelegatedSystemMessages(
   inheritedMessages: string[] | undefined,
   profileSystemPrompt: string | undefined,
   toolSystemPrompt: string | undefined,
 ): string[] {
-  const merged = mergeSystemPrompt(profileSystemPrompt, toolSystemPrompt);
+  const merged = [profileSystemPrompt?.trim(), toolSystemPrompt?.trim()].filter(Boolean).join('\n\n');
   return [
     ...(inheritedMessages ?? []),
     ...(merged ? [merged] : []),
@@ -366,58 +307,27 @@ function isDelegationTool(tool: StructuredToolInterface | undefined): boolean {
   return DELEGATION_TOOL in obj && (obj as Record<PropertyKey, unknown>)[DELEGATION_TOOL] === true;
 }
 
-export function createDelegatedAgentResult(
-  sessionId: string,
-  turns: number,
-  reason: 'complete' | 'error' | 'max_turns',
-  error: Error | undefined,
-  messages: BaseMessage[],
-): DelegatedAgentResult {
-  const summary = readLatestAssistantSummary(messages);
-  const toolUseCount = messages.filter((m) => ToolMessage.isInstance(m)).length;
-  const totalTokens = sumChildTokens(messages);
-
-  return {
-    type: 'delegated_agent_result',
-    sessionId,
-    turns,
-    reason,
-    ...(summary ? {summary} : {}),
-    ...(error?.message ? {errorMessage: error.message} : {}),
-    ...(toolUseCount > 0 ? {toolUseCount} : {}),
-    ...(totalTokens > 0 ? {totalTokens} : {}),
-  };
-}
-
 function sumChildTokens(messages: BaseMessage[]): number {
   let total = 0;
   for (const m of messages) {
     if (!AIMessage.isInstance(m) || !m.usage_metadata) continue;
     const meta = m.usage_metadata as Record<string, unknown>;
-    const t = typeof meta.total_tokens === 'number' ? meta.total_tokens : 0;
+    const all = typeof meta.total_tokens === 'number' ? meta.total_tokens : 0;
     const input = typeof meta.input_tokens === 'number' ? meta.input_tokens : 0;
     const output = typeof meta.output_tokens === 'number' ? meta.output_tokens : 0;
-    total += t > 0 ? t : input + output;
+    total += all > 0 ? all : input + output;
   }
   return total;
 }
 
-export function createDelegatedAgentToolMessage(
-  result: DelegatedAgentResult,
-  toolCallId = '',
-): ToolMessage {
-  return new ToolMessage({
-    content: formatDelegatedAgentResult(result),
-    artifact: result,
-    status: result.reason === 'error' ? 'error' : 'success',
-    tool_call_id: toolCallId,
-  });
-}
-
-function createDelegatedPauseToolMessage(
+function createDelegatedReviewToolMessage(
   review: ReviewRequest,
-  delegated: DelegatedPauseMetadata,
-  parent: ParentPauseContext,
+  delegated: {
+    childSessionId: string;
+    parentToolName: string;
+    recovery?: DelegatedPauseRecoverySpec;
+  },
+  parent: ParentReviewContext,
 ): ToolMessage {
   const request: ReviewRequest = {
     id: `${parent.execution.runId}:${parent.execution.turn}:${parent.execution.toolCallId}:delegated`,
@@ -455,97 +365,6 @@ function createDelegatedPauseToolMessage(
   });
 }
 
-export function formatDelegatedAgentResult(result: DelegatedAgentResult): string {
-  if (result.reason === 'error') {
-    return [
-      'Subagent failed.',
-      `delegate_id: ${result.sessionId}`,
-      `turns: ${result.turns}`,
-      `error: ${result.errorMessage ?? 'Unknown error'}`,
-      ...(result.summary ? [`summary:\n${result.summary}`] : []),
-    ].join('\n');
-  }
-
-  return [
-    'Subagent completed.',
-    `delegate_id: ${result.sessionId}`,
-    `turns: ${result.turns}`,
-    `reason: ${result.reason}`,
-    ...(result.summary ? [`summary:\n${result.summary}`] : []),
-  ].join('\n');
-}
-
-function readLatestAssistantSummary(messages: BaseMessage[]): string | undefined {
-  return readLatestAssistantText(messages);
-}
-
-function readDelegatedResumeState(
-  runtimeContext: unknown,
-  toolName: string,
-): DelegatedResumeState | undefined {
-  const parsed = delegatedRuntimeContextSchema.safeParse(runtimeContext);
-  if (!parsed.success) {
-    return undefined;
-  }
-
-  const review = parsed.data.review;
-  const delegated = readDelegatedPauseMetadata(review?.currentPause?.metadata, toolName);
-  if (!delegated) {
-    return undefined;
-  }
-
-  const payload = review?.resume;
-  if (payload === undefined) {
-    return undefined;
-  }
-
-  return {
-    childSessionId: delegated.childSessionId,
-    payload,
-  };
-}
-
-function mergeDelegatedPauseMetadata(
-  metadata: Record<string, unknown> | undefined,
-  delegated: DelegatedPauseMetadata,
-): Record<string, unknown> {
-  const parsed = delegatedPauseMetadataSchema.safeParse(metadata);
-  const base = parsed.success ? parsed.data : {};
-  const codara = base.codara ?? {};
-
-  return {
-    ...base,
-    codara: {
-      ...codara,
-      delegatedSubagent: {
-        childSessionId: delegated.childSessionId,
-        parentToolName: delegated.parentToolName,
-        ...(delegated.recovery ? {recovery: delegated.recovery} : {}),
-      },
-    },
-  };
-}
-
-export function readDelegatedPauseMetadata(
-  metadata: unknown,
-  toolName: string,
-): DelegatedPauseMetadata | undefined {
-  const parsed = delegatedPauseMetadataSchema.safeParse(metadata);
-  const delegated = parsed.success ? parsed.data.codara?.delegatedSubagent : undefined;
-  const childSessionId = delegated?.childSessionId;
-  const parentToolName = delegated?.parentToolName;
-
-  if (!childSessionId || !parentToolName || parentToolName !== toolName) {
-    return undefined;
-  }
-
-  return {
-    childSessionId,
-    parentToolName,
-    ...(delegated?.recovery ? {recovery: delegated.recovery} : {}),
-  };
-}
-
 function buildDelegatedPauseRecoverySpec(
   childOptions: BootstrapAgentOptions,
   maxTurns: number | undefined,
@@ -559,40 +378,21 @@ function buildDelegatedPauseRecoverySpec(
   return Object.keys(recovery).length > 0 ? recovery : undefined;
 }
 
-function readParentExecution(value: unknown): ExecutionContextMetadata & {
-  toolIndex: number;
-  toolCallId: string;
-} {
-  const parsed = parentExecutionSchema.safeParse(value);
-  if (!parsed.success) {
-    throw new Error('Delegation tools require execution metadata with toolCallId and toolIndex.');
-  }
-
-  return parsed.data;
-}
-
-/**
- * Lightweight middleware that forwards child tool call activity to the parent via callback.
- * Injected into delegated child agents so the parent transcript can display real-time sub-tool activity.
- */
 function createActivityForwardMiddleware(callback: ChildToolActivityCallback): BaseMiddleware {
   return createMiddleware({
     name: 'ActivityForwardMiddleware',
     wrapToolCall: async (context, handler) => {
       const toolName = context.toolCall.name ?? 'tool';
-      const args = context.toolCall.args;
-      const summary = formatChildToolSummary(toolName, args);
+      const summary = truncateStr(formatToolSummary(toolName, context.toolCall.args));
       const label = summary ? `${toolName}(${summary})` : toolName;
       try {
         callback({toolName, label});
-      } catch { /* best-effort — don't break child execution */ }
+      } catch {
+        // Best-effort only.
+      }
       return handler(context);
     },
   });
-}
-
-function formatChildToolSummary(toolName: string, args: unknown): string | undefined {
-  return truncateStr(formatToolSummary(toolName, args));
 }
 
 function truncateStr(value: string | undefined, max = 60): string | undefined {

@@ -191,6 +191,10 @@
 - 防错规则：以后做 delegated child restart/review resume 时，优先把稳定恢复规格写进 pause/approval metadata，再从该 metadata 重建 child runtime；不要把 `toolNames/systemMessages/maxTurns` 之类 bootstrap 字段塞回 run-store。
 - 用户继续纠偏：subagent 的 child bootstrap middleware、system-message handoff、completion guard 不要继续挤在一个大 middleware 文件里；即使后端文件略多一点，也要按 ownership 拆清楚。
 - 防错规则：当一个 middleware 文件同时承担 child bootstrap、completion handoff、tool-call policing 三类职责时，优先按 ownership 拆成少量有边界的模块；不要为了“少文件”继续保留混合神文件。
+- 用户继续纠偏：目录层级本身就是架构契约；即使逻辑没错，像 `task/types.ts` 这种根级混放也会持续误导后续维护者。
+- 防错规则：做 capability 重构时，同时审查“功能边界”和“目录边界”；如果一个目录名已经被裁定只代表某一子域，就把 types/store/middleware 一起下沉到该子域，不要保留根级历史壳子。
+- 用户继续纠偏：`subagent/agent.ts` 这种命名会和 `core/agent` 的主语直接打架，哪怕内容本身没错，也应该改掉。
+- 防错规则：给 capability 文件命名时，先检查它是否会和仓库的主运行时概念冲突；如果文件只拥有 delegated child 这类局部职责，就用更窄的名字，不要抢占通用术语。
 
 - Desktop workbench must prioritize the main chat/runtime canvas width; do not over-compress the primary workspace for side rails or decorative panels.
 - Desktop shell hierarchy should mirror CLI mental priority: active chat/work first, session context second, diagnostics and utilities third.
@@ -436,3 +440,7 @@
 - 防错规则：凡是 `superworkers` 目录下的共享技能与参考文档，默认视为只读依赖；除非用户明确要求改技能本身，否则不要为产品对齐去改它们。
 - 用户纠偏：参考 Claude Code 文档时，不能把“project context 正常 bootstrap”误读成“subagent 继承父会话 prompt/system message”。built-in `Agent` 应视为 fresh child，只有显式 seed 的 context/values 才应继续带入。
 - 防错规则：只要任务在做 Claude Code 风格 subagent 对齐，就把“parent conversation inheritance”和“project bootstrap loading”分开验证。遇到 real CLI case 时，优先断言 built-in `Agent` 不继承父 prompt，再单独验证 skills/profile/project context 是否通过正常 bootstrap 进入。
+- 用户继续纠偏：不是所有 `pause/paused` 词汇都该一刀切重命名；真正该清的是 review 控制面的中层命名残留，不能误伤底层 runtime 状态机词汇。
+- 防错规则：清理 review/HIL 旧命名时，先分层。`session_pause`、`pause request` 这类对外/中层 query-contract 要改成 review；`paused`、`resume`、`pendingReview` 这种底层执行机制词汇，如果仍准确表达实现，就保留。
+- 用户继续纠偏：`subagent/tool.ts` 这种文件最容易长成“什么都管”。dispatch、recovery、reuse policy 一旦混在一起，后续再改一条链就得翻整页。
+- 防错规则：遇到 capability 根入口文件时，默认检查它是不是混入了恢复专用逻辑或复用提示逻辑。tool 文件应该优先只保留 schema、入口、launch 编译；恢复、重复运行复用、显示格式化等次级 concern 要抽到清晰命名的旁路文件。

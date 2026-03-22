@@ -8,25 +8,24 @@ import {createAgentRuntime} from '@capability/subagent/runtime';
 import {createAgentRunMemoryStore} from '@capability/subagent/run-store';
 import {
   buildDelegatedChildOptions,
-  createDelegatedAgentToolMessage,
   markDelegationTool,
+  type DelegatedAgentOptions,
+} from '@capability/subagent/delegated-child';
+import {
   readDelegatedParentRuntimeMetadata,
   type DelegatedParentRuntimeMetadata,
-  type DelegatedAgentOptions,
-  type DelegatedAgentResult,
-} from '@capability/subagent/agent';
-import type {AgentRunRecord, AgentRunStore} from '@capability/subagent/types';
-import {resolveModel, type BootstrapAgentOptions} from '@core/agent/bootstrap';
+} from '@capability/subagent/review-metadata';
+import {resolveAgentRunId, readExistingAgentRunMessage} from '@capability/subagent/launch-reuse';
+import {buildRecoveredAgentChildOptions} from '@capability/subagent/recovery';
+import type {AgentRunStore} from '@capability/subagent/types';
+import type {BootstrapAgentOptions} from '@core/agent/bootstrap';
 import type {AgentCheckpointer} from '@durability/checkpoint/agent';
 import {AGENT_ACTIVITY_CALLBACK_KEY, type ChildToolActivityCallback} from '@observability/events';
-import type {AgentRuntime, AgentRuntimeRecoverySpec} from '@capability/subagent/runtime';
-import {createMiddleware, type BaseMiddleware} from '@core/pipeline/types';
+import type {AgentRuntime} from '@capability/subagent/runtime';
 import type {SubagentDefinition} from '@context/skills/contracts';
 import {filterToolsByReferences} from '@integration/tool';
 import {formatSubagentDisplayName} from '@context/skills/runtime-shared';
-import {formatToolSummary} from '@shared/tool-display';
-import type {ApprovalRecord, ApprovalStore} from '@durability/approval-store';
-import {deepClone} from '@shared/clone';
+import type {ApprovalStore} from '@durability/approval-store';
 
 export const AGENT_TOOL_NAME = 'Agent';
 
@@ -331,204 +330,7 @@ function readChildActivityCallback(runtimeShared: unknown): ChildToolActivityCal
   return typeof callback === 'function' ? callback as ChildToolActivityCallback : undefined;
 }
 
-function resolveAgentRunId(
-  runStore: AgentRunStore | undefined,
-  toolCallId: string,
-): string {
-  const baseRunId = toolCallId.trim();
-  if (!runStore) {
-    return baseRunId;
-  }
-
-  const existing = runStore.get(baseRunId);
-  if (!existing || existing.status === 'running' || existing.status === 'paused') {
-    return baseRunId;
-  }
-
-  return createDetachedAgentRunId(runStore, baseRunId);
-}
-
 function normalizeAgentName(subagentType: string | undefined, fallback: string): string {
   const agentName = formatSubagentDisplayName(subagentType) || fallback.trim();
   return agentName || 'Agent';
-}
-
-function readExistingAgentRunMessage(
-  run: AgentRunRecord | undefined,
-  toolCallId: string,
-  fallback: {
-    runId: string;
-    agentName: string;
-    label: string;
-    childSessionId: string;
-    parentSessionId: string;
-  },
-): ToolMessage | undefined {
-  if (!run) {
-    return undefined;
-  }
-
-  const completed = toDelegatedAgentResult(run);
-  if (completed) {
-    return createDelegatedAgentToolMessage(completed, toolCallId);
-  }
-
-  const sessionId = run.childSessionId?.trim() || fallback.childSessionId;
-  const parentSessionId = run.parentSessionId.trim() || fallback.parentSessionId;
-  const label = run.label?.trim() || fallback.label;
-  const agentName = normalizeAgentName(run.agentName?.trim(), fallback.agentName);
-  const header = run.status === 'paused'
-    ? 'Delegated agent is waiting for review.'
-    : 'Delegated agent is already running in background.';
-  const detail = run.latestActivity?.trim();
-
-  return new ToolMessage({
-    content: [
-      header,
-      'Do not restate launch metadata or promise follow-up.',
-      ...(detail ? [`activity: ${detail}`] : []),
-    ].join('\n'),
-    artifact: {
-      type: 'agent_run_started',
-      runId: run.runId,
-      parentSessionId,
-      sessionId,
-      agentName,
-      label,
-    },
-    status: 'success',
-    tool_call_id: toolCallId,
-  });
-}
-
-async function buildRecoveredAgentChildOptions(
-  options: CreateAgentToolOptions,
-  runtime: AgentRuntime,
-  run: AgentRunRecord,
-  approval: ApprovalRecord | undefined,
-): Promise<AgentRuntimeRecoverySpec | undefined> {
-  const recovered = readRecoveredAgentRecoverySpec(approval);
-  if (!recovered) {
-    return undefined;
-  }
-
-  return {
-    childOptions: {
-      model: await resolveModel(options.model),
-      agentType: 'subagent',
-      ...(recovered.systemMessages?.length ? {systemMessage: [...recovered.systemMessages]} : {}),
-      ...(filterRecoveredAgentTools(options.tools ?? [], recovered.toolNames).length
-        ? {tools: filterRecoveredAgentTools(options.tools ?? [], recovered.toolNames)}
-        : {}),
-      middleware: [
-        ...(options.childMiddleware ?? []),
-        createRecoveredAgentActivityMiddleware(runtime, run.runId),
-      ],
-      handleToolErrors: options.handleToolErrors,
-      checkpointer: options.checkpointer ?? createAgentMemoryCheckpointer(),
-      inputBudget: options.inputBudget,
-      ...(options.childPrepareContext ? {prepareContext: options.childPrepareContext} : {}),
-      ...(options.childContext ? {context: options.childContext} : {}),
-      ...(options.childValues ? {values: deepClone(options.childValues)} : {}),
-      ...(options.childLifecycle ? {lifecycle: options.childLifecycle} : {}),
-    },
-    ...(typeof recovered.maxTurns === 'number' ? {maxTurns: recovered.maxTurns} : {}),
-  };
-}
-
-function createDetachedAgentRunId(runStore: AgentRunStore, baseRunId: string): string {
-  const prefix = `${baseRunId}__`;
-  const usedRunIds = new Set(runStore.list().map((record) => record.runId));
-  let suffix = 2;
-
-  while (usedRunIds.has(`${prefix}${suffix}`)) {
-    suffix += 1;
-  }
-
-  return `${prefix}${suffix}`;
-}
-
-function toDelegatedAgentResult(run: AgentRunRecord): DelegatedAgentResult | undefined {
-  if ((run.status !== 'completed' && run.status !== 'failed') || !run.childSessionId) {
-    return undefined;
-  }
-
-  return {
-    type: 'delegated_agent_result',
-    sessionId: run.childSessionId,
-    turns: run.turns ?? 0,
-    reason: run.reason ?? (run.status === 'failed' ? 'error' : 'complete'),
-    ...(run.summary?.trim() ? {summary: run.summary.trim()} : {}),
-    ...(run.errorMessage?.trim() ? {errorMessage: run.errorMessage.trim()} : {}),
-    ...(typeof run.toolUseCount === 'number' ? {toolUseCount: run.toolUseCount} : {}),
-    ...(typeof run.totalTokens === 'number' ? {totalTokens: run.totalTokens} : {}),
-  };
-}
-
-function filterRecoveredAgentTools(
-  tools: StructuredToolInterface[],
-  toolNames: string[] | undefined,
-): StructuredToolInterface[] {
-  if (!toolNames?.length) {
-    return [...tools];
-  }
-
-  const allowed = new Set(toolNames);
-  return tools.filter((tool) => allowed.has(tool.name));
-}
-
-function readRecoveredAgentRecoverySpec(
-  approval: ApprovalRecord | undefined,
-): {
-  toolNames?: string[];
-  systemMessages?: string[];
-  maxTurns?: number;
-} | undefined {
-  const metadata = approval?.reviewRequest.metadata;
-  if (!metadata || typeof metadata !== 'object') {
-    return undefined;
-  }
-
-  const codara = 'codara' in metadata && metadata.codara && typeof metadata.codara === 'object'
-    ? metadata.codara as Record<string, unknown>
-    : undefined;
-  const recovery = codara?.agentRecovery;
-  if (!recovery || typeof recovery !== 'object') {
-    return undefined;
-  }
-
-  const parsed = z.object({
-    toolNames: z.array(z.string().trim().min(1)).optional(),
-    systemMessages: z.array(z.string()).optional(),
-    maxTurns: z.number().int().positive().optional(),
-  }).safeParse(recovery);
-  if (!parsed.success) {
-    return undefined;
-  }
-
-  return parsed.data;
-}
-
-function createRecoveredAgentActivityMiddleware(
-  runtime: AgentRuntime,
-  runId: string,
-): BaseMiddleware {
-  return createMiddleware({
-    name: `AgentRecoveryActivity:${runId}`,
-    wrapToolCall: async (context, handler) => {
-      const toolName = context.toolCall.name ?? 'tool';
-      const summary = truncateAgentToolSummary(formatToolSummary(toolName, context.toolCall.args));
-      const label = summary ? `${toolName}(${summary})` : toolName;
-      runtime.recordActivity(runId, {toolName, label});
-      return handler(context);
-    },
-  });
-}
-
-function truncateAgentToolSummary(value: string | undefined, max = 60): string | undefined {
-  if (!value) {
-    return undefined;
-  }
-
-  return value.length > max ? `${value.slice(0, max - 1)}…` : value;
 }

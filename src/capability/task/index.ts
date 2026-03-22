@@ -4,7 +4,7 @@ export type {
   TaskStatus,
   TaskStore,
   UpdateTaskInput,
-} from '@capability/task/types';
+} from '@capability/task/coordination/types';
 export {
   createTaskFileStore,
   createTaskMemoryStore,
@@ -23,4 +23,4 @@ export {
 export {
   createTaskMiddleware,
   type CreateTaskMiddlewareOptions,
-} from '@capability/task/middleware';
+} from '@capability/task/coordination/middleware';

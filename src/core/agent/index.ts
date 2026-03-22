@@ -76,11 +76,12 @@ export {
 } from '@core/agent/bootstrap';
 export {
   markDelegationTool,
-  readDelegatedAgentResult,
-  readDelegatedParentRuntimeMetadata,
   runDelegatedAgent,
   type DelegatedAgentModelResolver,
   type DelegatedAgentOptions,
-  type DelegatedParentRuntimeMetadata,
   type DelegatedAgentResult,
-} from '@capability/subagent/agent';
+} from '@capability/subagent/delegated-child';
+export {
+  readDelegatedParentRuntimeMetadata,
+  type DelegatedParentRuntimeMetadata,
+} from '@capability/subagent/review-metadata';

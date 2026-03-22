@@ -35,6 +35,42 @@
   - `bun test tests/unit/middleware/review-middleware.test.ts tests/unit/middleware/review-request-metadata.test.ts tests/unit/middleware/review-resume-routing.test.ts tests/unit/middleware/interaction-middleware.test.ts tests/integration/permission-middleware.test.ts tests/unit/permissions/middleware.test.ts tests/unit/channel/review-adapter.test.ts tests/unit/core/codara-facade.test.ts tests/unit/core/codara-agent-runtime.test.ts tests/unit/cli/transcript-model.test.ts tests/unit/cli/shell-app.test.ts tests/unit/cli/use-cli-controller.test.tsx tests/unit/agents/agent.test.ts tests/unit/agents/subagent.test.ts tests/cases/review/form-ui.case.test.ts tests/cases/review/subagent-activity-display.case.test.ts`
   - `bunx tsc --noEmit --pretty false`
   - `bunx eslint src/core/middleware/review.ts src/core/middleware/index.ts src/core/middleware/ask-user-question.ts src/core/middleware/permission/runtime.ts src/core/middleware/permission/middleware.ts src/core/agent/run/agent-loop.ts src/core/agent/run/turn.ts src/observability/events/controller.ts src/cli/transcript/model.ts src/shared/messages.ts src/integration/channel/review-adapter.ts src/bus/bus.ts src/durability/session/session.ts src/capability/subagent/agent.ts tests/unit/middleware/review-middleware.test.ts tests/unit/middleware/review-request-metadata.test.ts tests/unit/middleware/review-resume-routing.test.ts tests/unit/middleware/interaction-middleware.test.ts tests/unit/channel/review-adapter.test.ts tests/unit/core/codara-agent-runtime.test.ts tests/unit/cli/transcript-model.test.ts tests/cases/helpers/cli-runtime-factory.ts tests/cases/review/form-ui.case.test.ts`
+- `git diff --check`
+
+# 2026-03-22 Task Coordination And Subagent Directory Realignment
+
+## Plan
+
+- [x] Pull `task` down to a pure coordination domain so the directory itself no longer mixes task-list coordination with delegated child runtime.
+- [x] Move the coordination-only task types/middleware under `src/capability/task/coordination/*` and delete the ambiguous root-level duplicates.
+- [x] Replace `src/capability/subagent/agent.ts` with more explicit ownership files so delegated child bootstrap/runtime helpers stop colliding with the broader `agent` term.
+- [x] Re-run focused task/subagent/facade/CLI transcript verification, eslint, typecheck, and diff-check after the directory changes.
+
+## Review
+
+- `src/capability/task` is now visually and semantically a coordination-only subtree:
+  - `src/capability/task/coordination/types.ts`
+  - `src/capability/task/coordination/store.ts`
+  - `src/capability/task/coordination/tools.ts`
+  - `src/capability/task/coordination/middleware.ts`
+  - `src/capability/task/index.ts`
+- The old root-level coordination files were removed:
+  - `src/capability/task/types.ts`
+  - `src/capability/task/middleware.ts`
+- Delegated child ownership inside `src/capability/subagent` is now clearer:
+  - `src/capability/subagent/delegated-child.ts` owns child bootstrap/execution/result formatting
+  - `src/capability/subagent/review-metadata.ts` owns parent/child review metadata parsing and merge rules
+- The misleading `src/capability/subagent/agent.ts` file no longer exists, which removes a naming collision with the broader `core/agent` runtime.
+- Live source-path residuals for the removed files/imports are gone:
+  - no `@capability/task/types`
+  - no `@capability/task/middleware`
+  - no `@capability/subagent/agent`
+- The remaining live `task` vocabulary now maps cleanly to shared coordination, while `subagent` owns delegated child runtime.
+- Focused verification passed:
+  - `bun test tests/unit/tasks/middleware.test.ts tests/unit/tasks/public-surface.test.ts tests/unit/tasks/depth-limit.test.ts tests/unit/agents/subagent.test.ts tests/unit/agents/subagent-task.test.ts tests/unit/core/codara-facade.test.ts tests/unit/tasks/run-store-file.test.ts`
+  - `bun test tests/unit/cli/transcript-model.test.ts tests/unit/cli/agent-runs.test.ts tests/unit/cli/solidified-transcript.test.ts tests/unit/tasks/middleware.test.ts tests/unit/agents/subagent.test.ts tests/unit/agents/subagent-task.test.ts tests/unit/core/codara-facade.test.ts`
+  - `bunx eslint src/capability/task src/capability/subagent src/core/agent/index.ts src/cli/transcript/model.ts tests/unit/tasks/depth-limit.test.ts tests/unit/tasks/middleware.test.ts tests/unit/tasks/public-surface.test.ts tests/unit/agents/subagent.test.ts tests/unit/agents/subagent-task.test.ts tests/unit/core/codara-facade.test.ts tests/unit/tasks/run-store-file.test.ts tests/unit/cli/transcript-model.test.ts tests/unit/cli/agent-runs.test.ts tests/unit/cli/solidified-transcript.test.ts`
+  - `bunx tsc --noEmit --pretty false`
   - `git diff --check`
 
 # 2026-03-22 Superworkers Codex Alignment Refresh
@@ -2623,5 +2659,33 @@
   - `bun test tests/unit/middleware/review-middleware.test.ts tests/unit/middleware/review-request-metadata.test.ts tests/unit/middleware/review-resume-routing.test.ts tests/unit/middleware/interaction-middleware.test.ts tests/unit/permissions/middleware.test.ts tests/integration/permission-middleware.test.ts tests/unit/core/codara-middleware-stack.test.ts tests/unit/core/codara-facade.test.ts tests/unit/core/codara-agent-runtime.test.ts tests/unit/cli/transcript-model.test.ts tests/unit/cli/solidified-transcript.test.ts tests/unit/cli/runtime-projection.test.ts tests/unit/cli/shell-app.test.ts tests/unit/cli/use-cli-controller.test.tsx tests/unit/agents/runtime-input.test.ts tests/unit/agents/agent.test.ts tests/unit/agents/subagent.test.ts tests/unit/channel/review-adapter.test.ts tests/unit/channel/sse-channel.test.ts tests/unit/gateway/review-integration.test.ts`
   - `bunx eslint src/shared/contracts/agent-types.ts src/shared/contracts/channel.ts src/core/middleware/review.ts src/core/middleware/index.ts src/core/middleware/permission/runtime.ts src/codara/types.ts src/codara/review-control.ts src/cli/app/interaction-scheduler.ts src/cli/app/use-cli-controller.ts src/cli/app/runtime-projection.ts src/cli/app/view-state.ts src/cli/app/review-form-state.ts src/durability/session/session.ts`
   - `bunx eslint src/gateway/types.ts src/gateway/channel-bridge.ts src/gateway/gateway.ts src/integration/channel/contracts.ts src/integration/channel/qq/plugin.ts src/integration/channel/slack/plugin.ts src/integration/channel/discord/plugin.ts src/integration/channel/telegram/plugin.ts src/integration/channel/feishu/plugin.ts src/integration/channel/dingtalk/plugin.ts src/integration/channel/wecom/plugin.ts tests/unit/gateway/channel-bridge.test.ts tests/unit/gateway/review-integration.test.ts tests/unit/channel/slack/plugin.test.ts tests/unit/channel/discord/plugin.test.ts tests/unit/channel/telegram/plugin.test.ts tests/unit/channel/feishu/plugin.test.ts tests/unit/channel/dingtalk/plugin.test.ts tests/unit/channel/wecom/plugin.test.ts`
+  - `bunx tsc --noEmit --pretty false`
+  - `git diff --check`
+
+# 2026-03-22 Subagent Tool Ownership And Review Query Cleanup
+
+## Plan
+
+- [x] Move non-tool responsibilities out of `src/capability/subagent/tool.ts` so the file owns dispatch instead of recovery plumbing and run-reuse messaging.
+- [x] Clean the remaining review query/shared-channel naming debt (`session_pause`, `pause request`) without touching low-level paused/resume runtime mechanisms.
+- [x] Re-run focused task/subagent/cli/runtime regressions, lint, typecheck, and diff-check.
+
+## Review
+
+- `src/capability/subagent/tool.ts` now owns the public Agent tool shape and launch compilation only.
+- Run reuse / duplicate-launch messaging moved to:
+  - `src/capability/subagent/launch-reuse.ts`
+- Recovery-only child option rebuilding moved to:
+  - `src/capability/subagent/recovery.ts`
+- This keeps `tool.ts` aligned with Claude Code’s dispatch mental model instead of mixing dispatch, recovery, and reuse policy in one file.
+- Review query wording is now straight at the middle control-plane layer:
+  - `ReviewQuerySource` uses `session_review`
+  - `src/codara/assembly/reviews.ts` uses `foregroundReview`
+  - `src/shared/contracts/channel.ts` documents `review request`
+  - CLI review helpers no longer mention `current pause` / `permission pause metadata`
+- I explicitly did **not** rename low-level runtime state like `paused` / `resume` in `core/agent` or `subagent/runtime`; those are implementation mechanics, not stale HIL/review UX names.
+- Focused verification passed:
+  - `bun test tests/unit/tasks/middleware.test.ts tests/unit/tasks/public-surface.test.ts tests/unit/tasks/depth-limit.test.ts tests/unit/agents/subagent.test.ts tests/unit/agents/subagent-task.test.ts tests/unit/core/codara-facade.test.ts tests/unit/tasks/run-store-file.test.ts tests/unit/cli/runtime-projection.test.ts tests/unit/cli/use-cli-controller.test.tsx tests/unit/cli/transcript-model.test.ts tests/unit/cli/agent-runs.test.ts tests/unit/cli/solidified-transcript.test.ts`
+  - `bunx eslint src/capability/subagent src/capability/task src/codara src/shared/contracts/channel.ts src/cli/app/review-form-state.ts src/cli/app/review-permission-state.ts tests/unit/cli/runtime-projection.test.ts tests/unit/cli/use-cli-controller.test.tsx`
   - `bunx tsc --noEmit --pretty false`
   - `git diff --check`

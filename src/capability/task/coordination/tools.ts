@@ -1,6 +1,6 @@
 import {tool, type StructuredToolInterface} from '@langchain/core/tools';
 import {z} from 'zod';
-import type {TaskRecord, TaskStore, TaskStatus} from '@capability/task/types';
+import type {TaskRecord, TaskStore, TaskStatus} from './types';
 
 export const TASK_CREATE_TOOL_NAME = 'TaskCreate';
 export const TASK_UPDATE_TOOL_NAME = 'TaskUpdate';

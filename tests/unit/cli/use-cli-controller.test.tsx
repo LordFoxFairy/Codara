@@ -776,7 +776,7 @@ describe('useCliController background refresh', () => {
     codara.setFocusedReviewRequest(
       {
         reviewId: reviewRequest.id,
-        source: 'session_pause',
+        source: 'session_review',
         kind: 'ask_user',
         interactionMode: 'structured',
         blockingScope: 'session',

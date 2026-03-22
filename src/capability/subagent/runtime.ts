@@ -4,7 +4,7 @@ import type {Agent} from '@core/agent/models/agent';
 import {bootstrapAgent, type BootstrapAgentOptions} from '@core/agent/bootstrap';
 import type {AgentResult} from '@shared/contracts/agent-types';
 import type {ApprovalRecord, ApprovalStore} from '@durability/approval-store';
-import {createDelegatedAgentResult} from '@capability/subagent/agent';
+import {createDelegatedAgentResult} from '@capability/subagent/delegated-child';
 import type {ChildToolActivityCallback} from '@observability/events';
 import type {CodaraRuntimeEventListener, EmitRuntimeEventInput} from '@observability/events';
 import type {AgentRunRecord, AgentRunStore} from '@capability/subagent/types';

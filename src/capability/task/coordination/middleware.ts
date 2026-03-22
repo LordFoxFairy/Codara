@@ -1,5 +1,5 @@
 import {createMiddleware, type BaseMiddleware} from '@core/pipeline/types';
-import {createTaskTools, type TaskToolOptions} from '@capability/task/coordination/tools';
+import {createTaskTools, type TaskToolOptions} from './tools';
 
 export interface CreateTaskMiddlewareOptions extends TaskToolOptions {
   name?: string;

@@ -118,7 +118,7 @@ export interface AgentRunQuerySummary {
   totalTokens?: number;
 }
 
-export type ReviewQuerySource = 'agent_run' | 'session_pause';
+export type ReviewQuerySource = 'agent_run' | 'session_review';
 export type ReviewQueryKind = 'approval' | 'permission' | 'ask_user' | 'generic';
 export type ReviewInteractionMode = 'approval' | 'structured' | 'freeform' | 'hybrid';
 export type ReviewBlockingScope = 'session' | 'task' | 'none';

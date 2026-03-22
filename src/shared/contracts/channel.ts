@@ -1,8 +1,8 @@
 /**
- * Channel abstraction — decouples review/pause interactions from specific transports.
+ * Channel abstraction — decouples review interactions from specific transports.
  *
  * A Channel represents a bi-directional communication endpoint (CLI, Desktop, Telegram, etc.)
- * that can display pause requests and collect user responses.
+ * that can display review requests and collect user responses.
  */
 
 import type {ReviewRequest, ReviewResumePayload} from './agent-types';
@@ -54,7 +54,7 @@ export interface Channel {
   sendMessage(message: ChannelMessage): Promise<void>;
 
   /**
-   * Display a pause request and wait for the user's response.
+   * Display a review request and wait for the user's response.
    * This is the core review interaction — the channel renders the request
    * and resolves with the user's decision (approve, edit, reject).
    */

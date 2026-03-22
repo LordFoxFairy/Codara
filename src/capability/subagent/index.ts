@@ -7,6 +7,30 @@ export type {
   AgentRunStore,
   AgentRunUpdateInput,
 } from '@capability/subagent/types';
+export type {
+  DelegatedAgentModelResolver,
+  DelegatedAgentOptions,
+  DelegatedChildInput,
+} from '@capability/subagent/delegated-child';
+export {
+  buildDelegatedChildOptions,
+  createDelegatedAgentResult,
+  createDelegatedAgentToolMessage,
+  formatDelegatedAgentResult,
+  markDelegationTool,
+  readDelegatedAgentResult,
+  runDelegatedAgent,
+} from '@capability/subagent/delegated-child';
+export type {
+  DelegatedParentRuntimeMetadata,
+  DelegatedPauseRecoverySpec,
+  DelegatedResumeState,
+} from '@capability/subagent/review-metadata';
+export {
+  mergeDelegatedPauseMetadata,
+  readDelegatedParentRuntimeMetadata,
+  readDelegatedPauseMetadata,
+} from '@capability/subagent/review-metadata';
 export {
   createAgentRunFileStore,
   createAgentRunMemoryStore,

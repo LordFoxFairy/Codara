@@ -318,7 +318,7 @@ export function buildCliReviewResumePayload(
     : resolveCliReviewFocusedFooterAction(review) ?? review.actions[review.selectedActionIndex];
 
   if (!action) {
-    throw new Error('No review action is available for the current pause.');
+    throw new Error('No review action is available for the current review.');
   }
 
   const payload: Record<string, unknown> = {

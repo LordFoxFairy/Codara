@@ -1,7 +1,7 @@
 import type {CliReviewState} from './view-state';
 import type {PermissionStage} from './review-types';
 
-/** Read alwaysPatterns from permission pause metadata. */
+/** Read alwaysPatterns from permission review metadata. */
 export function readPermissionAlwaysPatterns(metadata: unknown): string[] {
   if (!metadata || typeof metadata !== 'object' || Array.isArray(metadata)) return [];
   const policy = (metadata as Record<string, unknown>).permissionPolicy;

@@ -117,12 +117,12 @@ describe('CLI runtime projection helpers', () => {
     }));
   });
 
-  it('projects session pauses as session-blocking reviews', () => {
+  it('projects foreground session reviews as session-blocking reviews', () => {
     const review = syncProjectedReview({
       getFocusedReview: () => ({
         item: {
           reviewId: 'foreground-pause',
-          source: 'session_pause',
+          source: 'session_review',
           kind: 'ask_user',
           interactionMode: 'hybrid',
           blockingScope: 'session',
@@ -144,7 +144,7 @@ describe('CLI runtime projection helpers', () => {
       }),
       listReviewItems: () => [{
         reviewId: 'foreground-pause',
-        source: 'session_pause',
+        source: 'session_review',
         kind: 'ask_user',
         interactionMode: 'hybrid',
         blockingScope: 'session',
