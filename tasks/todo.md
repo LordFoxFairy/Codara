@@ -3021,3 +3021,28 @@
 - Verification passed:
   - `bun run typecheck`
   - `bun test tests/unit/agents/child-middlewares.test.ts tests/unit/agents/task-tool-delegation.test.ts tests/unit/tasks/depth-limit.test.ts tests/unit/cli/interaction-turn.test.ts tests/unit/cli/solidified-transcript.test.ts tests/unit/cli/ui-alignment.test.tsx tests/unit/cli/use-cli-controller.test.tsx tests/unit/commands/compact.test.ts tests/unit/core/codara-agent-runtime.test.ts tests/unit/middleware/interaction-middleware.test.ts tests/unit/permissions/middleware.test.ts tests/unit/agents/task-tool-definitions.test.ts`
+
+# 2026-03-22 Subagent Ownership And Init Cleanup
+
+## Plan
+
+- [x] Move subagent completion handoff ownership back under `src/capability/subagent`.
+- [x] Keep child bootstrap on the single `core/agent` bootstrap path while making subagent build inputs explicit.
+- [x] Stop leaking main-conversation skills bundle assembly into child instruction bootstrap.
+- [x] Re-run broad subagent/task/review/CLI verification and residual scans before merge.
+
+## Review
+
+- `src/capability/subagent` now owns its own completion handoff again via `completion.ts`; the old `src/codara/subagent-completion.ts` shim is gone.
+- Child initialization is clearer:
+  - `subagent/tool.ts` validates and compiles launch input
+  - `subagent/bootstrap.ts` builds child bootstrap options
+  - `subagent/run-manager.ts` launches/resumes tracked child runs
+  - `core/bootstrapAgent -> createAgent` remains the only actual agent bootstrap path
+- `codara/assembly/middleware.ts` no longer forwards the main-conversation skills source into child instruction bootstrap. Child runs keep project/context bootstrap, but do not inherit the parent conversation skills prompt.
+- `review-control` and assembly now depend on thinner subagent-owned contracts instead of reaching into codara-owned subagent shims.
+- Broad verification passed:
+  - `bun test tests/unit/tasks/middleware.test.ts tests/unit/tasks/public-surface.test.ts tests/unit/tasks/run-store.test.ts tests/unit/tasks/run-store-file.test.ts tests/unit/tasks/depth-limit.test.ts tests/unit/agents/subagent.test.ts tests/unit/agents/subagent-task.test.ts tests/unit/agents/review-metadata.test.ts tests/unit/agents/child-middlewares.test.ts tests/unit/agents/task-tool-definitions.test.ts tests/unit/agents/task-tool-delegation.test.ts tests/unit/core/codara-facade.test.ts tests/unit/core/public-api-surface.test.ts tests/unit/core/codara-agent-runtime.test.ts tests/unit/cli/subagent-runs.test.ts tests/unit/cli/use-cli-controller.test.tsx tests/unit/cli/components/chrome/subagent-run-panel.test.tsx tests/unit/cli/runtime-projection.test.ts tests/unit/cli/shell-app.test.ts tests/unit/cli/solidified-transcript.test.ts tests/unit/cli/transcript-model.test.ts tests/unit/cli/transcript-visibility.test.ts tests/unit/cli/ui-alignment.test.tsx tests/unit/cli/interaction-turn.test.ts tests/unit/commands/compact.test.ts tests/unit/middleware/interaction-middleware.test.ts tests/unit/permissions/middleware.test.ts tests/unit/review-unified/review-unified.test.ts tests/unit/durability/approval-store.test.ts tests/unit/observability/events-formatters.test.ts tests/cases/review/subagent-activity-display.case.test.ts`
+  - `bun run typecheck`
+  - `bunx eslint src/capability/subagent src/capability/task src/codara/assembly/middleware.ts src/codara/review-control.ts src/context/session-bundle/base-system-message.ts src/codara/assembly/context.ts tests/unit/tasks/middleware.test.ts tests/unit/tasks/public-surface.test.ts tests/unit/tasks/run-store.test.ts tests/unit/tasks/run-store-file.test.ts tests/unit/tasks/depth-limit.test.ts tests/unit/agents/subagent.test.ts tests/unit/agents/subagent-task.test.ts tests/unit/agents/review-metadata.test.ts tests/unit/agents/child-middlewares.test.ts tests/unit/agents/task-tool-definitions.test.ts tests/unit/agents/task-tool-delegation.test.ts tests/unit/core/codara-facade.test.ts tests/unit/core/public-api-surface.test.ts tests/unit/core/codara-agent-runtime.test.ts tests/unit/cli/subagent-runs.test.ts tests/unit/cli/use-cli-controller.test.tsx tests/unit/cli/components/chrome/subagent-run-panel.test.tsx tests/unit/cli/runtime-projection.test.ts tests/unit/cli/shell-app.test.ts tests/unit/cli/solidified-transcript.test.ts tests/unit/cli/transcript-model.test.ts tests/unit/cli/transcript-visibility.test.ts tests/unit/cli/ui-alignment.test.tsx tests/unit/cli/interaction-turn.test.ts tests/unit/commands/compact.test.ts tests/unit/middleware/interaction-middleware.test.ts tests/unit/permissions/middleware.test.ts tests/unit/review-unified/review-unified.test.ts tests/unit/durability/approval-store.test.ts tests/unit/observability/events-formatters.test.ts tests/cases/review/subagent-activity-display.case.test.ts`
+  - `git diff --check`

@@ -490,5 +490,7 @@
 - 防错规则：当用户只是质疑 main/subagent 是否共用同一套 loop 时，先优先收 ownership、命名和 bootstrap 路径；不要先做高噪音目录改名。
 - 用户继续纠偏：`subagent` 的 outward surface 应该尽量单一，但不代表把内部 helper 名随便叫成 `Agent*` 或保留公开 rebinding/assert helper；边界要清楚，内部装配 helper 也要说人话。
 - 防错规则：如果一个 helper 只服务 subagent child assembly，就直接用 `Subagent*` 命名，并优先放在 capability 内部路径；不要继续暴露 `buildAgentChildMiddlewares`、`assertNoRawSubagentTools` 这种会污染心智的公开名。
+- 用户继续纠偏：`main agent` 和 `subagent` 的真正差异主要只是 build、middleware、tools 和外层 run/review 跟踪；代码里必须能一眼看出它们最终仍走同一个 `core/agent` bootstrap/createAgent 路径。
+- 防错规则：实现 child delegation 时，不要把 `createAgent` 藏在多层跳转后再附带第二套“像 runtime 的 runtime”。`subagent/tool.ts` 负责输入与 launch spec，`subagent/bootstrap.ts` 负责 child bootstrap options，`subagent/run-manager.ts` 负责 run orchestration，真正的 agent 创建继续只落在 `core/bootstrapAgent -> createAgent` 一条路径上。
 - 用户继续纠偏：中途不要频繁打断汇报；在一次较大的收敛任务里，应先完成、对照文档复盘、验证，再给最终状态。
 - 防错规则：当用户明确要求“全面处理完毕再通知我”时，后续以本地计划、验证和文档对照为主，不再在未收尾前发送阶段性口头进度。
