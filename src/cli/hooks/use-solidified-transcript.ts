@@ -26,24 +26,9 @@ export interface UseSolidifiedTranscriptOutput {
   activeItems: TranscriptItem[];
 }
 
-export function orderActiveTranscriptItems(input: {
-  trailingItems: readonly TranscriptItem[];
-  runtimeItems: readonly TranscriptItem[];
-  activeNoticeItems: readonly TranscriptItem[];
-  latestCompletedTurnKind?: CliActiveTurn['kind'];
-}): TranscriptItem[] {
-  const placeRuntimeBeforeTrailing = input.latestCompletedTurnKind === 'subagent_completion'
-    && input.trailingItems.length > 0
-    && input.runtimeItems.length > 0;
-
-  return placeRuntimeBeforeTrailing
-    ? [...input.runtimeItems, ...input.trailingItems, ...input.activeNoticeItems]
-    : [...input.trailingItems, ...input.runtimeItems, ...input.activeNoticeItems];
-}
-
 export function filterSubagentCompletionTranscriptItems(input: {
+  completedTurnKind: CliActiveTurn['kind'] | undefined;
   items: readonly TranscriptItem[];
-  completedTurnKind?: CliActiveTurn['kind'];
 }): TranscriptItem[] {
   if (input.completedTurnKind !== 'subagent_completion') {
     return [...input.items];
@@ -53,6 +38,52 @@ export function filterSubagentCompletionTranscriptItems(input: {
     item.role === 'assistant'
     && isInvalidTaskCloseoutResponse(item.content)
   ));
+}
+
+export function orderActiveTranscriptItems(input: {
+  trailingItems: readonly TranscriptItem[];
+  runtimeItems: readonly TranscriptItem[];
+  activeNoticeItems: readonly TranscriptItem[];
+  latestCompletedTurnKind?: CliActiveTurn['kind'];
+}): TranscriptItem[] {
+  if (input.runtimeItems.length === 0) {
+    return [...input.trailingItems, ...input.activeNoticeItems];
+  }
+
+  const insertionIndex = findRuntimeInsertionIndex(input.trailingItems);
+  return [
+    ...input.trailingItems.slice(0, insertionIndex),
+    ...input.runtimeItems,
+    ...input.trailingItems.slice(insertionIndex),
+    ...input.activeNoticeItems,
+  ];
+}
+
+function findRuntimeInsertionIndex(items: readonly TranscriptItem[]): number {
+  if (items.length === 0) {
+    return 0;
+  }
+
+  let lastUserIndex = -1;
+  for (let index = items.length - 1; index >= 0; index -= 1) {
+    if (items[index]?.role === 'user') {
+      lastUserIndex = index;
+      break;
+    }
+  }
+
+  if (lastUserIndex >= 0) {
+    return lastUserIndex + 1;
+  }
+
+  for (let index = 0; index < items.length; index += 1) {
+    const role = items[index]?.role;
+    if (role && role !== 'system' && role !== 'warning') {
+      return index;
+    }
+  }
+
+  return items.length;
 }
 
 /**
@@ -126,9 +157,13 @@ export function useSolidifiedTranscript(input: UseSolidifiedTranscriptInput): Us
       visibleAssistantTextsRef.current,
     );
     const filteredNewItems = filterSubagentCompletionTranscriptItems({
-      items: newItems,
       completedTurnKind: lastCompletedTurnKind,
-    });
+      items: newItems,
+    }).filter((item) => !(
+      lastCompletedTurnKind === 'prompt'
+      && item.role === 'assistant'
+      && isInvalidTaskCloseoutResponse(item.content)
+    ));
     if (filteredNewItems.length > 0) {
       solidifiedItemsRef.current = [
         ...solidifiedItemsRef.current,
@@ -172,15 +207,19 @@ export function useSolidifiedTranscript(input: UseSolidifiedTranscriptInput): Us
     if (solidifiedCount < coreMessages.length) {
       const toolLookup = createToolCallLookup(coreMessages);
       trailingItems.push(...filterSubagentCompletionTranscriptItems({
-        items: buildSolidifiedItemsFromRange(
-          coreMessages,
-          solidifiedCount,
-          coreMessages.length,
-          toolLookup,
-          visibleAssistantTextsRef.current,
-        ),
         completedTurnKind: lastCompletedTurnKindRef.current,
-      }));
+        items: buildSolidifiedItemsFromRange(
+        coreMessages,
+        solidifiedCount,
+        coreMessages.length,
+        toolLookup,
+        visibleAssistantTextsRef.current,
+      ),
+      }).filter((item) => !(
+        lastCompletedTurnKindRef.current === 'prompt'
+        && item.role === 'assistant'
+        && isInvalidTaskCloseoutResponse(item.content)
+      )));
     }
 
     // Current streaming turn + runtime events
@@ -205,7 +244,7 @@ export function useSolidifiedTranscript(input: UseSolidifiedTranscriptInput): Us
       trailingItems: dedupedTrailingItems,
       runtimeItems: runtimeAndStreamingItems,
       activeNoticeItems,
-      latestCompletedTurnKind: activeTurn?.kind ?? lastCompletedTurnKindRef.current,
+      latestCompletedTurnKind: lastCompletedTurnKindRef.current,
     });
   }, [activeTurn, coreMessages, notices, now, runtimeEvents, solidifiedCount]);
 

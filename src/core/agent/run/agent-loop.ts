@@ -563,7 +563,8 @@ async function runLoop(
 ): Promise<AgentResult> {
   for (let turn = startTurn; turn <= run.maxTurns; turn += 1) {
     try {
-      if ((await runAgentTurn(run, runtime, turn, stream)) === 'complete') {
+      const turnResult = await runAgentTurn(run, runtime, turn, stream);
+      if (turnResult.reason === 'complete') {
         // Invoke Stop hook — if vetoed, inject messages and continue loop
         if (runtime.lifecycle) {
           try {
@@ -587,7 +588,14 @@ async function runLoop(
             // Fail-open: if hook errors, allow stop
           }
         }
-        return {reason: 'complete', state: run.state, turns: turn};
+        return {
+          reason: 'complete',
+          state: run.state,
+          turns: turn,
+          ...(turnResult.launchedSubagentBatchIds?.length
+            ? {launchedSubagentBatchIds: turnResult.launchedSubagentBatchIds}
+            : {}),
+        };
       }
     } catch (error) {
       return {reason: 'error', state: run.state, turns: turn, error: error instanceof Error ? error : new Error(String(error))};

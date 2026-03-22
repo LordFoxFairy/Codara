@@ -78,7 +78,8 @@ export function createSubagentMiddleware(options: CreateSubagentMiddlewareOption
       if (blocked) {
         return blocked;
       }
-      return handler(context);
+
+      return await handler(context);
     },
   });
 

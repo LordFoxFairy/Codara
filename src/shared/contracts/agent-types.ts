@@ -110,4 +110,5 @@ export interface AgentResult {
   state: AgentState;
   turns: number;
   error?: Error;
+  launchedSubagentBatchIds?: string[];
 }

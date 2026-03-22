@@ -11,16 +11,18 @@ interface SolidifiedBlockProps {
   cwd?: string;
   modelAlias?: string;
   tip: string;
+  expandedAll?: boolean;
+  subagentDetails?: ReadonlyMap<string, import('../../transcript/model').TranscriptItem[]>;
 }
 
-export function SolidifiedBlock({turn, layoutMode, cwd, modelAlias, tip}: SolidifiedBlockProps): React.JSX.Element {
+export function SolidifiedBlock({turn, layoutMode, cwd, modelAlias, tip, expandedAll = false, subagentDetails}: SolidifiedBlockProps): React.JSX.Element {
   if (turn.kind === 'welcome') {
     return <StaticWelcome layoutMode={layoutMode} cwd={cwd} modelAlias={modelAlias} tip={tip} />;
   }
 
   return (
     <Box flexDirection="column">
-      <TranscriptItemsView items={turn.items} />
+      <TranscriptItemsView items={turn.items} expandedAll={expandedAll} subagentDetails={subagentDetails} />
     </Box>
   );
 }

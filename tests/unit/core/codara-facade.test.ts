@@ -107,6 +107,62 @@ class DefaultRuntimeWorkflowModel {
   }
 }
 
+class StreamingSubagentFollowThroughParentModel {
+  async invoke(messages: BaseMessage[]): Promise<AIMessage> {
+    const systemText = messages
+      .filter((message) => SystemMessage.isInstance(message))
+      .map((message) => String(message.content))
+      .join('\n');
+    const transcriptText = messages.map((message) => String(message.content)).join('\n');
+
+    if (systemText.includes('Completed subagent runs from your previous response are now available.')) {
+      return new AIMessage('FINAL_FROM_MAIN');
+    }
+
+    if (transcriptText.includes('delegate please')) {
+      return new AIMessage({
+        content: '',
+        tool_calls: [{
+          id: 'call_stream_followthrough_agent',
+          name: 'Agent',
+          args: {
+            prompt: 'Inspect repository structure',
+            subagent_type: 'Agent',
+          },
+        } as ToolCall],
+      });
+    }
+
+    return new AIMessage('UNEXPECTED_PARENT_RESPONSE');
+  }
+
+  async *stream(messages: BaseMessage[]): AsyncGenerator<AIMessageChunk> {
+    const message = await this.invoke(messages);
+    yield new AIMessageChunk({
+      content: message.content,
+      ...(message.tool_calls ? {tool_calls: message.tool_calls} : {}),
+    });
+  }
+
+  bindTools(): this {
+    return this;
+  }
+}
+
+class StreamingSubagentFollowThroughChildModel {
+  async invoke(): Promise<AIMessage> {
+    return new AIMessage('CHILD_DONE');
+  }
+
+  async *stream(): AsyncGenerator<AIMessageChunk> {
+    yield new AIMessageChunk({content: 'CHILD_DONE'});
+  }
+
+  bindTools(): this {
+    return this;
+  }
+}
+
 class DefaultRuntimeProgressiveDisclosureModel {
   constructor(private readonly targetFile: string) {}
 
@@ -441,7 +497,7 @@ describe('Codara facade runtime', () => {
           kind: 'agent',
           phase: 'end',
           status: 'done',
-          label: 'Subagent running in background',
+          label: 'Subagent completed',
         }),
       ]));
     } finally {
@@ -922,6 +978,50 @@ describe('Codara facade runtime', () => {
     const agentState = codara.getAgentState();
     expect(agentState.messages).toHaveLength(2);
     expect(String(agentState.messages[1]?.content)).toBe('seen_humans:1');
+  });
+
+  it('should keep the prompt stream open through background subagent follow-through and emit the final main reply', async () => {
+    const root = await mkdtemp(path.join(tmpdir(), 'codara-runtime-subagent-followthrough-'));
+    const cwd = path.join(root, 'project');
+    const codaraRoot = path.join(cwd, '.codara');
+
+    await mkdir(cwd, {recursive: true});
+    await mkdir(codaraRoot, {recursive: true});
+    await writeFile(path.join(codaraRoot, 'config.json'), JSON.stringify({
+      providers: [{name: 'test', apiKey: 'x', models: ['echo']}],
+      router: {default: 'test:echo'},
+    }, null, 2));
+
+    try {
+      const codara = await createRuntimeForTest({
+        cwd,
+        model: new StreamingSubagentFollowThroughParentModel() as unknown as BaseChatModel,
+        skills: false,
+        builtinTools: false,
+        middleware: [
+          createSubagentMiddleware({
+            model: new StreamingSubagentFollowThroughChildModel() as unknown as BaseChatModel,
+            tools: [],
+          }),
+        ],
+      });
+
+      const chunks: string[] = [];
+      for await (const chunk of codara.streamInteraction({
+        kind: 'prompt',
+        input: 'delegate please',
+        config: {streamMode: 'messages'},
+      })) {
+        if (chunk instanceof AIMessageChunk) {
+          chunks.push(String(chunk.content));
+        }
+      }
+
+      expect(chunks).toEqual(['', 'FINAL_FROM_MAIN']);
+      expect(String(codara.getAgentState().messages.at(-1)?.content)).toBe('FINAL_FROM_MAIN');
+    } finally {
+      await rm(root, {recursive: true, force: true});
+    }
   });
 
   it('should discover global skill commands from the top-level userHome option', async () => {

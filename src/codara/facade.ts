@@ -28,6 +28,7 @@ import {
   createRuntimeDefaultMiddlewares,
   resolveRuntimeLoggingOptions,
 } from './assembly/middleware';
+import {getSubagentRunDetails} from './assembly/subagent-run-details';
 import {getSubagentRunSummaries} from './assembly/subagent-runs';
 import {
   createCodaraModelCatalog,
@@ -52,6 +53,7 @@ export type {
   ReviewQueryItem,
   FocusedReviewQuery,
   SubagentRunQuerySummary,
+  SubagentRunQueryDetail,
 } from './types';
 
 export {createCodaraMiddlewares} from './assembly/middleware';
@@ -309,6 +311,8 @@ export function assembleCodara(
   const streamInteraction = createCodaraInteractionStream({
     session,
     reviewControl,
+    subagentRunStore: preloadedSources?.subagentRunStore,
+    subagentRunManager,
   });
 
   const dispose = async (): Promise<void> => {
@@ -323,6 +327,12 @@ export function assembleCodara(
     listSessions: async (opts?: import('@durability/session').SessionListOptions) => options.store ? options.store.list(opts) : [],
     getMcpStatus: () => mcpManager?.status() ?? [],
     getSubagentRunSummaries: () => getSubagentRunSummaries(preloadedSources?.subagentRunStore, session.getState().sessionId),
+    getSubagentRunDetails: async (runIds?: readonly string[]) => getSubagentRunDetails({
+      store: preloadedSources?.subagentRunStore,
+      checkpointer: options.checkpointer,
+      parentSessionId: session.getState().sessionId,
+      runIds,
+    }),
     listReviewItems: reviewControl.listReviewItems,
     getFocusedReview: reviewControl.getFocusedReview,
     focusReview: reviewControl.focusReview,

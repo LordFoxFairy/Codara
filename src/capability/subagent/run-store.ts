@@ -3,6 +3,7 @@ import {mkdirSync, readdirSync, readFileSync, renameSync, writeFileSync} from 'n
 import path from 'node:path';
 import {z} from 'zod';
 import type {
+  SubagentCompletionContinuation,
   SubagentRunPauseInput,
   SubagentRunRecord,
   SubagentRunResumeInput,
@@ -19,6 +20,8 @@ export interface SubagentRunFileStoreOptions {
 const subagentRunRecordSchema = z.object({
   runId: z.string(),
   parentSessionId: z.string(),
+  batchId: z.string(),
+  batchExpectedCount: z.number().int().positive(),
   label: z.string(),
   agentName: z.string(),
   subagentType: z.string().optional(),
@@ -29,12 +32,14 @@ const subagentRunRecordSchema = z.object({
   endedAt: z.string().optional(),
   childSessionId: z.string().optional(),
   latestActivity: z.string().optional(),
+  activityLog: z.array(z.string()).optional(),
   summary: z.string().optional(),
   errorMessage: z.string().optional(),
   reason: z.enum(['complete', 'error', 'max_turns']).optional(),
   turns: z.number().optional(),
   toolUseCount: z.number().optional(),
   totalTokens: z.number().optional(),
+  completionClaimedAt: z.string().optional(),
 });
 
 export function createSubagentRunMemoryStore(): SubagentRunStore {
@@ -90,6 +95,38 @@ class InMemorySubagentRunStore implements SubagentRunStore {
     const next = applySubagentRunFinish(record, result, new Date().toISOString());
     this.records.set(record.runId, next);
     return cloneSubagentRun(next);
+  }
+
+  takePendingCompletion(parentSessionId: string, preferredBatchIds?: readonly string[]): SubagentCompletionContinuation | undefined {
+    const pending = findPendingCompletionBatch(
+      Array.from(this.records.values()),
+      normalizeSessionId(parentSessionId),
+      preferredBatchIds,
+    );
+    if (!pending) {
+      return undefined;
+    }
+
+    const claimedAt = new Date().toISOString();
+    for (const record of pending.records) {
+      this.records.set(record.runId, {
+        ...record,
+        completionClaimedAt: claimedAt,
+      });
+    }
+
+    return serializePendingCompletionBatch(pending.records);
+  }
+
+  restorePendingCompletion(parentSessionId: string, batchId: string): void {
+    const normalizedSessionId = normalizeSessionId(parentSessionId);
+    const normalizedBatchId = normalizeBatchId(batchId);
+    for (const [runId, record] of this.records.entries()) {
+      if (record.parentSessionId !== normalizedSessionId || record.batchId !== normalizedBatchId) {
+        continue;
+      }
+      this.records.set(runId, {...record, completionClaimedAt: undefined});
+    }
   }
 
   recoverSession(sessionId: string): void {
@@ -175,6 +212,47 @@ class FileSubagentRunStore implements SubagentRunStore {
     this.storeSubagentRun(next, record);
     this.writeSubagentRun(next);
     return cloneSubagentRun(next);
+  }
+
+  takePendingCompletion(parentSessionId: string, preferredBatchIds?: readonly string[]): SubagentCompletionContinuation | undefined {
+    this.ensureLoaded();
+    const pending = findPendingCompletionBatch(
+      Array.from(this.records.values()),
+      normalizeSessionId(parentSessionId),
+      preferredBatchIds,
+    );
+    if (!pending) {
+      return undefined;
+    }
+
+    const claimedAt = new Date().toISOString();
+    for (const record of pending.records) {
+      const next = {
+        ...record,
+        completionClaimedAt: claimedAt,
+      };
+      this.storeSubagentRun(next, record);
+      this.writeSubagentRun(next);
+    }
+
+    return serializePendingCompletionBatch(pending.records);
+  }
+
+  restorePendingCompletion(parentSessionId: string, batchId: string): void {
+    this.ensureLoaded();
+    const normalizedSessionId = normalizeSessionId(parentSessionId);
+    const normalizedBatchId = normalizeBatchId(batchId);
+    for (const record of this.records.values()) {
+      if (record.parentSessionId !== normalizedSessionId || record.batchId !== normalizedBatchId || !record.completionClaimedAt) {
+        continue;
+      }
+      const next = {
+        ...record,
+        completionClaimedAt: undefined,
+      };
+      this.storeSubagentRun(next, record);
+      this.writeSubagentRun(next);
+    }
   }
 
   recoverSession(sessionId: string): void {
@@ -282,6 +360,8 @@ function createSubagentRunRecord(runId: string, input: SubagentRunStartInput, no
   return {
     runId,
     parentSessionId: normalizeSessionId(input.parentSessionId),
+    batchId: normalizeBatchId(input.batchId ?? `${normalizeSessionId(input.parentSessionId)}:${runId}`),
+    batchExpectedCount: normalizeBatchExpectedCount(input.batchExpectedCount ?? 1),
     label: normalizeText(input.label),
     agentName: normalizeText(input.agentName),
     ...(input.subagentType !== undefined ? {subagentType: normalizeOptionalText(input.subagentType)} : {}),
@@ -316,6 +396,8 @@ function applySubagentRunStart(
     ...(existing ? cloneSubagentRun(existing) : createSubagentRunRecord(runId, input, now)),
     runId,
     parentSessionId: normalizeSessionId(input.parentSessionId),
+    batchId: normalizeBatchId(input.batchId ?? existing?.batchId ?? `${normalizeSessionId(input.parentSessionId)}:${runId}`),
+    batchExpectedCount: normalizeBatchExpectedCount(input.batchExpectedCount ?? existing?.batchExpectedCount ?? 1),
     label: normalizeText(input.label),
     agentName: normalizeText(input.agentName),
     ...(input.subagentType !== undefined ? {subagentType: normalizeOptionalText(input.subagentType)} : {}),
@@ -334,9 +416,11 @@ function applySubagentRunStart(
 }
 
 function applySubagentRunUpdate(record: SubagentRunRecord, input: SubagentRunUpdateInput, now: string): SubagentRunRecord {
+  const nextActivityLog = appendSubagentActivityLog(record.activityLog, input.activityLabel);
   return {
     ...record,
     ...(input.latestActivity !== undefined ? {latestActivity: normalizeOptionalText(input.latestActivity)} : {}),
+    ...(nextActivityLog ? {activityLog: nextActivityLog} : {}),
     ...(typeof input.toolUseCount === 'number' ? {toolUseCount: input.toolUseCount} : {}),
     updatedAt: now,
   };
@@ -380,9 +464,84 @@ function applySubagentRunFinish(record: SubagentRunRecord, result: SubagentResul
   };
 }
 
+function findPendingCompletionBatch(
+  records: SubagentRunRecord[],
+  parentSessionId: string,
+  preferredBatchIds: readonly string[] = [],
+): {records: SubagentRunRecord[]} | undefined {
+  const batches = new Map<string, SubagentRunRecord[]>();
+  for (const record of records) {
+    if (record.parentSessionId !== parentSessionId) {
+      continue;
+    }
+    const bucket = batches.get(record.batchId) ?? [];
+    bucket.push(record);
+    batches.set(record.batchId, bucket);
+  }
+
+  const preferredBatchIdSet = new Set(preferredBatchIds.map((batchId) => normalizeBatchId(batchId)));
+  const sortedBatches = [...batches.values()]
+    .filter((batchRecords) => batchRecords.length > 0)
+    .filter((batchRecords) => preferredBatchIdSet.size === 0 || preferredBatchIdSet.has(batchRecords[0]!.batchId))
+    .sort((left, right) => {
+      const leftStartedAt = left[0]!.startedAt;
+      const rightStartedAt = right[0]!.startedAt;
+      const started = leftStartedAt.localeCompare(rightStartedAt);
+      return started !== 0 ? started : left[0]!.batchId.localeCompare(right[0]!.batchId);
+    });
+
+  for (const batchRecords of sortedBatches) {
+    const expectedCount = Math.max(...batchRecords.map((record) => record.batchExpectedCount));
+    if (batchRecords.length < expectedCount) {
+      continue;
+    }
+    if (batchRecords.some((record) => record.status === 'running' || record.status === 'paused')) {
+      continue;
+    }
+    if (batchRecords.some((record) => record.completionClaimedAt)) {
+      continue;
+    }
+    return {records: sortSubagentRuns(batchRecords)};
+  }
+
+  return undefined;
+}
+
+function serializePendingCompletionBatch(records: SubagentRunRecord[]): SubagentCompletionContinuation {
+  const [first] = records;
+  return {
+    parentSessionId: first!.parentSessionId,
+    batchId: first!.batchId,
+    runs: records.map((record) => ({
+      runId: record.runId,
+      label: record.label,
+      agentName: record.agentName,
+      status: record.status === 'failed' ? 'failed' : 'completed',
+      ...(record.summary ? {summary: record.summary} : {}),
+      ...(record.errorMessage ? {errorMessage: record.errorMessage} : {}),
+      ...(typeof record.toolUseCount === 'number' ? {toolUseCount: record.toolUseCount} : {}),
+      ...(typeof record.totalTokens === 'number' ? {totalTokens: record.totalTokens} : {}),
+    })),
+  };
+}
+
 function parseSubagentRunRecord(value: unknown): SubagentRunRecord | undefined {
   const parsed = subagentRunRecordSchema.safeParse(value);
   return parsed.success ? parsed.data : undefined;
+}
+
+function appendSubagentActivityLog(current: string[] | undefined, nextLabel: string | undefined): string[] | undefined {
+  const normalized = normalizeOptionalText(nextLabel);
+  if (!normalized) {
+    return current ? [...current] : undefined;
+  }
+
+  const next = [...(current ?? [])];
+  if (next[next.length - 1] !== normalized) {
+    next.push(normalized);
+  }
+
+  return next.slice(-12);
 }
 
 function normalizeRunId(value: string): string {
@@ -399,6 +558,21 @@ function normalizeSessionId(value: string): string {
     throw new Error('Subagent run session id is required');
   }
   return sessionId;
+}
+
+function normalizeBatchId(value: string): string {
+  const batchId = value.trim();
+  if (!batchId) {
+    throw new Error('Subagent run batch id is required');
+  }
+  return batchId;
+}
+
+function normalizeBatchExpectedCount(value: number): number {
+  if (!Number.isInteger(value) || value <= 0) {
+    throw new Error('Subagent run batch expected count must be a positive integer');
+  }
+  return value;
 }
 
 function normalizeText(value: string): string {

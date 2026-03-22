@@ -1,5 +1,6 @@
 import type {BaseChatModel} from '@langchain/core/language_models/chat_models';
 import type {StructuredToolInterface} from '@langchain/core/tools';
+import type {BaseMessage} from '@langchain/core/messages';
 import type {AgentCheckpointer} from '@durability/checkpoint';
 import type {BaseMiddleware} from '@core/pipeline/types';
 import type {ReviewMiddlewareOptions, LoggingMiddlewareOptions} from '@core/middleware';
@@ -111,11 +112,18 @@ export interface SubagentRunQuerySummary {
   endedAt?: string;
   childSessionId?: string;
   latestActivity?: string;
+  activityLog?: string[];
   summary?: string;
   errorMessage?: string;
   turns?: number;
   toolUseCount?: number;
   totalTokens?: number;
+}
+
+export interface SubagentRunQueryDetail {
+  runId: string;
+  childSessionId: string;
+  messages: BaseMessage[];
 }
 
 export type ReviewQuerySource = 'subagent_run' | 'session_review';
@@ -180,6 +188,7 @@ export type Codara = Omit<Session, 'resumeReview' | 'resumeReviewStream'> & {
   listSessions(options?: import('@durability/session').SessionListOptions): Promise<SessionState[]>;
   getMcpStatus(): McpClientInfo[];
   getSubagentRunSummaries(): SubagentRunQuerySummary[];
+  getSubagentRunDetails(runIds?: readonly string[]): Promise<SubagentRunQueryDetail[]>;
   listReviewItems(): ReviewQueryItem[];
   getFocusedReview(): FocusedReviewQuery | undefined;
   focusReview(reviewId: string): Promise<void>;

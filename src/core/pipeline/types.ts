@@ -72,6 +72,7 @@ export interface AgentRunSummary {
   reason: 'continue' | 'complete' | 'error';
   turns: number;
   error?: Error;
+  launchedSubagentBatchIds?: string[];
 }
 
 export interface AfterAgentContext extends BaseExecutionContext {

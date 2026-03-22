@@ -20,7 +20,6 @@ import {
 import type {SubagentRunRecord, SubagentRunStore} from '@capability/subagent/types';
 import type {BootstrapAgentOptions} from '@core/agent/bootstrap';
 import type {AgentCheckpointer} from '@durability/checkpoint/agent';
-import {AGENT_ACTIVITY_CALLBACK_KEY, type ChildToolActivityCallback} from '@observability/events';
 import {filterToolsByReferences} from '@integration/tool';
 import {formatSubagentDisplayName, type SubagentDefinition} from '@capability/skill';
 import type {ApprovalStore} from '@durability/approval-store';
@@ -62,6 +61,8 @@ interface PrepareSubagentLaunchInput {
 
 interface PreparedSubagentLaunch {
   runId: string;
+  batchId: string;
+  batchExpectedCount: number;
   toolCallId: string;
   parentSessionId: string;
   childSessionId: string;
@@ -123,6 +124,8 @@ export function createSubagentTool(options: CreateSubagentToolOptions): Structur
       const launched = await runManager.launch({
         runId: prepared.runId,
         parentSessionId: prepared.parentSessionId,
+        batchId: prepared.batchId,
+        batchExpectedCount: prepared.batchExpectedCount,
         childSessionId: prepared.childSessionId,
         label: prepared.runLabel,
         agentName: prepared.agentName,
@@ -132,7 +135,6 @@ export function createSubagentTool(options: CreateSubagentToolOptions): Structur
         childOptions: prepared.childOptions!,
         ...(typeof prepared.childMaxTurns === 'number' ? {maxTurns: prepared.childMaxTurns} : {}),
       });
-
       return new ToolMessage({
         content: formatSubagentRunLaunchResult(launched),
         artifact: launched,
@@ -162,6 +164,9 @@ async function prepareSubagentLaunch(input: PrepareSubagentLaunchInput): Promise
   } = input;
   const parentRuntime = readSubagentParentRuntimeMetadata(configurable);
   const runId = resolveSubagentRunId(runStore, parentRuntime.parentExecution.toolCallId);
+  const batchId = parentRuntime.launchBatch?.batchId
+    ?? `${parentRuntime.parentExecution.sessionId}:${parentRuntime.parentExecution.runId}:turn:${parentRuntime.parentExecution.turn}`;
+  const batchExpectedCount = parentRuntime.launchBatch?.expectedCount ?? 1;
   const compiled = await compileSubagentLaunchSpec({
     prompt,
     subagentType,
@@ -190,6 +195,8 @@ async function prepareSubagentLaunch(input: PrepareSubagentLaunchInput): Promise
   if (existingRunMessage) {
     return {
       runId,
+      batchId,
+      batchExpectedCount,
       toolCallId: parentRuntime.parentExecution.toolCallId,
       parentSessionId: parentRuntime.parentExecution.sessionId,
       childSessionId,
@@ -204,6 +211,8 @@ async function prepareSubagentLaunch(input: PrepareSubagentLaunchInput): Promise
 
   return {
     runId,
+    batchId,
+    batchExpectedCount,
     toolCallId: parentRuntime.parentExecution.toolCallId,
     parentSessionId: parentRuntime.parentExecution.sessionId,
     childSessionId,
@@ -330,9 +339,8 @@ async function compileSubagentLaunchSpec(input: {
     readSkillsRuntimeData(input.runtimeShared),
     requestedSubagentType,
   );
-  const childActivityCallback = readChildActivityCallback(input.runtimeShared);
   const childMaxTurns = input.maxTurns ?? profile.maxTurns;
-  const onChildToolActivity = createChildToolActivityCallback(input.runId, input.runStore, childActivityCallback);
+  const onChildToolActivity = createChildToolActivityCallback(input.runId, input.toolOptions.runManager);
   const childOptions = await buildSubagentChildOptions({
     ...input.toolOptions,
     checkpointer: input.checkpointer,
@@ -355,28 +363,18 @@ async function compileSubagentLaunchSpec(input: {
 
 function createChildToolActivityCallback(
   runId: string,
-  runStore: SubagentRunStore | undefined,
-  childActivityCallback: ChildToolActivityCallback | undefined,
-): ChildToolActivityCallback | undefined {
-  if (!runStore && !childActivityCallback) {
+  runManager: SubagentRunManager | undefined,
+) {
+  if (!runManager) {
     return undefined;
   }
 
   return (info: {toolName: string; label: string}) => {
     try {
-      const nextToolUseCount = (() => {
-        const existing = runStore?.get(runId);
-        return (existing?.toolUseCount ?? 0) + 1;
-      })();
-      runStore?.update(runId, {
-        latestActivity: info.label,
-        toolUseCount: nextToolUseCount,
-      });
+      runManager.recordActivity(runId, info);
     } catch {
       // Best-effort: run tracking must not block child execution.
     }
-
-    childActivityCallback?.(info);
   };
 }
 
@@ -389,15 +387,6 @@ function resolveDefinitionTools(
   }
 
   return filterToolsByReferences(tools, definition.tools);
-}
-
-function readChildActivityCallback(runtimeShared: unknown): ChildToolActivityCallback | undefined {
-  if (!runtimeShared || typeof runtimeShared !== 'object') {
-    return undefined;
-  }
-  const shared = runtimeShared as Record<string, unknown>;
-  const callback = shared[AGENT_ACTIVITY_CALLBACK_KEY];
-  return typeof callback === 'function' ? callback as ChildToolActivityCallback : undefined;
 }
 
 function normalizeSubagentName(subagentType: string | undefined, fallback: string): string {

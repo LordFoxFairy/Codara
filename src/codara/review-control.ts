@@ -10,7 +10,10 @@ export interface CodaraReviewControl {
   getFocusedReview(): FocusedReviewQuery | undefined;
   focusReview(reviewId: string): Promise<void>;
   resumeReview(payload: ReviewResumePayload, config?: AgentResumeStreamConfig): Promise<AgentResult | undefined>;
-  streamReview(payload: ReviewResumePayload, config?: AgentResumeStreamConfig): AsyncGenerator<AgentStreamOutput, void, void>;
+  streamReview(
+    payload: ReviewResumePayload,
+    config?: AgentResumeStreamConfig,
+  ): AsyncGenerator<AgentStreamOutput, AgentResult | undefined, void>;
 }
 
 export function createCodaraReviewControl(options: {
@@ -114,7 +117,7 @@ export function createCodaraReviewControl(options: {
     streamReview: async function* (
       payload: ReviewResumePayload,
       config?: AgentResumeStreamConfig,
-    ): AsyncGenerator<AgentStreamOutput, void, void> {
+    ): AsyncGenerator<AgentStreamOutput, AgentResult | undefined, void> {
       const focused = resolveFocusedReview();
       if (!focused) {
         throw new Error('No queued review is available for the current session');
@@ -125,11 +128,13 @@ export function createCodaraReviewControl(options: {
           throw new Error('Subagent review run manager is not available');
         }
         yield* subagentReviewResumer.resumeApprovalByIdStream(focused.item.reviewId, payload, config);
+        resolveFocusedReview();
+        return undefined;
       } else {
-        yield* session.resumeReviewStream(payload, config);
+        const result = yield* session.resumeReviewStream(payload, config);
+        resolveFocusedReview();
+        return result;
       }
-
-      resolveFocusedReview();
     },
   };
 }

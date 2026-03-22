@@ -223,6 +223,11 @@ export function createSubagentResult(
   reason: 'complete' | 'error' | 'max_turns',
   error: Error | undefined,
   messages: BaseMessage[],
+  metadata?: {
+    runId?: string;
+    label?: string;
+    agentName?: string;
+  },
 ): SubagentResult {
   const summary = readLatestAssistantText(messages);
   const toolUseCount = messages.filter((message) => ToolMessage.isInstance(message)).length;
@@ -233,6 +238,9 @@ export function createSubagentResult(
     sessionId,
     turns,
     reason,
+    ...(metadata?.runId ? {runId: metadata.runId} : {}),
+    ...(metadata?.label ? {label: metadata.label} : {}),
+    ...(metadata?.agentName ? {agentName: metadata.agentName} : {}),
     ...(summary ? {summary} : {}),
     ...(error?.message ? {errorMessage: error.message} : {}),
     ...(toolUseCount > 0 ? {toolUseCount} : {}),

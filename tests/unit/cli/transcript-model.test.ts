@@ -359,7 +359,7 @@ describe('cli transcript model', () => {
     expect(items.some((item) => item.content.includes('Updated todo list'))).toBe(false);
   });
 
-  test('should prefer runtime step events during streaming (activeTurn present)', () => {
+  test('should keep raw subagent runtime end details out of the main transcript during streaming', () => {
     const items = buildTranscriptItems({
       notices: [],
       coreMessages: [
@@ -398,13 +398,11 @@ describe('cli transcript model', () => {
       ],
     });
 
-    const roles = items.map((item) => item.role);
-    expect(roles).toContain('user');
-    expect(roles).toContain('agent');
-    expect(items.some((item) => item.content.includes('CHILD_DONE'))).toBe(true);
+    expect(items.map((item) => item.role)).toEqual(['user', 'tool']);
+    expect(items.some((item) => item.content.includes('CHILD_DONE'))).toBe(false);
   });
 
-  test('should suppress assistant launch chatter while a delegated subagent runtime block is active', () => {
+  test('should suppress assistant launch chatter while keeping the delegated subagent block visible in the timeline', () => {
     const now = new Date().toISOString();
     const items = buildTranscriptItems({
       notices: [],
@@ -436,6 +434,7 @@ describe('cli transcript model', () => {
 
     expect(items.map((item) => item.role)).toEqual(['user', 'agent']);
     expect(items.some((item) => item.content.includes('任务已启动'))).toBe(false);
+    expect(items[1]?.content).toContain('⚙ Explore(Analyze project)');
   });
 
   test('should suppress active launch chatter when the streaming response already contains an Agent tool call', () => {
@@ -458,7 +457,7 @@ describe('cli transcript model', () => {
     expect(items.some((item) => item.content.includes('任务已启动'))).toBe(false);
   });
 
-  test('should suppress solidified assistant launch chatter that only repeats a delegated subagent launch', () => {
+  test('should suppress solidified assistant launch chatter while keeping the delegated running subagent block', () => {
     const taskCall: ToolCall = {
       id: 'call_task_launch_noise',
       name: 'Agent',
@@ -494,7 +493,10 @@ describe('cli transcript model', () => {
       ],
     });
 
-    expect(items).toEqual([]);
+    expect(items).toHaveLength(1);
+    expect(items[0]?.role).toBe('agent');
+    expect(items[0]?.content).toContain('⚙ Explore(Analyze the repo)');
+    expect(items[0]?.content).toContain('Running');
   });
 
   test('should suppress solidified launch chatter on an AI message that also contains an Agent tool call', () => {
@@ -524,6 +526,99 @@ describe('cli transcript model', () => {
       role: 'user',
       content: 'delegate it',
     }]);
+  });
+
+  test('should suppress alternative launch-only assistant prose while keeping the delegated subagent tool block', () => {
+    const taskCall: ToolCall = {
+      id: 'call_task_launch_alt',
+      name: 'Agent',
+      args: {prompt: 'Analyze the repo', subagent_type: 'Explore'},
+    };
+    const items = buildTranscriptItems({
+      notices: [],
+      coreMessages: [
+        new HumanMessage('delegate it'),
+        new AIMessage({content: '', tool_calls: [taskCall]}),
+        new ToolMessage({
+          content: [
+            'Subagent started in background.',
+            'run_id: call_123',
+            'delegate_id: session:task:call_123',
+          ].join('\n'),
+          tool_call_id: 'call_task_launch_alt',
+          name: 'Agent',
+          artifact: {
+            type: 'subagent_run_started',
+            runId: 'call_123',
+            parentSessionId: 'session-1',
+            sessionId: 'session:task:call_123',
+            agentName: 'Explore',
+            label: 'Delegating Explore: Analyze the repo',
+          },
+        }),
+        new AIMessage('我已启动只读 Explore subagent (run_id: call_123) 来分析项目。待该代理完成并返回结果后，我将立即给出不超过5句的总结。'),
+      ],
+    });
+
+    expect(items).toHaveLength(2);
+    expect(items[0]).toEqual({
+      id: 'human-0',
+      role: 'user',
+      content: 'delegate it',
+    });
+    expect(items[1]?.role).toBe('agent');
+    expect(items[1]?.content).toContain('⚙ Explore(Analyze the repo)');
+    expect(items[1]?.content).toContain('Running');
+    expect(items[1]?.toolMeta?.status).toBe('running');
+  });
+
+  test('should hide a subagent launch tool message once a completed subagent result for the same tool call exists', () => {
+    const items = buildTranscriptItems({
+      notices: [],
+      coreMessages: [
+        new AIMessage({
+          content: '',
+          tool_calls: [{
+            id: 'call_task_pair',
+            name: 'Agent',
+            args: {prompt: 'Analyze the repo', subagent_type: 'Explore'},
+          } as ToolCall],
+        }),
+        new ToolMessage({
+          content: 'Subagent started in background.',
+          tool_call_id: 'call_task_pair',
+          name: 'Agent',
+          artifact: {
+            type: 'subagent_run_started',
+            runId: 'call_task_pair',
+            parentSessionId: 'session-1',
+            sessionId: 'session-1:agent:call_task_pair',
+            agentName: 'Explore',
+            label: 'Delegating Explore: Analyze the repo',
+          },
+        }),
+        new ToolMessage({
+          content: 'Subagent completed.\nsummary:\nDone',
+          tool_call_id: 'call_task_pair',
+          artifact: {
+            type: 'subagent_result',
+            sessionId: 'session-1:agent:call_task_pair',
+            turns: 4,
+            reason: 'complete',
+            runId: 'call_task_pair',
+            label: 'Delegating Explore: Analyze the repo',
+            agentName: 'Explore',
+            summary: 'Done',
+            toolUseCount: 2,
+            totalTokens: 900,
+          },
+        }),
+      ],
+    });
+
+    expect(items).toHaveLength(1);
+    expect(items[0]?.role).toBe('agent');
+    expect(items[0]?.content).toContain('Done (2 tool uses · 900 tokens)');
   });
 
   test('should render completed task tool results as compact execution summaries instead of raw child output', () => {
@@ -573,7 +668,7 @@ describe('cli transcript model', () => {
     expect(items[0]?.toolMeta?.summaryLine).toBe('Done (3 tool uses · 14.4k tokens)');
   });
 
-  test('should suppress synthetic task launch blocks when a runtime task root for the same delegation exists', () => {
+  test('should show only the real delegated subagent block when runtime task roots and synthetic placeholders both exist', () => {
     const now = new Date().toISOString();
     const items = buildTranscriptItems({
       notices: [],
@@ -652,8 +747,7 @@ describe('cli transcript model', () => {
 
     const exploreItems = items.filter((item) => item.content.includes('⚙ Explore('));
     expect(exploreItems).toHaveLength(1);
-    expect(exploreItems[0]?.content).toContain('Waiting for review');
-    expect(exploreItems[0]?.content).not.toContain('Done (0s)');
+    expect(exploreItems[0]?.content).toContain('Running');
   });
 
   test('should hide bookkeeping subagent runtime events like Subagent started and background-launch status lines', () => {
@@ -695,7 +789,7 @@ describe('cli transcript model', () => {
     expect(items.some((item) => item.content.includes('Subagent started in background.'))).toBe(false);
   });
 
-  test('should ignore pre-registered pending task placeholders once real parallel task roots exist', () => {
+  test('should ignore pre-registered pending task placeholders while keeping the real delegated subagent blocks', () => {
     const now = '2026-03-20T10:00:00.000Z';
     const later = '2026-03-20T10:01:08.000Z';
     const items = buildTranscriptItems({
@@ -772,12 +866,11 @@ describe('cli transcript model', () => {
 
     const exploreItems = items.filter((item) => item.content.includes('⚙ Explore('));
     expect(exploreItems).toHaveLength(2);
-    const techItems = exploreItems.filter((item) => item.content.includes('技术栈、主要依赖和运行方式'));
-    expect(techItems).toHaveLength(1);
-    expect(techItems[0]?.content).not.toContain('Done (0s)');
+    expect(exploreItems[0]?.content).not.toContain('pending');
+    expect(exploreItems[1]?.content).not.toContain('pending');
   });
 
-  test('should render running tasks with recent activity lines and a collapsed activity count', () => {
+  test('should show the delegated subagent block without leaking child activity lines into the main transcript body', () => {
     const start = '2026-03-20T10:00:00.000Z';
     const update = '2026-03-20T10:00:05.000Z';
     const items = buildTranscriptItems({
@@ -846,19 +939,14 @@ describe('cli transcript model', () => {
       ],
     });
 
-    const runningTask = items.find((item) => item.content.includes('⚙ Explore('));
-    expect(runningTask?.toolMeta?.status).toBe('running');
-    expect(runningTask?.toolMeta?.summaryLine).toContain('Running');
-    expect(runningTask?.toolMeta?.summaryLine).toContain('4 tool activities');
-    expect(runningTask?.toolMeta?.outputLines).toEqual([
-      'Read(package.json)',
-      'Read(src/index.ts)',
-      'Read(src/core/agent.ts)',
-    ]);
-    expect(runningTask?.toolMeta?.totalOutputLines).toBe(4);
+    const exploreItems = items.filter((item) => item.content.includes('⚙ Explore('));
+    expect(exploreItems).toHaveLength(1);
+    expect(exploreItems[0]?.content).toContain('Running');
+    expect(exploreItems[0]?.content).not.toContain('glob(');
+    expect(exploreItems[0]?.content).not.toContain('Read(');
   });
 
-  test('should render completed tasks with child tool activity lines instead of repeating the final summary body', () => {
+  test('should keep the completed subagent block visible without leaking raw child activity lines into the main transcript body', () => {
     const start = '2026-03-20T10:00:00.000Z';
     const end = '2026-03-20T10:00:38.000Z';
     const items = buildTranscriptItems({
@@ -916,10 +1004,10 @@ describe('cli transcript model', () => {
       ],
     });
 
-    const completedTask = items.find((item) => item.content.includes('⚙ Explore('));
-    expect(completedTask?.toolMeta?.summaryLine).toContain('Done');
-    expect(completedTask?.toolMeta?.allOutputLines).toEqual(['glob(README*)', 'Read(package.json)']);
-    expect(completedTask?.toolMeta?.allOutputLines).not.toContain('Codara is a terminal-first AI agent runtime.');
+    const exploreItems = items.filter((item) => item.content.includes('⚙ Explore('));
+    expect(exploreItems).toHaveLength(1);
+    expect(exploreItems[0]?.content).toContain('Done');
+    expect(items.some((item) => item.content.includes('Codara is a terminal-first AI agent runtime.'))).toBe(false);
   });
 
   test('should include elapsed time in tool meta when paired start/end events exist', () => {
