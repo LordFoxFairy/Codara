@@ -76,14 +76,14 @@ describe('CLI foreground surface', () => {
     expect(shouldShowSubagentRunPanel({subagentRunPanelVisible: true, subagentRunCount: 2})).toBe(true);
   });
 
-  it('should render the task panel as a floating panel when conversation is active and no stronger overlay is open', () => {
+  it('should not render the floating task panel while a normal conversation transcript is active', () => {
     expect(shouldShowFloatingSubagentRunPanel({
       hasConversation: true,
       subagentRunPanelVisible: true,
       subagentRunCount: 2,
       hasBlockingOverlay: false,
       hasReview: false,
-    })).toBe(true);
+    })).toBe(false);
   });
 
   it('should hide the floating task panel while a stronger overlay is visible', () => {

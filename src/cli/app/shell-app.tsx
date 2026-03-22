@@ -111,7 +111,11 @@ export function shouldShowFloatingSubagentRunPanel(input: {
   hasBlockingOverlay: boolean;
   hasReview: boolean;
 }): boolean {
-  if (input.hasBlockingOverlay || input.hasReview || !input.hasConversation) {
+  if (
+    input.hasBlockingOverlay
+    || input.hasReview
+    || input.hasConversation
+  ) {
     return false;
   }
 

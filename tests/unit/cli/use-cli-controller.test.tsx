@@ -693,6 +693,141 @@ describe('useCliController background refresh', () => {
     }
   });
 
+  it('re-enters the main agent after all parallel tracked subagents complete', async () => {
+    const codara = new FakeCodara();
+    codara.blockNextStream();
+    codara.queueStreamText('Parallel follow-through complete.');
+    const rendered = render(<BackgroundFollowupProbe codara={codara as unknown as Codara} />);
+
+    try {
+      await waitFor(() => (rendered.lastFrame() ?? '').includes('runState:running'));
+
+      codara.setSubagentRunSummaries([
+        {
+          runId: 'run-cli',
+          parentSessionId: 'session-1',
+          label: 'Delegating Explore: Analyze src/cli',
+          agentName: 'Explore',
+          status: 'running',
+          startedAt: new Date(Date.now() - 20_000).toISOString(),
+          updatedAt: new Date().toISOString(),
+          summary: 'CLI summary',
+        },
+        {
+          runId: 'run-capability',
+          parentSessionId: 'session-1',
+          label: 'Delegating Explore: Analyze src/capability',
+          agentName: 'Explore',
+          status: 'running',
+          startedAt: new Date(Date.now() - 18_000).toISOString(),
+          updatedAt: new Date().toISOString(),
+          summary: 'Capability summary',
+        },
+      ]);
+      codara.emit({
+        id: 'subagent-run:run-cli',
+        sessionId: 'session-1',
+        timestamp: new Date().toISOString(),
+        kind: 'agent',
+        phase: 'start',
+        status: 'running',
+        label: 'Delegating Explore: Analyze src/cli',
+      });
+      codara.emit({
+        id: 'subagent-run:run-capability',
+        sessionId: 'session-1',
+        timestamp: new Date().toISOString(),
+        kind: 'agent',
+        phase: 'start',
+        status: 'running',
+        label: 'Delegating Explore: Analyze src/capability',
+      });
+
+      codara.releaseBlockedStream();
+      await waitFor(() => (rendered.lastFrame() ?? '').includes('activeTurnKind:prompt'));
+
+      codara.setSubagentRunSummaries([
+        {
+          runId: 'run-cli',
+          parentSessionId: 'session-1',
+          label: 'Delegating Explore: Analyze src/cli',
+          agentName: 'Explore',
+          status: 'completed',
+          startedAt: new Date(Date.now() - 20_000).toISOString(),
+          updatedAt: new Date().toISOString(),
+          endedAt: new Date().toISOString(),
+          summary: 'CLI summary',
+        },
+        {
+          runId: 'run-capability',
+          parentSessionId: 'session-1',
+          label: 'Delegating Explore: Analyze src/capability',
+          agentName: 'Explore',
+          status: 'running',
+          startedAt: new Date(Date.now() - 18_000).toISOString(),
+          updatedAt: new Date().toISOString(),
+          summary: 'Capability summary',
+        },
+      ]);
+      codara.emit({
+        id: 'task-end-run-cli',
+        sessionId: 'session-1',
+        timestamp: new Date().toISOString(),
+        kind: 'agent',
+        phase: 'end',
+        status: 'done',
+        label: 'Subagent completed',
+        detail: 'CLI summary',
+        parentId: 'subagent-run:run-cli',
+      });
+
+      await new Promise((resolve) => setTimeout(resolve, 20));
+      expect(codara.getStreamCallCount()).toBe(1);
+
+      codara.setSubagentRunSummaries([
+        {
+          runId: 'run-cli',
+          parentSessionId: 'session-1',
+          label: 'Delegating Explore: Analyze src/cli',
+          agentName: 'Explore',
+          status: 'completed',
+          startedAt: new Date(Date.now() - 20_000).toISOString(),
+          updatedAt: new Date().toISOString(),
+          endedAt: new Date().toISOString(),
+          summary: 'CLI summary',
+        },
+        {
+          runId: 'run-capability',
+          parentSessionId: 'session-1',
+          label: 'Delegating Explore: Analyze src/capability',
+          agentName: 'Explore',
+          status: 'completed',
+          startedAt: new Date(Date.now() - 18_000).toISOString(),
+          updatedAt: new Date().toISOString(),
+          endedAt: new Date().toISOString(),
+          summary: 'Capability summary',
+        },
+      ]);
+      codara.emit({
+        id: 'task-end-run-capability',
+        sessionId: 'session-1',
+        timestamp: new Date().toISOString(),
+        kind: 'agent',
+        phase: 'end',
+        status: 'done',
+        label: 'Subagent completed',
+        detail: 'Capability summary',
+        parentId: 'subagent-run:run-capability',
+      });
+
+      await waitFor(() => (rendered.lastFrame() ?? '').includes('runState:done'));
+      expect(codara.getStreamCallCount()).toBe(1);
+    } finally {
+      codara.releaseBlockedStream();
+      rendered.unmount();
+    }
+  });
+
   it('does not add a generic assistant follow-up when a background task completes without detail', async () => {
     const codara = new FakeCodara();
     const rendered = render(<ControllerProbe codara={codara as unknown as Codara} />);

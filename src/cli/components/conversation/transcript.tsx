@@ -428,7 +428,7 @@ function projectExecutionTreeItems(
   }
 
   const runsById = new Map(activeSubagentRuns.map((run) => [run.id, run]));
-  return items.map((item) => {
+  const projectedItems = items.map((item) => {
     if (item.role !== 'agent' || !item.toolMeta) {
       return item;
     }
@@ -448,6 +448,89 @@ function projectExecutionTreeItems(
       item as import('../../transcript/model').TranscriptItem & {toolMeta: ToolResultMeta},
     );
   });
+
+  const projectedRunIds = new Set(
+    projectedItems
+      .filter((item): item is import('../../transcript/model').TranscriptItem & {toolMeta: ToolResultMeta} => (
+        item.role === 'agent' && Boolean(item.toolMeta)
+      ))
+      .map((item) => resolveSubagentRunId(item))
+      .filter((runId): runId is string => Boolean(runId)),
+  );
+
+  const syntheticItems = activeSubagentRuns
+    .filter((run) => !projectedRunIds.has(run.id))
+    .map((run) => buildSyntheticSubagentTranscriptItem(run));
+
+  if (syntheticItems.length === 0) {
+    return projectedItems;
+  }
+
+  return insertSyntheticSubagentItems(projectedItems, syntheticItems);
+}
+
+function insertSyntheticSubagentItems(
+  items: readonly import('../../transcript/model').TranscriptItem[],
+  syntheticItems: readonly import('../../transcript/model').TranscriptItem[],
+): import('../../transcript/model').TranscriptItem[] {
+  if (items.length === 0) {
+    return [...syntheticItems];
+  }
+
+  let lastUserIndex = -1;
+  for (let index = items.length - 1; index >= 0; index -= 1) {
+    if (items[index]?.role === 'user') {
+      lastUserIndex = index;
+      break;
+    }
+  }
+
+  const searchStartIndex = lastUserIndex >= 0 ? lastUserIndex + 1 : 0;
+  let insertionIndex = items.length;
+  for (let index = searchStartIndex; index < items.length; index += 1) {
+    if (items[index]?.role === 'assistant') {
+      insertionIndex = index;
+      break;
+    }
+  }
+
+  return [
+    ...items.slice(0, insertionIndex),
+    ...syntheticItems,
+    ...items.slice(insertionIndex),
+  ];
+}
+
+function dedupeProjectedSubagentItems(
+  items: readonly import('../../transcript/model').TranscriptItem[],
+): import('../../transcript/model').TranscriptItem[] {
+  const seenKeys = new Set<string>();
+  const deduped: import('../../transcript/model').TranscriptItem[] = [];
+
+  for (const item of items) {
+    if (item.role !== 'agent' || !item.toolMeta) {
+      deduped.push(item);
+      continue;
+    }
+
+    const runId = resolveSubagentRunId(item as import('../../transcript/model').TranscriptItem & {toolMeta: ToolResultMeta});
+    const dedupeKey = runId
+      ? `run:${runId}`
+      : item.toolMeta.coverageKey
+        ? `coverage:${item.toolMeta.coverageKey}`
+        : undefined;
+
+    if (dedupeKey && seenKeys.has(dedupeKey)) {
+      continue;
+    }
+
+    if (dedupeKey) {
+      seenKeys.add(dedupeKey);
+    }
+    deduped.push(item);
+  }
+
+  return deduped;
 }
 
 function buildSyntheticSubagentTranscriptItem(
@@ -557,7 +640,7 @@ export function TranscriptItemsView({
   expandedAll?: boolean;
   subagentDetails?: ReadonlyMap<string, import('../../transcript/model').TranscriptItem[]>;
 }): React.JSX.Element {
-  const projectedItems = projectExecutionTreeItems(items, activeSubagentRuns);
+  const projectedItems = dedupeProjectedSubagentItems(projectExecutionTreeItems(items, activeSubagentRuns));
   const shouldGroupTaskItems = !expandedAll && projectedItems.filter((item) => item.role === 'agent' && item.toolMeta).length > 1;
   const blocks: React.JSX.Element[] = [];
 
