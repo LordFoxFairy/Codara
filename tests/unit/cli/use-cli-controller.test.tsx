@@ -2,7 +2,7 @@ import {describe, expect, it} from 'bun:test';
 import React, {useEffect} from 'react';
 import {Text} from 'ink';
 import {render} from 'ink-testing-library';
-import {AIMessageChunk} from '@langchain/core/messages';
+import {AIMessage, AIMessageChunk} from '@langchain/core/messages';
 import type {
   Codara,
   CodaraStreamRequest,
@@ -322,7 +322,15 @@ describe('useCliController background refresh', () => {
       });
 
       await waitFor(() => codara.getStreamCallCount() === 1);
-      await waitFor(() => (rendered.lastFrame() ?? '').includes('runState:done'));
+      await waitFor(() => {
+        const frame = rendered.lastFrame() ?? '';
+        if (frame.includes('runState:done')) {
+          return true;
+        }
+        return false;
+      }, {timeoutMs: 500, onTimeout: () => {
+        throw new Error(`Timed out waiting for runState:done.\nFRAME:\n${rendered.lastFrame() ?? '(empty)'}`);
+      }});
       const frame = rendered.lastFrame() ?? '';
       expect(frame).toContain('streamCalls:1');
       expect(frame).toContain('latestAssistantNotice:none');
@@ -397,7 +405,11 @@ describe('useCliController background refresh', () => {
       });
 
       await waitFor(() => codara.getStreamCallCount() === 1);
-      await waitFor(() => (rendered.lastFrame() ?? '').includes('runState:done'));
+      await waitFor(() => (rendered.lastFrame() ?? '').includes('runState:done'), {
+        onTimeout: () => {
+          throw new Error(`Timed out waiting for runState:done.\nFRAME:\n${rendered.lastFrame() ?? '(empty)'}`);
+        },
+      });
       const frame = rendered.lastFrame() ?? '';
       expect(codara.getStreamCallCount()).toBe(1);
       expect(frame).toContain('latestAssistantNotice:none');
@@ -445,6 +457,512 @@ describe('useCliController background refresh', () => {
       expect(frame).toContain('streamCalls:1');
       expect(frame).toContain('activeTurnKind:prompt');
       expect(frame).toContain('activeTurnPrompt:delegate a task and wait');
+    } finally {
+      codara.releaseBlockedStream();
+      rendered.unmount();
+    }
+  });
+
+  it('keeps the current prompt turn alive when the parent stream settles into a running subagent follow-through state', async () => {
+    const codara = new FakeCodara();
+    codara.setHydrateSequence([{status: 'idle'}, {status: 'running'}]);
+    const rendered = render(<BackgroundFollowupProbe codara={codara as unknown as Codara} />);
+
+    try {
+      await waitFor(() => (rendered.lastFrame() ?? '').includes('runState:running'));
+      const frame = rendered.lastFrame() ?? '';
+      expect(frame).toContain('runState:running');
+      expect(frame).toContain('activeTurnKind:prompt');
+      expect(frame).toContain('activeTurnPrompt:delegate a task and wait');
+      expect(frame).toContain('streamCalls:1');
+    } finally {
+      rendered.unmount();
+    }
+  });
+
+  it('settles back to done after a launched subagent batch completes and the same stream produces the final main reply', async () => {
+    const codara = new FakeCodara();
+    codara.blockNextStream();
+    codara.queueStreamChunk(new AIMessageChunk({
+      tool_calls: [{name: 'Agent', id: 'call-agent'}],
+    }));
+    codara.queueStreamText('Final answer from the main agent after both subagents finish.');
+    const rendered = render(<BackgroundFollowupProbe codara={codara as unknown as Codara} />);
+
+    try {
+      await waitFor(() => (rendered.lastFrame() ?? '').includes('runState:running'));
+
+      codara.setSubagentRunSummaries([
+        {
+          runId: 'run-cli',
+          parentSessionId: 'session-1',
+          label: 'Delegating Explore: Analyze src/cli',
+          agentName: 'Explore',
+          status: 'running',
+          startedAt: new Date(Date.now() - 20_000).toISOString(),
+          updatedAt: new Date().toISOString(),
+        },
+        {
+          runId: 'run-capability',
+          parentSessionId: 'session-1',
+          label: 'Delegating Explore: Analyze src/capability',
+          agentName: 'Explore',
+          status: 'running',
+          startedAt: new Date(Date.now() - 18_000).toISOString(),
+          updatedAt: new Date().toISOString(),
+        },
+      ]);
+      codara.emit({
+        id: 'subagent-run:run-cli',
+        sessionId: 'session-1',
+        timestamp: new Date().toISOString(),
+        kind: 'agent',
+        phase: 'start',
+        status: 'running',
+        label: 'Delegating Explore: Analyze src/cli',
+      });
+      codara.emit({
+        id: 'subagent-run:run-capability',
+        sessionId: 'session-1',
+        timestamp: new Date().toISOString(),
+        kind: 'agent',
+        phase: 'start',
+        status: 'running',
+        label: 'Delegating Explore: Analyze src/capability',
+      });
+
+      codara.releaseBlockedStream();
+      await waitFor(() => (rendered.lastFrame() ?? '').includes('activeTurnKind:prompt'));
+
+      codara.setSubagentRunSummaries([
+        {
+          runId: 'run-cli',
+          parentSessionId: 'session-1',
+          label: 'Delegating Explore: Analyze src/cli',
+          agentName: 'Explore',
+          status: 'completed',
+          startedAt: new Date(Date.now() - 20_000).toISOString(),
+          updatedAt: new Date().toISOString(),
+          endedAt: new Date().toISOString(),
+        },
+        {
+          runId: 'run-capability',
+          parentSessionId: 'session-1',
+          label: 'Delegating Explore: Analyze src/capability',
+          agentName: 'Explore',
+          status: 'completed',
+          startedAt: new Date(Date.now() - 18_000).toISOString(),
+          updatedAt: new Date().toISOString(),
+          endedAt: new Date().toISOString(),
+        },
+      ]);
+      codara.emit({
+        id: 'task-end-run-cli',
+        sessionId: 'session-1',
+        timestamp: new Date().toISOString(),
+        kind: 'agent',
+        phase: 'end',
+        status: 'done',
+        label: 'Subagent completed',
+        parentId: 'subagent-run:run-cli',
+      });
+      codara.emit({
+        id: 'task-end-run-capability',
+        sessionId: 'session-1',
+        timestamp: new Date().toISOString(),
+        kind: 'agent',
+        phase: 'end',
+        status: 'done',
+        label: 'Subagent completed',
+        parentId: 'subagent-run:run-capability',
+      });
+
+      await waitFor(() => (rendered.lastFrame() ?? '').includes('runState:done'), {
+        onTimeout: () => {
+          throw new Error(`Timed out waiting for runState:done.\nFRAME:\n${rendered.lastFrame() ?? '(empty)'}`);
+        },
+      });
+      const frame = rendered.lastFrame() ?? '';
+      expect(frame).toContain('runState:done');
+      expect(frame).toContain('activeTurnKind:none');
+      expect(frame).toContain('streamCalls:1');
+    } finally {
+      codara.releaseBlockedStream();
+      rendered.unmount();
+    }
+  });
+
+  it('settles back to done when the final main reply is first visible from hydrated messages after tracked subagents complete', async () => {
+    const codara = new FakeCodara();
+    codara.blockNextStream();
+    codara.queueStreamChunk(new AIMessageChunk({
+      tool_calls: [{name: 'Agent', id: 'call-agent'}],
+    }));
+    codara.setHydrateSequence([
+      {status: 'idle', messages: []},
+      {status: 'running', messages: []},
+      {status: 'idle', messages: [new AIMessage('Final answer recovered from hydrated state.')]},
+    ]);
+    const rendered = render(<BackgroundFollowupProbe codara={codara as unknown as Codara} />);
+
+    try {
+      await waitFor(() => (rendered.lastFrame() ?? '').includes('runState:running'));
+
+      codara.setSubagentRunSummaries([
+        {
+          runId: 'run-cli',
+          parentSessionId: 'session-1',
+          label: 'Delegating Explore: Analyze src/cli',
+          agentName: 'Explore',
+          status: 'running',
+          startedAt: new Date(Date.now() - 20_000).toISOString(),
+          updatedAt: new Date().toISOString(),
+        },
+        {
+          runId: 'run-capability',
+          parentSessionId: 'session-1',
+          label: 'Delegating Explore: Analyze src/capability',
+          agentName: 'Explore',
+          status: 'running',
+          startedAt: new Date(Date.now() - 18_000).toISOString(),
+          updatedAt: new Date().toISOString(),
+        },
+      ]);
+      codara.emit({
+        id: 'subagent-run:run-cli',
+        sessionId: 'session-1',
+        timestamp: new Date().toISOString(),
+        kind: 'agent',
+        phase: 'start',
+        status: 'running',
+        label: 'Delegating Explore: Analyze src/cli',
+      });
+      codara.emit({
+        id: 'subagent-run:run-capability',
+        sessionId: 'session-1',
+        timestamp: new Date().toISOString(),
+        kind: 'agent',
+        phase: 'start',
+        status: 'running',
+        label: 'Delegating Explore: Analyze src/capability',
+      });
+
+      codara.releaseBlockedStream();
+      await waitFor(() => (rendered.lastFrame() ?? '').includes('activeTurnKind:prompt'));
+
+      codara.setSubagentRunSummaries([
+        {
+          runId: 'run-cli',
+          parentSessionId: 'session-1',
+          label: 'Delegating Explore: Analyze src/cli',
+          agentName: 'Explore',
+          status: 'completed',
+          startedAt: new Date(Date.now() - 20_000).toISOString(),
+          updatedAt: new Date().toISOString(),
+          endedAt: new Date().toISOString(),
+        },
+        {
+          runId: 'run-capability',
+          parentSessionId: 'session-1',
+          label: 'Delegating Explore: Analyze src/capability',
+          agentName: 'Explore',
+          status: 'completed',
+          startedAt: new Date(Date.now() - 18_000).toISOString(),
+          updatedAt: new Date().toISOString(),
+          endedAt: new Date().toISOString(),
+        },
+      ]);
+      codara.emit({
+        id: 'task-end-run-cli',
+        sessionId: 'session-1',
+        timestamp: new Date().toISOString(),
+        kind: 'agent',
+        phase: 'end',
+        status: 'done',
+        label: 'Subagent completed',
+        parentId: 'subagent-run:run-cli',
+      });
+      codara.emit({
+        id: 'task-end-run-capability',
+        sessionId: 'session-1',
+        timestamp: new Date().toISOString(),
+        kind: 'agent',
+        phase: 'end',
+        status: 'done',
+        label: 'Subagent completed',
+        parentId: 'subagent-run:run-capability',
+      });
+
+      await waitFor(() => (rendered.lastFrame() ?? '').includes('runState:done'), {
+        onTimeout: () => {
+          throw new Error(`Timed out waiting for runState:done.\nFRAME:\n${rendered.lastFrame() ?? '(empty)'}`);
+        },
+      });
+      const frame = rendered.lastFrame() ?? '';
+      expect(frame).toContain('runState:done');
+      expect(frame).toContain('activeTurnKind:none');
+      expect(frame).toContain('streamCalls:1');
+    } finally {
+      codara.releaseBlockedStream();
+      rendered.unmount();
+    }
+  });
+
+  it('forces the foreground turn to settle once a final main reply is visible from hydrated messages, even if hydrate still reports running', async () => {
+    const codara = new FakeCodara();
+    codara.blockNextStream();
+    codara.queueStreamChunk(new AIMessageChunk({
+      tool_calls: [{name: 'Agent', id: 'call-agent'}],
+    }));
+    codara.setHydrateSequence([
+      {status: 'idle', messages: []},
+      {status: 'running', messages: []},
+      {status: 'running', messages: [new AIMessage('Final answer recovered while hydrate still reports running.')]},
+      {status: 'running', messages: [new AIMessage('Final answer recovered while hydrate still reports running.')]},
+    ]);
+    const rendered = render(<BackgroundFollowupProbe codara={codara as unknown as Codara} />);
+
+    try {
+      await waitFor(() => (rendered.lastFrame() ?? '').includes('runState:running'));
+
+      codara.setSubagentRunSummaries([
+        {
+          runId: 'run-explore',
+          parentSessionId: 'session-1',
+          label: 'Delegating Explore: Analyze src/cli',
+          agentName: 'Explore',
+          status: 'running',
+          startedAt: new Date(Date.now() - 20_000).toISOString(),
+          updatedAt: new Date().toISOString(),
+        },
+      ]);
+      codara.emit({
+        id: 'subagent-run:run-explore',
+        sessionId: 'session-1',
+        timestamp: new Date().toISOString(),
+        kind: 'agent',
+        phase: 'start',
+        status: 'running',
+        label: 'Delegating Explore: Analyze src/cli',
+      });
+
+      codara.releaseBlockedStream();
+      await waitFor(() => (rendered.lastFrame() ?? '').includes('activeTurnKind:prompt'));
+
+      codara.setSubagentRunSummaries([
+        {
+          runId: 'run-explore',
+          parentSessionId: 'session-1',
+          label: 'Delegating Explore: Analyze src/cli',
+          agentName: 'Explore',
+          status: 'completed',
+          startedAt: new Date(Date.now() - 20_000).toISOString(),
+          updatedAt: new Date().toISOString(),
+          endedAt: new Date().toISOString(),
+        },
+      ]);
+      codara.emit({
+        id: 'task-end-run-explore',
+        sessionId: 'session-1',
+        timestamp: new Date().toISOString(),
+        kind: 'agent',
+        phase: 'end',
+        status: 'done',
+        label: 'Subagent completed',
+        parentId: 'subagent-run:run-explore',
+      });
+
+      await waitFor(() => (rendered.lastFrame() ?? '').includes('runState:done'), {
+        onTimeout: () => {
+          throw new Error(`Timed out waiting for runState:done.\nFRAME:\n${rendered.lastFrame() ?? '(empty)'}`);
+        },
+      });
+      const frame = rendered.lastFrame() ?? '';
+      expect(frame).toContain('runState:done');
+      expect(frame).toContain('activeTurnKind:none');
+    } finally {
+      codara.releaseBlockedStream();
+      rendered.unmount();
+    }
+  });
+
+  it('settles back to done even if tracked subagent summaries still lag after the final main reply becomes visible', async () => {
+    const codara = new FakeCodara();
+    codara.blockNextStream();
+    codara.queueStreamChunk(new AIMessageChunk({
+      tool_calls: [{name: 'Agent', id: 'call-agent'}],
+    }));
+    codara.setHydrateSequence([
+      {status: 'idle', messages: []},
+      {status: 'running', messages: []},
+      {status: 'idle', messages: [new AIMessage('Final answer after the completed subagents.')]},
+    ]);
+    const rendered = render(<BackgroundFollowupProbe codara={codara as unknown as Codara} />);
+
+    try {
+      await waitFor(() => (rendered.lastFrame() ?? '').includes('runState:running'));
+
+      codara.setSubagentRunSummaries([
+        {
+          runId: 'run-cli',
+          parentSessionId: 'session-1',
+          label: 'Delegating Explore: Analyze src/cli',
+          agentName: 'Explore',
+          status: 'running',
+          startedAt: new Date(Date.now() - 20_000).toISOString(),
+          updatedAt: new Date().toISOString(),
+        },
+      ]);
+      codara.emit({
+        id: 'subagent-run:run-cli',
+        sessionId: 'session-1',
+        timestamp: new Date().toISOString(),
+        kind: 'agent',
+        phase: 'start',
+        status: 'running',
+        label: 'Delegating Explore: Analyze src/cli',
+      });
+
+      codara.releaseBlockedStream();
+      await waitFor(() => (rendered.lastFrame() ?? '').includes('activeTurnKind:prompt'));
+
+      codara.emit({
+        id: 'task-end-run-cli',
+        sessionId: 'session-1',
+        timestamp: new Date().toISOString(),
+        kind: 'agent',
+        phase: 'end',
+        status: 'done',
+        label: 'Subagent completed',
+        parentId: 'subagent-run:run-cli',
+      });
+
+      await waitFor(() => (rendered.lastFrame() ?? '').includes('runState:done'), {
+        onTimeout: () => {
+          throw new Error(`Timed out waiting for runState:done.\nFRAME:\n${rendered.lastFrame() ?? '(empty)'}`);
+        },
+      });
+      const frame = rendered.lastFrame() ?? '';
+      expect(frame).toContain('runState:done');
+      expect(frame).toContain('activeTurnKind:none');
+      expect(frame).toContain('streamCalls:1');
+    } finally {
+      codara.releaseBlockedStream();
+      rendered.unmount();
+    }
+  });
+
+  it('settles back to done even when the final main reply only exists in the active turn after tracked subagents complete', async () => {
+    const codara = new FakeCodara();
+    codara.blockNextStream();
+    codara.queueStreamChunk(new AIMessageChunk({
+      tool_calls: [{name: 'Agent', id: 'call-agent'}],
+    }));
+    codara.queueStreamText('Final answer that is still only visible in the active turn.');
+    codara.setHydrateSequence([
+      {status: 'idle', messages: []},
+      {status: 'running', messages: []},
+      {status: 'running', messages: []},
+    ]);
+    const rendered = render(<BackgroundFollowupProbe codara={codara as unknown as Codara} />);
+
+    try {
+      await waitFor(() => (rendered.lastFrame() ?? '').includes('runState:running'));
+
+      codara.setSubagentRunSummaries([
+        {
+          runId: 'run-cli',
+          parentSessionId: 'session-1',
+          label: 'Delegating Explore: Analyze src/cli',
+          agentName: 'Explore',
+          status: 'running',
+          startedAt: new Date(Date.now() - 20_000).toISOString(),
+          updatedAt: new Date().toISOString(),
+        },
+        {
+          runId: 'run-capability',
+          parentSessionId: 'session-1',
+          label: 'Delegating Explore: Analyze src/capability',
+          agentName: 'Explore',
+          status: 'running',
+          startedAt: new Date(Date.now() - 18_000).toISOString(),
+          updatedAt: new Date().toISOString(),
+        },
+      ]);
+      codara.emit({
+        id: 'subagent-run:run-cli',
+        sessionId: 'session-1',
+        timestamp: new Date().toISOString(),
+        kind: 'agent',
+        phase: 'start',
+        status: 'running',
+        label: 'Delegating Explore: Analyze src/cli',
+      });
+      codara.emit({
+        id: 'subagent-run:run-capability',
+        sessionId: 'session-1',
+        timestamp: new Date().toISOString(),
+        kind: 'agent',
+        phase: 'start',
+        status: 'running',
+        label: 'Delegating Explore: Analyze src/capability',
+      });
+
+      codara.releaseBlockedStream();
+      await waitFor(() => (rendered.lastFrame() ?? '').includes('activeTurnKind:prompt'));
+
+      codara.setSubagentRunSummaries([
+        {
+          runId: 'run-cli',
+          parentSessionId: 'session-1',
+          label: 'Delegating Explore: Analyze src/cli',
+          agentName: 'Explore',
+          status: 'completed',
+          startedAt: new Date(Date.now() - 20_000).toISOString(),
+          updatedAt: new Date().toISOString(),
+          endedAt: new Date().toISOString(),
+        },
+        {
+          runId: 'run-capability',
+          parentSessionId: 'session-1',
+          label: 'Delegating Explore: Analyze src/capability',
+          agentName: 'Explore',
+          status: 'completed',
+          startedAt: new Date(Date.now() - 18_000).toISOString(),
+          updatedAt: new Date().toISOString(),
+          endedAt: new Date().toISOString(),
+        },
+      ]);
+      codara.emit({
+        id: 'task-end-run-cli-active-turn-only',
+        sessionId: 'session-1',
+        timestamp: new Date().toISOString(),
+        kind: 'agent',
+        phase: 'end',
+        status: 'done',
+        label: 'Subagent completed',
+        parentId: 'subagent-run:run-cli',
+      });
+      codara.emit({
+        id: 'task-end-run-capability-active-turn-only',
+        sessionId: 'session-1',
+        timestamp: new Date().toISOString(),
+        kind: 'agent',
+        phase: 'end',
+        status: 'done',
+        label: 'Subagent completed',
+        parentId: 'subagent-run:run-capability',
+      });
+
+      await waitFor(() => (rendered.lastFrame() ?? '').includes('runState:done'), {
+        onTimeout: () => {
+          throw new Error(`Timed out waiting for runState:done.\nFRAME:\n${rendered.lastFrame() ?? '(empty)'}`);
+        },
+      });
+      const frame = rendered.lastFrame() ?? '';
+      expect(frame).toContain('runState:done');
+      expect(frame).not.toContain('runState:running');
+      expect(frame).toContain('streamCalls:1');
     } finally {
       codara.releaseBlockedStream();
       rendered.unmount();
@@ -1761,7 +2279,7 @@ class FakeCodara {
   private blockApprovalResume = false;
   private releaseBlockedApprovalResumeResolver: (() => void) | undefined;
   private failPauseResumeWhileRunning = false;
-  private hydrateSequence: Array<{status: string; pendingReview?: ReviewRequest}> = [];
+  private hydrateSequence: Array<{status: string; pendingReview?: ReviewRequest; messages?: BaseMessage[]}> = [];
   private deferredResumeReviewId: string | undefined;
   private deferredResumeRemovalHydratesRemaining = -1;
   private deferredPauseClearHydratesRemaining = -1;
@@ -1813,7 +2331,7 @@ class FakeCodara {
     this.focusedReviewId = review.reviewId;
   }
 
-  setHydrateSequence(states: Array<{status: string; pendingReview?: ReviewRequest}>): void {
+  setHydrateSequence(states: Array<{status: string; pendingReview?: ReviewRequest; messages?: BaseMessage[]}>): void {
     this.hydrateSequence = [...states];
   }
 
@@ -1850,6 +2368,10 @@ class FakeCodara {
 
   queueStreamText(text: string): void {
     this.queuedStreamChunks.push([new AIMessageChunk({content: text})]);
+  }
+
+  queueStreamChunk(chunk: AIMessageChunk): void {
+    this.queuedStreamChunks.push([chunk]);
   }
 
   getStreamCalls(): CodaraStreamRequest[] {
@@ -1904,7 +2426,7 @@ class FakeCodara {
       return {
         status: next.status,
         pendingReview: next.pendingReview,
-        messages: [],
+        messages: next.messages ?? [],
       };
     }
     return {
@@ -2281,7 +2803,7 @@ function createMultiselectAskUserReviewRequest(): ReviewRequest {
 
 async function waitFor(
   predicate: () => boolean,
-  options: {timeoutMs?: number; intervalMs?: number} = {},
+  options: {timeoutMs?: number; intervalMs?: number; onTimeout?: () => never} = {},
 ): Promise<void> {
   const timeoutMs = options.timeoutMs ?? 500;
   const intervalMs = options.intervalMs ?? 10;
@@ -2294,5 +2816,8 @@ async function waitFor(
     await new Promise((resolve) => setTimeout(resolve, intervalMs));
   }
 
+  if (options.onTimeout) {
+    options.onTimeout();
+  }
   throw new Error('Condition was not satisfied before timeout');
 }

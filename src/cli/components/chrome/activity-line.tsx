@@ -10,6 +10,9 @@ interface ActivityLineProps {
   activeTurn?: CliActiveTurn;
   latestRuntimeEvent?: CodaraRuntimeEvent;
   sessionMetadata?: SessionMetadata;
+  runningSubagentRunCount?: number;
+  pausedSubagentRunCount?: number;
+  hasVisibleAssistantReply?: boolean;
 }
 
 import {formatTokenCount} from '../../utils/format';
@@ -18,8 +21,23 @@ import {formatTokenCount} from '../../utils/format';
  * Activity indicator line. Always renders a single line to prevent layout shifts.
  * Shows spinner/status when active, empty line when idle.
  */
-export function ActivityLine({runState, activeTurn, latestRuntimeEvent, sessionMetadata}: ActivityLineProps): React.JSX.Element {
-  const status = useStatusIndicator({runState, activeTurn, latestRuntimeEvent});
+export function ActivityLine({
+  runState,
+  activeTurn,
+  latestRuntimeEvent,
+  sessionMetadata,
+  runningSubagentRunCount,
+  pausedSubagentRunCount,
+  hasVisibleAssistantReply,
+}: ActivityLineProps): React.JSX.Element {
+  const status = useStatusIndicator({
+    runState,
+    activeTurn,
+    latestRuntimeEvent,
+    runningSubagentRunCount,
+    pausedSubagentRunCount,
+    hasVisibleAssistantReply,
+  });
 
   if (!status.banner) {
     // Render empty stable-height line to prevent layout jump

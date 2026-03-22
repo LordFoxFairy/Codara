@@ -39,6 +39,10 @@ describe('CLI foreground surface', () => {
       hasCommandOutput: false,
       hasCompletion: false,
       hasSessionPicker: false,
+      runStateStatus: 'idle',
+      runningSubagentRunCount: 0,
+      pausedSubagentRunCount: 0,
+      activeItems: [],
     })).toBe(false);
   });
 
@@ -49,15 +53,88 @@ describe('CLI foreground surface', () => {
       hasCommandOutput: false,
       hasCompletion: false,
       hasSessionPicker: false,
+      runStateStatus: 'idle',
+      runningSubagentRunCount: 0,
+      pausedSubagentRunCount: 0,
+      activeItems: [],
     })).toBe(false);
   });
 
-  it('should keep prompt input enabled while the agent is running if no session-scoped review owns the interaction', () => {
+  it('should keep the prompt frame visible while the run is still active even without a visible projected block yet', () => {
+    expect(shouldShowPromptFrame({
+      review: undefined,
+      focusedSurface: 'prompt',
+      hasCommandOutput: false,
+      hasCompletion: false,
+      hasSessionPicker: false,
+      runStateStatus: 'running',
+      runningSubagentRunCount: 0,
+      pausedSubagentRunCount: 0,
+      activeItems: [],
+    })).toBe(true);
+  });
+
+  it('should restore the prompt frame once the run is done even if stale subagent counts linger', () => {
+    expect(shouldShowPromptFrame({
+      review: undefined,
+      focusedSurface: 'prompt',
+      hasCommandOutput: false,
+      hasCompletion: false,
+      hasSessionPicker: false,
+      runStateStatus: 'done',
+      runningSubagentRunCount: 2,
+      pausedSubagentRunCount: 0,
+      activeItems: [],
+    })).toBe(true);
+  });
+
+  it('should disable prompt input while the agent is running even though the prompt frame stays visible', () => {
     expect(shouldDisablePromptInput({
       review: undefined,
       focusedSurface: 'prompt',
       hasSessionPicker: false,
-    })).toBe(false);
+      hasCompletion: false,
+      hasCommandOutput: false,
+      runStateStatus: 'running',
+    })).toBe(true);
+  });
+
+  it('should keep the prompt frame visible while command completion is open', () => {
+    expect(shouldShowPromptFrame({
+      review: undefined,
+      focusedSurface: 'completion',
+      hasCommandOutput: false,
+      hasCompletion: true,
+      hasSessionPicker: false,
+      runStateStatus: 'idle',
+      runningSubagentRunCount: 0,
+      pausedSubagentRunCount: 0,
+      activeItems: [],
+    })).toBe(true);
+  });
+
+  it('should keep the prompt frame visible while the agent is running so the input region does not disappear', () => {
+    expect(shouldShowPromptFrame({
+      review: undefined,
+      focusedSurface: 'prompt',
+      hasCommandOutput: false,
+      hasCompletion: false,
+      hasSessionPicker: false,
+      runStateStatus: 'running',
+      runningSubagentRunCount: 2,
+      pausedSubagentRunCount: 0,
+      activeItems: [{
+        id: 'active-subagent-run:run-1',
+        role: 'agent',
+        content: 'Explore\nRunning',
+        toolMeta: {
+          toolName: 'Agent',
+          displayName: 'Explore',
+          icon: '⚙',
+          status: 'running',
+        },
+      }],
+    })).toBe(true);
   });
 
   it('should disable prompt input whenever a review is active', () => {
@@ -65,6 +142,9 @@ describe('CLI foreground surface', () => {
       review: createAskReview(),
       focusedSurface: 'prompt',
       hasSessionPicker: false,
+      hasCompletion: false,
+      hasCommandOutput: false,
+      runStateStatus: 'idle',
     })).toBe(true);
   });
 
@@ -142,6 +222,16 @@ describe('CLI foreground surface', () => {
     expect(shouldShowActivityLine({
       runStateStatus: 'running',
       latestRuntimeEventKind: 'model',
+      activeItems: [],
+      runningSubagentRunCount: 0,
+      pausedSubagentRunCount: 0,
+    })).toBe(true);
+  });
+
+  it('should still show the activity line through raw turn lifecycle events while the run is active', () => {
+    expect(shouldShowActivityLine({
+      runStateStatus: 'running',
+      latestRuntimeEventKind: 'turn',
       activeItems: [],
       runningSubagentRunCount: 0,
       pausedSubagentRunCount: 0,

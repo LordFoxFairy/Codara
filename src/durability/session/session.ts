@@ -100,6 +100,7 @@ export interface Session {
   getState(): SessionState;
   getAgentState(): AgentState;
   updateContext(context: AgentRuntimeContext): Promise<AgentState>;
+  replaceMessages(messages: BaseMessage[]): Promise<AgentState>;
   getAvailableToolNames(): string[];
   subscribeRuntimeEvents(listener: CodaraRuntimeEventListener): () => void;
   hydrate(): Promise<AgentState>;
@@ -622,6 +623,24 @@ export function createSession(options: CreateSessionOptions): Session {
     return next;
   }
 
+  async function replaceMessages(messages: BaseMessage[]): Promise<AgentState> {
+    ensureReady();
+    const current = (await getAgent()).getState();
+
+    await putManualCheckpoint(checkpointer, sessionId, {
+      agentType: current.agentType,
+      messages,
+      context: current.context,
+      values: current.values,
+      ...(current.pendingReview ? {pendingReview: current.pendingReview} : {}),
+    }, await getLatestCheckpoint());
+
+    clearAgentCache();
+    const next = (await getAgent()).getState();
+    await sync(next, {touchActivity: false});
+    return next;
+  }
+
   const session: Session & {
     focusReview: (request: ReviewRequest) => Promise<AgentState>;
   } = {
@@ -630,6 +649,7 @@ export function createSession(options: CreateSessionOptions): Session {
       return requireAgent().getState();
     },
     updateContext,
+    replaceMessages,
     getAvailableToolNames,
     subscribeRuntimeEvents(listener) {
       return runtimeEvents.subscribe(listener);

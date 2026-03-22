@@ -1,5 +1,6 @@
 import React, {useCallback, useEffect, useState} from 'react';
 import {Box, Static, useApp} from 'ink';
+import {AIMessage, type BaseMessage} from '@langchain/core/messages';
 import type {Codara, CodaraRuntimeEvent} from '@/index';
 import {CommandOutputPanel} from '../components/chrome/command-output-panel';
 import {Footer} from '../components/chrome/footer';
@@ -26,6 +27,7 @@ import {useTerminalWidth} from '../hooks/use-terminal-width';
 import type {CliInteractionSurface, CliReviewState} from './view-state';
 import {shouldSpaceInsertIntoCliReviewDraft} from './review-state';
 import type {TranscriptItem} from '../transcript/model';
+import {readVisibleMessageText} from '@shared/messages';
 
 export interface CodaraCliAppProps {
   codara: Codara;
@@ -61,22 +63,36 @@ export function shouldShowPromptFrame(input: {
   hasCommandOutput: boolean;
   hasCompletion: boolean;
   hasSessionPicker: boolean;
+  activeItems: readonly TranscriptItem[];
+  runStateStatus: 'idle' | 'running' | 'paused' | 'done' | 'error';
+  runningSubagentRunCount?: number;
+  pausedSubagentRunCount?: number;
 }): boolean {
-  if (input.hasCommandOutput || input.hasCompletion || input.hasSessionPicker) {
+  if (input.hasCommandOutput || input.hasSessionPicker) {
     return false;
   }
 
-  return !input.review;
+  if (input.review) {
+    return false;
+  }
+
+  return true;
 }
 
 export function shouldDisablePromptInput(input: {
   review?: CliReviewState;
   focusedSurface: CliInteractionSurface;
   hasSessionPicker: boolean;
+  hasCompletion: boolean;
+  hasCommandOutput: boolean;
+  runStateStatus: 'idle' | 'running' | 'paused' | 'done' | 'error';
 }): boolean {
   return Boolean(input.review)
-    || input.focusedSurface !== 'prompt'
-    || input.hasSessionPicker;
+    || input.hasSessionPicker
+    || input.hasCompletion
+    || input.hasCommandOutput
+    || input.runStateStatus === 'running'
+    || input.runStateStatus === 'paused';
 }
 
 export function resolveActiveInteractionSurface(input: {
@@ -150,7 +166,15 @@ export function shouldShowActivityLine(input: {
       && (input.pausedSubagentRunCount ?? 0) === 0;
   }
 
-  return input.latestRuntimeEventKind !== 'agent' && input.latestRuntimeEventKind !== 'tool';
+  return false;
+}
+
+function hasVisibleAssistantTranscriptReply(items: readonly TranscriptItem[]): boolean {
+  return items.some((item) => item.role === 'assistant' && item.content.trim().length > 0);
+}
+
+function hasVisibleAssistantMessageReply(messages: readonly BaseMessage[]): boolean {
+  return messages.some((message) => AIMessage.isInstance(message) && Boolean(readVisibleMessageText(message)));
 }
 
 export function CodaraCliApp(props: CodaraCliAppProps): React.JSX.Element {
@@ -231,13 +255,6 @@ export function CodaraCliApp(props: CodaraCliAppProps): React.JSX.Element {
     || completion.completion.visible
     || sessionPicker.state.visible
   );
-  const showPromptFrame = shouldShowPromptFrame({
-    review: shell.review,
-    focusedSurface: shell.interactionState.focusedSurface,
-    hasCommandOutput: Boolean(shell.commandOutput),
-    hasCompletion: completion.completion.visible,
-    hasSessionPicker: sessionPicker.state.visible,
-  });
   const activeSurface = resolveActiveInteractionSurface({
     focusedSurface: shell.interactionState.focusedSurface,
     hasCommandOutput: Boolean(shell.commandOutput),
@@ -248,9 +265,13 @@ export function CodaraCliApp(props: CodaraCliAppProps): React.JSX.Element {
     review: shell.review,
     focusedSurface: shell.interactionState.focusedSurface,
     hasSessionPicker: sessionPicker.state.visible,
+    hasCompletion: completion.completion.visible,
+    hasCommandOutput: Boolean(shell.commandOutput),
+    runStateStatus: shell.runState.status,
   });
   useCliInteractionInput({
     activeSurface,
+    promptDisabled: promptInputDisabled,
     interactive: !(autoExitOnSettledPrompt && hasInitialPrompt),
     reviewDisabled: shell.review?.busy ?? false,
     reviewSpaceInsertsText: shouldSpaceInsertIntoCliReviewDraft(shell.review),
@@ -323,6 +344,19 @@ export function CodaraCliApp(props: CodaraCliAppProps): React.JSX.Element {
     activeTurn: shell.activeTurn,
     runtimeEvents: shell.runtimeEvents,
   });
+  const showPromptFrame = shouldShowPromptFrame({
+    review: shell.review,
+    focusedSurface: shell.interactionState.focusedSurface,
+    hasCommandOutput: Boolean(shell.commandOutput),
+    hasCompletion: completion.completion.visible,
+    hasSessionPicker: sessionPicker.state.visible,
+    activeItems,
+    runStateStatus: shell.runState.status,
+    runningSubagentRunCount: subagentRuns.runningCount,
+    pausedSubagentRunCount: subagentRuns.pausedCount,
+  });
+  const transcriptHasVisibleAssistantReply = hasVisibleAssistantTranscriptReply(activeItems)
+    || hasVisibleAssistantMessageReply(shell.coreMessages);
 
   useEffect(() => {
     if (
@@ -356,7 +390,7 @@ export function CodaraCliApp(props: CodaraCliAppProps): React.JSX.Element {
             />
           )}
         </Static>
-        {(activeItems.length > 0 || subagentRuns.runs.length > 0) && (
+        {activeItems.length > 0 && (
           <ActiveTranscript
             items={activeItems}
             activeSubagentRuns={subagentRuns.runs}
@@ -380,6 +414,9 @@ export function CodaraCliApp(props: CodaraCliAppProps): React.JSX.Element {
                 activeTurn={shell.activeTurn}
                 latestRuntimeEvent={shell.latestRuntimeEvent}
                 sessionMetadata={shell.sessionState.metadata}
+                runningSubagentRunCount={subagentRuns.runningCount}
+                pausedSubagentRunCount={subagentRuns.pausedCount}
+                hasVisibleAssistantReply={transcriptHasVisibleAssistantReply}
               />
             )}
             {sessionPicker.state.visible && (

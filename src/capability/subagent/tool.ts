@@ -312,6 +312,7 @@ function toSubagentResult(
 
   return {
     type: 'subagent_result',
+    runId: run.runId,
     sessionId: run.childSessionId,
     turns: run.turns ?? 0,
     reason: run.reason ?? (run.status === 'failed' ? 'error' : 'complete'),

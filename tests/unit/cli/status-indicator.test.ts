@@ -21,6 +21,33 @@ describe('cli status indicator', () => {
     }, 0).banner).toBe('⠋ Responding...');
   });
 
+  it('should not fall back to thinking once a visible assistant reply already exists outside the active turn', () => {
+    expect(describeStatusIndicator({
+      runState: {status: 'running', phase: 'subagent_completion'},
+      hasVisibleAssistantReply: true,
+    }, 0).banner).toBe('⠋ Responding...');
+  });
+
+  it('should show a thinking bridge while the main agent is resuming after subagents finish', () => {
+    expect(describeStatusIndicator({
+      runState: {status: 'running', phase: 'subagent_completion'},
+      runningSubagentRunCount: 0,
+      pausedSubagentRunCount: 0,
+    }, 0).banner).toBe('⠋ Thinking...');
+
+    expect(describeStatusIndicator({
+      runState: {status: 'running', phase: 'subagent_completion'},
+      activeTurn: {
+        id: 'turn-2',
+        prompt: 'hello',
+        response: 'partial',
+        responseRole: 'assistant',
+      },
+      runningSubagentRunCount: 0,
+      pausedSubagentRunCount: 0,
+    }, 0).banner).toBe('⠋ Responding...');
+  });
+
   it('should describe paused, done, idle, and error states with product-facing text', () => {
     expect(describeStatusIndicator({runState: {status: 'paused'}}).banner).toBe('⏺ Waiting for input');
     expect(describeStatusIndicator({runState: {status: 'done'}}).banner).toBeUndefined();

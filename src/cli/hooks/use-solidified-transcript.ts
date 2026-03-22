@@ -8,11 +8,11 @@ import {
   type TranscriptItem,
   buildSolidifiedItemsFromRange,
   buildActiveItems,
+  buildCanonicalTranscriptFingerprint,
   createToolCallLookup,
   dedupeTrailingTranscriptItemsCoveredByRuntime,
   normalizeVisibleAssistantText,
 } from '../transcript/model';
-import {isInvalidTaskCloseoutResponse} from '../task-closeout';
 import {readMessageText} from '@shared/messages';
 
 export interface UseSolidifiedTranscriptInput {
@@ -31,14 +31,8 @@ export function filterSubagentCompletionTranscriptItems(input: {
   completedTurnKind: CliActiveTurn['kind'] | undefined;
   items: readonly TranscriptItem[];
 }): TranscriptItem[] {
-  if (input.completedTurnKind !== 'subagent_completion') {
-    return [...input.items];
-  }
-
-  return input.items.filter((item) => !(
-    item.role === 'assistant'
-    && isInvalidTaskCloseoutResponse(item.content)
-  ));
+  void input.completedTurnKind;
+  return [...input.items];
 }
 
 export function orderActiveTranscriptItems(input: {
@@ -47,44 +41,25 @@ export function orderActiveTranscriptItems(input: {
   activeNoticeItems: readonly TranscriptItem[];
   latestCompletedTurnKind?: CliActiveTurn['kind'];
 }): TranscriptItem[] {
+  void input.latestCompletedTurnKind;
   if (input.runtimeItems.length === 0) {
     return [...input.trailingItems, ...input.activeNoticeItems];
   }
 
-  const insertionIndex = findRuntimeInsertionIndex(input.trailingItems);
+  let lastUserIndex = -1;
+  for (let index = input.trailingItems.length - 1; index >= 0; index -= 1) {
+    if (input.trailingItems[index]?.role === 'user') {
+      lastUserIndex = index;
+      break;
+    }
+  }
+  const insertionIndex = lastUserIndex >= 0 ? lastUserIndex + 1 : 0;
   return [
     ...input.trailingItems.slice(0, insertionIndex),
     ...input.runtimeItems,
     ...input.trailingItems.slice(insertionIndex),
     ...input.activeNoticeItems,
   ];
-}
-
-function findRuntimeInsertionIndex(items: readonly TranscriptItem[]): number {
-  if (items.length === 0) {
-    return 0;
-  }
-
-  let lastUserIndex = -1;
-  for (let index = items.length - 1; index >= 0; index -= 1) {
-    if (items[index]?.role === 'user') {
-      lastUserIndex = index;
-      break;
-    }
-  }
-
-  if (lastUserIndex >= 0) {
-    return lastUserIndex + 1;
-  }
-
-  for (let index = 0; index < items.length; index += 1) {
-    const role = items[index]?.role;
-    if (role && role !== 'system' && role !== 'warning') {
-      return index;
-    }
-  }
-
-  return items.length;
 }
 
 /**
@@ -165,11 +140,7 @@ export function useSolidifiedTranscript(input: UseSolidifiedTranscriptInput): Us
     const filteredNewItems = filterSubagentCompletionTranscriptItems({
       completedTurnKind: lastCompletedTurnKind,
       items: newItems,
-    }).filter((item) => !(
-      lastCompletedTurnKind === 'prompt'
-      && item.role === 'assistant'
-      && isInvalidTaskCloseoutResponse(item.content)
-    ));
+    });
     if (filteredNewItems.length > 0) {
       solidifiedItemsRef.current = [
         ...solidifiedItemsRef.current,
@@ -210,22 +181,18 @@ export function useSolidifiedTranscript(input: UseSolidifiedTranscriptInput): Us
   const activeItems = useMemo(() => {
     // Un-solidified coreMessages (the latest completed turn that hasn't been pushed to Static yet)
     const trailingItems: TranscriptItem[] = [];
-    if (!activeTurn && solidifiedCount < coreMessages.length) {
+    if (solidifiedCount < coreMessages.length) {
       const toolLookup = createToolCallLookup(coreMessages);
       trailingItems.push(...filterSubagentCompletionTranscriptItems({
         completedTurnKind: lastCompletedTurnKindRef.current,
         items: buildSolidifiedItemsFromRange(
-        coreMessages,
-        solidifiedCount,
-        coreMessages.length,
-        toolLookup,
-        visibleAssistantTextsRef.current,
-      ),
-      }).filter((item) => !(
-        lastCompletedTurnKindRef.current === 'prompt'
-        && item.role === 'assistant'
-        && isInvalidTaskCloseoutResponse(item.content)
-      )));
+          coreMessages,
+          solidifiedCount,
+          coreMessages.length,
+          toolLookup,
+          visibleAssistantTextsRef.current,
+        ),
+      }));
     }
 
     // Current streaming turn + runtime events
@@ -244,13 +211,28 @@ export function useSolidifiedTranscript(input: UseSolidifiedTranscriptInput): Us
       }))
       .filter((item) => item.content);
 
-    const dedupedTrailingItems = dedupeTrailingTranscriptItemsCoveredByRuntime(trailingItems, runtimeAndStreamingItems);
+    const dedupedTrailingItems = dedupeTrailingTranscriptItemsCoveredByRuntime(
+      dedupeTrailingTranscriptItemsCoveredByActiveTurn(trailingItems, activeTurn),
+      runtimeAndStreamingItems,
+    );
 
-    return orderActiveTranscriptItems({
+    const orderedItems = orderActiveTranscriptItems({
       trailingItems: dedupedTrailingItems,
       runtimeItems: runtimeAndStreamingItems,
       activeNoticeItems,
       latestCompletedTurnKind: lastCompletedTurnKindRef.current,
+    });
+
+    const solidifiedFingerprints = new Set(
+      solidifiedItemsRef.current
+        .flatMap((item) => item.items)
+        .map(buildCanonicalTranscriptFingerprint)
+        .filter((fingerprint): fingerprint is string => Boolean(fingerprint)),
+    );
+
+    return orderedItems.filter((item) => {
+      const fingerprint = buildCanonicalTranscriptFingerprint(item);
+      return !fingerprint || !solidifiedFingerprints.has(fingerprint);
     });
   }, [activeTurn, coreMessages, notices, now, runtimeEvents, solidifiedCount]);
 
@@ -261,9 +243,6 @@ export function useSolidifiedTranscript(input: UseSolidifiedTranscriptInput): Us
     }
 
     for (const item of visibleAssistantItems) {
-      if (isInvalidTaskCloseoutResponse(item.content)) {
-        continue;
-      }
       visibleAssistantTextsRef.current.add(normalizeVisibleAssistantText(item.content));
     }
 
@@ -308,6 +287,72 @@ export function useSolidifiedTranscript(input: UseSolidifiedTranscriptInput): Us
   };
 }
 
+function activeTurnOwnsVisibleTranscript(activeTurn: CliActiveTurn | undefined): boolean {
+  if (!activeTurn) {
+    return false;
+  }
+
+  return Boolean(
+    activeTurn.prompt.trim()
+    || activeTurn.responseBeforeRuntime?.trim()
+    || activeTurn.response.trim()
+    || activeTurn.pendingResponse?.trim(),
+  );
+}
+
+function dedupeTrailingTranscriptItemsCoveredByActiveTurn(
+  trailingItems: readonly TranscriptItem[],
+  activeTurn: CliActiveTurn | undefined,
+): TranscriptItem[] {
+  if (!activeTurn) {
+    return [...trailingItems];
+  }
+
+  const pendingFingerprints = new Map<string, number>();
+  const track = (role: TranscriptItem['role'], content: string | undefined) => {
+    const normalized = normalizeTranscriptFingerprintContent(content);
+    if (!normalized) {
+      return;
+    }
+    const key = `${role}|${normalized}`;
+    pendingFingerprints.set(key, (pendingFingerprints.get(key) ?? 0) + 1);
+  };
+
+  track('user', activeTurn.prompt);
+  track(activeTurn.responseRole, activeTurn.responseBeforeRuntime);
+  track(activeTurn.responseRole, activeTurn.response);
+  track(activeTurn.responseRole, activeTurn.pendingResponse);
+
+  if (pendingFingerprints.size === 0) {
+    return [...trailingItems];
+  }
+
+  return trailingItems.filter((item) => {
+    if (item.role !== 'user' && item.role !== 'assistant' && item.role !== 'system') {
+      return true;
+    }
+
+    const normalized = normalizeTranscriptFingerprintContent(item.content);
+    if (!normalized) {
+      return true;
+    }
+
+    const key = `${item.role}|${normalized}`;
+    const remaining = pendingFingerprints.get(key) ?? 0;
+    if (remaining <= 0) {
+      return true;
+    }
+
+    pendingFingerprints.set(key, remaining - 1);
+    return false;
+  });
+}
+
+function normalizeTranscriptFingerprintContent(content: string | undefined): string | undefined {
+  const normalized = content?.trim().replace(/\s+/g, ' ');
+  return normalized || undefined;
+}
+
 function resolveSolidifyEndIndex(input: {
   coreMessages: readonly BaseMessage[];
   startIndex: number;
@@ -315,6 +360,16 @@ function resolveSolidifyEndIndex(input: {
 }): number {
   const {coreMessages, startIndex, activeTurn} = input;
   if (!activeTurn) {
+    return coreMessages.length;
+  }
+
+  if (!activeTurnOwnsVisibleTranscript(activeTurn)) {
+    for (let index = coreMessages.length - 1; index >= startIndex; index -= 1) {
+      const message = coreMessages[index];
+      if (message && HumanMessage.isInstance(message)) {
+        return index;
+      }
+    }
     return coreMessages.length;
   }
 

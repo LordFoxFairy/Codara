@@ -6,10 +6,9 @@ import {readMessageText} from '@shared/messages';
 import {readSubagentResult} from '@shared/subagent-result';
 import {readSubagentRunLaunchResult} from '@shared/subagent-run-launch';
 import {readSharedTaskCoordinationArtifact} from '@shared/task-coordination-result';
-import {TOOL_NAMES, formatToolDisplayName} from '@shared/tool-display';
+import {TOOL_NAMES, formatToolDisplayName, formatToolHeaderArgs} from '@shared/tool-display';
 import {formatSubagentDisplayName, normalizeSubagentType} from '@capability/skill';
 import type {CliActiveTurn, CliNotice} from '../app/view-state';
-import {isInvalidTaskCloseoutResponse} from '../task-closeout';
 import {formatTokenCount} from '../utils/format';
 import {computeEditDiff, type DiffData} from './diff-compute';
 
@@ -75,7 +74,7 @@ export function dedupeTrailingTranscriptItemsCoveredByRuntime(
 ): TranscriptItem[] {
   const runtimeFingerprints = new Set(
     runtimeItems
-      .map(buildRuntimeCoverageFingerprint)
+      .map(buildCanonicalTranscriptFingerprint)
       .filter((fingerprint): fingerprint is string => Boolean(fingerprint)),
   );
 
@@ -84,9 +83,33 @@ export function dedupeTrailingTranscriptItemsCoveredByRuntime(
   }
 
   return trailingItems.filter((item) => {
-    const fingerprint = buildRuntimeCoverageFingerprint(item);
+    const fingerprint = buildCanonicalTranscriptFingerprint(item);
     return !fingerprint || !runtimeFingerprints.has(fingerprint);
   });
+}
+
+export function dedupeCanonicalTranscriptItems(
+  items: readonly TranscriptItem[],
+): TranscriptItem[] {
+  const seenFingerprints = new Set<string>();
+  const deduped: TranscriptItem[] = [];
+
+  for (const item of items) {
+    const fingerprint = buildCanonicalTranscriptFingerprint(item);
+    if (!fingerprint) {
+      deduped.push(item);
+      continue;
+    }
+
+    if (seenFingerprints.has(fingerprint)) {
+      continue;
+    }
+
+    seenFingerprints.add(fingerprint);
+    deduped.push(item);
+  }
+
+  return deduped;
 }
 
 export function buildTranscriptItems(input: BuildTranscriptItemsInput): TranscriptItem[] {
@@ -169,6 +192,13 @@ export function buildActiveItems(input: {
     input.activeTurn?.responseRole,
     visibleRuntimeEvents,
   );
+  const suppressPreRuntimeAssistantResponse = shouldSuppressAssistantTaskLaunchChatter(
+    input.activeTurn?.responseBeforeRuntime,
+    input.activeTurn?.responseRole,
+    visibleRuntimeEvents,
+    input.activeTurn?.pendingAgentLaunch,
+    input.activeTurn?.suppressAgentLaunchResponse,
+  );
   const suppressActiveTurnResponse = shouldSuppressAssistantTaskLaunchChatter(
     input.activeTurn?.response,
     input.activeTurn?.responseRole,
@@ -195,7 +225,7 @@ export function buildActiveItems(input: {
   }
 
   const preRuntimeAssistantItems: TranscriptItem[] = input.activeTurn?.responseBeforeRuntime
-    && !suppressActiveTurnResponse
+    && !suppressPreRuntimeAssistantResponse
     && !suppressInternalInteractionResponse
     && !input.activeTurn?.suppressInteractionResponse
     ? [{
@@ -427,7 +457,8 @@ function buildAgentRuntimeItem(input: {
   const elapsed = endEvent ? formatElapsed(startEvent.timestamp, endEvent.timestamp) : undefined;
   const outputLines = summarizeAgentActivity(updateEvents, endEvent);
   const summaryLine = buildAgentRuntimeSummaryLine(status, endEvent, elapsed);
-  const args = label.args?.length ? label.args : undefined;
+  const rawArgs = label.args?.length ? label.args : undefined;
+  const args = rawArgs ? formatToolHeaderArgs(TOOL_NAMES.AGENT, rawArgs) : undefined;
   return {
     id: startEvent.id,
     role: 'agent',
@@ -438,7 +469,7 @@ function buildAgentRuntimeItem(input: {
       icon: '⚙',
       ...(args ? {args} : {}),
       ...(readSubagentRuntimeRunId(startEvent.id) ? {runId: readSubagentRuntimeRunId(startEvent.id)} : {}),
-      coverageKey: buildAgentCoverageKey(label.displayName, args, status),
+      coverageKey: buildAgentCoverageKey(label.displayName, rawArgs, status),
       status,
       ...(elapsed ? {elapsed} : {}),
       summaryLine,
@@ -696,8 +727,7 @@ function buildCoreMessageItems(
 
   if (AIMessage.isInstance(message)) {
     const previousMessage = index > 0 ? allMessages[index - 1] : undefined;
-    const nextMessage = index < allMessages.length - 1 ? allMessages[index + 1] : undefined;
-    return buildAssistantItems(message, messageId, previousMessage, nextMessage, toolLookup, preserveVisibleAssistantTexts);
+    return buildAssistantItems(message, messageId, previousMessage, toolLookup, preserveVisibleAssistantTexts);
   }
 
   if (ToolMessage.isInstance(message)) {
@@ -719,7 +749,6 @@ function buildAssistantItems(
   message: AIMessage,
   messageId: string,
   previousMessage: BaseMessage | undefined,
-  nextMessage: BaseMessage | undefined,
   toolLookup: Map<string, ToolCall>,
   preserveVisibleAssistantTexts?: ReadonlySet<string>,
 ): TranscriptItem[] {
@@ -732,10 +761,7 @@ function buildAssistantItems(
   const suppressLaunchChatter = shouldSuppressSolidifiedTaskLaunchChatter(message, previousMessage, toolLookup);
   if (
     text
-    && (preserveVisibleText || (
-      !suppressLaunchChatter
-      && !shouldSuppressSupersededTaskCloseout(message, nextMessage)
-    ))
+    && (preserveVisibleText || !suppressLaunchChatter)
     && !suppressLaunchChatter
   ) {
     items.push({
@@ -760,6 +786,9 @@ function containsTaskLaunchChatter(text: string): boolean {
     '我已启动',
     '我已使用 Agent 工具委派',
     '我将立即使用 Agent 工具委派',
+    '我将立即并行委派',
+    '我将并行委派',
+    '并行委派',
     'I used the Agent tool',
     'Subagent started',
     'run_id:',
@@ -768,7 +797,12 @@ function containsTaskLaunchChatter(text: string): boolean {
     'waiting for the subagent',
   ];
 
-  return launchChatterSignals.some((signal) => text.includes(signal));
+  if (launchChatterSignals.some((signal) => text.includes(signal))) {
+    return true;
+  }
+
+  return /(?:立即|现在|马上).*(?:并行)?委派.*(?:subagent|Agent)/i.test(text)
+    || /(?:dispatch|launch).*(?:parallel|multiple)?\s*(?:subagents?|agents?)/i.test(text);
 }
 
 function messageContainsTaskToolCall(message: AIMessage): boolean {
@@ -777,22 +811,6 @@ function messageContainsTaskToolCall(message: AIMessage): boolean {
 
 export function normalizeVisibleAssistantText(text: string): string {
   return text.trim().replace(/\s+/g, ' ');
-}
-
-function shouldSuppressSupersededTaskCloseout(
-  message: AIMessage,
-  nextMessage: BaseMessage | undefined,
-): boolean {
-  if (!nextMessage || !AIMessage.isInstance(nextMessage)) {
-    return false;
-  }
-
-  const text = readMessageText(message);
-  if (!text) {
-    return false;
-  }
-
-  return isInvalidTaskCloseoutResponse(text);
 }
 
 function readTokenAnnotation(message: AIMessage): string | undefined {
@@ -937,9 +955,10 @@ function buildTaskToolMetaFromCoreMessage(
   const displayName = delegated?.label
     ? parseAgentRuntimeLabel(delegated.label).displayName
     : formatTaskToolAgentName(toolCall);
-  const args = delegated?.label
+  const rawArgs = delegated?.label
     ? parseAgentRuntimeLabel(delegated.label).args
-    : formatTaskToolPrompt(toolCall);
+    : readTaskToolPrompt(toolCall);
+  const args = rawArgs ? formatToolHeaderArgs(TOOL_NAMES.AGENT, rawArgs) : undefined;
 
   if (delegated) {
     const parts: string[] = [];
@@ -957,8 +976,8 @@ function buildTaskToolMetaFromCoreMessage(
       displayName,
       icon: '⚙',
       args,
-      ...(delegated.runId ? {runId: delegated.runId} : {}),
-      coverageKey: buildAgentCoverageKey(displayName, args, delegated.reason === 'error' ? 'error' : 'done'),
+      ...(delegated.runId || toolCallId ? {runId: delegated.runId ?? toolCallId} : {}),
+      coverageKey: buildAgentCoverageKey(displayName, rawArgs, delegated.reason === 'error' ? 'error' : 'done'),
       status: delegated.reason === 'error' ? 'error' : 'done',
       summaryLine,
     };
@@ -975,7 +994,7 @@ function buildTaskToolMetaFromCoreMessage(
     icon: '⚙',
     args,
     ...(toolCallId ? {runId: toolCallId} : {}),
-    coverageKey: buildAgentCoverageKey(displayName, args, message.status === 'error' ? 'error' : 'done'),
+    coverageKey: buildAgentCoverageKey(displayName, rawArgs, message.status === 'error' ? 'error' : 'done'),
     status: message.status === 'error' ? 'error' : 'done',
     summaryLine: message.status === 'error' ? 'Failed' : 'Done',
   };
@@ -1018,12 +1037,8 @@ function formatTaskToolAgentName(toolCall: ToolCall | undefined): string {
   return formatSubagentDisplayName(subagentType);
 }
 
-function formatTaskToolPrompt(toolCall: ToolCall | undefined): string | undefined {
-  const prompt = readTaskToolArg(toolCall?.args, 'prompt');
-  if (!prompt) {
-    return undefined;
-  }
-  return prompt.length > 50 ? `${prompt.slice(0, 47)}…` : prompt;
+function readTaskToolPrompt(toolCall: ToolCall | undefined): string | undefined {
+  return readTaskToolArg(toolCall?.args, 'prompt');
 }
 
 function readTaskToolArg(args: unknown, key: string): string | undefined {
@@ -1120,17 +1135,21 @@ export function shouldHideRuntimeEventForTranscript(event: CodaraRuntimeEvent): 
   return reviewPayload?.type === 'review_pause';
 }
 
-function buildRuntimeCoverageFingerprint(item: TranscriptItem): string | undefined {
+export function buildCanonicalTranscriptFingerprint(item: TranscriptItem): string | undefined {
   if ((item.role !== 'tool' && item.role !== 'agent') || !item.toolMeta) {
     return undefined;
   }
 
-  if (item.toolMeta.coverageKey) {
-    return [item.role, item.toolMeta.coverageKey].join('|');
+  if (item.role === 'agent' && item.toolMeta.toolName === TOOL_NAMES.AGENT) {
+    if (item.toolMeta.runId) {
+      return [item.role, item.toolMeta.runId].join('|');
+    }
+
+    return [item.role, item.toolMeta.displayName, item.toolMeta.args ?? ''].join('|');
   }
 
-  if (item.role === 'agent' && item.toolMeta.toolName === TOOL_NAMES.AGENT) {
-    return [item.role, buildAgentCoverageKey(item.toolMeta.displayName, item.toolMeta.args, item.toolMeta.status)].join('|');
+  if (item.toolMeta.coverageKey) {
+    return [item.role, item.toolMeta.coverageKey].join('|');
   }
 
   const outputLines = item.toolMeta.allOutputLines ?? item.toolMeta.outputLines ?? [];

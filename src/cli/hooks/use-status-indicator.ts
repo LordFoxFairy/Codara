@@ -10,6 +10,9 @@ export interface StatusIndicatorInput {
   runState: CliRunState;
   activeTurn?: CliActiveTurn;
   latestRuntimeEvent?: CodaraRuntimeEvent;
+  runningSubagentRunCount?: number;
+  pausedSubagentRunCount?: number;
+  hasVisibleAssistantReply?: boolean;
 }
 
 export interface StatusIndicatorModel {
@@ -54,18 +57,31 @@ function truncateLabel(label: string | undefined, maxLength = 60): string | unde
 export function describeStatusIndicator(input: StatusIndicatorInput, frame = 0): StatusIndicatorModel {
   const {runState, activeTurn, latestRuntimeEvent} = input;
   const activeEventLabel = truncateLabel(latestRuntimeEvent?.label);
+  const visibleAssistantReply = input.hasVisibleAssistantReply ?? Boolean(
+    activeTurn?.response.trim()
+    || activeTurn?.responseBeforeRuntime?.trim()
+  );
+  const hasActiveSubagentRuns = (input.runningSubagentRunCount ?? 0) > 0 || (input.pausedSubagentRunCount ?? 0) > 0;
 
   switch (runState.status) {
     case 'running':
-      if (latestRuntimeEvent?.kind === 'model') {
-        if (activeTurn?.response.trim()) {
-          return {
-            banner: buildSpinnerBanner('Responding...', frame),
-            status: 'Responding',
-            color: theme.status.responding,
-          };
-        }
+      if (runState.phase === 'subagent_completion') {
+        return {
+          banner: buildSpinnerBanner(visibleAssistantReply ? 'Responding...' : 'Thinking...', frame),
+          status: visibleAssistantReply ? 'Responding' : 'Thinking',
+          color: visibleAssistantReply ? theme.status.responding : theme.status.thinking,
+        };
+      }
 
+      if (visibleAssistantReply) {
+        return {
+          banner: buildSpinnerBanner('Responding...', frame),
+          status: 'Responding',
+          color: theme.status.responding,
+        };
+      }
+
+      if (latestRuntimeEvent?.kind === 'turn') {
         return {
           banner: buildSpinnerBanner('Thinking...', frame),
           status: 'Thinking',
@@ -73,7 +89,22 @@ export function describeStatusIndicator(input: StatusIndicatorInput, frame = 0):
         };
       }
 
-      if (activeEventLabel) {
+      if (latestRuntimeEvent?.kind === 'model') {
+        return {
+          banner: buildSpinnerBanner('Thinking...', frame),
+          status: 'Thinking',
+          color: theme.status.thinking,
+        };
+      }
+
+      if (
+        activeEventLabel
+        && (
+          hasActiveSubagentRuns
+          || latestRuntimeEvent?.kind === 'command'
+          || latestRuntimeEvent?.kind === 'summary'
+        )
+      ) {
         // Status bar only shows short status word, not the full label
         const isTask = latestRuntimeEvent?.kind === 'agent';
         const isTool = latestRuntimeEvent?.kind === 'tool';
@@ -85,15 +116,7 @@ export function describeStatusIndicator(input: StatusIndicatorInput, frame = 0):
           color: latestRuntimeEvent?.kind === 'command' || latestRuntimeEvent?.kind === 'summary'
             ? theme.status.paused
             : theme.status.running,
-        };
-      }
-
-      if (activeTurn?.response.trim()) {
-        return {
-          banner: buildSpinnerBanner('Responding...', frame),
-          status: 'Responding',
-          color: theme.status.responding,
-        };
+          };
       }
 
       return {

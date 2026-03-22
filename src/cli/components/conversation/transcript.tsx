@@ -4,7 +4,7 @@ import type {BaseMessage} from '@langchain/core/messages';
 import {Box, Text} from 'ink';
 import type {CliActiveTurn, CliNotice} from '../../app/view-state';
 import type {ActiveSubagentRun} from '../../hooks/use-subagent-runs';
-import {buildTranscriptItems, type ToolResultMeta, type TranscriptRole} from '../../transcript/model';
+import {buildTranscriptItems, dedupeCanonicalTranscriptItems, type ToolResultMeta, type TranscriptRole} from '../../transcript/model';
 import {formatToolHeaderArgs} from '../../../shared/tool-display';
 import {formatElapsedMs, formatTokenCount} from '../../utils/format';
 import {theme} from '../../utils/theme';
@@ -173,14 +173,6 @@ export function ToolResultBlock({meta, expanded = false}: {meta: ToolResultMeta;
   );
 }
 
-function isRunningAgentTranscriptItem(item: import('../../transcript/model').TranscriptItem): item is import('../../transcript/model').TranscriptItem & {toolMeta: ToolResultMeta} {
-  return item.role === 'agent' && item.toolMeta?.status === 'running';
-}
-
-function isCompletedAgentTranscriptItem(item: import('../../transcript/model').TranscriptItem): item is import('../../transcript/model').TranscriptItem & {toolMeta: ToolResultMeta} {
-  return item.role === 'agent' && item.toolMeta?.status === 'done';
-}
-
 function parseSummaryLine(summaryLine: string): {status: string; stats: string} {
   const match = summaryLine.match(/^(.*?)\s*\((.*)\)$/);
   if (!match) {
@@ -264,12 +256,14 @@ function formatTaskExecutionLabel(meta: ToolResultMeta, activeTask: ActiveSubage
     if (colonIndex > 0) {
       const agent = activeTask.name.slice(0, colonIndex).trim();
       const goal = activeTask.name.slice(colonIndex + 2).trim();
-      return `${agent}(${goal})`;
+      const conciseGoal = formatToolHeaderArgs(meta.toolName, goal);
+      return conciseGoal ? `${agent}(${conciseGoal})` : agent;
     }
-    return activeTask.name;
+    return formatToolHeaderArgs(meta.toolName, activeTask.name) ?? activeTask.name;
   }
 
-  return meta.args ? `${meta.displayName}(${meta.args})` : meta.displayName;
+  const conciseArgs = formatToolHeaderArgs(meta.toolName, meta.args);
+  return conciseArgs ? `${meta.displayName}(${conciseArgs})` : meta.displayName;
 }
 
 function formatSingleTaskSummaryLine(meta: ToolResultMeta, activeTask: ActiveSubagentRun | undefined): string {
@@ -351,227 +345,6 @@ function SingleTaskExecutionBlock({
 const TASK_SPINNER_FRAMES = ['⠋', '⠙', '⠹', '⠸', '⠼', '⠴', '⠦', '⠧', '⠇', '⠏'] as const;
 const TASK_SPINNER_INTERVAL_MS = 80;
 
-function RunningTaskGroupBlock({
-  items,
-  activeSubagentRuns = [],
-}: {
-  items: Array<import('../../transcript/model').TranscriptItem & {toolMeta: ToolResultMeta}>;
-  activeSubagentRuns?: readonly ActiveSubagentRun[];
-}): React.JSX.Element {
-  const [frame, setFrame] = React.useState(0);
-  React.useEffect(() => {
-    const timer = setInterval(() => {
-      setFrame((current) => current + 1);
-    }, TASK_SPINNER_INTERVAL_MS);
-
-    return () => clearInterval(timer);
-  }, []);
-
-  const total = items.length;
-  const activeSubagentRunsById = new Map(activeSubagentRuns.map((run) => [run.id, run]));
-  const firstRunId = items[0] ? resolveSubagentRunId(items[0]) : undefined;
-  const singleTask = total === 1 && firstRunId ? activeSubagentRunsById.get(firstRunId) : undefined;
-  if (total === 1) {
-    return (
-      <SingleTaskExecutionBlock
-        item={items[0]!}
-        activeTask={singleTask}
-      />
-    );
-  }
-  const hasLiveTask = items.some((item) => {
-    const runId = resolveSubagentRunId(item);
-    const activeTask = runId ? activeSubagentRunsById.get(runId) : undefined;
-    return activeTask?.status === 'running' || activeTask?.status === 'paused' || item.toolMeta.status === 'running';
-  });
-  const spinner = TASK_SPINNER_FRAMES[((frame % TASK_SPINNER_FRAMES.length) + TASK_SPINNER_FRAMES.length) % TASK_SPINNER_FRAMES.length];
-  const headerBase = hasLiveTask ? `${spinner} Running ${total} subagents...` : `⏺ Completed ${total} subagents...`;
-  return (
-    <Box marginBottom={1} flexDirection="column">
-      <Text bold>{headerBase}</Text>
-      {items.map((item, index) => {
-        const rowPrefix = index === items.length - 1 ? '└─ ' : '├─ ';
-        const branchPrefix = index === items.length - 1 ? '   ' : '│  ';
-        const runId = resolveSubagentRunId(item);
-        const activeTask = runId ? activeSubagentRunsById.get(runId) : undefined;
-        const rowLabel = formatTaskExecutionLabel(item.toolMeta, activeTask);
-        const rowStatus = activeTask?.status === 'paused'
-          ? 'paused'
-          : activeTask?.status === 'error'
-            ? 'error'
-            : activeTask?.status === 'done'
-              ? 'done'
-              : item.toolMeta.status;
-        const rowSummary = rowStatus === 'done' || rowStatus === 'error'
-          ? formatSyntheticTaskSummaryLine(activeTask, item.toolMeta.summaryLine)
-          : formatSingleTaskSummaryLine(item.toolMeta, activeTask);
-
-        return (
-          <Box key={item.id} flexDirection="column">
-            <Text wrap="truncate-end">{`${rowPrefix}${rowLabel}`}</Text>
-            <Text dimColor wrap="truncate-end">
-              {`${branchPrefix}⎿ ${rowSummary}`}
-            </Text>
-          </Box>
-        );
-      })}
-    </Box>
-  );
-}
-
-function projectExecutionTreeItems(
-  items: import('../../transcript/model').TranscriptItem[],
-  activeSubagentRuns: readonly ActiveSubagentRun[],
-): import('../../transcript/model').TranscriptItem[] {
-  if (activeSubagentRuns.length === 0) {
-    return items;
-  }
-
-  const runsById = new Map(activeSubagentRuns.map((run) => [run.id, run]));
-  const projectedItems = items.map((item) => {
-    if (item.role !== 'agent' || !item.toolMeta) {
-      return item;
-    }
-
-    const runId = resolveSubagentRunId(item as import('../../transcript/model').TranscriptItem & {toolMeta: ToolResultMeta});
-    if (!runId) {
-      return item;
-    }
-
-    const activeRun = runsById.get(runId);
-    if (!activeRun) {
-      return item;
-    }
-
-    return buildSyntheticSubagentTranscriptItem(
-      activeRun,
-      item as import('../../transcript/model').TranscriptItem & {toolMeta: ToolResultMeta},
-    );
-  });
-
-  const projectedRunIds = new Set(
-    projectedItems
-      .filter((item): item is import('../../transcript/model').TranscriptItem & {toolMeta: ToolResultMeta} => (
-        item.role === 'agent' && Boolean(item.toolMeta)
-      ))
-      .map((item) => resolveSubagentRunId(item))
-      .filter((runId): runId is string => Boolean(runId)),
-  );
-
-  const syntheticItems = activeSubagentRuns
-    .filter((run) => !projectedRunIds.has(run.id))
-    .map((run) => buildSyntheticSubagentTranscriptItem(run));
-
-  if (syntheticItems.length === 0) {
-    return projectedItems;
-  }
-
-  return insertSyntheticSubagentItems(projectedItems, syntheticItems);
-}
-
-function insertSyntheticSubagentItems(
-  items: readonly import('../../transcript/model').TranscriptItem[],
-  syntheticItems: readonly import('../../transcript/model').TranscriptItem[],
-): import('../../transcript/model').TranscriptItem[] {
-  if (items.length === 0) {
-    return [...syntheticItems];
-  }
-
-  let lastUserIndex = -1;
-  for (let index = items.length - 1; index >= 0; index -= 1) {
-    if (items[index]?.role === 'user') {
-      lastUserIndex = index;
-      break;
-    }
-  }
-
-  const searchStartIndex = lastUserIndex >= 0 ? lastUserIndex + 1 : 0;
-  let insertionIndex = items.length;
-  for (let index = searchStartIndex; index < items.length; index += 1) {
-    if (items[index]?.role === 'assistant') {
-      insertionIndex = index;
-      break;
-    }
-  }
-
-  return [
-    ...items.slice(0, insertionIndex),
-    ...syntheticItems,
-    ...items.slice(insertionIndex),
-  ];
-}
-
-function dedupeProjectedSubagentItems(
-  items: readonly import('../../transcript/model').TranscriptItem[],
-): import('../../transcript/model').TranscriptItem[] {
-  const seenKeys = new Set<string>();
-  const deduped: import('../../transcript/model').TranscriptItem[] = [];
-
-  for (const item of items) {
-    if (item.role !== 'agent' || !item.toolMeta) {
-      deduped.push(item);
-      continue;
-    }
-
-    const runId = resolveSubagentRunId(item as import('../../transcript/model').TranscriptItem & {toolMeta: ToolResultMeta});
-    const dedupeKey = runId
-      ? `run:${runId}`
-      : item.toolMeta.coverageKey
-        ? `coverage:${item.toolMeta.coverageKey}`
-        : undefined;
-
-    if (dedupeKey && seenKeys.has(dedupeKey)) {
-      continue;
-    }
-
-    if (dedupeKey) {
-      seenKeys.add(dedupeKey);
-    }
-    deduped.push(item);
-  }
-
-  return deduped;
-}
-
-function buildSyntheticSubagentTranscriptItem(
-  run: ActiveSubagentRun,
-  existing?: import('../../transcript/model').TranscriptItem & {toolMeta?: ToolResultMeta},
-): import('../../transcript/model').TranscriptItem {
-  const parsed = parseActiveSubagentRunName(run.name);
-  const summaryLine = formatSyntheticTaskSummaryLine(run, existing?.toolMeta?.summaryLine);
-  const detailLines = run.activityLog?.filter(Boolean) ?? [];
-
-  return {
-    id: existing?.id ?? `active-subagent-run:${run.id}`,
-    role: 'agent',
-    content: `⚙ ${parsed.displayName}${parsed.args ? `(${parsed.args})` : ''}\n${summaryLine}`,
-    toolMeta: {
-      toolName: existing?.toolMeta?.toolName ?? 'Agent',
-      displayName: parsed.displayName,
-      icon: '⚙',
-      ...(parsed.args ? {args: parsed.args} : {}),
-      runId: run.id,
-      status: run.status === 'error' ? 'error' : run.status === 'done' ? 'done' : 'running',
-      summaryLine,
-      ...(detailLines.length > 0 ? {outputLines: detailLines.slice(-4)} : {}),
-      ...(detailLines.length > 0 ? {allOutputLines: detailLines} : {}),
-      ...(detailLines.length > 0 ? {totalOutputLines: detailLines.length} : {}),
-    },
-  };
-}
-
-function parseActiveSubagentRunName(name: string): {displayName: string; args?: string} {
-  const colonIndex = name.indexOf(': ');
-  if (colonIndex <= 0) {
-    return {displayName: name.trim() || 'Agent'};
-  }
-
-  return {
-    displayName: name.slice(0, colonIndex).trim() || 'Agent',
-    args: name.slice(colonIndex + 2).trim() || undefined,
-  };
-}
-
 function formatSyntheticTaskSummaryLine(
   task: ActiveSubagentRun | undefined,
   fallback: string = 'Done',
@@ -640,71 +413,19 @@ export function TranscriptItemsView({
   expandedAll?: boolean;
   subagentDetails?: ReadonlyMap<string, import('../../transcript/model').TranscriptItem[]>;
 }): React.JSX.Element {
-  const projectedItems = dedupeProjectedSubagentItems(projectExecutionTreeItems(items, activeSubagentRuns));
-  const shouldGroupTaskItems = !expandedAll && projectedItems.filter((item) => item.role === 'agent' && item.toolMeta).length > 1;
   const blocks: React.JSX.Element[] = [];
+  const canonicalItems = dedupeCanonicalTranscriptItems(items);
 
-  for (let index = 0; index < projectedItems.length; index += 1) {
-    const item = projectedItems[index]!;
-    if (shouldGroupTaskItems && item.role === 'agent' && item.toolMeta) {
-      const groupedItems = [item as import('../../transcript/model').TranscriptItem & {toolMeta: ToolResultMeta}];
-      let cursor = index + 1;
-      while (cursor < projectedItems.length && projectedItems[cursor]!.role === 'agent' && projectedItems[cursor]!.toolMeta) {
-        groupedItems.push(projectedItems[cursor]! as import('../../transcript/model').TranscriptItem & {toolMeta: ToolResultMeta});
-        cursor += 1;
-      }
-
-      blocks.push(
-        <RunningTaskGroupBlock
-          key={item.id}
-          items={groupedItems}
-          activeSubagentRuns={activeSubagentRuns}
-        />,
-      );
-      index = cursor - 1;
-      continue;
-    }
-
-    if (!expandedAll && isRunningAgentTranscriptItem(item)) {
-      const groupedItems = [item];
-      let cursor = index + 1;
-      while (cursor < projectedItems.length && isRunningAgentTranscriptItem(projectedItems[cursor]!)) {
-        groupedItems.push(projectedItems[cursor]! as import('../../transcript/model').TranscriptItem & {toolMeta: ToolResultMeta});
-        cursor += 1;
-      }
-
-      blocks.push(
-        <RunningTaskGroupBlock
-          key={item.id}
-          items={groupedItems}
-          activeSubagentRuns={activeSubagentRuns}
-        />,
-      );
-      index = cursor - 1;
-      continue;
-    }
-
-    if (isCompletedAgentTranscriptItem(item)) {
-      const runId = resolveSubagentRunId(item);
-      blocks.push(
-        <SingleTaskExecutionBlock
-          key={item.id}
-          item={item}
-          expanded={expandedAll}
-          detailItems={runId ? subagentDetails?.get(runId) : undefined}
-          subagentDetails={subagentDetails}
-        />,
-      );
-      continue;
-    }
-
-    if (isRunningAgentTranscriptItem(item) && expandedAll) {
-      const runId = resolveSubagentRunId(item);
+  for (let index = 0; index < canonicalItems.length; index += 1) {
+    const item = canonicalItems[index]!;
+    if (item.role === 'agent' && item.toolMeta) {
+      const taskItem = item as import('../../transcript/model').TranscriptItem & {toolMeta: ToolResultMeta};
+      const runId = resolveSubagentRunId(taskItem);
       const activeTask = runId ? activeSubagentRuns.find((run) => run.id === runId) : undefined;
       blocks.push(
         <SingleTaskExecutionBlock
-          key={item.id}
-          item={item}
+          key={taskItem.id}
+          item={taskItem}
           activeTask={activeTask}
           expanded={expandedAll}
           detailItems={runId ? subagentDetails?.get(runId) : undefined}

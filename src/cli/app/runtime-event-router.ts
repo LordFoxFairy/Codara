@@ -32,11 +32,21 @@ function shouldRefreshAuxiliaryState(event: CodaraRuntimeEvent): boolean {
 }
 
 function shouldSealActiveTurnForRuntimeEvent(event: CodaraRuntimeEvent): boolean {
-  if (event.kind !== 'tool' || shouldHideRuntimeEventForTranscript(event)) {
+  if (shouldHideRuntimeEventForTranscript(event)) {
     return false;
   }
 
-  return event.phase === 'start' || event.phase === 'end';
+  if (event.kind === 'tool') {
+    return event.phase === 'start' || event.phase === 'end';
+  }
+
+  if (event.kind === 'agent') {
+    return event.phase === 'start'
+      || (event.phase === 'update' && event.status === 'paused')
+      || event.phase === 'end';
+  }
+
+  return false;
 }
 
 function isSubagentReviewEvent(event: CodaraRuntimeEvent): boolean {

@@ -107,6 +107,10 @@ export function formatToolHeaderArgs(toolName: string, args: string | undefined)
     return undefined;
   }
 
+  if (toolName === TOOL_NAMES.AGENT) {
+    return summarizeAgentPrompt(args);
+  }
+
   if (
     toolName === TOOL_NAMES.READ_FILE
     || toolName === TOOL_NAMES.READ
@@ -136,6 +140,19 @@ function simplifyPath(value: string): string {
 
   const basename = path.basename(value);
   return basename || value;
+}
+
+function summarizeAgentPrompt(value: string): string {
+  const firstMeaningfulLine = value
+    .split('\n')
+    .map((line) => line.trim())
+    .find((line) => line.length > 0);
+
+  const normalized = (firstMeaningfulLine ?? value)
+    .replace(/\s+/g, ' ')
+    .trim();
+
+  return normalized || value.trim();
 }
 
 function toTitleCase(value: string): string {

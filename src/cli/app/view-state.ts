@@ -3,12 +3,14 @@ import type {ReviewBlockingScope} from '../../codara/types';
 import type {PermissionStage} from './review-types';
 
 export type CliStatus = 'idle' | 'running' | 'paused' | 'done' | 'error';
+export type CliRunPhase = 'prompt_stream' | 'subagent_wait' | 'subagent_completion' | 'review_resume';
 export type CliReviewAnswerValue = string | string[];
 export type CliInteractionSurface = 'prompt' | 'review' | 'completion' | 'command-output' | 'session-picker';
 export type CliInteractionKind = 'session_prompt' | 'review_response' | 'agent_continuation';
 
 export interface CliRunState {
   status: CliStatus;
+  phase?: CliRunPhase;
   error?: string;
 }
 

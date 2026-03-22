@@ -21,6 +21,29 @@ interface SubagentCompletionContinuationContext {
   };
 }
 
+const SUBAGENT_COMPLETION_WAITING_PATTERNS = [
+  /waiting for (?:the )?(?:subagent|subagent run|subagent runs|subagent result|subagent results)/i,
+  /wait for (?:runtime updates|the subagent result|review requests)/i,
+  /当前.*等待.*(?:结果|返回|完成)/,
+  /正在等待.*(?:子代理|后台任务|结果|返回)/,
+  /等待.*(?:子代理|后台任务).*(?:结果|返回|完成)/,
+];
+
+const SUBAGENT_COMPLETION_FUTURE_WORK_PATTERNS = [
+  /\bphase\s*\d+\b.*(?:has started|started|is underway|is running)/i,
+  /\b(?:after|once|when)\b[\s\S]{0,120}\b(?:complete|completed|finish(?:ed)?|return(?:ed|s)?)\b[\s\S]{0,120}\b(?:i|we)\b[\s\S]{0,40}\b(?:will|shall|then|can)\b/i,
+  /\b(?:i|we)\b[\s\S]{0,40}\b(?:will|shall)\b[\s\S]{0,120}\b(?:after|once|when)\b[\s\S]{0,120}\b(?:complete|completed|finish(?:ed)?|return(?:ed|s)?)\b/i,
+  /\b(?:next phase|second phase|later phase|next step|follow-up step|remaining work)\b[\s\S]{0,60}\b(?:will|shall|then|needs to|to be)\b/i,
+  /\b(?:only when|until)\b[\s\S]{0,120}\b(?:all|everything|all tasks|all subagents)\b[\s\S]{0,120}\b(?:complete|completed|done)\b[\s\S]{0,80}\b(?:will|shall|then)\b/i,
+  /已启动第[一二三四五六七八九十\d]+阶段/,
+  /当前.*(?:处于|还在).*(?:阶段|等待|进行中)/,
+  /(?:完成后|全部.*完成后).*?(?:我|我们).*?(?:将|会|再).*?(?:进入|启动|继续|执行|输出|总结|汇总|回答)/,
+  /(?:下一阶段|第二阶段|后续步骤|后续工作).*?(?:我|我们).*?(?:将|会|继续|启动|进入|执行)/,
+  /(?:全部|所有).*(?:完成|结束).*后.*(?:再|才).*(?:输出|总结|汇总|回答)/,
+  /(?:两个|两条|all|both).*(?:subagent|子代理).*(?:已完成|都已完成|completed).*(?:现在|接下来|让我|let me|now).*(?:汇总|总结|summari[sz]e|synthesi[sz]e)/i,
+  /(?:subagent|子代理).*(?:完成|completed).*(?:现在|接下来|让我|let me|now).*(?:汇总|总结|summari[sz]e|synthesi[sz]e)/i,
+];
+
 export function createSubagentCompletionMiddleware(): BaseMiddleware {
   return createMiddleware({
     name: 'SubagentCompletion',
@@ -140,6 +163,35 @@ export function createSubagentCompletionToolMessages(
     ...(typeof run.toolUseCount === 'number' ? {toolUseCount: run.toolUseCount} : {}),
     ...(typeof run.totalTokens === 'number' ? {totalTokens: run.totalTokens} : {}),
   }, run.runId));
+}
+
+export function isInvalidSubagentCompletionResponse(text: string | undefined): boolean {
+  const normalized = text
+    ?.replace(/\s+/g, ' ')
+    .trim();
+  if (!normalized) {
+    return false;
+  }
+
+  return [...SUBAGENT_COMPLETION_WAITING_PATTERNS, ...SUBAGENT_COMPLETION_FUTURE_WORK_PATTERNS]
+    .some((pattern) => pattern.test(normalized));
+}
+
+export function shouldRetrySubagentCompletionResponse(input: {
+  text: string | undefined;
+  launchedSubagentToolCall?: boolean;
+  attempt: number;
+  maxAttempts: number;
+}): boolean {
+  if (input.launchedSubagentToolCall) {
+    return false;
+  }
+
+  if (input.attempt >= input.maxAttempts) {
+    return false;
+  }
+
+  return !input.text?.trim() || isInvalidSubagentCompletionResponse(input.text);
 }
 
 function shouldBlockInternalMemoryWriteDuringSubagentCompletion(context: ToolCallContext): boolean {

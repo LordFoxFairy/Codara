@@ -5,6 +5,7 @@ import {Text} from 'ink';
 import {render} from 'ink-testing-library';
 import {
   type SolidifiedItem,
+  buildCanonicalTranscriptFingerprint,
   buildSolidifiedItemsFromRange,
   buildActiveItems,
   createToolCallLookup,
@@ -16,6 +17,7 @@ import {
   orderActiveTranscriptItems,
   useSolidifiedTranscript,
 } from '@/cli/hooks/use-solidified-transcript';
+import type {CodaraRuntimeEvent} from '@/index';
 
 describe('solidified transcript model', () => {
   function ActiveItemsProbe(props: Parameters<typeof useSolidifiedTranscript>[0]) {
@@ -127,6 +129,75 @@ describe('solidified transcript model', () => {
       const items = buildSolidifiedItemsFromRange(messages, 0, 0, toolLookup);
       expect(items).toHaveLength(0);
     });
+  });
+
+  test('dedupes a completed subagent run when the same run is present in both trailing messages and runtime events', () => {
+    const runtimeEvents: CodaraRuntimeEvent[] = [
+      {
+        id: 'subagent-run:run-cli',
+        sessionId: 'session-1',
+        timestamp: new Date().toISOString(),
+        kind: 'agent',
+        phase: 'start',
+        status: 'running',
+        label: 'Delegating Explore: Analyze src/cli',
+      },
+      {
+        id: 'task-end-run-cli',
+        sessionId: 'session-1',
+        timestamp: new Date(Date.now() + 1_000).toISOString(),
+        kind: 'agent',
+        phase: 'end',
+        status: 'done',
+        label: 'Subagent completed',
+        parentId: 'subagent-run:run-cli',
+      },
+    ];
+
+    const rendered = render(React.createElement(ActiveItemsProbe, {
+      coreMessages: [
+        new AIMessage({content: '', tool_calls: [{id: 'call-agent', name: 'Agent', args: {prompt: 'Analyze src/cli', subagent_type: 'Explore'}}]}),
+        new ToolMessage({
+          content: 'Subagent started in background.',
+          tool_call_id: 'call-agent',
+          name: 'Agent',
+          artifact: {
+            type: 'subagent_run_started',
+            runId: 'run-cli',
+            parentSessionId: 'session-1',
+            sessionId: 'session:task:run-cli',
+            agentName: 'Explore',
+            label: 'Delegating Explore: Analyze src/cli',
+          },
+        }),
+        new ToolMessage({
+          content: 'Subagent completed successfully.',
+          tool_call_id: 'call-agent',
+          name: 'Agent',
+          artifact: {
+            type: 'subagent_result',
+            runId: 'run-cli',
+            sessionId: 'run-cli',
+            turns: 0,
+            reason: 'complete',
+            label: 'Delegating Explore: Analyze src/cli',
+            agentName: 'Explore',
+            toolUseCount: 7,
+            totalTokens: 1234,
+          },
+        }),
+      ],
+      notices: [],
+      runtimeEvents,
+    }));
+
+    try {
+      const frame = rendered.lastFrame() ?? '';
+      const roleHits = (frame.match(/"role":"agent"/g) ?? []).length;
+      expect(roleHits).toBe(1);
+    } finally {
+      rendered.unmount();
+    }
   });
 
   describe('buildActiveItems', () => {
@@ -515,6 +586,69 @@ describe('solidified transcript model', () => {
       const promptItems = serialized.filter((item) => item.role === 'user' && item.content === 'delegate it');
       expect(promptItems).toHaveLength(1);
     });
+
+    test('should keep trailing current-turn messages visible when an empty placeholder active turn does not own visible content', () => {
+      const {lastFrame} = render(React.createElement(ActiveItemsProbe, {
+        coreMessages: [new HumanMessage('delegate it')],
+        notices: [],
+        activeTurn: {
+          id: 'turn-placeholder',
+          prompt: '',
+          response: '',
+          responseRole: 'assistant',
+          kind: 'subagent_completion',
+          suppressInteractionResponse: true,
+        },
+        runtimeEvents: [
+          {
+            id: 'subagent-run:run-1',
+            sessionId: 'session-1',
+            timestamp: new Date().toISOString(),
+            kind: 'agent',
+            phase: 'start',
+            status: 'running',
+            label: 'Delegating Explore: Analyze structure',
+          },
+        ],
+      }));
+
+      const frame = lastFrame() ?? '';
+      expect(frame).toContain('"role":"user"');
+      expect(frame).toContain('"content":"delegate it"');
+      expect(frame).toContain('"role":"agent"');
+    });
+
+    test('should keep a finalized main reply visible while the active turn still owns the current prompt block', () => {
+      const {lastFrame} = render(React.createElement(ActiveItemsProbe, {
+        coreMessages: [
+          new HumanMessage('delegate it'),
+          new AIMessage('Unified final answer from the main agent.'),
+        ],
+        notices: [],
+        activeTurn: {
+          id: 'turn-live-prompt',
+          prompt: 'delegate it',
+          response: '',
+          responseRole: 'assistant',
+          kind: 'prompt',
+        },
+        runtimeEvents: [
+          {
+            id: 'subagent-run:run-1',
+            sessionId: 'session-1',
+            timestamp: new Date().toISOString(),
+            kind: 'agent',
+            phase: 'start',
+            status: 'running',
+            label: 'Delegating Explore: Analyze structure',
+          },
+        ],
+      }));
+
+      const frame = lastFrame() ?? '';
+      expect(frame.match(/"role":"user","content":"delegate it"/g)?.length ?? 0).toBe(1);
+      expect(frame.replace(/\s+/g, ' ')).toContain('Unified final answer from the main agent.');
+    });
   });
 
   describe('orderActiveTranscriptItems', () => {
@@ -636,10 +770,78 @@ describe('solidified transcript model', () => {
 
       expect(dedupeTrailingTranscriptItemsCoveredByRuntime(trailingItems, runtimeItems)).toEqual([]);
     });
+
+    test('should fingerprint agent transcript items by run id before label or args', () => {
+      const runtimeItem: TranscriptItem = {
+        id: 'active-subagent-run:run-123',
+        role: 'agent',
+        content: '⚙ Explore(Analyze structure)\nDone (33s)',
+        toolMeta: {
+          toolName: 'Agent',
+          displayName: 'Explore',
+          icon: '⚙',
+          args: 'Analyze structure',
+          runId: 'run-123',
+          status: 'done',
+          summaryLine: 'Done (33s)',
+        },
+      };
+      const trailingItem: TranscriptItem = {
+        id: 'core-agent-result',
+        role: 'agent',
+        content: '⚙ Explore(Analyze structure)\nDone (5 tool uses · 1.2k tokens)',
+        toolMeta: {
+          toolName: 'Agent',
+          displayName: 'Explore',
+          icon: '⚙',
+          args: 'Analyze structure but with slightly different prompt text',
+          runId: 'run-123',
+          status: 'done',
+          summaryLine: 'Done (5 tool uses · 1.2k tokens)',
+        },
+      };
+
+      expect(buildCanonicalTranscriptFingerprint(runtimeItem)).toBe('agent|run-123');
+      expect(buildCanonicalTranscriptFingerprint(trailingItem)).toBe('agent|run-123');
+      expect(dedupeTrailingTranscriptItemsCoveredByRuntime([trailingItem], [runtimeItem])).toEqual([]);
+    });
+
+    test('should keep a subagent block stable across running and done phases even when runId is missing', () => {
+      const runningItem: TranscriptItem = {
+        id: 'active-subagent-run:call-agent-1',
+        role: 'agent',
+        content: '⚙ Explore(Analyze structure)\nRunning',
+        toolMeta: {
+          toolName: 'Agent',
+          displayName: 'Explore',
+          icon: '⚙',
+          args: 'Analyze structure',
+          status: 'running',
+          summaryLine: 'Running',
+        },
+      };
+      const doneItem: TranscriptItem = {
+        id: 'core-agent-result',
+        role: 'agent',
+        content: '⚙ Explore(Analyze structure)\nDone (5 tool uses · 1.2k tokens)',
+        toolMeta: {
+          toolName: 'Agent',
+          displayName: 'Explore',
+          icon: '⚙',
+          args: 'Analyze structure',
+          status: 'done',
+          summaryLine: 'Done (5 tool uses · 1.2k tokens)',
+        },
+      };
+
+      expect(buildCanonicalTranscriptFingerprint(runningItem)).toBe('agent|Explore|Analyze structure');
+      expect(buildCanonicalTranscriptFingerprint(doneItem)).toBe('agent|Explore|Analyze structure');
+      expect(dedupeTrailingTranscriptItemsCoveredByRuntime([doneItem], [runningItem])).toEqual([]);
+    });
   });
 
   describe('filterSubagentCompletionTranscriptItems', () => {
-    test('filters invalid task-completion waiting narration from transcript items', () => {
+    test('keeps transcript items untouched during subagent-completion turns', () => {
       const items = filterSubagentCompletionTranscriptItems({
         completedTurnKind: 'subagent_completion',
         items: [
@@ -649,7 +851,7 @@ describe('solidified transcript model', () => {
         ],
       });
 
-      expect(items.map((item) => item.id)).toEqual(['task-1', 'assistant-valid']);
+      expect(items.map((item) => item.id)).toEqual(['assistant-invalid', 'task-1', 'assistant-valid']);
     });
 
     test('keeps assistant items untouched outside task-completion turns', () => {
@@ -661,6 +863,21 @@ describe('solidified transcript model', () => {
       });
 
       expect(items.map((item) => item.id)).toEqual(['assistant-1']);
+    });
+
+    test('keeps valid explanatory assistant answers during subagent-completion turns', () => {
+      const items = filterSubagentCompletionTranscriptItems({
+        completedTurnKind: 'subagent_completion',
+        items: [
+          {
+            id: 'assistant-valid',
+            role: 'assistant',
+            content: '这种设计确保了 main agent 能够在 subagent 完成后自动继续工作，无需用户干预。',
+          },
+        ],
+      });
+
+      expect(items.map((item) => item.id)).toEqual(['assistant-valid']);
     });
   });
 

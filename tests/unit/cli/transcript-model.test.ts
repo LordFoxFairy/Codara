@@ -514,6 +514,35 @@ describe('cli transcript model', () => {
     expect(items.some((item) => item.content.includes('任务已启动'))).toBe(false);
   });
 
+  test('should suppress pre-runtime launch chatter buffered before the subagent runtime block starts', () => {
+    const now = new Date().toISOString();
+    const items = buildActiveItems({
+      activeTurn: {
+        id: 'turn-task-launch-pre-runtime',
+        prompt: 'delegate it',
+        responseBeforeRuntime: '我将立即并行委派两个只读 Explore subagent 来分析这两个核心目录：',
+        response: '',
+        responseRole: 'assistant',
+        pendingAgentLaunch: true,
+        suppressAgentLaunchResponse: true,
+      },
+      runtimeEvents: [
+        {
+          id: 'subagent-run:run-cli',
+          sessionId: 'session-1',
+          timestamp: now,
+          kind: 'agent',
+          phase: 'start',
+          status: 'running',
+          label: 'Delegating Explore: Analyze src/cli',
+        },
+      ],
+    });
+
+    expect(items.map((item) => item.role)).toEqual(['user', 'agent']);
+    expect(items.some((item) => item.content.includes('我将立即并行委派'))).toBe(false);
+  });
+
   test('should suppress solidified assistant launch chatter while keeping the delegated running subagent block', () => {
     const taskCall: ToolCall = {
       id: 'call_task_launch_noise',
@@ -723,6 +752,39 @@ describe('cli transcript model', () => {
     expect(items[0]?.content).toContain('Done (3 tool uses · 14.4k tokens)');
     expect(items[0]?.content).not.toContain('CHILD_DONE');
     expect(items[0]?.toolMeta?.summaryLine).toBe('Done (3 tool uses · 14.4k tokens)');
+  });
+
+  test('should fall back to tool_call_id as the canonical run id for completed subagent results when artifact.runId is missing', () => {
+    const items = buildTranscriptItems({
+      notices: [],
+      coreMessages: [
+        new AIMessage({
+          content: '',
+          tool_calls: [{
+            id: 'call_task_missing_run_id',
+            name: 'Agent',
+            args: {prompt: 'Inspect child work', subagent_type: 'Explore'},
+          } as ToolCall],
+        }),
+        new ToolMessage({
+          content: 'Subagent completed.\nsummary:\nCHILD_DONE',
+          tool_call_id: 'call_task_missing_run_id',
+          artifact: {
+            type: 'subagent_result',
+            sessionId: 'session:task:call_task_missing_run_id',
+            turns: 4,
+            reason: 'complete',
+            summary: 'CHILD_DONE',
+            toolUseCount: 3,
+            totalTokens: 14400,
+          },
+        }),
+      ],
+    });
+
+    expect(items).toHaveLength(1);
+    expect(items[0]?.role).toBe('agent');
+    expect(items[0]?.toolMeta?.runId).toBe('call_task_missing_run_id');
   });
 
   test('should show only the real delegated subagent block when runtime task roots and synthetic placeholders both exist', () => {
@@ -1065,6 +1127,36 @@ describe('cli transcript model', () => {
     expect(exploreItems).toHaveLength(1);
     expect(exploreItems[0]?.content).toContain('Done');
     expect(items.some((item) => item.content.includes('Codara is a terminal-first AI agent runtime.'))).toBe(false);
+  });
+
+  test('should summarize delegated agent prompts instead of exposing multiline prompt bodies in transcript items', () => {
+    const now = '2026-03-20T10:00:00.000Z';
+    const items = buildTranscriptItems({
+      notices: [],
+      coreMessages: [],
+      activeTurn: {
+        id: 'turn-running-task',
+        prompt: 'analyze it',
+        response: '',
+        responseRole: 'assistant',
+      },
+      runtimeEvents: [
+        {
+          id: 'subagent-run:evt-task-start',
+          sessionId: 'session-1',
+          timestamp: now,
+          kind: 'agent',
+          phase: 'start',
+          status: 'running',
+          label: 'Delegating Explore: 只读分析 `src/cli` 目录的架构：\n\n**目标**：\n1. 列出目录结构\n2. 识别核心职责',
+        },
+      ],
+    });
+
+    const exploreItem = items.find((item) => item.role === 'agent');
+    expect(exploreItem?.toolMeta?.args).toBe('只读分析 `src/cli` 目录的架构：');
+    expect(exploreItem?.content).not.toContain('**目标**');
+    expect(exploreItem?.content).not.toContain('\n\n**目标**');
   });
 
   test('should include elapsed time in tool meta when paired start/end events exist', () => {

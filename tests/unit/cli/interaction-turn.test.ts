@@ -34,15 +34,44 @@ describe('CLI interaction turn helpers', () => {
       detectAgentLaunch: true,
     });
 
-    expect(result.sawText).toBe(true);
+    expect(result.sawText).toBe(false);
     expect(result.turn).toEqual(expect.objectContaining({
-      response: 'Existing Visible answer',
+      response: '',
       thinking: 'First thought. Second thought.',
       pendingAgentLaunch: true,
+      suppressAgentLaunchResponse: true,
       streamingTokens: {
         input: 120,
         output: 45,
       },
+    }));
+  });
+
+  it('retroactively clears buffered assistant launch chatter once an Agent tool call appears', () => {
+    const chunk = new AIMessageChunk({
+      content: [{type: 'text', text: '我将立即并行委派两个只读 Explore subagent。'}],
+      tool_calls: [{name: 'Agent', id: 'call-agent', args: {prompt: 'analyze src/cli'}}],
+    });
+
+    const result = applyInteractionChunkToTurn({
+      id: 'turn-launch',
+      prompt: 'analyze repo',
+      response: 'Earlier launch prose',
+      pendingResponse: 'Buffered launch prose',
+      responseBeforeRuntime: 'Buffered before runtime',
+      responseRole: 'assistant',
+      kind: 'prompt',
+    }, chunk, {
+      detectAgentLaunch: true,
+    });
+
+    expect(result.sawText).toBe(false);
+    expect(result.turn).toEqual(expect.objectContaining({
+      pendingAgentLaunch: true,
+      suppressAgentLaunchResponse: true,
+      pendingResponse: undefined,
+      responseBeforeRuntime: undefined,
+      response: '',
     }));
   });
 
@@ -68,6 +97,28 @@ describe('CLI interaction turn helpers', () => {
     }));
   });
 
+  it('clears buffered prompt text when an internal interaction tool takes over the turn', () => {
+    const chunk = new AIMessageChunk({
+      content: [{type: 'text', text: 'Need a structured follow-up.'}],
+      tool_calls: [{name: 'Skill', id: 'call-skill', args: {skill: 'brainstorming'}}],
+    });
+
+    const result = applyInteractionChunkToTurn({
+      id: 'turn-skill',
+      prompt: 'help me',
+      response: '',
+      pendingResponse: 'Buffered preamble',
+      responseRole: 'assistant',
+      kind: 'prompt',
+    }, chunk);
+
+    expect(result.turn).toEqual(expect.objectContaining({
+      pendingResponse: undefined,
+      response: '',
+      suppressInteractionResponse: true,
+    }));
+  });
+
   it('buffers prompt-surface assistant text until the turn outcome is known', () => {
     const chunk = new AIMessageChunk({
       content: [{type: 'text', text: 'Buffered answer'}],
@@ -81,11 +132,46 @@ describe('CLI interaction turn helpers', () => {
       kind: 'prompt',
     }, chunk);
 
-    expect(result.sawText).toBe(false);
+    expect(result.sawText).toBe(true);
     expect(result.turn).toEqual(expect.objectContaining({
       response: '',
       pendingResponse: 'Buffered answer',
       kind: 'prompt',
+    }));
+  });
+
+  it('drops launch chatter but allows the later final main reply in the same prompt stream once the text is no longer launch prose', () => {
+    const launchTurn = applyInteractionChunkToTurn({
+      id: 'turn-agent-followthrough',
+      prompt: 'delegate',
+      response: '',
+      responseRole: 'assistant',
+      kind: 'prompt',
+    }, new AIMessageChunk({
+      tool_calls: [{name: 'Agent', id: 'call-agent'}],
+    }), {
+      detectAgentLaunch: true,
+    }).turn;
+
+    const suppressedLaunch = applyInteractionChunkToTurn(launchTurn, new AIMessageChunk({
+      content: [{type: 'text', text: '我将立即并行委派两个只读 Explore subagent。'}],
+    }));
+    expect(suppressedLaunch.sawText).toBe(false);
+    expect(suppressedLaunch.turn).toEqual(expect.objectContaining({
+      pendingAgentLaunch: true,
+      suppressAgentLaunchResponse: true,
+      response: '',
+      pendingResponse: undefined,
+    }));
+
+    const finalReply = applyInteractionChunkToTurn(suppressedLaunch.turn, new AIMessageChunk({
+      content: [{type: 'text', text: '最终答案：CLI 和 Capability 的边界已经梳理清楚。'}],
+    }));
+    expect(finalReply.sawText).toBe(true);
+    expect(finalReply.turn).toEqual(expect.objectContaining({
+      pendingAgentLaunch: false,
+      suppressAgentLaunchResponse: false,
+      pendingResponse: '最终答案：CLI 和 Capability 的边界已经梳理清楚。',
     }));
   });
 
@@ -160,6 +246,27 @@ describe('CLI interaction turn helpers', () => {
       response: 'Post-tool summary',
       responseBeforeRuntime: 'I will inspect the repo first.',
       responseRole: 'assistant',
+    });
+  });
+
+  it('clears launch-chatter suppression once runtime ownership begins so post-subagent text can stream normally', () => {
+    expect(sealActiveTurnAtRuntimeBoundary({
+      id: 'turn-agent',
+      prompt: 'delegate',
+      response: '',
+      responseRole: 'assistant',
+      pendingAgentLaunch: true,
+      suppressAgentLaunchResponse: true,
+      pendingResponse: '我将立即并行委派两个只读 Explore subagent。',
+    })).toEqual({
+      id: 'turn-agent',
+      prompt: 'delegate',
+      response: '',
+      responseRole: 'assistant',
+      pendingAgentLaunch: false,
+      suppressAgentLaunchResponse: false,
+      pendingResponse: undefined,
+      responseBeforeRuntime: undefined,
     });
   });
 

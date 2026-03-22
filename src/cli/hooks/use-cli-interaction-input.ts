@@ -6,6 +6,7 @@ import {resolveReviewInputAction} from './review-input-action';
 
 interface UseCliInteractionInputOptions {
   activeSurface: CliInteractionSurface;
+  promptDisabled?: boolean;
   interactive?: boolean;
   reviewDisabled?: boolean;
   reviewSpaceInsertsText?: boolean;
@@ -58,6 +59,7 @@ interface UseCliInteractionInputOptions {
 export function useCliInteractionInput(options: UseCliInteractionInputOptions): void {
   const {
     activeSurface,
+    promptDisabled = false,
     interactive = true,
     reviewDisabled = false,
     reviewSpaceInsertsText = false,
@@ -305,6 +307,9 @@ export function useCliInteractionInput(options: UseCliInteractionInputOptions): 
     }
     if (action === 'focus-review') {
       onFocusReview?.();
+      return;
+    }
+    if (promptDisabled) {
       return;
     }
     if (action === 'tab') {

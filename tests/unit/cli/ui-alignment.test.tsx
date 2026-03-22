@@ -415,7 +415,7 @@ describe('UI alignment with Claude Code', () => {
       const {lastFrame} = render(<ActiveTranscript items={items} />);
 
       const frame = lastFrame()!;
-      expect(frame).toContain('Running 2 subagents');
+      expect(frame).not.toContain('Running 2 subagents');
       expect(frame).toContain('Explore(Analyze README and package metadata)');
       expect(frame).toContain('⎿ Running (17 tool activities · 35s)');
       expect(frame).not.toContain('Bash: Run test suite');
@@ -684,7 +684,7 @@ describe('UI alignment with Claude Code', () => {
       const frame = lastFrame()!;
       expect(frame).toContain('Explore(Analyze tech stack)');
       expect(frame).toContain('⎿ Running (1 tool uses · 12s)');
-      expect(frame).toContain('├─ Explore(Analyze architecture)');
+      expect(frame).toContain('⏺ Explore(Analyze architecture)');
       expect(frame).toContain('⎿ Done (2 tool uses · 14.4k tokens · 38s)');
     });
 
@@ -753,7 +753,7 @@ describe('UI alignment with Claude Code', () => {
       );
 
       const frame = lastFrame()!;
-      expect(frame).toContain('Completed 2 subagents');
+      expect(frame).not.toContain('Completed 2 subagents');
       expect(frame).not.toContain('Completed 4 subagents');
       expect(frame.match(/Explore\(分析 `src\/cli` 目录的架构和职责\)/g)?.length).toBe(1);
       expect(frame.match(/Explore\(分析 `src\/capability` 目录的架构和职责\)/g)?.length).toBe(1);
@@ -905,7 +905,7 @@ describe('UI alignment with Claude Code', () => {
       expect(frame).toContain('📖 Read(src/index.ts)');
     });
 
-    it('should synthesize live subagent runs into the main transcript when the transcript has not emitted run blocks yet', () => {
+    it('should not synthesize live subagent runs into the main transcript when no subagent block exists yet', () => {
       const items: TranscriptItem[] = [{
         id: 'turn-prompt',
         role: 'user',
@@ -938,19 +938,45 @@ describe('UI alignment with Claude Code', () => {
 
       const frame = lastFrame()!;
       expect(frame).toContain('请并行分析两个目录，然后汇总。');
-      expect(frame).toContain('Running 2 subagents');
-      expect(frame).toContain('Explore(Analyze tech stack)');
-      expect(frame).toContain('Explore(Analyze architecture)');
-      expect(frame).not.toContain('glob(vite.config.{ts,js})');
-      expect(frame).not.toContain('terminal-first AI agent runtime');
+      expect(frame).not.toContain('Running 2 subagents');
+      expect(frame).not.toContain('Explore(Analyze tech stack)');
+      expect(frame).not.toContain('Explore(Analyze architecture)');
     });
 
-    it('should keep synthesized completed subagent blocks ahead of the main continuation reply', () => {
+    it('should keep real completed subagent blocks ahead of the main continuation reply', () => {
       const items: TranscriptItem[] = [
         {
           id: 'turn-prompt',
           role: 'user',
           content: '请并行分析两个目录，然后汇总。',
+        },
+        {
+          id: 'run-cli',
+          role: 'agent',
+          content: '⚙ Explore(分析 `src/cli` 目录，重点回答：)\nDone (25 tool uses · 270.9k tokens · 2m38s)',
+          toolMeta: {
+            toolName: 'Agent',
+            displayName: 'Explore',
+            icon: '⚙',
+            args: '分析 `src/cli` 目录，重点回答：',
+            runId: 'run-cli',
+            status: 'done',
+            summaryLine: 'Done (25 tool uses · 270.9k tokens · 2m38s)',
+          },
+        },
+        {
+          id: 'run-capability',
+          role: 'agent',
+          content: '⚙ Explore(分析 `src/capability` 目录，重点回答：)\nDone (21 tool uses · 156.6k tokens · 2m28s)',
+          toolMeta: {
+            toolName: 'Agent',
+            displayName: 'Explore',
+            icon: '⚙',
+            args: '分析 `src/capability` 目录，重点回答：',
+            runId: 'run-capability',
+            status: 'done',
+            summaryLine: 'Done (21 tool uses · 156.6k tokens · 2m28s)',
+          },
         },
         {
           id: 'turn-response',
@@ -959,37 +985,17 @@ describe('UI alignment with Claude Code', () => {
         },
       ];
 
-      const activeSubagentRuns: ActiveSubagentRun[] = [
-        {
-          id: 'run-cli',
-          name: 'Explore: Analyze src/cli',
-          status: 'done',
-          startedAt: Date.now() - 20_000,
-          endedAt: Date.now() - 2_000,
-          elapsed: 18_000,
-          toolUseCount: 6,
-          totalTokens: 2_400,
-        },
-        {
-          id: 'run-capability',
-          name: 'Explore: Analyze src/capability',
-          status: 'done',
-          startedAt: Date.now() - 22_000,
-          endedAt: Date.now() - 1_000,
-          elapsed: 21_000,
-          toolUseCount: 8,
-          totalTokens: 3_600,
-        },
-      ];
-
-      const {lastFrame} = render(<ActiveTranscript items={items} activeSubagentRuns={activeSubagentRuns} />);
+      const {lastFrame} = render(<ActiveTranscript items={items} />);
       const frame = lastFrame()!;
-      const completedIndex = frame.indexOf('Completed 2 subagents');
+      const cliRunIndex = frame.indexOf('Explore(分析 `src/cli` 目录，重点回答：)');
+      const capabilityRunIndex = frame.indexOf('Explore(分析 `src/capability` 目录，重点回答：)');
       const replyIndex = frame.indexOf('当前架构最核心的边界是 CLI 负责前台交互');
 
-      expect(completedIndex).toBeGreaterThan(-1);
+      expect(cliRunIndex).toBeGreaterThan(-1);
+      expect(capabilityRunIndex).toBeGreaterThan(-1);
       expect(replyIndex).toBeGreaterThan(-1);
-      expect(completedIndex).toBeLessThan(replyIndex);
+      expect(cliRunIndex).toBeLessThan(replyIndex);
+      expect(capabilityRunIndex).toBeLessThan(replyIndex);
     });
   });
 });

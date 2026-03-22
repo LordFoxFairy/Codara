@@ -1,8 +1,9 @@
 import {randomUUID} from 'node:crypto';
 import {useCallback, useEffect, useMemo, useRef, useState} from 'react';
 import type {Codara, CodaraRuntimeEvent, SessionState} from '@/index';
-import {AIMessageChunk, type BaseMessage} from '@langchain/core/messages';
+import {AIMessage, AIMessageChunk, type BaseMessage} from '@langchain/core/messages';
 import type {ReviewRequest} from '@core/agent';
+import {readVisibleMessageText} from '@shared/messages';
 import {
   backspaceComposerText,
   createComposerState,
@@ -38,6 +39,7 @@ import {
 import {
   appendInteractionText,
   applyInteractionChunkToTurn,
+  containsAgentLaunchChatter,
   finalizeBufferedInteractionText,
   sealActiveTurnAtRuntimeBoundary,
 } from './interaction-turn';
@@ -63,6 +65,9 @@ const REVIEW_QUEUE_HANDOFF_TIMEOUT_MS = 500;
 const REVIEW_QUEUE_HANDOFF_POLL_MS = 10;
 const REVIEW_RESUME_READY_TIMEOUT_MS = 500;
 const REVIEW_RESUME_READY_POLL_MS = 10;
+const PROMPT_SETTLE_REFRESH_TIMEOUT_MS = 500;
+const PROMPT_SETTLE_REFRESH_POLL_MS = 20;
+const FINAL_REPLY_SETTLE_POLL_MS = 80;
 
 export interface UseCliControllerOptions {
   codara: Codara;
@@ -138,9 +143,127 @@ function appendUniqueNotices(current: CliNotice[], incoming: readonly CliNotice[
 }
 
 function deriveRunStateFromAgentState(nextAgentState: {status: string; pendingReview?: unknown}): CliRunState {
-  return nextAgentState.pendingReview || nextAgentState.status === 'paused'
-    ? {status: 'paused'}
-    : {status: 'done'};
+  if (nextAgentState.pendingReview || nextAgentState.status === 'paused') {
+    return {status: 'paused'};
+  }
+
+  if (nextAgentState.status === 'running') {
+    return {status: 'running'};
+  }
+
+  return {status: 'done'};
+}
+
+function hasTrackedForegroundSubagentRuns(codara: Pick<Codara, 'getSubagentRunSummaries'>): boolean {
+  return codara.getSubagentRunSummaries().some((run) => run.status === 'running' || run.status === 'paused');
+}
+
+function shouldKeepPromptTurnRunningAfterAgentLaunch(input: {
+  nextAgentState: {status: string};
+  codara: Pick<Codara, 'getSubagentRunSummaries'>;
+  launchedAgent: boolean;
+  sawVisibleReply: boolean;
+}): boolean {
+  if (hasTrackedForegroundSubagentRuns(input.codara)) {
+    return true;
+  }
+
+  if (input.sawVisibleReply) {
+    return false;
+  }
+
+  return input.nextAgentState.status === 'running';
+}
+
+function hasVisibleAssistantReply(turn: CliActiveTurn | undefined): boolean {
+  if (!turn || turn.responseRole !== 'assistant') {
+    return false;
+  }
+
+  return Boolean(
+    turn.responseBeforeRuntime?.trim()
+    || turn.response.trim()
+    || turn.pendingResponse?.trim(),
+  );
+}
+
+function activeTurnOwnsVisibleTranscript(turn: CliActiveTurn | undefined): boolean {
+  if (!turn) {
+    return false;
+  }
+
+  return Boolean(
+    turn.responseBeforeRuntime?.trim()
+    || turn.response.trim()
+    || turn.pendingResponse?.trim()
+    || turn.thinking?.trim()
+  );
+}
+
+function hasVisibleAssistantReplyInMessages(
+  messages: readonly BaseMessage[],
+  startIndex = 0,
+): boolean {
+  for (let index = messages.length - 1; index >= startIndex; index -= 1) {
+    const message = messages[index];
+    if (!AIMessage.isInstance(message)) {
+      continue;
+    }
+
+    const text = readVisibleMessageText(message);
+    if (!text || containsAgentLaunchChatter(text)) {
+      continue;
+    }
+
+    return true;
+  }
+
+  return false;
+}
+
+function shouldContinuePollingForPromptSettlement(input: {
+  runState: CliRunState;
+  review: CliReviewState | undefined;
+  activeTurn: CliActiveTurn | undefined;
+  messages: readonly BaseMessage[];
+  promptStartMessageCount: number;
+}): boolean {
+  if (input.runState.status !== 'running') {
+    return false;
+  }
+
+  if (input.review) {
+    return false;
+  }
+
+  return !hasVisibleAssistantReply(input.activeTurn)
+    && !hasVisibleAssistantReplyInMessages(input.messages, input.promptStartMessageCount);
+}
+
+function resolveHydratedCoreMessages(input: {
+  incomingMessages: readonly BaseMessage[];
+  currentMessages: readonly BaseMessage[];
+  runState: CliRunState;
+  review: CliReviewState | undefined;
+  activeTurn: CliActiveTurn | undefined;
+  promptStartMessageCount: number;
+}): readonly BaseMessage[] {
+  if (input.incomingMessages.length > 0) {
+    return input.incomingMessages;
+  }
+
+  if (input.currentMessages.length === 0) {
+    return input.incomingMessages;
+  }
+
+  if (input.runState.status !== 'running' || input.review) {
+    return input.incomingMessages;
+  }
+
+  const currentTurnHasVisibleReply = hasVisibleAssistantReply(input.activeTurn)
+    || hasVisibleAssistantReplyInMessages(input.currentMessages, input.promptStartMessageCount);
+
+  return currentTurnHasVisibleReply ? input.currentMessages : input.incomingMessages;
 }
 
 function appendRuntimeEventPreservingOpenStarts(
@@ -252,9 +375,9 @@ export function useCliController(options: UseCliControllerOptions): CliControlle
   const [composer, setComposer] = useState(() => createComposerState());
   const [composerActivityVersion, setComposerActivityVersion] = useState(0);
   const [notices, setNotices] = useState<CliNotice[]>(initialNotices);
-  const [activeTurn, setActiveTurn] = useState<CliActiveTurn | undefined>();
+  const [activeTurn, setActiveTurnState] = useState<CliActiveTurn | undefined>();
   const [review, setReview] = useState<CliReviewState | undefined>();
-  const [coreMessages, setCoreMessages] = useState<readonly BaseMessage[]>([]);
+  const [coreMessages, setCoreMessagesState] = useState<readonly BaseMessage[]>([]);
   const [runtimeEvents, setRuntimeEvents] = useState<readonly CodaraRuntimeEvent[]>([]);
   const [runState, setRunState] = useState<CliRunState>({status: 'idle'});
   const [interactionState, setInteractionState] = useState<CliInteractionState>({
@@ -270,15 +393,33 @@ export function useCliController(options: UseCliControllerOptions): CliControlle
   const initialPromptSentRef = useRef(false);
   const initialCoreStateLoadedRef = useRef(false);
   const reviewRef = useRef<CliReviewState | undefined>(undefined);
+  const activeTurnRef = useRef<CliActiveTurn | undefined>(undefined);
+  const coreMessagesRef = useRef<readonly BaseMessage[]>([]);
+  const runStateRef = useRef<CliRunState>({status: 'idle'});
+  const promptStartMessageCountRef = useRef(0);
   const autoActionsRef = useRef([...reviewAutoActions]);
   const handledAutoReviewIdsRef = useRef<Set<string>>(new Set());
   const pendingBackgroundNoticesRef = useRef<CliNotice[]>([]);
   const settlingDismissedReviewIdRef = useRef<string | undefined>(undefined);
   const runQueuedSessionPromptRef = useRef<(prompt: string) => Promise<void>>(async () => undefined);
+  const settlingFinalReplyRef = useRef(false);
 
   useEffect(() => {
     reviewRef.current = review;
   }, [review]);
+
+  useEffect(() => {
+    activeTurnRef.current = activeTurn;
+  }, [activeTurn]);
+
+  useEffect(() => {
+    runStateRef.current = runState;
+  }, [runState]);
+
+  const setCoreMessages = useCallback((messages: readonly BaseMessage[]) => {
+    coreMessagesRef.current = messages;
+    setCoreMessagesState(messages);
+  }, []);
 
   const setReviewState = useCallback((
     input: CliReviewState | undefined | ((current: CliReviewState | undefined) => CliReviewState | undefined),
@@ -288,6 +429,16 @@ export function useCliController(options: UseCliControllerOptions): CliControlle
       : input;
     reviewRef.current = next;
     setReview(next);
+  }, []);
+
+  const setActiveTurn = useCallback((
+    input: CliActiveTurn | undefined | ((current: CliActiveTurn | undefined) => CliActiveTurn | undefined),
+  ) => {
+    const next = typeof input === 'function'
+      ? (input as (current: CliActiveTurn | undefined) => CliActiveTurn | undefined)(activeTurnRef.current)
+      : input;
+    activeTurnRef.current = next;
+    setActiveTurnState(next);
   }, []);
 
   const appendNotice = useCallback((level: CliNotice['level'], content: string) => {
@@ -380,7 +531,29 @@ export function useCliController(options: UseCliControllerOptions): CliControlle
     setActiveTurn(undefined);
     appendNotice('error', message);
     return message;
-  }, [appendNotice]);
+  }, [appendNotice, setActiveTurn]);
+
+  const settleRunningPromptTurnIfReady = useCallback((messages?: readonly BaseMessage[]): boolean => {
+    if (runStateRef.current.status !== 'running') {
+      return false;
+    }
+
+    if (reviewRef.current) {
+      return false;
+    }
+
+    const hasVisibleReplyInMessagesNow = hasVisibleAssistantReplyInMessages(
+      messages ?? coreMessagesRef.current,
+      promptStartMessageCountRef.current,
+    );
+    if (!hasVisibleReplyInMessagesNow) {
+      return false;
+    }
+
+    setRunState({status: 'done'});
+    setActiveTurn(undefined);
+    return true;
+  }, [setActiveTurn]);
 
   const refreshAuxiliaryState = useCallback(() => {
     const projection = readCliReviewProjection(codara);
@@ -391,7 +564,7 @@ export function useCliController(options: UseCliControllerOptions): CliControlle
     setReviewState(nextReview);
     setActiveTurn((current) => suppressActiveTurnForReview(current, nextReview));
     syncInteractionState();
-  }, [codara, setReviewState, suppressSettlingDismissedReview, syncInteractionState]);
+  }, [codara, setActiveTurn, setReviewState, suppressSettlingDismissedReview, syncInteractionState]);
 
   const refreshCoreState = useCallback(async () => {
     const nextAgentState = await codara.hydrate();
@@ -402,7 +575,15 @@ export function useCliController(options: UseCliControllerOptions): CliControlle
         await codara.focusReview(queuedReviews[0]!.reviewId);
       }
     }
-    setCoreMessages(nextAgentState.messages);
+    const nextMessages = resolveHydratedCoreMessages({
+      incomingMessages: nextAgentState.messages,
+      currentMessages: coreMessagesRef.current,
+      runState: runStateRef.current,
+      review: reviewRef.current,
+      activeTurn: activeTurnRef.current,
+      promptStartMessageCount: promptStartMessageCountRef.current,
+    });
+    setCoreMessages(nextMessages);
     setSessionState(codara.getState());
     const nextReview = suppressSettlingDismissedReview(syncProjectedReview(codara, reviewRef.current, {
       pendingReview: nextAgentState.pendingReview,
@@ -410,8 +591,44 @@ export function useCliController(options: UseCliControllerOptions): CliControlle
     setReviewState(nextReview);
     setActiveTurn((current) => suppressActiveTurnForReview(current, nextReview));
     syncInteractionState();
-    return nextAgentState;
-  }, [codara, setReviewState, suppressSettlingDismissedReview, syncInteractionState]);
+
+    if (
+      nextAgentState.status !== 'running'
+      && !nextAgentState.pendingReview
+    ) {
+      settleRunningPromptTurnIfReady(nextMessages);
+    }
+
+    return {
+      ...nextAgentState,
+      messages: nextMessages,
+    };
+  }, [codara, setActiveTurn, setCoreMessages, setReviewState, settleRunningPromptTurnIfReady, suppressSettlingDismissedReview, syncInteractionState]);
+
+  const refreshCoreStateUntilPromptSettles = useCallback(async (): Promise<boolean> => {
+    const deadline = Date.now() + PROMPT_SETTLE_REFRESH_TIMEOUT_MS;
+
+    while (Date.now() <= deadline) {
+      const nextAgentState = await refreshCoreState();
+      if (settleRunningPromptTurnIfReady(nextAgentState.messages)) {
+        return true;
+      }
+
+      if (!shouldContinuePollingForPromptSettlement({
+        runState: runStateRef.current,
+        review: reviewRef.current,
+        activeTurn: activeTurnRef.current,
+        messages: nextAgentState.messages,
+        promptStartMessageCount: promptStartMessageCountRef.current,
+      })) {
+        return false;
+      }
+
+      await new Promise((resolve) => setTimeout(resolve, PROMPT_SETTLE_REFRESH_POLL_MS));
+    }
+
+    return false;
+  }, [refreshCoreState, settleRunningPromptTurnIfReady]);
 
   const runQueuedReviewResponse = useCallback(async (interaction: QueuedReviewResponseInteraction): Promise<boolean> => {
     const nextAgentState = await refreshCoreState();
@@ -431,7 +648,7 @@ export function useCliController(options: UseCliControllerOptions): CliControlle
     }
 
     beginInteraction('review_response');
-    setRunState({status: 'running'});
+    setRunState({status: 'running', phase: 'review_resume'});
 
     try {
       await waitForForegroundReviewResumeReady(codara, interaction.reviewId, refreshCoreState);
@@ -468,7 +685,7 @@ export function useCliController(options: UseCliControllerOptions): CliControlle
       endInteraction();
     }
     return true;
-  }, [beginInteraction, codara, endInteraction, interactionScheduler, refreshCoreState, reportError, syncInteractionState]);
+  }, [beginInteraction, codara, endInteraction, interactionScheduler, refreshCoreState, reportError, setActiveTurn, syncInteractionState]);
 
   const drainScheduledInteractions = useCallback(() => {
     if (interactionScheduler.isRunning()) {
@@ -524,8 +741,35 @@ export function useCliController(options: UseCliControllerOptions): CliControlle
         return;
       }
 
-      if (route.shouldRefreshAuxiliaryState) {
-        refreshAuxiliaryState();
+      const shouldRefreshDuringRunningAgentHandoff = event.kind === 'agent'
+        && (
+          event.phase === 'end'
+          || (event.phase === 'update' && event.status === 'paused')
+        );
+
+      if (shouldRefreshDuringRunningAgentHandoff || route.shouldRefreshAuxiliaryState) {
+        if (event.kind === 'agent') {
+          void refreshCoreState()
+            .then((nextAgentState) => {
+              const settled = settleRunningPromptTurnIfReady(nextAgentState.messages);
+              if (!settled && event.phase === 'end') {
+                if (
+                  runStateRef.current.status === 'running'
+                  && runStateRef.current.phase === 'subagent_wait'
+                  && !hasTrackedForegroundSubagentRuns(codara)
+                ) {
+                  setRunState({status: 'running', phase: 'subagent_completion'});
+                }
+                void refreshCoreStateUntilPromptSettles();
+              }
+              return nextAgentState;
+            })
+            .catch(() => {
+              refreshAuxiliaryState();
+            });
+        } else {
+          refreshAuxiliaryState();
+        }
       }
 
       if (event.kind === 'agent') {
@@ -534,7 +778,108 @@ export function useCliController(options: UseCliControllerOptions): CliControlle
         });
       }
     });
-  }, [codara, drainScheduledInteractions, endInteraction, interactionScheduler, refreshAuxiliaryState, syncInteractionState]);
+  }, [codara, drainScheduledInteractions, endInteraction, interactionScheduler, refreshAuxiliaryState, refreshCoreState, refreshCoreStateUntilPromptSettles, setActiveTurn, settleRunningPromptTurnIfReady, syncInteractionState]);
+
+  useEffect(() => {
+    settleRunningPromptTurnIfReady(coreMessages);
+  }, [coreMessages, settleRunningPromptTurnIfReady]);
+
+  useEffect(() => {
+    const visibleReply = hasVisibleAssistantReply(activeTurn)
+      || hasVisibleAssistantReplyInMessages(coreMessages, promptStartMessageCountRef.current);
+
+    if (
+      settlingFinalReplyRef.current
+      || runState.status !== 'running'
+      || review
+    ) {
+      return;
+    }
+
+    if (!visibleReply && hasTrackedForegroundSubagentRuns(codara)) {
+      return;
+    }
+
+    if (runState.phase !== 'subagent_completion') {
+      setRunState({status: 'running', phase: 'subagent_completion'});
+    }
+
+    if (!visibleReply) {
+      return;
+    }
+
+    settlingFinalReplyRef.current = true;
+    let cancelled = false;
+
+    void (async () => {
+      try {
+        while (!cancelled) {
+          const nextAgentState = await refreshCoreState();
+          if (nextAgentState.pendingReview || nextAgentState.status === 'paused') {
+            break;
+          }
+
+          const hasVisibleReplyInActiveTurn = hasVisibleAssistantReply(activeTurnRef.current);
+          const hasStableVisibleReply = hasVisibleAssistantReplyInMessages(
+            nextAgentState.messages,
+            promptStartMessageCountRef.current,
+          );
+          if (hasStableVisibleReply) {
+            setRunState({status: 'done'});
+            setActiveTurn(undefined);
+            break;
+          }
+
+          if (hasVisibleReplyInActiveTurn && !hasTrackedForegroundSubagentRuns(codara)) {
+            setRunState({status: 'done'});
+            break;
+          }
+
+          if (nextAgentState.status !== 'running') {
+            settleRunningPromptTurnIfReady(nextAgentState.messages);
+            break;
+          }
+
+          await new Promise((resolve) => setTimeout(resolve, FINAL_REPLY_SETTLE_POLL_MS));
+        }
+      } catch (error) {
+        reportError(error);
+      } finally {
+        settlingFinalReplyRef.current = false;
+      }
+    })();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [
+    activeTurn,
+    codara,
+    coreMessages,
+    refreshCoreState,
+    reportError,
+    review,
+    runState.phase,
+    runState.status,
+    settleRunningPromptTurnIfReady,
+    setActiveTurn,
+  ]);
+
+  useEffect(() => {
+    if (runState.status !== 'done') {
+      return;
+    }
+
+    if (!activeTurnOwnsVisibleTranscript(activeTurn)) {
+      return;
+    }
+
+    if (!hasVisibleAssistantReplyInMessages(coreMessages, promptStartMessageCountRef.current)) {
+      return;
+    }
+
+    setActiveTurn(undefined);
+  }, [activeTurn, coreMessages, runState.status, setActiveTurn]);
 
   useEffect(() => {
     if (interactionScheduler.isRunning()) {
@@ -603,6 +948,8 @@ export function useCliController(options: UseCliControllerOptions): CliControlle
   }, [appendNotice, codara, onShowSessionPicker, openFile, refreshCoreState, reopenSession, sessionState.sessionId]);
 
   const runAgentPrompt = useCallback(async (prompt: string) => {
+    const promptStartMessageCount = coreMessagesRef.current.length;
+    promptStartMessageCountRef.current = promptStartMessageCount;
     setActiveTurn({
       id: `turn-${randomUUID()}`,
       prompt,
@@ -612,6 +959,7 @@ export function useCliController(options: UseCliControllerOptions): CliControlle
     });
 
     let sawText = false;
+    let launchedAgent = false;
 
     for await (const chunk of codara.streamInteraction({
       kind: 'prompt',
@@ -621,12 +969,15 @@ export function useCliController(options: UseCliControllerOptions): CliControlle
       if (!AIMessageChunk.isInstance(chunk)) {
         continue;
       }
+      if (Array.isArray(chunk.tool_calls) && chunk.tool_calls.some((toolCall) => toolCall?.name === 'Agent')) {
+        launchedAgent = true;
+      }
       setActiveTurn((current) => {
         const result = applyInteractionChunkToTurn(current, chunk, {
           captureThinking: true,
           detectAgentLaunch: true,
         });
-        if (result.sawText || Boolean(chunk.text)) {
+        if (result.sawText) {
           sawText = true;
         }
         return result.turn;
@@ -634,12 +985,43 @@ export function useCliController(options: UseCliControllerOptions): CliControlle
     }
 
     setActiveTurn((current) => {
-      return finalizeBufferedInteractionText(current);
+      const finalized = finalizeBufferedInteractionText(current);
+      if (
+        finalized?.responseBeforeRuntime?.trim()
+        || finalized?.response.trim()
+        || finalized?.pendingResponse?.trim()
+      ) {
+        sawText = true;
+      }
+      return finalized;
     });
 
+    sawText = sawText
+      || hasVisibleAssistantReply(activeTurnRef.current)
+      || hasVisibleAssistantReplyInMessages(coreMessagesRef.current, promptStartMessageCount);
     const nextAgentState = await refreshCoreState();
+    sawText = sawText
+      || hasVisibleAssistantReplyInMessages(coreMessagesRef.current, promptStartMessageCount)
+      || hasVisibleAssistantReplyInMessages(nextAgentState.messages, promptStartMessageCount);
     if (nextAgentState.status === 'paused') {
       setRunState({status: 'paused'});
+      return;
+    }
+
+    if (shouldKeepPromptTurnRunningAfterAgentLaunch({
+      nextAgentState,
+      codara,
+      launchedAgent,
+      sawVisibleReply: sawText,
+    })) {
+      setRunState({
+        status: 'running',
+        phase: hasTrackedForegroundSubagentRuns(codara)
+          ? 'subagent_wait'
+          : launchedAgent
+            ? 'subagent_completion'
+            : 'prompt_stream',
+      });
       return;
     }
 
@@ -647,13 +1029,13 @@ export function useCliController(options: UseCliControllerOptions): CliControlle
       setActiveTurn((current) => current ? {...current, response: '(no output)'} : current);
     }
 
-    setRunState({status: 'done'});
+    setRunState(deriveRunStateFromAgentState(nextAgentState));
     setActiveTurn(undefined);
-  }, [codara, refreshCoreState]);
+  }, [codara, refreshCoreState, setActiveTurn]);
 
   const runQueuedSessionPrompt = useCallback(async (prompt: string): Promise<void> => {
     beginInteraction('session_prompt');
-    setRunState({status: 'running'});
+    setRunState({status: 'running', phase: 'prompt_stream'});
     setRuntimeEvents([]);
     setCommandOutput(undefined);
 
@@ -671,7 +1053,7 @@ export function useCliController(options: UseCliControllerOptions): CliControlle
     } finally {
       endInteraction();
     }
-  }, [beginInteraction, endInteraction, refreshCoreState, reportError, runAgentPrompt, runSlashCommand]);
+  }, [beginInteraction, endInteraction, refreshCoreState, reportError, runAgentPrompt, runSlashCommand, setActiveTurn]);
   runQueuedSessionPromptRef.current = runQueuedSessionPrompt;
 
   const submitPrompt = useCallback(async (rawPrompt: string): Promise<void> => {
@@ -978,7 +1360,7 @@ export function useCliController(options: UseCliControllerOptions): CliControlle
     }
 
     beginInteraction('review_response');
-    setRunState({status: 'running'});
+    setRunState({status: 'running', phase: 'review_resume'});
 
     try {
       const selectedAction = autoAction
@@ -995,13 +1377,6 @@ export function useCliController(options: UseCliControllerOptions): CliControlle
           settlingDismissedReviewIdRef.current = prepared.review.request.id;
           setReviewState(undefined);
           syncInteractionState();
-          setActiveTurn({
-            id: `turn-review-${randomUUID()}`,
-            prompt: '',
-            response: '',
-            responseRole: 'assistant',
-            kind: 'prompt',
-          });
 
           const resumeStream = codara.streamInteraction({
             kind: 'review',
@@ -1103,7 +1478,7 @@ export function useCliController(options: UseCliControllerOptions): CliControlle
       endInteraction();
       drainScheduledInteractions();
     }
-  }, [appendNotice, beginInteraction, codara, drainScheduledInteractions, endInteraction, enqueueReviewResponse, interactionScheduler, refreshCoreState, reportError, review, setReviewState, syncInteractionState]);
+  }, [appendNotice, beginInteraction, codara, drainScheduledInteractions, endInteraction, enqueueReviewResponse, interactionScheduler, refreshCoreState, reportError, review, setActiveTurn, setReviewState, syncInteractionState]);
 
   const quickReviewAction = useCallback((actionId: string) => {
     // Three-stage permission flow: intercept dont_ask_again and deny

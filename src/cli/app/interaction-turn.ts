@@ -23,6 +23,11 @@ export function applyInteractionChunkToTurn(
   }
 
   let next = turn;
+  const agentLaunchJustDetected = Boolean(
+    options.detectAgentLaunch
+    && Array.isArray(chunk.tool_calls)
+    && chunk.tool_calls.some((toolCall) => toolCall?.name === 'Agent'),
+  );
 
   if (options.captureThinking) {
     const thinkingText = extractThinkingText(chunk);
@@ -47,13 +52,21 @@ export function applyInteractionChunkToTurn(
     }
   }
 
-  if (options.detectAgentLaunch && Array.isArray(chunk.tool_calls) && chunk.tool_calls.some((toolCall) => toolCall?.name === 'Agent')) {
-    next = {...next, pendingAgentLaunch: true};
+  if (agentLaunchJustDetected) {
+    next = {
+      ...next,
+      pendingAgentLaunch: true,
+      suppressAgentLaunchResponse: true,
+      pendingResponse: undefined,
+      responseBeforeRuntime: undefined,
+      response: '',
+    };
   }
 
   if (containsInternalInteractionToolCall(chunk)) {
     next = {
       ...next,
+      pendingResponse: undefined,
       responseBeforeRuntime: undefined,
       response: '',
       suppressInteractionResponse: true,
@@ -61,7 +74,23 @@ export function applyInteractionChunkToTurn(
   }
 
   const text = chunk.text;
-  if (!text || next.suppressInteractionResponse) {
+  if (text && next.suppressAgentLaunchResponse) {
+    if (agentLaunchJustDetected) {
+      return {turn: next, sawText: false};
+    }
+
+    if (containsAgentLaunchChatter(text)) {
+      return {turn: next, sawText: false};
+    }
+
+    next = {
+      ...next,
+      pendingAgentLaunch: false,
+      suppressAgentLaunchResponse: false,
+    };
+  }
+
+  if (!text || next.suppressInteractionResponse || next.suppressAgentLaunchResponse) {
     return {turn: next, sawText: false};
   }
 
@@ -72,8 +101,36 @@ export function applyInteractionChunkToTurn(
         ? {pendingResponse: (next.pendingResponse ?? '') + text}
         : {response: next.response + text}),
     },
-    sawText: next.kind !== 'prompt' || next.responseRole !== 'assistant',
+    sawText: Boolean(text.trim()),
   };
+}
+
+export function containsAgentLaunchChatter(text: string): boolean {
+  const launchChatterSignals = [
+    '任务已启动',
+    '委派信息',
+    '正在等待 subagent',
+    'subagent 已启动',
+    '我已启动',
+    '我已使用 Agent 工具委派',
+    '我将立即使用 Agent 工具委派',
+    '我将立即并行委派',
+    '我将并行委派',
+    '并行委派',
+    'I used the Agent tool',
+    'Subagent started',
+    'run_id:',
+    '待该代理完成',
+    '我将立即给出',
+    'waiting for the subagent',
+  ];
+
+  if (launchChatterSignals.some((signal) => text.includes(signal))) {
+    return true;
+  }
+
+  return /(?:立即|现在|马上).*(?:并行)?委派.*(?:subagent|Agent)/i.test(text)
+    || /(?:dispatch|launch).*(?:parallel|multiple)?\s*(?:subagents?|agents?)/i.test(text);
 }
 
 function containsInternalInteractionToolCall(chunk: AIMessageChunk): boolean {
@@ -105,7 +162,22 @@ export function appendInteractionText(
 export function sealActiveTurnAtRuntimeBoundary(
   turn: CliActiveTurn | undefined,
 ): CliActiveTurn | undefined {
-  if (!turn || turn.responseBeforeRuntime) {
+  if (!turn) {
+    return turn;
+  }
+
+  if (turn.pendingAgentLaunch || turn.suppressAgentLaunchResponse) {
+    return {
+      ...turn,
+      pendingAgentLaunch: false,
+      suppressAgentLaunchResponse: false,
+      pendingResponse: undefined,
+      responseBeforeRuntime: undefined,
+      response: '',
+    };
+  }
+
+  if (turn.responseBeforeRuntime) {
     return turn;
   }
 
