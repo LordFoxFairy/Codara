@@ -1,10 +1,10 @@
-import type {TaskRunStore} from '@capability/task';
-import type {TaskRunQuerySummary} from '../types';
+import type {AgentRunStore} from '@capability/subagent';
+import type {AgentRunQuerySummary} from '../types';
 
-export function getTaskRunSummaries(
-  store: TaskRunStore | undefined,
+export function getAgentRunSummaries(
+  store: AgentRunStore | undefined,
   sessionId: string | undefined,
-): TaskRunQuerySummary[] {
+): AgentRunQuerySummary[] {
   if (!store) {
     return [];
   }

@@ -1,5 +1,5 @@
 const TASK_CLOSEOUT_WAITING_PATTERNS = [
-  /waiting for (?:the )?(?:subagent|delegated task|delegated tasks|task result|task results)/i,
+  /waiting for (?:the )?(?:subagent|subagent run|subagent runs|delegated task|delegated tasks|task result|task results)/i,
   /wait for (?:runtime updates|the delegated result|review requests)/i,
   /当前.*等待.*(?:结果|返回|完成)/,
   /正在等待.*(?:子代理|委派任务|后台任务|结果|返回)/,

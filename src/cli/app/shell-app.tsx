@@ -191,7 +191,7 @@ export function CodaraCliApp(props: CodaraCliAppProps): React.JSX.Element {
   const terminalWidth = useTerminalWidth();
   const layoutMode = resolveCliLayoutMode(terminalWidth);
   const activeTasks = useActiveTasks({
-    taskRunSummaries: codara.getTaskRunSummaries(),
+    agentRunSummaries: codara.getAgentRunSummaries(),
     reviews: codara.listReviewItems(),
   });
   const listCommands = React.useCallback(() => codara.listCommands(), [codara]);

@@ -6,17 +6,17 @@ import {CHILD_ACTIVITY_CALLBACK_KEY, type ChildToolActivityCallback} from '@obse
 import {
   createDelegatedAgentToolMessage,
   type DelegatedAgentResult,
-} from '@capability/task/delegation/agent';
+} from '@capability/subagent/agent';
 import type {SubagentDefinition} from '@context/skills/contracts';
 import {formatSubagentDisplayName} from '@context/skills/runtime-shared';
 import {filterToolsByReferences} from '@integration/tool';
-import type {TaskRuntime} from '@capability/task/delegation/runtime';
-import type {TaskRunRecord, TaskRunStore} from '@capability/task/types';
+import type {AgentRuntime} from '@capability/subagent/runtime';
+import type {AgentRunRecord, AgentRunStore} from '@capability/subagent/types';
 import {deepClone} from '@shared/clone';
 import {formatToolSummary} from '@shared/tool-display';
-import type {CreateTaskToolOptions} from '@capability/task/tool-types';
+import type {CreateAgentToolOptions} from '@capability/subagent/tool-types';
 
-const TASK_RUN_STORE_REBOUND = Symbol.for('codara.task.runStore.rebound');
+const AGENT_RUN_STORE_REBOUND = Symbol.for('codara.subagent.runStore.rebound');
 
 export function resolveDefinitionTools(
   tools: StructuredToolInterface[],
@@ -38,8 +38,8 @@ export function readChildActivityCallback(runtimeShared: unknown): ChildToolActi
   return typeof callback === 'function' ? callback as ChildToolActivityCallback : undefined;
 }
 
-export function resolveTaskRunId(
-  runStore: TaskRunStore | undefined,
+export function resolveAgentRunId(
+  runStore: AgentRunStore | undefined,
   toolCallId: string,
 ): string {
   const baseRunId = toolCallId.trim();
@@ -52,7 +52,7 @@ export function resolveTaskRunId(
     return baseRunId;
   }
 
-  return createDetachedTaskRunId(runStore, baseRunId);
+  return createDetachedAgentRunId(runStore, baseRunId);
 }
 
 export function normalizeAgentName(subagentType: string | undefined, fallback: string): string {
@@ -60,13 +60,13 @@ export function normalizeAgentName(subagentType: string | undefined, fallback: s
   return agentName || 'Agent';
 }
 
-export function rebindTaskRunStore(runStore: TaskRunStore | undefined): TaskRunStore | undefined {
+export function rebindAgentRunStore(runStore: AgentRunStore | undefined): AgentRunStore | undefined {
   if (!runStore) {
     return undefined;
   }
 
-  const record = runStore as TaskRunStore & {[TASK_RUN_STORE_REBOUND]?: boolean};
-  if (record[TASK_RUN_STORE_REBOUND]) {
+  const record = runStore as AgentRunStore & {[AGENT_RUN_STORE_REBOUND]?: boolean};
+  if (record[AGENT_RUN_STORE_REBOUND]) {
     return record;
   }
 
@@ -85,14 +85,14 @@ export function rebindTaskRunStore(runStore: TaskRunStore | undefined): TaskRunS
   record.resume = (...args) => resume(...args);
   record.pause = (...args) => pause(...args);
   record.finish = (...args) => finish(...args);
-  record[TASK_RUN_STORE_REBOUND] = true;
+  record[AGENT_RUN_STORE_REBOUND] = true;
   return record;
 }
 
 export function wrapDelegatedPrepareContext(
-  prepareContext: CreateTaskToolOptions['prepareContext'],
+  prepareContext: CreateAgentToolOptions['prepareContext'],
   inheritedBaseMessageCount: number,
-): CreateTaskToolOptions['prepareContext'] {
+): CreateAgentToolOptions['prepareContext'] {
   if (!prepareContext) {
     return undefined;
   }
@@ -106,8 +106,8 @@ export function wrapDelegatedPrepareContext(
   };
 }
 
-export function readExistingTaskRunMessage(
-  run: TaskRunRecord | undefined,
+export function readExistingAgentRunMessage(
+  run: AgentRunRecord | undefined,
   toolCallId: string,
   fallback: {
     runId: string;
@@ -131,8 +131,8 @@ export function readExistingTaskRunMessage(
   const label = run.label?.trim() || fallback.label;
   const agentName = normalizeAgentName(run.agentName?.trim(), fallback.agentName);
   const header = run.status === 'paused'
-    ? 'Delegated task is waiting for review.'
-    : 'Delegated task is already running in background.';
+    ? 'Delegated agent is waiting for review.'
+    : 'Delegated agent is already running in background.';
   const detail = run.latestActivity?.trim();
 
   return new ToolMessage({
@@ -142,7 +142,7 @@ export function readExistingTaskRunMessage(
       ...(detail ? [`activity: ${detail}`] : []),
     ].join('\n'),
     artifact: {
-      type: 'task_run_started',
+      type: 'agent_run_started',
       runId: run.runId,
       parentSessionId,
       sessionId,
@@ -154,19 +154,19 @@ export function readExistingTaskRunMessage(
   });
 }
 
-export async function buildRecoveredTaskChildOptions(
-  options: CreateTaskToolOptions,
-  runtime: TaskRuntime,
-  run: TaskRunRecord,
+export async function buildRecoveredAgentChildOptions(
+  options: CreateAgentToolOptions,
+  runtime: AgentRuntime,
+  run: AgentRunRecord,
 ): Promise<BootstrapAgentOptions | undefined> {
   if (!run.childSessionId) {
     return undefined;
   }
 
-  const recoveryTools = filterRecoveredTaskTools(options.tools ?? [], run.toolNames);
+  const recoveryTools = filterRecoveredAgentTools(options.tools ?? [], run.toolNames);
   const recoveryMiddleware = [
     ...(options.middleware ?? []),
-    createRecoveredTaskActivityMiddleware(runtime, run.runId),
+    createRecoveredAgentActivityMiddleware(runtime, run.runId),
   ];
 
   return {
@@ -185,7 +185,7 @@ export async function buildRecoveredTaskChildOptions(
   };
 }
 
-function createDetachedTaskRunId(runStore: TaskRunStore, baseRunId: string): string {
+function createDetachedAgentRunId(runStore: AgentRunStore, baseRunId: string): string {
   const prefix = `${baseRunId}__`;
   const usedRunIds = new Set(runStore.list().map((record) => record.runId));
   let suffix = 2;
@@ -197,7 +197,7 @@ function createDetachedTaskRunId(runStore: TaskRunStore, baseRunId: string): str
   return `${prefix}${suffix}`;
 }
 
-function toDelegatedAgentResult(run: TaskRunRecord): DelegatedAgentResult | undefined {
+function toDelegatedAgentResult(run: AgentRunRecord): DelegatedAgentResult | undefined {
   if ((run.status !== 'completed' && run.status !== 'failed') || !run.childSessionId) {
     return undefined;
   }
@@ -214,7 +214,7 @@ function toDelegatedAgentResult(run: TaskRunRecord): DelegatedAgentResult | unde
   };
 }
 
-function filterRecoveredTaskTools(
+function filterRecoveredAgentTools(
   tools: StructuredToolInterface[],
   toolNames: string[] | undefined,
 ): StructuredToolInterface[] {
@@ -226,15 +226,15 @@ function filterRecoveredTaskTools(
   return tools.filter((tool) => allowed.has(tool.name));
 }
 
-function createRecoveredTaskActivityMiddleware(
-  runtime: TaskRuntime,
+function createRecoveredAgentActivityMiddleware(
+  runtime: AgentRuntime,
   runId: string,
 ): BaseMiddleware {
   return createMiddleware({
-    name: `TaskRecoveryActivity:${runId}`,
+    name: `AgentRecoveryActivity:${runId}`,
     wrapToolCall: async (context, handler) => {
       const toolName = context.toolCall.name ?? 'tool';
-      const summary = truncateTaskToolSummary(formatToolSummary(toolName, context.toolCall.args));
+      const summary = truncateAgentToolSummary(formatToolSummary(toolName, context.toolCall.args));
       const label = summary ? `${toolName}(${summary})` : toolName;
       runtime.recordActivity(runId, {toolName, label});
       return handler(context);
@@ -242,7 +242,7 @@ function createRecoveredTaskActivityMiddleware(
   });
 }
 
-function truncateTaskToolSummary(value: string | undefined, max = 60): string | undefined {
+function truncateAgentToolSummary(value: string | undefined, max = 60): string | undefined {
   if (!value) {
     return undefined;
   }

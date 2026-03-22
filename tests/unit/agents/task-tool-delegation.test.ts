@@ -5,14 +5,14 @@ import {tool} from '@langchain/core/tools';
 import {z} from 'zod';
 import {createAgent} from '@core/agent';
 import {createHILMiddleware} from '@core/middleware';
-import {createTaskRunMemoryStore} from '@capability/task';
-import {TASK_TOOL_NAME, createTaskTool} from '@capability/task/middleware';
-import {readTaskRunLaunchResult} from '@shared/task-run-launch';
+import {createAgentRunMemoryStore} from '@capability/subagent';
+import {AGENT_TOOL_NAME, createAgentTool} from '@capability/subagent/middleware';
+import {readAgentRunLaunchResult} from '@shared/agent-run-launch';
 import {createBuiltinSubagentStore, createAgentSkillsMiddleware, ChildSummaryModel, ScriptedModel} from './task-tool.fixtures';
 
-describe('createTaskTool delegation', () => {
+describe('createAgentTool delegation', () => {
   it('should stop the parent turn immediately after task launch instead of consuming a second assistant reply', async () => {
-    const runStore = createTaskRunMemoryStore();
+    const runStore = createAgentRunMemoryStore();
 
     class CountingParentModel {
       invokeCount = 0;
@@ -24,7 +24,7 @@ describe('createTaskTool delegation', () => {
             content: '',
             tool_calls: [{
               id: 'call_task_detached',
-              name: TASK_TOOL_NAME,
+              name: AGENT_TOOL_NAME,
               args: {
                 prompt: 'Inspect the project layout',
                 subagent_type: 'Agent',
@@ -46,7 +46,7 @@ describe('createTaskTool delegation', () => {
       model: parentModel as unknown as BaseChatModel,
       middleware: [createAgentSkillsMiddleware(createBuiltinSubagentStore())],
       tools: [
-        createTaskTool({
+        createAgentTool({
           model: new ChildSummaryModel() as unknown as BaseChatModel,
           runStore,
         }),
@@ -58,21 +58,21 @@ describe('createTaskTool delegation', () => {
 
     expect(result.reason).toBe('complete');
     expect(parentModel.invokeCount).toBe(1);
-    expect(readTaskRunLaunchResult(toolMessage.artifact)).toMatchObject({
-      type: 'task_run_started',
+    expect(readAgentRunLaunchResult(toolMessage.artifact)).toMatchObject({
+      type: 'agent_run_started',
       runId: 'call_task_detached',
     });
   });
 
   it('应通过正式 Task 工具启动后台子代理并立即返回 run handle', async () => {
-    const runStore = createTaskRunMemoryStore();
+    const runStore = createAgentRunMemoryStore();
     const parent = createAgent({
       model: new ScriptedModel([
         new AIMessage({
           content: '',
           tool_calls: [{
             id: 'call_task_delegate',
-            name: TASK_TOOL_NAME,
+            name: AGENT_TOOL_NAME,
             args: {
               prompt: 'Investigate the auth flow',
               subagent_type: 'Agent',
@@ -83,7 +83,7 @@ describe('createTaskTool delegation', () => {
       ]) as unknown as BaseChatModel,
       middleware: [createAgentSkillsMiddleware(createBuiltinSubagentStore())],
       tools: [
-        createTaskTool({
+        createAgentTool({
           model: new ChildSummaryModel() as unknown as BaseChatModel,
           runStore,
         }),
@@ -92,14 +92,14 @@ describe('createTaskTool delegation', () => {
 
     const result = await parent.invoke('delegate this');
     const toolMessage = result.state.messages.find((message) => ToolMessage.isInstance(message)) as ToolMessage;
-    const launch = readTaskRunLaunchResult(toolMessage.artifact);
+    const launch = readAgentRunLaunchResult(toolMessage.artifact);
 
     expect(result.reason).toBe('complete');
     expect(result.state.status).toBe('idle');
     expect(result.state.pendingPause).toBeUndefined();
-    expect(String(toolMessage.content)).toContain('Delegated task started in background.');
+    expect(String(toolMessage.content)).toContain('Subagent started in background.');
     expect(launch).toEqual({
-      type: 'task_run_started',
+      type: 'agent_run_started',
       runId: 'call_task_delegate',
       parentSessionId: result.state.sessionId,
       sessionId: expect.any(String),
@@ -125,7 +125,7 @@ describe('createTaskTool delegation', () => {
           content: '',
           tool_calls: [{
             id: 'call_task_pause',
-            name: TASK_TOOL_NAME,
+            name: AGENT_TOOL_NAME,
             args: {
               prompt: 'Investigate the guarded flow',
               subagent_type: 'Agent',
@@ -136,7 +136,7 @@ describe('createTaskTool delegation', () => {
       ]) as unknown as BaseChatModel,
       middleware: [createAgentSkillsMiddleware(createBuiltinSubagentStore())],
       tools: [
-        createTaskTool({
+        createAgentTool({
           model: new ScriptedModel([
             new AIMessage({
               content: '',
@@ -167,7 +167,7 @@ describe('createTaskTool delegation', () => {
               },
             }),
           ],
-          runStore: createTaskRunMemoryStore(),
+          runStore: createAgentRunMemoryStore(),
         }),
       ],
     });
@@ -181,7 +181,7 @@ describe('createTaskTool delegation', () => {
   });
 
   it('应在同一个 parent session 重复使用相同 Task tool_call id 时创建新的 detached run', async () => {
-    const runStore = createTaskRunMemoryStore();
+    const runStore = createAgentRunMemoryStore();
 
     class RepeatingParentModel {
       async invoke(): Promise<AIMessage> {
@@ -189,7 +189,7 @@ describe('createTaskTool delegation', () => {
           content: '',
           tool_calls: [{
             id: 'call_task_repeat',
-            name: TASK_TOOL_NAME,
+            name: AGENT_TOOL_NAME,
             args: {
               prompt: 'Repeat the detached task',
               subagent_type: 'Agent',
@@ -220,7 +220,7 @@ describe('createTaskTool delegation', () => {
       model: new RepeatingParentModel() as unknown as BaseChatModel,
       middleware: [createAgentSkillsMiddleware(createBuiltinSubagentStore())],
       tools: [
-        createTaskTool({
+        createAgentTool({
           model: new CountingChildModel() as unknown as BaseChatModel,
           runStore,
         }),
@@ -247,7 +247,7 @@ describe('createTaskTool delegation', () => {
   });
 
   it('should launch every Task tool call in the same parent response before detaching the turn', async () => {
-    const runStore = createTaskRunMemoryStore();
+    const runStore = createAgentRunMemoryStore();
 
     const parent = createAgent({
       model: new ScriptedModel([
@@ -256,7 +256,7 @@ describe('createTaskTool delegation', () => {
           tool_calls: [
             {
               id: 'call_task_parallel_1',
-              name: TASK_TOOL_NAME,
+              name: AGENT_TOOL_NAME,
               args: {
                 prompt: 'Analyze the tech stack',
                 subagent_type: 'Explore',
@@ -264,7 +264,7 @@ describe('createTaskTool delegation', () => {
             } as ToolCall,
             {
               id: 'call_task_parallel_2',
-              name: TASK_TOOL_NAME,
+              name: AGENT_TOOL_NAME,
               args: {
                 prompt: 'Analyze the project structure',
                 subagent_type: 'Explore',
@@ -276,7 +276,7 @@ describe('createTaskTool delegation', () => {
       ]) as unknown as BaseChatModel,
       middleware: [createAgentSkillsMiddleware(createBuiltinSubagentStore())],
       tools: [
-        createTaskTool({
+        createAgentTool({
           model: new ChildSummaryModel() as unknown as BaseChatModel,
           runStore,
         }),

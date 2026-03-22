@@ -41,7 +41,7 @@ export function orderActiveTranscriptItems(input: {
     : [...input.trailingItems, ...input.runtimeItems, ...input.activeNoticeItems];
 }
 
-export function filterTaskCompletionTranscriptItems(input: {
+export function filterAgentCompletionTranscriptItems(input: {
   items: readonly TranscriptItem[];
   completedTurnKind?: CliActiveTurn['kind'];
 }): TranscriptItem[] {
@@ -125,7 +125,7 @@ export function useSolidifiedTranscript(input: UseSolidifiedTranscriptInput): Us
       toolLookup,
       visibleAssistantTextsRef.current,
     );
-    const filteredNewItems = filterTaskCompletionTranscriptItems({
+    const filteredNewItems = filterAgentCompletionTranscriptItems({
       items: newItems,
       completedTurnKind: lastCompletedTurnKind,
     });
@@ -171,7 +171,7 @@ export function useSolidifiedTranscript(input: UseSolidifiedTranscriptInput): Us
     const trailingItems: TranscriptItem[] = [];
     if (solidifiedCount < coreMessages.length) {
       const toolLookup = createToolCallLookup(coreMessages);
-      trailingItems.push(...filterTaskCompletionTranscriptItems({
+      trailingItems.push(...filterAgentCompletionTranscriptItems({
         items: buildSolidifiedItemsFromRange(
           coreMessages,
           solidifiedCount,

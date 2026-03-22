@@ -1,12 +1,5 @@
 export type {
   CreateTaskInput,
-  TaskRunPauseInput,
-  TaskRunRecord,
-  TaskRunResumeInput,
-  TaskRunStartInput,
-  TaskRunStatus,
-  TaskRunStore,
-  TaskRunUpdateInput,
   TaskRecord,
   TaskStatus,
   TaskStore,
@@ -18,17 +11,6 @@ export {
   type TaskFileStoreOptions,
 } from '@capability/task/coordination/store';
 export {
-  createTaskRunFileStore,
-  createTaskRunMemoryStore,
-  type TaskRunFileStoreOptions,
-} from '@capability/task/delegation/store';
-export {
-  createTaskRuntime,
-  type CreateTaskRuntimeOptions,
-  type TaskRuntime,
-  type TaskRuntimeLaunchInput,
-} from '@capability/task/delegation/runtime';
-export {
   TASK_CREATE_TOOL_NAME,
   TASK_LIST_TOOL_NAME,
   TASK_UPDATE_TOOL_NAME,
@@ -39,8 +21,6 @@ export {
   type TaskToolOptions,
 } from '@capability/task/coordination/tools';
 export {
-  TASK_TOOL_DESCRIPTION,
-  TASK_TOOL_NAME,
   createTaskMiddleware,
   type CreateTaskMiddlewareOptions,
 } from '@capability/task/middleware';

@@ -7,17 +7,16 @@ import type {BaseChatModel} from '@langchain/core/language_models/chat_models';
 import {tool} from '@langchain/core/tools';
 import {z} from 'zod';
 import {createAgent} from '@core/agent';
-import {createTaskRunMemoryStore, type TaskRunRecord} from '@capability/task';
-import {TASK_TOOL_NAME, createTaskTool} from '@capability/task/middleware';
+import {createAgentRunMemoryStore, type AgentRunRecord, AGENT_TOOL_NAME, createAgentTool} from '@capability/subagent';
 import {FileSystemSkillStore} from '@capability/skill';
-import {readTaskRunLaunchResult} from '@shared/task-run-launch';
+import {readAgentRunLaunchResult} from '@shared/agent-run-launch';
 import {createAgentSkillsMiddleware, ScriptedModel} from './task-tool.fixtures';
 
-async function waitForTaskRunStatus(
-  runStore: {get(runId: string): TaskRunRecord | undefined},
+async function waitForAgentRunStatus(
+  runStore: {get(runId: string): AgentRunRecord | undefined},
   runId: string,
-  status: TaskRunRecord['status'],
-): Promise<TaskRunRecord> {
+  status: AgentRunRecord['status'],
+): Promise<AgentRunRecord> {
   const deadline = Date.now() + 500;
 
   while (Date.now() < deadline) {
@@ -29,15 +28,15 @@ async function waitForTaskRunStatus(
     await new Promise((resolve) => setTimeout(resolve, 10));
   }
 
-  throw new Error(`Task run "${runId}" did not reach status "${status}"`);
+  throw new Error(`Agent run "${runId}" did not reach status "${status}"`);
 }
 
-describe('createTaskTool limits', () => {
+describe('createAgentTool limits', () => {
   it('应应用 profile.maxTurns 作为子代理默认上限', async () => {
     const root = await mkdtemp(path.join(os.tmpdir(), 'codara-task-tool-maxturns-'));
 
     try {
-      const runStore = createTaskRunMemoryStore();
+      const runStore = createAgentRunMemoryStore();
       const skillDir = path.join(root, 'custom-agents');
       const agentsDir = path.join(skillDir, 'agents');
       await mkdir(agentsDir, {recursive: true});
@@ -75,7 +74,7 @@ You are a short-running subagent.
             content: '',
             tool_calls: [{
               id: 'call_task_max_turns',
-              name: TASK_TOOL_NAME,
+              name: AGENT_TOOL_NAME,
               args: {
                 prompt: 'Run briefly',
                 subagent_type: 'ShortRunner',
@@ -86,7 +85,7 @@ You are a short-running subagent.
         ]) as unknown as BaseChatModel,
         middleware: [createAgentSkillsMiddleware(new FileSystemSkillStore({sources: [root], cacheTtlMs: 0}))],
         tools: [
-          createTaskTool({
+          createAgentTool({
             model: childModel as unknown as BaseChatModel,
             tools: [
               tool(async () => 'read_ok', {name: 'read_file', description: 'read', schema: z.object({})}),
@@ -98,13 +97,13 @@ You are a short-running subagent.
 
       const result = await parent.invoke('delegate this');
       const toolMessage = result.state.messages.find((message) => ToolMessage.isInstance(message)) as ToolMessage;
-      const launch = readTaskRunLaunchResult(toolMessage.artifact);
-      const failed = launch ? await waitForTaskRunStatus(runStore, launch.runId, 'failed') : undefined;
+      const launch = readAgentRunLaunchResult(toolMessage.artifact);
+      const failed = launch ? await waitForAgentRunStatus(runStore, launch.runId, 'failed') : undefined;
 
       expect(result.reason).toBe('complete');
-      expect(String(toolMessage.content)).toContain('Delegated task started in background.');
+      expect(String(toolMessage.content)).toContain('Subagent started in background.');
       expect(launch).toMatchObject({
-        type: 'task_run_started',
+        type: 'agent_run_started',
         runId: 'call_task_max_turns',
         agentName: 'ShortRunner',
       });

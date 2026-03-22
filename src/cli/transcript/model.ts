@@ -4,7 +4,7 @@ import {parseAskUserResult} from '@core/middleware';
 import {parseHILToolMessagePayload} from '@core/middleware/hil';
 import {readMessageText} from '@shared/messages';
 import {readDelegatedAgentResult} from '@shared/delegation-result';
-import {readTaskRunLaunchResult} from '@shared/task-run-launch';
+import {readAgentRunLaunchResult} from '@shared/agent-run-launch';
 import {readSharedTaskCoordinationArtifact} from '@shared/task-coordination-result';
 import {TOOL_NAMES} from '@shared/tool-display';
 import {formatSubagentDisplayName, normalizeSubagentType} from '@context/skills/runtime-shared';
@@ -270,12 +270,12 @@ function shouldSuppressAssistantTaskLaunchChatter(
     return true;
   }
 
-  const hasLiveTaskRuntime = (runtimeEvents ?? []).some((event) => (
+  const hasLiveAgentRuntime = (runtimeEvents ?? []).some((event) => (
     event.kind === 'task'
     && ((event.phase === 'start' && event.status === 'running') || (event.phase === 'update' && event.status === 'paused'))
   ));
 
-  if (!hasLiveTaskRuntime) {
+  if (!hasLiveAgentRuntime) {
     return false;
   }
 
@@ -301,7 +301,7 @@ function shouldSuppressSolidifiedTaskLaunchChatter(
   }
 
   const previousToolName = resolveToolMessageName(previousMessage, toolLookup);
-  if (!isTaskToolName(previousToolName) || !readTaskRunLaunchResult(previousMessage.artifact)) {
+  if (!isAgentToolName(previousToolName) || !readAgentRunLaunchResult(previousMessage.artifact)) {
     return false;
   }
 
@@ -312,7 +312,7 @@ function shouldSuppressSolidifiedTaskLaunchChatter(
     kind: 'task',
     phase: 'start',
     status: 'running',
-    label: 'Delegating task',
+    label: 'Delegating Agent',
   }]);
 }
 
@@ -327,7 +327,7 @@ function buildRuntimeEventItems(events: readonly CodaraRuntimeEvent[], nowTimest
   // (runtime events share IDs with coreMessages that may already be rendered)
   const activeId = (id: string) => `active-${id}`;
 
-  // First pass: index start events by id, identify Task tool calls, collect child activity
+  // First pass: index start events by id, identify Agent tool calls, collect child activity
   for (const event of events) {
     if (event.phase === 'start') {
       startEvents.set(event.id, event);
@@ -454,7 +454,7 @@ function buildRuntimeEventItems(events: readonly CodaraRuntimeEvent[], nowTimest
       role: 'task',
       content: `⚙ ${agentType}(${extractTaskArgs(startEvent.label)})\n${summary}`,
       toolMeta: {
-        toolName: TOOL_NAMES.TASK,
+        toolName: TOOL_NAMES.AGENT,
         displayName: agentType,
         icon: '⚙',
         args: extractTaskArgs(startEvent.label),
@@ -526,7 +526,7 @@ function buildRuntimeEventItems(events: readonly CodaraRuntimeEvent[], nowTimest
       role: 'task',
       content: `⚙ ${agentType}(${extractTaskArgs(startEvent.label)})\n${runningDisplay.summaryLine}`,
       toolMeta: {
-        toolName: TOOL_NAMES.TASK,
+        toolName: TOOL_NAMES.AGENT,
         displayName: agentType,
         icon: '⚙',
         args: extractTaskArgs(startEvent.label),
@@ -563,7 +563,7 @@ function isPendingTaskPlaceholderStart(startEvent: CodaraRuntimeEvent): boolean 
 function isRunIdBackedTaskStart(startEvent: CodaraRuntimeEvent): boolean {
   return startEvent.kind === 'task'
     && startEvent.phase === 'start'
-    && startEvent.id.startsWith('task-run:');
+    && startEvent.id.startsWith('agent-run:');
 }
 
 function buildRunningTaskDisplay(
@@ -583,7 +583,7 @@ function buildRunningTaskDisplay(
   const recentLabels = activityLabels.slice(-MAX_CHILD_ACTIVITY_LINES);
   const latestTimestamp = activities[activities.length - 1]?.timestamp ?? nowTimestamp ?? startEvent.timestamp;
   const elapsed = formatElapsed(startEvent.timestamp, latestTimestamp);
-  const statusLabel = lifecycleUpdate?.label === 'Delegated task waiting for review'
+  const statusLabel = lifecycleUpdate?.label === 'Subagent waiting for review'
     ? 'Waiting for review'
     : 'Running';
   const statParts = [`${elapsed}`];
@@ -614,7 +614,7 @@ function buildTaskActivityOutput(activityLabels: string[]): {
 }
 
 function isTaskLifecycleUpdate(label: string): boolean {
-  return label.startsWith('Delegated task ');
+  return label.startsWith('Subagent ');
 }
 
 function extractSubagentType(label: string): string {
@@ -740,7 +740,7 @@ function buildToolOutput(
       const lines = truncateOutput(trimmed);
       return {summaryLine: lines.visible[0] ?? 'Done', outputLines: lines.visible.slice(1), allOutputLines: lines.all.slice(1), totalOutputLines: lines.total};
     }
-    case TOOL_NAMES.TASK: {
+    case TOOL_NAMES.AGENT: {
       if (!trimmed) {
         return {summaryLine: 'Done'};
       }
@@ -915,9 +915,9 @@ function containsTaskLaunchChatter(text: string): boolean {
     '委派信息',
     '正在等待 subagent',
     'subagent 已启动',
-    '我已使用 Task 工具委派',
-    'I used the Task tool',
-    'Delegated task started',
+    '我已使用 Agent 工具委派',
+    'I used the Agent tool',
+    'Subagent started',
     'waiting for the subagent',
   ];
 
@@ -925,7 +925,7 @@ function containsTaskLaunchChatter(text: string): boolean {
 }
 
 function messageContainsTaskToolCall(message: AIMessage): boolean {
-  return Array.isArray(message.tool_calls) && message.tool_calls.some((toolCall) => isTaskToolName(toolCall?.name));
+  return Array.isArray(message.tool_calls) && message.tool_calls.some((toolCall) => isAgentToolName(toolCall?.name));
 }
 
 export function normalizeVisibleAssistantText(text: string): string {
@@ -998,7 +998,7 @@ function buildToolResultItems(
   if (isInteractionToolName(resolvedName) || parseAskUserResult(text)) {
     return [];
   }
-  if (resolvedName === TOOL_NAMES.TASK && readTaskRunLaunchResult(message.artifact)) {
+  if (resolvedName === TOOL_NAMES.AGENT && readAgentRunLaunchResult(message.artifact)) {
     return [];
   }
   if (readSharedTaskCoordinationArtifact(message.artifact)) {
@@ -1007,7 +1007,7 @@ function buildToolResultItems(
   if (resolvedName === TODO_TOOL_NAME) {
     return [];
   }
-  if (resolvedName === TOOL_NAMES.TASK) {
+  if (resolvedName === TOOL_NAMES.AGENT) {
     const taskMeta = buildTaskToolMetaFromCoreMessage(message, toolLookup);
     if (!taskMeta) {
       return [];
@@ -1025,7 +1025,7 @@ function buildToolResultItems(
   const lineCount = formattedContent.split('\n').length;
 
   // Build toolMeta for non-task tool results
-  const toolMeta = resolvedName && !isTaskToolName(resolvedName)
+  const toolMeta = resolvedName && !isAgentToolName(resolvedName)
     ? buildToolMetaFromCoreMessage(resolvedName, message, toolLookup, text)
     : undefined;
 
@@ -1082,7 +1082,7 @@ function buildTaskToolMetaFromCoreMessage(
       ? parts.length > 0 ? `Failed (${parts.join(' · ')})` : 'Failed'
       : parts.length > 0 ? `Done (${parts.join(' · ')})` : 'Done';
     return {
-      toolName: TOOL_NAMES.TASK,
+      toolName: TOOL_NAMES.AGENT,
       displayName,
       icon: '⚙',
       args,
@@ -1097,7 +1097,7 @@ function buildTaskToolMetaFromCoreMessage(
   }
 
   return {
-    toolName: TOOL_NAMES.TASK,
+    toolName: TOOL_NAMES.AGENT,
     displayName,
     icon: '⚙',
     args,
@@ -1185,7 +1185,7 @@ export function shouldHideRuntimeEventForTranscript(event: CodaraRuntimeEvent): 
   }
 
   if (event.kind === 'task') {
-    return event.label === 'Task started' || event.label === 'Delegated task running in background';
+    return event.label === 'Subagent started' || event.label === 'Subagent running in background';
   }
 
   if (event.kind !== 'tool') {
@@ -1465,8 +1465,8 @@ function toTitleCase(value: string): string {
     .join(' ');
 }
 
-function isTaskToolName(toolName: string | undefined): boolean {
-  return toolName === TOOL_NAMES.TASK
+function isAgentToolName(toolName: string | undefined): boolean {
+  return toolName === TOOL_NAMES.AGENT
     || toolName === TOOL_NAMES.TASK_CREATE
     || toolName === TOOL_NAMES.TASK_UPDATE
     || toolName === TOOL_NAMES.TASK_LIST;

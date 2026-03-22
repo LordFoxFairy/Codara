@@ -1,6 +1,6 @@
 import {randomUUID} from 'node:crypto';
 import {useCallback, useEffect, useMemo, useRef, useState} from 'react';
-import type {Codara, CodaraRuntimeEvent, SessionState, TaskRunQuerySummary} from '@/index';
+import type {Codara, CodaraRuntimeEvent, SessionState, AgentRunQuerySummary} from '@/index';
 import {AIMessageChunk, type BaseMessage} from '@langchain/core/messages';
 import type {PauseRequest, ResumePayload} from '@core/agent';
 import {
@@ -171,9 +171,9 @@ function summarizeBackgroundTaskNotice(event: CodaraRuntimeEvent): CliNotice | u
   return undefined;
 }
 
-function parseTaskRunIdFromEvent(event: CodaraRuntimeEvent): string | undefined {
+function parseAgentRunIdFromEvent(event: CodaraRuntimeEvent): string | undefined {
   const candidate = event.parentId ?? event.id;
-  const prefix = 'task-run:';
+  const prefix = 'agent-run:';
   return candidate.startsWith(prefix) ? candidate.slice(prefix.length) : undefined;
 }
 
@@ -184,7 +184,7 @@ interface TrackedTaskBatch {
   continuationStarted: boolean;
 }
 
-interface TaskCompletionHandoff {
+interface AgentCompletionHandoff {
   runId: string;
   label: string;
   agentName: string;
@@ -195,9 +195,9 @@ interface TaskCompletionHandoff {
   totalTokens?: number;
 }
 
-interface TaskCompletionContinuation {
+interface AgentCompletionContinuation {
   sessionId: string;
-  tasks: TaskCompletionHandoff[];
+  runs: AgentCompletionHandoff[];
 }
 
 interface QueuedSessionPromptInteraction {
@@ -218,7 +218,7 @@ function isRunIdBackedTaskStartEvent(event: CodaraRuntimeEvent): boolean {
   return event.kind === 'task'
     && event.phase === 'start'
     && event.status === 'running'
-    && Boolean(parseTaskRunIdFromEvent(event));
+    && Boolean(parseAgentRunIdFromEvent(event));
 }
 
 function isPendingTaskPlaceholderStartEvent(event: CodaraRuntimeEvent): boolean {
@@ -227,11 +227,11 @@ function isPendingTaskPlaceholderStartEvent(event: CodaraRuntimeEvent): boolean 
     && event.detail === 'pending';
 }
 
-function isTaskRunTerminal(run: TaskRunQuerySummary): boolean {
+function isAgentRunTerminal(run: AgentRunQuerySummary): boolean {
   return run.status === 'completed' || run.status === 'failed';
 }
 
-function toTaskCompletionHandoff(run: TaskRunQuerySummary): TaskCompletionHandoff {
+function toAgentCompletionHandoff(run: AgentRunQuerySummary): AgentCompletionHandoff {
   return {
     runId: run.runId,
     label: run.label,
@@ -244,35 +244,35 @@ function toTaskCompletionHandoff(run: TaskRunQuerySummary): TaskCompletionHandof
   };
 }
 
-function resolveTaskCompletionContinuation(
+function resolveAgentCompletionContinuation(
   codara: Codara,
   event: CodaraRuntimeEvent,
   batch: TrackedTaskBatch | undefined,
-): TaskCompletionContinuation | undefined {
+): AgentCompletionContinuation | undefined {
   if (event.kind !== 'task' || event.phase !== 'end') {
     return undefined;
   }
 
-  const runId = parseTaskRunIdFromEvent(event);
+  const runId = parseAgentRunIdFromEvent(event);
   if (!runId || !batch || batch.continuationStarted || batch.sessionId !== event.sessionId || !batch.runIds.has(runId)) {
     return undefined;
   }
 
-  const taskRuns = codara.getTaskRunSummaries();
+  const taskRuns = codara.getAgentRunSummaries();
   const batchRuns = [...batch.runIds]
     .map((batchRunId) => taskRuns.find((run) => run.runId === batchRunId && run.sessionId === event.sessionId))
-    .filter((run): run is TaskRunQuerySummary => Boolean(run));
+    .filter((run): run is AgentRunQuerySummary => Boolean(run));
   if (
     batch.runIds.size < batch.expectedCount
     || batchRuns.length !== batch.runIds.size
-    || batchRuns.some((run) => !isTaskRunTerminal(run))
+    || batchRuns.some((run) => !isAgentRunTerminal(run))
   ) {
     return undefined;
   }
 
   return {
     sessionId: event.sessionId,
-    tasks: batchRuns.map(toTaskCompletionHandoff),
+    runs: batchRuns.map(toAgentCompletionHandoff),
   };
 }
 
@@ -393,7 +393,7 @@ export function useCliController(options: UseCliControllerOptions): CliControlle
   const handledAutoPauseIdsRef = useRef<Set<string>>(new Set());
   const pendingBackgroundNoticesRef = useRef<CliNotice[]>([]);
   const trackedTaskBatchRef = useRef<TrackedTaskBatch | undefined>(undefined);
-  const pendingTaskContinuationRef = useRef<TaskCompletionContinuation | undefined>(undefined);
+  const pendingAgentContinuationRef = useRef<AgentCompletionContinuation | undefined>(undefined);
   const queuedInteractionsRef = useRef<QueuedCliInteraction[]>([]);
   const activeInteractionKindRef = useRef<CliInteractionKind | undefined>(undefined);
   const settlingDismissedReviewIdRef = useRef<string | undefined>(undefined);
@@ -435,7 +435,7 @@ export function useCliController(options: UseCliControllerOptions): CliControlle
       return {
         focusedSurface,
         activeKind: activeInteractionKindRef.current,
-        pendingCount: queuedInteractionsRef.current.length + (pendingTaskContinuationRef.current ? 1 : 0),
+        pendingCount: queuedInteractionsRef.current.length + (pendingAgentContinuationRef.current ? 1 : 0),
         promptBlocked: focusedSurface !== 'prompt',
       };
     });
@@ -539,17 +539,17 @@ export function useCliController(options: UseCliControllerOptions): CliControlle
     return nextAgentState;
   }, [codara, setReviewState, suppressSettlingDismissedReview, syncInteractionState]);
 
-  const runTaskCompletionContinuation = useCallback(async (continuation: TaskCompletionContinuation) => {
+  const runAgentCompletionContinuation = useCallback(async (continuation: AgentCompletionContinuation) => {
     if (isRunningRef.current) {
-      pendingTaskContinuationRef.current = continuation;
+      pendingAgentContinuationRef.current = continuation;
       syncInteractionState();
       return;
     }
 
-    beginInteraction('task_continuation');
+    beginInteraction('agent_continuation');
     setRunState({status: 'running'});
     setActiveTurn({
-      id: `task-continuation-${randomUUID()}`,
+      id: `agent-continuation-${randomUUID()}`,
       prompt: '',
       response: '',
       responseRole: 'assistant',
@@ -562,8 +562,8 @@ export function useCliController(options: UseCliControllerOptions): CliControlle
       for await (const chunk of codara.streamInteraction({
         kind: 'continuation',
         context: {
-          codaraTaskCompletion: {
-            tasks: continuation.tasks,
+          codaraAgentCompletion: {
+            runs: continuation.runs,
           },
         },
         config: {
@@ -660,19 +660,19 @@ export function useCliController(options: UseCliControllerOptions): CliControlle
       })();
       return;
     }
-    if (!pendingTaskContinuationRef.current) {
+    if (!pendingAgentContinuationRef.current) {
       syncInteractionState();
       return;
     }
-    const continuation = pendingTaskContinuationRef.current;
-    pendingTaskContinuationRef.current = undefined;
+    const continuation = pendingAgentContinuationRef.current;
+    pendingAgentContinuationRef.current = undefined;
     syncInteractionState();
     void (async () => {
-      await runTaskCompletionContinuation(continuation);
+      await runAgentCompletionContinuation(continuation);
       flushPendingBackgroundNotices();
       drainScheduledInteractions();
     })();
-  }, [flushPendingBackgroundNotices, runQueuedReviewResponse, runTaskCompletionContinuation, syncInteractionState]);
+  }, [flushPendingBackgroundNotices, runQueuedReviewResponse, runAgentCompletionContinuation, syncInteractionState]);
 
   useEffect(() => {
     setRuntimeEvents([]);
@@ -692,7 +692,7 @@ export function useCliController(options: UseCliControllerOptions): CliControlle
         }
       }
       if (isRunIdBackedTaskStartEvent(event)) {
-        const runId = parseTaskRunIdFromEvent(event)!;
+        const runId = parseAgentRunIdFromEvent(event)!;
         const currentBatch = trackedTaskBatchRef.current;
         if (!currentBatch || currentBatch.sessionId !== event.sessionId || currentBatch.continuationStarted) {
           trackedTaskBatchRef.current = {
@@ -710,7 +710,7 @@ export function useCliController(options: UseCliControllerOptions): CliControlle
       if (shouldSealActiveTurnForRuntimeEvent(event)) {
         setActiveTurn((current) => sealActiveTurnAtRuntimeBoundary(current));
       }
-      const completionContinuation = resolveTaskCompletionContinuation(codara, event, trackedTaskBatchRef.current);
+      const completionContinuation = resolveAgentCompletionContinuation(codara, event, trackedTaskBatchRef.current);
       if (completionContinuation && trackedTaskBatchRef.current) {
         trackedTaskBatchRef.current.continuationStarted = true;
       }
@@ -722,7 +722,7 @@ export function useCliController(options: UseCliControllerOptions): CliControlle
           ]));
         }
         if (completionContinuation) {
-          void runTaskCompletionContinuation(completionContinuation);
+          void runAgentCompletionContinuation(completionContinuation);
         }
       } else if (!foregroundDelegatedReview) {
         const notice = summarizeBackgroundTaskNotice(event);
@@ -736,7 +736,7 @@ export function useCliController(options: UseCliControllerOptions): CliControlle
           );
         }
         if (completionContinuation) {
-          pendingTaskContinuationRef.current = completionContinuation;
+          pendingAgentContinuationRef.current = completionContinuation;
           syncInteractionState();
           queueMicrotask(() => {
             drainScheduledInteractions();
@@ -755,7 +755,7 @@ export function useCliController(options: UseCliControllerOptions): CliControlle
         refreshAuxiliaryState();
       }
     });
-  }, [codara, drainScheduledInteractions, endInteraction, refreshAuxiliaryState, runTaskCompletionContinuation, syncInteractionState]);
+  }, [codara, drainScheduledInteractions, endInteraction, refreshAuxiliaryState, runAgentCompletionContinuation, syncInteractionState]);
 
   const runSlashCommand = useCallback(async (prompt: string) => {
     const result = await codara.executeCommand(prompt);

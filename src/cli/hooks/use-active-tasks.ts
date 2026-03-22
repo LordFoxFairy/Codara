@@ -1,7 +1,7 @@
 import {useEffect, useMemo, useState} from 'react';
-import type {ReviewQueryItem, TaskRunQuerySummary} from '@/index';
+import type {ReviewQueryItem, AgentRunQuerySummary} from '@/index';
 
-export type {TaskRunQuerySummary};
+export type {AgentRunQuerySummary};
 
 export interface ActiveTask {
   id: string;
@@ -17,7 +17,7 @@ export interface ActiveTask {
 }
 
 export interface UseActiveTasksInput {
-  taskRunSummaries: readonly TaskRunQuerySummary[];
+  agentRunSummaries: readonly AgentRunQuerySummary[];
   reviews?: readonly ReviewQueryItem[];
   preferredRunIds?: readonly string[];
 }
@@ -72,7 +72,7 @@ function summarizeTaskLabel(text: string): string {
 }
 
 export function deriveActiveTasks(
-  runs: readonly TaskRunQuerySummary[],
+  runs: readonly AgentRunQuerySummary[],
   now: number,
   reviews: readonly ReviewQueryItem[] = [],
   preferredRunIds: readonly string[] = [],
@@ -81,7 +81,7 @@ export function deriveActiveTasks(
 }
 
 export function deriveActiveTaskSnapshot(
-  runs: readonly TaskRunQuerySummary[],
+  runs: readonly AgentRunQuerySummary[],
   now: number,
   reviews: readonly ReviewQueryItem[] = [],
   preferredRunIds: readonly string[] = [],
@@ -89,12 +89,12 @@ export function deriveActiveTaskSnapshot(
   const activeBatchRunIds = selectVisibleRunIds(runs, preferredRunIds);
   const reviewsByTaskRun = new Map<string, ReviewQueryItem[]>();
   for (const review of reviews) {
-    if (review.source !== 'task_run' || !review.anchor.taskRunId) {
+    if (review.source !== 'agent_run' || !review.anchor.agentRunId) {
       continue;
     }
-    const entries = reviewsByTaskRun.get(review.anchor.taskRunId) ?? [];
+    const entries = reviewsByTaskRun.get(review.anchor.agentRunId) ?? [];
     entries.push(review);
-    reviewsByTaskRun.set(review.anchor.taskRunId, entries);
+    reviewsByTaskRun.set(review.anchor.agentRunId, entries);
   }
 
   const tasks: ActiveTask[] = [];
@@ -150,8 +150,8 @@ export function deriveActiveTaskSnapshot(
 export function useActiveTasks(input: UseActiveTasksInput): UseActiveTasksOutput {
   const [now, setNow] = useState(() => Date.now());
   const snapshot = useMemo(
-    () => deriveActiveTaskSnapshot(input.taskRunSummaries, now, input.reviews, input.preferredRunIds),
-    [input.preferredRunIds, input.reviews, input.taskRunSummaries, now],
+    () => deriveActiveTaskSnapshot(input.agentRunSummaries, now, input.reviews, input.preferredRunIds),
+    [input.preferredRunIds, input.reviews, input.agentRunSummaries, now],
   );
   const {tasks, runningCount, pausedCount, doneCount, errorCount, hiddenCount} = snapshot;
 
@@ -205,13 +205,13 @@ function taskSortPriority(status: ActiveTask['status']): number {
   return 2;
 }
 
-function parseTaskFinishedAt(run: TaskRunQuerySummary): number | undefined {
+function parseTaskFinishedAt(run: AgentRunQuerySummary): number | undefined {
   if (run.endedAt) return Date.parse(run.endedAt);
   return undefined;
 }
 
 function resolveTaskDetail(
-  run: TaskRunQuerySummary,
+  run: AgentRunQuerySummary,
   reviews: readonly ReviewQueryItem[],
 ): string | undefined {
   if (reviews.length > 0) {
@@ -227,7 +227,7 @@ function resolveTaskDetail(
 }
 
 function selectVisibleRunIds(
-  runs: readonly TaskRunQuerySummary[],
+  runs: readonly AgentRunQuerySummary[],
   preferredRunIds: readonly string[] = [],
 ): Set<string> {
   if (preferredRunIds.length > 0) {
@@ -245,7 +245,7 @@ function selectVisibleRunIds(
   return selectLatestBatchRunIds(runs);
 }
 
-function selectLatestBatchRunIds(runs: readonly TaskRunQuerySummary[]): Set<string> {
+function selectLatestBatchRunIds(runs: readonly AgentRunQuerySummary[]): Set<string> {
   if (runs.length === 0) {
     return new Set<string>();
   }
@@ -256,8 +256,8 @@ function selectLatestBatchRunIds(runs: readonly TaskRunQuerySummary[]): Set<stri
     return a.runId.localeCompare(b.runId);
   });
 
-  const batches: TaskRunQuerySummary[][] = [];
-  let currentBatch: TaskRunQuerySummary[] = [];
+  const batches: AgentRunQuerySummary[][] = [];
+  let currentBatch: AgentRunQuerySummary[] = [];
   let currentBatchTerminalAt = Number.NEGATIVE_INFINITY;
 
   for (const run of sortedRuns) {

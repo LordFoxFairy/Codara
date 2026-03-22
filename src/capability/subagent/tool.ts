@@ -4,41 +4,41 @@ import {z} from 'zod';
 import {readBaseSystemMessage} from '@context/session-bundle/base-system-message';
 import {readSkillsRuntimeData, resolveSubagentDefinition, normalizeSubagentType} from '@context/skills/runtime-shared';
 import {createAgentMemoryCheckpointer} from '@durability/checkpoint/agent';
-import {formatTaskRunLaunchResult} from '@shared/task-run-launch';
-import {createTaskRuntime} from '@capability/task/delegation/runtime';
-import {createTaskRunMemoryStore} from '@capability/task/delegation/store';
+import {formatAgentRunLaunchResult} from '@shared/agent-run-launch';
+import {createAgentRuntime} from '@capability/subagent/runtime';
+import {createAgentRunMemoryStore} from '@capability/subagent/store';
 import {
   buildDelegatedChildOptions,
   markDelegationTool,
   readDelegatedParentRuntimeMetadata,
-} from '@capability/task/delegation/agent';
-import type {CreateTaskToolOptions} from '@capability/task/tool-types';
+} from '@capability/subagent/agent';
+import type {CreateAgentToolOptions} from '@capability/subagent/tool-types';
 import {
-  buildRecoveredTaskChildOptions,
+  buildRecoveredAgentChildOptions,
   normalizeAgentName,
   readChildActivityCallback,
-  readExistingTaskRunMessage,
-  rebindTaskRunStore,
+  readExistingAgentRunMessage,
+  rebindAgentRunStore,
   resolveDefinitionTools,
-  resolveTaskRunId,
+  resolveAgentRunId,
   wrapDelegatedPrepareContext,
-} from '@capability/task/delegation/support';
-import type {TaskRunStore} from '@capability/task/types';
+} from '@capability/subagent/support';
+import type {AgentRunStore} from '@capability/subagent/types';
 import type {BootstrapAgentOptions} from '@core/agent/bootstrap';
 import type {AgentCheckpointer} from '@durability/checkpoint/agent';
 import {type ChildToolActivityCallback} from '@observability/events';
 
-export const TASK_TOOL_NAME = 'Task';
+export const AGENT_TOOL_NAME = 'Agent';
 
-export const TASK_TOOL_DESCRIPTION = `Delegate a focused task to an isolated subagent.
+export const AGENT_TOOL_DESCRIPTION = `Delegate a focused subproblem to an isolated subagent.
 Use this tool when a sub-problem should run in a fresh context window and return only a concise summary.
-After calling Task, do not post a second "task started" confirmation, do not restate run metadata, and do not promise future updates.
-Let the task/runtime UI carry launch and progress; only respond again with the delegated result or when review is required.
+After calling Agent, do not post a second "agent started" confirmation, do not restate run metadata, and do not promise future updates.
+Let the subagent/runtime UI carry launch and progress; only respond again with the delegated result or when review is required.
 
 Subagent definitions are loaded from markdown files such as .codara/skills/*/agents/*.md or explicit subagent roots.
 Use TaskCreate/TaskUpdate/TaskList for shared task coordination, not this delegation tool.`;
 
-const TaskToolInputSchema = z.object({
+const AgentToolInputSchema = z.object({
   prompt: z.string().min(1).describe('The task for the delegated subagent'),
   subagent_type: z.string({
     error: 'subagent_type is required. Use "Agent" for the base child or a named profile such as "Explore".',
@@ -46,25 +46,25 @@ const TaskToolInputSchema = z.object({
   max_turns: z.number().int().positive().max(100).optional().describe('Optional max turns for the delegated subagent'),
 });
 
-const taskToolConfigSchema = z.object({
+const agentToolConfigSchema = z.object({
   configurable: z.record(z.string(), z.unknown()).optional(),
 }).loose();
 
-const TASK_TOOL_OPTIONS = Symbol.for('codara.task.tool.options');
+const AGENT_TOOL_OPTIONS = Symbol.for('codara.subagent.tool.options');
 
-type TaskToolInput = z.infer<typeof TaskToolInputSchema>;
+type AgentToolInput = z.infer<typeof AgentToolInputSchema>;
 
-interface PrepareTaskLaunchInput {
+interface PrepareAgentLaunchInput {
   prompt: string;
   subagentType: string;
   maxTurns?: number;
   configurable: Record<string, unknown>;
-  toolOptions: CreateTaskToolOptions;
-  runStore: TaskRunStore | undefined;
+  toolOptions: CreateAgentToolOptions;
+  runStore: AgentRunStore | undefined;
   checkpointer: AgentCheckpointer;
 }
 
-interface PreparedTaskLaunch {
+interface PreparedAgentLaunch {
   runId: string;
   toolCallId: string;
   parentSessionId: string;
@@ -76,21 +76,21 @@ interface PreparedTaskLaunch {
   childOptions?: BootstrapAgentOptions;
 }
 
-export function createTaskTool(options: CreateTaskToolOptions): StructuredToolInterface {
+export function createAgentTool(options: CreateAgentToolOptions): StructuredToolInterface {
   const delegatedCheckpointer = options.checkpointer ?? createAgentMemoryCheckpointer();
-  const runStore = rebindTaskRunStore(options.runStore ?? createTaskRunMemoryStore());
+  const runStore = rebindAgentRunStore(options.runStore ?? createAgentRunMemoryStore());
   const approvalStore = options.approvalStore;
-  const runtime = options.runtime ?? createTaskRuntime({runStore, approvalStore});
-  runtime.registerRecoveryBuilder(async (run) => buildRecoveredTaskChildOptions(
+  const runtime = options.runtime ?? createAgentRuntime({runStore, approvalStore});
+  runtime.registerRecoveryBuilder(async (run) => buildRecoveredAgentChildOptions(
     {...options, checkpointer: delegatedCheckpointer},
     runtime,
     run,
   ));
 
-  const taskTool = markDelegationTool(tool(
-    async ({prompt, subagent_type, max_turns}: TaskToolInput, config) => {
-      const configurable = taskToolConfigSchema.parse(config).configurable ?? {};
-      const prepared = await prepareTaskLaunch({
+  const agentTool = markDelegationTool(tool(
+    async ({prompt, subagent_type, max_turns}: AgentToolInput, config) => {
+      const configurable = agentToolConfigSchema.parse(config).configurable ?? {};
+      const prepared = await prepareAgentLaunch({
         prompt,
         subagentType: subagent_type,
         ...(typeof max_turns === 'number' ? {maxTurns: max_turns} : {}),
@@ -116,35 +116,35 @@ export function createTaskTool(options: CreateTaskToolOptions): StructuredToolIn
       });
 
       return new ToolMessage({
-        content: formatTaskRunLaunchResult(launched),
+        content: formatAgentRunLaunchResult(launched),
         artifact: launched,
         status: 'success',
         tool_call_id: prepared.toolCallId,
       });
     },
     {
-      name: TASK_TOOL_NAME,
-      description: options.description ?? TASK_TOOL_DESCRIPTION,
-      schema: TaskToolInputSchema,
+      name: AGENT_TOOL_NAME,
+      description: options.description ?? AGENT_TOOL_DESCRIPTION,
+      schema: AgentToolInputSchema,
     },
   ));
 
-  Object.defineProperty(taskTool, TASK_TOOL_OPTIONS, {
+  Object.defineProperty(agentTool, AGENT_TOOL_OPTIONS, {
     value: {...options},
     enumerable: false,
     configurable: true,
     writable: false,
   });
 
-  return taskTool;
+  return agentTool;
 }
 
-export function readTaskToolOptions(tool: StructuredToolInterface): CreateTaskToolOptions | undefined {
-  const record = tool as StructuredToolInterface & {[TASK_TOOL_OPTIONS]?: CreateTaskToolOptions};
-  return record[TASK_TOOL_OPTIONS];
+export function readAgentToolOptions(tool: StructuredToolInterface): CreateAgentToolOptions | undefined {
+  const record = tool as StructuredToolInterface & {[AGENT_TOOL_OPTIONS]?: CreateAgentToolOptions};
+  return record[AGENT_TOOL_OPTIONS];
 }
 
-async function prepareTaskLaunch(input: PrepareTaskLaunchInput): Promise<PreparedTaskLaunch> {
+async function prepareAgentLaunch(input: PrepareAgentLaunchInput): Promise<PreparedAgentLaunch> {
   const {
     prompt,
     subagentType,
@@ -154,7 +154,7 @@ async function prepareTaskLaunch(input: PrepareTaskLaunchInput): Promise<Prepare
     runStore,
     checkpointer,
   } = input;
-  const delegated = readDelegatedParentRuntimeMetadata(configurable, 'Task');
+  const delegated = readDelegatedParentRuntimeMetadata(configurable, 'Agent');
   const requestedSubagentType = normalizeSubagentType(subagentType);
   const profile = resolveSubagentDefinition(
     readSkillsRuntimeData(configurable.runtimeShared),
@@ -163,13 +163,13 @@ async function prepareTaskLaunch(input: PrepareTaskLaunchInput): Promise<Prepare
   const baseSystemMessage = readBaseSystemMessage(configurable.runtimeShared);
   const inheritedBaseMessageCount = baseSystemMessage?.systemMessage.length ?? 0;
   const childActivityCallback = readChildActivityCallback(configurable.runtimeShared);
-  const runId = resolveTaskRunId(runStore, delegated.parentExecution.toolCallId);
+  const runId = resolveAgentRunId(runStore, delegated.parentExecution.toolCallId);
   const agentName = normalizeAgentName(requestedSubagentType, profile.name);
   const runLabel = `Delegating ${agentName}: ${prompt}`;
-  const childSessionId = `${delegated.parentExecution.sessionId}:task:${runId}`;
+  const childSessionId = `${delegated.parentExecution.sessionId}:agent:${runId}`;
   const childMaxTurns = maxTurns ?? profile.maxTurns;
 
-  const existingRunMessage = readExistingTaskRunMessage(
+  const existingRunMessage = readExistingAgentRunMessage(
     runStore?.get(runId),
     delegated.parentExecution.toolCallId,
     {
@@ -198,7 +198,7 @@ async function prepareTaskLaunch(input: PrepareTaskLaunchInput): Promise<Prepare
     ...toolOptions,
     ...(baseSystemMessage?.systemMessage?.length || toolOptions.systemMessages?.length || toolOptions.systemPrompt
       ? {
-          systemMessages: mergeTaskSystemMessages(
+          systemMessages: mergeAgentSystemMessages(
             baseSystemMessage?.systemMessage,
             toolOptions.systemMessages,
             toolOptions.systemPrompt,
@@ -212,7 +212,7 @@ async function prepareTaskLaunch(input: PrepareTaskLaunchInput): Promise<Prepare
     prompt,
     ...(requestedSubagentType ? {subagentType: requestedSubagentType} : {}),
     maxTurns: childMaxTurns,
-    toolName: 'Task',
+    toolName: 'Agent',
     parentExecution: delegated.parentExecution,
     profileTools: resolveDefinitionTools(toolOptions.tools ?? [], profile),
     profileSystemPrompt: profile.systemPrompt,
@@ -232,7 +232,7 @@ async function prepareTaskLaunch(input: PrepareTaskLaunchInput): Promise<Prepare
 
 function createChildToolActivityCallback(
   runId: string,
-  runStore: TaskRunStore | undefined,
+  runStore: AgentRunStore | undefined,
   childActivityCallback: ChildToolActivityCallback | undefined,
 ): ChildToolActivityCallback | undefined {
   if (!runStore && !childActivityCallback) {
@@ -250,14 +250,14 @@ function createChildToolActivityCallback(
         toolUseCount: nextToolUseCount,
       });
     } catch {
-      // Best-effort: task run tracking must not block delegated execution.
+      // Best-effort: subagent-run tracking must not block delegated execution.
     }
 
     childActivityCallback?.(info);
   };
 }
 
-function mergeTaskSystemMessages(
+function mergeAgentSystemMessages(
   inheritedMessages: string[] | undefined,
   providedMessages: string[] | undefined,
   baseSystemPrompt: string | undefined,

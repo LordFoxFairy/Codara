@@ -79,7 +79,7 @@ describe('delegated-task activity display', () => {
 
   test('transcript renders child activity under running delegated tasks', () => {
     const now = new Date().toISOString();
-    const taskId = 'task-run:task-root-1';
+    const taskId = 'agent-run:task-root-1';
     const events: CodaraRuntimeEvent[] = [
       {
         id: taskId,
@@ -142,7 +142,7 @@ describe('delegated-task activity display', () => {
 
   test('transcript shows overflow indicator for many child activities', () => {
     const now = new Date().toISOString();
-    const taskId = 'task-run:task-root-2';
+    const taskId = 'agent-run:task-root-2';
     const events: CodaraRuntimeEvent[] = [
       {
         id: taskId,
@@ -194,9 +194,9 @@ describe('delegated-task activity display', () => {
       kind: 'task',
       phase: 'update',
       status: 'paused',
-      label: 'Delegated task waiting for review',
+      label: 'Subagent waiting for review',
       detail: 'Waiting for approval on read_file',
-      parentId: 'task-run:run-1',
+      parentId: 'agent-run:run-1',
     };
 
     expect(event.kind).toBe('task');

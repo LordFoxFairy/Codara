@@ -21,16 +21,13 @@ import {
   createTaskCreateTool,
   createTaskFileStore,
   createTaskListTool,
-  createTaskMiddleware,
-  createTaskRunFileStore,
   createTaskUpdateTool,
   TASK_CREATE_TOOL_NAME,
   TASK_LIST_TOOL_NAME,
-  TASK_TOOL_NAME,
 } from '@capability/task';
+import {createAgentRunFileStore, AGENT_TOOL_NAME, createAgentTool, createAgentMiddleware} from '@capability/subagent';
 import {FileSystemSkillStore, loadSkillsRuntimeData} from '@capability/skill';
 import {seedProjectSkillFixtures} from '../../helpers/project-skill-fixtures';
-import {createTaskTool} from "../../../src/capability/task/middleware";
 
 const createCliCaseRuntime = async (options: Parameters<typeof createCodaraRuntime>[0]) => (
   createCodaraRuntime({
@@ -74,7 +71,7 @@ export async function createCliRuntime(input: {
     case 'task-skill-delegate': {
       await seedProjectSkillFixtures(input.cwd);
       const store = createTaskFileStore({rootDir: path.join(input.cwd, '.codara', 'case-tasks')});
-      const runStore = createTaskRunFileStore({
+      const runStore = createAgentRunFileStore({
         rootDir: path.join(input.cwd, '.codara', 'case-task-runs'),
       });
       return {
@@ -83,7 +80,7 @@ export async function createCliRuntime(input: {
             projectRoot: input.cwd,
             codaraPath: path.join(input.cwd, '.codara'),
             ...(input.sessionId ? {sessionId: input.sessionId} : {}),
-            taskRunStore: runStore,
+            agentRunStore: runStore,
             model: new ScriptedModel([
             new AIMessage({
               content: '',
@@ -100,7 +97,7 @@ export async function createCliRuntime(input: {
               content: '',
               tool_calls: [{
                 id: 'call_task_delegate',
-                name: TASK_TOOL_NAME,
+                name: AGENT_TOOL_NAME,
                 args: {
                   prompt: 'Inspect shared tasks',
                   subagent_type: 'Agent',
@@ -117,7 +114,7 @@ export async function createCliRuntime(input: {
           middleware: [createSkillsMiddleware({store: createProjectSkillStore(input.cwd), loadRuntime: loadSkillsRuntimeData})],
           tools: [
             createTaskCreateTool({store}),
-            createTaskTool({
+            createAgentTool({
               model: new SharedTaskReaderModel() as unknown as BaseChatModel,
               tools: [createTaskListTool({store})],
               runStore,
@@ -127,7 +124,7 @@ export async function createCliRuntime(input: {
       };
     }
     case 'prompt-manual-inheritance': {
-      const promptRunStore = createTaskRunFileStore({
+      const promptRunStore = createAgentRunFileStore({
         rootDir: path.join(input.cwd, '.codara', 'case-task-runs'),
       });
       return {
@@ -145,7 +142,7 @@ export async function createCliRuntime(input: {
           tools: [createNoopTool()],
           builtinTools: false,
           middleware: [
-            createTaskMiddleware({
+            createAgentMiddleware({
               model: new ChildPromptInspectorModel() as unknown as BaseChatModel,
               tools: [createNoopTool()],
               runStore: promptRunStore,
@@ -157,7 +154,7 @@ export async function createCliRuntime(input: {
     case 'multi-profile-coordination': {
       await seedPermissions(input.cwd, ['Read(*)', 'Grep(*)', 'Fetch(*)', 'Search(*)']);
       const store = createTaskFileStore({rootDir: path.join(input.cwd, '.codara', 'case-tasks')});
-      const runStore = createTaskRunFileStore({
+      const runStore = createAgentRunFileStore({
         rootDir: path.join(input.cwd, '.codara', 'case-task-runs'),
       });
       const childModel = new CoordinatedSubagentModel();
@@ -181,17 +178,17 @@ export async function createCliRuntime(input: {
                 } as ToolCall,
                 {
                   id: 'call_parent_plan',
-                  name: 'Task',
+                  name: 'Agent',
                   args: {prompt: 'Create the implementation plan', subagent_type: 'Plan'},
                 } as ToolCall,
                 {
                   id: 'call_parent_explore',
-                  name: 'Task',
+                  name: 'Agent',
                   args: {prompt: 'Explore the current codebase state', subagent_type: 'Explore'},
                 } as ToolCall,
                 {
                   id: 'call_parent_general',
-                  name: 'Task',
+                  name: 'Agent',
                   args: {
                     prompt: 'Inspect the shared tasks and mark the active item in progress',
                     subagent_type: 'Agent',
@@ -422,7 +419,7 @@ export async function createCliRuntime(input: {
         }),
       };
     case 'subagent-permission': {
-      const permissionRunStore = createTaskRunFileStore({
+      const permissionRunStore = createAgentRunFileStore({
         rootDir: path.join(input.cwd, '.codara', 'case-task-runs'),
       });
       return {
@@ -431,7 +428,7 @@ export async function createCliRuntime(input: {
             projectRoot: input.cwd,
             codaraPath: path.join(input.cwd, '.codara'),
             ...(input.sessionId ? {sessionId: input.sessionId} : {}),
-            taskRunStore: permissionRunStore,
+            agentRunStore: permissionRunStore,
             model: new ParentDelegationCliModel() as unknown as BaseChatModel,
           builtinTools: false,
           skills: {
@@ -440,7 +437,7 @@ export async function createCliRuntime(input: {
           },
           middleware: [createSkillsMiddleware({store: createRepoSkillStore(repoRoot), loadRuntime: loadSkillsRuntimeData})],
           tools: [
-            createTaskTool({
+            createAgentTool({
               model: new ChildPermissionCliModel() as unknown as BaseChatModel,
               tools: [createPermissionBashTool()],
               middleware: [createPermissionCaseMiddleware(input.cwd)],
@@ -855,7 +852,7 @@ class HilFormCliModel {
 class ParentDelegationCliModel {
   async invoke(messages: BaseMessage[]): Promise<AIMessage> {
     const text = messages.map((message) => stringifyMessage(message.content)).join('\n');
-    if (text.includes('Delegated task started in background.')) {
+    if (text.includes('Subagent started in background.')) {
       return new AIMessage('SUBAGENT_PERMISSION_PARENT_DONE');
     }
 
@@ -863,7 +860,7 @@ class ParentDelegationCliModel {
       content: '',
       tool_calls: [{
         id: 'call_case_task_delegate',
-        name: 'Task',
+        name: 'Agent',
         args: {prompt: 'Inspect the repo and run touch guarded.txt', subagent_type: 'Agent'},
       } as ToolCall],
     });
@@ -895,7 +892,7 @@ class ChildPermissionCliModel {
 class ParentTaskPromptModel {
   async invoke(messages: BaseMessage[]): Promise<AIMessage> {
     const text = messages.map((message) => stringifyMessage(message.content)).join('\n');
-    if (text.includes('Delegated task started in background.')) {
+    if (text.includes('Subagent started in background.')) {
       return new AIMessage('PARENT_PROMPT_DONE');
     }
 
@@ -903,7 +900,7 @@ class ParentTaskPromptModel {
       content: '',
       tool_calls: [{
         id: 'call_prompt_task',
-        name: 'Task',
+        name: 'Agent',
         args: {
           prompt: 'Inspect your system prompt and report if the product handbook is visible.',
           subagent_type: 'Agent',
@@ -969,11 +966,11 @@ class DefaultRuntimeWorkflowCliModel {
   async invoke(messages: BaseMessage[]): Promise<AIMessage> {
     const text = messages.map((message) => stringifyMessage(message.content)).join('\n');
 
-    if (text.includes('Inspect isolated child work') && !text.includes('Delegated task started in background.')) {
+    if (text.includes('Inspect isolated child work') && !text.includes('Subagent started in background.')) {
       return new AIMessage('CHILD_FLOW_DONE');
     }
 
-    if (text.includes('Delegated task started in background.')) {
+    if (text.includes('Subagent started in background.')) {
       return new AIMessage('DEFAULT_RUNTIME_FLOW_DONE');
     }
 
@@ -982,7 +979,7 @@ class DefaultRuntimeWorkflowCliModel {
         content: '',
         tool_calls: [{
           id: 'call_default_runtime_task',
-          name: 'Task',
+          name: 'Agent',
           args: {
             prompt: 'Inspect isolated child work',
             subagent_type: 'Agent',

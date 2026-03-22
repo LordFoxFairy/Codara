@@ -8,10 +8,9 @@ import {tool} from '@langchain/core/tools';
 import {z} from 'zod';
 import {createAgent} from '@core/agent';
 import {createHILMiddleware} from '@core/middleware';
-import {createTaskRunMemoryStore, createTaskRuntime, type TaskRunRecord} from '@capability/task';
-import {TASK_TOOL_NAME, createTaskTool} from '@capability/task/middleware';
+import {createAgentRunMemoryStore, createAgentRuntime, type AgentRunRecord, AGENT_TOOL_NAME, createAgentTool} from '@capability/subagent';
 import {FileSystemSkillStore} from '@capability/skill';
-import {readTaskRunLaunchResult} from '@shared/task-run-launch';
+import {readAgentRunLaunchResult} from '@shared/agent-run-launch';
 import {createAgentSkillsMiddleware, ChildSummaryModel, ScriptedModel} from './task-tool.fixtures';
 
 class GuardedSystemEchoModel {
@@ -43,11 +42,11 @@ class GuardedSystemEchoModel {
   }
 }
 
-async function waitForTaskRunStatus(
-  runStore: {get(runId: string): TaskRunRecord | undefined},
+async function waitForAgentRunStatus(
+  runStore: {get(runId: string): AgentRunRecord | undefined},
   runId: string,
-  status: TaskRunRecord['status'],
-): Promise<TaskRunRecord> {
+  status: AgentRunRecord['status'],
+): Promise<AgentRunRecord> {
   const deadline = Date.now() + 500;
 
   while (Date.now() < deadline) {
@@ -59,10 +58,10 @@ async function waitForTaskRunStatus(
     await new Promise((resolve) => setTimeout(resolve, 10));
   }
 
-  throw new Error(`Task run "${runId}" did not reach status "${status}"`);
+  throw new Error(`Agent run "${runId}" did not reach status "${status}"`);
 }
 
-describe('createTaskTool definitions', () => {
+describe('createAgentTool definitions', () => {
   it('应从 skills 的 agents 目录解析自定义 profile', async () => {
     const root = await mkdtemp(path.join(os.tmpdir(), 'codara-task-tool-profile-'));
 
@@ -92,7 +91,7 @@ You are a Researcher subagent.
             content: '',
             tool_calls: [{
               id: 'call_task_custom_profile',
-              name: TASK_TOOL_NAME,
+              name: AGENT_TOOL_NAME,
               args: {
                 prompt: 'Research the codebase',
                 subagent_type: 'Researcher',
@@ -103,7 +102,7 @@ You are a Researcher subagent.
         ]) as unknown as BaseChatModel,
         middleware: [createAgentSkillsMiddleware(new FileSystemSkillStore({sources: [root], cacheTtlMs: 0}))],
         tools: [
-          createTaskTool({
+          createAgentTool({
             model: childModel as unknown as BaseChatModel,
             tools: [
               tool(async () => 'ok', {name: 'read_file', description: 'read', schema: z.object({})}),
@@ -142,7 +141,7 @@ You are a Reviewer subagent loaded from a standalone agents root.
             content: '',
             tool_calls: [{
               id: 'call_task_agent_root',
-              name: TASK_TOOL_NAME,
+              name: AGENT_TOOL_NAME,
               args: {
                 prompt: 'Review the implementation',
                 subagent_type: 'Reviewer',
@@ -153,7 +152,7 @@ You are a Reviewer subagent loaded from a standalone agents root.
         ]) as unknown as BaseChatModel,
         middleware: [createAgentSkillsMiddleware(new FileSystemSkillStore({sources: []}), [root])],
         tools: [
-          createTaskTool({
+          createAgentTool({
             model: childModel as unknown as BaseChatModel,
             tools: [
               tool(async () => 'ok', {name: 'read_file', description: 'read', schema: z.object({})}),
@@ -176,8 +175,8 @@ You are a Reviewer subagent loaded from a standalone agents root.
     const root = await mkdtemp(path.join(os.tmpdir(), 'codara-task-tool-resume-profile-'));
 
     try {
-      const runStore = createTaskRunMemoryStore();
-      const taskRuntime = createTaskRuntime({runStore});
+      const runStore = createAgentRunMemoryStore();
+      const taskRuntime = createAgentRuntime({runStore});
       const skillDir = path.join(root, 'custom-agents');
       const agentsDir = path.join(skillDir, 'agents');
       await mkdir(agentsDir, {recursive: true});
@@ -203,7 +202,7 @@ You are a Researcher subagent.
             content: '',
             tool_calls: [{
               id: 'call_task_resume_profile',
-              name: TASK_TOOL_NAME,
+              name: AGENT_TOOL_NAME,
               args: {
                 prompt: 'Research the codebase',
                 subagent_type: 'Researcher',
@@ -214,7 +213,7 @@ You are a Researcher subagent.
         ]) as unknown as BaseChatModel,
         middleware: [createAgentSkillsMiddleware(new FileSystemSkillStore({sources: [root], cacheTtlMs: 0}))],
         tools: [
-          createTaskTool({
+          createAgentTool({
             model: childModel as unknown as BaseChatModel,
             tools: [
               tool(async () => 'ok', {name: 'read_file', description: 'read', schema: z.object({path: z.string()})}),
@@ -229,22 +228,22 @@ You are a Researcher subagent.
 
       const launched = await parent.invoke('delegate this');
       const toolMessage = launched.state.messages.find((message) => ToolMessage.isInstance(message)) as ToolMessage;
-      const launch = readTaskRunLaunchResult(toolMessage.artifact);
+      const launch = readAgentRunLaunchResult(toolMessage.artifact);
 
       expect(launched.reason).toBe('complete');
       expect(launched.state.status).toBe('idle');
       expect(launched.state.pendingPause).toBeUndefined();
       expect(launch).toMatchObject({
-        type: 'task_run_started',
+        type: 'agent_run_started',
         runId: 'call_task_resume_profile',
       });
 
-      const paused = await waitForTaskRunStatus(runStore, 'call_task_resume_profile', 'paused');
+      const paused = await waitForAgentRunStatus(runStore, 'call_task_resume_profile', 'paused');
       expect(paused.latestActivity).toContain('Tool: read_file');
       expect(paused.toolUseCount).toBe(1);
 
       await taskRuntime.resumeRun('call_task_resume_profile', {decision: 'approve'});
-      const completed = await waitForTaskRunStatus(runStore, 'call_task_resume_profile', 'completed');
+      const completed = await waitForAgentRunStatus(runStore, 'call_task_resume_profile', 'completed');
 
       expect(completed.summary).toContain('You are a Researcher subagent.');
     } finally {

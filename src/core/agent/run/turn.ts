@@ -17,7 +17,7 @@ import {
 } from '@core/pipeline/types';
 import {parseHILToolMessagePayload} from '@core/middleware/hil';
 import {toError} from './errors';
-import {readTaskRunLaunchResult} from '@shared/task-run-launch';
+import {readAgentRunLaunchResult} from '@shared/agent-run-launch';
 
 export type AgentTurnOutcome = 'continue' | 'complete';
 
@@ -170,7 +170,7 @@ async function runSingleTool(
     return 'paused';
   }
 
-  if (readTaskRunLaunchResult(toolMessage.artifact)) {
+  if (readAgentRunLaunchResult(toolMessage.artifact)) {
     return 'detached';
   }
 

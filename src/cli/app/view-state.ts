@@ -5,7 +5,7 @@ import type {PermissionStage} from './review-types';
 export type CliStatus = 'idle' | 'running' | 'paused' | 'done' | 'error';
 export type CliReviewAnswerValue = string | string[];
 export type CliInteractionSurface = 'prompt' | 'review' | 'completion' | 'command-output' | 'session-picker';
-export type CliInteractionKind = 'session_prompt' | 'task_continuation' | 'review_response';
+export type CliInteractionKind = 'session_prompt' | 'agent_continuation' | 'review_response';
 
 export interface CliRunState {
   status: CliStatus;
@@ -35,7 +35,7 @@ export interface CliActiveTurn {
   kind?: 'prompt' | 'task_completion';
   /** True once the current streaming turn delegates the foreground to an internal interaction surface. */
   suppressInteractionResponse?: boolean;
-  /** True once the current streaming model message includes a Task tool call. */
+  /** True once the current streaming model message includes an Agent tool call. */
   pendingTaskLaunch?: boolean;
   /** True only when task launch chatter was detected before any visible response text was emitted. */
   suppressTaskLaunchResponse?: boolean;

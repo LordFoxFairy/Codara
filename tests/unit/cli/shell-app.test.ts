@@ -95,11 +95,11 @@ describe('CLI foreground surface', () => {
 
   it('should hide the activity line when a running task block already owns task/tool progress', () => {
     const activeItems: TranscriptItem[] = [{
-      id: 'active-task-run:run-1',
+      id: 'active-agent-run:run-1',
       role: 'task',
       content: '⚙ Explore(Inspect repo)\nRunning (12s)',
       toolMeta: {
-        toolName: 'Task',
+        toolName: 'Agent',
         displayName: 'Explore',
         icon: '⚙',
         args: 'Inspect repo',

@@ -18,7 +18,7 @@ export {
   type ReviewBlockingScope,
   type ReviewQueryItem,
   type FocusedReviewQuery,
-  type TaskRunQuerySummary,
+  type AgentRunQuerySummary,
 } from '@codara/index';
 export {
   bootstrapAgent,
@@ -41,8 +41,6 @@ export {
   type CreateAgentOptions,
 } from '@core/agent';
 export {
-  TASK_TOOL_DESCRIPTION,
-  TASK_TOOL_NAME,
   TASK_CREATE_TOOL_NAME,
   TASK_LIST_TOOL_NAME,
   TASK_UPDATE_TOOL_NAME,
@@ -51,20 +49,11 @@ export {
   createTaskListTool,
   createTaskMemoryStore,
   createTaskMiddleware,
-  createTaskRunFileStore,
-  createTaskRunMemoryStore,
   createTaskTools,
   createTaskUpdateTool,
   type CreateTaskInput,
   type CreateTaskMiddlewareOptions,
   type TaskFileStoreOptions,
-  type TaskRunFileStoreOptions,
-  type TaskRunPauseInput,
-  type TaskRunRecord,
-  type TaskRunStartInput,
-  type TaskRunStatus,
-  type TaskRunStore,
-  type TaskRunUpdateInput,
   type TaskRecord,
   type TaskStatus,
   type TaskStore,

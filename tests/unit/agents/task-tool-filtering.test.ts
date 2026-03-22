@@ -4,10 +4,10 @@ import type {BaseChatModel} from '@langchain/core/language_models/chat_models';
 import {tool} from '@langchain/core/tools';
 import {z} from 'zod';
 import {createAgent} from '@core/agent';
-import {TASK_TOOL_NAME, createTaskTool} from '@capability/task/middleware';
+import {AGENT_TOOL_NAME, createAgentTool} from '@capability/subagent/middleware';
 import {createBuiltinSubagentStore, createAgentSkillsMiddleware, ChildSummaryModel, ScriptedModel} from './task-tool.fixtures';
 
-describe('createTaskTool filtering', () => {
+describe('createAgentTool filtering', () => {
   it('应对 builtin Explore profile 应用工具过滤', async () => {
     const childModel = new ChildSummaryModel();
     const parent = createAgent({
@@ -16,7 +16,7 @@ describe('createTaskTool filtering', () => {
           content: '',
           tool_calls: [{
             id: 'call_task_explore',
-            name: TASK_TOOL_NAME,
+            name: AGENT_TOOL_NAME,
             args: {
               prompt: 'Explore the repo',
               subagent_type: 'Explore',
@@ -27,7 +27,7 @@ describe('createTaskTool filtering', () => {
       ]) as unknown as BaseChatModel,
       middleware: [createAgentSkillsMiddleware(createBuiltinSubagentStore())],
       tools: [
-        createTaskTool({
+        createAgentTool({
           model: childModel as unknown as BaseChatModel,
           tools: [
             tool(async () => 'ok', {name: 'read_file', description: 'read', schema: z.object({})}),

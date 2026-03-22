@@ -1,5 +1,5 @@
 import type {AgentResumeStreamConfig, AgentStreamOutput, PauseRequest, ResumePayload} from '@core/agent';
-import type {TaskRuntime} from '@capability/task';
+import type {AgentRuntime} from '@capability/subagent';
 import type {ApprovalStore} from '@durability/approval-store';
 import type {Session} from '@durability/session';
 import {getReviewItems} from './assembly/reviews';
@@ -16,9 +16,9 @@ export interface CodaraReviewControl {
 export function createCodaraReviewControl(options: {
   session: Session;
   approvalStore?: ApprovalStore;
-  taskRuntime?: TaskRuntime;
+  agentRuntime?: AgentRuntime;
 }): CodaraReviewControl {
-  const {session, approvalStore, taskRuntime} = options;
+  const {session, approvalStore, agentRuntime} = options;
   let focusedReviewId: string | undefined;
 
   const listQueuedApprovalRecords = () => approvalStore?.list(session.getState().sessionId) ?? [];
@@ -61,7 +61,7 @@ export function createCodaraReviewControl(options: {
     const item = focusedItem ?? items[0]!;
     focusedReviewId = item.reviewId;
 
-    if (item.source === 'task_run') {
+    if (item.source === 'agent_run') {
       const record = queuedRecords.find((candidate) => candidate.approvalId === item.reviewId);
       if (!record) {
         return undefined;
@@ -98,11 +98,11 @@ export function createCodaraReviewControl(options: {
         throw new Error('No queued review is available for the current session');
       }
 
-      if (focused.item.source === 'task_run') {
-        if (!taskRuntime) {
-          throw new Error('Task review runtime is not available');
+      if (focused.item.source === 'agent_run') {
+        if (!agentRuntime) {
+          throw new Error('Agent review runtime is not available');
         }
-        await taskRuntime.resumeApprovalById(focused.item.reviewId, payload, config);
+        await agentRuntime.resumeApprovalById(focused.item.reviewId, payload, config);
       } else {
         await session.resumePause(payload, config);
       }
@@ -118,11 +118,11 @@ export function createCodaraReviewControl(options: {
         throw new Error('No queued review is available for the current session');
       }
 
-      if (focused.item.source === 'task_run') {
-        if (!taskRuntime) {
-          throw new Error('Task review runtime is not available');
+      if (focused.item.source === 'agent_run') {
+        if (!agentRuntime) {
+          throw new Error('Agent review runtime is not available');
         }
-        yield* taskRuntime.resumeApprovalByIdStream(focused.item.reviewId, payload, config);
+        yield* agentRuntime.resumeApprovalByIdStream(focused.item.reviewId, payload, config);
       } else {
         yield* session.resumePauseStream(payload, config);
       }

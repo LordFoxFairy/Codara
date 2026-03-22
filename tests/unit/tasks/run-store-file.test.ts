@@ -3,12 +3,12 @@ import {mkdtemp, readdir} from 'node:fs/promises';
 import {tmpdir} from 'node:os';
 import path from 'node:path';
 import {describe, expect, it, spyOn} from 'bun:test';
-import {createTaskRunFileStore} from '@capability/task';
+import {createAgentRunFileStore} from '@capability/subagent';
 
 describe('task run file store', () => {
   it('persists delegated runs to disk and reloads them', async () => {
     const rootDir = await mkdtemp(path.join(tmpdir(), 'codara-task-run-file-store-'));
-    const store = createTaskRunFileStore({rootDir});
+    const store = createAgentRunFileStore({rootDir});
 
     store.start({
       runId: 'run-1',
@@ -32,7 +32,7 @@ describe('task run file store', () => {
     const files = await readdir(rootDir);
     expect(files).toContain('run-1.json');
 
-    const reopened = createTaskRunFileStore({rootDir});
+    const reopened = createAgentRunFileStore({rootDir});
     expect(reopened.get('run-1')).toEqual(expect.objectContaining({
       runId: 'run-1',
       sessionId: 'session-1',
@@ -49,7 +49,7 @@ describe('task run file store', () => {
     const readFileSpy = spyOn(fs, 'readFileSync');
 
     try {
-      const store = createTaskRunFileStore({rootDir});
+      const store = createAgentRunFileStore({rootDir});
 
       store.start({
         runId: 'run-cache',

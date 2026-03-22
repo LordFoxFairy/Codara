@@ -3,10 +3,10 @@ import {
   deriveActiveTaskSnapshot,
   deriveActiveTasks,
   extractTaskName,
-  type TaskRunQuerySummary,
+  type AgentRunQuerySummary,
 } from '../../../src/cli/hooks/use-active-tasks';
 
-function createTaskRun(overrides: Partial<TaskRunQuerySummary>): TaskRunQuerySummary {
+function createTaskRun(overrides: Partial<AgentRunQuerySummary>): AgentRunQuerySummary {
   return {
     runId: 'run-1',
     sessionId: 'session-1',
@@ -48,7 +48,7 @@ describe('deriveActiveTasks', () => {
   const baseTime = Date.parse('2026-03-16T00:00:00Z');
 
   it('returns running task from stable run summary', () => {
-    const runs: TaskRunQuerySummary[] = [
+    const runs: AgentRunQuerySummary[] = [
       createTaskRun({
         runId: 'task-1',
         startedAt: new Date(baseTime).toISOString(),
@@ -66,7 +66,7 @@ describe('deriveActiveTasks', () => {
   });
 
   it('surfaces live tool counts from running task summaries', () => {
-    const runs: TaskRunQuerySummary[] = [
+    const runs: AgentRunQuerySummary[] = [
       createTaskRun({
         runId: 'task-1',
         startedAt: new Date(baseTime).toISOString(),
@@ -83,7 +83,7 @@ describe('deriveActiveTasks', () => {
   });
 
   it('keeps a lone completed task visible until a later batch starts', () => {
-    const runs: TaskRunQuerySummary[] = [
+    const runs: AgentRunQuerySummary[] = [
       createTaskRun({
         runId: 'task-1',
         startedAt: new Date(baseTime).toISOString(),
@@ -99,7 +99,7 @@ describe('deriveActiveTasks', () => {
   });
 
   it('replaces the previous completed batch when a new batch starts', () => {
-    const runs: TaskRunQuerySummary[] = [
+    const runs: AgentRunQuerySummary[] = [
       createTaskRun({
         runId: 'task-old',
         startedAt: new Date(baseTime).toISOString(),
@@ -122,7 +122,7 @@ describe('deriveActiveTasks', () => {
   });
 
   it('keeps completed tasks visible while sibling tasks are still running or paused', () => {
-    const runs: TaskRunQuerySummary[] = [
+    const runs: AgentRunQuerySummary[] = [
       createTaskRun({
         runId: 'task-done',
         startedAt: new Date(baseTime).toISOString(),
@@ -145,7 +145,7 @@ describe('deriveActiveTasks', () => {
   });
 
   it('keeps a lone failed task visible until a later batch starts', () => {
-    const runs: TaskRunQuerySummary[] = [
+    const runs: AgentRunQuerySummary[] = [
       createTaskRun({
         runId: 'task-1',
         startedAt: new Date(baseTime).toISOString(),
@@ -161,7 +161,7 @@ describe('deriveActiveTasks', () => {
   });
 
   it('keeps approval-waiting task runs visible as paused tasks', () => {
-    const runs: TaskRunQuerySummary[] = [
+    const runs: AgentRunQuerySummary[] = [
       createTaskRun({
         runId: 'task-paused',
         startedAt: new Date(baseTime).toISOString(),
@@ -178,7 +178,7 @@ describe('deriveActiveTasks', () => {
   });
 
   it('sorts running tasks before completed tasks', () => {
-    const runs: TaskRunQuerySummary[] = [
+    const runs: AgentRunQuerySummary[] = [
       createTaskRun({
         runId: 'task-done',
         startedAt: new Date(baseTime).toISOString(),
@@ -199,7 +199,7 @@ describe('deriveActiveTasks', () => {
   });
 
   it('sorts paused approval-waiting tasks after running tasks and before completed tasks', () => {
-    const runs: TaskRunQuerySummary[] = [
+    const runs: AgentRunQuerySummary[] = [
       createTaskRun({
         runId: 'task-running',
         startedAt: new Date(baseTime + 2000).toISOString(),
@@ -226,7 +226,7 @@ describe('deriveActiveTasks', () => {
   });
 
   it('limits to 5 visible tasks', () => {
-    const runs: TaskRunQuerySummary[] = [];
+    const runs: AgentRunQuerySummary[] = [];
     for (let i = 0; i < 8; i++) {
       runs.push(createTaskRun({
         runId: `task-${i}`,
@@ -240,7 +240,7 @@ describe('deriveActiveTasks', () => {
   });
 
   it('counts all matching tasks even when visible rows are capped', () => {
-    const runs: TaskRunQuerySummary[] = [
+    const runs: AgentRunQuerySummary[] = [
       createTaskRun({runId: 'running-1', startedAt: new Date(baseTime + 5000).toISOString(), label: 'Delegating running-1'}),
       createTaskRun({runId: 'running-2', startedAt: new Date(baseTime + 4000).toISOString(), label: 'Delegating running-2'}),
       createTaskRun({runId: 'running-3', startedAt: new Date(baseTime + 3000).toISOString(), label: 'Delegating running-3'}),
@@ -275,7 +275,7 @@ describe('deriveActiveTasks', () => {
   });
 
   it('keeps done-only batches visible in the current batch projection', () => {
-    const runs: TaskRunQuerySummary[] = [
+    const runs: AgentRunQuerySummary[] = [
       createTaskRun({
         runId: 'done-1',
         startedAt: new Date(baseTime).toISOString(),
@@ -300,7 +300,7 @@ describe('deriveActiveTasks', () => {
   });
 
   it('keeps the latest active work in view and reports overflow beyond 5 tasks', () => {
-    const runs: TaskRunQuerySummary[] = [
+    const runs: AgentRunQuerySummary[] = [
       createTaskRun({runId: 'done-1', startedAt: new Date(baseTime).toISOString(), label: 'Delegating done-1', status: 'completed', endedAt: new Date(baseTime + 1000).toISOString()}),
       createTaskRun({runId: 'done-2', startedAt: new Date(baseTime + 100).toISOString(), label: 'Delegating done-2', status: 'completed', endedAt: new Date(baseTime + 1100).toISOString()}),
       createTaskRun({runId: 'done-3', startedAt: new Date(baseTime + 200).toISOString(), label: 'Delegating done-3', status: 'completed', endedAt: new Date(baseTime + 1200).toISOString()}),
@@ -317,7 +317,7 @@ describe('deriveActiveTasks', () => {
   });
 
   it('preserves explicitly tracked multi-phase task runs instead of collapsing to only the latest inferred batch', () => {
-    const runs: TaskRunQuerySummary[] = [
+    const runs: AgentRunQuerySummary[] = [
       createTaskRun({
         runId: 'phase-1-a',
         sessionId: 'session-1',

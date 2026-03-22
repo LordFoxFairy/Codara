@@ -189,8 +189,8 @@ function parseSummaryLine(summaryLine: string): {status: string; stats: string} 
   };
 }
 
-function parseTaskRunId(itemId: string): string | undefined {
-  const prefix = 'active-task-run:';
+function parseAgentRunId(itemId: string): string | undefined {
+  const prefix = 'active-agent-run:';
   return itemId.startsWith(prefix) ? itemId.slice(prefix.length) : undefined;
 }
 
@@ -331,7 +331,7 @@ function RunningTaskGroupBlock({
 
   const total = items.length;
   const activeTasksById = new Map(activeTasks.map((task) => [task.id, task]));
-  const firstRunId = parseTaskRunId(items[0]?.id ?? '');
+  const firstRunId = parseAgentRunId(items[0]?.id ?? '');
   const singleTask = total === 1 && firstRunId ? activeTasksById.get(firstRunId) : undefined;
   if (total === 1) {
     return (
@@ -342,7 +342,7 @@ function RunningTaskGroupBlock({
     );
   }
   const hasLiveTask = items.some((item) => {
-    const runId = parseTaskRunId(item.id);
+    const runId = parseAgentRunId(item.id);
     const activeTask = runId ? activeTasksById.get(runId) : undefined;
     return activeTask?.status === 'running' || activeTask?.status === 'paused' || item.toolMeta.status === 'running';
   });
@@ -354,7 +354,7 @@ function RunningTaskGroupBlock({
       {items.map((item, index) => {
         const rowPrefix = index === items.length - 1 ? '└─ ' : '├─ ';
         const branchPrefix = index === items.length - 1 ? '   ' : '│  ';
-        const runId = parseTaskRunId(item.id);
+        const runId = parseAgentRunId(item.id);
         const activeTask = runId ? activeTasksById.get(runId) : undefined;
         const rowLabel = formatTaskExecutionLabel(item.toolMeta, activeTask);
         const rowStatus = activeTask?.status === 'paused'
@@ -427,7 +427,7 @@ function projectTaskItemsFromSummaries(
 
   const taskItemsByRunId = new Map(
     taskItems
-      .map((item) => [parseTaskRunId(item.id), item] as const)
+      .map((item) => [parseAgentRunId(item.id), item] as const)
       .filter((entry): entry is [string, import('../../transcript/model').TranscriptItem & {toolMeta: ToolResultMeta}] => Boolean(entry[0])),
   );
 
@@ -442,11 +442,11 @@ function createSyntheticTaskItem(
   const {displayName, args} = splitTaskDisplay(task.name);
   const summaryLine = formatSyntheticTaskSummaryLine(task);
   return {
-    id: `active-task-run:${task.id}`,
+    id: `active-agent-run:${task.id}`,
     role: 'task',
     content: `⚙ ${displayName}${args ? `(${args})` : ''}\n${summaryLine}`,
     toolMeta: {
-      toolName: 'Task',
+      toolName: 'Agent',
       displayName,
       icon: '⚙',
       ...(args ? {args} : {}),

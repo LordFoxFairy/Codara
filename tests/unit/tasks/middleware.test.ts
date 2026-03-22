@@ -12,13 +12,12 @@ import {createCodaraPromptSource} from '@context/prompts/prompt-source';
 import {buildBaseSystemMessage} from '@context/session-bundle/base-system-message';
 import {
   createTaskMemoryStore,
-  createTaskRunMemoryStore,
   createTaskMiddleware,
   TASK_CREATE_TOOL_NAME,
   TASK_LIST_TOOL_NAME,
-  TASK_TOOL_NAME,
 } from '@capability/task';
-import {formatTaskRunLaunchResult, readTaskRunLaunchResult} from '@shared/task-run-launch';
+import {createAgentRunMemoryStore, AGENT_TOOL_NAME, createAgentMiddleware} from '@capability/subagent';
+import {formatAgentRunLaunchResult, readAgentRunLaunchResult} from '@shared/agent-run-launch';
 import {createAgentSkillsMiddleware, createBuiltinSubagentStore} from '../agents/task-tool.fixtures';
 
 async function waitForCondition(
@@ -123,8 +122,8 @@ class ChildProgressiveDisclosureModel {
 
 describe('tasks middlewares', () => {
   it('should keep task launch text terse and directive for parent agents', () => {
-    const launchText = formatTaskRunLaunchResult({
-      type: 'task_run_started',
+    const launchText = formatAgentRunLaunchResult({
+      type: 'agent_run_started',
       runId: 'run-1',
       parentSessionId: 'session-1',
       sessionId: 'session-1:task:run-1',
@@ -132,17 +131,16 @@ describe('tasks middlewares', () => {
       label: 'Delegating Explore: Inspect the project',
     });
 
-    expect(launchText).toContain('Delegated task started in background.');
-    expect(launchText).toContain('Do not restate launch metadata');
-    expect(launchText).not.toContain('run_id:');
-    expect(launchText).not.toContain('delegate_id:');
-    expect(launchText).not.toContain('agent:');
+    expect(launchText).toContain('Subagent started in background.');
+    expect(launchText).toContain('run_id: run-1');
+    expect(launchText).toContain('agent: Explore');
+    expect(launchText).toContain('parent_session_id: session-1');
   });
 
   it('should register the delegated Task tool through middleware', async () => {
     const store = createBuiltinSubagentStore();
-    const runStore = createTaskRunMemoryStore();
-    const taskMiddleware = createTaskMiddleware({
+    const runStore = createAgentRunMemoryStore();
+    const taskMiddleware = createAgentMiddleware({
       model: new ChildSummaryModel() as unknown as BaseChatModel,
       runStore,
     });
@@ -151,7 +149,7 @@ describe('tasks middlewares', () => {
         content: '',
         tool_calls: [{
           id: 'call_task_middleware',
-          name: TASK_TOOL_NAME,
+          name: AGENT_TOOL_NAME,
           args: {
             prompt: 'delegate this',
             subagent_type: 'Agent',
@@ -169,12 +167,12 @@ describe('tasks middlewares', () => {
     const result = await agent.invoke([new HumanMessage('start')]);
     const toolMessage = result.state.messages.find((message) => ToolMessage.isInstance(message)) as ToolMessage;
 
-    expect(taskMiddleware.tools?.map((tool) => tool.name)).toEqual([TASK_TOOL_NAME]);
+    expect(taskMiddleware.tools?.map((tool) => tool.name)).toEqual([AGENT_TOOL_NAME]);
     expect(result.reason).toBe('complete');
-    expect(String(toolMessage.content)).toContain('Delegated task started in background.');
-    expect(String(toolMessage.content)).not.toContain('run_id:');
-    expect(readTaskRunLaunchResult(toolMessage.artifact)).toEqual(expect.objectContaining({
-      type: 'task_run_started',
+    expect(String(toolMessage.content)).toContain('Subagent started in background.');
+    expect(String(toolMessage.content)).toContain('run_id: call_task_middleware');
+    expect(readAgentRunLaunchResult(toolMessage.artifact)).toEqual(expect.objectContaining({
+      type: 'agent_run_started',
       runId: 'call_task_middleware',
     }));
 
@@ -188,7 +186,7 @@ describe('tasks middlewares', () => {
 
   it('should inject available subagent definitions from skills runtime before model calls', async () => {
     const store = createBuiltinSubagentStore();
-    const taskMiddleware = createTaskMiddleware({
+    const taskMiddleware = createAgentMiddleware({
       model: new ChildSummaryModel() as unknown as BaseChatModel,
     });
 
@@ -206,7 +204,7 @@ describe('tasks middlewares', () => {
   });
 
   it('should inject delegated task completion results into main-agent continuation turns', async () => {
-    const taskMiddleware = createTaskMiddleware({
+    const taskMiddleware = createAgentMiddleware({
       model: new ChildSummaryModel() as unknown as BaseChatModel,
     });
     const context = {
@@ -220,10 +218,10 @@ describe('tasks middlewares', () => {
       runtime: {
         context: {},
         runtimeContext: {
-          codaraTaskCompletion: {
+          codaraAgentCompletion: {
             attempt: 3,
             previousInvalidResponse: 'I will wait for the next phase before answering.',
-            tasks: [
+            runs: [
               {
                 runId: 'run-tech',
                 label: 'Delegating Explore: Analyze the tech stack',
@@ -259,13 +257,13 @@ describe('tasks middlewares', () => {
 
     await taskMiddleware.beforeModel?.(context);
 
-    expect(context.systemMessage.join('\n')).toContain('Delegated tasks from your previous response have completed');
+    expect(context.systemMessage.join('\n')).toContain('Completed subagent runs from your previous response are now available.');
     expect(context.systemMessage.join('\n')).toContain('Continue the parent task using these completed delegated results');
     expect(context.systemMessage.join('\n')).toContain('If more work is still needed, immediately take the next step');
     expect(context.systemMessage.join('\n')).toContain('This is a repeated correction attempt.');
     expect(context.systemMessage.join('\n')).toContain('Invalid previous draft (for correction only): I will wait for the next phase before answering');
     expect(context.systemMessage.join('\n')).toContain('Do not restate task-by-task reports or raw child sections');
-    expect(context.systemMessage.join('\n')).toContain('Do not mention subagents, delegated tasks, hidden handoff context, or orchestration stages');
+    expect(context.systemMessage.join('\n')).toContain('Do not mention subagents, hidden handoff context, or orchestration stages in the user-visible answer.');
     expect(context.systemMessage.join('\n')).toContain('Never write headings such as "Subagent report", "Phase 1", "First subagent"');
     expect(context.systemMessage.join('\n')).toContain('Analyze the tech stack');
     expect(context.systemMessage.join('\n')).toContain('4 tool uses');
@@ -276,8 +274,8 @@ describe('tasks middlewares', () => {
   });
 
   it('should delegate through Task middleware without requiring skills runtime for the built-in Agent child', async () => {
-    const runStore = createTaskRunMemoryStore();
-    const taskMiddleware = createTaskMiddleware({
+    const runStore = createAgentRunMemoryStore();
+    const taskMiddleware = createAgentMiddleware({
       model: new ChildSummaryModel() as unknown as BaseChatModel,
       runStore,
     });
@@ -286,7 +284,7 @@ describe('tasks middlewares', () => {
         content: '',
         tool_calls: [{
           id: 'call_task_default_delegate',
-          name: TASK_TOOL_NAME,
+          name: AGENT_TOOL_NAME,
           args: {
             prompt: 'delegate with the Agent child',
             subagent_type: 'Agent',
@@ -304,10 +302,10 @@ describe('tasks middlewares', () => {
     const result = await agent.invoke([new HumanMessage('start')]);
     const toolMessage = result.state.messages.find((message) => ToolMessage.isInstance(message)) as ToolMessage;
 
-    expect(taskMiddleware.tools?.map((tool) => tool.name)).toEqual([TASK_TOOL_NAME]);
+    expect(taskMiddleware.tools?.map((tool) => tool.name)).toEqual([AGENT_TOOL_NAME]);
     expect(result.reason).toBe('complete');
-    expect(String(toolMessage.content)).toContain('Delegated task started in background.');
-    expect(String(toolMessage.content)).not.toContain('run_id:');
+    expect(String(toolMessage.content)).toContain('Subagent started in background.');
+    expect(String(toolMessage.content)).toContain('run_id: call_task_default_delegate');
     await waitForCondition(() => runStore.get('call_task_default_delegate')?.status === 'completed');
     expect(runStore.get('call_task_default_delegate')).toEqual(expect.objectContaining({
       runId: 'call_task_default_delegate',
@@ -332,9 +330,9 @@ describe('tasks middlewares', () => {
 
     const guidelinesSource = createCodaraGuidelinesSource({projectRoot, cwd: projectRoot});
     const promptSource = createCodaraPromptSource({projectRoot, cwd: projectRoot});
-    const runStore = createTaskRunMemoryStore();
+    const runStore = createAgentRunMemoryStore();
 
-    const taskMiddleware = createTaskMiddleware({
+    const taskMiddleware = createAgentMiddleware({
       model: new ChildProgressiveDisclosureModel(targetFile) as unknown as BaseChatModel,
       runStore,
       tools: [
@@ -356,7 +354,7 @@ describe('tasks middlewares', () => {
         content: '',
         tool_calls: [{
           id: 'call_task_progressive_delegate',
-          name: TASK_TOOL_NAME,
+          name: AGENT_TOOL_NAME,
           args: {
             prompt: 'inspect the deeper feature file',
             subagent_type: 'Agent',
@@ -375,7 +373,7 @@ describe('tasks middlewares', () => {
     const toolMessage = result.state.messages.find((message) => ToolMessage.isInstance(message)) as ToolMessage;
 
     expect(result.reason).toBe('complete');
-    expect(String(toolMessage.content)).toContain('Delegated task started in background.');
+    expect(String(toolMessage.content)).toContain('Subagent started in background.');
     await waitForCondition(() => runStore.get('call_task_progressive_delegate')?.status === 'completed');
     expect(runStore.get('call_task_progressive_delegate')).toEqual(expect.objectContaining({
       runId: 'call_task_progressive_delegate',
@@ -386,10 +384,7 @@ describe('tasks middlewares', () => {
 
   it('should expose shared task coordination tools through the single Task middleware', async () => {
     const store = createTaskMemoryStore();
-    const taskMiddleware = createTaskMiddleware({
-      store,
-      model: new ChildSummaryModel() as unknown as BaseChatModel,
-    });
+    const taskMiddleware = createTaskMiddleware({store});
     const model = new ScriptedModel([
       new AIMessage({
         content: '',
@@ -422,7 +417,6 @@ describe('tasks middlewares', () => {
     const taskToolMessages = result.state.messages.filter((message) => ToolMessage.isInstance(message)) as ToolMessage[];
 
     expect(taskMiddleware.tools?.map((tool) => tool.name)).toEqual([
-      TASK_TOOL_NAME,
       TASK_CREATE_TOOL_NAME,
       'TaskUpdate',
       TASK_LIST_TOOL_NAME,
@@ -434,8 +428,8 @@ describe('tasks middlewares', () => {
 
   it('should write delegated task runs into the stable run store', async () => {
     const store = createBuiltinSubagentStore();
-    const runStore = createTaskRunMemoryStore();
-    const taskMiddleware = createTaskMiddleware({
+    const runStore = createAgentRunMemoryStore();
+    const taskMiddleware = createAgentMiddleware({
       model: new ChildSummaryModel() as unknown as BaseChatModel,
       runStore,
     });
@@ -444,7 +438,7 @@ describe('tasks middlewares', () => {
         content: '',
         tool_calls: [{
           id: 'call_task_run_store',
-          name: TASK_TOOL_NAME,
+          name: AGENT_TOOL_NAME,
           args: {
             prompt: 'inspect the login flow',
             subagent_type: 'Explore',

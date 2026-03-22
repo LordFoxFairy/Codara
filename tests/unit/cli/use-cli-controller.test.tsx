@@ -33,7 +33,7 @@ describe('useCliController background refresh', () => {
         kind: 'task',
         phase: 'update',
         status: 'paused',
-        label: 'Delegated task waiting for review',
+        label: 'Subagent waiting for review',
       });
 
       await waitFor(() => (rendered.lastFrame() ?? '').includes('reviewCount:2'));
@@ -60,7 +60,7 @@ describe('useCliController background refresh', () => {
         kind: 'task',
         phase: 'end',
         status: 'done',
-        label: 'Delegated task completed',
+        label: 'Subagent completed',
         detail: 'Found the project architecture summary',
       });
 
@@ -89,7 +89,7 @@ describe('useCliController background refresh', () => {
         kind: 'task',
         phase: 'end',
         status: 'done',
-        label: 'Delegated task completed',
+        label: 'Subagent completed',
         detail: 'Codara is a terminal-first AI agent runtime.',
       });
 
@@ -136,9 +136,9 @@ describe('useCliController background refresh', () => {
         kind: 'task',
         phase: 'end',
         status: 'done',
-        label: 'Delegated task completed',
+        label: 'Subagent completed',
         detail: 'Tech stack child summary',
-        parentId: 'task-run:run-done',
+        parentId: 'agent-run:run-done',
       });
 
       await waitFor(() => (rendered.lastFrame() ?? '').includes('latestAssistantNotice:none'));
@@ -180,7 +180,7 @@ describe('useCliController background refresh', () => {
         },
       ]);
       codara.emit({
-        id: 'task-run:run-done',
+        id: 'agent-run:run-done',
         sessionId: 'session-1',
         timestamp: new Date().toISOString(),
         kind: 'task',
@@ -189,7 +189,7 @@ describe('useCliController background refresh', () => {
         label: 'Delegating Explore: Analyze the tech stack',
       });
       codara.emit({
-        id: 'task-run:run-paused',
+        id: 'agent-run:run-paused',
         sessionId: 'session-1',
         timestamp: new Date().toISOString(),
         kind: 'task',
@@ -208,9 +208,9 @@ describe('useCliController background refresh', () => {
         kind: 'task',
         phase: 'end',
         status: 'done',
-        label: 'Delegated task completed',
+        label: 'Subagent completed',
         detail: 'Tech stack child summary',
-        parentId: 'task-run:run-done',
+        parentId: 'agent-run:run-done',
       });
 
       await waitFor(() => (rendered.lastFrame() ?? '').includes('streamCalls:1'));
@@ -260,7 +260,7 @@ describe('useCliController background refresh', () => {
         },
       ]);
       codara.emit({
-        id: 'task-run:run-tech',
+        id: 'agent-run:run-tech',
         sessionId: 'session-1',
         timestamp: new Date().toISOString(),
         kind: 'task',
@@ -269,7 +269,7 @@ describe('useCliController background refresh', () => {
         label: 'Delegating Explore: Analyze the tech stack',
       });
       codara.emit({
-        id: 'task-run:run-structure',
+        id: 'agent-run:run-structure',
         sessionId: 'session-1',
         timestamp: new Date().toISOString(),
         kind: 'task',
@@ -316,9 +316,9 @@ describe('useCliController background refresh', () => {
         kind: 'task',
         phase: 'end',
         status: 'done',
-        label: 'Delegated task completed',
+        label: 'Subagent completed',
         detail: 'Structure child summary',
-        parentId: 'task-run:run-structure',
+        parentId: 'agent-run:run-structure',
       });
 
       await waitFor(() => codara.getStreamCallCount() === 2);
@@ -330,7 +330,7 @@ describe('useCliController background refresh', () => {
           streamMode: 'messages',
         },
         context: {
-          codaraTaskCompletion: {
+          codaraAgentCompletion: {
             tasks: [
               expect.objectContaining({
                 runId: 'run-tech',
@@ -410,7 +410,7 @@ describe('useCliController background refresh', () => {
         },
       ]);
       codara.emit({
-        id: 'task-run:run-tech',
+        id: 'agent-run:run-tech',
         sessionId: 'session-1',
         timestamp: new Date().toISOString(),
         kind: 'task',
@@ -429,9 +429,9 @@ describe('useCliController background refresh', () => {
         kind: 'task',
         phase: 'end',
         status: 'done',
-        label: 'Delegated task completed',
+        label: 'Subagent completed',
         detail: 'Tech stack summary',
-        parentId: 'task-run:run-tech',
+        parentId: 'agent-run:run-tech',
       });
 
       await waitFor(() => (rendered.lastFrame() ?? '').includes('streamCalls:1'));
@@ -459,7 +459,7 @@ describe('useCliController background refresh', () => {
         kind: 'task',
         phase: 'end',
         status: 'done',
-        label: 'Delegated task completed',
+        label: 'Subagent completed',
       });
 
       await waitFor(() => (rendered.lastFrame() ?? '').includes('latestNotice:none'));
@@ -485,7 +485,7 @@ describe('useCliController background refresh', () => {
         kind: 'task',
         phase: 'end',
         status: 'done',
-        label: 'Delegated task completed',
+        label: 'Subagent completed',
         detail: 'Queued child summary',
       });
 
@@ -521,9 +521,9 @@ describe('useCliController background refresh', () => {
         kind: 'task',
         phase: 'update',
         status: 'paused',
-        label: 'Delegated task waiting for review',
+        label: 'Subagent waiting for review',
         detail: 'Waiting for approval on glob',
-        parentId: 'task-run:run-review',
+        parentId: 'agent-run:run-review',
       });
 
       await waitFor(() => (rendered.lastFrame() ?? '').includes('review:approval-review'));
@@ -1217,7 +1217,7 @@ class FakeCodara {
   private agentContext: Record<string, unknown> = {};
   private pendingPause: PauseRequest | undefined;
   private focusedReviewId: string | undefined;
-  private taskRunSummaries: Array<{
+  private agentRunSummaries: Array<{
     runId: string;
     sessionId: string;
     label: string;
@@ -1298,7 +1298,7 @@ class FakeCodara {
   }
 
   setTaskRunSummaries(
-    taskRunSummaries: Array<{
+    agentRunSummaries: Array<{
       runId: string;
       sessionId: string;
       label: string;
@@ -1312,7 +1312,7 @@ class FakeCodara {
       totalTokens?: number;
     }>,
   ): void {
-    this.taskRunSummaries = taskRunSummaries;
+    this.agentRunSummaries = agentRunSummaries;
   }
 
   queueStreamText(text: string): void {
@@ -1434,8 +1434,8 @@ class FakeCodara {
     this.focusedReviewId = reviewId;
   }
 
-  getTaskRunSummaries() {
-    return this.taskRunSummaries;
+  getAgentRunSummaries() {
+    return this.agentRunSummaries;
   }
 
   getMcpStatus() {
@@ -1540,13 +1540,13 @@ class FakeCodara {
 
 function createReviewItem(
   reviewId: string,
-  taskRunId: string,
+  agentRunId: string,
   description: string,
 ): ReviewQueryItem {
   const now = new Date().toISOString();
   return {
     reviewId,
-    source: 'task_run',
+    source: 'agent_run',
     kind: 'approval',
     interactionMode: 'approval',
     blockingScope: 'task',
@@ -1556,8 +1556,8 @@ function createReviewItem(
     updatedAt: now,
     anchor: {
       origin: 'delegated',
-      taskRunId,
-      childSessionId: `${taskRunId}:child`,
+      agentRunId,
+      childSessionId: `${agentRunId}:child`,
     },
     isFocused: false,
   };

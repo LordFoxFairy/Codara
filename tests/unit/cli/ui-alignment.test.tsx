@@ -381,7 +381,7 @@ describe('UI alignment with Claude Code', () => {
           role: 'task',
           content: '⚙ Explore(Analyze README and package metadata)\nRunning (35s · 17 tool activities)',
           toolMeta: {
-            toolName: 'Task',
+            toolName: 'Agent',
             displayName: 'Explore',
             icon: '⚙',
             args: 'Analyze README and package metadata',
@@ -398,7 +398,7 @@ describe('UI alignment with Claude Code', () => {
           role: 'task',
           content: '⚙ Explore(Sync architecture docs)\nRunning (28s · 15 tool activities)',
           toolMeta: {
-            toolName: 'Task',
+            toolName: 'Agent',
             displayName: 'Explore',
             icon: '⚙',
             args: 'Sync architecture docs',
@@ -427,11 +427,11 @@ describe('UI alignment with Claude Code', () => {
     it('should render a single running task as a stable execution block without child activity detail', () => {
       const items: TranscriptItem[] = [
         {
-          id: 'active-task-run:run-1',
+          id: 'active-agent-run:run-1',
           role: 'task',
           content: '⚙ Explore(Analyze README and package metadata)\nRunning (35s · 17 tool activities)',
           toolMeta: {
-            toolName: 'Task',
+            toolName: 'Agent',
             displayName: 'Explore',
             icon: '⚙',
             args: 'Analyze README and package metadata',
@@ -467,11 +467,11 @@ describe('UI alignment with Claude Code', () => {
     it('should fall back to runtime activity stats when live task summaries have no tool/token counts yet', () => {
       const items: TranscriptItem[] = [
         {
-          id: 'active-task-run:run-fallback',
+          id: 'active-agent-run:run-fallback',
           role: 'task',
           content: '⚙ Explore(Analyze README and package metadata)\nRunning (35s · 17 tool activities)',
           toolMeta: {
-            toolName: 'Task',
+            toolName: 'Agent',
             displayName: 'Explore',
             icon: '⚙',
             args: 'Analyze README and package metadata',
@@ -503,11 +503,11 @@ describe('UI alignment with Claude Code', () => {
     it('should prefer live task detail over stale runtime activity lines', () => {
       const items: TranscriptItem[] = [
         {
-          id: 'active-task-run:run-live-detail',
+          id: 'active-agent-run:run-live-detail',
           role: 'task',
           content: '⚙ Explore(Analyze README and package metadata)\nRunning (35s · 2 tool activities)',
           toolMeta: {
-            toolName: 'Task',
+            toolName: 'Agent',
             displayName: 'Explore',
             icon: '⚙',
             args: 'Analyze README and package metadata',
@@ -541,11 +541,11 @@ describe('UI alignment with Claude Code', () => {
     it('should render paused single-task blocks with the same execution header and a waiting summary', () => {
       const items: TranscriptItem[] = [
         {
-          id: 'active-task-run:run-paused',
+          id: 'active-agent-run:run-paused',
           role: 'task',
           content: '⚙ Explore(Inspect guarded task)\nWaiting for review (53s)',
           toolMeta: {
-            toolName: 'Task',
+            toolName: 'Agent',
             displayName: 'Explore',
             icon: '⚙',
             args: 'Inspect guarded task',
@@ -578,11 +578,11 @@ describe('UI alignment with Claude Code', () => {
     it('should render completed tasks using the original hierarchical task shape with a done summary line', () => {
       const items: TranscriptItem[] = [
         {
-          id: 'active-task-run:run-done',
+          id: 'active-agent-run:run-done',
           role: 'task',
           content: '⚙ Explore(Analyze README and package metadata)\nDone (38s)',
           toolMeta: {
-            toolName: 'Task',
+            toolName: 'Agent',
             displayName: 'Explore',
             icon: '⚙',
             args: 'Analyze README and package metadata',
@@ -608,11 +608,11 @@ describe('UI alignment with Claude Code', () => {
     it('should switch a single task block to done when the live task summary has completed', () => {
       const items: TranscriptItem[] = [
         {
-          id: 'active-task-run:run-single-done',
+          id: 'active-agent-run:run-single-done',
           role: 'task',
           content: '⚙ Explore(Analyze architecture)\nRunning (12s · 2 tool activities)',
           toolMeta: {
-            toolName: 'Task',
+            toolName: 'Agent',
             displayName: 'Explore',
             icon: '⚙',
             args: 'Analyze architecture',
@@ -659,7 +659,7 @@ describe('UI alignment with Claude Code', () => {
           }}
           runtimeEvents={[
             {
-              id: 'task-run:run-done',
+              id: 'agent-run:run-done',
               sessionId: 'session-1',
               timestamp: now,
               kind: 'task',
@@ -668,7 +668,7 @@ describe('UI alignment with Claude Code', () => {
               label: 'Delegating Explore: Analyze architecture',
             },
             {
-              id: 'task-run:run-running',
+              id: 'agent-run:run-running',
               sessionId: 'session-1',
               timestamp: now,
               kind: 'task',
@@ -685,7 +685,7 @@ describe('UI alignment with Claude Code', () => {
               status: 'running',
               label: 'glob(vite.config.{ts,js})',
               detail: 'glob',
-              parentId: 'task-run:run-running',
+              parentId: 'agent-run:run-running',
             },
             {
               id: 'evt-task-done',
@@ -694,9 +694,9 @@ describe('UI alignment with Claude Code', () => {
               kind: 'task',
               phase: 'end',
               status: 'done',
-              label: 'Delegated task completed',
+              label: 'Subagent completed',
               detail: '2 tool uses · 14.4k tokens',
-              parentId: 'task-run:run-done',
+              parentId: 'agent-run:run-done',
             },
           ]}
         />,
@@ -718,11 +718,11 @@ describe('UI alignment with Claude Code', () => {
             kind: 'turn',
             items: [
               {
-                id: 'active-task-run:run-solid-done',
+                id: 'active-agent-run:run-solid-done',
                 role: 'task',
                 content: '⚙ Explore(Analyze architecture)\nDone (2 tool uses · 14.4k tokens · 38s)',
                 toolMeta: {
-                  toolName: 'Task',
+                  toolName: 'Agent',
                   displayName: 'Explore',
                   icon: '⚙',
                   args: 'Analyze architecture',
@@ -752,11 +752,11 @@ describe('UI alignment with Claude Code', () => {
 
     it('should synthesize missing completed execution blocks from active task summaries without leaking child summaries', () => {
       const items: TranscriptItem[] = [{
-        id: 'active-task-run:run-running',
+        id: 'active-agent-run:run-running',
         role: 'task',
         content: '⚙ Explore(Analyze tech stack)\nRunning (1 tool use · 12s)',
         toolMeta: {
-          toolName: 'Task',
+          toolName: 'Agent',
           displayName: 'Explore',
           icon: '⚙',
           args: 'Analyze tech stack',

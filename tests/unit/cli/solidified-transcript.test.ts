@@ -12,7 +12,7 @@ import {
   type TranscriptItem,
 } from '@/cli/transcript/model';
 import {
-  filterTaskCompletionTranscriptItems,
+  filterAgentCompletionTranscriptItems,
   orderActiveTranscriptItems,
   useSolidifiedTranscript,
 } from '@/cli/hooks/use-solidified-transcript';
@@ -86,22 +86,22 @@ describe('solidified transcript model', () => {
     test('should suppress raw delegated task launch tool messages from the transcript', () => {
       const taskCall: ToolCall = {
         id: 'call_task_1',
-        name: 'Task',
+        name: 'Agent',
         args: {prompt: 'Analyze the repo', subagent_type: 'Explore'},
       };
       const messages = [
         new AIMessage({content: '', tool_calls: [taskCall]}),
         new ToolMessage({
           content: [
-            'Delegated task started in background.',
+            'Subagent started in background.',
             'run_id: call_123',
             'delegate_id: session:task:call_123',
             'agent: Explore',
           ].join('\n'),
           tool_call_id: 'call_task_1',
-          name: 'Task',
+          name: 'Agent',
           artifact: {
-            type: 'task_run_started',
+            type: 'agent_run_started',
             runId: 'call_123',
             parentSessionId: 'session-1',
             sessionId: 'session:task:call_123',
@@ -253,7 +253,7 @@ describe('solidified transcript model', () => {
         },
         runtimeEvents: [
           {
-            id: 'task-run:run-1',
+            id: 'agent-run:run-1',
             sessionId: 'session-1',
             timestamp: '2026-03-20T10:00:00.000Z',
             kind: 'task',
@@ -364,7 +364,7 @@ describe('solidified transcript model', () => {
       ];
       const runtimeItems: TranscriptItem[] = [
         {
-          id: 'active-task-run:run-1',
+          id: 'active-agent-run:run-1',
           role: 'task',
           content: '⏺ Explore(Analyze structure)\n  ⎿ Done (5 tool uses · 1.2k tokens · 31s)',
         },
@@ -381,7 +381,7 @@ describe('solidified transcript model', () => {
       });
 
       expect(ordered.map((item) => item.id)).toEqual([
-        'active-task-run:run-1',
+        'active-agent-run:run-1',
         'assistant-final',
         'notice-1',
       ]);
@@ -424,9 +424,9 @@ describe('solidified transcript model', () => {
     });
   });
 
-  describe('filterTaskCompletionTranscriptItems', () => {
+  describe('filterAgentCompletionTranscriptItems', () => {
     test('filters invalid task-completion waiting narration from transcript items', () => {
-      const items = filterTaskCompletionTranscriptItems({
+      const items = filterAgentCompletionTranscriptItems({
         completedTurnKind: 'task_completion',
         items: [
           {id: 'assistant-invalid', role: 'assistant', content: 'Phase 1 has started. Waiting for subagent results.'},
@@ -439,7 +439,7 @@ describe('solidified transcript model', () => {
     });
 
     test('keeps assistant items untouched outside task-completion turns', () => {
-      const items = filterTaskCompletionTranscriptItems({
+      const items = filterAgentCompletionTranscriptItems({
         completedTurnKind: 'prompt',
         items: [
           {id: 'assistant-1', role: 'assistant', content: 'Phase 1 has started. Waiting for subagent results.'},

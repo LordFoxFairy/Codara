@@ -11,7 +11,7 @@ export type {
   ReviewBlockingScope,
   ReviewQueryItem,
   FocusedReviewQuery,
-  TaskRunQuerySummary,
+  AgentRunQuerySummary,
 } from '@codara/facade';
 export {
   CodaraModelCatalog,

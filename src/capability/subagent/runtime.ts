@@ -4,13 +4,13 @@ import type {Agent} from '@core/agent/models/agent';
 import {bootstrapAgent, type BootstrapAgentOptions} from '@core/agent/bootstrap';
 import type {AgentResult} from '@shared/contracts/agent-types';
 import type {ApprovalStore} from '@durability/approval-store';
-import {createDelegatedAgentResult} from '@capability/task/delegation/agent';
+import {createDelegatedAgentResult} from '@capability/subagent/agent';
 import type {ChildToolActivityCallback} from '@observability/events';
 import type {CodaraRuntimeEventListener, EmitRuntimeEventInput} from '@observability/events';
-import type {TaskRunRecord, TaskRunStore} from '@capability/task/types';
-import type {TaskRunLaunchResult} from '@shared/task-run-launch';
+import type {AgentRunRecord, AgentRunStore} from '@capability/subagent/types';
+import type {AgentRunLaunchResult} from '@shared/agent-run-launch';
 
-export interface TaskRuntimeLaunchInput {
+export interface AgentRuntimeLaunchInput {
   runId: string;
   parentSessionId: string;
   childSessionId: string;
@@ -21,10 +21,10 @@ export interface TaskRuntimeLaunchInput {
   maxTurns?: number;
 }
 
-export interface TaskRuntime {
-  launch(input: TaskRuntimeLaunchInput): Promise<TaskRunLaunchResult>;
-  registerRecoveryBuilder(builder: TaskRuntimeRecoveryBuilder): void;
-  setOnTaskEvent(listener: CodaraRuntimeEventListener, sessionId: string | (() => string)): void;
+export interface AgentRuntime {
+  launch(input: AgentRuntimeLaunchInput): Promise<AgentRunLaunchResult>;
+  registerRecoveryBuilder(builder: AgentRuntimeRecoveryBuilder): void;
+  setOnAgentEvent(listener: CodaraRuntimeEventListener, sessionId: string | (() => string)): void;
   recordActivity(runId: string, info: Parameters<ChildToolActivityCallback>[0]): void;
   resumeRun(runId: string, payload: ResumePayload, config?: AgentResumeStreamConfig): Promise<void>;
   resumeRunStream(
@@ -41,7 +41,7 @@ export interface TaskRuntime {
   dispose(): Promise<void>;
 }
 
-interface TaskHandle {
+interface AgentRunHandle {
   runId: string;
   parentSessionId: string;
   childSessionId: string;
@@ -53,41 +53,41 @@ interface TaskHandle {
   agentPromise?: Promise<Agent>;
 }
 
-export interface CreateTaskRuntimeOptions {
-  runStore?: TaskRunStore;
+export interface CreateAgentRuntimeOptions {
+  runStore?: AgentRunStore;
   approvalStore?: ApprovalStore;
 }
 
-export type TaskRuntimeRecoveryBuilder = (
-  run: TaskRunRecord,
+export type AgentRuntimeRecoveryBuilder = (
+  run: AgentRunRecord,
 ) => Promise<BootstrapAgentOptions | undefined> | BootstrapAgentOptions | undefined;
 
-export function createTaskRuntime(options: CreateTaskRuntimeOptions): TaskRuntime {
-  return new InMemoryTaskRuntime(options);
+export function createAgentRuntime(options: CreateAgentRuntimeOptions): AgentRuntime {
+  return new InMemoryAgentRuntime(options);
 }
 
-class InMemoryTaskRuntime implements TaskRuntime {
-  private readonly handles = new Map<string, TaskHandle>();
-  private onTaskEventCallback?: CodaraRuntimeEventListener;
+class InMemoryAgentRuntime implements AgentRuntime {
+  private readonly handles = new Map<string, AgentRunHandle>();
+  private onAgentEventCallback?: CodaraRuntimeEventListener;
   private sessionIdGetter?: string | (() => string);
-  private recoveryBuilder?: TaskRuntimeRecoveryBuilder;
+  private recoveryBuilder?: AgentRuntimeRecoveryBuilder;
 
-  constructor(private readonly options: CreateTaskRuntimeOptions) {}
+  constructor(private readonly options: CreateAgentRuntimeOptions) {}
 
-  setOnTaskEvent(listener: CodaraRuntimeEventListener, sessionId: string | (() => string)): void {
-    this.onTaskEventCallback = listener;
+  setOnAgentEvent(listener: CodaraRuntimeEventListener, sessionId: string | (() => string)): void {
+    this.onAgentEventCallback = listener;
     this.sessionIdGetter = sessionId;
   }
 
-  registerRecoveryBuilder(builder: TaskRuntimeRecoveryBuilder): void {
+  registerRecoveryBuilder(builder: AgentRuntimeRecoveryBuilder): void {
     this.recoveryBuilder = builder;
   }
 
-  async launch(input: TaskRuntimeLaunchInput): Promise<TaskRunLaunchResult> {
+  async launch(input: AgentRuntimeLaunchInput): Promise<AgentRunLaunchResult> {
     const existingHandle = this.handles.get(input.runId);
     if (existingHandle) {
       return {
-        type: 'task_run_started',
+        type: 'agent_run_started',
         runId: existingHandle.runId,
         parentSessionId: existingHandle.parentSessionId,
         sessionId: existingHandle.childSessionId,
@@ -99,7 +99,7 @@ class InMemoryTaskRuntime implements TaskRuntime {
     const existingRun = this.options.runStore?.get(input.runId);
     if (existingRun && (existingRun.status === 'running' || existingRun.status === 'paused')) {
       return {
-        type: 'task_run_started',
+        type: 'agent_run_started',
         runId: existingRun.runId,
         parentSessionId: existingRun.parentSessionId ?? existingRun.sessionId,
         sessionId: existingRun.childSessionId ?? input.childSessionId,
@@ -108,7 +108,7 @@ class InMemoryTaskRuntime implements TaskRuntime {
       };
     }
 
-    this.options.approvalStore?.removeByTaskRunId(input.runId);
+    this.options.approvalStore?.removeByAgentRunId(input.runId);
     this.options.runStore?.start({
       runId: input.runId,
       sessionId: input.parentSessionId,
@@ -126,7 +126,7 @@ class InMemoryTaskRuntime implements TaskRuntime {
         : {}),
     });
 
-    const handle: TaskHandle = {
+    const handle: AgentRunHandle = {
       runId: input.runId,
       parentSessionId: input.parentSessionId,
       childSessionId: input.childSessionId,
@@ -136,8 +136,8 @@ class InMemoryTaskRuntime implements TaskRuntime {
       ...(typeof input.maxTurns === 'number' ? {maxTurns: input.maxTurns} : {}),
     };
     this.handles.set(input.runId, handle);
-    this.emitTaskEvent({
-      id: taskRootEventId(input.runId),
+    this.emitAgentEvent({
+      id: agentRootEventId(input.runId),
       kind: 'task',
       phase: 'start',
       status: 'running',
@@ -146,7 +146,7 @@ class InMemoryTaskRuntime implements TaskRuntime {
     void this.runLaunch(handle, input.prompt);
 
     return {
-      type: 'task_run_started',
+      type: 'agent_run_started',
       runId: input.runId,
       parentSessionId: input.parentSessionId,
       sessionId: input.childSessionId,
@@ -169,13 +169,13 @@ class InMemoryTaskRuntime implements TaskRuntime {
       latestActivity: info.label,
       toolUseCount: nextToolUseCount,
     });
-    this.emitTaskEvent({
+    this.emitAgentEvent({
       kind: 'task',
       phase: 'update',
       status: 'running',
       label: info.label,
       detail: info.toolName,
-      parentId: taskRootEventId(handle.runId),
+      parentId: agentRootEventId(handle.runId),
     });
   }
 
@@ -192,18 +192,18 @@ class InMemoryTaskRuntime implements TaskRuntime {
   ): AsyncGenerator<AgentStreamOutput, void, void> {
     const handle = await this.resolveHandle(runId);
     const agent = await this.ensureAgent(handle);
-    this.options.approvalStore?.removeByTaskRunId(runId);
+    this.options.approvalStore?.removeByAgentRunId(runId);
     this.options.runStore?.resume(runId, {
       childSessionId: handle.childSessionId,
       latestActivity: 'Resuming review',
     });
-    this.emitTaskEvent({
+    this.emitAgentEvent({
       kind: 'task',
       phase: 'update',
       status: 'running',
-      label: 'Delegated task resumed',
+      label: 'Delegated agent resumed',
       detail: handle.label,
-      parentId: taskRootEventId(handle.runId),
+      parentId: agentRootEventId(handle.runId),
     });
 
     const stream = agent.resumeStream(payload, {
@@ -218,7 +218,7 @@ class InMemoryTaskRuntime implements TaskRuntime {
 
   async resumeApprovalById(approvalId: string, payload: ResumePayload, config?: AgentResumeStreamConfig): Promise<void> {
     const record = this.requireApprovalRecord(approvalId);
-    await this.resumeRun(record.taskRunId!, payload, config);
+    await this.resumeRun(record.agentRunId!, payload, config);
   }
 
   async *resumeApprovalByIdStream(
@@ -227,7 +227,7 @@ class InMemoryTaskRuntime implements TaskRuntime {
     config?: AgentResumeStreamConfig,
   ): AsyncGenerator<AgentStreamOutput, void, void> {
     const record = this.requireApprovalRecord(approvalId);
-    yield* this.resumeRunStream(record.taskRunId!, payload, config);
+    yield* this.resumeRunStream(record.agentRunId!, payload, config);
   }
 
   async dispose(): Promise<void> {
@@ -247,7 +247,7 @@ class InMemoryTaskRuntime implements TaskRuntime {
     }));
   }
 
-  private async runLaunch(handle: TaskHandle, prompt: string): Promise<void> {
+  private async runLaunch(handle: AgentRunHandle, prompt: string): Promise<void> {
     try {
       const agent = await this.ensureAgent(handle);
       const result = await consumeAgentStream(agent.stream({
@@ -258,7 +258,7 @@ class InMemoryTaskRuntime implements TaskRuntime {
 
       await this.applyResult(handle, result);
     } catch (error) {
-      this.options.approvalStore?.removeByTaskRunId(handle.runId);
+      this.options.approvalStore?.removeByAgentRunId(handle.runId);
       this.options.runStore?.finish(handle.runId, {
         type: 'delegated_agent_result',
         sessionId: handle.childSessionId,
@@ -266,19 +266,19 @@ class InMemoryTaskRuntime implements TaskRuntime {
         reason: 'error',
         errorMessage: error instanceof Error ? error.message : String(error),
       });
-      this.emitTaskEvent({
+      this.emitAgentEvent({
         kind: 'task',
         phase: 'end',
         status: 'error',
-        label: 'Delegated task failed',
+        label: 'Delegated agent failed',
         detail: error instanceof Error ? error.message : String(error),
-        parentId: taskRootEventId(handle.runId),
+        parentId: agentRootEventId(handle.runId),
       });
       await this.disposeHandle(handle);
     }
   }
 
-  private async ensureAgent(handle: TaskHandle): Promise<Agent> {
+  private async ensureAgent(handle: AgentRunHandle): Promise<Agent> {
     if (handle.agent) {
       return handle.agent;
     }
@@ -298,31 +298,31 @@ class InMemoryTaskRuntime implements TaskRuntime {
     return handle.agentPromise;
   }
 
-  private async applyResult(handle: TaskHandle, result: AgentResult): Promise<void> {
+  private async applyResult(handle: AgentRunHandle, result: AgentResult): Promise<void> {
     const pause = result.state.pendingPause as PauseRequest | undefined;
     if (pause) {
       this.options.runStore?.pause(handle.runId, {
         childSessionId: handle.childSessionId,
         latestActivity: pause.description,
       });
-      this.options.approvalStore?.upsertTaskRunApproval({
+      this.options.approvalStore?.upsertAgentRunApproval({
         sessionId: handle.parentSessionId,
-        taskRunId: handle.runId,
+        agentRunId: handle.runId,
         pauseRequest: pause,
         childSessionId: handle.childSessionId,
       });
-      this.emitTaskEvent({
+      this.emitAgentEvent({
         kind: 'task',
         phase: 'update',
         status: 'paused',
-        label: 'Delegated task waiting for review',
+        label: 'Delegated agent waiting for review',
         detail: pause.description,
-        parentId: taskRootEventId(handle.runId),
+        parentId: agentRootEventId(handle.runId),
       });
       return;
     }
 
-    this.options.approvalStore?.removeByTaskRunId(handle.runId);
+    this.options.approvalStore?.removeByAgentRunId(handle.runId);
     const delegatedResult = createDelegatedAgentResult(
       handle.childSessionId,
       result.turns,
@@ -331,18 +331,18 @@ class InMemoryTaskRuntime implements TaskRuntime {
       result.state.messages,
     );
     this.options.runStore?.finish(handle.runId, delegatedResult);
-    this.emitTaskEvent({
+    this.emitAgentEvent({
       kind: 'task',
       phase: 'end',
       status: delegatedResult.reason === 'error' ? 'error' : 'done',
-      label: delegatedResult.reason === 'error' ? 'Delegated task failed' : 'Delegated task completed',
+      label: delegatedResult.reason === 'error' ? 'Delegated agent failed' : 'Delegated agent completed',
       detail: delegatedResult.summary ?? delegatedResult.errorMessage,
-      parentId: taskRootEventId(handle.runId),
+      parentId: agentRootEventId(handle.runId),
     });
     await this.disposeHandle(handle);
   }
 
-  private async disposeHandle(handle: TaskHandle): Promise<void> {
+  private async disposeHandle(handle: AgentRunHandle): Promise<void> {
     this.handles.delete(handle.runId);
     try {
       const agent = handle.agent ?? await handle.agentPromise;
@@ -352,7 +352,7 @@ class InMemoryTaskRuntime implements TaskRuntime {
     }
   }
 
-  private async resolveHandle(runId: string): Promise<TaskHandle> {
+  private async resolveHandle(runId: string): Promise<AgentRunHandle> {
     const normalizedRunId = runId.trim();
     const existing = this.handles.get(normalizedRunId);
     if (existing) {
@@ -361,19 +361,19 @@ class InMemoryTaskRuntime implements TaskRuntime {
 
     const record = this.options.runStore?.get(normalizedRunId);
     if (!record || !record.childSessionId) {
-      throw new Error(`Task run "${runId}" is not active in this runtime`);
+      throw new Error(`Agent run "${runId}" is not active in this runtime`);
     }
 
     if (!this.recoveryBuilder) {
-      throw new Error(`Task run "${runId}" cannot be resumed after restart because no recovery builder is registered`);
+      throw new Error(`Agent run "${runId}" cannot be resumed after restart because no recovery builder is registered`);
     }
 
     const childOptions = await this.recoveryBuilder(record);
     if (!childOptions) {
-      throw new Error(`Task run "${runId}" cannot be resumed because recovery metadata is incomplete`);
+      throw new Error(`Agent run "${runId}" cannot be resumed because recovery metadata is incomplete`);
     }
 
-    const recovered: TaskHandle = {
+    const recovered: AgentRunHandle = {
       runId: record.runId,
       parentSessionId: record.parentSessionId ?? record.sessionId,
       childSessionId: record.childSessionId,
@@ -388,21 +388,21 @@ class InMemoryTaskRuntime implements TaskRuntime {
 
   private requireApprovalRecord(approvalId: string) {
     const record = this.options.approvalStore?.get(approvalId);
-    if (!record || record.source !== 'task_run' || !record.taskRunId) {
-      throw new Error(`Task approval "${approvalId}" is not available`);
+    if (!record || record.source !== 'agent_run' || !record.agentRunId) {
+      throw new Error(`Agent approval "${approvalId}" is not available`);
     }
     return record;
   }
 
-  private emitTaskEvent(event: EmitRuntimeEventInput): void {
-    if (!this.onTaskEventCallback || !this.sessionIdGetter) {
+  private emitAgentEvent(event: EmitRuntimeEventInput): void {
+    if (!this.onAgentEventCallback || !this.sessionIdGetter) {
       return;
     }
 
     const sessionId = typeof this.sessionIdGetter === 'function'
       ? this.sessionIdGetter()
       : this.sessionIdGetter;
-    this.onTaskEventCallback({
+    this.onAgentEventCallback({
       ...event,
       id: event.id ?? `${event.kind}:${event.phase}:${Date.now()}:${Math.random().toString(36).slice(2, 8)}`,
       sessionId,
@@ -434,6 +434,6 @@ async function* forwardAgentStream(
   return result.value;
 }
 
-function taskRootEventId(runId: string): string {
-  return `task-run:${runId}`;
+function agentRootEventId(runId: string): string {
+  return `agent-run:${runId}`;
 }

@@ -16,7 +16,7 @@ describe('CLI interaction turn helpers', () => {
         {type: 'thinking', thinking: 'Second thought.'},
         {type: 'text', text: 'Visible answer'},
       ],
-      tool_calls: [{name: 'Task', id: 'call-1', args: {prompt: 'delegate'}}],
+      tool_calls: [{name: 'Agent', id: 'call-1', args: {prompt: 'delegate'}}],
       usage_metadata: {
         input_tokens: 120,
         output_tokens: 45,

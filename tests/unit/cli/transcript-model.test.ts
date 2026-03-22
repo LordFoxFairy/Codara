@@ -365,9 +365,9 @@ describe('cli transcript model', () => {
       coreMessages: [
         new AIMessage({
           content: '',
-          tool_calls: [{id: 'call_task_1', name: 'Task', args: {prompt: 'Inspect child work'}} as ToolCall],
+          tool_calls: [{id: 'call_task_1', name: 'Agent', args: {prompt: 'Inspect child work'}} as ToolCall],
         }),
-        new ToolMessage({content: 'Delegated task completed.\nsummary:\nCHILD_DONE', tool_call_id: 'call_task_1'}),
+        new ToolMessage({content: 'Subagent completed.\nsummary:\nCHILD_DONE', tool_call_id: 'call_task_1'}),
       ],
       activeTurn: {
         id: 'turn-streaming',
@@ -392,7 +392,7 @@ describe('cli transcript model', () => {
           kind: 'task',
           phase: 'end',
           status: 'done',
-          label: 'Delegated task completed',
+          label: 'Subagent completed',
           detail: 'CHILD_DONE',
         },
       ],
@@ -423,7 +423,7 @@ describe('cli transcript model', () => {
       },
       runtimeEvents: [
         {
-          id: 'task-run:run-2',
+          id: 'agent-run:run-2',
           sessionId: 'session-1',
           timestamp: now,
           kind: 'task',
@@ -461,7 +461,7 @@ describe('cli transcript model', () => {
   test('should suppress solidified assistant launch chatter that only repeats a delegated task launch', () => {
     const taskCall: ToolCall = {
       id: 'call_task_launch_noise',
-      name: 'Task',
+      name: 'Agent',
       args: {prompt: 'Analyze the repo', subagent_type: 'Explore'},
     };
     const items = buildTranscriptItems({
@@ -470,14 +470,14 @@ describe('cli transcript model', () => {
         new AIMessage({content: '', tool_calls: [taskCall]}),
         new ToolMessage({
           content: [
-            'Delegated task started in background.',
+            'Subagent started in background.',
             'Do not restate launch metadata or promise follow-up.',
             'Wait for runtime updates, review requests, or the delegated result.',
           ].join('\n'),
           tool_call_id: 'call_task_launch_noise',
-          name: 'Task',
+          name: 'Agent',
           artifact: {
-            type: 'task_run_started',
+            type: 'agent_run_started',
             runId: 'call_task_launch_noise',
             parentSessionId: 'session-1',
             sessionId: 'session:task:call_task_launch_noise',
@@ -500,7 +500,7 @@ describe('cli transcript model', () => {
   test('should suppress solidified launch chatter on an AI message that also contains a Task tool call', () => {
     const taskCall: ToolCall = {
       id: 'call_task_launch_inline',
-      name: 'Task',
+      name: 'Agent',
       args: {prompt: 'Analyze the repo', subagent_type: 'Explore'},
     };
     const items = buildTranscriptItems({
@@ -534,12 +534,12 @@ describe('cli transcript model', () => {
           content: '',
           tool_calls: [{
             id: 'call_task_1',
-            name: 'Task',
+            name: 'Agent',
             args: {prompt: 'Inspect child work', subagent_type: 'Explore'},
           } as ToolCall],
         }),
         new ToolMessage({
-          content: 'Delegated task completed.\nsummary:\nCHILD_DONE',
+          content: 'Subagent completed.\nsummary:\nCHILD_DONE',
           tool_call_id: 'call_task_1',
           artifact: {
             type: 'delegated_agent_result',
@@ -593,7 +593,7 @@ describe('cli transcript model', () => {
           phase: 'start',
           status: 'running',
           label: 'Delegating task(prompt: Analyze project)',
-          detail: 'Task',
+          detail: 'Agent',
         },
         {
           id: 'synthetic-task-root-1',
@@ -606,7 +606,7 @@ describe('cli transcript model', () => {
           parentId: 'tool-root-1',
         },
         {
-          id: 'task-run:run-1',
+          id: 'agent-run:run-1',
           sessionId: 'session-1',
           timestamp: now,
           kind: 'task',
@@ -632,7 +632,7 @@ describe('cli transcript model', () => {
           kind: 'task',
           phase: 'end',
           status: 'done',
-          label: 'Delegated task running in background',
+          label: 'Subagent running in background',
           detail: 'run_id: run-1\ndelegate_id: session-1:task:run-1',
           parentId: 'synthetic-task-root-1',
         },
@@ -643,9 +643,9 @@ describe('cli transcript model', () => {
           kind: 'task',
           phase: 'update',
           status: 'paused',
-          label: 'Delegated task waiting for review',
+          label: 'Subagent waiting for review',
           detail: 'Need confirmation',
-          parentId: 'task-run:run-1',
+          parentId: 'agent-run:run-1',
         },
       ],
     });
@@ -683,16 +683,16 @@ describe('cli transcript model', () => {
           kind: 'task',
           phase: 'end',
           status: 'done',
-          label: 'Delegated task running in background',
-          detail: 'Delegated task started in background.',
+          label: 'Subagent running in background',
+          detail: 'Subagent started in background.',
           parentId: 'tool-call-1',
         },
       ],
     });
 
     expect(items.some((item) => item.content.includes('Task started'))).toBe(false);
-    expect(items.some((item) => item.content.includes('Delegated task running in background'))).toBe(false);
-    expect(items.some((item) => item.content.includes('Delegated task started in background.'))).toBe(false);
+    expect(items.some((item) => item.content.includes('Subagent running in background'))).toBe(false);
+    expect(items.some((item) => item.content.includes('Subagent started in background.'))).toBe(false);
   });
 
   test('should ignore pre-registered pending task placeholders once real parallel task roots exist', () => {
@@ -739,7 +739,7 @@ describe('cli transcript model', () => {
           parentId: 'pending-task-tech',
         },
         {
-          id: 'task-run:run-tech',
+          id: 'agent-run:run-tech',
           sessionId: 'session-1',
           timestamp: now,
           kind: 'task',
@@ -754,12 +754,12 @@ describe('cli transcript model', () => {
           kind: 'task',
           phase: 'end',
           status: 'done',
-          label: 'Delegated task completed',
+          label: 'Subagent completed',
           detail: 'tech summary',
-          parentId: 'task-run:run-tech',
+          parentId: 'agent-run:run-tech',
         },
         {
-          id: 'task-run:run-structure',
+          id: 'agent-run:run-structure',
           sessionId: 'session-1',
           timestamp: now,
           kind: 'task',
@@ -791,7 +791,7 @@ describe('cli transcript model', () => {
       },
       runtimeEvents: [
         {
-          id: 'task-run:evt-task-start',
+          id: 'agent-run:evt-task-start',
           sessionId: 'session-1',
           timestamp: start,
           kind: 'task',
@@ -808,7 +808,7 @@ describe('cli transcript model', () => {
           status: 'running',
           label: 'glob(README*)',
           detail: 'glob',
-          parentId: 'task-run:evt-task-start',
+          parentId: 'agent-run:evt-task-start',
         },
         {
           id: 'evt_task_b',
@@ -819,7 +819,7 @@ describe('cli transcript model', () => {
           status: 'running',
           label: 'Read(package.json)',
           detail: 'read',
-          parentId: 'task-run:evt-task-start',
+          parentId: 'agent-run:evt-task-start',
         },
         {
           id: 'evt_task_c',
@@ -830,7 +830,7 @@ describe('cli transcript model', () => {
           status: 'running',
           label: 'Read(src/index.ts)',
           detail: 'read',
-          parentId: 'task-run:evt-task-start',
+          parentId: 'agent-run:evt-task-start',
         },
         {
           id: 'evt_task_d',
@@ -841,7 +841,7 @@ describe('cli transcript model', () => {
           status: 'running',
           label: 'Read(src/core/agent.ts)',
           detail: 'read',
-          parentId: 'task-run:evt-task-start',
+          parentId: 'agent-run:evt-task-start',
         },
       ],
     });
@@ -872,7 +872,7 @@ describe('cli transcript model', () => {
       },
       runtimeEvents: [
         {
-          id: 'task-run:evt-task-start',
+          id: 'agent-run:evt-task-start',
           sessionId: 'session-1',
           timestamp: start,
           kind: 'task',
@@ -889,7 +889,7 @@ describe('cli transcript model', () => {
           status: 'running',
           label: 'glob(README*)',
           detail: 'glob',
-          parentId: 'task-run:evt-task-start',
+          parentId: 'agent-run:evt-task-start',
         },
         {
           id: 'evt_task_activity_2',
@@ -900,7 +900,7 @@ describe('cli transcript model', () => {
           status: 'running',
           label: 'Read(package.json)',
           detail: 'read',
-          parentId: 'task-run:evt-task-start',
+          parentId: 'agent-run:evt-task-start',
         },
         {
           id: 'evt_task_end',
@@ -909,9 +909,9 @@ describe('cli transcript model', () => {
           kind: 'task',
           phase: 'end',
           status: 'done',
-          label: 'Delegated task completed',
+          label: 'Subagent completed',
           detail: 'Codara is a terminal-first AI agent runtime.',
-          parentId: 'task-run:evt-task-start',
+          parentId: 'agent-run:evt-task-start',
         },
       ],
     });

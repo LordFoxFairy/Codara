@@ -9,7 +9,7 @@ import type {StructuredToolInterface} from '@langchain/core/tools';
 import {tool} from '@langchain/core/tools';
 import {z} from 'zod';
 import {createCodaraRuntime} from '@/index';
-import {createTaskTool} from '@capability/task/middleware';
+import {createAgentTool} from '@capability/subagent/middleware';
 import type {CodaraRuntimeEvent} from '@observability/events';
 
 /**
@@ -62,7 +62,7 @@ describe('sub-agent activity display pipeline', () => {
       skills: false,
       hil: false,
       tools: [
-        createTaskTool({
+        createAgentTool({
           model: childModel as unknown as BaseChatModel,
           tools: [readTool, grepTool],
         }),
@@ -142,7 +142,7 @@ class ParentActivityModel {
       tool_calls: [
         {
           id: 'parent_task_1',
-          name: 'Task',
+          name: 'Agent',
           args: {prompt: 'Analyze the codebase architecture', subagent_type: 'Agent'},
         } as ToolCall,
       ],

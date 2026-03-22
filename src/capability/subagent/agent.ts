@@ -130,7 +130,7 @@ interface ParentPauseContext {
  * No depth counter is needed — subagents simply cannot access delegation tools.
  */
 
-const DELEGATION_TOOL = Symbol.for('codara.tasks.delegation.tool');
+const DELEGATION_TOOL = Symbol.for('codara.subagent.delegation.tool');
 
 export async function runDelegatedAgent(
   options: DelegatedAgentOptions,
@@ -445,7 +445,7 @@ function createDelegatedPauseToolMessage(
 export function formatDelegatedAgentResult(result: DelegatedAgentResult): string {
   if (result.reason === 'error') {
     return [
-      'Delegated task failed.',
+      'Subagent failed.',
       `delegate_id: ${result.sessionId}`,
       `turns: ${result.turns}`,
       `error: ${result.errorMessage ?? 'Unknown error'}`,
@@ -454,7 +454,7 @@ export function formatDelegatedAgentResult(result: DelegatedAgentResult): string
   }
 
   return [
-    'Delegated task completed.',
+    'Subagent completed.',
     `delegate_id: ${result.sessionId}`,
     `turns: ${result.turns}`,
     `reason: ${result.reason}`,

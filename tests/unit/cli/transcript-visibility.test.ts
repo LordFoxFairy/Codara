@@ -20,7 +20,7 @@ describe('cli transcript visibility', () => {
       },
       runtimeEvents: [
         {
-          id: 'task-run:run-visible',
+          id: 'agent-run:run-visible',
           sessionId: 'session-1',
           timestamp: new Date().toISOString(),
           kind: 'task',
@@ -38,7 +38,7 @@ describe('cli transcript visibility', () => {
   test('keeps a previously visible main-agent message when it later becomes solidified', () => {
     const taskCall: ToolCall = {
       id: 'call_task_preserved',
-      name: 'Task',
+      name: 'Agent',
       args: {prompt: 'Analyze the repo', subagent_type: 'Explore'},
     };
     const messages = [

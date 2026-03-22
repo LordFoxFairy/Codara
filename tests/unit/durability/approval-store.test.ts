@@ -34,7 +34,7 @@ describe('FileApprovalStore', () => {
       const store = createApprovalFileStore({rootDir});
       store.upsertTaskRunApproval({
         sessionId: 'session-task-run',
-        taskRunId: 'task-run-1',
+        agentRunId: 'task-run-1',
         childSessionId: 'child-session-1',
         pauseRequest: makePauseRequest('approval-task-run', 'Task approval required', 'dangerous_tool'),
       });
@@ -42,9 +42,9 @@ describe('FileApprovalStore', () => {
       const reopened = createApprovalFileStore({rootDir});
       expect(reopened.get('approval-task-run')).toEqual(expect.objectContaining({
         approvalId: 'approval-task-run',
-        source: 'task_run',
+        source: 'agent_run',
         sessionId: 'session-task-run',
-        taskRunId: 'task-run-1',
+        agentRunId: 'task-run-1',
         childSessionId: 'child-session-1',
         description: 'Task approval required',
         toolName: 'dangerous_tool',
@@ -66,19 +66,19 @@ describe('FileApprovalStore', () => {
 
       store.upsertTaskRunApproval({
         sessionId: 'session-task-run',
-        taskRunId: 'task-run-1',
+        agentRunId: 'task-run-1',
         childSessionId: 'child-session-1',
         pauseRequest: makePauseRequest('approval-task-run-1', 'Task approval required', 'dangerous_tool'),
       });
       store.upsertTaskRunApproval({
         sessionId: 'session-task-run',
-        taskRunId: 'task-run-2',
+        agentRunId: 'task-run-2',
         childSessionId: 'child-session-2',
         pauseRequest: makePauseRequest('approval-task-run-2', 'Task approval required', 'dangerous_tool'),
       });
       store.upsertTaskRunApproval({
         sessionId: 'session-task-run',
-        taskRunId: 'task-run-3',
+        agentRunId: 'task-run-3',
         childSessionId: 'child-session-3',
         pauseRequest: makePauseRequest('approval-task-run-3', 'Task approval required', 'dangerous_tool'),
       });
@@ -87,11 +87,11 @@ describe('FileApprovalStore', () => {
 
       expect(store.get('approval-task-run-1')).toBeUndefined();
       expect(store.get('approval-task-run-2')).toEqual(expect.objectContaining({
-        taskRunId: 'task-run-2',
+        agentRunId: 'task-run-2',
         childSessionId: 'child-session-2',
       }));
       expect(store.get('approval-task-run-3')).toEqual(expect.objectContaining({
-        taskRunId: 'task-run-3',
+        agentRunId: 'task-run-3',
         childSessionId: 'child-session-3',
       }));
     } finally {

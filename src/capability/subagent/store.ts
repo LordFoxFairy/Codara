@@ -3,20 +3,20 @@ import {mkdirSync, readdirSync, readFileSync, renameSync, writeFileSync} from 'n
 import path from 'node:path';
 import {z} from 'zod';
 import type {
-  TaskRunPauseInput,
-  TaskRunRecord,
-  TaskRunResumeInput,
-  TaskRunStartInput,
-  TaskRunStore,
-  TaskRunUpdateInput,
-} from '@capability/task/types';
+  AgentRunPauseInput,
+  AgentRunRecord,
+  AgentRunResumeInput,
+  AgentRunStartInput,
+  AgentRunStore,
+  AgentRunUpdateInput,
+} from '@capability/subagent/types';
 import type {DelegatedAgentResult} from '@shared/delegation-result';
 
-export interface TaskRunFileStoreOptions {
+export interface AgentRunFileStoreOptions {
   rootDir: string;
 }
 
-const taskRunRecordSchema = z.object({
+const agentRunRecordSchema = z.object({
   runId: z.string(),
   sessionId: z.string(),
   parentSessionId: z.string().optional(),
@@ -40,59 +40,59 @@ const taskRunRecordSchema = z.object({
   totalTokens: z.number().optional(),
 });
 
-export function createTaskRunMemoryStore(): TaskRunStore {
-  return new InMemoryTaskRunStore();
+export function createAgentRunMemoryStore(): AgentRunStore {
+  return new InMemoryAgentRunStore();
 }
 
-export function createTaskRunFileStore(options: TaskRunFileStoreOptions): TaskRunStore {
-  return new FileTaskRunStore(options.rootDir);
+export function createAgentRunFileStore(options: AgentRunFileStoreOptions): AgentRunStore {
+  return new FileAgentRunStore(options.rootDir);
 }
 
-class InMemoryTaskRunStore implements TaskRunStore {
-  private readonly records = new Map<string, TaskRunRecord>();
+class InMemoryAgentRunStore implements AgentRunStore {
+  private readonly records = new Map<string, AgentRunRecord>();
 
-  list(): TaskRunRecord[] {
-    return sortTaskRuns(Array.from(this.records.values()));
+  list(): AgentRunRecord[] {
+    return sortAgentRuns(Array.from(this.records.values()));
   }
 
-  get(runId: string): TaskRunRecord | undefined {
+  get(runId: string): AgentRunRecord | undefined {
     const record = this.records.get(runId.trim());
-    return record ? cloneTaskRun(record) : undefined;
+    return record ? cloneAgentRun(record) : undefined;
   }
 
-  start(input: TaskRunStartInput): TaskRunRecord {
+  start(input: AgentRunStartInput): AgentRunRecord {
     const runId = normalizeRunId(input.runId);
-    const next = applyTaskRunStart(this.records.get(runId), runId, input, new Date().toISOString());
+    const next = applyAgentRunStart(this.records.get(runId), runId, input, new Date().toISOString());
     this.records.set(runId, next);
-    return cloneTaskRun(next);
+    return cloneAgentRun(next);
   }
 
-  update(runId: string, input: TaskRunUpdateInput): TaskRunRecord {
+  update(runId: string, input: AgentRunUpdateInput): AgentRunRecord {
     const record = this.requireRun(runId);
-    const next = applyTaskRunUpdate(record, input, new Date().toISOString());
+    const next = applyAgentRunUpdate(record, input, new Date().toISOString());
     this.records.set(record.runId, next);
-    return cloneTaskRun(next);
+    return cloneAgentRun(next);
   }
 
-  resume(runId: string, input?: TaskRunResumeInput): TaskRunRecord {
+  resume(runId: string, input?: AgentRunResumeInput): AgentRunRecord {
     const record = this.requireRun(runId);
-    const next = applyTaskRunResume(record, input, new Date().toISOString());
+    const next = applyAgentRunResume(record, input, new Date().toISOString());
     this.records.set(record.runId, next);
-    return cloneTaskRun(next);
+    return cloneAgentRun(next);
   }
 
-  pause(runId: string, input?: TaskRunPauseInput): TaskRunRecord {
+  pause(runId: string, input?: AgentRunPauseInput): AgentRunRecord {
     const record = this.requireRun(runId);
-    const next = applyTaskRunPause(record, input, new Date().toISOString());
+    const next = applyAgentRunPause(record, input, new Date().toISOString());
     this.records.set(record.runId, next);
-    return cloneTaskRun(next);
+    return cloneAgentRun(next);
   }
 
-  finish(runId: string, result: DelegatedAgentResult): TaskRunRecord {
+  finish(runId: string, result: DelegatedAgentResult): AgentRunRecord {
     const record = this.requireRun(runId);
-    const next = applyTaskRunFinish(record, result, new Date().toISOString());
+    const next = applyAgentRunFinish(record, result, new Date().toISOString());
     this.records.set(record.runId, next);
-    return cloneTaskRun(next);
+    return cloneAgentRun(next);
   }
 
   recoverSession(sessionId: string): void {
@@ -104,82 +104,82 @@ class InMemoryTaskRunStore implements TaskRunStore {
         continue;
       }
 
-      const next = applyTaskRunPause(record, undefined, now);
+      const next = applyAgentRunPause(record, undefined, now);
       this.records.set(runId, next);
     }
   }
 
-  private requireRun(runId: string): TaskRunRecord {
+  private requireRun(runId: string): AgentRunRecord {
     const record = this.records.get(normalizeRunId(runId));
     if (!record) {
-      throw new Error(`Task run "${runId}" not found`);
+      throw new Error(`Agent run "${runId}" not found`);
     }
     return record;
   }
 }
 
-class FileTaskRunStore implements TaskRunStore {
-  private readonly records = new Map<string, TaskRunRecord>();
+class FileAgentRunStore implements AgentRunStore {
+  private readonly records = new Map<string, AgentRunRecord>();
   private readonly sessionIndex = new Map<string, Set<string>>();
   private loaded = false;
 
   constructor(private readonly rootDir: string) {}
 
-  list(): TaskRunRecord[] {
+  list(): AgentRunRecord[] {
     this.ensureLoaded();
-    return sortTaskRuns(Array.from(this.records.values()));
+    return sortAgentRuns(Array.from(this.records.values()));
   }
 
-  get(runId: string): TaskRunRecord | undefined {
+  get(runId: string): AgentRunRecord | undefined {
     this.ensureLoaded();
     const record = this.records.get(normalizeRunId(runId));
-    return record ? cloneTaskRun(record) : undefined;
+    return record ? cloneAgentRun(record) : undefined;
   }
 
-  start(input: TaskRunStartInput): TaskRunRecord {
+  start(input: AgentRunStartInput): AgentRunRecord {
     this.ensureLoaded();
     const runId = normalizeRunId(input.runId);
     const existing = this.records.get(runId);
-    const next = applyTaskRunStart(existing, runId, input, new Date().toISOString());
-    this.storeTaskRun(next, existing);
-    this.writeTaskRun(next);
-    return cloneTaskRun(next);
+    const next = applyAgentRunStart(existing, runId, input, new Date().toISOString());
+    this.storeAgentRun(next, existing);
+    this.writeAgentRun(next);
+    return cloneAgentRun(next);
   }
 
-  update(runId: string, input: TaskRunUpdateInput): TaskRunRecord {
+  update(runId: string, input: AgentRunUpdateInput): AgentRunRecord {
     this.ensureLoaded();
     const record = this.requireRun(runId);
-    const next = applyTaskRunUpdate(record, input, new Date().toISOString());
-    this.storeTaskRun(next, record);
-    this.writeTaskRun(next);
-    return cloneTaskRun(next);
+    const next = applyAgentRunUpdate(record, input, new Date().toISOString());
+    this.storeAgentRun(next, record);
+    this.writeAgentRun(next);
+    return cloneAgentRun(next);
   }
 
-  resume(runId: string, input?: TaskRunResumeInput): TaskRunRecord {
+  resume(runId: string, input?: AgentRunResumeInput): AgentRunRecord {
     this.ensureLoaded();
     const record = this.requireRun(runId);
-    const next = applyTaskRunResume(record, input, new Date().toISOString());
-    this.storeTaskRun(next, record);
-    this.writeTaskRun(next);
-    return cloneTaskRun(next);
+    const next = applyAgentRunResume(record, input, new Date().toISOString());
+    this.storeAgentRun(next, record);
+    this.writeAgentRun(next);
+    return cloneAgentRun(next);
   }
 
-  pause(runId: string, input?: TaskRunPauseInput): TaskRunRecord {
+  pause(runId: string, input?: AgentRunPauseInput): AgentRunRecord {
     this.ensureLoaded();
     const record = this.requireRun(runId);
-    const next = applyTaskRunPause(record, input, new Date().toISOString());
-    this.storeTaskRun(next, record);
-    this.writeTaskRun(next);
-    return cloneTaskRun(next);
+    const next = applyAgentRunPause(record, input, new Date().toISOString());
+    this.storeAgentRun(next, record);
+    this.writeAgentRun(next);
+    return cloneAgentRun(next);
   }
 
-  finish(runId: string, result: DelegatedAgentResult): TaskRunRecord {
+  finish(runId: string, result: DelegatedAgentResult): AgentRunRecord {
     this.ensureLoaded();
     const record = this.requireRun(runId);
-    const next = applyTaskRunFinish(record, result, new Date().toISOString());
-    this.storeTaskRun(next, record);
-    this.writeTaskRun(next);
-    return cloneTaskRun(next);
+    const next = applyAgentRunFinish(record, result, new Date().toISOString());
+    this.storeAgentRun(next, record);
+    this.writeAgentRun(next);
+    return cloneAgentRun(next);
   }
 
   recoverSession(sessionId: string): void {
@@ -197,16 +197,16 @@ class FileTaskRunStore implements TaskRunStore {
         continue;
       }
 
-      const next = applyTaskRunPause(record, undefined, now);
-      this.storeTaskRun(next, record);
-      this.writeTaskRun(next);
+      const next = applyAgentRunPause(record, undefined, now);
+      this.storeAgentRun(next, record);
+      this.writeAgentRun(next);
     }
   }
 
-  private requireRun(runId: string): TaskRunRecord {
+  private requireRun(runId: string): AgentRunRecord {
     const record = this.records.get(normalizeRunId(runId));
     if (!record) {
-      throw new Error(`Task run "${runId}" not found`);
+      throw new Error(`Agent run "${runId}" not found`);
     }
     return record;
   }
@@ -229,51 +229,51 @@ class FileTaskRunStore implements TaskRunStore {
         continue;
       }
 
-      const record = this.readTaskRun(path.join(this.rootDir, entry));
+      const record = this.readAgentRun(path.join(this.rootDir, entry));
       if (record) {
-        this.storeTaskRun(record);
+        this.storeAgentRun(record);
       }
     }
   }
 
-  private taskRunPath(runId: string): string {
+  private agentRunPath(runId: string): string {
     return path.join(this.rootDir, `${normalizeRunId(runId)}.json`);
   }
 
-  private readTaskRun(filePath: string): TaskRunRecord | undefined {
+  private readAgentRun(filePath: string): AgentRunRecord | undefined {
     try {
       const raw = JSON.parse(readFileSync(filePath, 'utf8'));
-      return parseTaskRunRecord(raw);
+      return parseAgentRunRecord(raw);
     } catch {
       return undefined;
     }
   }
 
-  private writeTaskRun(record: TaskRunRecord): void {
+  private writeAgentRun(record: AgentRunRecord): void {
     mkdirSync(this.rootDir, {recursive: true});
-    const filePath = this.taskRunPath(record.runId);
+    const filePath = this.agentRunPath(record.runId);
     const tempPath = `${filePath}.tmp-${randomUUID()}`;
     writeFileSync(tempPath, `${JSON.stringify(record, null, 2)}\n`, 'utf8');
     renameSync(tempPath, filePath);
   }
 
-  private storeTaskRun(record: TaskRunRecord, previous?: TaskRunRecord): void {
+  private storeAgentRun(record: AgentRunRecord, previous?: AgentRunRecord): void {
     if (previous && previous.sessionId !== record.sessionId) {
-      this.unindexTaskRun(previous.sessionId, previous.runId);
+      this.unindexAgentRun(previous.sessionId, previous.runId);
     }
 
     this.records.set(record.runId, record);
-    this.indexTaskRun(record.sessionId, record.runId);
+    this.indexAgentRun(record.sessionId, record.runId);
   }
 
-  private indexTaskRun(sessionId: string, runId: string): void {
+  private indexAgentRun(sessionId: string, runId: string): void {
     const normalizedSessionId = normalizeSessionId(sessionId);
     const runIds = this.sessionIndex.get(normalizedSessionId) ?? new Set<string>();
     runIds.add(runId);
     this.sessionIndex.set(normalizedSessionId, runIds);
   }
 
-  private unindexTaskRun(sessionId: string, runId: string): void {
+  private unindexAgentRun(sessionId: string, runId: string): void {
     const normalizedSessionId = normalizeSessionId(sessionId);
     const runIds = this.sessionIndex.get(normalizedSessionId);
     if (!runIds) {
@@ -287,7 +287,7 @@ class FileTaskRunStore implements TaskRunStore {
   }
 }
 
-function createTaskRunRecord(runId: string, input: TaskRunStartInput, now: string): TaskRunRecord {
+function createAgentRunRecord(runId: string, input: AgentRunStartInput, now: string): AgentRunRecord {
   return {
     runId,
     sessionId: normalizeSessionId(input.sessionId),
@@ -305,27 +305,27 @@ function createTaskRunRecord(runId: string, input: TaskRunStartInput, now: strin
   };
 }
 
-function cloneTaskRun(record: TaskRunRecord): TaskRunRecord {
+function cloneAgentRun(record: AgentRunRecord): AgentRunRecord {
   return {...record};
 }
 
-function sortTaskRuns(records: TaskRunRecord[]): TaskRunRecord[] {
+function sortAgentRuns(records: AgentRunRecord[]): AgentRunRecord[] {
   return records
-    .map((record) => cloneTaskRun(record))
+    .map((record) => cloneAgentRun(record))
     .sort((left, right) => {
       const started = left.startedAt.localeCompare(right.startedAt);
       return started !== 0 ? started : left.runId.localeCompare(right.runId);
     });
 }
 
-function applyTaskRunStart(
-  existing: TaskRunRecord | undefined,
+function applyAgentRunStart(
+  existing: AgentRunRecord | undefined,
   runId: string,
-  input: TaskRunStartInput,
+  input: AgentRunStartInput,
   now: string,
-): TaskRunRecord {
-  const next: TaskRunRecord = {
-    ...(existing ? cloneTaskRun(existing) : createTaskRunRecord(runId, input, now)),
+): AgentRunRecord {
+  const next: AgentRunRecord = {
+    ...(existing ? cloneAgentRun(existing) : createAgentRunRecord(runId, input, now)),
     runId,
     sessionId: normalizeSessionId(input.sessionId),
     parentSessionId: normalizeParentSessionId(input.parentSessionId, input.sessionId),
@@ -349,7 +349,7 @@ function applyTaskRunStart(
   return next;
 }
 
-function applyTaskRunUpdate(record: TaskRunRecord, input: TaskRunUpdateInput, now: string): TaskRunRecord {
+function applyAgentRunUpdate(record: AgentRunRecord, input: AgentRunUpdateInput, now: string): AgentRunRecord {
   return {
     ...record,
     ...(input.latestActivity !== undefined ? {latestActivity: normalizeOptionalText(input.latestActivity)} : {}),
@@ -358,7 +358,7 @@ function applyTaskRunUpdate(record: TaskRunRecord, input: TaskRunUpdateInput, no
   };
 }
 
-function applyTaskRunResume(record: TaskRunRecord, input: TaskRunResumeInput | undefined, now: string): TaskRunRecord {
+function applyAgentRunResume(record: AgentRunRecord, input: AgentRunResumeInput | undefined, now: string): AgentRunRecord {
   return {
     ...record,
     status: 'running',
@@ -369,7 +369,7 @@ function applyTaskRunResume(record: TaskRunRecord, input: TaskRunResumeInput | u
   };
 }
 
-function applyTaskRunPause(record: TaskRunRecord, input: TaskRunPauseInput | undefined, now: string): TaskRunRecord {
+function applyAgentRunPause(record: AgentRunRecord, input: AgentRunPauseInput | undefined, now: string): AgentRunRecord {
   return {
     ...record,
     status: 'paused',
@@ -380,7 +380,7 @@ function applyTaskRunPause(record: TaskRunRecord, input: TaskRunPauseInput | und
   };
 }
 
-function applyTaskRunFinish(record: TaskRunRecord, result: DelegatedAgentResult, now: string): TaskRunRecord {
+function applyAgentRunFinish(record: AgentRunRecord, result: DelegatedAgentResult, now: string): AgentRunRecord {
   return {
     ...record,
     status: result.reason === 'complete' ? 'completed' : 'failed',
@@ -396,15 +396,15 @@ function applyTaskRunFinish(record: TaskRunRecord, result: DelegatedAgentResult,
   };
 }
 
-function parseTaskRunRecord(value: unknown): TaskRunRecord | undefined {
-  const parsed = taskRunRecordSchema.safeParse(value);
+function parseAgentRunRecord(value: unknown): AgentRunRecord | undefined {
+  const parsed = agentRunRecordSchema.safeParse(value);
   return parsed.success ? parsed.data : undefined;
 }
 
 function normalizeRunId(value: string): string {
   const runId = value.trim();
   if (!runId) {
-    throw new Error('Task run id is required');
+    throw new Error('Agent run id is required');
   }
   return runId;
 }
@@ -412,7 +412,7 @@ function normalizeRunId(value: string): string {
 function normalizeSessionId(value: string): string {
   const sessionId = value.trim();
   if (!sessionId) {
-    throw new Error('Task run session id is required');
+    throw new Error('Agent run session id is required');
   }
   return sessionId;
 }
@@ -424,7 +424,7 @@ function normalizeParentSessionId(value: string | undefined, fallbackSessionId: 
 function normalizeText(value: string): string {
   const text = value.trim();
   if (!text) {
-    throw new Error('Task run label and agent name are required');
+    throw new Error('Agent run label and agent name are required');
   }
   return text;
 }

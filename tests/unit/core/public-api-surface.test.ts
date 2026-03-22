@@ -19,8 +19,8 @@ describe('core public APIs', () => {
   });
 
   it('should keep low-level task tools out of the top-level public barrels', () => {
-    expect('createTaskTool' in core).toBe(false);
-    expect('createTaskTool' in api).toBe(false);
+    expect('createAgentTool' in core).toBe(false);
+    expect('createAgentTool' in api).toBe(false);
   });
 
   it('should expose source constructors in the advanced public barrels', () => {
