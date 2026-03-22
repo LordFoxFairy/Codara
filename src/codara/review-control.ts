@@ -1,4 +1,4 @@
-import type {AgentResumeStreamConfig, AgentStreamOutput, PauseRequest, ResumePayload} from '@core/agent';
+import type {AgentResult, AgentResumeStreamConfig, AgentStreamOutput, ReviewRequest, ReviewResumePayload} from '@core/agent';
 import type {AgentRuntime} from '@capability/subagent';
 import type {ApprovalStore} from '@durability/approval-store';
 import type {Session} from '@durability/session';
@@ -9,8 +9,8 @@ export interface CodaraReviewControl {
   listReviewItems(): ReviewQueryItem[];
   getFocusedReview(): FocusedReviewQuery | undefined;
   focusReview(reviewId: string): Promise<void>;
-  resumeReview(payload: ResumePayload, config?: AgentResumeStreamConfig): Promise<void>;
-  streamReview(payload: ResumePayload, config?: AgentResumeStreamConfig): AsyncGenerator<AgentStreamOutput, void, void>;
+  resumeReview(payload: ReviewResumePayload, config?: AgentResumeStreamConfig): Promise<AgentResult | undefined>;
+  streamReview(payload: ReviewResumePayload, config?: AgentResumeStreamConfig): AsyncGenerator<AgentStreamOutput, void, void>;
 }
 
 export function createCodaraReviewControl(options: {
@@ -23,9 +23,9 @@ export function createCodaraReviewControl(options: {
 
   const listQueuedApprovalRecords = () => approvalStore?.list(session.getState().sessionId) ?? [];
 
-  const readForegroundPause = (): PauseRequest | undefined => {
+  const readForegroundReview = (): ReviewRequest | undefined => {
     try {
-      return session.getAgentState().pendingPause;
+      return session.getAgentState().pendingReview;
     } catch {
       return undefined;
     }
@@ -33,7 +33,7 @@ export function createCodaraReviewControl(options: {
 
   const listReviewItemsForSession = (): ReviewQueryItem[] => {
     const queuedRecords = listQueuedApprovalRecords();
-    const foregroundPause = readForegroundPause();
+    const foregroundPause = readForegroundReview();
     const resolvedFocusedReviewId = focusedReviewId
       ?? queuedRecords[0]?.approvalId
       ?? foregroundPause?.id;
@@ -47,7 +47,7 @@ export function createCodaraReviewControl(options: {
 
   const resolveFocusedReview = (): FocusedReviewQuery | undefined => {
     const queuedRecords = listQueuedApprovalRecords();
-    const foregroundPause = readForegroundPause();
+    const foregroundPause = readForegroundReview();
     const items = listReviewItemsForSession();
 
     if (items.length === 0) {
@@ -68,7 +68,7 @@ export function createCodaraReviewControl(options: {
       }
       return {
         item,
-        request: record.pauseRequest,
+        request: record.reviewRequest,
       };
     }
 
@@ -92,7 +92,7 @@ export function createCodaraReviewControl(options: {
       }
       focusedReviewId = reviewId;
     },
-    resumeReview: async (payload: ResumePayload, config?: AgentResumeStreamConfig): Promise<void> => {
+    resumeReview: async (payload: ReviewResumePayload, config?: AgentResumeStreamConfig): Promise<AgentResult | undefined> => {
       const focused = resolveFocusedReview();
       if (!focused) {
         throw new Error('No queued review is available for the current session');
@@ -103,14 +103,16 @@ export function createCodaraReviewControl(options: {
           throw new Error('Agent review runtime is not available');
         }
         await agentRuntime.resumeApprovalById(focused.item.reviewId, payload, config);
+        resolveFocusedReview();
+        return undefined;
       } else {
-        await session.resumePause(payload, config);
+        const result = await session.resumeReview(payload, config);
+        resolveFocusedReview();
+        return result;
       }
-
-      resolveFocusedReview();
     },
     streamReview: async function* (
-      payload: ResumePayload,
+      payload: ReviewResumePayload,
       config?: AgentResumeStreamConfig,
     ): AsyncGenerator<AgentStreamOutput, void, void> {
       const focused = resolveFocusedReview();
@@ -124,7 +126,7 @@ export function createCodaraReviewControl(options: {
         }
         yield* agentRuntime.resumeApprovalByIdStream(focused.item.reviewId, payload, config);
       } else {
-        yield* session.resumePauseStream(payload, config);
+        yield* session.resumeReviewStream(payload, config);
       }
 
       resolveFocusedReview();

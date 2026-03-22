@@ -75,7 +75,7 @@ export class DingTalkApi {
     await this.send(webhook, payload);
   }
 
-  /** Send an ActionCard (for HIL buttons) to a conversation. */
+  /** Send an ActionCard (for review buttons) to a conversation. */
   async sendActionCard(
     conversationId: string,
     title: string,

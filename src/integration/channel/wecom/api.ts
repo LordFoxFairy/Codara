@@ -80,7 +80,7 @@ export class WeComApi {
   }
 
   /**
-   * Send a template card with buttons (used for HIL pause prompts).
+   * Send a template card with buttons (used for review prompts).
    */
   async sendTemplateCard(
     toUser: string,

@@ -1,10 +1,10 @@
 import {describe, expect, it} from 'bun:test';
 import {HumanMessage, ToolMessage, type BaseMessage, type ToolCall} from '@langchain/core/messages';
 import {
-  applyHILResumeToolEdits,
-  createHILMiddleware,
-  parseHILToolMessagePayload,
-  parseHILResumeActionPayload,
+  applyReviewResumeToolEdits,
+  createReviewMiddleware,
+  parseReviewToolMessagePayload,
+  parseReviewResumeActionPayload,
   type ToolCallContext,
 } from '@core/middleware';
 
@@ -49,9 +49,9 @@ function parsePauseMessageContent(content: unknown): ParsedPauseMessage {
   return parsed;
 }
 
-describe('createHILMiddleware', () => {
+describe('createReviewMiddleware', () => {
   it('should pass through when interruptOn is not configured', async () => {
-    const middleware = createHILMiddleware();
+    const middleware = createReviewMiddleware();
     const toolCall: ToolCall = {id: 'call_auto_1', name: 'write_file', args: {path: 'a.txt'}};
 
     const result = await middleware.wrapToolCall?.(createToolContext(toolCall), async () => {
@@ -62,7 +62,7 @@ describe('createHILMiddleware', () => {
   });
 
   it('should pause when interruptOn=true and no resume payload', async () => {
-    const middleware = createHILMiddleware({
+    const middleware = createReviewMiddleware({
       interruptOn: {
         write_file: true,
       },
@@ -74,7 +74,7 @@ describe('createHILMiddleware', () => {
     });
 
     const parsed = parsePauseMessageContent(result?.content);
-    expect(parsed.type).toBe('hil_pause');
+    expect(parsed.type).toBe('review_pause');
     expect(parsed.request.action.toolName).toBe('write_file');
     expect(parsed.request.action.toolCallId).toBe('call_pause_1');
     expect(parsed.request.runtime.runId).toBe('run_hil_1');
@@ -84,7 +84,7 @@ describe('createHILMiddleware', () => {
     let seenToolCallId = '';
     let seenToolName = '';
 
-    const middleware = createHILMiddleware({
+    const middleware = createReviewMiddleware({
       interruptOn: {write_file: true},
       onPause: (request) => {
         seenToolCallId = request.action.toolCallId;
@@ -102,14 +102,14 @@ describe('createHILMiddleware', () => {
   });
 
   it('should continue execution when runtime resume payload exists', async () => {
-    const middleware = createHILMiddleware({
+    const middleware = createReviewMiddleware({
       interruptOn: {write_file: true},
     });
 
     const toolCall: ToolCall = {id: 'call_resume_1', name: 'write_file', args: {path: 'c.txt'}};
     const result = await middleware.wrapToolCall?.(
       createToolContext(toolCall, {
-        hil: {
+        review: {
           resume: {ticket: 'approved'},
         },
       }),
@@ -120,14 +120,14 @@ describe('createHILMiddleware', () => {
   });
 
   it('should deny by default when resume payload carries reject decision', async () => {
-    const middleware = createHILMiddleware({
+    const middleware = createReviewMiddleware({
       interruptOn: {write_file: true},
     });
 
     const toolCall: ToolCall = {id: 'call_resume_reject_1', name: 'write_file', args: {path: 'c.txt'}};
     const result = await middleware.wrapToolCall?.(
       createToolContext(toolCall, {
-        hil: {
+        review: {
           resume: {
             decision: 'reject',
             comment: 'Rejected in review',
@@ -138,14 +138,14 @@ describe('createHILMiddleware', () => {
       async () => new ToolMessage({content: 'should-not-run', tool_call_id: 'call_resume_reject_1'})
     );
 
-    const payload = parseHILToolMessagePayload(result?.content);
-    expect(payload?.type).toBe('hil_deny');
+    const payload = parseReviewToolMessagePayload(result?.content);
+    expect(payload?.type).toBe('review_deny');
     expect(result?.status).toBe('error');
-    expect(payload?.type === 'hil_deny' ? payload.reason : '').toBe('Rejected in review');
+    expect(payload?.type === 'review_deny' ? payload.reason : '').toBe('Rejected in review');
   });
 
   it('should allow custom handleResume to apply interaction result', async () => {
-    const middleware = createHILMiddleware({
+    const middleware = createReviewMiddleware({
       interruptOn: {write_file: true},
       handleResume: async (_request, resumePayload, context, handler) => {
         const payload = resumePayload as {editedPath?: string};
@@ -166,7 +166,7 @@ describe('createHILMiddleware', () => {
     const toolCall: ToolCall = {id: 'call_resume_2', name: 'write_file', args: {path: 'raw.txt'}};
     const result = await middleware.wrapToolCall?.(
       createToolContext(toolCall, {
-        hil: {
+        review: {
           resume: {editedPath: 'safe.txt'},
         },
       }),
@@ -179,13 +179,13 @@ describe('createHILMiddleware', () => {
     expect(String(result?.content)).toBe('path:safe.txt');
   });
 
-  it('should support runtime interruptOn override via context.hil.interruptOn', async () => {
-    const middleware = createHILMiddleware();
+  it('should support runtime interruptOn override via context.review.interruptOn', async () => {
+    const middleware = createReviewMiddleware();
     const toolCall: ToolCall = {id: 'call_override_1', name: 'write_file', args: {path: 'd.txt'}};
 
     const result = await middleware.wrapToolCall?.(
       createToolContext(toolCall, {
-        hil: {
+        review: {
           interruptOn: {
             write_file: true,
           },
@@ -195,12 +195,12 @@ describe('createHILMiddleware', () => {
     );
 
     const parsed = parsePauseMessageContent(result?.content);
-    expect(parsed.type).toBe('hil_pause');
+    expect(parsed.type).toBe('review_pause');
     expect(parsed.request.action.toolCallId).toBe('call_override_1');
   });
 
   it('should expose helpers for action-based resume payloads', () => {
-    const payload = parseHILResumeActionPayload({
+    const payload = parseReviewResumeActionPayload({
       decision: 'edit',
       action: 'edit',
       scope: 'project',
@@ -218,7 +218,7 @@ describe('createHILMiddleware', () => {
   });
 
   it('should normalize empty resume strings to undefined', () => {
-    const payload = parseHILResumeActionPayload({
+    const payload = parseReviewResumeActionPayload({
       action: '   ',
       scope: '',
       comment: '  ',
@@ -234,7 +234,7 @@ describe('createHILMiddleware', () => {
   });
 
   it('should normalize Claude Code style allow/deny decisions and updatedInput payloads', () => {
-    const payload = parseHILResumeActionPayload({
+    const payload = parseReviewResumeActionPayload({
       decision: 'allow',
       updatedInput: {command: 'git diff --stat'},
       reason: 'approved after edit',
@@ -247,7 +247,7 @@ describe('createHILMiddleware', () => {
 
   it('should apply generic tool edits from resume payload', () => {
     const context = createToolContext({id: 'call_edit_1', name: 'bash', args: {command: 'git status'}});
-    const edited = applyHILResumeToolEdits(context, {
+    const edited = applyReviewResumeToolEdits(context, {
       action: 'edit',
       editedToolArgs: {command: 'git diff --stat'},
     });
@@ -257,7 +257,7 @@ describe('createHILMiddleware', () => {
   });
 
   it('should parse structured pause tool payloads via helper', async () => {
-    const middleware = createHILMiddleware({
+    const middleware = createReviewMiddleware({
       interruptOn: {bash: true},
     });
 
@@ -266,20 +266,20 @@ describe('createHILMiddleware', () => {
       return new ToolMessage({content: 'should-not-run', tool_call_id: 'call_parse_1'});
     });
 
-    const payload = parseHILToolMessagePayload(result?.content);
-    expect(payload?.type).toBe('hil_pause');
-    expect(payload?.type === 'hil_pause' ? payload.request.action.toolName : '').toBe('bash');
+    const payload = parseReviewToolMessagePayload(result?.content);
+    expect(payload?.type).toBe('review_pause');
+    expect(payload?.type === 'review_pause' ? payload.request.action.toolName : '').toBe('bash');
   });
 
   it('should apply generic resume edits by default handler', async () => {
-    const middleware = createHILMiddleware({
+    const middleware = createReviewMiddleware({
       interruptOn: {bash: true},
     });
 
     const toolCall: ToolCall = {id: 'call_resume_edit_1', name: 'bash', args: {command: 'git status'}};
     const result = await middleware.wrapToolCall?.(
       createToolContext(toolCall, {
-        hil: {
+        review: {
           resume: {
             decision: 'edit',
             editedToolArgs: {command: 'git diff --stat'},
@@ -296,14 +296,14 @@ describe('createHILMiddleware', () => {
   });
 
   it('should apply Claude Code style updatedInput via the default resume handler', async () => {
-    const middleware = createHILMiddleware({
+    const middleware = createReviewMiddleware({
       interruptOn: {bash: true},
     });
 
     const toolCall: ToolCall = {id: 'call_resume_allow_1', name: 'bash', args: {command: 'git status'}};
     const result = await middleware.wrapToolCall?.(
       createToolContext(toolCall, {
-        hil: {
+        review: {
           resume: {
             decision: 'allow',
             updatedInput: {command: 'git diff --stat'},

@@ -4,7 +4,7 @@ import {tmpdir} from 'node:os';
 import path from 'node:path';
 import {AIMessage, HumanMessage, ToolMessage, type BaseMessage, type ToolCall} from '@langchain/core/messages';
 import {createPermissionMiddleware, ensurePermissionSettingsFile} from '@/index';
-import {parseHILToolMessagePayload, type ToolCallContext} from '@core/middleware';
+import {parseReviewToolMessagePayload, type ToolCallContext} from '@core/middleware';
 import {createPermissionMiddlewareInternal} from '@core/middleware/permission/middleware';
 
 function createToolContext(toolCall: ToolCall, runtimeContext: Record<string, unknown> = {}): ToolCallContext {
@@ -57,27 +57,27 @@ describe('createPermissionMiddleware', () => {
       return new ToolMessage({content: 'should-not-run', tool_call_id: 'call_permission_pause_1'});
     });
 
-    const payload = parseHILToolMessagePayload(result?.content);
-    expect(payload?.type).toBe('hil_pause');
-    expect(payload?.type === 'hil_pause' ? payload.request.channel : '').toBe('permission-center');
+    const payload = parseReviewToolMessagePayload(result?.content);
+    expect(payload?.type).toBe('review_pause');
+    expect(payload?.type === 'review_pause' ? payload.request.channel : '').toBe('permission-center');
     expect(
-      payload?.type === 'hil_pause'
+      payload?.type === 'review_pause'
         ? (payload.request.metadata as {permissionPolicy?: {expression?: string}}).permissionPolicy?.expression
         : '',
     ).toBe('Bash(touch guarded.txt)');
     expect(
-      payload?.type === 'hil_pause'
+      payload?.type === 'review_pause'
         ? (payload.request.metadata as {codara?: {actor?: {agentType?: string}}}).codara?.actor?.agentType
         : '',
     ).toBe('main');
     expect(
-      payload?.type === 'hil_pause'
+      payload?.type === 'review_pause'
         ? (payload.request.metadata as {codara?: {interaction?: {kind?: string}}}).codara?.interaction?.kind
         : '',
     ).toBe('permission');
   });
 
-  it('should resume through the generic HIL payload contract', async () => {
+  it('should resume through the generic review payload contract', async () => {
     const projectRoot = await mkdtemp(path.join(tmpdir(), 'codara-permission-mw-resume-'));
     ensurePermissionSettingsFile({projectRoot, cwd: projectRoot});
     const middleware = createPermissionMiddleware({projectRoot, cwd: projectRoot});
@@ -85,7 +85,7 @@ describe('createPermissionMiddleware', () => {
 
     const result = await middleware.wrapToolCall?.(
       createToolContext(toolCall, {
-        hil: {
+        review: {
           resume: {
             action: 'always',
             decision: 'approve',
@@ -125,9 +125,9 @@ describe('createPermissionMiddleware', () => {
       return new ToolMessage({content: 'should-not-run', tool_call_id: 'call_permission_path_1'});
     });
 
-    const payload = parseHILToolMessagePayload(result?.content);
-    expect(payload?.type).toBe('hil_pause');
-    const actions = payload?.type === 'hil_pause'
+    const payload = parseReviewToolMessagePayload(result?.content);
+    expect(payload?.type).toBe('review_pause');
+    const actions = payload?.type === 'review_pause'
       ? payload.request.ui?.actions ?? []
       : [];
     expect(actions[0]?.id).toBe('allow_once');
@@ -150,9 +150,9 @@ describe('createPermissionMiddleware', () => {
       return new ToolMessage({content: 'should-not-run', tool_call_id: 'call_permission_bash_path_1'});
     });
 
-    const payload = parseHILToolMessagePayload(result?.content);
-    expect(payload?.type).toBe('hil_pause');
-    const actions = payload?.type === 'hil_pause'
+    const payload = parseReviewToolMessagePayload(result?.content);
+    expect(payload?.type).toBe('review_pause');
+    const actions = payload?.type === 'review_pause'
       ? payload.request.ui?.actions ?? []
       : [];
     expect(actions[0]?.id).toBe('allow_once');
@@ -175,9 +175,9 @@ describe('createPermissionMiddleware', () => {
       return new ToolMessage({content: 'should-not-run', tool_call_id: 'call_permission_reason_1'});
     });
 
-    const payload = parseHILToolMessagePayload(result?.content);
-    expect(payload?.type).toBe('hil_pause');
-    const reason = payload?.type === 'hil_pause'
+    const payload = parseReviewToolMessagePayload(result?.content);
+    expect(payload?.type).toBe('review_pause');
+    const reason = payload?.type === 'review_pause'
       ? (payload.request.metadata as {permissionPolicy?: {reason?: string}}).permissionPolicy?.reason
       : undefined;
     expect(reason).toContain('tmp/demo2/');
@@ -197,9 +197,9 @@ describe('createPermissionMiddleware', () => {
       return new ToolMessage({content: 'should-not-run', tool_call_id: 'call_permission_bash_patterns_1'});
     });
 
-    const payload = parseHILToolMessagePayload(result?.content);
-    expect(payload?.type).toBe('hil_pause');
-    const alwaysPatterns = payload?.type === 'hil_pause'
+    const payload = parseReviewToolMessagePayload(result?.content);
+    expect(payload?.type).toBe('review_pause');
+    const alwaysPatterns = payload?.type === 'review_pause'
       ? (payload.request.metadata as {permissionPolicy?: {alwaysPatterns?: string[]}}).permissionPolicy?.alwaysPatterns
       : undefined;
     expect(alwaysPatterns).toBeDefined();
@@ -221,7 +221,7 @@ describe('createPermissionMiddleware', () => {
     // First call: approve with dont_ask_again
     const result1 = await middleware.wrapToolCall?.(
       createToolContext(toolCall, {
-        hil: {resume: {action: 'dont_ask_again', decision: 'approve'}},
+        review: {resume: {action: 'dont_ask_again', decision: 'approve'}},
       }),
       async () => new ToolMessage({content: 'continued', tool_call_id: 'call_permission_always_session_1'}),
     );
@@ -261,9 +261,9 @@ describe('createPermissionMiddleware', () => {
       return new ToolMessage({content: 'should-not-run', tool_call_id: 'call_permission_classifier_path_1'});
     });
 
-    const payload = parseHILToolMessagePayload(result?.content);
-    expect(payload?.type).toBe('hil_pause');
-    const metadata = payload?.type === 'hil_pause'
+    const payload = parseReviewToolMessagePayload(result?.content);
+    expect(payload?.type).toBe('review_pause');
+    const metadata = payload?.type === 'review_pause'
       ? payload.request.metadata as {permissionPolicy?: {reason?: string; suggestions?: {pathRule?: string}}}
       : undefined;
     expect(metadata?.permissionPolicy?.reason).toContain('tmp/demo2/');
@@ -289,7 +289,7 @@ describe('createPermissionMiddleware', () => {
     // Approve with dont_ask_again — Claude Code style (session memory, not disk)
     const result = await middleware.wrapToolCall?.(
       createToolContext(toolCall, {
-        hil: {
+        review: {
           resume: {
             action: 'dont_ask_again',
             decision: 'approve',
@@ -368,10 +368,10 @@ describe('createPermissionMiddleware', () => {
       return new ToolMessage({content: 'should-not-run', tool_call_id: 'call_permission_classifier_ask_1'});
     });
 
-    const payload = parseHILToolMessagePayload(result?.content);
-    expect(payload?.type).toBe('hil_pause');
+    const payload = parseReviewToolMessagePayload(result?.content);
+    expect(payload?.type).toBe('review_pause');
     expect(
-      payload?.type === 'hil_pause'
+      payload?.type === 'review_pause'
         ? (payload.request.metadata as {permissionPolicy?: {matched?: {rule?: string}}}).permissionPolicy?.matched?.rule
         : undefined,
     ).toBe('Write(tmp/demo2/)');

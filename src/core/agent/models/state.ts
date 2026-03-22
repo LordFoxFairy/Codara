@@ -8,7 +8,7 @@ import type {
   AgentRuntimeValues,
   AgentStatus,
   AgentType,
-  PauseRequest,
+  ReviewRequest,
 } from './types';
 import type {
   AgentCheckpoint,
@@ -24,7 +24,7 @@ type DurableState = {
   messages: BaseMessage[];
   context: AgentRuntimeContext;
   values: AgentRuntimeValues;
-  pendingPause?: PauseRequest;
+  pendingReview?: ReviewRequest;
 };
 
 export type AgentRuntimeState = DurableState & {
@@ -46,7 +46,7 @@ export function createInitialAgentState(
 ): MutableAgentState {
   const now = new Date().toISOString();
   const restored = checkpoint?.state;
-  const pendingPause = restored?.pendingPause;
+  const pendingReview = restored?.pendingReview;
 
   return {
     sessionId: checkpoint?.ref.sessionId ?? sessionId,
@@ -55,8 +55,8 @@ export function createInitialAgentState(
     messages: cloneAgentMessages(restored?.messages ?? input?.messages ?? []),
     context: cloneAgentContext(restored?.context ?? input?.context ?? {}),
     values: cloneAgentValues(input?.values ?? restored?.values ?? {}),
-    pendingPause: clonePauseRequest(pendingPause),
-    status: checkpoint?.info?.status === 'closed' ? 'closed' : pendingPause ? 'paused' : 'idle',
+    pendingReview: cloneReviewRequest(pendingReview),
+    status: checkpoint?.info?.status === 'closed' ? 'closed' : pendingReview ? 'paused' : 'idle',
     lastResult: checkpoint?.info ? summarizeCheckpointInfo(checkpoint.info) : undefined,
     step: checkpoint?.info?.step ?? 0,
     createdAt: now,
@@ -124,8 +124,8 @@ export function restoreCheckpointMetadata(state: MutableAgentState, record: Agen
 }
 
 export function hasEquivalentCheckpointState(
-  left: Pick<DurableState | AgentState, 'agentType' | 'messages' | 'context' | 'values' | 'pendingPause'>,
-  right: Pick<DurableState | AgentState, 'agentType' | 'messages' | 'context' | 'values' | 'pendingPause'>,
+  left: Pick<DurableState | AgentState, 'agentType' | 'messages' | 'context' | 'values' | 'pendingReview'>,
+  right: Pick<DurableState | AgentState, 'agentType' | 'messages' | 'context' | 'values' | 'pendingReview'>,
 ): boolean {
   return JSON.stringify(toComparableState(left)) === JSON.stringify(toComparableState(right));
 }
@@ -147,41 +147,41 @@ export function cloneAgentValues<T extends AgentRuntimeValues>(values: T): T {
   return deepClone(values);
 }
 
-export function clonePauseRequest<T extends PauseRequest | undefined>(pause: T): T {
+export function cloneReviewRequest<T extends ReviewRequest | undefined>(pause: T): T {
   return (pause ? deepClone(pause) : undefined) as T;
 }
 
 export function applyAgentStateSnapshot(
   target: MutableAgentState,
-  snapshot: Pick<AgentState, 'messages' | 'context' | 'values' | 'pendingPause'>,
+  snapshot: Pick<AgentState, 'messages' | 'context' | 'values' | 'pendingReview'>,
 ): void {
   target.messages = cloneAgentMessages(snapshot.messages);
   target.context = cloneAgentContext(snapshot.context);
   target.values = cloneAgentValues(snapshot.values);
-  target.pendingPause = clonePauseRequest(snapshot.pendingPause);
+  target.pendingReview = cloneReviewRequest(snapshot.pendingReview);
 }
 
 function cloneDurableState(
-  state: Pick<DurableState, 'agentType' | 'messages' | 'context' | 'values' | 'pendingPause'>,
+  state: Pick<DurableState, 'agentType' | 'messages' | 'context' | 'values' | 'pendingReview'>,
 ): DurableState {
   return {
     agentType: state.agentType,
     messages: cloneAgentMessages(state.messages),
     context: cloneAgentContext(state.context),
     values: cloneAgentValues(state.values),
-    ...(state.pendingPause ? {pendingPause: clonePauseRequest(state.pendingPause)} : {}),
+    ...(state.pendingReview ? {pendingReview: cloneReviewRequest(state.pendingReview)} : {}),
   };
 }
 
 function toComparableState(
-  state: Pick<DurableState | AgentState, 'agentType' | 'messages' | 'context' | 'values' | 'pendingPause'>,
+  state: Pick<DurableState | AgentState, 'agentType' | 'messages' | 'context' | 'values' | 'pendingReview'>,
 ): AgentCheckpointState {
   return {
     agentType: state.agentType,
     messages: mapChatMessagesToStoredMessages(state.messages) as unknown as BaseMessage[],
     context: cloneAgentContext(state.context),
     values: cloneAgentValues(state.values),
-    ...(state.pendingPause ? {pendingPause: clonePauseRequest(state.pendingPause)} : {}),
+    ...(state.pendingReview ? {pendingReview: cloneReviewRequest(state.pendingReview)} : {}),
   } as unknown as AgentCheckpointState;
 }
 

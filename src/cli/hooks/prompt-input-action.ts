@@ -10,7 +10,7 @@ export type PromptInputAction =
   | 'move-end'
   | 'backspace'
   | 'insert-text'
-  | 'toggle-task-panel'
+  | 'toggle-agent-runs-panel'
   | 'toggle-expand'
   | 'focus-review'
   | 'tab'
@@ -39,7 +39,7 @@ export function resolvePromptInputAction(input: string, key: PromptInputKey): Pr
   }
 
   if (key.ctrl && input === 't') {
-    return 'toggle-task-panel';
+    return 'toggle-agent-runs-panel';
   }
 
   if (key.ctrl && input === 'o') {

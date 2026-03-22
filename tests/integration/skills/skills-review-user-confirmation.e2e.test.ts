@@ -5,7 +5,7 @@ import type {StructuredToolInterface} from '@langchain/core/tools';
 import {tool} from '@langchain/core/tools';
 import {z} from 'zod';
 import {createAgent} from '@core/agent';
-import {createHILMiddleware} from '@core/middleware';
+import {createReviewMiddleware} from '@core/middleware';
 
 class ConfirmationModel {
   readonly invocations: BaseMessage[][] = [];
@@ -20,7 +20,7 @@ class ConfirmationModel {
     }
 
     const hasApprovalPrompt = text.includes('approved and continue');
-    const hasPause = text.includes('"type":"hil_pause"');
+    const hasPause = text.includes('"type":"review_pause"');
 
     if (hasPause && !hasApprovalPrompt) {
       return new AIMessage('WAITING_USER_CONFIRMATION');
@@ -48,7 +48,7 @@ function stringifyContent(content: unknown): string {
   return JSON.stringify(content);
 }
 
-describe('HIL user confirmation flow', () => {
+describe('Review user confirmation flow', () => {
   it('should pause first and continue after user confirmation resume', async () => {
     const model = new ConfirmationModel();
 
@@ -65,7 +65,7 @@ describe('HIL user confirmation flow', () => {
       }
     );
 
-    const hilMiddleware = createHILMiddleware({
+    const hilMiddleware = createReviewMiddleware({
       interruptOn: {bash: true},
       handleResume: async (_request, resumePayload, context, handler) => {
         const payload = resumePayload as {action?: string};
@@ -94,7 +94,7 @@ describe('HIL user confirmation flow', () => {
     expect(firstResult.reason).toBe('complete');
     expect(model.invocations).toHaveLength(1);
     expect(String(firstResult.state.messages[firstResult.state.messages.length - 1]?.content)).toContain(
-      '"type":"hil_pause"'
+      '"type":"review_pause"'
     );
     expect(bashInvokeCount).toBe(0);
 

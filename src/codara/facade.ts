@@ -44,10 +44,10 @@ import type {
 // Re-export all types from types.ts for backward compatibility
 export type {
   Codara, CodaraOptions, CodaraRuntimeOptions, CodaraAutoMemoryOptions,
-  CodaraSkillOptions, CodaraMiddlewareOptions,
+  CodaraSkillOptions, CodaraMiddlewareOptions, CodaraReviewOptions,
   CreateCodaraModelCatalogOptions, CreateCodaraChatModelOptions,
   CodaraPromptStreamRequest, CodaraContinuationStreamRequest,
-  CodaraPauseStreamRequest, CodaraReviewStreamRequest, CodaraStreamRequest,
+  CodaraReviewStreamRequest, CodaraStreamRequest,
   ReviewBlockingScope,
   ReviewQueryItem,
   FocusedReviewQuery,
@@ -149,7 +149,7 @@ export async function createCodaraRuntime(options: CodaraRuntimeOptions = {}): P
   // 7. Assemble facade
   const runtime = assembleCodara({
     ...options,
-    tools: runtimeTools, middleware: runtimeMiddlewares, hil: false,
+    tools: runtimeTools, middleware: runtimeMiddlewares, review: false,
     autoMemory: options.autoMemory === false ? false
       : (typeof options.autoMemory === 'object' && options.autoMemory !== null ? options.autoMemory : {}),
     summary: options.summary === false ? false : (options.summary ?? {}),

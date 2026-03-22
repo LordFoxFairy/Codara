@@ -3,7 +3,7 @@ import type {
   InboundMessage,
   OutboundContext,
   OutboundMediaContext,
-  PausePromptContext,
+  ReviewPromptContext,
   SendResult,
   StopHandle,
 } from '@gateway/types';
@@ -22,7 +22,7 @@ export interface GatewayListenContext<TAccount = unknown> {
   accountId: string;
   config: Record<string, unknown>;
   onMessage: (msg: InboundMessage) => Promise<void>;
-  onPauseResponse?: (pauseId: string, payload: unknown) => void;
+  onReviewResponse?: (reviewId: string, payload: unknown) => void;
 }
 
 export interface ChannelPlugin<TAccount = unknown> {
@@ -38,5 +38,5 @@ export interface ChannelPlugin<TAccount = unknown> {
   sendText(account: TAccount, ctx: OutboundContext): Promise<SendResult>;
   sendMedia?(account: TAccount, ctx: OutboundMediaContext): Promise<SendResult>;
   sendTyping?(account: TAccount, ctx: OutboundContext): Promise<void>;
-  sendPausePrompt?(account: TAccount, ctx: PausePromptContext): Promise<SendResult>;
+  sendReviewPrompt?(account: TAccount, ctx: ReviewPromptContext): Promise<SendResult>;
 }

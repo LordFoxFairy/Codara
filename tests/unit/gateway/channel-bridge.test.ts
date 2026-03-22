@@ -1,15 +1,15 @@
 import {describe, test, expect, beforeEach} from 'bun:test';
 import {GatewayChannelBridge} from '@gateway/channel-bridge';
 import type {ChannelPlugin} from '@integration/channel/contracts';
-import type {PauseRequest} from '@shared/contracts/agent-types';
+import type {ReviewRequest} from '@shared/contracts/agent-types';
 import {z} from 'zod';
 
 function createMockPlugin(overrides: Partial<ChannelPlugin> = {}): ChannelPlugin & {
   sentTexts: Array<{to: string; text: string}>;
-  sentPauses: Array<{to: string; text: string; pauseId: string}>;
+  sentReviews: Array<{to: string; text: string; reviewId: string}>;
 } {
   const sentTexts: Array<{to: string; text: string}> = [];
-  const sentPauses: Array<{to: string; text: string; pauseId: string}> = [];
+  const sentReviews: Array<{to: string; text: string; reviewId: string}> = [];
 
   return {
     id: 'telegram',
@@ -30,19 +30,19 @@ function createMockPlugin(overrides: Partial<ChannelPlugin> = {}): ChannelPlugin
       sentTexts.push({to: ctx.to, text: ctx.text});
       return {ok: true};
     },
-    async sendPausePrompt(_account, ctx) {
-      sentPauses.push({to: ctx.to, text: ctx.text, pauseId: ctx.pause.id});
+    async sendReviewPrompt(_account, ctx) {
+      sentReviews.push({to: ctx.to, text: ctx.text, reviewId: ctx.review.id});
       return {ok: true};
     },
     sentTexts,
-    sentPauses,
+    sentReviews,
     ...overrides,
   };
 }
 
-function makePauseRequest(overrides: Partial<PauseRequest> = {}): PauseRequest {
+function makeReviewRequest(overrides: Partial<ReviewRequest> = {}): ReviewRequest {
   return {
-    id: 'pause-1',
+    id: 'review-1',
     description: 'Execute bash command',
     action: {toolCallId: 'tc1', toolName: 'bash', toolArgs: {command: 'ls -la'}},
     review: {actionName: 'bash', allowedDecisions: ['approve', 'reject']},
@@ -73,95 +73,95 @@ describe('GatewayChannelBridge', () => {
     expect(plugin.sentTexts[0]!.text).toBe('Hello!');
   });
 
-  test('showPauseRequest sends prompt via plugin.sendPausePrompt', async () => {
-    const request = makePauseRequest();
+  test('showReviewRequest sends prompt via plugin.sendReviewPrompt', async () => {
+    const request = makeReviewRequest();
 
-    // Don't await — the promise waits for handlePauseResponse
-    const resultPromise = bridge.showPauseRequest(request);
+    // Don't await — the promise waits for handleReviewResponse
+    const resultPromise = bridge.showReviewRequest(request);
 
-    // Verify the pause prompt was sent
-    expect(plugin.sentPauses.length).toBe(1);
-    expect(plugin.sentPauses[0]!.pauseId).toBe('pause-1');
-    expect(plugin.sentPauses[0]!.to).toBe('user1');
-    expect(bridge.hasPendingPauses()).toBe(true);
+    // Verify the review prompt was sent
+    expect(plugin.sentReviews.length).toBe(1);
+    expect(plugin.sentReviews[0]!.reviewId).toBe('review-1');
+    expect(plugin.sentReviews[0]!.to).toBe('user1');
+    expect(bridge.hasPendingReviews()).toBe(true);
 
-    // Resolve the pause
-    bridge.handlePauseResponse('pause-1', 'approve');
+    // Resolve the review
+    bridge.handleReviewResponse('review-1', 'approve');
 
     const result = await resultPromise;
     expect(result).toEqual({decision: 'approve'});
-    expect(bridge.hasPendingPauses()).toBe(false);
+    expect(bridge.hasPendingReviews()).toBe(false);
   });
 
-  test('showPauseRequest falls back to sendText when sendPausePrompt is missing', async () => {
-    const plainPlugin = createMockPlugin({sendPausePrompt: undefined});
+  test('showReviewRequest falls back to sendText when sendReviewPrompt is missing', async () => {
+    const plainPlugin = createMockPlugin({sendReviewPrompt: undefined});
     const plainBridge = new GatewayChannelBridge(plainPlugin, {id: 'acc1'}, 'user1', 'bot1', 'telegram');
 
-    const request = makePauseRequest();
-    const resultPromise = plainBridge.showPauseRequest(request);
+    const request = makeReviewRequest();
+    const resultPromise = plainBridge.showReviewRequest(request);
 
     // Should fall back to sendText
     expect(plainPlugin.sentTexts.length).toBe(1);
     expect(plainPlugin.sentTexts[0]!.text).toContain('bash');
 
-    plainBridge.handlePauseResponse('pause-1', 'reject');
+    plainBridge.handleReviewResponse('review-1', 'reject');
     const result = await resultPromise;
     expect(result).toEqual({decision: 'reject'});
   });
 
-  test('handlePauseResponse returns false for unknown pauseId', () => {
-    expect(bridge.handlePauseResponse('nonexistent', 'approve')).toBe(false);
+  test('handleReviewResponse returns false for unknown reviewId', () => {
+    expect(bridge.handleReviewResponse('nonexistent', 'approve')).toBe(false);
   });
 
-  test('handlePauseResponse returns true and resolves for known pauseId', async () => {
-    const request = makePauseRequest({id: 'pause-2'});
-    const resultPromise = bridge.showPauseRequest(request);
+  test('handleReviewResponse returns true and resolves for known reviewId', async () => {
+    const request = makeReviewRequest({id: 'review-2'});
+    const resultPromise = bridge.showReviewRequest(request);
 
-    const handled = bridge.handlePauseResponse('pause-2', 'edit');
+    const handled = bridge.handleReviewResponse('review-2', 'edit');
     expect(handled).toBe(true);
 
     const result = await resultPromise;
     expect(result).toEqual({decision: 'edit'});
   });
 
-  test('dispose rejects all pending pauses', async () => {
-    const request1 = makePauseRequest({id: 'p1'});
-    const request2 = makePauseRequest({id: 'p2'});
+  test('dispose rejects all pending reviews', async () => {
+    const request1 = makeReviewRequest({id: 'p1'});
+    const request2 = makeReviewRequest({id: 'p2'});
 
-    const p1 = bridge.showPauseRequest(request1);
-    const p2 = bridge.showPauseRequest(request2);
+    const p1 = bridge.showReviewRequest(request1);
+    const p2 = bridge.showReviewRequest(request2);
 
     await bridge.dispose();
 
     const [r1, r2] = await Promise.all([p1, p2]);
     expect(r1).toEqual({decision: 'reject', reason: 'Channel disposed'});
     expect(r2).toEqual({decision: 'reject', reason: 'Channel disposed'});
-    expect(bridge.hasPendingPauses()).toBe(false);
+    expect(bridge.hasPendingReviews()).toBe(false);
   });
 
   test('builds default actions when review.allowedDecisions is empty', async () => {
-    const request = makePauseRequest({
+    const request = makeReviewRequest({
       review: {actionName: 'bash', allowedDecisions: []},
     });
 
-    const resultPromise = bridge.showPauseRequest(request);
+    const resultPromise = bridge.showReviewRequest(request);
 
-    // The pause prompt should still be sent with default actions
-    expect(plugin.sentPauses.length).toBe(1);
+    // The review prompt should still be sent with default actions
+    expect(plugin.sentReviews.length).toBe(1);
 
-    bridge.handlePauseResponse(request.id, 'approve');
+    bridge.handleReviewResponse(request.id, 'approve');
     await resultPromise;
   });
 
   test('builds actions for all decision types', async () => {
-    const request = makePauseRequest({
+    const request = makeReviewRequest({
       review: {actionName: 'bash', allowedDecisions: ['approve', 'edit', 'reject']},
     });
 
-    const resultPromise = bridge.showPauseRequest(request);
-    expect(plugin.sentPauses.length).toBe(1);
+    const resultPromise = bridge.showReviewRequest(request);
+    expect(plugin.sentReviews.length).toBe(1);
 
-    bridge.handlePauseResponse(request.id, 'approve');
+    bridge.handleReviewResponse(request.id, 'approve');
     await resultPromise;
   });
 });

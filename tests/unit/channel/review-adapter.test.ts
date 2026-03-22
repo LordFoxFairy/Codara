@@ -1,22 +1,22 @@
 import {describe, test, expect, beforeEach} from 'bun:test';
 import {ChannelRegistry} from '@integration/channel/registry';
-import {createChannelHILOptions} from '@integration/channel/hil-adapter';
+import {createChannelReviewOptions} from '@integration/channel/review-adapter';
 import type {Channel} from '@shared/contracts/channel';
-import type {PauseRequest} from '@shared/contracts/agent-types';
+import type {ReviewRequest} from '@shared/contracts/agent-types';
 import type {ToolCallContext} from '@core/pipeline/types';
 
 function createMockChannel(id: string): Channel & {
-  pauseRequests: PauseRequest[];
+  reviewRequests: ReviewRequest[];
   events: unknown[];
 } {
   const mock = {
     id,
     type: 'cli' as const,
-    pauseRequests: [] as PauseRequest[],
+    reviewRequests: [] as ReviewRequest[],
     events: [] as unknown[],
     async sendMessage() {},
-    async showPauseRequest(request: PauseRequest) {
-      mock.pauseRequests.push(request);
+    async showReviewRequest(request: ReviewRequest) {
+      mock.reviewRequests.push(request);
       return {decision: 'approve'};
     },
     emitEvent(event: unknown) {
@@ -26,9 +26,9 @@ function createMockChannel(id: string): Channel & {
   return mock;
 }
 
-function createPauseRequest(channel?: string): PauseRequest {
+function createReviewRequest(channel?: string): ReviewRequest {
   return {
-    id: 'pause-1',
+    id: 'review-1',
     description: 'Confirm bash execution',
     action: {toolCallId: 'tc-1', toolName: 'bash', toolArgs: {command: 'echo hi'}},
     review: {actionName: 'bash', allowedDecisions: ['approve', 'reject']},
@@ -39,40 +39,40 @@ function createPauseRequest(channel?: string): PauseRequest {
 
 const stubContext = {} as ToolCallContext;
 
-describe('createChannelHILOptions', () => {
+describe('createChannelReviewOptions', () => {
   let registry: ChannelRegistry;
 
   beforeEach(() => {
     registry = new ChannelRegistry();
   });
 
-  test('onPause emits event to resolved channel', async () => {
+  test('onReview emits event to resolved channel', async () => {
     const ch = createMockChannel('cli-1');
     registry.register(ch);
-    const options = createChannelHILOptions(registry);
-    await options.onPause!(createPauseRequest(), stubContext);
+    const options = createChannelReviewOptions(registry);
+    await options.onPause!(createReviewRequest(), stubContext);
     expect(ch.events.length).toBe(1);
-    expect((ch.events[0] as {kind: string}).kind).toBe('hil');
+    expect((ch.events[0] as {kind: string}).kind).toBe('review');
   });
 
-  test('onPause is silent when no channel available', async () => {
-    const options = createChannelHILOptions(registry);
+  test('onReview is silent when no channel available', async () => {
+    const options = createChannelReviewOptions(registry);
     // Should not throw
-    await options.onPause!(createPauseRequest(), stubContext);
+    await options.onPause!(createReviewRequest(), stubContext);
   });
 
-  test('resolveResume routes to channel.showPauseRequest', async () => {
+  test('resolveResume routes to channel.showReviewRequest', async () => {
     const ch = createMockChannel('cli-1');
     registry.register(ch);
-    const options = createChannelHILOptions(registry);
-    const result = await options.resolveResume!(createPauseRequest(), stubContext);
+    const options = createChannelReviewOptions(registry);
+    const result = await options.resolveResume!(createReviewRequest(), stubContext);
     expect(result).toEqual({decision: 'approve'});
-    expect(ch.pauseRequests.length).toBe(1);
+    expect(ch.reviewRequests.length).toBe(1);
   });
 
   test('resolveResume returns undefined when no channel', async () => {
-    const options = createChannelHILOptions(registry);
-    const result = await options.resolveResume!(createPauseRequest(), stubContext);
+    const options = createChannelReviewOptions(registry);
+    const result = await options.resolveResume!(createReviewRequest(), stubContext);
     expect(result).toBeUndefined();
   });
 
@@ -81,9 +81,9 @@ describe('createChannelHILOptions', () => {
     const web = createMockChannel('web-1');
     registry.register(cli);
     registry.register(web);
-    const options = createChannelHILOptions(registry);
-    await options.resolveResume!(createPauseRequest('web-1'), stubContext);
-    expect(web.pauseRequests.length).toBe(1);
-    expect(cli.pauseRequests.length).toBe(0);
+    const options = createChannelReviewOptions(registry);
+    await options.resolveResume!(createReviewRequest('web-1'), stubContext);
+    expect(web.reviewRequests.length).toBe(1);
+    expect(cli.reviewRequests.length).toBe(0);
   });
 });

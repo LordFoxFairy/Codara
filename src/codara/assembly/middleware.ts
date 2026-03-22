@@ -8,7 +8,7 @@ import {
   createAskUserQuestionMiddleware,
   createBudgetMiddleware,
   createDailySessionFileLogSink,
-  createHILMiddleware,
+  createReviewMiddleware,
   createLoggingMiddleware,
   createPathInstructionsMiddleware,
   createSkillsMiddleware,
@@ -35,7 +35,7 @@ import type {GuidelinesSource} from '@context/instructions/guidelines';
 import type {PromptSource} from '@context/prompts/prompt-source';
 import {resolveWorkspaceRoot} from '@config/workspace';
 import type {ChannelRegistry} from '@integration/channel';
-import {createChannelHILOptions} from '@integration/channel';
+import {createChannelReviewOptions} from '@integration/channel';
 import type {
   CodaraMiddlewareOptions,
   CodaraRuntimeOptions,
@@ -81,11 +81,11 @@ export function createCodaraMiddlewares(
   }
   middlewares.push(...(options.middleware ?? []));
   middlewares.push(createBudgetMiddleware());
-  if (options.hil !== false) {
-    const hilOptions = channelRegistry
-      ? {...(options.hil ?? {}), ...createChannelHILOptions(channelRegistry)}
-      : (options.hil ?? {});
-    middlewares.push(createHILMiddleware(hilOptions));
+  if (options.review !== false) {
+    const reviewOptions = channelRegistry
+      ? {...(options.review ?? {}), ...createChannelReviewOptions(channelRegistry)}
+      : (options.review ?? {});
+    middlewares.push(createReviewMiddleware(reviewOptions));
   }
   return middlewares;
 }
@@ -148,7 +148,7 @@ export function createRuntimeDefaultMiddlewares(input: {
   if (!byName.has(MIDDLEWARE_NAMES.Agent) && !providedToolNames.has('Agent')) {
     byName.set(
       MIDDLEWARE_NAMES.Agent,
-      createAgentMiddleware({
+        createAgentMiddleware({
         runStore: input.agentRunStore,
         runtime: input.agentRuntime,
         checkpointer: input.taskCheckpointer,
@@ -159,11 +159,9 @@ export function createRuntimeDefaultMiddlewares(input: {
           ...(input.catalog ? {catalog: input.catalog} : {}),
         })),
         tools: input.runtimeTools,
-        childMiddleware: (input.options.middleware ?? [])
-          .filter((middleware) => middleware.name !== MIDDLEWARE_NAMES.Agent),
         childRuntime: {
           logging: input.logging,
-          hil: input.options.hil ?? {},
+          review: input.options.review ?? {},
           cwd: input.options.cwd,
           projectRoot: input.options.projectRoot,
           userHome: input.options.userHome,
@@ -174,16 +172,16 @@ export function createRuntimeDefaultMiddlewares(input: {
     );
   }
 
-  if (input.options.hil !== false && !byName.has(MIDDLEWARE_NAMES.AskUserQuestion)) {
+  if (input.options.review !== false && !byName.has(MIDDLEWARE_NAMES.AskUserQuestion)) {
     byName.set(MIDDLEWARE_NAMES.AskUserQuestion, createAskUserQuestionMiddleware());
   }
 
-  if (input.options.hil !== false && !byName.has(MIDDLEWARE_NAMES.Permission)) {
+  if (input.options.review !== false && !byName.has(MIDDLEWARE_NAMES.Permission)) {
     byName.set(
       MIDDLEWARE_NAMES.Permission,
       createPermissionMiddleware({
-        ...(typeof input.options.hil === 'object' && input.options.hil !== null
-          ? input.options.hil
+        ...(typeof input.options.review === 'object' && input.options.review !== null
+          ? input.options.review
           : {}),
         cwd: input.options.cwd,
         projectRoot: input.options.projectRoot,

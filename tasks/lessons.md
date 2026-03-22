@@ -1,19 +1,6 @@
 # Lessons
 
 ## 2026-03-22
-
-- 用户继续纠偏：子代理自己的 middleware、system message 和 bootstrap 责任应该收回 `subagent` 自己管理，不要继续挂在公共 assembly/helper 上绕一圈。
-- 防错规则：当用户明确要求按 Claude Code 心智继续拉直 `task/subagent` 边界时，优先检查 child middleware、prompt/bootstrap、store helper 是否仍由上层 assembly 或模糊 helper bucket 间接控制；若是，优先把 ownership 收回能力模块自身，再考虑继续拆文件。
-- 用户继续纠偏：不能因为两个 store 的内部业务逻辑不同，就忽略它们在目录和命名上的强混淆；如果按 Claude Code 心智实现，task list 持久化和 background/subagent run 持久化应先在命名和边界上拉开。
-- 防错规则：当用户拿 Claude Code 文档质疑 `task/store.ts`、`task/run-store.ts` 这种命名时，先按 control-plane 语义重看“task list persistence”与“background run persistence”是否被错误地并列成同一层；不要只回答“逻辑不同所以不重复”。
-- 用户继续纠偏：在进入 `task + subagents` 下一轮之前，必须先确认 review/HIL 层不只是 AskUser 稳了，permission 和 tool/file/skill review 也真的到位。
-- 防错规则：当一轮 review/HIL 打磨看起来已经完成时，收尾前默认再检查 `permission` 与 `tool/file/skill/config` 这几类 control-plane surface；不要只凭 AskUser 路径通过就宣布整层稳定。
-- 用户继续纠偏：AskUser 打磨得差不多后，不能就假设 permission、tool/file review 也同样到位；这几类控制面对象要分别核对是否还有旧前端残留或混在 generic 壳里。
-- 防错规则：完成一类 review surface（例如 AskUser）后，下一步默认审查 permission 与 tool/file/skill/config 是否仍走旧组件或 catch-all renderer；不要把局部收口误报成整层交互已经统一。
-- 用户继续纠偏：`Skill` 不是特殊展示对象，和其他工具一样要遵守同一套时间线顺序与投影规则。
-- 防错规则：凡是 CLI transcript 的工具顺序/隐藏逻辑，默认先实现为通用 `tool/task` 规则，再补一条 `Skill` 回归确认没有被特殊分叉；不要为 `Skill` 单独发明和普通工具不同的展示心智。
-- 用户继续纠偏：用户要的 transcript 心智是时间线顺序，消息和工具应该按发生顺序往下排，不能默认把 assistant 文本整块固定在 tool 前面。
-- 防错规则：凡是 CLI transcript 的“像 Claude Code 一样”的诉求，先检查 streaming active turn 是否把 assistant 文本聚合成单块；如果 tool/runtime 会插入中途，就要显式建模前后片段或边界，而不是只靠最终排序硬挪位置。
 - 用户继续纠偏：当 live 里看到 `Skill` 重复打印或被拦下的 `AskUserQuestion` 仍然可见时，优先怀疑 transcript projection 重叠，而不是继续往 controller/runtime 上加 guard。
 - 防错规则：凡是 CLI 可见块重复或隐藏失效，先检查 `active runtime events` 与 `unsolidified coreMessages` 的双投影，以及 paired start/end event 是否绕过了 hide 条件；优先在 transcript/model 层做去重和抑制，不要把显示问题错误地下沉成执行控制问题。
 - 用户继续纠偏：当用户明确允许重构并强调“整体流转机制要清晰、易维护”，就不能只把新行为塞进旧 guard/flag 里糊住问题。
@@ -200,6 +187,10 @@
 - 防错规则：做目录级重构时，先检查仓库已有顶层术语和公开 API 术语是否冲突；内部模块名要避免和核心产品对象或主运行时概念重名。
 - 用户纠偏：subagent 的 middleware、system-message、launch/recovery 逻辑应由 subagent 能力自己管理，不要再混进 task coordination 或共享 task middleware。
 - 防错规则：当一个能力既有 coordination 面又有 delegation/runtime 面时，优先让 delegation 侧自持 middleware、prompt、runtime 与 persistence；不要为了“复用”把两侧重新揉回共同入口。
+- 用户继续纠偏：subagent 恢复不能依赖 run-store 里的 bootstrap 快照，也不该在恢复时重新猜测/重编 child bootstrap；更稳的是把恢复规格挂到 pause/approval 控制面元数据上。
+- 防错规则：以后做 delegated child restart/review resume 时，优先把稳定恢复规格写进 pause/approval metadata，再从该 metadata 重建 child runtime；不要把 `toolNames/systemMessages/maxTurns` 之类 bootstrap 字段塞回 run-store。
+- 用户继续纠偏：subagent 的 child bootstrap middleware、system-message handoff、completion guard 不要继续挤在一个大 middleware 文件里；即使后端文件略多一点，也要按 ownership 拆清楚。
+- 防错规则：当一个 middleware 文件同时承担 child bootstrap、completion handoff、tool-call policing 三类职责时，优先按 ownership 拆成少量有边界的模块；不要为了“少文件”继续保留混合神文件。
 
 - Desktop workbench must prioritize the main chat/runtime canvas width; do not over-compress the primary workspace for side rails or decorative panels.
 - Desktop shell hierarchy should mirror CLI mental priority: active chat/work first, session context second, diagnostics and utilities third.

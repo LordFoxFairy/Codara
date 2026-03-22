@@ -1,4 +1,4 @@
-import {createHILMiddleware, type HILMiddlewareOptions} from '@core/middleware/hil';
+import {createReviewMiddleware, type ReviewMiddlewareOptions} from '@core/middleware/review';
 import type {BaseMiddleware} from '@core/pipeline/types';
 import {
   createPermissionRuntime,
@@ -6,7 +6,7 @@ import {
   type PermissionRuntimeOptions,
 } from '@core/middleware/permission/runtime';
 
-export interface PermissionMiddlewareOptions extends PermissionRuntimeOptions, HILMiddlewareOptions {}
+export interface PermissionMiddlewareOptions extends PermissionRuntimeOptions, ReviewMiddlewareOptions {}
 
 /** @internal Test-only alias for createPermissionMiddleware with direct bashAnalysisModel support. */
 export const createPermissionMiddlewareInternal = createPermissionMiddleware;
@@ -21,7 +21,7 @@ export function createPermissionMiddleware(
     policyFiles,
     settingsFile,
     bashAnalysisModel,
-    ...hilOptions
+    ...reviewOptions
   } = options;
 
   const permissionRuntime = createPermissionRuntime({
@@ -32,12 +32,12 @@ export function createPermissionMiddleware(
     settingsFile,
     bashAnalysisModel,
   });
-  const fallbackResolveDecision = hilOptions.resolveDecision;
-  const fallbackHandleResume = hilOptions.handleResume;
+  const fallbackResolveDecision = reviewOptions.resolveDecision;
+  const fallbackHandleResume = reviewOptions.handleResume;
 
-  return createHILMiddleware({
-    ...hilOptions,
-    name: hilOptions.name?.trim() || 'PermissionMiddleware',
+  return createReviewMiddleware({
+    ...reviewOptions,
+    name: reviewOptions.name?.trim() || 'PermissionMiddleware',
     resolveDecision: async (input) => {
       const permissionDecision = await permissionRuntime.resolveToolDecision(input.context);
       if (permissionDecision) {
@@ -47,7 +47,7 @@ export function createPermissionMiddleware(
       return fallbackResolveDecision ? fallbackResolveDecision(input) : undefined;
     },
     handleResume: async (request, resumePayload, context, handler) => {
-      if (permissionRuntime.isPermissionPause(request.metadata)) {
+      if (permissionRuntime.isPermissionReview(request.metadata)) {
         return permissionRuntime.handleResume(request.metadata, resumePayload, context, handler);
       }
 

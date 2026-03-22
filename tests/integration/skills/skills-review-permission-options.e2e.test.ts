@@ -6,10 +6,10 @@ import {tool} from '@langchain/core/tools';
 import {z} from 'zod';
 import {createAgent} from '@core/agent';
 import {
-  applyHILResumeToolEdits,
-  createHILMiddleware,
-  parseHILResumeActionPayload,
-  type HILPauseRequest,
+  applyReviewResumeToolEdits,
+  createReviewMiddleware,
+  parseReviewResumeActionPayload,
+  type ReviewRequest,
 } from '@core/middleware';
 
 class PermissionInteractionModel {
@@ -30,7 +30,7 @@ class PermissionInteractionModel {
       });
     }
 
-    if (text.includes('"type":"hil_pause"')) {
+    if (text.includes('"type":"review_pause"')) {
       return new AIMessage('WAITING_FOR_PERMISSION_CHOICE');
     }
 
@@ -56,10 +56,10 @@ function stringifyContent(content: unknown): string {
   return JSON.stringify(content);
 }
 
-describe('HIL permission choice contract', () => {
+describe('Review permission choice contract', () => {
   it('should expose permission actions and support edit-and-continue resume', async () => {
     const model = new PermissionInteractionModel();
-    const pauseRequests: HILPauseRequest[] = [];
+    const pauseRequests: ReviewRequest[] = [];
 
     let executedCommand = '';
     const bashTool = tool(
@@ -74,7 +74,7 @@ describe('HIL permission choice contract', () => {
       }
     );
 
-    const hilMiddleware = createHILMiddleware({
+    const hilMiddleware = createReviewMiddleware({
       interruptOn: {
         bash: {
           description: 'Permission review required for shell command',
@@ -96,7 +96,7 @@ describe('HIL permission choice contract', () => {
         pauseRequests.push(request);
       },
       handleResume: async (_request, resumePayload, context, handler) => {
-        const action = parseHILResumeActionPayload(resumePayload);
+        const action = parseReviewResumeActionPayload(resumePayload);
         if (action.action === 'deny') {
           return new ToolMessage({
             content: 'Denied by user',
@@ -106,7 +106,7 @@ describe('HIL permission choice contract', () => {
         }
 
         if (action.action === 'edit') {
-          return handler(applyHILResumeToolEdits(context, action));
+          return handler(applyReviewResumeToolEdits(context, action));
         }
 
         return handler(context);
@@ -127,7 +127,7 @@ describe('HIL permission choice contract', () => {
     expect(firstResult.reason).toBe('complete');
     expect(model.invocations).toHaveLength(1);
     expect(String(firstResult.state.messages[firstResult.state.messages.length - 1]?.content)).toContain(
-      '"type":"hil_pause"'
+      '"type":"review_pause"'
     );
     expect(executedCommand).toBe('');
     expect(pauseRequests).toHaveLength(1);

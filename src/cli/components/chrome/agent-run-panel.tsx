@@ -1,13 +1,13 @@
 import React, {useEffect, useState} from 'react';
 import {Box, Text} from 'ink';
-import type {ActiveTask} from '../../hooks/use-active-tasks';
+import type {ActiveAgentRun} from '../../hooks/use-agent-runs';
 import {SPINNER_INTERVAL_MS} from '../../hooks/use-status-indicator';
 import {theme} from '../../utils/theme';
 
 const BRAILLE_FRAMES = ['⠋', '⠙', '⠹', '⠸', '⠼', '⠴', '⠦', '⠧', '⠇', '⠏'] as const;
 
-interface TaskPanelProps {
-  tasks: ActiveTask[];
+interface AgentRunPanelProps {
+  runs: ActiveAgentRun[];
   runningCount: number;
   pausedCount: number;
   doneCount: number;
@@ -15,7 +15,7 @@ interface TaskPanelProps {
   hiddenCount?: number;
 }
 
-function buildTaskSummary(runningCount: number, pausedCount: number, doneCount: number, errorCount: number): string {
+function buildAgentRunSummary(runningCount: number, pausedCount: number, doneCount: number, errorCount: number): string {
   const parts: string[] = [];
   if (runningCount > 0) parts.push(`${runningCount} running`);
   if (pausedCount > 0) parts.push(`${pausedCount} paused`);
@@ -24,7 +24,7 @@ function buildTaskSummary(runningCount: number, pausedCount: number, doneCount: 
   return parts.join(', ');
 }
 
-function TaskCheckbox({status, frame}: {status: ActiveTask['status']; frame: number}): React.JSX.Element {
+function AgentRunCheckbox({status, frame}: {status: ActiveAgentRun['status']; frame: number}): React.JSX.Element {
   switch (status) {
     case 'running': {
       const spinner = BRAILLE_FRAMES[((frame % BRAILLE_FRAMES.length) + BRAILLE_FRAMES.length) % BRAILLE_FRAMES.length];
@@ -39,7 +39,14 @@ function TaskCheckbox({status, frame}: {status: ActiveTask['status']; frame: num
   }
 }
 
-export function TaskPanel({tasks, runningCount, pausedCount, doneCount, errorCount, hiddenCount = 0}: TaskPanelProps): React.JSX.Element | null {
+export function AgentRunPanel({
+  runs,
+  runningCount,
+  pausedCount,
+  doneCount,
+  errorCount,
+  hiddenCount = 0,
+}: AgentRunPanelProps): React.JSX.Element | null {
   const [frame, setFrame] = useState(0);
 
   useEffect(() => {
@@ -52,18 +59,18 @@ export function TaskPanel({tasks, runningCount, pausedCount, doneCount, errorCou
     return () => clearInterval(timer);
   }, [runningCount]);
 
-  if (tasks.length === 0) return null;
+  if (runs.length === 0) return null;
 
-  const summary = buildTaskSummary(runningCount, pausedCount, doneCount, errorCount);
+  const summary = buildAgentRunSummary(runningCount, pausedCount, doneCount, errorCount);
 
   return (
     <Box flexDirection="column" borderStyle="single" borderColor={theme.chrome.border} paddingX={1}>
-      <Text dimColor bold>Tasks ({summary})</Text>
-      {tasks.map(task => {
+      <Text dimColor bold>Subagents ({summary})</Text>
+      {runs.map((run) => {
         return (
-          <Box key={task.id} gap={1}>
-            <TaskCheckbox status={task.status} frame={frame} />
-            <Text wrap="truncate-end">{task.name}</Text>
+          <Box key={run.id} gap={1}>
+            <AgentRunCheckbox status={run.status} frame={frame} />
+            <Text wrap="truncate-end">{run.name}</Text>
           </Box>
         );
       })}

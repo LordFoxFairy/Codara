@@ -1,7 +1,7 @@
 import {describe, expect, it} from 'bun:test';
 import {render} from 'ink-testing-library';
 import {StatusBar} from '../../../src/cli/components/chrome/header';
-import {TaskPanel} from '../../../src/cli/components/chrome/task-panel';
+import {AgentRunPanel} from '../../../src/cli/components/chrome/agent-run-panel';
 import {ActiveTranscript, Transcript} from '../../../src/cli/components/conversation/transcript';
 import {SolidifiedBlock} from '../../../src/cli/components/conversation/solidified-block';
 import {StaticWelcome, deriveRecentSessions} from '../../../src/cli/components/conversation/welcome-state';
@@ -10,7 +10,7 @@ import {resolveCliForegroundSurface} from '../../../src/cli/app/shell-app';
 import {HumanMessage, AIMessage} from '@langchain/core/messages';
 import type {SessionState} from '@/index';
 import type {SessionPickerItem} from '../../../src/cli/hooks/use-session-picker';
-import type {ActiveTask} from '../../../src/cli/hooks/use-active-tasks';
+import type {ActiveAgentRun} from '../../../src/cli/hooks/use-agent-runs';
 import type {TranscriptItem} from '../../../src/cli/transcript/model';
 
 describe('UI alignment with Claude Code', () => {
@@ -346,7 +346,7 @@ describe('UI alignment with Claude Code', () => {
 
   describe('Task panel truncation', () => {
     it('should show at most five rows and a +N more overflow hint', () => {
-      const tasks: ActiveTask[] = [
+      const tasks: ActiveAgentRun[] = [
         {id: 'run-1', name: 'Explore: One', status: 'running', startedAt: 1, elapsed: 1000},
         {id: 'run-2', name: 'Explore: Two', status: 'paused', startedAt: 2, elapsed: 1000},
         {id: 'run-3', name: 'Explore: Three', status: 'error', startedAt: 3, elapsed: 1000},
@@ -355,8 +355,8 @@ describe('UI alignment with Claude Code', () => {
       ];
 
       const {lastFrame} = render(
-        <TaskPanel
-          tasks={tasks}
+        <AgentRunPanel
+          runs={tasks}
           runningCount={1}
           pausedCount={1}
           doneCount={2}
@@ -366,7 +366,7 @@ describe('UI alignment with Claude Code', () => {
       );
 
       const frame = lastFrame()!;
-      expect(frame).toContain('Tasks (1 running, 1 paused, 2 done, 1 failed)');
+      expect(frame).toContain('Subagents (1 running, 1 paused, 2 done, 1 failed)');
       expect(frame).toContain('Explore: One');
       expect(frame).toContain('Explore: Five');
       expect(frame).toContain('+2 more');
@@ -378,7 +378,7 @@ describe('UI alignment with Claude Code', () => {
       const items: TranscriptItem[] = [
         {
           id: 'task-1',
-          role: 'task',
+          role: 'agent',
           content: '⚙ Explore(Analyze README and package metadata)\nRunning (35s · 17 tool activities)',
           toolMeta: {
             toolName: 'Agent',
@@ -395,7 +395,7 @@ describe('UI alignment with Claude Code', () => {
         },
         {
           id: 'task-2',
-          role: 'task',
+          role: 'agent',
           content: '⚙ Explore(Sync architecture docs)\nRunning (28s · 15 tool activities)',
           toolMeta: {
             toolName: 'Agent',
@@ -415,7 +415,7 @@ describe('UI alignment with Claude Code', () => {
       const {lastFrame} = render(<ActiveTranscript items={items} />);
 
       const frame = lastFrame()!;
-      expect(frame).toContain('Running 2 agents');
+      expect(frame).toContain('Running 2 subagents');
       expect(frame).toContain('Explore(Analyze README and package metadata)');
       expect(frame).toContain('⎿ Running (17 tool activities · 35s)');
       expect(frame).not.toContain('Bash: Run test suite');
@@ -428,7 +428,7 @@ describe('UI alignment with Claude Code', () => {
       const items: TranscriptItem[] = [
         {
           id: 'active-agent-run:run-1',
-          role: 'task',
+          role: 'agent',
           content: '⚙ Explore(Analyze README and package metadata)\nRunning (35s · 17 tool activities)',
           toolMeta: {
             toolName: 'Agent',
@@ -441,7 +441,7 @@ describe('UI alignment with Claude Code', () => {
           },
         },
       ];
-      const taskSummaries: ActiveTask[] = [
+      const taskSummaries: ActiveAgentRun[] = [
         {
           id: 'run-1',
           name: 'Explore: Analyze README and package metadata',
@@ -454,7 +454,7 @@ describe('UI alignment with Claude Code', () => {
         },
       ];
 
-      const {lastFrame} = render(<ActiveTranscript items={items} activeTasks={taskSummaries} />);
+      const {lastFrame} = render(<ActiveTranscript items={items} activeAgentRuns={taskSummaries} />);
 
       const frame = lastFrame()!;
       expect(frame).toContain('Explore(Analyze README and package metadata)');
@@ -468,7 +468,7 @@ describe('UI alignment with Claude Code', () => {
       const items: TranscriptItem[] = [
         {
           id: 'active-agent-run:run-fallback',
-          role: 'task',
+          role: 'agent',
           content: '⚙ Explore(Analyze README and package metadata)\nRunning (35s · 17 tool activities)',
           toolMeta: {
             toolName: 'Agent',
@@ -481,7 +481,7 @@ describe('UI alignment with Claude Code', () => {
           },
         },
       ];
-      const taskSummaries: ActiveTask[] = [
+      const taskSummaries: ActiveAgentRun[] = [
         {
           id: 'run-fallback',
           name: 'Explore: Analyze README and package metadata',
@@ -492,7 +492,7 @@ describe('UI alignment with Claude Code', () => {
         },
       ];
 
-      const {lastFrame} = render(<ActiveTranscript items={items} activeTasks={taskSummaries} />);
+      const {lastFrame} = render(<ActiveTranscript items={items} activeAgentRuns={taskSummaries} />);
 
       const frame = lastFrame()!;
       expect(frame).toContain('Explore(Analyze README and package metadata)');
@@ -504,7 +504,7 @@ describe('UI alignment with Claude Code', () => {
       const items: TranscriptItem[] = [
         {
           id: 'active-agent-run:run-live-detail',
-          role: 'task',
+          role: 'agent',
           content: '⚙ Explore(Analyze README and package metadata)\nRunning (35s · 2 tool activities)',
           toolMeta: {
             toolName: 'Agent',
@@ -520,7 +520,7 @@ describe('UI alignment with Claude Code', () => {
           },
         },
       ];
-      const taskSummaries: ActiveTask[] = [
+      const taskSummaries: ActiveAgentRun[] = [
         {
           id: 'run-live-detail',
           name: 'Explore: Analyze README and package metadata',
@@ -531,7 +531,7 @@ describe('UI alignment with Claude Code', () => {
         },
       ];
 
-      const {lastFrame} = render(<ActiveTranscript items={items} activeTasks={taskSummaries} />);
+      const {lastFrame} = render(<ActiveTranscript items={items} activeAgentRuns={taskSummaries} />);
 
       const frame = lastFrame()!;
       expect(frame).not.toContain('glob(src/**/*)');
@@ -542,7 +542,7 @@ describe('UI alignment with Claude Code', () => {
       const items: TranscriptItem[] = [
         {
           id: 'active-agent-run:run-paused',
-          role: 'task',
+          role: 'agent',
           content: '⚙ Explore(Inspect guarded task)\nWaiting for review (53s)',
           toolMeta: {
             toolName: 'Agent',
@@ -555,7 +555,7 @@ describe('UI alignment with Claude Code', () => {
           },
         },
       ];
-      const taskSummaries: ActiveTask[] = [
+      const taskSummaries: ActiveAgentRun[] = [
         {
           id: 'run-paused',
           name: 'Explore: Inspect guarded task',
@@ -566,7 +566,7 @@ describe('UI alignment with Claude Code', () => {
         },
       ];
 
-      const {lastFrame} = render(<ActiveTranscript items={items} activeTasks={taskSummaries} />);
+      const {lastFrame} = render(<ActiveTranscript items={items} activeAgentRuns={taskSummaries} />);
 
       const frame = lastFrame()!;
       expect(frame).toContain('Explore(Inspect guarded task)');
@@ -579,7 +579,7 @@ describe('UI alignment with Claude Code', () => {
       const items: TranscriptItem[] = [
         {
           id: 'active-agent-run:run-done',
-          role: 'task',
+          role: 'agent',
           content: '⚙ Explore(Analyze README and package metadata)\nDone (38s)',
           toolMeta: {
             toolName: 'Agent',
@@ -609,7 +609,7 @@ describe('UI alignment with Claude Code', () => {
       const items: TranscriptItem[] = [
         {
           id: 'active-agent-run:run-single-done',
-          role: 'task',
+          role: 'agent',
           content: '⚙ Explore(Analyze architecture)\nRunning (12s · 2 tool activities)',
           toolMeta: {
             toolName: 'Agent',
@@ -622,7 +622,7 @@ describe('UI alignment with Claude Code', () => {
           },
         },
       ];
-      const activeTasks: ActiveTask[] = [
+      const activeAgentRuns: ActiveAgentRun[] = [
         {
           id: 'run-single-done',
           name: 'Explore: Analyze architecture',
@@ -636,7 +636,7 @@ describe('UI alignment with Claude Code', () => {
         },
       ];
 
-      const {lastFrame} = render(<ActiveTranscript items={items} activeTasks={activeTasks} />);
+      const {lastFrame} = render(<ActiveTranscript items={items} activeAgentRuns={activeAgentRuns} />);
 
       const frame = lastFrame()!;
       expect(frame).toContain('⏺ Explore(Analyze architecture)');
@@ -719,7 +719,7 @@ describe('UI alignment with Claude Code', () => {
             items: [
               {
                 id: 'active-agent-run:run-solid-done',
-                role: 'task',
+                role: 'agent',
                 content: '⚙ Explore(Analyze architecture)\nDone (2 tool uses · 14.4k tokens · 38s)',
                 toolMeta: {
                   toolName: 'Agent',
@@ -753,7 +753,7 @@ describe('UI alignment with Claude Code', () => {
     it('should synthesize missing completed execution blocks from active task summaries without leaking child summaries', () => {
       const items: TranscriptItem[] = [{
         id: 'active-agent-run:run-running',
-        role: 'task',
+        role: 'agent',
         content: '⚙ Explore(Analyze tech stack)\nRunning (1 tool use · 12s)',
         toolMeta: {
           toolName: 'Agent',
@@ -768,7 +768,7 @@ describe('UI alignment with Claude Code', () => {
         },
       }];
 
-      const activeTasks: ActiveTask[] = [
+      const activeAgentRuns: ActiveAgentRun[] = [
         {
           id: 'run-running',
           name: 'Explore: Analyze tech stack',
@@ -791,10 +791,10 @@ describe('UI alignment with Claude Code', () => {
         },
       ];
 
-      const {lastFrame} = render(<ActiveTranscript items={items} activeTasks={activeTasks} />);
+      const {lastFrame} = render(<ActiveTranscript items={items} activeAgentRuns={activeAgentRuns} />);
 
       const frame = lastFrame()!;
-      expect(frame).toContain('Running 2 agents');
+      expect(frame).toContain('Running 2 subagents');
       expect(frame).toContain('Explore(Analyze architecture)');
       expect(frame).toContain('⎿ Done (2 tool uses · 14.4k tokens · 38s)');
       expect(frame).toContain('Explore(Analyze tech stack)');

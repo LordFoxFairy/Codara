@@ -1,5 +1,5 @@
 import type {ApprovalStore} from '@durability/approval-store';
-import type {PauseRequest} from '@core/agent';
+import type {ReviewRequest} from '@core/agent';
 import type {
   ReviewBlockingScope,
   ReviewInteractionMode,
@@ -11,7 +11,7 @@ export function getReviewItems(options: {
   approvalStore: ApprovalStore | undefined;
   sessionId: string | undefined;
   focusedReviewId?: string;
-  foregroundPause?: PauseRequest;
+  foregroundPause?: ReviewRequest;
 }): ReviewQueryItem[] {
   const {approvalStore, sessionId, focusedReviewId, foregroundPause} = options;
   const queuedItems = !approvalStore || !sessionId
@@ -58,7 +58,7 @@ export function getReviewItems(options: {
   ];
 }
 
-function inferReviewKind(request: PauseRequest): ReviewQueryKind {
+function inferReviewKind(request: ReviewRequest): ReviewQueryKind {
   if (request.ui?.modal === 'permission-review' || request.channel === 'permission-center') {
     return 'permission';
   }
@@ -71,7 +71,7 @@ function inferReviewKind(request: PauseRequest): ReviewQueryKind {
   return 'generic';
 }
 
-function inferReviewInteractionMode(request: PauseRequest): ReviewInteractionMode {
+function inferReviewInteractionMode(request: ReviewRequest): ReviewInteractionMode {
   if (request.ui?.form) {
     return request.ui.actions?.some((action) => action.label.toLowerCase().includes('chat'))
       ? 'hybrid'
@@ -86,6 +86,6 @@ function inferReviewInteractionMode(request: PauseRequest): ReviewInteractionMod
   return 'freeform';
 }
 
-function inferReviewBlockingScope(_request: PauseRequest): ReviewBlockingScope {
+function inferReviewBlockingScope(_request: ReviewRequest): ReviewBlockingScope {
   return 'session';
 }

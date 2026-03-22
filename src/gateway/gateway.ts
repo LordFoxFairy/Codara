@@ -69,7 +69,7 @@ export class Gateway {
           accountId,
           config: accountConfig,
           onMessage: async (msg) => { debouncer.add(msg); },
-          onPauseResponse: (pauseId, payload) => this.handlePauseResponse(pauseId, payload),
+          onReviewResponse: (reviewId, payload) => this.handleReviewResponse(reviewId, payload),
         });
         this.stopHandles.push(handle);
       }
@@ -155,14 +155,14 @@ export class Gateway {
   }
 
   /**
-   * Handle a pause response from a plugin callback (e.g., InlineKeyboard button click).
-   * Iterates all bridges to find the one holding the pending pause.
+   * Handle a review response from a plugin callback (e.g., InlineKeyboard button click).
+   * Iterates all bridges to find the one holding the pending review.
    */
-  handlePauseResponse(pauseId: string, payload: unknown): boolean {
+  handleReviewResponse(reviewId: string, payload: unknown): boolean {
     const decision = typeof payload === 'string' ? payload : (payload as {decision?: string})?.decision ?? 'reject';
 
     for (const bridge of this.bridges.values()) {
-      if (bridge.handlePauseResponse(pauseId, decision)) {
+      if (bridge.handleReviewResponse(reviewId, decision)) {
         return true;
       }
     }
@@ -177,7 +177,7 @@ export class Gateway {
       bridge = new GatewayChannelBridge(plugin, account, msg.peer.id, msg.accountId, msg.channel as ChannelType);
       this.bridges.set(bridgeKey, bridge);
 
-      // Register with the ChannelRegistry so HIL middleware can route pauses
+      // Register with the ChannelRegistry so review middleware can route review requests.
       if (!this.channelRegistry.get(bridge.id)) {
         this.channelRegistry.register(bridge);
       }

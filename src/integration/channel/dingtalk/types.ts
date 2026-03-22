@@ -74,6 +74,6 @@ export interface DingTalkAccountConfig {
   webhookPort?: number;
   /** URL path for the webhook endpoint (default: /dingtalk/webhook). */
   webhookPath?: string;
-  /** Base URL for action card callback buttons (required for HIL). */
+  /** Base URL for action card callback buttons (required for review). */
   callbackBaseUrl?: string;
 }

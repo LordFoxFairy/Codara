@@ -11,6 +11,7 @@ import {
   createDelegatedAgentToolMessage,
   markDelegationTool,
   readDelegatedParentRuntimeMetadata,
+  type DelegatedParentRuntimeMetadata,
   type DelegatedAgentOptions,
   type DelegatedAgentResult,
 } from '@capability/subagent/agent';
@@ -18,13 +19,14 @@ import type {AgentRunRecord, AgentRunStore} from '@capability/subagent/types';
 import {resolveModel, type BootstrapAgentOptions} from '@core/agent/bootstrap';
 import type {AgentCheckpointer} from '@durability/checkpoint/agent';
 import {AGENT_ACTIVITY_CALLBACK_KEY, type ChildToolActivityCallback} from '@observability/events';
-import type {AgentRuntime} from '@capability/subagent/runtime';
+import type {AgentRuntime, AgentRuntimeRecoverySpec} from '@capability/subagent/runtime';
 import {createMiddleware, type BaseMiddleware} from '@core/pipeline/types';
 import type {SubagentDefinition} from '@context/skills/contracts';
 import {filterToolsByReferences} from '@integration/tool';
 import {formatSubagentDisplayName} from '@context/skills/runtime-shared';
 import {formatToolSummary} from '@shared/tool-display';
-import type {ApprovalStore} from '@durability/approval-store';
+import type {ApprovalRecord, ApprovalStore} from '@durability/approval-store';
+import {deepClone} from '@shared/clone';
 
 export const AGENT_TOOL_NAME = 'Agent';
 
@@ -68,10 +70,18 @@ interface PreparedAgentLaunch {
   parentSessionId: string;
   childSessionId: string;
   agentName: string;
+  subagentType?: string;
   runLabel: string;
   childMaxTurns: number | undefined;
   existingRunMessage?: ToolMessage;
   childOptions?: BootstrapAgentOptions;
+}
+
+interface CompiledAgentLaunchSpec {
+  agentName: string;
+  subagentType?: string;
+  childMaxTurns?: number;
+  childOptions: BootstrapAgentOptions;
 }
 
 export interface CreateAgentToolOptions extends DelegatedAgentOptions {
@@ -86,10 +96,11 @@ export function createAgentTool(options: CreateAgentToolOptions): StructuredTool
   const runStore = options.runStore ?? createAgentRunMemoryStore();
   const approvalStore = options.approvalStore;
   const runtime = options.runtime ?? createAgentRuntime({runStore, approvalStore});
-  runtime.registerRecoveryBuilder(async (run) => buildRecoveredAgentChildOptions(
+  runtime.registerRecoveryBuilder(async (run, approval) => buildRecoveredAgentChildOptions(
     {...options, checkpointer: delegatedCheckpointer},
     runtime,
     run,
+    approval,
   ));
 
   const agentTool = markDelegationTool(tool(
@@ -115,6 +126,7 @@ export function createAgentTool(options: CreateAgentToolOptions): StructuredTool
         childSessionId: prepared.childSessionId,
         label: prepared.runLabel,
         agentName: prepared.agentName,
+        ...(prepared.subagentType ? {subagentType: prepared.subagentType} : {}),
         prompt,
         childOptions: prepared.childOptions!,
         ...(typeof prepared.childMaxTurns === 'number' ? {maxTurns: prepared.childMaxTurns} : {}),
@@ -160,24 +172,27 @@ async function prepareAgentLaunch(input: PrepareAgentLaunchInput): Promise<Prepa
     checkpointer,
   } = input;
   const delegated = readDelegatedParentRuntimeMetadata(configurable, 'Agent');
-  const requestedSubagentType = normalizeSubagentType(subagentType);
-  const profile = resolveSubagentDefinition(
-    readSkillsRuntimeData(configurable.runtimeShared),
-    requestedSubagentType,
-  );
-  const childActivityCallback = readChildActivityCallback(configurable.runtimeShared);
   const runId = resolveAgentRunId(runStore, delegated.parentExecution.toolCallId);
-  const agentName = normalizeAgentName(requestedSubagentType, profile.name);
-  const runLabel = `Delegating ${agentName}: ${prompt}`;
+  const compiled = await compileAgentLaunchSpec({
+    prompt,
+    subagentType,
+    maxTurns,
+    delegated,
+    toolOptions,
+    checkpointer,
+    runStore,
+    runId,
+    runtimeShared: configurable.runtimeShared,
+  });
+  const runLabel = `Delegating ${compiled.agentName}: ${prompt}`;
   const childSessionId = `${delegated.parentExecution.sessionId}:agent:${runId}`;
-  const childMaxTurns = maxTurns ?? profile.maxTurns;
 
   const existingRunMessage = readExistingAgentRunMessage(
     runStore?.get(runId),
     delegated.parentExecution.toolCallId,
     {
       runId,
-      agentName,
+      agentName: compiled.agentName,
       label: runLabel,
       childSessionId,
       parentSessionId: delegated.parentExecution.sessionId,
@@ -189,44 +204,72 @@ async function prepareAgentLaunch(input: PrepareAgentLaunchInput): Promise<Prepa
       toolCallId: delegated.parentExecution.toolCallId,
       parentSessionId: delegated.parentExecution.sessionId,
       childSessionId,
-      agentName,
+      agentName: compiled.agentName,
+      ...(compiled.subagentType ? {subagentType: compiled.subagentType} : {}),
       runLabel,
-      childMaxTurns,
+      childMaxTurns: compiled.childMaxTurns,
       existingRunMessage,
     };
   }
-
-  const onChildToolActivity = createChildToolActivityCallback(runId, runStore, childActivityCallback);
-  const childOptions = await buildDelegatedChildOptions({
-    ...toolOptions,
-    ...(toolOptions.childSystemMessages?.length || toolOptions.childSystemPrompt
-      ? {
-          childSystemMessages: mergeAgentSystemMessages(
-            toolOptions.childSystemMessages,
-            toolOptions.childSystemPrompt,
-          ),
-        }
-      : {}),
-    checkpointer,
-    ...(onChildToolActivity ? {onChildToolActivity} : {}),
-  }, {
-    prompt,
-    ...(requestedSubagentType ? {subagentType: requestedSubagentType} : {}),
-    maxTurns: childMaxTurns,
-    toolName: 'Agent',
-    parentExecution: delegated.parentExecution,
-    profileTools: resolveDefinitionTools(toolOptions.tools ?? [], profile),
-    profileSystemPrompt: profile.systemPrompt,
-  });
 
   return {
     runId,
     toolCallId: delegated.parentExecution.toolCallId,
     parentSessionId: delegated.parentExecution.sessionId,
     childSessionId,
-    agentName,
+    agentName: compiled.agentName,
+    ...(compiled.subagentType ? {subagentType: compiled.subagentType} : {}),
     runLabel,
-    childMaxTurns,
+    childMaxTurns: compiled.childMaxTurns,
+    childOptions: compiled.childOptions,
+  };
+}
+
+async function compileAgentLaunchSpec(input: {
+  prompt: string;
+  subagentType: string | undefined;
+  maxTurns?: number;
+  delegated: DelegatedParentRuntimeMetadata;
+  toolOptions: CreateAgentToolOptions;
+  checkpointer: AgentCheckpointer;
+  runStore: AgentRunStore | undefined;
+  runId: string;
+  runtimeShared: unknown;
+}): Promise<CompiledAgentLaunchSpec> {
+  const requestedSubagentType = normalizeSubagentType(input.subagentType);
+  const profile = resolveSubagentDefinition(
+    readSkillsRuntimeData(input.runtimeShared),
+    requestedSubagentType,
+  );
+  const childActivityCallback = readChildActivityCallback(input.runtimeShared);
+  const childMaxTurns = input.maxTurns ?? profile.maxTurns;
+  const onChildToolActivity = createChildToolActivityCallback(input.runId, input.runStore, childActivityCallback);
+  const childOptions = await buildDelegatedChildOptions({
+    ...input.toolOptions,
+    ...(input.toolOptions.childSystemMessages?.length || input.toolOptions.childSystemPrompt
+      ? {
+          childSystemMessages: mergeAgentSystemMessages(
+            input.toolOptions.childSystemMessages,
+            input.toolOptions.childSystemPrompt,
+          ),
+        }
+      : {}),
+    checkpointer: input.checkpointer,
+    ...(onChildToolActivity ? {onChildToolActivity} : {}),
+  }, {
+    prompt: input.prompt,
+    ...(requestedSubagentType ? {subagentType: requestedSubagentType} : {}),
+    maxTurns: childMaxTurns,
+    toolName: AGENT_TOOL_NAME,
+    parentExecution: input.delegated.parentExecution,
+    profileTools: resolveDefinitionTools(input.toolOptions.tools ?? [], profile),
+    profileSystemPrompt: profile.systemPrompt,
+  });
+
+  return {
+    agentName: normalizeAgentName(requestedSubagentType, profile.name),
+    ...(requestedSubagentType ? {subagentType: requestedSubagentType} : {}),
+    ...(typeof childMaxTurns === 'number' ? {childMaxTurns} : {}),
     childOptions,
   };
 }
@@ -362,27 +405,34 @@ async function buildRecoveredAgentChildOptions(
   options: CreateAgentToolOptions,
   runtime: AgentRuntime,
   run: AgentRunRecord,
-): Promise<BootstrapAgentOptions | undefined> {
-  if (!run.childSessionId) {
+  approval: ApprovalRecord | undefined,
+): Promise<AgentRuntimeRecoverySpec | undefined> {
+  const recovered = readRecoveredAgentRecoverySpec(approval);
+  if (!recovered) {
     return undefined;
   }
 
-  const recoveryTools = filterRecoveredAgentTools(options.tools ?? [], run.toolNames);
-  const recoveryMiddleware = [
-    ...(options.childMiddleware ?? []),
-    createRecoveredAgentActivityMiddleware(runtime, run.runId),
-  ];
-
   return {
-    model: await resolveModel(options.model),
-    agentType: 'subagent',
-    ...(run.systemMessages?.length ? {systemMessage: [...run.systemMessages]} : {}),
-    ...(recoveryTools.length > 0 ? {tools: recoveryTools} : {}),
-    ...(recoveryMiddleware.length > 0 ? {middleware: recoveryMiddleware} : {}),
-    handleToolErrors: options.handleToolErrors,
-    checkpointer: options.checkpointer,
-    inputBudget: options.inputBudget,
-    ...(options.childLifecycle ? {lifecycle: options.childLifecycle} : {}),
+    childOptions: {
+      model: await resolveModel(options.model),
+      agentType: 'subagent',
+      ...(recovered.systemMessages?.length ? {systemMessage: [...recovered.systemMessages]} : {}),
+      ...(filterRecoveredAgentTools(options.tools ?? [], recovered.toolNames).length
+        ? {tools: filterRecoveredAgentTools(options.tools ?? [], recovered.toolNames)}
+        : {}),
+      middleware: [
+        ...(options.childMiddleware ?? []),
+        createRecoveredAgentActivityMiddleware(runtime, run.runId),
+      ],
+      handleToolErrors: options.handleToolErrors,
+      checkpointer: options.checkpointer ?? createAgentMemoryCheckpointer(),
+      inputBudget: options.inputBudget,
+      ...(options.childPrepareContext ? {prepareContext: options.childPrepareContext} : {}),
+      ...(options.childContext ? {context: options.childContext} : {}),
+      ...(options.childValues ? {values: deepClone(options.childValues)} : {}),
+      ...(options.childLifecycle ? {lifecycle: options.childLifecycle} : {}),
+    },
+    ...(typeof recovered.maxTurns === 'number' ? {maxTurns: recovered.maxTurns} : {}),
   };
 }
 
@@ -425,6 +475,38 @@ function filterRecoveredAgentTools(
 
   const allowed = new Set(toolNames);
   return tools.filter((tool) => allowed.has(tool.name));
+}
+
+function readRecoveredAgentRecoverySpec(
+  approval: ApprovalRecord | undefined,
+): {
+  toolNames?: string[];
+  systemMessages?: string[];
+  maxTurns?: number;
+} | undefined {
+  const metadata = approval?.reviewRequest.metadata;
+  if (!metadata || typeof metadata !== 'object') {
+    return undefined;
+  }
+
+  const codara = 'codara' in metadata && metadata.codara && typeof metadata.codara === 'object'
+    ? metadata.codara as Record<string, unknown>
+    : undefined;
+  const recovery = codara?.agentRecovery;
+  if (!recovery || typeof recovery !== 'object') {
+    return undefined;
+  }
+
+  const parsed = z.object({
+    toolNames: z.array(z.string().trim().min(1)).optional(),
+    systemMessages: z.array(z.string()).optional(),
+    maxTurns: z.number().int().positive().optional(),
+  }).safeParse(recovery);
+  if (!parsed.success) {
+    return undefined;
+  }
+
+  return parsed.data;
 }
 
 function createRecoveredAgentActivityMiddleware(

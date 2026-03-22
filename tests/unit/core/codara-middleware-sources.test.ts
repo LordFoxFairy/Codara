@@ -25,7 +25,7 @@ describe('Codara middleware source integration', () => {
       userHome,
       skills: false,
       builtinTools: false,
-      hil: false,
+      review: false,
     });
     const result = await codara.invoke('hello');
     const text = String(result.state.messages[result.state.messages.length - 1]?.content);
@@ -34,7 +34,7 @@ describe('Codara middleware source integration', () => {
     expect(text).toContain('project rule');
   });
 
-  it('should let caller tool middleware short-circuit before default HIL', async () => {
+  it('should let caller tool middleware short-circuit before default Review', async () => {
     const toolCall: ToolCall = {id: 'call_1', name: 'echo', args: {text: 'ping'}};
     const model = new FakeModel([
       new AIMessage({content: '', tool_calls: [toolCall]}),
@@ -51,7 +51,7 @@ describe('Codara middleware source integration', () => {
       wrapToolCall: async (context, handler) => {
         void handler;
         return new ToolMessage({
-          content: 'blocked-before-hil',
+          content: 'blocked-before-review',
           tool_call_id: context.toolCall.id ?? 'blocked',
           status: 'error',
         });
@@ -62,7 +62,7 @@ describe('Codara middleware source integration', () => {
       model: model as unknown as BaseChatModel,
       tools: [tool],
       skills: false,
-      hil: {
+      review: {
         interruptOn: {
           echo: true,
         },
@@ -75,7 +75,7 @@ describe('Codara middleware source integration', () => {
 
     expect(result.reason).toBe('complete');
     expect(toolMessage).toBeDefined();
-    expect(toolMessage?.content).toBe('blocked-before-hil');
+    expect(toolMessage?.content).toBe('blocked-before-review');
     expect(String(result.state.messages[result.state.messages.length - 1]?.content)).toBe('done');
   });
 });

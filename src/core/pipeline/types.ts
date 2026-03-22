@@ -138,7 +138,7 @@ export const MIDDLEWARE_NAMES = {
   Skills: 'SkillsMiddleware',
   Budget: 'BudgetMiddleware',
   Summary: 'SummaryMiddleware',
-  HIL: 'HumanInTheLoopMiddleware',
+  Review: 'ReviewMiddleware',
   AskUserQuestion: 'AskUserQuestionMiddleware',
   Permission: 'PermissionMiddleware',
   Logging: 'LoggingMiddleware',

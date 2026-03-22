@@ -95,7 +95,7 @@ src/
 
 通过 `bun run dev:gateway` 启动，统一接入 7 个 IM 渠道：
 
-| 渠道 | 协议 | HIL 交互 |
+| 渠道 | 协议 | review 交互 |
 |------|------|---------|
 | **Telegram** | Bot API 长轮询 | InlineKeyboard 按钮 |
 | **飞书** | Open API + Webhook | 交互卡片 |
@@ -141,11 +141,11 @@ src/
 | BeforeAgent | 启动前 | Skills 注入 · PathInstructions |
 | BeforeModel | LLM 调用前 | Budget · Summary 压缩 |
 | ModelCall | 推理时 | Logging |
-| **ToolCall** | **工具执行** | **Permission (deny→ask→allow) → HIL pause/resume** |
+| **ToolCall** | **工具执行** | **Permission (deny→ask→allow) → review pause/resume** |
 | AfterModel | 推理后 | Logging · Checkpoint |
 | AfterAgent | 结束后 | Hooks · Cleanup |
 
-### HIL（Human-in-the-Loop）
+### Review
 
 工具执行可被 Permission 中间件拦截 → 通过 ChannelRegistry 路由到对应交互通道 → 用户审批/拒绝 → 恢复执行。
 

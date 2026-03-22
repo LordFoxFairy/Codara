@@ -1,17 +1,17 @@
 import { useEffect, useRef } from "react";
 import { Sparkles } from "lucide-react";
-import type { Message, PauseRequest, RuntimeEvent, StreamStatus } from "../types";
+import type { Message, ReviewRequest, RuntimeEvent, StreamStatus } from "../types";
 import { MessageBubble } from "./MessageBubble";
 
 interface ChatProps {
   messages: Message[];
   status: StreamStatus;
-  pauseRequest: PauseRequest | null;
+  reviewRequest: ReviewRequest | null;
   runtimeEvent: RuntimeEvent | null;
   onResume: (action: string) => void;
 }
 
-export function Chat({ messages, status, pauseRequest, runtimeEvent, onResume }: ChatProps) {
+export function Chat({ messages, status, reviewRequest, runtimeEvent, onResume }: ChatProps) {
   const bottomRef = useRef<HTMLDivElement>(null);
   const containerRef = useRef<HTMLDivElement>(null);
 
@@ -72,11 +72,11 @@ export function Chat({ messages, status, pauseRequest, runtimeEvent, onResume }:
         )}
 
         {/* Pause actions */}
-        {status === "paused" && pauseRequest && (
+        {status === "paused" && reviewRequest && (
           <div className="animate-fade-in mt-5 rounded-xl border border-amber-200/80 bg-amber-50/60 p-5">
             <p className="mb-3 text-[13px] font-semibold text-amber-800">Action required to continue</p>
             <div className="flex flex-wrap gap-2">
-              {pauseRequest.actions.map((action) => (
+              {reviewRequest.actions.map((action) => (
                 <button
                   key={action.value}
                   onClick={() => onResume(action.value)}
@@ -111,7 +111,7 @@ function describeRuntimeStatus(status: StreamStatus, event: RuntimeEvent | null)
       const truncated = event.label.length > 60 ? `${event.label.slice(0, 57)}...` : event.label;
       return event.phase === "start" ? `Running: ${truncated}` : `Done: ${toolName}`;
     }
-    case "task":
+    case "agent":
       if (event.phase === "start") return "Delegating to subagent...";
       if (event.phase === "end") return "Subagent completed";
       return "Subagent working...";

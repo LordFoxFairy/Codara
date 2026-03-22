@@ -23,7 +23,7 @@ describe('case: runtime permission default ask', () => {
 
     expect(first.exitCode).toBe(0);
     expect(first.output).toContain('RUNTIME_PERMISSION_DONE');
-    expect(first.output).not.toContain('HIL action:');
+    expect(first.output).not.toContain('Review action:');
 
     const settingsFile = path.join(codaraPath, 'settings.local.json');
     expect(existsSync(settingsFile)).toBeTrue();
@@ -40,11 +40,11 @@ describe('case: runtime permission default ask', () => {
 
     expect(second.exitCode).toBe(0);
     expect(second.output).toContain('RUNTIME_PERMISSION_DONE');
-    expect(second.output).not.toContain('HIL Review');
-    expect(second.output).not.toContain('HIL action:');
+    expect(second.output).not.toContain('Review');
+    expect(second.output).not.toContain('Review action:');
   });
 
-  it('should allow read-only bash inspection commands without HIL by default', async () => {
+  it('should allow read-only bash inspection commands without review by default', async () => {
     const root = await mkdtemp(path.join(tmpdir(), 'codara-case-permission-runtime-read-cli-'));
     const projectRoot = path.join(root, 'project');
     await mkdir(path.join(projectRoot, '.codara'), {recursive: true});
@@ -58,7 +58,7 @@ describe('case: runtime permission default ask', () => {
     expect(result.exitCode).toBe(0);
     expect(result.output).toContain('RUNTIME_GIT_STATUS_DONE');
     expect(result.output).not.toContain('Permission Review');
-    expect(result.output).not.toContain('HIL action:');
+    expect(result.output).not.toContain('Review action:');
   });
 
   it('should allow wrapped read-only bash inspection commands through exact git rules', async () => {
@@ -75,7 +75,7 @@ describe('case: runtime permission default ask', () => {
     expect(result.exitCode).toBe(0);
     expect(result.output).toContain('RUNTIME_GIT_STATUS_WRAPPER_DONE');
     expect(result.output).not.toContain('Permission Review');
-    expect(result.output).not.toContain('HIL action:');
+    expect(result.output).not.toContain('Review action:');
   });
 
   it('should allow git subcommand rules even when the bash command uses global options', async () => {
@@ -102,7 +102,7 @@ describe('case: runtime permission default ask', () => {
     expect(result.exitCode).toBe(0);
     expect(result.output).toContain('RUNTIME_GIT_LOG_OPTION_DONE');
     expect(result.output).not.toContain('Permission Review');
-    expect(result.output).not.toContain('HIL action:');
+    expect(result.output).not.toContain('Review action:');
   });
 
   it('should persist smarter git command-type approvals for compound bash commands', async () => {
@@ -122,7 +122,7 @@ describe('case: runtime permission default ask', () => {
 
     expect(first.exitCode).toBe(0);
     expect(first.output).toContain('RUNTIME_GIT_COMPOUND_DONE');
-    expect(first.output).not.toContain('HIL action:');
+    expect(first.output).not.toContain('Review action:');
 
     const settings = JSON.parse(await readFile(path.join(codaraPath, 'settings.local.json'), 'utf8')) as {
       permissions?: {rules?: {allow?: string[]}};
@@ -138,7 +138,7 @@ describe('case: runtime permission default ask', () => {
     expect(second.exitCode).toBe(0);
     expect(second.output).toContain('RUNTIME_GIT_PUSH_DONE');
     expect(second.output).not.toContain('Permission Review');
-    expect(second.output).not.toContain('HIL action:');
+    expect(second.output).not.toContain('Review action:');
   });
 
   it('should support trusting the whole project for later guarded commands', async () => {
@@ -157,7 +157,7 @@ describe('case: runtime permission default ask', () => {
     });
 
     expect(first.exitCode).toBe(0);
-    expect(first.output).not.toContain('HIL action:');
+    expect(first.output).not.toContain('Review action:');
     const settings = JSON.parse(await readFile(path.join(codaraPath, 'settings.local.json'), 'utf8')) as {
       permissions?: {defaultDecision?: string};
     };
@@ -171,7 +171,7 @@ describe('case: runtime permission default ask', () => {
 
     expect(second.exitCode).toBe(0);
     expect(second.output).toContain('RUNTIME_PERMISSION_OTHER_DONE');
-    expect(second.output).not.toContain('HIL Review');
+    expect(second.output).not.toContain('Review');
   });
 
   it('should repair invalid settings.local.json on runtime startup through the real CLI path', async () => {
@@ -226,7 +226,7 @@ describe('case: runtime permission default ask', () => {
     });
   });
 
-  it('should complete file-edit permission approvals without extra HIL action noise in the real CLI', async () => {
+  it('should complete file-edit permission approvals without extra review action noise in the real CLI', async () => {
     const root = await mkdtemp(path.join(tmpdir(), 'codara-case-permission-write-cli-'));
     const projectRoot = path.join(root, 'project');
     await mkdir(path.join(projectRoot, '.codara'), {recursive: true});
@@ -242,7 +242,7 @@ describe('case: runtime permission default ask', () => {
 
     expect(result.exitCode).toBe(0);
     expect(result.output).toContain('Write(tmp/demo2/PLAN.md)');
-    expect(result.output).not.toContain('HIL action:');
+    expect(result.output).not.toContain('Review action:');
     expect(result.output).toContain('RUNTIME_WRITE_PERMISSION_DONE');
   });
 
@@ -263,7 +263,7 @@ describe('case: runtime permission default ask', () => {
 
     expect(first.exitCode).toBe(0);
     expect(first.output).toContain('RUNTIME_PERMISSION_MKDIR_PATH_DONE');
-    expect(first.output).not.toContain('HIL action:');
+    expect(first.output).not.toContain('Review action:');
 
     const settings = JSON.parse(await readFile(path.join(codaraPath, 'settings.local.json'), 'utf8')) as {
       permissions?: {rules?: {allow?: string[]}};
@@ -298,7 +298,7 @@ describe('case: runtime permission default ask', () => {
 
     expect(first.exitCode).toBe(0);
     expect(first.output).toContain('RUNTIME_PERMISSION_HEREDOC_PATH_DONE');
-    expect(first.output).not.toContain('HIL action:');
+    expect(first.output).not.toContain('Review action:');
 
     const settings = JSON.parse(await readFile(path.join(codaraPath, 'settings.local.json'), 'utf8')) as {
       permissions?: {rules?: {allow?: string[]}};
@@ -340,6 +340,6 @@ describe('case: runtime permission default ask', () => {
     expect(result.exitCode).toBe(0);
     expect(result.output).toContain('RUNTIME_PERMISSION_COMPLEX_PATH_DONE');
     expect(result.output).not.toContain('Permission Review');
-    expect(result.output).not.toContain('HIL action:');
+    expect(result.output).not.toContain('Review action:');
   });
 });

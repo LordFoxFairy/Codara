@@ -60,7 +60,7 @@ describe('sub-agent activity display pipeline', () => {
       model: parentModel as unknown as BaseChatModel,
       builtinTools: false,
       skills: false,
-      hil: false,
+      review: false,
       tools: [
         createAgentTool({
           model: childModel as unknown as BaseChatModel,

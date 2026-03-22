@@ -1,4 +1,4 @@
-export type CodaraRuntimeEventKind = 'turn' | 'model' | 'tool' | 'agent' | 'hil' | 'command' | 'summary' | 'hook';
+export type CodaraRuntimeEventKind = 'turn' | 'model' | 'tool' | 'agent' | 'review' | 'command' | 'summary' | 'hook';
 export type CodaraRuntimeEventPhase = 'start' | 'update' | 'end';
 export type CodaraRuntimeEventStatus = 'running' | 'done' | 'paused' | 'error';
 

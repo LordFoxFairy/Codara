@@ -2,7 +2,7 @@ import {describe, expect, it} from 'bun:test';
 import {readCliReviewProjection, syncProjectedReview} from '@/cli/app/runtime-projection';
 
 describe('CLI runtime projection helpers', () => {
-  it('prefers focused approval review over pendingPause when projecting approval state', () => {
+  it('prefers focused approval review over pendingReview when projecting approval state', () => {
     const projection = readCliReviewProjection({
       getFocusedReview: () => ({
         item: {
@@ -40,7 +40,7 @@ describe('CLI runtime projection helpers', () => {
         isFocused: true,
       }],
       getAgentState: () => ({
-        pendingPause: {
+        pendingReview: {
           id: 'foreground-pause',
           description: 'Pending pause',
           action: {toolCallId: 'tool-2', toolName: 'read_file', toolArgs: {}},
@@ -50,11 +50,11 @@ describe('CLI runtime projection helpers', () => {
       }),
     } as never);
 
-    expect(projection.activePause?.id).toBe('approval-1');
+    expect(projection.activeReviewRequest?.id).toBe('approval-1');
     expect(projection.reviews).toHaveLength(1);
   });
 
-  it('applies approval index metadata while syncing the projected HIL review', () => {
+  it('applies approval index metadata while syncing the projected review review', () => {
     const review = syncProjectedReview({
       getFocusedReview: () => ({
         item: {
@@ -106,7 +106,7 @@ describe('CLI runtime projection helpers', () => {
           isFocused: true,
         },
       ],
-      getAgentState: () => ({pendingPause: undefined}),
+      getAgentState: () => ({pendingReview: undefined}),
     } as never, undefined);
 
     expect(review).toEqual(expect.objectContaining({
@@ -156,7 +156,7 @@ describe('CLI runtime projection helpers', () => {
         isFocused: true,
       }],
       getAgentState: () => ({
-        pendingPause: undefined,
+        pendingReview: undefined,
       }),
     } as never, undefined);
 

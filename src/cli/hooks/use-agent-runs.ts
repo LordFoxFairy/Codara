@@ -3,7 +3,7 @@ import type {ReviewQueryItem, AgentRunQuerySummary} from '@/index';
 
 export type {AgentRunQuerySummary};
 
-export interface ActiveTask {
+export interface ActiveAgentRun {
   id: string;
   name: string;
   status: 'running' | 'done' | 'error' | 'paused';
@@ -16,24 +16,24 @@ export interface ActiveTask {
   totalTokens?: number;
 }
 
-export interface UseActiveTasksInput {
+export interface UseAgentRunsInput {
   agentRunSummaries: readonly AgentRunQuerySummary[];
   reviews?: readonly ReviewQueryItem[];
   preferredRunIds?: readonly string[];
 }
 
-export interface UseActiveTasksOutput {
-  tasks: ActiveTask[];
+export interface UseAgentRunsOutput {
+  runs: ActiveAgentRun[];
   runningCount: number;
   pausedCount: number;
   doneCount: number;
   errorCount: number;
   hiddenCount: number;
-  hasActiveTasks: boolean;
+  hasActiveRuns: boolean;
 }
 
-export interface ActiveTaskSnapshot {
-  tasks: ActiveTask[];
+export interface ActiveAgentRunSnapshot {
+  runs: ActiveAgentRun[];
   runningCount: number;
   pausedCount: number;
   doneCount: number;
@@ -41,21 +41,19 @@ export interface ActiveTaskSnapshot {
   hiddenCount: number;
 }
 
-const MAX_VISIBLE_TASKS = 5;
-export function extractTaskName(label: string): string {
-  // Take first line only
+const MAX_VISIBLE_AGENT_RUNS = 5;
+
+export function extractAgentRunName(label: string): string {
   const firstLine = label.split('\n')[0]!.trim();
-  // Strip "Delegating " prefix
   const text = firstLine.startsWith('Delegating ') ? firstLine.slice('Delegating '.length) : firstLine;
-  const concise = summarizeTaskLabel(text);
-  // "Plan: some long description" → "Plan: some long desc…"
+  const concise = summarizeAgentRunLabel(text);
   if (concise.length > 40) {
     return `${concise.slice(0, 37)}…`;
   }
   return concise;
 }
 
-function summarizeTaskLabel(text: string): string {
+function summarizeAgentRunLabel(text: string): string {
   const colonIndex = text.indexOf(': ');
   if (colonIndex <= 0) {
     return text;
@@ -71,21 +69,21 @@ function summarizeTaskLabel(text: string): string {
   return `${prefix}: ${body.slice(0, sentenceBoundary).trim()}`;
 }
 
-export function deriveActiveTasks(
+export function deriveVisibleAgentRuns(
   runs: readonly AgentRunQuerySummary[],
   now: number,
   reviews: readonly ReviewQueryItem[] = [],
   preferredRunIds: readonly string[] = [],
-): ActiveTask[] {
-  return deriveActiveTaskSnapshot(runs, now, reviews, preferredRunIds).tasks;
+): ActiveAgentRun[] {
+  return deriveAgentRunSnapshot(runs, now, reviews, preferredRunIds).runs;
 }
 
-export function deriveActiveTaskSnapshot(
+export function deriveAgentRunSnapshot(
   runs: readonly AgentRunQuerySummary[],
   now: number,
   reviews: readonly ReviewQueryItem[] = [],
   preferredRunIds: readonly string[] = [],
-): ActiveTaskSnapshot {
+): ActiveAgentRunSnapshot {
   const activeBatchRunIds = selectVisibleRunIds(runs, preferredRunIds);
   const reviewsByAgentRun = new Map<string, ReviewQueryItem[]>();
   for (const review of reviews) {
@@ -97,21 +95,21 @@ export function deriveActiveTaskSnapshot(
     reviewsByAgentRun.set(review.anchor.agentRunId, entries);
   }
 
-  const tasks: ActiveTask[] = [];
+  const runsSnapshot: ActiveAgentRun[] = [];
   for (const run of runs) {
     if (!activeBatchRunIds.has(run.runId)) {
       continue;
     }
 
-    const status = normalizeTaskStatus(run.status);
+    const status = normalizeAgentRunStatus(run.status);
     const startedAt = Date.parse(run.startedAt);
-    const endedAt = parseTaskFinishedAt(run);
+    const endedAt = parseAgentRunFinishedAt(run);
     const runReviews = reviewsByAgentRun.get(run.runId) ?? [];
+    const detail = resolveAgentRunDetail(run, runReviews);
 
-    const detail = resolveTaskDetail(run, runReviews);
-    tasks.push({
+    runsSnapshot.push({
       id: run.runId,
-      name: extractTaskName(run.label),
+      name: extractAgentRunName(run.label),
       status,
       startedAt,
       endedAt,
@@ -123,60 +121,63 @@ export function deriveActiveTaskSnapshot(
     });
   }
 
-  // Running first, then by start time descending
-  tasks.sort((a, b) => {
-    const aPriority = taskSortPriority(a.status);
-    const bPriority = taskSortPriority(b.status);
-    if (aPriority !== bPriority) return aPriority - bPriority;
+  runsSnapshot.sort((a, b) => {
+    const aPriority = agentRunSortPriority(a.status);
+    const bPriority = agentRunSortPriority(b.status);
+    if (aPriority !== bPriority) {
+      return aPriority - bPriority;
+    }
     return b.startedAt - a.startedAt;
   });
 
-  const runningCount = tasks.filter((task) => task.status === 'running').length;
-  const pausedCount = tasks.filter((task) => task.status === 'paused').length;
-  const doneCount = tasks.filter((task) => task.status === 'done').length;
-  const errorCount = tasks.filter((task) => task.status === 'error').length;
-  const visibleTasks = tasks.slice(0, MAX_VISIBLE_TASKS);
+  const runningCount = runsSnapshot.filter((run) => run.status === 'running').length;
+  const pausedCount = runsSnapshot.filter((run) => run.status === 'paused').length;
+  const doneCount = runsSnapshot.filter((run) => run.status === 'done').length;
+  const errorCount = runsSnapshot.filter((run) => run.status === 'error').length;
+  const visibleRuns = runsSnapshot.slice(0, MAX_VISIBLE_AGENT_RUNS);
 
   return {
-    tasks: visibleTasks,
+    runs: visibleRuns,
     runningCount,
     pausedCount,
     doneCount,
     errorCount,
-    hiddenCount: Math.max(tasks.length - visibleTasks.length, 0),
+    hiddenCount: Math.max(runsSnapshot.length - visibleRuns.length, 0),
   };
 }
 
-export function useActiveTasks(input: UseActiveTasksInput): UseActiveTasksOutput {
+export function useAgentRuns(input: UseAgentRunsInput): UseAgentRunsOutput {
   const [now, setNow] = useState(() => Date.now());
   const snapshot = useMemo(
-    () => deriveActiveTaskSnapshot(input.agentRunSummaries, now, input.reviews, input.preferredRunIds),
+    () => deriveAgentRunSnapshot(input.agentRunSummaries, now, input.reviews, input.preferredRunIds),
     [input.preferredRunIds, input.reviews, input.agentRunSummaries, now],
   );
-  const {tasks, runningCount, pausedCount, doneCount, errorCount, hiddenCount} = snapshot;
+  const {runs, runningCount, pausedCount, doneCount, errorCount, hiddenCount} = snapshot;
 
   useEffect(() => {
-    if (runningCount === 0 && tasks.length === 0) return;
+    if (runningCount === 0 && runs.length === 0) {
+      return;
+    }
 
     const timer = setInterval(() => {
       setNow(Date.now());
     }, 1000);
 
     return () => clearInterval(timer);
-  }, [runningCount, tasks.length]);
+  }, [runningCount, runs.length]);
 
   return {
-    tasks,
+    runs,
     runningCount,
     pausedCount,
     doneCount,
     errorCount,
     hiddenCount,
-    hasActiveTasks: tasks.length > 0,
+    hasActiveRuns: runs.length > 0,
   };
 }
 
-function normalizeTaskStatus(status: string): ActiveTask['status'] {
+function normalizeAgentRunStatus(status: string): ActiveAgentRun['status'] {
   switch (status) {
     case 'running':
       return 'running';
@@ -191,7 +192,7 @@ function normalizeTaskStatus(status: string): ActiveTask['status'] {
   }
 }
 
-function taskSortPriority(status: ActiveTask['status']): number {
+function agentRunSortPriority(status: ActiveAgentRun['status']): number {
   switch (status) {
     case 'running':
       return 0;
@@ -205,12 +206,14 @@ function taskSortPriority(status: ActiveTask['status']): number {
   return 2;
 }
 
-function parseTaskFinishedAt(run: AgentRunQuerySummary): number | undefined {
-  if (run.endedAt) return Date.parse(run.endedAt);
+function parseAgentRunFinishedAt(run: AgentRunQuerySummary): number | undefined {
+  if (run.endedAt) {
+    return Date.parse(run.endedAt);
+  }
   return undefined;
 }
 
-function resolveTaskDetail(
+function resolveAgentRunDetail(
   run: AgentRunQuerySummary,
   reviews: readonly ReviewQueryItem[],
 ): string | undefined {
@@ -252,7 +255,9 @@ function selectLatestBatchRunIds(runs: readonly AgentRunQuerySummary[]): Set<str
 
   const sortedRuns = [...runs].sort((a, b) => {
     const startedDiff = Date.parse(a.startedAt) - Date.parse(b.startedAt);
-    if (startedDiff !== 0) return startedDiff;
+    if (startedDiff !== 0) {
+      return startedDiff;
+    }
     return a.runId.localeCompare(b.runId);
   });
 
@@ -262,7 +267,7 @@ function selectLatestBatchRunIds(runs: readonly AgentRunQuerySummary[]): Set<str
 
   for (const run of sortedRuns) {
     const startedAt = Date.parse(run.startedAt);
-    const endedAt = parseTaskFinishedAt(run) ?? Number.POSITIVE_INFINITY;
+    const endedAt = parseAgentRunFinishedAt(run) ?? Number.POSITIVE_INFINITY;
 
     if (currentBatch.length === 0 || startedAt <= currentBatchTerminalAt) {
       currentBatch.push(run);

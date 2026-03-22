@@ -1,6 +1,6 @@
 import {describe, test, expect} from 'bun:test';
 import {Gateway} from '@gateway/gateway';
-import type {GatewayConfig, InboundMessage, StopHandle, PausePromptContext} from '@gateway/types';
+import type {GatewayConfig, InboundMessage, StopHandle, ReviewPromptContext} from '@gateway/types';
 import type {ChannelPlugin, GatewayListenContext} from '@integration/channel/contracts';
 import {z} from 'zod';
 
@@ -8,14 +8,14 @@ interface MockAccount {
   id: string;
 }
 
-function createHILPlugin(): ChannelPlugin<MockAccount> & {
+function createReviewPlugin(): ChannelPlugin<MockAccount> & {
   sentTexts: Array<{to: string; text: string}>;
-  sentPauses: Array<{to: string; pauseId: string; actions: PausePromptContext['actions']}>;
-  capturedOnPauseResponse?: (pauseId: string, payload: unknown) => void;
+  sentReviews: Array<{to: string; reviewId: string; actions: ReviewPromptContext['actions']}>;
+  capturedOnReviewResponse?: (reviewId: string, payload: unknown) => void;
 } {
   const sentTexts: Array<{to: string; text: string}> = [];
-  const sentPauses: Array<{to: string; pauseId: string; actions: PausePromptContext['actions']}> = [];
-  let capturedOnPauseResponse: ((pauseId: string, payload: unknown) => void) | undefined;
+  const sentReviews: Array<{to: string; reviewId: string; actions: ReviewPromptContext['actions']}> = [];
+  let capturedOnReviewResponse: ((reviewId: string, payload: unknown) => void) | undefined;
 
   return {
     id: 'telegram',
@@ -34,21 +34,21 @@ function createHILPlugin(): ChannelPlugin<MockAccount> & {
       return {id: accountId ?? 'default'};
     },
     async startListening(ctx: GatewayListenContext<MockAccount>): Promise<StopHandle> {
-      capturedOnPauseResponse = ctx.onPauseResponse;
+      capturedOnReviewResponse = ctx.onReviewResponse;
       return {async stop() {}};
     },
     async sendText(_account, ctx) {
       sentTexts.push({to: ctx.to, text: ctx.text});
       return {ok: true, messageId: `msg-${sentTexts.length}`};
     },
-    async sendPausePrompt(_account, ctx: PausePromptContext) {
-      sentPauses.push({to: ctx.to, pauseId: ctx.pause.id, actions: ctx.actions});
-      return {ok: true, messageId: `pause-msg-${sentPauses.length}`};
+    async sendReviewPrompt(_account, ctx: ReviewPromptContext) {
+      sentReviews.push({to: ctx.to, reviewId: ctx.review.id, actions: ctx.actions});
+      return {ok: true, messageId: `review-msg-${sentReviews.length}`};
     },
     sentTexts,
-    sentPauses,
-    get capturedOnPauseResponse() {
-      return capturedOnPauseResponse;
+    sentReviews,
+    get capturedOnReviewResponse() {
+      return capturedOnReviewResponse;
     },
   };
 }
@@ -77,9 +77,9 @@ function makeMsg(overrides: Partial<InboundMessage> = {}): InboundMessage {
   };
 }
 
-describe('Gateway HIL Integration', () => {
+describe('Gateway review Integration', () => {
   test('creates a ChannelRegistry and exposes it', () => {
-    const plugin = createHILPlugin();
+    const plugin = createReviewPlugin();
     const gw = new Gateway({
       config: makeConfig(),
       plugins: [plugin],
@@ -95,7 +95,7 @@ describe('Gateway HIL Integration', () => {
   });
 
   test('creates bridge for each conversation and registers with ChannelRegistry', async () => {
-    const plugin = createHILPlugin();
+    const plugin = createReviewPlugin();
     const gw = new Gateway({
       config: makeConfig(),
       plugins: [plugin],
@@ -116,8 +116,8 @@ describe('Gateway HIL Integration', () => {
     await gw.stop();
   });
 
-  test('handlePauseResponse resolves pending pause in the correct bridge', async () => {
-    const plugin = createHILPlugin();
+  test('handleReviewResponse resolves pending review in the correct bridge', async () => {
+    const plugin = createReviewPlugin();
     let sessionInvokeResolve: ((v: string) => void) | undefined;
 
     const gw = new Gateway({
@@ -145,35 +145,35 @@ describe('Gateway HIL Integration', () => {
     const bridge = registry.get(bridgeId);
     expect(bridge).toBeDefined();
 
-    // Simulate a pause request through the bridge
-    const pausePromise = bridge!.showPauseRequest({
-      id: 'pause-42',
+    // Simulate a review request through the bridge
+    const reviewPromise = bridge!.showReviewRequest({
+      id: 'review-42',
       description: 'Run bash command',
       action: {toolCallId: 'tc1', toolName: 'bash', toolArgs: {command: 'ls'}},
       review: {actionName: 'bash', allowedDecisions: ['approve', 'reject']},
       runtime: {runId: 'r1', turn: 1, requestId: 'rq1', toolIndex: 0},
     });
 
-    // The plugin should have sent the pause prompt
-    expect(plugin.sentPauses.length).toBe(1);
-    expect(plugin.sentPauses[0]!.pauseId).toBe('pause-42');
+    // The plugin should have sent the review prompt
+    expect(plugin.sentReviews.length).toBe(1);
+    expect(plugin.sentReviews[0]!.reviewId).toBe('review-42');
 
-    // Simulate user clicking "approve" via Gateway's handlePauseResponse
-    const handled = gw.handlePauseResponse('pause-42', 'approve');
+    // Simulate user clicking "approve" via Gateway's handleReviewResponse
+    const handled = gw.handleReviewResponse('review-42', 'approve');
     expect(handled).toBe(true);
 
-    const result = await pausePromise;
+    const result = await reviewPromise;
     expect(result).toEqual({decision: 'approve'});
 
     // Let the session complete
-    sessionInvokeResolve?.('completed after pause');
+    sessionInvokeResolve?.('completed after review');
     await inboundPromise;
 
     await gw.stop();
   });
 
-  test('onPauseResponse callback wired to plugins routes correctly', async () => {
-    const plugin = createHILPlugin();
+  test('onReviewResponse callback wired to plugins routes correctly', async () => {
+    const plugin = createReviewPlugin();
 
     const gw = new Gateway({
       config: makeConfig(),
@@ -190,29 +190,29 @@ describe('Gateway HIL Integration', () => {
     // Trigger inbound to create a bridge
     await gw.handleInbound(makeMsg());
 
-    // Get the bridge and simulate a pending pause
+    // Get the bridge and simulate a pending review
     const registry = gw.getChannelRegistry();
     const bridge = registry.get('gateway:telegram:bot1:user1')!;
-    const pausePromise = bridge.showPauseRequest({
-      id: 'pause-99',
+    const reviewPromise = bridge.showReviewRequest({
+      id: 'review-99',
       description: 'Write file',
       action: {toolCallId: 'tc2', toolName: 'write_file', toolArgs: {path: '/tmp/test'}},
       review: {actionName: 'write_file', allowedDecisions: ['approve', 'reject', 'edit']},
       runtime: {runId: 'r2', turn: 1, requestId: 'rq2', toolIndex: 0},
     });
 
-    // Use the plugin's captured onPauseResponse callback (wired during start)
-    expect(plugin.capturedOnPauseResponse).toBeDefined();
-    plugin.capturedOnPauseResponse!('pause-99', 'reject');
+    // Use the plugin's captured onReviewResponse callback (wired during start)
+    expect(plugin.capturedOnReviewResponse).toBeDefined();
+    plugin.capturedOnReviewResponse!('review-99', 'reject');
 
-    const result = await pausePromise;
+    const result = await reviewPromise;
     expect(result).toEqual({decision: 'reject'});
 
     await gw.stop();
   });
 
-  test('handlePauseResponse returns false when no bridge has the pause', async () => {
-    const plugin = createHILPlugin();
+  test('handleReviewResponse returns false when no bridge has the review', async () => {
+    const plugin = createReviewPlugin();
     const gw = new Gateway({
       config: makeConfig(),
       plugins: [plugin],
@@ -224,14 +224,14 @@ describe('Gateway HIL Integration', () => {
     });
 
     // No bridges created yet
-    const handled = gw.handlePauseResponse('nonexistent', 'approve');
+    const handled = gw.handleReviewResponse('nonexistent', 'approve');
     expect(handled).toBe(false);
 
     await gw.stop();
   });
 
   test('stop disposes all bridges and the ChannelRegistry', async () => {
-    const plugin = createHILPlugin();
+    const plugin = createReviewPlugin();
     const gw = new Gateway({
       config: makeConfig(),
       plugins: [plugin],

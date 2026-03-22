@@ -27,7 +27,7 @@ describe('CLI chrome', () => {
       id: 'evt-1',
       sessionId: session.sessionId,
       timestamp: new Date().toISOString(),
-      kind: 'hil',
+      kind: 'review',
       phase: 'start',
       status: 'paused',
       label: 'Waiting for review',

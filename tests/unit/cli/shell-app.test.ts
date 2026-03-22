@@ -1,11 +1,11 @@
 import {describe, expect, it} from 'bun:test';
 import {
   isFloatingReview,
-  shouldShowFloatingTaskPanel,
+  shouldShowFloatingAgentRunPanel,
   resolveCliForegroundSurface,
   shouldShowActivityLine,
   shouldDisablePromptInput,
-  shouldShowTaskPanel,
+  shouldShowAgentRunPanel,
   shouldShowPromptFrame,
 } from '../../../src/cli/app/shell-app';
 import type {CliReviewState} from '../../../src/cli/app/view-state';
@@ -59,36 +59,36 @@ describe('CLI foreground surface', () => {
   });
 
   it('should hide the task panel when there is only one task', () => {
-    expect(shouldShowTaskPanel({taskPanelVisible: true, taskCount: 1})).toBe(false);
+    expect(shouldShowAgentRunPanel({agentRunPanelVisible: true, agentRunCount: 1})).toBe(false);
   });
 
   it('should show the task panel when there are multiple tasks', () => {
-    expect(shouldShowTaskPanel({taskPanelVisible: true, taskCount: 2})).toBe(true);
+    expect(shouldShowAgentRunPanel({agentRunPanelVisible: true, agentRunCount: 2})).toBe(true);
   });
 
   it('should render the task panel as a floating panel when conversation is active and no stronger overlay is open', () => {
-    expect(shouldShowFloatingTaskPanel({
+    expect(shouldShowFloatingAgentRunPanel({
       hasConversation: true,
-      taskPanelVisible: true,
-      taskCount: 2,
+      agentRunPanelVisible: true,
+      agentRunCount: 2,
       hasBlockingOverlay: false,
     })).toBe(true);
   });
 
   it('should hide the floating task panel while a stronger overlay is visible', () => {
-    expect(shouldShowFloatingTaskPanel({
+    expect(shouldShowFloatingAgentRunPanel({
       hasConversation: true,
-      taskPanelVisible: true,
-      taskCount: 2,
+      agentRunPanelVisible: true,
+      agentRunCount: 2,
       hasBlockingOverlay: true,
     })).toBe(false);
   });
 
   it('should still show the floating task panel while a review overlay is visible', () => {
-    expect(shouldShowFloatingTaskPanel({
+    expect(shouldShowFloatingAgentRunPanel({
       hasConversation: true,
-      taskPanelVisible: true,
-      taskCount: 2,
+      agentRunPanelVisible: true,
+      agentRunCount: 2,
       hasBlockingOverlay: false,
     })).toBe(true);
   });
@@ -96,7 +96,7 @@ describe('CLI foreground surface', () => {
   it('should hide the activity line when a running task block already owns task/tool progress', () => {
     const activeItems: TranscriptItem[] = [{
       id: 'active-agent-run:run-1',
-      role: 'task',
+      role: 'agent',
       content: '⚙ Explore(Inspect repo)\nRunning (12s)',
       toolMeta: {
         toolName: 'Agent',
@@ -120,8 +120,8 @@ describe('CLI foreground surface', () => {
       runStateStatus: 'running',
       latestRuntimeEventKind: 'tool',
       activeItems: [],
-      activeTaskCount: 2,
-      pausedTaskCount: 1,
+      runningAgentRunCount: 2,
+      pausedAgentRunCount: 1,
     })).toBe(false);
   });
 
@@ -130,8 +130,8 @@ describe('CLI foreground surface', () => {
       runStateStatus: 'running',
       latestRuntimeEventKind: 'model',
       activeItems: [],
-      activeTaskCount: 0,
-      pausedTaskCount: 0,
+      runningAgentRunCount: 0,
+      pausedAgentRunCount: 0,
     })).toBe(true);
   });
 });

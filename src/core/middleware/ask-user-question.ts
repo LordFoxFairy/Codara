@@ -1,8 +1,8 @@
 import {ToolMessage} from '@langchain/core/messages';
 import {tool} from '@langchain/core/tools';
 import {z} from 'zod';
-import type {PauseUIActionOption} from '@shared/contracts/agent-types';
-import {createHILMiddleware, parseHILResumeActionPayload, type HILMiddlewareOptions} from '@core/middleware/hil';
+import type {ReviewUIActionOption} from '@shared/contracts/agent-types';
+import {createReviewMiddleware, parseReviewResumeActionPayload, type ReviewMiddlewareOptions} from '@core/middleware/review';
 import {createMiddleware} from '@core/pipeline/types';
 
 const ASK_USER_TOOL_NAME = 'AskUserQuestion';
@@ -53,7 +53,7 @@ export interface AskUserResult {
   comment?: string;
 }
 
-export interface AskUserQuestionMiddlewareOptions extends Omit<HILMiddlewareOptions, 'interruptOn'> {
+export interface AskUserQuestionMiddlewareOptions extends Omit<ReviewMiddlewareOptions, 'interruptOn'> {
   askUserToolName?: string;
 }
 
@@ -72,7 +72,7 @@ export function createAskUserQuestionMiddleware(options: AskUserQuestionMiddlewa
   const askUserToolName = options.askUserToolName?.trim() || ASK_USER_TOOL_NAME;
   const askUserTool = createAskUserTool();
 
-  const hilMiddleware = createHILMiddleware({
+  const reviewMiddleware = createReviewMiddleware({
     ...options,
     name: options.name?.trim() || 'AskUserQuestionMiddleware',
     resolveDecision: async (input) => {
@@ -135,7 +135,7 @@ export function createAskUserQuestionMiddleware(options: AskUserQuestionMiddlewa
         return handler(context);
       }
 
-      const payload = parseHILResumeActionPayload(resumePayload);
+      const payload = parseReviewResumeActionPayload(resumePayload);
       const result = readAskUserResult(payload);
       writeAskUserContinuationState(context.runtime.runtimeContext, result);
       return new ToolMessage({
@@ -148,11 +148,11 @@ export function createAskUserQuestionMiddleware(options: AskUserQuestionMiddlewa
     },
   });
 
-  // Compose: HIL middleware handles wrapToolCall, we inject the AskUserQuestion tool
+  // Compose: review middleware handles wrapToolCall, we inject the AskUserQuestion tool
   return createMiddleware({
-    name: hilMiddleware.name,
+    name: reviewMiddleware.name,
     tools: [askUserTool],
-    wrapToolCall: hilMiddleware.wrapToolCall,
+    wrapToolCall: reviewMiddleware.wrapToolCall,
   });
 }
 
@@ -195,7 +195,7 @@ export function parseAskUserResult(content: unknown): AskUserResult | undefined 
 }
 
 function buildAskUserActions(input: AskUserInput) {
-  const actions: PauseUIActionOption[] = [
+  const actions: ReviewUIActionOption[] = [
     {id: 'submit', label: input.submitLabel?.trim() || DEFAULT_SUBMIT_LABEL, kind: 'primary' as const},
     {
     id: 'cancel',
@@ -227,7 +227,7 @@ function parseAskUserInput(value: unknown): AskUserInput {
   });
 }
 
-function readAskUserResult(payload: ReturnType<typeof parseHILResumeActionPayload>): AskUserResult {
+function readAskUserResult(payload: ReturnType<typeof parseReviewResumeActionPayload>): AskUserResult {
   const answers = readFormAnswers(payload.metadata);
   return {
     action: payload.action?.trim() || 'submit',

@@ -7,7 +7,7 @@ import type {BaseChatModel} from '@langchain/core/language_models/chat_models';
 import {tool, type StructuredToolInterface} from '@langchain/core/tools';
 import {z} from 'zod';
 import {createAgent} from '@core/agent';
-import {createHILMiddleware, createMiddleware} from '@core/middleware';
+import {createReviewMiddleware, createMiddleware} from '@core/middleware';
 import {createAgentFileCheckpointer, createAgentMemoryCheckpointer} from '@durability/checkpoint';
 import {createAgentRunMemoryStore, createAgentRuntime, type AgentRunRecord, AGENT_TOOL_NAME, createAgentTool} from '@capability/subagent';
 import {readAgentRunLaunchResult} from '@shared/agent-run-launch';
@@ -116,7 +116,7 @@ describe('Task delegation', () => {
 
     expect(result.reason).toBe('complete');
     expect(result.state.status).toBe('idle');
-    expect(result.state.pendingPause).toBeUndefined();
+    expect(result.state.pendingReview).toBeUndefined();
     expect(String(toolMessage.content)).toContain('Subagent started in background.');
     expect(launch).toMatchObject({
       type: 'agent_run_started',
@@ -212,7 +212,7 @@ describe('Task delegation', () => {
 
     expect(result.reason).toBe('complete');
     expect(result.state.status).toBe('idle');
-    expect(result.state.pendingPause).toBeUndefined();
+    expect(result.state.pendingReview).toBeUndefined();
     expect(String(toolMessage.content)).toContain('Subagent started in background.');
     expect(launch).toMatchObject({
       type: 'agent_run_started',
@@ -359,7 +359,7 @@ describe('Task delegation', () => {
 
     expect(result.reason).toBe('complete');
     expect(result.state.status).toBe('idle');
-    expect(result.state.pendingPause).toBeUndefined();
+    expect(result.state.pendingReview).toBeUndefined();
     expect(String(toolMessage.content)).toContain('Subagent started in background.');
     expect(launch?.sessionId).toBeDefined();
     expect(completed?.summary).toContain('"durableContext":{}');
@@ -417,7 +417,7 @@ describe('Task delegation', () => {
 
     expect(result.reason).toBe('complete');
     expect(result.state.status).toBe('idle');
-    expect(result.state.pendingPause).toBeUndefined();
+    expect(result.state.pendingReview).toBeUndefined();
     expect(String(toolMessage.content)).toContain('Subagent started in background.');
     expect(completed?.summary).toContain('"durableContext":{"seededContext":"child-only"}');
     expect(completed?.summary).toContain('"values":{"seededValue":1}');
@@ -425,7 +425,7 @@ describe('Task delegation', () => {
     expect(completed?.summary).not.toContain('parentValue');
   });
 
-  it('应将 child HIL pause 提升到 parent，并在 resume 后继续 child checkpoint', async () => {
+  it('应将 child review pause 提升到 parent，并在 resume 后继续 child checkpoint', async () => {
     const runStore = createAgentRunMemoryStore();
     const taskRuntime = createAgentRuntime({runStore});
     const parentModel = new ScriptedModel([
@@ -465,7 +465,7 @@ describe('Task delegation', () => {
       model: childModel as unknown as BaseChatModel,
       tools: [dangerousTool],
       childMiddleware: [
-        createHILMiddleware({
+        createReviewMiddleware({
           interruptOn: {dangerous_tool: true},
         }),
       ],
@@ -485,7 +485,7 @@ describe('Task delegation', () => {
 
     expect(firstResult.reason).toBe('complete');
     expect(firstResult.state.status).toBe('idle');
-    expect(firstResult.state.pendingPause).toBeUndefined();
+    expect(firstResult.state.pendingReview).toBeUndefined();
     expect(String(firstToolMessage.content)).toContain('Subagent started in background.');
     expect(launch).toBeDefined();
     expect(paused).toMatchObject({

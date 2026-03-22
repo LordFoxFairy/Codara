@@ -1,14 +1,14 @@
 /**
- * Channel Registry — manages Channel instances and routes pause requests.
+ * Channel Registry — manages Channel instances and routes review requests.
  *
  * Responsibilities:
  * - Register/unregister Channel instances by id
- * - Route PauseRequest to the appropriate channel (via request.channel field)
+ * - Route ReviewRequest to the appropriate channel (via request.channel field)
  * - Fall back to default channel when no specific channel is specified
  */
 
 import type {Channel, ChannelType} from '@shared/contracts/channel';
-import type {PauseRequest, ResumePayload} from '@shared/contracts/agent-types';
+import type {ReviewRequest, ReviewResumePayload} from '@shared/contracts/agent-types';
 
 export class ChannelRegistry {
   private readonly channels = new Map<string, Channel>();
@@ -34,7 +34,7 @@ export class ChannelRegistry {
     }
   }
 
-  /** Set the default channel (used when PauseRequest.channel is not specified). */
+  /** Set the default channel (used when ReviewRequest.channel is not specified). */
   setDefault(channelId: string): void {
     if (!this.channels.has(channelId)) {
       throw new Error(`Channel "${channelId}" is not registered.`);
@@ -63,10 +63,10 @@ export class ChannelRegistry {
   }
 
   /**
-   * Resolve which channel should handle a pause request.
+   * Resolve which channel should handle a review request.
    * Uses request.channel if specified, otherwise falls back to default.
    */
-  resolveChannel(request: PauseRequest): Channel | undefined {
+  resolveChannel(request: ReviewRequest): Channel | undefined {
     if (request.channel) {
       return this.channels.get(request.channel);
     }
@@ -74,18 +74,18 @@ export class ChannelRegistry {
   }
 
   /**
-   * Route a pause request to the appropriate channel and wait for response.
+   * Route a review request to the appropriate channel and wait for response.
    * @throws If no channel can handle the request.
    */
-  async routePause(request: PauseRequest): Promise<ResumePayload> {
+  async routeReview(request: ReviewRequest): Promise<ReviewResumePayload> {
     const channel = this.resolveChannel(request);
     if (!channel) {
       throw new Error(
-        `No channel available to handle pause request "${request.id}"` +
+        `No channel available to handle review request "${request.id}"` +
         (request.channel ? ` (requested channel: "${request.channel}")` : ' (no default channel)'),
       );
     }
-    return channel.showPauseRequest(request);
+    return channel.showReviewRequest(request);
   }
 
   /** Dispose all registered channels. */

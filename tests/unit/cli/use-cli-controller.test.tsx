@@ -11,7 +11,7 @@ import type {
   ReviewQueryItem,
   SessionState,
 } from '@/index';
-import type {PauseRequest} from '@shared/contracts/agent-types';
+import type {ReviewRequest} from '@shared/contracts/agent-types';
 import {useCliController} from '../../../src/cli/app/use-cli-controller';
 
 describe('useCliController background refresh', () => {
@@ -103,10 +103,10 @@ describe('useCliController background refresh', () => {
 
   it('does not add a child follow-up while sibling tasks in the same session are still active', async () => {
     const codara = new FakeCodara();
-    codara.setTaskRunSummaries([
+    codara.setAgentRunSummaries([
       {
         runId: 'run-done',
-        sessionId: 'session-1',
+        parentSessionId: 'session-1',
         label: 'Delegating Explore: Analyze the tech stack',
         agentName: 'Explore',
         status: 'completed',
@@ -116,7 +116,7 @@ describe('useCliController background refresh', () => {
       },
       {
         runId: 'run-still-running',
-        sessionId: 'session-1',
+        parentSessionId: 'session-1',
         label: 'Delegating Explore: Analyze the project structure',
         agentName: 'Explore',
         status: 'running',
@@ -156,10 +156,10 @@ describe('useCliController background refresh', () => {
     try {
       await waitFor(() => (rendered.lastFrame() ?? '').includes('runState:running'));
 
-      codara.setTaskRunSummaries([
+      codara.setAgentRunSummaries([
         {
           runId: 'run-done',
-          sessionId: 'session-1',
+          parentSessionId: 'session-1',
           label: 'Delegating Explore: Analyze the tech stack',
           agentName: 'Explore',
           status: 'completed',
@@ -170,7 +170,7 @@ describe('useCliController background refresh', () => {
         },
         {
           runId: 'run-paused',
-          sessionId: 'session-1',
+          parentSessionId: 'session-1',
           label: 'Delegating Explore: Analyze the architecture',
           agentName: 'Explore',
           status: 'paused',
@@ -233,10 +233,10 @@ describe('useCliController background refresh', () => {
     try {
       await waitFor(() => (rendered.lastFrame() ?? '').includes('runState:running'));
 
-      codara.setTaskRunSummaries([
+      codara.setAgentRunSummaries([
         {
           runId: 'run-tech',
-          sessionId: 'session-1',
+          parentSessionId: 'session-1',
           label: 'Delegating Explore: Analyze the tech stack',
           agentName: 'Explore',
           status: 'running',
@@ -248,7 +248,7 @@ describe('useCliController background refresh', () => {
         },
         {
           runId: 'run-structure',
-          sessionId: 'session-1',
+          parentSessionId: 'session-1',
           label: 'Delegating Explore: Analyze the project structure',
           agentName: 'Explore',
           status: 'running',
@@ -281,10 +281,10 @@ describe('useCliController background refresh', () => {
       codara.releaseBlockedStream();
       await waitFor(() => (rendered.lastFrame() ?? '').includes('runState:done'));
 
-      codara.setTaskRunSummaries([
+      codara.setAgentRunSummaries([
         {
           runId: 'run-tech',
-          sessionId: 'session-1',
+          parentSessionId: 'session-1',
           label: 'Delegating Explore: Analyze the tech stack',
           agentName: 'Explore',
           status: 'completed',
@@ -297,7 +297,7 @@ describe('useCliController background refresh', () => {
         },
         {
           runId: 'run-structure',
-          sessionId: 'session-1',
+          parentSessionId: 'session-1',
           label: 'Delegating Explore: Analyze the project structure',
           agentName: 'Explore',
           status: 'completed',
@@ -396,10 +396,10 @@ describe('useCliController background refresh', () => {
         parentId: 'turn-root-1',
       });
 
-      codara.setTaskRunSummaries([
+      codara.setAgentRunSummaries([
         {
           runId: 'run-tech',
-          sessionId: 'session-1',
+          parentSessionId: 'session-1',
           label: 'Delegating Explore: Analyze tech stack',
           agentName: 'Explore',
           status: 'completed',
@@ -595,7 +595,7 @@ describe('useCliController background refresh', () => {
 
   it('activates the highlighted AskUser option without auto-advancing the questionnaire', async () => {
     const codara = new FakeCodara();
-    codara.setPauseRequest(createAskUserPauseRequest());
+    codara.setReviewRequest(createAskUserReviewRequest());
     const rendered = render(<ReviewSubmitProbe codara={codara as unknown as Codara} />);
 
     try {
@@ -612,7 +612,7 @@ describe('useCliController background refresh', () => {
 
   it('keeps unanswered AskUser steps on the current question when Next is activated', async () => {
     const codara = new FakeCodara();
-    codara.setPauseRequest(createAskUserPauseRequest());
+    codara.setReviewRequest(createAskUserReviewRequest());
     const rendered = render(<ReviewNextProbe codara={codara as unknown as Codara} />);
 
     try {
@@ -629,7 +629,7 @@ describe('useCliController background refresh', () => {
 
   it('does not turn a highlighted preset option into a custom answer when typing before Type something is selected', async () => {
     const codara = new FakeCodara();
-    codara.setPauseRequest(createAskUserPauseRequest());
+    codara.setReviewRequest(createAskUserReviewRequest());
     const rendered = render(<ReviewCustomTypingProbe codara={codara as unknown as Codara} />);
 
     try {
@@ -646,7 +646,7 @@ describe('useCliController background refresh', () => {
 
   it('lets numeric shortcuts switch away from the custom row after option 5 is selected', async () => {
     const codara = new FakeCodara();
-    codara.setPauseRequest(createAskUserPauseRequest());
+    codara.setReviewRequest(createAskUserReviewRequest());
     const rendered = render(<ReviewCustomShortcutProbe codara={codara as unknown as Codara} />);
 
     try {
@@ -663,7 +663,7 @@ describe('useCliController background refresh', () => {
 
   it('keeps multiselect custom focus empty after selecting a preset option, then allows switching back to another preset', async () => {
     const codara = new FakeCodara();
-    codara.setPauseRequest(createMultiselectAskUserPauseRequest());
+    codara.setReviewRequest(createMultiselectAskUserReviewRequest());
     const rendered = render(<ReviewMultiselectCustomProbe codara={codara as unknown as Codara} />);
 
     try {
@@ -698,7 +698,7 @@ describe('useCliController background refresh', () => {
 
   it('switches to review input for session-scoped pauses', async () => {
     const codara = new FakeCodara();
-    codara.setPauseRequest(createAskUserPauseRequest());
+    codara.setReviewRequest(createAskUserReviewRequest());
     const rendered = render(<ReviewInputTargetProbe codara={codara as unknown as Codara} />);
 
     try {
@@ -714,19 +714,19 @@ describe('useCliController background refresh', () => {
 
   it('waits for a foreground AskUser pause to settle before submitting the final review action', async () => {
     const codara = new FakeCodara();
-    codara.setPauseRequest(createAskUserPauseRequest());
+    codara.setReviewRequest(createAskUserReviewRequest());
     codara.setHydrateSequence([
       {
         status: 'running',
-        pendingPause: createAskUserPauseRequest(),
+        pendingReview: createAskUserReviewRequest(),
       },
       {
         status: 'paused',
-        pendingPause: createAskUserPauseRequest(),
+        pendingReview: createAskUserReviewRequest(),
       },
       {
         status: 'idle',
-        pendingPause: undefined,
+        pendingReview: undefined,
       },
     ]);
     codara.failResumePauseWhileRunning();
@@ -752,7 +752,7 @@ describe('useCliController background refresh', () => {
         interactionMode: 'structured',
         blockingScope: 'session',
       },
-      createAskUserPauseRequest(),
+      createAskUserReviewRequest(),
     );
     codara.deferCurrentReviewRemovalOnResume(1);
     const rendered = render(<FinalAskUserSubmitProbe codara={codara as unknown as Codara} />);
@@ -772,22 +772,22 @@ describe('useCliController background refresh', () => {
 
   it('keeps a running state visible while the final AskUser submit is still resuming', async () => {
     const codara = new FakeCodara();
-    const pauseRequest = createAskUserPauseRequest();
+    const reviewRequest = createAskUserReviewRequest();
     codara.setFocusedReviewRequest(
       {
-        reviewId: pauseRequest.id,
+        reviewId: reviewRequest.id,
         source: 'session_pause',
         kind: 'ask_user',
         interactionMode: 'structured',
         blockingScope: 'session',
-        description: pauseRequest.description,
-        toolName: pauseRequest.action.toolName,
+        description: reviewRequest.description,
+        toolName: reviewRequest.action.toolName,
         createdAt: new Date().toISOString(),
         updatedAt: new Date().toISOString(),
         anchor: {origin: 'main'},
         isFocused: true,
       },
-      pauseRequest,
+      reviewRequest,
     );
     codara.blockNextResumeApproval();
     const rendered = render(<FinalAskUserSubmitProbe codara={codara as unknown as Codara} />);
@@ -849,6 +849,33 @@ describe('useCliController background refresh', () => {
       await waitFor(() => (rendered.lastFrame() ?? '').includes('resumeCount:1'));
       const frame = rendered.lastFrame() ?? '';
       expect(frame).toContain('resumeCount:1');
+    } finally {
+      codara.releaseBlockedStream();
+      rendered.unmount();
+    }
+  });
+
+  it('replays review auto actions after the foreground run settles while the same review stays focused', async () => {
+    const codara = new FakeCodara();
+    codara.blockNextStream();
+    codara.queueStreamText('Foreground response');
+    codara.setReviews([
+      createReviewItem('approval-auto', 'run-auto', 'Approve auto review'),
+    ]);
+    const rendered = render(<ReviewAutoActionProbe codara={codara as unknown as Codara} />);
+
+    try {
+      await waitFor(() => (rendered.lastFrame() ?? '').includes('runState:running'));
+      await waitFor(() => codara.getStreamCallCount() === 1);
+      expect(rendered.lastFrame() ?? '').toContain('resumeCount:0');
+
+      codara.releaseBlockedStream();
+
+      await waitFor(() => (rendered.lastFrame() ?? '').includes('resumeCount:1'));
+      const frame = rendered.lastFrame() ?? '';
+      expect(frame).toContain('runState:done');
+      expect(frame).toContain('review:none');
+      expect(frame).toContain('streamCalls:2');
     } finally {
       codara.releaseBlockedStream();
       rendered.unmount();
@@ -1210,12 +1237,37 @@ function QueuedReviewResponseProbe({codara}: {codara: Codara}): React.JSX.Elemen
   );
 }
 
+function ReviewAutoActionProbe({codara}: {codara: Codara}): React.JSX.Element {
+  const controller = useCliController({
+    codara,
+    reviewAutoActions: [{action: 'dont_ask_again'}],
+  });
+  const firedRef = React.useRef(false);
+
+  useEffect(() => {
+    if (firedRef.current) {
+      return;
+    }
+    firedRef.current = true;
+    controller.submitText('foreground prompt');
+  }, [controller]);
+
+  return (
+    <Text>
+      {`runState:${controller.runState.status}`}
+      {` review:${controller.review?.request.id ?? 'none'}`}
+      {` resumeCount:${(codara as unknown as FakeCodara).resumeCount}`}
+      {` streamCalls:${(codara as unknown as FakeCodara).getStreamCallCount()}`}
+    </Text>
+  );
+}
+
 class FakeCodara {
   private listeners = new Set<(event: CodaraRuntimeEvent) => void>();
   private reviews: ReviewQueryItem[] = [];
-  private approvalRequests = new Map<string, PauseRequest>();
+  private approvalRequests = new Map<string, ReviewRequest>();
   private agentContext: Record<string, unknown> = {};
-  private pendingPause: PauseRequest | undefined;
+  private pendingReview: ReviewRequest | undefined;
   private focusedReviewId: string | undefined;
   private agentRunSummaries: Array<{
     runId: string;
@@ -1235,7 +1287,7 @@ class FakeCodara {
   private blockApprovalResume = false;
   private releaseBlockedApprovalResumeResolver: (() => void) | undefined;
   private failPauseResumeWhileRunning = false;
-  private hydrateSequence: Array<{status: string; pendingPause?: PauseRequest}> = [];
+  private hydrateSequence: Array<{status: string; pendingReview?: ReviewRequest}> = [];
   private deferredResumeReviewId: string | undefined;
   private deferredResumeRemovalHydratesRemaining = -1;
   private deferredPauseClearHydratesRemaining = -1;
@@ -1266,22 +1318,22 @@ class FakeCodara {
     this.reviews = reviews;
     this.approvalRequests = new Map(reviews.map((review) => [
       review.reviewId,
-      createPauseRequest(review.reviewId, review.description),
+      createReviewRequest(review.reviewId, review.description),
     ]));
     this.focusedReviewId = reviews[0]?.reviewId;
   }
 
-  setPauseRequest(request: PauseRequest | undefined): void {
-    this.pendingPause = request;
+  setReviewRequest(request: ReviewRequest | undefined): void {
+    this.pendingReview = request;
   }
 
-  setFocusedReviewRequest(review: ReviewQueryItem, request: PauseRequest): void {
+  setFocusedReviewRequest(review: ReviewQueryItem, request: ReviewRequest): void {
     this.reviews = [review];
     this.approvalRequests.set(review.reviewId, request);
     this.focusedReviewId = review.reviewId;
   }
 
-  setHydrateSequence(states: Array<{status: string; pendingPause?: PauseRequest}>): void {
+  setHydrateSequence(states: Array<{status: string; pendingReview?: ReviewRequest}>): void {
     this.hydrateSequence = [...states];
   }
 
@@ -1289,7 +1341,7 @@ class FakeCodara {
     this.failPauseResumeWhileRunning = true;
   }
 
-  deferPendingPauseClearOnResume(hydratesBeforeClear = 1): void {
+  deferPendingReviewClearOnResume(hydratesBeforeClear = 1): void {
     this.deferredPauseClearHydratesRemaining = Math.max(0, hydratesBeforeClear);
   }
 
@@ -1297,10 +1349,10 @@ class FakeCodara {
     this.deferredResumeRemovalHydratesRemaining = Math.max(0, hydratesBeforeRemoval);
   }
 
-  setTaskRunSummaries(
+  setAgentRunSummaries(
     agentRunSummaries: Array<{
       runId: string;
-      sessionId: string;
+      parentSessionId: string;
       label: string;
       agentName: string;
       status: string;
@@ -1360,23 +1412,23 @@ class FakeCodara {
 
     if (this.deferredPauseClearHydratesRemaining > 0) {
       this.deferredPauseClearHydratesRemaining -= 1;
-    } else if (this.deferredPauseClearHydratesRemaining === 0 && this.pendingPause) {
-      this.pendingPause = undefined;
+    } else if (this.deferredPauseClearHydratesRemaining === 0 && this.pendingReview) {
+      this.pendingReview = undefined;
       this.deferredPauseClearHydratesRemaining = -1;
     }
 
     if (this.hydrateSequence.length > 0) {
       const next = this.hydrateSequence.shift()!;
-      this.pendingPause = next.pendingPause;
+      this.pendingReview = next.pendingReview;
       return {
         status: next.status,
-        pendingPause: next.pendingPause,
+        pendingReview: next.pendingReview,
         messages: [],
       };
     }
     return {
       status: 'idle',
-      pendingPause: this.pendingPause,
+      pendingReview: this.pendingReview,
       messages: [],
     };
   }
@@ -1398,7 +1450,7 @@ class FakeCodara {
 
   getAgentState() {
     return {
-      pendingPause: this.pendingPause,
+      pendingReview: this.pendingReview,
       messages: [],
       status: 'idle',
       context: this.agentContext,
@@ -1474,22 +1526,23 @@ class FakeCodara {
           context: request.context,
         });
         return;
-      case 'pause':
-        yield* this.resumePauseStream(request.payload, request.config);
-        return;
       case 'review':
+        if (this.pendingReview) {
+          yield* this.resumeReviewStream(request.payload, request.config);
+          return;
+        }
         yield* this.resumeApprovalStream(request.payload, request.config);
         return;
     }
   }
 
-  async *resumePauseStream() {
+  async *resumeReviewStream() {
     if (this.failPauseResumeWhileRunning && this.hydrateSequence.length > 0 && this.hydrateSequence[0]?.status === 'running') {
       throw new Error('Agent is currently running.');
     }
     this.resumeCount += 1;
     if (this.deferredPauseClearHydratesRemaining < 0) {
-      this.pendingPause = undefined;
+      this.pendingReview = undefined;
     }
     yield* [];
   }
@@ -1563,7 +1616,7 @@ function createReviewItem(
   };
 }
 
-function createPauseRequest(id: string, description: string): PauseRequest {
+function createReviewRequest(id: string, description: string): ReviewRequest {
   return {
     id,
     description,
@@ -1585,7 +1638,7 @@ function createPauseRequest(id: string, description: string): PauseRequest {
   };
 }
 
-function createAskUserPauseRequest(): PauseRequest {
+function createAskUserReviewRequest(): ReviewRequest {
   return {
     id: 'ask-user-pause',
     description: 'Collect missing requirements.',
@@ -1638,7 +1691,7 @@ function createAskUserPauseRequest(): PauseRequest {
   };
 }
 
-function createMultiselectAskUserPauseRequest(): PauseRequest {
+function createMultiselectAskUserReviewRequest(): ReviewRequest {
   return {
     id: 'ask-user-multiselect-pause',
     description: 'Collect target users.',

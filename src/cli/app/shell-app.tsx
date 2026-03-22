@@ -5,7 +5,7 @@ import {CommandOutputPanel} from '../components/chrome/command-output-panel';
 import {Footer} from '../components/chrome/footer';
 import {StatusBar} from '../components/chrome/header';
 import {ActivityLine} from '../components/chrome/activity-line';
-import {TaskPanel} from '../components/chrome/task-panel';
+import {AgentRunPanel} from '../components/chrome/agent-run-panel';
 import {ReviewPanel, isPermissionReview} from '../components/conversation/review-panel';
 import {SessionPicker} from '../components/conversation/session-picker';
 import {ActiveTranscript} from '../components/conversation/transcript';
@@ -16,7 +16,7 @@ import {PromptFrame} from '../components/prompt/prompt-frame';
 import type {CliReviewAutoAction} from './review-state';
 import {resolveCliLayoutMode} from './layout-mode';
 import {useCliController} from './use-cli-controller';
-import {useActiveTasks} from '../hooks/use-active-tasks';
+import {useAgentRuns} from '../hooks/use-agent-runs';
 import {useCommandCompletion} from '../hooks/use-command-completion';
 import {useCliInteractionInput} from '../hooks/use-cli-interaction-input';
 import {useSessionPicker} from '../hooks/use-session-picker';
@@ -95,26 +95,26 @@ export function resolveActiveInteractionSurface(input: {
   return input.focusedSurface;
 }
 
-export function shouldShowTaskPanel(input: {
-  taskPanelVisible: boolean;
-  taskCount: number;
+export function shouldShowAgentRunPanel(input: {
+  agentRunPanelVisible: boolean;
+  agentRunCount: number;
 }): boolean {
-  return input.taskPanelVisible && input.taskCount > 1;
+  return input.agentRunPanelVisible && input.agentRunCount > 1;
 }
 
-export function shouldShowFloatingTaskPanel(input: {
+export function shouldShowFloatingAgentRunPanel(input: {
   hasConversation: boolean;
-  taskPanelVisible: boolean;
-  taskCount: number;
+  agentRunPanelVisible: boolean;
+  agentRunCount: number;
   hasBlockingOverlay: boolean;
 }): boolean {
   if (input.hasBlockingOverlay || !input.hasConversation) {
     return false;
   }
 
-  return shouldShowTaskPanel({
-    taskPanelVisible: input.taskPanelVisible,
-    taskCount: input.taskCount,
+  return shouldShowAgentRunPanel({
+    agentRunPanelVisible: input.agentRunPanelVisible,
+    agentRunCount: input.agentRunCount,
   });
 }
 
@@ -123,8 +123,8 @@ export function shouldShowActivityLine(input: {
   runStateStatus: 'idle' | 'running' | 'paused' | 'done' | 'error';
   latestRuntimeEventKind?: CodaraRuntimeEvent['kind'];
   activeItems: readonly TranscriptItem[];
-  activeTaskCount?: number;
-  pausedTaskCount?: number;
+  runningAgentRunCount?: number;
+  pausedAgentRunCount?: number;
 }): boolean {
   if (input.review) {
     return false;
@@ -135,12 +135,12 @@ export function shouldShowActivityLine(input: {
   }
 
   const transcriptOwnsTaskExecution = input.activeItems.some((item) => (
-    item.role === 'task' && item.toolMeta?.status === 'running'
+    item.role === 'agent' && item.toolMeta?.status === 'running'
   ));
 
   if (!transcriptOwnsTaskExecution) {
-    return (input.activeTaskCount ?? 0) === 0
-      && (input.pausedTaskCount ?? 0) === 0;
+    return (input.runningAgentRunCount ?? 0) === 0
+      && (input.pausedAgentRunCount ?? 0) === 0;
   }
 
   return input.latestRuntimeEventKind !== 'agent' && input.latestRuntimeEventKind !== 'tool';
@@ -190,7 +190,7 @@ export function CodaraCliApp(props: CodaraCliAppProps): React.JSX.Element {
   });
   const terminalWidth = useTerminalWidth();
   const layoutMode = resolveCliLayoutMode(terminalWidth);
-  const activeTasks = useActiveTasks({
+  const agentRuns = useAgentRuns({
     agentRunSummaries: codara.getAgentRunSummaries(),
     reviews: codara.listReviewItems(),
   });
@@ -258,7 +258,7 @@ export function CodaraCliApp(props: CodaraCliAppProps): React.JSX.Element {
       if (activeSurface === 'session-picker') { sessionPicker.hide(); return; }
       exit();
     },
-    onToggleTaskPanel: shell.toggleTaskPanel,
+    onToggleAgentRunsPanel: shell.toggleAgentRunsPanel,
     onToggleExpand: shell.toggleExpand,
     onFocusReview: hasReview ? shell.focusReviewWindow : undefined,
     onReviewMoveLeft: shell.moveReviewLeft,
@@ -341,7 +341,7 @@ export function CodaraCliApp(props: CodaraCliAppProps): React.JSX.Element {
             />
           )}
         </Static>
-        {activeItems.length > 0 && <ActiveTranscript items={activeItems} activeTasks={activeTasks.tasks} expandedAll={shell.expandedAll} />}
+        {activeItems.length > 0 && <ActiveTranscript items={activeItems} activeAgentRuns={agentRuns.runs} expandedAll={shell.expandedAll} />}
 
         {/* Activity / Prompt / Status */}
         <>
@@ -350,8 +350,8 @@ export function CodaraCliApp(props: CodaraCliAppProps): React.JSX.Element {
               runStateStatus: shell.runState.status,
               latestRuntimeEventKind: shell.latestRuntimeEvent?.kind,
               activeItems,
-              activeTaskCount: activeTasks.runningCount,
-              pausedTaskCount: activeTasks.pausedCount,
+              runningAgentRunCount: agentRuns.runningCount,
+              pausedAgentRunCount: agentRuns.pausedCount,
             }) && (
               <ActivityLine
                 runState={shell.runState}
@@ -374,19 +374,19 @@ export function CodaraCliApp(props: CodaraCliAppProps): React.JSX.Element {
             {shell.commandOutput && (
               <CommandOutputPanel content={shell.commandOutput.content} commandName={shell.commandOutput.commandName} scrollOffset={shell.commandOutput.scrollOffset} />
             )}
-            {shouldShowFloatingTaskPanel({
+            {shouldShowFloatingAgentRunPanel({
               hasConversation: shell.hasConversation,
-              taskPanelVisible: shell.taskPanelVisible,
-              taskCount: activeTasks.tasks.length,
+              agentRunPanelVisible: shell.agentRunPanelVisible,
+              agentRunCount: agentRuns.runs.length,
               hasBlockingOverlay,
             }) && (
               <Box marginTop={1}>
-                <TaskPanel
-                  tasks={activeTasks.tasks}
-                  runningCount={activeTasks.runningCount}
-                  pausedCount={activeTasks.pausedCount}
-                  doneCount={activeTasks.doneCount}
-                  errorCount={activeTasks.errorCount}
+                <AgentRunPanel
+                  runs={agentRuns.runs}
+                  runningCount={agentRuns.runningCount}
+                  pausedCount={agentRuns.pausedCount}
+                  doneCount={agentRuns.doneCount}
+                  errorCount={agentRuns.errorCount}
                 />
               </Box>
             )}

@@ -3,17 +3,16 @@ import type {AgentRunQuerySummary} from '../types';
 
 export function getAgentRunSummaries(
   store: AgentRunStore | undefined,
-  sessionId: string | undefined,
+  parentSessionId: string | undefined,
 ): AgentRunQuerySummary[] {
   if (!store) {
     return [];
   }
 
   return store.list()
-    .filter((run) => !sessionId || run.parentSessionId === sessionId)
+    .filter((run) => !parentSessionId || run.parentSessionId === parentSessionId)
     .map((run) => ({
       runId: run.runId,
-      sessionId: run.parentSessionId,
       parentSessionId: run.parentSessionId,
       label: run.label,
       agentName: run.agentName,

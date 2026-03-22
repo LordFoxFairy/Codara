@@ -1,11 +1,11 @@
 import type {Codara, ReviewQueryItem} from '@/index';
-import type {PauseRequest} from '@core/agent';
+import type {ReviewRequest} from '@core/agent';
 import {syncCliReviewState} from './review-state';
 import type {CliReviewState} from './view-state';
 
 export interface CliReviewProjection {
   reviews: readonly ReviewQueryItem[];
-  activePause: PauseRequest | undefined;
+  activeReviewRequest: ReviewRequest | undefined;
 }
 
 export function applyReviewMetadata(
@@ -28,31 +28,31 @@ export function applyReviewMetadata(
 
 export function readCliReviewProjection(
   codara: Pick<Codara, 'getFocusedReview' | 'listReviewItems' | 'getAgentState'>,
-  options: {pendingPause?: PauseRequest | undefined} = {},
+  options: {pendingReview?: ReviewRequest | undefined} = {},
 ): CliReviewProjection {
   const focusedReview = codara.getFocusedReview();
   const reviews = codara.listReviewItems();
-  const activePause = focusedReview?.request ?? options.pendingPause ?? readForegroundPause(codara);
-  return {reviews, activePause};
+  const activeReviewRequest = focusedReview?.request ?? options.pendingReview ?? readForegroundReview(codara);
+  return {reviews, activeReviewRequest};
 }
 
 export function syncProjectedReview(
   codara: Pick<Codara, 'getFocusedReview' | 'listReviewItems' | 'getAgentState'>,
   current: CliReviewState | undefined,
-  options: {pendingPause?: PauseRequest | undefined} = {},
+  options: {pendingReview?: ReviewRequest | undefined} = {},
 ): CliReviewState | undefined {
   const projection = readCliReviewProjection(codara, options);
   return applyReviewMetadata(
-    syncCliReviewState(current, projection.activePause),
+    syncCliReviewState(current, projection.activeReviewRequest),
     projection.reviews,
   );
 }
 
-function readForegroundPause(
+function readForegroundReview(
   codara: Pick<Codara, 'getAgentState'>,
-): PauseRequest | undefined {
+): ReviewRequest | undefined {
   try {
-    return codara.getAgentState().pendingPause;
+    return codara.getAgentState().pendingReview;
   } catch {
     return undefined;
   }

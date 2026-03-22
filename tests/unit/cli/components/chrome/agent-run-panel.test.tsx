@@ -1,11 +1,11 @@
 import {describe, expect, it} from 'bun:test';
 import {render} from 'ink-testing-library';
-import {TaskPanel} from '@/cli/components/chrome/task-panel';
-import type {ActiveTask} from '@/cli/hooks/use-active-tasks';
+import {AgentRunPanel} from '@/cli/components/chrome/agent-run-panel';
+import type {ActiveAgentRun} from '@/cli/hooks/use-agent-runs';
 
-describe('TaskPanel', () => {
+describe('AgentRunPanel', () => {
   it('renders paused approval-waiting tasks with a paused marker', () => {
-    const tasks: ActiveTask[] = [
+    const runs: ActiveAgentRun[] = [
       {
         id: 'task-paused',
         name: 'approval: unsafe write',
@@ -17,7 +17,7 @@ describe('TaskPanel', () => {
     ];
 
     const {lastFrame} = render(
-      <TaskPanel tasks={tasks} runningCount={0} pausedCount={1} doneCount={0} errorCount={0} />,
+      <AgentRunPanel runs={runs} runningCount={0} pausedCount={1} doneCount={0} errorCount={0} />,
     );
 
     const frame = lastFrame()!;
@@ -27,7 +27,7 @@ describe('TaskPanel', () => {
   });
 
   it('keeps the panel as a pure task list without elapsed or token stats', () => {
-    const tasks: ActiveTask[] = [
+    const runs: ActiveAgentRun[] = [
       {
         id: 'task-running',
         name: 'explore: inspect project structure',
@@ -40,7 +40,7 @@ describe('TaskPanel', () => {
     ];
 
     const {lastFrame} = render(
-      <TaskPanel tasks={tasks} runningCount={1} pausedCount={0} doneCount={0} errorCount={0} />,
+      <AgentRunPanel runs={runs} runningCount={1} pausedCount={0} doneCount={0} errorCount={0} />,
     );
 
     const frame = lastFrame()!;

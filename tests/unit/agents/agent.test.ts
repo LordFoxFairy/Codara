@@ -11,7 +11,7 @@ import {
 import type {BaseChatModel} from '@langchain/core/language_models/chat_models';
 import type {StructuredToolInterface} from '@langchain/core/tools';
 import {createAgent} from '@core/agent';
-import {createHILMiddleware, createMiddleware, type BaseMiddleware} from '@core/middleware';
+import {createReviewMiddleware, createMiddleware, type BaseMiddleware} from '@core/middleware';
 import {z} from 'zod';
 
 class FakeModel {
@@ -779,7 +779,7 @@ describe('Agent', () => {
     expect(runner.getState().messages).toHaveLength(0);
   });
 
-  it('HIL pause 应在当前 turn 结束运行，而不是继续消耗后续 turn', async () => {
+  it('Review pause 应在当前 turn 结束运行，而不是继续消耗后续 turn', async () => {
     const toolCall: ToolCall = {id: 'call_pause_stop', name: 'bash', args: {command: 'git status'}};
     let invocations = 0;
     let bashInvokeCount = 0;
@@ -810,7 +810,7 @@ describe('Agent', () => {
       model,
       tools: [bashTool],
       middleware: [
-        createHILMiddleware({
+        createReviewMiddleware({
           interruptOn: {
             bash: true,
           },
@@ -823,12 +823,12 @@ describe('Agent', () => {
     expect(result.reason).toBe('complete');
     expect(result.turns).toBe(1);
     expect(result.state.status).toBe('paused');
-    expect(result.state.pendingPause?.action.toolName).toBe('bash');
+    expect(result.state.pendingReview?.action.toolName).toBe('bash');
     expect(invocations).toBe(1);
     expect(bashInvokeCount).toBe(0);
   });
 
-  it('HIL pause 应阻止同一 turn 后续的 serial tool batches 继续执行', async () => {
+  it('Review pause 应阻止同一 turn 后续的 serial tool batches 继续执行', async () => {
     const bashCall: ToolCall = {id: 'call_pause_then_stop', name: 'bash', args: {command: 'git status'}};
     const echoCall: ToolCall = {id: 'call_should_not_run', name: 'echo', args: {text: 'after pause'}};
     let echoInvokeCount = 0;
@@ -856,7 +856,7 @@ describe('Agent', () => {
       model,
       tools: [bashTool, echoTool],
       middleware: [
-        createHILMiddleware({
+        createReviewMiddleware({
           interruptOn: {
             bash: true,
           },
@@ -869,7 +869,7 @@ describe('Agent', () => {
     expect(result.reason).toBe('complete');
     expect(result.turns).toBe(1);
     expect(result.state.status).toBe('paused');
-    expect(result.state.pendingPause?.action.toolName).toBe('bash');
+    expect(result.state.pendingReview?.action.toolName).toBe('bash');
     expect(echoInvokeCount).toBe(0);
     expect(result.state.messages.some((message) => message instanceof ToolMessage && message.tool_call_id === 'call_should_not_run')).toBe(false);
   });
@@ -922,7 +922,7 @@ describe('Agent', () => {
       model,
       tools: [bashTool],
       middleware: [
-        createHILMiddleware({
+        createReviewMiddleware({
           interruptOn: {
             bash: true,
           },
@@ -952,7 +952,7 @@ describe('Agent', () => {
 
     expect(secondResult.reason).toBe('complete');
     expect(secondResult.state.status).toBe('idle');
-    expect(secondResult.state.pendingPause).toBeUndefined();
+    expect(secondResult.state.pendingReview).toBeUndefined();
     expect(bashInvokeCount).toBe(1);
     expect(modelInvocations).toHaveLength(2);
     const resumedToolMessages = secondResult.state.messages.filter((message) => (
@@ -1038,7 +1038,7 @@ describe('Agent', () => {
     expect(String(values[1]?.messages[1]?.content)).toBe('done');
   });
 
-  it('stream(custom) 应输出 HIL 自定义事件', async () => {
+  it('stream(custom) 应输出 review 自定义事件', async () => {
     const toolCall: ToolCall = {id: 'call_pause', name: 'bash', args: {command: 'git status'}};
     const bashTool = {
       name: 'bash',
@@ -1053,11 +1053,11 @@ describe('Agent', () => {
     ]) as unknown as BaseChatModel;
 
     const hil = createMiddleware({
-      name: 'hil-test-wrapper',
+      name: 'review-test-wrapper',
       wrapToolCall: async (context) => {
         return new ToolMessage({
           content: JSON.stringify({
-            type: 'hil_pause',
+            type: 'review_pause',
             request: {
               id: 'pause_1',
               description: 'Confirm bash command',
@@ -1088,7 +1088,7 @@ describe('Agent', () => {
     }
 
     expect(events).toHaveLength(1);
-    expect(events[0]?.type).toBe('hil_event');
-    expect(events[0]?.payload.type).toBe('hil_pause');
+    expect(events[0]?.type).toBe('review_event');
+    expect(events[0]?.payload.type).toBe('review_pause');
   });
 });

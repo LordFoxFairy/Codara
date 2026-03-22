@@ -37,7 +37,7 @@ describe('cli status indicator', () => {
         id: 'evt-1',
         sessionId: 'session-1',
         timestamp: new Date().toISOString(),
-        kind: 'hil',
+        kind: 'review',
         phase: 'start',
         status: 'paused',
         label: 'Permission review required',

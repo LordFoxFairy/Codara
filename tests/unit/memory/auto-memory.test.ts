@@ -223,22 +223,22 @@ describe('auto memory runtime', () => {
   it('skips persistence for non-main, paused, or failed turns', async () => {
     expect(shouldRecordAutoMemoryTurn({
       reason: 'complete',
-      state: {agentType: 'main', pendingPause: undefined},
+      state: {agentType: 'main', pendingReview: undefined},
     } as never)).toBe(true);
 
     expect(shouldRecordAutoMemoryTurn({
       reason: 'error',
-      state: {agentType: 'main', pendingPause: undefined},
+      state: {agentType: 'main', pendingReview: undefined},
     } as never)).toBe(false);
 
     expect(shouldRecordAutoMemoryTurn({
       reason: 'complete',
-      state: {agentType: 'main', pendingPause: {id: 'pause'}},
+      state: {agentType: 'main', pendingReview: {id: 'pause'}},
     } as never)).toBe(false);
 
     expect(shouldRecordAutoMemoryTurn({
       reason: 'complete',
-      state: {agentType: 'subagent', pendingPause: undefined},
+      state: {agentType: 'subagent', pendingReview: undefined},
     } as never)).toBe(false);
   });
 });

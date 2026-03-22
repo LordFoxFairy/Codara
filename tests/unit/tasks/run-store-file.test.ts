@@ -7,7 +7,7 @@ import {createAgentRunFileStore} from '@capability/subagent';
 
 describe('agent run file store', () => {
   it('persists delegated runs to disk and reloads them', async () => {
-    const rootDir = await mkdtemp(path.join(tmpdir(), 'codara-task-run-file-store-'));
+    const rootDir = await mkdtemp(path.join(tmpdir(), 'codara-agent-run-file-store-'));
     const store = createAgentRunFileStore({rootDir});
 
     store.start({
@@ -41,10 +41,16 @@ describe('agent run file store', () => {
       summary: 'found the auth entrypoint',
       latestActivity: 'read_file(src/auth.ts)',
     }));
+    const persisted = JSON.parse(await Bun.file(path.join(rootDir, 'run-1.json')).text()) as Record<string, unknown>;
+    expect(persisted).not.toHaveProperty('prompt');
+    expect(persisted).not.toHaveProperty('maxTurns');
+    expect(persisted).not.toHaveProperty('toolNames');
+    expect(persisted).not.toHaveProperty('systemMessages');
+    expect(persisted).not.toHaveProperty('recovery');
   });
 
   it('keeps task runs in memory after the first load instead of re-reading the directory on every list', async () => {
-    const rootDir = await mkdtemp(path.join(tmpdir(), 'codara-task-run-cache-'));
+    const rootDir = await mkdtemp(path.join(tmpdir(), 'codara-agent-run-cache-'));
     const readdirSpy = spyOn(fs, 'readdirSync');
     const readFileSpy = spyOn(fs, 'readFileSync');
 

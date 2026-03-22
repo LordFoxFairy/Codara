@@ -1,7 +1,7 @@
 import {describe, expect, it} from 'bun:test';
 import {HumanMessage, ToolMessage, type BaseMessage, type ToolCall} from '@langchain/core/messages';
 import {z} from 'zod';
-import {ASK_USER_TOOL_NAME, createAskUserQuestionMiddleware, parseAskUserResult, parseHILToolMessagePayload, type ToolCallContext} from '@core/middleware';
+import {ASK_USER_TOOL_NAME, createAskUserQuestionMiddleware, parseAskUserResult, parseReviewToolMessagePayload, type ToolCallContext} from '@core/middleware';
 
 function createToolContext(
   toolCall: ToolCall,
@@ -82,11 +82,11 @@ describe('createAskUserQuestionMiddleware', () => {
       return new ToolMessage({content: 'should-not-run', tool_call_id: 'call_interaction_pause_1'});
     });
 
-    const payload = parseHILToolMessagePayload(result?.content);
-    expect(payload?.type).toBe('hil_pause');
-    expect(payload?.type === 'hil_pause' ? payload.request.channel : '').toBe('interaction-center');
-    expect(payload?.type === 'hil_pause' ? payload.request.ui?.form?.tabs[0]?.label : '').toBe('Product Doma');
-    expect(payload?.type === 'hil_pause' ? payload.request.ui?.form?.tabs[0] : undefined).toMatchObject({input: 'select'});
+    const payload = parseReviewToolMessagePayload(result?.content);
+    expect(payload?.type).toBe('review_pause');
+    expect(payload?.type === 'review_pause' ? payload.request.channel : '').toBe('interaction-center');
+    expect(payload?.type === 'review_pause' ? payload.request.ui?.form?.tabs[0]?.label : '').toBe('Product Doma');
+    expect(payload?.type === 'review_pause' ? payload.request.ui?.form?.tabs[0] : undefined).toMatchObject({input: 'select'});
   });
 
   it('should convert a resumed AskUser pause into a structured tool result', async () => {
@@ -102,7 +102,7 @@ describe('createAskUserQuestionMiddleware', () => {
 
     const result = await middleware.wrapToolCall?.(
       createToolContext(toolCall, {
-        hil: {
+        review: {
           resume: {
             action: 'submit',
             metadata: {
@@ -141,7 +141,7 @@ describe('createAskUserQuestionMiddleware', () => {
 
     const result = await middleware.wrapToolCall?.(
       createToolContext(toolCall, {
-        hil: {
+        review: {
           resume: {
             action: 'submit',
             metadata: {
@@ -187,8 +187,8 @@ describe('createAskUserQuestionMiddleware', () => {
       return new ToolMessage({content: 'should-not-run', tool_call_id: 'call_interaction_pause_3'});
     });
 
-    const payload = parseHILToolMessagePayload(result?.content);
-    const tabs = payload?.type === 'hil_pause' ? payload.request.ui?.form?.tabs ?? [] : [];
+    const payload = parseReviewToolMessagePayload(result?.content);
+    const tabs = payload?.type === 'review_pause' ? payload.request.ui?.form?.tabs ?? [] : [];
 
     expect(tabs).toHaveLength(4);
     expect(tabs.every((tab) => (tab.label?.length ?? 0) <= 12)).toBe(true);
@@ -219,10 +219,10 @@ describe('createAskUserQuestionMiddleware', () => {
       return new ToolMessage({content: 'should-not-run', tool_call_id: 'call_interaction_pause_4'});
     });
 
-    const payload = parseHILToolMessagePayload(result?.content);
-    expect(payload?.type).toBe('hil_pause');
-    expect(payload?.type === 'hil_pause' ? payload.request.description : '').toBe('Need one more clarification.');
-    expect(payload?.type === 'hil_pause' ? payload.request.ui?.form?.summary : '').toBe('Need one more clarification.');
+    const payload = parseReviewToolMessagePayload(result?.content);
+    expect(payload?.type).toBe('review_pause');
+    expect(payload?.type === 'review_pause' ? payload.request.description : '').toBe('Need one more clarification.');
+    expect(payload?.type === 'review_pause' ? payload.request.ui?.form?.summary : '').toBe('Need one more clarification.');
   });
 
   it('should block an immediate second AskUserQuestion after a submitted questionnaire and tell the model to continue', async () => {
@@ -258,7 +258,7 @@ describe('createAskUserQuestionMiddleware', () => {
       async () => new ToolMessage({content: 'should-not-run', tool_call_id: 'call_interaction_pause_5'}),
     );
 
-    expect(parseHILToolMessagePayload(result?.content)).toBeUndefined();
+    expect(parseReviewToolMessagePayload(result?.content)).toBeUndefined();
     expect(result?.content).toContain('AskUserQuestion was just answered in this flow');
     expect(result?.content).toContain('continue the original task immediately');
     expect(result?.content).toContain('Collected answers');

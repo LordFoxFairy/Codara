@@ -121,7 +121,7 @@ export function startWeComWebhook(options: WeComWebhookOptions): StopHandle {
           setTimeout(() => seenMsgIds.delete(msgId), DEDUP_TTL_MS);
         }
 
-        // Handle template card event (HIL button press)
+        // Handle template card event (review button press)
         if (event.MsgType === 'event' && event.Event === 'template_card_event') {
           if (onCardAction && event.EventKey && event.TaskId) {
             onCardAction(event.EventKey, event.TaskId, event.FromUserName);

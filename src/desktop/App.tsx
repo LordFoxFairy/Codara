@@ -42,11 +42,11 @@ export function App() {
     status,
     isStreaming,
     error,
-    pauseRequest,
+    reviewRequest,
     runtimeEvent,
     sendMessage,
     stopStreaming,
-    resumePause,
+    resumeReview,
     clearMessages,
     restoreMessages,
   } = useCodara({ sessionId: currentSessionId });
@@ -183,9 +183,9 @@ export function App() {
               <Chat
                 messages={messages}
                 status={status}
-                pauseRequest={pauseRequest}
+                reviewRequest={reviewRequest}
                 runtimeEvent={runtimeEvent}
-                onResume={resumePause}
+                onResume={resumeReview}
               />
               <InputArea
                 onSend={sendMessage}

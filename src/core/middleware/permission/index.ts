@@ -5,7 +5,7 @@ export {
 export {
   createPermissionRuntime,
   handlePermissionFallbackResume,
-  isPermissionPause,
+  isPermissionReview,
   type PermissionRuntime,
   type PermissionRuntimeOptions,
 } from '@core/middleware/permission/runtime';

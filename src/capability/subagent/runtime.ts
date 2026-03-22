@@ -1,9 +1,9 @@
 import {HumanMessage} from '@langchain/core/messages';
-import type {AgentResumeStreamConfig, AgentStreamOutput, PauseRequest, ResumePayload} from '@core/agent';
+import type {AgentResumeStreamConfig, AgentStreamOutput, ReviewRequest, ReviewResumePayload} from '@core/agent';
 import type {Agent} from '@core/agent/models/agent';
 import {bootstrapAgent, type BootstrapAgentOptions} from '@core/agent/bootstrap';
 import type {AgentResult} from '@shared/contracts/agent-types';
-import type {ApprovalStore} from '@durability/approval-store';
+import type {ApprovalRecord, ApprovalStore} from '@durability/approval-store';
 import {createDelegatedAgentResult} from '@capability/subagent/agent';
 import type {ChildToolActivityCallback} from '@observability/events';
 import type {CodaraRuntimeEventListener, EmitRuntimeEventInput} from '@observability/events';
@@ -16,6 +16,7 @@ export interface AgentRuntimeLaunchInput {
   childSessionId: string;
   label: string;
   agentName: string;
+  subagentType?: string;
   prompt: string;
   childOptions: BootstrapAgentOptions;
   maxTurns?: number;
@@ -26,16 +27,16 @@ export interface AgentRuntime {
   registerRecoveryBuilder(builder: AgentRuntimeRecoveryBuilder): void;
   setOnAgentEvent(listener: CodaraRuntimeEventListener, sessionId: string | (() => string)): void;
   recordActivity(runId: string, info: Parameters<ChildToolActivityCallback>[0]): void;
-  resumeRun(runId: string, payload: ResumePayload, config?: AgentResumeStreamConfig): Promise<void>;
+  resumeRun(runId: string, payload: ReviewResumePayload, config?: AgentResumeStreamConfig): Promise<void>;
   resumeRunStream(
     runId: string,
-    payload: ResumePayload,
+    payload: ReviewResumePayload,
     config?: AgentResumeStreamConfig,
   ): AsyncGenerator<AgentStreamOutput, void, void>;
-  resumeApprovalById(approvalId: string, payload: ResumePayload, config?: AgentResumeStreamConfig): Promise<void>;
+  resumeApprovalById(approvalId: string, payload: ReviewResumePayload, config?: AgentResumeStreamConfig): Promise<void>;
   resumeApprovalByIdStream(
     approvalId: string,
-    payload: ResumePayload,
+    payload: ReviewResumePayload,
     config?: AgentResumeStreamConfig,
   ): AsyncGenerator<AgentStreamOutput, void, void>;
   dispose(): Promise<void>;
@@ -47,6 +48,7 @@ interface AgentRunHandle {
   childSessionId: string;
   label: string;
   agentName: string;
+  subagentType?: string;
   childOptions: BootstrapAgentOptions;
   maxTurns?: number;
   agent?: Agent;
@@ -58,9 +60,15 @@ export interface CreateAgentRuntimeOptions {
   approvalStore?: ApprovalStore;
 }
 
+export interface AgentRuntimeRecoverySpec {
+  childOptions: BootstrapAgentOptions;
+  maxTurns?: number;
+}
+
 export type AgentRuntimeRecoveryBuilder = (
   run: AgentRunRecord,
-) => Promise<BootstrapAgentOptions | undefined> | BootstrapAgentOptions | undefined;
+  approval?: ApprovalRecord,
+) => Promise<AgentRuntimeRecoverySpec | undefined> | AgentRuntimeRecoverySpec | undefined;
 
 export function createAgentRuntime(options: CreateAgentRuntimeOptions): AgentRuntime {
   return new InMemoryAgentRuntime(options);
@@ -114,15 +122,8 @@ class InMemoryAgentRuntime implements AgentRuntime {
       parentSessionId: input.parentSessionId,
       label: input.label,
       agentName: input.agentName,
+      ...(input.subagentType ? {subagentType: input.subagentType} : {}),
       childSessionId: input.childSessionId,
-      prompt: input.prompt,
-      ...(typeof input.maxTurns === 'number' ? {maxTurns: input.maxTurns} : {}),
-      ...(input.childOptions.tools?.length
-        ? {toolNames: input.childOptions.tools.map((tool) => tool.name)}
-        : {}),
-      ...(input.childOptions.systemMessage?.length
-        ? {systemMessages: [...input.childOptions.systemMessage]}
-        : {}),
     });
 
     const handle: AgentRunHandle = {
@@ -131,6 +132,7 @@ class InMemoryAgentRuntime implements AgentRuntime {
       childSessionId: input.childSessionId,
       label: input.label,
       agentName: input.agentName,
+      ...(input.subagentType ? {subagentType: input.subagentType} : {}),
       childOptions: input.childOptions,
       ...(typeof input.maxTurns === 'number' ? {maxTurns: input.maxTurns} : {}),
     };
@@ -178,7 +180,7 @@ class InMemoryAgentRuntime implements AgentRuntime {
     });
   }
 
-  async resumeRun(runId: string, payload: ResumePayload, config?: AgentResumeStreamConfig): Promise<void> {
+  async resumeRun(runId: string, payload: ReviewResumePayload, config?: AgentResumeStreamConfig): Promise<void> {
     for await (const _chunk of this.resumeRunStream(runId, payload, config)) {
       // Drain streamed output for non-streaming consumers.
     }
@@ -186,7 +188,7 @@ class InMemoryAgentRuntime implements AgentRuntime {
 
   async *resumeRunStream(
     runId: string,
-    payload: ResumePayload,
+    payload: ReviewResumePayload,
     config?: AgentResumeStreamConfig,
   ): AsyncGenerator<AgentStreamOutput, void, void> {
     const handle = await this.resolveHandle(runId);
@@ -215,14 +217,14 @@ class InMemoryAgentRuntime implements AgentRuntime {
     await this.applyResult(handle, result);
   }
 
-  async resumeApprovalById(approvalId: string, payload: ResumePayload, config?: AgentResumeStreamConfig): Promise<void> {
+  async resumeApprovalById(approvalId: string, payload: ReviewResumePayload, config?: AgentResumeStreamConfig): Promise<void> {
     const record = this.requireApprovalRecord(approvalId);
     await this.resumeRun(record.agentRunId!, payload, config);
   }
 
   async *resumeApprovalByIdStream(
     approvalId: string,
-    payload: ResumePayload,
+    payload: ReviewResumePayload,
     config?: AgentResumeStreamConfig,
   ): AsyncGenerator<AgentStreamOutput, void, void> {
     const record = this.requireApprovalRecord(approvalId);
@@ -298,16 +300,17 @@ class InMemoryAgentRuntime implements AgentRuntime {
   }
 
   private async applyResult(handle: AgentRunHandle, result: AgentResult): Promise<void> {
-    const pause = result.state.pendingPause as PauseRequest | undefined;
+    const pause = result.state.pendingReview as ReviewRequest | undefined;
     if (pause) {
+      const persistedPause = withAgentRecoveryMetadata(pause, handle);
       this.options.runStore?.pause(handle.runId, {
         childSessionId: handle.childSessionId,
-        latestActivity: pause.description,
+        latestActivity: persistedPause.description,
       });
       this.options.approvalStore?.upsertAgentRunApproval({
         sessionId: handle.parentSessionId,
         agentRunId: handle.runId,
-        pauseRequest: pause,
+        reviewRequest: persistedPause,
         childSessionId: handle.childSessionId,
       });
       this.emitAgentEvent({
@@ -315,7 +318,7 @@ class InMemoryAgentRuntime implements AgentRuntime {
         phase: 'update',
         status: 'paused',
         label: 'Delegated agent waiting for review',
-        detail: pause.description,
+        detail: persistedPause.description,
         parentId: agentRootEventId(handle.runId),
       });
       return;
@@ -367,8 +370,9 @@ class InMemoryAgentRuntime implements AgentRuntime {
       throw new Error(`Agent run "${runId}" cannot be resumed after restart because no recovery builder is registered`);
     }
 
-    const childOptions = await this.recoveryBuilder(record);
-    if (!childOptions) {
+    const approval = this.findRunApproval(record);
+    const recovery = await this.recoveryBuilder(record, approval);
+    if (!recovery) {
       throw new Error(`Agent run "${runId}" cannot be resumed because recovery metadata is incomplete`);
     }
 
@@ -378,8 +382,9 @@ class InMemoryAgentRuntime implements AgentRuntime {
       childSessionId: record.childSessionId,
       label: record.label,
       agentName: record.agentName,
-      childOptions,
-      ...(typeof record.maxTurns === 'number' ? {maxTurns: record.maxTurns} : {}),
+      ...(record.subagentType ? {subagentType: record.subagentType} : {}),
+      childOptions: recovery.childOptions,
+      ...(typeof recovery.maxTurns === 'number' ? {maxTurns: recovery.maxTurns} : {}),
     };
     this.handles.set(normalizedRunId, recovered);
     return recovered;
@@ -391,6 +396,12 @@ class InMemoryAgentRuntime implements AgentRuntime {
       throw new Error(`Agent approval "${approvalId}" is not available`);
     }
     return record;
+  }
+
+  private findRunApproval(run: AgentRunRecord): ApprovalRecord | undefined {
+    return this.options.approvalStore
+      ?.list(run.parentSessionId)
+      .find((record) => record.source === 'agent_run' && record.agentRunId === run.runId);
   }
 
   private emitAgentEvent(event: EmitRuntimeEventInput): void {
@@ -435,4 +446,38 @@ async function* forwardAgentStream(
 
 function agentRootEventId(runId: string): string {
   return `agent-run:${runId}`;
+}
+
+function withAgentRecoveryMetadata(review: ReviewRequest, handle: AgentRunHandle): ReviewRequest {
+  const recovery = {
+    ...(handle.childOptions.tools?.length
+      ? {toolNames: handle.childOptions.tools.map((tool) => tool.name)}
+      : {}),
+    ...(handle.childOptions.systemMessage?.length
+      ? {systemMessages: [...handle.childOptions.systemMessage]}
+      : {}),
+    ...(typeof handle.maxTurns === 'number' ? {maxTurns: handle.maxTurns} : {}),
+  };
+
+  if (Object.keys(recovery).length === 0) {
+    return review;
+  }
+
+  const base = review.metadata && typeof review.metadata === 'object'
+    ? review.metadata as Record<string, unknown>
+    : {};
+  const codara = base.codara && typeof base.codara === 'object'
+    ? base.codara as Record<string, unknown>
+    : {};
+
+  return {
+    ...review,
+    metadata: {
+      ...base,
+      codara: {
+        ...codara,
+        agentRecovery: recovery,
+      },
+    },
+  };
 }

@@ -24,7 +24,7 @@ export interface DingTalkWebhookOptions {
   port: number;
   path: string;
   onMessage: (msg: InboundMessage) => Promise<void>;
-  onPauseCallback?: (action: string, id: string) => void;
+  onReviewCallback?: (action: string, reviewId: string) => void;
   callbackBaseUrl?: string;
 }
 
@@ -84,19 +84,19 @@ export function normalizeDingTalkMessage(
  * Returns a StopHandle to gracefully shut down the server.
  */
 export function startDingTalkWebhook(options: DingTalkWebhookOptions): StopHandle {
-  const {accountId, appSecret, api, port, path, onMessage, onPauseCallback, callbackBaseUrl} = options;
+  const {accountId, appSecret, api, port, path, onMessage, onReviewCallback, callbackBaseUrl} = options;
 
   const server = Bun.serve({
     port,
     async fetch(req) {
       const url = new URL(req.url);
 
-      // Handle HIL action card callback
+      // Handle review action card callback.
       if (callbackBaseUrl && url.pathname === `${path}/callback`) {
         const action = url.searchParams.get('action');
-        const id = url.searchParams.get('id');
-        if (action && id && onPauseCallback) {
-          onPauseCallback(action, id);
+        const reviewId = url.searchParams.get('id');
+        if (action && reviewId && onReviewCallback) {
+          onReviewCallback(action, reviewId);
         }
         return new Response('OK', {status: 200});
       }

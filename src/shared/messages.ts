@@ -12,7 +12,7 @@ export function readVisibleMessageText(message: BaseMessage | undefined): string
   }
 
   const payload = parseHiddenRuntimePayload(text);
-  if (payload === 'hil_pause') {
+  if (payload === 'review_pause') {
     return undefined;
   }
 
@@ -40,7 +40,7 @@ export function readLatestVisibleMessageText(messages: readonly BaseMessage[]): 
   }
 }
 
-function parseHiddenRuntimePayload(text: string): 'hil_pause' | undefined {
+function parseHiddenRuntimePayload(text: string): 'review_pause' | undefined {
   if (!text.startsWith('{') || !text.includes('"type"')) {
     return undefined;
   }
@@ -50,7 +50,7 @@ function parseHiddenRuntimePayload(text: string): 'hil_pause' | undefined {
     if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) {
       return undefined;
     }
-    return (parsed as Record<string, unknown>).type === 'hil_pause' ? 'hil_pause' : undefined;
+    return (parsed as Record<string, unknown>).type === 'review_pause' ? 'review_pause' : undefined;
   } catch {
     return undefined;
   }

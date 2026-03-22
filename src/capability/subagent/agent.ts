@@ -7,8 +7,8 @@ import {
   type AgentRuntimeContext,
   type AgentContextPreparer,
   type AgentRuntimeValues,
-  type PauseRequest,
-  type ResumePayload,
+  type ReviewRequest,
+  type ReviewResumePayload,
   type ToolErrorHandler,
 } from '@core/agent/models/agent';
 import type {AgentResult, AgentStreamOutput} from '@core/agent/models/agent';
@@ -16,7 +16,7 @@ import type {BootstrapAgentOptions} from '@core/agent/bootstrap';
 import {bootstrapAgent, resolveModel} from '@core/agent/bootstrap';
 import {createMiddleware, type BaseMiddleware} from '@core/pipeline/types';
 import type {ChildToolActivityCallback} from '@observability/events';
-import type {HILToolMessagePayload} from '@core/middleware/hil';
+import type {ReviewToolMessagePayload} from '@core/middleware/review';
 import type {ExecutionContextMetadata} from '@core/pipeline/types';
 import type {AgentCheckpointer} from '@durability/checkpoint/agent';
 import type {AgentLifecycleHooks} from '@observability/hook/types';
@@ -47,12 +47,17 @@ const delegatedPauseMetadataSchema = z.object({
     delegatedSubagent: z.object({
       childSessionId: z.string().trim().min(1),
       parentToolName: z.string().trim().min(1),
+      recovery: z.object({
+        toolNames: z.array(z.string().trim().min(1)).optional(),
+        systemMessages: z.array(z.string()).optional(),
+        maxTurns: z.number().int().positive().optional(),
+      }).optional(),
     }).optional(),
   }).loose().optional(),
 }).loose();
 
 const delegatedRuntimeContextSchema = z.object({
-  hil: z.object({
+  review: z.object({
     currentPause: z.object({
       metadata: z.unknown().optional(),
     }).loose().optional(),
@@ -81,6 +86,13 @@ export interface DelegatedAgentOptions {
 interface DelegatedPauseMetadata {
   childSessionId: string;
   parentToolName: string;
+  recovery?: DelegatedPauseRecoverySpec;
+}
+
+export interface DelegatedPauseRecoverySpec {
+  toolNames?: string[];
+  systemMessages?: string[];
+  maxTurns?: number;
 }
 
 interface ParentExecution {
@@ -95,7 +107,7 @@ interface ParentExecution {
 
 interface DelegatedResumeState {
   childSessionId: string;
-  payload: ResumePayload;
+  payload: ReviewResumePayload;
 }
 
 export interface DelegatedParentRuntimeMetadata {
@@ -140,7 +152,7 @@ export async function runDelegatedAgent(
   const result = await runDelegatedChild(childOptions, input);
 
   // SubagentStop hook — best-effort notification after delegated agent completes
-  if (options.childLifecycle && !result.state.pendingPause) {
+  if (options.childLifecycle && !result.state.pendingReview) {
     try {
       await options.childLifecycle.onSubagentStop({
         hookEvent: 'SubagentStop',
@@ -155,10 +167,11 @@ export async function runDelegatedAgent(
     }
   }
 
-  if (result.state.pendingPause) {
-    return createDelegatedPauseToolMessage(result.state.pendingPause, {
+  if (result.state.pendingReview) {
+    return createDelegatedPauseToolMessage(result.state.pendingReview, {
       childSessionId: result.state.sessionId,
       parentToolName: input.toolName,
+      recovery: buildDelegatedPauseRecoverySpec(childOptions, input.maxTurns),
     }, {
       execution: input.parentExecution,
       prompt: input.prompt,
@@ -402,13 +415,13 @@ export function createDelegatedAgentToolMessage(
 }
 
 function createDelegatedPauseToolMessage(
-  pause: PauseRequest,
+  review: ReviewRequest,
   delegated: DelegatedPauseMetadata,
   parent: ParentPauseContext,
 ): ToolMessage {
-  const request: PauseRequest = {
+  const request: ReviewRequest = {
     id: `${parent.execution.runId}:${parent.execution.turn}:${parent.execution.toolCallId}:delegated`,
-    description: pause.description,
+    description: review.description,
     action: {
       toolCallId: parent.execution.toolCallId,
       toolName: delegated.parentToolName,
@@ -418,20 +431,20 @@ function createDelegatedPauseToolMessage(
         ...(typeof parent.maxTurns === 'number' ? {max_turns: parent.maxTurns} : {}),
       },
     },
-    review: pause.review,
+    review: review.review,
     runtime: {
       runId: parent.execution.runId,
       turn: parent.execution.turn,
       requestId: parent.execution.requestId,
       toolIndex: parent.execution.toolIndex,
     },
-    ...(pause.channel ? {channel: pause.channel} : {}),
-    ...(pause.ui ? {ui: pause.ui} : {}),
-    metadata: mergeDelegatedPauseMetadata(pause.metadata, delegated),
+    ...(review.channel ? {channel: review.channel} : {}),
+    ...(review.ui ? {ui: review.ui} : {}),
+    metadata: mergeDelegatedPauseMetadata(review.metadata, delegated),
   };
 
-  const payload: HILToolMessagePayload = {
-    type: 'hil_pause',
+  const payload: ReviewToolMessagePayload = {
+    type: 'review_pause',
     request,
   };
 
@@ -475,13 +488,13 @@ function readDelegatedResumeState(
     return undefined;
   }
 
-  const hil = parsed.data.hil;
-  const delegated = readDelegatedPauseMetadata(hil?.currentPause?.metadata, toolName);
+  const review = parsed.data.review;
+  const delegated = readDelegatedPauseMetadata(review?.currentPause?.metadata, toolName);
   if (!delegated) {
     return undefined;
   }
 
-  const payload = hil?.resume;
+  const payload = review?.resume;
   if (payload === undefined) {
     return undefined;
   }
@@ -507,12 +520,13 @@ function mergeDelegatedPauseMetadata(
       delegatedSubagent: {
         childSessionId: delegated.childSessionId,
         parentToolName: delegated.parentToolName,
+        ...(delegated.recovery ? {recovery: delegated.recovery} : {}),
       },
     },
   };
 }
 
-function readDelegatedPauseMetadata(
+export function readDelegatedPauseMetadata(
   metadata: unknown,
   toolName: string,
 ): DelegatedPauseMetadata | undefined {
@@ -528,7 +542,21 @@ function readDelegatedPauseMetadata(
   return {
     childSessionId,
     parentToolName,
+    ...(delegated?.recovery ? {recovery: delegated.recovery} : {}),
   };
+}
+
+function buildDelegatedPauseRecoverySpec(
+  childOptions: BootstrapAgentOptions,
+  maxTurns: number | undefined,
+): DelegatedPauseRecoverySpec | undefined {
+  const recovery: DelegatedPauseRecoverySpec = {
+    ...(childOptions.tools?.length ? {toolNames: childOptions.tools.map((tool) => tool.name)} : {}),
+    ...(childOptions.systemMessage?.length ? {systemMessages: [...childOptions.systemMessage]} : {}),
+    ...(typeof maxTurns === 'number' ? {maxTurns} : {}),
+  };
+
+  return Object.keys(recovery).length > 0 ? recovery : undefined;
 }
 
 function readParentExecution(value: unknown): ExecutionContextMetadata & {

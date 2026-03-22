@@ -128,17 +128,17 @@ describe('discordPlugin', () => {
     });
   });
 
-  describe('sendPausePrompt', () => {
+  describe('sendReviewPrompt', () => {
     test('sends message with button components', async () => {
       const fetchMock = mockFetch({id: 'msg-200', channel_id: 'ch-1'});
       globalThis.fetch = fetchMock;
 
       const account = discordPlugin.resolveAccount({botToken: 'test-token'})!;
-      const result = await discordPlugin.sendPausePrompt!(account, {
+      const result = await discordPlugin.sendReviewPrompt!(account, {
         accountId: 'bot-1',
         to: 'ch-1',
         text: 'Approve this action?',
-        pause: {id: 'pause-1', description: 'Run command'} as unknown as import('@shared/contracts/agent-types').PauseRequest,
+        review: {id: 'review-1', description: 'Run command'} as unknown as import('@shared/contracts/agent-types').ReviewRequest,
         actions: [
           {id: 'approve', label: 'Approve', style: 'approve'},
           {id: 'reject', label: 'Reject', style: 'reject'},
@@ -158,13 +158,13 @@ describe('discordPlugin', () => {
         type: 2,
         style: 3, // SUCCESS
         label: 'Approve',
-        custom_id: 'approve:pause-1',
+        custom_id: 'approve:review-1',
       });
       expect(body.components[0].components[1]).toEqual({
         type: 2,
         style: 4, // DANGER
         label: 'Reject',
-        custom_id: 'reject:pause-1',
+        custom_id: 'reject:review-1',
       });
     });
   });

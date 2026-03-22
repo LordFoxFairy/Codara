@@ -1,11 +1,11 @@
 /**
- * Channel abstraction — decouples HIL/pause interactions from specific transports.
+ * Channel abstraction — decouples review/pause interactions from specific transports.
  *
  * A Channel represents a bi-directional communication endpoint (CLI, Desktop, Telegram, etc.)
  * that can display pause requests and collect user responses.
  */
 
-import type {PauseRequest, ResumePayload} from './agent-types';
+import type {ReviewRequest, ReviewResumePayload} from './agent-types';
 
 /** Supported channel transport types. */
 export type ChannelType =
@@ -36,7 +36,7 @@ export interface ChannelRuntimeEvent {
 }
 
 /**
- * A Channel handles bi-directional communication for HIL interactions.
+ * A Channel handles bi-directional communication for review interactions.
  *
  * Implementations:
  * - CLI: renders Ink components, collects terminal input
@@ -55,10 +55,10 @@ export interface Channel {
 
   /**
    * Display a pause request and wait for the user's response.
-   * This is the core HIL interaction — the channel renders the request
+   * This is the core review interaction — the channel renders the request
    * and resolves with the user's decision (approve, edit, reject).
    */
-  showPauseRequest(request: PauseRequest): Promise<ResumePayload>;
+  showReviewRequest(request: ReviewRequest): Promise<ReviewResumePayload>;
 
   /** Optionally forward runtime events for real-time display. */
   emitEvent?(event: ChannelRuntimeEvent): void;

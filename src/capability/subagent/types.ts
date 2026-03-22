@@ -7,15 +7,12 @@ export interface AgentRunRecord {
   parentSessionId: string;
   label: string;
   agentName: string;
+  subagentType?: string;
   status: AgentRunStatus;
   startedAt: string;
   updatedAt: string;
   endedAt?: string;
   childSessionId?: string;
-  prompt?: string;
-  maxTurns?: number;
-  toolNames?: string[];
-  systemMessages?: string[];
   latestActivity?: string;
   summary?: string;
   errorMessage?: string;
@@ -30,11 +27,8 @@ export interface AgentRunStartInput {
   parentSessionId: string;
   label: string;
   agentName: string;
+  subagentType?: string;
   childSessionId?: string;
-  prompt?: string;
-  maxTurns?: number;
-  toolNames?: string[];
-  systemMessages?: string[];
 }
 
 export interface AgentRunUpdateInput {

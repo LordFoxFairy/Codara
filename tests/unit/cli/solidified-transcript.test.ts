@@ -365,7 +365,7 @@ describe('solidified transcript model', () => {
       const runtimeItems: TranscriptItem[] = [
         {
           id: 'active-agent-run:run-1',
-          role: 'task',
+          role: 'agent',
           content: '⏺ Explore(Analyze structure)\n  ⎿ Done (5 tool uses · 1.2k tokens · 31s)',
         },
       ];
@@ -430,7 +430,7 @@ describe('solidified transcript model', () => {
         completedTurnKind: 'agent_completion',
         items: [
           {id: 'assistant-invalid', role: 'assistant', content: 'Phase 1 has started. Waiting for subagent results.'},
-          {id: 'task-1', role: 'task', content: 'Explore(Analyze CLI)\nRunning...'},
+          {id: 'task-1', role: 'agent', content: 'Explore(Analyze CLI)\nRunning...'},
           {id: 'assistant-valid', role: 'assistant', content: 'Unified final answer from the main agent.'},
         ],
       });

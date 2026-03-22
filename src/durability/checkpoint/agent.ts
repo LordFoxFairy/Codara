@@ -7,7 +7,7 @@ import {z} from 'zod';
 import {FileCheckpointer} from '@durability/checkpoint/file';
 import {InMemoryCheckpointer} from '@durability/checkpoint/in-memory';
 import type {CheckpointRecord, Checkpointer} from '@durability/checkpoint/types';
-import type {AgentType, PauseRequest} from '@shared/contracts/agent-types';
+import type {AgentType, ReviewRequest} from '@shared/contracts/agent-types';
 import {deepClone} from '@shared/clone';
 
 export type AgentCheckpointStatus = 'idle' | 'paused' | 'closed' | 'error';
@@ -20,7 +20,7 @@ export interface AgentCheckpointState {
   messages: BaseMessage[];
   context: AgentCheckpointContext;
   values: AgentCheckpointValues;
-  pendingPause?: PauseRequest;
+  pendingReview?: ReviewRequest;
 }
 
 export interface AgentCheckpointInfo {
@@ -47,7 +47,7 @@ interface PersistedAgentCheckpointState {
   messages: ReturnType<typeof mapChatMessagesToStoredMessages>;
   context: AgentCheckpointContext;
   values: AgentCheckpointValues;
-  pendingPause?: PauseRequest;
+  pendingReview?: ReviewRequest;
 }
 
 export interface AgentFileCheckpointerOptions {
@@ -59,7 +59,7 @@ const checkpointStateSchema = z.object({
   messages: z.array(z.unknown()).catch([]),
   context: z.record(z.string(), z.unknown()).catch({}),
   values: z.record(z.string(), z.unknown()).catch({}),
-  pendingPause: z.record(z.string(), z.unknown()).optional(),
+  pendingReview: z.record(z.string(), z.unknown()).optional(),
 }).loose();
 
 const checkpointInfoSchema = z.object({
@@ -109,7 +109,7 @@ export async function putForkCheckpoint(
     state: cloneCheckpointState(state),
     info: {
       source: 'fork',
-      status: state.pendingPause ? 'paused' : 'idle',
+      status: state.pendingReview ? 'paused' : 'idle',
       step: 0,
       createdAt: new Date().toISOString(),
     },
@@ -143,7 +143,7 @@ function serializeAgentCheckpointState(state: AgentCheckpointState): PersistedAg
     messages: mapChatMessagesToStoredMessages(state.messages),
     context: deepClone(state.context),
     values: deepClone(state.values),
-    ...(state.pendingPause ? {pendingPause: deepClone(state.pendingPause)} : {}),
+    ...(state.pendingReview ? {pendingReview: deepClone(state.pendingReview)} : {}),
   };
 }
 
@@ -153,7 +153,7 @@ function cloneCheckpointState(state: AgentCheckpointState): AgentCheckpointState
     messages: mapStoredMessagesToChatMessages(mapChatMessagesToStoredMessages(state.messages)) as BaseMessage[],
     context: deepClone(state.context),
     values: deepClone(state.values),
-    ...(state.pendingPause ? {pendingPause: deepClone(state.pendingPause)} : {}),
+    ...(state.pendingReview ? {pendingReview: deepClone(state.pendingReview)} : {}),
   };
 }
 
@@ -168,8 +168,8 @@ function deserializeAgentCheckpointState(raw: unknown): AgentCheckpointState {
     messages: messages as BaseMessage[],
     context: deepClone(record.context) as AgentCheckpointContext,
     values: deepClone(record.values) as AgentCheckpointValues,
-    ...(record.pendingPause
-      ? {pendingPause: deepClone(record.pendingPause) as unknown as PauseRequest}
+    ...(record.pendingReview
+      ? {pendingReview: deepClone(record.pendingReview) as unknown as ReviewRequest}
       : {}),
   };
 }

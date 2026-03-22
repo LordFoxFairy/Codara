@@ -1,6 +1,6 @@
 import {describe, expect, it} from 'bun:test';
 import {HumanMessage, ToolMessage, type BaseMessage, type ToolCall} from '@langchain/core/messages';
-import {createHILMiddleware, type ToolCallContext} from '@core/middleware';
+import {createReviewMiddleware, type ToolCallContext} from '@core/middleware';
 
 function createToolContext(toolCall: ToolCall, runtimeContext: Record<string, unknown>): ToolCallContext {
   const messages = [new HumanMessage('run')] as BaseMessage[];
@@ -23,9 +23,9 @@ function createToolContext(toolCall: ToolCall, runtimeContext: Record<string, un
   };
 }
 
-describe('HIL resume routing', () => {
+describe('Review resume routing', () => {
   it('should resolve resume by pause request id', async () => {
-    const middleware = createHILMiddleware({
+    const middleware = createReviewMiddleware({
       interruptOn: {bash: true},
       handleResume: async (_req, payload, context, handler) => {
         return handler({
@@ -46,7 +46,7 @@ describe('HIL resume routing', () => {
 
     const result = await middleware.wrapToolCall?.(
       createToolContext(toolCall, {
-        hil: {
+        review: {
           resumes: {
             [pauseId]: {marker: 'by-id'},
           },
@@ -62,7 +62,7 @@ describe('HIL resume routing', () => {
   });
 
   it('should resolve resume by tool call id when pause id is absent', async () => {
-    const middleware = createHILMiddleware({
+    const middleware = createReviewMiddleware({
       interruptOn: {bash: true},
       handleResume: async (_req, payload, context, handler) => {
         return handler({
@@ -82,7 +82,7 @@ describe('HIL resume routing', () => {
 
     const result = await middleware.wrapToolCall?.(
       createToolContext(toolCall, {
-        hil: {
+        review: {
           resumes: {
             call_route_2: {marker: 'by-call-id'},
           },
@@ -98,7 +98,7 @@ describe('HIL resume routing', () => {
   });
 
   it('should emit pause payload when no resume exists', async () => {
-    const middleware = createHILMiddleware({
+    const middleware = createReviewMiddleware({
       interruptOn: {bash: true},
     });
 
@@ -108,11 +108,11 @@ describe('HIL resume routing', () => {
       async () => new ToolMessage({content: 'should-not-run', tool_call_id: 'call_route_3'})
     );
 
-    expect(String(result?.content)).toContain('"type":"hil_pause"');
+    expect(String(result?.content)).toContain('"type":"review_pause"');
   });
 
   it('should ignore inherited resume keys and only use own properties', async () => {
-    const middleware = createHILMiddleware({
+    const middleware = createReviewMiddleware({
       interruptOn: {bash: true},
     });
 
@@ -123,13 +123,13 @@ describe('HIL resume routing', () => {
 
     const result = await middleware.wrapToolCall?.(
       createToolContext(toolCall, {
-        hil: {
+        review: {
           resumes: inheritedResumes,
         },
       }),
       async () => new ToolMessage({content: 'should-not-run', tool_call_id: 'call_route_4'})
     );
 
-    expect(String(result?.content)).toContain('"type":"hil_pause"');
+    expect(String(result?.content)).toContain('"type":"review_pause"');
   });
 });

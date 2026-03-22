@@ -11,7 +11,7 @@ export type AgentRuntimeContext = Record<string, unknown>;
 export type AgentRuntimeValues = Record<string, unknown>;
 export type AgentStatus = 'idle' | 'running' | 'paused' | 'closed';
 export type AgentType = 'main' | 'subagent';
-export type ResumePayload = unknown;
+export type ReviewResumePayload = unknown;
 
 export interface AgentInputBudget {
   maxInputTokens?: number;
@@ -26,13 +26,13 @@ export interface AgentExecutionMetadata {
   requestId: string;
 }
 
-export interface PauseActionDescriptor {
+export interface ReviewActionDescriptor {
   toolCallId: string;
   toolName: string;
   toolArgs: Record<string, unknown>;
 }
 
-export interface PauseUIActionOption {
+export interface ReviewUIActionOption {
   id: string;
   label: string;
   kind?: 'primary' | 'secondary' | 'danger';
@@ -42,46 +42,46 @@ export interface PauseUIActionOption {
   requiresToolEdit?: boolean;
 }
 
-export interface PauseUIFormOption {
+export interface ReviewUIFormOption {
   id: string;
   label: string;
   description?: string;
 }
 
-export interface PauseUIFormTab {
+export interface ReviewUIFormTab {
   id: string;
   label: string;
   question: string;
   input?: 'select' | 'multiselect' | 'text';
-  options?: PauseUIFormOption[];
+  options?: ReviewUIFormOption[];
   placeholder?: string;
 }
 
-export interface PauseUIFormConfig {
+export interface ReviewUIFormConfig {
   summary?: string;
-  tabs: PauseUIFormTab[];
+  tabs: ReviewUIFormTab[];
 }
 
-export interface PauseUIConfig {
+export interface ReviewUIConfig {
   tab?: string;
   modal?: string;
-  actions?: PauseUIActionOption[];
-  form?: PauseUIFormConfig;
+  actions?: ReviewUIActionOption[];
+  form?: ReviewUIFormConfig;
   [key: string]: unknown;
 }
 
-export type PauseReviewDecision = 'approve' | 'edit' | 'reject';
+export type ReviewDecision = 'approve' | 'edit' | 'reject';
 
-export interface PauseReviewRequest {
+export interface ReviewSpec {
   actionName: string;
-  allowedDecisions: PauseReviewDecision[];
+  allowedDecisions: ReviewDecision[];
 }
 
-export interface PauseRequest {
+export interface ReviewRequest {
   id: string;
   description: string;
-  action: PauseActionDescriptor;
-  review: PauseReviewRequest;
+  action: ReviewActionDescriptor;
+  review: ReviewSpec;
   runtime: {
     runId: string;
     turn: number;
@@ -89,7 +89,7 @@ export interface PauseRequest {
     toolIndex: number;
   };
   channel?: string;
-  ui?: PauseUIConfig;
+  ui?: ReviewUIConfig;
   metadata?: Record<string, unknown>;
 }
 
@@ -102,7 +102,7 @@ export interface AgentState {
   context: AgentRuntimeContext;
   values: AgentRuntimeValues;
   status: AgentStatus;
-  pendingPause?: PauseRequest;
+  pendingReview?: ReviewRequest;
 }
 
 export interface AgentResult {

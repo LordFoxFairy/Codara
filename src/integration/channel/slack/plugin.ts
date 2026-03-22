@@ -1,6 +1,6 @@
 import {z} from 'zod';
 import type {ChannelPlugin, GatewayListenContext} from '@integration/channel/contracts';
-import type {InboundMessage, OutboundContext, PausePromptContext, SendResult, StopHandle} from '@gateway/types';
+import type {InboundMessage, OutboundContext, ReviewPromptContext, SendResult, StopHandle} from '@gateway/types';
 import {SlackApi} from './api';
 import {SlackSocketModeClient} from './socket-mode';
 import type {SlackBlock, SlackMessageEvent, SlackInteractivePayload} from './types';
@@ -104,7 +104,7 @@ export const slackPlugin: ChannelPlugin<SlackAccount> = {
   },
 
   async startListening(ctx: GatewayListenContext<SlackAccount>): Promise<StopHandle> {
-    const {account, accountId, onMessage, onPauseResponse} = ctx;
+    const {account, accountId, onMessage, onReviewResponse} = ctx;
 
     const socketMode = new SlackSocketModeClient({
       appToken: account.appToken,
@@ -127,20 +127,20 @@ export const slackPlugin: ChannelPlugin<SlackAccount> = {
       },
 
       onInteraction(payload: SlackInteractivePayload) {
-        if (!onPauseResponse) return;
+        if (!onReviewResponse) return;
         if (payload.type !== 'block_actions' || !payload.actions.length) return;
 
         const action = payload.actions[0];
         const actionId = action.action_id;
 
-        // Parse action_id: `{actionId}:{pauseId}`
+        // Parse action_id: `{actionId}:{reviewId}`
         const colonIndex = actionId.indexOf(':');
         if (colonIndex === -1) return;
 
         const parsedActionId = actionId.slice(0, colonIndex);
-        const pauseId = actionId.slice(colonIndex + 1);
+        const reviewId = actionId.slice(colonIndex + 1);
         const userId = payload.user?.id ?? 'unknown';
-        onPauseResponse(pauseId, {actionId: parsedActionId, from: {id: userId}});
+        onReviewResponse(reviewId, {actionId: parsedActionId, from: {id: userId}});
       },
     });
 
@@ -170,11 +170,11 @@ export const slackPlugin: ChannelPlugin<SlackAccount> = {
     // No-op: Slack doesn't expose typing indicators for bot users
   },
 
-  async sendPausePrompt(account: SlackAccount, ctx: PausePromptContext): Promise<SendResult> {
+  async sendReviewPrompt(account: SlackAccount, ctx: ReviewPromptContext): Promise<SendResult> {
     const buttons = ctx.actions.map((a) => ({
       type: 'button' as const,
       text: {type: 'plain_text' as const, text: a.label},
-      action_id: `${a.id}:${ctx.pause.id}`,
+      action_id: `${a.id}:${ctx.review.id}`,
       style: a.style === 'approve' ? ('primary' as const) : a.style === 'reject' ? ('danger' as const) : undefined,
     }));
 

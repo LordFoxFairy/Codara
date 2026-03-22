@@ -1,3 +1,42 @@
+# 2026-03-22 Review Naming And Control-Plane Unification
+
+## Plan
+
+- [x] Remove the remaining low-level `hil` naming from the live review middleware implementation and public exports.
+- [x] Rename review payload/result strings, runtime event handling, and channel adapters so live code no longer mixes `review` and `hil`.
+- [x] Update current tests/cases and active docs to the same `review` vocabulary, including renamed case/test paths where needed.
+- [x] Re-run focused review/runtime/CLI/subagent verification, typecheck, lint, and diff-check after the cleanup.
+
+## Review
+
+- The live review middleware is now owned by `src/core/middleware/review.ts`; `src/core/middleware/hil.ts` no longer exists, and the middleware public surface only exposes `Review*` names.
+- Review payload/result strings were unified to:
+  - `review_pause`
+  - `review_deny`
+  - `review_event`
+- Runtime/control-plane consumers now read the same review contract end-to-end:
+  - `src/core/agent/run/*`
+  - `src/observability/events/*`
+  - `src/shared/messages.ts`
+  - `src/bus/bus.ts`
+  - `src/integration/channel/review-adapter.ts`
+- Case/test naming was also pulled forward so active regression paths no longer reinforce the old `hil` mental model:
+  - `tests/cases/review/*`
+  - `tests/unit/middleware/review-*.test.ts`
+  - `tests/unit/channel/review-adapter.test.ts`
+- High-signal residual scans are now clean for live code, tests, and current docs:
+  - no `HIL`
+  - no `createHILMiddleware`
+  - no `hil_pause` / `hil_deny`
+  - no `CodaraPauseStreamRequest`
+  - no `streamKind: 'pause'`
+  - no transcript `role: 'task'`
+- Verification passed:
+  - `bun test tests/unit/middleware/review-middleware.test.ts tests/unit/middleware/review-request-metadata.test.ts tests/unit/middleware/review-resume-routing.test.ts tests/unit/middleware/interaction-middleware.test.ts tests/integration/permission-middleware.test.ts tests/unit/permissions/middleware.test.ts tests/unit/channel/review-adapter.test.ts tests/unit/core/codara-facade.test.ts tests/unit/core/codara-agent-runtime.test.ts tests/unit/cli/transcript-model.test.ts tests/unit/cli/shell-app.test.ts tests/unit/cli/use-cli-controller.test.tsx tests/unit/agents/agent.test.ts tests/unit/agents/subagent.test.ts tests/cases/review/form-ui.case.test.ts tests/cases/review/subagent-activity-display.case.test.ts`
+  - `bunx tsc --noEmit --pretty false`
+  - `bunx eslint src/core/middleware/review.ts src/core/middleware/index.ts src/core/middleware/ask-user-question.ts src/core/middleware/permission/runtime.ts src/core/middleware/permission/middleware.ts src/core/agent/run/agent-loop.ts src/core/agent/run/turn.ts src/observability/events/controller.ts src/cli/transcript/model.ts src/shared/messages.ts src/integration/channel/review-adapter.ts src/bus/bus.ts src/durability/session/session.ts src/capability/subagent/agent.ts tests/unit/middleware/review-middleware.test.ts tests/unit/middleware/review-request-metadata.test.ts tests/unit/middleware/review-resume-routing.test.ts tests/unit/middleware/interaction-middleware.test.ts tests/unit/channel/review-adapter.test.ts tests/unit/core/codara-agent-runtime.test.ts tests/unit/cli/transcript-model.test.ts tests/cases/helpers/cli-runtime-factory.ts tests/cases/review/form-ui.case.test.ts`
+  - `git diff --check`
+
 # 2026-03-22 Superworkers Codex Alignment Refresh
 
 # 2026-03-22 Task/Subagent Child Ownership Cleanup
@@ -2448,5 +2487,141 @@
   - `bun test tests/unit/durability/approval-store.test.ts tests/unit/observability/events-formatters.test.ts tests/unit/core/codara-facade.test.ts tests/unit/tasks/middleware.test.ts tests/unit/cli/active-tasks.test.ts tests/unit/cli/transcript-model.test.ts tests/unit/cli/solidified-transcript.test.ts tests/unit/cli/task-closeout.test.ts tests/unit/cli/use-cli-controller.test.tsx tests/unit/hil-unified/hil-unified.test.ts tests/unit/agents/task-tool-delegation.test.ts`
   - `bun test tests/cases/subagents/prompt-manual-inheritance.case.test.ts tests/cases/subagents/multi-profile-coordination.case.test.ts tests/cases/task-skills/task-skill-coordination.case.test.ts tests/unit/agents/subagent.test.ts tests/unit/agents/subagent-task.test.ts tests/unit/agents/task-tool-definitions.test.ts tests/unit/agents/task-tool-limits.test.ts tests/unit/tasks/depth-limit.test.ts`
   - `bunx eslint src/cli/task-closeout.ts src/cli/app/use-cli-controller.ts src/cli/hooks/use-active-tasks.ts src/cli/transcript/model.ts tests/unit/durability/approval-store.test.ts tests/unit/observability/events-formatters.test.ts tests/unit/core/codara-facade.test.ts tests/unit/tasks/middleware.test.ts tests/unit/cli/transcript-model.test.ts tests/unit/cli/solidified-transcript.test.ts tests/unit/cli/task-closeout.test.ts tests/unit/cli/use-cli-controller.test.tsx tests/unit/hil-unified/hil-unified.test.ts tests/unit/agents/task-tool-delegation.test.ts tests/cases/helpers/cli-runtime-factory.ts tests/cases/subagents/prompt-manual-inheritance.case.test.ts tests/cases/subagents/multi-profile-coordination.case.test.ts src/capability/subagent/middleware.ts src/capability/subagent/support.ts src/capability/subagent/tool.ts src/context/skills/runtime-shared.ts`
+  - `bunx tsc --noEmit --pretty false`
+  - `git diff --check`
+# 2026-03-22 Subagent Bootstrap And Persistence Alignment
+
+## Plan
+
+- [ ] Shrink `src/capability/subagent/run-store.ts` so it only persists run index/state, not child bootstrap snapshot fields like prompt/systemMessages/toolNames.
+- [ ] Normalize `AgentRunQuerySummary` and related assembly/query consumers to use explicit `parentSessionId` / `childSessionId` only.
+- [ ] Introduce a single subagent bootstrap compilation path so child middleware/system prompt/context assembly no longer happens ad hoc across `tool.ts`, `agent.ts`, and runtime assembly.
+- [ ] Re-run focused subagent/task/facade regressions, eslint, typecheck, and diff-check.
+# 2026-03-22 Subagent Run Index And Query Naming Cleanup
+
+## Plan
+
+- [ ] 收窄 `src/capability/subagent/run-store.ts`，只保留 run index 所需字段，不再持久化 child bootstrap snapshot。
+- [ ] 拉直 `AgentRunQuerySummary`，移除歧义 `sessionId`，统一使用 `parentSessionId` / `childSessionId`。
+- [ ] 把 subagent recovery 所需的 bootstrap 信息从 run-store 剥离，改成 subagent 自己的 recovery spec。
+- [ ] 跑 focused tests、eslint、tsc、diff-check，确认没有旧 task/subagent 残留。
+# 2026-03-22 Subagent Recovery And Naming Cleanup
+
+## Plan
+
+- [x] Remove bootstrap snapshot residue from `src/capability/subagent/run-store.ts` and keep it as a run index only.
+- [x] Move delegated child recovery ownership from run-store persistence to approval/pause metadata.
+- [x] Rename the remaining high-signal `task-run` test paths and parent-session controller names to `agent-run` / `parentSessionId`.
+- [x] Re-run focused unit/case regressions, eslint, typecheck, and diff-check.
+
+## Review
+
+- `src/capability/subagent/types.ts` and `src/capability/subagent/run-store.ts` no longer persist bootstrap-only fields such as `recovery`, `toolNames`, `systemMessages`, or `maxTurns`; the store is back to being a delegated run index.
+- Restart-safe resume now rebuilds child bootstrap from approval metadata written at pause time instead of reusing run-store snapshots or recompiling from ambiguous state:
+  - `src/capability/subagent/runtime.ts` writes `codara.agentRecovery` metadata onto paused approvals.
+  - `src/capability/subagent/tool.ts` reads that metadata to reconstruct child `tools`, `systemMessage`, and `maxTurns`.
+- This keeps recovery on the control-plane path (`approval/pause`) and out of run persistence, which is closer to the Claude Code docs and easier to reason about.
+- High-signal naming drift was reduced:
+  - `src/codara/assembly/agent-runs.ts` now filters by `parentSessionId`.
+  - `src/cli/app/use-cli-controller.ts` uses `parentSessionId` inside tracked delegated batches and completion continuations.
+  - real-case and facade tests now use `.codara/agent-runs` / `.codara/case-agent-runs` instead of `task-runs`.
+- Verification passed:
+  - `bun test tests/unit/tasks/run-store-file.test.ts tests/unit/tasks/run-store.test.ts tests/unit/tasks/middleware.test.ts tests/unit/agents/subagent.test.ts tests/unit/agents/subagent-task.test.ts tests/unit/core/codara-facade.test.ts tests/unit/cli/active-tasks.test.ts tests/unit/cli/use-cli-controller.test.tsx tests/cases/task-skills/task-skill-coordination.case.test.ts tests/cases/subagents/multi-profile-coordination.case.test.ts tests/cases/subagents/prompt-manual-inheritance.case.test.ts`
+  - `bunx eslint src/capability/subagent src/codara/assembly/agent-runs.ts src/cli/app/use-cli-controller.ts tests/cases/helpers/cli-runtime-factory.ts tests/cases/task-skills/task-skill-coordination.case.test.ts tests/cases/subagents/multi-profile-coordination.case.test.ts tests/cases/subagents/prompt-manual-inheritance.case.test.ts tests/unit/tasks/run-store-file.test.ts tests/unit/core/codara-facade.test.ts tests/unit/cli/active-tasks.test.ts tests/unit/cli/use-cli-controller.test.tsx`
+  - `bunx tsc --noEmit --pretty false`
+  - `git diff --check`
+
+# 2026-03-22 Subagent Middleware Ownership Split
+
+## Plan
+
+- [x] Keep `src/capability/subagent/middleware.ts` as a thin assembly layer only.
+- [x] Move child runtime middleware composition into a dedicated subagent-owned module.
+- [x] Move completion handoff / replay guard policy into a dedicated subagent-owned module.
+- [x] Re-run focused task/subagent/facade regressions, eslint, and typecheck.
+
+## Review
+
+- `src/capability/subagent/middleware.ts` is now a thin assembler again:
+  - creates runtime/store
+  - wires the `Agent` tool
+  - injects available subagent definitions
+  - delegates completion-guard policy to dedicated helpers
+- Child bootstrap middleware ownership moved to:
+  - `src/capability/subagent/child-middlewares.ts`
+- Completion handoff and duplicate-replay blocking moved to:
+  - `src/capability/subagent/completion-handoff.ts`
+- This keeps subagent-owned bootstrap and subagent-owned continuation policy out of one 400+ line mixed file, which makes later Claude Code alignment work easier to maintain.
+- Focused verification passed:
+  - `bun test tests/unit/tasks/middleware.test.ts tests/unit/agents/subagent.test.ts tests/unit/agents/subagent-task.test.ts tests/unit/core/codara-facade.test.ts`
+  - `bunx eslint src/capability/subagent tests/unit/tasks/middleware.test.ts tests/unit/agents/subagent.test.ts tests/unit/agents/subagent-task.test.ts tests/unit/core/codara-facade.test.ts`
+  - `bunx tsc --noEmit --pretty false`
+
+# 2026-03-22 Review Naming And Control-Plane Cleanup
+
+## Plan
+
+- [x] Remove remaining live `hil` naming from source/runtime/control-plane paths and keep `review` as the single public/low-level term.
+- [x] Keep `task` as coordination only and `subagent` as delegated/background execution only; avoid reintroducing mixed `task`/review naming in transcript/runtime paths.
+- [x] Update middleware/runtime/transcript/channel tests and validation to match the renamed review contract.
+- [x] Re-run focused review/permission/cli/subagent regressions, eslint, typecheck, and diff-check.
+
+## Review
+
+- Low-level middleware naming is now single-track:
+  - `src/core/middleware/review.ts` is the canonical module.
+  - `src/core/middleware/index.ts` only exports `Review*` names.
+  - `src/index.ts` and runtime consumers now import `Review*` names exclusively.
+- Tool payloads and runtime context are aligned with the same contract:
+  - structured tool messages use `review_pause` / `review_deny`
+  - resume context uses `context.review`
+  - `MIDDLEWARE_NAMES.Review` replaces the old HIL name
+- Source/runtime consumers were updated together instead of leaving a mixed shell:
+  - `src/core/agent/run/agent-loop.ts`
+  - `src/core/agent/run/turn.ts`
+  - `src/core/agent/models/agent.ts`
+  - `src/capability/subagent/agent.ts`
+  - `src/observability/events/controller.ts`
+  - `src/cli/transcript/model.ts`
+  - `src/integration/channel/review-adapter.ts`
+- Focused verification passed:
+  - `bun test tests/unit/middleware/review-middleware.test.ts tests/unit/middleware/review-request-metadata.test.ts tests/unit/middleware/review-resume-routing.test.ts tests/unit/middleware/interaction-middleware.test.ts tests/unit/permissions/middleware.test.ts tests/integration/permission-middleware.test.ts tests/unit/core/codara-middleware-stack.test.ts tests/unit/core/codara-facade.test.ts tests/unit/core/codara-agent-runtime.test.ts tests/unit/cli/transcript-model.test.ts tests/unit/cli/solidified-transcript.test.ts tests/unit/cli/shell-app.test.ts tests/unit/cli/use-cli-controller.test.tsx tests/unit/agents/runtime-input.test.ts tests/unit/agents/agent.test.ts tests/unit/agents/subagent.test.ts tests/unit/channel/review-adapter.test.ts tests/unit/channel/sse-channel.test.ts`
+  - `bunx eslint src/core/middleware/review.ts src/core/middleware/index.ts src/core/middleware/ask-user-question.ts src/core/middleware/permission/middleware.ts src/core/middleware/permission/runtime.ts src/core/agent/run/agent-loop.ts src/core/agent/run/turn.ts src/core/agent/run/stream.ts src/core/agent/models/agent.ts src/capability/subagent/agent.ts src/capability/subagent/child-middlewares.ts src/codara/types.ts src/codara/assembly/middleware.ts src/observability/events/controller.ts src/cli/transcript/model.ts src/integration/channel/review-adapter.ts src/integration/channel/index.ts src/shared/contracts/channel.ts src/gateway/channel-bridge.ts src/core/pipeline/types.ts src/index.ts tests/unit/middleware/review-middleware.test.ts tests/unit/middleware/review-request-metadata.test.ts tests/unit/middleware/review-resume-routing.test.ts tests/unit/middleware/public-surface.test.ts tests/unit/core/codara-middleware-stack.test.ts tests/unit/agents/runtime-input.test.ts tests/integration/permission-middleware.test.ts tests/integration/skills/skills-review-multi-tab.e2e.test.ts tests/integration/skills/skills-review-permission-options.e2e.test.ts tests/integration/skills/skills-review-user-confirmation.e2e.test.ts`
+  - `bunx tsc --noEmit --pretty false`
+  - `git diff --check`
+
+# 2026-03-22 Review Contract And Interaction Scheduler Cleanup
+
+## Plan
+
+- [x] Rename the remaining low-level `Pause*` contracts on the live source/test path to `Review*`, including `pendingReview` state and `resumeReview*` session/runtime APIs.
+- [x] Remove leftover review-control transport wording (`showPauseRequest`, `sendPausePrompt`, `onPauseResponse`) from gateway/channel paths where the product term is already `review`.
+- [x] Extract the queued interaction scheduler state out of `src/cli/app/use-cli-controller.ts` into its own module without changing runtime behavior.
+- [x] Re-run focused controller/review/gateway regressions, eslint, typecheck, and diff-check.
+
+## Review
+
+- Shared/core review contracts are now straight instead of half-renamed:
+  - `src/shared/contracts/agent-types.ts` uses `ReviewRequest`, `ReviewResumePayload`, `ReviewUI*`, and `pendingReview`
+  - `src/durability/session/session.ts` exposes `resumeReview` / `resumeReviewStream`
+  - `src/codara/review-control.ts` returns the session `AgentResult` for foreground review resumes and keeps agent-run review resumes void
+- Gateway/channel transport wording now matches the same review control-plane:
+  - `showReviewRequest`
+  - `sendReviewPrompt`
+  - `onReviewResponse`
+- CLI queue/drain state is no longer hidden in four refs inside the controller:
+  - extracted to `src/cli/app/interaction-scheduler.ts`
+  - `use-cli-controller.ts` now uses the scheduler for queued prompt/review/continuation ordering and keeps only the execution callbacks locally
+- Transport-facing review prompt context is also straight now:
+  - `src/gateway/types.ts` uses `ReviewPromptContext.review`
+  - `src/gateway/channel-bridge.ts` sends `review`, not a half-renamed `pause`
+  - channel/gateway tests now read the same `review` field as the live code path
+- Dead legacy review naming in the CLI app path is gone; the old `hil-kind` helper is no longer part of the live source tree.
+- Focused verification passed:
+  - `bun test tests/unit/cli/use-cli-controller.test.tsx tests/unit/cli/runtime-projection.test.ts tests/unit/core/codara-facade.test.ts tests/unit/core/codara-agent-runtime.test.ts tests/unit/channel/review-adapter.test.ts tests/unit/gateway/review-integration.test.ts tests/unit/middleware/review-middleware.test.ts tests/unit/agents/runtime-input.test.ts`
+  - `bun test tests/unit/gateway/channel-bridge.test.ts tests/unit/gateway/review-integration.test.ts tests/unit/channel/slack/plugin.test.ts tests/unit/channel/discord/plugin.test.ts tests/unit/channel/telegram/plugin.test.ts tests/unit/channel/feishu/plugin.test.ts tests/unit/channel/dingtalk/plugin.test.ts tests/unit/channel/wecom/plugin.test.ts`
+  - `bun test tests/unit/middleware/review-middleware.test.ts tests/unit/middleware/review-request-metadata.test.ts tests/unit/middleware/review-resume-routing.test.ts tests/unit/middleware/interaction-middleware.test.ts tests/unit/permissions/middleware.test.ts tests/integration/permission-middleware.test.ts tests/unit/core/codara-middleware-stack.test.ts tests/unit/core/codara-facade.test.ts tests/unit/core/codara-agent-runtime.test.ts tests/unit/cli/transcript-model.test.ts tests/unit/cli/solidified-transcript.test.ts tests/unit/cli/runtime-projection.test.ts tests/unit/cli/shell-app.test.ts tests/unit/cli/use-cli-controller.test.tsx tests/unit/agents/runtime-input.test.ts tests/unit/agents/agent.test.ts tests/unit/agents/subagent.test.ts tests/unit/channel/review-adapter.test.ts tests/unit/channel/sse-channel.test.ts tests/unit/gateway/review-integration.test.ts`
+  - `bunx eslint src/shared/contracts/agent-types.ts src/shared/contracts/channel.ts src/core/middleware/review.ts src/core/middleware/index.ts src/core/middleware/permission/runtime.ts src/codara/types.ts src/codara/review-control.ts src/cli/app/interaction-scheduler.ts src/cli/app/use-cli-controller.ts src/cli/app/runtime-projection.ts src/cli/app/view-state.ts src/cli/app/review-form-state.ts src/durability/session/session.ts`
+  - `bunx eslint src/gateway/types.ts src/gateway/channel-bridge.ts src/gateway/gateway.ts src/integration/channel/contracts.ts src/integration/channel/qq/plugin.ts src/integration/channel/slack/plugin.ts src/integration/channel/discord/plugin.ts src/integration/channel/telegram/plugin.ts src/integration/channel/feishu/plugin.ts src/integration/channel/dingtalk/plugin.ts src/integration/channel/wecom/plugin.ts tests/unit/gateway/channel-bridge.test.ts tests/unit/gateway/review-integration.test.ts tests/unit/channel/slack/plugin.test.ts tests/unit/channel/discord/plugin.test.ts tests/unit/channel/telegram/plugin.test.ts tests/unit/channel/feishu/plugin.test.ts tests/unit/channel/dingtalk/plugin.test.ts tests/unit/channel/wecom/plugin.test.ts`
   - `bunx tsc --noEmit --pretty false`
   - `git diff --check`

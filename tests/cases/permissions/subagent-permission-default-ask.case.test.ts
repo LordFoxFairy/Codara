@@ -23,7 +23,7 @@ describe('case: subagent permission default ask', () => {
     expect(first.output).toContain('SUBAGENT_PERMISSION_PARENT_DONE');
     expect(first.output).toContain('Task waiting for review');
     expect(first.output).toContain('Waiting for approval on bash');
-    expect(first.output).not.toContain('HIL action:');
+    expect(first.output).not.toContain('Review action:');
 
     const second = await runRealCliCase({
       cwd: projectRoot,
@@ -36,6 +36,6 @@ describe('case: subagent permission default ask', () => {
     expect(second.output).not.toContain('Delegated task is waiting for review.');
     expect(second.output).not.toContain('Task waiting for review');
     expect(second.output).not.toContain('Permission Review');
-    expect(second.output).not.toContain('HIL action:');
+    expect(second.output).not.toContain('Review action:');
   });
 });

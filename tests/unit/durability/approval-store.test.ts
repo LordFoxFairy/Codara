@@ -3,9 +3,9 @@ import {mkdtemp, rm} from 'node:fs/promises';
 import {tmpdir} from 'node:os';
 import path from 'node:path';
 import {createApprovalFileStore} from '@durability/approval-store';
-import type {PauseRequest} from '@shared/contracts/agent-types';
+import type {ReviewRequest} from '@shared/contracts/agent-types';
 
-function makePauseRequest(id: string, description: string, toolName: string): PauseRequest {
+function makeReviewRequest(id: string, description: string, toolName: string): ReviewRequest {
   return {
     id,
     description,
@@ -36,7 +36,7 @@ describe('FileApprovalStore', () => {
         sessionId: 'session-task-run',
         agentRunId: 'task-run-1',
         childSessionId: 'child-session-1',
-        pauseRequest: makePauseRequest('approval-task-run', 'Subagent approval required', 'dangerous_tool'),
+        reviewRequest: makeReviewRequest('approval-task-run', 'Subagent approval required', 'dangerous_tool'),
       });
 
       const reopened = createApprovalFileStore({rootDir});
@@ -48,7 +48,7 @@ describe('FileApprovalStore', () => {
         childSessionId: 'child-session-1',
         description: 'Subagent approval required',
         toolName: 'dangerous_tool',
-        pauseRequest: expect.objectContaining({
+        reviewRequest: expect.objectContaining({
           id: 'approval-task-run',
           description: 'Subagent approval required',
         }),
@@ -68,19 +68,19 @@ describe('FileApprovalStore', () => {
         sessionId: 'session-task-run',
         agentRunId: 'task-run-1',
         childSessionId: 'child-session-1',
-        pauseRequest: makePauseRequest('approval-task-run-1', 'Subagent approval required', 'dangerous_tool'),
+        reviewRequest: makeReviewRequest('approval-task-run-1', 'Subagent approval required', 'dangerous_tool'),
       });
       store.upsertAgentRunApproval({
         sessionId: 'session-task-run',
         agentRunId: 'task-run-2',
         childSessionId: 'child-session-2',
-        pauseRequest: makePauseRequest('approval-task-run-2', 'Subagent approval required', 'dangerous_tool'),
+        reviewRequest: makeReviewRequest('approval-task-run-2', 'Subagent approval required', 'dangerous_tool'),
       });
       store.upsertAgentRunApproval({
         sessionId: 'session-task-run',
         agentRunId: 'task-run-3',
         childSessionId: 'child-session-3',
-        pauseRequest: makePauseRequest('approval-task-run-3', 'Subagent approval required', 'dangerous_tool'),
+        reviewRequest: makeReviewRequest('approval-task-run-3', 'Subagent approval required', 'dangerous_tool'),
       });
 
       store.removeByAgentRunId('task-run-1');

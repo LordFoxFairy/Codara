@@ -1,8 +1,8 @@
 import {randomUUID} from 'node:crypto';
 import {useCallback, useEffect, useMemo, useRef, useState} from 'react';
-import type {Codara, CodaraRuntimeEvent, SessionState, AgentRunQuerySummary} from '@/index';
+import type {Codara, CodaraRuntimeEvent, SessionState} from '@/index';
 import {AIMessageChunk, type BaseMessage} from '@langchain/core/messages';
-import type {PauseRequest, ResumePayload} from '@core/agent';
+import type {ReviewRequest} from '@core/agent';
 import {
   backspaceComposerText,
   createComposerState,
@@ -17,7 +17,7 @@ import {
   replaceComposerText,
 } from '../composer/state';
 import type {CliComposerState} from '../composer/types';
-import {hasTranscriptContent, shouldHideRuntimeEventForTranscript} from '../transcript/model';
+import {hasTranscriptContent} from '../transcript/model';
 import {
   activateCliReviewFocusedSelection,
   advanceCliReviewToNextStep,
@@ -41,7 +41,13 @@ import {
   finalizeBufferedInteractionText,
   sealActiveTurnAtRuntimeBoundary,
 } from './interaction-turn';
+import {
+  CliInteractionScheduler,
+  type AgentCompletionContinuation,
+  type QueuedReviewResponseInteraction,
+} from './interaction-scheduler';
 import {readCliReviewProjection, syncProjectedReview} from './runtime-projection';
+import {routeCliRuntimeEvent, type TrackedTaskBatch} from './runtime-event-router';
 import type {
   CliActiveTurn,
   CliInteractionSurface,
@@ -85,8 +91,8 @@ export interface CliController {
   runState: CliRunState;
   interactionState: CliInteractionState;
   sessionState: SessionState;
-  taskPanelVisible: boolean;
-  toggleTaskPanel: () => void;
+  agentRunPanelVisible: boolean;
+  toggleAgentRunsPanel: () => void;
   expandedAll: boolean;
   toggleExpand: () => void;
   insertText: (input: string) => void;
@@ -122,156 +128,6 @@ export interface CliController {
   permissionRejectSilent: () => void;
 }
 
-function shouldRefreshAuxiliaryState(event: CodaraRuntimeEvent): boolean {
-  return event.kind === 'agent' || event.kind === 'hil';
-}
-
-function shouldSealActiveTurnForRuntimeEvent(event: CodaraRuntimeEvent): boolean {
-  if ((event.kind !== 'tool' && event.kind !== 'agent') || shouldHideRuntimeEventForTranscript(event)) {
-    return false;
-  }
-
-  return event.phase === 'start' || event.phase === 'end';
-}
-
-function isDelegatedTaskReviewPause(event: CodaraRuntimeEvent): boolean {
-  return event.kind === 'agent' && event.phase === 'update' && event.status === 'paused';
-}
-
-function summarizeBackgroundTaskNotice(event: CodaraRuntimeEvent): CliNotice | undefined {
-  if (event.kind !== 'agent') {
-    return undefined;
-  }
-
-  const detail = event.detail?.trim();
-  const suffix = detail ? `: ${detail}` : '';
-
-  if (event.phase === 'end') {
-    if (event.status === 'error') {
-      return {
-        id: `task-notice:${event.id}`,
-        level: 'error',
-        content: `Background task failed${suffix}`,
-      };
-    }
-  }
-
-  if (event.phase === 'update' && event.status === 'paused') {
-    return {
-      id: `task-notice:${event.id}`,
-      level: 'warning',
-      content: `Background task waiting for review${suffix}`,
-    };
-  }
-
-  return undefined;
-}
-
-function parseAgentRunIdFromEvent(event: CodaraRuntimeEvent): string | undefined {
-  const candidate = event.parentId ?? event.id;
-  const prefix = 'agent-run:';
-  return candidate.startsWith(prefix) ? candidate.slice(prefix.length) : undefined;
-}
-
-interface TrackedTaskBatch {
-  sessionId: string;
-  expectedCount: number;
-  runIds: Set<string>;
-  continuationStarted: boolean;
-}
-
-interface AgentCompletionHandoff {
-  runId: string;
-  label: string;
-  agentName: string;
-  status: 'completed' | 'failed';
-  summary?: string;
-  errorMessage?: string;
-  toolUseCount?: number;
-  totalTokens?: number;
-}
-
-interface AgentCompletionContinuation {
-  sessionId: string;
-  runs: AgentCompletionHandoff[];
-}
-
-interface QueuedSessionPromptInteraction {
-  kind: 'session_prompt';
-  prompt: string;
-}
-
-interface QueuedReviewResponseInteraction {
-  kind: 'review_response';
-  reviewId: string;
-  payload: ResumePayload;
-  streamKind: 'review' | 'pause';
-}
-
-type QueuedCliInteraction = QueuedSessionPromptInteraction | QueuedReviewResponseInteraction;
-
-function isRunIdBackedTaskStartEvent(event: CodaraRuntimeEvent): boolean {
-  return event.kind === 'agent'
-    && event.phase === 'start'
-    && event.status === 'running'
-    && Boolean(parseAgentRunIdFromEvent(event));
-}
-
-function isPendingTaskPlaceholderStartEvent(event: CodaraRuntimeEvent): boolean {
-  return event.kind === 'agent'
-    && event.phase === 'start'
-    && event.detail === 'pending';
-}
-
-function isAgentRunTerminal(run: AgentRunQuerySummary): boolean {
-  return run.status === 'completed' || run.status === 'failed';
-}
-
-function toAgentCompletionHandoff(run: AgentRunQuerySummary): AgentCompletionHandoff {
-  return {
-    runId: run.runId,
-    label: run.label,
-    agentName: run.agentName,
-    status: run.status === 'failed' ? 'failed' : 'completed',
-    ...(run.summary?.trim() ? {summary: run.summary.trim()} : {}),
-    ...(run.errorMessage?.trim() ? {errorMessage: run.errorMessage.trim()} : {}),
-    ...(typeof run.toolUseCount === 'number' ? {toolUseCount: run.toolUseCount} : {}),
-    ...(typeof run.totalTokens === 'number' ? {totalTokens: run.totalTokens} : {}),
-  };
-}
-
-function resolveAgentCompletionContinuation(
-  codara: Codara,
-  event: CodaraRuntimeEvent,
-  batch: TrackedTaskBatch | undefined,
-): AgentCompletionContinuation | undefined {
-  if (event.kind !== 'agent' || event.phase !== 'end') {
-    return undefined;
-  }
-
-  const runId = parseAgentRunIdFromEvent(event);
-  if (!runId || !batch || batch.continuationStarted || batch.sessionId !== event.sessionId || !batch.runIds.has(runId)) {
-    return undefined;
-  }
-
-  const agentRuns = codara.getAgentRunSummaries();
-  const batchRuns = [...batch.runIds]
-    .map((batchRunId) => agentRuns.find((run) => run.runId === batchRunId && run.sessionId === event.sessionId))
-    .filter((run): run is AgentRunQuerySummary => Boolean(run));
-  if (
-    batch.runIds.size < batch.expectedCount
-    || batchRuns.length !== batch.runIds.size
-    || batchRuns.some((run) => !isAgentRunTerminal(run))
-  ) {
-    return undefined;
-  }
-
-  return {
-    sessionId: event.sessionId,
-    runs: batchRuns.map(toAgentCompletionHandoff),
-  };
-}
-
 function appendUniqueNotices(current: CliNotice[], incoming: readonly CliNotice[]): CliNotice[] {
   if (incoming.length === 0) {
     return current;
@@ -282,8 +138,8 @@ function appendUniqueNotices(current: CliNotice[], incoming: readonly CliNotice[
   return unique.length > 0 ? [...current, ...unique] : current;
 }
 
-function deriveRunStateFromAgentState(nextAgentState: {status: string; pendingPause?: unknown}): CliRunState {
-  return nextAgentState.pendingPause || nextAgentState.status === 'paused'
+function deriveRunStateFromAgentState(nextAgentState: {status: string; pendingReview?: unknown}): CliRunState {
+  return nextAgentState.pendingReview || nextAgentState.status === 'paused'
     ? {status: 'paused'}
     : {status: 'done'};
 }
@@ -324,16 +180,16 @@ function suppressActiveTurnForReview(
 async function waitForForegroundReviewResumeReady(
   codara: Codara,
   reviewId: string,
-  refreshCoreState: () => Promise<{status: string; pendingPause?: PauseRequest}>,
+  refreshCoreState: () => Promise<{status: string; pendingReview?: ReviewRequest}>,
 ): Promise<void> {
   const deadline = Date.now() + REVIEW_RESUME_READY_TIMEOUT_MS;
 
   while (Date.now() <= deadline) {
     const nextAgentState = await refreshCoreState();
-    const activePause = readCliReviewProjection(codara, {
-      pendingPause: nextAgentState.pendingPause,
-    }).activePause;
-    if (activePause?.id !== reviewId) {
+    const activeReviewRequest = readCliReviewProjection(codara, {
+      pendingReview: nextAgentState.pendingReview,
+    }).activeReviewRequest;
+    if (activeReviewRequest?.id !== reviewId) {
       return;
     }
     if (nextAgentState.status !== 'running') {
@@ -378,20 +234,17 @@ export function useCliController(options: UseCliControllerOptions): CliControlle
     promptBlocked: false,
   });
   const [sessionState, setSessionState] = useState<SessionState>(() => codara.getState());
-  const [taskPanelVisible, setTaskPanelVisible] = useState(true);
+  const [agentRunPanelVisible, setAgentRunPanelVisible] = useState(true);
   const [expandedAll, setExpandedAll] = useState(false);
   const [commandOutput, setCommandOutput] = useState<{content: string; commandName?: string; scrollOffset: number} | undefined>();
-  const isRunningRef = useRef(false);
+  const interactionScheduler = useMemo(() => new CliInteractionScheduler<AgentCompletionContinuation>(), []);
   const initialPromptSentRef = useRef(false);
   const initialCoreStateLoadedRef = useRef(false);
   const reviewRef = useRef<CliReviewState | undefined>(undefined);
   const autoActionsRef = useRef([...reviewAutoActions]);
-  const handledAutoPauseIdsRef = useRef<Set<string>>(new Set());
+  const handledAutoReviewIdsRef = useRef<Set<string>>(new Set());
   const pendingBackgroundNoticesRef = useRef<CliNotice[]>([]);
   const trackedTaskBatchRef = useRef<TrackedTaskBatch | undefined>(undefined);
-  const pendingAgentContinuationRef = useRef<AgentCompletionContinuation | undefined>(undefined);
-  const queuedInteractionsRef = useRef<QueuedCliInteraction[]>([]);
-  const activeInteractionKindRef = useRef<CliInteractionKind | undefined>(undefined);
   const settlingDismissedReviewIdRef = useRef<string | undefined>(undefined);
   const runQueuedSessionPromptRef = useRef<(prompt: string) => Promise<void>>(async () => undefined);
 
@@ -427,19 +280,20 @@ export function useCliController(options: UseCliControllerOptions): CliControlle
 
   const syncInteractionState = useCallback(() => {
     setInteractionState((current) => {
+      const snapshot = interactionScheduler.readSnapshot();
       const focusedSurface = resolveFocusedSurface(current.focusedSurface, reviewRef.current);
       return {
         focusedSurface,
-        activeKind: activeInteractionKindRef.current,
-        pendingCount: queuedInteractionsRef.current.length + (pendingAgentContinuationRef.current ? 1 : 0),
+        activeKind: snapshot.activeKind,
+        pendingCount: snapshot.pendingCount,
         promptBlocked: focusedSurface !== 'prompt',
       };
     });
-  }, []);
+  }, [interactionScheduler]);
 
   const suppressSettlingDismissedReview = useCallback((
     candidate: CliReviewState | undefined,
-    pendingPause?: PauseRequest,
+    pendingReview?: ReviewRequest,
   ): CliReviewState | undefined => {
     const settlingReviewId = settlingDismissedReviewIdRef.current;
     if (!settlingReviewId) {
@@ -448,7 +302,7 @@ export function useCliController(options: UseCliControllerOptions): CliControlle
 
     const stillPresent = (
       codara.listReviewItems().some((item) => item.reviewId === settlingReviewId)
-      || pendingPause?.id === settlingReviewId
+      || pendingReview?.id === settlingReviewId
     );
 
     if (!stillPresent) {
@@ -464,29 +318,24 @@ export function useCliController(options: UseCliControllerOptions): CliControlle
   }, [codara]);
 
   const beginInteraction = useCallback((kind: CliInteractionKind) => {
-    isRunningRef.current = true;
-    activeInteractionKindRef.current = kind;
+    interactionScheduler.begin(kind);
     syncInteractionState();
-  }, [syncInteractionState]);
+  }, [interactionScheduler, syncInteractionState]);
 
   const endInteraction = useCallback(() => {
-    isRunningRef.current = false;
-    activeInteractionKindRef.current = undefined;
+    interactionScheduler.end();
     syncInteractionState();
-  }, [syncInteractionState]);
+  }, [interactionScheduler, syncInteractionState]);
 
   const enqueueSessionPrompt = useCallback((prompt: string) => {
-    queuedInteractionsRef.current.push({kind: 'session_prompt', prompt});
+    interactionScheduler.enqueueSessionPrompt(prompt);
     syncInteractionState();
-  }, [syncInteractionState]);
+  }, [interactionScheduler, syncInteractionState]);
 
   const enqueueReviewResponse = useCallback((interaction: Omit<QueuedReviewResponseInteraction, 'kind'>) => {
-    queuedInteractionsRef.current.push({
-      kind: 'review_response',
-      ...interaction,
-    });
+    interactionScheduler.enqueueReviewResponse(interaction);
     syncInteractionState();
-  }, [syncInteractionState]);
+  }, [interactionScheduler, syncInteractionState]);
 
   const flushPendingBackgroundNotices = useCallback(() => {
     if (pendingBackgroundNoticesRef.current.length === 0) {
@@ -508,8 +357,8 @@ export function useCliController(options: UseCliControllerOptions): CliControlle
   const refreshAuxiliaryState = useCallback(() => {
     const projection = readCliReviewProjection(codara);
     const nextReview = suppressSettlingDismissedReview(syncProjectedReview(codara, reviewRef.current, {
-      pendingPause: projection.activePause,
-    }), projection.activePause);
+      pendingReview: projection.activeReviewRequest,
+    }), projection.activeReviewRequest);
     setSessionState(codara.getState());
     setReviewState(nextReview);
     setActiveTurn((current) => suppressActiveTurnForReview(current, nextReview));
@@ -518,7 +367,7 @@ export function useCliController(options: UseCliControllerOptions): CliControlle
 
   const refreshCoreState = useCallback(async () => {
     const nextAgentState = await codara.hydrate();
-    if (!nextAgentState.pendingPause) {
+    if (!nextAgentState.pendingReview) {
       const queuedReviews = codara.listReviewItems();
       if (queuedReviews.length > 0) {
         await codara.focusReview(queuedReviews[0]!.reviewId);
@@ -527,8 +376,8 @@ export function useCliController(options: UseCliControllerOptions): CliControlle
     setCoreMessages(nextAgentState.messages);
     setSessionState(codara.getState());
     const nextReview = suppressSettlingDismissedReview(syncProjectedReview(codara, reviewRef.current, {
-      pendingPause: nextAgentState.pendingPause,
-    }), nextAgentState.pendingPause);
+      pendingReview: nextAgentState.pendingReview,
+    }), nextAgentState.pendingReview);
     setReviewState(nextReview);
     setActiveTurn((current) => suppressActiveTurnForReview(current, nextReview));
     syncInteractionState();
@@ -536,8 +385,8 @@ export function useCliController(options: UseCliControllerOptions): CliControlle
   }, [codara, setReviewState, suppressSettlingDismissedReview, syncInteractionState]);
 
   const runAgentCompletionContinuation = useCallback(async (continuation: AgentCompletionContinuation) => {
-    if (isRunningRef.current) {
-      pendingAgentContinuationRef.current = continuation;
+    if (interactionScheduler.isRunning()) {
+      interactionScheduler.setPendingContinuation(continuation);
       syncInteractionState();
       return;
     }
@@ -593,21 +442,18 @@ export function useCliController(options: UseCliControllerOptions): CliControlle
     } finally {
       endInteraction();
     }
-  }, [beginInteraction, codara, endInteraction, refreshCoreState, reportError, syncInteractionState]);
+  }, [beginInteraction, codara, endInteraction, interactionScheduler, refreshCoreState, reportError, syncInteractionState]);
 
   const runQueuedReviewResponse = useCallback(async (interaction: QueuedReviewResponseInteraction): Promise<void> => {
     beginInteraction('review_response');
     setRunState({status: 'running'});
 
     try {
-      if (interaction.streamKind === 'review') {
-        await codara.focusReview(interaction.reviewId);
-      } else {
-        await waitForForegroundReviewResumeReady(codara, interaction.reviewId, refreshCoreState);
-      }
+      await waitForForegroundReviewResumeReady(codara, interaction.reviewId, refreshCoreState);
+      await codara.focusReview(interaction.reviewId);
 
       const resumeStream = codara.streamInteraction({
-        kind: interaction.streamKind,
+        kind: 'review',
         payload: interaction.payload,
         config: {streamMode: 'messages'},
       });
@@ -627,7 +473,7 @@ export function useCliController(options: UseCliControllerOptions): CliControlle
 
       setActiveTurn(undefined);
       const nextAgentState = await refreshCoreState();
-      setRunState(nextAgentState.pendingPause || nextAgentState.status === 'paused'
+      setRunState(nextAgentState.pendingReview || nextAgentState.status === 'paused'
         ? {status: 'paused'}
         : {status: 'done'});
     } catch (error) {
@@ -639,10 +485,10 @@ export function useCliController(options: UseCliControllerOptions): CliControlle
   }, [beginInteraction, codara, endInteraction, refreshCoreState, reportError]);
 
   const drainScheduledInteractions = useCallback(() => {
-    if (isRunningRef.current) {
+    if (interactionScheduler.isRunning()) {
       return;
     }
-    const nextInteraction = queuedInteractionsRef.current.shift();
+    const nextInteraction = interactionScheduler.takeNextInteraction();
     if (nextInteraction) {
       syncInteractionState();
       void (async () => {
@@ -656,83 +502,49 @@ export function useCliController(options: UseCliControllerOptions): CliControlle
       })();
       return;
     }
-    if (!pendingAgentContinuationRef.current) {
+    const continuation = interactionScheduler.takePendingContinuation();
+    if (!continuation) {
       syncInteractionState();
       return;
     }
-    const continuation = pendingAgentContinuationRef.current;
-    pendingAgentContinuationRef.current = undefined;
     syncInteractionState();
     void (async () => {
       await runAgentCompletionContinuation(continuation);
       flushPendingBackgroundNotices();
       drainScheduledInteractions();
     })();
-  }, [flushPendingBackgroundNotices, runQueuedReviewResponse, runAgentCompletionContinuation, syncInteractionState]);
+  }, [flushPendingBackgroundNotices, interactionScheduler, runQueuedReviewResponse, runAgentCompletionContinuation, syncInteractionState]);
 
   useEffect(() => {
     setRuntimeEvents([]);
     return codara.subscribeRuntimeEvents((event: CodaraRuntimeEvent) => {
-      const foregroundDelegatedReview = isDelegatedTaskReviewPause(event);
-      if (isPendingTaskPlaceholderStartEvent(event)) {
-        const currentBatch = trackedTaskBatchRef.current;
-        if (!currentBatch || currentBatch.sessionId !== event.sessionId || currentBatch.continuationStarted) {
-          trackedTaskBatchRef.current = {
-            sessionId: event.sessionId,
-            expectedCount: 1,
-            runIds: new Set(),
-            continuationStarted: false,
-          };
-        } else {
-          currentBatch.expectedCount += 1;
-        }
-      }
-      if (isRunIdBackedTaskStartEvent(event)) {
-        const runId = parseAgentRunIdFromEvent(event)!;
-        const currentBatch = trackedTaskBatchRef.current;
-        if (!currentBatch || currentBatch.sessionId !== event.sessionId || currentBatch.continuationStarted) {
-          trackedTaskBatchRef.current = {
-            sessionId: event.sessionId,
-            expectedCount: 1,
-            runIds: new Set([runId]),
-            continuationStarted: false,
-          };
-        } else {
-          currentBatch.runIds.add(runId);
-          currentBatch.expectedCount = Math.max(currentBatch.expectedCount, currentBatch.runIds.size);
-        }
-      }
+      const route = routeCliRuntimeEvent({
+        codara,
+        event,
+        trackedTaskBatch: trackedTaskBatchRef.current,
+        interactionRunning: interactionScheduler.isRunning(),
+      });
+      trackedTaskBatchRef.current = route.trackedTaskBatch;
+
       setRuntimeEvents((current) => [...current, event].slice(-40));
-      if (shouldSealActiveTurnForRuntimeEvent(event)) {
+      if (route.shouldSealActiveTurn) {
         setActiveTurn((current) => sealActiveTurnAtRuntimeBoundary(current));
       }
-      const completionContinuation = resolveAgentCompletionContinuation(codara, event, trackedTaskBatchRef.current);
-      if (completionContinuation && trackedTaskBatchRef.current) {
-        trackedTaskBatchRef.current.continuationStarted = true;
+
+      if (route.immediateNotice) {
+        setNotices((current) => appendUniqueNotices(current, [route.immediateNotice!]));
       }
-      if (!isRunningRef.current && !foregroundDelegatedReview) {
-        const notice = summarizeBackgroundTaskNotice(event);
-        if (notice) {
-          setNotices((current) => appendUniqueNotices(current, [
-            notice,
-          ]));
-        }
-        if (completionContinuation) {
-          void runAgentCompletionContinuation(completionContinuation);
-        }
-      } else if (!foregroundDelegatedReview) {
-        const notice = summarizeBackgroundTaskNotice(event);
-        const queued = [
-          ...(notice ? [notice] : []),
-        ];
-        if (queued.length > 0) {
-          pendingBackgroundNoticesRef.current = appendUniqueNotices(
-            pendingBackgroundNoticesRef.current,
-            queued,
-          );
-        }
-        if (completionContinuation) {
-          pendingAgentContinuationRef.current = completionContinuation;
+      if (route.queuedNotice) {
+        pendingBackgroundNoticesRef.current = appendUniqueNotices(
+          pendingBackgroundNoticesRef.current,
+          [route.queuedNotice],
+        );
+      }
+      if (route.completionContinuation) {
+        if (route.runContinuationImmediately) {
+          void runAgentCompletionContinuation(route.completionContinuation);
+        } else {
+          interactionScheduler.setPendingContinuation(route.completionContinuation);
           syncInteractionState();
           queueMicrotask(() => {
             drainScheduledInteractions();
@@ -740,18 +552,18 @@ export function useCliController(options: UseCliControllerOptions): CliControlle
         }
       }
 
-      if (foregroundDelegatedReview) {
+      if (route.foregroundDelegatedReview) {
         endInteraction();
         setRunState({status: 'paused'});
         refreshAuxiliaryState();
         return;
       }
 
-      if (!isRunningRef.current && shouldRefreshAuxiliaryState(event)) {
+      if (route.shouldRefreshAuxiliaryState) {
         refreshAuxiliaryState();
       }
     });
-  }, [codara, drainScheduledInteractions, endInteraction, refreshAuxiliaryState, runAgentCompletionContinuation, syncInteractionState]);
+  }, [codara, drainScheduledInteractions, endInteraction, interactionScheduler, refreshAuxiliaryState, runAgentCompletionContinuation, syncInteractionState]);
 
   const runSlashCommand = useCallback(async (prompt: string) => {
     const result = await codara.executeCommand(prompt);
@@ -876,7 +688,7 @@ export function useCliController(options: UseCliControllerOptions): CliControlle
       return;
     }
 
-    if (isRunningRef.current) {
+    if (interactionScheduler.isRunning()) {
       enqueueSessionPrompt(prompt);
       return;
     }
@@ -884,7 +696,7 @@ export function useCliController(options: UseCliControllerOptions): CliControlle
     await runQueuedSessionPrompt(prompt);
     flushPendingBackgroundNotices();
     drainScheduledInteractions();
-  }, [drainScheduledInteractions, enqueueSessionPrompt, flushPendingBackgroundNotices, runQueuedSessionPrompt]);
+  }, [drainScheduledInteractions, enqueueSessionPrompt, flushPendingBackgroundNotices, interactionScheduler, runQueuedSessionPrompt]);
 
   useEffect(() => {
     return () => {
@@ -957,8 +769,8 @@ export function useCliController(options: UseCliControllerOptions): CliControlle
     applyComposerChange((current) => moveComposerCursorEnd(current));
   }, [applyComposerChange]);
 
-  const toggleTaskPanel = useCallback(() => {
-    setTaskPanelVisible(current => !current);
+  const toggleAgentRunsPanel = useCallback(() => {
+    setAgentRunPanelVisible(current => !current);
   }, []);
 
   const toggleExpand = useCallback(() => {
@@ -1163,13 +975,12 @@ export function useCliController(options: UseCliControllerOptions): CliControlle
     const focusedReview = codara.getFocusedReview();
     const reviewMatchesCurrentReview = focusedReview?.request.id === prepared.review.request.id;
 
-    if (isRunningRef.current) {
+    if (interactionScheduler.isRunning()) {
       const busyReview = {...prepared.review, busy: true};
       setReviewState(busyReview);
       enqueueReviewResponse({
         reviewId: prepared.review.request.id,
         payload: prepared.payload,
-        streamKind: reviewMatchesCurrentReview ? 'review' : 'pause',
       });
       return;
     }
@@ -1221,7 +1032,7 @@ export function useCliController(options: UseCliControllerOptions): CliControlle
 
           setActiveTurn(undefined);
           const nextAgentState = await refreshCoreState();
-          setRunState(nextAgentState.pendingPause || nextAgentState.status === 'paused'
+          setRunState(nextAgentState.pendingReview || nextAgentState.status === 'paused'
             ? {status: 'paused'}
             : {status: 'done'});
           return;
@@ -1242,12 +1053,12 @@ export function useCliController(options: UseCliControllerOptions): CliControlle
             while (Date.now() <= deadline) {
               const nextAgentState = await refreshCoreState();
               const reviews = codara.listReviewItems();
-              const activePause = readCliReviewProjection(codara, {
-                pendingPause: nextAgentState.pendingPause,
-              }).activePause;
+              const activeReviewRequest = readCliReviewProjection(codara, {
+                pendingReview: nextAgentState.pendingReview,
+              }).activeReviewRequest;
               const stillShowingCurrent = reviews.some((review) => review.reviewId === currentReviewId);
               if (!stillShowingCurrent) {
-                const nextReview = syncProjectedReview(codara, reviewRef.current, {pendingPause: activePause});
+                const nextReview = syncProjectedReview(codara, reviewRef.current, {pendingReview: activeReviewRequest});
                 setReviewState(nextReview);
                 syncInteractionState();
                 setRunState(deriveRunStateFromAgentState(nextAgentState));
@@ -1269,11 +1080,10 @@ export function useCliController(options: UseCliControllerOptions): CliControlle
         return;
       }
 
-      if (!reviewMatchesCurrentReview) {
-        await waitForForegroundReviewResumeReady(codara, prepared.review.request.id, refreshCoreState);
-      }
+      await waitForForegroundReviewResumeReady(codara, prepared.review.request.id, refreshCoreState);
+      await codara.focusReview(prepared.review.request.id);
       const resumeStream = codara.streamInteraction({
-        kind: reviewMatchesCurrentReview ? 'review' : 'pause',
+        kind: 'review',
         payload: prepared.payload,
         config: {streamMode: 'messages'},
       });
@@ -1291,7 +1101,7 @@ export function useCliController(options: UseCliControllerOptions): CliControlle
 
       setActiveTurn(undefined);
       const nextAgentState = await refreshCoreState();
-      setRunState(nextAgentState.pendingPause || nextAgentState.status === 'paused'
+      setRunState(nextAgentState.pendingReview || nextAgentState.status === 'paused'
         ? {status: 'paused'}
         : {status: 'done'});
     } catch (error) {
@@ -1301,7 +1111,7 @@ export function useCliController(options: UseCliControllerOptions): CliControlle
       endInteraction();
       drainScheduledInteractions();
     }
-  }, [appendNotice, beginInteraction, codara, drainScheduledInteractions, endInteraction, enqueueReviewResponse, refreshCoreState, reportError, review, setReviewState, syncInteractionState]);
+  }, [appendNotice, beginInteraction, codara, drainScheduledInteractions, endInteraction, enqueueReviewResponse, interactionScheduler, refreshCoreState, reportError, review, setReviewState, syncInteractionState]);
 
   const quickReviewAction = useCallback((actionId: string) => {
     // Three-stage permission flow: intercept dont_ask_again and deny
@@ -1336,15 +1146,15 @@ export function useCliController(options: UseCliControllerOptions): CliControlle
   }, [submitReviewAction]);
 
   useEffect(() => {
-    if (!review || isRunningRef.current || autoActionsRef.current.length === 0) {
+    if (!review || runState.status === 'running' || autoActionsRef.current.length === 0) {
       return;
     }
 
-    if (handledAutoPauseIdsRef.current.has(review.request.id)) {
+    if (handledAutoReviewIdsRef.current.has(review.request.id)) {
       return;
     }
 
-    handledAutoPauseIdsRef.current.add(review.request.id);
+    handledAutoReviewIdsRef.current.add(review.request.id);
     const nextAction = autoActionsRef.current.shift();
     if (!nextAction) {
       return;
@@ -1355,7 +1165,7 @@ export function useCliController(options: UseCliControllerOptions): CliControlle
     }, REVIEW_AUTO_ACTION_DELAY_MS);
 
     return () => clearTimeout(timer);
-  }, [review, submitReviewAction]);
+  }, [review, runState.status, submitReviewAction]);
 
   const hasConversation = useMemo(
     () => hasTranscriptContent({
@@ -1402,8 +1212,8 @@ export function useCliController(options: UseCliControllerOptions): CliControlle
     submitText,
     focusReviewWindow,
     focusPromptWindow,
-    taskPanelVisible,
-    toggleTaskPanel,
+    agentRunPanelVisible,
+    toggleAgentRunsPanel,
     expandedAll,
     toggleExpand,
     moveReviewLeft,
@@ -1468,10 +1278,10 @@ export function useCliController(options: UseCliControllerOptions): CliControlle
     submitDraft,
     submitReviewActionCommand,
     submitText,
-    taskPanelVisible,
+    agentRunPanelVisible,
     toggleExpand,
     toggleReviewFocus,
-    toggleTaskPanel,
+    toggleAgentRunsPanel,
     coreMessages,
   ]);
 }

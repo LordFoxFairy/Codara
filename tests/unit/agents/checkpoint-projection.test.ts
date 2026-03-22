@@ -24,7 +24,7 @@ describe('agent checkpoint state helpers', () => {
     expect(publicState.sessionId).toBe('session-runtime');
     expect(publicState.agentType).toBe('subagent');
     expect(checkpointState.agentType).toBe('subagent');
-    expect(checkpointState.pendingPause?.id).toBe('pause-1');
+    expect(checkpointState.pendingReview?.id).toBe('pause-1');
 
     (publicState.context.nested as {flag: boolean}).flag = false;
     (checkpointState.values.todo as {done: boolean}).done = true;
@@ -100,7 +100,7 @@ describe('agent checkpoint state helpers', () => {
     nextState.messages.push(new HumanMessage('next'));
     nextState.context = {nested: {flag: false}};
     nextState.values = {todo: {done: true}};
-    nextState.pendingPause = undefined;
+    nextState.pendingReview = undefined;
 
     applyAgentStateSnapshot(runtimeState, nextState);
 
@@ -122,7 +122,7 @@ function createRuntimeState(): MutableAgentState {
   });
 
   state.status = 'paused';
-  state.pendingPause = {
+  state.pendingReview = {
     id: 'pause-1',
     description: 'Need approval',
     action: {

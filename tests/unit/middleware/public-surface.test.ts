@@ -5,7 +5,7 @@ describe('middleware public surface', () => {
   it('should expose first-class budget and summary middleware builders, but keep low-level helpers internal', () => {
     expect('createBudgetMiddleware' in middleware).toBe(true);
     expect('createLoggingMiddleware' in middleware).toBe(true);
-    expect('createHILMiddleware' in middleware).toBe(true);
+    expect('createReviewMiddleware' in middleware).toBe(true);
     expect('createSummaryMiddleware' in middleware).toBe(true);
     expect('createSkillsMiddleware' in middleware).toBe(true);
 

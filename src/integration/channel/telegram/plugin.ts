@@ -1,6 +1,6 @@
 import {z} from 'zod';
 import type {ChannelPlugin, GatewayListenContext} from '@integration/channel/contracts';
-import type {OutboundContext, PausePromptContext, SendResult, StopHandle} from '@gateway/types';
+import type {OutboundContext, ReviewPromptContext, SendResult, StopHandle} from '@gateway/types';
 import {TelegramApi, TelegramApiError} from './api';
 import {startTelegramPolling} from './polling';
 import type {TelegramCallbackQuery} from './types';
@@ -73,19 +73,19 @@ export const telegramPlugin: ChannelPlugin<TelegramAccount> = {
   },
 
   async startListening(ctx: GatewayListenContext<TelegramAccount>): Promise<StopHandle> {
-    const {account, accountId, onMessage, onPauseResponse} = ctx;
+    const {account, accountId, onMessage, onReviewResponse} = ctx;
 
     const onCallbackQuery = (query: TelegramCallbackQuery) => {
       // Acknowledge the button press
       account.api.answerCallbackQuery(query.id).catch(() => {});
 
-      // Parse pause callback data: `pause:{pauseId}:{actionId}`
-      if (query.data?.startsWith('pause:') && onPauseResponse) {
+      // Parse review callback data: `review:{reviewId}:{actionId}`
+      if (query.data?.startsWith('review:') && onReviewResponse) {
         const parts = query.data.split(':');
         if (parts.length >= 3) {
-          const pauseId = parts[1];
+          const reviewId = parts[1];
           const actionId = parts.slice(2).join(':');
-          onPauseResponse(pauseId, {actionId, from: query.from});
+          onReviewResponse(reviewId, {actionId, from: query.from});
         }
       }
     };
@@ -129,13 +129,13 @@ export const telegramPlugin: ChannelPlugin<TelegramAccount> = {
     await account.api.sendChatAction(ctx.to, 'typing');
   },
 
-  async sendPausePrompt(account: TelegramAccount, ctx: PausePromptContext): Promise<SendResult> {
+  async sendReviewPrompt(account: TelegramAccount, ctx: ReviewPromptContext): Promise<SendResult> {
     const keyboard = [
-      ctx.actions.map((a) => ({
-        text: a.label,
-        callback_data: `pause:${ctx.pause.id}:${a.id}`,
-      })),
-    ];
+        ctx.actions.map((a) => ({
+          text: a.label,
+          callback_data: `review:${ctx.review.id}:${a.id}`,
+        })),
+      ];
 
     try {
       const result = await account.api.sendMessage(ctx.to, ctx.text, {

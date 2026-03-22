@@ -1,4 +1,4 @@
-import type {PauseRequest, PauseUIActionOption, PauseUIFormOption, PauseUIFormTab} from '@core/agent';
+import type {ReviewRequest, ReviewUIActionOption, ReviewUIFormOption, ReviewUIFormTab} from '@core/agent';
 import type {ReviewBlockingScope} from '../../codara/types';
 import type {PermissionStage} from './review-types';
 
@@ -47,13 +47,13 @@ export interface CliActiveTurn {
 
 export type CliReviewFocus = 'actions' | 'input';
 
-export interface CliReviewAction extends PauseUIActionOption {
+export interface CliReviewAction extends ReviewUIActionOption {
   kind: 'primary' | 'secondary' | 'danger';
 }
 
-export type CliReviewFormOption = PauseUIFormOption;
+export type CliReviewFormOption = ReviewUIFormOption;
 
-export type CliReviewFormTab = Omit<PauseUIFormTab, 'options'> & {
+export type CliReviewFormTab = Omit<ReviewUIFormTab, 'options'> & {
   options: CliReviewFormOption[];
 };
 
@@ -66,7 +66,7 @@ export interface CliReviewFormState {
 }
 
 export interface CliReviewState {
-  request: PauseRequest;
+  request: ReviewRequest;
   blockingScope: ReviewBlockingScope;
   actions: CliReviewAction[];
   selectedActionIndex: number;

@@ -1,4 +1,4 @@
-import type {PauseRequest, PauseReviewDecision, ResumePayload} from '@core/agent';
+import type {ReviewRequest, ReviewDecision, ReviewResumePayload} from '@core/agent';
 import type {CliReviewAutoAction} from './review-auto-action';
 import type {
   CliReviewAction,
@@ -293,7 +293,7 @@ export function shouldSpaceInsertIntoCliReviewDraft(review: CliReviewState | und
   return activeTab.options.every((option) => option.label !== answer);
 }
 
-export function resolveCliReviewActions(request: PauseRequest): CliReviewAction[] {
+export function resolveCliReviewActions(request: ReviewRequest): CliReviewAction[] {
   const configured = request.ui?.actions?.map((action) => ({
     ...action,
     kind: action.kind ?? 'secondary',
@@ -312,7 +312,7 @@ export function resolveCliReviewActions(request: PauseRequest): CliReviewAction[
 export function buildCliReviewResumePayload(
   review: CliReviewState,
   actionOverride?: CliReviewAutoAction,
-): ResumePayload {
+): ReviewResumePayload {
   const action = actionOverride
     ? resolveRequestedAction(review.actions, actionOverride.action)
     : resolveCliReviewFocusedFooterAction(review) ?? review.actions[review.selectedActionIndex];
@@ -359,7 +359,7 @@ export function buildCliReviewResumePayload(
 export function prepareCliReviewSubmission(
   review: CliReviewState,
   actionOverride?: CliReviewAutoAction,
-): {review: CliReviewState; payload?: ResumePayload} {
+): {review: CliReviewState; payload?: ReviewResumePayload} {
   const nextReview = applyCliReviewAutoAnswers(review, actionOverride?.answers);
   const action = actionOverride
     ? resolveRequestedAction(nextReview.actions, actionOverride.action)
@@ -446,7 +446,7 @@ export function advanceCliReviewToNextStep(current: CliReviewState): CliReviewSt
 }
 
 export function resolveCliReviewFormState(
-  request: PauseRequest,
+  request: ReviewRequest,
   current: CliReviewFormState | undefined,
 ): CliReviewFormState | undefined {
   const parsed = readReviewFormConfig(request.ui);
@@ -547,10 +547,19 @@ function clearCliReviewValidation(current: CliReviewState): CliReviewState {
 function resolveRequestedAction(actions: readonly CliReviewAction[], actionId: string): CliReviewAction {
   const normalized = actionId.trim().toLowerCase();
   const resolved = actions.find((action) => action.id.toLowerCase() === normalized);
-  if (!resolved) {
-    throw new Error(`Unknown review action: ${actionId}`);
+  if (resolved) {
+    return resolved;
   }
-  return resolved;
+
+  const requestedDecision = mapActionToDecision(normalized);
+  if (requestedDecision) {
+    const fallback = actions.find((action) => mapActionToDecision(action.id) === requestedDecision);
+    if (fallback) {
+      return fallback;
+    }
+  }
+
+  throw new Error(`Unknown review action: ${actionId}`);
 }
 
 function applyCliReviewAutoAnswers(
@@ -667,7 +676,7 @@ function resolveCustomSelectionState(
     || hasCustomAnswerForActiveTab(nextForm);
 }
 
-function defaultActionForDecision(decision: PauseReviewDecision): CliReviewAction {
+function defaultActionForDecision(decision: ReviewDecision): CliReviewAction {
   switch (decision) {
     case 'approve':
       return {id: 'approve', label: 'Approve', kind: 'primary'};
@@ -678,7 +687,7 @@ function defaultActionForDecision(decision: PauseReviewDecision): CliReviewActio
   }
 }
 
-function mapActionToDecision(actionId: string): PauseReviewDecision | undefined {
+function mapActionToDecision(actionId: string): ReviewDecision | undefined {
   const normalized = actionId.trim().toLowerCase();
   if (normalized === 'reject' || normalized === 'deny') {
     return 'reject';
@@ -881,7 +890,7 @@ function isCustomAnswerValue(
   return selected.some((entry) => entry.trim().length > 0 && tab.options.every((option) => option.label !== entry));
 }
 
-function readReviewFormConfig(ui: PauseRequest['ui']): CliReviewFormState | undefined {
+function readReviewFormConfig(ui: ReviewRequest['ui']): CliReviewFormState | undefined {
   if (!ui || !ui.form || typeof ui.form !== 'object' || Array.isArray(ui.form)) {
     return undefined;
   }

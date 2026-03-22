@@ -3,7 +3,7 @@ import {
   createMiddleware,
   readExecutionMetadata,
 } from '@core/pipeline/types';
-import {parseHILToolMessagePayload} from '@core/middleware/hil';
+import {parseReviewToolMessagePayload} from '@core/middleware/review';
 import {readDelegatedAgentResult} from '@shared/delegation-result';
 import {readAgentRunLaunchResult} from '@shared/agent-run-launch';
 import {TOOL_NAMES} from '@shared/tool-display';
@@ -133,11 +133,11 @@ export class RuntimeEventsController {
     });
   }
 
-  hilResumeStarted(label: string, detail?: string): string {
+  reviewResumeStarted(label: string, detail?: string): string {
     const id = randomUUID();
     this.emit({
       id,
-      kind: 'hil',
+      kind: 'review',
       phase: 'start',
       status: 'running',
       label,
@@ -146,9 +146,9 @@ export class RuntimeEventsController {
     return id;
   }
 
-  hilResumeFinished(parentId: string, status: CodaraRuntimeEventStatus, label: string, detail?: string): void {
+  reviewResumeFinished(parentId: string, status: CodaraRuntimeEventStatus, label: string, detail?: string): void {
     this.emit({
-      kind: 'hil',
+      kind: 'review',
       phase: 'end',
       status,
       label,
@@ -306,8 +306,8 @@ export class RuntimeEventsController {
 
         try {
           const message = await handler(context);
-          const hilPayload = parseHILToolMessagePayload(message.content);
-          const status = hilPayload?.type === 'hil_pause'
+          const reviewPayload = parseReviewToolMessagePayload(message.content);
+          const status = reviewPayload?.type === 'review_pause'
             ? 'paused'
             : message.status === 'error'
               ? 'error'
@@ -328,10 +328,10 @@ export class RuntimeEventsController {
             this.emit({
               kind: 'agent',
               phase: 'end',
-              status: delegated?.reason === 'error' ? 'error' : hilPayload?.type === 'hil_pause' ? 'paused' : 'done',
+              status: delegated?.reason === 'error' ? 'error' : reviewPayload?.type === 'review_pause' ? 'paused' : 'done',
               label: delegated?.reason === 'error'
                 ? 'Subagent failed'
-                : hilPayload?.type === 'hil_pause'
+                : reviewPayload?.type === 'review_pause'
                   ? 'Subagent waiting for review'
                   : launched
                     ? 'Subagent running in background'
@@ -342,13 +342,13 @@ export class RuntimeEventsController {
             this.toolRoots.delete(`${currentToolKey}:task`);
           }
 
-          if (hilPayload?.type === 'hil_pause') {
+          if (reviewPayload?.type === 'review_pause') {
             this.emit({
-              kind: 'hil',
+              kind: 'review',
               phase: 'start',
               status: 'paused',
-              label: summarizePauseLabel(hilPayload.request.description),
-              detail: hilPayload.request.action.toolName,
+              label: summarizePauseLabel(reviewPayload.request.description),
+              detail: reviewPayload.request.action.toolName,
               parentId: toolRootId,
             });
           }

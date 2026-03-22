@@ -73,7 +73,7 @@ export async function createCliRuntime(input: {
       await seedProjectSkillFixtures(input.cwd);
       const store = createTaskFileStore({rootDir: path.join(input.cwd, '.codara', 'case-tasks')});
       const runStore = createAgentRunFileStore({
-        rootDir: path.join(input.cwd, '.codara', 'case-task-runs'),
+        rootDir: path.join(input.cwd, '.codara', 'case-agent-runs'),
       });
       return {
           codara: await createCliCaseRuntime({
@@ -126,7 +126,7 @@ export async function createCliRuntime(input: {
     }
     case 'prompt-manual-inheritance': {
       const promptRunStore = createAgentRunFileStore({
-        rootDir: path.join(input.cwd, '.codara', 'case-task-runs'),
+        rootDir: path.join(input.cwd, '.codara', 'case-agent-runs'),
       });
       return {
         codara: await createCodaraRuntime({
@@ -156,7 +156,7 @@ export async function createCliRuntime(input: {
       await seedPermissions(input.cwd, ['Read(*)', 'Grep(*)', 'Fetch(*)', 'Search(*)']);
       const store = createTaskFileStore({rootDir: path.join(input.cwd, '.codara', 'case-tasks')});
       const runStore = createAgentRunFileStore({
-        rootDir: path.join(input.cwd, '.codara', 'case-task-runs'),
+        rootDir: path.join(input.cwd, '.codara', 'case-agent-runs'),
       });
       const childModel = new CoordinatedSubagentModel();
       return {
@@ -421,7 +421,7 @@ export async function createCliRuntime(input: {
       };
     case 'subagent-permission': {
       const permissionRunStore = createAgentRunFileStore({
-        rootDir: path.join(input.cwd, '.codara', 'case-task-runs'),
+        rootDir: path.join(input.cwd, '.codara', 'case-agent-runs'),
       });
       return {
           codara: await createCodaraRuntime({
@@ -460,7 +460,7 @@ export async function createCliRuntime(input: {
           skills: false,
         }),
       };
-    case 'hil-form':
+    case 'review-form':
       return {
         codara: await createCodaraRuntime({
           cwd: input.cwd,
@@ -470,7 +470,7 @@ export async function createCliRuntime(input: {
           model: new HilFormCliModel() as unknown as BaseChatModel,
           builtinTools: false,
           skills: false,
-          hil: false,
+          review: false,
           middleware: [
             createAskUserQuestionMiddleware(),
           ],
@@ -806,7 +806,7 @@ class HilFormCliModel {
       .map((message) => parseAskUserResult(message.content))
       .find((value): value is NonNullable<typeof value> => Boolean(value));
     if (askUserResult) {
-      return new AIMessage(`HIL_FORM_DONE:${Object.keys(askUserResult.answers).join(',') || 'empty'}`);
+      return new AIMessage(`REVIEW_FORM_DONE:${Object.keys(askUserResult.answers).join(',') || 'empty'}`);
     }
 
     return new AIMessage({

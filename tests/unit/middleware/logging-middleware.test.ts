@@ -8,7 +8,7 @@ import {tmpdir} from 'node:os';
 import path from 'node:path';
 import {
   createDailySessionFileLogSink,
-  createHILMiddleware,
+  createReviewMiddleware,
   createLoggingMiddleware,
   type MiddlewareLogRecord,
   type ToolCallContext,
@@ -180,14 +180,14 @@ describe('createLoggingMiddleware', () => {
     expect(errorLog?.errorMessage).toContain('model boom');
   });
 
-  it('should capture HIL interaction details in tool logs', async () => {
+  it('should capture review interaction details in tool logs', async () => {
     const logs: MiddlewareLogRecord[] = [];
     const loggingMiddleware = createLoggingMiddleware({
       level: 'debug',
       logger: (record) => logs.push(record),
     });
 
-    const hilMiddleware = createHILMiddleware({
+    const hilMiddleware = createReviewMiddleware({
       interruptOn: {
         bash: {
           description: 'Permission review required',
@@ -215,18 +215,18 @@ describe('createLoggingMiddleware', () => {
       async () => new ToolMessage({content: 'executed', tool_call_id: 'call_hil_log_1'})
     );
 
-    expect(JSON.parse(String(paused.content))).toMatchObject({type: 'hil_pause'});
+    expect(JSON.parse(String(paused.content))).toMatchObject({type: 'review_pause'});
 
     const pauseLog = logs.find((record) => {
       return record.stage === 'wrapToolCall'
         && record.event === 'stage_end'
-        && record.toolMetadata?.toolResultType === 'hil_pause';
+        && record.toolMetadata?.toolResultType === 'review_pause';
     });
     expect(pauseLog).toBeDefined();
     expect(pauseLog?.toolArgsText).toContain('"command":"git status"');
-    expect(pauseLog?.toolContent).toContain('"type":"hil_pause"');
+    expect(pauseLog?.toolContent).toContain('"type":"review_pause"');
     expect(pauseLog?.toolMetadata).toMatchObject({
-      toolResultType: 'hil_pause',
+      toolResultType: 'review_pause',
       interactionDecision: 'ask',
       interactionChannel: 'permission-center',
       interactionActorType: 'subagent',

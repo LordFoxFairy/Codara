@@ -1,4 +1,4 @@
-import type {PauseRequest} from '@core/agent';
+import type {ReviewRequest} from '@core/agent';
 import type {CliReviewState} from './view-state';
 export type {CliReviewAutoAction} from './review-auto-action';
 export {
@@ -38,7 +38,7 @@ import {
 
 export function syncCliReviewState(
   current: CliReviewState | undefined,
-  request: PauseRequest | undefined,
+  request: ReviewRequest | undefined,
 ): CliReviewState | undefined {
   if (!request) {
     return undefined;

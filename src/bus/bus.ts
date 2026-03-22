@@ -307,7 +307,7 @@ export class CodaraBus {
    *
    * Classifies each AgentStreamOutput chunk into the appropriate event type
    * and emits it through the bus. Handles AIMessageChunk text/thinking/tool_call
-   * classification, custom HIL pause chunks, and tool result messages.
+   * classification, custom review pause chunks, and tool result messages.
    */
   private async pipeStream(
     sessionId: string,
@@ -321,20 +321,20 @@ export class CodaraBus {
         if (next.done) {
           const result = next.value as {
             reason?: string;
-            state?: {pendingPause?: unknown};
+            state?: {pendingReview?: unknown};
           } | undefined;
 
           // Emit review_required if a blocking review is active.
           // Don't emit 'done' since the session is paused, not finished.
-          if (result?.state?.pendingPause) {
-            const pause = result.state.pendingPause as {
+          if (result?.state?.pendingReview) {
+            const pause = result.state.pendingReview as {
               review?: {allowedDecisions?: unknown[]};
             };
             this.events.emit({
               type: 'review_required',
               sessionId,
               requestId,
-              request: result.state.pendingPause,
+              request: result.state.pendingReview,
               actions: pause.review?.allowedDecisions ?? [],
             });
             break;
@@ -418,11 +418,11 @@ export class CodaraBus {
       return;
     }
 
-    // Custom chunk — HIL pause event.
+    // Custom chunk — review pause event.
     if (isCustomChunk(chunk)) {
-      if (chunk.type === 'hil_event' && chunk.payload) {
+      if (chunk.type === 'review_event' && chunk.payload) {
         const payload = chunk.payload as {type?: string; request?: unknown};
-        if (payload.type === 'hil_pause') {
+        if (payload.type === 'review_pause') {
           // The review_required event is emitted from the result handler in pipeStream.
           // This is an in-flight notification; no separate event needed here.
         }
@@ -456,7 +456,7 @@ function isCustomChunk(chunk: unknown): chunk is AgentStreamCustomChunk {
     chunk !== null &&
     typeof chunk === 'object' &&
     'type' in chunk &&
-    (chunk as Record<string, unknown>).type === 'hil_event'
+    (chunk as Record<string, unknown>).type === 'review_event'
   );
 }
 

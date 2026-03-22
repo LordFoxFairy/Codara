@@ -5,7 +5,7 @@ import {tool} from '@langchain/core/tools';
 import {z} from 'zod';
 import {createAgent} from '@core/agent';
 import {createAgentMemoryCheckpointer} from '@durability/checkpoint';
-import {createHILMiddleware} from '@core/middleware';
+import {createReviewMiddleware} from '@core/middleware';
 
 class SequenceModel {
   private index = 0;
@@ -80,7 +80,7 @@ describe('agent checkpoint source semantics', () => {
       checkpointer,
       sessionId: 'checkpoint-source-resume',
       middleware: [
-        createHILMiddleware({
+        createReviewMiddleware({
           interruptOn: {
             bash: true,
           },

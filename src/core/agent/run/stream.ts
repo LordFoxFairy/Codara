@@ -6,7 +6,7 @@ import type {
   AgentStreamMode,
   AgentStreamOutput,
 } from '../models/agent';
-import type {HILToolMessagePayload} from '@core/middleware/hil';
+import type {ReviewToolMessagePayload} from '@core/middleware/review';
 
 export interface AgentStreamWriter {
   stream: AsyncGenerator<AgentStreamOutput, AgentResult, void>;
@@ -14,7 +14,7 @@ export interface AgentStreamWriter {
   emitModelUpdate(message: AIMessage): Promise<void>;
   emitToolUpdate(message: ToolMessage): Promise<void>;
   emitValues(messages: BaseMessage[]): Promise<void>;
-  emitCustom(input: {runId: string; turn: number; payload: HILToolMessagePayload}): Promise<void>;
+  emitCustom(input: {runId: string; turn: number; payload: ReviewToolMessagePayload}): Promise<void>;
   finish(result: AgentResult): void;
   fail(error: unknown): void;
 }
@@ -24,7 +24,7 @@ export function createStreamWriter(config: AgentStreamConfig | undefined): Agent
   const stream = createAsyncStream<AgentStreamOutput, AgentResult>();
   const push = (
     mode: AgentStreamMode,
-    chunk: AIMessageChunk | {messages: BaseMessage[]} | {model: {messages: [AIMessage]}} | {tools: {messages: [ToolMessage]}} | {type: 'hil_event'; runId: string; turn: number; payload: HILToolMessagePayload},
+    chunk: AIMessageChunk | {messages: BaseMessage[]} | {model: {messages: [AIMessage]}} | {tools: {messages: [ToolMessage]}} | {type: 'review_event'; runId: string; turn: number; payload: ReviewToolMessagePayload},
   ) => {
     stream.push(modes.length === 1 ? chunk : [mode, chunk]);
   };
@@ -70,7 +70,7 @@ export function createStreamWriter(config: AgentStreamConfig | undefined): Agent
     },
     async emitCustom(input) {
       if (modes.includes('custom')) {
-        push('custom', {type: 'hil_event', runId: input.runId, turn: input.turn, payload: input.payload});
+        push('custom', {type: 'review_event', runId: input.runId, turn: input.turn, payload: input.payload});
       }
     },
     finish: stream.finish,

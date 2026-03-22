@@ -2,7 +2,7 @@ import {describe, expect, it} from 'bun:test';
 import {createAgentFileCheckpointer, createAgentMemoryCheckpointer, createCodara, createCodaraRuntime} from '@/index';
 import {putManualCheckpoint} from '@durability/checkpoint';
 import {createApprovalFileStore, createApprovalMemoryStore} from '@durability/approval-store';
-import {createHILMiddleware} from '@core/middleware';
+import {createReviewMiddleware} from '@core/middleware';
 import type {BaseChatModel} from '@langchain/core/language_models/chat_models';
 import {AIMessage, AIMessageChunk, HumanMessage, SystemMessage, ToolMessage, type BaseMessage, type ToolCall} from '@langchain/core/messages';
 import {tool} from '@langchain/core/tools';
@@ -271,14 +271,14 @@ describe('Codara facade runtime', () => {
   });
 
   it('should filter persisted task run summaries to the current runtime session', async () => {
-    const projectRoot = await mkdtemp(path.join(tmpdir(), 'codara-runtime-task-runs-'));
+    const projectRoot = await mkdtemp(path.join(tmpdir(), 'codara-runtime-agent-runs-'));
     const agentRunStore = createAgentRunFileStore({
-      rootDir: path.join(projectRoot, '.codara', 'task-runs'),
+      rootDir: path.join(projectRoot, '.codara', 'agent-runs'),
     });
 
     agentRunStore.start({
       runId: 'run-session-a',
-      parentSessionId: 'runtime-task-run-session-a',
+      parentSessionId: 'runtime-agent-run-session-a',
       label: 'Delegating Agent: Inspect isolated child work',
       agentName: 'Agent',
     });
@@ -292,7 +292,7 @@ describe('Codara facade runtime', () => {
 
     agentRunStore.start({
       runId: 'run-session-b',
-      parentSessionId: 'runtime-task-run-session-b',
+      parentSessionId: 'runtime-agent-run-session-b',
       label: 'Delegating Agent: Inspect another child work',
       agentName: 'Agent',
     });
@@ -307,7 +307,7 @@ describe('Codara facade runtime', () => {
     const runtime = await createRuntimeForTest({
       cwd: projectRoot,
       projectRoot,
-      sessionId: 'runtime-task-run-session-a',
+      sessionId: 'runtime-agent-run-session-a',
       agentRunStore,
       model: new EchoModel() as unknown as BaseChatModel,
       skills: false,
@@ -315,13 +315,14 @@ describe('Codara facade runtime', () => {
 
     expect(runtime.getAgentRunSummaries()).toEqual([
       expect.objectContaining({
-        parentSessionId: 'runtime-task-run-session-a',
+        parentSessionId: 'runtime-agent-run-session-a',
         label: 'Delegating Agent: Inspect isolated child work',
         agentName: 'Agent',
         status: 'completed',
       }),
     ]);
     expect(runtime.getAgentRunSummaries()).toHaveLength(1);
+    expect(runtime.getAgentRunSummaries()[0]).not.toHaveProperty('sessionId');
   });
 
   it('should rebind a caller-provided Agent tool to the runtime stores while preserving child tools', async () => {
@@ -496,7 +497,7 @@ describe('Codara facade runtime', () => {
       sessionId: 'runtime-approval-queue-session',
       model: new MultiDelegatedApprovalModel() as unknown as BaseChatModel,
       skills: false,
-      hil: {
+      review: {
         interruptOn: {
           dangerous_tool: true,
         },
@@ -517,13 +518,13 @@ describe('Codara facade runtime', () => {
     try {
       const launched = await runtime.invoke('start the concurrent delegated approvals');
       expect(launched.state.status).not.toBe('paused');
-      expect(launched.state.pendingPause).toBeUndefined();
+      expect(launched.state.pendingReview).toBeUndefined();
 
       await waitForCondition(() => runtime.listReviewItems().length === 2);
       const reviews = runtime.listReviewItems();
       expect(reviews).toHaveLength(2);
       expect(reviews.map((review) => review.anchor.agentRunId).sort()).toEqual(['call_task_alpha', 'call_task_beta']);
-      expect(runtime.getAgentState().pendingPause).toBeUndefined();
+      expect(runtime.getAgentState().pendingReview).toBeUndefined();
       await waitForCondition(() => (
         runtimeEvents.filter((event) => (
           event.kind === 'agent'
@@ -570,13 +571,13 @@ describe('Codara facade runtime', () => {
   });
 
   it('should recover a reopened persisted running task run for the current runtime session', async () => {
-    const projectRoot = await mkdtemp(path.join(tmpdir(), 'codara-runtime-task-run-recovery-'));
-    const rootDir = path.join(projectRoot, '.codara', 'task-runs');
+    const projectRoot = await mkdtemp(path.join(tmpdir(), 'codara-runtime-agent-run-recovery-'));
+    const rootDir = path.join(projectRoot, '.codara', 'agent-runs');
 
     const originalStore = createAgentRunFileStore({rootDir});
     originalStore.start({
       runId: 'run-recovery',
-      parentSessionId: 'runtime-task-run-recovery-session',
+      parentSessionId: 'runtime-agent-run-recovery-session',
       label: 'Delegating research: inspect a restart boundary',
       agentName: 'research',
     });
@@ -585,7 +586,7 @@ describe('Codara facade runtime', () => {
     const runtime = await createRuntimeForTest({
       cwd: projectRoot,
       projectRoot,
-      sessionId: 'runtime-task-run-recovery-session',
+      sessionId: 'runtime-agent-run-recovery-session',
       agentRunStore: reopenedStore,
       model: new EchoModel() as unknown as BaseChatModel,
       skills: false,
@@ -605,7 +606,7 @@ describe('Codara facade runtime', () => {
   it('should resume a reopened persisted task approval through the task runtime control plane', async () => {
     const projectRoot = await mkdtemp(path.join(tmpdir(), 'codara-runtime-paused-task-reopen-'));
     const agentRunStore = createAgentRunFileStore({
-      rootDir: path.join(projectRoot, '.codara', 'task-runs'),
+      rootDir: path.join(projectRoot, '.codara', 'agent-runs'),
     });
     const approvalStore = createApprovalFileStore({
       rootDir: path.join(projectRoot, '.codara', 'approvals'),
@@ -674,7 +675,7 @@ describe('Codara facade runtime', () => {
         }),
       ],
       childMiddleware: [
-        createHILMiddleware({
+        createReviewMiddleware({
           interruptOn: {
             dangerous_tool: true,
           },
@@ -765,7 +766,7 @@ describe('Codara facade runtime', () => {
       messages: [],
       context: {},
       values: {},
-      pendingPause: {
+      pendingReview: {
         id: 'global-stale-pause',
         description: 'stale global pause',
         action: {
@@ -800,7 +801,7 @@ describe('Codara facade runtime', () => {
 
       const result = await runtime.invoke('hello');
       expect(result.reason).toBe('complete');
-      expect(result.state.pendingPause).toBeUndefined();
+      expect(result.state.pendingReview).toBeUndefined();
       await expect(stat(path.join(projectRoot, '.codara', 'sessions', sessionId, 'checkpoints', 'latest.json'))).resolves.toBeDefined();
     } finally {
       if (originalHome === undefined) {
@@ -1055,10 +1056,10 @@ command-name: review-helper
       const paused = await codara.invoke('plan this product');
       expect(paused.reason).toBe('complete');
       expect(paused.state.status).toBe('paused');
-      expect(paused.state.pendingPause?.action.toolName).toBe('AskUserQuestion');
-      expect(paused.state.pendingPause?.ui?.form?.tabs[0]?.label).toBe('Domain');
+      expect(paused.state.pendingReview?.action.toolName).toBe('AskUserQuestion');
+      expect(paused.state.pendingReview?.ui?.form?.tabs[0]?.label).toBe('Domain');
 
-      const resumed = await codara.resumePause({
+      await codara.resumeReview({
         action: 'submit',
         metadata: {
           form: {
@@ -1068,7 +1069,8 @@ command-name: review-helper
           },
         },
       });
-      expect(String(resumed.state.messages[resumed.state.messages.length - 1]?.content)).toBe('ASK_USER_DONE');
+      const resumedState = await codara.hydrate();
+      expect(String(resumedState.messages[resumedState.messages.length - 1]?.content)).toBe('ASK_USER_DONE');
     } finally {
       await rm(root, {recursive: true, force: true});
     }

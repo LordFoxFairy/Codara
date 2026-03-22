@@ -5,7 +5,7 @@ import type {StructuredToolInterface} from '@langchain/core/tools';
 import {tool} from '@langchain/core/tools';
 import {z} from 'zod';
 import {createAgent} from '@core/agent';
-import {createHILMiddleware, type HILPauseRequest} from '@core/middleware';
+import {createReviewMiddleware, type ReviewRequest} from '@core/middleware';
 
 class MultiToolPauseModel {
   private step = 0;
@@ -34,7 +34,7 @@ class MultiToolPauseModel {
   }
 }
 
-describe('HIL multi-tab pause metadata', () => {
+describe('Review multi-tab pause metadata', () => {
   it('should emit the first pause request and stop later serial tools in the same turn', async () => {
     const model = new MultiToolPauseModel();
 
@@ -65,8 +65,8 @@ describe('HIL multi-tab pause metadata', () => {
       }
     );
 
-    const pauseRequests: HILPauseRequest[] = [];
-    const hilMiddleware = createHILMiddleware({
+    const pauseRequests: ReviewRequest[] = [];
+    const hilMiddleware = createReviewMiddleware({
       interruptOn: {
         write_file: {
           channel: 'approval-center',
@@ -95,7 +95,7 @@ describe('HIL multi-tab pause metadata', () => {
 
     expect(result.reason).toBe('complete');
     expect(model.invocations).toHaveLength(1);
-    expect(String(result.state.messages[result.state.messages.length - 1]?.content)).toContain('"type":"hil_pause"');
+    expect(String(result.state.messages[result.state.messages.length - 1]?.content)).toContain('"type":"review_pause"');
 
     expect(writeInvokeCount).toBe(0);
     expect(emailInvokeCount).toBe(0);

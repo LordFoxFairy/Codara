@@ -21,7 +21,7 @@ interface UseCliInteractionInputOptions {
   onPromptMoveCursorEnd: () => void;
   onPromptSubmit: () => void;
   onExit: () => void;
-  onToggleTaskPanel?: () => void;
+  onToggleAgentRunsPanel?: () => void;
   onToggleExpand?: () => void;
   onFocusReview?: () => void;
   onReviewMoveLeft?: () => void;
@@ -73,7 +73,7 @@ export function useCliInteractionInput(options: UseCliInteractionInputOptions): 
     onPromptMoveCursorEnd,
     onPromptSubmit,
     onExit,
-    onToggleTaskPanel,
+    onToggleAgentRunsPanel,
     onToggleExpand,
     onFocusReview,
     onReviewMoveLeft,
@@ -295,8 +295,8 @@ export function useCliInteractionInput(options: UseCliInteractionInputOptions): 
       onExit();
       return;
     }
-    if (action === 'toggle-task-panel') {
-      onToggleTaskPanel?.();
+    if (action === 'toggle-agent-runs-panel') {
+      onToggleAgentRunsPanel?.();
       return;
     }
     if (action === 'toggle-expand') {

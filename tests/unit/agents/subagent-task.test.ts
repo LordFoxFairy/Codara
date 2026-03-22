@@ -141,7 +141,7 @@ describe('task delegation + task store', () => {
 
     expect(result.reason).toBe('complete');
     expect(result.state.status).toBe('idle');
-    expect(result.state.pendingPause).toBeUndefined();
+    expect(result.state.pendingReview).toBeUndefined();
     expect(delegatedMessage).toBeDefined();
     expect(String(delegatedMessage?.content)).toContain('Subagent started in background.');
     expect(launch).toMatchObject({
@@ -204,7 +204,7 @@ describe('task delegation + task store', () => {
 
     expect(result.reason).toBe('complete');
     expect(result.state.status).toBe('idle');
-    expect(result.state.pendingPause).toBeUndefined();
+    expect(result.state.pendingReview).toBeUndefined();
     expect(taskMessage).toBeDefined();
     expect(String(taskMessage?.content)).toContain('Subagent started in background.');
     expect(launch).toMatchObject({

@@ -1,7 +1,7 @@
 import {AIMessage, HumanMessage, SystemMessage, ToolMessage, type BaseMessage, type ToolCall} from '@langchain/core/messages';
 import type {CodaraRuntimeEvent} from '@/index';
 import {parseAskUserResult} from '@core/middleware';
-import {parseHILToolMessagePayload} from '@core/middleware/hil';
+import {parseReviewToolMessagePayload} from '@core/middleware/review';
 import {readMessageText} from '@shared/messages';
 import {readDelegatedAgentResult} from '@shared/delegation-result';
 import {readAgentRunLaunchResult} from '@shared/agent-run-launch';
@@ -13,7 +13,7 @@ import {isInvalidTaskCloseoutResponse} from '../task-closeout';
 import {formatTokenCount} from '../utils/format';
 import {computeEditDiff, type DiffData} from './diff-compute';
 
-export type TranscriptRole = 'system' | 'warning' | 'user' | 'assistant' | 'tool' | 'task' | 'review' | 'command' | 'error';
+export type TranscriptRole = 'system' | 'warning' | 'user' | 'assistant' | 'tool' | 'agent' | 'review' | 'command' | 'error';
 
 export interface SolidifiedItem {
   id: string;
@@ -451,7 +451,7 @@ function buildRuntimeEventItems(events: readonly CodaraRuntimeEvent[], nowTimest
       : {outputLines: undefined, allOutputLines: undefined, totalOutputLines: 0};
     items.push({
       id: activeId(startEvent.id),
-      role: 'task',
+      role: 'agent',
       content: `⚙ ${agentType}(${extractTaskArgs(startEvent.label)})\n${summary}`,
       toolMeta: {
         toolName: TOOL_NAMES.AGENT,
@@ -523,7 +523,7 @@ function buildRuntimeEventItems(events: readonly CodaraRuntimeEvent[], nowTimest
     const runningDisplay = buildRunningTaskDisplay(startEvent, childActivities, nowTimestamp);
     items.push({
       id: activeId(taskId),
-      role: 'task',
+      role: 'agent',
       content: `⚙ ${agentType}(${extractTaskArgs(startEvent.label)})\n${runningDisplay.summaryLine}`,
       toolMeta: {
         toolName: TOOL_NAMES.AGENT,
@@ -795,8 +795,8 @@ function truncateOutput(detail?: string, maxLines: number = TOOL_META_MAX_LINES)
 function mapRuntimeEventRole(kind: CodaraRuntimeEvent['kind']): TranscriptRole {
   switch (kind) {
     case 'agent':
-      return 'task';
-    case 'hil':
+      return 'agent';
+    case 'review':
       return 'review';
     case 'command':
     case 'summary':
@@ -971,15 +971,15 @@ function buildToolResultItems(
     return [];
   }
 
-  const hilPayload = parseHILToolMessagePayload(message.content);
-  if (hilPayload?.type === 'hil_pause') {
+  const reviewPayload = parseReviewToolMessagePayload(message.content);
+  if (reviewPayload?.type === 'review_pause') {
     return [];
   }
-  if (hilPayload?.type === 'hil_deny') {
+  if (reviewPayload?.type === 'review_deny') {
     return [{
       id: messageId,
       role: 'error',
-      content: hilPayload.reason,
+      content: reviewPayload.reason,
     }];
   }
 
@@ -1015,7 +1015,7 @@ function buildToolResultItems(
 
     return [{
       id: messageId,
-      role: 'task',
+      role: 'agent',
       content: `${taskMeta.icon} ${taskMeta.displayName}(${taskMeta.args ?? ''})\n${taskMeta.summaryLine}`,
       toolMeta: taskMeta,
     }];
@@ -1180,7 +1180,7 @@ function tryComputeDiff(toolName: string, toolArgs: unknown): DiffData | undefin
 }
 
 export function shouldHideRuntimeEventForTranscript(event: CodaraRuntimeEvent): boolean {
-  if (event.kind === 'hil') {
+  if (event.kind === 'review') {
     return true;
   }
 
@@ -1213,12 +1213,12 @@ export function shouldHideRuntimeEventForTranscript(event: CodaraRuntimeEvent): 
     return true;
   }
 
-  const hilPayload = parseHILToolMessagePayload(event.detail);
-  return hilPayload?.type === 'hil_pause';
+  const reviewPayload = parseReviewToolMessagePayload(event.detail);
+  return reviewPayload?.type === 'review_pause';
 }
 
 function buildRuntimeCoverageFingerprint(item: TranscriptItem): string | undefined {
-  if ((item.role !== 'tool' && item.role !== 'task') || !item.toolMeta) {
+  if ((item.role !== 'tool' && item.role !== 'agent') || !item.toolMeta) {
     return undefined;
   }
 

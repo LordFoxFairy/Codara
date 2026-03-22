@@ -20,7 +20,7 @@ export interface Session {
   messageCount: number;
 }
 
-export interface PauseRequest {
+export interface ReviewRequest {
   request: Record<string, unknown>;
   actions: Array<{ label: string; value: string }>;
 }
@@ -30,7 +30,7 @@ export type StreamStatus = "idle" | "streaming" | "thinking" | "paused";
 
 /** Lightweight runtime event received via SSE for UI status display. */
 export interface RuntimeEvent {
-  kind: "model" | "tool" | "task" | "turn" | "hil" | "command" | "summary" | "hook";
+  kind: "model" | "tool" | "agent" | "turn" | "review" | "command" | "summary" | "hook";
   phase: "start" | "update" | "end";
   status: "running" | "done" | "paused" | "error";
   label: string;

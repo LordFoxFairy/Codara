@@ -1,6 +1,6 @@
 import {z} from 'zod';
 import type {ChannelPlugin, GatewayListenContext} from '@integration/channel/contracts';
-import type {OutboundContext, PausePromptContext, SendResult, StopHandle} from '@gateway/types';
+import type {OutboundContext, ReviewPromptContext, SendResult, StopHandle} from '@gateway/types';
 import {FeishuApi} from './api';
 import {startFeishuWebhook} from './webhook';
 
@@ -41,18 +41,18 @@ function resolveEnvValue(value: string): string {
 }
 
 /**
- * Build a Feishu interactive card JSON for pause prompt (HIL).
+ * Build a Feishu interactive card JSON for a review prompt.
  */
-function buildPauseCard(
+function buildReviewCard(
   text: string,
-  pauseId: string,
+  reviewId: string,
   actions: Array<{id: string; label: string; style: 'approve' | 'reject' | 'edit'}>,
 ): string {
   const buttons = actions.map((a) => ({
     tag: 'button',
     text: {tag: 'plain_text', content: a.label},
     type: a.style === 'approve' ? 'primary' : a.style === 'reject' ? 'danger' : 'default',
-    value: {action: a.id, pauseId},
+    value: {action: a.id, reviewId},
   }));
 
   const card = {
@@ -102,14 +102,14 @@ export const feishuPlugin: ChannelPlugin<FeishuAccount> = {
   },
 
   async startListening(ctx: GatewayListenContext<FeishuAccount>): Promise<StopHandle> {
-    const {account, accountId, onMessage, onPauseResponse} = ctx;
+    const {account, accountId, onMessage, onReviewResponse} = ctx;
 
     const onCardAction = (_actionTag: string, actionValue: unknown, userId: string) => {
-      if (!onPauseResponse) return;
+      if (!onReviewResponse) return;
 
       const value = actionValue as Record<string, string> | undefined;
-      if (value?.pauseId && value?.action) {
-        onPauseResponse(value.pauseId, {actionId: value.action, from: {id: userId}});
+      if (value?.reviewId && value?.action) {
+        onReviewResponse(value.reviewId, {actionId: value.action, from: {id: userId}});
       }
     };
 
@@ -142,9 +142,9 @@ export const feishuPlugin: ChannelPlugin<FeishuAccount> = {
     }
   },
 
-  async sendPausePrompt(account: FeishuAccount, ctx: PausePromptContext): Promise<SendResult> {
+  async sendReviewPrompt(account: FeishuAccount, ctx: ReviewPromptContext): Promise<SendResult> {
     try {
-      const cardContent = buildPauseCard(ctx.text, ctx.pause.id, ctx.actions);
+      const cardContent = buildReviewCard(ctx.text, ctx.review.id, ctx.actions);
 
       if (ctx.replyToId) {
         const result = await account.api.replyMessage(ctx.replyToId, cardContent, 'interactive');

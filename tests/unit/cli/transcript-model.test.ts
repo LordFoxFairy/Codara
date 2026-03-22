@@ -148,7 +148,7 @@ describe('cli transcript model', () => {
     expect(items[0]?.content).toContain('当前团队中组织');
   });
 
-  test('should hide AskUser tool call groups because the HIL panel already renders the interaction', () => {
+  test('should hide AskUser tool call groups because the review panel already renders the interaction', () => {
     const items = buildTranscriptItems({
       notices: [],
       coreMessages: [
@@ -185,7 +185,7 @@ describe('cli transcript model', () => {
     expect(items).toEqual([]);
   });
 
-  test('should hide AskUser tool results and HIL runtime noise after the interaction completes', () => {
+  test('should hide AskUser tool results and review runtime noise after the interaction completes', () => {
     const items = buildTranscriptItems({
       notices: [],
       coreMessages: [
@@ -209,7 +209,7 @@ describe('cli transcript model', () => {
           id: 'evt_hil_done',
           sessionId: 'session-1',
           timestamp: new Date().toISOString(),
-          kind: 'hil',
+          kind: 'review',
           phase: 'end',
           status: 'done',
           label: 'Review selection applied',
@@ -400,7 +400,7 @@ describe('cli transcript model', () => {
 
     const roles = items.map((item) => item.role);
     expect(roles).toContain('user');
-    expect(roles).toContain('task');
+    expect(roles).toContain('agent');
     expect(items.some((item) => item.content.includes('CHILD_DONE'))).toBe(true);
   });
 
@@ -434,7 +434,7 @@ describe('cli transcript model', () => {
       ],
     });
 
-    expect(items.map((item) => item.role)).toEqual(['user', 'task']);
+    expect(items.map((item) => item.role)).toEqual(['user', 'agent']);
     expect(items.some((item) => item.content.includes('任务已启动'))).toBe(false);
   });
 
@@ -566,7 +566,7 @@ describe('cli transcript model', () => {
     });
 
     expect(items).toHaveLength(1);
-    expect(items[0]?.role).toBe('task');
+    expect(items[0]?.role).toBe('agent');
     expect(items[0]?.content).toContain('⚙ Explore(Inspect child work)');
     expect(items[0]?.content).toContain('Done (3 tool uses · 14.4k tokens)');
     expect(items[0]?.content).not.toContain('CHILD_DONE');

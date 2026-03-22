@@ -1,7 +1,7 @@
 import {mkdirSync, readFileSync, readdirSync, renameSync, rmSync, writeFileSync} from 'node:fs';
 import {randomUUID} from 'node:crypto';
 import path from 'node:path';
-import type {PauseRequest} from '@shared/contracts/agent-types';
+import type {ReviewRequest} from '@shared/contracts/agent-types';
 
 export interface ApprovalRecord {
   approvalId: string;
@@ -11,7 +11,7 @@ export interface ApprovalRecord {
   toolName: string;
   createdAt: string;
   updatedAt: string;
-  pauseRequest: PauseRequest;
+  reviewRequest: ReviewRequest;
   agentRunId?: string;
   childSessionId?: string;
 }
@@ -19,7 +19,7 @@ export interface ApprovalRecord {
 export interface ApprovalAgentRunInput {
   sessionId: string;
   agentRunId: string;
-  pauseRequest: PauseRequest;
+  reviewRequest: ReviewRequest;
   childSessionId?: string;
 }
 
@@ -62,7 +62,7 @@ class InMemoryApprovalStore implements ApprovalStore {
 
   upsertAgentRunApproval(input: ApprovalAgentRunInput): ApprovalRecord {
     const normalizedAgentRunId = normalizeAgentRunId(input.agentRunId);
-    const approvalId = normalizeApprovalId(input.pauseRequest.id);
+    const approvalId = normalizeApprovalId(input.reviewRequest.id);
     const existing = this.records.get(approvalId);
     const now = new Date().toISOString();
     const next: ApprovalRecord = {
@@ -70,12 +70,12 @@ class InMemoryApprovalStore implements ApprovalStore {
       sessionId: normalizeSessionId(input.sessionId),
       source: 'agent_run',
       agentRunId: normalizedAgentRunId,
-      description: input.pauseRequest.description,
-      toolName: input.pauseRequest.action.toolName,
+      description: input.reviewRequest.description,
+      toolName: input.reviewRequest.action.toolName,
       createdAt: existing?.createdAt ?? now,
       updatedAt: now,
       ...(input.childSessionId ? {childSessionId: input.childSessionId} : {}),
-      pauseRequest: clonePauseRequest(input.pauseRequest),
+      reviewRequest: cloneReviewRequest(input.reviewRequest),
     };
     this.store(next, existing);
     return cloneApprovalRecord(next);
@@ -158,7 +158,7 @@ class FileApprovalStore implements ApprovalStore {
   upsertAgentRunApproval(input: ApprovalAgentRunInput): ApprovalRecord {
     this.ensureLoaded();
     const normalizedAgentRunId = normalizeAgentRunId(input.agentRunId);
-    const approvalId = normalizeApprovalId(input.pauseRequest.id);
+    const approvalId = normalizeApprovalId(input.reviewRequest.id);
     const existing = this.records.get(approvalId);
     const now = new Date().toISOString();
     const next: ApprovalRecord = {
@@ -166,12 +166,12 @@ class FileApprovalStore implements ApprovalStore {
       sessionId: normalizeSessionId(input.sessionId),
       source: 'agent_run',
       agentRunId: normalizedAgentRunId,
-      description: input.pauseRequest.description,
-      toolName: input.pauseRequest.action.toolName,
+      description: input.reviewRequest.description,
+      toolName: input.reviewRequest.action.toolName,
       createdAt: existing?.createdAt ?? now,
       updatedAt: now,
       ...(input.childSessionId ? {childSessionId: input.childSessionId} : {}),
-      pauseRequest: clonePauseRequest(input.pauseRequest),
+      reviewRequest: cloneReviewRequest(input.reviewRequest),
     };
     this.store(next, existing);
     this.persist(next);
@@ -303,11 +303,11 @@ function sortApprovals(records: readonly ApprovalRecord[]): ApprovalRecord[] {
 function cloneApprovalRecord(record: ApprovalRecord): ApprovalRecord {
   return {
     ...record,
-    pauseRequest: clonePauseRequest(record.pauseRequest),
+    reviewRequest: cloneReviewRequest(record.reviewRequest),
   };
 }
 
-function clonePauseRequest(request: PauseRequest): PauseRequest {
+function cloneReviewRequest(request: ReviewRequest): ReviewRequest {
   return structuredClone(request);
 }
 

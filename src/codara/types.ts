@@ -2,7 +2,7 @@ import type {BaseChatModel} from '@langchain/core/language_models/chat_models';
 import type {StructuredToolInterface} from '@langchain/core/tools';
 import type {AgentCheckpointer} from '@durability/checkpoint';
 import type {BaseMiddleware} from '@core/pipeline/types';
-import type {HILMiddlewareOptions, LoggingMiddlewareOptions} from '@core/middleware';
+import type {ReviewMiddlewareOptions, LoggingMiddlewareOptions} from '@core/middleware';
 import type {SummarySettings} from '@core/middleware/summary';
 import type {TaskStore} from '@capability/task';
 import type {AgentRunStore} from '@capability/subagent';
@@ -17,14 +17,17 @@ import type {
   AgentInput,
   AgentResumeStreamConfig,
   AgentRuntimeContext,
+  AgentResult,
   AgentStreamConfig,
   AgentStreamOutput,
-  ResumePayload,
+  ReviewResumePayload,
 } from '@core/agent';
-import type {PauseRequest} from '@shared/contracts/agent-types';
+import type {ReviewRequest} from '@shared/contracts/agent-types';
 import type {CodaraModelCatalog} from './assembly/runtime';
 
 // ── Skill & Memory Options ──
+
+export type CodaraReviewOptions = ReviewMiddlewareOptions;
 
 export interface CodaraSkillOptions {
   store?: SkillStore;
@@ -62,7 +65,7 @@ export interface CodaraOptions {
   middleware?: BaseMiddleware[];
   skills?: false | CodaraSkillOptions;
   summary?: false | SummarySettings;
-  hil?: false | HILMiddlewareOptions;
+  review?: false | CodaraReviewOptions;
   logging?: false | LoggingMiddlewareOptions;
   sessionId?: string;
   restore?: 'latest' | 'never';
@@ -83,7 +86,7 @@ export interface CodaraRuntimeOptions extends CodaraOptions {
   taskStore?: TaskStore;
   agentRunStore?: AgentRunStore;
   approvalStore?: ApprovalStore;
-  /** Optional pre-configured ChannelRegistry for multi-channel HIL routing. */
+  /** Optional pre-configured ChannelRegistry for multi-channel review routing. */
   channelRegistry?: ChannelRegistry;
 }
 
@@ -93,14 +96,13 @@ export type CreateCodaraChatModelOptions =
   Pick<CodaraOptions, 'alias' | 'config'>
   & { catalog?: CodaraModelCatalog | Promise<CodaraModelCatalog> };
 
-export type CodaraMiddlewareOptions = Pick<CodaraOptions, 'middleware' | 'hil' | 'logging'>;
+export type CodaraMiddlewareOptions = Pick<CodaraOptions, 'middleware' | 'review' | 'logging'>;
 
 // ── Query Types ──
 
 export interface AgentRunQuerySummary {
   runId: string;
-  sessionId: string;
-  parentSessionId?: string;
+  parentSessionId: string;
   label: string;
   agentName: string;
   status: 'running' | 'paused' | 'completed' | 'failed';
@@ -144,7 +146,7 @@ export interface ReviewQueryItem {
 
 export interface FocusedReviewQuery {
   item: ReviewQueryItem;
-  request: PauseRequest;
+  request: ReviewRequest;
 }
 
 export interface CodaraPromptStreamRequest {
@@ -159,27 +161,20 @@ export interface CodaraContinuationStreamRequest {
   config?: Omit<AgentStreamConfig, 'context'>;
 }
 
-export interface CodaraPauseStreamRequest {
-  kind: 'pause';
-  payload: ResumePayload;
-  config?: AgentResumeStreamConfig;
-}
-
 export interface CodaraReviewStreamRequest {
   kind: 'review';
-  payload: ResumePayload;
+  payload: ReviewResumePayload;
   config?: AgentResumeStreamConfig;
 }
 
 export type CodaraStreamRequest =
   | CodaraPromptStreamRequest
   | CodaraContinuationStreamRequest
-  | CodaraPauseStreamRequest
   | CodaraReviewStreamRequest;
 
 // ── Codara API Type ──
 
-export type Codara = Session & {
+export type Codara = Omit<Session, 'resumeReview' | 'resumeReviewStream'> & {
   listCommands(): Promise<readonly CodaraCommandSpec[]>;
   executeCommand(input: string): Promise<CodaraCommandResult>;
   listSessions(options?: import('@durability/session').SessionListOptions): Promise<SessionState[]>;
@@ -189,6 +184,6 @@ export type Codara = Session & {
   getFocusedReview(): FocusedReviewQuery | undefined;
   focusReview(reviewId: string): Promise<void>;
   streamInteraction(request: CodaraStreamRequest): AsyncGenerator<AgentStreamOutput, void, void>;
-  resumeReview(payload: ResumePayload, config?: AgentResumeStreamConfig): Promise<void>;
+  resumeReview(payload: ReviewResumePayload, config?: AgentResumeStreamConfig): Promise<AgentResult | undefined>;
   getChannelRegistry(): ChannelRegistry | undefined;
 };

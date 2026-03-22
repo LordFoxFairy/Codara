@@ -60,7 +60,7 @@ RESERVED_DEFAULT_PROFILE_PROMPT
       prompt: 'delegate prompt check',
       scenario: 'prompt-manual-inheritance',
     });
-    const runRecordPath = path.join(codaraPath, 'case-task-runs', 'call_prompt_task.json');
+    const runRecordPath = path.join(codaraPath, 'case-agent-runs', 'call_prompt_task.json');
 
     expect(result.exitCode).toBe(0);
 

@@ -1,6 +1,6 @@
 import {describe, expect, it} from 'bun:test';
 import {HumanMessage, ToolMessage, type BaseMessage, type ToolCall} from '@langchain/core/messages';
-import {createHILMiddleware, parseHILToolMessagePayload, type ToolCallContext} from '@core/middleware';
+import {createReviewMiddleware, parseReviewToolMessagePayload, type ToolCallContext} from '@core/middleware';
 
 function createToolContext(toolCall: ToolCall): ToolCallContext {
   const messages = [new HumanMessage('run')] as BaseMessage[];
@@ -27,9 +27,9 @@ function parsePauseContent(content: unknown): Record<string, unknown> {
   return JSON.parse(typeof content === 'string' ? content : String(content)) as Record<string, unknown>;
 }
 
-describe('HIL request metadata', () => {
+describe('Review request metadata', () => {
   it('should include channel/ui/metadata in pause request', async () => {
-    const middleware = createHILMiddleware({
+    const middleware = createReviewMiddleware({
       interruptOn: {
         bash: {
           description: 'Need approval for shell command',
@@ -55,7 +55,7 @@ describe('HIL request metadata', () => {
     const payload = parsePauseContent(result?.content);
     const request = payload.request as Record<string, unknown>;
 
-    expect(payload.type).toBe('hil_pause');
+    expect(payload.type).toBe('review_pause');
     expect(request.description).toBe('Need approval for shell command');
     expect(request.channel).toBe('permission-center');
     expect((request.ui as Record<string, unknown>)?.tab).toBe('Security');
@@ -69,7 +69,7 @@ describe('HIL request metadata', () => {
   });
 
   it('should allow custom review decisions in pause request', async () => {
-    const middleware = createHILMiddleware({
+    const middleware = createReviewMiddleware({
       interruptOn: {
         bash: {
           allowedDecisions: ['approve', 'reject', 'approve'],
@@ -88,7 +88,7 @@ describe('HIL request metadata', () => {
   });
 
   it('should parse structured deny payloads via helper', async () => {
-    const middleware = createHILMiddleware({
+    const middleware = createReviewMiddleware({
       resolveDecision: () => ({
         decision: 'deny',
         reason: 'Blocked by test policy',
@@ -101,13 +101,13 @@ describe('HIL request metadata', () => {
       return new ToolMessage({content: 'should-not-run', tool_call_id: 'call_meta_deny_1'});
     });
 
-    const payload = parseHILToolMessagePayload(result?.content);
-    expect(payload?.type).toBe('hil_deny');
-    expect(payload?.type === 'hil_deny' ? payload.reason : '').toBe('Blocked by test policy');
+    const payload = parseReviewToolMessagePayload(result?.content);
+    expect(payload?.type).toBe('review_deny');
+    expect(payload?.type === 'review_deny' ? payload.reason : '').toBe('Blocked by test policy');
   });
 
   it('should support wildcard interruptOn patterns', async () => {
-    const middleware = createHILMiddleware({
+    const middleware = createReviewMiddleware({
       interruptOn: {
         'bash*': true,
       },
@@ -119,11 +119,11 @@ describe('HIL request metadata', () => {
     });
 
     const payload = parsePauseContent(result?.content);
-    expect(payload.type).toBe('hil_pause');
+    expect(payload.type).toBe('review_pause');
   });
 
   it('should pass through when wildcard does not match', async () => {
-    const middleware = createHILMiddleware({
+    const middleware = createReviewMiddleware({
       interruptOn: {
         'bash*': true,
       },

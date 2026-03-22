@@ -1,5 +1,5 @@
 import { useCallback, useRef, useState } from "react";
-import type { Message, PauseRequest, RuntimeEvent, StreamStatus, ToolCall } from "../types";
+import type { Message, ReviewRequest, RuntimeEvent, StreamStatus, ToolCall } from "../types";
 
 import { API_BASE } from "../config";
 
@@ -66,7 +66,7 @@ export function useCodara({ sessionId }: UseCodaraOptions) {
   const [messages, setMessages] = useState<Message[]>([]);
   const [status, setStatus] = useState<StreamStatus>("idle");
   const [error, setError] = useState<string | null>(null);
-  const [pauseRequest, setPauseRequest] = useState<PauseRequest | null>(null);
+  const [reviewRequest, setReviewRequest] = useState<ReviewRequest | null>(null);
   const [runtimeEvent, setRuntimeEvent] = useState<RuntimeEvent | null>(null);
   const abortRef = useRef<AbortController | null>(null);
 
@@ -77,7 +77,7 @@ export function useCodara({ sessionId }: UseCodaraOptions) {
       if (!sessionId || isStreaming) return;
 
       setError(null);
-      setPauseRequest(null);
+      setReviewRequest(null);
       setRuntimeEvent(null);
 
       const userMessage: Message = {
@@ -130,7 +130,7 @@ export function useCodara({ sessionId }: UseCodaraOptions) {
           buffer = remaining;
 
           for (const event of events) {
-            processEvent(event, assistantId, setMessages, setStatus, setError, setPauseRequest, setRuntimeEvent);
+            processEvent(event, assistantId, setMessages, setStatus, setError, setReviewRequest, setRuntimeEvent);
           }
         }
 
@@ -138,7 +138,7 @@ export function useCodara({ sessionId }: UseCodaraOptions) {
         if (buffer.trim()) {
           const { events } = parseSSEChunk(buffer + "\n\n");
           for (const event of events) {
-            processEvent(event, assistantId, setMessages, setStatus, setError, setPauseRequest, setRuntimeEvent);
+            processEvent(event, assistantId, setMessages, setStatus, setError, setReviewRequest, setRuntimeEvent);
           }
         }
 
@@ -163,10 +163,10 @@ export function useCodara({ sessionId }: UseCodaraOptions) {
     setStatus("idle");
   }, []);
 
-  const resumePause = useCallback(
+  const resumeReview = useCallback(
     async (action: string) => {
       if (!sessionId) return;
-      setPauseRequest(null);
+      setReviewRequest(null);
       setStatus("streaming");
 
       // Create an assistant message to accumulate the response after resume.
@@ -211,7 +211,7 @@ export function useCodara({ sessionId }: UseCodaraOptions) {
           buffer = remaining;
 
           for (const event of events) {
-            processEvent(event, assistantId, setMessages, setStatus, setError, setPauseRequest, setRuntimeEvent);
+            processEvent(event, assistantId, setMessages, setStatus, setError, setReviewRequest, setRuntimeEvent);
           }
         }
 
@@ -219,7 +219,7 @@ export function useCodara({ sessionId }: UseCodaraOptions) {
         if (buffer.trim()) {
           const { events } = parseSSEChunk(buffer + "\n\n");
           for (const event of events) {
-            processEvent(event, assistantId, setMessages, setStatus, setError, setPauseRequest, setRuntimeEvent);
+            processEvent(event, assistantId, setMessages, setStatus, setError, setReviewRequest, setRuntimeEvent);
           }
         }
 
@@ -242,7 +242,7 @@ export function useCodara({ sessionId }: UseCodaraOptions) {
   const clearMessages = useCallback(() => {
     setMessages([]);
     setError(null);
-    setPauseRequest(null);
+    setReviewRequest(null);
     setRuntimeEvent(null);
     setStatus("idle");
   }, []);
@@ -250,7 +250,7 @@ export function useCodara({ sessionId }: UseCodaraOptions) {
   const restoreMessages = useCallback((restored: Message[]) => {
     setMessages(restored);
     setError(null);
-    setPauseRequest(null);
+    setReviewRequest(null);
     setStatus("idle");
   }, []);
 
@@ -259,11 +259,11 @@ export function useCodara({ sessionId }: UseCodaraOptions) {
     status,
     isStreaming,
     error,
-    pauseRequest,
+    reviewRequest,
     runtimeEvent,
     sendMessage,
     stopStreaming,
-    resumePause,
+    resumeReview,
     clearMessages,
     restoreMessages,
   };
@@ -275,7 +275,7 @@ function processEvent(
   setMessages: React.Dispatch<React.SetStateAction<Message[]>>,
   setStatus: React.Dispatch<React.SetStateAction<StreamStatus>>,
   setError: React.Dispatch<React.SetStateAction<string | null>>,
-  setPauseRequest: React.Dispatch<React.SetStateAction<PauseRequest | null>>,
+  setReviewRequest: React.Dispatch<React.SetStateAction<ReviewRequest | null>>,
   setRuntimeEvent: React.Dispatch<React.SetStateAction<RuntimeEvent | null>>,
 ) {
   switch (event.type) {
@@ -345,7 +345,7 @@ function processEvent(
 
     case "paused":
       setStatus("paused");
-      setPauseRequest({
+      setReviewRequest({
         request: event.data.request as Record<string, unknown>,
         actions: event.data.actions as Array<{
           label: string;

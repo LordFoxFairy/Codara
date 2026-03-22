@@ -4,7 +4,7 @@ import type {BaseChatModel} from '@langchain/core/language_models/chat_models';
 import {tool} from '@langchain/core/tools';
 import {z} from 'zod';
 import {createAgent} from '@core/agent';
-import {createHILMiddleware} from '@core/middleware';
+import {createReviewMiddleware} from '@core/middleware';
 import {createAgentRunMemoryStore} from '@capability/subagent';
 import {AGENT_TOOL_NAME, createAgentTool} from '@capability/subagent/middleware';
 import {readAgentRunLaunchResult} from '@shared/agent-run-launch';
@@ -96,7 +96,7 @@ describe('createAgentTool delegation', () => {
 
     expect(result.reason).toBe('complete');
     expect(result.state.status).toBe('idle');
-    expect(result.state.pendingPause).toBeUndefined();
+    expect(result.state.pendingReview).toBeUndefined();
     expect(String(toolMessage.content)).toContain('Subagent started in background.');
     expect(launch).toEqual({
       type: 'agent_run_started',
@@ -117,7 +117,7 @@ describe('createAgentTool delegation', () => {
     }));
   });
 
-  it('应将 Task child 的 HIL pause 提升到 parent，并在 resume 后继续 child checkpoint', async () => {
+  it('应将 Task child 的 review pause 提升到 parent，并在 resume 后继续 child checkpoint', async () => {
     let dangerousInvokeCount = 0;
     const parent = createAgent({
       model: new ScriptedModel([
@@ -161,7 +161,7 @@ describe('createAgentTool delegation', () => {
             }),
           ],
           middleware: [
-            createHILMiddleware({
+            createReviewMiddleware({
               interruptOn: {
                 dangerous_tool: true,
               },
@@ -176,7 +176,7 @@ describe('createAgentTool delegation', () => {
 
     expect(paused.reason).toBe('complete');
     expect(paused.state.status).toBe('idle');
-    expect(paused.state.pendingPause).toBeUndefined();
+    expect(paused.state.pendingReview).toBeUndefined();
     expect(dangerousInvokeCount).toBe(0);
   });
 

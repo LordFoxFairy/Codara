@@ -19,9 +19,6 @@ export function createCodaraInteractionStream(options: {
           context: request.context,
         });
         return;
-      case 'pause':
-        yield* session.resumePauseStream(request.payload, request.config);
-        return;
       case 'review':
         yield* reviewControl.streamReview(request.payload, request.config);
         return;

@@ -21,15 +21,12 @@ const agentRunRecordSchema = z.object({
   parentSessionId: z.string(),
   label: z.string(),
   agentName: z.string(),
+  subagentType: z.string().optional(),
   status: z.enum(['running', 'paused', 'completed', 'failed']),
   startedAt: z.string(),
   updatedAt: z.string(),
   endedAt: z.string().optional(),
   childSessionId: z.string().optional(),
-  prompt: z.string().optional(),
-  maxTurns: z.number().int().positive().optional(),
-  toolNames: z.array(z.string()).optional(),
-  systemMessages: z.array(z.string()).optional(),
   latestActivity: z.string().optional(),
   summary: z.string().optional(),
   errorMessage: z.string().optional(),
@@ -102,9 +99,7 @@ class InMemoryAgentRunStore implements AgentRunStore {
       if (record.parentSessionId !== normalizedSessionId || record.status !== 'running') {
         continue;
       }
-
-      const next = applyAgentRunPause(record, undefined, now);
-      this.records.set(runId, next);
+      this.records.set(runId, applyAgentRunPause(record, undefined, now));
     }
   }
 
@@ -195,7 +190,6 @@ class FileAgentRunStore implements AgentRunStore {
       if (!record || record.status !== 'running') {
         continue;
       }
-
       const next = applyAgentRunPause(record, undefined, now);
       this.storeAgentRun(next, record);
       this.writeAgentRun(next);
@@ -227,7 +221,6 @@ class FileAgentRunStore implements AgentRunStore {
       if (!entry.endsWith('.json')) {
         continue;
       }
-
       const record = this.readAgentRun(path.join(this.rootDir, entry));
       if (record) {
         this.storeAgentRun(record);
@@ -260,7 +253,6 @@ class FileAgentRunStore implements AgentRunStore {
     if (previous && previous.parentSessionId !== record.parentSessionId) {
       this.unindexAgentRun(previous.parentSessionId, previous.runId);
     }
-
     this.records.set(record.runId, record);
     this.indexAgentRun(record.parentSessionId, record.runId);
   }
@@ -278,7 +270,6 @@ class FileAgentRunStore implements AgentRunStore {
     if (!runIds) {
       return;
     }
-
     runIds.delete(runId);
     if (runIds.size === 0) {
       this.sessionIndex.delete(normalizedSessionId);
@@ -292,14 +283,11 @@ function createAgentRunRecord(runId: string, input: AgentRunStartInput, now: str
     parentSessionId: normalizeSessionId(input.parentSessionId),
     label: normalizeText(input.label),
     agentName: normalizeText(input.agentName),
+    ...(input.subagentType !== undefined ? {subagentType: normalizeOptionalText(input.subagentType)} : {}),
     status: 'running',
     startedAt: now,
     updatedAt: now,
     ...(input.childSessionId !== undefined ? {childSessionId: normalizeOptionalText(input.childSessionId)} : {}),
-    ...(input.prompt !== undefined ? {prompt: normalizeOptionalText(input.prompt)} : {}),
-    ...(typeof input.maxTurns === 'number' ? {maxTurns: input.maxTurns} : {}),
-    ...(input.toolNames?.length ? {toolNames: normalizeStringList(input.toolNames)} : {}),
-    ...(input.systemMessages?.length ? {systemMessages: normalizeStringList(input.systemMessages)} : {}),
   };
 }
 
@@ -328,13 +316,10 @@ function applyAgentRunStart(
     parentSessionId: normalizeSessionId(input.parentSessionId),
     label: normalizeText(input.label),
     agentName: normalizeText(input.agentName),
+    ...(input.subagentType !== undefined ? {subagentType: normalizeOptionalText(input.subagentType)} : {}),
     status: 'running',
     updatedAt: now,
     ...(input.childSessionId !== undefined ? {childSessionId: normalizeOptionalText(input.childSessionId)} : {}),
-    ...(input.prompt !== undefined ? {prompt: normalizeOptionalText(input.prompt)} : {}),
-    ...(typeof input.maxTurns === 'number' ? {maxTurns: input.maxTurns} : {}),
-    ...(input.toolNames !== undefined ? {toolNames: normalizeStringList(input.toolNames)} : {}),
-    ...(input.systemMessages !== undefined ? {systemMessages: normalizeStringList(input.systemMessages)} : {}),
     ...(existing ? {} : {startedAt: now}),
   };
 
@@ -425,10 +410,4 @@ function normalizeText(value: string): string {
 function normalizeOptionalText(value: string | undefined): string | undefined {
   const text = value?.trim();
   return text ? text : undefined;
-}
-
-function normalizeStringList(values: string[]): string[] {
-  return values
-    .map((value) => value.trim())
-    .filter((value, index, list) => value.length > 0 && list.indexOf(value) === index);
 }
