@@ -1,4 +1,5 @@
 import {formatSubagentDisplayName, normalizeSubagentType} from '@capability/skill';
+import path from 'node:path';
 
 /** Canonical tool name constants to avoid magic strings across the codebase. */
 export const TOOL_NAMES = {
@@ -71,10 +72,76 @@ export function formatToolSummary(toolName: string, args: unknown): string | und
   }
 }
 
+export function formatToolDisplayName(toolName: string): string {
+  switch (toolName) {
+    case TOOL_NAMES.SKILL:
+      return 'Skill';
+    case TOOL_NAMES.BASH:
+      return 'Bash';
+    case TOOL_NAMES.READ_FILE:
+    case TOOL_NAMES.READ:
+      return 'Read';
+    case TOOL_NAMES.WRITE_FILE:
+    case TOOL_NAMES.WRITE:
+      return 'Write';
+    case TOOL_NAMES.EDIT_FILE:
+    case TOOL_NAMES.EDIT:
+      return 'Edit';
+    case TOOL_NAMES.FETCH_URL:
+    case TOOL_NAMES.FETCH:
+      return 'Fetch';
+    case TOOL_NAMES.WEB_SEARCH:
+    case TOOL_NAMES.SEARCH:
+      return 'Search';
+    case TOOL_NAMES.GLOB:
+      return 'Glob';
+    case TOOL_NAMES.GREP:
+      return 'Grep';
+    default:
+      return toTitleCase(toolName);
+  }
+}
+
+export function formatToolHeaderArgs(toolName: string, args: string | undefined): string | undefined {
+  if (!args) {
+    return undefined;
+  }
+
+  if (
+    toolName === TOOL_NAMES.READ_FILE
+    || toolName === TOOL_NAMES.READ
+    || toolName === TOOL_NAMES.WRITE_FILE
+    || toolName === TOOL_NAMES.WRITE
+    || toolName === TOOL_NAMES.EDIT_FILE
+    || toolName === TOOL_NAMES.EDIT
+  ) {
+    return simplifyPath(args);
+  }
+
+  return args;
+}
+
 export function readString(value: unknown): string | undefined {
   if (typeof value !== 'string') {
     return undefined;
   }
   const trimmed = value.trim();
   return trimmed || undefined;
+}
+
+function simplifyPath(value: string): string {
+  if (!value.startsWith('/')) {
+    return value;
+  }
+
+  const basename = path.basename(value);
+  return basename || value;
+}
+
+function toTitleCase(value: string): string {
+  return value
+    .split(/[_-]+/)
+    .filter(Boolean)
+    .map((part) => part.charAt(0).toUpperCase() + part.slice(1))
+    .join(' ');
 }

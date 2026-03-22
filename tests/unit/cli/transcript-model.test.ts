@@ -220,6 +220,63 @@ describe('cli transcript model', () => {
     expect(items).toEqual([]);
   });
 
+  test('should hide runtime tool blocks that end in a permission review pause payload', () => {
+    const items = buildTranscriptItems({
+      notices: [],
+      coreMessages: [],
+      activeTurn: {
+        id: 'turn-read-permission',
+        prompt: 'read it',
+        response: '',
+        responseRole: 'assistant',
+      },
+      runtimeEvents: [
+        {
+          id: 'evt_read_start',
+          sessionId: 'session-1',
+          timestamp: new Date().toISOString(),
+          kind: 'tool',
+          phase: 'start',
+          status: 'running',
+          label: 'Read(/Users/nako/WebstormProjects/github/thefoxfairy/Codara/README.md)',
+          detail: 'read_file',
+        },
+        {
+          id: 'evt_read_end',
+          sessionId: 'session-1',
+          timestamp: new Date().toISOString(),
+          kind: 'tool',
+          phase: 'end',
+          status: 'done',
+          parentId: 'evt_read_start',
+          label: 'Read(/Users/nako/WebstormProjects/github/thefoxfairy/Codara/README.md)',
+          detail: JSON.stringify({
+            type: 'review_pause',
+            request: {
+              id: 'pause-1',
+              description: 'Codara wants to read this file.',
+              action: {
+                toolCallId: 'call-1',
+                toolName: 'read_file',
+                toolArgs: {file_path: '/Users/nako/WebstormProjects/github/thefoxfairy/Codara/README.md', offset: 0, limit: 500},
+              },
+              review: {actionName: 'read_file', allowedDecisions: ['approve', 'edit', 'reject']},
+              runtime: {runId: 'run-1', turn: 1, requestId: 'req-1', toolIndex: 0},
+            },
+          }),
+        },
+      ],
+    });
+
+    expect(items).toEqual([
+      {
+        id: 'turn-read-permission-prompt',
+        role: 'user',
+        content: 'read it',
+      },
+    ]);
+  });
+
   test('should hide internal AskUser continuation-guard tool messages from the transcript', () => {
     const items = buildTranscriptItems({
       notices: [],

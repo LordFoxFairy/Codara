@@ -175,6 +175,33 @@ describe('solidified transcript model', () => {
       expect(items.some((i) => i.role === 'tool')).toBe(true);
     });
 
+    test('should keep post-runtime assistant text after runtime blocks when no pre-runtime text was captured', () => {
+      const now = new Date().toISOString();
+      const items = buildActiveItems({
+        activeTurn: {
+          id: 'turn-runtime-after',
+          prompt: 'inspect it',
+          response: 'I found the issue after the tool finished collecting data.',
+          responseRole: 'assistant',
+        },
+        runtimeEvents: [
+          {
+            id: 'evt_bash_start',
+            sessionId: 'session-1',
+            timestamp: now,
+            kind: 'tool',
+            phase: 'start',
+            status: 'running',
+            label: 'Bash(ls)',
+            detail: 'bash',
+          },
+        ],
+      });
+
+      expect(items.map((item) => item.role)).toEqual(['user', 'tool', 'assistant']);
+      expect(items[2]?.content).toBe('I found the issue after the tool finished collecting data.');
+    });
+
     test('should place assistant text before and after runtime blocks according to the runtime boundary', () => {
       const now = new Date().toISOString();
       const items = buildActiveItems({
@@ -432,6 +459,62 @@ describe('solidified transcript model', () => {
 
     const serialized = lastFrame() ?? '';
     expect(serialized.includes('"toolName":"Skill"')).toBe(false);
+  });
+
+  describe('useSolidifiedTranscript', () => {
+    test('should not duplicate the current prompt from unsolidified coreMessages while activeTurn is still in flight', () => {
+      const {lastFrame} = render(React.createElement(ActiveItemsProbe, {
+        coreMessages: [new HumanMessage('delegate it')],
+        notices: [],
+        activeTurn: {
+          id: 'turn-live',
+          prompt: 'delegate it',
+          response: '',
+          responseRole: 'assistant',
+          kind: 'prompt',
+        },
+        runtimeEvents: [],
+      }));
+
+      const serialized = JSON.parse(lastFrame() ?? '[]') as Array<{role: string; content: string}>;
+      const promptItems = serialized.filter((item) => item.role === 'user' && item.content === 'delegate it');
+      expect(promptItems).toHaveLength(1);
+    });
+
+    test('should not prematurely solidify the current turn prompt when a new turn starts', () => {
+      const previousTurnMessages = [
+        new HumanMessage('previous prompt'),
+        new AIMessage('previous reply'),
+      ];
+      const currentTurnMessages = [
+        ...previousTurnMessages,
+        new HumanMessage('delegate it'),
+      ];
+
+      const view = render(React.createElement(ActiveItemsProbe, {
+        coreMessages: previousTurnMessages,
+        notices: [],
+        activeTurn: undefined,
+        runtimeEvents: [],
+      }));
+
+      view.rerender(React.createElement(ActiveItemsProbe, {
+        coreMessages: currentTurnMessages,
+        notices: [],
+        activeTurn: {
+          id: 'turn-live',
+          prompt: 'delegate it',
+          response: '',
+          responseRole: 'assistant',
+          kind: 'prompt',
+        },
+        runtimeEvents: [],
+      }));
+
+      const serialized = JSON.parse(view.lastFrame() ?? '[]') as Array<{role: string; content: string}>;
+      const promptItems = serialized.filter((item) => item.role === 'user' && item.content === 'delegate it');
+      expect(promptItems).toHaveLength(1);
+    });
   });
 
   describe('orderActiveTranscriptItems', () => {

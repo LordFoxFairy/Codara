@@ -32,18 +32,20 @@ describe('CLI foreground surface', () => {
     expect(isFloatingReview(createPermissionReview())).toBe(true);
   });
 
-  it('should keep the prompt frame visible for task-scoped review windows', () => {
+  it('should hide the prompt frame whenever any review owns the foreground', () => {
     expect(shouldShowPromptFrame({
       review: createAskReview(),
+      focusedSurface: 'prompt',
       hasCommandOutput: false,
       hasCompletion: false,
       hasSessionPicker: false,
-    })).toBe(true);
+    })).toBe(false);
   });
 
-  it('should hide the prompt frame only for session-scoped reviews', () => {
+  it('should also hide the prompt frame for session-scoped reviews', () => {
     expect(shouldShowPromptFrame({
       review: createSessionReview(),
+      focusedSurface: 'prompt',
       hasCommandOutput: false,
       hasCompletion: false,
       hasSessionPicker: false,
@@ -56,6 +58,14 @@ describe('CLI foreground surface', () => {
       focusedSurface: 'prompt',
       hasSessionPicker: false,
     })).toBe(false);
+  });
+
+  it('should disable prompt input whenever a review is active', () => {
+    expect(shouldDisablePromptInput({
+      review: createAskReview(),
+      focusedSurface: 'prompt',
+      hasSessionPicker: false,
+    })).toBe(true);
   });
 
   it('should hide the task panel when there is only one task', () => {
@@ -72,6 +82,7 @@ describe('CLI foreground surface', () => {
       subagentRunPanelVisible: true,
       subagentRunCount: 2,
       hasBlockingOverlay: false,
+      hasReview: false,
     })).toBe(true);
   });
 
@@ -81,16 +92,18 @@ describe('CLI foreground surface', () => {
       subagentRunPanelVisible: true,
       subagentRunCount: 2,
       hasBlockingOverlay: true,
+      hasReview: false,
     })).toBe(false);
   });
 
-  it('should still show the floating task panel while a review overlay is visible', () => {
+  it('should hide the floating task panel while a review overlay is visible', () => {
     expect(shouldShowFloatingSubagentRunPanel({
       hasConversation: true,
       subagentRunPanelVisible: true,
       subagentRunCount: 2,
       hasBlockingOverlay: false,
-    })).toBe(true);
+      hasReview: true,
+    })).toBe(false);
   });
 
   it('should hide the activity line when a running task block already owns task/tool progress', () => {

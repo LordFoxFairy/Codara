@@ -5,6 +5,7 @@ import {Box, Text} from 'ink';
 import type {CliActiveTurn, CliNotice} from '../../app/view-state';
 import type {ActiveSubagentRun} from '../../hooks/use-subagent-runs';
 import {buildTranscriptItems, type ToolResultMeta, type TranscriptRole} from '../../transcript/model';
+import {formatToolHeaderArgs} from '../../../shared/tool-display';
 import {formatElapsedMs, formatTokenCount} from '../../utils/format';
 import {theme} from '../../utils/theme';
 import {DiffView} from './diff-view';
@@ -136,7 +137,8 @@ const EDIT_LINE_COLORS: Record<string, React.ComponentProps<typeof Text>['color'
 export function ToolResultBlock({meta, expanded = false}: {meta: ToolResultMeta; expanded?: boolean}): React.JSX.Element {
   const {icon, displayName, args, summaryLine, outputLines, allOutputLines, totalOutputLines, status, elapsed, diffData} = meta;
   const elapsedSuffix = elapsed ? ` (${elapsed})` : '';
-  const header = args ? `${icon} ${displayName}(${args})${elapsedSuffix}` : `${icon} ${displayName}${elapsedSuffix}`;
+  const headerArgs = formatToolHeaderArgs(meta.toolName, args);
+  const header = headerArgs ? `${icon} ${displayName}(${headerArgs})${elapsedSuffix}` : `${icon} ${displayName}${elapsedSuffix}`;
   const visibleLines = expanded && allOutputLines?.length ? allOutputLines : outputLines;
   const hiddenLines = expanded ? 0 : (totalOutputLines ?? 0) - (outputLines?.length ?? 0);
   const isEdit = meta.toolName === 'edit' || meta.toolName === 'edit_file';

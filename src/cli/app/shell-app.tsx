@@ -57,6 +57,7 @@ export function isFloatingReview(review: CliReviewState | undefined): boolean {
 
 export function shouldShowPromptFrame(input: {
   review?: CliReviewState;
+  focusedSurface: CliInteractionSurface;
   hasCommandOutput: boolean;
   hasCompletion: boolean;
   hasSessionPicker: boolean;
@@ -65,7 +66,7 @@ export function shouldShowPromptFrame(input: {
     return false;
   }
 
-  return input.review?.blockingScope !== 'session';
+  return !input.review;
 }
 
 export function shouldDisablePromptInput(input: {
@@ -73,7 +74,7 @@ export function shouldDisablePromptInput(input: {
   focusedSurface: CliInteractionSurface;
   hasSessionPicker: boolean;
 }): boolean {
-  return input.review?.blockingScope === 'session'
+  return Boolean(input.review)
     || input.focusedSurface !== 'prompt'
     || input.hasSessionPicker;
 }
@@ -108,8 +109,9 @@ export function shouldShowFloatingSubagentRunPanel(input: {
   subagentRunPanelVisible: boolean;
   subagentRunCount: number;
   hasBlockingOverlay: boolean;
+  hasReview: boolean;
 }): boolean {
-  if (input.hasBlockingOverlay || !input.hasConversation) {
+  if (input.hasBlockingOverlay || input.hasReview || !input.hasConversation) {
     return false;
   }
 
@@ -227,6 +229,7 @@ export function CodaraCliApp(props: CodaraCliAppProps): React.JSX.Element {
   );
   const showPromptFrame = shouldShowPromptFrame({
     review: shell.review,
+    focusedSurface: shell.interactionState.focusedSurface,
     hasCommandOutput: Boolean(shell.commandOutput),
     hasCompletion: completion.completion.visible,
     hasSessionPicker: sessionPicker.state.visible,
@@ -394,6 +397,7 @@ export function CodaraCliApp(props: CodaraCliAppProps): React.JSX.Element {
               subagentRunPanelVisible: shell.subagentRunPanelVisible,
               subagentRunCount: subagentRuns.runs.length,
               hasBlockingOverlay,
+              hasReview,
             }) && (
               <Box marginTop={1}>
                 <SubagentRunPanel

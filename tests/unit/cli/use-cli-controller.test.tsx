@@ -812,6 +812,50 @@ describe('useCliController background refresh', () => {
     }
   });
 
+  it('preserves a manually focused queued approval instead of snapping back to the first review on refresh', async () => {
+    const codara = new FakeCodara();
+    codara.setReviews([
+      createReviewItem('approval-1', 'run-1', 'Waiting for approval on glob'),
+      createReviewItem('approval-2', 'run-2', 'Waiting for approval on read_file'),
+    ]);
+    await codara.focusReview('approval-2');
+    const rendered = render(<ReviewInputTargetProbe codara={codara as unknown as Codara} />);
+
+    try {
+      await waitFor(() => (rendered.lastFrame() ?? '').includes('reviewId:approval-2'));
+      const frame = rendered.lastFrame() ?? '';
+      expect(frame).toContain('reviewId:approval-2');
+      expect(frame).toContain('focusedSurface:review');
+    } finally {
+      rendered.unmount();
+    }
+  });
+
+  it('keeps review focus after handing off to the next queued approval', async () => {
+    const codara = new FakeCodara();
+    codara.blockNextResumeApproval();
+    codara.setReviews([
+      createReviewItem('approval-1', 'run-1', 'Waiting for approval on glob'),
+      createReviewItem('approval-2', 'run-2', 'Waiting for approval on read_file'),
+    ]);
+    const rendered = render(<ReviewQueueFocusProbe codara={codara as unknown as Codara} />);
+
+    try {
+      await waitFor(() => (rendered.lastFrame() ?? '').includes('reviewId:approval-1'));
+      await waitFor(() => (rendered.lastFrame() ?? '').includes('focusedSurface:review'));
+
+      codara.releaseBlockedResumeApproval();
+
+      await waitFor(() => (rendered.lastFrame() ?? '').includes('reviewId:approval-2'));
+      const frame = rendered.lastFrame() ?? '';
+      expect(frame).toContain('reviewId:approval-2');
+      expect(frame).toContain('focusedSurface:review');
+    } finally {
+      codara.releaseBlockedResumeApproval();
+      rendered.unmount();
+    }
+  });
+
   it('dismisses a single permission approval immediately after submit while the subagent run keeps running in the background', async () => {
     const codara = new FakeCodara();
     codara.blockNextResumeApproval();
@@ -926,7 +970,7 @@ describe('useCliController background refresh', () => {
     }
   });
 
-  it('keeps prompt input as the active target for task-scoped reviews', async () => {
+  it('routes task-scoped reviews to the review surface', async () => {
     const codara = new FakeCodara();
     codara.setReviews([
       createReviewItem('approval-1', 'run-1', 'Waiting for approval on glob'),
@@ -938,7 +982,7 @@ describe('useCliController background refresh', () => {
       const frame = rendered.lastFrame() ?? '';
       expect(frame).toContain('reviewId:approval-1');
       expect(frame).toContain('blockingScope:task');
-      expect(frame).toContain('focusedSurface:prompt');
+      expect(frame).toContain('focusedSurface:review');
     } finally {
       rendered.unmount();
     }
@@ -1103,6 +1147,30 @@ describe('useCliController background refresh', () => {
     }
   });
 
+  it('does not let a queued task-scoped review response steal focus from a newer foreground review', async () => {
+    const codara = new FakeCodara();
+    codara.blockNextStream();
+    codara.queueStreamText('Foreground response');
+    codara.setReviews([
+      createReviewItem('approval-queued', 'run-queued', 'Approve queued review'),
+    ]);
+    const rendered = render(<QueuedReviewResponseProbe codara={codara as unknown as Codara} />);
+
+    try {
+      await waitFor(() => (rendered.lastFrame() ?? '').includes('runState:running'));
+      codara.setReviewRequest(createAskUserReviewRequest());
+      codara.releaseBlockedStream();
+
+      await waitFor(() => (rendered.lastFrame() ?? '').includes('review:ask-user-pause'));
+      const frame = rendered.lastFrame() ?? '';
+      expect(frame).toContain('review:ask-user-pause');
+      expect(frame).toContain('resumeCount:0');
+    } finally {
+      codara.releaseBlockedStream();
+      rendered.unmount();
+    }
+  });
+
   it('replays review auto actions after the foreground run settles while the same review stays focused', async () => {
     const codara = new FakeCodara();
     codara.blockNextStream();
@@ -1192,6 +1260,27 @@ function ReviewNextProbe({codara}: {codara: Codara}): React.JSX.Element {
       {`focus:${controller.review?.focus ?? 'none'}`}
       {` activeTab:${controller.review?.form?.activeTabIndex ?? -1}`}
       {` validation:${controller.review?.validationMessage ?? 'none'}`}
+      {` resumeCount:${(codara as unknown as FakeCodara).resumeCount}`}
+    </Text>
+  );
+}
+
+function ReviewQueueFocusProbe({codara}: {codara: Codara}): React.JSX.Element {
+  const controller = useCliController({codara});
+  const submittedRef = React.useRef(false);
+
+  useEffect(() => {
+    if (!controller.review || submittedRef.current) {
+      return;
+    }
+    submittedRef.current = true;
+    controller.quickReviewAction('allow_once');
+  }, [controller]);
+
+  return (
+    <Text>
+      {`reviewId:${controller.review?.request.id ?? 'none'}`}
+      {` focusedSurface:${controller.interactionState.focusedSurface}`}
       {` resumeCount:${(codara as unknown as FakeCodara).resumeCount}`}
     </Text>
   );

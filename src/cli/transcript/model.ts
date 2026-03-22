@@ -6,7 +6,7 @@ import {readMessageText} from '@shared/messages';
 import {readSubagentResult} from '@shared/subagent-result';
 import {readSubagentRunLaunchResult} from '@shared/subagent-run-launch';
 import {readSharedTaskCoordinationArtifact} from '@shared/task-coordination-result';
-import {TOOL_NAMES} from '@shared/tool-display';
+import {TOOL_NAMES, formatToolDisplayName} from '@shared/tool-display';
 import {formatSubagentDisplayName, normalizeSubagentType} from '@capability/skill';
 import type {CliActiveTurn, CliNotice} from '../app/view-state';
 import {isInvalidTaskCloseoutResponse} from '../task-closeout';
@@ -213,9 +213,9 @@ export function buildActiveItems(input: {
           : input.activeTurn.response,
       }]
     : [];
-  const items: TranscriptItem[] = preRuntimeAssistantItems.length > 0
+  const items: TranscriptItem[] = runtimeItems.length > 0
     ? [...promptAndResponseItems, ...preRuntimeAssistantItems, ...runtimeItems, ...currentAssistantItems]
-    : [...promptAndResponseItems, ...currentAssistantItems, ...runtimeItems];
+    : [...promptAndResponseItems, ...currentAssistantItems];
   return items.filter((item) => item.content);
 }
 
@@ -383,6 +383,9 @@ function buildRuntimeEventItems(events: readonly CodaraRuntimeEvent[], _nowTimes
       continue;
     }
     const endEvent = endEvents.get(event.id);
+    if (endEvent && parseReviewToolMessagePayload(endEvent.detail)?.type === 'review_pause') {
+      continue;
+    }
     if (endEvent && isRepeatedAskUserContinuationNotice(endEvent.detail)) {
       continue;
     }
@@ -1300,36 +1303,6 @@ function serializeValue(value: unknown): string | undefined {
   }
 }
 
-function formatToolDisplayName(toolName: string): string {
-  switch (toolName) {
-    case TOOL_NAMES.SKILL:
-      return 'Skill';
-    case TOOL_NAMES.BASH:
-      return 'Bash';
-    case TOOL_NAMES.READ_FILE:
-    case TOOL_NAMES.READ:
-      return 'Read';
-    case TOOL_NAMES.WRITE_FILE:
-    case TOOL_NAMES.WRITE:
-      return 'Write';
-    case TOOL_NAMES.EDIT_FILE:
-    case TOOL_NAMES.EDIT:
-      return 'Edit';
-    case TOOL_NAMES.FETCH_URL:
-    case TOOL_NAMES.FETCH:
-      return 'Fetch';
-    case TOOL_NAMES.WEB_SEARCH:
-    case TOOL_NAMES.SEARCH:
-      return 'Search';
-    case TOOL_NAMES.GLOB:
-      return 'Glob';
-    case TOOL_NAMES.GREP:
-      return 'Grep';
-    default:
-      return toTitleCase(toolName);
-  }
-}
-
 function formatReadSummary(record: Record<string, unknown>): string | undefined {
   const filePath = asString(record.file_path) || asString(record.path);
   if (!filePath) {
@@ -1377,14 +1350,6 @@ function limitSummary(value: string | undefined, maxLength = 72): string | undef
   }
 
   return value.length > maxLength ? `${value.slice(0, maxLength - 3)}...` : value;
-}
-
-function toTitleCase(value: string): string {
-  return value
-    .split(/[_-]+/)
-    .filter(Boolean)
-    .map((part) => part.charAt(0).toUpperCase() + part.slice(1))
-    .join(' ');
 }
 
 function isAgentToolName(toolName: string | undefined): boolean {

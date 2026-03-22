@@ -183,10 +183,7 @@ function resolveFocusedSurface(
   if (!review) {
     return 'prompt';
   }
-  if (review.blockingScope === 'session') {
-    return 'review';
-  }
-  return current;
+  return 'review';
 }
 
 function shouldHandoffForegroundTurnToReview(review: CliReviewState | undefined): boolean {
@@ -400,7 +397,8 @@ export function useCliController(options: UseCliControllerOptions): CliControlle
     const nextAgentState = await codara.hydrate();
     if (!nextAgentState.pendingReview) {
       const queuedReviews = codara.listReviewItems();
-      if (queuedReviews.length > 0) {
+      const hasFocusedQueuedReview = queuedReviews.some((review) => review.isFocused);
+      if (queuedReviews.length > 0 && !hasFocusedQueuedReview) {
         await codara.focusReview(queuedReviews[0]!.reviewId);
       }
     }
@@ -415,7 +413,23 @@ export function useCliController(options: UseCliControllerOptions): CliControlle
     return nextAgentState;
   }, [codara, setReviewState, suppressSettlingDismissedReview, syncInteractionState]);
 
-  const runQueuedReviewResponse = useCallback(async (interaction: QueuedReviewResponseInteraction): Promise<void> => {
+  const runQueuedReviewResponse = useCallback(async (interaction: QueuedReviewResponseInteraction): Promise<boolean> => {
+    const nextAgentState = await refreshCoreState();
+    const activeForegroundReview = nextAgentState.pendingReview;
+    if (activeForegroundReview && activeForegroundReview.id !== interaction.reviewId) {
+      interactionScheduler.requeueInteraction(interaction);
+      setRunState({status: 'paused'});
+      syncInteractionState();
+      return false;
+    }
+
+    const queuedReviewStillExists = codara.listReviewItems().some((review) => review.reviewId === interaction.reviewId);
+    if (!queuedReviewStillExists && activeForegroundReview?.id !== interaction.reviewId) {
+      setRunState(deriveRunStateFromAgentState(nextAgentState));
+      syncInteractionState();
+      return true;
+    }
+
     beginInteraction('review_response');
     setRunState({status: 'running'});
 
@@ -453,7 +467,8 @@ export function useCliController(options: UseCliControllerOptions): CliControlle
     } finally {
       endInteraction();
     }
-  }, [beginInteraction, codara, endInteraction, refreshCoreState, reportError]);
+    return true;
+  }, [beginInteraction, codara, endInteraction, interactionScheduler, refreshCoreState, reportError, syncInteractionState]);
 
   const drainScheduledInteractions = useCallback(() => {
     if (interactionScheduler.isRunning()) {
@@ -463,13 +478,16 @@ export function useCliController(options: UseCliControllerOptions): CliControlle
     if (nextInteraction) {
       syncInteractionState();
       void (async () => {
+        let handled = true;
         if (nextInteraction.kind === 'session_prompt') {
           await runQueuedSessionPromptRef.current(nextInteraction.prompt);
         } else {
-          await runQueuedReviewResponse(nextInteraction);
+          handled = await runQueuedReviewResponse(nextInteraction);
         }
         flushPendingBackgroundNotices();
-        drainScheduledInteractions();
+        if (handled) {
+          drainScheduledInteractions();
+        }
       })();
       return;
     }
@@ -800,7 +818,7 @@ export function useCliController(options: UseCliControllerOptions): CliControlle
   }, []);
 
   const focusPromptWindow = useCallback(() => {
-    if (reviewRef.current?.blockingScope === 'session') {
+    if (reviewRef.current) {
       return;
     }
     setInteractionState((current) => ({

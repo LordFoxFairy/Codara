@@ -13,7 +13,8 @@ describe('cli transcript visibility', () => {
       activeTurn: {
         id: 'turn-visible-before-task-launch',
         prompt: 'delegate it',
-        response: 'Let me frame the analysis scope first, then I will proceed.',
+        responseBeforeRuntime: 'Let me frame the analysis scope first, then I will proceed.',
+        response: '',
         responseRole: 'assistant',
         pendingAgentLaunch: true,
         suppressAgentLaunchResponse: false,

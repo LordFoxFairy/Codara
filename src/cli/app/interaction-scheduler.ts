@@ -56,6 +56,10 @@ export class CliInteractionScheduler {
     });
   }
 
+  requeueInteraction(interaction: QueuedCliInteraction): void {
+    this.queuedInteractions.unshift(interaction);
+  }
+
   takeNextInteraction(): QueuedCliInteraction | undefined {
     return this.queuedInteractions.shift();
   }

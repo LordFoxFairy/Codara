@@ -32,7 +32,7 @@ export function readCliReviewProjection(
 ): CliReviewProjection {
   const focusedReview = codara.getFocusedReview();
   const reviews = codara.listReviewItems();
-  const activeReviewRequest = focusedReview?.request ?? options.pendingReview ?? readForegroundReview(codara);
+  const activeReviewRequest = options.pendingReview ?? readForegroundReview(codara) ?? focusedReview?.request;
   return {reviews, activeReviewRequest};
 }
 

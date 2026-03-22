@@ -18,14 +18,14 @@ interface ReviewPanelProps {
 export function ReviewPanel({review, terminalWidth}: ReviewPanelProps): React.JSX.Element {
   const kind = getCliReviewKind(review);
   const content = kind === 'permission'
-    ? <PermissionReviewBody review={review} />
+    ? <PermissionReviewBody review={review} terminalWidth={terminalWidth} />
     : kind === 'ask-user'
       ? <AskUserReviewBody review={review} terminalWidth={terminalWidth} />
       : kind === 'tool-review'
         ? <ToolReviewBody review={review} />
         : <GenericReviewBody review={review} />;
 
-  if (kind === 'ask-user') {
+  if (kind === 'ask-user' || kind === 'permission') {
     return (
       <Box flexDirection="column">
         <ReviewQueueBanner review={review} />

@@ -4,7 +4,7 @@ import {ReviewPanel} from '@/cli/components/conversation/review-panel';
 import type {CliReviewState} from '@/cli/app/view-state';
 
 describe('ReviewPanel review queue banner', () => {
-  it('should show review position and queue-switch hint', () => {
+  it('renders permission reviews without the old queue chrome even when multiple reviews are pending', () => {
     const review = {
       request: {
         id: 'pause-2',
@@ -47,10 +47,63 @@ describe('ReviewPanel review queue banner', () => {
 
     const {lastFrame} = render(<ReviewPanel review={review} />);
 
-    expect(lastFrame()).toContain('Review 2/5');
-    expect(lastFrame()).toContain('Use [ and ] to switch reviews');
-    expect(lastFrame()).toContain('Permission Review');
-    expect(lastFrame()).toContain('Permission review required for git push.');
+    expect(lastFrame()).not.toContain('Review 2/5');
+    expect(lastFrame()).not.toContain('Use [ and ] to switch reviews');
+    expect(lastFrame()).not.toContain('Permission Review');
+    expect(lastFrame()).toContain('Run this command?');
+    expect(lastFrame()).toContain('git push');
+  });
+
+  it('renders single permission reviews without the old review queue chrome or generic shell header', () => {
+    const review = {
+      request: {
+        id: 'pause-readme',
+        description: 'Codara wants to read this file before continuing.',
+        action: {
+          toolCallId: 'call-readme',
+          toolName: 'read_file',
+          toolArgs: {file_path: '/Users/nako/WebstormProjects/github/thefoxfairy/Codara/README.md', offset: 0, limit: 500},
+        },
+        review: {
+          actionName: 'read_file',
+          allowedDecisions: ['approve', 'edit', 'reject'],
+        },
+        runtime: {
+          runId: 'run-readme',
+          turn: 1,
+          requestId: 'req-readme',
+          toolIndex: 0,
+        },
+        channel: 'permission-center',
+        ui: {
+          actions: [
+            {id: 'allow_once', label: 'Allow once', kind: 'primary'},
+            {id: 'dont_ask_again', label: 'Allow always', kind: 'secondary'},
+            {id: 'deny', label: 'Reject', kind: 'danger'},
+          ],
+        },
+      },
+      actions: [
+        {id: 'allow_once', label: 'Allow once', kind: 'primary'},
+        {id: 'dont_ask_again', label: 'Allow always', kind: 'secondary'},
+        {id: 'deny', label: 'Reject', kind: 'danger'},
+      ],
+      selectedActionIndex: 0,
+      focus: 'actions',
+      draft: '',
+      busy: false,
+      blockingScope: 'session',
+      reviewIndex: 1,
+      reviewCount: 1,
+    } satisfies CliReviewState;
+
+    const frame = render(<ReviewPanel review={review} />).lastFrame()!;
+    expect(frame).toContain('Read this file?');
+    expect(frame).toContain('README.md');
+    expect(frame).toContain('Do you want to proceed?');
+    expect(frame).not.toContain('Permission Review');
+    expect(frame).not.toContain('Review 1/1');
+    expect(frame).not.toContain('Enter apply');
   });
 
   it('renders file/tool review requests with a typed review shell instead of the generic catch-all body', () => {

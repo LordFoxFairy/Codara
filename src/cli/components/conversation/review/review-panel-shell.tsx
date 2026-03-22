@@ -5,11 +5,19 @@ import type {CliReviewState} from '../../../app/view-state';
 import {getCliReviewKind} from '../../../app/review-kind';
 
 export function ReviewQueueBanner({review}: {review: CliReviewState}): React.JSX.Element | null {
+  if (getCliReviewKind(review) === 'permission') {
+    return null;
+  }
+
   if (review.form) {
     return null;
   }
 
   if (review.reviewIndex === undefined || review.reviewCount === undefined) {
+    return null;
+  }
+
+  if (review.reviewCount <= 1) {
     return null;
   }
 

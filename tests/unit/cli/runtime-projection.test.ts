@@ -2,7 +2,7 @@ import {describe, expect, it} from 'bun:test';
 import {readCliReviewProjection, syncProjectedReview} from '@/cli/app/runtime-projection';
 
 describe('CLI runtime projection helpers', () => {
-  it('prefers focused approval review over pendingReview when projecting approval state', () => {
+  it('prefers a foreground pendingReview over queued approval reviews when projecting approval state', () => {
     const projection = readCliReviewProjection({
       getFocusedReview: () => ({
         item: {
@@ -50,7 +50,7 @@ describe('CLI runtime projection helpers', () => {
       }),
     } as never);
 
-    expect(projection.activeReviewRequest?.id).toBe('approval-1');
+    expect(projection.activeReviewRequest?.id).toBe('foreground-pause');
     expect(projection.reviews).toHaveLength(1);
   });
 

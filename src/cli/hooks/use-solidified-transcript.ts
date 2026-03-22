@@ -1,6 +1,6 @@
 /* eslint-disable react-hooks/refs */
 import {useEffect, useRef, useMemo, useState} from 'react';
-import type {BaseMessage} from '@langchain/core/messages';
+import {HumanMessage, type BaseMessage} from '@langchain/core/messages';
 import type {CodaraRuntimeEvent} from '@/index';
 import type {CliActiveTurn, CliNotice} from '../app/view-state';
 import {
@@ -13,6 +13,7 @@ import {
   normalizeVisibleAssistantText,
 } from '../transcript/model';
 import {isInvalidTaskCloseoutResponse} from '../task-closeout';
+import {readMessageText} from '@shared/messages';
 
 export interface UseSolidifiedTranscriptInput {
   coreMessages: readonly BaseMessage[];
@@ -149,10 +150,15 @@ export function useSolidifiedTranscript(input: UseSolidifiedTranscriptInput): Us
 
   if (newTurnStarted && coreMessages.length > lastSolidifiedCountRef.current) {
     const toolLookup = createToolCallLookup(coreMessages);
+    const solidifyEndIndex = resolveSolidifyEndIndex({
+      coreMessages,
+      startIndex: lastSolidifiedCountRef.current,
+      activeTurn,
+    });
     const newItems = buildSolidifiedItemsFromRange(
       coreMessages,
       lastSolidifiedCountRef.current,
-      coreMessages.length,
+      solidifyEndIndex,
       toolLookup,
       visibleAssistantTextsRef.current,
     );
@@ -174,7 +180,7 @@ export function useSolidifiedTranscript(input: UseSolidifiedTranscriptInput): Us
         },
       ];
     }
-    lastSolidifiedCountRef.current = coreMessages.length;
+    lastSolidifiedCountRef.current = solidifyEndIndex;
   }
 
   if (newTurnStarted && notices.length > lastSolidifiedNoticeCountRef.current) {
@@ -204,7 +210,7 @@ export function useSolidifiedTranscript(input: UseSolidifiedTranscriptInput): Us
   const activeItems = useMemo(() => {
     // Un-solidified coreMessages (the latest completed turn that hasn't been pushed to Static yet)
     const trailingItems: TranscriptItem[] = [];
-    if (solidifiedCount < coreMessages.length) {
+    if (!activeTurn && solidifiedCount < coreMessages.length) {
       const toolLookup = createToolCallLookup(coreMessages);
       trailingItems.push(...filterSubagentCompletionTranscriptItems({
         completedTurnKind: lastCompletedTurnKindRef.current,
@@ -300,4 +306,34 @@ export function useSolidifiedTranscript(input: UseSolidifiedTranscriptInput): Us
     solidifiedItems: solidifiedItemsRef.current,
     activeItems,
   };
+}
+
+function resolveSolidifyEndIndex(input: {
+  coreMessages: readonly BaseMessage[];
+  startIndex: number;
+  activeTurn?: CliActiveTurn;
+}): number {
+  const {coreMessages, startIndex, activeTurn} = input;
+  if (!activeTurn) {
+    return coreMessages.length;
+  }
+
+  const prompt = activeTurn.prompt.trim();
+  if (!prompt) {
+    return coreMessages.length;
+  }
+
+  for (let index = coreMessages.length - 1; index >= startIndex; index -= 1) {
+    const message = coreMessages[index];
+    if (!message || !HumanMessage.isInstance(message)) {
+      continue;
+    }
+
+    const content = readMessageText(message)?.trim();
+    if (content === prompt) {
+      return index;
+    }
+  }
+
+  return coreMessages.length;
 }
