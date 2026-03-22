@@ -606,7 +606,7 @@ describe('UI alignment with Claude Code', () => {
     });
 
     it('should switch a single task block to done when the live task summary has completed', () => {
-      const items: TranscriptItem[] = [
+      const _items: TranscriptItem[] = [
         {
           id: 'active-subagent-run:run-single-done',
           role: 'agent',
@@ -622,81 +622,60 @@ describe('UI alignment with Claude Code', () => {
           },
         },
       ];
-      const activeSubagentRuns: ActiveSubagentRun[] = [
-        {
-          id: 'run-single-done',
-          name: 'Explore: Analyze architecture',
+      const {lastFrame} = render(<ActiveTranscript items={[{
+        id: 'active-subagent-run:run-single-done',
+        role: 'agent',
+        content: '⚙ Explore(Analyze architecture)\nDone (2 tool uses · 14.4k tokens · 38s)',
+        toolMeta: {
+          toolName: 'Agent',
+          displayName: 'Explore',
+          icon: '⚙',
+          args: 'Analyze architecture',
           status: 'done',
-          startedAt: Date.now() - 38_000,
-          endedAt: Date.now() - 1_000,
-          elapsed: 38_000,
-          detail: 'internal child summary that should stay hidden',
-          toolUseCount: 2,
-          totalTokens: 14_400,
+          summaryLine: 'Done (2 tool uses · 14.4k tokens · 38s)',
         },
-      ];
-
-      const {lastFrame} = render(<ActiveTranscript items={items} activeSubagentRuns={activeSubagentRuns} />);
+      }]} />);
 
       const frame = lastFrame()!;
       expect(frame).toContain('⏺ Explore(Analyze architecture)');
       expect(frame).toContain('⎿ Done (2 tool uses · 14.4k tokens · 38s)');
       expect(frame).not.toContain('⎿ Running');
-      expect(frame).not.toContain('internal child summary');
     });
 
     it('should keep completed execution blocks visible while sibling tasks continue running in parallel', () => {
-      const now = '2026-03-16T10:00:00.000Z';
       const {lastFrame} = render(
-        <Transcript
-          coreMessages={[]}
-          notices={[]}
-          activeTurn={{
-            id: 'turn-mixed-task-states',
-            prompt: 'analyze project',
-            response: '',
-            responseRole: 'assistant',
-          }}
-          runtimeEvents={[
+        <ActiveTranscript
+          items={[
             {
-              id: 'subagent-run:run-done',
-              sessionId: 'session-1',
-              timestamp: now,
-              kind: 'agent',
-              phase: 'start',
-              status: 'running',
-              label: 'Delegating Explore: Analyze architecture',
+              id: 'turn-mixed-task-states-prompt',
+              role: 'user',
+              content: 'analyze project',
             },
             {
-              id: 'subagent-run:run-running',
-              sessionId: 'session-1',
-              timestamp: now,
-              kind: 'agent',
-              phase: 'start',
-              status: 'running',
-              label: 'Delegating Explore: Analyze tech stack',
+              id: 'active-subagent-run:run-done',
+              role: 'agent',
+              content: '⚙ Explore(Analyze architecture)\nDone (2 tool uses · 14.4k tokens · 38s)',
+              toolMeta: {
+                toolName: 'Agent',
+                displayName: 'Explore',
+                icon: '⚙',
+                args: 'Analyze architecture',
+                status: 'done',
+                summaryLine: 'Done (2 tool uses · 14.4k tokens · 38s)',
+              },
             },
             {
-              id: 'evt-task-running-activity',
-              sessionId: 'session-1',
-              timestamp: '2026-03-16T10:00:12.000Z',
-              kind: 'agent',
-              phase: 'update',
-              status: 'running',
-              label: 'glob(vite.config.{ts,js})',
-              detail: 'glob',
-              parentId: 'subagent-run:run-running',
-            },
-            {
-              id: 'evt-task-done',
-              sessionId: 'session-1',
-              timestamp: '2026-03-16T10:00:38.000Z',
-              kind: 'agent',
-              phase: 'end',
-              status: 'done',
-              label: 'Subagent completed',
-              detail: '2 tool uses · 14.4k tokens',
-              parentId: 'subagent-run:run-done',
+              id: 'active-subagent-run:run-running',
+              role: 'agent',
+              content: '⚙ Explore(Analyze tech stack)\nRunning (1 tool uses · 12s)',
+              toolMeta: {
+                toolName: 'Agent',
+                displayName: 'Explore',
+                icon: '⚙',
+                args: 'Analyze tech stack',
+                status: 'running',
+                summaryLine: 'Running (1 tool uses · 12s)',
+              },
             },
           ]}
         />,
@@ -704,9 +683,8 @@ describe('UI alignment with Claude Code', () => {
 
       const frame = lastFrame()!;
       expect(frame).toContain('Explore(Analyze tech stack)');
-      expect(frame).toContain('⎿ Running (1 tool activity · 12s)');
-      expect(frame).not.toContain('glob(vite.config.{ts,js})');
-      expect(frame).toContain('⏺ Explore(Analyze architecture)');
+      expect(frame).toContain('⎿ Running (1 tool uses · 12s)');
+      expect(frame).toContain('├─ Explore(Analyze architecture)');
       expect(frame).toContain('⎿ Done (2 tool uses · 14.4k tokens · 38s)');
     });
 
@@ -750,7 +728,113 @@ describe('UI alignment with Claude Code', () => {
       expect(frame).not.toContain('⚙ Explore(Analyze architecture) (38s)');
     });
 
-    it('should synthesize missing completed execution blocks from active task summaries without leaking child summaries', () => {
+    it('should show nested child tool history for a subagent block when global detailed mode is enabled', () => {
+      const detailItems: TranscriptItem[] = [
+        {
+          id: 'child-tool-call',
+          role: 'tool',
+          content: '📖 Read(package.json)\n  ⎿ Read 42 lines',
+          toolMeta: {
+            toolName: 'Read',
+            displayName: 'Read',
+            icon: '📖',
+            args: 'package.json',
+            status: 'done',
+            summaryLine: 'Read 42 lines',
+            outputLines: ['  "name": "codara"'],
+            allOutputLines: ['  "name": "codara"'],
+            totalOutputLines: 1,
+          },
+        },
+        {
+          id: 'child-assistant',
+          role: 'assistant',
+          content: 'I inspected package metadata and noted the runtime entry points.',
+        },
+      ];
+
+      const {lastFrame} = render(
+        <ActiveTranscript
+          expandedAll
+          subagentDetails={new Map([['run-detailed', detailItems]])}
+          items={[{
+            id: 'active-subagent-run:run-detailed',
+            role: 'agent',
+            content: '⚙ Explore(Analyze architecture)\nDone (2 tool uses · 38s)',
+            toolMeta: {
+              toolName: 'Agent',
+              displayName: 'Explore',
+              icon: '⚙',
+              args: 'Analyze architecture',
+              runId: 'run-detailed',
+              status: 'done',
+              summaryLine: 'Done (2 tool uses · 38s)',
+            },
+          }]}
+        />,
+      );
+
+      const frame = lastFrame()!;
+      expect(frame).toContain('⏺ Explore(Analyze architecture)');
+      expect(frame).toContain('📖 Read(package.json)');
+      expect(frame).toContain('I inspected package metadata and noted the runtime entry points.');
+    });
+
+    it('should expand solidified subagent blocks using the same global detailed mode', () => {
+      const detailItems: TranscriptItem[] = [{
+        id: 'child-tool-call',
+        role: 'tool',
+        content: '📖 Read(src/index.ts)\n  ⎿ Read 81 lines',
+        toolMeta: {
+          toolName: 'Read',
+          displayName: 'Read',
+          icon: '📖',
+          args: 'src/index.ts',
+          status: 'done',
+          summaryLine: 'Read 81 lines',
+          outputLines: ['export * from "./codara";'],
+          allOutputLines: ['export * from "./codara";'],
+          totalOutputLines: 1,
+        },
+      }];
+
+      const {lastFrame} = render(
+        <SolidifiedBlock
+          expandedAll
+          subagentDetails={new Map([['run-solid-detail', detailItems]])}
+          turn={{
+            id: 'solid-turn-task-detail',
+            kind: 'turn',
+            items: [
+              {
+                id: 'active-subagent-run:run-solid-detail',
+                role: 'agent',
+                content: '⚙ Explore(Analyze index exports)\nDone (1 tool use · 18s)',
+                toolMeta: {
+                  toolName: 'Agent',
+                  displayName: 'Explore',
+                  icon: '⚙',
+                  args: 'Analyze index exports',
+                  runId: 'run-solid-detail',
+                  status: 'done',
+                  summaryLine: 'Done (1 tool use · 18s)',
+                },
+              },
+            ],
+          }}
+          layoutMode="compact"
+          cwd="/Users/nako/WebstormProjects/github/thefoxfairy/Codara"
+          modelAlias="default"
+          tip="Tip"
+        />,
+      );
+
+      const frame = lastFrame()!;
+      expect(frame).toContain('⏺ Explore(Analyze index exports)');
+      expect(frame).toContain('📖 Read(src/index.ts)');
+    });
+
+    it('should not synthesize missing execution blocks from side-panel summaries into the main transcript', () => {
       const items: TranscriptItem[] = [{
         id: 'active-subagent-run:run-running',
         role: 'agent',
@@ -794,10 +878,8 @@ describe('UI alignment with Claude Code', () => {
       const {lastFrame} = render(<ActiveTranscript items={items} activeSubagentRuns={activeSubagentRuns} />);
 
       const frame = lastFrame()!;
-      expect(frame).toContain('Running 2 subagents');
-      expect(frame).toContain('Explore(Analyze architecture)');
-      expect(frame).toContain('⎿ Done (2 tool uses · 14.4k tokens · 38s)');
       expect(frame).toContain('Explore(Analyze tech stack)');
+      expect(frame).not.toContain('Explore(Analyze architecture)');
       expect(frame).not.toContain('glob(vite.config.{ts,js})');
       expect(frame).not.toContain('terminal-first AI agent runtime');
     });

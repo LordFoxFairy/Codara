@@ -22,6 +22,7 @@ export function getSubagentRunSummaries(
       ...(run.endedAt ? {endedAt: run.endedAt} : {}),
       ...(run.childSessionId ? {childSessionId: run.childSessionId} : {}),
       ...(run.latestActivity ? {latestActivity: run.latestActivity} : {}),
+      ...(run.activityLog?.length ? {activityLog: [...run.activityLog]} : {}),
       ...(run.summary ? {summary: run.summary} : {}),
       ...(run.errorMessage ? {errorMessage: run.errorMessage} : {}),
       ...(run.reason ? {reason: run.reason} : {}),

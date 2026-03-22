@@ -1,6 +1,6 @@
 import {describe, expect, test} from 'bun:test';
 import type {CodaraRuntimeEvent} from '@observability/events';
-import {RuntimeEventsController, AGENT_ACTIVITY_CALLBACK_KEY} from '@observability/events';
+import {RuntimeEventsController} from '@observability/events';
 import {buildActiveItems} from '@/cli/transcript/model';
 import type {SessionState} from '@durability/session/types';
 import {FileSessionStore} from '@durability/session/store';
@@ -73,11 +73,7 @@ describe('delegated-task activity display', () => {
     expect(events).toEqual([]);
   });
 
-  test('AGENT_ACTIVITY_CALLBACK_KEY is exported', () => {
-    expect(AGENT_ACTIVITY_CALLBACK_KEY).toBe('__agentActivityCallback');
-  });
-
-  test('transcript renders child activity under running delegated subagent runs', () => {
+  test('buildActiveItems surfaces the delegated subagent block without leaking raw child activity lines', () => {
     const now = new Date().toISOString();
     const taskId = 'subagent-run:task-root-1';
     const events: CodaraRuntimeEvent[] = [
@@ -131,16 +127,15 @@ describe('delegated-task activity display', () => {
       runtimeEvents: events,
     });
 
-    const taskItem = items.find((item) => item.role === 'agent' && item.content.includes('⚙ Plan('));
-    expect(taskItem).toBeDefined();
-    expect(taskItem!.toolMeta?.outputLines).toEqual([
-      'read(src/engine/agent.ts)',
-      'grep(middleware)',
-      'read(src/engine/pipeline/types.ts)',
-    ]);
+    const agentItems = items.filter((item) => item.role === 'agent');
+    expect(agentItems).toHaveLength(1);
+    expect(agentItems[0]?.content).toContain('⚙ Plan(Analyze architecture)');
+    expect(agentItems[0]?.content).toContain('Running');
+    expect(agentItems[0]?.content).not.toContain('read(');
+    expect(agentItems[0]?.content).not.toContain('grep(');
   });
 
-  test('transcript shows overflow indicator for many child activities', () => {
+  test('buildActiveItems keeps a single delegated subagent block even when many child activity updates arrive', () => {
     const now = new Date().toISOString();
     const taskId = 'subagent-run:task-root-2';
     const events: CodaraRuntimeEvent[] = [
@@ -175,15 +170,10 @@ describe('delegated-task activity display', () => {
       runtimeEvents: events,
     });
 
-    const taskItem = items.find((item) => item.role === 'agent');
-    expect(taskItem).toBeDefined();
-    expect(taskItem!.toolMeta?.summaryLine).toContain('6 tool activities');
-    expect(taskItem!.toolMeta?.outputLines).toEqual([
-      'read(file-3.ts)',
-      'read(file-4.ts)',
-      'read(file-5.ts)',
-    ]);
-    expect(taskItem!.toolMeta?.totalOutputLines).toBe(6);
+    const agentItems = items.filter((item) => item.role === 'agent');
+    expect(agentItems).toHaveLength(1);
+    expect(agentItems[0]?.content).toContain('⚙ Explore(');
+    expect(agentItems[0]?.content).toContain('Running');
   });
 
   test('task pause events carry delegated-review metadata without any legacy peer-runtime event kind', () => {

@@ -1,4 +1,6 @@
 export type {
+  SubagentCompletionContinuation,
+  SubagentCompletionRunSummary,
   SubagentRunPauseInput,
   SubagentRunRecord,
   SubagentRunResumeInput,
@@ -24,3 +26,6 @@ export {
   type SubagentChildRuntimeOptions,
   type CreateSubagentMiddlewareOptions,
 } from '@capability/subagent/middleware';
+export {
+  createSubagentCompletionMiddleware,
+} from '@capability/subagent/completion';

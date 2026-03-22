@@ -199,7 +199,7 @@ describe('useCliController background refresh', () => {
       });
 
       codara.releaseBlockedStream();
-      await waitFor(() => (rendered.lastFrame() ?? '').includes('runState:done'));
+      await waitFor(() => (rendered.lastFrame() ?? '').includes('runState:running'));
 
       codara.emit({
         id: 'task-event-followup-with-paused-sibling',
@@ -279,7 +279,7 @@ describe('useCliController background refresh', () => {
       });
 
       codara.releaseBlockedStream();
-      await waitFor(() => (rendered.lastFrame() ?? '').includes('runState:done'));
+      await waitFor(() => (rendered.lastFrame() ?? '').includes('runState:running'));
 
       codara.setSubagentRunSummaries([
         {
@@ -321,33 +321,281 @@ describe('useCliController background refresh', () => {
         parentId: 'subagent-run:run-structure',
       });
 
-      await waitFor(() => codara.getStreamCallCount() === 2);
-      await waitFor(() => (rendered.lastFrame() ?? '').includes('streamCalls:2'));
-      const continuationCall = codara.getStreamCalls()[1];
-      expect(continuationCall).toEqual(expect.objectContaining({
-        kind: 'continuation',
-        config: {
-          streamMode: 'messages',
-        },
-        context: {
-          codaraSubagentCompletion: {
-            runs: [
-              expect.objectContaining({
-                runId: 'run-tech',
-                summary: 'Tech stack child summary',
-              }),
-              expect.objectContaining({
-                runId: 'run-structure',
-                summary: 'Structure child summary',
-              }),
-            ],
-          },
-        },
-      }));
+      await waitFor(() => codara.getStreamCallCount() === 1);
+      await waitFor(() => (rendered.lastFrame() ?? '').includes('runState:done'));
       const frame = rendered.lastFrame() ?? '';
-      expect(frame).toContain('streamCalls:2');
+      expect(frame).toContain('streamCalls:1');
       expect(frame).toContain('latestAssistantNotice:none');
       expect(frame).not.toContain('Structure child summary');
+    } finally {
+      codara.releaseBlockedStream();
+      rendered.unmount();
+    }
+  });
+
+  it('re-enters the main agent after a single tracked subagent run completes', async () => {
+    const codara = new FakeCodara();
+    codara.blockNextStream();
+    codara.queueStreamText('Unified final answer from the main agent.');
+    const rendered = render(<BackgroundFollowupProbe codara={codara as unknown as Codara} />);
+
+    try {
+      await waitFor(() => (rendered.lastFrame() ?? '').includes('runState:running'));
+
+      codara.setSubagentRunSummaries([
+        {
+          runId: 'run-explore',
+          parentSessionId: 'session-1',
+          label: 'Delegating Explore: Analyze the repository',
+          agentName: 'Explore',
+          status: 'running',
+          startedAt: new Date(Date.now() - 8_000).toISOString(),
+          updatedAt: new Date().toISOString(),
+          summary: 'Repository summary',
+          toolUseCount: 3,
+          totalTokens: 900,
+        },
+      ]);
+      codara.emit({
+        id: 'subagent-run:run-explore',
+        sessionId: 'session-1',
+        timestamp: new Date().toISOString(),
+        kind: 'agent',
+        phase: 'start',
+        status: 'running',
+        label: 'Delegating Explore: Analyze the repository',
+      });
+
+      codara.releaseBlockedStream();
+      await waitFor(() => (rendered.lastFrame() ?? '').includes('runState:running'));
+
+      codara.setSubagentRunSummaries([
+        {
+          runId: 'run-explore',
+          parentSessionId: 'session-1',
+          label: 'Delegating Explore: Analyze the repository',
+          agentName: 'Explore',
+          status: 'completed',
+          startedAt: new Date(Date.now() - 8_000).toISOString(),
+          updatedAt: new Date().toISOString(),
+          endedAt: new Date().toISOString(),
+          summary: 'Repository summary',
+          toolUseCount: 3,
+          totalTokens: 900,
+        },
+      ]);
+      codara.emit({
+        id: 'task-event-single-complete',
+        sessionId: 'session-1',
+        timestamp: new Date().toISOString(),
+        kind: 'agent',
+        phase: 'end',
+        status: 'done',
+        label: 'Subagent completed',
+        detail: 'Repository summary',
+        parentId: 'subagent-run:run-explore',
+      });
+
+      await waitFor(() => codara.getStreamCallCount() === 1);
+      await waitFor(() => (rendered.lastFrame() ?? '').includes('runState:done'));
+      const frame = rendered.lastFrame() ?? '';
+      expect(codara.getStreamCallCount()).toBe(1);
+      expect(frame).toContain('latestAssistantNotice:none');
+      expect(frame).not.toContain('Repository summary');
+    } finally {
+      codara.releaseBlockedStream();
+      rendered.unmount();
+    }
+  });
+
+  it('keeps the foreground turn in a running state while a tracked subagent batch is still in flight', async () => {
+    const codara = new FakeCodara();
+    codara.blockNextStream();
+    const rendered = render(<BackgroundFollowupProbe codara={codara as unknown as Codara} />);
+
+    try {
+      await waitFor(() => (rendered.lastFrame() ?? '').includes('runState:running'));
+
+      codara.setSubagentRunSummaries([
+        {
+          runId: 'run-explore',
+          parentSessionId: 'session-1',
+          label: 'Delegating Explore: Analyze the repository',
+          agentName: 'Explore',
+          status: 'running',
+          startedAt: new Date(Date.now() - 8_000).toISOString(),
+          updatedAt: new Date().toISOString(),
+          summary: 'Repository summary',
+        },
+      ]);
+      codara.emit({
+        id: 'subagent-run:run-explore',
+        sessionId: 'session-1',
+        timestamp: new Date().toISOString(),
+        kind: 'agent',
+        phase: 'start',
+        status: 'running',
+        label: 'Delegating Explore: Analyze the repository',
+      });
+
+      codara.releaseBlockedStream();
+      await waitFor(() => (rendered.lastFrame() ?? '').includes('activeTurnKind:prompt'));
+      const frame = rendered.lastFrame() ?? '';
+      expect(frame).toContain('runState:running');
+      expect(frame).toContain('streamCalls:1');
+      expect(frame).toContain('activeTurnKind:prompt');
+      expect(frame).toContain('activeTurnPrompt:delegate a task and wait');
+    } finally {
+      codara.releaseBlockedStream();
+      rendered.unmount();
+    }
+  });
+
+  it('retries tracked batch resolution when terminal run summaries arrive after the end event', async () => {
+    const codara = new FakeCodara();
+    codara.blockNextStream();
+    codara.queueStreamText('Main continuation after delayed summary hydration.');
+    const rendered = render(<BackgroundFollowupProbe codara={codara as unknown as Codara} />);
+
+    try {
+      await waitFor(() => (rendered.lastFrame() ?? '').includes('runState:running'));
+
+      codara.setSubagentRunSummaries([
+        {
+          runId: 'run-explore',
+          parentSessionId: 'session-1',
+          label: 'Delegating Explore: Analyze the repository',
+          agentName: 'Explore',
+          status: 'running',
+          startedAt: new Date(Date.now() - 8_000).toISOString(),
+          updatedAt: new Date().toISOString(),
+          summary: 'Repository summary',
+        },
+      ]);
+      codara.emit({
+        id: 'subagent-run:run-explore',
+        sessionId: 'session-1',
+        timestamp: new Date().toISOString(),
+        kind: 'agent',
+        phase: 'start',
+        status: 'running',
+        label: 'Delegating Explore: Analyze the repository',
+      });
+
+      codara.releaseBlockedStream();
+      await waitFor(() => (rendered.lastFrame() ?? '').includes('activeTurnKind:prompt'));
+
+      codara.emit({
+        id: 'task-end-run-explore',
+        sessionId: 'session-1',
+        timestamp: new Date().toISOString(),
+        kind: 'agent',
+        phase: 'end',
+        status: 'done',
+        label: 'Subagent completed',
+        detail: 'Repository summary',
+        parentId: 'subagent-run:run-explore',
+      });
+
+      await new Promise((resolve) => setTimeout(resolve, 10));
+      codara.setSubagentRunSummaries([
+        {
+          runId: 'run-explore',
+          parentSessionId: 'session-1',
+          label: 'Delegating Explore: Analyze the repository',
+          agentName: 'Explore',
+          status: 'completed',
+          startedAt: new Date(Date.now() - 8_000).toISOString(),
+          updatedAt: new Date().toISOString(),
+          endedAt: new Date().toISOString(),
+          summary: 'Repository summary',
+          toolUseCount: 3,
+          totalTokens: 900,
+        },
+      ]);
+
+      await waitFor(() => codara.getStreamCallCount() === 1);
+      await waitFor(() => (rendered.lastFrame() ?? '').includes('runState:done'));
+    } finally {
+      codara.releaseBlockedStream();
+      rendered.unmount();
+    }
+  });
+
+  it('preserves open subagent start events in the runtime buffer so the running batch can still resolve after many later events', async () => {
+    const codara = new FakeCodara();
+    codara.blockNextStream();
+    codara.queueStreamText('Main continuation after explore.');
+    const rendered = render(<BackgroundFollowupProbe codara={codara as unknown as Codara} />);
+
+    try {
+      await waitFor(() => (rendered.lastFrame() ?? '').includes('runState:running'));
+
+      codara.setSubagentRunSummaries([
+        {
+          runId: 'run-explore',
+          parentSessionId: 'session-1',
+          label: 'Delegating Explore: Analyze the repository',
+          agentName: 'Explore',
+          status: 'running',
+          startedAt: new Date(Date.now() - 8_000).toISOString(),
+          updatedAt: new Date().toISOString(),
+          summary: 'Repository summary',
+        },
+      ]);
+      codara.emit({
+        id: 'subagent-run:run-explore',
+        sessionId: 'session-1',
+        timestamp: new Date().toISOString(),
+        kind: 'agent',
+        phase: 'start',
+        status: 'running',
+        label: 'Delegating Explore: Analyze the repository',
+      });
+
+      for (let index = 0; index < 45; index += 1) {
+        codara.emit({
+          id: `tool-update-${index}`,
+          sessionId: 'session-1',
+          timestamp: new Date().toISOString(),
+          kind: 'tool',
+          phase: 'start',
+          status: 'running',
+          label: `Bash(step-${index})`,
+          detail: 'bash',
+        });
+      }
+
+      codara.releaseBlockedStream();
+      await waitFor(() => (rendered.lastFrame() ?? '').includes('runState:running'));
+
+      codara.setSubagentRunSummaries([
+        {
+          runId: 'run-explore',
+          parentSessionId: 'session-1',
+          label: 'Delegating Explore: Analyze the repository',
+          agentName: 'Explore',
+          status: 'completed',
+          startedAt: new Date(Date.now() - 8_000).toISOString(),
+          updatedAt: new Date().toISOString(),
+          endedAt: new Date().toISOString(),
+          summary: 'Repository summary',
+        },
+      ]);
+      codara.emit({
+        id: 'task-end-run-explore',
+        sessionId: 'session-1',
+        timestamp: new Date().toISOString(),
+        kind: 'agent',
+        phase: 'end',
+        status: 'done',
+        label: 'Subagent completed',
+        detail: 'Repository summary',
+        parentId: 'subagent-run:run-explore',
+      });
+
+      await waitFor(() => codara.getStreamCallCount() === 1);
+      await waitFor(() => (rendered.lastFrame() ?? '').includes('runState:done'));
     } finally {
       codara.releaseBlockedStream();
       rendered.unmount();
@@ -420,7 +668,7 @@ describe('useCliController background refresh', () => {
       });
 
       codara.releaseBlockedStream();
-      await waitFor(() => (rendered.lastFrame() ?? '').includes('runState:done'));
+      await waitFor(() => (rendered.lastFrame() ?? '').includes('runState:running'));
 
       codara.emit({
         id: 'task-end-run-tech',
@@ -1180,6 +1428,8 @@ function BackgroundFollowupProbe({codara}: {codara: Codara}): React.JSX.Element 
   return (
     <Text>
       {`runState:${controller.runState.status}`}
+      {` activeTurnKind:${controller.activeTurn?.kind ?? 'none'}`}
+      {` activeTurnPrompt:${controller.activeTurn?.prompt ?? 'none'}`}
       {` latestAssistantNotice:${[...controller.notices].reverse().find((notice) => notice.level === 'assistant')?.content ?? 'none'}`}
       {` streamCalls:${(codara as unknown as FakeCodara).getStreamCallCount()}`}
     </Text>
@@ -1293,6 +1543,8 @@ class FakeCodara {
   private deferredPauseClearHydratesRemaining = -1;
   private readonly streamCalls: CodaraStreamRequest[] = [];
   private readonly queuedStreamChunks: AIMessageChunk[][] = [];
+  private readonly subagentRunUpdateWaiters = new Set<() => void>();
+  private observedSubagentLaunch = false;
   public resumeCount = 0;
   private readonly sessionState: SessionState = {
     sessionId: 'session-1',
@@ -1309,6 +1561,10 @@ class FakeCodara {
   }
 
   emit(event: CodaraRuntimeEvent): void {
+    if (event.kind === 'agent' && event.phase === 'start') {
+      this.observedSubagentLaunch = true;
+      this.flushSubagentRunUpdateWaiters();
+    }
     for (const listener of this.listeners) {
       listener(event);
     }
@@ -1365,6 +1621,7 @@ class FakeCodara {
     }>,
   ): void {
     this.subagentRunSummaries = subagentRunSummaries;
+    this.flushSubagentRunUpdateWaiters();
   }
 
   queueStreamText(text: string): void {
@@ -1490,6 +1747,14 @@ class FakeCodara {
     return this.subagentRunSummaries;
   }
 
+  async getSubagentRunDetails(runIds?: readonly string[]) {
+    return (runIds ?? []).map((runId) => ({
+      runId,
+      childSessionId: `${runId}:child`,
+      messages: [],
+    }));
+  }
+
   getMcpStatus() {
     return [];
   }
@@ -1519,6 +1784,24 @@ class FakeCodara {
     switch (request.kind) {
       case 'prompt':
         yield* this.stream(request.input, request.config);
+        if (await this.waitForSubagentBatchCompletion()) {
+          yield* this.stream(undefined, {
+            ...request.config,
+            context: {
+              codaraSubagentCompletion: {
+                runs: this.subagentRunSummaries.map((run) => ({
+                  runId: run.runId,
+                  label: run.label,
+                  agentName: run.agentName,
+                  status: run.status === 'failed' ? 'failed' : 'completed',
+                  ...(run.summary ? {summary: run.summary} : {}),
+                  ...(run.toolUseCount !== undefined ? {toolUseCount: run.toolUseCount} : {}),
+                  ...(run.totalTokens !== undefined ? {totalTokens: run.totalTokens} : {}),
+                })),
+              },
+            },
+          });
+        }
         return;
       case 'continuation':
         yield* this.stream(undefined, {
@@ -1534,6 +1817,42 @@ class FakeCodara {
         yield* this.resumeApprovalStream(request.payload, request.config);
         return;
     }
+  }
+
+  private flushSubagentRunUpdateWaiters(): void {
+    const waiters = [...this.subagentRunUpdateWaiters];
+    this.subagentRunUpdateWaiters.clear();
+    for (const resolve of waiters) {
+      resolve();
+    }
+  }
+
+  private async waitForSubagentBatchCompletion(): Promise<boolean> {
+    if (!this.observedSubagentLaunch && this.subagentRunSummaries.length === 0) {
+      return false;
+    }
+
+    if (this.subagentRunSummaries.length === 0) {
+      await new Promise<void>((resolve) => {
+        const timer = setTimeout(resolve, 500);
+        this.subagentRunUpdateWaiters.add(() => {
+          clearTimeout(timer);
+          resolve();
+        });
+      });
+    }
+
+    if (this.subagentRunSummaries.length === 0) {
+      return false;
+    }
+
+    while (this.subagentRunSummaries.some((run) => run.status === 'running' || run.status === 'paused')) {
+      await new Promise<void>((resolve) => {
+        this.subagentRunUpdateWaiters.add(resolve);
+      });
+    }
+
+    return this.subagentRunSummaries.length > 0;
   }
 
   async *resumeReviewStream(_payload?: unknown, _config?: unknown) {

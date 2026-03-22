@@ -34,8 +34,13 @@ const subagentReviewMetadataSchema = z.object({
 }).loose();
 
 const subagentRuntimeContextSchema = z.object({
+  codaraSubagentBatch: z.object({
+    batchId: z.string().trim().min(1),
+    expectedCount: z.number().int().positive(),
+  }).optional(),
   review: z.object({
     currentPause: z.object({
+      id: z.string().trim().min(1).optional(),
       metadata: z.unknown().optional(),
     }).loose().optional(),
     resume: z.unknown().optional(),
@@ -70,6 +75,11 @@ export interface SubagentRunRecoveryMetadata {
 
 export interface SubagentParentRuntimeMetadata {
   parentExecution: ParentExecution;
+  launchBatch?: {
+    batchId: string;
+    expectedCount: number;
+  };
+  currentPauseId?: string;
   resume?: SubagentResumeState;
 }
 
@@ -84,6 +94,10 @@ export function readSubagentParentRuntimeMetadata(configurable: unknown): Subage
         ? configurable.execution
         : undefined,
     ),
+    ...(runtimeContext?.codaraSubagentBatch ? {launchBatch: runtimeContext.codaraSubagentBatch} : {}),
+    ...(typeof runtimeContext?.review?.currentPause?.id === 'string'
+      ? {currentPauseId: runtimeContext.review.currentPause.id}
+      : {}),
     ...(resume ? {resume} : {}),
   };
 }

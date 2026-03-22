@@ -8,7 +8,7 @@ import {
 } from '@/cli/transcript/model';
 
 describe('cli transcript visibility', () => {
-  test('keeps already-visible main-agent text after a task runtime block appears', () => {
+  test('keeps already-visible main-agent text and places the running subagent block after it in the same timeline', () => {
     const items = buildActiveItems({
       activeTurn: {
         id: 'turn-visible-before-task-launch',
@@ -33,9 +33,10 @@ describe('cli transcript visibility', () => {
 
     expect(items.map((item) => item.role)).toEqual(['user', 'assistant', 'agent']);
     expect(items[1]?.content).toContain('frame the analysis scope first');
+    expect(items[2]?.content).toContain('Explore(Analyze project)');
   });
 
-  test('keeps a previously visible main-agent message when it later becomes solidified', () => {
+  test('does not preserve previously visible launch prose once an Agent tool call owns delegation in the final transcript', () => {
     const taskCall: ToolCall = {
       id: 'call_task_preserved',
       name: 'Agent',
@@ -60,7 +61,6 @@ describe('cli transcript visibility', () => {
 
     expect(items.map((item) => ({role: item.role, content: item.content}))).toEqual([
       {role: 'user', content: 'delegate it'},
-      {role: 'assistant', content: 'Let me frame the analysis scope first, then I will start the delegation.'},
     ]);
   });
 });

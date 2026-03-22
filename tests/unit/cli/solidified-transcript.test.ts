@@ -83,7 +83,7 @@ describe('solidified transcript model', () => {
       expect(items[0]?.toolMeta?.toolName).toBe('bash');
     });
 
-    test('should suppress raw delegated subagent launch tool messages from the transcript', () => {
+    test('should keep delegated subagent launch tool messages as running execution blocks in the transcript', () => {
       const taskCall: ToolCall = {
         id: 'call_task_1',
         name: 'Agent',
@@ -114,7 +114,10 @@ describe('solidified transcript model', () => {
 
       const items = buildSolidifiedItemsFromRange(messages, 0, 2, toolLookup);
 
-      expect(items).toHaveLength(0);
+      expect(items).toHaveLength(1);
+      expect(items[0]?.role).toBe('agent');
+      expect(items[0]?.content).toContain('⚙ Explore(Analyze the repo)');
+      expect(items[0]?.content).toContain('Running');
     });
 
     test('should return empty array for empty range', () => {
@@ -243,7 +246,7 @@ describe('solidified transcript model', () => {
       expect(items.map((item) => item.role)).toEqual(['user']);
     });
 
-    test('should advance running task elapsed time from the supplied clock even without new events', () => {
+    test('renders subagent runtime blocks directly from agent events while the turn is active', () => {
       const items = buildActiveItems({
         activeTurn: {
           id: 'turn-running-elapsed',
@@ -265,9 +268,9 @@ describe('solidified transcript model', () => {
         nowTimestamp: '2026-03-20T10:00:03.000Z',
       });
 
-      const agentItem = items.find((item) => item.toolMeta?.toolName === 'Agent');
-      expect(agentItem?.toolMeta?.summaryLine).toContain('Running (3.0s)');
-      expect(agentItem?.toolMeta?.elapsed).toBe('3.0s');
+      expect(items.map((item) => item.role)).toEqual(['user', 'agent']);
+      expect(items[1]?.content).toContain('⚙ Explore(Analyze project)');
+      expect(items[1]?.content).toContain('Running');
     });
 
     test('should include runtime events even without activeTurn', () => {
@@ -289,6 +292,80 @@ describe('solidified transcript model', () => {
 
       expect(items).toHaveLength(1);
       expect(items[0]?.role).toBe('tool');
+    });
+
+    test('should keep settled completed subagent runtime blocks visible while no newer main reply has replaced them yet', () => {
+      const now = new Date().toISOString();
+      const items = buildActiveItems({
+        runtimeEvents: [
+          {
+            id: 'subagent-run:run-1',
+            sessionId: 'session-1',
+            timestamp: now,
+            kind: 'agent',
+            phase: 'start',
+            status: 'running',
+            label: 'Delegating Explore: Analyze project',
+          },
+          {
+            id: 'evt_task_end_1',
+            sessionId: 'session-1',
+            timestamp: now,
+            kind: 'agent',
+            phase: 'end',
+            status: 'done',
+            label: 'Subagent completed',
+            detail: 'Repository summary',
+            parentId: 'subagent-run:run-1',
+          },
+        ],
+      });
+
+      expect(items).toHaveLength(1);
+      expect(items[0]?.role).toBe('agent');
+      expect(items[0]?.content).toContain('⚙ Explore(Analyze project)');
+      expect(items[0]?.content).toContain('Done');
+    });
+
+    test('keeps the completed subagent block visible during continuation handoff before the main reply arrives', () => {
+      const now = new Date().toISOString();
+      const items = buildActiveItems({
+        activeTurn: {
+          id: 'turn-subagent-wait',
+          prompt: '',
+          response: '',
+          responseRole: 'assistant',
+          kind: 'subagent_completion',
+          suppressInteractionResponse: true,
+        },
+        runtimeEvents: [
+          {
+            id: 'subagent-run:run-1',
+            sessionId: 'session-1',
+            timestamp: now,
+            kind: 'agent',
+            phase: 'start',
+            status: 'running',
+            label: 'Delegating Explore: Analyze project',
+          },
+          {
+            id: 'evt_task_end_1',
+            sessionId: 'session-1',
+            timestamp: now,
+            kind: 'agent',
+            phase: 'end',
+            status: 'done',
+            label: 'Subagent completed',
+            detail: 'Repository summary',
+            parentId: 'subagent-run:run-1',
+          },
+        ],
+      });
+
+      expect(items).toHaveLength(1);
+      expect(items[0]?.role).toBe('agent');
+      expect(items[0]?.content).toContain('⚙ Explore(Analyze project)');
+      expect(items[0]?.content).toContain('Done');
     });
 
     test('should filter empty content items', () => {
@@ -387,6 +464,24 @@ describe('solidified transcript model', () => {
       ]);
     });
 
+    test('should keep the user prompt ahead of a running subagent block while the main agent is waiting', () => {
+      const ordered = orderActiveTranscriptItems({
+        trailingItems: [
+          {id: 'user-prompt', role: 'user', content: 'delegate it'},
+        ],
+        runtimeItems: [
+          {id: 'active-subagent-run:run-1', role: 'agent', content: '⏺ Explore(Analyze structure)\n  ⎿ Running (3 tool uses · 16s)'},
+        ],
+        activeNoticeItems: [],
+        latestCompletedTurnKind: 'prompt',
+      });
+
+      expect(ordered.map((item) => item.id)).toEqual([
+        'user-prompt',
+        'active-subagent-run:run-1',
+      ]);
+    });
+
     test('should remove trailing tool items already covered by active runtime items', () => {
       const trailingItems: TranscriptItem[] = [
         {
@@ -416,6 +511,42 @@ describe('solidified transcript model', () => {
             status: 'done',
             summaryLine: '---',
             elapsed: '15ms',
+          },
+        },
+      ];
+
+      expect(dedupeTrailingTranscriptItemsCoveredByRuntime(trailingItems, runtimeItems)).toEqual([]);
+    });
+
+    test('should remove trailing completed subagent blocks already covered by active runtime items even when runtime summary shape differs', () => {
+      const trailingItems: TranscriptItem[] = [
+        {
+          id: 'core-agent-result',
+          role: 'agent',
+          content: '⚙ Explore(Analyze structure)\nDone (5 tool uses · 1.2k tokens)',
+          toolMeta: {
+            toolName: 'Agent',
+            displayName: 'Explore',
+            icon: '⚙',
+            args: 'Analyze structure',
+            status: 'done',
+            summaryLine: 'Done (5 tool uses · 1.2k tokens)',
+          },
+        },
+      ];
+      const runtimeItems: TranscriptItem[] = [
+        {
+          id: 'active-subagent-run:run-1',
+          role: 'agent',
+          content: '⚙ Explore(Analyze structure)\nDone (33s)',
+          toolMeta: {
+            toolName: 'Agent',
+            displayName: 'Explore',
+            icon: '⚙',
+            args: 'Analyze structure',
+            status: 'done',
+            summaryLine: 'Done (33s)',
+            elapsed: '33s',
           },
         },
       ];

@@ -11,6 +11,7 @@ export interface ActiveSubagentRun {
   endedAt?: number;
   elapsed: number;
   detail?: string;
+  activityLog?: string[];
   reviewCount?: number;
   toolUseCount?: number;
   totalTokens?: number;
@@ -115,6 +116,7 @@ export function deriveSubagentRunSnapshot(
       endedAt,
       elapsed: (endedAt ?? now) - startedAt,
       ...(detail ? {detail} : {}),
+      ...(run.activityLog?.length ? {activityLog: [...run.activityLog]} : {}),
       ...(runReviews.length > 0 ? {reviewCount: runReviews.length} : {}),
       ...(run.toolUseCount !== undefined ? {toolUseCount: run.toolUseCount} : {}),
       ...(run.totalTokens !== undefined ? {totalTokens: run.totalTokens} : {}),

@@ -12,6 +12,7 @@ export type {
   ReviewQueryItem,
   FocusedReviewQuery,
   SubagentRunQuerySummary,
+  SubagentRunQueryDetail,
 } from '@codara/facade';
 export {
   CodaraModelCatalog,

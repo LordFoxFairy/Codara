@@ -8,12 +8,15 @@ import {bootstrapSubagent, createSubagentResult} from '@capability/subagent/boot
 import {mergeSubagentRunRecoveryMetadata} from '@capability/subagent/review-metadata';
 import type {ChildToolActivityCallback} from '@observability/events';
 import type {CodaraRuntimeEventListener, EmitRuntimeEventInput} from '@observability/events';
-import type {SubagentRunRecord, SubagentRunStore} from '@capability/subagent/types';
+import type {SubagentCompletionContinuation, SubagentRunRecord, SubagentRunStore} from '@capability/subagent/types';
 import type {SubagentRunLaunchResult} from '@shared/subagent-run-launch';
+import type {SubagentResult} from '@shared/subagent-result';
 
 export interface SubagentLaunchInput {
   runId: string;
   parentSessionId: string;
+  batchId: string;
+  batchExpectedCount: number;
   childSessionId: string;
   label: string;
   agentName: string;
@@ -26,6 +29,7 @@ export interface SubagentLaunchInput {
 
 export interface SubagentRunManager {
   launch(input: SubagentLaunchInput): Promise<SubagentRunLaunchResult>;
+  waitForCompletion(parentSessionId: string, batchIds: readonly string[]): Promise<SubagentCompletionContinuation | undefined>;
   registerRecoveryBuilder(builder: SubagentRecoveryBuilder): void;
   setOnAgentEvent(listener: CodaraRuntimeEventListener, sessionId: string | (() => string)): void;
   recordActivity(runId: string, info: Parameters<ChildToolActivityCallback>[0]): void;
@@ -56,6 +60,7 @@ export interface SubagentReviewResumer {
 interface SubagentRunHandle {
   runId: string;
   parentSessionId: string;
+  batchId: string;
   childSessionId: string;
   label: string;
   agentName: string;
@@ -65,6 +70,12 @@ interface SubagentRunHandle {
   maxTurns?: number;
   agent?: Agent;
   agentPromise?: Promise<Agent>;
+}
+
+interface CompletionWaiter {
+  parentSessionId: string;
+  batchIds: ReadonlySet<string>;
+  resolve: (value: SubagentCompletionContinuation | undefined) => void;
 }
 
 export interface CreateSubagentRunManagerOptions {
@@ -88,6 +99,7 @@ export function createSubagentRunManager(options: CreateSubagentRunManagerOption
 
 class InMemorySubagentRunManager implements SubagentRunManager {
   private readonly handles = new Map<string, SubagentRunHandle>();
+  private readonly completionWaiters = new Set<CompletionWaiter>();
   private onAgentEventCallback?: CodaraRuntimeEventListener;
   private sessionIdGetter?: string | (() => string);
   private recoveryBuilder?: SubagentRecoveryBuilder;
@@ -109,6 +121,8 @@ class InMemorySubagentRunManager implements SubagentRunManager {
       return {
         type: 'subagent_run_started',
         runId: existingHandle.runId,
+        batchId: input.batchId,
+        batchExpectedCount: input.batchExpectedCount,
         parentSessionId: existingHandle.parentSessionId,
         sessionId: existingHandle.childSessionId,
         agentName: existingHandle.agentName,
@@ -121,6 +135,8 @@ class InMemorySubagentRunManager implements SubagentRunManager {
       return {
         type: 'subagent_run_started',
         runId: existingRun.runId,
+        batchId: existingRun.batchId,
+        batchExpectedCount: existingRun.batchExpectedCount,
         parentSessionId: existingRun.parentSessionId,
         sessionId: existingRun.childSessionId ?? input.childSessionId,
         agentName: existingRun.agentName,
@@ -132,6 +148,8 @@ class InMemorySubagentRunManager implements SubagentRunManager {
     this.options.runStore?.start({
       runId: input.runId,
       parentSessionId: input.parentSessionId,
+      batchId: input.batchId,
+      batchExpectedCount: input.batchExpectedCount,
       label: input.label,
       agentName: input.agentName,
       ...(input.subagentType ? {subagentType: input.subagentType} : {}),
@@ -142,6 +160,7 @@ class InMemorySubagentRunManager implements SubagentRunManager {
     const handle: SubagentRunHandle = {
       runId: input.runId,
       parentSessionId: input.parentSessionId,
+      batchId: input.batchId,
       childSessionId: input.childSessionId,
       label: input.label,
       agentName: input.agentName,
@@ -158,16 +177,50 @@ class InMemorySubagentRunManager implements SubagentRunManager {
       status: 'running',
       label: input.label,
     });
-    void this.runPromptInBackground(handle, input.prompt);
+    void this.runPrompt(handle, input.prompt);
 
     return {
       type: 'subagent_run_started',
       runId: input.runId,
+      batchId: input.batchId,
+      batchExpectedCount: input.batchExpectedCount,
       parentSessionId: input.parentSessionId,
       sessionId: input.childSessionId,
       agentName: input.agentName,
       label: input.label,
     };
+  }
+
+  async waitForCompletion(
+    parentSessionId: string,
+    batchIds: readonly string[],
+  ): Promise<SubagentCompletionContinuation | undefined> {
+    const normalizedParentSessionId = parentSessionId.trim();
+    const normalizedBatchIds = batchIds.map((batchId) => batchId.trim()).filter(Boolean);
+    if (normalizedBatchIds.length === 0 || !this.options.runStore) {
+      return undefined;
+    }
+
+    const claimed = this.options.runStore.takePendingCompletion(normalizedParentSessionId, normalizedBatchIds);
+    if (claimed) {
+      return claimed;
+    }
+
+    if (!this.hasTrackedRuns(normalizedParentSessionId, normalizedBatchIds)) {
+      return undefined;
+    }
+
+    return await new Promise<SubagentCompletionContinuation | undefined>((resolve) => {
+      const waiter: CompletionWaiter = {
+        parentSessionId: normalizedParentSessionId,
+        batchIds: new Set(normalizedBatchIds),
+        resolve: (value) => {
+          this.completionWaiters.delete(waiter);
+          resolve(value);
+        },
+      };
+      this.completionWaiters.add(waiter);
+    });
   }
 
   recordActivity(runId: string, info: Parameters<ChildToolActivityCallback>[0]): void {
@@ -182,8 +235,10 @@ class InMemorySubagentRunManager implements SubagentRunManager {
     })();
     this.options.runStore?.update(runId, {
       latestActivity: info.label,
+      activityLabel: info.label,
       toolUseCount: nextToolUseCount,
     });
+    this.notifyCompletionWaiters(handle.parentSessionId, handle.batchId);
     this.emitAgentEvent({
       kind: 'agent',
       phase: 'update',
@@ -262,7 +317,7 @@ class InMemorySubagentRunManager implements SubagentRunManager {
     }));
   }
 
-  private async runPromptInBackground(handle: SubagentRunHandle, prompt: string): Promise<void> {
+  private async runPrompt(handle: SubagentRunHandle, prompt: string): Promise<void> {
     try {
       const agent = await this.ensureChildAgent(handle);
       const result = await consumeSubagentStream(agent.stream({
@@ -273,23 +328,7 @@ class InMemorySubagentRunManager implements SubagentRunManager {
 
       await this.applyResult(handle, result);
     } catch (error) {
-      this.options.approvalStore?.removeBySubagentRunId(handle.runId);
-      this.options.runStore?.finish(handle.runId, {
-        type: 'subagent_result',
-        sessionId: handle.childSessionId,
-        turns: 0,
-        reason: 'error',
-        errorMessage: error instanceof Error ? error.message : String(error),
-      });
-      this.emitAgentEvent({
-        kind: 'agent',
-        phase: 'end',
-        status: 'error',
-        label: 'Subagent failed',
-        detail: error instanceof Error ? error.message : String(error),
-        parentId: subagentRunEventId(handle.runId),
-      });
-      await this.disposeHandle(handle);
+      await this.handleTerminalFailure(handle, error);
     }
   }
 
@@ -342,14 +381,48 @@ class InMemorySubagentRunManager implements SubagentRunManager {
       result.reason,
       result.error,
       result.state.messages,
+      {
+        runId: handle.runId,
+        label: handle.label,
+        agentName: handle.agentName,
+      },
     );
     this.options.runStore?.finish(handle.runId, subagentResult);
+    this.notifyCompletionWaiters(handle.parentSessionId, handle.batchId);
     this.emitAgentEvent({
       kind: 'agent',
       phase: 'end',
       status: subagentResult.reason === 'error' ? 'error' : 'done',
       label: subagentResult.reason === 'error' ? 'Subagent failed' : 'Subagent completed',
       detail: subagentResult.summary ?? subagentResult.errorMessage,
+      parentId: subagentRunEventId(handle.runId),
+    });
+    await this.disposeHandle(handle);
+  }
+
+  private async handleTerminalFailure(
+    handle: SubagentRunHandle,
+    error: unknown,
+  ): Promise<void> {
+    this.options.approvalStore?.removeBySubagentRunId(handle.runId);
+    const subagentResult: SubagentResult = {
+      type: 'subagent_result',
+      sessionId: handle.childSessionId,
+      turns: 0,
+      reason: 'error',
+      runId: handle.runId,
+      label: handle.label,
+      agentName: handle.agentName,
+      errorMessage: error instanceof Error ? error.message : String(error),
+    };
+    this.options.runStore?.finish(handle.runId, subagentResult);
+    this.notifyCompletionWaiters(handle.parentSessionId, handle.batchId);
+    this.emitAgentEvent({
+      kind: 'agent',
+      phase: 'end',
+      status: 'error',
+      label: 'Subagent failed',
+      detail: subagentResult.errorMessage,
       parentId: subagentRunEventId(handle.runId),
     });
     await this.disposeHandle(handle);
@@ -390,6 +463,7 @@ class InMemorySubagentRunManager implements SubagentRunManager {
     const recovered: SubagentRunHandle = {
       runId: record.runId,
       parentSessionId: record.parentSessionId,
+      batchId: record.batchId,
       childSessionId: record.childSessionId,
       label: record.label,
       agentName: record.agentName,
@@ -429,6 +503,42 @@ class InMemorySubagentRunManager implements SubagentRunManager {
       sessionId,
       timestamp: new Date().toISOString(),
     });
+  }
+
+  private notifyCompletionWaiters(parentSessionId: string, batchId: string): void {
+    if (!this.options.runStore || this.completionWaiters.size === 0) {
+      return;
+    }
+
+    const normalizedParentSessionId = parentSessionId.trim();
+    const normalizedBatchId = batchId.trim();
+    for (const waiter of [...this.completionWaiters]) {
+      if (waiter.parentSessionId !== normalizedParentSessionId || !waiter.batchIds.has(normalizedBatchId)) {
+        continue;
+      }
+
+      const claimed = this.options.runStore.takePendingCompletion(normalizedParentSessionId, [...waiter.batchIds]);
+      if (claimed) {
+        waiter.resolve(claimed);
+        continue;
+      }
+
+      if (!this.hasTrackedRuns(normalizedParentSessionId, [...waiter.batchIds])) {
+        waiter.resolve(undefined);
+      }
+    }
+  }
+
+  private hasTrackedRuns(parentSessionId: string, batchIds: readonly string[]): boolean {
+    if (!this.options.runStore) {
+      return false;
+    }
+
+    const allowedBatchIds = new Set(batchIds);
+    return this.options.runStore.list().some((run) => (
+      run.parentSessionId === parentSessionId
+      && allowedBatchIds.has(run.batchId)
+    ));
   }
 }
 

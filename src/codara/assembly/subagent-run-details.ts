@@ -1,0 +1,41 @@
+import type {AgentCheckpointer} from '@durability/checkpoint';
+import type {SubagentRunStore} from '@capability/subagent';
+import type {SubagentRunQueryDetail} from '../types';
+
+export async function getSubagentRunDetails(input: {
+  store: SubagentRunStore | undefined;
+  checkpointer: AgentCheckpointer | undefined;
+  parentSessionId: string | undefined;
+  runIds?: readonly string[];
+}): Promise<SubagentRunQueryDetail[]> {
+  const {store, checkpointer, parentSessionId, runIds} = input;
+  if (!store || !checkpointer) {
+    return [];
+  }
+
+  const allowedRunIds = runIds?.length ? new Set(runIds.map((runId) => runId.trim()).filter(Boolean)) : undefined;
+  const runs = store.list().filter((run) => {
+    if (parentSessionId && run.parentSessionId !== parentSessionId) {
+      return false;
+    }
+    if (allowedRunIds && !allowedRunIds.has(run.runId)) {
+      return false;
+    }
+    return Boolean(run.childSessionId);
+  });
+
+  const details = await Promise.all(runs.map(async (run) => {
+    const checkpoint = await checkpointer.getLatest(run.childSessionId!);
+    if (!checkpoint) {
+      return undefined;
+    }
+
+    return {
+      runId: run.runId,
+      childSessionId: run.childSessionId!,
+      messages: checkpoint.state.messages,
+    } satisfies SubagentRunQueryDetail;
+  }));
+
+  return details.filter((detail): detail is SubagentRunQueryDetail => Boolean(detail));
+}

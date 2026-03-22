@@ -1,7 +1,8 @@
 import path from 'node:path';
 import {ToolMessage} from '@langchain/core/messages';
 import {resolveToolCallId} from '@core/agent/run/tool-executor';
-import type {BeforeModelContext, ToolCallContext} from '@core/pipeline/types';
+import {createMiddleware, type BaseMiddleware, type BeforeModelContext, type ToolCallContext} from '@core/pipeline/types';
+import {createSubagentToolMessage} from '@capability/subagent/bootstrap';
 
 interface SubagentCompletionContinuationContext {
   codaraSubagentCompletion?: {
@@ -18,6 +19,28 @@ interface SubagentCompletionContinuationContext {
       totalTokens?: number;
     }>;
   };
+}
+
+export function createSubagentCompletionMiddleware(): BaseMiddleware {
+  return createMiddleware({
+    name: 'SubagentCompletion',
+    beforeModel(context) {
+      const handoff = buildSubagentCompletionHandoff(context);
+      if (!handoff) {
+        return undefined;
+      }
+
+      context.systemMessage.push(handoff);
+      return undefined;
+    },
+    async wrapToolCall(context, handler) {
+      const blocked = maybeHandleSubagentCompletionToolCall(context);
+      if (blocked) {
+        return blocked;
+      }
+      return await handler(context);
+    },
+  });
 }
 
 export function buildSubagentCompletionHandoff(context: BeforeModelContext): string | undefined {
@@ -99,6 +122,24 @@ export function maybeHandleSubagentCompletionToolCall(context: ToolCallContext):
   }
 
   return undefined;
+}
+
+export function createSubagentCompletionToolMessages(
+  runs: NonNullable<NonNullable<SubagentCompletionContinuationContext['codaraSubagentCompletion']>['runs']>,
+): ToolMessage[] {
+  return runs.map((run) => createSubagentToolMessage({
+    type: 'subagent_result',
+    sessionId: run.runId,
+    turns: 0,
+    reason: run.status === 'failed' ? 'error' : 'complete',
+    runId: run.runId,
+    label: run.label,
+    agentName: run.agentName,
+    ...(run.summary ? {summary: run.summary} : {}),
+    ...(run.errorMessage ? {errorMessage: run.errorMessage} : {}),
+    ...(typeof run.toolUseCount === 'number' ? {toolUseCount: run.toolUseCount} : {}),
+    ...(typeof run.totalTokens === 'number' ? {totalTokens: run.totalTokens} : {}),
+  }, run.runId));
 }
 
 function shouldBlockInternalMemoryWriteDuringSubagentCompletion(context: ToolCallContext): boolean {

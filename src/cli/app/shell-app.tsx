@@ -17,6 +17,7 @@ import type {CliReviewAutoAction} from './review-state';
 import {resolveCliLayoutMode} from './layout-mode';
 import {useCliController} from './use-cli-controller';
 import {useSubagentRuns} from '../hooks/use-subagent-runs';
+import {useSubagentRunDetails} from '../hooks/use-subagent-run-details';
 import {useCommandCompletion} from '../hooks/use-command-completion';
 import {useCliInteractionInput} from '../hooks/use-cli-interaction-input';
 import {useSessionPicker} from '../hooks/use-session-picker';
@@ -194,6 +195,11 @@ export function CodaraCliApp(props: CodaraCliAppProps): React.JSX.Element {
     subagentRunSummaries: codara.getSubagentRunSummaries(),
     reviews: codara.listReviewItems(),
   });
+  const subagentRunDetails = useSubagentRunDetails({
+    codara,
+    runs: codara.getSubagentRunSummaries(),
+    enabled: shell.expandedAll,
+  });
   const listCommands = React.useCallback(() => codara.listCommands(), [codara]);
   const completion = useCommandCompletion({
     text: shell.composer.text,
@@ -338,10 +344,19 @@ export function CodaraCliApp(props: CodaraCliAppProps): React.JSX.Element {
               cwd={cwd}
               modelAlias={modelAlias}
               tip={frozenTip}
+              expandedAll={shell.expandedAll}
+              subagentDetails={subagentRunDetails}
             />
           )}
         </Static>
-        {activeItems.length > 0 && <ActiveTranscript items={activeItems} activeSubagentRuns={subagentRuns.runs} expandedAll={shell.expandedAll} />}
+        {(activeItems.length > 0 || subagentRuns.runs.length > 0) && (
+          <ActiveTranscript
+            items={activeItems}
+            activeSubagentRuns={subagentRuns.runs}
+            expandedAll={shell.expandedAll}
+            subagentDetails={subagentRunDetails}
+          />
+        )}
 
         {/* Activity / Prompt / Status */}
         <>

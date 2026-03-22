@@ -19,6 +19,7 @@ export {
   type ReviewQueryItem,
   type FocusedReviewQuery,
   type SubagentRunQuerySummary,
+  type SubagentRunQueryDetail,
 } from '@codara/index';
 export {
   bootstrapAgent,

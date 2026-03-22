@@ -43,11 +43,10 @@ import {
 } from './interaction-turn';
 import {
   CliInteractionScheduler,
-  type SubagentCompletionContinuation,
   type QueuedReviewResponseInteraction,
 } from './interaction-scheduler';
 import {readCliReviewProjection, syncProjectedReview} from './runtime-projection';
-import {routeCliRuntimeEvent, type TrackedTaskBatch} from './runtime-event-router';
+import {routeCliRuntimeEvent} from './runtime-event-router';
 import type {
   CliActiveTurn,
   CliInteractionSurface,
@@ -144,6 +143,39 @@ function deriveRunStateFromAgentState(nextAgentState: {status: string; pendingRe
     : {status: 'done'};
 }
 
+function appendRuntimeEventPreservingOpenStarts(
+  current: readonly CodaraRuntimeEvent[],
+  event: CodaraRuntimeEvent,
+): CodaraRuntimeEvent[] {
+  const next = [...current, event];
+  const terminalEvents = next.filter((candidate) => (
+    (candidate.kind === 'tool' || candidate.kind === 'agent')
+    && candidate.phase === 'end'
+    && candidate.parentId
+  ));
+  const terminalParentIds = new Set(
+    terminalEvents.map((candidate) => candidate.parentId as string),
+  );
+  const recentEvents = next.slice(-40);
+  const retainedIds = new Set(recentEvents.map((candidate) => candidate.id));
+  const recentTerminalParentIds = new Set(
+    recentEvents
+      .filter((candidate) => (
+        (candidate.kind === 'tool' || candidate.kind === 'agent')
+        && candidate.phase === 'end'
+        && candidate.parentId
+      ))
+      .map((candidate) => candidate.parentId as string),
+  );
+  const openStarts = next.filter((candidate) => (
+    (candidate.kind === 'tool' || candidate.kind === 'agent')
+    && candidate.phase === 'start'
+    && (!terminalParentIds.has(candidate.id) || recentTerminalParentIds.has(candidate.id))
+    && !retainedIds.has(candidate.id)
+  ));
+  return [...openStarts, ...recentEvents];
+}
+
 function resolveFocusedSurface(
   current: CliInteractionSurface,
   review: CliReviewState | undefined,
@@ -237,14 +269,13 @@ export function useCliController(options: UseCliControllerOptions): CliControlle
   const [subagentRunPanelVisible, setSubagentRunPanelVisible] = useState(true);
   const [expandedAll, setExpandedAll] = useState(false);
   const [commandOutput, setCommandOutput] = useState<{content: string; commandName?: string; scrollOffset: number} | undefined>();
-  const interactionScheduler = useMemo(() => new CliInteractionScheduler<SubagentCompletionContinuation>(), []);
+  const interactionScheduler = useMemo(() => new CliInteractionScheduler(), []);
   const initialPromptSentRef = useRef(false);
   const initialCoreStateLoadedRef = useRef(false);
   const reviewRef = useRef<CliReviewState | undefined>(undefined);
   const autoActionsRef = useRef([...reviewAutoActions]);
   const handledAutoReviewIdsRef = useRef<Set<string>>(new Set());
   const pendingBackgroundNoticesRef = useRef<CliNotice[]>([]);
-  const trackedTaskBatchRef = useRef<TrackedTaskBatch | undefined>(undefined);
   const settlingDismissedReviewIdRef = useRef<string | undefined>(undefined);
   const runQueuedSessionPromptRef = useRef<(prompt: string) => Promise<void>>(async () => undefined);
 
@@ -384,66 +415,6 @@ export function useCliController(options: UseCliControllerOptions): CliControlle
     return nextAgentState;
   }, [codara, setReviewState, suppressSettlingDismissedReview, syncInteractionState]);
 
-  const runSubagentCompletionContinuation = useCallback(async (continuation: SubagentCompletionContinuation) => {
-    if (interactionScheduler.isRunning()) {
-      interactionScheduler.setPendingContinuation(continuation);
-      syncInteractionState();
-      return;
-    }
-
-    beginInteraction('agent_continuation');
-    setRunState({status: 'running'});
-    setActiveTurn({
-      id: `agent-continuation-${randomUUID()}`,
-      prompt: '',
-      response: '',
-      responseRole: 'assistant',
-      kind: 'subagent_completion',
-    });
-
-    let sawText = false;
-
-    try {
-      for await (const chunk of codara.streamInteraction({
-        kind: 'continuation',
-        context: {
-          codaraSubagentCompletion: {
-            runs: continuation.runs,
-          },
-        },
-        config: {
-          streamMode: 'messages',
-        },
-      })) {
-        if (!AIMessageChunk.isInstance(chunk)) {
-          continue;
-        }
-        setActiveTurn((current) => {
-          const result = applyInteractionChunkToTurn(current, chunk);
-          if (result.sawText) {
-            sawText = true;
-          }
-          return result.turn;
-        });
-      }
-
-      if (!sawText) {
-        setActiveTurn((current) => current ? {...current, response: '(no output)'} : current);
-      }
-
-      setActiveTurn(undefined);
-      trackedTaskBatchRef.current = undefined;
-      const nextAgentState = await refreshCoreState();
-      setRunState(nextAgentState.status === 'paused' ? {status: 'paused'} : {status: 'done'});
-    } catch (error) {
-      setActiveTurn(undefined);
-      reportError(error);
-      await refreshCoreState().catch(() => undefined);
-    } finally {
-      endInteraction();
-    }
-  }, [beginInteraction, codara, endInteraction, interactionScheduler, refreshCoreState, reportError, syncInteractionState]);
-
   const runQueuedReviewResponse = useCallback(async (interaction: QueuedReviewResponseInteraction): Promise<void> => {
     beginInteraction('review_response');
     setRunState({status: 'running'});
@@ -502,31 +473,19 @@ export function useCliController(options: UseCliControllerOptions): CliControlle
       })();
       return;
     }
-    const continuation = interactionScheduler.takePendingContinuation();
-    if (!continuation) {
-      syncInteractionState();
-      return;
-    }
+
     syncInteractionState();
-    void (async () => {
-      await runSubagentCompletionContinuation(continuation);
-      flushPendingBackgroundNotices();
-      drainScheduledInteractions();
-    })();
-  }, [flushPendingBackgroundNotices, interactionScheduler, runQueuedReviewResponse, runSubagentCompletionContinuation, syncInteractionState]);
+  }, [flushPendingBackgroundNotices, interactionScheduler, runQueuedReviewResponse, syncInteractionState]);
 
   useEffect(() => {
     setRuntimeEvents([]);
     return codara.subscribeRuntimeEvents((event: CodaraRuntimeEvent) => {
       const route = routeCliRuntimeEvent({
-        codara,
         event,
-        trackedTaskBatch: trackedTaskBatchRef.current,
         interactionRunning: interactionScheduler.isRunning(),
       });
-      trackedTaskBatchRef.current = route.trackedTaskBatch;
 
-      setRuntimeEvents((current) => [...current, event].slice(-40));
+      setRuntimeEvents((current) => appendRuntimeEventPreservingOpenStarts(current, event));
       if (route.shouldSealActiveTurn) {
         setActiveTurn((current) => sealActiveTurnAtRuntimeBoundary(current));
       }
@@ -540,18 +499,6 @@ export function useCliController(options: UseCliControllerOptions): CliControlle
           [route.queuedNotice],
         );
       }
-      if (route.completionContinuation) {
-        if (route.runContinuationImmediately) {
-          void runSubagentCompletionContinuation(route.completionContinuation);
-        } else {
-          interactionScheduler.setPendingContinuation(route.completionContinuation);
-          syncInteractionState();
-          queueMicrotask(() => {
-            drainScheduledInteractions();
-          });
-        }
-      }
-
       if (route.foregroundSubagentReview) {
         endInteraction();
         setRunState({status: 'paused'});
@@ -562,8 +509,28 @@ export function useCliController(options: UseCliControllerOptions): CliControlle
       if (route.shouldRefreshAuxiliaryState) {
         refreshAuxiliaryState();
       }
+
+      if (event.kind === 'agent') {
+        queueMicrotask(() => {
+          drainScheduledInteractions();
+        });
+      }
     });
-  }, [codara, drainScheduledInteractions, endInteraction, interactionScheduler, refreshAuxiliaryState, runSubagentCompletionContinuation, syncInteractionState]);
+  }, [codara, drainScheduledInteractions, endInteraction, interactionScheduler, refreshAuxiliaryState, syncInteractionState]);
+
+  useEffect(() => {
+    if (interactionScheduler.isRunning()) {
+      return;
+    }
+
+    if (runState.status !== 'running' && runState.status !== 'paused') {
+      return;
+    }
+
+    queueMicrotask(() => {
+      drainScheduledInteractions();
+    });
+  }, [drainScheduledInteractions, interactionScheduler, runState.status, runtimeEvents, review]);
 
   const runSlashCommand = useCallback(async (prompt: string) => {
     const result = await codara.executeCommand(prompt);
@@ -648,14 +615,21 @@ export function useCliController(options: UseCliControllerOptions): CliControlle
       });
     }
 
-    setActiveTurn((current) => finalizeBufferedInteractionText(current));
+    setActiveTurn((current) => {
+      return finalizeBufferedInteractionText(current);
+    });
+
+    const nextAgentState = await refreshCoreState();
+    if (nextAgentState.status === 'paused') {
+      setRunState({status: 'paused'});
+      return;
+    }
 
     if (!sawText) {
       setActiveTurn((current) => current ? {...current, response: '(no output)'} : current);
     }
 
-    const nextAgentState = await refreshCoreState();
-    setRunState(nextAgentState.status === 'paused' ? {status: 'paused'} : {status: 'done'});
+    setRunState({status: 'done'});
     setActiveTurn(undefined);
   }, [codara, refreshCoreState]);
 
