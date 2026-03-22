@@ -1,7 +1,6 @@
 import {ToolMessage} from '@langchain/core/messages';
 import {tool, type StructuredToolInterface} from '@langchain/core/tools';
 import {z} from 'zod';
-import {readBaseSystemMessage} from '@context/session-bundle/base-system-message';
 import {readSkillsRuntimeData, resolveSubagentDefinition, normalizeSubagentType} from '@context/skills/runtime-shared';
 import {createAgentMemoryCheckpointer} from '@durability/checkpoint/agent';
 import {formatAgentRunLaunchResult} from '@shared/agent-run-launch';
@@ -21,7 +20,6 @@ import {
   rebindAgentRunStore,
   resolveDefinitionTools,
   resolveAgentRunId,
-  wrapDelegatedPrepareContext,
 } from '@capability/subagent/support';
 import type {AgentRunStore} from '@capability/subagent/types';
 import type {BootstrapAgentOptions} from '@core/agent/bootstrap';
@@ -160,8 +158,6 @@ async function prepareAgentLaunch(input: PrepareAgentLaunchInput): Promise<Prepa
     readSkillsRuntimeData(configurable.runtimeShared),
     requestedSubagentType,
   );
-  const baseSystemMessage = readBaseSystemMessage(configurable.runtimeShared);
-  const inheritedBaseMessageCount = baseSystemMessage?.systemMessage.length ?? 0;
   const childActivityCallback = readChildActivityCallback(configurable.runtimeShared);
   const runId = resolveAgentRunId(runStore, delegated.parentExecution.toolCallId);
   const agentName = normalizeAgentName(requestedSubagentType, profile.name);
@@ -196,16 +192,14 @@ async function prepareAgentLaunch(input: PrepareAgentLaunchInput): Promise<Prepa
   const onChildToolActivity = createChildToolActivityCallback(runId, runStore, childActivityCallback);
   const childOptions = await buildDelegatedChildOptions({
     ...toolOptions,
-    ...(baseSystemMessage?.systemMessage?.length || toolOptions.systemMessages?.length || toolOptions.systemPrompt
+    ...(toolOptions.systemMessages?.length || toolOptions.systemPrompt
       ? {
           systemMessages: mergeAgentSystemMessages(
-            baseSystemMessage?.systemMessage,
             toolOptions.systemMessages,
             toolOptions.systemPrompt,
           ),
         }
       : {}),
-    prepareContext: wrapDelegatedPrepareContext(toolOptions.prepareContext, inheritedBaseMessageCount),
     checkpointer,
     ...(onChildToolActivity ? {onChildToolActivity} : {}),
   }, {
@@ -258,12 +252,10 @@ function createChildToolActivityCallback(
 }
 
 function mergeAgentSystemMessages(
-  inheritedMessages: string[] | undefined,
   providedMessages: string[] | undefined,
   baseSystemPrompt: string | undefined,
 ): string[] {
   return [
-    ...(inheritedMessages ?? []),
     ...(providedMessages ?? []),
     ...(baseSystemPrompt?.trim() ? [baseSystemPrompt.trim()] : []),
   ];

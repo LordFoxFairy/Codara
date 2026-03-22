@@ -30,14 +30,14 @@ describe('CLI interaction turn helpers', () => {
       responseRole: 'assistant',
     }, chunk, {
       captureThinking: true,
-      detectTaskLaunch: true,
+      detectAgentLaunch: true,
     });
 
     expect(result.sawText).toBe(true);
     expect(result.turn).toEqual(expect.objectContaining({
       response: 'Existing Visible answer',
       thinking: 'First thought. Second thought.',
-      pendingTaskLaunch: true,
+      pendingAgentLaunch: true,
       streamingTokens: {
         input: 120,
         output: 45,

@@ -15,8 +15,8 @@ describe('cli transcript visibility', () => {
         prompt: 'delegate it',
         response: 'Let me frame the analysis scope first, then I will proceed.',
         responseRole: 'assistant',
-        pendingTaskLaunch: true,
-        suppressTaskLaunchResponse: false,
+        pendingAgentLaunch: true,
+        suppressAgentLaunchResponse: false,
       },
       runtimeEvents: [
         {

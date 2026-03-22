@@ -83,7 +83,7 @@ describe('solidified transcript model', () => {
       expect(items[0]?.toolMeta?.toolName).toBe('bash');
     });
 
-    test('should suppress raw delegated task launch tool messages from the transcript', () => {
+    test('should suppress raw delegated subagent launch tool messages from the transcript', () => {
       const taskCall: ToolCall = {
         id: 'call_task_1',
         name: 'Agent',
@@ -265,9 +265,9 @@ describe('solidified transcript model', () => {
         nowTimestamp: '2026-03-20T10:00:03.000Z',
       });
 
-      const taskItem = items.find((item) => item.toolMeta?.toolName === 'Task');
-      expect(taskItem?.toolMeta?.summaryLine).toContain('Running (3.0s)');
-      expect(taskItem?.toolMeta?.elapsed).toBe('3.0s');
+      const agentItem = items.find((item) => item.toolMeta?.toolName === 'Agent');
+      expect(agentItem?.toolMeta?.summaryLine).toContain('Running (3.0s)');
+      expect(agentItem?.toolMeta?.elapsed).toBe('3.0s');
     });
 
     test('should include runtime events even without activeTurn', () => {
@@ -377,7 +377,7 @@ describe('solidified transcript model', () => {
         trailingItems,
         runtimeItems,
         activeNoticeItems: noticeItems,
-        latestCompletedTurnKind: 'task_completion',
+        latestCompletedTurnKind: 'agent_completion',
       });
 
       expect(ordered.map((item) => item.id)).toEqual([
@@ -427,7 +427,7 @@ describe('solidified transcript model', () => {
   describe('filterAgentCompletionTranscriptItems', () => {
     test('filters invalid task-completion waiting narration from transcript items', () => {
       const items = filterAgentCompletionTranscriptItems({
-        completedTurnKind: 'task_completion',
+        completedTurnKind: 'agent_completion',
         items: [
           {id: 'assistant-invalid', role: 'assistant', content: 'Phase 1 has started. Waiting for subagent results.'},
           {id: 'task-1', role: 'task', content: 'Explore(Analyze CLI)\nRunning...'},

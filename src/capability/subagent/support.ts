@@ -2,7 +2,7 @@ import {ToolMessage} from '@langchain/core/messages';
 import type {StructuredToolInterface} from '@langchain/core/tools';
 import {createMiddleware, type BaseMiddleware} from '@core/pipeline/types';
 import {resolveModel, type BootstrapAgentOptions} from '@core/agent/bootstrap';
-import {CHILD_ACTIVITY_CALLBACK_KEY, type ChildToolActivityCallback} from '@observability/events';
+import {AGENT_ACTIVITY_CALLBACK_KEY, type ChildToolActivityCallback} from '@observability/events';
 import {
   createDelegatedAgentToolMessage,
   type DelegatedAgentResult,
@@ -12,7 +12,6 @@ import {formatSubagentDisplayName} from '@context/skills/runtime-shared';
 import {filterToolsByReferences} from '@integration/tool';
 import type {AgentRuntime} from '@capability/subagent/runtime';
 import type {AgentRunRecord, AgentRunStore} from '@capability/subagent/types';
-import {deepClone} from '@shared/clone';
 import {formatToolSummary} from '@shared/tool-display';
 import type {CreateAgentToolOptions} from '@capability/subagent/tool-types';
 
@@ -34,7 +33,7 @@ export function readChildActivityCallback(runtimeShared: unknown): ChildToolActi
     return undefined;
   }
   const shared = runtimeShared as Record<string, unknown>;
-  const callback = shared[CHILD_ACTIVITY_CALLBACK_KEY];
+  const callback = shared[AGENT_ACTIVITY_CALLBACK_KEY];
   return typeof callback === 'function' ? callback as ChildToolActivityCallback : undefined;
 }
 
@@ -87,23 +86,6 @@ export function rebindAgentRunStore(runStore: AgentRunStore | undefined): AgentR
   record.finish = (...args) => finish(...args);
   record[AGENT_RUN_STORE_REBOUND] = true;
   return record;
-}
-
-export function wrapDelegatedPrepareContext(
-  prepareContext: CreateAgentToolOptions['prepareContext'],
-  inheritedBaseMessageCount: number,
-): CreateAgentToolOptions['prepareContext'] {
-  if (!prepareContext) {
-    return undefined;
-  }
-
-  return async (context) => {
-    const preservedExtras = context.systemMessage.slice(inheritedBaseMessageCount);
-    await prepareContext(context);
-    if (preservedExtras.length > 0) {
-      context.systemMessage.push(...preservedExtras);
-    }
-  };
 }
 
 export function readExistingAgentRunMessage(
@@ -178,9 +160,6 @@ export async function buildRecoveredAgentChildOptions(
     handleToolErrors: options.handleToolErrors,
     checkpointer: options.checkpointer,
     inputBudget: options.inputBudget,
-    prepareContext: options.prepareContext,
-    ...(options.context ? {context: deepClone(options.context)} : {}),
-    ...(options.values ? {values: deepClone(options.values)} : {}),
     ...(options.lifecycle ? {lifecycle: options.lifecycle} : {}),
   };
 }

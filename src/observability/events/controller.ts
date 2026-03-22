@@ -26,7 +26,7 @@ import {
 } from './formatters';
 
 /** Key used to store child activity callback in runtimeShared. */
-export const CHILD_ACTIVITY_CALLBACK_KEY = '__taskActivityCallback';
+export const AGENT_ACTIVITY_CALLBACK_KEY = '__agentActivityCallback';
 
 export class RuntimeEventsController {
   private readonly listeners = new Set<CodaraRuntimeEventListener>();
@@ -226,7 +226,7 @@ export class RuntimeEventsController {
               this.pendingAgentIds.add(tcId);
               this.emit({
                 id: `pending-${tcId}`,
-                kind: 'task',
+                kind: 'agent',
                 phase: 'start',
                 status: 'running',
                 label: formatAgentStartLabel({...args, ...(prompt ? {prompt} : {})}),
@@ -269,7 +269,7 @@ export class RuntimeEventsController {
           if (tcId && this.pendingAgentIds.has(tcId)) {
             this.pendingAgentIds.delete(tcId);
             this.emit({
-              kind: 'task',
+              kind: 'agent',
               phase: 'end',
               status: 'done',
               label: 'Subagent started',
@@ -280,7 +280,7 @@ export class RuntimeEventsController {
           const taskRootId = randomUUID();
           this.emit({
             id: taskRootId,
-            kind: 'task',
+            kind: 'agent',
             phase: 'start',
             status: 'running',
             label: formatAgentStartLabel(context.toolCall.args),
@@ -291,7 +291,7 @@ export class RuntimeEventsController {
           // Inject child activity callback so delegated agent tool calls bubble up as task:update events
           const activityCallback: ChildToolActivityCallback = (info) => {
             this.emit({
-              kind: 'task',
+              kind: 'agent',
               phase: 'update',
               status: 'running',
               label: info.label,
@@ -300,7 +300,7 @@ export class RuntimeEventsController {
             });
           };
           if (context.runtime?.shared) {
-            context.runtime.shared[CHILD_ACTIVITY_CALLBACK_KEY] = activityCallback;
+            context.runtime.shared[AGENT_ACTIVITY_CALLBACK_KEY] = activityCallback;
           }
         }
 
@@ -326,7 +326,7 @@ export class RuntimeEventsController {
             const delegated = readDelegatedAgentResult(message.artifact);
             const launched = readAgentRunLaunchResult(message.artifact);
             this.emit({
-              kind: 'task',
+              kind: 'agent',
               phase: 'end',
               status: delegated?.reason === 'error' ? 'error' : hilPayload?.type === 'hil_pause' ? 'paused' : 'done',
               label: delegated?.reason === 'error'

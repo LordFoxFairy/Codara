@@ -32,7 +32,7 @@ export function orderActiveTranscriptItems(input: {
   activeNoticeItems: readonly TranscriptItem[];
   latestCompletedTurnKind?: CliActiveTurn['kind'];
 }): TranscriptItem[] {
-  const placeRuntimeBeforeTrailing = input.latestCompletedTurnKind === 'task_completion'
+  const placeRuntimeBeforeTrailing = input.latestCompletedTurnKind === 'agent_completion'
     && input.trailingItems.length > 0
     && input.runtimeItems.length > 0;
 
@@ -45,7 +45,7 @@ export function filterAgentCompletionTranscriptItems(input: {
   items: readonly TranscriptItem[];
   completedTurnKind?: CliActiveTurn['kind'];
 }): TranscriptItem[] {
-  if (input.completedTurnKind !== 'task_completion') {
+  if (input.completedTurnKind !== 'agent_completion') {
     return [...input.items];
   }
 

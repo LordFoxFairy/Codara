@@ -5,7 +5,7 @@ const INTERNAL_INTERACTION_TOOL_NAMES = new Set(['AskUserQuestion', 'Skill']);
 
 export interface ApplyInteractionChunkOptions {
   captureThinking?: boolean;
-  detectTaskLaunch?: boolean;
+  detectAgentLaunch?: boolean;
 }
 
 export interface ApplyInteractionChunkResult {
@@ -47,8 +47,8 @@ export function applyInteractionChunkToTurn(
     }
   }
 
-  if (options.detectTaskLaunch && Array.isArray(chunk.tool_calls) && chunk.tool_calls.some((toolCall) => toolCall?.name === 'Task')) {
-    next = {...next, pendingTaskLaunch: true};
+  if (options.detectAgentLaunch && Array.isArray(chunk.tool_calls) && chunk.tool_calls.some((toolCall) => toolCall?.name === 'Agent')) {
+    next = {...next, pendingAgentLaunch: true};
   }
 
   if (containsInternalInteractionToolCall(chunk)) {

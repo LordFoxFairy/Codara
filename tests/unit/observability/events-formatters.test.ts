@@ -1,9 +1,9 @@
 import {describe, expect, it} from 'bun:test';
 import {ToolMessage} from '@langchain/core/messages';
-import {summarizeDelegatedTask} from '@observability/events/formatters';
+import {summarizeDelegatedAgent} from '@observability/events/formatters';
 
 describe('observability event formatters', () => {
-  it('suppresses launch metadata details for delegated task start messages', () => {
+  it('suppresses launch metadata details for delegated subagent start messages', () => {
     const message = new ToolMessage({
       content: 'Subagent started in background.',
       tool_call_id: 'call_task_1',
@@ -17,6 +17,6 @@ describe('observability event formatters', () => {
       },
     });
 
-    expect(summarizeDelegatedTask(message)).toBeUndefined();
+    expect(summarizeDelegatedAgent(message)).toBeUndefined();
   });
 });

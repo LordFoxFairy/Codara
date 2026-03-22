@@ -18,6 +18,7 @@ import {
   parseAskUserResult,
 } from '@core/middleware';
 import {
+  createTaskMiddleware,
   createTaskCreateTool,
   createTaskFileStore,
   createTaskListTool,
@@ -204,8 +205,8 @@ export async function createCliRuntime(input: {
           },
           middleware: [
             createSkillsMiddleware({store: createRepoSkillStore(repoRoot), loadRuntime: loadSkillsRuntimeData}),
-            createTaskMiddleware({
-              store,
+            createTaskMiddleware({store}),
+            createAgentMiddleware({
               runStore,
               model: childModel as unknown as BaseChatModel,
               tools: [

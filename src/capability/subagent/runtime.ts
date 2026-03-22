@@ -138,7 +138,7 @@ class InMemoryAgentRuntime implements AgentRuntime {
     this.handles.set(input.runId, handle);
     this.emitAgentEvent({
       id: agentRootEventId(input.runId),
-      kind: 'task',
+      kind: 'agent',
       phase: 'start',
       status: 'running',
       label: input.label,
@@ -170,7 +170,7 @@ class InMemoryAgentRuntime implements AgentRuntime {
       toolUseCount: nextToolUseCount,
     });
     this.emitAgentEvent({
-      kind: 'task',
+      kind: 'agent',
       phase: 'update',
       status: 'running',
       label: info.label,
@@ -198,7 +198,7 @@ class InMemoryAgentRuntime implements AgentRuntime {
       latestActivity: 'Resuming review',
     });
     this.emitAgentEvent({
-      kind: 'task',
+      kind: 'agent',
       phase: 'update',
       status: 'running',
       label: 'Delegated agent resumed',
@@ -267,7 +267,7 @@ class InMemoryAgentRuntime implements AgentRuntime {
         errorMessage: error instanceof Error ? error.message : String(error),
       });
       this.emitAgentEvent({
-        kind: 'task',
+        kind: 'agent',
         phase: 'end',
         status: 'error',
         label: 'Delegated agent failed',
@@ -312,7 +312,7 @@ class InMemoryAgentRuntime implements AgentRuntime {
         childSessionId: handle.childSessionId,
       });
       this.emitAgentEvent({
-        kind: 'task',
+        kind: 'agent',
         phase: 'update',
         status: 'paused',
         label: 'Delegated agent waiting for review',
@@ -332,7 +332,7 @@ class InMemoryAgentRuntime implements AgentRuntime {
     );
     this.options.runStore?.finish(handle.runId, delegatedResult);
     this.emitAgentEvent({
-      kind: 'task',
+      kind: 'agent',
       phase: 'end',
       status: delegatedResult.reason === 'error' ? 'error' : 'done',
       label: delegatedResult.reason === 'error' ? 'Delegated agent failed' : 'Delegated agent completed',

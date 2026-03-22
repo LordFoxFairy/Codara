@@ -324,7 +324,7 @@ describe('Codara facade runtime', () => {
     expect(runtime.getAgentRunSummaries()).toHaveLength(1);
   });
 
-  it('should rebind a caller-provided Task tool to the runtime stores while preserving child tools', async () => {
+  it('should rebind a caller-provided Agent tool to the runtime stores while preserving child tools', async () => {
     const projectRoot = await mkdtemp(path.join(tmpdir(), 'codara-runtime-custom-task-'));
     const runtimeAgentRunStore = createAgentRunMemoryStore();
     const runtimeApprovalStore = createApprovalMemoryStore();
@@ -398,7 +398,7 @@ describe('Codara facade runtime', () => {
           tools: [
             tool(async ({value}: {value: string}) => `child_echo:${value}`, {
               name: 'child_echo',
-              description: 'Child tool preserved through Task tool rebinding.',
+              description: 'Child tool preserved through Agent tool rebinding.',
               schema: z.object({
                 value: z.string(),
               }),
@@ -695,7 +695,7 @@ describe('Codara facade runtime', () => {
     });
 
     try {
-      const first = await firstRuntime.invoke('start paused delegated task');
+      const first = await firstRuntime.invoke('start paused subagent run');
       expect(first.reason).toBe('complete');
 
       await waitForCondition(() => firstRuntime.listReviewItems().length === 1);

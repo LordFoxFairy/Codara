@@ -87,14 +87,14 @@ export function deriveActiveTaskSnapshot(
   preferredRunIds: readonly string[] = [],
 ): ActiveTaskSnapshot {
   const activeBatchRunIds = selectVisibleRunIds(runs, preferredRunIds);
-  const reviewsByTaskRun = new Map<string, ReviewQueryItem[]>();
+  const reviewsByAgentRun = new Map<string, ReviewQueryItem[]>();
   for (const review of reviews) {
     if (review.source !== 'agent_run' || !review.anchor.agentRunId) {
       continue;
     }
-    const entries = reviewsByTaskRun.get(review.anchor.agentRunId) ?? [];
+    const entries = reviewsByAgentRun.get(review.anchor.agentRunId) ?? [];
     entries.push(review);
-    reviewsByTaskRun.set(review.anchor.agentRunId, entries);
+    reviewsByAgentRun.set(review.anchor.agentRunId, entries);
   }
 
   const tasks: ActiveTask[] = [];
@@ -106,7 +106,7 @@ export function deriveActiveTaskSnapshot(
     const status = normalizeTaskStatus(run.status);
     const startedAt = Date.parse(run.startedAt);
     const endedAt = parseTaskFinishedAt(run);
-    const runReviews = reviewsByTaskRun.get(run.runId) ?? [];
+    const runReviews = reviewsByAgentRun.get(run.runId) ?? [];
 
     const detail = resolveTaskDetail(run, runReviews);
     tasks.push({

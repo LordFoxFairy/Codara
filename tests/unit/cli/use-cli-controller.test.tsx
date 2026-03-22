@@ -331,7 +331,7 @@ describe('useCliController background refresh', () => {
         },
         context: {
           codaraAgentCompletion: {
-            tasks: [
+            runs: [
               expect.objectContaining({
                 runId: 'run-tech',
                 summary: 'Tech stack child summary',
@@ -564,7 +564,7 @@ describe('useCliController background refresh', () => {
     }
   });
 
-  it('dismisses a single permission approval immediately after submit while the delegated task keeps running in the background', async () => {
+  it('dismisses a single permission approval immediately after submit while the subagent run keeps running in the background', async () => {
     const codara = new FakeCodara();
     codara.blockNextResumeApproval();
     codara.setReviews([

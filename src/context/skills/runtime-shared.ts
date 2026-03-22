@@ -28,7 +28,7 @@ export const AGENT_SUBAGENT_TYPE = 'Agent';
 
 const AGENT_SUBAGENT_DEFINITION: SubagentDefinition = {
   name: AGENT_SUBAGENT_TYPE,
-  description: 'Built-in Agent child that inherits the main-agent baseline',
+  description: 'Built-in Agent child that starts fresh and loads project context through normal bootstrap',
   systemPrompt: '',
 };
 

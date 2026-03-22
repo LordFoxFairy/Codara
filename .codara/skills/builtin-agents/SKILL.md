@@ -6,7 +6,7 @@ user-invocable: false
 
 This skill provides the named subagent types used by Task delegation.
 
-The built-in `Agent` child is owned by the runtime and inherits the main-agent baseline directly, so only explicit named profiles live here:
+The built-in `Agent` child is owned by the runtime, starts fresh, and loads project context through normal bootstrap, so only explicit named profiles live here:
 
 - `Explore`
 - `Plan`

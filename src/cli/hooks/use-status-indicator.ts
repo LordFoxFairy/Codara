@@ -75,7 +75,7 @@ export function describeStatusIndicator(input: StatusIndicatorInput, frame = 0):
 
       if (activeEventLabel) {
         // Status bar only shows short status word, not the full label
-        const isTask = latestRuntimeEvent?.kind === 'task';
+        const isTask = latestRuntimeEvent?.kind === 'agent';
         const isTool = latestRuntimeEvent?.kind === 'tool';
         const statusWord = isTask ? 'delegating' : isTool ? activeEventLabel : activeEventLabel;
         const shortStatus = statusWord.length > 30 ? `${statusWord.slice(0, 27)}…` : statusWord;

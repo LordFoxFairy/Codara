@@ -126,7 +126,7 @@ function buildAvailableSubagentsMessage(runtime: SkillsRuntimeData | undefined):
 
   return [
     '### Available Subagents',
-    '- Agent: built-in child that inherits the main-agent baseline in a fresh child session',
+    '- Agent: built-in child that starts as a fresh child session and loads project context through normal bootstrap',
     ...definitions.map((definition) => {
       const toolRefs = definition.tools?.length ? ` | tools: ${definition.tools.join(', ')}` : '';
       const maxTurns = typeof definition.maxTurns === 'number' ? ` | max_turns: ${definition.maxTurns}` : '';

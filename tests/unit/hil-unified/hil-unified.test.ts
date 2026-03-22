@@ -1,6 +1,6 @@
 import {describe, expect, test} from 'bun:test';
 import type {CodaraRuntimeEvent} from '@observability/events';
-import {RuntimeEventsController, CHILD_ACTIVITY_CALLBACK_KEY} from '@observability/events';
+import {RuntimeEventsController, AGENT_ACTIVITY_CALLBACK_KEY} from '@observability/events';
 import {buildActiveItems} from '@/cli/transcript/model';
 import type {SessionState} from '@durability/session/types';
 import {FileSessionStore} from '@durability/session/store';
@@ -62,7 +62,7 @@ describe('sub-session isolation', () => {
 });
 
 describe('delegated-task activity display', () => {
-  test('RuntimeEventsController exposes the child activity callback contract for Task tools', () => {
+  test('RuntimeEventsController exposes the child activity callback contract for Agent tools', () => {
     const controller = new RuntimeEventsController('test-session');
     const events: CodaraRuntimeEvent[] = [];
     controller.subscribe((event) => events.push(event));
@@ -73,11 +73,11 @@ describe('delegated-task activity display', () => {
     expect(events).toEqual([]);
   });
 
-  test('CHILD_ACTIVITY_CALLBACK_KEY is exported', () => {
-    expect(CHILD_ACTIVITY_CALLBACK_KEY).toBe('__taskActivityCallback');
+  test('AGENT_ACTIVITY_CALLBACK_KEY is exported', () => {
+    expect(AGENT_ACTIVITY_CALLBACK_KEY).toBe('__agentActivityCallback');
   });
 
-  test('transcript renders child activity under running delegated tasks', () => {
+  test('transcript renders child activity under running delegated subagent runs', () => {
     const now = new Date().toISOString();
     const taskId = 'agent-run:task-root-1';
     const events: CodaraRuntimeEvent[] = [

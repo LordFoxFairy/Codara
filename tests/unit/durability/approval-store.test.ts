@@ -28,15 +28,15 @@ function makePauseRequest(id: string, description: string, toolName: string): Pa
 }
 
 describe('FileApprovalStore', () => {
-  test('round-trips task-run approvals across reopened stores', async () => {
-    const rootDir = await mkdtemp(path.join(tmpdir(), 'codara-approval-task-run-'));
+  test('round-trips agent-run approvals across reopened stores', async () => {
+    const rootDir = await mkdtemp(path.join(tmpdir(), 'codara-approval-agent-run-'));
     try {
       const store = createApprovalFileStore({rootDir});
-      store.upsertTaskRunApproval({
+      store.upsertAgentRunApproval({
         sessionId: 'session-task-run',
         agentRunId: 'task-run-1',
         childSessionId: 'child-session-1',
-        pauseRequest: makePauseRequest('approval-task-run', 'Task approval required', 'dangerous_tool'),
+        pauseRequest: makePauseRequest('approval-task-run', 'Subagent approval required', 'dangerous_tool'),
       });
 
       const reopened = createApprovalFileStore({rootDir});
@@ -46,11 +46,11 @@ describe('FileApprovalStore', () => {
         sessionId: 'session-task-run',
         agentRunId: 'task-run-1',
         childSessionId: 'child-session-1',
-        description: 'Task approval required',
+        description: 'Subagent approval required',
         toolName: 'dangerous_tool',
         pauseRequest: expect.objectContaining({
           id: 'approval-task-run',
-          description: 'Task approval required',
+          description: 'Subagent approval required',
         }),
       }));
       expect(reopened.list('session-task-run')).toHaveLength(1);
@@ -59,31 +59,31 @@ describe('FileApprovalStore', () => {
     }
   });
 
-  test('removes only the targeted task-run approval without disturbing siblings', async () => {
-    const rootDir = await mkdtemp(path.join(tmpdir(), 'codara-approval-task-run-siblings-'));
+  test('removes only the targeted agent-run approval without disturbing siblings', async () => {
+    const rootDir = await mkdtemp(path.join(tmpdir(), 'codara-approval-agent-run-siblings-'));
     try {
       const store = createApprovalFileStore({rootDir});
 
-      store.upsertTaskRunApproval({
+      store.upsertAgentRunApproval({
         sessionId: 'session-task-run',
         agentRunId: 'task-run-1',
         childSessionId: 'child-session-1',
-        pauseRequest: makePauseRequest('approval-task-run-1', 'Task approval required', 'dangerous_tool'),
+        pauseRequest: makePauseRequest('approval-task-run-1', 'Subagent approval required', 'dangerous_tool'),
       });
-      store.upsertTaskRunApproval({
+      store.upsertAgentRunApproval({
         sessionId: 'session-task-run',
         agentRunId: 'task-run-2',
         childSessionId: 'child-session-2',
-        pauseRequest: makePauseRequest('approval-task-run-2', 'Task approval required', 'dangerous_tool'),
+        pauseRequest: makePauseRequest('approval-task-run-2', 'Subagent approval required', 'dangerous_tool'),
       });
-      store.upsertTaskRunApproval({
+      store.upsertAgentRunApproval({
         sessionId: 'session-task-run',
         agentRunId: 'task-run-3',
         childSessionId: 'child-session-3',
-        pauseRequest: makePauseRequest('approval-task-run-3', 'Task approval required', 'dangerous_tool'),
+        pauseRequest: makePauseRequest('approval-task-run-3', 'Subagent approval required', 'dangerous_tool'),
       });
 
-      store.removeByTaskRunId('task-run-1');
+      store.removeByAgentRunId('task-run-1');
 
       expect(store.get('approval-task-run-1')).toBeUndefined();
       expect(store.get('approval-task-run-2')).toEqual(expect.objectContaining({

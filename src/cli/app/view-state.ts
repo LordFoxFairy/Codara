@@ -32,13 +32,13 @@ export interface CliActiveTurn {
   responseBeforeRuntime?: string;
   response: string;
   responseRole: 'assistant' | 'system';
-  kind?: 'prompt' | 'task_completion';
+  kind?: 'prompt' | 'agent_completion';
   /** True once the current streaming turn delegates the foreground to an internal interaction surface. */
   suppressInteractionResponse?: boolean;
   /** True once the current streaming model message includes an Agent tool call. */
-  pendingTaskLaunch?: boolean;
+  pendingAgentLaunch?: boolean;
   /** True only when task launch chatter was detected before any visible response text was emitted. */
-  suppressTaskLaunchResponse?: boolean;
+  suppressAgentLaunchResponse?: boolean;
   /** Accumulated thinking/reasoning text (Extended Thinking). */
   thinking?: string;
   /** Real-time token counts from streaming chunks. */

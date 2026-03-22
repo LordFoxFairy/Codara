@@ -137,7 +137,7 @@ describe('tasks middlewares', () => {
     expect(launchText).toContain('parent_session_id: session-1');
   });
 
-  it('should register the delegated Task tool through middleware', async () => {
+  it('should register the delegated Agent tool through middleware', async () => {
     const store = createBuiltinSubagentStore();
     const runStore = createAgentRunMemoryStore();
     const taskMiddleware = createAgentMiddleware({
@@ -199,11 +199,11 @@ describe('tasks middlewares', () => {
     const lastAi = result.state.messages[result.state.messages.length - 1] as AIMessage;
 
     expect(String(lastAi.content)).toContain('Available Subagents');
-    expect(String(lastAi.content)).toContain('Agent: built-in child that inherits the main-agent baseline');
+    expect(String(lastAi.content)).toContain('Agent: built-in child that starts as a fresh child session');
     expect(String(lastAi.content)).toContain('Explore');
   });
 
-  it('should inject delegated task completion results into main-agent continuation turns', async () => {
+  it('should inject delegated subagent completion results into main-agent continuation turns', async () => {
     const taskMiddleware = createAgentMiddleware({
       model: new ChildSummaryModel() as unknown as BaseChatModel,
     });
@@ -426,7 +426,7 @@ describe('tasks middlewares', () => {
     expect(String(taskToolMessages[1]?.content)).toContain('Write tests');
   });
 
-  it('should write delegated task runs into the stable run store', async () => {
+  it('should write delegated subagent runs into the stable run store', async () => {
     const store = createBuiltinSubagentStore();
     const runStore = createAgentRunMemoryStore();
     const taskMiddleware = createAgentMiddleware({

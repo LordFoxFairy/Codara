@@ -133,7 +133,7 @@ describe('cli transcript model', () => {
     expect(items[0]?.content).toContain('架构分析员');
   });
 
-  test('should keep assistant text even if it contains old collaborative wording without a live delegated task', () => {
+  test('should keep assistant text even if it contains old collaborative wording without a live delegated subagent run', () => {
     const items = buildTranscriptItems({
       notices: [],
       coreMessages: [
@@ -404,7 +404,7 @@ describe('cli transcript model', () => {
     expect(items.some((item) => item.content.includes('CHILD_DONE'))).toBe(true);
   });
 
-  test('should suppress assistant launch chatter while a delegated task runtime block is active', () => {
+  test('should suppress assistant launch chatter while a delegated subagent runtime block is active', () => {
     const now = new Date().toISOString();
     const items = buildTranscriptItems({
       notices: [],
@@ -438,7 +438,7 @@ describe('cli transcript model', () => {
     expect(items.some((item) => item.content.includes('任务已启动'))).toBe(false);
   });
 
-  test('should suppress active launch chatter when the streaming response already contains a Task tool call', () => {
+  test('should suppress active launch chatter when the streaming response already contains an Agent tool call', () => {
     const items = buildActiveItems({
       activeTurn: {
         id: 'turn-task-launch-stream',
@@ -449,7 +449,7 @@ describe('cli transcript model', () => {
           '委派信息：',
         ].join('\n'),
         responseRole: 'assistant',
-        pendingTaskLaunch: true,
+        pendingAgentLaunch: true,
       },
       runtimeEvents: [],
     });
@@ -458,7 +458,7 @@ describe('cli transcript model', () => {
     expect(items.some((item) => item.content.includes('任务已启动'))).toBe(false);
   });
 
-  test('should suppress solidified assistant launch chatter that only repeats a delegated task launch', () => {
+  test('should suppress solidified assistant launch chatter that only repeats a delegated subagent launch', () => {
     const taskCall: ToolCall = {
       id: 'call_task_launch_noise',
       name: 'Agent',
@@ -497,7 +497,7 @@ describe('cli transcript model', () => {
     expect(items).toEqual([]);
   });
 
-  test('should suppress solidified launch chatter on an AI message that also contains a Task tool call', () => {
+  test('should suppress solidified launch chatter on an AI message that also contains an Agent tool call', () => {
     const taskCall: ToolCall = {
       id: 'call_task_launch_inline',
       name: 'Agent',

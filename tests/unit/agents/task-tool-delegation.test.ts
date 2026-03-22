@@ -180,7 +180,7 @@ describe('createAgentTool delegation', () => {
     expect(dangerousInvokeCount).toBe(0);
   });
 
-  it('应在同一个 parent session 重复使用相同 Task tool_call id 时创建新的 detached run', async () => {
+  it('应在同一个 parent session 重复使用相同 Agent tool_call id 时创建新的 detached run', async () => {
     const runStore = createAgentRunMemoryStore();
 
     class RepeatingParentModel {
@@ -246,7 +246,7 @@ describe('createAgentTool delegation', () => {
     ]);
   });
 
-  it('should launch every Task tool call in the same parent response before detaching the turn', async () => {
+  it('should launch every Agent tool call in the same parent response before detaching the turn', async () => {
     const runStore = createAgentRunMemoryStore();
 
     const parent = createAgent({

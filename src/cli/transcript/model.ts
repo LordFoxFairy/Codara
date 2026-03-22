@@ -94,8 +94,8 @@ export function buildTranscriptItems(input: BuildTranscriptItemsInput): Transcri
     input.activeTurn?.response,
     input.activeTurn?.responseRole,
     input.runtimeEvents,
-    input.activeTurn?.pendingTaskLaunch,
-    input.activeTurn?.suppressTaskLaunchResponse,
+    input.activeTurn?.pendingAgentLaunch,
+    input.activeTurn?.suppressAgentLaunchResponse,
   );
   const items = [
     ...input.notices.map((notice) => ({
@@ -170,8 +170,8 @@ export function buildActiveItems(input: {
     input.activeTurn?.response,
     input.activeTurn?.responseRole,
     input.runtimeEvents,
-    input.activeTurn?.pendingTaskLaunch,
-    input.activeTurn?.suppressTaskLaunchResponse,
+    input.activeTurn?.pendingAgentLaunch,
+    input.activeTurn?.suppressAgentLaunchResponse,
   );
   const thinkingItem = input.activeTurn?.thinking
     ? [{
@@ -210,7 +210,7 @@ export function buildActiveItems(input: {
           : input.activeTurn.response,
       }]
     : [];
-  const items: TranscriptItem[] = input.activeTurn?.kind === 'task_completion'
+  const items: TranscriptItem[] = input.activeTurn?.kind === 'agent_completion'
     ? [...runtimeItems, ...promptAndResponseItems, ...currentAssistantItems]
     : preRuntimeAssistantItems.length > 0
       ? [...promptAndResponseItems, ...preRuntimeAssistantItems, ...runtimeItems, ...currentAssistantItems]
@@ -254,8 +254,8 @@ function shouldSuppressAssistantTaskLaunchChatter(
   response: string | undefined,
   role: TranscriptRole | undefined,
   runtimeEvents: readonly CodaraRuntimeEvent[] | undefined,
-  pendingTaskLaunch: boolean | undefined = false,
-  suppressTaskLaunchResponse: boolean | undefined = false,
+  pendingAgentLaunch: boolean | undefined = false,
+  suppressAgentLaunchResponse: boolean | undefined = false,
 ): boolean {
   if (role !== 'assistant') {
     return false;
@@ -266,12 +266,12 @@ function shouldSuppressAssistantTaskLaunchChatter(
     return false;
   }
 
-  if (pendingTaskLaunch && (suppressTaskLaunchResponse || containsTaskLaunchChatter(text))) {
+  if (pendingAgentLaunch && (suppressAgentLaunchResponse || containsTaskLaunchChatter(text))) {
     return true;
   }
 
   const hasLiveAgentRuntime = (runtimeEvents ?? []).some((event) => (
-    event.kind === 'task'
+    event.kind === 'agent'
     && ((event.phase === 'start' && event.status === 'running') || (event.phase === 'update' && event.status === 'paused'))
   ));
 
@@ -309,7 +309,7 @@ function shouldSuppressSolidifiedTaskLaunchChatter(
     id: 'task-launch',
     sessionId: 'task-launch',
     timestamp: new Date(0).toISOString(),
-    kind: 'task',
+    kind: 'agent',
     phase: 'start',
     status: 'running',
     label: 'Delegating Agent',
@@ -333,11 +333,11 @@ function buildRuntimeEventItems(events: readonly CodaraRuntimeEvent[], nowTimest
       startEvents.set(event.id, event);
     }
     // Task events have a parentId pointing to their parent tool event — mark those tool events
-    if (event.kind === 'task' && event.phase === 'start' && event.parentId) {
+    if (event.kind === 'agent' && event.phase === 'start' && event.parentId) {
       taskToolIds.add(event.parentId);
     }
     // Collect child tool activity events (task:update from ActivityForwardMiddleware)
-    if (event.kind === 'task' && event.phase === 'update' && event.parentId && event.detail) {
+    if (event.kind === 'agent' && event.phase === 'update' && event.parentId && event.detail) {
       const activities = taskChildActivity.get(event.parentId) ?? [];
       activities.push(event);
       taskChildActivity.set(event.parentId, activities);
@@ -346,7 +346,7 @@ function buildRuntimeEventItems(events: readonly CodaraRuntimeEvent[], nowTimest
 
   const runtimeTaskLabels = new Set(
     Array.from(startEvents.values())
-      .filter((event) => event.kind === 'task' && event.phase === 'start' && !event.parentId)
+      .filter((event) => event.kind === 'agent' && event.phase === 'start' && !event.parentId)
       .map((event) => event.label),
   );
 
@@ -364,12 +364,12 @@ function buildRuntimeEventItems(events: readonly CodaraRuntimeEvent[], nowTimest
     }
 
     // Task update events (child activity) — handled in the running task rendering, skip here
-    if (event.kind === 'task' && event.phase === 'update' && event.parentId && taskChildActivity.has(event.parentId)) {
+    if (event.kind === 'agent' && event.phase === 'update' && event.parentId && taskChildActivity.has(event.parentId)) {
       continue;
     }
 
     // Task end event — pair with start, render like tool call
-    if (event.kind === 'task' && event.phase === 'end' && event.parentId) {
+    if (event.kind === 'agent' && event.phase === 'end' && event.parentId) {
       const startEvent = startEvents.get(event.parentId);
       if (startEvent) {
         pairedEndIds.add(event.id);
@@ -420,7 +420,7 @@ function buildRuntimeEventItems(events: readonly CodaraRuntimeEvent[], nowTimest
     }
 
     // Skip start events that have been paired.
-    if (event.phase === 'start' && (event.kind === 'tool' || event.kind === 'task')) {
+    if (event.phase === 'start' && (event.kind === 'tool' || event.kind === 'agent')) {
       continue;
     }
 
@@ -475,14 +475,14 @@ function buildRuntimeEventItems(events: readonly CodaraRuntimeEvent[], nowTimest
       continue;
     }
     const wasPaired = events.some(
-      (e) => e.phase === 'end' && e.parentId === id && (e.kind === 'tool' || e.kind === 'task'),
+      (e) => e.phase === 'end' && e.parentId === id && (e.kind === 'tool' || e.kind === 'agent'),
     );
     if (wasPaired) {
       continue;
     }
 
     // Unpaired task start → collected below for grouped rendering
-    if (startEvent.kind === 'task') {
+    if (startEvent.kind === 'agent') {
       if (isPendingTaskPlaceholderStart(startEvent)) {
         continue;
       }
@@ -547,7 +547,7 @@ function isSyntheticTaskStart(
   startEvent: CodaraRuntimeEvent,
   startEvents: ReadonlyMap<string, CodaraRuntimeEvent>,
 ): boolean {
-  if (startEvent.kind !== 'task' || startEvent.phase !== 'start' || !startEvent.parentId) {
+  if (startEvent.kind !== 'agent' || startEvent.phase !== 'start' || !startEvent.parentId) {
     return false;
   }
 
@@ -555,13 +555,13 @@ function isSyntheticTaskStart(
 }
 
 function isPendingTaskPlaceholderStart(startEvent: CodaraRuntimeEvent): boolean {
-  return startEvent.kind === 'task'
+  return startEvent.kind === 'agent'
     && startEvent.phase === 'start'
     && startEvent.detail === 'pending';
 }
 
 function isRunIdBackedTaskStart(startEvent: CodaraRuntimeEvent): boolean {
-  return startEvent.kind === 'task'
+  return startEvent.kind === 'agent'
     && startEvent.phase === 'start'
     && startEvent.id.startsWith('agent-run:');
 }
@@ -809,7 +809,7 @@ function mapRuntimeEventRole(kind: CodaraRuntimeEvent['kind']): TranscriptRole {
 }
 
 function formatRuntimeEvent(event: CodaraRuntimeEvent): string {
-  if (event.kind === 'tool' || event.kind === 'task') {
+  if (event.kind === 'tool' || event.kind === 'agent') {
     if (event.phase === 'end') {
       if (event.status === 'done' && event.detail?.trim()) {
         return event.detail.trim();
@@ -1184,8 +1184,10 @@ export function shouldHideRuntimeEventForTranscript(event: CodaraRuntimeEvent): 
     return true;
   }
 
-  if (event.kind === 'task') {
-    return event.label === 'Subagent started' || event.label === 'Subagent running in background';
+  if (event.kind === 'agent') {
+    return event.label === 'Task started'
+      || event.label === 'Subagent started'
+      || event.label === 'Subagent running in background';
   }
 
   if (event.kind !== 'tool') {

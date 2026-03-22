@@ -4,12 +4,12 @@ import {isInvalidTaskCloseoutResponse, shouldRetryTaskCloseoutResponse} from '..
 describe('task closeout rules', () => {
   it('marks stale waiting or staged narration as invalid', () => {
     expect(isInvalidTaskCloseoutResponse('Phase 1 has started. Waiting for subagent results.')).toBe(true);
-    expect(isInvalidTaskCloseoutResponse('I will continue with phase 2 after the delegated tasks return.')).toBe(true);
+    expect(isInvalidTaskCloseoutResponse('I will continue with phase 2 after the subagents return.')).toBe(true);
     expect(isInvalidTaskCloseoutResponse('已启动第一阶段：3 个并行只读 Explore 子代理正在运行。等待第一阶段完成后，将启动第二阶段的串行子代理。全部 5 个子代理完成后，我将统一输出最终总结报告。')).toBe(true);
     expect(isInvalidTaskCloseoutResponse('已启动第一阶段：3 个并行只读 Explore 子代理正在运行。当前处于等待第一阶段全部结果返回的阶段。完成后我将立即按流程进入第二阶段。')).toBe(true);
   });
 
-  it('does not retry when the continuation launched a Task tool call for the next phase', () => {
+  it('does not retry when the continuation launched an Agent tool call for the next phase', () => {
     expect(shouldRetryTaskCloseoutResponse({
       text: 'Starting the second phase now.',
       launchedTaskToolCall: true,

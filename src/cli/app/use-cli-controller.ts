@@ -123,7 +123,7 @@ export interface CliController {
 }
 
 function shouldRefreshAuxiliaryState(event: CodaraRuntimeEvent): boolean {
-  return event.kind === 'task' || event.kind === 'hil';
+  return event.kind === 'agent' || event.kind === 'hil';
 }
 
 function shouldSealActiveTurnForRuntimeEvent(event: CodaraRuntimeEvent): boolean {
@@ -131,7 +131,7 @@ function shouldSealActiveTurnForRuntimeEvent(event: CodaraRuntimeEvent): boolean
     return false;
   }
 
-  if (event.kind === 'task') {
+  if (event.kind === 'agent') {
     return event.phase === 'start' || event.phase === 'end';
   }
 
@@ -139,7 +139,7 @@ function shouldSealActiveTurnForRuntimeEvent(event: CodaraRuntimeEvent): boolean
 }
 
 function isDelegatedTaskReviewPause(event: CodaraRuntimeEvent): boolean {
-  return event.kind === 'task' && event.phase === 'update' && event.status === 'paused';
+  return event.kind === 'agent' && event.phase === 'update' && event.status === 'paused';
 }
 
 function summarizeBackgroundTaskNotice(event: CodaraRuntimeEvent): CliNotice | undefined {
@@ -215,14 +215,14 @@ interface QueuedReviewResponseInteraction {
 type QueuedCliInteraction = QueuedSessionPromptInteraction | QueuedReviewResponseInteraction;
 
 function isRunIdBackedTaskStartEvent(event: CodaraRuntimeEvent): boolean {
-  return event.kind === 'task'
+  return event.kind === 'agent'
     && event.phase === 'start'
     && event.status === 'running'
     && Boolean(parseAgentRunIdFromEvent(event));
 }
 
 function isPendingTaskPlaceholderStartEvent(event: CodaraRuntimeEvent): boolean {
-  return event.kind === 'task'
+  return event.kind === 'agent'
     && event.phase === 'start'
     && event.detail === 'pending';
 }
@@ -258,9 +258,9 @@ function resolveAgentCompletionContinuation(
     return undefined;
   }
 
-  const taskRuns = codara.getAgentRunSummaries();
+  const agentRuns = codara.getAgentRunSummaries();
   const batchRuns = [...batch.runIds]
-    .map((batchRunId) => taskRuns.find((run) => run.runId === batchRunId && run.sessionId === event.sessionId))
+    .map((batchRunId) => agentRuns.find((run) => run.runId === batchRunId && run.sessionId === event.sessionId))
     .filter((run): run is AgentRunQuerySummary => Boolean(run));
   if (
     batch.runIds.size < batch.expectedCount
@@ -553,7 +553,7 @@ export function useCliController(options: UseCliControllerOptions): CliControlle
       prompt: '',
       response: '',
       responseRole: 'assistant',
-      kind: 'task_completion',
+      kind: 'agent_completion',
     });
 
     let sawText = false;
@@ -831,7 +831,7 @@ export function useCliController(options: UseCliControllerOptions): CliControlle
       setActiveTurn((current) => {
         const result = applyInteractionChunkToTurn(current, chunk, {
           captureThinking: true,
-          detectTaskLaunch: true,
+          detectAgentLaunch: true,
         });
         if (result.sawText || Boolean(chunk.text)) {
           sawText = true;
