@@ -142,7 +142,21 @@ export async function createCodaraRuntime(options: CodaraRuntimeOptions = {}): P
 
   // 6. Middleware chain
   const runtimeMiddlewares = createRuntimeDefaultMiddlewares({
-    options, runtimeTools, taskStore, agentRunStore, agentRuntime, taskCheckpointer: runtimeCheckpointer, approvalStore, logging, catalog, promptSource, guidelinesSource, hookPipeline,
+    options,
+    runtimeTools,
+    taskStore,
+    agentRunStore,
+    agentRuntime,
+    taskCheckpointer: runtimeCheckpointer,
+    approvalStore,
+    logging,
+    catalog,
+    promptSource,
+    guidelinesSource,
+    skillsSource,
+    autoMemorySource: autoMemory?.source,
+    memoryRootDir: autoMemory?.rootDir,
+    hookPipeline,
     channelRegistry: options.channelRegistry,
   });
 

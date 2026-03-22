@@ -1,4 +1,4 @@
-import {formatSubagentDisplayName, normalizeSubagentType} from '@context/skills/runtime-shared';
+import {formatSubagentDisplayName, normalizeSubagentType} from '@capability/skill';
 
 /** Canonical tool name constants to avoid magic strings across the codebase. */
 export const TOOL_NAMES = {

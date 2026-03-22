@@ -3,8 +3,15 @@ import {
   formatSkillsLocations,
   SKILLS_SYSTEM_PROMPT,
 } from '@capability/skill/catalog/metadata';
-import type {SkillStore, SkillsRuntimeBundle, SkillsRuntimeData} from '@capability/skill/contracts';
+import type {SkillStore, SkillsRuntimeData} from '@capability/skill/contracts';
 import {loadSkillsRuntimeData} from '@capability/skill/runtime/runtime';
+
+export interface SkillsRuntimeBundle {
+  systemMessage: string;
+  runtimeShared: {
+    skills: SkillsRuntimeData;
+  };
+}
 
 export function createSkillsRuntimeBundle(runtime: SkillsRuntimeData): SkillsRuntimeBundle {
   return {

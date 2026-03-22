@@ -5,7 +5,7 @@ import path from 'node:path';
 import {AIMessage, HumanMessage, ToolMessage, type BaseMessage, type ToolCall} from '@langchain/core/messages';
 import {createPermissionMiddleware, ensurePermissionSettingsFile} from '@/index';
 import {parseReviewToolMessagePayload, type ToolCallContext} from '@core/middleware';
-import {createPermissionMiddlewareInternal} from '@core/middleware/permission/middleware';
+import {createPermissionMiddleware} from '@core/middleware/permission/middleware';
 
 function createToolContext(toolCall: ToolCall, runtimeContext: Record<string, unknown> = {}): ToolCallContext {
   const messages = [new HumanMessage('run')] as BaseMessage[];
@@ -243,7 +243,7 @@ describe('createPermissionMiddleware', () => {
   it('should include classifier reason and suggestions in permission metadata', async () => {
     const projectRoot = await mkdtemp(path.join(tmpdir(), 'codara-permission-mw-classifier-path-'));
     ensurePermissionSettingsFile({projectRoot, cwd: projectRoot});
-    const middleware = createPermissionMiddlewareInternal({
+    const middleware = createPermissionMiddleware({
       projectRoot,
       cwd: projectRoot,
       bashAnalysisModel: new StaticPermissionAnalysisModel({
@@ -273,7 +273,7 @@ describe('createPermissionMiddleware', () => {
   it('should add all always patterns to session memory on dont_ask_again approval', async () => {
     const projectRoot = await mkdtemp(path.join(tmpdir(), 'codara-permission-mw-classifier-persist-'));
     ensurePermissionSettingsFile({projectRoot, cwd: projectRoot});
-    const middleware = createPermissionMiddlewareInternal({
+    const middleware = createPermissionMiddleware({
       projectRoot,
       cwd: projectRoot,
       bashAnalysisModel: new StaticPermissionAnalysisModel({
@@ -317,7 +317,7 @@ describe('createPermissionMiddleware', () => {
     ];
     await Bun.write(settingsFile, `${JSON.stringify(content, null, 2)}\n`);
 
-    const middleware = createPermissionMiddlewareInternal({
+    const middleware = createPermissionMiddleware({
       projectRoot,
       cwd: projectRoot,
       bashAnalysisModel: new StaticPermissionAnalysisModel({
@@ -351,7 +351,7 @@ describe('createPermissionMiddleware', () => {
       },
     }, null, 2)}\n`);
 
-    const middleware = createPermissionMiddlewareInternal({
+    const middleware = createPermissionMiddleware({
       projectRoot,
       cwd: projectRoot,
       bashAnalysisModel: new StaticPermissionAnalysisModel({

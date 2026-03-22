@@ -118,6 +118,19 @@ export function applyPreparedInstructionContext(
   target.messages = target.state.messages;
 }
 
+export function mergePreparedInstructionContext(
+  target: PreparedInstructionContextTarget,
+  base: BaseSystemMessageBundle,
+): void {
+  const existingSystemMessage = [...target.systemMessage];
+  target.systemMessage = [...base.systemMessage, ...existingSystemMessage];
+  target.runtime.shared = {
+    ...(base.runtimeShared ?? {}),
+    ...(target.runtime.shared ?? {}),
+  };
+  target.messages = target.state.messages;
+}
+
 function createAutoMemorySystemMessage(content: string | undefined, memoryRootDir: string | undefined): string | undefined {
   if (!memoryRootDir) {
     return content;

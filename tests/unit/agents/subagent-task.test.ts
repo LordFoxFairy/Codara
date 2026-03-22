@@ -14,7 +14,8 @@ import {
   TASK_LIST_TOOL_NAME,
 } from '@capability/task';
 import {createSkillsMiddleware} from '@core/middleware';
-import {FileSystemSkillStore, loadSkillsRuntimeBundle} from '@capability/skill';
+import {FileSystemSkillStore} from '@capability/skill';
+import {loadSkillsRuntimeBundle} from '@context/skills/build';
 import {createAgentRunMemoryStore, AGENT_TOOL_NAME, createAgentTool} from '@capability/subagent';
 import {readAgentRunLaunchResult} from '@shared/agent-run-launch';
 

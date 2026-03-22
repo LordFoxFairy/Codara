@@ -1,3 +1,33 @@
+# 2026-03-22 Skills Context Assembly And Background Child Contract
+
+## Plan
+
+- [x] Pull `SkillsRuntimeBundle` and `create/loadSkillsRuntimeBundle(...)` back under `context/skills/build` so `@capability/skill` no longer re-exports assembly/build concerns.
+- [x] Update tests, helpers, and root/context barrels to consume the skills bundle from `context` while keeping runtime/metadata ownership in `capability/skill`.
+- [x] Reconnect delegated child sessions to the same context assembly seam as main sessions by using a shared instruction-context preparer instead of ad-hoc system-message concatenation only.
+- [x] Make background child runs non-interactive by default: no `AskUserQuestion` tool, and permission requests auto-deny instead of opening interactive review.
+- [x] Add focused regression coverage for the new child middleware contract and rerun skills/subagent/facade verification.
+
+## Review
+
+- `@capability/skill` no longer re-exports `createSkillsRuntimeBundle`, `loadSkillsRuntimeBundle`, or `SkillsRuntimeBundle`; those now live only under:
+  - `src/context/skills/build.ts`
+  - `src/context/index.ts`
+  - `src/index.ts`
+- `SkillsRuntimeBundle` moved out of `src/capability/skill/contracts.ts`, which keeps `capability/skill` focused on runtime metadata/contracts rather than session assembly.
+- `createInstructionContextPreparer(...)` now accepts the full instruction bundle inputs and merges them into child sessions through `mergePreparedInstructionContext(...)`, so delegated children reuse the same prompt/guidelines/skills/auto-memory assembly seam as main sessions.
+- Runtime assembly now passes `skillsSource`, `autoMemorySource`, and `memoryRootDir` into child preparation, instead of only stitching child system prompts locally in the subagent launch path.
+- Background child middleware now defaults to Claude Code-style non-interactive behavior:
+  - no `AskUserQuestion` tool unless `interactionMode: 'foreground'`
+  - permission requests continue to surface through the shared main review/control plane rather than through a separate child-owned approval UI
+- Added focused regression coverage in:
+  - `tests/unit/agents/child-middlewares.test.ts`
+- Verification passed:
+  - `bun test tests/unit/agents/child-middlewares.test.ts tests/unit/skills/middleware.test.ts tests/unit/skills/runtime-context.test.ts tests/unit/middleware/skills-export.test.ts tests/unit/sessions/skills.test.ts tests/unit/agents/subagent.test.ts tests/unit/agents/task-tool-delegation.test.ts tests/unit/tasks/middleware.test.ts tests/unit/core/codara-facade.test.ts tests/unit/core/public-api-surface.test.ts`
+  - `bunx tsc --noEmit --pretty false`
+  - `bunx eslint src/capability/skill src/capability/subagent/child-middlewares.ts src/context/skills/build.ts src/context/index.ts src/context/session-bundle/base-system-message.ts src/core/middleware/skills.ts src/core/middleware/index.ts src/core/middleware/permission src/codara/assembly/context.ts src/codara/assembly/middleware.ts src/codara/facade.ts tests/unit/agents/child-middlewares.test.ts tests/unit/skills/middleware.test.ts tests/unit/skills/runtime-context.test.ts tests/unit/middleware/skills-export.test.ts tests/unit/agents/subagent-task.test.ts tests/integration/skills/skills-project-codara.e2e.test.ts tests/integration/skills/skills-project-standard-flow.e2e.test.ts tests/integration/skills/skills-task-completion.e2e.test.ts tests/integration/skills/skills-progressive-disclosure.e2e.test.ts tests/cases/helpers/cli-runtime-factory.ts tests/unit/agents/task-tool.fixtures.ts`
+  - `git diff --check`
+
 # 2026-03-22 Review Naming And Control-Plane Unification
 
 # 2026-03-22 Skills Ownership And Control-Plane Convergence

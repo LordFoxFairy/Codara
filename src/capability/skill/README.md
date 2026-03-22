@@ -4,13 +4,13 @@
 
 ```text
 src/capability/skill/
-  source.ts      # session-scoped SkillsSource
-  store.ts       # 文件系统技能发现（source layering + cache）
-  loading.ts     # SKILL.md frontmatter 解析与校验
-  metadata.ts    # metadata schema/reducer + prompt 格式化
-  runtime.ts     # runtime projection + subagent definitions
-  commands.ts    # skill command discovery
-  types.ts       # SkillMetadata / SkillStore
+  discovery/source.ts   # session-scoped SkillsSource
+  discovery/store.ts    # 文件系统技能发现（source layering + cache）
+  catalog/loading.ts    # SKILL.md frontmatter 解析与校验
+  catalog/metadata.ts   # metadata schema/reducer + prompt 格式化
+  runtime/runtime.ts    # runtime projection + subagent definitions
+  runtime/commands.ts   # skill command discovery + Skill tool
+  contracts.ts          # SkillMetadata / SkillStore / SkillsRuntimeData
   index.ts
 ```
 
@@ -38,7 +38,8 @@ src/capability/skill/
 ## 当前边界
 
 1. 已支持
-- deepagents 风格 skills prompt 注入由 `engine/pipeline/skills.ts` 提供。
+- skills 元数据、runtime parsing、subagent profile resolution 由 `src/capability/skill/*` 提供。
+- system-message/runtime bundle 组装由 `src/context/skills/build.ts` 提供。
 - source layering（后 source 覆盖前 source）。
 - 技能缓存策略下放到 `store`（例如 `FileSystemSkillStore` 的 TTL 缓存）。
 - `allowed-tools` 元数据在 prompt 中展示。

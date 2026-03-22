@@ -43,8 +43,14 @@ export {
   buildBaseSystemMessage,
   readBaseSystemMessage,
   applyPreparedInstructionContext,
+  mergePreparedInstructionContext,
   type BaseSystemMessageBundle,
   type BaseSystemMessageRuntimeData,
   type BuildBaseSystemMessageOptions,
   type PreparedInstructionContextTarget,
 } from '@context/session-bundle/base-system-message';
+export {
+  createSkillsRuntimeBundle,
+  loadSkillsRuntimeBundle,
+  type SkillsRuntimeBundle,
+} from '@context/skills/build';

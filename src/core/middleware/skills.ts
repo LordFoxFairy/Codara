@@ -4,11 +4,10 @@ import {
 } from '@core/pipeline/types'
 import {
   readSkillsRuntimeData,
-  type SkillsRuntimeBundle,
   type SkillStore,
 } from '@capability/skill'
 import {createSkillTool} from '@capability/skill/runtime/commands'
-import {loadSkillsRuntimeBundle} from '@context/skills/build'
+import {loadSkillsRuntimeBundle, type SkillsRuntimeBundle} from '@context/skills/build'
 
 export type SkillsRuntimeBundleLoader = (store: SkillStore, subagentRoots: string[]) => Promise<SkillsRuntimeBundle>
 

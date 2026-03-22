@@ -6,10 +6,10 @@ import {HumanMessage, type BaseMessage} from '@langchain/core/messages'
 import {createSkillsMiddleware} from '@core/middleware'
 import {
   FileSystemSkillStore,
-  loadSkillsRuntimeBundle,
   type SkillMetadata,
   type SkillStore
 } from '@capability/skill'
+import {loadSkillsRuntimeBundle} from '@context/skills/build'
 
 function createBaseContext(runId: string) {
   const messages: BaseMessage[] = [new HumanMessage('hello')]

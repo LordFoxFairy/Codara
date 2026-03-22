@@ -20,7 +20,7 @@ import type {AgentLifecycleHooks} from '@observability/hook/types';
 import {deepClone} from '@shared/clone';
 import {formatToolSummary} from '@shared/tool-display';
 import {readLatestAssistantText} from '@shared/messages';
-import {formatSubagentDisplayName} from '@context/skills/runtime-shared';
+import {formatSubagentDisplayName} from '@capability/skill';
 import type {DelegatedAgentResult} from '@shared/delegation-result';
 import {
   mergeDelegatedPauseMetadata,

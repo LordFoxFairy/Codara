@@ -9,10 +9,12 @@ import {
 } from '@core/middleware';
 import {MIDDLEWARE_NAMES, type BaseMiddleware} from '@core/pipeline/types';
 import type {PermissionAnalysisModel} from '@core/middleware/permission/analysis';
+import type {PermissionMiddlewareOptions} from '@core/middleware/permission/middleware';
 import type {StructuredToolInterface} from '@langchain/core/tools';
 import type {CreateAgentToolOptions} from '@capability/subagent/tool';
 
 export interface AgentChildRuntimeOptions {
+  interactionMode?: 'foreground' | 'background';
   logging?: false | LoggingMiddlewareOptions;
   review?: false | ReviewMiddlewareOptions;
   cwd?: string;
@@ -41,6 +43,8 @@ export function buildAgentChildMiddlewares(options: BuildAgentChildMiddlewaresOp
     middlewares.push(middleware);
   };
 
+  const isForegroundInteractive = options.childRuntime?.interactionMode === 'foreground';
+
   if (options.childRuntime?.logging && options.childRuntime.logging.enabled !== false) {
     push(createLoggingMiddleware(options.childRuntime.logging));
   }
@@ -52,11 +56,11 @@ export function buildAgentChildMiddlewares(options: BuildAgentChildMiddlewaresOp
   if (!seen.has(MIDDLEWARE_NAMES.TodoList) && !providedToolNames.has('write_todos')) {
     push(createTodoListMiddleware());
   }
-  if (options.childRuntime?.review !== false && !seen.has(MIDDLEWARE_NAMES.AskUserQuestion)) {
+  if (isForegroundInteractive && options.childRuntime?.review !== false && !seen.has(MIDDLEWARE_NAMES.AskUserQuestion)) {
     push(createAskUserQuestionMiddleware());
   }
   if (options.childRuntime?.review !== false && !seen.has(MIDDLEWARE_NAMES.Permission)) {
-    push(createPermissionMiddleware({
+    const permissionOptions: PermissionMiddlewareOptions = {
       ...(typeof options.childRuntime?.review === 'object' && options.childRuntime.review !== null
         ? options.childRuntime.review
         : {}),
@@ -64,7 +68,8 @@ export function buildAgentChildMiddlewares(options: BuildAgentChildMiddlewaresOp
       projectRoot: options.childRuntime?.projectRoot,
       userHome: options.childRuntime?.userHome,
       bashAnalysisModel: options.childRuntime?.permissionAnalysisModel,
-    }));
+    };
+    push(createPermissionMiddleware(permissionOptions));
   }
 
   push(createBudgetMiddleware());

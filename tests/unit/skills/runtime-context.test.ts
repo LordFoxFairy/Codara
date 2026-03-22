@@ -7,7 +7,8 @@ import type {BaseChatModel} from '@langchain/core/language_models/chat_models';
 import {createAgent} from '@core/agent';
 import {createAgentMemoryCheckpointer} from '@durability/checkpoint';
 import {createSkillsMiddleware} from '@core/middleware';
-import {FileSystemSkillStore, loadSkillsRuntimeBundle} from '@capability/skill';
+import {FileSystemSkillStore} from '@capability/skill';
+import {loadSkillsRuntimeBundle} from '@context/skills/build';
 
 class SingleResponseModel {
   async invoke() {

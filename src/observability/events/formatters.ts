@@ -4,7 +4,7 @@ import {readExecutionMetadata, type BaseExecutionContext} from '@core/pipeline/t
 import {readDelegatedAgentResult} from '@shared/delegation-result';
 import {readAgentRunLaunchResult} from '@shared/agent-run-launch';
 import {TOOL_NAMES, formatToolSummary, readString} from '@shared/tool-display';
-import {formatSubagentDisplayName, normalizeSubagentType} from '@context/skills/runtime-shared';
+import {formatSubagentDisplayName, normalizeSubagentType} from '@capability/skill';
 
 export function turnKey(context: BaseExecutionContext): string {
   const execution = readExecutionMetadata(context);

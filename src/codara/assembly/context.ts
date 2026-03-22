@@ -1,8 +1,9 @@
 import type {AgentContextPreparer} from '@core/agent';
 import {FileSystemSkillStore, type SkillStore} from '@capability/skill';
 import {
-  applyPreparedInstructionContext,
   buildBaseSystemMessage,
+  mergePreparedInstructionContext,
+  type BuildBaseSystemMessageOptions,
 } from '@context/session-bundle/base-system-message';
 import {
   createAutoMemoryRuntime,
@@ -47,14 +48,28 @@ export function resolveCodaraSkills(
 export function createInstructionContextPreparer(sources: {
   promptSource?: PromptSource;
   guidelinesSource?: GuidelinesSource;
+  skillsSource?: BuildBaseSystemMessageOptions['skillsSource'];
+  autoMemorySource?: BuildBaseSystemMessageOptions['autoMemorySource'];
+  memoryRootDir?: BuildBaseSystemMessageOptions['memoryRootDir'];
 }): AgentContextPreparer | undefined {
-  if (!sources.promptSource && !sources.guidelinesSource) {
+  if (
+    !sources.promptSource
+    && !sources.guidelinesSource
+    && !sources.skillsSource
+    && !sources.autoMemorySource
+  ) {
     return undefined;
   }
 
   return async (context) => {
-    const next = await buildBaseSystemMessage(sources.promptSource, sources.guidelinesSource);
-    applyPreparedInstructionContext(context, next);
+    const next = await buildBaseSystemMessage({
+      promptSource: sources.promptSource,
+      guidelinesSource: sources.guidelinesSource,
+      skillsSource: sources.skillsSource,
+      autoMemorySource: sources.autoMemorySource,
+      memoryRootDir: sources.memoryRootDir,
+    });
+    mergePreparedInstructionContext(context, next);
   };
 }
 

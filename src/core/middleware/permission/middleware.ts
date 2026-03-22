@@ -1,4 +1,7 @@
-import {createReviewMiddleware, type ReviewMiddlewareOptions} from '@core/middleware/review';
+import {
+  createReviewMiddleware,
+  type ReviewMiddlewareOptions,
+} from '@core/middleware/review';
 import type {BaseMiddleware} from '@core/pipeline/types';
 import {
   createPermissionRuntime,
@@ -7,9 +10,6 @@ import {
 } from '@core/middleware/permission/runtime';
 
 export interface PermissionMiddlewareOptions extends PermissionRuntimeOptions, ReviewMiddlewareOptions {}
-
-/** @internal Test-only alias for createPermissionMiddleware with direct bashAnalysisModel support. */
-export const createPermissionMiddlewareInternal = createPermissionMiddleware;
 
 export function createPermissionMiddleware(
   options: PermissionMiddlewareOptions = {},

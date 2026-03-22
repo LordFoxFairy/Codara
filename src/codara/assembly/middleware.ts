@@ -33,9 +33,12 @@ import type {HookPipeline} from '@observability/hook';
 import {createToolHooksBridge} from '@observability/hook';
 import type {GuidelinesSource} from '@context/instructions/guidelines';
 import type {PromptSource} from '@context/prompts/prompt-source';
+import type {SkillsSource} from '@capability/skill';
+import type {AutoMemorySource} from '@context/memory/auto-memory';
 import {resolveWorkspaceRoot} from '@config/workspace';
 import type {ChannelRegistry} from '@integration/channel';
 import {createChannelReviewOptions} from '@integration/channel';
+import {createInstructionContextPreparer} from './context';
 import type {
   CodaraMiddlewareOptions,
   CodaraRuntimeOptions,
@@ -102,6 +105,9 @@ export function createRuntimeDefaultMiddlewares(input: {
   catalog?: CodaraModelCatalog | Promise<CodaraModelCatalog>;
   promptSource: PromptSource;
   guidelinesSource: GuidelinesSource;
+  skillsSource?: SkillsSource;
+  autoMemorySource?: AutoMemorySource;
+  memoryRootDir?: string;
   hookPipeline?: HookPipeline;
   channelRegistry?: ChannelRegistry;
 }): BaseMiddleware[] {
@@ -146,6 +152,13 @@ export function createRuntimeDefaultMiddlewares(input: {
   }
 
   if (!byName.has(MIDDLEWARE_NAMES.Agent) && !providedToolNames.has('Agent')) {
+    const childPrepareContext = createInstructionContextPreparer({
+      promptSource: input.promptSource,
+      guidelinesSource: input.guidelinesSource,
+      skillsSource: input.skillsSource,
+      autoMemorySource: input.autoMemorySource,
+      memoryRootDir: input.memoryRootDir,
+    });
     byName.set(
       MIDDLEWARE_NAMES.Agent,
         createAgentMiddleware({
@@ -160,6 +173,7 @@ export function createRuntimeDefaultMiddlewares(input: {
         })),
         tools: input.runtimeTools,
         childRuntime: {
+          interactionMode: 'background',
           logging: input.logging,
           review: input.options.review ?? {},
           cwd: input.options.cwd,
@@ -167,6 +181,7 @@ export function createRuntimeDefaultMiddlewares(input: {
           userHome: input.options.userHome,
           permissionAnalysisModel: createRuntimePermissionAnalysisModel(input.options, input.catalog),
         },
+        ...(childPrepareContext ? {childPrepareContext} : {}),
         ...(input.hookPipeline ? {childLifecycle: input.hookPipeline} : {}),
       }),
     );

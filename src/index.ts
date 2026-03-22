@@ -132,7 +132,6 @@ export {
   type SkillsSource,
   type SubagentDefinitionHints,
   type SkillsRuntimeData,
-  type SkillsRuntimeBundle,
   type SubagentDefinition,
   createSubagentCatalogMessage,
   formatSubagentDisplayName,
@@ -161,6 +160,7 @@ export {
 export {
   createSkillsRuntimeBundle,
   loadSkillsRuntimeBundle,
+  type SkillsRuntimeBundle,
 } from '@context/skills/build';
 export {
   createSession,

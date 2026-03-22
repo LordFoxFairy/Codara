@@ -45,13 +45,6 @@ export interface SkillsRuntimeData {
   subagentDefinitions: Record<string, SubagentDefinition>;
 }
 
-export interface SkillsRuntimeBundle {
-  systemMessage: string;
-  runtimeShared: {
-    skills: SkillsRuntimeData;
-  };
-}
-
 export interface SkillsSource {
   getRuntime(): Promise<SkillsRuntimeData>;
   reload(): void;

@@ -27,7 +27,8 @@ import {
   TASK_LIST_TOOL_NAME,
 } from '@capability/task';
 import {createAgentRunFileStore, AGENT_TOOL_NAME, createAgentTool, createAgentMiddleware} from '@capability/subagent';
-import {FileSystemSkillStore, loadSkillsRuntimeBundle} from '@capability/skill';
+import {FileSystemSkillStore} from '@capability/skill';
+import {loadSkillsRuntimeBundle} from '@context/skills/build';
 import {seedProjectSkillFixtures} from '../../helpers/project-skill-fixtures';
 
 const createCliCaseRuntime = async (options: Parameters<typeof createCodaraRuntime>[0]) => (

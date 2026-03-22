@@ -25,10 +25,6 @@ export {
   resolveSubagentDefinition,
 } from '@capability/skill/runtime/runtime';
 export {
-  createSkillsRuntimeBundle,
-  loadSkillsRuntimeBundle,
-} from '@context/skills/build';
-export {
   MAX_SKILL_COMPATIBILITY_LENGTH,
   MAX_SKILL_DESCRIPTION_LENGTH,
   MAX_SKILL_FILE_SIZE,
@@ -54,7 +50,6 @@ export type {
   SkillCommandMetadata,
   SkillMetadata,
   SkillStore,
-  SkillsRuntimeBundle,
   SkillsRuntimeData,
   SkillsSource,
   SubagentDefinition,

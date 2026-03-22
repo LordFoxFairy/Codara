@@ -1,6 +1,14 @@
 # Lessons
 
 ## 2026-03-22
+- 用户继续纠偏：`permission` 的前后台差异不该由 permission middleware 自己持有；子代理权限请求应继续走 main 的 review/control plane，而不是在 permission 层被“背景模式”静默改写。
+- 防错规则：像 permission 这种通用 review 能力，不要把 subagent 策略塞进它的公开 options，也不要在 child 路径里额外造第二套 approval UI；subagent 侧只决定是否暴露 AskUser，permission 本身一律产出统一 review pause 交给主控制面承接。
+- 用户继续纠偏：像 `createPermissionMiddleware` / `createBackgroundPermissionMiddleware` 这种把同一 owner 能力拆成两套并行工厂的写法，会迅速把控制面写乱。
+- 防错规则：当差异只是一种 mode/strategy（foreground/background、interactive/non-interactive）时，优先保留单一 owner API，并把差异收进显式 option/type；不要再用第二个平行工厂、第二套 middleware 名字或“背景版/前景版”导出制造双轨心智。
+- 用户继续纠偏：像 `skills` 这类 capability，domain owner 和 assembly owner 必须分开，但不能再通过 capability barrel 反向导出 assembly/bundle 类型，否则边界看起来又像混装。
+- 防错规则：当用户明确说“build 能力可以放在 context”时，就把 bundle 类型、builder、loader 统一留在 `context/*`，并同时检查 capability barrel、root barrel、tests/imports 是否还有反向回流；不能只移动实现文件而保留旧导出面。
+- 用户继续纠偏：Claude Code 的 background subagent 不是运行中继续透传 AskUser/permission 的模式，而是尽量前置授权、运行中少打扰。
+- 防错规则：只要某条子代理路径被定义成 background/default，就默认不给它交互式 `AskUserQuestion`，permission 请求也应 auto-deny 或前置解决；只有显式 foreground 模式，才允许 clarification 和 permission review 穿透到用户。
 - 用户继续纠偏：`build`/assembly 能力可以留在 `context`，不必为了 owner 纯化把所有 bundle/system-message 组装都硬塞回 capability。
 - 防错规则：区分 “capability owns domain semantics” 和 “context owns assembly/build”。像 skills 这类能力，metadata/runtime/profile resolution 应归 capability；但 system-message 拼装、instruction bundle 组装如果本质是上下文装配，可以继续留在 context，不要过度收回。
 - 用户继续纠偏：当某个 capability 明确应该自主管理 metadata、runtime bundle、system message 和 catalog projection 时，不能继续把 contracts/runtime-shared/prompt shim 留在 `context/*` 里做半 owner。

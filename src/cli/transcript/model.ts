@@ -7,7 +7,7 @@ import {readDelegatedAgentResult} from '@shared/delegation-result';
 import {readAgentRunLaunchResult} from '@shared/agent-run-launch';
 import {readSharedTaskCoordinationArtifact} from '@shared/task-coordination-result';
 import {TOOL_NAMES} from '@shared/tool-display';
-import {formatSubagentDisplayName, normalizeSubagentType} from '@context/skills/runtime-shared';
+import {formatSubagentDisplayName, normalizeSubagentType} from '@capability/skill';
 import type {CliActiveTurn, CliNotice} from '../app/view-state';
 import {isInvalidTaskCloseoutResponse} from '../task-closeout';
 import {formatTokenCount} from '../utils/format';
