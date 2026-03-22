@@ -353,7 +353,7 @@ describe('solidified transcript model', () => {
       ],
     }));
 
-    const serialized = lastFrame();
+    const serialized = lastFrame() ?? '';
     expect(serialized.includes('"toolName":"Skill"')).toBe(false);
   });
 

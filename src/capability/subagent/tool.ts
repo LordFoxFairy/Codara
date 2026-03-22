@@ -53,6 +53,7 @@ interface PrepareSubagentLaunchInput {
   prompt: string;
   subagentType: string;
   maxTurns?: number;
+  permissionMode?: string;
   configurable: Record<string, unknown>;
   toolOptions: CreateSubagentToolOptions;
   runStore: SubagentRunStore | undefined;
@@ -66,6 +67,7 @@ interface PreparedSubagentLaunch {
   childSessionId: string;
   agentName: string;
   subagentType?: string;
+  permissionMode?: string;
   runLabel: string;
   childMaxTurns: number | undefined;
   existingRunMessage?: ToolMessage;
@@ -75,6 +77,7 @@ interface PreparedSubagentLaunch {
 interface CompiledSubagentLaunchSpec {
   agentName: string;
   subagentType?: string;
+  permissionMode?: string;
   childMaxTurns?: number;
   childOptions: BootstrapAgentOptions;
 }
@@ -124,6 +127,7 @@ export function createSubagentTool(options: CreateSubagentToolOptions): Structur
         label: prepared.runLabel,
         agentName: prepared.agentName,
         ...(prepared.subagentType ? {subagentType: prepared.subagentType} : {}),
+        ...(prepared.permissionMode ? {permissionMode: prepared.permissionMode} : {}),
         prompt,
         childOptions: prepared.childOptions!,
         ...(typeof prepared.childMaxTurns === 'number' ? {maxTurns: prepared.childMaxTurns} : {}),
@@ -191,6 +195,7 @@ async function prepareSubagentLaunch(input: PrepareSubagentLaunchInput): Promise
       childSessionId,
       agentName: compiled.agentName,
       ...(compiled.subagentType ? {subagentType: compiled.subagentType} : {}),
+      ...(compiled.permissionMode ? {permissionMode: compiled.permissionMode} : {}),
       runLabel,
       childMaxTurns: compiled.childMaxTurns,
       existingRunMessage,
@@ -204,6 +209,7 @@ async function prepareSubagentLaunch(input: PrepareSubagentLaunchInput): Promise
     childSessionId,
     agentName: compiled.agentName,
     ...(compiled.subagentType ? {subagentType: compiled.subagentType} : {}),
+    ...(compiled.permissionMode ? {permissionMode: compiled.permissionMode} : {}),
     runLabel,
     childMaxTurns: compiled.childMaxTurns,
     childOptions: compiled.childOptions,
@@ -311,6 +317,7 @@ async function compileSubagentLaunchSpec(input: {
   prompt: string;
   subagentType: string | undefined;
   maxTurns?: number;
+  permissionMode?: string;
   parentRuntime: SubagentParentRuntimeMetadata;
   toolOptions: CreateSubagentToolOptions;
   checkpointer: AgentCheckpointer;
@@ -334,11 +341,13 @@ async function compileSubagentLaunchSpec(input: {
     ...(requestedSubagentType ? {subagentType: requestedSubagentType} : {}),
     profileTools: resolveDefinitionTools(input.toolOptions.tools ?? [], profile),
     profileSystemPrompt: profile.systemPrompt,
+    ...(profile.hints?.permissionMode ? {permissionMode: profile.hints.permissionMode} : {}),
   });
 
   return {
     agentName: normalizeSubagentName(requestedSubagentType, profile.name),
     ...(requestedSubagentType ? {subagentType: requestedSubagentType} : {}),
+    ...(profile.hints?.permissionMode ? {permissionMode: profile.hints.permissionMode} : {}),
     ...(typeof childMaxTurns === 'number' ? {childMaxTurns} : {}),
     childOptions,
   };

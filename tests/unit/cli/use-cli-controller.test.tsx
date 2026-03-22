@@ -1271,7 +1271,7 @@ class FakeCodara {
   private focusedReviewId: string | undefined;
   private subagentRunSummaries: Array<{
     runId: string;
-    sessionId: string;
+    parentSessionId: string;
     label: string;
     agentName: string;
     status: string;
@@ -1536,7 +1536,7 @@ class FakeCodara {
     }
   }
 
-  async *resumeReviewStream() {
+  async *resumeReviewStream(_payload?: unknown, _config?: unknown) {
     if (this.failPauseResumeWhileRunning && this.hydrateSequence.length > 0 && this.hydrateSequence[0]?.status === 'running') {
       throw new Error('Agent is currently running.');
     }
@@ -1547,7 +1547,7 @@ class FakeCodara {
     yield* [];
   }
 
-  async *resumeApprovalStream() {
+  async *resumeApprovalStream(_payload?: unknown, _config?: unknown) {
     this.resumeCount += 1;
     if (this.blockApprovalResume) {
       await new Promise<void>((resolve) => {
@@ -1563,7 +1563,7 @@ class FakeCodara {
     yield* [];
   }
 
-  async resumeReview() {
+  async resumeReview(_payload?: unknown, _config?: unknown) {
     this.resumeCount += 1;
     if (this.blockApprovalResume) {
       await new Promise<void>((resolve) => {

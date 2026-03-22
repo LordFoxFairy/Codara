@@ -25,7 +25,7 @@ import {
 import {
   buildSubagentCompletionHandoff,
   maybeHandleSubagentCompletionToolCall,
-} from '@codara/subagent-completion';
+} from '@capability/subagent/completion';
 
 const subagentMiddlewareOptions = new WeakMap<BaseMiddleware, CreateSubagentMiddlewareOptions>();
 
@@ -51,7 +51,7 @@ export function createSubagentMiddleware(options: CreateSubagentMiddlewareOption
     runStore,
     approvalStore: options.approvalStore,
   });
-  const childMiddlewares = createSubagentChildRuntimeMiddlewares(options);
+  const childMiddlewares = buildSubagentChildMiddlewares(options);
   const taskTools = options.taskStore ? createTaskTools({store: options.taskStore}) : [];
 
   const middleware = createMiddleware({
@@ -137,7 +137,11 @@ export function assertNoRawSubagentTools(tools: StructuredToolInterface[] | unde
   );
 }
 
-function createSubagentChildRuntimeMiddlewares(options: CreateSubagentMiddlewareOptions): BaseMiddleware[] {
+export function buildSubagentChildMiddlewares(options: CreateSubagentMiddlewareOptions): BaseMiddleware[] {
+  return assembleSubagentChildMiddlewares(options);
+}
+
+function assembleSubagentChildMiddlewares(options: CreateSubagentMiddlewareOptions): BaseMiddleware[] {
   const middlewares: BaseMiddleware[] = [];
   const callerMiddlewares = [...(options.childMiddleware ?? [])];
   const providedToolNames = collectProvidedToolNames({

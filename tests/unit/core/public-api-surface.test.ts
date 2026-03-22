@@ -3,7 +3,7 @@ import * as core from '@/index';
 import * as api from '../../../src/index';
 
 describe('core public APIs', () => {
-  it('should expose AgentMiddleware as the public delegation entry', () => {
+  it('should expose createSubagentMiddleware as the public delegation entry', () => {
     expect('createSubagentMiddleware' in core).toBe(true);
     expect('createSubagentMiddleware' in api).toBe(true);
     expect('createTaskMiddleware' in core).toBe(false);

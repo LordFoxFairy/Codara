@@ -486,3 +486,9 @@
 - 防错规则：做 child agent 初始化时，把“base project/system bundle owner”和“child-specific overrides”明确分开。`context` 负责 build base bundle 与 path-scoped instruction flow，`subagent` 只提供 child-specific build inputs，不要再留下 `childPrepareContext + childSystem*` 这种分裂 contract。
 - 用户继续纠偏：review 控制面只需要“按 reviewId 恢复 child review”的能力，不该依赖整个 subagent run manager。
 - 防错规则：当一个上层控制面只使用 capability 的一小部分行为时，抽出更薄的 contract（如 `*ReviewResumer`），不要把整个 run manager/store/tooling 接口往上透传。
+- 用户继续纠偏：不要为了概念洁癖把 `core` 整体改名成 `engine`；真正需要拉直的是 `core/agent` 与 `capability/subagent` 的职责，而不是目录名大迁移。
+- 防错规则：当用户只是质疑 main/subagent 是否共用同一套 loop 时，先优先收 ownership、命名和 bootstrap 路径；不要先做高噪音目录改名。
+- 用户继续纠偏：`subagent` 的 outward surface 应该尽量单一，但不代表把内部 helper 名随便叫成 `Agent*` 或保留公开 rebinding/assert helper；边界要清楚，内部装配 helper 也要说人话。
+- 防错规则：如果一个 helper 只服务 subagent child assembly，就直接用 `Subagent*` 命名，并优先放在 capability 内部路径；不要继续暴露 `buildAgentChildMiddlewares`、`assertNoRawSubagentTools` 这种会污染心智的公开名。
+- 用户继续纠偏：中途不要频繁打断汇报；在一次较大的收敛任务里，应先完成、对照文档复盘、验证，再给最终状态。
+- 防错规则：当用户明确要求“全面处理完毕再通知我”时，后续以本地计划、验证和文档对照为主，不再在未收尾前发送阶段性口头进度。

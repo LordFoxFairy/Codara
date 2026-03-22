@@ -142,7 +142,7 @@ export const MIDDLEWARE_NAMES = {
   AskUserQuestion: 'AskUserQuestionMiddleware',
   Permission: 'PermissionMiddleware',
   Logging: 'LoggingMiddleware',
-  Agent: 'AgentMiddleware',
+  Agent: 'SubagentMiddleware',
   Task: 'TaskMiddleware',
   TodoList: 'TodoListMiddleware',
   ToolHooks: 'ToolHooksMiddleware',

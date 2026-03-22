@@ -160,7 +160,7 @@ describe('createSubagentTool delegation', () => {
               }),
             }),
           ],
-          middleware: [
+          childMiddleware: [
             createReviewMiddleware({
               interruptOn: {
                 dangerous_tool: true,

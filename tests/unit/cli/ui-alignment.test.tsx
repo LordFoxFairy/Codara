@@ -736,7 +736,7 @@ describe('UI alignment with Claude Code', () => {
               },
             ],
           }}
-          layoutMode="cozy"
+          layoutMode="compact"
           cwd="/Users/nako/WebstormProjects/github/thefoxfairy/Codara"
           modelAlias="default"
           tip="Tip"

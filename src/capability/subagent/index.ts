@@ -20,8 +20,6 @@ export {
   type CreateSubagentRunManagerOptions,
 } from '@capability/subagent/run-manager';
 export {
-  applyRuntimeSubagentDefaults,
-  assertNoRawSubagentTools,
   createSubagentMiddleware,
   type SubagentChildRuntimeOptions,
   type CreateSubagentMiddlewareOptions,

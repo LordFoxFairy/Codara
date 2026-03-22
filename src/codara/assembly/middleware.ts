@@ -18,12 +18,14 @@ import {createPermissionMiddleware} from '@core/middleware/permission';
 import type {AgentCheckpointer} from '@durability/checkpoint/agent';
 import type {ApprovalStore} from '@durability/approval-store';
 import {
-  applyRuntimeSubagentDefaults,
-  assertNoRawSubagentTools,
   createSubagentMiddleware,
   type SubagentRunManager,
   type SubagentRunStore,
 } from '@capability/subagent';
+import {
+  applyRuntimeSubagentDefaults,
+  assertNoRawSubagentTools,
+} from '@capability/subagent/middleware';
 import {
   type TaskStore,
 } from '@capability/task';
@@ -190,7 +192,6 @@ function createRuntimeSubagentMiddleware(input: {
   const childInstructionContext = createInstructionContextRuntime({
     promptSource: input.promptSource,
     guidelinesSource: input.guidelinesSource,
-    skillsSource: input.skillsSource,
     autoMemorySource: input.autoMemorySource,
     memoryRootDir: input.memoryRootDir,
   });

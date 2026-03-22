@@ -4,7 +4,7 @@ import {tmpdir} from 'node:os';
 import path from 'node:path';
 import {HumanMessage, ToolMessage, type BaseMessage, type ToolCall} from '@langchain/core/messages';
 import {MIDDLEWARE_NAMES} from '@core/pipeline/types';
-import {buildAgentChildMiddlewares} from '@capability/subagent/middleware';
+import {buildSubagentChildMiddlewares} from '@capability/subagent/middleware';
 import {ensurePermissionSettingsFile} from '@core/middleware/permission';
 import {parseReviewToolMessagePayload, type ToolCallContext} from '@core/middleware';
 
@@ -29,9 +29,9 @@ function createToolContext(toolCall: ToolCall, runtimeContext: Record<string, un
   };
 }
 
-describe('buildAgentChildMiddlewares', () => {
+describe('buildSubagentChildMiddlewares', () => {
   it('keeps background child runs non-interactive by default', () => {
-    const middlewares = buildAgentChildMiddlewares({
+    const middlewares = buildSubagentChildMiddlewares({
       model: async () => {
         throw new Error('not used');
       },
@@ -46,7 +46,7 @@ describe('buildAgentChildMiddlewares', () => {
   });
 
   it('allows foreground child runs to keep interactive clarification and permission middleware', () => {
-    const middlewares = buildAgentChildMiddlewares({
+    const middlewares = buildSubagentChildMiddlewares({
       model: async () => {
         throw new Error('not used');
       },
@@ -63,7 +63,7 @@ describe('buildAgentChildMiddlewares', () => {
   it('routes background child permission requests through the main review contract', async () => {
     const projectRoot = await mkdtemp(path.join(tmpdir(), 'codara-child-permission-bg-'));
     ensurePermissionSettingsFile({projectRoot, cwd: projectRoot});
-    const middlewares = buildAgentChildMiddlewares({
+    const middlewares = buildSubagentChildMiddlewares({
       model: async () => {
         throw new Error('not used');
       },
@@ -88,7 +88,7 @@ describe('buildAgentChildMiddlewares', () => {
   it('still opens review for foreground child permission requests', async () => {
     const projectRoot = await mkdtemp(path.join(tmpdir(), 'codara-child-permission-fg-'));
     ensurePermissionSettingsFile({projectRoot, cwd: projectRoot});
-    const middlewares = buildAgentChildMiddlewares({
+    const middlewares = buildSubagentChildMiddlewares({
       model: async () => {
         throw new Error('not used');
       },

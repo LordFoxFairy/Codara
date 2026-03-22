@@ -18,6 +18,7 @@ import {
   createCodara,
   type AgentStreamCustomChunk,
   type MiddlewareLogRecord,
+  type Session,
 } from '@/index';
 
 class CodaraFacadeModel {
@@ -221,8 +222,11 @@ allowed-tools:
     expect(restored).toBeDefined();
     expect(restored.getState().sessionStatus).toBe('ready');
 
+    const restoredSession = restored as unknown as Session;
+    await restoredSession.hydrate();
+
     // resumeReviewStream will initialize the agent and restore from checkpoint
-    for await (const _chunk of restored.resumeReviewStream(
+    for await (const _chunk of restoredSession.resumeReviewStream(
       {decision: 'approve'},
       {
         input: new HumanMessage('approved and continue'),

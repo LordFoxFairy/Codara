@@ -13,18 +13,38 @@ describe('Task delegation recursion prevention', () => {
       model: async () => ({}) as never,
       tools: [agentTool, bashTool],
     }, {
-      prompt: 'child prompt',
-      toolName: AGENT_TOOL_NAME,
-      parentExecution: {
-        sessionId: 'session',
-        runId: 'run',
-        turn: 1,
-        requestId: 'request',
-        toolIndex: 0,
-        toolCallId: 'tool-call',
-      },
+      profileTools: [agentTool, bashTool],
     });
 
-    expect(child.tools.map((entry) => entry.name)).toEqual(['bash']);
+    expect((child.tools ?? []).map((entry) => entry.name)).toEqual(['bash']);
+  });
+
+  test('buildSubagentChildOptions strips inherited skills prompt and propagates permissionMode', async () => {
+    const child = await buildSubagentChildOptions({
+      model: async () => ({}) as never,
+      tools: [],
+      childInstructionContext: {
+        loadBaseSystemMessage: async () => ({
+          systemMessage: [
+            'project prompt',
+            '## Skills System\n\nExecute a skill within the main conversation.\n\n{skills_list}',
+          ],
+          runtimeShared: {
+            base: true,
+            skills: {
+              inherited: true,
+            },
+          },
+        }),
+      },
+    }, {
+      profileSystemPrompt: 'child prompt',
+      permissionMode: 'plan',
+    });
+
+    expect((child.systemMessage ?? []).join('\n')).not.toContain('Skills System');
+    expect(child.context).toMatchObject({permissionMode: 'plan'});
+    expect(child.runtimeShared).toBeDefined();
+    expect((child.runtimeShared as Record<string, unknown>).skills).toBeUndefined();
   });
 });

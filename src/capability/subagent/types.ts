@@ -8,6 +8,7 @@ export interface SubagentRunRecord {
   label: string;
   agentName: string;
   subagentType?: string;
+  permissionMode?: string;
   status: SubagentRunStatus;
   startedAt: string;
   updatedAt: string;
@@ -28,6 +29,7 @@ export interface SubagentRunStartInput {
   label: string;
   agentName: string;
   subagentType?: string;
+  permissionMode?: string;
   childSessionId?: string;
 }
 

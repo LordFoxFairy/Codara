@@ -8,6 +8,7 @@ import type {
   AgentContextPreparer,
   AgentRuntimeValues,
   Agent,
+  AgentPreparationContext,
   ToolErrorHandler,
 } from '@core/agent/models/agent';
 import {bootstrapAgent, type BootstrapAgentOptions} from '@core/agent/bootstrap';
@@ -71,6 +72,7 @@ export interface SubagentBuildInput {
   profileContext?: AgentRuntimeContext;
   profileTools?: StructuredToolInterface[];
   profileSystemPrompt?: string;
+  permissionMode?: string;
 }
 
 export interface SubagentChildBootstrapInput {
@@ -105,7 +107,7 @@ export async function buildSubagentChildOptions(
   options: SubagentOptions,
   input: SubagentBuildInput,
 ): Promise<BootstrapAgentOptions> {
-  const instructionBundle = extendBaseSystemMessage(
+  const baseInstructionBundle = extendBaseSystemMessage(
     await options.childInstructionContext?.loadBaseSystemMessage?.(),
     {
       systemMessages: options.childSystemInput?.systemMessages,
@@ -115,7 +117,18 @@ export async function buildSubagentChildOptions(
       ],
     },
   );
+  const instructionBundle = stripInheritedSkillsFromBaseSystemMessage(baseInstructionBundle);
   const mergedContext = mergeRuntimeContext(options.childContext, input.profileContext);
+  const childContext = mergeRuntimeContext(
+    mergedContext,
+    input.permissionMode ? {permissionMode: input.permissionMode} : undefined,
+  );
+  const childPrepareContext = options.childInstructionContext?.prepareContext
+    ? async (context: AgentPreparationContext) => {
+      await options.childInstructionContext?.prepareContext?.(context);
+      stripSkillsFromPreparedInstructionContext(context);
+    }
+    : undefined;
   const childMiddleware = [
     ...(options.childInstructionContext?.middlewares ?? []),
     ...(options.childMiddleware ?? []),
@@ -137,8 +150,8 @@ export async function buildSubagentChildOptions(
     handleToolErrors: options.handleToolErrors,
     checkpointer: options.checkpointer,
     inputBudget: options.inputBudget,
-    prepareContext: options.childInstructionContext?.prepareContext,
-    ...(mergedContext ? {context: mergedContext} : {}),
+    ...(childPrepareContext ? {prepareContext: childPrepareContext} : {}),
+    ...(childContext ? {context: childContext} : {}),
     ...(options.childValues ? {values: deepClone(options.childValues)} : {}),
     ...(options.childLifecycle ? {lifecycle: options.childLifecycle} : {}),
     ...(instructionBundle.runtimeShared ? {runtimeShared: instructionBundle.runtimeShared} : {}),
@@ -177,6 +190,19 @@ export async function buildRecoveredSubagentChildOptions(
   }
 
   const instructionBundle = await options.childInstructionContext?.loadBaseSystemMessage?.();
+  const sanitizedInstructionBundle = instructionBundle
+    ? stripInheritedSkillsFromBaseSystemMessage(instructionBundle)
+    : undefined;
+  const childContext = mergeRuntimeContext(
+    options.childContext,
+    run.permissionMode ? {permissionMode: run.permissionMode} : undefined,
+  );
+  const childPrepareContext = options.childInstructionContext?.prepareContext
+    ? async (context: AgentPreparationContext) => {
+      await options.childInstructionContext?.prepareContext?.(context);
+      stripSkillsFromPreparedInstructionContext(context);
+    }
+    : undefined;
 
   return {
     childOptions: buildSubagentBootstrapOptions({
@@ -191,13 +217,11 @@ export async function buildRecoveredSubagentChildOptions(
       handleToolErrors: options.handleToolErrors,
       checkpointer: options.checkpointer ?? createAgentMemoryCheckpointer(),
       inputBudget: options.inputBudget,
-      ...(options.childInstructionContext?.prepareContext
-        ? {prepareContext: options.childInstructionContext.prepareContext}
-        : {}),
-      ...(options.childContext ? {context: options.childContext} : {}),
+      ...(childPrepareContext ? {prepareContext: childPrepareContext} : {}),
+      ...(childContext ? {context: childContext} : {}),
       ...(options.childValues ? {values: deepClone(options.childValues)} : {}),
       ...(options.childLifecycle ? {lifecycle: options.childLifecycle} : {}),
-      ...(instructionBundle?.runtimeShared ? {runtimeShared: instructionBundle.runtimeShared} : {}),
+      ...(sanitizedInstructionBundle?.runtimeShared ? {runtimeShared: sanitizedInstructionBundle.runtimeShared} : {}),
     }),
     ...(typeof recovered.maxTurns === 'number' ? {maxTurns: recovered.maxTurns} : {}),
   };
@@ -281,6 +305,31 @@ function mergeRuntimeContext(
     ...(baseContext ? deepClone(baseContext) : {}),
     ...(profileContext ? deepClone(profileContext) : {}),
   };
+}
+
+function stripInheritedSkillsFromBaseSystemMessage(
+  base: ReturnType<typeof extendBaseSystemMessage>,
+): ReturnType<typeof extendBaseSystemMessage> {
+  const systemMessage = base.systemMessage.filter((section) => !section.trimStart().startsWith('## Skills System'));
+  const runtimeShared = base.runtimeShared ? {...base.runtimeShared} : undefined;
+
+  if (runtimeShared && Object.prototype.hasOwnProperty.call(runtimeShared, 'skills')) {
+    delete runtimeShared.skills;
+  }
+
+  return {
+    systemMessage,
+    ...(runtimeShared && Object.keys(runtimeShared).length > 0 ? {runtimeShared} : {}),
+  };
+}
+
+function stripSkillsFromPreparedInstructionContext(context: AgentPreparationContext): void {
+  context.systemMessage = context.systemMessage.filter((section) => !section.trimStart().startsWith('## Skills System'));
+  if (context.runtime.shared && Object.prototype.hasOwnProperty.call(context.runtime.shared, 'skills')) {
+    const nextShared = {...context.runtime.shared};
+    delete nextShared.skills;
+    context.runtime.shared = Object.keys(nextShared).length > 0 ? nextShared : undefined;
+  }
 }
 
 function createSubagentActivityMiddleware(callback: ChildToolActivityCallback): BaseMiddleware {

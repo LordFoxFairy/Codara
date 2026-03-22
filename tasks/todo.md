@@ -1,3 +1,22 @@
+# 2026-03-22 Subagent Boundary And Permission Propagation Fix
+
+## Plan
+
+- [x] Split the subagent middleware into a clear child-runtime builder plus the outward middleware constructor so the file stops mixing assembly concerns.
+- [x] Propagate `permissionMode` from skills subagent definitions into child bootstrap and run records so child sessions can retain the selected mode.
+- [x] Stop the default subagent bootstrap from inheriting the main conversation skills prompt while keeping the normal project prompt/guidelines path intact.
+- [x] Re-run targeted subagent, skills, and Codara facade verification, then record the results here.
+
+## Review
+
+- `createSubagentMiddleware(...)` remains the outward runtime entry point, while `buildSubagentChildMiddlewares(...)` only assembles child-side middleware.
+- `permissionMode` now flows from skill metadata into subagent launch compilation, run storage, and child bootstrap/recovery context so resumed child runs keep the selected mode.
+- Child bootstrap strips inherited skills prompt content from both the base system bundle and the prepared instruction context before the child agent starts.
+- `src/codara/assembly/middleware.ts` now only forwards prompt/guidelines/memory bootstrap data to children; the main-conversation skills prompt no longer leaks into child startup.
+- Targeted verification passed:
+  - `bun test tests/unit/tasks/depth-limit.test.ts tests/unit/agents/task-tool-definitions.test.ts tests/unit/agents/child-middlewares.test.ts`
+  - `bunx tsc --noEmit --pretty false`
+
 # 2026-03-22 Skills Context Assembly And Background Child Contract
 
 # 2026-03-22 Subagent Naming And Ownership Cleanup
@@ -2985,3 +3004,20 @@
   - `bunx tsc --noEmit --pretty false`
   - `bunx eslint src/capability/subagent/*.ts src/codara/*.ts src/codara/assembly/*.ts src/context/session-bundle/base-system-message.ts src/codara/assembly/context.ts tests/unit/tasks/middleware.test.ts tests/unit/review-unified/review-unified.test.ts tests/unit/core/public-api-surface.test.ts tests/unit/core/codara-facade.test.ts`
   - `git diff --check`
+# 2026-03-22 Subagent/Task Test-Type Drift Repair
+
+## Plan
+
+- [x] Reconcile the child-middleware test with the current subagent middleware surface.
+- [x] Update CLI and task fixtures to the current run-summary, layout, and resume contracts.
+- [x] Fix the stale permission and interaction middleware test typings with the current public API.
+- [x] Re-run `bun run typecheck` and the targeted tests for the touched files.
+
+## Review
+
+- `tests/unit/agents/child-middlewares.test.ts` now uses the current subagent child-middleware export.
+- `tests/unit/cli/use-cli-controller.test.tsx`, `tests/unit/cli/solidified-transcript.test.ts`, `tests/unit/cli/ui-alignment.test.tsx`, and `tests/unit/cli/interaction-turn.test.ts` now match the current CLI/run-summary contracts.
+- `tests/unit/middleware/interaction-middleware.test.ts`, `tests/unit/permissions/middleware.test.ts`, `tests/unit/commands/compact.test.ts`, `tests/unit/core/codara-agent-runtime.test.ts`, and `tests/unit/tasks/depth-limit.test.ts` were updated to the current runtime shapes.
+- Verification passed:
+  - `bun run typecheck`
+  - `bun test tests/unit/agents/child-middlewares.test.ts tests/unit/agents/task-tool-delegation.test.ts tests/unit/tasks/depth-limit.test.ts tests/unit/cli/interaction-turn.test.ts tests/unit/cli/solidified-transcript.test.ts tests/unit/cli/ui-alignment.test.tsx tests/unit/cli/use-cli-controller.test.tsx tests/unit/commands/compact.test.ts tests/unit/core/codara-agent-runtime.test.ts tests/unit/middleware/interaction-middleware.test.ts tests/unit/permissions/middleware.test.ts tests/unit/agents/task-tool-definitions.test.ts`

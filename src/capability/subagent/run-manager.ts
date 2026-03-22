@@ -18,6 +18,7 @@ export interface SubagentLaunchInput {
   label: string;
   agentName: string;
   subagentType?: string;
+  permissionMode?: string;
   prompt: string;
   childOptions: BootstrapAgentOptions;
   maxTurns?: number;
@@ -59,6 +60,7 @@ interface SubagentRunHandle {
   label: string;
   agentName: string;
   subagentType?: string;
+  permissionMode?: string;
   childOptions: BootstrapAgentOptions;
   maxTurns?: number;
   agent?: Agent;
@@ -133,6 +135,7 @@ class InMemorySubagentRunManager implements SubagentRunManager {
       label: input.label,
       agentName: input.agentName,
       ...(input.subagentType ? {subagentType: input.subagentType} : {}),
+      ...(input.permissionMode ? {permissionMode: input.permissionMode} : {}),
       childSessionId: input.childSessionId,
     });
 
@@ -143,6 +146,7 @@ class InMemorySubagentRunManager implements SubagentRunManager {
       label: input.label,
       agentName: input.agentName,
       ...(input.subagentType ? {subagentType: input.subagentType} : {}),
+      ...(input.permissionMode ? {permissionMode: input.permissionMode} : {}),
       childOptions: input.childOptions,
       ...(typeof input.maxTurns === 'number' ? {maxTurns: input.maxTurns} : {}),
     };

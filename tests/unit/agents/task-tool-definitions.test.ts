@@ -81,6 +81,7 @@ name: Researcher
 description: custom research profile
 tools:
   - read
+permissionMode: plan
 ---
 You are a Researcher subagent.
 `, 'utf8');
@@ -240,6 +241,7 @@ You are a Researcher subagent.
       });
 
       const paused = await waitForSubagentRunStatus(runStore, 'call_task_resume_profile', 'paused');
+      expect(runStore.get('call_task_resume_profile')?.subagentType).toBe('Researcher');
       expect(paused.latestActivity).toContain('Tool: read_file');
       expect(paused.toolUseCount).toBe(1);
 
