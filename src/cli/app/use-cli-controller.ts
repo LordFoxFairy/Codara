@@ -127,12 +127,8 @@ function shouldRefreshAuxiliaryState(event: CodaraRuntimeEvent): boolean {
 }
 
 function shouldSealActiveTurnForRuntimeEvent(event: CodaraRuntimeEvent): boolean {
-  if ((event.kind !== 'tool' && event.kind !== 'task') || shouldHideRuntimeEventForTranscript(event)) {
+  if ((event.kind !== 'tool' && event.kind !== 'agent') || shouldHideRuntimeEventForTranscript(event)) {
     return false;
-  }
-
-  if (event.kind === 'agent') {
-    return event.phase === 'start' || event.phase === 'end';
   }
 
   return event.phase === 'start' || event.phase === 'end';
@@ -143,7 +139,7 @@ function isDelegatedTaskReviewPause(event: CodaraRuntimeEvent): boolean {
 }
 
 function summarizeBackgroundTaskNotice(event: CodaraRuntimeEvent): CliNotice | undefined {
-  if (event.kind !== 'task') {
+  if (event.kind !== 'agent') {
     return undefined;
   }
 
@@ -249,7 +245,7 @@ function resolveAgentCompletionContinuation(
   event: CodaraRuntimeEvent,
   batch: TrackedTaskBatch | undefined,
 ): AgentCompletionContinuation | undefined {
-  if (event.kind !== 'task' || event.phase !== 'end') {
+  if (event.kind !== 'agent' || event.phase !== 'end') {
     return undefined;
   }
 

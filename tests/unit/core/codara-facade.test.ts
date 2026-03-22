@@ -437,13 +437,13 @@ describe('Codara facade runtime', () => {
       expect(customAgentRunStore.list()).toHaveLength(0);
       expect(runtimeEvents).toEqual(expect.arrayContaining([
         expect.objectContaining({
-          kind: 'task',
+          kind: 'agent',
           phase: 'start',
           status: 'running',
           label: 'Delegating Agent: Inspect custom runtime rebinding',
         }),
         expect.objectContaining({
-          kind: 'task',
+          kind: 'agent',
           phase: 'end',
           status: 'done',
           label: 'Subagent running in background',
@@ -526,7 +526,7 @@ describe('Codara facade runtime', () => {
       expect(runtime.getAgentState().pendingPause).toBeUndefined();
       await waitForCondition(() => (
         runtimeEvents.filter((event) => (
-          event.kind === 'task'
+          event.kind === 'agent'
           && event.phase === 'update'
           && event.status === 'paused'
                 && event.label === 'Delegated agent waiting for review'
@@ -559,7 +559,7 @@ describe('Codara facade runtime', () => {
         }),
       ]));
       expect(runtimeEvents.some((event) => (
-        event.kind === 'task'
+        event.kind === 'agent'
         && event.phase === 'end'
         && event.status === 'done'
         && event.label === 'Delegated agent completed'

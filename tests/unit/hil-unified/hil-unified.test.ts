@@ -85,7 +85,7 @@ describe('delegated-task activity display', () => {
         id: taskId,
         sessionId: 'sess',
         timestamp: now,
-        kind: 'task',
+        kind: 'agent',
         phase: 'start',
         status: 'running',
         label: 'Delegating Plan: Analyze architecture',
@@ -95,7 +95,7 @@ describe('delegated-task activity display', () => {
         id: 'activity-1',
         sessionId: 'sess',
         timestamp: now,
-        kind: 'task',
+        kind: 'agent',
         phase: 'update',
         status: 'running',
         label: 'read(src/engine/agent.ts)',
@@ -106,7 +106,7 @@ describe('delegated-task activity display', () => {
         id: 'activity-2',
         sessionId: 'sess',
         timestamp: now,
-        kind: 'task',
+        kind: 'agent',
         phase: 'update',
         status: 'running',
         label: 'grep(middleware)',
@@ -117,7 +117,7 @@ describe('delegated-task activity display', () => {
         id: 'activity-3',
         sessionId: 'sess',
         timestamp: now,
-        kind: 'task',
+        kind: 'agent',
         phase: 'update',
         status: 'running',
         label: 'read(src/engine/pipeline/types.ts)',
@@ -148,7 +148,7 @@ describe('delegated-task activity display', () => {
         id: taskId,
         sessionId: 'sess',
         timestamp: now,
-        kind: 'task',
+        kind: 'agent',
         phase: 'start',
         status: 'running',
         label: 'Delegating Explore: Search codebase',
@@ -161,7 +161,7 @@ describe('delegated-task activity display', () => {
         id: `activity-${i}`,
         sessionId: 'sess',
         timestamp: now,
-        kind: 'task',
+        kind: 'agent',
         phase: 'update',
         status: 'running',
         label: `read(file-${i}.ts)`,
@@ -191,7 +191,7 @@ describe('delegated-task activity display', () => {
       id: 'task-review-1',
       sessionId: 'sess',
       timestamp: new Date().toISOString(),
-      kind: 'task',
+      kind: 'agent',
       phase: 'update',
       status: 'paused',
       label: 'Subagent waiting for review',
@@ -199,7 +199,7 @@ describe('delegated-task activity display', () => {
       parentId: 'agent-run:run-1',
     };
 
-    expect(event.kind).toBe('task');
+    expect(event.kind).toBe('agent');
     expect(event.status).toBe('paused');
     expect(event.label).toContain('waiting for review');
   });

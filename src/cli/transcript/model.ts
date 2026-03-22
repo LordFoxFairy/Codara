@@ -794,7 +794,7 @@ function truncateOutput(detail?: string, maxLines: number = TOOL_META_MAX_LINES)
 
 function mapRuntimeEventRole(kind: CodaraRuntimeEvent['kind']): TranscriptRole {
   switch (kind) {
-    case 'task':
+    case 'agent':
       return 'task';
     case 'hil':
       return 'review';

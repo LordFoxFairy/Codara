@@ -143,7 +143,7 @@ export function shouldShowActivityLine(input: {
       && (input.pausedTaskCount ?? 0) === 0;
   }
 
-  return input.latestRuntimeEventKind !== 'task' && input.latestRuntimeEventKind !== 'tool';
+  return input.latestRuntimeEventKind !== 'agent' && input.latestRuntimeEventKind !== 'tool';
 }
 
 export function CodaraCliApp(props: CodaraCliAppProps): React.JSX.Element {

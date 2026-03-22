@@ -23,7 +23,7 @@ describe('cli transcript visibility', () => {
           id: 'agent-run:run-visible',
           sessionId: 'session-1',
           timestamp: new Date().toISOString(),
-          kind: 'task',
+          kind: 'agent',
           phase: 'start',
           status: 'running',
           label: 'Delegating Explore: Analyze project',

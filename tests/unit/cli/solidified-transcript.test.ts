@@ -256,7 +256,7 @@ describe('solidified transcript model', () => {
             id: 'agent-run:run-1',
             sessionId: 'session-1',
             timestamp: '2026-03-20T10:00:00.000Z',
-            kind: 'task',
+            kind: 'agent',
             phase: 'start',
             status: 'running',
             label: 'Delegating Explore: Analyze project',

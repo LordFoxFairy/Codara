@@ -30,7 +30,7 @@ describe('sub-agent activity display pipeline', () => {
     await rm(cwd, {recursive: true, force: true}).catch(() => {});
   });
 
-  test('child tool activity appears as task:update runtime events', async () => {
+  test('child tool activity appears as agent:update runtime events', async () => {
     // Child model: calls read_file, then responds
     const childModel = new ChildActivityModel();
     const readTool = tool(
@@ -77,7 +77,7 @@ describe('sub-agent activity display pipeline', () => {
     await codara.invoke('Run analysis');
 
     // Find task:update events (child tool activity)
-    const taskUpdates = events.filter(e => e.kind === 'task' && e.phase === 'update');
+    const taskUpdates = events.filter(e => e.kind === 'agent' && e.phase === 'update');
 
     // Should have at least the child tool activity events
     expect(taskUpdates.length).toBeGreaterThanOrEqual(2);
@@ -88,8 +88,8 @@ describe('sub-agent activity display pipeline', () => {
     expect(labels.some(l => l.includes('grep'))).toBe(true);
 
     // Verify parent task lifecycle events exist
-    const taskStarts = events.filter(e => e.kind === 'task' && e.phase === 'start');
-    const taskEnds = events.filter(e => e.kind === 'task' && e.phase === 'end');
+    const taskStarts = events.filter(e => e.kind === 'agent' && e.phase === 'start');
+    const taskEnds = events.filter(e => e.kind === 'agent' && e.phase === 'end');
     expect(taskStarts.length).toBeGreaterThanOrEqual(1);
     expect(taskEnds.length).toBeGreaterThanOrEqual(1);
 
