@@ -10,15 +10,13 @@ import {
   createTaskCreateTool,
   createTaskListTool,
   createTaskMemoryStore,
-  createTaskRunMemoryStore,
   TASK_CREATE_TOOL_NAME,
   TASK_LIST_TOOL_NAME,
-  TASK_TOOL_NAME,
 } from '@capability/task';
 import {createSkillsMiddleware} from '@core/middleware';
 import {FileSystemSkillStore, loadSkillsRuntimeData} from '@capability/skill';
-import {createTaskTool} from '@capability/task/middleware';
-import {readTaskRunLaunchResult} from '@shared/task-run-launch';
+import {createAgentRunMemoryStore, AGENT_TOOL_NAME, createAgentTool} from '@capability/subagent';
+import {readAgentRunLaunchResult} from '@shared/agent-run-launch';
 
 function createBuiltinSubagentStore() {
   return new FileSystemSkillStore({
@@ -75,7 +73,7 @@ class SharedTaskReaderModel {
   }
 }
 
-async function waitForTaskRunStatus(
+async function waitForAgentRunStatus(
   runStore: {get(runId: string): {status: string; summary?: string} | undefined},
   runId: string,
   status: string,
@@ -97,7 +95,7 @@ async function waitForTaskRunStatus(
 describe('task delegation + task store', () => {
   it('主代理创建的 shared task 应能被 Agent 基础 child 读取到', async () => {
     const store = createTaskMemoryStore();
-    const runStore = createTaskRunMemoryStore();
+    const runStore = createAgentRunMemoryStore();
     const parentModel = new ScriptedModel([
       new AIMessage({
         content: '',
@@ -114,7 +112,7 @@ describe('task delegation + task store', () => {
         content: '',
         tool_calls: [{
           id: 'call_task_delegate_default',
-          name: TASK_TOOL_NAME,
+          name: AGENT_TOOL_NAME,
           args: {prompt: 'Inspect shared tasks', subagent_type: 'Agent'},
         } as ToolCall],
       }),
@@ -122,7 +120,7 @@ describe('task delegation + task store', () => {
     ]) as unknown as BaseChatModel;
     const taskCreateTool = createTaskCreateTool({store});
     const taskListTool = createTaskListTool({store});
-    const taskTool = createTaskTool({
+    const taskTool = createAgentTool({
       model: new SharedTaskReaderModel() as unknown as BaseChatModel,
       tools: [taskListTool],
       runStore,
@@ -137,17 +135,17 @@ describe('task delegation + task store', () => {
     const delegatedMessage = result.state.messages
       .filter((message) => ToolMessage.isInstance(message))
       .map((message) => message as ToolMessage)
-      .find((message) => String(message.content).includes('Delegated task started in background.')) as ToolMessage | undefined;
-    const launch = delegatedMessage ? readTaskRunLaunchResult(delegatedMessage.artifact) : undefined;
-    const completed = launch ? await waitForTaskRunStatus(runStore, launch.runId, 'completed') : undefined;
+      .find((message) => String(message.content).includes('Subagent started in background.')) as ToolMessage | undefined;
+    const launch = delegatedMessage ? readAgentRunLaunchResult(delegatedMessage.artifact) : undefined;
+    const completed = launch ? await waitForAgentRunStatus(runStore, launch.runId, 'completed') : undefined;
 
     expect(result.reason).toBe('complete');
     expect(result.state.status).toBe('idle');
-    expect(result.state.pendingPause).toBeUndefined();
+    expect(result.state.pendingReview).toBeUndefined();
     expect(delegatedMessage).toBeDefined();
-    expect(String(delegatedMessage?.content)).toContain('Delegated task started in background.');
+    expect(String(delegatedMessage?.content)).toContain('Subagent started in background.');
     expect(launch).toMatchObject({
-      type: 'task_run_started',
+      type: 'agent_run_started',
       runId: 'call_task_delegate_default',
       sessionId: expect.any(String),
     });
@@ -156,7 +154,7 @@ describe('task delegation + task store', () => {
 
   it('正式 Task 工具应能与 TaskCreate/TaskList 并存，并读取共享 task store', async () => {
     const store = createTaskMemoryStore();
-    const runStore = createTaskRunMemoryStore();
+    const runStore = createAgentRunMemoryStore();
     const parentModel = new ScriptedModel([
       new AIMessage({
         content: '',
@@ -173,7 +171,7 @@ describe('task delegation + task store', () => {
         content: '',
         tool_calls: [{
           id: 'call_task_delegate_formal',
-          name: TASK_TOOL_NAME,
+          name: AGENT_TOOL_NAME,
           args: {
             prompt: 'Inspect shared tasks',
             subagent_type: 'Agent',
@@ -184,7 +182,7 @@ describe('task delegation + task store', () => {
     ]) as unknown as BaseChatModel;
     const taskCreateTool = createTaskCreateTool({store});
     const taskListTool = createTaskListTool({store});
-    const taskTool = createTaskTool({
+    const taskTool = createAgentTool({
       model: new SharedTaskReaderModel() as unknown as BaseChatModel,
       tools: [taskListTool],
       runStore,
@@ -200,17 +198,17 @@ describe('task delegation + task store', () => {
     const taskMessage = result.state.messages
       .filter((message) => ToolMessage.isInstance(message))
       .map((message) => message as ToolMessage)
-      .find((message) => String(message.content).includes('Delegated task started in background.')) as ToolMessage | undefined;
-    const launch = taskMessage ? readTaskRunLaunchResult(taskMessage.artifact) : undefined;
-    const completed = launch ? await waitForTaskRunStatus(runStore, launch.runId, 'completed') : undefined;
+      .find((message) => String(message.content).includes('Subagent started in background.')) as ToolMessage | undefined;
+    const launch = taskMessage ? readAgentRunLaunchResult(taskMessage.artifact) : undefined;
+    const completed = launch ? await waitForAgentRunStatus(runStore, launch.runId, 'completed') : undefined;
 
     expect(result.reason).toBe('complete');
     expect(result.state.status).toBe('idle');
-    expect(result.state.pendingPause).toBeUndefined();
+    expect(result.state.pendingReview).toBeUndefined();
     expect(taskMessage).toBeDefined();
-    expect(String(taskMessage?.content)).toContain('Delegated task started in background.');
+    expect(String(taskMessage?.content)).toContain('Subagent started in background.');
     expect(launch).toMatchObject({
-      type: 'task_run_started',
+      type: 'agent_run_started',
       runId: 'call_task_delegate_formal',
       agentName: 'Agent',
       sessionId: expect.any(String),
@@ -220,7 +218,7 @@ describe('task delegation + task store', () => {
 
   it('应在同一个 parent response 中同时执行 shared task coordination 和多个 delegated Task', async () => {
     const store = createTaskMemoryStore();
-    const runStore = createTaskRunMemoryStore();
+    const runStore = createAgentRunMemoryStore();
     const parentModel = new ScriptedModel([
       new AIMessage({
         content: '',
@@ -235,7 +233,7 @@ describe('task delegation + task store', () => {
           } as ToolCall,
           {
             id: 'call_task_delegate_mixed_1',
-            name: TASK_TOOL_NAME,
+            name: AGENT_TOOL_NAME,
             args: {
               prompt: 'Inspect shared tasks',
               subagent_type: 'Agent',
@@ -243,7 +241,7 @@ describe('task delegation + task store', () => {
           } as ToolCall,
           {
             id: 'call_task_delegate_mixed_2',
-            name: TASK_TOOL_NAME,
+            name: AGENT_TOOL_NAME,
             args: {
               prompt: 'Inspect shared tasks again',
               subagent_type: 'Agent',
@@ -256,7 +254,7 @@ describe('task delegation + task store', () => {
 
     const taskCreateTool = createTaskCreateTool({store});
     const taskListTool = createTaskListTool({store});
-    const taskTool = createTaskTool({
+    const taskTool = createAgentTool({
       model: new SharedTaskReaderModel() as unknown as BaseChatModel,
       tools: [taskListTool],
       runStore,
@@ -270,8 +268,8 @@ describe('task delegation + task store', () => {
 
     const result = await parent.invoke({messages: [new HumanMessage('Coordinate release work')]});
     const records = await store.list();
-    const firstRun = await waitForTaskRunStatus(runStore, 'call_task_delegate_mixed_1', 'completed');
-    const secondRun = await waitForTaskRunStatus(runStore, 'call_task_delegate_mixed_2', 'completed');
+    const firstRun = await waitForAgentRunStatus(runStore, 'call_task_delegate_mixed_1', 'completed');
+    const secondRun = await waitForAgentRunStatus(runStore, 'call_task_delegate_mixed_2', 'completed');
 
     expect(result.reason).toBe('complete');
     expect(records).toEqual([

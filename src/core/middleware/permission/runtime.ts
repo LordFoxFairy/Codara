@@ -1,14 +1,14 @@
 import {ToolMessage} from '@langchain/core/messages';
 import {
-  applyHILResumeToolEdits,
-  parseHILResumeActionPayload,
-  type HILDecision,
-  type HILInterruptConfig,
-  type HILUIActionOption,
-  type HILResumeHandler,
-  type HILResumePayload,
-  type HILToolMessagePayload,
-} from '@core/middleware/hil';
+  applyReviewResumeToolEdits,
+  parseReviewResumeActionPayload,
+  type ReviewDecision,
+  type ReviewInterruptConfig,
+  type ReviewUIActionOption,
+  type ReviewResumeHandler,
+  type ReviewResumePayload,
+  type ReviewToolMessagePayload,
+} from '@core/middleware/review';
 import type {ToolCallContext} from '@core/pipeline/types';
 import {
   evaluatePermissionToolCall,
@@ -27,14 +27,14 @@ export interface PermissionRuntimeOptions extends PermissionPolicyOptions {
 }
 
 export interface PermissionRuntime {
-  resolveToolDecision(context: ToolCallContext): Promise<HILDecision | undefined>;
+  resolveToolDecision(context: ToolCallContext): Promise<ReviewDecision | undefined>;
   handleResume(
     metadata: Record<string, unknown> | undefined,
-    resumePayload: HILResumePayload,
+    resumePayload: ReviewResumePayload,
     context: ToolCallContext,
     handler: (request?: ToolCallContext) => Promise<ToolMessage>,
   ): Promise<ToolMessage>;
-  isPermissionPause(metadata: unknown): boolean;
+  isPermissionReview(metadata: unknown): boolean;
 }
 
 const DEFAULT_PERMISSION_CHANNEL = 'permission-center';
@@ -144,7 +144,7 @@ export function createPermissionRuntime(options: PermissionRuntimeOptions = {}):
     handleResume(metadata, resumePayload, context, handler) {
       return handlePermissionResume(metadata ?? {}, resumePayload, context, handler, options, sessionAllowedExpressions, pendingRequests);
     },
-    isPermissionPause,
+    isPermissionReview,
   };
 }
 
@@ -154,7 +154,7 @@ async function resolvePermissionDecision(
   sessionAllowed: Set<string>,
   bashAnalyze: ((input: {command: string; cwd?: string; projectRoot?: string}) => Promise<PermissionBashAnalysis | undefined>) | undefined,
   pendingRequests: Map<string, PendingPermissionRequest>,
-): Promise<HILDecision | undefined> {
+): Promise<ReviewDecision | undefined> {
   const evaluation = await evaluatePermissionToolCall(context.toolCall, options);
   if (!evaluation) return undefined;
 
@@ -267,9 +267,9 @@ function createPermissionInterruptConfig(
   _alwaysPatterns: string[],
   _options: PermissionRuntimeOptions,
   _bashAnalysis: PermissionBashAnalysis | undefined,
-): HILInterruptConfig {
+): ReviewInterruptConfig {
   // Claude Code style: three actions only — once, always, reject
-  const actions: HILUIActionOption[] = [
+  const actions: ReviewUIActionOption[] = [
     {id: 'allow_once', label: 'Allow once', kind: 'primary'},
     {id: 'dont_ask_again', label: 'Allow always', kind: 'secondary'},
     {id: 'deny', label: 'Reject', kind: 'danger'},
@@ -297,14 +297,14 @@ function extractAlwaysPatterns(metadata: Record<string, unknown>): string[] {
 
 async function handlePermissionResume(
   _metadata: Record<string, unknown>,
-  resumePayload: HILResumePayload,
+  resumePayload: ReviewResumePayload,
   context: ToolCallContext,
   handler: (request?: ToolCallContext) => Promise<ToolMessage>,
   options: PermissionRuntimeOptions,
   sessionAllowed: Set<string>,
   pendingRequests: Map<string, PendingPermissionRequest>,
 ): Promise<ToolMessage> {
-  const payload = parseHILResumeActionPayload(resumePayload);
+  const payload = parseReviewResumeActionPayload(resumePayload);
 
   // Handle reject
   if (payload.action === 'deny' || payload.decision === 'reject') {
@@ -385,22 +385,22 @@ async function autoResolvePendingRequests(
 }
 
 export function handlePermissionFallbackResume(
-  fallback: HILResumeHandler | undefined,
-  request: Parameters<HILResumeHandler>[0],
-  resumePayload: Parameters<HILResumeHandler>[1],
-  context: Parameters<HILResumeHandler>[2],
-  handler: Parameters<HILResumeHandler>[3],
+  fallback: ReviewResumeHandler | undefined,
+  request: Parameters<ReviewResumeHandler>[0],
+  resumePayload: Parameters<ReviewResumeHandler>[1],
+  context: Parameters<ReviewResumeHandler>[2],
+  handler: Parameters<ReviewResumeHandler>[3],
 ): Promise<ToolMessage> {
   if (fallback) {
     return fallback(request, resumePayload, context, handler);
   }
 
-  const payload = parseHILResumeActionPayload(resumePayload);
+  const payload = parseReviewResumeActionPayload(resumePayload);
   if (payload.decision === 'reject') {
     return Promise.resolve(createPermissionDenyMessage(context, payload.comment, payload.metadata));
   }
 
-  return handler(applyHILResumeToolEdits(context, payload));
+  return handler(applyReviewResumeToolEdits(context, payload));
 }
 
 function createPermissionDenyMessage(
@@ -412,8 +412,8 @@ function createPermissionDenyMessage(
     ? context.toolCall.id.trim()
     : `tool_${context.toolIndex}`;
 
-  const payload: HILToolMessagePayload = {
-    type: 'hil_deny',
+  const payload: ReviewToolMessagePayload = {
+    type: 'review_deny',
     reason: reason?.trim() || 'Tool execution denied by user',
     metadata: metadata ?? {},
     action: {
@@ -430,7 +430,7 @@ function createPermissionDenyMessage(
   });
 }
 
-export function isPermissionPause(metadata: unknown): boolean {
+export function isPermissionReview(metadata: unknown): boolean {
   if (!metadata || typeof metadata !== 'object' || Array.isArray(metadata)) {
     return false;
   }

@@ -1,7 +1,7 @@
 /**
  * SSE Channel — implements the Channel interface over Server-Sent Events.
  *
- * Pause requests are sent as SSE `review_required` events. Resumes arrive via
+ * Review requests are sent as SSE `review_required` events. Resumes arrive via
  * an external HTTP endpoint (POST /api/resume) that calls `resolveResume()`.
  */
 
@@ -10,23 +10,23 @@ import type {
   ChannelMessage,
   ChannelRuntimeEvent,
 } from '@shared/contracts/channel';
-import type {PauseRequest, ResumePayload} from '@shared/contracts/agent-types';
+import type {ReviewRequest, ReviewResumePayload} from '@shared/contracts/agent-types';
 
-/** Default timeout for pending pause requests (10 minutes). */
-export const DEFAULT_PAUSE_TIMEOUT_MS = 10 * 60 * 1000;
+/** Default timeout for pending review requests (10 minutes). */
+export const DEFAULT_REVIEW_TIMEOUT_MS = 10 * 60 * 1000;
 
 export interface SSEChannelOptions {
   /** Channel instance id. */
   id?: string;
   /** SSE send function — writes an SSE frame to the connected client. */
   send: (event: {event: string; data: unknown; id?: string}) => void;
-  /** Timeout for pending pause requests in ms. Default: 10 minutes. */
-  pauseTimeoutMs?: number;
+  /** Timeout for pending review requests in ms. Default: 10 minutes. */
+  reviewTimeoutMs?: number;
 }
 
-interface PendingPause {
-  request: PauseRequest;
-  resolve: (payload: ResumePayload) => void;
+interface PendingReview {
+  request: ReviewRequest;
+  resolve: (payload: ReviewResumePayload) => void;
   timer: ReturnType<typeof setTimeout>;
 }
 
@@ -36,22 +36,22 @@ interface PendingPause {
  *
  * Lifecycle:
  * 1. Client connects via SSE → server creates SSEChannel
- * 2. HIL middleware pauses → `showPauseRequest()` sends SSE `review_required` event
+ * 2. review middleware pauses → `showReviewRequest()` sends SSE `review_required` event
  * 3. Client responds via POST → server calls `resolveResume(requestId, payload)`
- * 4. Promise resolves → HIL middleware continues
+ * 4. Promise resolves → review middleware continues
  */
 export class SSEChannel implements Channel {
   readonly id: string;
   readonly type = 'web' as const;
 
   private readonly send: SSEChannelOptions['send'];
-  private readonly pauseTimeoutMs: number;
-  private readonly pendingPauses = new Map<string, PendingPause>();
+  private readonly reviewTimeoutMs: number;
+  private readonly pendingReviews = new Map<string, PendingReview>();
   private disposed = false;
 
   constructor(options: SSEChannelOptions) {
     this.id = options.id ?? `sse-${crypto.randomUUID().slice(0, 8)}`;
-    this.pauseTimeoutMs = options.pauseTimeoutMs ?? DEFAULT_PAUSE_TIMEOUT_MS;
+    this.reviewTimeoutMs = options.reviewTimeoutMs ?? DEFAULT_REVIEW_TIMEOUT_MS;
     this.send = options.send;
   }
 
@@ -62,7 +62,7 @@ export class SSEChannel implements Channel {
     } catch { /* client may have disconnected */ }
   }
 
-  async showPauseRequest(request: PauseRequest): Promise<ResumePayload> {
+  async showReviewRequest(request: ReviewRequest): Promise<ReviewResumePayload> {
     if (this.disposed) {
       return {decision: 'reject', reason: 'Channel disposed'};
     }
@@ -82,18 +82,18 @@ export class SSEChannel implements Channel {
         id: request.id,
       });
     } catch {
-      throw new Error('Failed to send pause request — SSE connection may be closed');
+      throw new Error('Failed to send review request — SSE connection may be closed');
     }
 
     // Wait for the resume to come in via resolveResume(), with timeout
-    return new Promise<ResumePayload>((resolve) => {
+    return new Promise<ReviewResumePayload>((resolve) => {
       const timer = setTimeout(() => {
-        if (this.pendingPauses.has(request.id)) {
-          this.pendingPauses.delete(request.id);
-          resolve({decision: 'reject', reason: 'Pause request timed out'});
+        if (this.pendingReviews.has(request.id)) {
+          this.pendingReviews.delete(request.id);
+          resolve({decision: 'reject', reason: 'Review request timed out'});
         }
-      }, this.pauseTimeoutMs);
-      this.pendingPauses.set(request.id, {request, resolve, timer});
+      }, this.reviewTimeoutMs);
+      this.pendingReviews.set(request.id, {request, resolve, timer});
     });
   }
 
@@ -106,36 +106,36 @@ export class SSEChannel implements Channel {
 
   /**
    * Called by the HTTP endpoint (POST /api/resume) when the client responds.
-   * Resolves the pending pause promise so the HIL middleware can continue.
+   * Resolves the pending review promise so the review middleware can continue.
    *
-   * @returns true if the pause was found and resolved, false otherwise.
+   * @returns true if the review was found and resolved, false otherwise.
    */
-  resolveResume(requestId: string, payload: ResumePayload): boolean {
-    const pending = this.pendingPauses.get(requestId);
+  resolveResume(requestId: string, payload: ReviewResumePayload): boolean {
+    const pending = this.pendingReviews.get(requestId);
     if (!pending) return false;
     clearTimeout(pending.timer);
-    this.pendingPauses.delete(requestId);
+    this.pendingReviews.delete(requestId);
     pending.resolve(payload);
     return true;
   }
 
-  /** Check if there are any pending (unresolved) pause requests. */
-  hasPendingPauses(): boolean {
-    return this.pendingPauses.size > 0;
+  /** Check if there are any pending (unresolved) review requests. */
+  hasPendingReviews(): boolean {
+    return this.pendingReviews.size > 0;
   }
 
-  /** Get all pending pause request ids. */
-  getPendingPauseIds(): string[] {
-    return [...this.pendingPauses.keys()];
+  /** Get all pending review request ids. */
+  getPendingReviewIds(): string[] {
+    return [...this.pendingReviews.keys()];
   }
 
   async dispose(): Promise<void> {
     this.disposed = true;
-    // Resolve all pending pauses with a rejection-like payload
-    for (const [id, pending] of this.pendingPauses) {
+    // Resolve all pending reviews with a rejection-like payload
+    for (const [id, pending] of this.pendingReviews) {
       clearTimeout(pending.timer);
       pending.resolve({decision: 'reject', reason: 'Channel disposed'});
-      this.pendingPauses.delete(id);
+      this.pendingReviews.delete(id);
     }
   }
 }

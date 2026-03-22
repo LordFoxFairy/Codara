@@ -9,11 +9,11 @@ describe('Codara middleware stack', () => {
     expect(middlewares.map((middleware) => middleware.name)).toEqual([
       'SkillsMiddleware',
       'BudgetMiddleware',
-      'HumanInTheLoopMiddleware',
+      'ReviewMiddleware',
     ]);
   });
 
-  it('should place logging first, caller middlewares before budget, and keep HIL last', () => {
+  it('should place logging first, caller middlewares before budget, and keep review last', () => {
     const custom = createMiddleware({
       name: 'CustomMiddleware',
       beforeModel: () => undefined,
@@ -29,7 +29,7 @@ describe('Codara middleware stack', () => {
       'SkillsMiddleware',
       'CustomMiddleware',
       'BudgetMiddleware',
-      'HumanInTheLoopMiddleware',
+      'ReviewMiddleware',
     ]);
   });
 
@@ -47,7 +47,7 @@ describe('Codara middleware stack', () => {
       'SkillsMiddleware',
       'AliasMiddleware',
       'BudgetMiddleware',
-      'HumanInTheLoopMiddleware',
+      'ReviewMiddleware',
     ]);
   });
 
@@ -68,7 +68,7 @@ describe('Codara middleware stack', () => {
       'SkillsMiddleware',
       'CustomPromptMiddleware',
       'BudgetMiddleware',
-      'HumanInTheLoopMiddleware',
+      'ReviewMiddleware',
     ]);
   });
 
@@ -97,12 +97,12 @@ describe('Codara middleware stack', () => {
 
     expect(byName.get('SummaryMiddleware')).toBeUndefined();
 
-    expect(byName.get('HumanInTheLoopMiddleware')).toMatchObject({
+    expect(byName.get('ReviewMiddleware')).toMatchObject({
       wrapToolCall: expect.any(Function),
     });
-    expect(byName.get('HumanInTheLoopMiddleware')?.beforeModel).toBeUndefined();
-    expect(byName.get('HumanInTheLoopMiddleware')?.wrapModelCall).toBeUndefined();
-    expect(byName.get('HumanInTheLoopMiddleware')?.afterAgent).toBeUndefined();
+    expect(byName.get('ReviewMiddleware')?.beforeModel).toBeUndefined();
+    expect(byName.get('ReviewMiddleware')?.wrapModelCall).toBeUndefined();
+    expect(byName.get('ReviewMiddleware')?.afterAgent).toBeUndefined();
   });
 
   it('should skip SkillsMiddleware when caller already provides one', () => {

@@ -2,12 +2,12 @@ import {describe, expect, it} from 'bun:test';
 import {readCliReviewProjection, syncProjectedReview} from '@/cli/app/runtime-projection';
 
 describe('CLI runtime projection helpers', () => {
-  it('prefers focused approval review over pendingPause when projecting approval state', () => {
+  it('prefers focused approval review over pendingReview when projecting approval state', () => {
     const projection = readCliReviewProjection({
       getFocusedReview: () => ({
         item: {
           reviewId: 'approval-1',
-          source: 'task_run',
+          source: 'agent_run',
           kind: 'approval',
           interactionMode: 'approval',
           blockingScope: 'task',
@@ -28,7 +28,7 @@ describe('CLI runtime projection helpers', () => {
       }),
       listReviewItems: () => [{
         reviewId: 'approval-1',
-        source: 'task_run',
+        source: 'agent_run',
         kind: 'approval',
         interactionMode: 'approval',
         blockingScope: 'task',
@@ -40,7 +40,7 @@ describe('CLI runtime projection helpers', () => {
         isFocused: true,
       }],
       getAgentState: () => ({
-        pendingPause: {
+        pendingReview: {
           id: 'foreground-pause',
           description: 'Pending pause',
           action: {toolCallId: 'tool-2', toolName: 'read_file', toolArgs: {}},
@@ -50,16 +50,16 @@ describe('CLI runtime projection helpers', () => {
       }),
     } as never);
 
-    expect(projection.activePause?.id).toBe('approval-1');
+    expect(projection.activeReviewRequest?.id).toBe('approval-1');
     expect(projection.reviews).toHaveLength(1);
   });
 
-  it('applies approval index metadata while syncing the projected HIL review', () => {
+  it('applies approval index metadata while syncing the projected review review', () => {
     const review = syncProjectedReview({
       getFocusedReview: () => ({
         item: {
           reviewId: 'approval-2',
-          source: 'task_run',
+          source: 'agent_run',
           kind: 'approval',
           interactionMode: 'approval',
           blockingScope: 'task',
@@ -81,7 +81,7 @@ describe('CLI runtime projection helpers', () => {
       listReviewItems: () => [
         {
           reviewId: 'approval-1',
-          source: 'task_run',
+          source: 'agent_run',
           kind: 'approval',
           interactionMode: 'approval',
           blockingScope: 'task',
@@ -94,7 +94,7 @@ describe('CLI runtime projection helpers', () => {
         },
         {
           reviewId: 'approval-2',
-          source: 'task_run',
+          source: 'agent_run',
           kind: 'approval',
           interactionMode: 'approval',
           blockingScope: 'task',
@@ -106,7 +106,7 @@ describe('CLI runtime projection helpers', () => {
           isFocused: true,
         },
       ],
-      getAgentState: () => ({pendingPause: undefined}),
+      getAgentState: () => ({pendingReview: undefined}),
     } as never, undefined);
 
     expect(review).toEqual(expect.objectContaining({
@@ -117,12 +117,12 @@ describe('CLI runtime projection helpers', () => {
     }));
   });
 
-  it('projects session pauses as session-blocking reviews', () => {
+  it('projects foreground session reviews as session-blocking reviews', () => {
     const review = syncProjectedReview({
       getFocusedReview: () => ({
         item: {
           reviewId: 'foreground-pause',
-          source: 'session_pause',
+          source: 'session_review',
           kind: 'ask_user',
           interactionMode: 'hybrid',
           blockingScope: 'session',
@@ -144,7 +144,7 @@ describe('CLI runtime projection helpers', () => {
       }),
       listReviewItems: () => [{
         reviewId: 'foreground-pause',
-        source: 'session_pause',
+        source: 'session_review',
         kind: 'ask_user',
         interactionMode: 'hybrid',
         blockingScope: 'session',
@@ -156,7 +156,7 @@ describe('CLI runtime projection helpers', () => {
         isFocused: true,
       }],
       getAgentState: () => ({
-        pendingPause: undefined,
+        pendingReview: undefined,
       }),
     } as never, undefined);
 

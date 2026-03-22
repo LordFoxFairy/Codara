@@ -13,8 +13,8 @@ import type {
   AgentState,
   AgentStreamConfig,
   AgentStreamOutput,
-  PauseRequest,
-  ResumePayload,
+  ReviewRequest,
+  ReviewResumePayload,
   ToolErrorHandler,
 } from '@core/agent/models/agent';
 import {normalizeAgentInput} from '@core/agent/run/agent-loop';
@@ -107,9 +107,9 @@ export interface Session {
   fork(options?: {id?: string; sessionId?: string; store?: SessionStore}): Promise<Session>;
   invoke(input?: AgentInput, config?: AgentInvokeConfig): Promise<AgentResult>;
   stream(input?: AgentInput, config?: AgentStreamConfig): AsyncGenerator<AgentStreamOutput, AgentResult, void>;
-  resumePause(payload: ResumePayload, config?: AgentResumeConfig): Promise<AgentResult>;
-  resumePauseStream(
-    payload: ResumePayload,
+  resumeReview(payload: ReviewResumePayload, config?: AgentResumeConfig): Promise<AgentResult>;
+  resumeReviewStream(
+    payload: ReviewResumePayload,
     config?: AgentResumeStreamConfig,
   ): AsyncGenerator<AgentStreamOutput, AgentResult, void>;
   reloadSources(): Promise<void>;
@@ -356,13 +356,13 @@ export function createSession(options: CreateSessionOptions): Session {
       return middlewares.length > 0 ? middlewares : undefined;
     }
 
-    const hilIndex = middlewares.findIndex((middleware) => middleware.name === MIDDLEWARE_NAMES.HIL);
-    if (hilIndex < 0) {
+    const reviewIndex = middlewares.findIndex((middleware) => middleware.name === MIDDLEWARE_NAMES.Review);
+    if (reviewIndex < 0) {
       middlewares.push(summaryMiddleware);
       return middlewares;
     }
 
-    middlewares.splice(hilIndex, 0, summaryMiddleware);
+    middlewares.splice(reviewIndex, 0, summaryMiddleware);
     return middlewares;
   }
 
@@ -452,7 +452,7 @@ export function createSession(options: CreateSessionOptions): Session {
       messages: base.messages,
       context: base.context,
       values: base.values,
-      ...(base.pendingPause ? {pendingPause: base.pendingPause} : {}),
+      ...(base.pendingReview ? {pendingReview: base.pendingReview} : {}),
     });
 
     const child = createSession({
@@ -472,25 +472,23 @@ export function createSession(options: CreateSessionOptions): Session {
     if (!options.summary) {
       throw new Error('Conversation compaction is not configured for this session.');
     }
-    const summaryEventId = runtimeEvents.summaryStarted('Compacting context');
 
     const instance = await getAgent();
     const summary = summaryOptions;
 
     if (!summary) {
-      runtimeEvents.summaryFinished(summaryEventId, 'error', 'Context compaction failed', 'Summary middleware is not configured.');
       throw new Error('Conversation compaction is not configured for this session.');
     }
 
     const current = instance.getState();
     if (current.status === 'running') {
-      runtimeEvents.summaryFinished(summaryEventId, 'error', 'Context compaction failed', 'Agent is currently running.');
       throw new Error('Agent is currently running.');
     }
     if (current.status === 'paused') {
-      runtimeEvents.summaryFinished(summaryEventId, 'error', 'Context compaction failed', 'Agent is paused.');
       throw new Error('Agent is paused; resume(...) or reset() before compacting the conversation.');
     }
+
+    const summaryEventId = runtimeEvents.summaryStarted('Compacting context');
 
     if (lifecycle) {
       const preResult = await safeLifecycleCall(() =>
@@ -564,16 +562,16 @@ export function createSession(options: CreateSessionOptions): Session {
   }
 
   async function runHilResume<T>(operation: () => Promise<T>, pendingDescription: string | undefined): Promise<T> {
-    const eventId = runtimeEvents.hilResumeStarted(
+    const eventId = runtimeEvents.reviewResumeStarted(
       pendingDescription?.trim() ? `Resuming review: ${pendingDescription.trim()}` : 'Applying review selection',
     );
 
     try {
       const result = await operation();
-      runtimeEvents.hilResumeFinished(eventId, 'done', 'Review selection applied');
+      runtimeEvents.reviewResumeFinished(eventId, 'done', 'Review selection applied');
       return result;
     } catch (error) {
-      runtimeEvents.hilResumeFinished(
+      runtimeEvents.reviewResumeFinished(
         eventId,
         'error',
         'Review selection failed',
@@ -583,11 +581,11 @@ export function createSession(options: CreateSessionOptions): Session {
     }
   }
 
-  async function focusPause(request: PauseRequest): Promise<AgentState> {
+  async function focusReview(request: ReviewRequest): Promise<AgentState> {
     ensureReady();
     const current = (await getAgent()).getState();
 
-    if (current.pendingPause?.id === request.id) {
+    if (current.pendingReview?.id === request.id) {
       return current;
     }
 
@@ -596,7 +594,7 @@ export function createSession(options: CreateSessionOptions): Session {
       messages: current.messages,
       context: current.context,
       values: current.values,
-      pendingPause: request,
+      pendingReview: request,
     }, await getLatestCheckpoint());
 
     clearAgentCache();
@@ -615,7 +613,7 @@ export function createSession(options: CreateSessionOptions): Session {
       messages: current.messages,
       context: nextContext,
       values: current.values,
-      ...(current.pendingPause ? {pendingPause: current.pendingPause} : {}),
+      ...(current.pendingReview ? {pendingReview: current.pendingReview} : {}),
     }, await getLatestCheckpoint());
 
     clearAgentCache();
@@ -625,7 +623,7 @@ export function createSession(options: CreateSessionOptions): Session {
   }
 
   const session: Session & {
-    focusPause: (request: PauseRequest) => Promise<AgentState>;
+    focusReview: (request: ReviewRequest) => Promise<AgentState>;
   } = {
     getState: state,
     getAgentState() {
@@ -665,27 +663,27 @@ export function createSession(options: CreateSessionOptions): Session {
       }
       return yield* runStream((instance) => instance.stream(input, config));
     },
-    async resumePause(payload, config) {
+    async resumeReview(payload, config) {
       ensureReady();
       const instance = await getAgent();
       return runHilResume(
         () => run((current) => current.resume(payload, config)),
-        instance.getState().pendingPause?.description,
+        instance.getState().pendingReview?.description,
       );
     },
-    async *resumePauseStream(payload, config) {
+    async *resumeReviewStream(payload, config) {
       ensureReady();
-      const pendingDescription = (await getAgent()).getState().pendingPause?.description;
-      const eventId = runtimeEvents.hilResumeStarted(
+      const pendingDescription = (await getAgent()).getState().pendingReview?.description;
+      const eventId = runtimeEvents.reviewResumeStarted(
         pendingDescription?.trim() ? `Resuming review: ${pendingDescription.trim()}` : 'Applying review selection',
       );
 
       try {
         const result = yield* runStream((instance) => instance.resumeStream(payload, config));
-        runtimeEvents.hilResumeFinished(eventId, 'done', 'Review selection applied');
+        runtimeEvents.reviewResumeFinished(eventId, 'done', 'Review selection applied');
         return result;
       } catch (error) {
-        runtimeEvents.hilResumeFinished(
+        runtimeEvents.reviewResumeFinished(
           eventId,
           'error',
           'Review selection failed',
@@ -753,7 +751,7 @@ export function createSession(options: CreateSessionOptions): Session {
       sessionStatus = 'closed';
       await persistSessionState();
     },
-    focusPause,
+    focusReview,
   };
 
   return session;

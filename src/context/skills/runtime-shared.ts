@@ -28,7 +28,7 @@ export const AGENT_SUBAGENT_TYPE = 'Agent';
 
 const AGENT_SUBAGENT_DEFINITION: SubagentDefinition = {
   name: AGENT_SUBAGENT_TYPE,
-  description: 'Built-in Agent child that inherits the main-agent baseline',
+  description: 'Built-in Agent child that starts fresh and loads project context through normal bootstrap',
   systemPrompt: '',
 };
 
@@ -46,7 +46,7 @@ export function resolveSubagentDefinition(
 ): SubagentDefinition {
   const normalized = normalizeSubagentType(subagentType);
   if (!normalized) {
-    throw new Error('Task requires subagent_type. Use "Agent" for the base child or a named profile such as "Explore".');
+    throw new Error('Agent requires subagent_type. Use "Agent" for the base child or a named profile such as "Explore".');
   }
 
   if (normalized.toLowerCase() === AGENT_SUBAGENT_TYPE.toLowerCase()) {

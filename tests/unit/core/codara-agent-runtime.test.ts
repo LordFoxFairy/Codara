@@ -32,7 +32,7 @@ class CodaraFacadeModel {
       return new AIMessage('CODARA_STREAM_DONE');
     }
 
-    if (text.includes('"type":"hil_pause"') && !hasApprovalPrompt) {
+    if (text.includes('"type":"review_pause"') && !hasApprovalPrompt) {
       return new AIMessage('WAITING_FOR_APPROVAL');
     }
 
@@ -87,7 +87,7 @@ describe('Codara agent runtime flow', () => {
       model,
       tools: [boomTool],
       handleToolErrors: false,
-      hil: false,
+      review: false,
     });
 
     const result = await codara.invoke('run the failing tool');
@@ -145,7 +145,7 @@ allowed-tools:
         userHome,
         cacheTtlMs: 0,
       },
-      hil: {
+      review: {
         interruptOn: {
           bash: true,
         },
@@ -169,11 +169,11 @@ allowed-tools:
 
     expect(codara.getState().sessionStatus).toBe('ready');
     expect(codara.getAgentState().status).toBe('paused');
-    expect(codara.getAgentState().pendingPause?.action.toolName).toBe('bash');
+    expect(codara.getAgentState().pendingReview?.action.toolName).toBe('bash');
     expect(bashInvokeCount).toBe(0);
     expect(customEvents).toHaveLength(1);
-    expect(customEvents[0]?.type).toBe('hil_event');
-    expect(customEvents[0]?.payload.type).toBe('hil_pause');
+    expect(customEvents[0]?.type).toBe('review_event');
+    expect(customEvents[0]?.payload.type).toBe('review_pause');
 
     const sawSkillPrompt = firstModel.invocations.some((messages) =>
       messages.some(
@@ -188,7 +188,7 @@ allowed-tools:
       (record) =>
         record.stage === 'wrapToolCall'
         && record.event === 'stage_end'
-        && record.toolMetadata?.toolResultType === 'hil_pause'
+        && record.toolMetadata?.toolResultType === 'review_pause'
     );
     expect(pauseLog).toBeDefined();
 
@@ -204,7 +204,7 @@ allowed-tools:
         userHome,
         cacheTtlMs: 0,
       },
-      hil: {
+      review: {
         interruptOn: {
           bash: true,
         },
@@ -221,8 +221,8 @@ allowed-tools:
     expect(restored).toBeDefined();
     expect(restored.getState().sessionStatus).toBe('ready');
 
-    // resumePauseStream will initialize the agent and restore from checkpoint
-    for await (const _chunk of restored.resumePauseStream(
+    // resumeReviewStream will initialize the agent and restore from checkpoint
+    for await (const _chunk of restored.resumeReviewStream(
       {decision: 'approve'},
       {
         input: new HumanMessage('approved and continue'),
@@ -234,7 +234,7 @@ allowed-tools:
 
     expect(restored.getState().sessionStatus).toBe('ready');
     expect(restored.getAgentState().status).toBe('idle');
-    expect(restored.getAgentState().pendingPause).toBeUndefined();
+    expect(restored.getAgentState().pendingReview).toBeUndefined();
 
     const finalLog = logs.find(
       (record) =>
@@ -246,7 +246,7 @@ allowed-tools:
     expect(runtimeEvents.some((event) => event.kind === 'turn' && event.phase === 'start')).toBe(true);
     expect(runtimeEvents.some((event) => event.kind === 'model' && event.phase === 'start')).toBe(true);
     expect(runtimeEvents.some((event) => event.kind === 'tool' && event.phase === 'start')).toBe(true);
-    expect(runtimeEvents.some((event) => event.kind === 'hil' && event.status === 'paused')).toBe(true);
+    expect(runtimeEvents.some((event) => event.kind === 'review' && event.status === 'paused')).toBe(true);
 
   });
 });

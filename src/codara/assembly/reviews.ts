@@ -1,5 +1,5 @@
 import type {ApprovalStore} from '@durability/approval-store';
-import type {PauseRequest} from '@core/agent';
+import type {ReviewRequest} from '@core/agent';
 import type {
   ReviewBlockingScope,
   ReviewInteractionMode,
@@ -11,9 +11,9 @@ export function getReviewItems(options: {
   approvalStore: ApprovalStore | undefined;
   sessionId: string | undefined;
   focusedReviewId?: string;
-  foregroundPause?: PauseRequest;
+  foregroundReview?: ReviewRequest;
 }): ReviewQueryItem[] {
-  const {approvalStore, sessionId, focusedReviewId, foregroundPause} = options;
+  const {approvalStore, sessionId, focusedReviewId, foregroundReview} = options;
   const queuedItems = !approvalStore || !sessionId
     ? []
     : approvalStore.list(sessionId).map((record) => ({
@@ -28,37 +28,37 @@ export function getReviewItems(options: {
         updatedAt: record.updatedAt,
         anchor: {
           origin: 'delegated' as const,
-          ...(record.taskRunId ? {taskRunId: record.taskRunId} : {}),
+          ...(record.agentRunId ? {agentRunId: record.agentRunId} : {}),
           ...(record.childSessionId ? {childSessionId: record.childSessionId} : {}),
         },
         isFocused: record.approvalId === focusedReviewId,
       }));
 
-  if (!foregroundPause || queuedItems.some((item) => item.reviewId === foregroundPause.id)) {
+  if (!foregroundReview || queuedItems.some((item) => item.reviewId === foregroundReview.id)) {
     return queuedItems;
   }
 
   return [
     ...queuedItems,
     {
-      reviewId: foregroundPause.id,
-      source: 'session_pause',
-      kind: inferReviewKind(foregroundPause),
-      interactionMode: inferReviewInteractionMode(foregroundPause),
-      blockingScope: inferReviewBlockingScope(foregroundPause),
-      description: foregroundPause.description,
-      toolName: foregroundPause.action.toolName,
+      reviewId: foregroundReview.id,
+      source: 'session_review',
+      kind: inferReviewKind(foregroundReview),
+      interactionMode: inferReviewInteractionMode(foregroundReview),
+      blockingScope: inferReviewBlockingScope(foregroundReview),
+      description: foregroundReview.description,
+      toolName: foregroundReview.action.toolName,
       createdAt: new Date().toISOString(),
       updatedAt: new Date().toISOString(),
       anchor: {
         origin: 'main',
       },
-      isFocused: foregroundPause.id === focusedReviewId,
+      isFocused: foregroundReview.id === focusedReviewId,
     },
   ];
 }
 
-function inferReviewKind(request: PauseRequest): ReviewQueryKind {
+function inferReviewKind(request: ReviewRequest): ReviewQueryKind {
   if (request.ui?.modal === 'permission-review' || request.channel === 'permission-center') {
     return 'permission';
   }
@@ -71,7 +71,7 @@ function inferReviewKind(request: PauseRequest): ReviewQueryKind {
   return 'generic';
 }
 
-function inferReviewInteractionMode(request: PauseRequest): ReviewInteractionMode {
+function inferReviewInteractionMode(request: ReviewRequest): ReviewInteractionMode {
   if (request.ui?.form) {
     return request.ui.actions?.some((action) => action.label.toLowerCase().includes('chat'))
       ? 'hybrid'
@@ -86,6 +86,6 @@ function inferReviewInteractionMode(request: PauseRequest): ReviewInteractionMod
   return 'freeform';
 }
 
-function inferReviewBlockingScope(_request: PauseRequest): ReviewBlockingScope {
+function inferReviewBlockingScope(_request: ReviewRequest): ReviewBlockingScope {
   return 'session';
 }

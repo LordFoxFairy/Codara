@@ -1,9 +1,11 @@
 import {AIMessageChunk} from '@langchain/core/messages';
 import type {CliActiveTurn} from './view-state';
 
+const INTERNAL_INTERACTION_TOOL_NAMES = new Set(['AskUserQuestion', 'Skill']);
+
 export interface ApplyInteractionChunkOptions {
   captureThinking?: boolean;
-  detectTaskLaunch?: boolean;
+  detectAgentLaunch?: boolean;
 }
 
 export interface ApplyInteractionChunkResult {
@@ -45,22 +47,44 @@ export function applyInteractionChunkToTurn(
     }
   }
 
-  if (options.detectTaskLaunch && Array.isArray(chunk.tool_calls) && chunk.tool_calls.some((toolCall) => toolCall?.name === 'Task')) {
-    next = {...next, pendingTaskLaunch: true};
+  if (options.detectAgentLaunch && Array.isArray(chunk.tool_calls) && chunk.tool_calls.some((toolCall) => toolCall?.name === 'Agent')) {
+    next = {...next, pendingAgentLaunch: true};
+  }
+
+  if (containsInternalInteractionToolCall(chunk)) {
+    next = {
+      ...next,
+      responseBeforeRuntime: undefined,
+      response: '',
+      suppressInteractionResponse: true,
+    };
   }
 
   const text = chunk.text;
-  if (!text) {
+  if (!text || next.suppressInteractionResponse) {
     return {turn: next, sawText: false};
   }
 
   return {
     turn: {
       ...next,
-      response: next.response + text,
+      ...(next.kind === 'prompt' && next.responseRole === 'assistant'
+        ? {pendingResponse: (next.pendingResponse ?? '') + text}
+        : {response: next.response + text}),
     },
-    sawText: true,
+    sawText: next.kind !== 'prompt' || next.responseRole !== 'assistant',
   };
+}
+
+function containsInternalInteractionToolCall(chunk: AIMessageChunk): boolean {
+  if (!Array.isArray(chunk.tool_calls) || chunk.tool_calls.length === 0) {
+    return false;
+  }
+
+  return chunk.tool_calls.some((toolCall) => {
+    const name = typeof toolCall?.name === 'string' ? toolCall.name.trim() : '';
+    return INTERNAL_INTERACTION_TOOL_NAMES.has(name);
+  });
 }
 
 export function appendInteractionText(
@@ -75,6 +99,42 @@ export function appendInteractionText(
   return {
     ...fallback,
     response: (fallback.response ?? '') + text,
+  };
+}
+
+export function sealActiveTurnAtRuntimeBoundary(
+  turn: CliActiveTurn | undefined,
+): CliActiveTurn | undefined {
+  if (!turn || turn.responseBeforeRuntime) {
+    return turn;
+  }
+
+  const buffered = turn.pendingResponse?.trim() ? turn.pendingResponse : undefined;
+  const currentResponse = turn.response.trim() ? turn.response : undefined;
+  const preRuntimeResponse = buffered ?? currentResponse;
+  if (!preRuntimeResponse) {
+    return turn;
+  }
+
+  return {
+    ...turn,
+    pendingResponse: undefined,
+    responseBeforeRuntime: preRuntimeResponse,
+    response: '',
+  };
+}
+
+export function finalizeBufferedInteractionText(
+  turn: CliActiveTurn | undefined,
+): CliActiveTurn | undefined {
+  if (!turn || turn.suppressInteractionResponse || !turn.pendingResponse?.trim()) {
+    return turn;
+  }
+
+  return {
+    ...turn,
+    pendingResponse: undefined,
+    response: turn.response + turn.pendingResponse,
   };
 }
 

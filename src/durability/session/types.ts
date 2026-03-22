@@ -6,7 +6,7 @@ export interface SessionMetadata {
   messageCount: number;
   tags?: string[];
   archived?: boolean;
-  /** When true, this session is internal (e.g. delegated task or helper session) and hidden from /resume. */
+  /** When true, this session is internal (e.g. delegated subagent or helper session) and hidden from /resume. */
   internal?: boolean;
   lastActivity: string;
   usage?: {

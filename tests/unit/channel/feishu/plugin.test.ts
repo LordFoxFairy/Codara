@@ -167,7 +167,7 @@ describe('feishuPlugin', () => {
     });
   });
 
-  describe('sendPausePrompt', () => {
+  describe('sendReviewPrompt', () => {
     test('sends interactive card with buttons', async () => {
       const fetchMock = mockFetchSequence([
         {code: 0, msg: 'ok', tenant_access_token: 'token-abc', expire: 7200},
@@ -176,11 +176,11 @@ describe('feishuPlugin', () => {
       globalThis.fetch = fetchMock;
 
       const account = feishuPlugin.resolveAccount({appId: 'app1', appSecret: 'secret1'})!;
-      const result = await feishuPlugin.sendPausePrompt!(account, {
+      const result = await feishuPlugin.sendReviewPrompt!(account, {
         accountId: 'bot-1',
         to: 'oc_chat001',
         text: '确认执行此操作？',
-        pause: {id: 'pause-1', description: 'Run command'} as unknown as import('@shared/contracts/agent-types').PauseRequest,
+        review: {id: 'review-1', description: 'Run command'} as unknown as import('@shared/contracts/agent-types').ReviewRequest,
         actions: [
           {id: 'approve', label: '批准', style: 'approve'},
           {id: 'reject', label: '拒绝', style: 'reject'},

@@ -15,9 +15,9 @@ import {
   type ModelCallContext,
   type ToolCallContext,
 } from '@core/pipeline/types';
-import {parseHILToolMessagePayload} from '@core/middleware/hil';
+import {parseReviewToolMessagePayload} from '@core/middleware/review';
 import {toError} from './errors';
-import {readTaskRunLaunchResult} from '@shared/task-run-launch';
+import {readAgentRunLaunchResult} from '@shared/agent-run-launch';
 
 export type AgentTurnOutcome = 'continue' | 'complete';
 
@@ -43,7 +43,7 @@ export async function runAgentTurn(
       result = {reason: 'complete', turns: turn};
     } else {
       const toolOutcome = await runTools(run, runtime, context, response.tool_calls, stream);
-      if (toolOutcome === 'paused' || run.state.pendingPause) {
+      if (toolOutcome === 'paused' || run.state.pendingReview) {
         result = {reason: 'complete', turns: turn};
       } else if (toolOutcome === 'detached') {
         result = {reason: 'complete', turns: turn};
@@ -157,20 +157,20 @@ async function runSingleTool(
   if (stream) {
     await stream.emitToolUpdate(toolMessage);
     await stream.emitValues(run.state.messages);
-    const payload = parseHILToolMessagePayload(toolMessage.content);
+    const payload = parseReviewToolMessagePayload(toolMessage.content);
     if (payload) {
       const execution = readExecutionMetadata(context);
       await stream.emitCustom({runId: execution.runId, turn: execution.turn, payload});
     }
   }
 
-  const pausePayload = parseHILToolMessagePayload(toolMessage.content);
-  if (pausePayload?.type === 'hil_pause') {
-    run.state.pendingPause = pausePayload.request;
+  const pausePayload = parseReviewToolMessagePayload(toolMessage.content);
+  if (pausePayload?.type === 'review_pause') {
+    run.state.pendingReview = pausePayload.request;
     return 'paused';
   }
 
-  if (readTaskRunLaunchResult(toolMessage.artifact)) {
+  if (readAgentRunLaunchResult(toolMessage.artifact)) {
     return 'detached';
   }
 

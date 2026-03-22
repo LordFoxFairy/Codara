@@ -1,10 +1,10 @@
 import {AIMessage, HumanMessage, SystemMessage, ToolMessage, type BaseMessage, type ToolCall} from '@langchain/core/messages';
 import type {CodaraRuntimeEvent} from '@/index';
 import {parseAskUserResult} from '@core/middleware';
-import {parseHILToolMessagePayload} from '@core/middleware/hil';
+import {parseReviewToolMessagePayload} from '@core/middleware/review';
 import {readMessageText} from '@shared/messages';
 import {readDelegatedAgentResult} from '@shared/delegation-result';
-import {readTaskRunLaunchResult} from '@shared/task-run-launch';
+import {readAgentRunLaunchResult} from '@shared/agent-run-launch';
 import {readSharedTaskCoordinationArtifact} from '@shared/task-coordination-result';
 import {TOOL_NAMES} from '@shared/tool-display';
 import {formatSubagentDisplayName, normalizeSubagentType} from '@context/skills/runtime-shared';
@@ -13,7 +13,7 @@ import {isInvalidTaskCloseoutResponse} from '../task-closeout';
 import {formatTokenCount} from '../utils/format';
 import {computeEditDiff, type DiffData} from './diff-compute';
 
-export type TranscriptRole = 'system' | 'warning' | 'user' | 'assistant' | 'tool' | 'task' | 'review' | 'command' | 'error';
+export type TranscriptRole = 'system' | 'warning' | 'user' | 'assistant' | 'tool' | 'agent' | 'review' | 'command' | 'error';
 
 export interface SolidifiedItem {
   id: string;
@@ -67,6 +67,26 @@ export interface HasTranscriptContentInput {
 
 export const DEFAULT_TRANSCRIPT_LIMIT = 20;
 
+export function dedupeTrailingTranscriptItemsCoveredByRuntime(
+  trailingItems: readonly TranscriptItem[],
+  runtimeItems: readonly TranscriptItem[],
+): TranscriptItem[] {
+  const runtimeFingerprints = new Set(
+    runtimeItems
+      .map(buildRuntimeCoverageFingerprint)
+      .filter((fingerprint): fingerprint is string => Boolean(fingerprint)),
+  );
+
+  if (runtimeFingerprints.size === 0) {
+    return [...trailingItems];
+  }
+
+  return trailingItems.filter((item) => {
+    const fingerprint = buildRuntimeCoverageFingerprint(item);
+    return !fingerprint || !runtimeFingerprints.has(fingerprint);
+  });
+}
+
 export function buildTranscriptItems(input: BuildTranscriptItemsInput): TranscriptItem[] {
   const toolLookup = createToolCallLookup(input.coreMessages);
   const preferRuntimeSteps = (input.runtimeEvents?.length ?? 0) > 0 && input.activeTurn !== undefined;
@@ -74,8 +94,8 @@ export function buildTranscriptItems(input: BuildTranscriptItemsInput): Transcri
     input.activeTurn?.response,
     input.activeTurn?.responseRole,
     input.runtimeEvents,
-    input.activeTurn?.pendingTaskLaunch,
-    input.activeTurn?.suppressTaskLaunchResponse,
+    input.activeTurn?.pendingAgentLaunch,
+    input.activeTurn?.suppressAgentLaunchResponse,
   );
   const items = [
     ...input.notices.map((notice) => ({
@@ -142,12 +162,16 @@ export function buildActiveItems(input: {
   nowTimestamp?: string;
 }): TranscriptItem[] {
   const preferRuntimeSteps = (input.runtimeEvents?.length ?? 0) > 0;
+  const suppressInternalInteractionResponse = shouldSuppressActiveTurnInteractionPreamble(
+    input.activeTurn?.responseRole,
+    input.runtimeEvents,
+  );
   const suppressActiveTurnResponse = shouldSuppressAssistantTaskLaunchChatter(
     input.activeTurn?.response,
     input.activeTurn?.responseRole,
     input.runtimeEvents,
-    input.activeTurn?.pendingTaskLaunch,
-    input.activeTurn?.suppressTaskLaunchResponse,
+    input.activeTurn?.pendingAgentLaunch,
+    input.activeTurn?.suppressAgentLaunchResponse,
   );
   const thinkingItem = input.activeTurn?.thinking
     ? [{
@@ -157,24 +181,40 @@ export function buildActiveItems(input: {
       }]
     : [];
   const runtimeItems = preferRuntimeSteps ? buildRuntimeEventItems(input.runtimeEvents ?? [], input.nowTimestamp) : [];
-  const promptAndResponseItems: TranscriptItem[] = input.activeTurn
-    ? [
-        {
-          id: `${input.activeTurn.id}-prompt`,
-          role: 'user' as const,
-          content: input.activeTurn.prompt,
-        },
-        ...thinkingItem,
-        {
-          id: `${input.activeTurn.id}-response`,
-          role: input.activeTurn.responseRole,
-          content: suppressActiveTurnResponse ? '' : input.activeTurn.response,
-        },
-      ]
+  const promptAndResponseItems: TranscriptItem[] = [];
+  if (input.activeTurn) {
+    promptAndResponseItems.push({
+      id: `${input.activeTurn.id}-prompt`,
+      role: 'user' as const,
+      content: input.activeTurn.prompt,
+    });
+    promptAndResponseItems.push(...thinkingItem);
+  }
+
+  const preRuntimeAssistantItems: TranscriptItem[] = input.activeTurn?.responseBeforeRuntime
+    && !suppressActiveTurnResponse
+    && !suppressInternalInteractionResponse
+    && !input.activeTurn?.suppressInteractionResponse
+    ? [{
+        id: `${input.activeTurn.id}-response-before-runtime`,
+        role: input.activeTurn.responseRole,
+        content: input.activeTurn.responseBeforeRuntime,
+      }]
     : [];
-  const items: TranscriptItem[] = input.activeTurn?.kind === 'task_completion'
-    ? [...runtimeItems, ...promptAndResponseItems]
-    : [...promptAndResponseItems, ...runtimeItems];
+  const currentAssistantItems: TranscriptItem[] = input.activeTurn
+    ? [{
+        id: `${input.activeTurn.id}-response`,
+        role: input.activeTurn.responseRole,
+        content: suppressActiveTurnResponse || suppressInternalInteractionResponse || input.activeTurn.suppressInteractionResponse
+          ? ''
+          : input.activeTurn.response,
+      }]
+    : [];
+  const items: TranscriptItem[] = input.activeTurn?.kind === 'agent_completion'
+    ? [...runtimeItems, ...promptAndResponseItems, ...currentAssistantItems]
+    : preRuntimeAssistantItems.length > 0
+      ? [...promptAndResponseItems, ...preRuntimeAssistantItems, ...runtimeItems, ...currentAssistantItems]
+      : [...promptAndResponseItems, ...currentAssistantItems, ...runtimeItems];
   return items.filter((item) => item.content);
 }
 
@@ -214,8 +254,8 @@ function shouldSuppressAssistantTaskLaunchChatter(
   response: string | undefined,
   role: TranscriptRole | undefined,
   runtimeEvents: readonly CodaraRuntimeEvent[] | undefined,
-  pendingTaskLaunch: boolean | undefined = false,
-  suppressTaskLaunchResponse: boolean | undefined = false,
+  pendingAgentLaunch: boolean | undefined = false,
+  suppressAgentLaunchResponse: boolean | undefined = false,
 ): boolean {
   if (role !== 'assistant') {
     return false;
@@ -226,16 +266,16 @@ function shouldSuppressAssistantTaskLaunchChatter(
     return false;
   }
 
-  if (pendingTaskLaunch && (suppressTaskLaunchResponse || containsTaskLaunchChatter(text))) {
+  if (pendingAgentLaunch && (suppressAgentLaunchResponse || containsTaskLaunchChatter(text))) {
     return true;
   }
 
-  const hasLiveTaskRuntime = (runtimeEvents ?? []).some((event) => (
-    event.kind === 'task'
+  const hasLiveAgentRuntime = (runtimeEvents ?? []).some((event) => (
+    event.kind === 'agent'
     && ((event.phase === 'start' && event.status === 'running') || (event.phase === 'update' && event.status === 'paused'))
   ));
 
-  if (!hasLiveTaskRuntime) {
+  if (!hasLiveAgentRuntime) {
     return false;
   }
 
@@ -261,7 +301,7 @@ function shouldSuppressSolidifiedTaskLaunchChatter(
   }
 
   const previousToolName = resolveToolMessageName(previousMessage, toolLookup);
-  if (!isTaskToolName(previousToolName) || !readTaskRunLaunchResult(previousMessage.artifact)) {
+  if (!isAgentToolName(previousToolName) || !readAgentRunLaunchResult(previousMessage.artifact)) {
     return false;
   }
 
@@ -269,10 +309,10 @@ function shouldSuppressSolidifiedTaskLaunchChatter(
     id: 'task-launch',
     sessionId: 'task-launch',
     timestamp: new Date(0).toISOString(),
-    kind: 'task',
+    kind: 'agent',
     phase: 'start',
     status: 'running',
-    label: 'Delegating task',
+    label: 'Delegating Agent',
   }]);
 }
 
@@ -287,17 +327,17 @@ function buildRuntimeEventItems(events: readonly CodaraRuntimeEvent[], nowTimest
   // (runtime events share IDs with coreMessages that may already be rendered)
   const activeId = (id: string) => `active-${id}`;
 
-  // First pass: index start events by id, identify Task tool calls, collect child activity
+  // First pass: index start events by id, identify Agent tool calls, collect child activity
   for (const event of events) {
     if (event.phase === 'start') {
       startEvents.set(event.id, event);
     }
     // Task events have a parentId pointing to their parent tool event — mark those tool events
-    if (event.kind === 'task' && event.phase === 'start' && event.parentId) {
+    if (event.kind === 'agent' && event.phase === 'start' && event.parentId) {
       taskToolIds.add(event.parentId);
     }
     // Collect child tool activity events (task:update from ActivityForwardMiddleware)
-    if (event.kind === 'task' && event.phase === 'update' && event.parentId && event.detail) {
+    if (event.kind === 'agent' && event.phase === 'update' && event.parentId && event.detail) {
       const activities = taskChildActivity.get(event.parentId) ?? [];
       activities.push(event);
       taskChildActivity.set(event.parentId, activities);
@@ -306,14 +346,14 @@ function buildRuntimeEventItems(events: readonly CodaraRuntimeEvent[], nowTimest
 
   const runtimeTaskLabels = new Set(
     Array.from(startEvents.values())
-      .filter((event) => event.kind === 'task' && event.phase === 'start' && !event.parentId)
+      .filter((event) => event.kind === 'agent' && event.phase === 'start' && !event.parentId)
       .map((event) => event.label),
   );
 
   // Second pass: pair end events with start events, build items
   const pairedTaskEnds: Array<{startEvent: CodaraRuntimeEvent; endEvent: CodaraRuntimeEvent}> = [];
   for (const event of events) {
-    if (event.kind === 'turn' || event.kind === 'model' || shouldHideRuntimeEvent(event)) {
+    if (event.kind === 'turn' || event.kind === 'model' || shouldHideRuntimeEventForTranscript(event)) {
       continue;
     }
 
@@ -324,12 +364,12 @@ function buildRuntimeEventItems(events: readonly CodaraRuntimeEvent[], nowTimest
     }
 
     // Task update events (child activity) — handled in the running task rendering, skip here
-    if (event.kind === 'task' && event.phase === 'update' && event.parentId && taskChildActivity.has(event.parentId)) {
+    if (event.kind === 'agent' && event.phase === 'update' && event.parentId && taskChildActivity.has(event.parentId)) {
       continue;
     }
 
     // Task end event — pair with start, render like tool call
-    if (event.kind === 'task' && event.phase === 'end' && event.parentId) {
+    if (event.kind === 'agent' && event.phase === 'end' && event.parentId) {
       const startEvent = startEvents.get(event.parentId);
       if (startEvent) {
         pairedEndIds.add(event.id);
@@ -352,7 +392,15 @@ function buildRuntimeEventItems(events: readonly CodaraRuntimeEvent[], nowTimest
       const startEvent = startEvents.get(event.parentId);
       if (startEvent) {
         const rawToolName = (startEvent.detail ?? '').trim();
+        if (isInteractionToolName(rawToolName)) {
+          pairedEndIds.add(event.id);
+          continue;
+        }
         if (rawToolName === TODO_TOOL_NAME) {
+          pairedEndIds.add(event.id);
+          continue;
+        }
+        if (isRepeatedAskUserContinuationNotice(event.detail)) {
           pairedEndIds.add(event.id);
           continue;
         }
@@ -372,7 +420,7 @@ function buildRuntimeEventItems(events: readonly CodaraRuntimeEvent[], nowTimest
     }
 
     // Skip start events that have been paired.
-    if (event.phase === 'start' && (event.kind === 'tool' || event.kind === 'task')) {
+    if (event.phase === 'start' && (event.kind === 'tool' || event.kind === 'agent')) {
       continue;
     }
 
@@ -403,10 +451,10 @@ function buildRuntimeEventItems(events: readonly CodaraRuntimeEvent[], nowTimest
       : {outputLines: undefined, allOutputLines: undefined, totalOutputLines: 0};
     items.push({
       id: activeId(startEvent.id),
-      role: 'task',
+      role: 'agent',
       content: `⚙ ${agentType}(${extractTaskArgs(startEvent.label)})\n${summary}`,
       toolMeta: {
-        toolName: TOOL_NAMES.TASK,
+        toolName: TOOL_NAMES.AGENT,
         displayName: agentType,
         icon: '⚙',
         args: extractTaskArgs(startEvent.label),
@@ -423,18 +471,18 @@ function buildRuntimeEventItems(events: readonly CodaraRuntimeEvent[], nowTimest
   // Third pass: show unpaired start events as "running"
   const unpairedTaskStarts: Array<{id: string; startEvent: CodaraRuntimeEvent}> = [];
   for (const [id, startEvent] of startEvents) {
-    if (shouldHideRuntimeEvent(startEvent)) {
+    if (shouldHideRuntimeEventForTranscript(startEvent)) {
       continue;
     }
     const wasPaired = events.some(
-      (e) => e.phase === 'end' && e.parentId === id && (e.kind === 'tool' || e.kind === 'task'),
+      (e) => e.phase === 'end' && e.parentId === id && (e.kind === 'tool' || e.kind === 'agent'),
     );
     if (wasPaired) {
       continue;
     }
 
     // Unpaired task start → collected below for grouped rendering
-    if (startEvent.kind === 'task') {
+    if (startEvent.kind === 'agent') {
       if (isPendingTaskPlaceholderStart(startEvent)) {
         continue;
       }
@@ -475,10 +523,10 @@ function buildRuntimeEventItems(events: readonly CodaraRuntimeEvent[], nowTimest
     const runningDisplay = buildRunningTaskDisplay(startEvent, childActivities, nowTimestamp);
     items.push({
       id: activeId(taskId),
-      role: 'task',
+      role: 'agent',
       content: `⚙ ${agentType}(${extractTaskArgs(startEvent.label)})\n${runningDisplay.summaryLine}`,
       toolMeta: {
-        toolName: TOOL_NAMES.TASK,
+        toolName: TOOL_NAMES.AGENT,
         displayName: agentType,
         icon: '⚙',
         args: extractTaskArgs(startEvent.label),
@@ -499,7 +547,7 @@ function isSyntheticTaskStart(
   startEvent: CodaraRuntimeEvent,
   startEvents: ReadonlyMap<string, CodaraRuntimeEvent>,
 ): boolean {
-  if (startEvent.kind !== 'task' || startEvent.phase !== 'start' || !startEvent.parentId) {
+  if (startEvent.kind !== 'agent' || startEvent.phase !== 'start' || !startEvent.parentId) {
     return false;
   }
 
@@ -507,15 +555,15 @@ function isSyntheticTaskStart(
 }
 
 function isPendingTaskPlaceholderStart(startEvent: CodaraRuntimeEvent): boolean {
-  return startEvent.kind === 'task'
+  return startEvent.kind === 'agent'
     && startEvent.phase === 'start'
     && startEvent.detail === 'pending';
 }
 
 function isRunIdBackedTaskStart(startEvent: CodaraRuntimeEvent): boolean {
-  return startEvent.kind === 'task'
+  return startEvent.kind === 'agent'
     && startEvent.phase === 'start'
-    && startEvent.id.startsWith('task-run:');
+    && startEvent.id.startsWith('agent-run:');
 }
 
 function buildRunningTaskDisplay(
@@ -535,7 +583,7 @@ function buildRunningTaskDisplay(
   const recentLabels = activityLabels.slice(-MAX_CHILD_ACTIVITY_LINES);
   const latestTimestamp = activities[activities.length - 1]?.timestamp ?? nowTimestamp ?? startEvent.timestamp;
   const elapsed = formatElapsed(startEvent.timestamp, latestTimestamp);
-  const statusLabel = lifecycleUpdate?.label === 'Delegated task waiting for review'
+  const statusLabel = lifecycleUpdate?.label === 'Subagent waiting for review'
     ? 'Waiting for review'
     : 'Running';
   const statParts = [`${elapsed}`];
@@ -566,7 +614,7 @@ function buildTaskActivityOutput(activityLabels: string[]): {
 }
 
 function isTaskLifecycleUpdate(label: string): boolean {
-  return label.startsWith('Delegated task ');
+  return label.startsWith('Subagent ');
 }
 
 function extractSubagentType(label: string): string {
@@ -692,7 +740,7 @@ function buildToolOutput(
       const lines = truncateOutput(trimmed);
       return {summaryLine: lines.visible[0] ?? 'Done', outputLines: lines.visible.slice(1), allOutputLines: lines.all.slice(1), totalOutputLines: lines.total};
     }
-    case TOOL_NAMES.TASK: {
+    case TOOL_NAMES.AGENT: {
       if (!trimmed) {
         return {summaryLine: 'Done'};
       }
@@ -746,9 +794,9 @@ function truncateOutput(detail?: string, maxLines: number = TOOL_META_MAX_LINES)
 
 function mapRuntimeEventRole(kind: CodaraRuntimeEvent['kind']): TranscriptRole {
   switch (kind) {
-    case 'task':
-      return 'task';
-    case 'hil':
+    case 'agent':
+      return 'agent';
+    case 'review':
       return 'review';
     case 'command':
     case 'summary':
@@ -761,7 +809,7 @@ function mapRuntimeEventRole(kind: CodaraRuntimeEvent['kind']): TranscriptRole {
 }
 
 function formatRuntimeEvent(event: CodaraRuntimeEvent): string {
-  if (event.kind === 'tool' || event.kind === 'task') {
+  if (event.kind === 'tool' || event.kind === 'agent') {
     if (event.phase === 'end') {
       if (event.status === 'done' && event.detail?.trim()) {
         return event.detail.trim();
@@ -837,6 +885,9 @@ function buildAssistantItems(
 ): TranscriptItem[] {
   const items: TranscriptItem[] = [];
   const text = readMessageText(message);
+  if (text && containsHiddenInteractionToolCall(message)) {
+    return items;
+  }
   const preserveVisibleText = text ? preserveVisibleAssistantTexts?.has(normalizeVisibleAssistantText(text)) ?? false : false;
   if (
     text
@@ -864,9 +915,9 @@ function containsTaskLaunchChatter(text: string): boolean {
     '委派信息',
     '正在等待 subagent',
     'subagent 已启动',
-    '我已使用 Task 工具委派',
-    'I used the Task tool',
-    'Delegated task started',
+    '我已使用 Agent 工具委派',
+    'I used the Agent tool',
+    'Subagent started',
     'waiting for the subagent',
   ];
 
@@ -874,7 +925,7 @@ function containsTaskLaunchChatter(text: string): boolean {
 }
 
 function messageContainsTaskToolCall(message: AIMessage): boolean {
-  return Array.isArray(message.tool_calls) && message.tool_calls.some((toolCall) => isTaskToolName(toolCall?.name));
+  return Array.isArray(message.tool_calls) && message.tool_calls.some((toolCall) => isAgentToolName(toolCall?.name));
 }
 
 export function normalizeVisibleAssistantText(text: string): string {
@@ -916,15 +967,19 @@ function buildToolResultItems(
   messageId: string,
   toolLookup: Map<string, ToolCall>,
 ): TranscriptItem[] {
-  const hilPayload = parseHILToolMessagePayload(message.content);
-  if (hilPayload?.type === 'hil_pause') {
+  if (shouldHideInternalToolMessage(message)) {
     return [];
   }
-  if (hilPayload?.type === 'hil_deny') {
+
+  const reviewPayload = parseReviewToolMessagePayload(message.content);
+  if (reviewPayload?.type === 'review_pause') {
+    return [];
+  }
+  if (reviewPayload?.type === 'review_deny') {
     return [{
       id: messageId,
       role: 'error',
-      content: hilPayload.reason,
+      content: reviewPayload.reason,
     }];
   }
 
@@ -932,12 +987,18 @@ function buildToolResultItems(
   if (!text) {
     return [];
   }
+  if (isRepeatedAskUserContinuationNotice(text)) {
+    return [];
+  }
 
   const resolvedName = resolveToolMessageName(message, toolLookup);
+  if (isHiddenTranscriptToolName(resolvedName)) {
+    return [];
+  }
   if (isInteractionToolName(resolvedName) || parseAskUserResult(text)) {
     return [];
   }
-  if (resolvedName === TOOL_NAMES.TASK && readTaskRunLaunchResult(message.artifact)) {
+  if (resolvedName === TOOL_NAMES.AGENT && readAgentRunLaunchResult(message.artifact)) {
     return [];
   }
   if (readSharedTaskCoordinationArtifact(message.artifact)) {
@@ -946,7 +1007,7 @@ function buildToolResultItems(
   if (resolvedName === TODO_TOOL_NAME) {
     return [];
   }
-  if (resolvedName === TOOL_NAMES.TASK) {
+  if (resolvedName === TOOL_NAMES.AGENT) {
     const taskMeta = buildTaskToolMetaFromCoreMessage(message, toolLookup);
     if (!taskMeta) {
       return [];
@@ -954,7 +1015,7 @@ function buildToolResultItems(
 
     return [{
       id: messageId,
-      role: 'task',
+      role: 'agent',
       content: `${taskMeta.icon} ${taskMeta.displayName}(${taskMeta.args ?? ''})\n${taskMeta.summaryLine}`,
       toolMeta: taskMeta,
     }];
@@ -964,7 +1025,7 @@ function buildToolResultItems(
   const lineCount = formattedContent.split('\n').length;
 
   // Build toolMeta for non-task tool results
-  const toolMeta = resolvedName && !isTaskToolName(resolvedName)
+  const toolMeta = resolvedName && !isAgentToolName(resolvedName)
     ? buildToolMetaFromCoreMessage(resolvedName, message, toolLookup, text)
     : undefined;
 
@@ -1021,7 +1082,7 @@ function buildTaskToolMetaFromCoreMessage(
       ? parts.length > 0 ? `Failed (${parts.join(' · ')})` : 'Failed'
       : parts.length > 0 ? `Done (${parts.join(' · ')})` : 'Done';
     return {
-      toolName: TOOL_NAMES.TASK,
+      toolName: TOOL_NAMES.AGENT,
       displayName,
       icon: '⚙',
       args,
@@ -1036,7 +1097,7 @@ function buildTaskToolMetaFromCoreMessage(
   }
 
   return {
-    toolName: TOOL_NAMES.TASK,
+    toolName: TOOL_NAMES.AGENT,
     displayName,
     icon: '⚙',
     args,
@@ -1118,13 +1179,14 @@ function tryComputeDiff(toolName: string, toolArgs: unknown): DiffData | undefin
   }
 }
 
-function shouldHideRuntimeEvent(event: CodaraRuntimeEvent): boolean {
-  if (event.kind === 'hil') {
+export function shouldHideRuntimeEventForTranscript(event: CodaraRuntimeEvent): boolean {
+  if (event.kind === 'review') {
     return true;
   }
 
-  if (event.kind === 'task') {
-    return event.label === 'Task started' || event.label === 'Delegated task running in background';
+  if (event.kind === 'agent') {
+    return event.label === 'Subagent started'
+      || event.label === 'Subagent running in background';
   }
 
   if (event.kind !== 'tool') {
@@ -1136,6 +1198,9 @@ function shouldHideRuntimeEvent(event: CodaraRuntimeEvent): boolean {
   }
 
   const rawToolName = (event.detail ?? '').trim();
+  if (isHiddenTranscriptToolName(rawToolName)) {
+    return true;
+  }
   if (rawToolName === TODO_TOOL_NAME) {
     return true;
   }
@@ -1143,9 +1208,43 @@ function shouldHideRuntimeEvent(event: CodaraRuntimeEvent): boolean {
   if (parseAskUserResult(event.detail)) {
     return true;
   }
+  if (isRepeatedAskUserContinuationNotice(event.detail)) {
+    return true;
+  }
 
-  const hilPayload = parseHILToolMessagePayload(event.detail);
-  return hilPayload?.type === 'hil_pause';
+  const reviewPayload = parseReviewToolMessagePayload(event.detail);
+  return reviewPayload?.type === 'review_pause';
+}
+
+function buildRuntimeCoverageFingerprint(item: TranscriptItem): string | undefined {
+  if ((item.role !== 'tool' && item.role !== 'agent') || !item.toolMeta) {
+    return undefined;
+  }
+
+  const outputLines = item.toolMeta.allOutputLines ?? item.toolMeta.outputLines ?? [];
+  return [
+    item.role,
+    item.toolMeta.toolName,
+    item.toolMeta.args ?? '',
+    item.toolMeta.status,
+    item.toolMeta.summaryLine,
+    outputLines.join('\n'),
+  ].join('|');
+}
+
+function isRepeatedAskUserContinuationNotice(detail: unknown): boolean {
+  return typeof detail === 'string' && detail.includes('AskUserQuestion was just answered in this flow.');
+}
+
+function containsHiddenInteractionToolCall(message: AIMessage): boolean {
+  if (!Array.isArray(message.tool_calls)) {
+    return false;
+  }
+
+  return message.tool_calls.some((toolCall) => (
+    isInteractionToolName(toolCall?.name)
+    || isHiddenTranscriptToolName(toolCall?.name)
+  ));
 }
 
 function createToolCallLookup(messages: readonly BaseMessage[]): Map<string, ToolCall> {
@@ -1165,6 +1264,16 @@ function createToolCallLookup(messages: readonly BaseMessage[]): Map<string, Too
   return lookup;
 }
 
+function shouldHideInternalToolMessage(message: ToolMessage): boolean {
+  const artifact = message.artifact;
+  if (!artifact || typeof artifact !== 'object' || Array.isArray(artifact)) {
+    return false;
+  }
+
+  const record = artifact as Record<string, unknown>;
+  return record.type === 'ask_user_internal' && record.visibility === 'hidden';
+}
+
 function resolveToolMessageName(message: ToolMessage, toolLookup: Map<string, ToolCall>): string | undefined {
   const explicitName = typeof message.name === 'string' ? message.name.trim() : '';
   if (explicitName) {
@@ -1181,6 +1290,8 @@ function resolveToolMessageName(message: ToolMessage, toolLookup: Map<string, To
 
 function toolIcon(toolName: string): string {
   switch (toolName) {
+    case TOOL_NAMES.SKILL:
+      return '⚙';
     case TOOL_NAMES.BASH:
       return '⚡';
     case TOOL_NAMES.READ_FILE:
@@ -1217,6 +1328,8 @@ function formatFriendlyToolSummary(toolName: string, args: unknown): string | un
 
   const record = args as Record<string, unknown>;
   switch (toolName) {
+    case TOOL_NAMES.SKILL:
+      return limitSummary(asString(record.skill));
     case TOOL_NAMES.BASH:
       return limitSummary(asString(record.command) || asString(record.description));
     case TOOL_NAMES.READ_FILE:
@@ -1246,6 +1359,10 @@ function isInteractionToolName(toolName: string | undefined): boolean {
   return (toolName || '').trim() === TOOL_NAMES.ASK_USER;
 }
 
+function isHiddenTranscriptToolName(toolName: string | undefined): boolean {
+  return (toolName || '').trim() === TOOL_NAMES.SKILL;
+}
+
 function serializeValue(value: unknown): string | undefined {
   if (value === undefined) {
     return undefined;
@@ -1264,6 +1381,8 @@ function serializeValue(value: unknown): string | undefined {
 
 function formatToolDisplayName(toolName: string): string {
   switch (toolName) {
+    case TOOL_NAMES.SKILL:
+      return 'Skill';
     case TOOL_NAMES.BASH:
       return 'Bash';
     case TOOL_NAMES.READ_FILE:
@@ -1347,9 +1466,26 @@ function toTitleCase(value: string): string {
     .join(' ');
 }
 
-function isTaskToolName(toolName: string | undefined): boolean {
-  return toolName === TOOL_NAMES.TASK
+function isAgentToolName(toolName: string | undefined): boolean {
+  return toolName === TOOL_NAMES.AGENT
     || toolName === TOOL_NAMES.TASK_CREATE
     || toolName === TOOL_NAMES.TASK_UPDATE
     || toolName === TOOL_NAMES.TASK_LIST;
+}
+
+function shouldSuppressActiveTurnInteractionPreamble(
+  role: TranscriptRole | undefined,
+  runtimeEvents: readonly CodaraRuntimeEvent[] | undefined,
+): boolean {
+  if (role !== 'assistant' || !runtimeEvents?.length) {
+    return false;
+  }
+
+  return runtimeEvents.some((event) => {
+    if (event.kind !== 'tool') {
+      return false;
+    }
+    const detail = typeof event.detail === 'string' ? event.detail.trim() : '';
+    return isInteractionToolName(detail) || isHiddenTranscriptToolName(detail);
+  });
 }

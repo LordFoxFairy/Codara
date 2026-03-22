@@ -150,7 +150,7 @@ describe('telegramPlugin', () => {
     });
   });
 
-  describe('sendPausePrompt', () => {
+  describe('sendReviewPrompt', () => {
     test('sends message with inline keyboard buttons', async () => {
       const fetchMock = mockFetch({
         ok: true,
@@ -159,11 +159,11 @@ describe('telegramPlugin', () => {
       globalThis.fetch = fetchMock;
 
       const account = telegramPlugin.resolveAccount({botToken: 'test-token'})!;
-      const result = await telegramPlugin.sendPausePrompt!(account, {
+      const result = await telegramPlugin.sendReviewPrompt!(account, {
         accountId: 'bot-1',
         to: '123',
         text: 'Approve this action?',
-        pause: {id: 'pause-1', description: 'Run command'} as unknown as import('@shared/contracts/agent-types').PauseRequest,
+        review: {id: 'review-1', description: 'Run command'} as unknown as import('@shared/contracts/agent-types').ReviewRequest,
         actions: [
           {id: 'approve', label: 'Approve', style: 'approve'},
           {id: 'reject', label: 'Reject', style: 'reject'},
@@ -178,11 +178,11 @@ describe('telegramPlugin', () => {
       expect(body.reply_markup.inline_keyboard[0]).toHaveLength(2);
       expect(body.reply_markup.inline_keyboard[0][0]).toEqual({
         text: 'Approve',
-        callback_data: 'pause:pause-1:approve',
+        callback_data: 'review:review-1:approve',
       });
       expect(body.reply_markup.inline_keyboard[0][1]).toEqual({
         text: 'Reject',
-        callback_data: 'pause:pause-1:reject',
+        callback_data: 'review:review-1:reject',
       });
     });
   });

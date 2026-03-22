@@ -1,11 +1,11 @@
 import type {Channel, ChannelMessage, ChannelRuntimeEvent, ChannelType} from '@shared/contracts/channel';
-import type {PauseRequest, ResumePayload} from '@shared/contracts/agent-types';
+import type {ReviewRequest, ReviewResumePayload} from '@shared/contracts/agent-types';
 import type {ChannelPlugin} from '@integration/channel/contracts';
-import type {PausePromptAction} from './types';
+import type {ReviewPromptAction} from './types';
 
 /**
- * Bridges the old Channel interface (used by ChannelRegistry/HIL middleware)
- * with the new ChannelPlugin system (used by Gateway).
+ * Bridges the old Channel interface (used by ChannelRegistry/review middleware)
+ * with the ChannelPlugin system (used by Gateway).
  *
  * Each GatewayChannelBridge instance represents one active conversation
  * (one peer on one IM platform).
@@ -14,7 +14,7 @@ export class GatewayChannelBridge implements Channel {
   readonly id: string;
   readonly type: ChannelType;
 
-  private readonly pendingPauses = new Map<string, {resolve: (payload: ResumePayload) => void}>();
+  private readonly pendingReviews = new Map<string, {resolve: (payload: ReviewResumePayload) => void}>();
 
   constructor(
     private readonly plugin: ChannelPlugin,
@@ -35,30 +35,30 @@ export class GatewayChannelBridge implements Channel {
     });
   }
 
-  async showPauseRequest(request: PauseRequest): Promise<ResumePayload> {
-    const actions = buildPauseActions(request);
-    const description = buildPauseDescription(request);
+  async showReviewRequest(request: ReviewRequest): Promise<ReviewResumePayload> {
+    const actions = buildReviewActions(request);
+    const description = buildReviewDescription(request);
 
-    // Register the pending pause BEFORE sending, so handlePauseResponse
+    // Register the pending review BEFORE sending, so handleReviewResponse
     // can resolve it even if the user responds very quickly.
-    const resultPromise = new Promise<ResumePayload>((resolve) => {
-      this.pendingPauses.set(request.id, {resolve});
+    const resultPromise = new Promise<ReviewResumePayload>((resolve) => {
+      this.pendingReviews.set(request.id, {resolve});
 
-      // Auto-reject after 10 minutes
+      // Auto-reject after 10 minutes.
       setTimeout(() => {
-        if (this.pendingPauses.has(request.id)) {
-          this.pendingPauses.delete(request.id);
+        if (this.pendingReviews.has(request.id)) {
+          this.pendingReviews.delete(request.id);
           resolve({decision: 'reject', reason: 'Timeout (10 min)'});
         }
       }, 10 * 60 * 1000);
     });
 
-    if (this.plugin.sendPausePrompt) {
-      await this.plugin.sendPausePrompt(this.account, {
+    if (this.plugin.sendReviewPrompt) {
+      await this.plugin.sendReviewPrompt(this.account, {
         accountId: this.accountId,
         to: this.peerId,
         text: description,
-        pause: request,
+        review: request,
         actions,
       });
     } else {
@@ -75,17 +75,17 @@ export class GatewayChannelBridge implements Channel {
   }
 
   /** Called by Gateway when the user clicks a button or replies with a decision. */
-  handlePauseResponse(pauseId: string, decision: string): boolean {
-    const pending = this.pendingPauses.get(pauseId);
+  handleReviewResponse(reviewId: string, decision: string): boolean {
+    const pending = this.pendingReviews.get(reviewId);
     if (!pending) return false;
-    this.pendingPauses.delete(pauseId);
+    this.pendingReviews.delete(reviewId);
     pending.resolve({decision: decision as 'approve' | 'reject' | 'edit'});
     return true;
   }
 
-  /** Check whether this bridge has any pending pause requests. */
-  hasPendingPauses(): boolean {
-    return this.pendingPauses.size > 0;
+  /** Check whether this bridge has any pending review requests. */
+  hasPendingReviews(): boolean {
+    return this.pendingReviews.size > 0;
   }
 
   emitEvent?(_event: ChannelRuntimeEvent): void {
@@ -93,17 +93,17 @@ export class GatewayChannelBridge implements Channel {
   }
 
   async dispose(): Promise<void> {
-    for (const [, pending] of this.pendingPauses) {
+    for (const [, pending] of this.pendingReviews) {
       pending.resolve({decision: 'reject', reason: 'Channel disposed'});
     }
-    this.pendingPauses.clear();
+    this.pendingReviews.clear();
   }
 }
 
 // ── Helpers ──
 
-function buildPauseActions(request: PauseRequest): PausePromptAction[] {
-  const actions: PausePromptAction[] = [];
+function buildReviewActions(request: ReviewRequest): ReviewPromptAction[] {
+  const actions: ReviewPromptAction[] = [];
 
   if (request.review?.allowedDecisions) {
     for (const decision of request.review.allowedDecisions) {
@@ -127,7 +127,7 @@ function buildPauseActions(request: PauseRequest): PausePromptAction[] {
   return actions;
 }
 
-function buildPauseDescription(request: PauseRequest): string {
+function buildReviewDescription(request: ReviewRequest): string {
   const parts: string[] = [request.description ?? 'Agent \u8bf7\u6c42\u5ba1\u6279'];
 
   if (request.action) {

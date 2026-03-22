@@ -2,7 +2,7 @@ import type {ToolMessage} from '@langchain/core/messages';
 import type {ToolCallContext} from '@core/pipeline/types';
 import {readExecutionMetadata, type BaseExecutionContext} from '@core/pipeline/types';
 import {readDelegatedAgentResult} from '@shared/delegation-result';
-import {readTaskRunLaunchResult} from '@shared/task-run-launch';
+import {readAgentRunLaunchResult} from '@shared/agent-run-launch';
 import {TOOL_NAMES, formatToolSummary, readString} from '@shared/tool-display';
 import {formatSubagentDisplayName, normalizeSubagentType} from '@context/skills/runtime-shared';
 
@@ -41,8 +41,8 @@ export function formatToolDisplayName(toolName: string): string {
     case TOOL_NAMES.WEB_SEARCH:
     case TOOL_NAMES.SEARCH:
       return 'Searching';
-    case TOOL_NAMES.TASK:
-      return 'Delegating task';
+    case TOOL_NAMES.AGENT:
+      return 'Delegating subagent';
     case TOOL_NAMES.TASK_CREATE:
       return 'Creating task';
     case TOOL_NAMES.TASK_UPDATE:
@@ -65,8 +65,8 @@ export function summarizeToolMessage(message: ToolMessage): string | undefined {
   return trimmed || undefined;
 }
 
-export function summarizeDelegatedTask(message: ToolMessage): string | undefined {
-  const launched = readTaskRunLaunchResult(message.artifact);
+export function summarizeDelegatedAgent(message: ToolMessage): string | undefined {
+  const launched = readAgentRunLaunchResult(message.artifact);
   if (launched) {
     return undefined;
   }
@@ -99,9 +99,9 @@ export function formatDelegatedTokens(n: number): string {
   return String(n);
 }
 
-export function formatTaskStartLabel(args: unknown): string {
+export function formatAgentStartLabel(args: unknown): string {
   if (!args || typeof args !== 'object' || Array.isArray(args)) {
-    return 'Delegating task';
+    return 'Delegating Agent';
   }
 
   const record = args as Record<string, unknown>;

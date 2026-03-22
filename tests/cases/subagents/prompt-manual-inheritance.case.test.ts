@@ -23,7 +23,7 @@ async function waitForCondition(
 }
 
 describe('subagent prompt manual cases', () => {
-  it('should make .codara/codara.md visible inside delegated child system prompts through the real CLI', async () => {
+  it('should keep the built-in Agent child on a fresh bootstrap instead of inheriting parent prompt state', async () => {
     const root = await mkdtemp(path.join(tmpdir(), 'codara-case-subagent-prompt-'));
     const projectRoot = path.join(root, 'project');
     const codaraPath = path.join(projectRoot, '.codara');
@@ -60,7 +60,7 @@ RESERVED_DEFAULT_PROFILE_PROMPT
       prompt: 'delegate prompt check',
       scenario: 'prompt-manual-inheritance',
     });
-    const runRecordPath = path.join(codaraPath, 'case-task-runs', 'call_prompt_task.json');
+    const runRecordPath = path.join(codaraPath, 'case-agent-runs', 'call_prompt_task.json');
 
     expect(result.exitCode).toBe(0);
 
@@ -79,6 +79,6 @@ RESERVED_DEFAULT_PROFILE_PROMPT
       summary?: string;
     };
     expect(runRecord.status).toBe('completed');
-    expect(runRecord.summary).toContain('prompt_visible:true;guidelines_visible:true;skills_visible:true;profile_visible:false');
+    expect(runRecord.summary).toContain('prompt_visible:false;guidelines_visible:false;skills_visible:false;profile_visible:false');
   });
 });

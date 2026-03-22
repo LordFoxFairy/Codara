@@ -82,11 +82,11 @@ describe('runtime auto memory cases', () => {
       middleware: [createAskUserQuestionMiddleware()],
       builtinTools: false,
       skills: false,
-      hil: false,
+      review: false,
     });
 
     const result = await codara.invoke('I need clarification before you continue');
-    expect(result.state.pendingPause).toBeDefined();
+    expect(result.state.pendingReview).toBeDefined();
 
     const memoryRoot = resolveAutoMemoryRoot({projectRoot, userHome});
     expect(existsSync(path.join(memoryRoot, 'MEMORY.md'))).toBe(false);
@@ -201,7 +201,7 @@ class ThrowingModel {
 
 class AskUserModel {
   async invoke(messages: BaseMessage[]): Promise<AIMessage> {
-    const sawToolResponse = messages.some((message) => String(message.content).includes('hil_pause'));
+    const sawToolResponse = messages.some((message) => String(message.content).includes('review_pause'));
     if (sawToolResponse) {
       return new AIMessage('UNEXPECTED_RESUME');
     }

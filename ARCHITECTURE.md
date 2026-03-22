@@ -252,7 +252,7 @@ src/
 │   ├── channel/                   # 交互通道
 │   │   ├── contracts.ts           #   ChannelPlugin 契约
 │   │   ├── registry.ts            #   ChannelRegistry
-│   │   ├── hil-adapter.ts         #   HIL 通道适配
+│   │   ├── review-adapter.ts         #   review 通道适配
 │   │   ├── telegram/              #   Telegram 适配器（Long Polling）
 │   │   │   ├── plugin.ts
 │   │   │   ├── api.ts
@@ -314,7 +314,7 @@ src/
 │   ├── router.ts                  # 消息路由（session key、白名单、binding）
 │   ├── session-manager.ts         # 会话管理（多租户 session 映射）
 │   ├── codara-session-factory.ts  # 真实 Codara Runtime 会话工厂
-│   ├── channel-bridge.ts          # ChannelPlugin ↔ Channel 桥接（HIL 路由）
+│   ├── channel-bridge.ts          # ChannelPlugin ↔ Channel 桥接（review 路由）
 │   ├── outbound.ts                # 出站处理（消息分片）
 │   ├── debounce.ts                # 消息防抖
 │   ├── format.ts                  # Markdown 适配（平台差异化）
@@ -517,7 +517,7 @@ core/agent/
          │                    ▼        │       │
          │  ┌──────────────────────┐   │       │
          │  │  ToolCall 阶段       │   │       │
-         │  │  (permission → HIL)  │   │       │
+         │  │  (permission → review)  │   │       │
          │  └──────────┬───────────┘   │       │
          │             │               │       │
          │  ┌──────────▼───────────┐   │       │
@@ -544,7 +544,7 @@ Pipeline 定义 6 个执行阶段，每个阶段有明确的调用契约：
 | `BeforeAgent` | Agent 启动前 | skills 注入, path-instructions |
 | `BeforeModel` | 每轮 LLM 调用前 | summary 压缩, budget 检查 |
 | `ModelCall` | LLM 推理时 | logging |
-| `ToolCall` | 工具调用时 | permission 评估 → HIL pause/resume |
+| `ToolCall` | 工具调用时 | permission 评估 → review pause/resume |
 | `AfterModel` | LLM 调用后 | logging, checkpoint save |
 | `AfterAgent` | Agent 结束后 | hooks-bridge, cleanup |
 
@@ -739,7 +739,7 @@ integration/mcp/
 ```text
 integration/channel/
 ├── registry.ts       ChannelRegistry（注册 + 路由）
-├── hil-adapter.ts    HIL ← → Channel 适配
+├── review-adapter.ts    review ← → Channel 适配
 └── index.ts
 
 通道路由：
@@ -868,7 +868,7 @@ Codara 的扩展机制分为**三层递进**，所有扩展最终通过 Middlewa
    每个阶段触发对应 middleware chain
 
 ⑥ Middleware 拦截
-   skills 注入 · permission 评估 · HIL pause/resume · budget 控制 · logging
+   skills 注入 · permission 评估 · review pause/resume · budget 控制 · logging
 
 ⑦ 协作分支
    task/delegation → 单代理子执行（stream-first）

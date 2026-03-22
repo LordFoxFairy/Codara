@@ -1,6 +1,6 @@
 import {z} from 'zod';
 import type {ChannelPlugin, GatewayListenContext} from '@integration/channel/contracts';
-import type {InboundMessage, OutboundContext, PausePromptContext, SendResult, StopHandle} from '@gateway/types';
+import type {InboundMessage, OutboundContext, ReviewPromptContext, SendResult, StopHandle} from '@gateway/types';
 import {DiscordApi} from './api';
 import {DiscordGatewayClient} from './gateway-ws';
 import type {DiscordMessage, DiscordInteraction, DiscordActionRow} from './types';
@@ -102,7 +102,7 @@ export const discordPlugin: ChannelPlugin<DiscordAccount> = {
   },
 
   async startListening(ctx: GatewayListenContext<DiscordAccount>): Promise<StopHandle> {
-    const {account, accountId, onMessage, onPauseResponse} = ctx;
+    const {account, accountId, onMessage, onReviewResponse} = ctx;
 
     const gateway = new DiscordGatewayClient({
       botToken: account.botToken,
@@ -134,15 +134,15 @@ export const discordPlugin: ChannelPlugin<DiscordAccount> = {
           .createInteractionResponse(interaction.id, interaction.token, InteractionCallbackType.DEFERRED_UPDATE_MESSAGE)
           .catch(() => {});
 
-        // Parse custom_id: `{actionId}:{pauseId}`
+        // Parse custom_id: `{actionId}:{reviewId}`
         const customId = interaction.data.custom_id;
         const colonIndex = customId.indexOf(':');
-        if (colonIndex === -1 || !onPauseResponse) return;
+        if (colonIndex === -1 || !onReviewResponse) return;
 
         const actionId = customId.slice(0, colonIndex);
-        const pauseId = customId.slice(colonIndex + 1);
+        const reviewId = customId.slice(colonIndex + 1);
         const userId = interaction.member?.user?.id ?? interaction.user?.id ?? 'unknown';
-        onPauseResponse(pauseId, {actionId, from: {id: userId}});
+        onReviewResponse(reviewId, {actionId, from: {id: userId}});
       },
     });
 
@@ -169,13 +169,13 @@ export const discordPlugin: ChannelPlugin<DiscordAccount> = {
     await account.api.triggerTyping(ctx.to);
   },
 
-  async sendPausePrompt(account: DiscordAccount, ctx: PausePromptContext): Promise<SendResult> {
+  async sendReviewPrompt(account: DiscordAccount, ctx: ReviewPromptContext): Promise<SendResult> {
     const buttonType = ComponentType.BUTTON;
     const buttons = ctx.actions.map((a) => ({
       type: buttonType,
       style: a.style === 'approve' ? ButtonStyle.SUCCESS : a.style === 'reject' ? ButtonStyle.DANGER : ButtonStyle.SECONDARY,
       label: a.label,
-      custom_id: `${a.id}:${ctx.pause.id}`,
+      custom_id: `${a.id}:${ctx.review.id}`,
     }));
 
     const actionRowType = ComponentType.ACTION_ROW;

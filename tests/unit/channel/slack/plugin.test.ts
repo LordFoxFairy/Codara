@@ -133,17 +133,17 @@ describe('slackPlugin', () => {
     });
   });
 
-  describe('sendPausePrompt', () => {
+  describe('sendReviewPrompt', () => {
     test('sends message with Block Kit buttons', async () => {
       const fetchMock = mockFetch({ok: true, ts: '1617243423.000300', channel: 'C123'});
       globalThis.fetch = fetchMock;
 
       const account = slackPlugin.resolveAccount({botToken: 'xoxb-test', appToken: 'xapp-test'})!;
-      const result = await slackPlugin.sendPausePrompt!(account, {
+      const result = await slackPlugin.sendReviewPrompt!(account, {
         accountId: 'bot-1',
         to: 'C123',
         text: 'Approve this action?',
-        pause: {id: 'pause-1', description: 'Run command'} as unknown as import('@shared/contracts/agent-types').PauseRequest,
+        review: {id: 'review-1', description: 'Run command'} as unknown as import('@shared/contracts/agent-types').ReviewRequest,
         actions: [
           {id: 'approve', label: 'Approve', style: 'approve'},
           {id: 'reject', label: 'Reject', style: 'reject'},
@@ -163,13 +163,13 @@ describe('slackPlugin', () => {
       expect(body.blocks[1].elements[0]).toEqual({
         type: 'button',
         text: {type: 'plain_text', text: 'Approve'},
-        action_id: 'approve:pause-1',
+        action_id: 'approve:review-1',
         style: 'primary',
       });
       expect(body.blocks[1].elements[1]).toEqual({
         type: 'button',
         text: {type: 'plain_text', text: 'Reject'},
-        action_id: 'reject:pause-1',
+        action_id: 'reject:review-1',
         style: 'danger',
       });
     });

@@ -1,8 +1,8 @@
 import {describe, it, expect, beforeEach, mock} from 'bun:test';
 import {dingtalkPlugin, type DingTalkAccount} from '@integration/channel/dingtalk/plugin';
 import {DingTalkApi} from '@integration/channel/dingtalk/api';
-import type {OutboundContext, PausePromptContext} from '@gateway/types';
-import type {PauseRequest} from '@shared/contracts/agent-types';
+import type {OutboundContext, ReviewPromptContext} from '@gateway/types';
+import type {ReviewRequest} from '@shared/contracts/agent-types';
 
 describe('dingtalkPlugin', () => {
   describe('metadata', () => {
@@ -103,7 +103,7 @@ describe('dingtalkPlugin', () => {
     });
   });
 
-  describe('sendPausePrompt', () => {
+  describe('sendReviewPrompt', () => {
     let account: DingTalkAccount;
     let api: DingTalkApi;
 
@@ -119,14 +119,14 @@ describe('dingtalkPlugin', () => {
     });
 
     it('returns error when no sessionWebhook is available', async () => {
-      const ctx: PausePromptContext = {
+      const ctx: ReviewPromptContext = {
         accountId: 'acc',
         to: 'cid-missing',
         text: 'Need approval',
-        pause: {id: 'p1'} as PauseRequest,
+        review: {id: 'review-1'} as ReviewRequest,
         actions: [{id: 'approve', label: 'Approve', style: 'approve'}],
       };
-      const result = await dingtalkPlugin.sendPausePrompt!(account, ctx);
+      const result = await dingtalkPlugin.sendReviewPrompt!(account, ctx);
       expect(result.ok).toBe(false);
       expect(result.error).toContain('No active sessionWebhook');
     });
@@ -143,23 +143,23 @@ describe('dingtalkPlugin', () => {
       }) as unknown as typeof fetch;
 
       try {
-        const ctx: PausePromptContext = {
+        const ctx: ReviewPromptContext = {
           accountId: 'acc',
           to: 'cid-123',
           text: 'Review needed',
-          pause: {id: 'pause-001'} as PauseRequest,
+          review: {id: 'review-001'} as ReviewRequest,
           actions: [
             {id: 'approve', label: 'Approve', style: 'approve' as const},
             {id: 'reject', label: 'Reject', style: 'reject' as const},
           ],
         };
-        const result = await dingtalkPlugin.sendPausePrompt!(account, ctx);
+        const result = await dingtalkPlugin.sendReviewPrompt!(account, ctx);
         expect(result.ok).toBe(true);
         expect((sentBody as {msgtype: string}).msgtype).toBe('actionCard');
         const card = (sentBody as {actionCard: {btns: {actionURL: string}[]}}).actionCard;
         expect(card.btns).toHaveLength(2);
         expect(card.btns[0].actionURL).toContain('action=approve');
-        expect(card.btns[0].actionURL).toContain('id=pause-001');
+        expect(card.btns[0].actionURL).toContain('id=review-001');
       } finally {
         globalThis.fetch = originalFetch;
       }

@@ -2,10 +2,10 @@ import {describe, expect, it} from 'bun:test';
 import {AIMessage, ToolMessage, type ToolCall} from '@langchain/core/messages';
 import type {BaseChatModel} from '@langchain/core/language_models/chat_models';
 import {createAgent} from '@core/agent';
-import {TASK_TOOL_NAME, createTaskTool} from '@capability/task/middleware';
+import {AGENT_TOOL_NAME, createAgentTool} from '@capability/subagent/middleware';
 import {ChildSummaryModel, ScriptedModel} from './task-tool.fixtures';
 
-describe('createTaskTool errors', () => {
+describe('createAgentTool errors', () => {
   it('应在缺少 subagent_type 时明确报错，基础 child 必须显式使用 Agent', async () => {
     const parent = createAgent({
       model: new ScriptedModel([
@@ -13,7 +13,7 @@ describe('createTaskTool errors', () => {
           content: '',
           tool_calls: [{
             id: 'call_task_missing_type',
-            name: TASK_TOOL_NAME,
+            name: AGENT_TOOL_NAME,
             args: {
               prompt: 'Plan the architecture',
             },
@@ -22,7 +22,7 @@ describe('createTaskTool errors', () => {
         new AIMessage('done'),
       ]) as unknown as BaseChatModel,
       tools: [
-        createTaskTool({
+        createAgentTool({
           model: new ChildSummaryModel() as unknown as BaseChatModel,
         }),
       ],
@@ -44,7 +44,7 @@ describe('createTaskTool errors', () => {
           content: '',
           tool_calls: [{
             id: 'call_task_old_default_type',
-            name: TASK_TOOL_NAME,
+            name: AGENT_TOOL_NAME,
             args: {
               prompt: 'Plan the architecture',
               subagent_type: 'general-purpose',
@@ -54,7 +54,7 @@ describe('createTaskTool errors', () => {
         new AIMessage('done'),
       ]) as unknown as BaseChatModel,
       tools: [
-        createTaskTool({
+        createAgentTool({
           model: new ChildSummaryModel() as unknown as BaseChatModel,
         }),
       ],
@@ -75,7 +75,7 @@ describe('createTaskTool errors', () => {
           content: '',
           tool_calls: [{
             id: 'call_task_bad_type',
-            name: TASK_TOOL_NAME,
+            name: AGENT_TOOL_NAME,
             args: {
               prompt: 'Plan the architecture',
               subagent_type: 'UnknownType',
@@ -85,7 +85,7 @@ describe('createTaskTool errors', () => {
         new AIMessage('done'),
       ]) as unknown as BaseChatModel,
       tools: [
-        createTaskTool({
+        createAgentTool({
           model: new ChildSummaryModel() as unknown as BaseChatModel,
         }),
       ],

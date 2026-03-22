@@ -14,7 +14,7 @@ export const theme = {
     user: 'green',
     assistant: 'magenta',
     tool: 'blueBright',
-    task: 'yellowBright',
+    agent: 'yellowBright',
     review: 'cyanBright',
     command: 'cyan',
     error: 'red',

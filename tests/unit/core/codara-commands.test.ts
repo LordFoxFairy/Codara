@@ -3,7 +3,7 @@ import {mkdir, mkdtemp, readFile} from 'node:fs/promises';
 import {tmpdir} from 'node:os';
 import path from 'node:path';
 import type {BaseChatModel} from '@langchain/core/language_models/chat_models';
-import type {BaseMessage} from '@langchain/core/messages';
+import {AIMessage, type BaseMessage} from '@langchain/core/messages';
 import {createCodara, createCodaraRuntime} from '@/index';
 import {EchoModel, SystemEchoModel} from './codara-fixtures';
 
@@ -17,6 +17,16 @@ const createRuntimeForTest = (options: Parameters<typeof createCodaraRuntime>[0]
 describe('Codara slash commands', () => {
   function readSummaryMessage(messages: BaseMessage[]): BaseMessage | undefined {
     return messages.find((message) => message.type === 'ai' && message.text.startsWith('Summary:\n'));
+  }
+
+  async function waitForCondition(predicate: () => boolean, timeoutMs = 1000, intervalMs = 10): Promise<void> {
+    const start = Date.now();
+    while (!predicate()) {
+      if (Date.now() - start > timeoutMs) {
+        throw new Error('Timed out waiting for condition');
+      }
+      await new Promise((resolve) => setTimeout(resolve, intervalMs));
+    }
   }
 
   it('should expose built-in slash command help', async () => {
@@ -469,6 +479,49 @@ describe('Codara slash commands', () => {
 
     expect(result.ok).toBe(true);
     expect(result.output).toBe('Conversation context already compact enough.');
+  });
+
+  it('should fail /compact with a single running-state error without emitting summary runtime events first', async () => {
+    let releaseInvoke: (() => void) | undefined;
+    const invokeGate = new Promise<void>((resolve) => {
+      releaseInvoke = resolve;
+    });
+
+    class BlockingModel {
+      async invoke(): Promise<AIMessage> {
+        await invokeGate;
+        return new AIMessage('done');
+      }
+
+      bindTools(): this {
+        return this;
+      }
+    }
+
+    const codara = createCodara({
+      model: new BlockingModel() as unknown as BaseChatModel,
+      skills: false,
+      builtinTools: false,
+      summary: {
+        summarize: () => 'manual compact summary',
+      },
+    });
+    const runtimeEvents: import('@/index').CodaraRuntimeEvent[] = [];
+    codara.subscribeRuntimeEvents((event) => {
+      runtimeEvents.push(event);
+    });
+
+    const invokePromise = codara.invoke('keep running');
+    await waitForCondition(() => runtimeEvents.some((event) => event.kind === 'turn' && event.phase === 'start'));
+
+    const result = await codara.executeCommand('/compact');
+
+    expect(result.ok).toBe(false);
+    expect(result.output).toBe('Agent is currently running.');
+    expect(runtimeEvents.filter((event) => event.kind === 'summary')).toEqual([]);
+
+    releaseInvoke?.();
+    await invokePromise;
   });
 
   it('should compact checkpoint history through the slash command agent surface', async () => {

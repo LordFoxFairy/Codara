@@ -4,8 +4,8 @@ import type {StructuredToolInterface} from '@langchain/core/tools';
 import {createAgentFileCheckpointer} from '@durability/checkpoint';
 import {createApprovalFileStore, type ApprovalStore} from '@durability/approval-store';
 import {ensurePermissionSettingsFile} from '@core/middleware/permission';
-import {createTaskRunFileStore, createTaskRuntime, type TaskRunStore, type TaskRuntime} from '@capability/task';
-import {createTaskFileStore} from '@capability/task/store';
+import {createAgentRunFileStore, createAgentRuntime, type AgentRunStore, type AgentRuntime} from '@capability/subagent';
+import {createTaskFileStore} from '@capability/task';
 import {loadModelRoutingConfigFromPath, resolveCodaraPath} from '@integration/provider';
 import {createCodaraGuidelinesSource, type GuidelinesSource} from '@context/instructions/guidelines';
 import {createCodaraPromptSource, type PromptSource} from '@context/prompts/prompt-source';
@@ -28,7 +28,7 @@ import {
   createRuntimeDefaultMiddlewares,
   resolveRuntimeLoggingOptions,
 } from './assembly/middleware';
-import {getTaskRunSummaries} from './assembly/task-runs';
+import {getAgentRunSummaries} from './assembly/agent-runs';
 import {
   createCodaraModelCatalog,
   DEFAULT_CODARA_MODEL_ALIAS,
@@ -44,14 +44,14 @@ import type {
 // Re-export all types from types.ts for backward compatibility
 export type {
   Codara, CodaraOptions, CodaraRuntimeOptions, CodaraAutoMemoryOptions,
-  CodaraSkillOptions, CodaraMiddlewareOptions,
+  CodaraSkillOptions, CodaraMiddlewareOptions, CodaraReviewOptions,
   CreateCodaraModelCatalogOptions, CreateCodaraChatModelOptions,
   CodaraPromptStreamRequest, CodaraContinuationStreamRequest,
-  CodaraPauseStreamRequest, CodaraReviewStreamRequest, CodaraStreamRequest,
+  CodaraReviewStreamRequest, CodaraStreamRequest,
   ReviewBlockingScope,
   ReviewQueryItem,
   FocusedReviewQuery,
-  TaskRunQuerySummary,
+  AgentRunQuerySummary,
 } from './types';
 
 export {createCodaraMiddlewares} from './assembly/middleware';
@@ -94,8 +94,8 @@ export async function createCodaraRuntime(options: CodaraRuntimeOptions = {}): P
   const taskStore = options.taskStore ?? createTaskFileStore({
     rootDir: path.join(runtimeStatePath, 'tasks'),
   });
-  const taskRunStore = options.taskRunStore ?? createTaskRunFileStore({
-    rootDir: path.join(runtimeStatePath, 'task-runs'),
+  const agentRunStore = options.agentRunStore ?? createAgentRunFileStore({
+    rootDir: path.join(runtimeStatePath, 'agent-runs'),
   });
   const approvalStore = options.approvalStore ?? createApprovalFileStore({
     rootDir: path.join(runtimeStatePath, 'approvals'),
@@ -103,7 +103,7 @@ export async function createCodaraRuntime(options: CodaraRuntimeOptions = {}): P
   const runtimeCheckpointer = options.checkpointer ?? createAgentFileCheckpointer({
     rootDir: path.join(runtimeStatePath, 'sessions'),
   });
-  const taskRuntime = createTaskRuntime({runStore: taskRunStore, approvalStore});
+  const agentRuntime = createAgentRuntime({runStore: agentRunStore, approvalStore});
   ensurePermissionSettingsFile({
     cwd: options.cwd, projectRoot: options.projectRoot, userHome: options.userHome,
   });
@@ -142,14 +142,14 @@ export async function createCodaraRuntime(options: CodaraRuntimeOptions = {}): P
 
   // 6. Middleware chain
   const runtimeMiddlewares = createRuntimeDefaultMiddlewares({
-    options, runtimeTools, taskStore, taskRunStore, taskRuntime, taskCheckpointer: runtimeCheckpointer, approvalStore, logging, catalog, promptSource, guidelinesSource, hookPipeline,
+    options, runtimeTools, taskStore, agentRunStore, agentRuntime, taskCheckpointer: runtimeCheckpointer, approvalStore, logging, catalog, promptSource, guidelinesSource, hookPipeline,
     channelRegistry: options.channelRegistry,
   });
 
   // 7. Assemble facade
   const runtime = assembleCodara({
     ...options,
-    tools: runtimeTools, middleware: runtimeMiddlewares, hil: false,
+    tools: runtimeTools, middleware: runtimeMiddlewares, review: false,
     autoMemory: options.autoMemory === false ? false
       : (typeof options.autoMemory === 'object' && options.autoMemory !== null ? options.autoMemory : {}),
     summary: options.summary === false ? false : (options.summary ?? {}),
@@ -162,7 +162,7 @@ export async function createCodaraRuntime(options: CodaraRuntimeOptions = {}): P
     restore: options.restore ?? 'latest',
   }, undefined, {
     promptSource, guidelinesSource, hookPipeline, hookRegistry, mcpManager,
-    taskRunStore, taskRuntime, approvalStore,
+    agentRunStore, agentRuntime, approvalStore,
     channelRegistry: options.channelRegistry,
   });
 
@@ -199,8 +199,8 @@ export function assembleCodara(
     promptSource?: PromptSource; guidelinesSource?: GuidelinesSource;
     hookPipeline?: HookPipeline; hookRegistry?: HookRegistry;
     mcpManager?: McpManager;
-    taskRunStore?: TaskRunStore;
-    taskRuntime?: TaskRuntime;
+    agentRunStore?: AgentRunStore;
+    agentRuntime?: AgentRuntime;
     approvalStore?: ApprovalStore;
     channelRegistry?: ChannelRegistry;
   },
@@ -235,7 +235,7 @@ export function assembleCodara(
     ...(options.inputBudget ? {inputBudget: options.inputBudget} : {}),
     ...(preloadedSources?.hookPipeline ? {lifecycle: preloadedSources.hookPipeline as SessionLifecycleHooks & AgentLifecycleHooks} : {}),
   });
-  preloadedSources?.taskRunStore?.recoverSession?.(session.getState().sessionId);
+  preloadedSources?.agentRunStore?.recoverSession?.(session.getState().sessionId);
 
   // Extra properties for commands (/reload, /hooks, /mcp)
   const mcpManager = preloadedSources?.mcpManager;
@@ -276,9 +276,9 @@ export function assembleCodara(
     return result;
   };
 
-  // Wire task events into runtime event stream
-  if (preloadedSources?.taskRuntime) {
-    preloadedSources.taskRuntime.setOnTaskEvent(
+  // Wire subagent events into runtime event stream
+  if (preloadedSources?.agentRuntime) {
+    preloadedSources.agentRuntime.setOnAgentEvent(
       (event) => { for (const listener of commandEventListeners) listener(event); },
       () => session.getState().sessionId,
     );
@@ -286,11 +286,11 @@ export function assembleCodara(
 
   const channelRegistry = preloadedSources?.channelRegistry;
 
-  const taskRuntime = preloadedSources?.taskRuntime;
+  const agentRuntime = preloadedSources?.agentRuntime;
   const reviewControl = createCodaraReviewControl({
     session,
     approvalStore: preloadedSources?.approvalStore,
-    taskRuntime,
+    agentRuntime,
   });
   const streamInteraction = createCodaraInteractionStream({
     session,
@@ -298,7 +298,7 @@ export function assembleCodara(
   });
 
   const dispose = async (): Promise<void> => {
-    await taskRuntime?.dispose();
+    await agentRuntime?.dispose();
     await session.dispose();
     if (mcpManager) await mcpManager.dispose();
     if (channelRegistry) await channelRegistry.disposeAll();
@@ -308,7 +308,7 @@ export function assembleCodara(
     ...session, subscribeRuntimeEvents, listCommands: commands.listCommands, executeCommand,
     listSessions: async (opts?: import('@durability/session').SessionListOptions) => options.store ? options.store.list(opts) : [],
     getMcpStatus: () => mcpManager?.status() ?? [],
-    getTaskRunSummaries: () => getTaskRunSummaries(preloadedSources?.taskRunStore, session.getState().sessionId),
+    getAgentRunSummaries: () => getAgentRunSummaries(preloadedSources?.agentRunStore, session.getState().sessionId),
     listReviewItems: reviewControl.listReviewItems,
     getFocusedReview: reviewControl.getFocusedReview,
     focusReview: reviewControl.focusReview,

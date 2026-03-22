@@ -41,7 +41,7 @@ export const statusCommand: CodaraCommandDefinition = {
         `- last_activity: ${session.metadata?.lastActivity ?? 'n/a'}`,
         `- context: ${formatContextWindow(contextWindow)}`,
         `- usage: ${formatUsage(usage)}`,
-        `- pending_review: ${state.pendingPause ? 'yes' : 'no'}`,
+        `- pending_review: ${state.pendingReview ? 'yes' : 'no'}`,
         `- project_memory: ${projectMemory}${existsSync(projectMemory) ? '' : ' (missing)'}`,
         `- global_memory: ${globalMemory}${existsSync(globalMemory) ? '' : ' (missing)'}`,
         `- permissions: ${permissionFile}`,

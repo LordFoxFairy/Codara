@@ -3,9 +3,9 @@ import {
   createMiddleware,
   readExecutionMetadata,
 } from '@core/pipeline/types';
-import {parseHILToolMessagePayload} from '@core/middleware/hil';
+import {parseReviewToolMessagePayload} from '@core/middleware/review';
 import {readDelegatedAgentResult} from '@shared/delegation-result';
-import {readTaskRunLaunchResult} from '@shared/task-run-launch';
+import {readAgentRunLaunchResult} from '@shared/agent-run-launch';
 import {TOOL_NAMES} from '@shared/tool-display';
 
 import type {
@@ -19,22 +19,22 @@ import {
   turnKey,
   toolKey,
   formatToolLabel,
-  formatTaskStartLabel,
+  formatAgentStartLabel,
   summarizeToolMessage,
-  summarizeDelegatedTask,
+  summarizeDelegatedAgent,
   summarizePauseLabel,
 } from './formatters';
 
 /** Key used to store child activity callback in runtimeShared. */
-export const CHILD_ACTIVITY_CALLBACK_KEY = '__taskActivityCallback';
+export const AGENT_ACTIVITY_CALLBACK_KEY = '__agentActivityCallback';
 
 export class RuntimeEventsController {
   private readonly listeners = new Set<CodaraRuntimeEventListener>();
   private readonly turnRoots = new Map<string, string>();
   private readonly modelRoots = new Map<string, string>();
   private readonly toolRoots = new Map<string, string>();
-  /** Track pending task IDs (pre-registered before execution) to emit end events when real task starts. */
-  private readonly pendingTaskIds = new Set<string>();
+  /** Track pending agent IDs (pre-registered before execution) to emit end events when real subagent work starts. */
+  private readonly pendingAgentIds = new Set<string>();
 
   constructor(private readonly sessionId: string) {}
 
@@ -133,11 +133,11 @@ export class RuntimeEventsController {
     });
   }
 
-  hilResumeStarted(label: string, detail?: string): string {
+  reviewResumeStarted(label: string, detail?: string): string {
     const id = randomUUID();
     this.emit({
       id,
-      kind: 'hil',
+      kind: 'review',
       phase: 'start',
       status: 'running',
       label,
@@ -146,9 +146,9 @@ export class RuntimeEventsController {
     return id;
   }
 
-  hilResumeFinished(parentId: string, status: CodaraRuntimeEventStatus, label: string, detail?: string): void {
+  reviewResumeFinished(parentId: string, status: CodaraRuntimeEventStatus, label: string, detail?: string): void {
     this.emit({
-      kind: 'hil',
+      kind: 'review',
       phase: 'end',
       status,
       label,
@@ -213,9 +213,9 @@ export class RuntimeEventsController {
             parentId: modelRootId,
           });
 
-          // Pre-register pending Task tool calls so the panel shows all tasks immediately
+          // Pre-register pending Agent tool calls so the panel shows all background runs immediately
           const toolCalls = Array.isArray(response.tool_calls) ? response.tool_calls : [];
-          const taskCalls = toolCalls.filter((tc: {name?: string}) => tc.name === TOOL_NAMES.TASK);
+          const taskCalls = toolCalls.filter((tc: {name?: string}) => tc.name === TOOL_NAMES.AGENT);
           if (taskCalls.length > 1) {
             const turnId = this.turnRoots.get(currentTurnKey);
             for (let i = 0; i < taskCalls.length; i++) {
@@ -223,13 +223,13 @@ export class RuntimeEventsController {
               const tcId = typeof tc.id === 'string' ? tc.id : `pending-task-${i}`;
               const args = tc.args as Record<string, unknown> | undefined;
               const prompt = typeof args?.prompt === 'string' ? args.prompt.split('\n')[0]!.slice(0, 50) : '';
-              this.pendingTaskIds.add(tcId);
+              this.pendingAgentIds.add(tcId);
               this.emit({
                 id: `pending-${tcId}`,
-                kind: 'task',
+                kind: 'agent',
                 phase: 'start',
                 status: 'running',
-                label: formatTaskStartLabel({...args, ...(prompt ? {prompt} : {})}),
+                label: formatAgentStartLabel({...args, ...(prompt ? {prompt} : {})}),
                 detail: 'pending',
                 parentId: turnId,
               });
@@ -263,16 +263,16 @@ export class RuntimeEventsController {
           parentId: this.turnRoots.get(turnKey(context)),
         });
 
-        if (context.toolCall.name === TOOL_NAMES.TASK) {
+        if (context.toolCall.name === TOOL_NAMES.AGENT) {
           // End the matching pending task event (pre-registered from afterModel)
           const tcId = typeof context.toolCall.id === 'string' ? context.toolCall.id : '';
-          if (tcId && this.pendingTaskIds.has(tcId)) {
-            this.pendingTaskIds.delete(tcId);
+          if (tcId && this.pendingAgentIds.has(tcId)) {
+            this.pendingAgentIds.delete(tcId);
             this.emit({
-              kind: 'task',
+              kind: 'agent',
               phase: 'end',
               status: 'done',
-              label: 'Task started',
+              label: 'Subagent started',
               parentId: `pending-${tcId}`,
             });
           }
@@ -280,10 +280,10 @@ export class RuntimeEventsController {
           const taskRootId = randomUUID();
           this.emit({
             id: taskRootId,
-            kind: 'task',
+            kind: 'agent',
             phase: 'start',
             status: 'running',
-            label: formatTaskStartLabel(context.toolCall.args),
+            label: formatAgentStartLabel(context.toolCall.args),
             parentId: toolRootId,
           });
           this.toolRoots.set(`${currentToolKey}:task`, taskRootId);
@@ -291,7 +291,7 @@ export class RuntimeEventsController {
           // Inject child activity callback so delegated agent tool calls bubble up as task:update events
           const activityCallback: ChildToolActivityCallback = (info) => {
             this.emit({
-              kind: 'task',
+              kind: 'agent',
               phase: 'update',
               status: 'running',
               label: info.label,
@@ -300,14 +300,14 @@ export class RuntimeEventsController {
             });
           };
           if (context.runtime?.shared) {
-            context.runtime.shared[CHILD_ACTIVITY_CALLBACK_KEY] = activityCallback;
+            context.runtime.shared[AGENT_ACTIVITY_CALLBACK_KEY] = activityCallback;
           }
         }
 
         try {
           const message = await handler(context);
-          const hilPayload = parseHILToolMessagePayload(message.content);
-          const status = hilPayload?.type === 'hil_pause'
+          const reviewPayload = parseReviewToolMessagePayload(message.content);
+          const status = reviewPayload?.type === 'review_pause'
             ? 'paused'
             : message.status === 'error'
               ? 'error'
@@ -321,34 +321,34 @@ export class RuntimeEventsController {
             parentId: toolRootId,
           });
 
-          if (context.toolCall.name === TOOL_NAMES.TASK) {
+          if (context.toolCall.name === TOOL_NAMES.AGENT) {
             const taskRootId = this.toolRoots.get(`${currentToolKey}:task`);
             const delegated = readDelegatedAgentResult(message.artifact);
-            const launched = readTaskRunLaunchResult(message.artifact);
+            const launched = readAgentRunLaunchResult(message.artifact);
             this.emit({
-              kind: 'task',
+              kind: 'agent',
               phase: 'end',
-              status: delegated?.reason === 'error' ? 'error' : hilPayload?.type === 'hil_pause' ? 'paused' : 'done',
+              status: delegated?.reason === 'error' ? 'error' : reviewPayload?.type === 'review_pause' ? 'paused' : 'done',
               label: delegated?.reason === 'error'
-                ? 'Delegated task failed'
-                : hilPayload?.type === 'hil_pause'
-                  ? 'Delegated task waiting for review'
+                ? 'Subagent failed'
+                : reviewPayload?.type === 'review_pause'
+                  ? 'Subagent waiting for review'
                   : launched
-                    ? 'Delegated task running in background'
-                    : 'Delegated task completed',
-              detail: summarizeDelegatedTask(message),
+                    ? 'Subagent running in background'
+                    : 'Subagent completed',
+              detail: summarizeDelegatedAgent(message),
               parentId: taskRootId,
             });
             this.toolRoots.delete(`${currentToolKey}:task`);
           }
 
-          if (hilPayload?.type === 'hil_pause') {
+          if (reviewPayload?.type === 'review_pause') {
             this.emit({
-              kind: 'hil',
+              kind: 'review',
               phase: 'start',
               status: 'paused',
-              label: summarizePauseLabel(hilPayload.request.description),
-              detail: hilPayload.request.action.toolName,
+              label: summarizePauseLabel(reviewPayload.request.description),
+              detail: reviewPayload.request.action.toolName,
               parentId: toolRootId,
             });
           }

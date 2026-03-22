@@ -6,7 +6,7 @@ import {tmpdir} from 'node:os';
 import path from 'node:path';
 import {HumanMessage, ToolMessage, type BaseMessage, type ToolCall} from '@langchain/core/messages';
 import {createPermissionMiddleware, ensurePermissionSettingsFile} from '@/index';
-import {parseHILToolMessagePayload, type ToolCallContext} from '@core/middleware';
+import {parseReviewToolMessagePayload, type ToolCallContext} from '@core/middleware';
 
 function createToolContext(toolCall: ToolCall, runtimeContext: Record<string, unknown> = {}): ToolCallContext {
   const messages = [new HumanMessage('run')] as BaseMessage[];
@@ -64,9 +64,9 @@ describe('Permission Middleware Integration', () => {
       return new ToolMessage({content: 'should-not-run', tool_call_id: 'call_edit_1'});
     });
 
-    const payload = parseHILToolMessagePayload(result?.content);
-    expect(payload?.type).toBe('hil_pause');
-    expect(payload?.type === 'hil_pause' ? payload.request.channel : '').toBe('permission-center');
+    const payload = parseReviewToolMessagePayload(result?.content);
+    expect(payload?.type).toBe('review_pause');
+    expect(payload?.type === 'review_pause' ? payload.request.channel : '').toBe('permission-center');
   });
 
   it('should handle session memory for edit tools', async () => {
@@ -85,7 +85,7 @@ describe('Permission Middleware Integration', () => {
       return new ToolMessage({content: 'should-not-run', tool_call_id: 'call_edit_session_1'});
     });
 
-    const payload = parseHILToolMessagePayload(result?.content);
-    expect(payload?.type).toBe('hil_pause');
+    const payload = parseReviewToolMessagePayload(result?.content);
+    expect(payload?.type).toBe('review_pause');
   });
 });

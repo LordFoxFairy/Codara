@@ -1,6 +1,6 @@
 import {z} from 'zod';
 import type {ChannelPlugin, GatewayListenContext} from '@integration/channel/contracts';
-import type {InboundMessage, OutboundContext, PausePromptContext, SendResult, StopHandle} from '@gateway/types';
+import type {InboundMessage, OutboundContext, ReviewPromptContext, SendResult, StopHandle} from '@gateway/types';
 import {OneBotWsClient} from './ws-client';
 import type {OneBotEvent, OneBotMessageEvent, OneBotMessageSegment} from './types';
 
@@ -16,11 +16,11 @@ export interface QQAccount {
   selfId?: string;
   /** Attached at runtime by startListening. */
   client?: OneBotWsClient;
-  /** Pending pause prompts, keyed by pauseId. Managed by startListening + sendPausePrompt. */
-  pendingPauses?: Map<string, PendingPause>;
+  /** Pending review prompts, keyed by reviewId. Managed by startListening + sendReviewPrompt. */
+  pendingReviews?: Map<string, PendingReview>;
 }
 
-interface PendingPause {
+interface PendingReview {
   userId: string;
   peerId: string;
   actions: {id: string; label: string}[];
@@ -147,13 +147,13 @@ export const qqPlugin: ChannelPlugin<QQAccount> = {
   },
 
   async startListening(ctx: GatewayListenContext<QQAccount>): Promise<StopHandle> {
-    const {account, accountId, onMessage, onPauseResponse} = ctx;
+    const {account, accountId, onMessage, onReviewResponse} = ctx;
     const client = new OneBotWsClient(account.wsUrl, account.accessToken);
-    const pendingPauses = new Map<string, PendingPause>();
+    const pendingReviews = new Map<string, PendingReview>();
 
-    // Attach to account so sendText/sendPausePrompt can reuse the connection.
+    // Attach to account so sendText/sendReviewPrompt can reuse the connection.
     account.client = client;
-    account.pendingPauses = pendingPauses;
+    account.pendingReviews = pendingReviews;
 
     let selfId = account.selfId;
 
@@ -179,20 +179,20 @@ export const qqPlugin: ChannelPlugin<QQAccount> = {
         return;
       }
 
-      // Check if this is a numbered response to a pending pause prompt
-      if (onPauseResponse && pendingPauses.size > 0) {
+      // Check if this is a numbered response to a pending review prompt
+      if (onReviewResponse && pendingReviews.size > 0) {
         const text = msg.text.trim();
-        for (const [pauseId, pause] of pendingPauses) {
+        for (const [reviewId, review] of pendingReviews) {
           // Match by peer (same chat). If userId is set, also match sender.
-          const peerMatch = pause.peerId === msg.peer.id;
-          const userMatch = !pause.userId || pause.userId === msg.sender.id;
+          const peerMatch = review.peerId === msg.peer.id;
+          const userMatch = !review.userId || review.userId === msg.sender.id;
           if (peerMatch && userMatch) {
             const choiceIndex = parseInt(text, 10);
-            if (choiceIndex >= 1 && choiceIndex <= pause.actions.length) {
-              const actionId = pause.actions[choiceIndex - 1].id;
-              pendingPauses.delete(pauseId);
-              onPauseResponse(pauseId, {actionId, from: {userId: msg.sender.id}});
-              return; // Consumed as pause response
+            if (choiceIndex >= 1 && choiceIndex <= review.actions.length) {
+              const actionId = review.actions[choiceIndex - 1].id;
+              pendingReviews.delete(reviewId);
+              onReviewResponse(reviewId, {actionId, from: {userId: msg.sender.id}});
+              return; // Consumed as review response
             }
           }
         }
@@ -209,7 +209,7 @@ export const qqPlugin: ChannelPlugin<QQAccount> = {
     return {
       async stop() {
         account.client = undefined;
-        account.pendingPauses = undefined;
+        account.pendingReviews = undefined;
         await client.disconnect();
       },
     };
@@ -245,7 +245,7 @@ export const qqPlugin: ChannelPlugin<QQAccount> = {
     // OneBot v11 does not support typing indicators — no-op
   },
 
-  async sendPausePrompt(account: QQAccount, ctx: PausePromptContext): Promise<SendResult> {
+  async sendReviewPrompt(account: QQAccount, ctx: ReviewPromptContext): Promise<SendResult> {
     // QQ doesn't have inline buttons — send numbered text options.
     const lines = [ctx.text, '', '回复数字选择:'];
     for (let i = 0; i < ctx.actions.length; i++) {
@@ -253,10 +253,10 @@ export const qqPlugin: ChannelPlugin<QQAccount> = {
     }
     const text = lines.join('\n');
 
-    // Track this pause so inbound number replies can be matched
-    if (account.pendingPauses) {
+    // Track this review so inbound number replies can be matched.
+    if (account.pendingReviews) {
       // For groups, peerId includes "group:" prefix matching normalizeOneBotMessage output
-      account.pendingPauses.set(ctx.pause.id, {
+      account.pendingReviews.set(ctx.review.id, {
         userId: '', // Will match any user in this peer (first responder wins)
         peerId: ctx.to,
         actions: ctx.actions.map((a) => ({id: a.id, label: a.label})),

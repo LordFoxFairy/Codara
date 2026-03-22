@@ -55,15 +55,15 @@ describe('subagent multi-profile cases', () => {
     expect(task.status).toBe('in_progress');
     expect(task.owner).toBe('Agent');
 
-    const taskRunDir = path.join(projectRoot, '.codara', 'case-task-runs');
+    const agentRunDir = path.join(projectRoot, '.codara', 'case-agent-runs');
     await waitForCondition(async () => {
       try {
-        return (await readdir(taskRunDir)).filter((entry) => entry.endsWith('.json')).length === 3;
+        return (await readdir(agentRunDir)).filter((entry) => entry.endsWith('.json')).length === 3;
       } catch {
         return false;
       }
     });
-    const runEntries = (await readdir(taskRunDir)).filter((entry) => entry.endsWith('.json')).sort();
+    const runEntries = (await readdir(agentRunDir)).filter((entry) => entry.endsWith('.json')).sort();
     expect(runEntries).toEqual([
       'call_parent_explore.json',
       'call_parent_general.json',
@@ -72,7 +72,7 @@ describe('subagent multi-profile cases', () => {
 
     await waitForCondition(async () => {
       const currentRuns = await Promise.all(runEntries.map(async (entry) => (
-        JSON.parse(await readFile(path.join(taskRunDir, entry), 'utf8')) as {
+        JSON.parse(await readFile(path.join(agentRunDir, entry), 'utf8')) as {
           status: string;
         }
       )));
@@ -80,7 +80,7 @@ describe('subagent multi-profile cases', () => {
     });
 
     const runs = await Promise.all(runEntries.map(async (entry) => (
-      JSON.parse(await readFile(path.join(taskRunDir, entry), 'utf8')) as {
+      JSON.parse(await readFile(path.join(agentRunDir, entry), 'utf8')) as {
         runId: string;
         status: string;
         summary?: string;

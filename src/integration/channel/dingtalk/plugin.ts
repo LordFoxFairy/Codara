@@ -3,12 +3,12 @@
  *
  * Integrates DingTalk robot messaging with the Codara Multi-Channel Gateway.
  * Uses sessionWebhook (per-message callback URL) for outbound replies.
- * Supports text (via markdown), and HIL action cards with callback buttons.
+ * Supports text (via markdown), and review action cards with callback buttons.
  */
 
 import {z} from 'zod';
 import type {ChannelPlugin, GatewayListenContext} from '@integration/channel/contracts';
-import type {OutboundContext, PausePromptContext, SendResult, StopHandle} from '@gateway/types';
+import type {OutboundContext, ReviewPromptContext, SendResult, StopHandle} from '@gateway/types';
 import {DingTalkApi, DingTalkApiError} from './api';
 import {startDingTalkWebhook} from './webhook';
 import type {DingTalkActionCardButton} from './types';
@@ -79,11 +79,11 @@ export const dingtalkPlugin: ChannelPlugin<DingTalkAccount> = {
   },
 
   async startListening(ctx: GatewayListenContext<DingTalkAccount>): Promise<StopHandle> {
-    const {account, accountId, onMessage, onPauseResponse} = ctx;
+    const {account, accountId, onMessage, onReviewResponse} = ctx;
 
-    const onPauseCallback = (action: string, id: string) => {
-      if (onPauseResponse) {
-        onPauseResponse(id, {actionId: action});
+    const onReviewCallback = (action: string, reviewId: string) => {
+      if (onReviewResponse) {
+        onReviewResponse(reviewId, {actionId: action});
       }
     };
 
@@ -94,7 +94,7 @@ export const dingtalkPlugin: ChannelPlugin<DingTalkAccount> = {
       port: account.webhookPort,
       path: account.webhookPath,
       onMessage,
-      onPauseCallback,
+      onReviewCallback,
       callbackBaseUrl: account.callbackBaseUrl,
     });
   },
@@ -114,12 +114,12 @@ export const dingtalkPlugin: ChannelPlugin<DingTalkAccount> = {
     }
   },
 
-  async sendPausePrompt(account: DingTalkAccount, ctx: PausePromptContext): Promise<SendResult> {
+  async sendReviewPrompt(account: DingTalkAccount, ctx: ReviewPromptContext): Promise<SendResult> {
     try {
       const buttons: DingTalkActionCardButton[] = ctx.actions.map((a) => {
         // Build callback URL for each action button
         const callbackUrl = account.callbackBaseUrl
-          ? `${account.callbackBaseUrl}${account.webhookPath}/callback?action=${encodeURIComponent(a.id)}&id=${encodeURIComponent(ctx.pause.id)}`
+          ? `${account.callbackBaseUrl}${account.webhookPath}/callback?action=${encodeURIComponent(a.id)}&id=${encodeURIComponent(ctx.review.id)}`
           : `dingtalk://dingtalkclient/page/link?pc_slide=false&url=${encodeURIComponent('about:blank')}`;
 
         return {title: a.label, actionURL: callbackUrl};

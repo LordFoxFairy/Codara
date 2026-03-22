@@ -1,12 +1,12 @@
 import {describe, expect, it} from 'bun:test';
 import {HumanMessage, ToolMessage} from '@langchain/core/messages';
 import {
-  injectResumePayload,
+  injectReviewResumePayload,
   mergeContext,
   normalizeAgentInput,
-  readLatestPause,
+  readLatestReview,
 } from '@core/agent';
-import type {HILPauseRequest} from '@core/middleware/hil';
+import type {ReviewRequest} from '@core/middleware/review';
 
 describe('agent runtime input helpers', () => {
   it('should normalize string and messages input into message arrays', () => {
@@ -40,7 +40,7 @@ describe('agent runtime input helpers', () => {
   });
 
   it('should inject resume payload under both pause id and tool call id', () => {
-    const pause: HILPauseRequest = {
+    const review: ReviewRequest = {
       id: 'pause_1',
       description: 'review',
       action: {
@@ -60,8 +60,8 @@ describe('agent runtime input helpers', () => {
       },
     };
 
-    const merged = injectResumePayload({hil: {existing: true}}, pause, {decision: 'approve'});
-    expect(merged.hil).toEqual({
+    const merged = injectReviewResumePayload({review: {existing: true}}, pause, {decision: 'approve'});
+    expect(merged.review).toEqual({
       existing: true,
       currentPause: pause,
       resume: {decision: 'approve'},
@@ -72,12 +72,12 @@ describe('agent runtime input helpers', () => {
     });
   });
 
-  it('should read the latest HIL pause request from tool messages', () => {
-    const latest = readLatestPause([
+  it('should read the latest review pause request from tool messages', () => {
+    const latest = readLatestReview([
       new ToolMessage({
         tool_call_id: 'call_old',
         content: JSON.stringify({
-          type: 'hil_pause',
+          type: 'review_pause',
           request: {
             id: 'pause_old',
             description: 'old',
@@ -90,7 +90,7 @@ describe('agent runtime input helpers', () => {
       new ToolMessage({
         tool_call_id: 'call_new',
         content: JSON.stringify({
-          type: 'hil_pause',
+          type: 'review_pause',
           request: {
             id: 'pause_new',
             description: 'new',

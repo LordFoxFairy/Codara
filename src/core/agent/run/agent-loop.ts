@@ -31,8 +31,8 @@ import type {
   AgentStreamOutput,
   AgentContextPreparer,
   CreateAgentOptions,
-  PauseRequest,
-  ResumePayload,
+  ReviewRequest,
+  ReviewResumePayload,
   ToolErrorHandler,
 } from '../models/agent';
 import {
@@ -44,7 +44,7 @@ import type {BaseExecutionContext, MiddlewareRuntimeShared} from '@core/pipeline
 import {MiddlewarePipeline} from '@core/pipeline/pipeline';
 import {deepClone} from '@shared/clone';
 import {formatErrorMessage} from './errors';
-import {parseHILToolMessagePayload} from '@core/middleware/hil';
+import {parseReviewToolMessagePayload} from '@core/middleware/review';
 import type {AgentLifecycleHooks} from '@observability/hook/types';
 
 const DEFAULT_RECURSION_LIMIT = 25;
@@ -92,49 +92,49 @@ function isMessagesInput(input: AgentInput): input is {messages: BaseMessage[]} 
   return typeof input === 'object' && input !== null && 'messages' in input && Array.isArray((input as {messages?: unknown}).messages);
 }
 
-export function readLatestPause(messages: BaseMessage[]): PauseRequest | undefined {
+export function readLatestReview(messages: BaseMessage[]): ReviewRequest | undefined {
   for (let index = messages.length - 1; index >= 0; index -= 1) {
     const message = messages[index];
     if (!ToolMessage.isInstance(message)) {
       continue;
     }
-    const payload = parseHILToolMessagePayload(message.content);
-    if (payload?.type === 'hil_pause') {
+    const payload = parseReviewToolMessagePayload(message.content);
+    if (payload?.type === 'review_pause') {
       return deepClone(payload.request);
     }
   }
 }
 
-function findPauseMessageIndex(messages: BaseMessage[], pause: PauseRequest): number {
+function findPauseMessageIndex(messages: BaseMessage[], review: ReviewRequest): number {
   for (let index = messages.length - 1; index >= 0; index -= 1) {
     const message = messages[index];
     if (!ToolMessage.isInstance(message)) {
       continue;
     }
-    const payload = parseHILToolMessagePayload(message.content);
-    if (payload?.type !== 'hil_pause') {
+    const payload = parseReviewToolMessagePayload(message.content);
+    if (payload?.type !== 'review_pause') {
       continue;
     }
-    if (payload.request.id === pause.id) {
+    if (payload.request.id === review.id) {
       return index;
     }
   }
   return -1;
 }
 
-export function injectResumePayload(
+export function injectReviewResumePayload(
   context: AgentRuntimeContext | undefined,
-  pause: PauseRequest,
-  payload: ResumePayload,
+  review: ReviewRequest,
+  payload: ReviewResumePayload,
 ): AgentRuntimeContext {
   const root = recordSchema.catch({}).parse(mergeContext({}, context));
-  const hil = recordSchema.catch({}).parse(root.hil);
-  const resumes = recordSchema.catch({}).parse(hil.resumes);
-  root.hil = {
-    ...hil,
-    currentPause: deepClone(pause),
+  const currentReviewContext = recordSchema.catch({}).parse(root.review);
+  const resumes = recordSchema.catch({}).parse(currentReviewContext.resumes);
+  root.review = {
+    ...currentReviewContext,
+    currentReview: deepClone(review),
     resume: payload,
-    resumes: {...resumes, [pause.id]: payload, [pause.action.toolCallId]: payload},
+    resumes: {...resumes, [review.id]: payload, [review.action.toolCallId]: payload},
   };
   return root;
 }
@@ -206,15 +206,15 @@ export function createAgent(options: CreateAgentOptions): Agent {
   const createRun = (
     input: AgentInput,
     config: Pick<AgentInvokeConfig, 'recursionLimit' | 'context' | 'inputBudget'>,
-    options: {clearPendingPause?: boolean} = {},
+    options: {clearPendingReview?: boolean} = {},
   ): AgentRunContext => {
     const runState = toAgentState(state);
     const appended = normalizeAgentInput(input);
     if (appended.length) {
       runState.messages.push(...appended);
     }
-    if (options.clearPendingPause) {
-      runState.pendingPause = undefined;
+    if (options.clearPendingReview) {
+      runState.pendingReview = undefined;
     }
     runState.status = 'running';
     return createRunContext(runState, {...config, inputBudget: config.inputBudget ?? inputBudget}, runtime.runtimeShared);
@@ -231,9 +231,9 @@ export function createAgent(options: CreateAgentOptions): Agent {
       messages: result.state.messages,
       context: result.state.context,
       values: runtime.pipeline.normalizeValues(cloneAgentValues(result.state.values)),
-      pendingPause: readLatestPause(result.state.messages.slice(startIndex)),
+      pendingReview: readLatestReview(result.state.messages.slice(startIndex)),
     });
-    state.status = state.pendingPause ? 'paused' : 'idle';
+    state.status = state.pendingReview ? 'paused' : 'idle';
     touch();
     if (shouldCheckpoint) {
       await persistCheckpoint(source, result);
@@ -322,8 +322,8 @@ export function createAgent(options: CreateAgentOptions): Agent {
   };
 
   const createResumeRun = (
-    pause: PauseRequest,
-    payload: ResumePayload,
+    review: ReviewRequest,
+    payload: ReviewResumePayload,
     config: Pick<AgentResumeConfig, 'context' | 'recursionLimit' | 'inputBudget'>,
   ): AgentRunContext => {
     return createRunContext(
@@ -331,16 +331,16 @@ export function createAgent(options: CreateAgentOptions): Agent {
       {
         inputBudget: config.inputBudget ?? inputBudget,
         recursionLimit: config.recursionLimit,
-        context: injectResumePayload(config.context, pause, payload),
+        context: injectReviewResumePayload(config.context, review, payload),
       },
       runtime.runtimeShared,
     );
   };
 
-  const createPausedToolCall = (pause: PauseRequest): ToolCall => ({
-    id: pause.action.toolCallId,
-    name: pause.action.toolName,
-    args: pause.action.toolArgs ?? {},
+  const createPausedToolCall = (review: ReviewRequest): ToolCall => ({
+    id: review.action.toolCallId,
+    name: review.action.toolName,
+    args: review.action.toolArgs ?? {},
   });
 
   const appendRunInput = async (
@@ -361,16 +361,16 @@ export function createAgent(options: CreateAgentOptions): Agent {
 
   const continueFromPausedTool = async (
     run: AgentRunContext,
-    pause: PauseRequest,
+    review: ReviewRequest,
     input: AgentInput,
     stream?: ReturnType<typeof createStreamWriter>,
   ): Promise<AgentResult> => {
-    run.state.pendingPause = undefined;
+    run.state.pendingReview = undefined;
     const toolContext = await createTurnContext(run, runtime, 1, `${run.runId}:resume-tool`);
-    await runTools(run, runtime, toolContext, [createPausedToolCall(pause)], stream);
+    await runTools(run, runtime, toolContext, [createPausedToolCall(review)], stream);
     await appendRunInput(run, input, stream);
 
-    if (run.state.pendingPause) {
+    if (run.state.pendingReview) {
       await finishTurn(runtime, toolContext, {reason: 'complete', turns: 1});
       return {reason: 'complete', state: run.state, turns: 1};
     }
@@ -381,9 +381,9 @@ export function createAgent(options: CreateAgentOptions): Agent {
 
   const prepareResumeRun = (
     run: AgentRunContext,
-    pause: PauseRequest,
+    review: ReviewRequest,
   ): number => {
-    const pauseMessageIndex = findPauseMessageIndex(run.state.messages, pause);
+    const pauseMessageIndex = findPauseMessageIndex(run.state.messages, review);
     if (pauseMessageIndex >= 0) {
       run.state.messages.splice(pauseMessageIndex, 1);
       return pauseMessageIndex;
@@ -397,7 +397,7 @@ export function createAgent(options: CreateAgentOptions): Agent {
     source: AgentCheckpointInfo['source'],
   ): Promise<AgentResult> => {
     const startIndex = state.messages.length;
-    const run = createRun(input, config, {clearPendingPause: source === 'resume'});
+    const run = createRun(input, config, {clearPendingReview: source === 'resume'});
     const lifecycle = enterRunningState();
 
     const preflightResult = await runPreflight(run, lifecycle, config, 'run failed');
@@ -418,7 +418,7 @@ export function createAgent(options: CreateAgentOptions): Agent {
     source: AgentCheckpointInfo['source'],
   ): AsyncGenerator<AgentStreamOutput, AgentResult, void> {
     const startIndex = state.messages.length;
-    const run = createRun(input, config, {clearPendingPause: source === 'resume'});
+    const run = createRun(input, config, {clearPendingReview: source === 'resume'});
     const lifecycle = enterRunningState();
 
     const preflightResult = await runPreflight(run, lifecycle, config, 'stream failed');
@@ -438,11 +438,11 @@ export function createAgent(options: CreateAgentOptions): Agent {
     }
   };
 
-  const resumePausedTool = async (
-    payload: ResumePayload,
+  const resumeReviewdTool = async (
+    payload: ReviewResumePayload,
     config: AgentResumeConfig,
   ): Promise<AgentResult> => {
-    const pause = state.pendingPause as PauseRequest;
+    const pause = state.pendingReview as ReviewRequest;
     const run = createResumeRun(pause, payload, config);
     const startIndex = prepareResumeRun(run, pause);
     const lifecycle = enterRunningState();
@@ -459,11 +459,11 @@ export function createAgent(options: CreateAgentOptions): Agent {
     }
   };
 
-  const resumePausedToolStream = async function* (
-    payload: ResumePayload,
+  const resumeReviewdToolStream = async function* (
+    payload: ReviewResumePayload,
     config: AgentResumeStreamConfig,
   ): AsyncGenerator<AgentStreamOutput, AgentResult, void> {
-    const pause = state.pendingPause as PauseRequest;
+    const pause = state.pendingReview as ReviewRequest;
     const run = createResumeRun(pause, payload, config);
     const startIndex = prepareResumeRun(run, pause);
     const lifecycle = enterRunningState();
@@ -504,12 +504,12 @@ export function createAgent(options: CreateAgentOptions): Agent {
     async resume(payload, config = {}) {
       assertReadyForResume(state);
       if (config.resumeMode !== 'model') {
-        return resumePausedTool(payload, config);
+        return resumeReviewdTool(payload, config);
       }
-      const pause = state.pendingPause as PauseRequest;
+      const pause = state.pendingReview as ReviewRequest;
       return execute(
         config.input,
-        {...config, context: injectResumePayload(config.context, pause, payload)},
+        {...config, context: injectReviewResumePayload(config.context, pause, payload)},
         'resume',
       );
     },
@@ -518,7 +518,7 @@ export function createAgent(options: CreateAgentOptions): Agent {
       assertNotRunning(state);
       state.messages = [];
       state.values = runtime.pipeline.createInitialValues();
-      state.pendingPause = undefined;
+      state.pendingReview = undefined;
       state.lastResult = undefined;
       state.status = 'idle';
       touch();
@@ -543,12 +543,12 @@ export function createAgent(options: CreateAgentOptions): Agent {
     async *resumeStream(payload, config = {}) {
       assertReadyForResume(state);
       if (config.resumeMode !== 'model') {
-        return yield* resumePausedToolStream(payload, config);
+        return yield* resumeReviewdToolStream(payload, config);
       }
-      const pause = state.pendingPause as PauseRequest;
+      const pause = state.pendingReview as ReviewRequest;
       return yield* executeStream(
         config.input,
-        {...config, context: injectResumePayload(config.context, pause, payload)},
+        {...config, context: injectReviewResumePayload(config.context, pause, payload)},
         'resume',
       );
     },
@@ -757,8 +757,8 @@ function assertReadyForInvoke(state: MutableAgentState): void {
 
 function assertReadyForResume(state: MutableAgentState): void {
   assertUsable(state);
-  if (state.status !== 'paused' || !state.pendingPause) {
-    throw new Error('Agent is not paused; resume(...) is only valid after a HIL pause.');
+  if (state.status !== 'paused' || !state.pendingReview) {
+    throw new Error('Agent is not paused; resume(...) is only valid after a review pause.');
   }
 }
 

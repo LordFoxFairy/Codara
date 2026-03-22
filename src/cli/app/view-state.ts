@@ -1,14 +1,22 @@
-import type {PauseRequest, PauseUIActionOption, PauseUIFormOption, PauseUIFormTab} from '@core/agent';
+import type {ReviewRequest, ReviewUIActionOption, ReviewUIFormOption, ReviewUIFormTab} from '@core/agent';
 import type {ReviewBlockingScope} from '../../codara/types';
-import type {PermissionStage} from '../components/permission/types';
+import type {PermissionStage} from './review-types';
 
 export type CliStatus = 'idle' | 'running' | 'paused' | 'done' | 'error';
 export type CliReviewAnswerValue = string | string[];
-export type CliInputTarget = 'prompt' | 'review';
+export type CliInteractionSurface = 'prompt' | 'review' | 'completion' | 'command-output' | 'session-picker';
+export type CliInteractionKind = 'session_prompt' | 'agent_continuation' | 'review_response';
 
 export interface CliRunState {
   status: CliStatus;
   error?: string;
+}
+
+export interface CliInteractionState {
+  focusedSurface: CliInteractionSurface;
+  activeKind?: CliInteractionKind;
+  pendingCount: number;
+  promptBlocked: boolean;
 }
 
 export interface CliNotice {
@@ -20,13 +28,17 @@ export interface CliNotice {
 export interface CliActiveTurn {
   id: string;
   prompt: string;
+  pendingResponse?: string;
+  responseBeforeRuntime?: string;
   response: string;
   responseRole: 'assistant' | 'system';
-  kind?: 'prompt' | 'task_completion';
-  /** True once the current streaming model message includes a Task tool call. */
-  pendingTaskLaunch?: boolean;
+  kind?: 'prompt' | 'agent_completion';
+  /** True once the current streaming turn delegates the foreground to an internal interaction surface. */
+  suppressInteractionResponse?: boolean;
+  /** True once the current streaming model message includes an Agent tool call. */
+  pendingAgentLaunch?: boolean;
   /** True only when task launch chatter was detected before any visible response text was emitted. */
-  suppressTaskLaunchResponse?: boolean;
+  suppressAgentLaunchResponse?: boolean;
   /** Accumulated thinking/reasoning text (Extended Thinking). */
   thinking?: string;
   /** Real-time token counts from streaming chunks. */
@@ -35,13 +47,13 @@ export interface CliActiveTurn {
 
 export type CliReviewFocus = 'actions' | 'input';
 
-export interface CliReviewAction extends PauseUIActionOption {
+export interface CliReviewAction extends ReviewUIActionOption {
   kind: 'primary' | 'secondary' | 'danger';
 }
 
-export type CliReviewFormOption = PauseUIFormOption;
+export type CliReviewFormOption = ReviewUIFormOption;
 
-export type CliReviewFormTab = Omit<PauseUIFormTab, 'options'> & {
+export type CliReviewFormTab = Omit<ReviewUIFormTab, 'options'> & {
   options: CliReviewFormOption[];
 };
 
@@ -54,12 +66,14 @@ export interface CliReviewFormState {
 }
 
 export interface CliReviewState {
-  request: PauseRequest;
+  request: ReviewRequest;
   blockingScope: ReviewBlockingScope;
   actions: CliReviewAction[];
   selectedActionIndex: number;
   focus: CliReviewFocus;
   draft: string;
+  customInputSelected?: boolean;
+  customInputActive?: boolean;
   busy: boolean;
   validationMessage?: string;
   form?: CliReviewFormState;

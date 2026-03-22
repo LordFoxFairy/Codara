@@ -21,16 +21,16 @@ export type {
   AgentPreparationContext,
   AgentType,
   CreateAgentOptions,
-  PauseActionDescriptor,
-  PauseRequest,
-  PauseReviewDecision,
-  PauseReviewRequest,
-  PauseUIActionOption,
-  PauseUIConfig,
-  PauseUIFormConfig,
-  PauseUIFormOption,
-  PauseUIFormTab,
-  ResumePayload,
+  ReviewActionDescriptor,
+  ReviewRequest,
+  ReviewDecision,
+  ReviewSpec,
+  ReviewUIActionOption,
+  ReviewUIConfig,
+  ReviewUIFormConfig,
+  ReviewUIFormOption,
+  ReviewUIFormTab,
+  ReviewResumePayload,
   ToolErrorHandler,
 } from '@core/agent/models/agent';
 export {
@@ -39,7 +39,7 @@ export {
   cloneAgentMessages,
   cloneAgentState,
   cloneAgentValues,
-  clonePauseRequest,
+  cloneReviewRequest,
   createInitialAgentState,
   hasEquivalentCheckpointState,
   restoreCheckpointMetadata,
@@ -61,9 +61,9 @@ export {
 export {
   createAgent,
   createRunContext,
-  injectResumePayload,
+  injectReviewResumePayload,
   normalizeAgentInput,
-  readLatestPause,
+  readLatestReview,
   type AgentModel,
   type AgentRunContext,
   type AgentRuntime,
@@ -76,11 +76,12 @@ export {
 } from '@core/agent/bootstrap';
 export {
   markDelegationTool,
-  readDelegatedAgentResult,
-  readDelegatedParentRuntimeMetadata,
   runDelegatedAgent,
   type DelegatedAgentModelResolver,
   type DelegatedAgentOptions,
-  type DelegatedParentRuntimeMetadata,
   type DelegatedAgentResult,
-} from '@capability/task/delegation';
+} from '@capability/subagent/delegated-child';
+export {
+  readDelegatedParentRuntimeMetadata,
+  type DelegatedParentRuntimeMetadata,
+} from '@capability/subagent/review-metadata';

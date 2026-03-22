@@ -1,5 +1,5 @@
-import type {AgentResumeStreamConfig, AgentStreamOutput, PauseRequest, ResumePayload} from '@core/agent';
-import type {TaskRuntime} from '@capability/task';
+import type {AgentResult, AgentResumeStreamConfig, AgentStreamOutput, ReviewRequest, ReviewResumePayload} from '@core/agent';
+import type {AgentRuntime} from '@capability/subagent';
 import type {ApprovalStore} from '@durability/approval-store';
 import type {Session} from '@durability/session';
 import {getReviewItems} from './assembly/reviews';
@@ -9,23 +9,23 @@ export interface CodaraReviewControl {
   listReviewItems(): ReviewQueryItem[];
   getFocusedReview(): FocusedReviewQuery | undefined;
   focusReview(reviewId: string): Promise<void>;
-  resumeReview(payload: ResumePayload, config?: AgentResumeStreamConfig): Promise<void>;
-  streamReview(payload: ResumePayload, config?: AgentResumeStreamConfig): AsyncGenerator<AgentStreamOutput, void, void>;
+  resumeReview(payload: ReviewResumePayload, config?: AgentResumeStreamConfig): Promise<AgentResult | undefined>;
+  streamReview(payload: ReviewResumePayload, config?: AgentResumeStreamConfig): AsyncGenerator<AgentStreamOutput, void, void>;
 }
 
 export function createCodaraReviewControl(options: {
   session: Session;
   approvalStore?: ApprovalStore;
-  taskRuntime?: TaskRuntime;
+  agentRuntime?: AgentRuntime;
 }): CodaraReviewControl {
-  const {session, approvalStore, taskRuntime} = options;
+  const {session, approvalStore, agentRuntime} = options;
   let focusedReviewId: string | undefined;
 
   const listQueuedApprovalRecords = () => approvalStore?.list(session.getState().sessionId) ?? [];
 
-  const readForegroundPause = (): PauseRequest | undefined => {
+  const readForegroundReview = (): ReviewRequest | undefined => {
     try {
-      return session.getAgentState().pendingPause;
+      return session.getAgentState().pendingReview;
     } catch {
       return undefined;
     }
@@ -33,21 +33,21 @@ export function createCodaraReviewControl(options: {
 
   const listReviewItemsForSession = (): ReviewQueryItem[] => {
     const queuedRecords = listQueuedApprovalRecords();
-    const foregroundPause = readForegroundPause();
+    const foregroundReview = readForegroundReview();
     const resolvedFocusedReviewId = focusedReviewId
       ?? queuedRecords[0]?.approvalId
-      ?? foregroundPause?.id;
+      ?? foregroundReview?.id;
     return getReviewItems({
       sessionId: session.getState().sessionId,
       approvalStore,
       focusedReviewId: resolvedFocusedReviewId,
-      foregroundPause,
+      foregroundReview,
     });
   };
 
   const resolveFocusedReview = (): FocusedReviewQuery | undefined => {
     const queuedRecords = listQueuedApprovalRecords();
-    const foregroundPause = readForegroundPause();
+    const foregroundReview = readForegroundReview();
     const items = listReviewItemsForSession();
 
     if (items.length === 0) {
@@ -61,21 +61,21 @@ export function createCodaraReviewControl(options: {
     const item = focusedItem ?? items[0]!;
     focusedReviewId = item.reviewId;
 
-    if (item.source === 'task_run') {
+    if (item.source === 'agent_run') {
       const record = queuedRecords.find((candidate) => candidate.approvalId === item.reviewId);
       if (!record) {
         return undefined;
       }
       return {
         item,
-        request: record.pauseRequest,
+        request: record.reviewRequest,
       };
     }
 
-    if (foregroundPause?.id === item.reviewId) {
+    if (foregroundReview?.id === item.reviewId) {
       return {
         item,
-        request: foregroundPause,
+        request: foregroundReview,
       };
     }
 
@@ -92,25 +92,27 @@ export function createCodaraReviewControl(options: {
       }
       focusedReviewId = reviewId;
     },
-    resumeReview: async (payload: ResumePayload, config?: AgentResumeStreamConfig): Promise<void> => {
+    resumeReview: async (payload: ReviewResumePayload, config?: AgentResumeStreamConfig): Promise<AgentResult | undefined> => {
       const focused = resolveFocusedReview();
       if (!focused) {
         throw new Error('No queued review is available for the current session');
       }
 
-      if (focused.item.source === 'task_run') {
-        if (!taskRuntime) {
-          throw new Error('Task review runtime is not available');
+      if (focused.item.source === 'agent_run') {
+        if (!agentRuntime) {
+          throw new Error('Agent review runtime is not available');
         }
-        await taskRuntime.resumeApprovalById(focused.item.reviewId, payload, config);
+        await agentRuntime.resumeApprovalById(focused.item.reviewId, payload, config);
+        resolveFocusedReview();
+        return undefined;
       } else {
-        await session.resumePause(payload, config);
+        const result = await session.resumeReview(payload, config);
+        resolveFocusedReview();
+        return result;
       }
-
-      resolveFocusedReview();
     },
     streamReview: async function* (
-      payload: ResumePayload,
+      payload: ReviewResumePayload,
       config?: AgentResumeStreamConfig,
     ): AsyncGenerator<AgentStreamOutput, void, void> {
       const focused = resolveFocusedReview();
@@ -118,13 +120,13 @@ export function createCodaraReviewControl(options: {
         throw new Error('No queued review is available for the current session');
       }
 
-      if (focused.item.source === 'task_run') {
-        if (!taskRuntime) {
-          throw new Error('Task review runtime is not available');
+      if (focused.item.source === 'agent_run') {
+        if (!agentRuntime) {
+          throw new Error('Agent review runtime is not available');
         }
-        yield* taskRuntime.resumeApprovalByIdStream(focused.item.reviewId, payload, config);
+        yield* agentRuntime.resumeApprovalByIdStream(focused.item.reviewId, payload, config);
       } else {
-        yield* session.resumePauseStream(payload, config);
+        yield* session.resumeReviewStream(payload, config);
       }
 
       resolveFocusedReview();

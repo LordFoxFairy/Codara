@@ -2,6 +2,7 @@ import {formatSubagentDisplayName, normalizeSubagentType} from '@context/skills/
 
 /** Canonical tool name constants to avoid magic strings across the codebase. */
 export const TOOL_NAMES = {
+  SKILL: 'Skill',
   BASH: 'bash',
   READ_FILE: 'read_file',
   READ: 'read',
@@ -15,7 +16,7 @@ export const TOOL_NAMES = {
   FETCH: 'fetch',
   WEB_SEARCH: 'web_search',
   SEARCH: 'search',
-  TASK: 'Task',
+  AGENT: 'Agent',
   TASK_CREATE: 'TaskCreate',
   TASK_UPDATE: 'TaskUpdate',
   TASK_LIST: 'TaskList',
@@ -54,7 +55,7 @@ export function formatToolSummary(toolName: string, args: unknown): string | und
     case TOOL_NAMES.WEB_SEARCH:
     case TOOL_NAMES.SEARCH:
       return readString(record.query);
-    case TOOL_NAMES.TASK:
+    case TOOL_NAMES.AGENT:
       return normalizeSubagentType(readString(record.subagent_type))
         ? `Delegating ${formatSubagentDisplayName(readString(record.subagent_type))}`
         : 'Delegating Agent';

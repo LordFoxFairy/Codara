@@ -1,6 +1,6 @@
 import {z} from 'zod';
 import type {ChannelPlugin, GatewayListenContext} from '@integration/channel/contracts';
-import type {OutboundContext, PausePromptContext, SendResult, StopHandle} from '@gateway/types';
+import type {OutboundContext, ReviewPromptContext, SendResult, StopHandle} from '@gateway/types';
 import {WeComApi} from './api';
 import {startWeComWebhook} from './webhook';
 
@@ -84,11 +84,11 @@ export const wecomPlugin: ChannelPlugin<WeComAccount> = {
   },
 
   async startListening(ctx: GatewayListenContext<WeComAccount>): Promise<StopHandle> {
-    const {account, accountId, onMessage, onPauseResponse} = ctx;
+    const {account, accountId, onMessage, onReviewResponse} = ctx;
 
-    const onCardAction = (eventKey: string, taskId: string, userId: string) => {
-      if (!onPauseResponse) return;
-      onPauseResponse(taskId, {actionId: eventKey, from: {id: userId}});
+    const onCardAction = (eventKey: string, reviewId: string, userId: string) => {
+      if (!onReviewResponse) return;
+      onReviewResponse(reviewId, {actionId: eventKey, from: {id: userId}});
     };
 
     return startWeComWebhook({
@@ -114,7 +114,7 @@ export const wecomPlugin: ChannelPlugin<WeComAccount> = {
     }
   },
 
-  async sendPausePrompt(account: WeComAccount, ctx: PausePromptContext): Promise<SendResult> {
+  async sendReviewPrompt(account: WeComAccount, ctx: ReviewPromptContext): Promise<SendResult> {
     try {
       const buttons = ctx.actions.map((a) => ({
         text: a.label,

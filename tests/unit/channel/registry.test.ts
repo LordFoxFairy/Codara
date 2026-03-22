@@ -1,20 +1,20 @@
 import {describe, test, expect, beforeEach} from 'bun:test';
 import {ChannelRegistry} from '@integration/channel/registry';
 import type {Channel} from '@shared/contracts/channel';
-import type {PauseRequest} from '@shared/contracts/agent-types';
+import type {ReviewRequest} from '@shared/contracts/agent-types';
 
 function createMockChannel(id: string, type: Channel['type'] = 'cli'): Channel & {
-  lastPause?: PauseRequest;
+  lastReview?: ReviewRequest;
   disposeCount: number;
 } {
   const mock = {
     id,
     type,
-    lastPause: undefined as PauseRequest | undefined,
+    lastReview: undefined as ReviewRequest | undefined,
     disposeCount: 0,
     async sendMessage() {},
-    async showPauseRequest(request: PauseRequest) {
-      mock.lastPause = request;
+    async showReviewRequest(request: ReviewRequest) {
+      mock.lastReview = request;
       return {decision: 'approve'};
     },
     async dispose() {
@@ -24,10 +24,10 @@ function createMockChannel(id: string, type: Channel['type'] = 'cli'): Channel &
   return mock;
 }
 
-function createPauseRequest(channel?: string): PauseRequest {
+function createReviewRequest(channel?: string): ReviewRequest {
   return {
-    id: 'pause-1',
-    description: 'Test pause',
+    id: 'review-1',
+    description: 'Test review',
     action: {toolCallId: 'tc-1', toolName: 'bash', toolArgs: {command: 'echo hi'}},
     review: {actionName: 'bash', allowedDecisions: ['approve', 'reject']},
     runtime: {runId: 'run-1', turn: 1, requestId: 'req-1', toolIndex: 0},
@@ -109,25 +109,25 @@ describe('ChannelRegistry', () => {
     const ch2 = createMockChannel('web-1', 'web');
     registry.register(ch1);
     registry.register(ch2);
-    expect(registry.resolveChannel(createPauseRequest('web-1'))).toBe(ch2);
+    expect(registry.resolveChannel(createReviewRequest('web-1'))).toBe(ch2);
   });
 
   test('resolveChannel falls back to default', () => {
     const ch1 = createMockChannel('cli-1');
     registry.register(ch1);
-    expect(registry.resolveChannel(createPauseRequest())).toBe(ch1);
+    expect(registry.resolveChannel(createReviewRequest())).toBe(ch1);
   });
 
-  test('routePause routes to correct channel', async () => {
+  test('routeReview routes to correct channel', async () => {
     const ch = createMockChannel('cli-1');
     registry.register(ch);
-    const result = await registry.routePause(createPauseRequest());
+    const result = await registry.routeReview(createReviewRequest());
     expect(result).toEqual({decision: 'approve'});
-    expect(ch.lastPause?.id).toBe('pause-1');
+    expect(ch.lastReview?.id).toBe('review-1');
   });
 
-  test('routePause throws when no channel available', async () => {
-    await expect(registry.routePause(createPauseRequest('missing'))).rejects.toThrow(/No channel available/);
+  test('routeReview throws when no channel available', async () => {
+    await expect(registry.routeReview(createReviewRequest('missing'))).rejects.toThrow(/No channel available/);
   });
 
   test('disposeAll disposes all channels', async () => {

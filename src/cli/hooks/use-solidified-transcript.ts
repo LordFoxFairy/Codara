@@ -9,6 +9,7 @@ import {
   buildSolidifiedItemsFromRange,
   buildActiveItems,
   createToolCallLookup,
+  dedupeTrailingTranscriptItemsCoveredByRuntime,
   normalizeVisibleAssistantText,
 } from '../transcript/model';
 import {isInvalidTaskCloseoutResponse} from '../task-closeout';
@@ -31,7 +32,7 @@ export function orderActiveTranscriptItems(input: {
   activeNoticeItems: readonly TranscriptItem[];
   latestCompletedTurnKind?: CliActiveTurn['kind'];
 }): TranscriptItem[] {
-  const placeRuntimeBeforeTrailing = input.latestCompletedTurnKind === 'task_completion'
+  const placeRuntimeBeforeTrailing = input.latestCompletedTurnKind === 'agent_completion'
     && input.trailingItems.length > 0
     && input.runtimeItems.length > 0;
 
@@ -40,11 +41,11 @@ export function orderActiveTranscriptItems(input: {
     : [...input.trailingItems, ...input.runtimeItems, ...input.activeNoticeItems];
 }
 
-export function filterTaskCompletionTranscriptItems(input: {
+export function filterAgentCompletionTranscriptItems(input: {
   items: readonly TranscriptItem[];
   completedTurnKind?: CliActiveTurn['kind'];
 }): TranscriptItem[] {
-  if (input.completedTurnKind !== 'task_completion') {
+  if (input.completedTurnKind !== 'agent_completion') {
     return [...input.items];
   }
 
@@ -124,7 +125,7 @@ export function useSolidifiedTranscript(input: UseSolidifiedTranscriptInput): Us
       toolLookup,
       visibleAssistantTextsRef.current,
     );
-    const filteredNewItems = filterTaskCompletionTranscriptItems({
+    const filteredNewItems = filterAgentCompletionTranscriptItems({
       items: newItems,
       completedTurnKind: lastCompletedTurnKind,
     });
@@ -170,7 +171,7 @@ export function useSolidifiedTranscript(input: UseSolidifiedTranscriptInput): Us
     const trailingItems: TranscriptItem[] = [];
     if (solidifiedCount < coreMessages.length) {
       const toolLookup = createToolCallLookup(coreMessages);
-      trailingItems.push(...filterTaskCompletionTranscriptItems({
+      trailingItems.push(...filterAgentCompletionTranscriptItems({
         items: buildSolidifiedItemsFromRange(
           coreMessages,
           solidifiedCount,
@@ -198,8 +199,10 @@ export function useSolidifiedTranscript(input: UseSolidifiedTranscriptInput): Us
       }))
       .filter((item) => item.content);
 
+    const dedupedTrailingItems = dedupeTrailingTranscriptItemsCoveredByRuntime(trailingItems, runtimeAndStreamingItems);
+
     return orderActiveTranscriptItems({
-      trailingItems,
+      trailingItems: dedupedTrailingItems,
       runtimeItems: runtimeAndStreamingItems,
       activeNoticeItems,
       latestCompletedTurnKind: activeTurn?.kind ?? lastCompletedTurnKindRef.current,

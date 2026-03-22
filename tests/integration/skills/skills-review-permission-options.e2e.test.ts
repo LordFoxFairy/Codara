@@ -1,0 +1,159 @@
+import {describe, expect, it} from 'bun:test';
+import {AIMessage, HumanMessage, ToolMessage, type BaseMessage, type ToolCall} from '@langchain/core/messages';
+import type {BaseChatModel} from '@langchain/core/language_models/chat_models';
+import type {StructuredToolInterface} from '@langchain/core/tools';
+import {tool} from '@langchain/core/tools';
+import {z} from 'zod';
+import {createAgent} from '@core/agent';
+import {
+  applyReviewResumeToolEdits,
+  createReviewMiddleware,
+  parseReviewResumeActionPayload,
+  type ReviewRequest,
+} from '@core/middleware';
+
+class PermissionInteractionModel {
+  readonly invocations: BaseMessage[][] = [];
+
+  async invoke(messages: BaseMessage[]): Promise<AIMessage> {
+    this.invocations.push(messages);
+
+    const text = messages.map((message) => stringifyContent(message.content)).join('\n');
+    if (text.includes('executed:git diff --stat')) {
+      return new AIMessage('PERMISSION_EDIT_DONE');
+    }
+
+    if (text.includes('Edit the command and continue.')) {
+      return new AIMessage({
+        content: '',
+        tool_calls: [{id: 'call_perm_choice', name: 'bash', args: {command: 'git status'}} as ToolCall],
+      });
+    }
+
+    if (text.includes('"type":"review_pause"')) {
+      return new AIMessage('WAITING_FOR_PERMISSION_CHOICE');
+    }
+
+    return new AIMessage({
+      content: '',
+      tool_calls: [{id: 'call_perm_choice', name: 'bash', args: {command: 'git status'}} as ToolCall],
+    });
+  }
+
+  bindTools(tools: StructuredToolInterface[]): this {
+    void tools;
+    return this;
+  }
+}
+
+function stringifyContent(content: unknown): string {
+  if (typeof content === 'string') {
+    return content;
+  }
+  if (Array.isArray(content)) {
+    return content.map((item) => JSON.stringify(item)).join('\n');
+  }
+  return JSON.stringify(content);
+}
+
+describe('Review permission choice contract', () => {
+  it('should expose permission actions and support edit-and-continue resume', async () => {
+    const model = new PermissionInteractionModel();
+    const pauseRequests: ReviewRequest[] = [];
+
+    let executedCommand = '';
+    const bashTool = tool(
+      async ({command}: {command: string}) => {
+        executedCommand = command;
+        return `executed:${command}`;
+      },
+      {
+        name: 'bash',
+        description: 'Execute shell command',
+        schema: z.object({command: z.string()}),
+      }
+    );
+
+    const hilMiddleware = createReviewMiddleware({
+      interruptOn: {
+        bash: {
+          description: 'Permission review required for shell command',
+          channel: 'permission-center',
+          ui: {
+            tab: 'Security',
+            modal: 'permission-review',
+            actions: [
+              {id: 'allow_once', label: 'Allow once', kind: 'primary'},
+              {id: 'always', label: 'Always allow', kind: 'secondary'},
+              {id: 'deny', label: 'Deny', kind: 'danger', requiresConfirmation: true},
+              {id: 'edit', label: 'Edit and continue', kind: 'secondary', requiresToolEdit: true},
+            ],
+          },
+          metadata: {permissionPolicy: {expression: 'Bash(git status)'}},
+        },
+      },
+      onPause: (request) => {
+        pauseRequests.push(request);
+      },
+      handleResume: async (_request, resumePayload, context, handler) => {
+        const action = parseReviewResumeActionPayload(resumePayload);
+        if (action.action === 'deny') {
+          return new ToolMessage({
+            content: 'Denied by user',
+            tool_call_id: context.toolCall.id ?? 'denied',
+            status: 'error',
+          });
+        }
+
+        if (action.action === 'edit') {
+          return handler(applyReviewResumeToolEdits(context, action));
+        }
+
+        return handler(context);
+      },
+    });
+
+    const runner = createAgent({
+      model: model as unknown as BaseChatModel,
+      tools: [bashTool],
+      middleware: [hilMiddleware],
+    });
+
+    const firstResult = await runner.invoke(
+      {messages: [new HumanMessage('Run git status with permission review.')]},
+      {recursionLimit: 4}
+    );
+
+    expect(firstResult.reason).toBe('complete');
+    expect(model.invocations).toHaveLength(1);
+    expect(String(firstResult.state.messages[firstResult.state.messages.length - 1]?.content)).toContain(
+      '"type":"review_pause"'
+    );
+    expect(executedCommand).toBe('');
+    expect(pauseRequests).toHaveLength(1);
+    const actions = ((pauseRequests[0]?.ui as {actions?: Array<{id: string}>} | undefined)?.actions ?? []);
+    expect(actions.map((item) => item.id)).toEqual([
+      'allow_once',
+      'always',
+      'deny',
+      'edit',
+    ]);
+
+    const secondResult = await runner.resume(
+      {
+        action: 'edit',
+        editedToolArgs: {command: 'git diff --stat'},
+      },
+      {
+        input: new HumanMessage('Edit the command and continue.'),
+        recursionLimit: 4,
+      }
+    );
+
+    expect(secondResult.reason).toBe('complete');
+    expect(String(secondResult.state.messages[secondResult.state.messages.length - 1]?.content)).toContain(
+      'PERMISSION_EDIT_DONE'
+    );
+    expect(executedCommand).toBe('git diff --stat');
+  });
+});

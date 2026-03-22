@@ -42,11 +42,11 @@ describe('task-skills cases', () => {
     expect(task.subject).toBe('Inspect task-skill integration');
     expect(task.status).toBe('pending');
 
-    const taskRunDir = path.join(projectRoot, '.codara', 'case-task-runs');
-    const runEntries = (await readdir(taskRunDir)).filter((entry) => entry.endsWith('.json'));
+    const agentRunDir = path.join(projectRoot, '.codara', 'case-agent-runs');
+    const runEntries = (await readdir(agentRunDir)).filter((entry) => entry.endsWith('.json'));
     expect(runEntries).toEqual(['call_task_delegate.json']);
 
-    const runRecord = JSON.parse(await readFile(path.join(taskRunDir, runEntries[0] as string), 'utf8')) as {
+    const runRecord = JSON.parse(await readFile(path.join(agentRunDir, runEntries[0] as string), 'utf8')) as {
       runId: string;
       status: string;
       summary?: string;

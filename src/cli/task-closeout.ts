@@ -1,9 +1,9 @@
 const TASK_CLOSEOUT_WAITING_PATTERNS = [
-  /waiting for (?:the )?(?:subagent|delegated task|delegated tasks|task result|task results)/i,
-  /wait for (?:runtime updates|the delegated result|review requests)/i,
+  /waiting for (?:the )?(?:subagent|subagent run|subagent runs|subagent result|subagent results)/i,
+  /wait for (?:runtime updates|the subagent result|review requests)/i,
   /当前.*等待.*(?:结果|返回|完成)/,
-  /正在等待.*(?:子代理|委派任务|后台任务|结果|返回)/,
-  /等待.*(?:子代理|委派任务|后台任务).*(?:结果|返回|完成)/,
+  /正在等待.*(?:子代理|后台任务|结果|返回)/,
+  /等待.*(?:子代理|后台任务).*(?:结果|返回|完成)/,
 ];
 
 const TASK_CLOSEOUT_FUTURE_WORK_PATTERNS = [

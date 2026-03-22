@@ -8,7 +8,7 @@ import {
   createAskUserQuestionMiddleware,
   createBudgetMiddleware,
   createDailySessionFileLogSink,
-  createHILMiddleware,
+  createReviewMiddleware,
   createLoggingMiddleware,
   createPathInstructionsMiddleware,
   createSkillsMiddleware,
@@ -18,23 +18,24 @@ import {createPermissionMiddleware} from '@core/middleware/permission';
 import type {AgentCheckpointer} from '@durability/checkpoint/agent';
 import type {ApprovalStore} from '@durability/approval-store';
 import {
+  createAgentMiddleware,
+  type AgentRuntime,
+  type AgentRunStore,
+  createAgentTool,
+  readAgentToolOptions,
+  AGENT_TOOL_NAME,
+} from '@capability/subagent';
+import {
   createTaskMiddleware,
-  type TaskRuntime,
-  type TaskRunStore,
   type TaskStore,
 } from '@capability/task';
-import {
-  createTaskTool,
-  readTaskToolOptions,
-  TASK_TOOL_NAME,
-} from '@capability/task/middleware';
 import type {HookPipeline} from '@observability/hook';
 import {createToolHooksBridge} from '@observability/hook';
 import type {GuidelinesSource} from '@context/instructions/guidelines';
 import type {PromptSource} from '@context/prompts/prompt-source';
 import {resolveWorkspaceRoot} from '@config/workspace';
 import type {ChannelRegistry} from '@integration/channel';
-import {createChannelHILOptions} from '@integration/channel';
+import {createChannelReviewOptions} from '@integration/channel';
 import type {
   CodaraMiddlewareOptions,
   CodaraRuntimeOptions,
@@ -80,11 +81,11 @@ export function createCodaraMiddlewares(
   }
   middlewares.push(...(options.middleware ?? []));
   middlewares.push(createBudgetMiddleware());
-  if (options.hil !== false) {
-    const hilOptions = channelRegistry
-      ? {...(options.hil ?? {}), ...createChannelHILOptions(channelRegistry)}
-      : (options.hil ?? {});
-    middlewares.push(createHILMiddleware(hilOptions));
+  if (options.review !== false) {
+    const reviewOptions = channelRegistry
+      ? {...(options.review ?? {}), ...createChannelReviewOptions(channelRegistry)}
+      : (options.review ?? {});
+    middlewares.push(createReviewMiddleware(reviewOptions));
   }
   return middlewares;
 }
@@ -93,8 +94,8 @@ export function createRuntimeDefaultMiddlewares(input: {
   options: CodaraRuntimeOptions;
   runtimeTools: StructuredToolInterface[];
   taskStore: TaskStore;
-  taskRunStore: TaskRunStore;
-  taskRuntime: TaskRuntime;
+  agentRunStore: AgentRunStore;
+  agentRuntime: AgentRuntime;
   taskCheckpointer: AgentCheckpointer;
   approvalStore: ApprovalStore;
   logging: false | LoggingMiddlewareOptions;
@@ -106,10 +107,10 @@ export function createRuntimeDefaultMiddlewares(input: {
 }): BaseMiddleware[] {
   const callerMiddlewares = input.options.middleware ?? [];
   const byName = new Map<string, BaseMiddleware>();
-  rebindRuntimeTaskTools({
+  rebindRuntimeAgentTools({
     tools: input.runtimeTools,
-    taskRunStore: input.taskRunStore,
-    taskRuntime: input.taskRuntime,
+    agentRunStore: input.agentRunStore,
+    agentRuntime: input.agentRuntime,
     taskCheckpointer: input.taskCheckpointer,
     approvalStore: input.approvalStore,
   });
@@ -135,13 +136,21 @@ export function createRuntimeDefaultMiddlewares(input: {
     byName.set(MIDDLEWARE_NAMES.TodoList, createTodoListMiddleware());
   }
 
-  if (!byName.has(MIDDLEWARE_NAMES.Task) && !providedToolNames.has('Task')) {
+  if (!byName.has(MIDDLEWARE_NAMES.Task) && !providedToolNames.has('TaskCreate')) {
     byName.set(
       MIDDLEWARE_NAMES.Task,
       createTaskMiddleware({
         store: input.taskStore,
-        runStore: input.taskRunStore,
-        runtime: input.taskRuntime,
+      }),
+    );
+  }
+
+  if (!byName.has(MIDDLEWARE_NAMES.Agent) && !providedToolNames.has('Agent')) {
+    byName.set(
+      MIDDLEWARE_NAMES.Agent,
+        createAgentMiddleware({
+        runStore: input.agentRunStore,
+        runtime: input.agentRuntime,
         checkpointer: input.taskCheckpointer,
         approvalStore: input.approvalStore,
         model: input.options.model ?? (() => createCodaraChatModel({
@@ -150,26 +159,29 @@ export function createRuntimeDefaultMiddlewares(input: {
           ...(input.catalog ? {catalog: input.catalog} : {}),
         })),
         tools: input.runtimeTools,
-        middleware: createDelegatedRuntimeMiddlewares({
-          ...input,
-          tools: input.runtimeTools,
-          catalog: input.catalog,
-        }),
-        ...(input.hookPipeline ? {lifecycle: input.hookPipeline} : {}),
+        childRuntime: {
+          logging: input.logging,
+          review: input.options.review ?? {},
+          cwd: input.options.cwd,
+          projectRoot: input.options.projectRoot,
+          userHome: input.options.userHome,
+          permissionAnalysisModel: createRuntimePermissionAnalysisModel(input.options, input.catalog),
+        },
+        ...(input.hookPipeline ? {childLifecycle: input.hookPipeline} : {}),
       }),
     );
   }
 
-  if (input.options.hil !== false && !byName.has(MIDDLEWARE_NAMES.AskUserQuestion)) {
+  if (input.options.review !== false && !byName.has(MIDDLEWARE_NAMES.AskUserQuestion)) {
     byName.set(MIDDLEWARE_NAMES.AskUserQuestion, createAskUserQuestionMiddleware());
   }
 
-  if (input.options.hil !== false && !byName.has(MIDDLEWARE_NAMES.Permission)) {
+  if (input.options.review !== false && !byName.has(MIDDLEWARE_NAMES.Permission)) {
     byName.set(
       MIDDLEWARE_NAMES.Permission,
       createPermissionMiddleware({
-        ...(typeof input.options.hil === 'object' && input.options.hil !== null
-          ? input.options.hil
+        ...(typeof input.options.review === 'object' && input.options.review !== null
+          ? input.options.review
           : {}),
         cwd: input.options.cwd,
         projectRoot: input.options.projectRoot,
@@ -189,84 +201,32 @@ export function createRuntimeDefaultMiddlewares(input: {
   return [...byName.values()];
 }
 
-function rebindRuntimeTaskTools(input: {
+function rebindRuntimeAgentTools(input: {
   tools: StructuredToolInterface[];
-  taskRunStore: TaskRunStore;
-  taskRuntime: TaskRuntime;
+  agentRunStore: AgentRunStore;
+  agentRuntime: AgentRuntime;
   taskCheckpointer: AgentCheckpointer;
   approvalStore: ApprovalStore;
 }): void {
   for (let index = 0; index < input.tools.length; index += 1) {
     const tool = input.tools[index];
-    if (!tool || tool.name !== TASK_TOOL_NAME) {
+    if (!tool || tool.name !== AGENT_TOOL_NAME) {
       continue;
     }
 
-    const taskOptions = readTaskToolOptions(tool);
-    if (!taskOptions) {
+    const agentOptions = readAgentToolOptions(tool);
+    if (!agentOptions) {
       continue;
     }
 
-    input.tools[index] = createTaskTool({
-      ...taskOptions,
-      runStore: input.taskRunStore,
-      runtime: input.taskRuntime,
+    input.tools[index] = createAgentTool({
+      ...agentOptions,
+      runStore: input.agentRunStore,
+      runtime: input.agentRuntime,
       checkpointer: input.taskCheckpointer,
       approvalStore: input.approvalStore,
     });
   }
-}
-
-function createDelegatedRuntimeMiddlewares(input: {
-  options: CodaraRuntimeOptions;
-  taskStore: TaskStore;
-  logging: false | LoggingMiddlewareOptions;
-  tools?: StructuredToolInterface[];
-  catalog?: CodaraModelCatalog | Promise<CodaraModelCatalog>;
-}): BaseMiddleware[] {
-  const middlewares: BaseMiddleware[] = [];
-  const callerMiddlewares = (input.options.middleware ?? [])
-    .filter((middleware) => middleware.name !== MIDDLEWARE_NAMES.Task);
-  const providedToolNames = collectProvidedToolNames({
-    tools: input.tools,
-    middlewares: callerMiddlewares,
-  });
-
-  const seen = new Set<string>();
-  const push = (middleware: BaseMiddleware) => {
-    if (seen.has(middleware.name)) {
-      return;
-    }
-    seen.add(middleware.name);
-    middlewares.push(middleware);
-  };
-
-  if (input.logging && input.logging.enabled !== false) {
-    push(createLoggingMiddleware(input.logging));
-  }
-
-  for (const middleware of callerMiddlewares) {
-    push(middleware);
-  }
-
-  if (!seen.has(MIDDLEWARE_NAMES.TodoList) && !providedToolNames.has('write_todos')) {
-    push(createTodoListMiddleware());
-  }
-  if (input.options.hil !== false && !seen.has(MIDDLEWARE_NAMES.AskUserQuestion)) {
-    push(createAskUserQuestionMiddleware());
-  }
-  if (input.options.hil !== false && !seen.has(MIDDLEWARE_NAMES.Permission)) {
-    push(createPermissionMiddleware({
-      ...(typeof input.options.hil === 'object' && input.options.hil !== null ? input.options.hil : {}),
-      cwd: input.options.cwd,
-      projectRoot: input.options.projectRoot,
-      userHome: input.options.userHome,
-      bashAnalysisModel: createRuntimePermissionAnalysisModel(input.options, input.catalog),
-    }));
-  }
-
-  push(createBudgetMiddleware());
-  return middlewares;
 }
 
 function collectProvidedToolNames(input: {

@@ -136,7 +136,7 @@ describe('sendText', () => {
   });
 });
 
-describe('sendPausePrompt', () => {
+describe('sendReviewPrompt', () => {
   test('maps action styles to WeCom button styles', async () => {
     let capturedButtons: Array<{text: string; style: number; key: string}> = [];
 
@@ -161,11 +161,11 @@ describe('sendPausePrompt', () => {
       webhookPath: '/wecom/webhook',
     } as unknown as WeComAccount;
 
-    const result = await wecomPlugin.sendPausePrompt!(account, {
+    const result = await wecomPlugin.sendReviewPrompt!(account, {
       accountId: 'wecom-bot-1',
       to: 'user_001',
       text: 'Approve this action?',
-      pause: {id: 'pause_001'} as unknown as import('@shared/contracts/agent-types').PauseRequest,
+      review: {id: 'review_001'} as unknown as import('@shared/contracts/agent-types').ReviewRequest,
       actions: [
         {id: 'approve', label: 'Approve', style: 'approve'},
         {id: 'reject', label: 'Reject', style: 'reject'},

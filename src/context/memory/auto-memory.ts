@@ -78,7 +78,7 @@ export function createAutoMemoryRuntime(options: AutoMemoryRuntimeOptions): Auto
 }
 
 export function shouldRecordAutoMemoryTurn(result: Pick<AgentResult, 'reason' | 'state'>): boolean {
-  return result.reason === 'complete' && result.state.agentType === 'main' && !result.state.pendingPause;
+  return result.reason === 'complete' && result.state.agentType === 'main' && !result.state.pendingReview;
 }
 
 export function resolveAutoMemoryRoot(options: AutoMemoryRuntimeOptions): string {

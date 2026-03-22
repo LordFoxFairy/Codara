@@ -111,7 +111,7 @@ Codara 默认 runtime 只把下面几类模块当成一等 middleware stage：
 - caller middlewares
 - `BudgetMiddleware`
 - `SummaryMiddleware`
-- `HumanInTheLoopMiddleware`
+- `ReviewMiddleware`
 
 补充说明：
 
@@ -149,7 +149,7 @@ Codara 默认 runtime 只把下面几类模块当成一等 middleware stage：
 - `SummaryMiddleware`
   - hook scope: `beforeModel`
   - role: auto-compact when context exceeds budget
-- `HumanInTheLoopMiddleware`
+- `ReviewMiddleware`
   - hook scope: `wrapToolCall`
   - role: pause/resume interception only
 
@@ -180,7 +180,7 @@ source-driven system layers 现在走另一条链：
 - 统一字段：`runId`、`turn`、`requestId`、`stage`、`event`
 - `wrapToolCall` 可额外记录协议型 middleware 提供的 `toolMetadata`
 - 支持开关与级别过滤：`enabled`、`level`
-- 若要记录下游中间件返回的结构化 `ToolMessage`（例如 `hil_pause`），请将 logging 放在对应中间件之前。
+- 若要记录下游中间件返回的结构化 `ToolMessage`（例如 `review_pause`），请将 logging 放在对应中间件之前。
 
 ```typescript
 const loggingMiddleware = createLoggingMiddleware({
@@ -190,21 +190,21 @@ const loggingMiddleware = createLoggingMiddleware({
 });
 ```
 
-### 内置 HIL Middleware（Human-in-the-Loop）
+### 内置 review Middleware（review）
 
-`createHILMiddleware(options)` 提供通用"暂停-恢复"拦截能力（不内置审批决策语义）：
+`createReviewMiddleware(options)` 提供通用"暂停-恢复"拦截能力（不内置审批决策语义）：
 
-- `interruptOn[toolName] = true`：命中后进入 pause，返回结构化 `hil_pause` 消息
+- `interruptOn[toolName] = true`：命中后进入 pause，返回结构化 `review_pause` 消息
 - `interruptOn[toolName] = false` 或未配置：自动放行
 - `interruptOn[toolName] = {description, channel, ui, metadata, allowedDecisions}`：附加交互与 review 元信息
 - `resolveDecision`：外部可返回 `allow | ask | deny`，将策略层与协议层彻底解耦
 - `resolveResume` / `handleResume`：由外部实现审批、编辑、拒绝、多页/tab 流程
 
 ```typescript
-import {createHILMiddleware} from '@engine/pipeline';
+import {createReviewMiddleware} from '@engine/pipeline';
 import {ToolMessage} from '@langchain/core/messages';
 
-const hilMiddleware = createHILMiddleware({
+const reviewMiddleware = createReviewMiddleware({
   resolveDecision: async ({context}) => {
     if (context.toolCall.name === 'write_file') {
       return {
@@ -309,7 +309,7 @@ src/engine/pipeline/
 ├── logging.ts
 ├── budget.ts
 ├── summary.ts
-├── hil.ts
+├── review.ts
 ├── ask-user-question.ts
 ├── permission/
 │   ├── evaluate.ts

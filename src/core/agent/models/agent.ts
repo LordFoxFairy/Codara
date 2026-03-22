@@ -3,7 +3,7 @@ import type {BaseChatModel} from '@langchain/core/language_models/chat_models';
 import type {StructuredToolInterface} from '@langchain/core/tools';
 import type {BaseMiddleware} from '@core/pipeline/types';
 import type {AgentCheckpoint, AgentCheckpointer} from '@durability/checkpoint/agent';
-import type {HILToolMessagePayload} from '@core/middleware/hil';
+import type {ReviewToolMessagePayload} from '@core/middleware/review';
 import type {AgentLifecycleHooks} from '@observability/hook/types';
 import type {
   AgentExecutionMetadata,
@@ -13,7 +13,7 @@ import type {
   AgentRuntimeValues,
   AgentState,
   AgentType,
-  ResumePayload,
+  ReviewResumePayload,
 } from './types';
 export type {
   AgentExecutionMetadata,
@@ -25,16 +25,16 @@ export type {
   AgentState,
   AgentStatus,
   AgentType,
-  PauseRequest,
-  PauseActionDescriptor,
-  PauseReviewDecision,
-  PauseReviewRequest,
-  PauseUIActionOption,
-  PauseUIConfig,
-  PauseUIFormConfig,
-  PauseUIFormOption,
-  PauseUIFormTab,
-  ResumePayload,
+  ReviewRequest,
+  ReviewActionDescriptor,
+  ReviewDecision,
+  ReviewSpec,
+  ReviewUIActionOption,
+  ReviewUIConfig,
+  ReviewUIFormConfig,
+  ReviewUIFormOption,
+  ReviewUIFormTab,
+  ReviewResumePayload,
 } from './types';
 
 export type AgentStreamMode = 'values' | 'updates' | 'messages' | 'custom';
@@ -65,7 +65,7 @@ export type AgentContextPreparer = (context: AgentPreparationContext) => Promise
 
 export interface AgentMessagesInput { messages: BaseMessage[]; }
 
-export interface AgentStreamCustomChunk { type: 'hil_event'; runId: string; turn: number; payload: HILToolMessagePayload; }
+export interface AgentStreamCustomChunk { type: 'review_event'; runId: string; turn: number; payload: ReviewToolMessagePayload; }
 
 export type AgentStreamOutput =
   | AIMessageChunk
@@ -109,12 +109,12 @@ export interface AgentResumeStreamConfig extends Omit<AgentStreamConfig, 'contex
 export interface Agent {
   getState(): AgentState;
   invoke(input?: AgentInput, config?: AgentInvokeConfig): Promise<AgentResult>;
-  resume(payload: ResumePayload, config?: AgentResumeConfig): Promise<AgentResult>;
+  resume(payload: ReviewResumePayload, config?: AgentResumeConfig): Promise<AgentResult>;
   reset(): Promise<void>;
   dispose(): Promise<void>;
   stream(input?: AgentInput, config?: AgentStreamConfig): AsyncGenerator<AgentStreamOutput, AgentResult, void>;
   resumeStream(
-    payload: ResumePayload,
+    payload: ReviewResumePayload,
     config?: AgentResumeStreamConfig
   ): AsyncGenerator<AgentStreamOutput, AgentResult, void>;
 }

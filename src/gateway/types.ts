@@ -1,4 +1,4 @@
-import type {PauseRequest} from '@shared/contracts/agent-types';
+import type {ReviewRequest} from '@shared/contracts/agent-types';
 
 export interface InboundMessage {
   channel: string;
@@ -28,12 +28,12 @@ export interface OutboundMediaContext extends OutboundContext {
   caption?: string;
 }
 
-export interface PausePromptContext extends OutboundContext {
-  pause: PauseRequest;
-  actions: PausePromptAction[];
+export interface ReviewPromptContext extends OutboundContext {
+  review: ReviewRequest;
+  actions: ReviewPromptAction[];
 }
 
-export interface PausePromptAction {
+export interface ReviewPromptAction {
   id: string;
   label: string;
   style: 'approve' | 'reject' | 'edit';

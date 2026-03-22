@@ -200,7 +200,7 @@ describe('Codara session lifecycle', () => {
     expect(persisted).not.toHaveProperty('messages');
     expect(persisted).not.toHaveProperty('context');
     expect(persisted).not.toHaveProperty('values');
-    expect(persisted).not.toHaveProperty('pendingPause');
+    expect(persisted).not.toHaveProperty('pendingReview');
     expect((persisted.metadata as {messageCount?: number})?.messageCount).toBeGreaterThan(0);
 
     const latestCheckpoint = await checkpointer.getLatest('metadata-boundary-session');

@@ -27,7 +27,7 @@ describe('CLI chrome', () => {
       id: 'evt-1',
       sessionId: session.sessionId,
       timestamp: new Date().toISOString(),
-      kind: 'hil',
+      kind: 'review',
       phase: 'start',
       status: 'paused',
       label: 'Waiting for review',
@@ -114,5 +114,7 @@ describe('CLI chrome', () => {
     expect(describeFooter('wide')).toBe('Enter send  ·  Ctrl+C exit  ·  / commands  ·  Ctrl+T tasks  ·  Ctrl+O expand');
     expect(describeFooter('wide', true)).toBe('Esc close output  ·  ↑↓ scroll  ·  Enter send  ·  / commands');
     expect(describeFooter('minimal')).toBe('Enter send  ·  ? shortcuts  ·  Ctrl+C exit');
+    expect(describeFooter('wide', false, 'review')).toBe('Enter to select  ·  Tab/Arrow keys to navigate  ·  Esc to cancel');
+    expect(describeFooter('minimal', false, 'review')).toBe('Enter select  ·  Tab/Arrow  ·  Esc cancel');
   });
 });

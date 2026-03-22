@@ -1,0 +1,446 @@
+# Lessons
+
+## 2026-03-22
+- 用户继续纠偏：当 live 里看到 `Skill` 重复打印或被拦下的 `AskUserQuestion` 仍然可见时，优先怀疑 transcript projection 重叠，而不是继续往 controller/runtime 上加 guard。
+- 防错规则：凡是 CLI 可见块重复或隐藏失效，先检查 `active runtime events` 与 `unsolidified coreMessages` 的双投影，以及 paired start/end event 是否绕过了 hide 条件；优先在 transcript/model 层做去重和抑制，不要把显示问题错误地下沉成执行控制问题。
+- 用户继续纠偏：当用户明确允许重构并强调“整体流转机制要清晰、易维护”，就不能只把新行为塞进旧 guard/flag 里糊住问题。
+- 防错规则：凡是 interaction/control-plane 改造，只要用户明确允许重构，就优先抽成稳定的 scheduler/router 边界；避免继续堆 `isRunningRef`、`hasReview`、`inputTarget` 之类互相打架的布尔拼接。
+- 用户继续纠偏：当用户明确要求“完整 `bun run dev` 验证”时，不能拿单测或 runtime factory 代替真实 live 观察，必须真的等会话运行到交互面出现再下判断。
+- 防错规则：凡是 CLI 交互/UI 对齐任务，只要用户要求 live 验证，就至少完成一次真实 `bun run dev` 观察并等待到目标交互出现；未出现就继续等或定位触发链路，不要提前用 tests 宣布结论。
+- 用户继续纠偏：AskUser/permission 的最终 submit 不能一提交就把前台掉回 `ready/done`；即使 review 面板为了避免多 review/HIL 头部冲突而立即关闭，主界面也必须继续显示运行态，直到真正 resume 完成。
+- 防错规则：任何 review 的 terminal submit，只要还没等到底层 `resume`/`streamInteraction` 结束，就禁止把 CLI runState 标成 `done` 或结束前台 interaction；允许先收起当前 review 面板，但 transcript/task surface 必须保持 `running`。
+- 用户继续纠偏：Claude Code 风格的 AskUser 在用户答完后应直接继续原任务，不应先回显“你选择了什么”的问卷总结。
+- 防错规则：凡是 `AskUserQuestion` 这类澄清工具，tool 描述和 resumed tool result 都要明确指向“继续原任务”；不要把 questionnaire recap 当作默认后续行为，除非问卷本身显式包含确认/总结步骤。
+- 用户继续纠偏：即使是临时止血，也不要把 AskUser 这种控制面问题做成“扫历史消息然后硬编码拦截”的实现，后面会越来越难维护。
+- 防错规则：处理交互流转约束时，优先写进显式控制面状态（例如同轮 `runtimeContext` / scheduler state），不要依赖回看消息历史来推断刚刚发生了什么；消息历史只能作为调试证据，不应成为主要控制逻辑。
+- 用户继续纠偏：AskUser 的 `Type something.` 不能只是“答案状态变成自定义”，还必须把焦点真的留在自定义输入行；否则 `Next`、Tab 和箭头导航的手感都会错。
+- 防错规则：处理 AskUser 自定义输入时，禁止在普通选项高亮状态下直接把字符写进 draft。只有真正选中了自定义行或显式 `text` 题型，才允许进入自由输入；否则焦点箭头和已选答案一定会分裂。
+- 用户继续纠偏：`Type something.` 的输入表现也要贴 Claude Code，本质是“在这一行原地编辑”，不是额外弹出第二行自定义输入说明。
+- 防错规则：凡是对齐 Claude Code 的 AskUser 自定义输入，默认优先做 inline row editing；除非截图明确显示额外输入区，否则不要擅自加第二行 helper/prompt。
+- 用户继续纠偏：一旦开始在 `Type something.` 里输入，placeholder 文案本身也不该继续残留在同一行里；用户看到的应该是自己的自定义内容，而不是 `Type something. xxx`。
+- 防错规则：处理 AskUser inline custom row 时，把 `Type something.` 当成纯占位词；只在空值态显示，占位词一旦有真实 draft/answer 就必须被替换掉，而不是和内容并存。
+- 用户继续纠偏：如果用户明确说“不要修改 welcome 逻辑”，就不能为了顺手修别的 UI 差异把 welcome 行为一起改掉。
+- 防错规则：当用户指定了排除修改的区域时，把它当成硬边界；任何相关 diff 都要先回看并撤掉，再继续其他实现。
+- 用户继续纠偏：当给出 Claude Code 的交互截图和 `docs/claude-code` 参考时，截图是具体 UI contract，本地文档是语义/control-plane contract，两者都必须作为实现源，不允许只做“风格相似”的近似版。
+- 防错规则：遇到这类对标实现任务时，先把“截图中的可见交互元素”和“文档中的状态/语义约束”拆开，测试里同时锁住两层；不要只对一层做兼容式修补。
+- 用户继续纠偏：AskUser/questionnaire 不能再让 `submit` 同时承担“选中当前项”和“推进到下一步”的双重语义，否则永远对不齐 Claude Code 的 question page / final submit page 分层。
+- 防错规则：设计多步 AskUser 状态机时，默认把 `selection`、`next`、`submit`、`chat` 当成四类独立动作；question page 只允许 `selection + next + chat`，final page 才允许 `submit + cancel`。
+- 用户继续纠偏：既然这轮允许 clean cut，就不要保留只在代码里活着、实际 UI 已不再使用的旧表现分叉，比如 `inline/floating` 双壳。
+- 防错规则：当目标 contract 已明确且运行入口只用一种表现时，主动删除未使用的渲染/API 分叉；不要让测试和类型继续维持过期壳子。
+- 用户继续纠偏：review/approval/AskUser 的阻塞范围要像 Claude Code 一样，只阻塞所属执行流，不要因为有 review 就默认锁死整个主会话输入。
+- 防错规则：设计 review control plane 时，先显式建模 `blockingScope: session | task | none`；`task` 级 review 默认只阻塞对应 task/subagent，绝不能再把 `hasReview` 当成“全局禁用 composer”的快捷判断。
+- 用户继续纠偏：即使 review 进入统一悬浮窗，也不能让它默认抢走全部键盘输入；主会话自由沟通必须继续成立。
+- 防错规则：处理 review 输入路由时，必须把“是否存在 review”和“当前输入焦点属于谁”分开建模；默认增加显式 `inputTarget` 或同类控制面，不允许两个输入 hook 靠 `hasReview` 隐式争抢前台。
+
+## 2026-03-21
+
+- 用户继续纠偏：`AskUser` 不能被实现成“只有表单、没有自由输入”的死交互，它应该和 approval 一样进入统一 review 面，并支持自由对话。
+- 防错规则：设计统一 review 控制面时，默认把 `AskUser` 建模为 `structured / freeform / hybrid` 三种 interaction mode 之一；不要把 AskUser 单独做成只能填表、不能自然语言继续的旁路系统。
+- 用户继续纠偏：`task + subagents` 的层级主线必须一直留在前景里，approval / AskUser 只是同一块审判面板里的不同内容，不能一出现 review 就把主层级替换掉。
+- 防错规则：处理 CLI HIL / AskUser 交互时，先检查 `foreground surface` 是否错误地从 transcript 切成纯 review 面；默认应保留 task/subagent 层级主线，把 approval、permission、AskUser 统一塞进同位置的 review panel，而不是做成两套入口或整屏切换。
+- 用户继续纠偏：基础 child 不该再被叫成“default/default delegate”，也不该靠“省略 subagent_type”来暗示；基础类型就是显式 `Agent`。
+- 防错规则：凡是 `task/subagent` 的 live prompt、schema、tests、case fixtures，只要在描述基础 child，就统一使用显式 `subagent_type: "Agent"`；不要再宣传“omit for default”或把 `undefined` 当成产品语义。
+- 用户继续纠偏：既然这轮明确说了“不要考虑兼容，不要有兼容，直接重构”，就不该继续保留旧 alias、旧 case 叙事或旧配置键来迁就过去的 teams/general-purpose 设计。
+- 防错规则：当用户明确允许 breaking refactor 时，优先删掉旧默认名词、旧配置键和旧 case 假设；只保留必要的负向回归测试，用来证明旧入口已被拒绝，而不是继续把它们维持成半兼容状态。
+- 用户继续纠偏：这一轮先不要动 `Task / TaskCreate / TaskUpdate / TaskList / subagent_type` 的对外产品面，重点是把之前被 teams 设计拖歪的内部控制面拉平、拆薄、去嵌套。
+- 防错规则：当用户要求“全面打磨，但暂时不动外部接口”时，优先重构内部 ownership 和文件边界；默认目标是让装配层变薄、控制面分模块、恢复/提示词/launch 各自归位，而不是趁机重写产品 API。
+- 用户继续纠偏：既然当前产品已经收口到 task/subagents，就不能再让核心 prompt、runtime label、测试夹带旧的 `team` 或 `general-purpose` 显式 profile 心智；这些兼容词一旦留在主路径里，就会继续把模型和实现拉回旧架构。
+- 防错规则：当用户要求“现在只有 tasks，不要旧适配逻辑”时，除了删 runtime 分支，还要审计 `.codara` 核心提示词、observability label、launch metadata 和高频测试夹具；默认 delegate 应表现为默认 `Agent` 路径，`general-purpose` 只能保留为向后兼容输入别名。
+- 用户继续纠偏：`.codara/skills/builtin-agents` 里的 named subagent prompts 过于稀薄，会直接拖低 delegate 质量；如果本地 `/tmp` 下已经有更成熟的参考实现，应优先吸收其结构和约束，而不是继续拍脑袋补几句空话。
+- 防错规则：当用户指出 builtin agent prompt 太薄时，先去本地参考实现里找更成熟的 agent/skill 约束，再把“角色边界、禁止行为、输出契约、进度汇报”补齐到 named profiles；同时保持默认 `general-purpose` 仍由 runtime 接管，不重新塞回 skills。
+- 用户继续纠偏：`subagents` 的默认语义不是另一套 builtin persona，而是直接继承 `main agent` 的默认处理方式；只有显式命名的 skills profiles 才应覆盖默认子代理行为。
+- 防错规则：处理 `subagent` profiles 时，先区分 `general-purpose/default` 和 skills-defined named profiles；默认 profile 必须保持 main-agent 继承语义，不能被 builtin/general-purpose skill 文档偷偷覆写。
+- 用户继续纠偏：`subagents` 不应再次派发，且必须留下可追踪的父 session 信息，方便后续理解和恢复。
+- 防错规则：改 `task/subagent` runtime 时，默认验证两件事：delegated child 的 tool surface 必须彻底移除 delegation tools；task run / child metadata 必须显式记录 `parentSessionId`，不能只靠隐含字段或内存 handle。
+- 用户继续纠偏：这类架构收口不能停在一半问兼容边界，允许直接持续重构到逻辑真正收紧为止，中途不要因为策略犹豫而打断推进。
+- 防错规则：当用户明确要求“持续循环处理直到完美再通知”时，默认采用破旧立新的主路径；先把目标行为写进计划和测试，再连续执行实现与回归，不在中途反复征求兼容确认。
+- 用户继续纠偏：teams 去掉后，不能因为主干已经删了主体实现，就把剩余 `team` 命中都当成无害文案；还要继续清掉 runtime surface、测试和旧 gating 里的真实残留。
+- 防错规则：当用户说“继续修复残留逻辑”时，优先检查事件类型、审批/持久化类型、CLI/desktop 入口和条件分支；不要只停在文档或架构讨论。
+- 用户继续纠偏：`task` 与 `subagent` 的正确边界必须落实到代码行为，尤其不能再让 shared task coordination 受旧 `teamSurface/teamContext` 语义影响。
+- 防错规则：处理 `Task` 子域时，默认验证两件事：`Task` 是否只表示 delegated fresh-context work，`TaskCreate/Update/List` 是否不再依赖任何 team-era focus/gating 逻辑。
+- 用户继续纠偏：当前前台默认不是多个 peer teams，而是单个 current team workspace；advanced multi-team/recovery 入口不能再作为默认 conversation/tool surface 暴露。
+- 防错规则：处理 teams 默认交互时，优先把 `spawn_teammate + current workspace` 当主路径；`create_team / enter_team / leave_team / list_teams` 只能保留为显式高级恢复入口，默认 tool surface 和主提示词都不要再暴露它们。
+- 用户继续纠偏：desktop 的 recovery/history 不应该静默顶替当前 workspace。
+- 防错规则：处理 desktop `TeamsPage` 时，当前 workspace 必须只来自 live/current team 选择逻辑；recovery/history 只能作为次级被动列表或显式 restore 入口，不能靠点击历史项偷偷改写主卡片。
+- 用户继续纠偏：CLI shell 不应该把 teams 当“有几个 team”的摘要指标，而应该只感知是否存在 focused current workspace。
+- 防错规则：处理 `useActiveTeams/shell-app` 时，返回值和 chrome gating 都要围绕 `hasFocusedTeam / focusedTeamStatus` 这类单体状态建模，避免 plural counts 把心智拉回 registry/list 模型。
+- 用户继续纠偏：桌面 `TeamsPage` 不应该把 saved/recoverable teams 当成和 current workspace 并列的主结构，默认体验必须是 `Current Team Workspace`，其余只能是二级 recovery/history。
+- 防错规则：处理 desktop team 页面时，先把 current workspace 作为唯一主表面；recovery/history 只能折叠在次级区块里，且不能影响主卡片和默认叙事。
+
+## 2026-03-21
+
+- 用户纠偏：他们说“项目更新了，去掉 teams 逻辑”时，先对齐当前 `main` 和最近提交，再判断是代码收尾还是文档滞后，不能直接按旧工作区印象继续讨论删除范围。
+- 防错规则：凡是用户明确引用“最新 main / 已经更新 / 已经去掉”的状态，先用 `git log`、当前分支和目标提交核对事实，再决定实现范围；如果主干已经完成代码改动，这一轮默认只补剩余文档、测试或发布动作。
+- 用户纠偏：讨论 `task / subagent` 时，不能按自己的术语偏好额外发明一层独立 `Work` 领域名词；先对齐仓库里现有的 `delegated work`、`Task`、`TaskCreate/Update/List` 语义。
+- 防错规则：当代码和文档已经用 `Task = delegated fresh-context work`、`shared task coordination = TaskCreate/Update/List` 时，默认沿用这个产品词汇；除非用户明确要求，否则不要再把 `work` 升格成新的 runtime 一等对象。
+
+- 用户纠偏：当用户给了本地参考实现或真实截图时，不能继续沿用我自己上一轮的“接近即可”推断，尤其是 AskUser 这类强交互 UI；必须直接以本地参考和最新截图为合同重新比对。
+- 防错规则：只要用户明确给出“去看当前仓库里的参考实现/截图”，就把它当成优先级最高的行为合同；先列出与现实现的具体差异，再写失败测试锁定，不允许继续围绕旧假设微调。
+- 用户纠偏：Claude Code 风格 AskUser 的问题页核心不是 `Chat about this`，而是稳定的 `Next`；最终提交页才出现 `Submit answers / Cancel`。
+- 防错规则：设计 AskUser 多步 UI 时，不要把早期版本里的 footer 动作习惯当成定论；先确认“问题页”和“最终页”各自的唯一主动作，再让状态机和渲染完全一致。
+
+## 2026-03-20
+
+- 用户继续纠偏：`Teams` 面板是独立 summary list，不应该渲染成员/worker 明细；成员分工和内部处理只属于 focused team detail。
+- 防错规则：处理 team UI 时，先分清 `summary panel` 和 `focused detail`。summary panel 只允许显示 team 名称、状态、进度计数；成员列表、member activity、job 明细一律只放到 focused team detail。
+- 用户继续纠偏：当前会话的 team 产品语义是“single active team”，不是把 team registry 同时投影到主 UI。
+- 防错规则：`useActiveTeams` 这类 UI projection hook 默认只投影当前 focused/active team；如果没有 focused team，就不要把整个 registry 当成当前会话 UI 展示出来。
+- 用户继续纠偏：team/member 的 runtime milestones 不该作为独立 transcript 行泄漏到主区；team 内部处理应留在 focused team detail，外部仍由 main agent 对外叙述。
+- 防错规则：凡是 `team` runtime event，默认不要直接进主 transcript；只有 main agent 的消息和显式 team tool 摘要才能对外出现，member activity / joined / job completed 等内部事件只进 focused team detail。
+- 用户继续纠偏：team 启动默认不应无条件新建；应优先检查当前项目下是否存在可恢复 team，恰好一个时自动恢复并聚焦，多个时保持未聚焦等待显式选择。
+- 防错规则：处理 team startup 语义时，先区分 `auto-create` 和 `auto-resume`。默认禁止“每次启动都新建 team”；只能在 project-scoped persistence 中恰好找到一个 running/paused team 时自动注入 focused `teamSurface`，多个则不自动猜。
+- 用户继续纠偏：默认 team 产品语义不是“一个会话里开多个并列 teams”，而是“当前会话默认只有一个 active team，main agent 就是 leader，下面是 members/workers”；peer teams 只应是更高阶显式场景。
+- 防错规则：处理 teams 的默认 UX 时，先从“single active team + main agent leader + member list”出发；不要把不同分工优先建模成多个 peer teams，也不要让 summary 面板默认强调 team registry 而不是当前 team 的成员执行面。
+- 用户继续纠偏：默认 leader-only team 不该要求模型先显式 create；更合理的是在 leader 需要人手时，由 `spawn_teammate` 自动复用唯一可用 team 或 bootstrap 当前 leader team。
+- 防错规则：处理默认 teams 协作流时，优先把“建 team”隐藏在 leader 的工作流后面；如果当前没有 focused team，就让 `spawn_teammate/plan_jobs` 这类 leader 工具先尝试复用唯一可用 team，没有才自动初始化 leader-only team，避免把 `create_team` 暴露成默认前置步骤。
+- 用户继续纠偏：对外正文必须始终由 main agent 收尾，subagent/team member 的报告和 JSON 结果都不该直接出现在用户主视图里。
+- 防错规则：凡是 team/task conversation tools 的 `content_and_artifact` 输出，如果正文只是结构化 JSON 或 bookkeeping，默认在 transcript 层压缩成友好的摘要；禁止把原始 JSON/artifact 文本直接作为用户主视图内容渲染。
+- 用户继续纠偏：并行 batch 还没结束时，grouped execution block 不能因为某个 subagent 完成就把它拆出去或吞掉；done rows 必须继续留在同一个 `Running N agents...` 块里，底部 task list 也要同步保留。
+- 防错规则：处理并行 task/subagent UI 时，先用 `activeTasks`/run summaries 投影整批 live 状态，再决定 grouped execution tree 的行内容；不要只按当前 runtime event buffer 里的 running items 临时分组，否则 completed rows 会在 sibling 继续运行时消失。
+- 用户继续纠偏：synthetic/missing completed task rows如果只能从 active summary 补回，也不能把 `run.summary` 当 latest activity 直接显示给用户；done/error 对外只显示简短状态行，child prose 仍然只留在 hidden handoff。
+- 防错规则：凡是从 `ActiveTask.detail` 回填 execution tree 的逻辑，必须按状态区分；`running/paused` 才允许用 `detail` 当最新活动，`done/error` 只能显示 `Done/Failed (...)` 等摘要状态，禁止把 child summary 借尸还魂。
+- 用户继续纠偏：当 running task 缺少 live `toolUseCount` 时，不要继续在 transcript 层猜展示问题；先检查 task runtime/store 是否真的在运行中累计了 count，以及 approval pause 前的 tool activity 是否被记录。
+- 防错规则：凡是 task/subagent 的“实时统计不更新”问题，先沿 `child activity -> task runtime/store -> active task summary -> transcript` 全链路排查；如果审批中断会先于 tool execution 发生，还要确认 activity-forward middleware 的顺序足够靠前，避免只在 finish 阶段才看到 count。
+
+## 2026-03-18
+
+- 用户纠偏：不要停在分析层，先给简短进度并立即推进实现。
+- 防错规则：当用户要求“直接推进实现”时，先用 1-2 句给出当前裁决与状态，然后立刻开始文件级改动，不继续纯分析输出。
+- 用户纠偏：一级架构切片落地后，不代表该域已经完成。像 `pipeline` 这种核心策略面，必须继续把旧 policy 文件推进到最终 owner，不能停在第一层目录收口。
+- 防错规则：当用户点名某个仍未完成的核心文件，例如 `src/engine/pipeline/guidelines.ts`，应立即把它视为下一轮主目标，而不是把上一轮目录重构误报为“该域已经完成”。
+- 用户纠偏：`guidelines source` 属于 `infra/context`，`PathInstructionProjectionMiddleware` 是 context 的动态投影 bridge，不是 permission policy，也不是安全层。后续优化 `pipeline` 时，不能把这类模块误收成 security/policy owner。
+- 防错规则：看到 `guidelines` / path instruction 类逻辑时，先判断它是不是 context projection bridge；只有确认它在做 runtime policy 决策时，才允许归入 policy plane。
+- 用户纠偏：`budget/summary/skills` 即使语义上属于 runtime policy，也不等于必须物理迁入 `pipeline/policies/*`；不要为了目录统一而制造无意义搬迁。
+- 防错规则：先判断问题是 owner 不清、装配不清、文档不清，还是文件位置真的错误；如果语义收口已经能成立，就不要把物理移动当成默认动作。
+- 用户纠偏：`plan mode` 不应被当前一个薄薄的 middleware stub 代表；真正的 planning 语义应联动 subagent、skills、prompt/context，pipeline 只负责 enforcement。
+- 防错规则：看到 `mode` 类实现时，先区分它是在做 interaction selection、context assembly，还是 runtime guard；不要把一个 guard 误报成完整 mode 系统。
+- 用户进一步裁决：如果 `plan mode` 在运行时没有真实入口、没有和 subagent/skills/context 联动，那它不该保留成独立机制。
+- 防错规则：遇到只存在于测试和文档、却未接入主链的“架构占位实现”，优先删除而不是继续美化。
+- 用户纠偏：新命名不要过长、过学术；在语义足够清楚的前提下，优先用更短、更可读的名字。
+- 防错规则：给桥接层和 middleware 命名时，先追求本地可理解性，再追求概念完整性；避免把文件名写成论文式长标题。
+- 用户裁决：`git/worktree` 不应再保留为 runtime 内建 TS 自动化层；应由 agent 通过 skills + 现有 git/bash 工具自行完成。
+- 防错规则：遇到“runtime 重新实现开发者现成工具链”的设计时，先问它是否真的比 skills + Bash 更优；如果不是，优先删除而不是抽象化。
+- 用户纠偏：很多离谱设计不是实现细节问题，而是没有先追问“这层能力是否有必要存在”就开始优化现有壳子。
+- 防错规则：面对复杂架构时，先做存在性判断，再做边界判断，最后才做实现判断；不要在错误层级上打磨出更漂亮的错误结构。
+- 用户追加范围：测试修复结束后，如果 `tests/cases/` 里有已经不适配当前架构、只会制造噪音的旧 case，应直接清理。
+- 防错规则：当用户要求“先修 tests，再清理旧 cases”时，不要把过期 case 当作必须兼容的现状；应先判断它是否仍代表有效产品行为，再决定保留还是删除。
+- 用户纠偏：不要为了让旧测试先过而补旧入口兼容层；既然已经切到新 owner，就应该让测试和 case 改成新逻辑。
+- 防错规则：重构后的失败如果本质是测试仍引用旧路径、旧 API、旧断言，优先改测试到新 owner；除非用户明确要求保留兼容面，否则不要新增 shim/barrel alias。
+- 用户再次纠偏：不要把“旧文件重新实现一层”当成迁移手段；能删除就删除，能直连新 owner 就直连新 owner。
+- 防错规则：看到 `old-path -> re-export shim -> new-path` 这类方案时，默认判定为错误方向；先删旧测试/旧 helper 或改用新模块，再考虑是否存在真正必须保留的正式 public API。
+- 用户纠偏：判断 Task/Team 设计是否一致时，重点看“对外能力外形”和整体代码规范，而不是只看内部是否都复用了 `bootstrapAgent`。
+- 防错规则：当用户质疑架构一致性时，优先对齐 capability surface、装配入口、目录命名和会话心智；不要拿内部实现共用同一工厂当作外部抽象已经统一的证据。
+- 用户纠偏：`src/capability/task/tools/task-middleware.ts` 这类路径和命名本身就是设计问题，不能因为代码能跑就忽略目录语义。
+- 防错规则：评估架构收口时，把“目录名/文件名是否准确表达模块责任”作为一级检查项；凡是 `tools/xxx-middleware.ts` 这种 owner 含混的结构，都要重新裁决归属和命名。
+- 用户进一步纠偏：主 agent 默认就是 team leader，不应把主会话先建模成 `global/bootstrap` 再额外进入 leader 身份。
+- 防错规则：设计 Team surface 时，默认从“main agent = leader”出发；只有 active team 是否存在是变量，leader 身份本身不是可选语境。
+- 用户纠偏：`task/capability.ts`、`task/delegation/runtime.ts`、`createSharedTaskMiddleware`/`createTaskMiddleware`、`createTeamSurfaceMiddleware`/`createTeamContextMiddleware` 这类命名和拆分会直接制造理解成本。
+- 防错规则：同一 capability 对外只保留一个主 middleware 名字；如果只是不同运行模式，收成同一个工厂的不同 options，不要暴露两套让读者猜区别的 public API。
+- 用户进一步裁决：`Task` 和 `Team` 的能力限制不要靠再拆第二个 middleware 名字解决；应在 runtime 里基于 `agentType` / `teamType` 动态过滤工具。
+- 防错规则：如果限制条件本质是“当前 agent 身份不同”，优先做动态 tool visibility/filtering，而不是再发明一个平行 middleware 名字去表达同一 capability 的不同模式。
+- 用户严厉纠偏：没有好好利用现有架构特性，而是用命名分裂和层级堆砌掩盖身份差异，结果让 capability 设计一塌糊涂。
+- 防错规则：看到“同一能力拆出两个 middleware 名字”的方案时，先停下来问一句：这是不是本该由 runtime 身份/上下文动态决定的可见性问题；如果答案是是，就先改 runtime，不要继续在 capability 层补丁。
+- 用户追加硬约束：`team` 不用 `A2A/remote`，只保留和 Claude Code 一致的本地协作模型。
+- 防错规则：如果产品路径已经裁定为 local-only，就不要保留 remote/A2A 的“未来扩展位”；这类预埋设计只会污染心智和测试面，应直接删除。
+- 用户进一步裁决：`src/capability/team` 的实现机制要尽量和 Claude Code 的本地 team 模型一致，不能只是删掉 A2A 后还保留一堆自创折中层。
+- 防错规则：对标现有产品心智时，先对齐身份模型、tool surface、运行路径和 domain 边界；做不到真正同构时要明确说明边界，但不能继续保留“看起来像同一套、实际不是”的中间状态。
+- 用户继续纠偏：既然 `LocalTransport`、`SharedState`、`TeamPersistence` 都是该域唯一实现，就不要再额外套一层薄子目录。
+- 防错规则：当某个 capability 只剩单一本地实现时，默认先考虑把 owner 文件抬平到域根目录；不要保留 `transport/local-transport.ts`、`state/shared-state.ts`、`persistence/team-persistence.ts` 这种只制造层级噪音的结构。
+
+## 2026-03-19
+
+- 用户纠偏：当当前轮次先不实现、只是为了避免遗忘时，应先把分析和裁决沉淀到 `docs/` 新 markdown，而不是只留在对话里。
+- 防错规则：如果用户明确表示“先不实现，交给后续 agent/code 做”，默认产物应是可交接的设计文档，包含状态、问题、裁决、边界和后续实现入口。
+- 用户纠偏：讨论 multi-agent 设计是否与 Claude Code 一致时，不能只分析 `task / subagent`，还要并排判断 `team` 域在身份模型、控制面、结果回传和 UI 状态源上是否同步对齐。
+- 防错规则：当用户追问某个架构是否“和 Claude Code 一致”时，默认输出应覆盖相邻能力域的横向对比，并明确区分“概念一致”“执行语义一致”“控制面一致”“UI 一致”这几层，不要只给单点结论。
+- 用户纠偏：不喜欢为这类架构收口保留兼容层、遗留 shim 或双轨语义；如果决定改，就更偏向直接切到新模型。
+- 防错规则：后续涉及 `team/task/subagent` 架构收口时，默认优先 clean cut over，不设计长期兼容桥接；除非用户明确要求平滑迁移，否则不要引入 legacy shim、双状态源或过渡 API。
+- 用户纠偏：新建工作分支时，要带上用户自己的命名前缀（如 `lordfoxfairy`），并遵循仓库既有分支命名规范。
+- 防错规则：创建分支前先观察仓库现有命名模式；若用户已有固定 owner 前缀，分支名必须显式包含该前缀，不能只写通用 `chore/foo` 或 `feature/bar`。
+- 用户纠偏：当用户说“先熟悉项目、了解当前在干什么”时，不要擅自推进到“开始优化/开始实现”。
+- 防错规则：若本轮目标是理解现状、建立共同上下文，输出与动作都必须停留在阅读、梳理、总结、切分支等准备动作；没有用户明确批准前，不进入优化、改代码、跑通链路。
+- 用户纠偏：架构图要求使用纯文字 ASCII 形式，不要混用 box-drawing 线框字符，否则位置和渲染不稳定。
+- 防错规则：当用户指定“纯文字 ASCII 图”时，图中只允许使用 `+ - | / \ >` 等 ASCII 字符；即使视觉上更好看，也不要再用 Unicode 线框字符代替。
+- 用户纠偏：`Context` 不一定是主链路中的一个阶段块，像上下文、持久化、交互、观测这类能力要先判断是“推进流程”还是“侧向挂载”。
+- 防错规则：画全局架构图时，先区分“主执行链”和“支撑系统”；不要把不同性质的支撑能力为了归纳方便硬揉成一个大层，也不要把本质上侧挂的系统误画成主链路阶段。
+- 用户继续纠偏：既然说“右侧挂载系统”，图里就必须真正画在主链路右侧，不能只是放到图下方再用文字解释。
+- 防错规则：画带“主链路 + 侧挂系统”的 ASCII 图时，先验证空间布局是否真的体现左右关系；命名和说明不能代替图上的位置表达。
+- 用户继续纠偏：右侧挂载系统不应被画成和左侧某个单独模块一一绑定，否则会误导成局部归属关系。
+- 防错规则：表达“运行时级支撑系统”时，优先画成右侧整体支撑面，而不是把每个系统箭头挂到某个左侧框上；除非用户明确要看精确模块级依赖。
+- 用户继续纠偏：`Interaction` 不属于和 `Context / Durability / Observability` 同类的运行时右侧支撑系统，它更靠近入口/出口边界。
+- 防错规则：区分“运行时内部支撑系统”和“交互边界层”；像 channel、HIL、结果呈现这类能力，先判断是否更接近 entry/result surface，再决定是否放到右侧运行时支撑面。
+- 用户纠偏：当用户要求“与设计稿严格一致，多余一个 ts 都不可以”时，不能再用“功能覆盖了设计稿”来宣称完成。
+- 防错规则：遇到“严格同构设计稿”任务时，必须把目录结构、文件命名、文件数量、层级位置也纳入验收；实现前先做文件树比对，结果汇报时明确区分“功能一致”和“结构一致”。
+- 用户继续纠偏：当用户要求用真实 `bun run dev` 看 live 行为时，不能再拿旧 session 日志或测试结论当作当前事实。
+- 防错规则：凡是 CLI/live bug，都先重新跑当前工作树的真实 prompt，并检查最新会话日志；旧 checkpoint 只能作为历史线索，不能替代当前复现结果。
+- 用户纠偏：desktop 产品文档必须严格服从当前 `src` 已有能力，不能把未来后端 contract、未来工作台能力、OpenClaw 借鉴目标态直接写成现状。
+- 防错规则：写 desktop 文档时，先建立 `current surface map`，所有页面、Figma、实现计划都只能声明当前后端真实支撑的能力；未来能力只能写成显式 deferred/target，不能混在 current surface 里。
+- 用户继续纠偏：架构文档需要在原有心智基础上做整体打磨和融会，而不是不停往下追加局部补丁段落。
+- 防错规则：当全局架构讨论连续出现多次边界纠偏时，优先整体重写文档结构，使概念、图、目录、依赖约束一次对齐；不要靠局部段落叠加维持一致性。
+- 用户继续纠偏：像 `providers`、`middleware`、`hooks` 这类关键域，不能因为先有一个“看起来合理”的目录位置就仓促定案；如果一级目录归属和机制边界没收死，就不要假装目录规划已经成熟。
+- 防错规则：做目标目录架构时，先区分“已经裁决稳定的域”和“仍需进一步裁决的机制域”；对后者要显式标记为待收口，而不是直接塞进一级目录后让用户来拆雷。
+- 用户关键纠偏：当前系统的核心设计理念本来就是依赖 middleware 做插拔扩展；如果为了收边界而把 policy/kernel/context-view 拆得过硬，反而会把 hooks + agent loop + middleware 的原始架构打散。
+- 防错规则：当系统的既有核心理念是“middleware-first extensibility”时，优先保留 `agent loop -> pipeline -> middleware` 作为主骨架；任何进一步分层都必须服务于这条骨架，不能反过来削弱 middleware 作为主要扩展机制的地位。
+- 用户纠偏：当用户说“在当前项目的 tmp 目录下”时，目标应解析为当前仓库内的 `tmp/`，而不是系统全局 `/tmp/`。
+- 防错规则：涉及相对位置描述如“当前项目下”“仓库里”时，默认解析到当前工作区路径；只有用户明确说系统级目录时，才使用 `/tmp` 这类全局路径。
+- 用户纠偏：能力目录命名不能和现有核心概念冲突；delegation 的内部能力根不能再叫 `agent/`，否则会和 `core/agent` 及公开 `Agent` 语义打架。
+- 防错规则：做目录级重构时，先检查仓库已有顶层术语和公开 API 术语是否冲突；内部模块名要避免和核心产品对象或主运行时概念重名。
+- 用户纠偏：subagent 的 middleware、system-message、launch/recovery 逻辑应由 subagent 能力自己管理，不要再混进 task coordination 或共享 task middleware。
+- 防错规则：当一个能力既有 coordination 面又有 delegation/runtime 面时，优先让 delegation 侧自持 middleware、prompt、runtime 与 persistence；不要为了“复用”把两侧重新揉回共同入口。
+- 用户继续纠偏：subagent 恢复不能依赖 run-store 里的 bootstrap 快照，也不该在恢复时重新猜测/重编 child bootstrap；更稳的是把恢复规格挂到 pause/approval 控制面元数据上。
+- 防错规则：以后做 delegated child restart/review resume 时，优先把稳定恢复规格写进 pause/approval metadata，再从该 metadata 重建 child runtime；不要把 `toolNames/systemMessages/maxTurns` 之类 bootstrap 字段塞回 run-store。
+- 用户继续纠偏：subagent 的 child bootstrap middleware、system-message handoff、completion guard 不要继续挤在一个大 middleware 文件里；即使后端文件略多一点，也要按 ownership 拆清楚。
+- 防错规则：当一个 middleware 文件同时承担 child bootstrap、completion handoff、tool-call policing 三类职责时，优先按 ownership 拆成少量有边界的模块；不要为了“少文件”继续保留混合神文件。
+- 用户继续纠偏：目录层级本身就是架构契约；即使逻辑没错，像 `task/types.ts` 这种根级混放也会持续误导后续维护者。
+- 防错规则：做 capability 重构时，同时审查“功能边界”和“目录边界”；如果一个目录名已经被裁定只代表某一子域，就把 types/store/middleware 一起下沉到该子域，不要保留根级历史壳子。
+- 用户继续纠偏：`subagent/agent.ts` 这种命名会和 `core/agent` 的主语直接打架，哪怕内容本身没错，也应该改掉。
+- 防错规则：给 capability 文件命名时，先检查它是否会和仓库的主运行时概念冲突；如果文件只拥有 delegated child 这类局部职责，就用更窄的名字，不要抢占通用术语。
+
+- Desktop workbench must prioritize the main chat/runtime canvas width; do not over-compress the primary workspace for side rails or decorative panels.
+- Desktop shell hierarchy should mirror CLI mental priority: active chat/work first, session context second, diagnostics and utilities third.
+- Team visibility should be reachable from session context as related sub-sessions or delegated work, not only as an isolated top-level control surface.
+
+- desktop 产品与 UI 设计不得锚定旧 desktop 页面实现；应以 ARCHITECTURE.md + src 真实能力面为准，旧 desktop 只作为落地容器。
+- Chat 视觉必须优先接近 CLI 的连续单画布层级；避免把消息、相关工作、状态拆成多块拼板式卡片。
+- 用户纠偏：desktop 左侧导航不能卡片化、分组化得太重；应更接近 Claude Code 那种窄、稳、低噪声的层级，不抢主工作面。
+- 防错规则：设计 desktop shell 时，先保证主消息/主工作画布最大化，再把导航收成轻量结构；不要为了信息分组把 sidebar 做成视觉主角。
+- 用户纠偏：Chat 主工作面必须继续向 Claude Code 的连续终端感靠拢，避免 panel/card/dashboard 气质。
+- 防错规则：设计 chat 时，优先采用单一滚动日志面、弱化块状卡片边界、减少彩色状态块，让交互像工作流而不是看板。
+- 用户继续纠偏：评估 Chat 好不好看，不能只看结构对不对，要站在长时间真实使用者的角度判断它是否舒适、自然、愿意久待。
+- 防错规则：设计主工作面时，先问“如果我要连续工作两小时，愿不愿意一直盯着这个界面”；凡是重复标签、厚重块、强装饰、无意义分栏，都优先删。
+- 用户继续纠偏：喜欢“有层次感”的界面，不接受为了像终端而把层级全部压平。
+- 防错规则：设计 Chat 和 shell 时，目标不是纯平终端，而是“有层次但不拼板”；要保留壳层、会话层、消息层、动作层四级秩序，同时避免 dashboard 化。
+- 用户继续纠偏：Chat 仍然应首先像正常聊天界面，左右对话关系要清楚；不能为了追求 transcript 感把主消息骨架做成一行一行日志。
+- 防错规则：设计 agent chat 时，先保证 user/assistant 的对话骨架成立，再把 tool/thinking/pause 作为附着在 assistant turn 下的次级运行块；不要让运行记录反客为主。
+- 用户继续纠偏：即使 drawer 默认关闭，Chat 也不能保留 split-pane 的空位或提示列，否则主工作面仍然会显得窄和别扭。
+- 防错规则：Chat 默认态必须是单主列 conversation canvas；drawer hint 只能退到 header/session metadata，不能作为关闭态下的独立侧列存在。
+- 用户继续纠偏：Chat 需要更强的层级树感，运行块最好可折叠，方便快速浏览和展开细节。
+- 防错规则：assistant turn 下的 tool/thinking/pause 优先实现为可折叠树节点；不要只靠颜色和缩进表达层级，默认应支持折叠收起不常看的运行细节。
+- 用户继续纠偏：如果树节点没有稳定的边框，层级会发虚；但边框不能扩散到整页所有层。
+- 防错规则：Chat 中只给可折叠 runtime 树节点保留边框，正文气泡和外层容器避免重复描边；树层级靠“连接线 + 节点边框”稳定表达。
+- 用户继续纠偏：稳定的 disclosure 规则必须覆盖所有折叠层，不只是 tool 节点；否则体验会反复变。
+- 防错规则：设计可折叠运行树时，把根节点、tool、reasoning、pause 都纳入同一 disclosure 体系，统一摘要高度、箭头位置、边框和展开行为。
+- 用户继续纠偏：折叠和展开不能导致节点横向尺寸变化，否则体验会明显发飘。
+- 防错规则：所有 runtime disclosure 必须占据固定 lane 宽度；收起和展开只允许改变子树高度，不允许 summary 行因内容多少而收缩宽度。
+- 用户纠偏：多 agent/task 的核心问题不只是“展示来源稳不稳”，而是 orchestration 语义是否成立，包括依赖顺序、阻塞、审批队列、恢复与 TaskList 控制面。
+- 防错规则：当用户讨论 task/subagent/team 的 UX 和语义时，先判断需求是不是 scheduler/control-plane 级别；若是，就不能把“事件流改为稳定查询”误报成问题已解决，必须显式覆盖 dependency graph、blocking、approval queue、resume/recovery 与 source-of-truth。
+- 用户继续纠偏：多个 agent 同时需要审批时，不能只冒出一个 pause；这不是单纯展示 bug，而是 runtime 仍然只有单 `pendingPause` 心智。
+- 防错规则：只要用户提到“多个并行 agent/worker 的审批同时存在”，就必须检查 runtime 是否仍是单 pause 槽位；若是，优先把它裁定为 `ApprovalQueue/control-plane` 设计问题，而不是先修面板渲染。
+- 用户继续纠偏：局部绿测和面板稳定不代表 `tasks / teams` 域已经完成；只有当 background run、leader inbox、completion gate 这些主语义也收口后，才能对外说“多 agent 这块完成了”。
+- 防错规则：遇到 orchestration 域时，先检查执行语义是否闭环，再看测试是否全绿；如果 `Task` 仍是同步委派或 `Team` 仍能无条件 completed，就不能把该域标记为完成。
+- 用户继续纠偏：不要在 task/team 域还有明显 orchestration 语义缺口时就提前通知“已经完成”；只有 background semantics、approval queue、completion gate、CLI control plane 都闭环并验证后，才允许宣告完成。
+- 防错规则：凡是多 agent 域的工作，在发出“做完了/可以提 PR”之前，必须逐项检查 `task background path`、`team completion gate`、`leader/worker communication path`、`approval queue UI` 是否都已经落到真实控制面并通过验证；任何一项还是半成品，都不能提前收尾。
+- 用户继续纠偏：`Need approval before destructive action...` 这种审批文案不能直接当成 Chat 里的普通 runtime 文本；desktop 必须对应 CLI 的 HIL 审批面板与状态机。
+- 防错规则：只要用户提到 approval / HIL / blocked turn，就必须先回看 CLI 的真实审批交互，再把 desktop 设计成“transcript 里只有 compact 阻塞入口，真正审批在独立 panel/drawer 中完成”，不能偷懒画成一条说明文字。
+- 用户继续纠偏：折叠树节点的体验问题不只是边框，还包括折叠/展开前后 summary 行本身不能换一种 UI。
+- 防错规则：任何 disclosure 组件都要保证 summary 行在收起/展开前后保持同一宽度、同一高度、同一边框语言；变化只能发生在子内容高度，而不是 header 自身的布局或视觉语法。
+- 用户继续纠偏：当用户追问一个已提出但尚未正面回答的产品问题时，不能继续只做周边打磨而不直接给出判断。
+- 防错规则：像 `message channel / gateway` 这类边界问题，只要用户明确问“怎么设计”，就必须先给出明确结论：它当前是不是产品对象、在哪些页面出现、为什么不做独立页面；然后再去改文档和预览。
+- 用户继续纠偏：`gateway / channel / delivery / transport` 这些词如果在产品文档里混着用，会让人误解是否存在一个独立渠道产品面。
+- 防错规则：当前 Codara desktop 对外统一用 `Delivery` 表达用户可见的运输/恢复上下文；`gateway / channel / transport` 只留给实现和架构语境，除非真的引入独立多渠道产品能力，否则不要把它们包装成页面对象。
+- 用户继续纠偏：desktop 里的 `Need approval before destructive action...` 不能只是一句普通 runtime 文本；它必须对应 CLI 的真实 HIL 审批面板和状态机。
+- 防错规则：只要出现 pause / approval / blocked turn，就优先对照 CLI 的 `permission-review`、`ask-user`、`generic review` 三类真实交互；desktop 只能把它们做成阻塞入口 + 对应审批面板，不能简化成一条说明文字。
+- 用户继续纠偏：产品预览和页面文案里不能一会儿说 `Delivery`、一会儿又把 `gateway / channel / transport` 暴露给用户，否则会误解成存在独立渠道产品面。
+- 防错规则：desktop 的用户可见预览、UI 文案、线框标题默认只使用 `Delivery`；`gateway / channel / transport` 只允许留在内部架构说明或明确标注的实现语境里。
+
+## 2026-03-20
+
+- 用户继续纠偏：后台 task 完成后如果只有 system notice、没有 assistant 风格的收尾回复，体验上仍然像“主代理失联”。
+- 防错规则：修 task/subagent 完成体验时，不能只满足“列表还在”和“有 notice”；如果用户期待主线程收尾，至少要补一条 assistant-style transcript anchor，而不是只留 system 文本提醒。
+- 用户继续纠偏：running task 的 elapsed 不能只在新 event 到来时跳一下，否则刚启动就会卡在 `0ms`，看起来像任务没动。
+- 防错规则：凡是 CLI 上展示“运行中耗时”的地方，都不能直接绑死在 event timestamp 上；如果对象仍在 running/paused 态，必须有独立的轻量 tick 来刷新 elapsed。
+- 用户继续纠偏：AskUser 的 `[Next]` 不能只是提示文案，题目页必须有真实可聚焦的下一步动作，而 `Submit` 必须是独立的最终 tab/结束页，不能和题目页动作混在一起。
+- 防错规则：设计 AskUser 多步流时，先拆成“题目内容页”和“最终提交页”两层；题目页只允许 `选项/输入 + Next`，最终页才允许 `Submit/Chat about this`，不要再把提交动作提前暴露到问题步骤里。
+- 用户继续纠偏：AskUser 不需要把“是否允许自由输入”设计成复杂 schema 分支，CLI 交互层应默认允许每个问题自定义输入，而工具生成层应尽量输出明确的单选/多选题。
+- 防错规则：AskUser 的 schema/prompt 只把 `select`、`multiselect`、`text` 当主路径；前端默认允许自定义文本覆盖当前题目答案，不要为了“可补充输入”强迫模型频繁生成 `mixed` 或 placeholder 伪选项。
+- 用户继续纠偏：Task/subagent 的 transcript 里不能同时出现 parent Task tool 的合成块和 child runtime task 的真实块；同一个 Explore 只应显示一条主线。
+- 防错规则：处理 delegated task transcript 时，先区分“观测层合成 task 块”和“runtime task root”；如果两者表示的是同一次 delegation，必须只保留一个 source of truth，不能把 synthetic tool wrapper 和 real runtime task 同时渲染出来。
+- 用户纠偏：AskUser 的多 tab 表单不能把高亮选项和最终提交混成一个 `Enter`；只有显式聚焦到 `Submit` 动作后才应真正提交，`Space` 应负责选中当前项。
+- 防错规则：处理 AskUser/HIL 键盘流时，先分清 `select/confirm` 和 `submit/resume` 两层状态机；在 options focus 上默认只允许激活当前选择或推进 tab，禁止直接把 `Enter` 绑定成最终提交。
+- 用户继续纠偏：AskUser 的 `Space` 只能做选择，不能顺手把单选题推进到下一个 tab；单选要用 radio 样式，多选才用 checkbox，select-only 步骤里也不该露出 `Answer/Actions` 噪音。
+- 防错规则：做 AskUser 表单 UI 时，先按当前 tab 的输入类型决定展示和键盘语义；`select` = radio + `Space` 仅选择，`multiselect` = checkbox + `Space` 切换，只有显式 `Enter next`/tab 导航才允许推进步骤，未到提交阶段不要渲染多余输入框和 action bar。
+- 用户继续纠偏：多 tab AskUser 不能把所有标签硬挤在一行里，长中文标签会直接把导航打烂。
+- 防错规则：AskUser tab 数超过少量时，默认用紧凑 step navigator 或窗口化 tabs；没有宽度预算前，不要把全部 tab label 平铺到同一行。
+- 用户继续纠偏：聊天输入框的多行粘贴不能因为裸换行块被当成 `Enter` 而丢字或提前发送。
+- 防错规则：处理 prompt 输入时，区分“真实回车键”和“粘贴流里的换行文本块”；只有明确的 `key.return` 才能触发 submit，裸换行字符默认按文本插入处理。
+- 用户继续纠偏：即便终端把粘贴块附带了回车元数据，只要该输入块本身带正文内容，也不能当成真实“发送键”。
+- 防错规则：解析 CLI 输入事件时，先判断该事件是不是“空输入 + Enter”再提交；凡是 `input` 本身包含正文内容的事件，即使带 `return` 元数据，也优先按粘贴文本处理。
+- 用户继续纠偏：修“带正文的 paste chunk 不要误发”时，不能顺手把真正的 Enter 键也挡掉，否则贴完内容后用户根本发不出去。
+- 防错规则：区分 `Enter` 与粘贴块时，必须单独保留 `input === '' | '\\r' | '\\n'` 的真实提交路径；只有“带其他正文字符的 return 事件”才走文本插入。
+- 用户继续纠偏：prompt 输入框对中文/全角字符的显示宽度判断不准，会造成多行粘贴看起来像缺字、串行、重叠。
+- 防错规则：所有 CLI 文本布局，尤其是 composer/prompt/浮窗宽度计算，默认按终端显示宽度处理，不要直接拿 JS `string.length` 当列宽；遇到 CJK、emoji、全角标点时必须先验证 display-width 行为。
+- 用户继续纠偏：多行中文 prompt 粘贴进聊天输入框时，如果保留了 `\r`，显示会比“丢字”更糟，直接出现覆盖和串线。
+- 防错规则：CLI 输入链只要接收剪贴板/终端粘贴文本，就要在进入 composer 之前或进入 composer 时统一把 `\r\n` / `\r` 规范成 `\n`；不要把 carriage return 留到渲染层。
+- 用户继续纠偏：即便文本已经完整进了 composer，只要输入框还保留默认 viewport 裁切，用户看到的仍然会是 `...`，体验上等于“没有完整展示”。
+- 防错规则：聊天输入框默认应展示完整 composer 内容；只有在非常明确的空间约束场景下，才允许显式传入 `lineLimit` 做裁切，不能把“内部滚动视口”当成默认行为。
+- 用户继续纠偏：AskUser 不能一边展示问题 tab，一边还把聊天输入框留在下面；这会让 review 和 chat 两套交互同时争抢前景。
+- 防错规则：只要 AskUser/HIL review 进入主前景，默认先隐藏聊天输入框，让 review 独占当前交互；除非用户明确要“双层并存”，否则不要把 prompt frame 留在下面制造噪音。
+- 用户继续纠偏：AskUser 的问题步骤不该暴露 `Submit/Chat` 两个可选动作，更不能在未完成所有 tab 前就让用户摸到提交。
+- 防错规则：AskUser 的 question flow 和 final action flow 必须分层；问题步骤只允许在当前问题和 tab 之间导航，最终提交动作只能放在所有问题完成后的虚拟结束步骤里。
+- 用户继续纠偏：如果 AskUser 题目同时给了选项和自由输入入口，但没有显式 `input` 类型，不能默认收成单选。
+- 防错规则：AskUser form 解析时，`options + placeholder` 默认推断为 `mixed`，`placeholder only` 推断为 `text`；不要一看到 options 就一律降成 `select`。
+- 用户纠偏：Task 展示应区分 transcript 主线和 task list 辅助面；前者只保留一条 agent 层级主线，后者保持纯 checklist，不要把同一委派对象重复画在两处且样式混杂。
+- 防错规则：处理 delegated task UI 时，先判断 launch/result 是不是已经由 runtime event 主线覆盖；如果是，就不要再把原始 `ToolMessage` 当第二套可见 UI，同时 task 面板默认只显示任务条目，不展示工具级活动明细。
+- 用户纠偏：AskUser 不是对话流里的普通内联块，而是独立悬浮 review 窗，位置应挂在聊天输入区下方。
+- 防错规则：处理 AskUser/HIL 展示时，先确认它属于 transcript 内联、prompt 下方浮层，还是独立审批中心；不能默认沿用普通消息块布局。
+- 用户纠偏：当某一块展示已经确认“ok”时，后续实现要立刻从范围里拿掉，不要顺手继续打磨已通过区域。
+- 防错规则：如果用户明确收口为“只改剩下两个问题”，就把已验收的区域冻结，只做剩余目标和它们的直接回归测试。
+- 用户纠偏：`main` 的 base system message 不需要重建，子代理和 team worker 只应直接继承它；禁止为了“统一”再走一层 prompt rebuild。
+- 防错规则：涉及 `main -> task/team` prompt 继承时，先找运行时启动接缝做 direct copy；除非用户明确要求，否则不要引入新的 rebuild/helper/source plumbing。
+- 用户继续纠偏：这类 prompt 继承修复要优先用最小改动完成，不要把“两个接缝修补”扩写成整条装配链重构。
+- 防错规则：当问题本质是 runtime handoff 缺一两处传递时，先按最小 patch 修正目标接缝；只有用户明确要求时，才允许继续抽象化或统一 builder。
+- 用户纠偏：旧 team 的残留状态不该干扰当前运行展示，CLI 只需要稳定展示当前最新的 team。
+- 防错规则：当多 team 同时存在但只有最新一个是当前工作流时，优先在展示层过滤到最新活动 team，而不是把历史残留全部堆给用户。
+- 用户继续纠偏：teams 面板关注的不是“全局最新 active team”，而是当前 session/runtime 自己拥有的 teams；共享配置可以存在，但展示与详情要按当前 session 作用域收口。
+- 防错规则：处理 runtime team 可见性时，先确认 source of truth 是不是当前 session ownership；如果是，就在创建时写入 `sessionId`，在 facade/query 层按 session 过滤，而不是在展示层拍脑袋取“最新一个”。
+- 用户再次纠偏：如果 team 的作用域设计会明显损伤自由度和可探索性，就不要硬做 session 级可见性裁剪；默认全展示比错误的“智能过滤”更稳。
+- 防错规则：涉及 task/team 面板时，优先保证用户自由查看全部运行对象；只有当隐藏规则有非常明确、稳定、可解释的 runtime owner 机制时，才允许做作用域过滤，否则默认全展示。
+- 用户纠偏：`task/subagent` 的问题不只是“正在运行时能看到”，还包括后台完成后必须有稳定落点；不能只闪一下列表，然后既没有 final reply 也没有 completion anchor。
+- 防错规则：修多 agent 展示时，必须同时检查运行中可见性和完成后沉淀；如果后台对象结束后只剩短暂 transient panel，而没有 notice/final summary/scrollback anchor，就不能算修好。
+- 用户纠偏：在这种跨 `task / team / approval / CLI` 的大域收口里，要尽可能使用子代理并行加速，不能让主线程自己慢慢串行推进。
+- 防错规则：只要任务能拆成两个以上独立 tack，就默认先派子代理并行做实现、审查或回归，主线程只保留集成、补丁和最终验证；除非存在明确共享写集冲突，否则不要保守串行。
+- 用户纠偏：`task` 和 `team` 不是一个东西；讨论多 agent 编排时，不能把二者混成同一层语义或用一个结论同时覆盖两者。
+- 防错规则：后续解释 `task / subagent` 与 `team` 时，先分别声明对象、职责、状态面和控制权，再讨论它们如何协作；没有完成边界拆分前，不允许把两者并列混讲成“同一套东西”。
+- 用户纠偏：desktop 大改时不要出现“兼容旧内容/旧结构”的设计与表述，不要保留 shim、兼容层、双轨结构。
+- 防错规则：当用户允许 desktop 大规模重构时，默认直接切到新架构；旧 `components/hooks/pages/types` 视为待替换资产，不为它们设计过渡兼容面，除非用户明确要求保留外部 API。
+- 用户纠偏：desktop 实现阶段必须严格对齐已经确认的 `docs/desktop` 与 Figma，不能实现时再按个人偏好改交互和视觉层级。
+- 防错规则：进入 desktop 落地时，把 `docs/desktop` + Figma 视为硬约束；任何 shell/chat/HIL 交互与视觉差异都应先回到设计源修正，而不是在代码里临时发明新的 UI 方案。
+- 用户继续纠偏：如果当前 desktop 实现明显偏离 Figma，就不要试图修修补补或保留旧路径，直接删除错误实现，按唯一设计源重建。
+- 防错规则：desktop 落地时一旦发现双轨结构、错页映射或视觉骨架偏离 Figma，就优先删掉偏离实现；不允许为了“先能跑”继续保留旧结构并行。
+- 用户继续纠偏：重写 desktop shell 时，如果组件类名已经切到新合同，但 CSS 还停留在旧合同，页面会直接塌成普通文档流；这种问题不能等截图后再补。
+- 防错规则：每次重写 shell/header/sidebar 等基础骨架时，必须先做一次“类名合同对齐检查”：TSX 中出现的核心 `desktop-shell-*` 类名，在样式层必须有完整定义后才能宣称页面已可验证；否则先补样式契约，再看业务页面。
+- 用户继续纠偏：desktop 的左 rail 必须一直是桌面应用里的固定保留槽位，只能折叠变窄，不能掉成网页式整行导航或把 session 列表漂成独立页面内容。
+- 防错规则：只要在做 desktop shell/rail，就把 rail 当作固定应用 chrome 处理；任何响应式、折叠、展开都只能改变 rail 内部密度和宽度，不能把导航结构迁移到主画布或让主内容重新变成网页文档流。
+- 用户继续纠偏：`Sessions` 能力应该挂在左 rail 的 `Sessions` 节点下面，展开时内部滚动，不应该在 rail 里无限展开成第二个独立分区。
+- 防错规则：desktop 侧栏里凡是列表型二级资源，都优先内嵌到对应导航节点并设置明确的滚动容器和高度上限；不能把它们做成脱离节点的独立长列表，否则很快会破坏 shell 的层级与稳定性。
+- 用户继续纠偏：`task list` 和运行态执行层级不是一回事；前者要保持纯任务列表，后者应在 transcript 里以并行聚合块呈现，而不是把每个 running task 都渲染成静态工具结果。
+- 防错规则：处理并行 task/subagent 展示时，先把“总览列表”和“动态执行层级”拆成两层：`TaskPanel` 只保留 checklist/状态，`ActiveTranscript` 才负责 `Running N tasks...` 这类聚合 orchestration block；不要再复用同一种静态工具块样式去承担两者。
+- 用户继续纠偏：`Tasks` 面板既然是纯任务列表，就不要再偷偷塞 elapsed、tool 数、token 数；这些动态细节应该留在 transcript 的运行态块里。
+- 防错规则：凡是 checklist 型 side panel，一旦用户明确说“只展示任务”，就只保留身份与状态最小集；任何 elapsed、activity、tokens 之类的动态信息都必须回到主 transcript/detail 层，不要在列表里复活。
+- 用户继续纠偏：新产生的 background/task 收尾内容不能倒挂到旧内容上面；顺序必须沿着会话自然往下走，成功完成时也不该再重复挂一条 system notice 抢走主落点。
+- 防错规则：处理 background task 完成链时，先确认“具体内容的主落点”是谁。成功路径默认只保留 assistant-style follow-up；新的 notices 在下一轮 solidify 之前要留在 active transcript 尾部，绝不能因为 static scrollback 分层而插到旧内容上方。
+- 用户继续纠偏：单个 task 时不需要再额外显示 `Tasks` list；只有并行多个 task 时，这个总览面板才有价值。
+- 防错规则：涉及 task side panel 时，先判断当前是不是“单任务”还是“并行任务”。单任务默认只保留 transcript 主线，避免重复；只有 `2+` 个 task 时才显示列表型总览面板。
+- 用户继续纠偏：完成态 task block 不应该继续像重型工具结果块那样占据主视觉；它只该保留执行轨迹摘要，最终内容应交给 assistant 收尾。
+- 防错规则：打磨 task transcript 时，把 `running` 和 `done` 分开设计。`running` 允许 orchestration-group 强调层级；`done` 则要轻量化，只保留 agent/status/elapsed 与最近工具活动，避免和最终 assistant 回复争抢主落点。
+- 用户继续纠偏：单任务的 orchestration 标题和 paused 文案也要像人话，不能一直机械地显示 `Running 1 task...` 这种 grouped 模板。
+- 防错规则：做 transcript 层级文案时，单任务和多任务分开措辞。单任务优先用自然短句（如 `Running task...`、`Task waiting for review...`），多任务再用 grouped wording；不要把复数模板硬套到所有场景。
+- 用户继续纠偏：`Task` 的启动噪音很多时候不是 UI 自己画出来的，而是模型在复述 task tool 的启动结果；如果 launch text 里还塞着 `run_id/delegate_id/agent`，模型就会很自然地生成“任务已启动/委派信息/我会持续跟踪”这一整段废话。
+- 防错规则：打磨 task/subagent 体验时，不能只盯 transcript 组件。凡是模型会读到的 tool return text，也必须按“面向父代理的内部指令”设计：少元数据、少播报、明确禁止二次复述；launch/runtime bookkeeping ID 不应出现在用户主视图或诱导模型复述。
+- 用户继续纠偏：光靠单测和 transcript 猜测不够，`Task` 这类交互必须亲自跑 `bun run dev` 看真实 CLI；同一条 AIMessage 里如果既有 `Task` tool call 又有前奏文案，也会在真实界面里形成启动噪音。
+- 防错规则：涉及真实 CLI 流式交互时，默认用 `bun run dev` 做手工 smoke；并且把“AIMessage 是否携带 tool call”纳入渲染判断，不能只根据 tool result 或 runtime event 去压噪音。
+- 用户继续纠偏：当 transcript 已经显示 `Task` 的运行层级时，底部 `ActivityLine` 不该再单独显示 `read_file(...)` 这类 tool spinner；那会把执行层级拆成两块。
+- 防错规则：`ActivityLine` 只保留给通用 thinking/responding 状态；一旦 active transcript 已接管 running task hierarchy，task/tool 进度必须只出现在层级块内部，不能在底部再重复渲染一条独立状态线。
+- 用户继续纠偏：running task 要有“在工作中”的动态感，不能一直是静态 `⏺`；并且 completed task block 不能再把 child 最终总结正文挂回层级块下面。
+- 防错规则：打磨 task transcript 时，把 running 和 completed 作为不同视觉对象处理：running 头部允许动画 spinner，并把最新活动/实时统计留在块内；completed 只保留工具轨迹摘要，绝不回退到 summary prose 输出。
+- 用户继续纠偏：task list 不是 transcript 内容，它应该像独立悬浮窗一样存在；如果把任务面板内联到对话流里，就会破坏自然时间顺序，让用户感觉“上面打印、下面才是工具/任务”。
+- 防错规则：凡是 `TaskPanel/TeamPanel` 这类辅助总览面板，默认放在 conversation 外的 lower-window/floating chrome 区，不得内联进 transcript 主流；自然顺序只属于消息和执行层级块，辅助面板必须独立。
+- 用户继续纠偏：completed task 也要保留原来的层级头；不要把它改成扁平的 `✓ Explore...` 行，正确形态是任务头在上、`Done (...)` 在子行里，最终正文仍交给 main agent。
+- 防错规则：打磨 task 完成态时，先区分“执行轨迹”和“最终回复”。执行轨迹块继续沿用 task/tool 层级外形，只允许在子行替换状态摘要；不要为了轻量化把 completed task 扁平成新的主标题样式，也不要再用 `Task finished.` 这类泛化 notice 抢走 main-agent 收尾位置。
+- 用户继续纠偏：当用户指出 task block “工具那一行不刷新”时，优先排查 live activity 数据源和刷新优先级，不要先去优化标题文案或其他次要观感问题。
+- 防错规则：处理 task transcript 反馈时，先区分“动态更新问题”还是“文案/美观问题”。如果 live activity 看起来写死了，首先检查 `activeTask.detail` 是否优先于旧 runtime lines 渲染；只有在刷新链正确后，才讨论标题提炼和措辞优化。
+- 用户继续纠偏：并行 task 场景里预注册的 pending placeholder 不是实际 execution block，不能被 transcript 渲染成一个假的 `Done (0s)` 完成块。
+- 用户继续纠偏：teams 流里用 `TaskCreate/TaskUpdate/TaskList` 做内部协调时，这些共享任务记录也不能打印到主 transcript；它们属于内部 bookkeeping，不是对外内容。
+- 防错规则：凡是 team/task 内部协调工具（`TaskCreate` / `TaskUpdate` / `TaskList`、team bookkeeping、job planning 等），默认都先按“内部协调结果”处理，不进入主 transcript；只有 execution tree 和当前 leader/main-agent 的对外回复能进前台。
+- 防错规则：处理并行 task/subagent 的 runtime events 时，先区分“pending placeholder”和“真实 run root”。凡是为了提前占位而发出的 pending task start/end，只能用于内部 bookkeeping，不能进入 transcript execution block 渲染；真正的层级块只能来自真实 task run root。
+- 用户进一步裁决：上面主区是 execution tree，最下面才是独立的 task list；两者都应共享真实 task identity，但不能混成一个渲染层。
+- 防错规则：处理 task/subagent UI 时，先问“这是 execution tree 还是 summary list”。execution tree 必须按真实 `runId` 建稳定节点并自然往下生长；summary list 只做独立总览。不要让 placeholder、synthetic event 或列表状态穿透到上面的执行树里。
+- 用户继续纠偏：当用户明确要求“并行 2 个 subagent”时，如果运行后只有 1 个真实 task，先怀疑 turn loop 是否在第一个 detached Task 后提前退出，而不是先怪 UI 没显示出来。
+- 防错规则：遇到多 Task 编排异常时，先验证“同一 AI response 的多个 Task tool call 是否都真的执行了”。如果 `runTools()` 在第一个 detached Task 后就返回，后面的 task 永远起不来，任何 task list / transcript 修饰都治标不治本。
+- 用户继续纠偏：child task 的完成内容不能在还有 sibling task 运行时直接冒充 main agent reply。
+- 防错规则：处理 task completion follow-up 时，先判断这是不是 orchestration 中间态。只要同 session 里还有其他 task 处于 `running/paused`，就禁止把单个 child summary 提升为 assistant 主回复；否则会制造“main agent 已经总结，但其实只是某个 subagent 先完成”的假象。
+- 用户继续纠偏：detached task/subagent 完成后，最终收尾必须由 main agent 真正回来回复，不能由 controller 拿 child summary 或泛化 notice 冒充 assistant 收尾。
+- 防错规则：只要任务是 detached background run，就必须补齐 `batch all done -> compact handoff -> main-agent continuation` 这条控制链；UI 可以知道 task 完成，但如果 main agent 没拿到 compact handoff，就不允许把 child summary 直接升格成最终用户回复。
+- 用户继续纠偏：main-agent continuation 的最终回复要排在 execution tree 后面，child/subagent 的细节只留在树和隐藏 handoff 里，不应把长报告重新打印成对外正文。
+- 防错规则：处理 detached task completion 时，先分清 `execution tree` 和 `main-agent reply` 的显示顺序。完成态必须保持 `execution tree -> main-agent reply`，并且 hidden handoff 默认只提供紧凑摘要和强约束提示，禁止把 child 的长 sections/task-by-task prose 直接喂回主回复。
+- 用户继续纠偏：permission approval 和 AskUser 一样，都是独立 HIL 浮层；拿到 pause 信号就应立刻抢前景，但不该把 task list 挤掉或退回内联布局。
+- 防错规则：所有 HIL review 默认按 floating overlay 处理，不再把 permission review 特判成 inline；prompt 需隐藏，task/team summary panel 可继续保留在其上方，除非更强 overlay（session picker/command output/completion）覆盖。
+- 用户继续纠偏：并行 approvals 不是同时展开多个 review，而是前景一次只显示一个；处理完当前 approval 后，下一个 queued approval 要立刻接管前景，不能先把 HIL 清空再等刷新。
+- 防错规则：HIL queue 默认采用“single foreground review + queue banner”模型；提交当前 approval 时先把当前 review 标成 busy，直到 resume/refresh 结束后再无缝切到下一个 approval，禁止出现空窗。
+- 用户继续纠偏：单个 permission approval 提交后不应该把整个 CLI 锁在 `Running...`；这类 approval 是后台代理恢复，不是前台继续整段会话。
+- 防错规则：区分 foreground pause/AskUser 和 delegated permission approval。前者可以继续占前景并走 stream；后者必须在 submit 后尽快释放 HIL 和主输入，只把后台恢复留给 runtime/task tree 更新，不能把整段 child resume 挂在前景。
+- 用户继续纠偏：`Task started`、`Delegated task running in background`、底部单独的 `glob(...)` 这类 bookkeeping/progress 线都不该出现在用户主视图里；task/tool 进度必须挂在 execution tree 下面。
+- 防错规则：凡是 task bookkeeping 事件，一律在 transcript 层过滤；凡是底部 ActivityLine，只能服务普通 model thinking。只要还有 running/paused task，task/tool 进度就必须 exclusively 属于 execution tree，不能在底部再冒第二条。
+- 用户继续纠偏：execution tree 不能分成 active 区一套、solidified 区一套；task block 一旦落进滚动区，层级外形也必须保持一致，不能回退成旧的工具结果块。
+- 防错规则：凡是 runId-backed task item，都必须走同一套 execution-block 渲染组件；`Transcript`、`ActiveTranscript`、`SolidifiedBlock` 只允许共享渲染，不允许各自维护一条 task 样式分支。
+- 用户继续纠偏：并行 batch 中某个 subagent 先完成时，它不能从 grouped execution tree 里消失，也不能被拆成别的块；它应继续留在原 grouped block 内，只把状态更新成 `Done (...)`。
+- 防错规则：并行 task/subagent UI 默认是累积式 grouped execution tree。只要同批还有 sibling 在 running/paused，completed row 就必须继续留在 grouped block 内；底部 `Tasks` summary 也不能因为 sibling 完成而缩表。
+- 用户继续纠偏：对外输出只能来自 main agent；即使 detached task 在后台完成，也不能再用 controller 伪造 assistant follow-up 把 child summary 直接吐给用户。
+- 防错规则：处理 detached task completion 时，默认禁止任何 fake assistant notice/follow-up。用户可见的正文只能来自真实 main-agent continuation；controller 最多保留 warning/error bookkeeping，不得把 child detail 升格为对外回复。
+- 用户继续纠偏：即使不走 fake assistant follow-up，只要 coreMessages 里的 `Task` ToolMessage 还按正文渲染，child/subagent 的长摘要还是会直接冲进 transcript。
+- 防错规则：所有 `Task` ToolMessage 结果默认只允许投影成 compact execution summary，绝不允许直接把 delegated child prose 渲染到 transcript；raw child summary 只能留在 hidden handoff 或内部记录里。
+- 用户继续纠偏：`Tasks` 面板的生命周期和 execution tree 不一样；它不是“任务一完成就清空”，而是“保留上一批任务，直到下一批任务真正启动时再替换”。
+- 防错规则：处理 floating `Tasks` summary 时，先问“这是不是最新一批”。不要用简单 linger/TTL 规则；应按任务批次边界（上一批全部结束后，新批次启动）来投影面板，这样才能同时满足“保留上一批完成态”和“新批次开始时立即替换旧批次”。
+- 用户继续纠偏：`team` 的 focused detail、summary panel 和 HIL 是三层不同表面；detail 不能替代 summary，HIL 也不该因为 team/task 的存在被阻塞。
+- 防错规则：处理 team UI 时，先把 source of truth 和投影层拆开。focused team 只认 runtime `teamSurface.activeTeamId`；focused detail 由 `getTeamDetail() + runtime activity` 派生；summary panel 独立存在；HIL 永远是更高优先级的独立前景层。
+- 用户继续纠偏：controller 如果维护第二份 focused team/detail 状态，很容易把 runtime 真相和 UI 真相分裂，还会引发 React 更新循环。
+- 防错规则：凡是 focused execution/detail 类状态，优先做 render-time derivation，不要在 controller 里镜像一份可变对象；初始 hydrate/refresh effect 也要防止按函数身份重复触发，避免 `Maximum update depth exceeded` 一类循环。
+- 用户继续纠偏：`Teams` 面板和 footer 也要遵守同一套 team runtime 语义；只要 team 仍处于 running/paused，就不能把 paused 从摘要里吃掉，也不能丢掉成员选择提示。
+- 防错规则：team summary chrome 只能从 `useActiveTeams` 的聚合计数读状态，不能私自再推断一套“只有 running 才算 active”；凡是 paused team 仍然属于 active runtime surface，就必须同时体现在 summary 计数和 footer affordance 上。
+- 用户继续纠偏：默认体验里，同一时间当前会话只有一个 team；main agent 就是 leader，下面是 members/workers，不应该默认把不同分工扩成多个并列 team。
+- 防错规则：设计/实现 team UX 时，先默认“single active team + main-agent leader + worker list”。除非用户明确要求隔离的第二个 team，否则不要用多个 peer teams 表达普通分工；处于 active team focus 时，`create_team` 默认应被拒绝并引导使用 teammates/jobs。
+- 用户再次纠偏：前台产品语义不是“全局 team 列表里挑一个 active team”，而是“当前会话前台就只有一个 team”；leader 永远是当前 main agent，worker 只是这个 team 的成员，不存在默认并列 peer teams。
+- 防错规则：看到 `teams[]`、summary panel、registry list 这类结构时，先问它是不是后台持久化/恢复层，而不是前台默认交互层；默认前台只能投影 `current team workspace`，不能再把“并列 teams”当作主要 UX 心智。
+- 用户继续纠偏：main agent 不会因为进入 team 视角而“断开”；teams 是后台可持续运行的独立工作面，main 始终在前台可继续对话，只是 focus 可以自由切换到某个 team workspace 观察/交互。
+- 防错规则：设计 team 切换与前台状态时，先固定“main session 常驻、teams 后台运行、focus 可自由切换”的合同；不要把 `enter_team` 实现成离开 main 会话或必须阻塞普通对话的模式。
+- 用户再次纠偏：切换到某个 team 后，前台对话对象应变成这个 team 的 leader 视角；也就是用户是在和“该 team 的 main/leader agent”对话，而不是继续对全局 main agent 发话。
+- 防错规则：实现 `enter_team` / focused team workspace 时，先区分“全局主会话常驻”与“当前输入路由到哪个 leader 视角”。切到 team 后，输入默认应路由到该 team 的 leader；只有离开 team focus 后，才回到全局 main 对话面。
+- 用户继续纠偏：当 focused team detail 已经在前景显示成员/作业时，再保留一个多-team summary 面板会把语义重新拉回“并列多个 team”，体验是错的。
+- 防错规则：当 focused team detail 可见时，team summary panel 默认隐藏；summary panel 只服务 unfocused/global overview，不和当前 active team detail 并列强调。
+- 用户继续纠偏：虽然 runtime 不会自动生成 leader session，但 UI 上仍然要把 main agent 明确展示成 leader 成员，否则用户会觉得“没有 leader，只有 workers”。
+- 防错规则：只要 focused team detail 里没有 leader 成员记录，就在投影层补一个 synthetic leader row（main agent），让产品语义和 runtime 实现保持一致。
+- 用户继续纠偏：默认 team 体验应该继续往“单 active team、leader-first、按需补 worker”收，没用的 multi-team dashboard 心智和入口该删就删，不要为了兼容旧想法把它们继续留在默认路径里。
+- 防错规则：当用户确认 single-team 默认模型后，优先删除未接入真实前台的 multi-team dashboard/hook/文案；把 `spawn_teammate` 设为默认入口，把 `create_team/list_teams/enter_team` 降级为高级手动能力，避免默认体验继续暴露 registry-first 心智。
+- 用户继续纠偏：当前阶段先收前端 `review/HIL` 体验，后端控制面先别乱扩。
+- 防错规则：当用户明确说“前端的哈，后端还可以”时，把目标收紧到 shell/render/state/UI 分层；不要借机继续改 backend review/task contracts，除非前端 extraction 真被后端接口卡住。
+- 用户继续纠偏：用户担心的是“一个 ts 文件逻辑超级多”，不能只是把大文件从 `review-panel.tsx` 搬到另一个 AskUser body 文件里。
+- 防错规则：做前端拆分时，检查“是否只是把神文件换了个名字”。如果 `review-panel` 拆开后 `ask-user-review.tsx` 继续承担 question step + submit step + tab strip + helper glue，就要继续拆到 step renderer 层，而不是过早收工。
+- 用户继续纠偏：team 协调时主 transcript 不该刷 leader 的启动说明、team bookkeeping 或 `write_todos` 这类中间噪音；当前 team workspace 自己才是主要过程表面。
+- 防错规则：只要 current team workspace 已经接管展示，就压掉 leader launch/progress chatter，以及 `team_status / plan_jobs / assign_job / write_todos` 这类 bookkeeping transcript；主 transcript 只保留真正需要用户看到的外部回复与审批。
+- 用户继续纠偏：默认 CLI 前台不该再有一个独立 TeamPanel/summary shell；当前 team detail 本身就是主表面。
+- 防错规则：当产品心智已确定为 `current team workspace first` 时，删除默认路径里的 team summary panel，而不是继续用条件分支弱化它；team 运行计数只留给 footer/status 等辅助位。
+
+## 2026-03-21
+
+- 用户继续纠偏：team leader 是常驻的 current main agent；worker 应视为本次编排的临时执行者，整批工作完成后默认自动退出/收口，不应长期占据前台成员列表。
+- 防错规则：设计 team 生命周期时，先拆 leader 和 worker。leader 代表当前会话持续存在；worker 只服务当前一批 jobs，批次结束后要自动 teardown 或至少默认从前台活跃成员视图移除。
+- 用户继续纠偏：`teams` 路径里的 shared-task 泄漏是 team 内部 bookkeeping 边界问题，不是“把所有 TaskCreate/TaskUpdate/TaskList 全局吞掉”就算修好。
+- 防错规则：遇到 team/workspace 特化泄漏时，优先给内部协调结果加来源/可见性标记，再按标记在 transcript 中压掉；不要用全局 suppress 误伤普通 task/subagent/shared-task 路径。
+- 用户继续纠偏：当用户说“我要的一模一样是 review 的 askuser 这一块设计”时，不要再去擅自改 `welcome` 或其他外围 UI；只处理目标 review surface。
+- 防错规则：做截图级 UI 对齐时，先锁定“哪些区域是合同，哪些区域不在范围”。如果用户只指定 AskUser review，就只改 review-panel/review-state/review-input 这一条链，避免把外围 welcome/transcript 一起重设计。
+- 用户继续纠偏：多选 AskUser 的 custom 行绝不能复用已选 preset 文本；preset selections 与 custom draft 必须始终分离。
+- 防错规则：处理 AskUser multiselect 时，把“preset 选中集合”和“custom 行 draft”视为两套独立状态；任何进入 custom 行、切回 preset、或渲染 custom placeholder 的路径，都不能读取整题答案摘要当作 custom 值。
+- 用户继续纠偏：在 AskUser multiselect 里，`Type something.` 本身也应像一个可选项，用户可以先勾上，后续再补充自定义内容。
+- 防错规则：设计 AskUser multiselect custom row 时，必须把“custom row 已被选中”和“当前正在编辑 custom draft”分开建模；不能只靠 draft 是否非空来决定 custom row 的选中态。
+- 用户继续纠偏：AskUser 最终 `Submit answers` 阶段也可能撞到 `Agent is currently running.`；这说明 review UI 已经出现，但底层前台 pause 还没完全从 running 落成 paused。
+- 防错规则：前台 AskUser / review 的最终 resume 不能假设“只要 review 已渲染就一定可 resume”；提交前必须确认对应 foreground pause 已经真正稳定到非 running，再发 resume。
+- 用户继续纠偏：允许重构时，不能只把状态结构改成 `focusedSurface`，却把旧 `inputTarget`/双输入 hook 名字和入口继续留着；这样会留下半套旧心智。
+- 防错规则：做控制面重构时，要同时收口“状态模型、入口 wiring、命名”。如果已经切到单一 routed ingress，就删除旧 hook 和旧名词，不保留并行入口或 `input target` 残影。
+- 用户继续纠偏：AskUser 最终 `Submit answers` 之后，如果 runtime 的 review/pause 移除稍慢，前台不能把同一份问卷重新投影回来；用户看到的是“重置重新选”，这是严重交互错误。
+- 防错规则：处理 review submit 完成态时，要把“UI 已提交”和“runtime 已彻底移除该 review”分开建模。对刚提交的 foreground review，在 runtime settle 期间默认 suppress 同 id 的再投影，直到它真正消失。
+- 用户继续纠偏：AskUserQuestion 的 tool args 里某个字段形状坏掉时，不能直接把整条 middleware 链炸穿；用户看到的会是无意义的 wrapToolCall 错误，而不是稳定的交互。
+- 防错规则：对模型生成的 AskUserQuestion payload，优先做温和归一化而不是对单个字段硬 `z.string()`。尤其是 `summary`、label、question、placeholder 这类 string-like 字段，要能容忍对象包装值，避免一个坏字段导致整轮 AskUser 崩溃。
+- 用户继续纠偏：live 日志里最外层报错的 middleware 名字不一定就是根因；这次 `TodoListMiddleware failed in wrapModelCall` 实际是它包着的 `AskUserQuestion` tool schema 在模型绑定阶段炸了。
+- 防错规则：遇到 `wrapModelCall`/`wrapToolCall` 链式 middleware 错误时，先做真实 live 复现并把“表层 middleware 名”和“实际下游 schema/tool”拆开排查；不要因为最外层名字像 `TodoListMiddleware` 就直接修错对象。
+- 用户继续纠偏：tool-facing schema 和 runtime-tolerant parsing 是两层合同，不能为了容错把 transform/preprocess 直接塞进给模型看的 schema；这会在真实模型绑定时炸掉。
+- 防错规则：凡是会进入 model/tool JSON Schema 序列化路径的 schema，默认必须保持纯 JSON-schema-friendly Zod；所有宽容归一化、字符串兜底、对象包装值提取，都放到独立的 runtime parser/helper 里做，不放进导出的 tool schema。
+- 用户继续纠偏：`Skill` 和 `AskUserQuestion` 这种内部控制面步骤不该在前台留下可见 prose/tool block；同一轮如果最终是问卷接管，用户不该先看到一段 assistant 文本，再被问卷覆盖。
+- 防错规则：凡是 internal control-plane tool（如 `Skill`、`AskUserQuestion`），都要同时满足两层约束：一是 transcript/runtime projection 默认隐藏；二是 live active-turn 也不能先把同轮 prose 流出来。对这类 turn，先缓冲 assistant 文本，等确定不是内部交互接管后再放出来。
+- 用户继续纠偏：光靠 prompt 提示“别先说一句”不够稳，真实模型仍可能把 prose 和 `AskUserQuestion` 放在同一条 AI 消息里。
+- 防错规则：涉及 Claude Code 风格 foreground handoff 的交互，不能只修 prompt，必须有运行时前景保护。即使模型在同一条消息里同时产出 prose + internal tool call，前台也必须保证 review/control surface 优先接管，而不是让 prose 先漏出再撤回。
+- 用户继续纠偏：当用户拿 Claude Code 文档质疑 `task/store.ts` 和 `task/run-store.ts` 时，不能只解释“业务逻辑不同”；如果目录语义还是把 shared task graph 和 delegated/background run persistence 压在同一层，用户会继续觉得这一层是错的。
+- 防错规则：task/subagent 重构时，先检查目录是否真正表达了 Claude Code 的控制面边界。shared task coordination 放进 `coordination/`，delegated/background subagent runs 放进 `delegation/`；不要继续把这两类持久化都挂成根级 `task/*store.ts`。
+- 用户继续纠偏：`internal` 这种模糊目录名会掩盖控制面职责，尤其在 task/subagent 路径里会再次把边界做糊。
+- 防错规则：遇到 task/subagent/review 这类控制面重构时，默认避免 `internal/` 桶式目录；优先使用能表达职责的语义路径，如 `coordination/`、`delegation/`、`review/`，让目录本身就是说明书。
+- 用户继续纠偏：用户不是单纯嫌文件少，而是嫌“多文件但绕一圈”。如果一个 helper 只服务一个主文件，继续拆出去只会增加跳转成本和维护负担。
+- 防错规则：重构后再复盘一次“这个 helper 有几个真实消费者”。如果只有一个消费者，而且抽离没有形成稳定复用边界，就把它合回主文件；保留文件数应该服务职责边界，而不是服务形式上的拆分。
+
+## 2026-03-22
+- 用户纠偏：`.codara/skills/superworkers` 属于外部/共享 superworkers 技能内容，本项目对齐 Claude Code 时禁止直接修改该目录；应只调整项目自身实现、公开面和本项目自有提示层。
+- 防错规则：凡是 `superworkers` 目录下的共享技能与参考文档，默认视为只读依赖；除非用户明确要求改技能本身，否则不要为产品对齐去改它们。
+- 用户纠偏：参考 Claude Code 文档时，不能把“project context 正常 bootstrap”误读成“subagent 继承父会话 prompt/system message”。built-in `Agent` 应视为 fresh child，只有显式 seed 的 context/values 才应继续带入。
+- 防错规则：只要任务在做 Claude Code 风格 subagent 对齐，就把“parent conversation inheritance”和“project bootstrap loading”分开验证。遇到 real CLI case 时，优先断言 built-in `Agent` 不继承父 prompt，再单独验证 skills/profile/project context 是否通过正常 bootstrap 进入。
+- 用户继续纠偏：不是所有 `pause/paused` 词汇都该一刀切重命名；真正该清的是 review 控制面的中层命名残留，不能误伤底层 runtime 状态机词汇。
+- 防错规则：清理 review/HIL 旧命名时，先分层。`session_pause`、`pause request` 这类对外/中层 query-contract 要改成 review；`paused`、`resume`、`pendingReview` 这种底层执行机制词汇，如果仍准确表达实现，就保留。
+- 用户继续纠偏：`subagent/tool.ts` 这种文件最容易长成“什么都管”。dispatch、recovery、reuse policy 一旦混在一起，后续再改一条链就得翻整页。
+- 防错规则：遇到 capability 根入口文件时，默认检查它是不是混入了恢复专用逻辑或复用提示逻辑。tool 文件应该优先只保留 schema、入口、launch 编译；恢复、重复运行复用、显示格式化等次级 concern 要抽到清晰命名的旁路文件。

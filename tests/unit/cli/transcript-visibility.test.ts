@@ -15,15 +15,15 @@ describe('cli transcript visibility', () => {
         prompt: 'delegate it',
         response: 'Let me frame the analysis scope first, then I will proceed.',
         responseRole: 'assistant',
-        pendingTaskLaunch: true,
-        suppressTaskLaunchResponse: false,
+        pendingAgentLaunch: true,
+        suppressAgentLaunchResponse: false,
       },
       runtimeEvents: [
         {
-          id: 'task-run:run-visible',
+          id: 'agent-run:run-visible',
           sessionId: 'session-1',
           timestamp: new Date().toISOString(),
-          kind: 'task',
+          kind: 'agent',
           phase: 'start',
           status: 'running',
           label: 'Delegating Explore: Analyze project',
@@ -38,7 +38,7 @@ describe('cli transcript visibility', () => {
   test('keeps a previously visible main-agent message when it later becomes solidified', () => {
     const taskCall: ToolCall = {
       id: 'call_task_preserved',
-      name: 'Task',
+      name: 'Agent',
       args: {prompt: 'Analyze the repo', subagent_type: 'Explore'},
     };
     const messages = [

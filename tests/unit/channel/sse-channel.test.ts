@@ -1,6 +1,6 @@
 import {describe, test, expect, beforeEach} from 'bun:test';
 import {SSEChannel} from '../../../src/server/channel';
-import type {PauseRequest} from '@shared/contracts/agent-types';
+import type {ReviewRequest} from '@shared/contracts/agent-types';
 
 interface SentEvent {
   event: string;
@@ -8,7 +8,7 @@ interface SentEvent {
   id?: string;
 }
 
-function createPauseRequest(id = 'pause-1'): PauseRequest {
+function createReviewRequest(id = 'review-1'): ReviewRequest {
   return {
     id,
     description: 'Confirm bash execution',
@@ -41,17 +41,17 @@ describe('SSEChannel', () => {
     expect(events[0].event).toBe('message');
   });
 
-  test('showPauseRequest sends SSE review_required event', async () => {
-    const pausePromise = channel.showPauseRequest(createPauseRequest());
+  test('showReviewRequest sends SSE review_required event', async () => {
+    const reviewPromise = channel.showReviewRequest(createReviewRequest());
     expect(events.length).toBe(1);
     expect(events[0].event).toBe('review_required');
-    expect((events[0].data as {id: string}).id).toBe('pause-1');
+    expect((events[0].data as {id: string}).id).toBe('review-1');
 
     // Resolve
-    const resolved = channel.resolveResume('pause-1', {decision: 'approve'});
+    const resolved = channel.resolveResume('review-1', {decision: 'approve'});
     expect(resolved).toBe(true);
 
-    const result = await pausePromise;
+    const result = await reviewPromise;
     expect(result).toEqual({decision: 'approve'});
   });
 
@@ -59,16 +59,16 @@ describe('SSEChannel', () => {
     expect(channel.resolveResume('nonexistent', {})).toBe(false);
   });
 
-  test('hasPendingPauses tracks pending state', async () => {
-    expect(channel.hasPendingPauses()).toBe(false);
+  test('hasPendingReviews tracks pending state', async () => {
+    expect(channel.hasPendingReviews()).toBe(false);
 
-    const promise = channel.showPauseRequest(createPauseRequest());
-    expect(channel.hasPendingPauses()).toBe(true);
-    expect(channel.getPendingPauseIds()).toEqual(['pause-1']);
+    const promise = channel.showReviewRequest(createReviewRequest());
+    expect(channel.hasPendingReviews()).toBe(true);
+    expect(channel.getPendingReviewIds()).toEqual(['review-1']);
 
-    channel.resolveResume('pause-1', {});
+    channel.resolveResume('review-1', {});
     await promise;
-    expect(channel.hasPendingPauses()).toBe(false);
+    expect(channel.hasPendingReviews()).toBe(false);
   });
 
   test('emitEvent sends runtime_event SSE', () => {
@@ -83,8 +83,8 @@ describe('SSEChannel', () => {
     expect(events[0].event).toBe('runtime_event');
   });
 
-  test('dispose resolves pending pauses with reject', async () => {
-    const promise = channel.showPauseRequest(createPauseRequest());
+  test('dispose resolves pending reviews with reject', async () => {
+    const promise = channel.showReviewRequest(createReviewRequest());
     await channel.dispose();
 
     const result = await promise;

@@ -8,7 +8,7 @@ import {resolveDurableStoragePath, resolveDurableStoragePathCandidates} from '@d
 
 export interface SessionListOptions {
   includeArchived?: boolean;
-  /** Include internal sessions (delegated tasks, background helpers). Defaults to false. */
+  /** Include internal sessions (delegated subagents, background helpers). Defaults to false. */
   includeInternal?: boolean;
   sortBy?: 'createdAt' | 'updatedAt' | 'lastActivity';
   sortOrder?: 'asc' | 'desc';
