@@ -18,6 +18,19 @@ describe('cli composer viewport', () => {
     expect(viewport.hasOverflowBelow).toBe(false);
   });
 
+  test('whitespace-only composer should still show the placeholder line', () => {
+    const viewport = buildComposerViewport(createComposerState('   \n', 4), undefined, 'Reply to Codara...');
+
+    expect(viewport.lines).toEqual([
+      {
+        beforeCursor: '',
+        afterCursor: '',
+        placeholder: 'Reply to Codara...',
+        isCursorLine: true,
+      },
+    ]);
+  });
+
   test('viewport should keep cursor line visible in the middle block when possible', () => {
     const state = createComposerState('l1\nl2\nl3\nl4\nl5\nl6', 11);
     const viewport = buildComposerViewport(state, 4);

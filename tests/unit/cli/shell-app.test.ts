@@ -7,9 +7,10 @@ import {
   shouldDisablePromptInput,
   shouldShowSubagentRunPanel,
   shouldShowPromptFrame,
+  hasVisibleAssistantSolidifiedReply,
 } from '../../../src/cli/app/shell-app';
 import type {CliReviewState} from '../../../src/cli/app/view-state';
-import type {TranscriptItem} from '../../../src/cli/transcript/model';
+import type {SolidifiedItem, TranscriptItem} from '../../../src/cli/transcript/model';
 
 describe('CLI foreground surface', () => {
   it('should keep the transcript foreground when a review is active', () => {
@@ -236,6 +237,20 @@ describe('CLI foreground surface', () => {
       runningSubagentRunCount: 0,
       pausedSubagentRunCount: 0,
     })).toBe(true);
+  });
+
+  it('should treat assistant replies already solidified into scrollback as visible replies', () => {
+    const items: SolidifiedItem[] = [{
+      id: 'solid-turn-1',
+      kind: 'turn',
+      items: [{
+        id: 'assistant-1',
+        role: 'assistant',
+        content: 'Final answer from the main agent.',
+      }],
+    }];
+
+    expect(hasVisibleAssistantSolidifiedReply(items)).toBe(true);
   });
 });
 

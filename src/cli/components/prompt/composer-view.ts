@@ -136,7 +136,7 @@ function buildComposerLines(
   wrapWidth: number,
   placeholder?: string,
 ): {lines: ComposerRenderLine[]; cursorLineIndex: number} {
-  if (!composer.text) {
+  if (!composer.text.trim()) {
     return {
       lines: [
         {

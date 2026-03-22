@@ -27,6 +27,7 @@ import {useTerminalWidth} from '../hooks/use-terminal-width';
 import type {CliInteractionSurface, CliReviewState} from './view-state';
 import {shouldSpaceInsertIntoCliReviewDraft} from './review-state';
 import type {TranscriptItem} from '../transcript/model';
+import type {SolidifiedItem} from '../transcript/model';
 import {readVisibleMessageText} from '@shared/messages';
 
 export interface CodaraCliAppProps {
@@ -175,6 +176,10 @@ function hasVisibleAssistantTranscriptReply(items: readonly TranscriptItem[]): b
 
 function hasVisibleAssistantMessageReply(messages: readonly BaseMessage[]): boolean {
   return messages.some((message) => AIMessage.isInstance(message) && Boolean(readVisibleMessageText(message)));
+}
+
+export function hasVisibleAssistantSolidifiedReply(items: readonly SolidifiedItem[]): boolean {
+  return items.some((item) => item.items.some((entry) => entry.role === 'assistant' && entry.content.trim().length > 0));
 }
 
 export function CodaraCliApp(props: CodaraCliAppProps): React.JSX.Element {
@@ -357,6 +362,8 @@ export function CodaraCliApp(props: CodaraCliAppProps): React.JSX.Element {
   });
   const transcriptHasVisibleAssistantReply = hasVisibleAssistantTranscriptReply(activeItems)
     || hasVisibleAssistantMessageReply(shell.coreMessages);
+  const hasVisibleAssistantReply = transcriptHasVisibleAssistantReply
+    || hasVisibleAssistantSolidifiedReply(solidifiedItems);
 
   useEffect(() => {
     if (
@@ -416,7 +423,7 @@ export function CodaraCliApp(props: CodaraCliAppProps): React.JSX.Element {
                 sessionMetadata={shell.sessionState.metadata}
                 runningSubagentRunCount={subagentRuns.runningCount}
                 pausedSubagentRunCount={subagentRuns.pausedCount}
-                hasVisibleAssistantReply={transcriptHasVisibleAssistantReply}
+                hasVisibleAssistantReply={hasVisibleAssistantReply}
               />
             )}
             {sessionPicker.state.visible && (
