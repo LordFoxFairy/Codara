@@ -3,25 +3,26 @@ import {mkdirSync, readdirSync, readFileSync, renameSync, writeFileSync} from 'n
 import path from 'node:path';
 import {z} from 'zod';
 import type {
-  AgentRunPauseInput,
-  AgentRunRecord,
-  AgentRunResumeInput,
-  AgentRunStartInput,
-  AgentRunStore,
-  AgentRunUpdateInput,
+  SubagentRunPauseInput,
+  SubagentRunRecord,
+  SubagentRunResumeInput,
+  SubagentRunStartInput,
+  SubagentRunStore,
+  SubagentRunUpdateInput,
 } from '@capability/subagent/types';
-import type {DelegatedAgentResult} from '@shared/delegation-result';
+import type {SubagentResult} from '@shared/subagent-result';
 
-export interface AgentRunFileStoreOptions {
+export interface SubagentRunFileStoreOptions {
   rootDir: string;
 }
 
-const agentRunRecordSchema = z.object({
+const subagentRunRecordSchema = z.object({
   runId: z.string(),
   parentSessionId: z.string(),
   label: z.string(),
   agentName: z.string(),
   subagentType: z.string().optional(),
+  permissionMode: z.string().optional(),
   status: z.enum(['running', 'paused', 'completed', 'failed']),
   startedAt: z.string(),
   updatedAt: z.string(),
@@ -36,59 +37,59 @@ const agentRunRecordSchema = z.object({
   totalTokens: z.number().optional(),
 });
 
-export function createAgentRunMemoryStore(): AgentRunStore {
-  return new InMemoryAgentRunStore();
+export function createSubagentRunMemoryStore(): SubagentRunStore {
+  return new InMemorySubagentRunStore();
 }
 
-export function createAgentRunFileStore(options: AgentRunFileStoreOptions): AgentRunStore {
-  return new FileAgentRunStore(options.rootDir);
+export function createSubagentRunFileStore(options: SubagentRunFileStoreOptions): SubagentRunStore {
+  return new FileSubagentRunStore(options.rootDir);
 }
 
-class InMemoryAgentRunStore implements AgentRunStore {
-  private readonly records = new Map<string, AgentRunRecord>();
+class InMemorySubagentRunStore implements SubagentRunStore {
+  private readonly records = new Map<string, SubagentRunRecord>();
 
-  list(): AgentRunRecord[] {
-    return sortAgentRuns(Array.from(this.records.values()));
+  list(): SubagentRunRecord[] {
+    return sortSubagentRuns(Array.from(this.records.values()));
   }
 
-  get(runId: string): AgentRunRecord | undefined {
+  get(runId: string): SubagentRunRecord | undefined {
     const record = this.records.get(runId.trim());
-    return record ? cloneAgentRun(record) : undefined;
+    return record ? cloneSubagentRun(record) : undefined;
   }
 
-  start(input: AgentRunStartInput): AgentRunRecord {
+  start(input: SubagentRunStartInput): SubagentRunRecord {
     const runId = normalizeRunId(input.runId);
-    const next = applyAgentRunStart(this.records.get(runId), runId, input, new Date().toISOString());
+    const next = applySubagentRunStart(this.records.get(runId), runId, input, new Date().toISOString());
     this.records.set(runId, next);
-    return cloneAgentRun(next);
+    return cloneSubagentRun(next);
   }
 
-  update(runId: string, input: AgentRunUpdateInput): AgentRunRecord {
+  update(runId: string, input: SubagentRunUpdateInput): SubagentRunRecord {
     const record = this.requireRun(runId);
-    const next = applyAgentRunUpdate(record, input, new Date().toISOString());
+    const next = applySubagentRunUpdate(record, input, new Date().toISOString());
     this.records.set(record.runId, next);
-    return cloneAgentRun(next);
+    return cloneSubagentRun(next);
   }
 
-  resume(runId: string, input?: AgentRunResumeInput): AgentRunRecord {
+  resume(runId: string, input?: SubagentRunResumeInput): SubagentRunRecord {
     const record = this.requireRun(runId);
-    const next = applyAgentRunResume(record, input, new Date().toISOString());
+    const next = applySubagentRunResume(record, input, new Date().toISOString());
     this.records.set(record.runId, next);
-    return cloneAgentRun(next);
+    return cloneSubagentRun(next);
   }
 
-  pause(runId: string, input?: AgentRunPauseInput): AgentRunRecord {
+  pause(runId: string, input?: SubagentRunPauseInput): SubagentRunRecord {
     const record = this.requireRun(runId);
-    const next = applyAgentRunPause(record, input, new Date().toISOString());
+    const next = applySubagentRunPause(record, input, new Date().toISOString());
     this.records.set(record.runId, next);
-    return cloneAgentRun(next);
+    return cloneSubagentRun(next);
   }
 
-  finish(runId: string, result: DelegatedAgentResult): AgentRunRecord {
+  finish(runId: string, result: SubagentResult): SubagentRunRecord {
     const record = this.requireRun(runId);
-    const next = applyAgentRunFinish(record, result, new Date().toISOString());
+    const next = applySubagentRunFinish(record, result, new Date().toISOString());
     this.records.set(record.runId, next);
-    return cloneAgentRun(next);
+    return cloneSubagentRun(next);
   }
 
   recoverSession(sessionId: string): void {
@@ -99,81 +100,81 @@ class InMemoryAgentRunStore implements AgentRunStore {
       if (record.parentSessionId !== normalizedSessionId || record.status !== 'running') {
         continue;
       }
-      this.records.set(runId, applyAgentRunPause(record, undefined, now));
+      this.records.set(runId, applySubagentRunPause(record, undefined, now));
     }
   }
 
-  private requireRun(runId: string): AgentRunRecord {
+  private requireRun(runId: string): SubagentRunRecord {
     const record = this.records.get(normalizeRunId(runId));
     if (!record) {
-      throw new Error(`Agent run "${runId}" not found`);
+      throw new Error(`Subagent run "${runId}" not found`);
     }
     return record;
   }
 }
 
-class FileAgentRunStore implements AgentRunStore {
-  private readonly records = new Map<string, AgentRunRecord>();
+class FileSubagentRunStore implements SubagentRunStore {
+  private readonly records = new Map<string, SubagentRunRecord>();
   private readonly sessionIndex = new Map<string, Set<string>>();
   private loaded = false;
 
   constructor(private readonly rootDir: string) {}
 
-  list(): AgentRunRecord[] {
+  list(): SubagentRunRecord[] {
     this.ensureLoaded();
-    return sortAgentRuns(Array.from(this.records.values()));
+    return sortSubagentRuns(Array.from(this.records.values()));
   }
 
-  get(runId: string): AgentRunRecord | undefined {
+  get(runId: string): SubagentRunRecord | undefined {
     this.ensureLoaded();
     const record = this.records.get(normalizeRunId(runId));
-    return record ? cloneAgentRun(record) : undefined;
+    return record ? cloneSubagentRun(record) : undefined;
   }
 
-  start(input: AgentRunStartInput): AgentRunRecord {
+  start(input: SubagentRunStartInput): SubagentRunRecord {
     this.ensureLoaded();
     const runId = normalizeRunId(input.runId);
     const existing = this.records.get(runId);
-    const next = applyAgentRunStart(existing, runId, input, new Date().toISOString());
-    this.storeAgentRun(next, existing);
-    this.writeAgentRun(next);
-    return cloneAgentRun(next);
+    const next = applySubagentRunStart(existing, runId, input, new Date().toISOString());
+    this.storeSubagentRun(next, existing);
+    this.writeSubagentRun(next);
+    return cloneSubagentRun(next);
   }
 
-  update(runId: string, input: AgentRunUpdateInput): AgentRunRecord {
+  update(runId: string, input: SubagentRunUpdateInput): SubagentRunRecord {
     this.ensureLoaded();
     const record = this.requireRun(runId);
-    const next = applyAgentRunUpdate(record, input, new Date().toISOString());
-    this.storeAgentRun(next, record);
-    this.writeAgentRun(next);
-    return cloneAgentRun(next);
+    const next = applySubagentRunUpdate(record, input, new Date().toISOString());
+    this.storeSubagentRun(next, record);
+    this.writeSubagentRun(next);
+    return cloneSubagentRun(next);
   }
 
-  resume(runId: string, input?: AgentRunResumeInput): AgentRunRecord {
+  resume(runId: string, input?: SubagentRunResumeInput): SubagentRunRecord {
     this.ensureLoaded();
     const record = this.requireRun(runId);
-    const next = applyAgentRunResume(record, input, new Date().toISOString());
-    this.storeAgentRun(next, record);
-    this.writeAgentRun(next);
-    return cloneAgentRun(next);
+    const next = applySubagentRunResume(record, input, new Date().toISOString());
+    this.storeSubagentRun(next, record);
+    this.writeSubagentRun(next);
+    return cloneSubagentRun(next);
   }
 
-  pause(runId: string, input?: AgentRunPauseInput): AgentRunRecord {
+  pause(runId: string, input?: SubagentRunPauseInput): SubagentRunRecord {
     this.ensureLoaded();
     const record = this.requireRun(runId);
-    const next = applyAgentRunPause(record, input, new Date().toISOString());
-    this.storeAgentRun(next, record);
-    this.writeAgentRun(next);
-    return cloneAgentRun(next);
+    const next = applySubagentRunPause(record, input, new Date().toISOString());
+    this.storeSubagentRun(next, record);
+    this.writeSubagentRun(next);
+    return cloneSubagentRun(next);
   }
 
-  finish(runId: string, result: DelegatedAgentResult): AgentRunRecord {
+  finish(runId: string, result: SubagentResult): SubagentRunRecord {
     this.ensureLoaded();
     const record = this.requireRun(runId);
-    const next = applyAgentRunFinish(record, result, new Date().toISOString());
-    this.storeAgentRun(next, record);
-    this.writeAgentRun(next);
-    return cloneAgentRun(next);
+    const next = applySubagentRunFinish(record, result, new Date().toISOString());
+    this.storeSubagentRun(next, record);
+    this.writeSubagentRun(next);
+    return cloneSubagentRun(next);
   }
 
   recoverSession(sessionId: string): void {
@@ -190,16 +191,16 @@ class FileAgentRunStore implements AgentRunStore {
       if (!record || record.status !== 'running') {
         continue;
       }
-      const next = applyAgentRunPause(record, undefined, now);
-      this.storeAgentRun(next, record);
-      this.writeAgentRun(next);
+      const next = applySubagentRunPause(record, undefined, now);
+      this.storeSubagentRun(next, record);
+      this.writeSubagentRun(next);
     }
   }
 
-  private requireRun(runId: string): AgentRunRecord {
+  private requireRun(runId: string): SubagentRunRecord {
     const record = this.records.get(normalizeRunId(runId));
     if (!record) {
-      throw new Error(`Agent run "${runId}" not found`);
+      throw new Error(`Subagent run "${runId}" not found`);
     }
     return record;
   }
@@ -221,50 +222,50 @@ class FileAgentRunStore implements AgentRunStore {
       if (!entry.endsWith('.json')) {
         continue;
       }
-      const record = this.readAgentRun(path.join(this.rootDir, entry));
+      const record = this.readSubagentRun(path.join(this.rootDir, entry));
       if (record) {
-        this.storeAgentRun(record);
+        this.storeSubagentRun(record);
       }
     }
   }
 
-  private agentRunPath(runId: string): string {
+  private subagentRunPath(runId: string): string {
     return path.join(this.rootDir, `${normalizeRunId(runId)}.json`);
   }
 
-  private readAgentRun(filePath: string): AgentRunRecord | undefined {
+  private readSubagentRun(filePath: string): SubagentRunRecord | undefined {
     try {
       const raw = JSON.parse(readFileSync(filePath, 'utf8'));
-      return parseAgentRunRecord(raw);
+      return parseSubagentRunRecord(raw);
     } catch {
       return undefined;
     }
   }
 
-  private writeAgentRun(record: AgentRunRecord): void {
+  private writeSubagentRun(record: SubagentRunRecord): void {
     mkdirSync(this.rootDir, {recursive: true});
-    const filePath = this.agentRunPath(record.runId);
+    const filePath = this.subagentRunPath(record.runId);
     const tempPath = `${filePath}.tmp-${randomUUID()}`;
     writeFileSync(tempPath, `${JSON.stringify(record, null, 2)}\n`, 'utf8');
     renameSync(tempPath, filePath);
   }
 
-  private storeAgentRun(record: AgentRunRecord, previous?: AgentRunRecord): void {
+  private storeSubagentRun(record: SubagentRunRecord, previous?: SubagentRunRecord): void {
     if (previous && previous.parentSessionId !== record.parentSessionId) {
-      this.unindexAgentRun(previous.parentSessionId, previous.runId);
+      this.unindexSubagentRun(previous.parentSessionId, previous.runId);
     }
     this.records.set(record.runId, record);
-    this.indexAgentRun(record.parentSessionId, record.runId);
+    this.indexSubagentRun(record.parentSessionId, record.runId);
   }
 
-  private indexAgentRun(sessionId: string, runId: string): void {
+  private indexSubagentRun(sessionId: string, runId: string): void {
     const normalizedSessionId = normalizeSessionId(sessionId);
     const runIds = this.sessionIndex.get(normalizedSessionId) ?? new Set<string>();
     runIds.add(runId);
     this.sessionIndex.set(normalizedSessionId, runIds);
   }
 
-  private unindexAgentRun(sessionId: string, runId: string): void {
+  private unindexSubagentRun(sessionId: string, runId: string): void {
     const normalizedSessionId = normalizeSessionId(sessionId);
     const runIds = this.sessionIndex.get(normalizedSessionId);
     if (!runIds) {
@@ -277,13 +278,14 @@ class FileAgentRunStore implements AgentRunStore {
   }
 }
 
-function createAgentRunRecord(runId: string, input: AgentRunStartInput, now: string): AgentRunRecord {
+function createSubagentRunRecord(runId: string, input: SubagentRunStartInput, now: string): SubagentRunRecord {
   return {
     runId,
     parentSessionId: normalizeSessionId(input.parentSessionId),
     label: normalizeText(input.label),
     agentName: normalizeText(input.agentName),
     ...(input.subagentType !== undefined ? {subagentType: normalizeOptionalText(input.subagentType)} : {}),
+    ...(input.permissionMode !== undefined ? {permissionMode: normalizeOptionalText(input.permissionMode)} : {}),
     status: 'running',
     startedAt: now,
     updatedAt: now,
@@ -291,27 +293,27 @@ function createAgentRunRecord(runId: string, input: AgentRunStartInput, now: str
   };
 }
 
-function cloneAgentRun(record: AgentRunRecord): AgentRunRecord {
+function cloneSubagentRun(record: SubagentRunRecord): SubagentRunRecord {
   return {...record};
 }
 
-function sortAgentRuns(records: AgentRunRecord[]): AgentRunRecord[] {
+function sortSubagentRuns(records: SubagentRunRecord[]): SubagentRunRecord[] {
   return records
-    .map((record) => cloneAgentRun(record))
+    .map((record) => cloneSubagentRun(record))
     .sort((left, right) => {
       const started = left.startedAt.localeCompare(right.startedAt);
       return started !== 0 ? started : left.runId.localeCompare(right.runId);
     });
 }
 
-function applyAgentRunStart(
-  existing: AgentRunRecord | undefined,
+function applySubagentRunStart(
+  existing: SubagentRunRecord | undefined,
   runId: string,
-  input: AgentRunStartInput,
+  input: SubagentRunStartInput,
   now: string,
-): AgentRunRecord {
-  const next: AgentRunRecord = {
-    ...(existing ? cloneAgentRun(existing) : createAgentRunRecord(runId, input, now)),
+): SubagentRunRecord {
+  const next: SubagentRunRecord = {
+    ...(existing ? cloneSubagentRun(existing) : createSubagentRunRecord(runId, input, now)),
     runId,
     parentSessionId: normalizeSessionId(input.parentSessionId),
     label: normalizeText(input.label),
@@ -331,7 +333,7 @@ function applyAgentRunStart(
   return next;
 }
 
-function applyAgentRunUpdate(record: AgentRunRecord, input: AgentRunUpdateInput, now: string): AgentRunRecord {
+function applySubagentRunUpdate(record: SubagentRunRecord, input: SubagentRunUpdateInput, now: string): SubagentRunRecord {
   return {
     ...record,
     ...(input.latestActivity !== undefined ? {latestActivity: normalizeOptionalText(input.latestActivity)} : {}),
@@ -340,7 +342,7 @@ function applyAgentRunUpdate(record: AgentRunRecord, input: AgentRunUpdateInput,
   };
 }
 
-function applyAgentRunResume(record: AgentRunRecord, input: AgentRunResumeInput | undefined, now: string): AgentRunRecord {
+function applySubagentRunResume(record: SubagentRunRecord, input: SubagentRunResumeInput | undefined, now: string): SubagentRunRecord {
   return {
     ...record,
     status: 'running',
@@ -351,7 +353,7 @@ function applyAgentRunResume(record: AgentRunRecord, input: AgentRunResumeInput 
   };
 }
 
-function applyAgentRunPause(record: AgentRunRecord, input: AgentRunPauseInput | undefined, now: string): AgentRunRecord {
+function applySubagentRunPause(record: SubagentRunRecord, input: SubagentRunPauseInput | undefined, now: string): SubagentRunRecord {
   return {
     ...record,
     status: 'paused',
@@ -362,7 +364,7 @@ function applyAgentRunPause(record: AgentRunRecord, input: AgentRunPauseInput | 
   };
 }
 
-function applyAgentRunFinish(record: AgentRunRecord, result: DelegatedAgentResult, now: string): AgentRunRecord {
+function applySubagentRunFinish(record: SubagentRunRecord, result: SubagentResult, now: string): SubagentRunRecord {
   return {
     ...record,
     status: result.reason === 'complete' ? 'completed' : 'failed',
@@ -378,15 +380,15 @@ function applyAgentRunFinish(record: AgentRunRecord, result: DelegatedAgentResul
   };
 }
 
-function parseAgentRunRecord(value: unknown): AgentRunRecord | undefined {
-  const parsed = agentRunRecordSchema.safeParse(value);
+function parseSubagentRunRecord(value: unknown): SubagentRunRecord | undefined {
+  const parsed = subagentRunRecordSchema.safeParse(value);
   return parsed.success ? parsed.data : undefined;
 }
 
 function normalizeRunId(value: string): string {
   const runId = value.trim();
   if (!runId) {
-    throw new Error('Agent run id is required');
+    throw new Error('Subagent run id is required');
   }
   return runId;
 }
@@ -394,7 +396,7 @@ function normalizeRunId(value: string): string {
 function normalizeSessionId(value: string): string {
   const sessionId = value.trim();
   if (!sessionId) {
-    throw new Error('Agent run session id is required');
+    throw new Error('Subagent run session id is required');
   }
   return sessionId;
 }
@@ -402,7 +404,7 @@ function normalizeSessionId(value: string): string {
 function normalizeText(value: string): string {
   const text = value.trim();
   if (!text) {
-    throw new Error('Agent run label and agent name are required');
+    throw new Error('Subagent run label and agent name are required');
   }
   return text;
 }

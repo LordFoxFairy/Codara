@@ -18,24 +18,27 @@ import {createPermissionMiddleware} from '@core/middleware/permission';
 import type {AgentCheckpointer} from '@durability/checkpoint/agent';
 import type {ApprovalStore} from '@durability/approval-store';
 import {
-  createAgentMiddleware,
-  type AgentRuntime,
-  type AgentRunStore,
-  createAgentTool,
-  readAgentToolOptions,
-  AGENT_TOOL_NAME,
+  createSubagentMiddleware,
+  type SubagentRunManager,
+  type SubagentRunStore,
 } from '@capability/subagent';
 import {
-  createTaskMiddleware,
+  applyRuntimeSubagentDefaults,
+  assertNoRawSubagentTools,
+} from '@capability/subagent/middleware';
+import {
   type TaskStore,
 } from '@capability/task';
 import type {HookPipeline} from '@observability/hook';
 import {createToolHooksBridge} from '@observability/hook';
 import type {GuidelinesSource} from '@context/instructions/guidelines';
 import type {PromptSource} from '@context/prompts/prompt-source';
+import type {SkillsSource} from '@capability/skill';
+import type {AutoMemorySource} from '@context/memory/auto-memory';
 import {resolveWorkspaceRoot} from '@config/workspace';
 import type {ChannelRegistry} from '@integration/channel';
 import {createChannelReviewOptions} from '@integration/channel';
+import {createInstructionContextRuntime} from './context';
 import type {
   CodaraMiddlewareOptions,
   CodaraRuntimeOptions,
@@ -94,26 +97,23 @@ export function createRuntimeDefaultMiddlewares(input: {
   options: CodaraRuntimeOptions;
   runtimeTools: StructuredToolInterface[];
   taskStore: TaskStore;
-  agentRunStore: AgentRunStore;
-  agentRuntime: AgentRuntime;
-  taskCheckpointer: AgentCheckpointer;
+  subagentRunStore: SubagentRunStore;
+  subagentRunManager: SubagentRunManager;
+  subagentCheckpointer: AgentCheckpointer;
   approvalStore: ApprovalStore;
   logging: false | LoggingMiddlewareOptions;
   catalog?: CodaraModelCatalog | Promise<CodaraModelCatalog>;
   promptSource: PromptSource;
   guidelinesSource: GuidelinesSource;
+  skillsSource?: SkillsSource;
+  autoMemorySource?: AutoMemorySource;
+  memoryRootDir?: string;
   hookPipeline?: HookPipeline;
   channelRegistry?: ChannelRegistry;
 }): BaseMiddleware[] {
-  const callerMiddlewares = input.options.middleware ?? [];
+  const callerMiddlewares = normalizeCallerMiddlewares(input);
   const byName = new Map<string, BaseMiddleware>();
-  rebindRuntimeAgentTools({
-    tools: input.runtimeTools,
-    agentRunStore: input.agentRunStore,
-    agentRuntime: input.agentRuntime,
-    taskCheckpointer: input.taskCheckpointer,
-    approvalStore: input.approvalStore,
-  });
+  assertNoRawSubagentTools(input.options.tools);
   const providedToolNames = collectProvidedToolNames({
     tools: input.options.tools,
     middlewares: callerMiddlewares,
@@ -136,39 +136,10 @@ export function createRuntimeDefaultMiddlewares(input: {
     byName.set(MIDDLEWARE_NAMES.TodoList, createTodoListMiddleware());
   }
 
-  if (!byName.has(MIDDLEWARE_NAMES.Task) && !providedToolNames.has('TaskCreate')) {
-    byName.set(
-      MIDDLEWARE_NAMES.Task,
-      createTaskMiddleware({
-        store: input.taskStore,
-      }),
-    );
-  }
-
   if (!byName.has(MIDDLEWARE_NAMES.Agent) && !providedToolNames.has('Agent')) {
     byName.set(
       MIDDLEWARE_NAMES.Agent,
-        createAgentMiddleware({
-        runStore: input.agentRunStore,
-        runtime: input.agentRuntime,
-        checkpointer: input.taskCheckpointer,
-        approvalStore: input.approvalStore,
-        model: input.options.model ?? (() => createCodaraChatModel({
-          alias: input.options.alias,
-          config: input.options.config,
-          ...(input.catalog ? {catalog: input.catalog} : {}),
-        })),
-        tools: input.runtimeTools,
-        childRuntime: {
-          logging: input.logging,
-          review: input.options.review ?? {},
-          cwd: input.options.cwd,
-          projectRoot: input.options.projectRoot,
-          userHome: input.options.userHome,
-          permissionAnalysisModel: createRuntimePermissionAnalysisModel(input.options, input.catalog),
-        },
-        ...(input.hookPipeline ? {childLifecycle: input.hookPipeline} : {}),
-      }),
+      createRuntimeSubagentMiddleware(input),
     );
   }
 
@@ -201,32 +172,75 @@ export function createRuntimeDefaultMiddlewares(input: {
   return [...byName.values()];
 }
 
-function rebindRuntimeAgentTools(input: {
-  tools: StructuredToolInterface[];
-  agentRunStore: AgentRunStore;
-  agentRuntime: AgentRuntime;
-  taskCheckpointer: AgentCheckpointer;
+function createRuntimeSubagentMiddleware(input: {
+  options: CodaraRuntimeOptions;
+  runtimeTools: StructuredToolInterface[];
+  taskStore: TaskStore;
+  subagentRunStore: SubagentRunStore;
+  subagentRunManager: SubagentRunManager;
+  subagentCheckpointer: AgentCheckpointer;
   approvalStore: ApprovalStore;
-}): void {
-  for (let index = 0; index < input.tools.length; index += 1) {
-    const tool = input.tools[index];
-    if (!tool || tool.name !== AGENT_TOOL_NAME) {
-      continue;
-    }
+  logging: false | LoggingMiddlewareOptions;
+  catalog?: CodaraModelCatalog | Promise<CodaraModelCatalog>;
+  promptSource: PromptSource;
+  guidelinesSource: GuidelinesSource;
+  skillsSource?: SkillsSource;
+  autoMemorySource?: AutoMemorySource;
+  memoryRootDir?: string;
+  hookPipeline?: HookPipeline;
+}): BaseMiddleware {
+  const childInstructionContext = createInstructionContextRuntime({
+    promptSource: input.promptSource,
+    guidelinesSource: input.guidelinesSource,
+    autoMemorySource: input.autoMemorySource,
+    memoryRootDir: input.memoryRootDir,
+  });
 
-    const agentOptions = readAgentToolOptions(tool);
-    if (!agentOptions) {
-      continue;
-    }
+  return createSubagentMiddleware({
+    taskStore: input.taskStore,
+    runStore: input.subagentRunStore,
+    runManager: input.subagentRunManager,
+    checkpointer: input.subagentCheckpointer,
+    approvalStore: input.approvalStore,
+    model: input.options.model ?? (() => createCodaraChatModel({
+      alias: input.options.alias,
+      config: input.options.config,
+      ...(input.catalog ? {catalog: input.catalog} : {}),
+    })),
+    tools: input.runtimeTools,
+    childRuntime: {
+      interactionMode: 'background',
+      logging: input.logging,
+      review: input.options.review ?? {},
+      cwd: input.options.cwd,
+      projectRoot: input.options.projectRoot,
+      userHome: input.options.userHome,
+      permissionAnalysisModel: createRuntimePermissionAnalysisModel(input.options, input.catalog),
+    },
+    childInstructionContext,
+    ...(input.hookPipeline ? {childLifecycle: input.hookPipeline} : {}),
+  });
+}
 
-    input.tools[index] = createAgentTool({
-      ...agentOptions,
-      runStore: input.agentRunStore,
-      runtime: input.agentRuntime,
-      checkpointer: input.taskCheckpointer,
-      approvalStore: input.approvalStore,
-    });
-  }
+function normalizeCallerMiddlewares(input: {
+  options: CodaraRuntimeOptions;
+  runtimeTools: StructuredToolInterface[];
+  taskStore: TaskStore;
+  subagentRunStore: SubagentRunStore;
+  subagentRunManager: SubagentRunManager;
+  subagentCheckpointer: AgentCheckpointer;
+  approvalStore: ApprovalStore;
+  logging: false | LoggingMiddlewareOptions;
+  catalog?: CodaraModelCatalog | Promise<CodaraModelCatalog>;
+  promptSource: PromptSource;
+  guidelinesSource: GuidelinesSource;
+  skillsSource?: SkillsSource;
+  autoMemorySource?: AutoMemorySource;
+  memoryRootDir?: string;
+  hookPipeline?: HookPipeline;
+}): BaseMiddleware[] {
+  const runtimeOwned = createRuntimeSubagentMiddleware(input);
+  return (input.options.middleware ?? []).map((middleware) => applyRuntimeSubagentDefaults(middleware, runtimeOwned));
 }
 
 function collectProvidedToolNames(input: {

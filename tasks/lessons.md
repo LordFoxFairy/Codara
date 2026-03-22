@@ -1,6 +1,38 @@
 # Lessons
 
 ## 2026-03-22
+- 用户继续纠偏：`subagent` 读起来必须显式表现成“同一个 core agent loop 的 child 组装层”，而不是第二套 runtime；如果从 `tool.ts` 一眼看不出最终还是走 `bootstrapAgent/createAgent`，实现就还不够清楚。
+- 防错规则：涉及 delegated child 架构时，优先让代码直接呈现 `tool -> run manager -> bootstrapSubagent -> bootstrapAgent -> createAgent` 这条链路；必要时宁可加短注释或重命名，也不要把 create/bootstrap 关系藏在含糊 helper 名后面。
+- 用户继续纠偏：child tool 过滤若是文档语义要求（如 subagent 不能再派发 subagent），就要写成显式的能力规则，不能留下“先塞进去再意外挡掉”的味道。
+- 防错规则：对子代理工具集做限制时，优先用直接表达约束的 helper 名，例如 `filterSubagentChildTools`，并在实现处说明约束来源；不要靠隐式黑名单或 unrelated blocked-list 让读者猜。
+- 用户继续纠偏：`subagent` 和 `main agent` 的真正差异主要是 build、middleware、tools 和外层 run/review tracking；这不应该再被实现成“看起来像第二套 agent runtime”的目录和命名。
+- 防错规则：处理 `subagent` 架构时，先保证 `subagent bootstrap owner -> core bootstrapAgent/createAgent` 这条链路一眼可见；凡是 `coordinator/runtime/AgentRun*` 这类会让人误以为存在第二套 agent 系统的命名，都要优先改成更具体的 `run manager / subagent run` 语义。
+- 用户继续纠偏：根级 public API 和 capability barrel 不该继续泄漏低层 task/subagent helper，否则外部读起来会以为这些内部构造器也是正式能力面。
+- 防错规则：当用户强调“命名和目录看着要舒服”时，主动审计 root barrel 与 capability barrel；默认只保留 store、manager、middleware 这类 owner 级导出，把 bootstrap/result/tool helper 留在内部文件路径上。
+- 用户继续纠偏：当实现已经明显偏离 `docs/claude-code/*` 的心智时，不要沿着现有结构打补丁式微调；应先回到文档重画边界，再删错位层。
+- 防错规则：遇到 `task/subagent/review` 这种架构投诉时，先拿本地 Claude Code 文档逐条核对能力边界；如果目录或 owner 明显和文档模型不一致，优先做 docs-first 重组，而不是继续为旧文件辩护。
+- 用户继续纠偏：像 `coordination/` 这种只有一层子域的目录会制造无意义层级噪音，尤其在 capability 目录里。
+- 防错规则：当某个 capability 目录只有单一子域时，默认先拍平到根级文件；不要为了“看起来分层”保留额外一级目录。
+- 用户继续纠偏：`subagent` 应该自己拥有 child bootstrap/recovery 组装，并显式基于 core agent bootstrap；不能把这条主线拆成多个模糊 helper 文件，让人看不出 create/bootstrapAgent 是唯一内核入口。
+- 防错规则：涉及 child agent 启动时，优先保证“subagent bootstrap owner -> core bootstrapAgent/createAgent”这条链路一眼可见；如果 child build 和 recovery 重复拼装，就合回一个 bootstrap owner。
+- 用户继续纠偏：像 `sumChildTokens`、`truncateSummary` 这种抽象又不贴语义的 helper 名，会让局部文件看起来像垃圾工具箱。
+- 防错规则：本地 helper 名必须直接表达它服务的具体场景；如果名字不能带出“delegated agent token total”或“tool activity label”这种语义，就重命名或内联，不要留糊名。
+- 用户继续纠偏：当用户说“subagent 对外一个 middleware 就够了，tool 都封在里面”时，不要擅自把 outward surface 重新挪回 `task` 或“工作编排”名义下。
+- 防错规则：讨论 capability outward API 时，先分清“产品 outward owner”和“内部相关能力”。即使 `task coordination` 和 `subagent delegation` 相关，也不能因为想统一就改写用户明确指定的 outward owner；如果用户指定 `subagent` 对外，就让 `subagent` 只保留一个公开 middleware 入口，把 tool/child assembly 都藏在里面。
+- 用户继续纠偏：`permission` 的前后台差异不该由 permission middleware 自己持有；子代理权限请求应继续走 main 的 review/control plane，而不是在 permission 层被“背景模式”静默改写。
+- 防错规则：像 permission 这种通用 review 能力，不要把 subagent 策略塞进它的公开 options，也不要在 child 路径里额外造第二套 approval UI；subagent 侧只决定是否暴露 AskUser，permission 本身一律产出统一 review pause 交给主控制面承接。
+- 用户继续纠偏：像 `createPermissionMiddleware` / `createBackgroundPermissionMiddleware` 这种把同一 owner 能力拆成两套并行工厂的写法，会迅速把控制面写乱。
+- 防错规则：当差异只是一种 mode/strategy（foreground/background、interactive/non-interactive）时，优先保留单一 owner API，并把差异收进显式 option/type；不要再用第二个平行工厂、第二套 middleware 名字或“背景版/前景版”导出制造双轨心智。
+- 用户继续纠偏：像 `skills` 这类 capability，domain owner 和 assembly owner 必须分开，但不能再通过 capability barrel 反向导出 assembly/bundle 类型，否则边界看起来又像混装。
+- 防错规则：当用户明确说“build 能力可以放在 context”时，就把 bundle 类型、builder、loader 统一留在 `context/*`，并同时检查 capability barrel、root barrel、tests/imports 是否还有反向回流；不能只移动实现文件而保留旧导出面。
+- 用户继续纠偏：Claude Code 的 background subagent 不是运行中继续透传 AskUser/permission 的模式，而是尽量前置授权、运行中少打扰。
+- 防错规则：只要某条子代理路径被定义成 background/default，就默认不给它交互式 `AskUserQuestion`，permission 请求也应 auto-deny 或前置解决；只有显式 foreground 模式，才允许 clarification 和 permission review 穿透到用户。
+- 用户继续纠偏：`build`/assembly 能力可以留在 `context`，不必为了 owner 纯化把所有 bundle/system-message 组装都硬塞回 capability。
+- 防错规则：区分 “capability owns domain semantics” 和 “context owns assembly/build”。像 skills 这类能力，metadata/runtime/profile resolution 应归 capability；但 system-message 拼装、instruction bundle 组装如果本质是上下文装配，可以继续留在 context，不要过度收回。
+- 用户继续纠偏：当某个 capability 明确应该自主管理 metadata、runtime bundle、system message 和 catalog projection 时，不能继续把 contracts/runtime-shared/prompt shim 留在 `context/*` 里做半 owner。
+- 防错规则：只要用户要求“capability 自己管理全部，外部只拿结果”，就优先把 contracts、bundle builder、catalog formatter 和 tool factory 一起收回 capability，并删除旧 context shim；不要只改 import 指向而保留旧壳。
+- 用户继续纠偏：`.codara/skills/superworkers` 不是当前项目的实现 owner，禁止顺手修改来“配合”架构重构。
+- 防错规则：当用户明确划出不可改动的外部技能目录时，把它当作硬边界；任何 Claude Code 对齐都应先在 `src` 主路径内收 ownership，不要再去改 superworkers 提示词补洞。
 - 用户继续纠偏：当 live 里看到 `Skill` 重复打印或被拦下的 `AskUserQuestion` 仍然可见时，优先怀疑 transcript projection 重叠，而不是继续往 controller/runtime 上加 guard。
 - 防错规则：凡是 CLI 可见块重复或隐藏失效，先检查 `active runtime events` 与 `unsolidified coreMessages` 的双投影，以及 paired start/end event 是否绕过了 hide 条件；优先在 transcript/model 层做去重和抑制，不要把显示问题错误地下沉成执行控制问题。
 - 用户继续纠偏：当用户明确允许重构并强调“整体流转机制要清晰、易维护”，就不能只把新行为塞进旧 guard/flag 里糊住问题。
@@ -444,3 +476,21 @@
 - 防错规则：清理 review/HIL 旧命名时，先分层。`session_pause`、`pause request` 这类对外/中层 query-contract 要改成 review；`paused`、`resume`、`pendingReview` 这种底层执行机制词汇，如果仍准确表达实现，就保留。
 - 用户继续纠偏：`subagent/tool.ts` 这种文件最容易长成“什么都管”。dispatch、recovery、reuse policy 一旦混在一起，后续再改一条链就得翻整页。
 - 防错规则：遇到 capability 根入口文件时，默认检查它是不是混入了恢复专用逻辑或复用提示逻辑。tool 文件应该优先只保留 schema、入口、launch 编译；恢复、重复运行复用、显示格式化等次级 concern 要抽到清晰命名的旁路文件。
+- 用户继续纠偏：`subagent` 不该看起来像第二套 agent 系统；真正不同的只是 child build、middleware、tools 和外层 run/review 跟踪，底层仍然只有一套 `core/agent` 执行内核。
+- 防错规则：重构 delegated agent 能力时，先问“这个名字会不会和 `core/agent` 撞心智”。`subagent` 目录里避免再用 `AgentRuntime`、`AgentRunStore`、`createAgentMiddleware` 这种名字；默认改成 `Subagent*`，并把 outward public surface 收成单一 capability 入口。
+- 用户继续纠偏：`task` 如果只是 shared coordination，就不该再为了形式上的对称保留第二个 outward middleware 层。
+- 防错规则：当 task 只承载 coordination tools/store 时，优先删除额外的 `task/middleware.ts` 壳；对外只保留真正需要的 capability middleware，把 task 退回到工具与持久化本身。
+- 用户继续纠偏：`subagent` 的心智应该直接读成“build + tool + middleware + run tracking over core/agent”，而不是 `Delegated*`、`coordinator`、`parentToolName` 这类工具中心词汇堆在一起。
+- 防错规则：凡是围绕 child agent 的类型、metadata、result、resume 语义，默认优先使用 `Subagent*` / `child run` 命名；不要再引入 `Delegated*`、`parentToolName`、`coordinator` 这类会让人误以为是第二套 runtime 或工具协议的词。
+- 用户继续纠偏：`subagent` 与 `main agent` 的真正差异主要是 build、middleware、tools 和外层 run/review 跟踪；不要再把 child system/init 拼成第二套 owner。
+- 防错规则：做 child agent 初始化时，把“base project/system bundle owner”和“child-specific overrides”明确分开。`context` 负责 build base bundle 与 path-scoped instruction flow，`subagent` 只提供 child-specific build inputs，不要再留下 `childPrepareContext + childSystem*` 这种分裂 contract。
+- 用户继续纠偏：review 控制面只需要“按 reviewId 恢复 child review”的能力，不该依赖整个 subagent run manager。
+- 防错规则：当一个上层控制面只使用 capability 的一小部分行为时，抽出更薄的 contract（如 `*ReviewResumer`），不要把整个 run manager/store/tooling 接口往上透传。
+- 用户继续纠偏：不要为了概念洁癖把 `core` 整体改名成 `engine`；真正需要拉直的是 `core/agent` 与 `capability/subagent` 的职责，而不是目录名大迁移。
+- 防错规则：当用户只是质疑 main/subagent 是否共用同一套 loop 时，先优先收 ownership、命名和 bootstrap 路径；不要先做高噪音目录改名。
+- 用户继续纠偏：`subagent` 的 outward surface 应该尽量单一，但不代表把内部 helper 名随便叫成 `Agent*` 或保留公开 rebinding/assert helper；边界要清楚，内部装配 helper 也要说人话。
+- 防错规则：如果一个 helper 只服务 subagent child assembly，就直接用 `Subagent*` 命名，并优先放在 capability 内部路径；不要继续暴露 `buildAgentChildMiddlewares`、`assertNoRawSubagentTools` 这种会污染心智的公开名。
+- 用户继续纠偏：`main agent` 和 `subagent` 的真正差异主要只是 build、middleware、tools 和外层 run/review 跟踪；代码里必须能一眼看出它们最终仍走同一个 `core/agent` bootstrap/createAgent 路径。
+- 防错规则：实现 child delegation 时，不要把 `createAgent` 藏在多层跳转后再附带第二套“像 runtime 的 runtime”。`subagent/tool.ts` 负责输入与 launch spec，`subagent/bootstrap.ts` 负责 child bootstrap options，`subagent/run-manager.ts` 负责 run orchestration，真正的 agent 创建继续只落在 `core/bootstrapAgent -> createAgent` 一条路径上。
+- 用户继续纠偏：中途不要频繁打断汇报；在一次较大的收敛任务里，应先完成、对照文档复盘、验证，再给最终状态。
+- 防错规则：当用户明确要求“全面处理完毕再通知我”时，后续以本地计划、验证和文档对照为主，不再在未收尾前发送阶段性口头进度。

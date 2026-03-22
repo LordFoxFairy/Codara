@@ -3,11 +3,11 @@ import type {CodaraRuntimeEvent} from '@/index';
 import {parseAskUserResult} from '@core/middleware';
 import {parseReviewToolMessagePayload} from '@core/middleware/review';
 import {readMessageText} from '@shared/messages';
-import {readDelegatedAgentResult} from '@shared/delegation-result';
-import {readAgentRunLaunchResult} from '@shared/agent-run-launch';
+import {readSubagentResult} from '@shared/subagent-result';
+import {readSubagentRunLaunchResult} from '@shared/subagent-run-launch';
 import {readSharedTaskCoordinationArtifact} from '@shared/task-coordination-result';
 import {TOOL_NAMES} from '@shared/tool-display';
-import {formatSubagentDisplayName, normalizeSubagentType} from '@context/skills/runtime-shared';
+import {formatSubagentDisplayName, normalizeSubagentType} from '@capability/skill';
 import type {CliActiveTurn, CliNotice} from '../app/view-state';
 import {isInvalidTaskCloseoutResponse} from '../task-closeout';
 import {formatTokenCount} from '../utils/format';
@@ -210,7 +210,7 @@ export function buildActiveItems(input: {
           : input.activeTurn.response,
       }]
     : [];
-  const items: TranscriptItem[] = input.activeTurn?.kind === 'agent_completion'
+  const items: TranscriptItem[] = input.activeTurn?.kind === 'subagent_completion'
     ? [...runtimeItems, ...promptAndResponseItems, ...currentAssistantItems]
     : preRuntimeAssistantItems.length > 0
       ? [...promptAndResponseItems, ...preRuntimeAssistantItems, ...runtimeItems, ...currentAssistantItems]
@@ -301,7 +301,7 @@ function shouldSuppressSolidifiedTaskLaunchChatter(
   }
 
   const previousToolName = resolveToolMessageName(previousMessage, toolLookup);
-  if (!isAgentToolName(previousToolName) || !readAgentRunLaunchResult(previousMessage.artifact)) {
+  if (!isAgentToolName(previousToolName) || !readSubagentRunLaunchResult(previousMessage.artifact)) {
     return false;
   }
 
@@ -563,7 +563,7 @@ function isPendingTaskPlaceholderStart(startEvent: CodaraRuntimeEvent): boolean 
 function isRunIdBackedTaskStart(startEvent: CodaraRuntimeEvent): boolean {
   return startEvent.kind === 'agent'
     && startEvent.phase === 'start'
-    && startEvent.id.startsWith('agent-run:');
+    && startEvent.id.startsWith('subagent-run:');
 }
 
 function buildRunningTaskDisplay(
@@ -998,7 +998,7 @@ function buildToolResultItems(
   if (isInteractionToolName(resolvedName) || parseAskUserResult(text)) {
     return [];
   }
-  if (resolvedName === TOOL_NAMES.AGENT && readAgentRunLaunchResult(message.artifact)) {
+  if (resolvedName === TOOL_NAMES.AGENT && readSubagentRunLaunchResult(message.artifact)) {
     return [];
   }
   if (readSharedTaskCoordinationArtifact(message.artifact)) {
@@ -1068,7 +1068,7 @@ function buildTaskToolMetaFromCoreMessage(
   const toolCall = toolCallId ? toolLookup.get(toolCallId) : undefined;
   const displayName = formatTaskToolAgentName(toolCall);
   const args = formatTaskToolPrompt(toolCall);
-  const delegated = readDelegatedAgentResult(message.artifact);
+  const delegated = readSubagentResult(message.artifact);
 
   if (delegated) {
     const parts: string[] = [];

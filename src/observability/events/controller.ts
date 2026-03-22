@@ -4,8 +4,8 @@ import {
   readExecutionMetadata,
 } from '@core/pipeline/types';
 import {parseReviewToolMessagePayload} from '@core/middleware/review';
-import {readDelegatedAgentResult} from '@shared/delegation-result';
-import {readAgentRunLaunchResult} from '@shared/agent-run-launch';
+import {readSubagentResult} from '@shared/subagent-result';
+import {readSubagentRunLaunchResult} from '@shared/subagent-run-launch';
 import {TOOL_NAMES} from '@shared/tool-display';
 
 import type {
@@ -21,7 +21,7 @@ import {
   formatToolLabel,
   formatAgentStartLabel,
   summarizeToolMessage,
-  summarizeDelegatedAgent,
+  summarizeSubagent,
   summarizePauseLabel,
 } from './formatters';
 
@@ -323,8 +323,8 @@ export class RuntimeEventsController {
 
           if (context.toolCall.name === TOOL_NAMES.AGENT) {
             const taskRootId = this.toolRoots.get(`${currentToolKey}:task`);
-            const delegated = readDelegatedAgentResult(message.artifact);
-            const launched = readAgentRunLaunchResult(message.artifact);
+            const delegated = readSubagentResult(message.artifact);
+            const launched = readSubagentRunLaunchResult(message.artifact);
             this.emit({
               kind: 'agent',
               phase: 'end',
@@ -336,7 +336,7 @@ export class RuntimeEventsController {
                   : launched
                     ? 'Subagent running in background'
                     : 'Subagent completed',
-              detail: summarizeDelegatedAgent(message),
+              detail: summarizeSubagent(message),
               parentId: taskRootId,
             });
             this.toolRoots.delete(`${currentToolKey}:task`);

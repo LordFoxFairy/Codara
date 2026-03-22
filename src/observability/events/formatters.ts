@@ -1,10 +1,10 @@
 import type {ToolMessage} from '@langchain/core/messages';
 import type {ToolCallContext} from '@core/pipeline/types';
 import {readExecutionMetadata, type BaseExecutionContext} from '@core/pipeline/types';
-import {readDelegatedAgentResult} from '@shared/delegation-result';
-import {readAgentRunLaunchResult} from '@shared/agent-run-launch';
+import {readSubagentResult} from '@shared/subagent-result';
+import {readSubagentRunLaunchResult} from '@shared/subagent-run-launch';
 import {TOOL_NAMES, formatToolSummary, readString} from '@shared/tool-display';
-import {formatSubagentDisplayName, normalizeSubagentType} from '@context/skills/runtime-shared';
+import {formatSubagentDisplayName, normalizeSubagentType} from '@capability/skill';
 
 export function turnKey(context: BaseExecutionContext): string {
   const execution = readExecutionMetadata(context);
@@ -65,27 +65,27 @@ export function summarizeToolMessage(message: ToolMessage): string | undefined {
   return trimmed || undefined;
 }
 
-export function summarizeDelegatedAgent(message: ToolMessage): string | undefined {
-  const launched = readAgentRunLaunchResult(message.artifact);
+export function summarizeSubagent(message: ToolMessage): string | undefined {
+  const launched = readSubagentRunLaunchResult(message.artifact);
   if (launched) {
     return undefined;
   }
 
-  const delegated = readDelegatedAgentResult(message.artifact);
-  if (!delegated) {
+  const subagent = readSubagentResult(message.artifact);
+  if (!subagent) {
     return summarizeToolMessage(message);
   }
 
   const parts: string[] = [];
-  if (delegated.summary?.trim()) {
-    parts.push(delegated.summary.trim());
+  if (subagent.summary?.trim()) {
+    parts.push(subagent.summary.trim());
   }
   const statParts: string[] = [];
-  if (delegated.toolUseCount && delegated.toolUseCount > 0) {
-    statParts.push(`${delegated.toolUseCount} tool uses`);
+  if (subagent.toolUseCount && subagent.toolUseCount > 0) {
+    statParts.push(`${subagent.toolUseCount} tool uses`);
   }
-  if (delegated.totalTokens && delegated.totalTokens > 0) {
-    statParts.push(`${formatDelegatedTokens(delegated.totalTokens)} tokens`);
+  if (subagent.totalTokens && subagent.totalTokens > 0) {
+    statParts.push(`${formatSubagentTokens(subagent.totalTokens)} tokens`);
   }
   if (statParts.length > 0) {
     parts.push(statParts.join(' · '));
@@ -93,7 +93,7 @@ export function summarizeDelegatedAgent(message: ToolMessage): string | undefine
   return parts.join('\n') || summarizeToolMessage(message);
 }
 
-export function formatDelegatedTokens(n: number): string {
+export function formatSubagentTokens(n: number): string {
   if (n >= 1000000) return `${(n / 1000000).toFixed(1)}M`;
   if (n >= 1000) return `${(n / 1000).toFixed(1)}k`;
   return String(n);

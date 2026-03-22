@@ -1,9 +1,9 @@
 import {useEffect, useMemo, useState} from 'react';
-import type {ReviewQueryItem, AgentRunQuerySummary} from '@/index';
+import type {ReviewQueryItem, SubagentRunQuerySummary} from '@/index';
 
-export type {AgentRunQuerySummary};
+export type {SubagentRunQuerySummary};
 
-export interface ActiveAgentRun {
+export interface ActiveSubagentRun {
   id: string;
   name: string;
   status: 'running' | 'done' | 'error' | 'paused';
@@ -16,14 +16,14 @@ export interface ActiveAgentRun {
   totalTokens?: number;
 }
 
-export interface UseAgentRunsInput {
-  agentRunSummaries: readonly AgentRunQuerySummary[];
+export interface UseSubagentRunsInput {
+  subagentRunSummaries: readonly SubagentRunQuerySummary[];
   reviews?: readonly ReviewQueryItem[];
   preferredRunIds?: readonly string[];
 }
 
-export interface UseAgentRunsOutput {
-  runs: ActiveAgentRun[];
+export interface UseSubagentRunsOutput {
+  runs: ActiveSubagentRun[];
   runningCount: number;
   pausedCount: number;
   doneCount: number;
@@ -32,8 +32,8 @@ export interface UseAgentRunsOutput {
   hasActiveRuns: boolean;
 }
 
-export interface ActiveAgentRunSnapshot {
-  runs: ActiveAgentRun[];
+export interface ActiveSubagentRunSnapshot {
+  runs: ActiveSubagentRun[];
   runningCount: number;
   pausedCount: number;
   doneCount: number;
@@ -41,19 +41,19 @@ export interface ActiveAgentRunSnapshot {
   hiddenCount: number;
 }
 
-const MAX_VISIBLE_AGENT_RUNS = 5;
+const MAX_VISIBLE_SUBAGENT_RUNS = 5;
 
-export function extractAgentRunName(label: string): string {
+export function extractSubagentRunName(label: string): string {
   const firstLine = label.split('\n')[0]!.trim();
   const text = firstLine.startsWith('Delegating ') ? firstLine.slice('Delegating '.length) : firstLine;
-  const concise = summarizeAgentRunLabel(text);
+  const concise = summarizeSubagentRunLabel(text);
   if (concise.length > 40) {
     return `${concise.slice(0, 37)}…`;
   }
   return concise;
 }
 
-function summarizeAgentRunLabel(text: string): string {
+function summarizeSubagentRunLabel(text: string): string {
   const colonIndex = text.indexOf(': ');
   if (colonIndex <= 0) {
     return text;
@@ -69,47 +69,47 @@ function summarizeAgentRunLabel(text: string): string {
   return `${prefix}: ${body.slice(0, sentenceBoundary).trim()}`;
 }
 
-export function deriveVisibleAgentRuns(
-  runs: readonly AgentRunQuerySummary[],
+export function deriveVisibleSubagentRuns(
+  runs: readonly SubagentRunQuerySummary[],
   now: number,
   reviews: readonly ReviewQueryItem[] = [],
   preferredRunIds: readonly string[] = [],
-): ActiveAgentRun[] {
-  return deriveAgentRunSnapshot(runs, now, reviews, preferredRunIds).runs;
+): ActiveSubagentRun[] {
+  return deriveSubagentRunSnapshot(runs, now, reviews, preferredRunIds).runs;
 }
 
-export function deriveAgentRunSnapshot(
-  runs: readonly AgentRunQuerySummary[],
+export function deriveSubagentRunSnapshot(
+  runs: readonly SubagentRunQuerySummary[],
   now: number,
   reviews: readonly ReviewQueryItem[] = [],
   preferredRunIds: readonly string[] = [],
-): ActiveAgentRunSnapshot {
+): ActiveSubagentRunSnapshot {
   const activeBatchRunIds = selectVisibleRunIds(runs, preferredRunIds);
-  const reviewsByAgentRun = new Map<string, ReviewQueryItem[]>();
+  const reviewsBySubagentRun = new Map<string, ReviewQueryItem[]>();
   for (const review of reviews) {
-    if (review.source !== 'agent_run' || !review.anchor.agentRunId) {
+    if (review.source !== 'subagent_run' || !review.anchor.subagentRunId) {
       continue;
     }
-    const entries = reviewsByAgentRun.get(review.anchor.agentRunId) ?? [];
+    const entries = reviewsBySubagentRun.get(review.anchor.subagentRunId) ?? [];
     entries.push(review);
-    reviewsByAgentRun.set(review.anchor.agentRunId, entries);
+    reviewsBySubagentRun.set(review.anchor.subagentRunId, entries);
   }
 
-  const runsSnapshot: ActiveAgentRun[] = [];
+  const runsSnapshot: ActiveSubagentRun[] = [];
   for (const run of runs) {
     if (!activeBatchRunIds.has(run.runId)) {
       continue;
     }
 
-    const status = normalizeAgentRunStatus(run.status);
+    const status = normalizeSubagentRunStatus(run.status);
     const startedAt = Date.parse(run.startedAt);
-    const endedAt = parseAgentRunFinishedAt(run);
-    const runReviews = reviewsByAgentRun.get(run.runId) ?? [];
-    const detail = resolveAgentRunDetail(run, runReviews);
+    const endedAt = parseSubagentRunFinishedAt(run);
+    const runReviews = reviewsBySubagentRun.get(run.runId) ?? [];
+    const detail = resolveSubagentRunDetail(run, runReviews);
 
     runsSnapshot.push({
       id: run.runId,
-      name: extractAgentRunName(run.label),
+      name: extractSubagentRunName(run.label),
       status,
       startedAt,
       endedAt,
@@ -122,8 +122,8 @@ export function deriveAgentRunSnapshot(
   }
 
   runsSnapshot.sort((a, b) => {
-    const aPriority = agentRunSortPriority(a.status);
-    const bPriority = agentRunSortPriority(b.status);
+    const aPriority = subagentRunSortPriority(a.status);
+    const bPriority = subagentRunSortPriority(b.status);
     if (aPriority !== bPriority) {
       return aPriority - bPriority;
     }
@@ -134,7 +134,7 @@ export function deriveAgentRunSnapshot(
   const pausedCount = runsSnapshot.filter((run) => run.status === 'paused').length;
   const doneCount = runsSnapshot.filter((run) => run.status === 'done').length;
   const errorCount = runsSnapshot.filter((run) => run.status === 'error').length;
-  const visibleRuns = runsSnapshot.slice(0, MAX_VISIBLE_AGENT_RUNS);
+  const visibleRuns = runsSnapshot.slice(0, MAX_VISIBLE_SUBAGENT_RUNS);
 
   return {
     runs: visibleRuns,
@@ -146,11 +146,11 @@ export function deriveAgentRunSnapshot(
   };
 }
 
-export function useAgentRuns(input: UseAgentRunsInput): UseAgentRunsOutput {
+export function useSubagentRuns(input: UseSubagentRunsInput): UseSubagentRunsOutput {
   const [now, setNow] = useState(() => Date.now());
   const snapshot = useMemo(
-    () => deriveAgentRunSnapshot(input.agentRunSummaries, now, input.reviews, input.preferredRunIds),
-    [input.preferredRunIds, input.reviews, input.agentRunSummaries, now],
+    () => deriveSubagentRunSnapshot(input.subagentRunSummaries, now, input.reviews, input.preferredRunIds),
+    [input.preferredRunIds, input.reviews, input.subagentRunSummaries, now],
   );
   const {runs, runningCount, pausedCount, doneCount, errorCount, hiddenCount} = snapshot;
 
@@ -177,7 +177,7 @@ export function useAgentRuns(input: UseAgentRunsInput): UseAgentRunsOutput {
   };
 }
 
-function normalizeAgentRunStatus(status: string): ActiveAgentRun['status'] {
+function normalizeSubagentRunStatus(status: string): ActiveSubagentRun['status'] {
   switch (status) {
     case 'running':
       return 'running';
@@ -192,7 +192,7 @@ function normalizeAgentRunStatus(status: string): ActiveAgentRun['status'] {
   }
 }
 
-function agentRunSortPriority(status: ActiveAgentRun['status']): number {
+function subagentRunSortPriority(status: ActiveSubagentRun['status']): number {
   switch (status) {
     case 'running':
       return 0;
@@ -206,15 +206,15 @@ function agentRunSortPriority(status: ActiveAgentRun['status']): number {
   return 2;
 }
 
-function parseAgentRunFinishedAt(run: AgentRunQuerySummary): number | undefined {
+function parseSubagentRunFinishedAt(run: SubagentRunQuerySummary): number | undefined {
   if (run.endedAt) {
     return Date.parse(run.endedAt);
   }
   return undefined;
 }
 
-function resolveAgentRunDetail(
-  run: AgentRunQuerySummary,
+function resolveSubagentRunDetail(
+  run: SubagentRunQuerySummary,
   reviews: readonly ReviewQueryItem[],
 ): string | undefined {
   if (reviews.length > 0) {
@@ -230,7 +230,7 @@ function resolveAgentRunDetail(
 }
 
 function selectVisibleRunIds(
-  runs: readonly AgentRunQuerySummary[],
+  runs: readonly SubagentRunQuerySummary[],
   preferredRunIds: readonly string[] = [],
 ): Set<string> {
   if (preferredRunIds.length > 0) {
@@ -248,7 +248,7 @@ function selectVisibleRunIds(
   return selectLatestBatchRunIds(runs);
 }
 
-function selectLatestBatchRunIds(runs: readonly AgentRunQuerySummary[]): Set<string> {
+function selectLatestBatchRunIds(runs: readonly SubagentRunQuerySummary[]): Set<string> {
   if (runs.length === 0) {
     return new Set<string>();
   }
@@ -261,13 +261,13 @@ function selectLatestBatchRunIds(runs: readonly AgentRunQuerySummary[]): Set<str
     return a.runId.localeCompare(b.runId);
   });
 
-  const batches: AgentRunQuerySummary[][] = [];
-  let currentBatch: AgentRunQuerySummary[] = [];
+  const batches: SubagentRunQuerySummary[][] = [];
+  let currentBatch: SubagentRunQuerySummary[] = [];
   let currentBatchTerminalAt = Number.NEGATIVE_INFINITY;
 
   for (const run of sortedRuns) {
     const startedAt = Date.parse(run.startedAt);
-    const endedAt = parseAgentRunFinishedAt(run) ?? Number.POSITIVE_INFINITY;
+    const endedAt = parseSubagentRunFinishedAt(run) ?? Number.POSITIVE_INFINITY;
 
     if (currentBatch.length === 0 || startedAt <= currentBatchTerminalAt) {
       currentBatch.push(run);

@@ -28,7 +28,7 @@ export function getReviewItems(options: {
         updatedAt: record.updatedAt,
         anchor: {
           origin: 'delegated' as const,
-          ...(record.agentRunId ? {agentRunId: record.agentRunId} : {}),
+          ...(record.subagentRunId ? {subagentRunId: record.subagentRunId} : {}),
           ...(record.childSessionId ? {childSessionId: record.childSessionId} : {}),
         },
         isFocused: record.approvalId === focusedReviewId,

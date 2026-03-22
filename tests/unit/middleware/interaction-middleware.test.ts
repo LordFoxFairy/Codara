@@ -1,7 +1,7 @@
 import {describe, expect, it} from 'bun:test';
 import {HumanMessage, ToolMessage, type BaseMessage, type ToolCall} from '@langchain/core/messages';
-import {z} from 'zod';
 import {ASK_USER_TOOL_NAME, createAskUserQuestionMiddleware, parseAskUserResult, parseReviewToolMessagePayload, type ToolCallContext} from '@core/middleware';
+import {AskUserSchema} from '@core/middleware/ask-user-question';
 
 function createToolContext(
   toolCall: ToolCall,
@@ -33,30 +33,13 @@ describe('createAskUserQuestionMiddleware', () => {
     const askUserTool = middleware.tools?.find((tool) => tool.name === ASK_USER_TOOL_NAME);
 
     expect(askUserTool).toBeDefined();
-    expect(() => z.toJSONSchema(askUserTool!.schema)).not.toThrow();
+    expect(askUserTool?.schema).toBe(AskUserSchema);
   });
 
   it('should keep the AskUser tool-facing schema free of transform nodes', () => {
-    const middleware = createAskUserQuestionMiddleware();
-    const askUserTool = middleware.tools?.find((tool) => tool.name === ASK_USER_TOOL_NAME) as {
-      schema?: {
-        shape?: {
-          summary?: {constructor?: {name?: string}};
-          questions?: {
-            element?: {
-              shape?: {
-                id?: {constructor?: {name?: string}};
-                label?: {constructor?: {name?: string}};
-              };
-            };
-          };
-        };
-      };
-    } | undefined;
-
-    expect(askUserTool?.schema?.shape?.summary?.constructor?.name).not.toBe('ZodPipe');
-    expect(askUserTool?.schema?.shape?.questions?.element?.shape?.id?.constructor?.name).not.toBe('ZodPipe');
-    expect(askUserTool?.schema?.shape?.questions?.element?.shape?.label?.constructor?.name).not.toBe('ZodPipe');
+    expect(AskUserSchema.shape.summary?.constructor?.name).not.toBe('ZodPipe');
+    expect(AskUserSchema.shape.questions.element.shape.id.constructor.name).not.toBe('ZodPipe');
+    expect(AskUserSchema.shape.questions.element.shape.label.constructor.name).not.toBe('ZodPipe');
   });
 
   it('should pause AskUser tool calls with generic form UI metadata', async () => {

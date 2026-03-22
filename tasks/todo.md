@@ -1,4 +1,193 @@
+# 2026-03-22 Subagent Boundary And Permission Propagation Fix
+
+## Plan
+
+- [x] Split the subagent middleware into a clear child-runtime builder plus the outward middleware constructor so the file stops mixing assembly concerns.
+- [x] Propagate `permissionMode` from skills subagent definitions into child bootstrap and run records so child sessions can retain the selected mode.
+- [x] Stop the default subagent bootstrap from inheriting the main conversation skills prompt while keeping the normal project prompt/guidelines path intact.
+- [x] Re-run targeted subagent, skills, and Codara facade verification, then record the results here.
+
+## Review
+
+- `createSubagentMiddleware(...)` remains the outward runtime entry point, while `buildSubagentChildMiddlewares(...)` only assembles child-side middleware.
+- `permissionMode` now flows from skill metadata into subagent launch compilation, run storage, and child bootstrap/recovery context so resumed child runs keep the selected mode.
+- Child bootstrap strips inherited skills prompt content from both the base system bundle and the prepared instruction context before the child agent starts.
+- `src/codara/assembly/middleware.ts` now only forwards prompt/guidelines/memory bootstrap data to children; the main-conversation skills prompt no longer leaks into child startup.
+- Targeted verification passed:
+  - `bun test tests/unit/tasks/depth-limit.test.ts tests/unit/agents/task-tool-definitions.test.ts tests/unit/agents/child-middlewares.test.ts`
+  - `bunx tsc --noEmit --pretty false`
+
+# 2026-03-22 Skills Context Assembly And Background Child Contract
+
+# 2026-03-22 Subagent Naming And Ownership Cleanup
+
+## Plan
+
+- [x] Finish the in-flight `agent-run` to `subagent-run` naming cleanup so mid-layer names stop colliding with `core/agent`.
+- [x] Rename the parent continuation handoff path from `agent-completion` to `subagent-completion` and update CLI/controller types to the same vocabulary.
+- [x] Tighten `subagent` readability so it clearly reads as build + middleware + tool + run tracking over the single core bootstrap path.
+- [x] Re-run focused subagent/task/CLI verification plus eslint, typecheck, and diff-check.
+
+## Review
+
+- `agent-run` / `active-agent-run` ids are now `subagent-run` / `active-subagent-run` in the live CLI path and related tests.
+- Parent continuation handoff now lives under:
+  - `src/codara/subagent-completion.ts`
+  instead of `src/codara/agent-completion.ts`.
+- CLI active-turn vocabulary now uses `subagent_completion` rather than `agent_completion`, which better matches the actual meaning: the main turn is consuming completed subagent results.
+- `src/capability/subagent/bootstrap.ts` now reads more directly:
+  - it explicitly comments that subagents reuse the core `bootstrapAgent/createAgent` path
+  - child tool filtering is expressed as `filterSubagentChildTools(...)` with the Claude Code rule that subagents cannot spawn other subagents
+- `src/capability/subagent/run-manager.ts` now uses clearer local names:
+  - `runPromptInBackground`
+  - `ensureChildAgent`
+  - `subagentRunEventId`
+- `src/codara/assembly/middleware.ts` no longer misnames the child checkpointer as `taskCheckpointer`; it is now `subagentCheckpointer`.
+- Focused verification passed:
+  - `bun test tests/unit/agents/subagent.test.ts tests/unit/agents/subagent-task.test.ts tests/unit/tasks/middleware.test.ts tests/unit/core/codara-facade.test.ts tests/unit/cli/subagent-runs.test.ts tests/unit/cli/use-cli-controller.test.tsx tests/unit/cli/shell-app.test.ts tests/unit/cli/transcript-model.test.ts tests/unit/cli/solidified-transcript.test.ts tests/unit/durability/approval-store.test.ts`
+  - `bunx eslint src/capability/subagent/*.ts src/capability/task/*.ts src/codara/*.ts src/codara/assembly/*.ts src/cli/app/*.ts src/cli/hooks/use-subagent-runs.ts src/cli/hooks/use-solidified-transcript.ts src/cli/components/chrome/subagent-run-panel.tsx src/cli/components/conversation/transcript.tsx src/cli/transcript/model.ts tests/unit/agents/*.ts tests/unit/tasks/*.ts tests/unit/cli/*.ts tests/unit/durability/approval-store.test.ts`
+  - `bunx tsc --noEmit --pretty false`
+  - `git diff --check`
+
+# 2026-03-22 Claude-Code Docs-First Subagent And Task Realignment
+
+## Plan
+
+- [x] Re-read the local Claude Code docs for background tasks, subagents, permissions, interaction control, and context before touching the current `task/subagent` structure again.
+- [x] Flatten `src/capability/task` back to a direct coordination surface instead of keeping an unnecessary `coordination/` indirection layer.
+- [x] Collapse subagent child bootstrap and recovery assembly into a single bootstrap owner so the path from subagent capability to core agent bootstrap is explicit.
+- [x] Move parent continuation policy out of `src/capability/subagent` so the subagent directory only owns child delegation concerns.
+- [x] Re-run focused subagent/task/facade verification, lint, typecheck, and residual scans after the rewrite.
+
+## Review
+
+- `src/capability/task` is flat again and now matches the actual scope of the domain:
+  - `src/capability/task/types.ts`
+  - `src/capability/task/store.ts`
+  - `src/capability/task/tools.ts`
+  - `src/capability/task/middleware.ts`
+  - `src/capability/task/index.ts`
+- The old extra nesting under `src/capability/task/coordination/` has been removed.
+- Subagent child build/recovery now has a single owner:
+  - `src/capability/subagent/bootstrap.ts`
+- Deleted old split bootstrap layers:
+  - `src/capability/subagent/delegated-child.ts`
+  - `src/capability/subagent/recovery.ts`
+- Parent completion continuation no longer pollutes the subagent capability:
+  - moved from `src/capability/subagent/completion-handoff.ts`
+  - to `src/codara/agent-completion.ts`
+- The current `src/capability/subagent` surface is down to files that match real child-delegation concerns:
+  - `bootstrap.ts`
+  - `index.ts`
+  - `launch-reuse.ts`
+  - `middleware.ts`
+  - `review-metadata.ts`
+  - `run-store.ts`
+  - `runtime.ts`
+  - `tool.ts`
+  - `types.ts`
+- Residual scans are clean for the deleted structure:
+  - no `coordination/`
+  - no `delegated-child`
+  - no `completion-handoff`
+  - no `child-middlewares`
+  - no `DELEGATION_TOOL`
+- Focused verification passed:
+  - `bun test tests/unit/tasks/depth-limit.test.ts tests/unit/tasks/middleware.test.ts tests/unit/agents/subagent.test.ts tests/unit/agents/subagent-task.test.ts tests/unit/core/codara-facade.test.ts`
+  - `bunx eslint src/capability/task src/capability/subagent src/codara/agent-completion.ts src/codara/assembly/middleware.ts tests/unit/tasks/depth-limit.test.ts tests/unit/tasks/middleware.test.ts tests/unit/agents/subagent.test.ts tests/unit/agents/subagent-task.test.ts tests/unit/core/codara-facade.test.ts`
+  - `bunx tsc --noEmit --pretty false`
+  - `git diff --check`
+
+# 2026-03-22 Subagent Outward Surface Correction
+
+## Plan
+
+- [x] Re-align the public delegation surface so `subagent` remains the outward capability owner with a single public middleware entry.
+- [x] Fold `src/capability/subagent/child-middlewares.ts` into `src/capability/subagent/middleware.ts` so child middleware assembly stops looking like a second public seam.
+- [x] Keep `task` coordination separate and thin; do not move delegated child outward registration back under `task`.
+- [x] Update Codara assembly and focused tests to consume the single outward subagent middleware contract.
+- [x] Re-run focused subagent/task/facade verification, typecheck, lint, and diff-check.
+
+## Review
+
+- `createAgentMiddleware(...)` is now the single outward delegation middleware in the live Codara runtime path; default runtime assembly no longer mounts a separate `TaskMiddleware` alongside it.
+- `AgentMiddleware` now owns both delegated `Agent` registration and shared task-coordination tool registration when a `taskStore` is supplied, so callers no longer need to understand two middleware names for the default orchestration surface.
+- `src/capability/subagent/child-middlewares.ts` was deleted; child middleware assembly now lives inside `src/capability/subagent/middleware.ts` with the outward middleware owner.
+- Caller-provided `AgentMiddleware` instances are rebound onto runtime-owned stores/runtime/checkpointer through `readAgentMiddlewareOptions(...)`, so Codara keeps a single state source even when callers inject custom child models/tools.
+- Focused verification passed:
+  - `bun test tests/unit/agents/child-middlewares.test.ts tests/unit/tasks/middleware.test.ts tests/unit/core/codara-facade.test.ts tests/unit/agents/subagent.test.ts tests/unit/agents/subagent-task.test.ts`
+  - `bunx tsc --noEmit --pretty false`
+  - `bunx eslint src/capability/subagent src/codara/assembly/middleware.ts tests/unit/agents/child-middlewares.test.ts tests/unit/tasks/middleware.test.ts tests/unit/core/codara-facade.test.ts`
+  - `git diff --check`
+
+## Plan
+
+- [x] Pull `SkillsRuntimeBundle` and `create/loadSkillsRuntimeBundle(...)` back under `context/skills/build` so `@capability/skill` no longer re-exports assembly/build concerns.
+- [x] Update tests, helpers, and root/context barrels to consume the skills bundle from `context` while keeping runtime/metadata ownership in `capability/skill`.
+- [x] Reconnect delegated child sessions to the same context assembly seam as main sessions by using a shared instruction-context preparer instead of ad-hoc system-message concatenation only.
+- [x] Make background child runs non-interactive by default: no `AskUserQuestion` tool, and permission requests auto-deny instead of opening interactive review.
+- [x] Add focused regression coverage for the new child middleware contract and rerun skills/subagent/facade verification.
+
+## Review
+
+- `@capability/skill` no longer re-exports `createSkillsRuntimeBundle`, `loadSkillsRuntimeBundle`, or `SkillsRuntimeBundle`; those now live only under:
+  - `src/context/skills/build.ts`
+  - `src/context/index.ts`
+  - `src/index.ts`
+- `SkillsRuntimeBundle` moved out of `src/capability/skill/contracts.ts`, which keeps `capability/skill` focused on runtime metadata/contracts rather than session assembly.
+- `createInstructionContextPreparer(...)` now accepts the full instruction bundle inputs and merges them into child sessions through `mergePreparedInstructionContext(...)`, so delegated children reuse the same prompt/guidelines/skills/auto-memory assembly seam as main sessions.
+- Runtime assembly now passes `skillsSource`, `autoMemorySource`, and `memoryRootDir` into child preparation, instead of only stitching child system prompts locally in the subagent launch path.
+- Background child middleware now defaults to Claude Code-style non-interactive behavior:
+  - no `AskUserQuestion` tool unless `interactionMode: 'foreground'`
+  - permission requests continue to surface through the shared main review/control plane rather than through a separate child-owned approval UI
+- Added focused regression coverage in:
+  - `tests/unit/agents/child-middlewares.test.ts`
+- Verification passed:
+  - `bun test tests/unit/agents/child-middlewares.test.ts tests/unit/skills/middleware.test.ts tests/unit/skills/runtime-context.test.ts tests/unit/middleware/skills-export.test.ts tests/unit/sessions/skills.test.ts tests/unit/agents/subagent.test.ts tests/unit/agents/task-tool-delegation.test.ts tests/unit/tasks/middleware.test.ts tests/unit/core/codara-facade.test.ts tests/unit/core/public-api-surface.test.ts`
+  - `bunx tsc --noEmit --pretty false`
+  - `bunx eslint src/capability/skill src/capability/subagent/child-middlewares.ts src/context/skills/build.ts src/context/index.ts src/context/session-bundle/base-system-message.ts src/core/middleware/skills.ts src/core/middleware/index.ts src/core/middleware/permission src/codara/assembly/context.ts src/codara/assembly/middleware.ts src/codara/facade.ts tests/unit/agents/child-middlewares.test.ts tests/unit/skills/middleware.test.ts tests/unit/skills/runtime-context.test.ts tests/unit/middleware/skills-export.test.ts tests/unit/agents/subagent-task.test.ts tests/integration/skills/skills-project-codara.e2e.test.ts tests/integration/skills/skills-project-standard-flow.e2e.test.ts tests/integration/skills/skills-task-completion.e2e.test.ts tests/integration/skills/skills-progressive-disclosure.e2e.test.ts tests/cases/helpers/cli-runtime-factory.ts tests/unit/agents/task-tool.fixtures.ts`
+  - `git diff --check`
+
 # 2026-03-22 Review Naming And Control-Plane Unification
+
+# 2026-03-22 Skills Ownership And Control-Plane Convergence
+
+## Plan
+
+- [x] Move live skills runtime parsing and subagent profile resolution out of `src/context/skills/*` into `src/capability/skill/*` so skills owns its own runtime contract.
+- [x] Move skills system-message construction and subagent catalog rendering into the skills capability so `context/session-bundle`, `core/middleware/skills`, and `subagent/*` stop formatting skills output themselves.
+- [x] Keep external layers as consumers only:
+  - `context/session-bundle` consumes a prepared skills bundle/runtime
+  - `core/middleware/skills` consumes skills-owned prompt/runtime helpers
+  - `subagent` consumes skills-owned profile/catalog views
+- [x] Audit adjacent “common capability management” seams so the resulting structure stays controllable instead of scattering more helpers:
+  - prompt assembly
+  - runtime shared payload shape
+  - subagent profile consumption
+  - public barrel/test breakpoints
+- [x] Re-run focused skills/subagent/facade/context regressions, eslint, typecheck, and diff-check after the refactor.
+
+## Review
+
+- `capability/skill` is now the only live owner of skills contracts, runtime parsing, runtime bundle construction, and subagent catalog rendering:
+  - `src/capability/skill/contracts.ts`
+  - `src/capability/skill/runtime/runtime.ts`
+  - `src/capability/skill/runtime/commands.ts`
+  - `src/capability/skill/discovery/source.ts`
+- Deleted old context-side shims:
+  - `src/context/skills/contracts.ts`
+  - `src/context/skills/runtime-shared.ts`
+  - `src/context/prompts/skills-system-prompt.ts`
+  - `src/capability/skill/catalog/types.ts`
+- `buildBaseSystemMessage` now consumes `skillsSource.getBundle()` directly instead of reconstructing a skills prompt from raw runtime data.
+- `createSkillsMiddleware` now consumes `loadSkillsRuntimeBundle(...)` and mounts a skills-owned `createSkillTool(...)`; it no longer owns skill matching or skill file prompt assembly.
+- `subagent` now consumes a skills-owned subagent catalog projection instead of formatting it locally.
+- Focused verification passed:
+  - `bun test tests/unit/skills/middleware.test.ts tests/unit/skills/runtime-context.test.ts tests/unit/skills/subagents.test.ts tests/unit/sessions/skills.test.ts tests/unit/core/codara-session-sources.test.ts tests/unit/core/public-api-surface.test.ts tests/unit/agents/subagent-task.test.ts tests/unit/middleware/skills-export.test.ts`
+  - `bun test tests/integration/skills/skills-project-codara.e2e.test.ts tests/integration/skills/skills-project-standard-flow.e2e.test.ts tests/integration/skills/skills-task-completion.e2e.test.ts tests/integration/skills/skills-progressive-disclosure.e2e.test.ts`
+  - `bunx tsc --noEmit --pretty false`
+  - `bunx eslint src/capability/skill src/core/middleware/skills.ts src/core/middleware/index.ts src/capability/subagent/middleware.ts src/context/session-bundle/base-system-message.ts src/context/index.ts src/index.ts src/durability/session/session.ts tests/unit/skills/middleware.test.ts tests/unit/skills/runtime-context.test.ts tests/unit/skills/subagents.test.ts tests/unit/sessions/skills.test.ts tests/unit/core/codara-session-sources.test.ts tests/unit/core/public-api-surface.test.ts tests/unit/middleware/skills-export.test.ts tests/unit/agents/subagent-task.test.ts tests/cases/helpers/cli-runtime-factory.ts tests/integration/skills/skills-project-codara.e2e.test.ts tests/integration/skills/skills-project-standard-flow.e2e.test.ts tests/integration/skills/skills-task-completion.e2e.test.ts tests/integration/skills/skills-progressive-disclosure.e2e.test.ts`
+  - `git diff --check`
 
 ## Plan
 
@@ -78,6 +267,31 @@
 # 2026-03-22 Task/Subagent Child Ownership Cleanup
 
 ## Plan
+- [x] Make the subagent creation path explicit again so `subagent` visibly owns child bootstrap while `core/agent` stays the only execution engine.
+- [x] Rename the remaining subagent orchestration layer away from vague `coordinator`/`AgentRun*` language where it still collides with `core/agent`.
+- [x] Shrink the root and capability barrels so low-level task/subagent helper constructors stop leaking from the public surface.
+- [x] Re-run focused task/subagent/facade/CLI/observability verification after the naming and ownership cleanup.
+
+## Review
+
+- `src/capability/subagent/bootstrap.ts` now visibly owns the child creation seam:
+  - `bootstrapSubagent(...)` is the explicit handoff from subagent assembly into `core/bootstrapAgent(...)`
+  - child build/recovery/result formatting stay in the same file, so the path from “subagent config” to “core agent” is readable in one place
+- `src/capability/subagent/coordinator.ts` was renamed to:
+  - `src/capability/subagent/run-manager.ts`
+  - exported names now read as `SubagentRunManager` / `createSubagentRunManager(...)`
+  - this removes one more “second runtime” smell from the subagent directory
+- `src/capability/subagent/tool.ts` now uses `Subagent*` internal names consistently for its launch preparation and result handling, while keeping the outward tool name as `Agent`
+- `@capability/subagent` barrel is tighter:
+  - keeps run store / run manager / middleware
+  - no longer re-exports bootstrap/result/review-metadata helpers
+- top-level `src/index.ts` no longer leaks low-level task tool constructors or task tool names; root export now keeps task at the store/type layer and subagent at the middleware layer
+- verification passed:
+  - `bun test tests/unit/core/public-api-surface.test.ts tests/unit/tasks/public-surface.test.ts tests/unit/agents/subagent.test.ts tests/unit/agents/subagent-task.test.ts tests/unit/tasks/middleware.test.ts tests/unit/core/codara-facade.test.ts`
+  - `bun test tests/unit/cli/subagent-runs.test.ts tests/unit/cli/components/chrome/subagent-run-panel.test.tsx tests/unit/cli/runtime-projection.test.ts tests/unit/cli/shell-app.test.ts tests/unit/cli/transcript-model.test.ts tests/unit/observability/events-formatters.test.ts tests/unit/durability/approval-store.test.ts`
+  - `bunx tsc --noEmit --pretty false`
+  - `bunx eslint src/capability/subagent/*.ts src/capability/task/*.ts src/codara/*.ts src/codara/assembly/*.ts src/core/agent/run/turn.ts src/observability/events/controller.ts src/observability/events/formatters.ts src/index.ts tests/unit/agents/subagent.test.ts tests/unit/agents/subagent-task.test.ts tests/unit/tasks/middleware.test.ts tests/unit/tasks/public-surface.test.ts tests/unit/core/public-api-surface.test.ts tests/unit/core/codara-facade.test.ts tests/unit/cli/subagent-runs.test.ts tests/unit/cli/components/chrome/subagent-run-panel.test.tsx tests/unit/cli/runtime-projection.test.ts tests/unit/cli/shell-app.test.ts tests/unit/cli/transcript-model.test.ts tests/unit/observability/events-formatters.test.ts tests/unit/durability/approval-store.test.ts`
+  - `git diff --check`
 
 - [x] Stop routing child-only bootstrap fields through ambiguous shared names like `middleware`, `context`, `values`, `prepareContext`, and `lifecycle`.
 - [x] Make delegated child bootstrap options explicitly child-owned in the subagent capability surface.
@@ -2688,4 +2902,147 @@
   - `bun test tests/unit/tasks/middleware.test.ts tests/unit/tasks/public-surface.test.ts tests/unit/tasks/depth-limit.test.ts tests/unit/agents/subagent.test.ts tests/unit/agents/subagent-task.test.ts tests/unit/core/codara-facade.test.ts tests/unit/tasks/run-store-file.test.ts tests/unit/cli/runtime-projection.test.ts tests/unit/cli/use-cli-controller.test.tsx tests/unit/cli/transcript-model.test.ts tests/unit/cli/agent-runs.test.ts tests/unit/cli/solidified-transcript.test.ts`
   - `bunx eslint src/capability/subagent src/capability/task src/codara src/shared/contracts/channel.ts src/cli/app/review-form-state.ts src/cli/app/review-permission-state.ts tests/unit/cli/runtime-projection.test.ts tests/unit/cli/use-cli-controller.test.tsx`
   - `bunx tsc --noEmit --pretty false`
+  - `git diff --check`
+
+# 2026-03-22 Task And Subagent Naming/Ownership Realignment
+
+## Plan
+
+- [x] Flatten `src/capability/task` back to root files and remove the extra coordination subdirectory layer.
+- [x] Collapse the `subagent` outward API to a single public middleware entry, and rename the rest of the capability surface so it no longer collides with `core/agent`.
+- [x] Re-run focused task/subagent/facade regressions, lint, typecheck, and diff-check.
+
+## Review
+
+- `src/capability/task` is now the flat coordination surface again:
+  - `types.ts`
+  - `store.ts`
+  - `tools.ts`
+  - `index.ts`
+- The extra public `TaskMiddleware` layer was removed; task coordination now stays as tools/stores, while the outward delegation capability lives under `subagent`.
+- `subagent` naming now matches its role instead of looking like a second core-agent system:
+  - `createSubagentMiddleware`
+  - `createSubagentTool`
+  - `createSubagentCoordinator`
+  - `createSubagentRunMemoryStore`
+  - `createSubagentRunFileStore`
+  - `SubagentRunRecord`
+  - `SubagentRunStore`
+- The coordinator remains a wrapper over `core/bootstrapAgent`, so the actual execution engine is still single-owner under `src/core/agent`.
+- `codara` wiring was updated to use the same vocabulary:
+  - `subagentRunStore`
+  - `subagentCoordinator`
+- Focused verification passed:
+  - `bun test tests/unit/agents/subagent.test.ts tests/unit/agents/subagent-task.test.ts tests/unit/tasks/middleware.test.ts tests/unit/tasks/public-surface.test.ts tests/unit/core/public-api-surface.test.ts tests/unit/core/codara-facade.test.ts tests/cases/review/subagent-activity-display.case.test.ts`
+  - `bunx eslint src/capability/subagent/*.ts src/capability/task/*.ts src/codara/*.ts src/codara/assembly/*.ts src/index.ts tests/unit/agents/subagent.test.ts tests/unit/agents/subagent-task.test.ts tests/unit/tasks/middleware.test.ts tests/unit/tasks/public-surface.test.ts tests/unit/core/public-api-surface.test.ts tests/unit/core/codara-facade.test.ts tests/cases/helpers/cli-runtime-factory.ts tests/cases/review/subagent-activity-display.case.test.ts`
+  - `bunx tsc --noEmit --pretty false`
+  - `git diff --check`
+
+# 2026-03-22 Subagent Surface Simplification And Vocabulary Cleanup
+
+## Plan
+
+- [x] Remove the remaining `Delegated*` / tool-centric naming from the live subagent path and replace it with `Subagent*` / child-run wording.
+- [x] Rename the subagent orchestration owner from `coordinator` to `runManager` on the live source path.
+- [x] Keep `task` flat and coordination-only while leaving `subagent` as the single outward capability entry.
+- [x] Re-run focused subagent/task/facade/transcript verification plus residual scans.
+
+## Review
+
+- `subagent` now reads more directly as:
+  - `bootstrap.ts`
+  - `tool.ts`
+  - `run-manager.ts`
+  - `run-store.ts`
+  - `review-metadata.ts`
+  - `middleware.ts`
+- The old tool-centric vocabulary is gone from the live subagent source path:
+  - `DelegatedAgentResult` -> `SubagentResult`
+  - `DelegatedAgentOptions` -> `SubagentOptions`
+  - `DelegatedChildInput` -> `SubagentBuildInput`
+  - `DelegatedParentRuntimeMetadata` -> `SubagentParentRuntimeMetadata`
+  - `mergeDelegatedPauseMetadata` -> `mergeSubagentPauseMetadata`
+  - `readDelegatedParentRuntimeMetadata` -> `readSubagentParentRuntimeMetadata`
+- Review metadata no longer stores `parentToolName`; it now anchors subagent review state to child session/recovery data directly.
+- The orchestration owner is now named for what it actually does:
+  - `createSubagentRunManager`
+  - `SubagentRunManager`
+  - `subagentRunManager`
+- `task` remains a flat coordination-only surface with no extra outward middleware shell.
+- Focused verification passed:
+  - `bun test tests/unit/agents/review-metadata.test.ts tests/unit/agents/subagent.test.ts tests/unit/agents/subagent-task.test.ts tests/unit/tasks/run-store.test.ts tests/unit/tasks/run-store-file.test.ts tests/unit/tasks/public-surface.test.ts tests/unit/core/codara-facade.test.ts tests/unit/cli/transcript-model.test.ts tests/unit/agents/task-tool-definitions.test.ts`
+  - `bunx eslint src/capability/subagent/*.ts src/capability/task/*.ts src/codara/*.ts src/codara/assembly/*.ts src/shared/*.ts tests/unit/agents/review-metadata.test.ts tests/unit/agents/subagent.test.ts tests/unit/agents/subagent-task.test.ts tests/unit/tasks/run-store.test.ts tests/unit/tasks/run-store-file.test.ts tests/unit/tasks/public-surface.test.ts tests/unit/core/codara-facade.test.ts tests/unit/cli/transcript-model.test.ts tests/unit/agents/task-tool-definitions.test.ts`
+  - `bunx tsc --noEmit --pretty false`
+  - `git diff --check`
+
+# 2026-03-22 Subagent Init And Review Contract Cleanup
+
+## Plan
+
+- [x] Move child instruction assembly toward a single `childInstructionContext` contract instead of scattered `childPrepareContext + childSystem*` fields.
+- [x] Let context own child base-bundle loading and path-scoped instruction middleware creation.
+- [x] Thin review-control so it depends on subagent review resume behavior, not the whole run manager interface.
+- [x] Verify focused subagent/task/facade/review paths and residual naming scans.
+
+## Review
+
+- `subagent` now receives one explicit child instruction contract:
+  - `childInstructionContext.loadBaseSystemMessage`
+  - `childInstructionContext.prepareContext`
+  - `childInstructionContext.middlewares`
+- Child path-scoped instruction loading is now part of that same instruction contract, so child runs keep the normal path-instruction flow instead of relying on main-only middleware wiring.
+- `subagent/bootstrap.ts` no longer owns the old `childPrepareContext + childSystemMessages + childSystemPrompt` split; child system bundle extension is built from:
+  - base bundle from context
+  - child-specific `systemMessages`
+  - profile/tool prompts
+- `SubagentBuildInput` was reduced to actual child-build inputs; it no longer carries launch-only fields that the builder did not use.
+- `review-control` now depends on a thinner `SubagentReviewResumer` contract instead of the whole `SubagentRunManager`.
+- `codara/assembly/middleware.ts` no longer reaches for the raw Agent tool constant or reads/writes subagent middleware option bags itself; those checks/merges moved back behind subagent-owned helpers.
+- Focused verification passed:
+  - `bun test tests/unit/tasks/middleware.test.ts tests/unit/agents/subagent.test.ts tests/unit/agents/subagent-task.test.ts tests/unit/core/codara-facade.test.ts tests/unit/review-unified/review-unified.test.ts`
+  - `bun test tests/unit/core/public-api-surface.test.ts tests/unit/core/codara-facade.test.ts tests/unit/cli/subagent-runs.test.ts tests/unit/cli/use-cli-controller.test.tsx tests/unit/cli/components/chrome/subagent-run-panel.test.tsx tests/unit/review-unified/review-unified.test.ts tests/cases/review/subagent-activity-display.case.test.ts`
+  - `bunx tsc --noEmit --pretty false`
+  - `bunx eslint src/capability/subagent/*.ts src/codara/*.ts src/codara/assembly/*.ts src/context/session-bundle/base-system-message.ts src/codara/assembly/context.ts tests/unit/tasks/middleware.test.ts tests/unit/review-unified/review-unified.test.ts tests/unit/core/public-api-surface.test.ts tests/unit/core/codara-facade.test.ts`
+  - `git diff --check`
+# 2026-03-22 Subagent/Task Test-Type Drift Repair
+
+## Plan
+
+- [x] Reconcile the child-middleware test with the current subagent middleware surface.
+- [x] Update CLI and task fixtures to the current run-summary, layout, and resume contracts.
+- [x] Fix the stale permission and interaction middleware test typings with the current public API.
+- [x] Re-run `bun run typecheck` and the targeted tests for the touched files.
+
+## Review
+
+- `tests/unit/agents/child-middlewares.test.ts` now uses the current subagent child-middleware export.
+- `tests/unit/cli/use-cli-controller.test.tsx`, `tests/unit/cli/solidified-transcript.test.ts`, `tests/unit/cli/ui-alignment.test.tsx`, and `tests/unit/cli/interaction-turn.test.ts` now match the current CLI/run-summary contracts.
+- `tests/unit/middleware/interaction-middleware.test.ts`, `tests/unit/permissions/middleware.test.ts`, `tests/unit/commands/compact.test.ts`, `tests/unit/core/codara-agent-runtime.test.ts`, and `tests/unit/tasks/depth-limit.test.ts` were updated to the current runtime shapes.
+- Verification passed:
+  - `bun run typecheck`
+  - `bun test tests/unit/agents/child-middlewares.test.ts tests/unit/agents/task-tool-delegation.test.ts tests/unit/tasks/depth-limit.test.ts tests/unit/cli/interaction-turn.test.ts tests/unit/cli/solidified-transcript.test.ts tests/unit/cli/ui-alignment.test.tsx tests/unit/cli/use-cli-controller.test.tsx tests/unit/commands/compact.test.ts tests/unit/core/codara-agent-runtime.test.ts tests/unit/middleware/interaction-middleware.test.ts tests/unit/permissions/middleware.test.ts tests/unit/agents/task-tool-definitions.test.ts`
+
+# 2026-03-22 Subagent Ownership And Init Cleanup
+
+## Plan
+
+- [x] Move subagent completion handoff ownership back under `src/capability/subagent`.
+- [x] Keep child bootstrap on the single `core/agent` bootstrap path while making subagent build inputs explicit.
+- [x] Stop leaking main-conversation skills bundle assembly into child instruction bootstrap.
+- [x] Re-run broad subagent/task/review/CLI verification and residual scans before merge.
+
+## Review
+
+- `src/capability/subagent` now owns its own completion handoff again via `completion.ts`; the old `src/codara/subagent-completion.ts` shim is gone.
+- Child initialization is clearer:
+  - `subagent/tool.ts` validates and compiles launch input
+  - `subagent/bootstrap.ts` builds child bootstrap options
+  - `subagent/run-manager.ts` launches/resumes tracked child runs
+  - `core/bootstrapAgent -> createAgent` remains the only actual agent bootstrap path
+- `codara/assembly/middleware.ts` no longer forwards the main-conversation skills source into child instruction bootstrap. Child runs keep project/context bootstrap, but do not inherit the parent conversation skills prompt.
+- `review-control` and assembly now depend on thinner subagent-owned contracts instead of reaching into codara-owned subagent shims.
+- Broad verification passed:
+  - `bun test tests/unit/tasks/middleware.test.ts tests/unit/tasks/public-surface.test.ts tests/unit/tasks/run-store.test.ts tests/unit/tasks/run-store-file.test.ts tests/unit/tasks/depth-limit.test.ts tests/unit/agents/subagent.test.ts tests/unit/agents/subagent-task.test.ts tests/unit/agents/review-metadata.test.ts tests/unit/agents/child-middlewares.test.ts tests/unit/agents/task-tool-definitions.test.ts tests/unit/agents/task-tool-delegation.test.ts tests/unit/core/codara-facade.test.ts tests/unit/core/public-api-surface.test.ts tests/unit/core/codara-agent-runtime.test.ts tests/unit/cli/subagent-runs.test.ts tests/unit/cli/use-cli-controller.test.tsx tests/unit/cli/components/chrome/subagent-run-panel.test.tsx tests/unit/cli/runtime-projection.test.ts tests/unit/cli/shell-app.test.ts tests/unit/cli/solidified-transcript.test.ts tests/unit/cli/transcript-model.test.ts tests/unit/cli/transcript-visibility.test.ts tests/unit/cli/ui-alignment.test.tsx tests/unit/cli/interaction-turn.test.ts tests/unit/commands/compact.test.ts tests/unit/middleware/interaction-middleware.test.ts tests/unit/permissions/middleware.test.ts tests/unit/review-unified/review-unified.test.ts tests/unit/durability/approval-store.test.ts tests/unit/observability/events-formatters.test.ts tests/cases/review/subagent-activity-display.case.test.ts`
+  - `bun run typecheck`
+  - `bunx eslint src/capability/subagent src/capability/task src/codara/assembly/middleware.ts src/codara/review-control.ts src/context/session-bundle/base-system-message.ts src/codara/assembly/context.ts tests/unit/tasks/middleware.test.ts tests/unit/tasks/public-surface.test.ts tests/unit/tasks/run-store.test.ts tests/unit/tasks/run-store-file.test.ts tests/unit/tasks/depth-limit.test.ts tests/unit/agents/subagent.test.ts tests/unit/agents/subagent-task.test.ts tests/unit/agents/review-metadata.test.ts tests/unit/agents/child-middlewares.test.ts tests/unit/agents/task-tool-definitions.test.ts tests/unit/agents/task-tool-delegation.test.ts tests/unit/core/codara-facade.test.ts tests/unit/core/public-api-surface.test.ts tests/unit/core/codara-agent-runtime.test.ts tests/unit/cli/subagent-runs.test.ts tests/unit/cli/use-cli-controller.test.tsx tests/unit/cli/components/chrome/subagent-run-panel.test.tsx tests/unit/cli/runtime-projection.test.ts tests/unit/cli/shell-app.test.ts tests/unit/cli/solidified-transcript.test.ts tests/unit/cli/transcript-model.test.ts tests/unit/cli/transcript-visibility.test.ts tests/unit/cli/ui-alignment.test.tsx tests/unit/cli/interaction-turn.test.ts tests/unit/commands/compact.test.ts tests/unit/middleware/interaction-middleware.test.ts tests/unit/permissions/middleware.test.ts tests/unit/review-unified/review-unified.test.ts tests/unit/durability/approval-store.test.ts tests/unit/observability/events-formatters.test.ts tests/cases/review/subagent-activity-display.case.test.ts`
   - `git diff --check`

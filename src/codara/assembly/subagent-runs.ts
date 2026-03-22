@@ -1,10 +1,10 @@
-import type {AgentRunStore} from '@capability/subagent';
-import type {AgentRunQuerySummary} from '../types';
+import type {SubagentRunStore} from '@capability/subagent';
+import type {SubagentRunQuerySummary} from '../types';
 
-export function getAgentRunSummaries(
-  store: AgentRunStore | undefined,
+export function getSubagentRunSummaries(
+  store: SubagentRunStore | undefined,
   parentSessionId: string | undefined,
-): AgentRunQuerySummary[] {
+): SubagentRunQuerySummary[] {
   if (!store) {
     return [];
   }

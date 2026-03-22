@@ -20,7 +20,7 @@ describe('cli transcript visibility', () => {
       },
       runtimeEvents: [
         {
-          id: 'agent-run:run-visible',
+          id: 'subagent-run:run-visible',
           sessionId: 'session-1',
           timestamp: new Date().toISOString(),
           kind: 'agent',
@@ -31,7 +31,7 @@ describe('cli transcript visibility', () => {
       ],
     });
 
-    expect(items.map((item) => item.role)).toEqual(['user', 'assistant', 'task']);
+    expect(items.map((item) => item.role)).toEqual(['user', 'assistant', 'agent']);
     expect(items[1]?.content).toContain('frame the analysis scope first');
   });
 

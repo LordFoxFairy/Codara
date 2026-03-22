@@ -1,6 +1,6 @@
 import {describe, expect, it} from 'bun:test';
 import {ToolMessage} from '@langchain/core/messages';
-import {summarizeDelegatedAgent} from '@observability/events/formatters';
+import {summarizeSubagent} from '@observability/events/formatters';
 
 describe('observability event formatters', () => {
   it('suppresses launch metadata details for delegated subagent start messages', () => {
@@ -8,7 +8,7 @@ describe('observability event formatters', () => {
       content: 'Subagent started in background.',
       tool_call_id: 'call_task_1',
       artifact: {
-        type: 'agent_run_started',
+        type: 'subagent_run_started',
         runId: 'run-1',
         parentSessionId: 'session-1',
         sessionId: 'session-1:task:run-1',
@@ -17,6 +17,6 @@ describe('observability event formatters', () => {
       },
     });
 
-    expect(summarizeDelegatedAgent(message)).toBeUndefined();
+    expect(summarizeSubagent(message)).toBeUndefined();
   });
 });

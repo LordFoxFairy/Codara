@@ -2,10 +2,10 @@ import {describe, expect, it} from 'bun:test';
 import {AIMessage, ToolMessage, type ToolCall} from '@langchain/core/messages';
 import type {BaseChatModel} from '@langchain/core/language_models/chat_models';
 import {createAgent} from '@core/agent';
-import {AGENT_TOOL_NAME, createAgentTool} from '@capability/subagent/middleware';
+import {AGENT_TOOL_NAME, createSubagentTool} from '@capability/subagent/tool';
 import {ChildSummaryModel, ScriptedModel} from './task-tool.fixtures';
 
-describe('createAgentTool errors', () => {
+describe('createSubagentTool errors', () => {
   it('应在缺少 subagent_type 时明确报错，基础 child 必须显式使用 Agent', async () => {
     const parent = createAgent({
       model: new ScriptedModel([
@@ -22,7 +22,7 @@ describe('createAgentTool errors', () => {
         new AIMessage('done'),
       ]) as unknown as BaseChatModel,
       tools: [
-        createAgentTool({
+        createSubagentTool({
           model: new ChildSummaryModel() as unknown as BaseChatModel,
         }),
       ],
@@ -33,7 +33,7 @@ describe('createAgentTool errors', () => {
 
     expect(result.reason).toBe('complete');
     expect(toolMessage.status).toBe('error');
-    expect(String(toolMessage.content)).toContain('Invalid input: expected string, received undefined');
+    expect(String(toolMessage.content)).toContain('subagent_type is required');
     expect(String(toolMessage.content)).toContain('subagent_type');
   });
 
@@ -54,7 +54,7 @@ describe('createAgentTool errors', () => {
         new AIMessage('done'),
       ]) as unknown as BaseChatModel,
       tools: [
-        createAgentTool({
+        createSubagentTool({
           model: new ChildSummaryModel() as unknown as BaseChatModel,
         }),
       ],
@@ -85,7 +85,7 @@ describe('createAgentTool errors', () => {
         new AIMessage('done'),
       ]) as unknown as BaseChatModel,
       tools: [
-        createAgentTool({
+        createSubagentTool({
           model: new ChildSummaryModel() as unknown as BaseChatModel,
         }),
       ],

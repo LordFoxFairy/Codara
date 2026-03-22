@@ -12,7 +12,7 @@ import {
   type TranscriptItem,
 } from '@/cli/transcript/model';
 import {
-  filterAgentCompletionTranscriptItems,
+  filterSubagentCompletionTranscriptItems,
   orderActiveTranscriptItems,
   useSolidifiedTranscript,
 } from '@/cli/hooks/use-solidified-transcript';
@@ -101,7 +101,7 @@ describe('solidified transcript model', () => {
           tool_call_id: 'call_task_1',
           name: 'Agent',
           artifact: {
-            type: 'agent_run_started',
+            type: 'subagent_run_started',
             runId: 'call_123',
             parentSessionId: 'session-1',
             sessionId: 'session:task:call_123',
@@ -253,7 +253,7 @@ describe('solidified transcript model', () => {
         },
         runtimeEvents: [
           {
-            id: 'agent-run:run-1',
+            id: 'subagent-run:run-1',
             sessionId: 'session-1',
             timestamp: '2026-03-20T10:00:00.000Z',
             kind: 'agent',
@@ -353,7 +353,7 @@ describe('solidified transcript model', () => {
       ],
     }));
 
-    const serialized = lastFrame();
+    const serialized = lastFrame() ?? '';
     expect(serialized.includes('"toolName":"Skill"')).toBe(false);
   });
 
@@ -364,7 +364,7 @@ describe('solidified transcript model', () => {
       ];
       const runtimeItems: TranscriptItem[] = [
         {
-          id: 'active-agent-run:run-1',
+          id: 'active-subagent-run:run-1',
           role: 'agent',
           content: '⏺ Explore(Analyze structure)\n  ⎿ Done (5 tool uses · 1.2k tokens · 31s)',
         },
@@ -377,11 +377,11 @@ describe('solidified transcript model', () => {
         trailingItems,
         runtimeItems,
         activeNoticeItems: noticeItems,
-        latestCompletedTurnKind: 'agent_completion',
+        latestCompletedTurnKind: 'subagent_completion',
       });
 
       expect(ordered.map((item) => item.id)).toEqual([
-        'active-agent-run:run-1',
+        'active-subagent-run:run-1',
         'assistant-final',
         'notice-1',
       ]);
@@ -424,10 +424,10 @@ describe('solidified transcript model', () => {
     });
   });
 
-  describe('filterAgentCompletionTranscriptItems', () => {
+  describe('filterSubagentCompletionTranscriptItems', () => {
     test('filters invalid task-completion waiting narration from transcript items', () => {
-      const items = filterAgentCompletionTranscriptItems({
-        completedTurnKind: 'agent_completion',
+      const items = filterSubagentCompletionTranscriptItems({
+        completedTurnKind: 'subagent_completion',
         items: [
           {id: 'assistant-invalid', role: 'assistant', content: 'Phase 1 has started. Waiting for subagent results.'},
           {id: 'task-1', role: 'agent', content: 'Explore(Analyze CLI)\nRunning...'},
@@ -439,7 +439,7 @@ describe('solidified transcript model', () => {
     });
 
     test('keeps assistant items untouched outside task-completion turns', () => {
-      const items = filterAgentCompletionTranscriptItems({
+      const items = filterSubagentCompletionTranscriptItems({
         completedTurnKind: 'prompt',
         items: [
           {id: 'assistant-1', role: 'assistant', content: 'Phase 1 has started. Waiting for subagent results.'},

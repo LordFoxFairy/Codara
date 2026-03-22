@@ -18,16 +18,19 @@ import {
   parseAskUserResult,
 } from '@core/middleware';
 import {
-  createTaskMiddleware,
   createTaskCreateTool,
   createTaskFileStore,
   createTaskListTool,
+  createTaskTools,
   createTaskUpdateTool,
   TASK_CREATE_TOOL_NAME,
   TASK_LIST_TOOL_NAME,
 } from '@capability/task';
-import {createAgentRunFileStore, AGENT_TOOL_NAME, createAgentTool, createAgentMiddleware} from '@capability/subagent';
-import {FileSystemSkillStore, loadSkillsRuntimeData} from '@capability/skill';
+import {createMiddleware} from '@core/pipeline/types';
+import {createSubagentRunFileStore, createSubagentMiddleware} from '@capability/subagent';
+import {AGENT_TOOL_NAME} from '@capability/subagent/tool';
+import {FileSystemSkillStore} from '@capability/skill';
+import {loadSkillsRuntimeBundle} from '@context/skills/build';
 import {seedProjectSkillFixtures} from '../../helpers/project-skill-fixtures';
 
 const createCliCaseRuntime = async (options: Parameters<typeof createCodaraRuntime>[0]) => (
@@ -72,7 +75,7 @@ export async function createCliRuntime(input: {
     case 'task-skill-delegate': {
       await seedProjectSkillFixtures(input.cwd);
       const store = createTaskFileStore({rootDir: path.join(input.cwd, '.codara', 'case-tasks')});
-      const runStore = createAgentRunFileStore({
+      const runStore = createSubagentRunFileStore({
         rootDir: path.join(input.cwd, '.codara', 'case-agent-runs'),
       });
       return {
@@ -81,7 +84,7 @@ export async function createCliRuntime(input: {
             projectRoot: input.cwd,
             codaraPath: path.join(input.cwd, '.codara'),
             ...(input.sessionId ? {sessionId: input.sessionId} : {}),
-            agentRunStore: runStore,
+            subagentRunStore: runStore,
             model: new ScriptedModel([
             new AIMessage({
               content: '',
@@ -112,10 +115,10 @@ export async function createCliRuntime(input: {
             store: createProjectSkillStore(input.cwd),
             subagentRoots: [path.join(repoRoot, '.codara', 'skills', 'builtin-agents', 'agents')],
           },
-          middleware: [createSkillsMiddleware({store: createProjectSkillStore(input.cwd), loadRuntime: loadSkillsRuntimeData})],
-          tools: [
-            createTaskCreateTool({store}),
-            createAgentTool({
+          tools: [createTaskCreateTool({store})],
+          middleware: [
+            createSkillsMiddleware({store: createProjectSkillStore(input.cwd), loadBundle: loadSkillsRuntimeBundle}),
+            createSubagentMiddleware({
               model: new SharedTaskReaderModel() as unknown as BaseChatModel,
               tools: [createTaskListTool({store})],
               runStore,
@@ -125,7 +128,7 @@ export async function createCliRuntime(input: {
       };
     }
     case 'prompt-manual-inheritance': {
-      const promptRunStore = createAgentRunFileStore({
+      const promptRunStore = createSubagentRunFileStore({
         rootDir: path.join(input.cwd, '.codara', 'case-agent-runs'),
       });
       return {
@@ -143,7 +146,7 @@ export async function createCliRuntime(input: {
           tools: [createNoopTool()],
           builtinTools: false,
           middleware: [
-            createAgentMiddleware({
+            createSubagentMiddleware({
               model: new ChildPromptInspectorModel() as unknown as BaseChatModel,
               tools: [createNoopTool()],
               runStore: promptRunStore,
@@ -155,7 +158,7 @@ export async function createCliRuntime(input: {
     case 'multi-profile-coordination': {
       await seedPermissions(input.cwd, ['Read(*)', 'Grep(*)', 'Fetch(*)', 'Search(*)']);
       const store = createTaskFileStore({rootDir: path.join(input.cwd, '.codara', 'case-tasks')});
-      const runStore = createAgentRunFileStore({
+      const runStore = createSubagentRunFileStore({
         rootDir: path.join(input.cwd, '.codara', 'case-agent-runs'),
       });
       const childModel = new CoordinatedSubagentModel();
@@ -204,9 +207,9 @@ export async function createCliRuntime(input: {
             subagentRoots: [path.join(repoRoot, '.codara', 'skills', 'builtin-agents', 'agents')],
           },
           middleware: [
-            createSkillsMiddleware({store: createRepoSkillStore(repoRoot), loadRuntime: loadSkillsRuntimeData}),
-            createTaskMiddleware({store}),
-            createAgentMiddleware({
+            createSkillsMiddleware({store: createRepoSkillStore(repoRoot), loadBundle: loadSkillsRuntimeBundle}),
+            createMiddleware({name: 'TaskMiddleware', tools: createTaskTools({store})}),
+            createSubagentMiddleware({
               runStore,
               model: childModel as unknown as BaseChatModel,
               tools: [
@@ -420,7 +423,7 @@ export async function createCliRuntime(input: {
         }),
       };
     case 'subagent-permission': {
-      const permissionRunStore = createAgentRunFileStore({
+      const permissionRunStore = createSubagentRunFileStore({
         rootDir: path.join(input.cwd, '.codara', 'case-agent-runs'),
       });
       return {
@@ -429,22 +432,22 @@ export async function createCliRuntime(input: {
             projectRoot: input.cwd,
             codaraPath: path.join(input.cwd, '.codara'),
             ...(input.sessionId ? {sessionId: input.sessionId} : {}),
-            agentRunStore: permissionRunStore,
+            subagentRunStore: permissionRunStore,
             model: new ParentDelegationCliModel() as unknown as BaseChatModel,
-          builtinTools: false,
-          skills: {
-            store: createRepoSkillStore(repoRoot),
-            subagentRoots: [path.join(repoRoot, '.codara', 'skills', 'builtin-agents', 'agents')],
-          },
-          middleware: [createSkillsMiddleware({store: createRepoSkillStore(repoRoot), loadRuntime: loadSkillsRuntimeData})],
-          tools: [
-            createAgentTool({
-              model: new ChildPermissionCliModel() as unknown as BaseChatModel,
-              tools: [createPermissionBashTool()],
-              childMiddleware: [createPermissionCaseMiddleware(input.cwd)],
-              runStore: permissionRunStore,
-            }),
-          ],
+            builtinTools: false,
+            skills: {
+              store: createRepoSkillStore(repoRoot),
+              subagentRoots: [path.join(repoRoot, '.codara', 'skills', 'builtin-agents', 'agents')],
+            },
+            middleware: [
+              createSkillsMiddleware({store: createRepoSkillStore(repoRoot), loadBundle: loadSkillsRuntimeBundle}),
+              createSubagentMiddleware({
+                model: new ChildPermissionCliModel() as unknown as BaseChatModel,
+                tools: [createPermissionBashTool()],
+                childMiddleware: [createPermissionCaseMiddleware(input.cwd)],
+                runStore: permissionRunStore,
+              }),
+            ],
         }),
       };
     }

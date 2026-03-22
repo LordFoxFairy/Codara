@@ -5,7 +5,7 @@ import type {BaseMiddleware} from '@core/pipeline/types';
 import type {ReviewMiddlewareOptions, LoggingMiddlewareOptions} from '@core/middleware';
 import type {SummarySettings} from '@core/middleware/summary';
 import type {TaskStore} from '@capability/task';
-import type {AgentRunStore} from '@capability/subagent';
+import type {SubagentRunStore} from '@capability/subagent';
 import type {ModelRoutingConfig} from '@integration/provider';
 import type {SkillStore} from '@capability/skill';
 import type {CodaraCommandResult, CodaraCommandSpec} from '@capability/command';
@@ -84,7 +84,7 @@ export interface CodaraOptions {
 export interface CodaraRuntimeOptions extends CodaraOptions {
   codaraPath?: string;
   taskStore?: TaskStore;
-  agentRunStore?: AgentRunStore;
+  subagentRunStore?: SubagentRunStore;
   approvalStore?: ApprovalStore;
   /** Optional pre-configured ChannelRegistry for multi-channel review routing. */
   channelRegistry?: ChannelRegistry;
@@ -100,7 +100,7 @@ export type CodaraMiddlewareOptions = Pick<CodaraOptions, 'middleware' | 'review
 
 // ── Query Types ──
 
-export interface AgentRunQuerySummary {
+export interface SubagentRunQuerySummary {
   runId: string;
   parentSessionId: string;
   label: string;
@@ -118,14 +118,14 @@ export interface AgentRunQuerySummary {
   totalTokens?: number;
 }
 
-export type ReviewQuerySource = 'agent_run' | 'session_review';
+export type ReviewQuerySource = 'subagent_run' | 'session_review';
 export type ReviewQueryKind = 'approval' | 'permission' | 'ask_user' | 'generic';
 export type ReviewInteractionMode = 'approval' | 'structured' | 'freeform' | 'hybrid';
 export type ReviewBlockingScope = 'session' | 'task' | 'none';
 
 export interface ReviewQueryAnchor {
   origin: 'main' | 'delegated';
-  agentRunId?: string;
+  subagentRunId?: string;
   childSessionId?: string;
   parentSessionId?: string;
 }
@@ -179,7 +179,7 @@ export type Codara = Omit<Session, 'resumeReview' | 'resumeReviewStream'> & {
   executeCommand(input: string): Promise<CodaraCommandResult>;
   listSessions(options?: import('@durability/session').SessionListOptions): Promise<SessionState[]>;
   getMcpStatus(): McpClientInfo[];
-  getAgentRunSummaries(): AgentRunQuerySummary[];
+  getSubagentRunSummaries(): SubagentRunQuerySummary[];
   listReviewItems(): ReviewQueryItem[];
   getFocusedReview(): FocusedReviewQuery | undefined;
   focusReview(reviewId: string): Promise<void>;

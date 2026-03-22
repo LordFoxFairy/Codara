@@ -66,7 +66,7 @@ You are a custom general-purpose subagent.
       expect(general.systemPrompt).toBe('');
       expect(general.description).not.toContain('custom general-purpose override');
       expect(() => resolveSubagentDefinition(runtime, undefined)).toThrow(
-        'Task requires subagent_type. Use "Agent" for the base child or a named profile such as "Explore".',
+        'Agent requires subagent_type. Use "Agent" for the base child or a named profile such as "Explore".',
       );
       expect(() => resolveSubagentDefinition(runtime, 'general-purpose')).toThrow(
         'Unknown subagent_type "general-purpose"',

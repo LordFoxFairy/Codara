@@ -6,6 +6,17 @@ import type {
   ParsedCodaraCommand,
 } from '@capability/command/runtime/types';
 
+function makeIdleAgentState() {
+  return {
+    sessionId: 'session-1',
+    agentType: 'main' as const,
+    messages: [],
+    context: {},
+    values: {},
+    status: 'idle' as const,
+  };
+}
+
 function makeContext(agentOverrides: Partial<CodaraCommandAgent> = {}, args: string[] = []): CodaraCommandContext {
   const command: ParsedCodaraCommand = {
     raw: `/compact ${args.join(' ')}`.trim(),
@@ -19,15 +30,15 @@ function makeContext(agentOverrides: Partial<CodaraCommandAgent> = {}, args: str
     registry: [],
     agent: {
       compactConversation: async () => ({
-        state: {status: 'idle', messages: []},
+        state: makeIdleAgentState(),
         outcome: 'compacted',
       }),
       compactCheckpoints: async () => undefined,
       getAvailableToolNames: () => [],
-      hydrate: async () => ({status: 'idle', messages: []}),
-      getAgentState: () => ({status: 'idle', messages: []}),
+      hydrate: async () => makeIdleAgentState(),
+      getAgentState: () => makeIdleAgentState(),
       getState: () => ({sessionId: 'session-1', sessionStatus: 'ready'}),
-      invoke: async () => ({reason: 'complete', state: {status: 'idle', messages: []}, turns: 1}),
+      invoke: async () => ({reason: 'complete', state: makeIdleAgentState(), turns: 1}),
       reloadSources: async () => undefined,
       reset: async () => undefined,
       ...agentOverrides,
@@ -40,7 +51,7 @@ describe('/compact command', () => {
   it('reports a real compaction as compacted', async () => {
     const result = await compactCommand.execute(makeContext({
       compactConversation: async () => ({
-        state: {status: 'idle', messages: []},
+        state: makeIdleAgentState(),
         outcome: 'compacted',
       }),
     }));
@@ -52,7 +63,7 @@ describe('/compact command', () => {
   it('reports hook-vetoed compaction as skipped by hook', async () => {
     const result = await compactCommand.execute(makeContext({
       compactConversation: async () => ({
-        state: {status: 'idle', messages: []},
+        state: makeIdleAgentState(),
         outcome: 'skipped',
         reason: 'hook',
       }),
@@ -65,7 +76,7 @@ describe('/compact command', () => {
   it('reports noop compaction as already compact enough', async () => {
     const result = await compactCommand.execute(makeContext({
       compactConversation: async () => ({
-        state: {status: 'idle', messages: []},
+        state: makeIdleAgentState(),
         outcome: 'skipped',
         reason: 'noop',
       }),

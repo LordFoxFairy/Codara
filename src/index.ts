@@ -18,7 +18,7 @@ export {
   type ReviewBlockingScope,
   type ReviewQueryItem,
   type FocusedReviewQuery,
-  type AgentRunQuerySummary,
+  type SubagentRunQuerySummary,
 } from '@codara/index';
 export {
   bootstrapAgent,
@@ -41,25 +41,20 @@ export {
   type CreateAgentOptions,
 } from '@core/agent';
 export {
-  TASK_CREATE_TOOL_NAME,
-  TASK_LIST_TOOL_NAME,
-  TASK_UPDATE_TOOL_NAME,
-  createTaskCreateTool,
   createTaskFileStore,
-  createTaskListTool,
   createTaskMemoryStore,
-  createTaskMiddleware,
-  createTaskTools,
-  createTaskUpdateTool,
   type CreateTaskInput,
-  type CreateTaskMiddlewareOptions,
   type TaskFileStoreOptions,
   type TaskRecord,
   type TaskStatus,
   type TaskStore,
-  type TaskToolOptions,
   type UpdateTaskInput,
 } from '@capability/task';
+export {
+  createSubagentMiddleware,
+  type SubagentChildRuntimeOptions,
+  type CreateSubagentMiddlewareOptions,
+} from '@capability/subagent';
 export {
   createDailySessionFileLogSink,
   createBudgetMiddleware,
@@ -127,18 +122,23 @@ export {
 } from '@context/session-bundle/base-system-message';
 export {
   type SkillMetadata,
+  type SkillCommandMetadata,
   type SkillStore,
   type SkillsSource,
   type SubagentDefinitionHints,
   type SkillsRuntimeData,
   type SubagentDefinition,
-} from '@context/skills/contracts';
+  createSubagentCatalogMessage,
+  formatSubagentDisplayName,
+  loadSkillsRuntimeData,
+  normalizeSubagentType,
+} from '@capability/skill';
 export {
   AGENT_SUBAGENT_TYPE,
   isReservedSubagentName,
   readSkillsRuntimeData,
   resolveSubagentDefinition,
-} from '@context/skills/runtime-shared';
+} from '@capability/skill';
 export {
   createBuiltinTools,
   createFetchTool,
@@ -151,8 +151,12 @@ export {
   createCodaraSkillsSource,
   FileSystemSkillStore,
   getDefaultSkillSources,
-  loadSkillsRuntimeData,
 } from '@capability/skill';
+export {
+  createSkillsRuntimeBundle,
+  loadSkillsRuntimeBundle,
+  type SkillsRuntimeBundle,
+} from '@context/skills/build';
 export {
   createSession,
   FileSessionStore,

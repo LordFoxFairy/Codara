@@ -1,48 +1,72 @@
 import {createMiddleware, type BaseMiddleware} from '@core/pipeline/types';
-import {readSkillsRuntimeData} from '@context/skills/runtime-shared';
-import type {SkillsRuntimeData} from '@context/skills/contracts';
-import {createAgentRuntime} from '@capability/subagent/runtime';
-import {createAgentRunMemoryStore} from '@capability/subagent/run-store';
+import {createSubagentCatalogMessage, readSkillsRuntimeData} from '@capability/skill';
+import {createSubagentRunManager} from '@capability/subagent/run-manager';
+import {createSubagentRunMemoryStore} from '@capability/subagent/run-store';
 import {
-  createAgentTool,
-  type CreateAgentToolOptions,
+  createAskUserQuestionMiddleware,
+  createBudgetMiddleware,
+  type ReviewMiddlewareOptions,
+  createLoggingMiddleware,
+  createPermissionMiddleware,
+  createTodoListMiddleware,
+  type LoggingMiddlewareOptions,
+} from '@core/middleware';
+import {MIDDLEWARE_NAMES} from '@core/pipeline/types';
+import type {PermissionAnalysisModel} from '@core/middleware/permission/analysis';
+import type {PermissionMiddlewareOptions} from '@core/middleware/permission/middleware';
+import type {StructuredToolInterface} from '@langchain/core/tools';
+import {createTaskTools} from '@capability/task/tools';
+import type {TaskStore} from '@capability/task/types';
+import {
+  AGENT_TOOL_NAME,
+  createSubagentTool,
+  type CreateSubagentToolOptions,
 } from '@capability/subagent/tool';
 import {
-  buildAgentChildMiddlewares,
-  type AgentChildRuntimeOptions,
-} from '@capability/subagent/child-middlewares';
-import {
-  buildAgentCompletionHandoff,
-  maybeHandleAgentCompletionToolCall,
-} from '@capability/subagent/completion-handoff';
+  buildSubagentCompletionHandoff,
+  maybeHandleSubagentCompletionToolCall,
+} from '@capability/subagent/completion';
 
-export {createAgentTool, readAgentToolOptions, AGENT_TOOL_DESCRIPTION, AGENT_TOOL_NAME} from '@capability/subagent/tool';
-export type {CreateAgentToolOptions} from '@capability/subagent/tool';
-export type {AgentChildRuntimeOptions} from '@capability/subagent/child-middlewares';
+const subagentMiddlewareOptions = new WeakMap<BaseMiddleware, CreateSubagentMiddlewareOptions>();
 
-export interface CreateAgentMiddlewareOptions extends CreateAgentToolOptions {
-  name?: string;
-  childRuntime?: AgentChildRuntimeOptions;
+export interface SubagentChildRuntimeOptions {
+  interactionMode?: 'foreground' | 'background';
+  logging?: false | LoggingMiddlewareOptions;
+  review?: false | ReviewMiddlewareOptions;
+  cwd?: string;
+  projectRoot?: string;
+  userHome?: string;
+  permissionAnalysisModel?: PermissionAnalysisModel | Promise<PermissionAnalysisModel> | (() => Promise<PermissionAnalysisModel>);
 }
 
-export function createAgentMiddleware(options: CreateAgentMiddlewareOptions): BaseMiddleware {
-  const runStore = options.runStore ?? createAgentRunMemoryStore();
-  const runtime = options.runtime ?? createAgentRuntime({
+export interface CreateSubagentMiddlewareOptions extends CreateSubagentToolOptions {
+  name?: string;
+  childRuntime?: SubagentChildRuntimeOptions;
+  taskStore?: TaskStore;
+}
+
+export function createSubagentMiddleware(options: CreateSubagentMiddlewareOptions): BaseMiddleware {
+  const runStore = options.runStore ?? createSubagentRunMemoryStore();
+  const runManager = options.runManager ?? createSubagentRunManager({
     runStore,
     approvalStore: options.approvalStore,
   });
-  const childMiddlewares = buildAgentChildMiddlewares(options);
+  const childMiddlewares = buildSubagentChildMiddlewares(options);
+  const taskTools = options.taskStore ? createTaskTools({store: options.taskStore}) : [];
 
-  return createMiddleware({
-    name: options.name?.trim() || 'AgentMiddleware',
-    tools: [createAgentTool({...options, runStore, runtime, childMiddleware: childMiddlewares})],
+  const middleware = createMiddleware({
+    name: options.name?.trim() || MIDDLEWARE_NAMES.Agent,
+    tools: [
+      ...taskTools,
+      createSubagentTool({...options, runStore, runManager, childMiddleware: childMiddlewares}),
+    ],
     beforeModel(context) {
-      const completionHandoff = buildAgentCompletionHandoff(context);
+      const completionHandoff = buildSubagentCompletionHandoff(context);
       if (completionHandoff) {
         context.systemMessage.push(completionHandoff);
       }
 
-      const definitions = buildAvailableSubagentsMessage(readSkillsRuntimeData(context.runtime.shared));
+      const definitions = createSubagentCatalogMessage(readSkillsRuntimeData(context.runtime.shared));
       if (definitions) {
         context.systemMessage.push(definitions);
       }
@@ -50,25 +74,134 @@ export function createAgentMiddleware(options: CreateAgentMiddlewareOptions): Ba
       return undefined;
     },
     async wrapToolCall(context, handler) {
-      const blocked = maybeHandleAgentCompletionToolCall(context);
+      const blocked = maybeHandleSubagentCompletionToolCall(context);
       if (blocked) {
         return blocked;
       }
       return handler(context);
     },
   });
+
+  subagentMiddlewareOptions.set(middleware, {...options});
+
+  return middleware;
 }
 
-function buildAvailableSubagentsMessage(runtime: SkillsRuntimeData | undefined): string {
-  const definitions = Object.values(runtime?.subagentDefinitions ?? {});
+export function readSubagentMiddlewareOptions(middleware: BaseMiddleware): CreateSubagentMiddlewareOptions | undefined {
+  return subagentMiddlewareOptions.get(middleware);
+}
 
-  return [
-    '### Available Subagents',
-    '- Agent: built-in child that starts as a fresh child session and loads project context through normal bootstrap',
-    ...definitions.map((definition) => {
-      const toolRefs = definition.tools?.length ? ` | tools: ${definition.tools.join(', ')}` : '';
-      const maxTurns = typeof definition.maxTurns === 'number' ? ` | max_turns: ${definition.maxTurns}` : '';
-      return `- ${definition.name}: ${definition.description}${toolRefs}${maxTurns}`;
-    }),
-  ].join('\n');
+export function applyRuntimeSubagentDefaults(
+  middleware: BaseMiddleware,
+  runtimeMiddleware: BaseMiddleware,
+): BaseMiddleware {
+  if (middleware.name !== MIDDLEWARE_NAMES.Agent) {
+    return middleware;
+  }
+
+  const options = readSubagentMiddlewareOptions(middleware);
+  const runtimeDefaults = readSubagentMiddlewareOptions(runtimeMiddleware);
+  if (!options || !runtimeDefaults) {
+    return middleware;
+  }
+
+  return createSubagentMiddleware({
+    ...runtimeDefaults,
+    ...options,
+    taskStore: runtimeDefaults.taskStore,
+    runStore: runtimeDefaults.runStore,
+    runManager: runtimeDefaults.runManager,
+    checkpointer: runtimeDefaults.checkpointer,
+    approvalStore: runtimeDefaults.approvalStore,
+    model: options.model ?? runtimeDefaults.model,
+    tools: options.tools ?? runtimeDefaults.tools,
+    childRuntime: {
+      ...(runtimeDefaults.childRuntime ?? {}),
+      ...(options.childRuntime ?? {}),
+    },
+    childMiddleware: options.childMiddleware ?? runtimeDefaults.childMiddleware,
+    childInstructionContext: options.childInstructionContext ?? runtimeDefaults.childInstructionContext,
+    childLifecycle: options.childLifecycle ?? runtimeDefaults.childLifecycle,
+  });
+}
+
+export function assertNoRawSubagentTools(tools: StructuredToolInterface[] | undefined): void {
+  const hasRawAgentTool = (tools ?? []).some((tool) => tool?.name === AGENT_TOOL_NAME);
+  if (!hasRawAgentTool) {
+    return;
+  }
+
+  throw new Error(
+    'Codara runtime does not accept raw Agent tools in options.tools. '
+    + 'Register subagent delegation through createSubagentMiddleware() instead.',
+  );
+}
+
+export function buildSubagentChildMiddlewares(options: CreateSubagentMiddlewareOptions): BaseMiddleware[] {
+  return assembleSubagentChildMiddlewares(options);
+}
+
+function assembleSubagentChildMiddlewares(options: CreateSubagentMiddlewareOptions): BaseMiddleware[] {
+  const middlewares: BaseMiddleware[] = [];
+  const callerMiddlewares = [...(options.childMiddleware ?? [])];
+  const providedToolNames = collectProvidedToolNames({
+    tools: options.tools,
+    middlewares: callerMiddlewares,
+  });
+  const seen = new Set<string>();
+  const push = (middleware: BaseMiddleware) => {
+    if (seen.has(middleware.name)) {
+      return;
+    }
+    seen.add(middleware.name);
+    middlewares.push(middleware);
+  };
+
+  const isForegroundInteractive = options.childRuntime?.interactionMode === 'foreground';
+
+  if (options.childRuntime?.logging && options.childRuntime.logging.enabled !== false) {
+    push(createLoggingMiddleware(options.childRuntime.logging));
+  }
+
+  for (const middleware of callerMiddlewares) {
+    push(middleware);
+  }
+
+  if (!seen.has(MIDDLEWARE_NAMES.TodoList) && !providedToolNames.has('write_todos')) {
+    push(createTodoListMiddleware());
+  }
+  if (isForegroundInteractive && options.childRuntime?.review !== false && !seen.has(MIDDLEWARE_NAMES.AskUserQuestion)) {
+    push(createAskUserQuestionMiddleware());
+  }
+  if (options.childRuntime?.review !== false && !seen.has(MIDDLEWARE_NAMES.Permission)) {
+    const permissionOptions: PermissionMiddlewareOptions = {
+      ...(typeof options.childRuntime?.review === 'object' && options.childRuntime.review !== null
+        ? options.childRuntime.review
+        : {}),
+      cwd: options.childRuntime?.cwd,
+      projectRoot: options.childRuntime?.projectRoot,
+      userHome: options.childRuntime?.userHome,
+      bashAnalysisModel: options.childRuntime?.permissionAnalysisModel,
+    };
+    push(createPermissionMiddleware(permissionOptions));
+  }
+
+  push(createBudgetMiddleware());
+  return middlewares;
+}
+
+function collectProvidedToolNames(input: {
+  tools?: StructuredToolInterface[];
+  middlewares?: BaseMiddleware[];
+}): Set<string> {
+  const names = new Set<string>();
+  for (const tool of input.tools ?? []) {
+    names.add(tool.name);
+  }
+  for (const middleware of input.middlewares ?? []) {
+    for (const tool of middleware.tools ?? []) {
+      names.add(tool.name);
+    }
+  }
+  return names;
 }

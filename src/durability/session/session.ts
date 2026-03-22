@@ -38,7 +38,7 @@ import {
 import type {SessionLifecycleHooks} from '@observability/hook/types';
 import type {GuidelinesSource} from '@context/instructions/guidelines';
 import {type PromptSource} from '@context/prompts/prompt-source';
-import type {SkillsSource} from '@context/skills/contracts';
+import type {SkillsSource} from '@capability/skill';
 import {
   type AutoMemoryRuntime,
   shouldRecordAutoMemoryTurn,

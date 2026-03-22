@@ -12,11 +12,18 @@ const parentExecutionSchema = z.object({
   toolIndex: z.number(),
 });
 
-const delegatedReviewMetadataSchema = z.object({
+const subagentReviewMetadataSchema = z.object({
   codara: z.object({
-    delegatedSubagent: z.object({
+    subagentReview: z.object({
       childSessionId: z.string().trim().min(1),
-      parentToolName: z.string().trim().min(1),
+      recovery: z.object({
+        toolNames: z.array(z.string().trim().min(1)).optional(),
+        systemMessages: z.array(z.string()).optional(),
+        maxTurns: z.number().int().positive().optional(),
+      }).optional(),
+    }).optional(),
+    subagentRun: z.object({
+      childSessionId: z.string().trim().min(1),
       recovery: z.object({
         toolNames: z.array(z.string().trim().min(1)).optional(),
         systemMessages: z.array(z.string()).optional(),
@@ -26,7 +33,7 @@ const delegatedReviewMetadataSchema = z.object({
   }).loose().optional(),
 }).loose();
 
-const delegatedRuntimeContextSchema = z.object({
+const subagentRuntimeContextSchema = z.object({
   review: z.object({
     currentPause: z.object({
       metadata: z.unknown().optional(),
@@ -45,29 +52,31 @@ interface ParentExecution {
   toolIndex: number;
 }
 
-export interface DelegatedPauseRecoverySpec {
+export interface SubagentPauseRecoverySpec {
   toolNames?: string[];
   systemMessages?: string[];
   maxTurns?: number;
 }
 
-export interface DelegatedResumeState {
+export interface SubagentResumeState {
   childSessionId: string;
   payload: ReviewResumePayload;
 }
 
-export interface DelegatedParentRuntimeMetadata {
-  parentExecution: ParentExecution;
-  resume?: DelegatedResumeState;
+export interface SubagentRunRecoveryMetadata {
+  childSessionId: string;
+  recovery?: SubagentPauseRecoverySpec;
 }
 
-export function readDelegatedParentRuntimeMetadata(
-  configurable: unknown,
-  toolName: string,
-): DelegatedParentRuntimeMetadata {
-  const record = delegatedRuntimeContextSchema.safeParse(readDelegatedRuntimeContext(configurable));
+export interface SubagentParentRuntimeMetadata {
+  parentExecution: ParentExecution;
+  resume?: SubagentResumeState;
+}
+
+export function readSubagentParentRuntimeMetadata(configurable: unknown): SubagentParentRuntimeMetadata {
+  const record = subagentRuntimeContextSchema.safeParse(readSubagentRuntimeContext(configurable));
   const runtimeContext = record.success ? record.data : undefined;
-  const resume = readDelegatedResumeState(runtimeContext, toolName);
+  const resume = readSubagentResumeState(runtimeContext);
 
   return {
     parentExecution: readParentExecution(
@@ -79,39 +88,31 @@ export function readDelegatedParentRuntimeMetadata(
   };
 }
 
-export function readDelegatedPauseMetadata(
-  metadata: unknown,
-  toolName: string,
-): {
+export function readSubagentPauseMetadata(metadata: unknown): {
   childSessionId: string;
-  parentToolName: string;
-  recovery?: DelegatedPauseRecoverySpec;
+  recovery?: SubagentPauseRecoverySpec;
 } | undefined {
-  const parsed = delegatedReviewMetadataSchema.safeParse(metadata);
-  const delegated = parsed.success ? parsed.data.codara?.delegatedSubagent : undefined;
-  const childSessionId = delegated?.childSessionId;
-  const parentToolName = delegated?.parentToolName;
-
-  if (!childSessionId || !parentToolName || parentToolName !== toolName) {
+  const parsed = subagentReviewMetadataSchema.safeParse(metadata);
+  const review = parsed.success ? parsed.data.codara?.subagentReview : undefined;
+  const childSessionId = review?.childSessionId;
+  if (!childSessionId) {
     return undefined;
   }
 
   return {
     childSessionId,
-    parentToolName,
-    ...(delegated?.recovery ? {recovery: delegated.recovery} : {}),
+    ...(review?.recovery ? {recovery: review.recovery} : {}),
   };
 }
 
-export function mergeDelegatedPauseMetadata(
+export function mergeSubagentPauseMetadata(
   metadata: Record<string, unknown> | undefined,
-  delegated: {
+  review: {
     childSessionId: string;
-    parentToolName: string;
-    recovery?: DelegatedPauseRecoverySpec;
+    recovery?: SubagentPauseRecoverySpec;
   },
 ): Record<string, unknown> {
-  const parsed = delegatedReviewMetadataSchema.safeParse(metadata);
+  const parsed = subagentReviewMetadataSchema.safeParse(metadata);
   const base = parsed.success ? parsed.data : {};
   const codara = base.codara ?? {};
 
@@ -119,16 +120,50 @@ export function mergeDelegatedPauseMetadata(
     ...base,
     codara: {
       ...codara,
-      delegatedSubagent: {
-        childSessionId: delegated.childSessionId,
-        parentToolName: delegated.parentToolName,
-        ...(delegated.recovery ? {recovery: delegated.recovery} : {}),
+      subagentReview: {
+        childSessionId: review.childSessionId,
+        ...(review.recovery ? {recovery: review.recovery} : {}),
       },
     },
   };
 }
 
-function readDelegatedRuntimeContext(configurable: unknown): unknown {
+export function readSubagentRunRecoveryMetadata(
+  metadata: unknown,
+): SubagentRunRecoveryMetadata | undefined {
+  const parsed = subagentReviewMetadataSchema.safeParse(metadata);
+  const run = parsed.success ? parsed.data.codara?.subagentRun : undefined;
+  if (!run?.childSessionId) {
+    return undefined;
+  }
+
+  return {
+    childSessionId: run.childSessionId,
+    ...(run.recovery ? {recovery: run.recovery} : {}),
+  };
+}
+
+export function mergeSubagentRunRecoveryMetadata(
+  metadata: Record<string, unknown> | undefined,
+  subagentRun: SubagentRunRecoveryMetadata,
+): Record<string, unknown> {
+  const parsed = subagentReviewMetadataSchema.safeParse(metadata);
+  const base = parsed.success ? parsed.data : {};
+  const codara = base.codara ?? {};
+
+  return {
+    ...base,
+    codara: {
+      ...codara,
+      subagentRun: {
+        childSessionId: subagentRun.childSessionId,
+        ...(subagentRun.recovery ? {recovery: subagentRun.recovery} : {}),
+      },
+    },
+  };
+}
+
+function readSubagentRuntimeContext(configurable: unknown): unknown {
   if (!configurable || typeof configurable !== 'object') {
     return configurable;
   }
@@ -137,18 +172,15 @@ function readDelegatedRuntimeContext(configurable: unknown): unknown {
   return record.context ?? record.runtimeContext ?? configurable;
 }
 
-function readDelegatedResumeState(
-  runtimeContext: unknown,
-  toolName: string,
-): DelegatedResumeState | undefined {
-  const parsed = delegatedRuntimeContextSchema.safeParse(runtimeContext);
+function readSubagentResumeState(runtimeContext: unknown): SubagentResumeState | undefined {
+  const parsed = subagentRuntimeContextSchema.safeParse(runtimeContext);
   if (!parsed.success) {
     return undefined;
   }
 
   const review = parsed.data.review;
-  const delegated = readDelegatedPauseMetadata(review?.currentPause?.metadata, toolName);
-  if (!delegated) {
+  const subagentReview = readSubagentPauseMetadata(review?.currentPause?.metadata);
+  if (!subagentReview) {
     return undefined;
   }
 
@@ -158,7 +190,7 @@ function readDelegatedResumeState(
   }
 
   return {
-    childSessionId: delegated.childSessionId,
+    childSessionId: subagentReview.childSessionId,
     payload,
   };
 }
@@ -169,7 +201,7 @@ function readParentExecution(value: unknown): ExecutionContextMetadata & {
 } {
   const parsed = parentExecutionSchema.safeParse(value);
   if (!parsed.success) {
-    throw new Error('Delegation tools require execution metadata with toolCallId and toolIndex.');
+    throw new Error('Subagent tool requires execution metadata with toolCallId and toolIndex.');
   }
 
   return parsed.data;

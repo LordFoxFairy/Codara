@@ -3,14 +3,9 @@ import type {GuidelinesSource} from '@context/instructions/guidelines';
 import type {PromptSource} from '@context/prompts/prompt-source';
 import type {AutoMemorySource} from '@context/memory/auto-memory';
 import {
-  type SkillsRuntimeData,
   type SkillsSource,
-} from '@context/skills/contracts';
-import {
-  formatSkillsList,
-  formatSkillsLocations,
-  SKILLS_SYSTEM_PROMPT,
-} from '@context/prompts/skills-system-prompt';
+} from '@capability/skill';
+import {createSkillsRuntimeBundle} from '@context/skills/build';
 
 const BASE_SYSTEM_MESSAGE_KEY = 'codaraSystemMessage';
 
@@ -18,6 +13,8 @@ export interface BaseSystemMessageBundle {
   systemMessage: string[];
   runtimeShared?: Record<string, unknown>;
 }
+
+export type BaseSystemMessageLoader = () => Promise<BaseSystemMessageBundle>;
 
 export interface BaseSystemMessageRuntimeData {
   systemMessage: string[];
@@ -63,23 +60,52 @@ export async function buildBaseSystemMessage(
 
   const promptMessage = await opts.promptSource?.getContent?.();
   const guidelinesMessage = await opts.guidelinesSource?.getContent?.();
-  const skillsRuntime = await opts.skillsSource?.getRuntime?.();
+  const skillsRuntime = await opts.skillsSource?.getRuntime();
+  const skillsBundle = skillsRuntime ? createSkillsRuntimeBundle(skillsRuntime) : undefined;
   const autoMemoryContent = await opts.autoMemorySource?.getContent?.();
   const memorySection = createAutoMemorySystemMessage(autoMemoryContent, opts.memoryRootDir);
   const systemMessage = [
     promptMessage,
     guidelinesMessage,
-    skillsRuntime ? createSkillsSystemMessage(skillsRuntime) : undefined,
+    skillsBundle?.systemMessage,
     memorySection,
   ].filter((value): value is string => Boolean(value));
   const runtimeShared = {
-    ...(skillsRuntime ? {skills: skillsRuntime} : {}),
+    ...(skillsBundle?.runtimeShared ?? {}),
     ...(systemMessage.length > 0 ? createBaseSystemMessageRuntimeShared(systemMessage) : {}),
   };
 
   return {
     systemMessage,
     ...(Object.keys(runtimeShared).length > 0 ? {runtimeShared} : {}),
+  };
+}
+
+export function createBaseSystemMessageLoader(
+  options: BuildBaseSystemMessageOptions,
+): BaseSystemMessageLoader {
+  return () => buildBaseSystemMessage(options);
+}
+
+export function extendBaseSystemMessage(
+  base: BaseSystemMessageBundle | undefined,
+  additions: {
+    systemMessages?: string[];
+    prompts?: string[];
+  } = {},
+): BaseSystemMessageBundle {
+  const extraSystemMessages = additions.systemMessages?.filter((value): value is string => Boolean(value?.trim()))
+    .map((value) => value.trim()) ?? [];
+  const extraPrompts = additions.prompts?.filter((value): value is string => Boolean(value?.trim()))
+    .map((value) => value.trim()) ?? [];
+
+  return {
+    systemMessage: [
+      ...(base?.systemMessage ?? []),
+      ...extraSystemMessages,
+      ...extraPrompts,
+    ],
+    ...(base?.runtimeShared ? {runtimeShared: {...base.runtimeShared}} : {}),
   };
 }
 
@@ -122,10 +148,17 @@ export function applyPreparedInstructionContext(
   target.messages = target.state.messages;
 }
 
-function createSkillsSystemMessage(runtime: Pick<SkillsRuntimeData, 'sources' | 'discovered'>): string {
-  return SKILLS_SYSTEM_PROMPT
-    .replace('{skills_locations}', formatSkillsLocations(runtime.sources))
-    .replace('{skills_list}', formatSkillsList(runtime.discovered, runtime.sources));
+export function mergePreparedInstructionContext(
+  target: PreparedInstructionContextTarget,
+  base: BaseSystemMessageBundle,
+): void {
+  const existingSystemMessage = [...target.systemMessage];
+  target.systemMessage = [...base.systemMessage, ...existingSystemMessage];
+  target.runtime.shared = {
+    ...(base.runtimeShared ?? {}),
+    ...(target.runtime.shared ?? {}),
+  };
+  target.messages = target.state.messages;
 }
 
 function createAutoMemorySystemMessage(content: string | undefined, memoryRootDir: string | undefined): string | undefined {

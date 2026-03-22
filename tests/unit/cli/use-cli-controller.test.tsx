@@ -103,7 +103,7 @@ describe('useCliController background refresh', () => {
 
   it('does not add a child follow-up while sibling tasks in the same session are still active', async () => {
     const codara = new FakeCodara();
-    codara.setAgentRunSummaries([
+    codara.setSubagentRunSummaries([
       {
         runId: 'run-done',
         parentSessionId: 'session-1',
@@ -138,7 +138,7 @@ describe('useCliController background refresh', () => {
         status: 'done',
         label: 'Subagent completed',
         detail: 'Tech stack child summary',
-        parentId: 'agent-run:run-done',
+        parentId: 'subagent-run:run-done',
       });
 
       await waitFor(() => (rendered.lastFrame() ?? '').includes('latestAssistantNotice:none'));
@@ -156,7 +156,7 @@ describe('useCliController background refresh', () => {
     try {
       await waitFor(() => (rendered.lastFrame() ?? '').includes('runState:running'));
 
-      codara.setAgentRunSummaries([
+      codara.setSubagentRunSummaries([
         {
           runId: 'run-done',
           parentSessionId: 'session-1',
@@ -180,7 +180,7 @@ describe('useCliController background refresh', () => {
         },
       ]);
       codara.emit({
-        id: 'agent-run:run-done',
+        id: 'subagent-run:run-done',
         sessionId: 'session-1',
         timestamp: new Date().toISOString(),
         kind: 'agent',
@@ -189,7 +189,7 @@ describe('useCliController background refresh', () => {
         label: 'Delegating Explore: Analyze the tech stack',
       });
       codara.emit({
-        id: 'agent-run:run-paused',
+        id: 'subagent-run:run-paused',
         sessionId: 'session-1',
         timestamp: new Date().toISOString(),
         kind: 'agent',
@@ -210,7 +210,7 @@ describe('useCliController background refresh', () => {
         status: 'done',
         label: 'Subagent completed',
         detail: 'Tech stack child summary',
-        parentId: 'agent-run:run-done',
+        parentId: 'subagent-run:run-done',
       });
 
       await waitFor(() => (rendered.lastFrame() ?? '').includes('streamCalls:1'));
@@ -233,7 +233,7 @@ describe('useCliController background refresh', () => {
     try {
       await waitFor(() => (rendered.lastFrame() ?? '').includes('runState:running'));
 
-      codara.setAgentRunSummaries([
+      codara.setSubagentRunSummaries([
         {
           runId: 'run-tech',
           parentSessionId: 'session-1',
@@ -260,7 +260,7 @@ describe('useCliController background refresh', () => {
         },
       ]);
       codara.emit({
-        id: 'agent-run:run-tech',
+        id: 'subagent-run:run-tech',
         sessionId: 'session-1',
         timestamp: new Date().toISOString(),
         kind: 'agent',
@@ -269,7 +269,7 @@ describe('useCliController background refresh', () => {
         label: 'Delegating Explore: Analyze the tech stack',
       });
       codara.emit({
-        id: 'agent-run:run-structure',
+        id: 'subagent-run:run-structure',
         sessionId: 'session-1',
         timestamp: new Date().toISOString(),
         kind: 'agent',
@@ -281,7 +281,7 @@ describe('useCliController background refresh', () => {
       codara.releaseBlockedStream();
       await waitFor(() => (rendered.lastFrame() ?? '').includes('runState:done'));
 
-      codara.setAgentRunSummaries([
+      codara.setSubagentRunSummaries([
         {
           runId: 'run-tech',
           parentSessionId: 'session-1',
@@ -318,7 +318,7 @@ describe('useCliController background refresh', () => {
         status: 'done',
         label: 'Subagent completed',
         detail: 'Structure child summary',
-        parentId: 'agent-run:run-structure',
+        parentId: 'subagent-run:run-structure',
       });
 
       await waitFor(() => codara.getStreamCallCount() === 2);
@@ -330,7 +330,7 @@ describe('useCliController background refresh', () => {
           streamMode: 'messages',
         },
         context: {
-          codaraAgentCompletion: {
+          codaraSubagentCompletion: {
             runs: [
               expect.objectContaining({
                 runId: 'run-tech',
@@ -396,7 +396,7 @@ describe('useCliController background refresh', () => {
         parentId: 'turn-root-1',
       });
 
-      codara.setAgentRunSummaries([
+      codara.setSubagentRunSummaries([
         {
           runId: 'run-tech',
           parentSessionId: 'session-1',
@@ -410,7 +410,7 @@ describe('useCliController background refresh', () => {
         },
       ]);
       codara.emit({
-        id: 'agent-run:run-tech',
+        id: 'subagent-run:run-tech',
         sessionId: 'session-1',
         timestamp: new Date().toISOString(),
         kind: 'agent',
@@ -431,7 +431,7 @@ describe('useCliController background refresh', () => {
         status: 'done',
         label: 'Subagent completed',
         detail: 'Tech stack summary',
-        parentId: 'agent-run:run-tech',
+        parentId: 'subagent-run:run-tech',
       });
 
       await waitFor(() => (rendered.lastFrame() ?? '').includes('streamCalls:1'));
@@ -523,7 +523,7 @@ describe('useCliController background refresh', () => {
         status: 'paused',
         label: 'Subagent waiting for review',
         detail: 'Waiting for approval on glob',
-        parentId: 'agent-run:run-review',
+        parentId: 'subagent-run:run-review',
       });
 
       await waitFor(() => (rendered.lastFrame() ?? '').includes('review:approval-review'));
@@ -1269,9 +1269,9 @@ class FakeCodara {
   private agentContext: Record<string, unknown> = {};
   private pendingReview: ReviewRequest | undefined;
   private focusedReviewId: string | undefined;
-  private agentRunSummaries: Array<{
+  private subagentRunSummaries: Array<{
     runId: string;
-    sessionId: string;
+    parentSessionId: string;
     label: string;
     agentName: string;
     status: string;
@@ -1349,8 +1349,8 @@ class FakeCodara {
     this.deferredResumeRemovalHydratesRemaining = Math.max(0, hydratesBeforeRemoval);
   }
 
-  setAgentRunSummaries(
-    agentRunSummaries: Array<{
+  setSubagentRunSummaries(
+    subagentRunSummaries: Array<{
       runId: string;
       parentSessionId: string;
       label: string;
@@ -1364,7 +1364,7 @@ class FakeCodara {
       totalTokens?: number;
     }>,
   ): void {
-    this.agentRunSummaries = agentRunSummaries;
+    this.subagentRunSummaries = subagentRunSummaries;
   }
 
   queueStreamText(text: string): void {
@@ -1486,8 +1486,8 @@ class FakeCodara {
     this.focusedReviewId = reviewId;
   }
 
-  getAgentRunSummaries() {
-    return this.agentRunSummaries;
+  getSubagentRunSummaries() {
+    return this.subagentRunSummaries;
   }
 
   getMcpStatus() {
@@ -1536,7 +1536,7 @@ class FakeCodara {
     }
   }
 
-  async *resumeReviewStream() {
+  async *resumeReviewStream(_payload?: unknown, _config?: unknown) {
     if (this.failPauseResumeWhileRunning && this.hydrateSequence.length > 0 && this.hydrateSequence[0]?.status === 'running') {
       throw new Error('Agent is currently running.');
     }
@@ -1547,7 +1547,7 @@ class FakeCodara {
     yield* [];
   }
 
-  async *resumeApprovalStream() {
+  async *resumeApprovalStream(_payload?: unknown, _config?: unknown) {
     this.resumeCount += 1;
     if (this.blockApprovalResume) {
       await new Promise<void>((resolve) => {
@@ -1563,7 +1563,7 @@ class FakeCodara {
     yield* [];
   }
 
-  async resumeReview() {
+  async resumeReview(_payload?: unknown, _config?: unknown) {
     this.resumeCount += 1;
     if (this.blockApprovalResume) {
       await new Promise<void>((resolve) => {
@@ -1593,13 +1593,13 @@ class FakeCodara {
 
 function createReviewItem(
   reviewId: string,
-  agentRunId: string,
+  subagentRunId: string,
   description: string,
 ): ReviewQueryItem {
   const now = new Date().toISOString();
   return {
     reviewId,
-    source: 'agent_run',
+    source: 'subagent_run',
     kind: 'approval',
     interactionMode: 'approval',
     blockingScope: 'task',
@@ -1609,8 +1609,8 @@ function createReviewItem(
     updatedAt: now,
     anchor: {
       origin: 'delegated',
-      agentRunId,
-      childSessionId: `${agentRunId}:child`,
+      subagentRunId,
+      childSessionId: `${subagentRunId}:child`,
     },
     isFocused: false,
   };

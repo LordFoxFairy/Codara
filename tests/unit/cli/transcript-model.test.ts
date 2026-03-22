@@ -423,7 +423,7 @@ describe('cli transcript model', () => {
       },
       runtimeEvents: [
         {
-          id: 'agent-run:run-2',
+          id: 'subagent-run:run-2',
           sessionId: 'session-1',
           timestamp: now,
           kind: 'agent',
@@ -477,7 +477,7 @@ describe('cli transcript model', () => {
           tool_call_id: 'call_task_launch_noise',
           name: 'Agent',
           artifact: {
-            type: 'agent_run_started',
+            type: 'subagent_run_started',
             runId: 'call_task_launch_noise',
             parentSessionId: 'session-1',
             sessionId: 'session:task:call_task_launch_noise',
@@ -542,7 +542,7 @@ describe('cli transcript model', () => {
           content: 'Subagent completed.\nsummary:\nCHILD_DONE',
           tool_call_id: 'call_task_1',
           artifact: {
-            type: 'delegated_agent_result',
+            type: 'subagent_result',
             sessionId: 'session:task:call_task_1',
             turns: 4,
             reason: 'complete',
@@ -606,7 +606,7 @@ describe('cli transcript model', () => {
           parentId: 'tool-root-1',
         },
         {
-          id: 'agent-run:run-1',
+          id: 'subagent-run:run-1',
           sessionId: 'session-1',
           timestamp: now,
           kind: 'agent',
@@ -645,7 +645,7 @@ describe('cli transcript model', () => {
           status: 'paused',
           label: 'Subagent waiting for review',
           detail: 'Need confirmation',
-          parentId: 'agent-run:run-1',
+          parentId: 'subagent-run:run-1',
         },
       ],
     });
@@ -739,7 +739,7 @@ describe('cli transcript model', () => {
           parentId: 'pending-task-tech',
         },
         {
-          id: 'agent-run:run-tech',
+          id: 'subagent-run:run-tech',
           sessionId: 'session-1',
           timestamp: now,
           kind: 'agent',
@@ -756,10 +756,10 @@ describe('cli transcript model', () => {
           status: 'done',
           label: 'Subagent completed',
           detail: 'tech summary',
-          parentId: 'agent-run:run-tech',
+          parentId: 'subagent-run:run-tech',
         },
         {
-          id: 'agent-run:run-structure',
+          id: 'subagent-run:run-structure',
           sessionId: 'session-1',
           timestamp: now,
           kind: 'agent',
@@ -791,7 +791,7 @@ describe('cli transcript model', () => {
       },
       runtimeEvents: [
         {
-          id: 'agent-run:evt-task-start',
+          id: 'subagent-run:evt-task-start',
           sessionId: 'session-1',
           timestamp: start,
           kind: 'agent',
@@ -808,7 +808,7 @@ describe('cli transcript model', () => {
           status: 'running',
           label: 'glob(README*)',
           detail: 'glob',
-          parentId: 'agent-run:evt-task-start',
+          parentId: 'subagent-run:evt-task-start',
         },
         {
           id: 'evt_task_b',
@@ -819,7 +819,7 @@ describe('cli transcript model', () => {
           status: 'running',
           label: 'Read(package.json)',
           detail: 'read',
-          parentId: 'agent-run:evt-task-start',
+          parentId: 'subagent-run:evt-task-start',
         },
         {
           id: 'evt_task_c',
@@ -830,7 +830,7 @@ describe('cli transcript model', () => {
           status: 'running',
           label: 'Read(src/index.ts)',
           detail: 'read',
-          parentId: 'agent-run:evt-task-start',
+          parentId: 'subagent-run:evt-task-start',
         },
         {
           id: 'evt_task_d',
@@ -841,7 +841,7 @@ describe('cli transcript model', () => {
           status: 'running',
           label: 'Read(src/core/agent.ts)',
           detail: 'read',
-          parentId: 'agent-run:evt-task-start',
+          parentId: 'subagent-run:evt-task-start',
         },
       ],
     });
@@ -872,7 +872,7 @@ describe('cli transcript model', () => {
       },
       runtimeEvents: [
         {
-          id: 'agent-run:evt-task-start',
+          id: 'subagent-run:evt-task-start',
           sessionId: 'session-1',
           timestamp: start,
           kind: 'agent',
@@ -889,7 +889,7 @@ describe('cli transcript model', () => {
           status: 'running',
           label: 'glob(README*)',
           detail: 'glob',
-          parentId: 'agent-run:evt-task-start',
+          parentId: 'subagent-run:evt-task-start',
         },
         {
           id: 'evt_task_activity_2',
@@ -900,7 +900,7 @@ describe('cli transcript model', () => {
           status: 'running',
           label: 'Read(package.json)',
           detail: 'read',
-          parentId: 'agent-run:evt-task-start',
+          parentId: 'subagent-run:evt-task-start',
         },
         {
           id: 'evt_task_end',
@@ -911,7 +911,7 @@ describe('cli transcript model', () => {
           status: 'done',
           label: 'Subagent completed',
           detail: 'Codara is a terminal-first AI agent runtime.',
-          parentId: 'agent-run:evt-task-start',
+          parentId: 'subagent-run:evt-task-start',
         },
       ],
     });

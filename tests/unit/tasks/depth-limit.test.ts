@@ -1,25 +1,50 @@
 import {describe, test, expect} from 'bun:test';
 import {tool} from '@langchain/core/tools';
 import {z} from 'zod';
-import {markDelegationTool} from '@capability/subagent/delegated-child';
+import {buildSubagentChildOptions} from '@capability/subagent/bootstrap';
+import {AGENT_TOOL_NAME} from '@capability/subagent/tool';
 
 describe('Task delegation recursion prevention', () => {
-  test('markDelegationTool returns the same tool instance', () => {
-    const myTool = tool(async () => 'ok', {name: 'Agent', schema: z.object({})});
-    const marked = markDelegationTool(myTool);
-    expect(marked).toBe(myTool);
+  test('buildSubagentChildOptions removes Agent delegation tools from child tool sets', async () => {
+    const agentTool = tool(async () => 'ok', {name: AGENT_TOOL_NAME, schema: z.object({})});
+    const bashTool = tool(async () => 'ok', {name: 'bash', schema: z.object({})});
+
+    const child = await buildSubagentChildOptions({
+      model: async () => ({}) as never,
+      tools: [agentTool, bashTool],
+    }, {
+      profileTools: [agentTool, bashTool],
+    });
+
+    expect((child.tools ?? []).map((entry) => entry.name)).toEqual(['bash']);
   });
 
-  test('markDelegationTool sets the delegation symbol', () => {
-    const myTool = tool(async () => 'ok', {name: 'Agent', schema: z.object({})});
-    markDelegationTool(myTool);
-    const sym = Symbol.for('codara.subagent.delegation.tool');
-    expect((myTool as unknown as Record<symbol, unknown>)[sym]).toBe(true);
-  });
+  test('buildSubagentChildOptions strips inherited skills prompt and propagates permissionMode', async () => {
+    const child = await buildSubagentChildOptions({
+      model: async () => ({}) as never,
+      tools: [],
+      childInstructionContext: {
+        loadBaseSystemMessage: async () => ({
+          systemMessage: [
+            'project prompt',
+            '## Skills System\n\nExecute a skill within the main conversation.\n\n{skills_list}',
+          ],
+          runtimeShared: {
+            base: true,
+            skills: {
+              inherited: true,
+            },
+          },
+        }),
+      },
+    }, {
+      profileSystemPrompt: 'child prompt',
+      permissionMode: 'plan',
+    });
 
-  test('unmarked tools do not have delegation symbol', () => {
-    const myTool = tool(async () => 'ok', {name: 'bash', schema: z.object({})});
-    const sym = Symbol.for('codara.subagent.delegation.tool');
-    expect((myTool as unknown as Record<symbol, unknown>)[sym]).toBeUndefined();
+    expect((child.systemMessage ?? []).join('\n')).not.toContain('Skills System');
+    expect(child.context).toMatchObject({permissionMode: 'plan'});
+    expect(child.runtimeShared).toBeDefined();
+    expect((child.runtimeShared as Record<string, unknown>).skills).toBeUndefined();
   });
 });

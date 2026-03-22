@@ -20,6 +20,7 @@ describe('CLI interaction turn helpers', () => {
       usage_metadata: {
         input_tokens: 120,
         output_tokens: 45,
+        total_tokens: 165,
       },
     });
 
