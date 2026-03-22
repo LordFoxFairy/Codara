@@ -3,14 +3,9 @@ import type {GuidelinesSource} from '@context/instructions/guidelines';
 import type {PromptSource} from '@context/prompts/prompt-source';
 import type {AutoMemorySource} from '@context/memory/auto-memory';
 import {
-  type SkillsRuntimeData,
   type SkillsSource,
-} from '@context/skills/contracts';
-import {
-  formatSkillsList,
-  formatSkillsLocations,
-  SKILLS_SYSTEM_PROMPT,
-} from '@context/prompts/skills-system-prompt';
+} from '@capability/skill';
+import {createSkillsRuntimeBundle} from '@context/skills/build';
 
 const BASE_SYSTEM_MESSAGE_KEY = 'codaraSystemMessage';
 
@@ -63,17 +58,18 @@ export async function buildBaseSystemMessage(
 
   const promptMessage = await opts.promptSource?.getContent?.();
   const guidelinesMessage = await opts.guidelinesSource?.getContent?.();
-  const skillsRuntime = await opts.skillsSource?.getRuntime?.();
+  const skillsRuntime = await opts.skillsSource?.getRuntime();
+  const skillsBundle = skillsRuntime ? createSkillsRuntimeBundle(skillsRuntime) : undefined;
   const autoMemoryContent = await opts.autoMemorySource?.getContent?.();
   const memorySection = createAutoMemorySystemMessage(autoMemoryContent, opts.memoryRootDir);
   const systemMessage = [
     promptMessage,
     guidelinesMessage,
-    skillsRuntime ? createSkillsSystemMessage(skillsRuntime) : undefined,
+    skillsBundle?.systemMessage,
     memorySection,
   ].filter((value): value is string => Boolean(value));
   const runtimeShared = {
-    ...(skillsRuntime ? {skills: skillsRuntime} : {}),
+    ...(skillsBundle?.runtimeShared ?? {}),
     ...(systemMessage.length > 0 ? createBaseSystemMessageRuntimeShared(systemMessage) : {}),
   };
 
@@ -120,12 +116,6 @@ export function applyPreparedInstructionContext(
     ...(base.runtimeShared ?? {}),
   };
   target.messages = target.state.messages;
-}
-
-function createSkillsSystemMessage(runtime: Pick<SkillsRuntimeData, 'sources' | 'discovered'>): string {
-  return SKILLS_SYSTEM_PROMPT
-    .replace('{skills_locations}', formatSkillsLocations(runtime.sources))
-    .replace('{skills_list}', formatSkillsList(runtime.discovered, runtime.sources));
 }
 
 function createAutoMemorySystemMessage(content: string | undefined, memoryRootDir: string | undefined): string | undefined {

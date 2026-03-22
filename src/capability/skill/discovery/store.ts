@@ -3,7 +3,7 @@ import {homedir} from 'node:os'
 import path from 'node:path'
 import {MAX_SKILL_FILE_SIZE, parseSkillMetadataFromContent} from '@capability/skill/catalog/loading'
 import {skillsMetadataReducer} from '@capability/skill/catalog/metadata'
-import type {SkillMetadata, SkillStore} from '@capability/skill/catalog/types'
+import type {SkillMetadata, SkillStore} from '@capability/skill/contracts'
 import {resolveWorkspaceRoot} from '@config/workspace'
 
 const DEFAULT_CACHE_TTL_MS = 5_000

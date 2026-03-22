@@ -37,12 +37,6 @@ export {
   createCodaraPromptSource,
   type PromptSource,
 } from '@context/prompts/prompt-source';
-export {
-  formatSkillAnnotations,
-  formatSkillsList,
-  formatSkillsLocations,
-  SKILLS_SYSTEM_PROMPT,
-} from '@context/prompts/skills-system-prompt';
 
 // ── Session Bundle ───────────────────────────────────────────────────
 export {
@@ -54,20 +48,3 @@ export {
   type BuildBaseSystemMessageOptions,
   type PreparedInstructionContextTarget,
 } from '@context/session-bundle/base-system-message';
-
-// ── Skills ───────────────────────────────────────────────────────────
-export type {
-  SkillCommandMetadata,
-  SkillMetadata,
-  SkillStore,
-  SkillsRuntimeData,
-  SkillsSource,
-  SubagentDefinition,
-  SubagentDefinitionHints,
-} from '@context/skills/contracts';
-export {
-  AGENT_SUBAGENT_TYPE,
-  isReservedSubagentName,
-  readSkillsRuntimeData,
-  resolveSubagentDefinition,
-} from '@context/skills/runtime-shared';

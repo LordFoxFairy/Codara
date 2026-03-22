@@ -1,5 +1,44 @@
 # 2026-03-22 Review Naming And Control-Plane Unification
 
+# 2026-03-22 Skills Ownership And Control-Plane Convergence
+
+## Plan
+
+- [x] Move live skills runtime parsing and subagent profile resolution out of `src/context/skills/*` into `src/capability/skill/*` so skills owns its own runtime contract.
+- [x] Move skills system-message construction and subagent catalog rendering into the skills capability so `context/session-bundle`, `core/middleware/skills`, and `subagent/*` stop formatting skills output themselves.
+- [x] Keep external layers as consumers only:
+  - `context/session-bundle` consumes a prepared skills bundle/runtime
+  - `core/middleware/skills` consumes skills-owned prompt/runtime helpers
+  - `subagent` consumes skills-owned profile/catalog views
+- [x] Audit adjacent “common capability management” seams so the resulting structure stays controllable instead of scattering more helpers:
+  - prompt assembly
+  - runtime shared payload shape
+  - subagent profile consumption
+  - public barrel/test breakpoints
+- [x] Re-run focused skills/subagent/facade/context regressions, eslint, typecheck, and diff-check after the refactor.
+
+## Review
+
+- `capability/skill` is now the only live owner of skills contracts, runtime parsing, runtime bundle construction, and subagent catalog rendering:
+  - `src/capability/skill/contracts.ts`
+  - `src/capability/skill/runtime/runtime.ts`
+  - `src/capability/skill/runtime/commands.ts`
+  - `src/capability/skill/discovery/source.ts`
+- Deleted old context-side shims:
+  - `src/context/skills/contracts.ts`
+  - `src/context/skills/runtime-shared.ts`
+  - `src/context/prompts/skills-system-prompt.ts`
+  - `src/capability/skill/catalog/types.ts`
+- `buildBaseSystemMessage` now consumes `skillsSource.getBundle()` directly instead of reconstructing a skills prompt from raw runtime data.
+- `createSkillsMiddleware` now consumes `loadSkillsRuntimeBundle(...)` and mounts a skills-owned `createSkillTool(...)`; it no longer owns skill matching or skill file prompt assembly.
+- `subagent` now consumes a skills-owned subagent catalog projection instead of formatting it locally.
+- Focused verification passed:
+  - `bun test tests/unit/skills/middleware.test.ts tests/unit/skills/runtime-context.test.ts tests/unit/skills/subagents.test.ts tests/unit/sessions/skills.test.ts tests/unit/core/codara-session-sources.test.ts tests/unit/core/public-api-surface.test.ts tests/unit/agents/subagent-task.test.ts tests/unit/middleware/skills-export.test.ts`
+  - `bun test tests/integration/skills/skills-project-codara.e2e.test.ts tests/integration/skills/skills-project-standard-flow.e2e.test.ts tests/integration/skills/skills-task-completion.e2e.test.ts tests/integration/skills/skills-progressive-disclosure.e2e.test.ts`
+  - `bunx tsc --noEmit --pretty false`
+  - `bunx eslint src/capability/skill src/core/middleware/skills.ts src/core/middleware/index.ts src/capability/subagent/middleware.ts src/context/session-bundle/base-system-message.ts src/context/index.ts src/index.ts src/durability/session/session.ts tests/unit/skills/middleware.test.ts tests/unit/skills/runtime-context.test.ts tests/unit/skills/subagents.test.ts tests/unit/sessions/skills.test.ts tests/unit/core/codara-session-sources.test.ts tests/unit/core/public-api-surface.test.ts tests/unit/middleware/skills-export.test.ts tests/unit/agents/subagent-task.test.ts tests/cases/helpers/cli-runtime-factory.ts tests/integration/skills/skills-project-codara.e2e.test.ts tests/integration/skills/skills-project-standard-flow.e2e.test.ts tests/integration/skills/skills-task-completion.e2e.test.ts tests/integration/skills/skills-progressive-disclosure.e2e.test.ts`
+  - `git diff --check`
+
 ## Plan
 
 - [x] Remove the remaining low-level `hil` naming from the live review middleware implementation and public exports.

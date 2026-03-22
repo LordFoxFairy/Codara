@@ -8,7 +8,7 @@ import type {BaseChatModel} from '@langchain/core/language_models/chat_models';
 import {AIMessage, HumanMessage, SystemMessage, ToolMessage, type BaseMessage, type ToolCall} from '@langchain/core/messages';
 import {tool} from '@langchain/core/tools';
 import {z} from 'zod';
-import type {SkillMetadata, SkillStore} from '@context/skills/contracts';
+import type {SkillMetadata, SkillStore} from '@capability/skill';
 import {SystemEchoModel} from './codara-fixtures';
 
 describe('Codara session source lifecycle', () => {

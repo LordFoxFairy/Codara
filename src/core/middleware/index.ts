@@ -23,7 +23,7 @@ export {
 export {
   createSkillsMiddleware,
   type SkillsMiddlewareOptions,
-  type SkillsRuntimeDataLoader,
+  type SkillsRuntimeBundleLoader,
 } from './skills';
 export {
   createDailySessionFileLogSink,

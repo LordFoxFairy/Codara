@@ -1,5 +1,5 @@
 import {AIMessage, AIMessageChunk, HumanMessage, SystemMessage, type BaseMessage} from '@langchain/core/messages';
-import type {SkillMetadata, SkillStore} from '@context/skills/contracts';
+import type {SkillMetadata, SkillStore} from '@capability/skill';
 
 export class EmptySkillStore implements SkillStore {
   async discover(): Promise<SkillMetadata[]> {

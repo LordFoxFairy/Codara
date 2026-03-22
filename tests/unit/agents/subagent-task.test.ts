@@ -14,7 +14,7 @@ import {
   TASK_LIST_TOOL_NAME,
 } from '@capability/task';
 import {createSkillsMiddleware} from '@core/middleware';
-import {FileSystemSkillStore, loadSkillsRuntimeData} from '@capability/skill';
+import {FileSystemSkillStore, loadSkillsRuntimeBundle} from '@capability/skill';
 import {createAgentRunMemoryStore, AGENT_TOOL_NAME, createAgentTool} from '@capability/subagent';
 import {readAgentRunLaunchResult} from '@shared/agent-run-launch';
 
@@ -190,7 +190,7 @@ describe('task delegation + task store', () => {
 
     const parent = createAgent({
       model: parentModel,
-      middleware: [createSkillsMiddleware({store: createBuiltinSubagentStore(), loadRuntime: loadSkillsRuntimeData})],
+      middleware: [createSkillsMiddleware({store: createBuiltinSubagentStore(), loadBundle: loadSkillsRuntimeBundle})],
       tools: [taskCreateTool, taskTool],
     });
 
@@ -262,7 +262,7 @@ describe('task delegation + task store', () => {
 
     const parent = createAgent({
       model: parentModel,
-      middleware: [createSkillsMiddleware({store: createBuiltinSubagentStore(), loadRuntime: loadSkillsRuntimeData})],
+      middleware: [createSkillsMiddleware({store: createBuiltinSubagentStore(), loadBundle: loadSkillsRuntimeBundle})],
       tools: [taskCreateTool, taskTool],
     });
 

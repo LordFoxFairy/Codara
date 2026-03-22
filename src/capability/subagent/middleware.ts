@@ -1,6 +1,5 @@
 import {createMiddleware, type BaseMiddleware} from '@core/pipeline/types';
-import {readSkillsRuntimeData} from '@context/skills/runtime-shared';
-import type {SkillsRuntimeData} from '@context/skills/contracts';
+import {createSubagentCatalogMessage, readSkillsRuntimeData} from '@capability/skill';
 import {createAgentRuntime} from '@capability/subagent/runtime';
 import {createAgentRunMemoryStore} from '@capability/subagent/run-store';
 import {
@@ -42,7 +41,7 @@ export function createAgentMiddleware(options: CreateAgentMiddlewareOptions): Ba
         context.systemMessage.push(completionHandoff);
       }
 
-      const definitions = buildAvailableSubagentsMessage(readSkillsRuntimeData(context.runtime.shared));
+      const definitions = createSubagentCatalogMessage(readSkillsRuntimeData(context.runtime.shared));
       if (definitions) {
         context.systemMessage.push(definitions);
       }
@@ -57,18 +56,4 @@ export function createAgentMiddleware(options: CreateAgentMiddlewareOptions): Ba
       return handler(context);
     },
   });
-}
-
-function buildAvailableSubagentsMessage(runtime: SkillsRuntimeData | undefined): string {
-  const definitions = Object.values(runtime?.subagentDefinitions ?? {});
-
-  return [
-    '### Available Subagents',
-    '- Agent: built-in child that starts as a fresh child session and loads project context through normal bootstrap',
-    ...definitions.map((definition) => {
-      const toolRefs = definition.tools?.length ? ` | tools: ${definition.tools.join(', ')}` : '';
-      const maxTurns = typeof definition.maxTurns === 'number' ? ` | max_turns: ${definition.maxTurns}` : '';
-      return `- ${definition.name}: ${definition.description}${toolRefs}${maxTurns}`;
-    }),
-  ].join('\n');
 }

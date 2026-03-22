@@ -2,7 +2,7 @@ import {describe, expect, it} from 'bun:test';
 import {
   createSkillsMiddleware,
 } from '@core/middleware';
-import {FileSystemSkillStore, getDefaultSkillSources, loadSkillsRuntimeData, type SkillStore} from '@capability/skill';
+import {FileSystemSkillStore, getDefaultSkillSources, loadSkillsRuntimeBundle, type SkillStore} from '@capability/skill';
 
 describe('middleware unified skills exports', () => {
   it('should expose the skills middleware without leaking skills store helpers from @core/middleware', async () => {
@@ -23,7 +23,7 @@ describe('middleware unified skills exports', () => {
       },
     };
 
-    const middleware = createSkillsMiddleware({store, loadRuntime: loadSkillsRuntimeData});
+    const middleware = createSkillsMiddleware({store, loadBundle: loadSkillsRuntimeBundle});
     expect(middleware.name).toBe('SkillsMiddleware');
 
     const fsStore = new FileSystemSkillStore({

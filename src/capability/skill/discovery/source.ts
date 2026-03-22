@@ -1,11 +1,12 @@
-import type {SkillsRuntimeData, SkillStore, SkillsSource} from '@context/skills/contracts';
+import type {
+  SkillStore,
+  SkillsRuntimeData,
+  SkillsSource,
+} from '@capability/skill/contracts';
 import {loadSkillsRuntimeData} from '@capability/skill/runtime/runtime';
 
-// Re-export from infra for backwards compatibility
-export type {SkillsSource} from '@context/skills/contracts';
-
 export interface FileSkillsSourceOptions {
-  load: () => Promise<SkillsRuntimeData>;
+  loadRuntime: () => Promise<SkillsRuntimeData>;
   reload?: () => void;
 }
 
@@ -37,7 +38,7 @@ export class FileSkillsSource implements SkillsSource {
       return this.inflight;
     }
 
-    this.inflight = this.options.load()
+    this.inflight = this.options.loadRuntime()
       .then((runtime) => {
         this.cache = runtime;
         return runtime;
@@ -58,7 +59,7 @@ export class FileSkillsSource implements SkillsSource {
 
 export function createCodaraSkillsSource(options: CodaraSkillsSourceOptions): SkillsSource {
   return new FileSkillsSource({
-    load: () => loadSkillsRuntimeData(options.store, options.subagentRoots ?? []),
+    loadRuntime: () => loadSkillsRuntimeData(options.store, options.subagentRoots ?? []),
     reload: () => options.store.refresh?.(),
   });
 }

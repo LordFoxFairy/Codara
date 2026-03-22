@@ -32,4 +32,14 @@ describe('core public APIs', () => {
     expect('createCodaraSkillsSource' in api).toBe(true);
     expect('createSourceTurnContextPreparer' in api).toBe(false);
   });
+
+  it('should expose the skills-owned runtime bundle surface from the root barrels', () => {
+    expect('createSkillsRuntimeBundle' in core).toBe(true);
+    expect('loadSkillsRuntimeBundle' in core).toBe(true);
+    expect('createSubagentCatalogMessage' in core).toBe(true);
+
+    expect('createSkillsRuntimeBundle' in api).toBe(true);
+    expect('loadSkillsRuntimeBundle' in api).toBe(true);
+    expect('createSubagentCatalogMessage' in api).toBe(true);
+  });
 });

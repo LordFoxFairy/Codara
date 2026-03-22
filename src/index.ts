@@ -127,18 +127,24 @@ export {
 } from '@context/session-bundle/base-system-message';
 export {
   type SkillMetadata,
+  type SkillCommandMetadata,
   type SkillStore,
   type SkillsSource,
   type SubagentDefinitionHints,
   type SkillsRuntimeData,
+  type SkillsRuntimeBundle,
   type SubagentDefinition,
-} from '@context/skills/contracts';
+  createSubagentCatalogMessage,
+  formatSubagentDisplayName,
+  loadSkillsRuntimeData,
+  normalizeSubagentType,
+} from '@capability/skill';
 export {
   AGENT_SUBAGENT_TYPE,
   isReservedSubagentName,
   readSkillsRuntimeData,
   resolveSubagentDefinition,
-} from '@context/skills/runtime-shared';
+} from '@capability/skill';
 export {
   createBuiltinTools,
   createFetchTool,
@@ -151,8 +157,11 @@ export {
   createCodaraSkillsSource,
   FileSystemSkillStore,
   getDefaultSkillSources,
-  loadSkillsRuntimeData,
 } from '@capability/skill';
+export {
+  createSkillsRuntimeBundle,
+  loadSkillsRuntimeBundle,
+} from '@context/skills/build';
 export {
   createSession,
   FileSessionStore,

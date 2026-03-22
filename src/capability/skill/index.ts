@@ -3,7 +3,6 @@ export {
   FileSkillsSource,
   type CodaraSkillsSourceOptions,
   type FileSkillsSourceOptions,
-  type SkillsSource,
 } from '@capability/skill/discovery/source';
 export {
   formatSkillAnnotations,
@@ -17,13 +16,18 @@ export {
 } from '@capability/skill/catalog/metadata';
 export {
   AGENT_SUBAGENT_TYPE,
+  createSubagentCatalogMessage,
+  formatSubagentDisplayName,
+  isReservedSubagentName,
   loadSkillsRuntimeData,
+  normalizeSubagentType,
   readSkillsRuntimeData,
   resolveSubagentDefinition,
-  type SkillsRuntimeData,
-  type SubagentDefinition,
-  type SubagentDefinitionHints,
 } from '@capability/skill/runtime/runtime';
+export {
+  createSkillsRuntimeBundle,
+  loadSkillsRuntimeBundle,
+} from '@context/skills/build';
 export {
   MAX_SKILL_COMPATIBILITY_LENGTH,
   MAX_SKILL_DESCRIPTION_LENGTH,
@@ -47,6 +51,12 @@ export {
   getDefaultSkillSources,
 } from '@capability/skill/discovery/store';
 export type {
+  SkillCommandMetadata,
   SkillMetadata,
   SkillStore,
-} from '@capability/skill/catalog/types';
+  SkillsRuntimeBundle,
+  SkillsRuntimeData,
+  SkillsSource,
+  SubagentDefinition,
+  SubagentDefinitionHints,
+} from '@capability/skill/contracts';

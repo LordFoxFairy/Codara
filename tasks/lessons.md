@@ -1,6 +1,12 @@
 # Lessons
 
 ## 2026-03-22
+- 用户继续纠偏：`build`/assembly 能力可以留在 `context`，不必为了 owner 纯化把所有 bundle/system-message 组装都硬塞回 capability。
+- 防错规则：区分 “capability owns domain semantics” 和 “context owns assembly/build”。像 skills 这类能力，metadata/runtime/profile resolution 应归 capability；但 system-message 拼装、instruction bundle 组装如果本质是上下文装配，可以继续留在 context，不要过度收回。
+- 用户继续纠偏：当某个 capability 明确应该自主管理 metadata、runtime bundle、system message 和 catalog projection 时，不能继续把 contracts/runtime-shared/prompt shim 留在 `context/*` 里做半 owner。
+- 防错规则：只要用户要求“capability 自己管理全部，外部只拿结果”，就优先把 contracts、bundle builder、catalog formatter 和 tool factory 一起收回 capability，并删除旧 context shim；不要只改 import 指向而保留旧壳。
+- 用户继续纠偏：`.codara/skills/superworkers` 不是当前项目的实现 owner，禁止顺手修改来“配合”架构重构。
+- 防错规则：当用户明确划出不可改动的外部技能目录时，把它当作硬边界；任何 Claude Code 对齐都应先在 `src` 主路径内收 ownership，不要再去改 superworkers 提示词补洞。
 - 用户继续纠偏：当 live 里看到 `Skill` 重复打印或被拦下的 `AskUserQuestion` 仍然可见时，优先怀疑 transcript projection 重叠，而不是继续往 controller/runtime 上加 guard。
 - 防错规则：凡是 CLI 可见块重复或隐藏失效，先检查 `active runtime events` 与 `unsolidified coreMessages` 的双投影，以及 paired start/end event 是否绕过了 hide 条件；优先在 transcript/model 层做去重和抑制，不要把显示问题错误地下沉成执行控制问题。
 - 用户继续纠偏：当用户明确允许重构并强调“整体流转机制要清晰、易维护”，就不能只把新行为塞进旧 guard/flag 里糊住问题。
