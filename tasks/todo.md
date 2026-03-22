@@ -1,5 +1,33 @@
 # 2026-03-22 Superworkers Codex Alignment Refresh
 
+# 2026-03-22 Task/Subagent Child Ownership Cleanup
+
+## Plan
+
+- [x] Stop routing child-only bootstrap fields through ambiguous shared names like `middleware`, `context`, `values`, `prepareContext`, and `lifecycle`.
+- [x] Make delegated child bootstrap options explicitly child-owned in the subagent capability surface.
+- [x] Rename subagent persistence from generic `store.ts` to `run-store.ts` so it no longer reads like the shared task-list store.
+- [x] Re-run task/subagent/facade/HIL regressions, eslint, typecheck, and diff-check after the rename.
+
+## Review
+
+- `createAgentTool` / `createAgentMiddleware` now use explicit child-owned fields:
+  - `childMiddleware`
+  - `childContext`
+  - `childValues`
+  - `childPrepareContext`
+  - `childSystemMessages`
+  - `childSystemPrompt`
+  - `childLifecycle`
+- The child bootstrap path in `src/capability/subagent/agent.ts` no longer looks like it is sharing parent middleware/context by default; explicit child seeds are still supported, but they are named as child-only ownership.
+- `src/capability/subagent/store.ts` was renamed to `src/capability/subagent/run-store.ts` and imports were updated so task-list persistence and delegated-run persistence no longer present as two generic `store.ts` peers.
+- While applying the rename, stale `sessionId` assumptions in agent-run persistence/runtime/assembly were removed so `AgentRunRecord` consistently keys the parent thread as `parentSessionId`.
+- Verification passed:
+  - `bun test tests/unit/agents/subagent.test.ts tests/unit/agents/subagent-task.test.ts tests/unit/agents/task-tool-delegation.test.ts tests/unit/agents/task-tool-definitions.test.ts tests/unit/tasks/middleware.test.ts tests/unit/core/codara-facade.test.ts tests/cases/helpers/cli-runtime-factory.ts tests/cases/hil/subagent-activity-display.case.test.ts`
+  - `bunx eslint src/capability/task src/capability/subagent src/codara/assembly/middleware.ts src/codara/assembly/agent-runs.ts tests/unit/agents/subagent.test.ts tests/unit/agents/subagent-task.test.ts tests/unit/agents/task-tool-delegation.test.ts tests/unit/agents/task-tool-definitions.test.ts tests/unit/tasks/middleware.test.ts tests/unit/core/codara-facade.test.ts tests/cases/helpers/cli-runtime-factory.ts tests/cases/hil/subagent-activity-display.case.test.ts`
+  - `bunx tsc --noEmit --pretty false`
+  - `git diff --check`
+
 ## Plan
 
 - [x] Audit `.codara/skills/superworkers` for stale Claude Code-only wording and accidental local drift.
@@ -42,6 +70,26 @@
 - Focused verification passed:
   - `bun test tests/unit/agents/subagent.test.ts tests/unit/tasks/middleware.test.ts tests/unit/core/codara-facade.test.ts tests/unit/agents/subagent-task.test.ts tests/unit/tasks/public-surface.test.ts tests/unit/tasks/depth-limit.test.ts tests/cases/helpers/cli-runtime-factory.ts`
   - `bunx eslint src/capability/subagent src/codara/assembly/middleware.ts tests/unit/agents/subagent.test.ts tests/unit/tasks/middleware.test.ts tests/unit/core/codara-facade.test.ts tests/unit/agents/subagent-task.test.ts tests/unit/tasks/public-surface.test.ts tests/unit/tasks/depth-limit.test.ts tests/cases/helpers/cli-runtime-factory.ts`
+  - `bunx tsc --noEmit --pretty false`
+  - `git diff --check`
+
+# 2026-03-22 Agent Run Parent Identity Cleanup
+
+## Plan
+
+- [x] Remove the ambiguous `sessionId + parentSessionId?` pairing from `AgentRunRecord` and keep only the parent-session identity for delegated runs.
+- [x] Update run-store persistence, runtime recovery, and facade summaries to read delegated runs through `parentSessionId`.
+- [x] Rewrite the affected run-store tests and fixtures so they assert the clarified parent/child identity contract instead of the old fallback field.
+- [x] Re-run focused run-store/facade/subagent regression, eslint, typecheck, and diff-check.
+
+## Review
+
+- `AgentRunRecord` and `AgentRunStartInput` now carry a single required parent identity:
+  - `parentSessionId`
+- `run-store`, `runtime`, `tool`, and `codara/assembly/agent-runs.ts` no longer fall back between `sessionId` and `parentSessionId`; delegated runs are consistently indexed, filtered, and summarized by the parent session.
+- Focused verification passed:
+  - `bun test tests/unit/tasks/run-store.test.ts tests/unit/tasks/run-store-file.test.ts tests/unit/core/codara-facade.test.ts tests/unit/agents/subagent.test.ts tests/unit/tasks/middleware.test.ts`
+  - `bunx eslint src/capability/subagent/run-store.ts src/capability/subagent/runtime.ts src/capability/subagent/tool.ts src/codara/assembly/agent-runs.ts src/capability/subagent/middleware.ts tests/unit/tasks/run-store.test.ts tests/unit/tasks/run-store-file.test.ts tests/unit/core/codara-facade.test.ts tests/unit/agents/subagent.test.ts tests/unit/tasks/middleware.test.ts`
   - `bunx tsc --noEmit --pretty false`
   - `git diff --check`
 

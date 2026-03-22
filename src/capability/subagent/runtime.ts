@@ -101,7 +101,7 @@ class InMemoryAgentRuntime implements AgentRuntime {
       return {
         type: 'agent_run_started',
         runId: existingRun.runId,
-        parentSessionId: existingRun.parentSessionId ?? existingRun.sessionId,
+        parentSessionId: existingRun.parentSessionId,
         sessionId: existingRun.childSessionId ?? input.childSessionId,
         agentName: existingRun.agentName,
         label: existingRun.label,
@@ -111,7 +111,6 @@ class InMemoryAgentRuntime implements AgentRuntime {
     this.options.approvalStore?.removeByAgentRunId(input.runId);
     this.options.runStore?.start({
       runId: input.runId,
-      sessionId: input.parentSessionId,
       parentSessionId: input.parentSessionId,
       label: input.label,
       agentName: input.agentName,
@@ -375,7 +374,7 @@ class InMemoryAgentRuntime implements AgentRuntime {
 
     const recovered: AgentRunHandle = {
       runId: record.runId,
-      parentSessionId: record.parentSessionId ?? record.sessionId,
+      parentSessionId: record.parentSessionId,
       childSessionId: record.childSessionId,
       label: record.label,
       agentName: record.agentName,

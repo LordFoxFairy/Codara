@@ -331,7 +331,7 @@ function readExistingAgentRunMessage(
   }
 
   const sessionId = run.childSessionId?.trim() || fallback.childSessionId;
-  const parentSessionId = run.parentSessionId?.trim() || run.sessionId?.trim() || fallback.parentSessionId;
+  const parentSessionId = run.parentSessionId.trim() || fallback.parentSessionId;
   const label = run.label?.trim() || fallback.label;
   const agentName = normalizeAgentName(run.agentName?.trim(), fallback.agentName);
   const header = run.status === 'paused'

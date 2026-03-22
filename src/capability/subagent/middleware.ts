@@ -42,7 +42,6 @@ export interface AgentChildRuntimeOptions {
 
 export interface CreateAgentMiddlewareOptions extends CreateAgentToolOptions {
   name?: string;
-  middleware?: BaseMiddleware[];
   childRuntime?: AgentChildRuntimeOptions;
 }
 

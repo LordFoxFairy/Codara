@@ -18,8 +18,7 @@ export interface AgentRunFileStoreOptions {
 
 const agentRunRecordSchema = z.object({
   runId: z.string(),
-  sessionId: z.string(),
-  parentSessionId: z.string().optional(),
+  parentSessionId: z.string(),
   label: z.string(),
   agentName: z.string(),
   status: z.enum(['running', 'paused', 'completed', 'failed']),
@@ -100,7 +99,7 @@ class InMemoryAgentRunStore implements AgentRunStore {
     const now = new Date().toISOString();
 
     for (const [runId, record] of this.records.entries()) {
-      if (record.sessionId !== normalizedSessionId || record.status !== 'running') {
+      if (record.parentSessionId !== normalizedSessionId || record.status !== 'running') {
         continue;
       }
 
@@ -258,12 +257,12 @@ class FileAgentRunStore implements AgentRunStore {
   }
 
   private storeAgentRun(record: AgentRunRecord, previous?: AgentRunRecord): void {
-    if (previous && previous.sessionId !== record.sessionId) {
-      this.unindexAgentRun(previous.sessionId, previous.runId);
+    if (previous && previous.parentSessionId !== record.parentSessionId) {
+      this.unindexAgentRun(previous.parentSessionId, previous.runId);
     }
 
     this.records.set(record.runId, record);
-    this.indexAgentRun(record.sessionId, record.runId);
+    this.indexAgentRun(record.parentSessionId, record.runId);
   }
 
   private indexAgentRun(sessionId: string, runId: string): void {
@@ -290,8 +289,7 @@ class FileAgentRunStore implements AgentRunStore {
 function createAgentRunRecord(runId: string, input: AgentRunStartInput, now: string): AgentRunRecord {
   return {
     runId,
-    sessionId: normalizeSessionId(input.sessionId),
-    parentSessionId: normalizeParentSessionId(input.parentSessionId, input.sessionId),
+    parentSessionId: normalizeSessionId(input.parentSessionId),
     label: normalizeText(input.label),
     agentName: normalizeText(input.agentName),
     status: 'running',
@@ -327,8 +325,7 @@ function applyAgentRunStart(
   const next: AgentRunRecord = {
     ...(existing ? cloneAgentRun(existing) : createAgentRunRecord(runId, input, now)),
     runId,
-    sessionId: normalizeSessionId(input.sessionId),
-    parentSessionId: normalizeParentSessionId(input.parentSessionId, input.sessionId),
+    parentSessionId: normalizeSessionId(input.parentSessionId),
     label: normalizeText(input.label),
     agentName: normalizeText(input.agentName),
     status: 'running',
@@ -415,10 +412,6 @@ function normalizeSessionId(value: string): string {
     throw new Error('Agent run session id is required');
   }
   return sessionId;
-}
-
-function normalizeParentSessionId(value: string | undefined, fallbackSessionId: string): string {
-  return normalizeSessionId(value ?? fallbackSessionId);
 }
 
 function normalizeText(value: string): string {

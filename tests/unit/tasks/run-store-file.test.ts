@@ -5,14 +5,14 @@ import path from 'node:path';
 import {describe, expect, it, spyOn} from 'bun:test';
 import {createAgentRunFileStore} from '@capability/subagent';
 
-describe('task run file store', () => {
+describe('agent run file store', () => {
   it('persists delegated runs to disk and reloads them', async () => {
     const rootDir = await mkdtemp(path.join(tmpdir(), 'codara-task-run-file-store-'));
     const store = createAgentRunFileStore({rootDir});
 
     store.start({
       runId: 'run-1',
-      sessionId: 'session-1',
+      parentSessionId: 'session-1',
       label: 'Delegating research: inspect auth flow',
       agentName: 'research',
     });
@@ -35,7 +35,7 @@ describe('task run file store', () => {
     const reopened = createAgentRunFileStore({rootDir});
     expect(reopened.get('run-1')).toEqual(expect.objectContaining({
       runId: 'run-1',
-      sessionId: 'session-1',
+      parentSessionId: 'session-1',
       status: 'completed',
       childSessionId: 'child-1',
       summary: 'found the auth entrypoint',
@@ -53,7 +53,7 @@ describe('task run file store', () => {
 
       store.start({
         runId: 'run-cache',
-        sessionId: 'session-cache',
+        parentSessionId: 'session-cache',
         label: 'Delegating research: inspect auth flow',
         agentName: 'research',
       });

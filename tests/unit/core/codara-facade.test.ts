@@ -278,7 +278,7 @@ describe('Codara facade runtime', () => {
 
     agentRunStore.start({
       runId: 'run-session-a',
-      sessionId: 'runtime-task-run-session-a',
+      parentSessionId: 'runtime-task-run-session-a',
       label: 'Delegating Agent: Inspect isolated child work',
       agentName: 'Agent',
     });
@@ -292,7 +292,7 @@ describe('Codara facade runtime', () => {
 
     agentRunStore.start({
       runId: 'run-session-b',
-      sessionId: 'runtime-task-run-session-b',
+      parentSessionId: 'runtime-task-run-session-b',
       label: 'Delegating Agent: Inspect another child work',
       agentName: 'Agent',
     });
@@ -466,7 +466,7 @@ describe('Codara facade runtime', () => {
 
     agentRunStore.start({
       runId: 'run-live',
-      sessionId: 'runtime-live-task-run-session',
+      parentSessionId: 'runtime-live-task-run-session',
       label: 'Delegating Agent: Inspect live query behavior',
       agentName: 'Agent',
     });
@@ -576,7 +576,7 @@ describe('Codara facade runtime', () => {
     const originalStore = createAgentRunFileStore({rootDir});
     originalStore.start({
       runId: 'run-recovery',
-      sessionId: 'runtime-task-run-recovery-session',
+      parentSessionId: 'runtime-task-run-recovery-session',
       label: 'Delegating research: inspect a restart boundary',
       agentName: 'research',
     });

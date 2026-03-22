@@ -1,13 +1,12 @@
 import {describe, expect, it} from 'bun:test';
 import {createAgentRunMemoryStore} from '@capability/subagent';
 
-describe('task run store', () => {
+describe('agent run store', () => {
   it('tracks start, activity, and completion for delegated runs', () => {
     const store = createAgentRunMemoryStore();
 
     store.start({
       runId: 'run-1',
-      sessionId: 'session-1',
       parentSessionId: 'session-1',
       label: 'Delegating research: inspect auth flow',
       agentName: 'research',
@@ -28,7 +27,6 @@ describe('task run store', () => {
     expect(store.list()).toEqual([
       expect.objectContaining({
         runId: 'run-1',
-        sessionId: 'session-1',
         parentSessionId: 'session-1',
         status: 'completed',
         childSessionId: 'child-1',
@@ -46,7 +44,6 @@ describe('task run store', () => {
 
     store.start({
       runId: 'run-live-count',
-      sessionId: 'session-1',
       parentSessionId: 'session-1',
       label: 'Delegating research: inspect auth flow',
       agentName: 'research',
@@ -73,7 +70,6 @@ describe('task run store', () => {
 
     const started = store.start({
       runId: 'run-2',
-      sessionId: 'session-2',
       parentSessionId: 'session-2',
       label: 'Delegating plan',
       agentName: 'Plan',
@@ -85,7 +81,6 @@ describe('task run store', () => {
 
     expect(paused).toEqual(expect.objectContaining({
       runId: 'run-2',
-      sessionId: 'session-2',
       parentSessionId: 'session-2',
       status: 'paused',
       childSessionId: 'child-2',

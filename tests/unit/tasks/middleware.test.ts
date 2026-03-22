@@ -460,7 +460,7 @@ describe('tasks middlewares', () => {
     expect(runStore.list()).toEqual([
       expect.objectContaining({
         runId: 'call_task_run_store',
-        sessionId: expect.any(String),
+        parentSessionId: expect.any(String),
         label: 'Delegating Explore: inspect the login flow',
         agentName: 'Explore',
         status: 'completed',
