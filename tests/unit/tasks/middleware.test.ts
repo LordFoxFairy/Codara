@@ -342,7 +342,7 @@ describe('tasks middlewares', () => {
           schema: z.object({path: z.string()}),
         }),
       ],
-      prepareContext: async (context) => {
+      childPrepareContext: async (context) => {
         const next = await buildBaseSystemMessage(promptSource, guidelinesSource);
         context.systemMessage = [...next.systemMessage];
         context.runtime.shared = next.runtimeShared ? {...next.runtimeShared} : {};

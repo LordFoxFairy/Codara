@@ -4,8 +4,7 @@ export type AgentRunStatus = 'running' | 'paused' | 'completed' | 'failed';
 
 export interface AgentRunRecord {
   runId: string;
-  sessionId: string;
-  parentSessionId?: string;
+  parentSessionId: string;
   label: string;
   agentName: string;
   status: AgentRunStatus;
@@ -28,8 +27,7 @@ export interface AgentRunRecord {
 
 export interface AgentRunStartInput {
   runId: string;
-  sessionId: string;
-  parentSessionId?: string;
+  parentSessionId: string;
   label: string;
   agentName: string;
   childSessionId?: string;

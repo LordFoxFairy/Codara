@@ -159,12 +159,17 @@ export function createRuntimeDefaultMiddlewares(input: {
           ...(input.catalog ? {catalog: input.catalog} : {}),
         })),
         tools: input.runtimeTools,
-        middleware: createDelegatedRuntimeMiddlewares({
-          ...input,
-          tools: input.runtimeTools,
-          catalog: input.catalog,
-        }),
-        ...(input.hookPipeline ? {lifecycle: input.hookPipeline} : {}),
+        childMiddleware: (input.options.middleware ?? [])
+          .filter((middleware) => middleware.name !== MIDDLEWARE_NAMES.Agent),
+        childRuntime: {
+          logging: input.logging,
+          hil: input.options.hil ?? {},
+          cwd: input.options.cwd,
+          projectRoot: input.options.projectRoot,
+          userHome: input.options.userHome,
+          permissionAnalysisModel: createRuntimePermissionAnalysisModel(input.options, input.catalog),
+        },
+        ...(input.hookPipeline ? {childLifecycle: input.hookPipeline} : {}),
       }),
     );
   }
@@ -224,58 +229,6 @@ function rebindRuntimeAgentTools(input: {
       approvalStore: input.approvalStore,
     });
   }
-}
-
-function createDelegatedRuntimeMiddlewares(input: {
-  options: CodaraRuntimeOptions;
-  taskStore: TaskStore;
-  logging: false | LoggingMiddlewareOptions;
-  tools?: StructuredToolInterface[];
-  catalog?: CodaraModelCatalog | Promise<CodaraModelCatalog>;
-}): BaseMiddleware[] {
-  const middlewares: BaseMiddleware[] = [];
-  const callerMiddlewares = (input.options.middleware ?? [])
-    .filter((middleware) => middleware.name !== MIDDLEWARE_NAMES.Agent);
-  const providedToolNames = collectProvidedToolNames({
-    tools: input.tools,
-    middlewares: callerMiddlewares,
-  });
-
-  const seen = new Set<string>();
-  const push = (middleware: BaseMiddleware) => {
-    if (seen.has(middleware.name)) {
-      return;
-    }
-    seen.add(middleware.name);
-    middlewares.push(middleware);
-  };
-
-  if (input.logging && input.logging.enabled !== false) {
-    push(createLoggingMiddleware(input.logging));
-  }
-
-  for (const middleware of callerMiddlewares) {
-    push(middleware);
-  }
-
-  if (!seen.has(MIDDLEWARE_NAMES.TodoList) && !providedToolNames.has('write_todos')) {
-    push(createTodoListMiddleware());
-  }
-  if (input.options.hil !== false && !seen.has(MIDDLEWARE_NAMES.AskUserQuestion)) {
-    push(createAskUserQuestionMiddleware());
-  }
-  if (input.options.hil !== false && !seen.has(MIDDLEWARE_NAMES.Permission)) {
-    push(createPermissionMiddleware({
-      ...(typeof input.options.hil === 'object' && input.options.hil !== null ? input.options.hil : {}),
-      cwd: input.options.cwd,
-      projectRoot: input.options.projectRoot,
-      userHome: input.options.userHome,
-      bashAnalysisModel: createRuntimePermissionAnalysisModel(input.options, input.catalog),
-    }));
-  }
-
-  push(createBudgetMiddleware());
-  return middlewares;
 }
 
 function collectProvidedToolNames(input: {

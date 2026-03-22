@@ -441,7 +441,7 @@ export async function createCliRuntime(input: {
             createAgentTool({
               model: new ChildPermissionCliModel() as unknown as BaseChatModel,
               tools: [createPermissionBashTool()],
-              middleware: [createPermissionCaseMiddleware(input.cwd)],
+              childMiddleware: [createPermissionCaseMiddleware(input.cwd)],
               runStore: permissionRunStore,
             }),
           ],

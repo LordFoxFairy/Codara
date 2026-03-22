@@ -673,7 +673,7 @@ describe('Codara facade runtime', () => {
           }),
         }),
       ],
-      middleware: [
+      childMiddleware: [
         createHILMiddleware({
           interruptOn: {
             dangerous_tool: true,

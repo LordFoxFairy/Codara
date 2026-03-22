@@ -331,7 +331,7 @@ describe('Task delegation', () => {
 
     const taskTool = createAgentTool({
       model: new ChildProbeModel() as unknown as BaseChatModel,
-      middleware: [childProbe],
+      childMiddleware: [childProbe],
       runStore,
     });
 
@@ -397,9 +397,9 @@ describe('Task delegation', () => {
 
     const taskTool = createAgentTool({
       model: new ChildProbeModel() as unknown as BaseChatModel,
-      middleware: [childProbe],
-      context: {seededContext: 'child-only'},
-      values: {seededValue: 1},
+      childMiddleware: [childProbe],
+      childContext: {seededContext: 'child-only'},
+      childValues: {seededValue: 1},
       runStore,
     });
 
@@ -464,7 +464,7 @@ describe('Task delegation', () => {
     const taskTool = createAgentTool({
       model: childModel as unknown as BaseChatModel,
       tools: [dangerousTool],
-      middleware: [
+      childMiddleware: [
         createHILMiddleware({
           interruptOn: {dangerous_tool: true},
         }),

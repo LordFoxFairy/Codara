@@ -11,7 +11,7 @@ export {
   createAgentRunFileStore,
   createAgentRunMemoryStore,
   type AgentRunFileStoreOptions,
-} from '@capability/subagent/store';
+} from '@capability/subagent/run-store';
 export {
   createAgentRuntime,
   type AgentRuntime,
@@ -25,9 +25,10 @@ export {
   readAgentToolOptions,
 } from '@capability/subagent/tool';
 export type {
-  CreateAgentMiddlewareOptions,
   CreateAgentToolOptions,
-} from '@capability/subagent/tool-types';
+} from '@capability/subagent/tool';
 export {
   createAgentMiddleware,
+  type AgentChildRuntimeOptions,
+  type CreateAgentMiddlewareOptions,
 } from '@capability/subagent/middleware';

@@ -63,17 +63,17 @@ const delegatedRuntimeContextSchema = z.object({
 export interface DelegatedAgentOptions {
   model: DelegatedAgentModelResolver;
   tools?: StructuredToolInterface[];
-  middleware?: BaseMiddleware[];
+  childMiddleware?: BaseMiddleware[];
   handleToolErrors?: ToolErrorHandler;
   checkpointer?: AgentCheckpointer;
   inputBudget?: AgentInputBudget;
-  context?: AgentRuntimeContext;
-  values?: AgentRuntimeValues;
-  prepareContext?: AgentContextPreparer;
-  systemMessages?: string[];
-  systemPrompt?: string;
+  childContext?: AgentRuntimeContext;
+  childValues?: AgentRuntimeValues;
+  childPrepareContext?: AgentContextPreparer;
+  childSystemMessages?: string[];
+  childSystemPrompt?: string;
   blockedToolNames?: string[];
-  lifecycle?: AgentLifecycleHooks;
+  childLifecycle?: AgentLifecycleHooks;
   /** Optional callback for forwarding child tool activity to parent runtime events. */
   onChildToolActivity?: ChildToolActivityCallback;
 }
@@ -140,9 +140,9 @@ export async function runDelegatedAgent(
   const result = await runDelegatedChild(childOptions, input);
 
   // SubagentStop hook — best-effort notification after delegated agent completes
-  if (options.lifecycle && !result.state.pendingPause) {
+  if (options.childLifecycle && !result.state.pendingPause) {
     try {
-      await options.lifecycle.onSubagentStop({
+      await options.childLifecycle.onSubagentStop({
         hookEvent: 'SubagentStop',
         sessionId: input.parentExecution.sessionId,
         agentName: formatSubagentDisplayName(input.subagentType),
@@ -225,8 +225,8 @@ export async function buildDelegatedChildOptions(
   options: DelegatedAgentOptions,
   input: DelegatedChildInput,
 ): Promise<BootstrapAgentOptions> {
-  const mergedContext = mergeRuntimeContext(options.context, input.profileContext);
-  const baseMiddleware = [...(input.profileMiddleware ?? options.middleware ?? [])];
+  const mergedContext = mergeRuntimeContext(options.childContext, input.profileContext);
+  const baseMiddleware = [...(input.profileMiddleware ?? options.childMiddleware ?? [])];
 
   // Inject activity forward middleware if parent provided a callback
   if (options.onChildToolActivity) {
@@ -236,8 +236,8 @@ export async function buildDelegatedChildOptions(
   return {
     model: await resolveModel(input.profileModel ?? options.model),
     agentType: 'subagent',
-    ...(mergeDelegatedSystemMessages(options.systemMessages, input.profileSystemPrompt, options.systemPrompt).length > 0
-      ? {systemMessage: mergeDelegatedSystemMessages(options.systemMessages, input.profileSystemPrompt, options.systemPrompt)}
+    ...(mergeDelegatedSystemMessages(options.childSystemMessages, input.profileSystemPrompt, options.childSystemPrompt).length > 0
+      ? {systemMessage: mergeDelegatedSystemMessages(options.childSystemMessages, input.profileSystemPrompt, options.childSystemPrompt)}
       : {}),
     tools: resolveDelegatedAgentTools(
       input.profileTools ?? options.tools ?? [],
@@ -248,9 +248,9 @@ export async function buildDelegatedChildOptions(
     handleToolErrors: options.handleToolErrors,
     checkpointer: options.checkpointer,
     inputBudget: options.inputBudget,
-    prepareContext: options.prepareContext,
+    prepareContext: options.childPrepareContext,
     ...(mergedContext ? {context: mergedContext} : {}),
-    ...(options.values ? {values: deepClone(options.values)} : {}),
+    ...(options.childValues ? {values: deepClone(options.childValues)} : {}),
   };
 }
 

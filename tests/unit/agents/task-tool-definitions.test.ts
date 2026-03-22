@@ -219,7 +219,7 @@ You are a Researcher subagent.
               tool(async () => 'ok', {name: 'read_file', description: 'read', schema: z.object({path: z.string()})}),
               tool(async () => 'ok', {name: 'grep', description: 'grep', schema: z.object({})}),
             ],
-            middleware: [createHILMiddleware({interruptOn: {read_file: true}})],
+            childMiddleware: [createHILMiddleware({interruptOn: {read_file: true}})],
             runStore,
             runtime: taskRuntime,
           }),
