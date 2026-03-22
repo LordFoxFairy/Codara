@@ -123,12 +123,7 @@ export async function buildSubagentChildOptions(
     mergedContext,
     input.permissionMode ? {permissionMode: input.permissionMode} : undefined,
   );
-  const childPrepareContext = options.childInstructionContext?.prepareContext
-    ? async (context: AgentPreparationContext) => {
-      await options.childInstructionContext?.prepareContext?.(context);
-      stripSkillsFromPreparedInstructionContext(context);
-    }
-    : undefined;
+  const childContextPreparer = buildSubagentContextPreparer(options);
   const childMiddleware = [
     ...(options.childInstructionContext?.middlewares ?? []),
     ...(options.childMiddleware ?? []),
@@ -150,7 +145,7 @@ export async function buildSubagentChildOptions(
     handleToolErrors: options.handleToolErrors,
     checkpointer: options.checkpointer,
     inputBudget: options.inputBudget,
-    ...(childPrepareContext ? {prepareContext: childPrepareContext} : {}),
+    ...(childContextPreparer ? {prepareContext: childContextPreparer} : {}),
     ...(childContext ? {context: childContext} : {}),
     ...(options.childValues ? {values: deepClone(options.childValues)} : {}),
     ...(options.childLifecycle ? {lifecycle: options.childLifecycle} : {}),
@@ -197,12 +192,7 @@ export async function buildRecoveredSubagentChildOptions(
     options.childContext,
     run.permissionMode ? {permissionMode: run.permissionMode} : undefined,
   );
-  const childPrepareContext = options.childInstructionContext?.prepareContext
-    ? async (context: AgentPreparationContext) => {
-      await options.childInstructionContext?.prepareContext?.(context);
-      stripSkillsFromPreparedInstructionContext(context);
-    }
-    : undefined;
+  const childContextPreparer = buildSubagentContextPreparer(options);
 
   return {
     childOptions: buildSubagentBootstrapOptions({
@@ -217,7 +207,7 @@ export async function buildRecoveredSubagentChildOptions(
       handleToolErrors: options.handleToolErrors,
       checkpointer: options.checkpointer ?? createAgentMemoryCheckpointer(),
       inputBudget: options.inputBudget,
-      ...(childPrepareContext ? {prepareContext: childPrepareContext} : {}),
+      ...(childContextPreparer ? {prepareContext: childContextPreparer} : {}),
       ...(childContext ? {context: childContext} : {}),
       ...(options.childValues ? {values: deepClone(options.childValues)} : {}),
       ...(options.childLifecycle ? {lifecycle: options.childLifecycle} : {}),
@@ -247,6 +237,20 @@ export function createSubagentResult(
     ...(error?.message ? {errorMessage: error.message} : {}),
     ...(toolUseCount > 0 ? {toolUseCount} : {}),
     ...(totalTokens > 0 ? {totalTokens} : {}),
+  };
+}
+
+function buildSubagentContextPreparer(
+  options: Pick<SubagentOptions, 'childInstructionContext'>,
+): AgentContextPreparer | undefined {
+  const prepareContext = options.childInstructionContext?.prepareContext;
+  if (!prepareContext) {
+    return undefined;
+  }
+
+  return async (context: AgentPreparationContext) => {
+    await prepareContext(context);
+    stripSkillsFromPreparedInstructionContext(context);
   };
 }
 
