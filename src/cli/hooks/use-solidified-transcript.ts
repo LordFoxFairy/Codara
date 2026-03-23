@@ -87,28 +87,16 @@ function filterTrailingAssistantItemsWhileSubagentsRun(input: {
       input.runState.phase === 'subagent_wait'
       || input.runState.phase === 'subagent_completion'
     );
-  const hasVisibleMainReply = input.trailingItems.some((item) => (
-    item.role === 'assistant'
-    && item.content.trim().length > 0
-    && !isSubagentInternalAssistantText({
-      text: item.content,
-      runs: input.subagentRuns,
-    })
-  ));
 
   if (subagentTurnStillOwnsForeground) {
     return input.trailingItems.filter((item) => item.role !== 'assistant' && item.role !== 'system');
   }
 
-  if (hasActiveSubagentRuns && !hasVisibleMainReply) {
+  if (hasActiveSubagentRuns) {
     return input.trailingItems.filter((item) => item.role !== 'assistant' && item.role !== 'system');
   }
 
-  if (runtimeOwnsActiveSubagentExecution && !input.activeTurn) {
-    return input.trailingItems.filter((item) => item.role !== 'assistant' && item.role !== 'system');
-  }
-
-  if (runtimeOwnsActiveSubagentExecution && !hasVisibleMainReply) {
+  if (runtimeOwnsActiveSubagentExecution) {
     return input.trailingItems.filter((item) => item.role !== 'assistant' && item.role !== 'system');
   }
 
@@ -120,9 +108,6 @@ function stripInternalSubagentAssistantItems(input: {
   subagentRuns?: readonly SubagentRunQuerySummary[];
 }): TranscriptItem[] {
   const runs = input.subagentRuns ?? [];
-  if (runs.length === 0) {
-    return [...input.items];
-  }
 
   return input.items.filter((item) => {
     if (item.role !== 'assistant') {
