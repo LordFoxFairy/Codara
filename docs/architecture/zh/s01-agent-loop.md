@@ -1,127 +1,108 @@
 # s01: Agent Loop
 
-`s00 > [ s01 ] s02 > s03 > s04 > s05 > s06 > s07 > s08 > s09 > s10`
-
 > *"while (stop_reason == tool_use) — 唯一的执行推进器"*
->
-> **Harness 层**: 循环 — 模型与真实世界的第一道连接。
 
 ## 问题
 
-语言模型能推理代码，但碰不到真实世界 — 不能读文件、跑测试、看报错。没有循环，每次工具调用你都得手动把结果粘回去。你自己就是那个循环。
+LLM 是无状态的函数：输入 prompt，输出 text。它不能持续运行，不能主动调用工具，不能记住上一轮的结果。
 
-## 解决方案
+没有循环，你就是那个循环 — 手动把工具结果粘回去，再调用一次 LLM。
+
+## 核心设计
 
 ```
-+--------+      +-------+      +---------+
-|  User  | ---> |  LLM  | ---> |  Tool   |
-| prompt |      |       |      | execute |
-+--------+      +---+---+      +----+----+
-                    ^                |
-                    |   tool_result  |
-                    +----------------+
-                    (loop until stop_reason != "tool_use")
+User Prompt
+    ↓
+┌───────────────────┐
+│  while (true) {   │
+│    LLM.invoke()   │ ← messages 累积历史
+│    if (done) break│
+│    execute tools  │
+│    append results │
+│  }                │
+└───────────────────┘
+    ↓
+Final Response
 ```
 
-一个退出条件控制整个流程。循环持续运行，直到模型不再调用工具。
+**循环的本质：** model → tool → model 的反馈回路。
 
-## 工作原理
+## 关键决策
 
-1. 用户 prompt 作为第一条消息。
+### 1. 谁决定停止？
 
-```typescript
-messages.push({ role: "user", content: query });
+**模型决定。** 不是代码。
+
+```
+response = LLM.invoke(messages, tools)
+if response.stop_reason != "tool_use":
+    break  # 模型说"我不需要工具了"
 ```
 
-2. 将消息和工具定义一起发给 LLM。
+为什么？因为只有模型知道任务是否完成。代码不知道"读 3 个文件"是否足够，模型知道。
 
-```typescript
-const response = await model.invoke({
-  messages,
-  tools: TOOLS,
-  max_tokens: 8000,
-});
+### 2. 状态存在哪里？
+
+**messages 数组。** 唯一的状态。
+
+```
+messages = [
+  {role: "user", content: "任务描述"},
+  {role: "assistant", content: "我要调用工具"},
+  {role: "user", content: "工具结果"},
+  {role: "assistant", content: "基于结果，我要..."},
+]
 ```
 
-3. 追加助手响应。检查 `stop_reason` — 如果模型没有调用工具，结束。
+每轮追加，永不修改历史。LLM 通过 messages 看到完整对话。
 
-```typescript
-messages.push({ role: "assistant", content: response.content });
-if (response.stop_reason !== "tool_use") {
-  return;
+### 3. 循环是同步还是异步？
+
+**同步。** 一次只做一件事。
+
+```
+while (true) {
+  response = await LLM.invoke()  // 等待
+  results = await execute_tools() // 等待
 }
 ```
 
-4. 执行每个工具调用，收集结果，作为 user 消息追加。回到第 2 步。
+为什么？因为下一轮依赖上一轮的结果。并行化在工具层做，不在循环层。
 
-```typescript
-const results = [];
-for (const block of response.content) {
-  if (block.type === "tool_use") {
-    const output = await runTool(block.name, block.input);
-    results.push({
-      type: "tool_result",
-      tool_use_id: block.id,
-      content: output,
-    });
-  }
-}
-messages.push({ role: "user", content: results });
+## 伪代码
+
+```python
+def agent_loop(query):
+    messages = [{"role": "user", "content": query}]
+
+    while True:
+        response = LLM.invoke(messages, tools)
+        messages.append({"role": "assistant", "content": response})
+
+        if response.stop_reason != "tool_use":
+            return response.text
+
+        results = [execute(tool) for tool in response.tool_calls]
+        messages.append({"role": "user", "content": results})
 ```
 
-组装为一个完整函数：
+7 行。这就是全部。
 
-```typescript
-async function agentLoop(query: string) {
-  const messages = [{ role: "user", content: query }];
+## 设计权衡
 
-  while (true) {
-    const response = await model.invoke({
-      messages,
-      tools: TOOLS,
-      max_tokens: 8000,
-    });
-
-    messages.push({ role: "assistant", content: response.content });
-
-    if (response.stop_reason !== "tool_use") {
-      return;
-    }
-
-    const results = [];
-    for (const block of response.content) {
-      if (block.type === "tool_use") {
-        const output = await runTool(block.name, block.input);
-        results.push({
-          type: "tool_result",
-          tool_use_id: block.id,
-          content: output,
-        });
-      }
-    }
-    messages.push({ role: "user", content: results });
-  }
-}
-```
-
-不到 30 行，这就是整个 Agent。后面 9 个章节都在这个循环上叠加机制 — 循环本身始终不变。
-
-## 变更内容
-
-| 组件          | 之前       | 之后                           |
-|---------------|------------|--------------------------------|
-| Agent loop    | (无)       | `while (true)` + stop_reason   |
-| Tools         | (无)       | `runTool()` 分发               |
-| Messages      | (无)       | 累积式消息列表                 |
-| Control flow  | (无)       | `stop_reason !== "tool_use"`   |
+| 选择 | 优点 | 缺点 |
+|------|------|------|
+| 模型控制停止 | 灵活，模型自主决策 | 可能无限循环（需要 max_turns） |
+| messages 累积 | 完整上下文，模型看到全部历史 | 无限增长（需要压缩，见 s02） |
+| 同步循环 | 简单，顺序清晰 | 慢工具阻塞（需要后台执行，见 s08） |
 
 ## 关键洞察
 
-- **模型决定何时调用工具、何时停止** — 代码只是执行模型的要求
-- **messages 数组是唯一的状态** — 每轮追加，永不修改历史
-- **循环是同步的** — 一次只做一件事，顺序清晰
-- **工具执行是黑盒** — 循环不关心工具内部逻辑，只关心输入输出
+- **循环是 Harness 的心脏** — 所有其他机制都围绕它构建
+- **模型是驾驶者** — 循环只是执行模型的指令
+- **messages 是记忆** — 循环通过 messages 给模型提供上下文
+- **停止条件是契约** — 模型和 Harness 的唯一通信方式
 
 ---
 
-**这是最小循环。每个 AI Agent 都需要这个循环。**
+**这是最小循环。后面 9 个章节都在这个循环上叠加机制 — 循环本身始终不变。**

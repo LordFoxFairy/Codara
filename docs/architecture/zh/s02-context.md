@@ -1,10 +1,6 @@
 # s02: Context Window
 
-`s00 > s01 > [ s02 ] s03 > s04 > s05 > s06 > s07 > s08 > s09 > s10`
-
 > *"System Prompt 不可变 → KV Cache 命中 → Token 成本降 90%"*
->
-> **Harness 层**: 上下文管理 — 为什么不变性是正确答案。
 
 ## 问题
 
@@ -31,7 +27,7 @@ Transformer 的注意力机制需要计算 Key 和 Value 矩阵。对于已经�
 
 **关键条件：前缀 token 序列必须完全一致。**
 
-## 解决方案
+## 核心设计
 
 ```
 +---------------------------+
@@ -46,14 +42,13 @@ Transformer 的注意力机制需要计算 Key 和 Value 矩阵。对于已经�
 | - User: query             |
 | - Assistant: response     |
 | - User: tool_result       |
-| - ...                     |
 +---------------------------+
 ```
 
 **设计原则：**
-- System Prompt 包含所有**静态信息** — 身份、工具定义、技能索引
-- Messages 包含所有**动态信息** — 对话历史、工具结果
-- **绝对不要在 System Prompt 中插入动态内容**（如当前时间、文件路径）
+- System Prompt 包含所有**静态信息**
+- Messages 包含所有**动态信息**
+- **绝对不要在 System Prompt 中插入动态内容**
 
 ## 三层压缩策略
 
@@ -63,84 +58,40 @@ Transformer 的注意力机制需要计算 Key 和 Value 矩阵。对于已经�
 
 将 3 轮以前的 tool_result 替换为占位符。
 
-```typescript
-function microCompact(messages: Message[]) {
-  const toolResults = findAllToolResults(messages);
-  if (toolResults.length <= KEEP_RECENT) return;
+```python
+# 旧结果 (1000 tokens)
+{"type": "tool_result", "content": "...大量输出..."}
 
-  for (const result of toolResults.slice(0, -KEEP_RECENT)) {
-    if (result.content.length > 100) {
-      result.content = `[Previous: used ${result.tool_name}]`;
-    }
-  }
-}
+# 压缩后 (20 tokens)
+{"type": "tool_result", "content": "[Previous: used read_file]"}
 ```
 
 ### Layer 2: Auto Compact（阈值触发）
 
 Token 超过 50k 时，保存完整对话到磁盘，让 LLM 做摘要。
 
-```typescript
-async function autoCompact(messages: Message[]) {
-  // 保存 transcript 用于恢复
-  await saveTranscript(messages);
-
-  // LLM 摘要
-  const summary = await model.invoke({
-    messages: [
-      {
-        role: "user",
-        content: `Summarize this conversation:\n${JSON.stringify(messages)}`,
-      },
-    ],
-    max_tokens: 2000,
-  });
-
-  return [
-    { role: "user", content: `[Compressed]\n\n${summary}` },
-    { role: "assistant", content: "Understood. Continuing." },
-  ];
-}
+```python
+if tokens > 50000:
+    save_transcript(messages)  # 保存完整历史
+    summary = LLM.summarize(messages)
+    messages = [
+        {"role": "user", "content": f"[Compressed]\n{summary}"},
+        {"role": "assistant", "content": "Understood."}
+    ]
 ```
 
 ### Layer 3: Manual Compact（工具触发）
 
 Agent 可以主动调用 `compact` 工具，触发同样的摘要机制。
 
-## 整合到循环
+## 设计权衡
 
-```typescript
-async function agentLoop(query: string) {
-  const messages = [{ role: "user", content: query }];
-
-  while (true) {
-    // Layer 1: 每轮静默压缩
-    microCompact(messages);
-
-    // Layer 2: 阈值触发
-    if (estimateTokens(messages) > 50000) {
-      messages.splice(0, messages.length, ...await autoCompact(messages));
-    }
-
-    const response = await model.invoke({
-      system: SYSTEM_PROMPT,  // 静态，KV Cache 命中
-      messages,               // 动态，只计算新增
-      tools: TOOLS,
-    });
-
-    // ... 工具执行 ...
-  }
-}
-```
-
-## 变更内容
-
-| 组件           | 之前 (s01)       | 之后 (s02)                     |
-|----------------|------------------|--------------------------------|
-| System Prompt  | 无               | 静态，包含身份 + 工具定义      |
-| KV Cache       | 无               | 前缀命中，成本降 90%           |
-| 压缩           | 无               | 三层（micro/auto/manual）      |
-| Transcript     | 无               | 保存到磁盘，可恢复             |
+| 选择 | 优点 | 缺点 |
+|------|------|------|
+| 静态 System Prompt | KV Cache 命中，成本降 90% | 不能动态调整身份 |
+| Micro Compact | 静默，无感知 | 丢失旧工具结果细节 |
+| Auto Compact | 自动触发，无需干预 | 摘要可能丢失信息 |
+| Transcript 保存 | 完整历史可恢复 | 磁盘占用 |
 
 ## 关键洞察
 

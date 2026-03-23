@@ -1,18 +1,16 @@
 # s04: Skill Loading
 
-`s00 > s01 > s02 > s03 > [ s04 ] s05 > s06 > s07 > s08 > s09 > s10`
-
 > *"两层注入 — System Prompt 放索引，Tool Result 放内容"*
->
-> **Harness 层**: 按需知识 — 模型开口要时才给的领域专长。
 
 ## 问题
 
-你希望 Agent 遵循特定领域的工作流：git 约定、测试模式、代码审查清单。全塞进 System Prompt 太浪费 — 10 个技能，每个 2000 token，就是 20,000 token，大部分跟当前任务毫无关系。
+你希望 Agent 遵循特定领域的工作流：git 约定、测试模式、代码审查清单。
+
+全塞进 System Prompt 太浪费 — 10 个技能，每个 2000 token，就是 20,000 token，大部分跟当前任务毫无关系。
 
 而且违反了 s02 的原则：**System Prompt 必须静态**。
 
-## 解决方案
+## 核心设计
 
 ```
 System Prompt (Layer 1 — 永远存在):
@@ -28,141 +26,87 @@ System Prompt (Layer 1 — 永远存在):
 | tool_result (Layer 2 — 按需):        |
 | <skill name="git">                   |
 |   Full git workflow instructions...  |  ~2000 tokens
-|   Step 1: ...                        |
 | </skill>                             |
 +--------------------------------------+
 ```
 
-第一层：System Prompt 中放技能名称（低成本）。
-第二层：tool_result 中按需放完整内容。
+**第一层：** System Prompt 中放技能名称（低成本）
+**第二层：** tool_result 中按需放完整内容
 
-## 工作原理
+## 为什么两层？
 
-### 1. 每个技能是一个目录，包含 `SKILL.md` 文件
+### 单层方案的问题
 
-```
-skills/
-  git/
-    SKILL.md       # ---
-                   # name: git
-                   # description: Git workflow helpers
-                   # ---
-                   # ## Git Workflow
-                   # 1. Always create feature branch
-                   # 2. ...
+**方案 A：全部放 System Prompt**
+- 违反静态原则，KV Cache 失效
+- 20k tokens 前置成本，每轮都付费
 
-  test/
-    SKILL.md       # ---
-                   # name: test
-                   # description: Testing best practices
-                   # ---
-                   # ## Test Strategy
-                   # ...
-```
+**方案 B：全部按需加载**
+- Agent 不知道有哪些技能可用
+- 需要额外的"列出技能"工具
 
-### 2. SkillLoader 递归扫描 `SKILL.md` 文件
+### 两层方案的优势
 
-```typescript
-class SkillLoader {
-  private skills: Map<string, { meta: any; body: string }> = new Map();
-
-  constructor(skillsDir: string) {
-    const files = glob.sync(`${skillsDir}/**/SKILL.md`);
-    for (const file of files) {
-      const text = fs.readFileSync(file, "utf-8");
-      const { meta, body } = this.parseFrontmatter(text);
-      const name = meta.name || path.basename(path.dirname(file));
-      this.skills.set(name, { meta, body });
-    }
-  }
-
-  getDescriptions(): string {
-    const lines = [];
-    for (const [name, skill] of this.skills) {
-      const desc = skill.meta.description || "";
-      lines.push(`  - ${name}: ${desc}`);
-    }
-    return lines.join("\n");
-  }
-
-  getContent(name: string): string {
-    const skill = this.skills.get(name);
-    if (!skill) {
-      return `Error: Unknown skill '${name}'.`;
-    }
-    return `<skill name="${name}">\n${skill.body}\n</skill>`;
-  }
-}
-```
-
-### 3. 第一层写入 System Prompt，第二层是工具
-
-```typescript
-const SKILL_LOADER = new SkillLoader("./skills");
-
-const SYSTEM_PROMPT = `You are a coding agent at ${WORKDIR}.
-Skills available:
-${SKILL_LOADER.getDescriptions()}`;
-
-const TOOL_HANDLERS = {
-  // ...base tools...
-  load_skill: (args: { name: string }) => SKILL_LOADER.getContent(args.name),
-};
-```
-
-模型知道有哪些技能（便宜），需要时再加载完整内容（贵）。
+- **Layer 1 静态** — KV Cache 命中
+- **Layer 2 动态** — 只在需要时加载
+- **Agent 可发现** — 知道有什么可用
 
 ## 技能设计原则
 
-### 可发现
+### 1. 可发现
 
 技能描述要让 Agent 知道什么时候用。
 
 ```markdown
 ---
 name: git
-description: Git workflow helpers — branch naming, commit messages, PR checklist
+description: Git workflow — branch naming, commit messages, PR checklist
 ---
 ```
 
-### 自包含
+### 2. 自包含
 
 技能内容要完整，不依赖外部文档。
 
 ```markdown
 ## Git Workflow
 
-1. **Branch naming**: `feature/<author>/<description>`
-2. **Commit messages**: `type(scope): description`
-3. **PR checklist**:
-   - [ ] Tests pass
-   - [ ] No console.log
-   - [ ] Updated docs
+1. Branch naming: `feature/<author>/<description>`
+2. Commit messages: `type(scope): description`
+3. PR checklist:
+   - Tests pass
+   - No console.log
+   - Updated docs
 ```
 
-### 可执行
+### 3. 可执行
 
 技能是行动指南，不是理论文档。
 
-```markdown
-## Code Review Checklist
+## 伪代码
 
-Run these checks before submitting:
+```python
+# Layer 1: System Prompt
+SYSTEM = f"""You are a coding agent.
+Skills available:
+{skill_loader.get_descriptions()}"""
 
-1. `npm run lint` — no errors
-2. `npm test` — all pass
-3. `git diff main` — review your changes
-4. Check for TODO/FIXME comments
+# Layer 2: Tool
+TOOLS = {
+    "load_skill": lambda name: skill_loader.get_content(name)
+}
 ```
 
-## 变更内容
+7 行。索引 + 内容分离。
 
-| 组件           | 之前 (s03)       | 之后 (s04)                     |
-|----------------|------------------|--------------------------------|
-| Tools          | 4                | 5 (+load_skill)                |
-| System Prompt  | 静态字符串       | + 技能描述列表                 |
-| 知识库         | 无               | skills/\*/SKILL.md 文件        |
-| 注入方式       | 无               | 两层（System Prompt + result） |
+## 设计权衡
+
+| 选择 | 优点 | 缺点 |
+|------|------|------|
+| 两层注入 | 静态 + 动态平衡，KV Cache 命中 | 需要两次交互（列表 + 加载） |
+| 索引在 System Prompt | Agent 可发现，成本低 | 技能多时索引也会膨胀 |
+| 内容在 tool_result | 按需加载，节省成本 | 加载后占用 messages 空间 |
+| SKILL.md 文件 | 版本控制，易维护 | 需要文件系统访问 |
 
 ## 关键洞察
 

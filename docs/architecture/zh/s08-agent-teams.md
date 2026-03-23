@@ -1,10 +1,6 @@
 # s08: Agent Teams
 
-`s00 > s01 > s02 > s03 > s04 > s05 > s06 > s07 > [ s08 ] s09 > s10`
-
 > *"持久化 Agent + JSONL 邮箱 — 异步消息，drain-on-read"*
->
-> **Harness 层**: 团队邮箱 — 多个模型，通过文件协调。
 
 ## 问题
 
@@ -15,7 +11,7 @@ SubAgent（s06）是一次性的：生成、干活、返回摘要、消亡。没
 2. **身份和生命周期管理**
 3. Agent 之间的**通信通道**
 
-## 解决方案
+## 核心设计
 
 ```
 Teammate lifecycle:
@@ -28,147 +24,89 @@ Communication:
       alice.jsonl         <- append-only, drain-on-read
       bob.jsonl
       lead.jsonl
-
-          +--------+    send("alice","bob","...")    +--------+
-          | alice  | -----------------------------> |  bob   |
-          | loop   |    bob.jsonl << {json_line}    |  loop  |
-          +--------+                                +--------+
-               ^                                         |
-               |        BUS.readInbox("alice")           |
-               +---- alice.jsonl -> read + drain ---------+
 ```
 
-## 工作原理
+**关键机制：**
+- **config.json** — 团队名册，谁在线、谁在干活
+- **JSONL 邮箱** — 每个 Agent 一个文件，append-only
 
-### 1. TeammateManager 通过 config.json 维护团队名册
+## 为什么用 JSONL？
 
-```typescript
-class TeammateManager {
-  private config: TeamConfig;
-  private threads: Map<string, Thread> = new Map();
+### 问题：Agent 之间如何通信？
 
-  constructor(private teamDir: string) {
-    fs.mkdirSync(teamDir, { recursive: true });
-    this.config = this.loadConfig();
-  }
+**方案 A：共享内存**
+- 需要锁机制
+- 并发冲突
+- 状态难调试
 
-  spawn(name: string, role: string, prompt: string): string {
-    const member = { name, role, status: "working" };
-    this.config.members.push(member);
-    this.saveConfig();
+**方案 B：消息队列（Redis/RabbitMQ）**
+- 需要额外服务
+- 部署复杂
+- 过度工程
 
-    const thread = new Thread(() => this.teammateLoop(name, role, prompt));
-    thread.start();
-    this.threads.set(name, thread);
+**方案 C：JSONL 文件**
+- append-only，天然无锁
+- 文件系统原生支持
+- 可读可调试
 
-    return `Spawned teammate '${name}' (role: ${role})`;
-  }
-}
+## Drain-on-Read 模式
+
+```python
+def read_inbox(name):
+    path = f".team/inbox/{name}.jsonl"
+
+    # 读取所有消息
+    messages = [json.loads(line) for line in open(path)]
+
+    # 清空文件（drain）
+    open(path, 'w').close()
+
+    return messages
 ```
 
-### 2. MessageBus：append-only 的 JSONL 收件箱
+**为什么 drain？** 防止重复消费。读完即清空，简单可靠。
 
-`send()` 追加一行；`readInbox()` 读取全部并清空（drain-on-read）：
+## 持久化 vs 一次性
 
-```typescript
-class MessageBus {
-  constructor(private dir: string) {
-    fs.mkdirSync(`${dir}/inbox`, { recursive: true });
-  }
+| 特性 | SubAgent (s06) | Teammate (s08) |
+|------|----------------|----------------|
+| 生命周期 | 一次性 | 持久化 |
+| 身份 | 无 | 有名字、角色 |
+| 记忆 | 无 | 有 messages 历史 |
+| 通信 | 返回摘要 | JSONL 邮箱 |
+| 状态 | 无 | working/idle/shutdown |
 
-  send(sender: string, to: string, content: string, type = "message") {
-    const msg = {
-      type,
-      from: sender,
-      content,
-      timestamp: Date.now(),
-    };
-    fs.appendFileSync(
-      `${this.dir}/inbox/${to}.jsonl`,
-      JSON.stringify(msg) + "\n"
-    );
-  }
+## 伪代码
 
-  readInbox(name: string): Message[] {
-    const path = `${this.dir}/inbox/${name}.jsonl`;
-    if (!fs.existsSync(path)) return [];
+```python
+class MessageBus:
+    def send(sender, to, content):
+        msg = {"from": sender, "content": content, "ts": now()}
+        append(f".team/inbox/{to}.jsonl", json.dumps(msg))
 
-    const msgs = fs
-      .readFileSync(path, "utf-8")
-      .trim()
-      .split("\n")
-      .filter(Boolean)
-      .map((line) => JSON.parse(line));
-
-    fs.writeFileSync(path, ""); // drain
-    return msgs;
-  }
-}
+    def read_inbox(name):
+        msgs = read_all(f".team/inbox/{name}.jsonl")
+        clear(f".team/inbox/{name}.jsonl")  # drain
+        return msgs
 ```
 
-### 3. 每个队友在每次 LLM 调用前检查收件箱
+7 行。append + drain。
 
-```typescript
-private async teammateLoop(name: string, role: string, prompt: string) {
-  const messages = [{ role: "user", content: prompt }];
+## 设计权衡
 
-  for (let i = 0; i < 50; i++) {
-    // 检查收件箱，注入上下文
-    const inbox = BUS.readInbox(name);
-    if (inbox.length > 0) {
-      messages.push({
-        role: "user",
-        content: `<inbox>${JSON.stringify(inbox)}</inbox>`,
-      });
-      messages.push({
-        role: "assistant",
-        content: "Noted inbox messages.",
-      });
-    }
-
-    const response = await model.invoke({ messages, tools: TOOLS });
-    messages.push({ role: "assistant", content: response.content });
-
-    if (response.stop_reason !== "tool_use") break;
-
-    // 执行工具...
-  }
-
-  this.setStatus(name, "idle");
-}
-```
-
-### 4. 三个团队工具加入 dispatch map
-
-```typescript
-const TOOL_HANDLERS = {
-  // ...base tools...
-  spawn: (args: { name: string; role: string; prompt: string }) =>
-    TEAM.spawn(args.name, args.role, args.prompt),
-  send: (args: { to: string; content: string }) =>
-    BUS.send("lead", args.to, args.content),
-  read_inbox: () =>
-    JSON.stringify(BUS.readInbox("lead")),
-};
-```
-
-## 变更内容
-
-| 组件           | 之前 (s07)       | 之后 (s08)                         |
-|----------------|------------------|------------------------------------|
-| Tools          | 11               | 14 (+spawn/send/read_inbox)        |
-| Agent 数量     | 单一             | 领导 + N 个队友                    |
-| 持久化         | 无               | config.json + JSONL 收件箱         |
-| 线程           | 无               | 每线程完整 agent loop              |
-| 生命周期       | 一次性           | idle -> working -> idle            |
-| 通信           | 无               | message + broadcast                |
+| 选择 | 优点 | 缺点 |
+|------|------|------|
+| JSONL 邮箱 | 简单，无需额外服务 | 不支持优先级队列 |
+| Drain-on-read | 防止重复消费 | 消息只能读一次 |
+| 文件持久化 | 崩溃后可恢复 | 文件 I/O 开销 |
+| 每个 Agent 独立循环 | 真正并行 | 资源占用高 |
 
 ## 关键洞察
 
-- **JSONL 是最简单的消息队列** — append-only，天然持久化，无需数据库
+- **JSONL 是最简单的消息队列** — append-only，天然持久化
 - **drain-on-read 防止重复消费** — 读完即清空，简单可靠
 - **每个队友是独立的 agent loop** — 不是共享状态，是独立推进
-- **收件箱注入是上下文扩展** — 消息通过 messages 数组传递，不是共享内存
+- **收件箱注入是上下文扩展** — 消息通过 messages 数组传递
 
 ---
 
