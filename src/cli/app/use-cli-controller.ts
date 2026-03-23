@@ -414,6 +414,7 @@ export function useCliController(options: UseCliControllerOptions): CliControlle
   const [coreMessages, setCoreMessagesState] = useState<readonly BaseMessage[]>([]);
   const [runtimeEvents, setRuntimeEvents] = useState<readonly CodaraRuntimeEvent[]>([]);
   const [runState, setRunState] = useState<CliRunState>({status: 'idle'});
+  const [runningAgentCount, setRunningAgentCount] = useState(0);
   const [interactionState, setInteractionState] = useState<CliInteractionState>({
     focusedSurface: 'prompt',
     pendingCount: 0,
@@ -767,6 +768,14 @@ export function useCliController(options: UseCliControllerOptions): CliControlle
   useEffect(() => {
     setRuntimeEvents([]);
     return codara.subscribeRuntimeEvents((event: CodaraRuntimeEvent) => {
+      // Track agent lifecycle for spinner state
+      if ((event.kind === 'turn' || event.kind === 'agent') && event.phase === 'start') {
+        setRunningAgentCount((count) => count + 1);
+      }
+      if ((event.kind === 'turn' || event.kind === 'agent') && event.phase === 'end') {
+        setRunningAgentCount((count) => Math.max(0, count - 1));
+      }
+
       const route = routeCliRuntimeEvent({
         event,
         interactionRunning: interactionScheduler.isRunning(),
@@ -805,13 +814,6 @@ export function useCliController(options: UseCliControllerOptions): CliControlle
             .then((nextAgentState) => {
               const settled = settleRunningPromptTurnIfReady(nextAgentState.messages);
               if (!settled && event.phase === 'end') {
-                if (
-                  runStateRef.current.status === 'running'
-                  && runStateRef.current.phase === 'subagent_wait'
-                  && !hasTrackedForegroundSubagentRuns(codara)
-                ) {
-                  setRunState({status: 'running', phase: 'subagent_completion'});
-                }
                 void refreshCoreStateUntilPromptSettles();
               }
               return nextAgentState;
@@ -832,99 +834,24 @@ export function useCliController(options: UseCliControllerOptions): CliControlle
     });
   }, [codara, drainScheduledInteractions, endInteraction, interactionScheduler, refreshAuxiliaryState, refreshCoreState, refreshCoreStateUntilPromptSettles, setActiveTurn, settleRunningPromptTurnIfReady, syncInteractionState]);
 
+  // Update runState based on runningAgentCount
+  useEffect(() => {
+    if (review) {
+      return;
+    }
+
+    if (runningAgentCount > 0) {
+      if (runState.status !== 'running') {
+        setRunState({status: 'running', phase: 'prompt_stream'});
+      }
+    } else if (runState.status === 'running' && !interactionScheduler.isRunning()) {
+      setRunState({status: 'done'});
+    }
+  }, [runningAgentCount, runState.status, review, interactionScheduler]);
+
   useEffect(() => {
     settleRunningPromptTurnIfReady(coreMessages);
   }, [coreMessages, settleRunningPromptTurnIfReady]);
-
-  useEffect(() => {
-    const visibleReplyInActiveTurn = hasVisibleAssistantReply(activeTurn, codara.getSubagentRunSummaries());
-    const visibleReplyInMessages = hasVisibleAssistantReplyInMessages(
-      coreMessages,
-      promptStartMessageCountRef.current,
-      codara.getSubagentRunSummaries(),
-    );
-    const visibleReply = visibleReplyInActiveTurn || visibleReplyInMessages;
-
-    if (
-      settlingFinalReplyRef.current
-      || runState.status !== 'running'
-      || review
-    ) {
-      return;
-    }
-
-    if (!visibleReply && hasTrackedForegroundSubagentRuns(codara)) {
-      return;
-    }
-
-    if (runState.phase !== 'subagent_completion') {
-      setRunState({status: 'running', phase: 'subagent_completion'});
-    }
-
-    // In subagent_completion phase, always enter the polling loop to wait for
-    // the main loop to genuinely finish (don't fast-exit based on stale visibleReply
-    // from messages sent before subagents were launched).
-    if (runState.phase !== 'subagent_completion') {
-      return;
-    }
-
-    settlingFinalReplyRef.current = true;
-    let cancelled = false;
-
-    void (async () => {
-      try {
-        while (!cancelled) {
-          const nextAgentState = await refreshCoreState();
-          if (nextAgentState.pendingReview || nextAgentState.status === 'paused') {
-            break;
-          }
-
-          const hasVisibleReplyInActiveTurn = hasVisibleAssistantReply(activeTurnRef.current, codara.getSubagentRunSummaries());
-          const hasStableVisibleReply = hasVisibleAssistantReplyInMessages(
-            nextAgentState.messages,
-            promptStartMessageCountRef.current,
-            codara.getSubagentRunSummaries(),
-          );
-          if (hasStableVisibleReply) {
-            setRunState({status: 'done'});
-            setActiveTurn(undefined);
-            break;
-          }
-
-          if (hasVisibleReplyInActiveTurn) {
-            setRunState({status: 'done'});
-            break;
-          }
-
-          if (nextAgentState.status !== 'running') {
-            settleRunningPromptTurnIfReady(nextAgentState.messages);
-            break;
-          }
-
-          await new Promise((resolve) => setTimeout(resolve, FINAL_REPLY_SETTLE_POLL_MS));
-        }
-      } catch (error) {
-        reportError(error);
-      } finally {
-        settlingFinalReplyRef.current = false;
-      }
-    })();
-
-    return () => {
-      cancelled = true;
-    };
-  }, [
-    activeTurn,
-    codara,
-    coreMessages,
-    refreshCoreState,
-    reportError,
-    review,
-    runState.phase,
-    runState.status,
-    settleRunningPromptTurnIfReady,
-    setActiveTurn,
-  ]);
 
   useEffect(() => {
     if (runState.status !== 'done') {
@@ -1070,25 +997,19 @@ export function useCliController(options: UseCliControllerOptions): CliControlle
     sawText = sawText
       || hasVisibleAssistantReplyInMessages(coreMessagesRef.current, promptStartMessageCount, codara.getSubagentRunSummaries())
       || hasVisibleAssistantReplyInMessages(nextAgentState.messages, promptStartMessageCount, codara.getSubagentRunSummaries());
+
     if (nextAgentState.status === 'paused') {
       setRunState({status: 'paused'});
       return;
     }
 
+    // If agents are still running, keep the turn active
     if (shouldKeepPromptTurnRunningAfterAgentLaunch({
       nextAgentState,
       codara,
       launchedAgent,
       sawVisibleReply: sawText,
     })) {
-      setRunState({
-        status: 'running',
-        phase: hasTrackedForegroundSubagentRuns(codara)
-          ? 'subagent_wait'
-          : launchedAgent
-            ? 'subagent_completion'
-            : 'prompt_stream',
-      });
       return;
     }
 
@@ -1096,7 +1017,6 @@ export function useCliController(options: UseCliControllerOptions): CliControlle
       setActiveTurn((current) => current ? {...current, response: '(no output)'} : current);
     }
 
-    setRunState(deriveRunStateFromAgentState(nextAgentState));
     setActiveTurn(undefined);
   }, [codara, refreshCoreState, setActiveTurn]);
 

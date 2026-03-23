@@ -29,7 +29,7 @@ export interface ToolResultMeta {
   args?: string;
   runId?: string;
   coverageKey?: string;
-  status: 'running' | 'done' | 'error';
+  status: 'running' | 'paused' | 'done' | 'error';
   elapsed?: string;
   summaryLine: string;
   outputLines?: string[];
