@@ -101,6 +101,7 @@ export function describeStatusIndicator(input: StatusIndicatorInput, frame = 0):
         activeEventLabel
         && (
           hasActiveSubagentRuns
+          || latestRuntimeEvent?.kind === 'tool'
           || latestRuntimeEvent?.kind === 'command'
           || latestRuntimeEvent?.kind === 'summary'
         )
