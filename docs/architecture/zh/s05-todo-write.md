@@ -1,106 +1,91 @@
-# s05: TodoWrite
+# 第6章：TodoWrite — 把计划从脑内搬到白板
 
-> *"状态机 + Nag Reminder — 强制顺序聚焦，3 轮不更新就追问"*
+## 长任务为什么会偏航
 
-## 问题
+模型有工具、有知识，但在长任务里仍然会：
 
-多步任务中，模型会丢失进度 — 重复做过的事、跳步、跑偏。
+- 重复已经做过的事
+- 忘掉原本的步骤顺序
+- 被局部发现带偏
+- 在次要问题上越陷越深
 
-对话越长越严重：工具结果不断填满上下文，System Prompt 的影响力逐渐被稀释。一个 10 步重构可能做完 1-3 步就开始即兴发挥。
+问题不是"不会做"，而是"记不住整条任务链"。
 
-## 核心设计
+LLM 的注意力是有限的。当任务有 10 步，执行到第 5 步时，它可能已经忘了第 1 步做了什么。
 
-```
-TodoManager State:
-[ ] task A
-[>] task B  <- 同时只能有一个 in_progress
-[x] task C
+## TodoWrite 做什么
 
-Nag Reminder:
-if rounds_since_todo >= 3:
-    inject "<reminder>Update your todos.</reminder>"
-```
-
-**两个机制：**
-1. **状态机** — 强制顺序聚焦
-2. **Nag Reminder** — 主动干预
-
-## 为什么需要 TodoWrite？
-
-### 问题：上下文稀释
-
-```
-Turn 1: System Prompt 影响力 100%
-Turn 5: System Prompt 影响力 60%  (被工具结果挤压)
-Turn 10: System Prompt 影响力 30% (模型开始偏航)
-```
-
-### 解决方案：持续注入
-
-TodoWrite 通过 Nag Reminder 持续注入计划，对抗上下文稀释。
-
-## 状态机设计
-
-```
-pending ──────> in_progress ──────> completed
-   ^                                     |
-   |                                     |
-   +─────────────────────────────────────+
-         (可以重新标记为 pending)
-```
-
-**关键约束：** 同时只能有一个 `in_progress`
-
-为什么？因为并行会导致混乱。模型需要知道"现在做什么"，不是"可以做什么"。
-
-## Nag Reminder 机制
+把计划从模型脑内记忆，变成系统外显状态。
 
 ```python
-rounds_since_todo = 0
+class TodoWrite:
+    def __call__(self, tasks: list[str]):
+        self.todo_file.write(tasks)
+        return "Tasks written to todo.md"
 
-for turn in loop:
-    if rounds_since_todo >= 3:
-        inject_reminder()
-
-    if tool_called == "todo":
-        rounds_since_todo = 0
-    else:
-        rounds_since_todo += 1
+# 模型调用
+TodoWrite([
+    "[ ] 读取 config.json",
+    "[x] 分析依赖关系",
+    "[ ] 修改配置",
+])
 ```
 
-**为什么 3 轮？** 经验值。太短会打断思考，太长会失去效果。
+系统开始明确区分：
 
-## 伪代码
+- 什么待做
+- 什么在做
+- 什么做完了
+
+一旦计划外显，模型就不必靠短期注意力硬记整条任务链。
+
+## 为什么需要状态约束
+
+一个好用的 Todo 系统，重点不是"列出很多项"，而是形成执行秩序。
+
+最常见的做法是让任务带状态，并尽量只保留一个核心进行项：
 
 ```python
-class TodoManager:
-    def update(items):
-        in_progress = [i for i in items if i.status == "in_progress"]
-        if len(in_progress) > 1:
-            raise Error("Only one task can be in_progress")
-        return render(items)
+# ✓ 好：焦点清晰
+[ ] 任务 1
+[x] 任务 2  # 当前在做
+[ ] 任务 3
 
-TOOLS["todo"] = lambda items: TodoManager.update(items)
+# ✗ 坏：并行混乱
+[x] 任务 1  # 同时在做
+[x] 任务 2  # 同时在做
+[x] 任务 3  # 同时在做
 ```
 
-7 行。状态机 + 约束检查。
+这会直接带来两个好处：
 
-## 设计权衡
+- 焦点更清楚
+- 跳步和并行混乱更少
 
-| 选择 | 优点 | 缺点 |
-|------|------|------|
-| 状态机 | 强制顺序，防止并行混乱 | 限制了灵活性 |
-| 单 in_progress | 聚焦当前任务 | 不能真正并行 |
-| Nag Reminder | 主动干预，对抗稀释 | 可能打断思考 |
-| 3 轮阈值 | 平衡干预和自由 | 经验值，非科学 |
+## 为什么还要有提醒
 
-## 关键洞察
+仅有计划表还不够。
 
-- **状态机强制顺序** — 同时只能有一个 in_progress，防止并行混乱
-- **Nag 是主动干预** — 不是被动等待 Agent 想起来
-- **Todo 是内存中的** — 会话结束就丢失，适合单次对话内的规划
-- **对抗上下文稀释** — 持续注入计划，保持 Agent 不偏航
+模型一旦沉进局部问题，很容易忘掉回来同步整体进度。
+
+因此成熟系统往往还会增加轻量提醒：
+
+- 太久没更新计划 → 提醒同步
+- 执行明显偏离主线 → 拉回计划面
+
+这说明规划不是一次性动作，而是持续校准。
+
+## 如果没有这一层
+
+最常见的退化就是：
+
+- 长任务越来越容易漂
+- 重复劳动增加
+- 顺序被打乱
+- 后续协作基础变得很弱
+
+所以 TodoWrite 看似只是"Todo"，其实是在补单 Agent 的稳定性。
 
 ---
 
-**没有计划的 Agent 走哪算哪。TodoWrite 让模型不偏航。**
+**TodoWrite 的价值，是把执行计划从模型脑内记忆外显成状态化白板，让长任务中的顺序、焦点和进度都变得可见。**

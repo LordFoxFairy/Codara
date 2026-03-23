@@ -1,113 +1,120 @@
-# s08: Agent Teams
+# 第9章：Agent Teams — 从委托到协作
 
-> *"持久化 Agent + JSONL 邮箱 — 异步消息，drain-on-read"*
+## 子 Agent 的局限
 
-## 问题
-
-SubAgent（s06）是一次性的：生成、干活、返回摘要、消亡。没有身份，没有跨调用的记忆。
-
-真正的团队协作需要三样东西：
-1. 能跨多轮对话存活的**持久 Agent**
-2. **身份和生命周期管理**
-3. Agent 之间的**通信通道**
-
-## 核心设计
-
-```
-Teammate lifecycle:
-  spawn -> WORKING -> IDLE -> WORKING -> ... -> SHUTDOWN
-
-Communication:
-  .team/
-    config.json           <- team roster + statuses
-    inbox/
-      alice.jsonl         <- append-only, drain-on-read
-      bob.jsonl
-      lead.jsonl
-```
-
-**关键机制：**
-- **config.json** — 团队名册，谁在线、谁在干活
-- **JSONL 邮箱** — 每个 Agent 一个文件，append-only
-
-## 为什么用 JSONL？
-
-### 问题：Agent 之间如何通信？
-
-**方案 A：共享内存**
-- 需要锁机制
-- 并发冲突
-- 状态难调试
-
-**方案 B：消息队列（Redis/RabbitMQ）**
-- 需要额外服务
-- 部署复杂
-- 过度工程
-
-**方案 C：JSONL 文件**
-- append-only，天然无锁
-- 文件系统原生支持
-- 可读可调试
-
-## Drain-on-Read 模式
+s06 的子 Agent 是一次性的：
 
 ```python
-def read_inbox(name):
-    path = f".team/inbox/{name}.jsonl"
-
-    # 读取所有消息
-    messages = [json.loads(line) for line in open(path)]
-
-    # 清空文件（drain）
-    open(path, 'w').close()
-
-    return messages
+result = spawn_subagent(task)
+# 执行完就结束了
 ```
 
-**为什么 drain？** 防止重复消费。读完即清空，简单可靠。
+这对单次委托够用，但不支持持续协作。
 
-## 持久化 vs 一次性
+真正的团队需要：
 
-| 特性 | SubAgent (s06) | Teammate (s08) |
-|------|----------------|----------------|
-| 生命周期 | 一次性 | 持久化 |
-| 身份 | 无 | 有名字、角色 |
-| 记忆 | 无 | 有 messages 历史 |
-| 通信 | 返回摘要 | JSONL 邮箱 |
-| 状态 | 无 | working/idle/shutdown |
+- **稳定身份**：知道谁是谁
+- **持续存活**：跨多轮任务
+- **消息通道**：异步通信
 
-## 伪代码
+## 团队模型的核心
 
 ```python
-class MessageBus:
-    def send(sender, to, content):
-        msg = {"from": sender, "content": content, "ts": now()}
-        append(f".team/inbox/{to}.jsonl", json.dumps(msg))
+class Team:
+    members: Dict[str, Agent]  # 成员身份
+    mailboxes: Dict[str, Queue]  # 消息队列
 
-    def read_inbox(name):
-        msgs = read_all(f".team/inbox/{name}.jsonl")
-        clear(f".team/inbox/{name}.jsonl")  # drain
-        return msgs
+    def send(self, to: str, msg: str):
+        self.mailboxes[to].put(msg)
+
+    def receive(self, agent_id: str) -> List[str]:
+        return self.mailboxes[agent_id].get_all()
 ```
 
-7 行。append + drain。
+每个 Agent 独立循环，通过消息协作。
 
-## 设计权衡
+## 为什么用消息而非共享状态
 
-| 选择 | 优点 | 缺点 |
-|------|------|------|
-| JSONL 邮箱 | 简单，无需额外服务 | 不支持优先级队列 |
-| Drain-on-read | 防止重复消费 | 消息只能读一次 |
-| 文件持久化 | 崩溃后可恢复 | 文件 I/O 开销 |
-| 每个 Agent 独立循环 | 真正并行 | 资源占用高 |
+共享状态看起来方便，但会失控：
 
-## 关键洞察
+```python
+# ✗ 共享状态
+shared_state = {"current_file": "...", "status": "..."}
+agent1.run(shared_state)  # 谁改了什么？
+agent2.run(shared_state)  # 边界在哪？
+```
 
-- **JSONL 是最简单的消息队列** — append-only，天然持久化
-- **drain-on-read 防止重复消费** — 读完即清空，简单可靠
-- **每个队友是独立的 agent loop** — 不是共享状态，是独立推进
-- **收件箱注入是上下文扩展** — 消息通过 messages 数组传递
+消息模型清晰：
+
+```python
+# ✓ 消息通信
+team.send("agent2", "请检查 config.ts")
+# 每个 Agent 仍是独立循环
+```
+
+**关键优势：边界清晰，易于排错和恢复。**
+
+## 身份和生命周期
+
+团队成员需要持久化身份：
+
+```typescript
+interface TeamMember {
+  id: string
+  name: string
+  role: string
+  status: "idle" | "busy" | "shutdown"
+}
+```
+
+系统才能知道：
+
+- 这个成员是谁
+- 它当前状态如何
+- 它是否还能被调度
+
+## 实现要点
+
+**1. 消息队列**
+
+每个 Agent 有独立收件箱：
+
+```python
+mailboxes[agent_id] = Queue()
+```
+
+**2. 异步投递**
+
+发送不阻塞：
+
+```python
+def send(to, msg):
+    mailboxes[to].put(msg)
+    # 立即返回
+```
+
+**3. 轮询接收**
+
+Agent 在循环中检查消息：
+
+```python
+while True:
+    msgs = team.receive(self.id)
+    if msgs:
+        messages.append(msgs)
+    response = model(messages, tools)
+```
+
+## 和 s09 的关系
+
+消息通道解决了通信，但还不够：
+
+- 请求和响应怎么对应
+- 审批和拒绝怎么表达
+- 优雅关机怎么做
+
+这就是 s09 的主题：**协作一复杂，消息之上就必须长出协议。**
 
 ---
 
-**一个 Agent 干不完，就建团队。JSONL 邮箱，异步协作。**
+**Agent Teams 的关键不是同时跑多个模型，而是让多个独立 Agent 具备稳定身份、持续生命周期和异步消息通道。**

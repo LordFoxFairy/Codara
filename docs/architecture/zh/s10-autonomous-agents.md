@@ -1,151 +1,118 @@
-# s10: Autonomous Agents
+# 第11章：Autonomous Agents — 带边界的自运转
 
-> *"Idle Polling — 空闲轮询任务看板，自动认领 unclaimed"*
+## 从被动到主动
 
-## 问题
+前面十章，agent 都是被动的：
 
-s08-s09 中，队友只在被明确指派时才动。领导得给每个队友写 prompt，任务看板上 10 个未认领的任务得手动分配。
+- 收到消息 → 处理 → 回复
+- 分配任务 → 执行 → 完成
+- 有工作就干，没工作就等
 
-这扩展不了。
+这在小规模场景够用，但扩展性差。
 
-真正的自治：队友自己扫描任务看板，认领没人做的任务，做完再找下一个。
+真正的自治是：**agent 能自己找活干。**
 
-## 核心设计
+## 自治的三个核心能力
 
-```
-Teammate lifecycle with idle cycle:
+**1. 空闲时观察**
 
-+-------+
-| spawn |
-+---+---+
-    |
-    v
-+-------+   tool_use     +-------+
-| WORK  | <------------- |  LLM  |
-+---+---+                +-------+
-    |
-    | stop_reason != tool_use
-    v
-+--------+
-|  IDLE  |  poll every 5s for up to 60s
-+---+----+
-    |
-    +---> check inbox --> message? ----------> WORK
-    |
-    +---> scan .tasks/ --> unclaimed? -------> claim -> WORK
-    |
-    +---> 60s timeout ----------------------> SHUTDOWN
+```typescript
+while (true) {
+  const tasks = await taskList.getPending()
+  const unassigned = tasks.filter(t => !t.owner && !t.blockedBy.length)
+
+  if (unassigned.length > 0) {
+    await claimTask(unassigned[0])
+  }
+}
 ```
 
-**关键：** IDLE 阶段主动轮询，不是被动等待。
+不是等指令，而是主动看任务看板。
 
-## 为什么需要 Idle Polling？
+**2. 发现工作后认领**
 
-### 问题：被动等待
-
-```
-传统模式:
-Lead: "alice, 做任务 1"
-Alice: (做完)
-Alice: (等待)  <- 被动
-Lead: "alice, 做任务 2"
-```
-
-### 解决方案：主动扫描
-
-```
-自治模式:
-Lead: (创建 10 个任务到看板)
-Alice: (spawn)
-Alice: (扫描看板，认领任务 1)
-Alice: (做完)
-Alice: (扫描看板，认领任务 2)
-Alice: (做完)
-...
-Alice: (看板空了，60s 后自动关机)
+```typescript
+async function claimTask(task: Task) {
+  await taskUpdate(task.id, {
+    owner: agentName,
+    status: "in_progress"
+  })
+  await executeTask(task)
+}
 ```
 
-## 任务看板扫描
+看到合适的任务，直接认领并开始执行。
 
-什么任务可以认领？
+**3. 长时间空闲后退出**
 
-```python
-def scan_unclaimed_tasks():
-    unclaimed = []
-    for task in all_tasks:
-        if (task.status == "pending" and
-            not task.owner and
-            len(task.blockedBy) == 0):
-            unclaimed.append(task)
-    return unclaimed
+```typescript
+if (idleTime > MAX_IDLE_TIME) {
+  await sendMessage("team-lead", "No work available, shutting down")
+  process.exit(0)
+}
 ```
 
-**三个条件：**
-1. 状态为 `pending`
-2. 无 owner（未被认领）
-3. `blockedBy` 为空（不被阻塞）
+自治不等于永远挂着。资源有限，空闲就退出。
 
-## 身份重注入
+## 为什么需要控制面
 
-为什么需要？
+没有约束的自治只是放飞：
 
-```
-问题：上下文压缩后，Agent 可能忘记自己是谁
+- 任务从哪来？→ 任务看板
+- 谁能认领？→ 权限规则
+- 状态怎么变？→ 状态机
+- 冲突怎么办？→ 协调协议
 
-压缩前:
-  System Prompt: "You are alice, role: coder"
-  Messages: [100 条对话]
+**自治是把调度逻辑下放给 agent，但系统级约束仍然存在。**
 
-压缩后:
-  Messages: [摘要]  <- 身份信息丢失
-```
+## 关键设计决策
 
-**解决方案：** 检测到压缩后，重新注入身份。
+**为什么用轮询而不是推送？**
 
-```python
-if len(messages) <= 3:  # 说明发生了压缩
-    messages.insert(0, {
-        "role": "user",
-        "content": f"<identity>You are '{name}', role: {role}</identity>"
-    })
+```typescript
+// 轮询：agent 主动查
+while (true) {
+  const tasks = await checkTasks()
+  await sleep(5000)
+}
+
+// 推送：系统通知 agent
+// 需要额外的消息队列、订阅机制
 ```
 
-## 伪代码
+轮询简单，推送复杂。小规模场景轮询够用。
 
-```python
-def idle_poll(name):
-    for i in range(12):  # 60s / 5s = 12
-        sleep(5)
+**为什么需要空闲超时？**
 
-        if BUS.read_inbox(name):
-            return True  # resume
+agent 不是服务，是任务执行器。没任务就该退出，需要时再启动。
 
-        unclaimed = scan_unclaimed_tasks()
-        if unclaimed:
-            TASKS.claim(unclaimed[0].id, name)
-            return True  # resume
+**为什么任务认领要原子化？**
 
-    return False  # timeout -> shutdown
+```typescript
+// ✗ 坏：先查后改，有竞态
+const task = await getTask(id)
+if (!task.owner) {
+  await updateTask(id, { owner: "me" })
+}
+
+// ✓ 好：CAS 操作
+await updateTask(id, {
+  owner: "me",
+  expectedOwner: null  // 只在无主时更新
+})
 ```
 
-7 行。轮询 + 超时。
+多个 agent 可能同时认领同一任务。
 
-## 设计权衡
+## 如果没有这一层
 
-| 选择 | 优点 | 缺点 |
-|------|------|------|
-| Idle Polling | 自组织，无需指派 | 轮询开销 |
-| 5s 间隔 | 响应及时 | 频繁检查 |
-| 60s 超时 | 自动释放资源 | 可能过早关机 |
-| 身份重注入 | 防止失忆 | 增加 tokens |
+团队系统会停在半自动状态：
 
-## 关键洞察
-
-- **Idle Polling 是自治的核心** — 不是被动等待，是主动扫描
-- **任务看板是协调中心** — 队友通过看板发现工作，不需要领导分配
-- **身份重注入防止失忆** — 压缩后 Agent 可能忘记自己是谁
-- **超时自动关机** — 60 秒没活干，自动退出，释放资源
+- 协作能做，但调度成本高
+- 每件事都要人工分发
+- 空闲成员无法主动接活
+- 扩展性遇到天花板
 
 ---
 
-**不需要领导分配，自己找活干。空闲轮询 + 自动认领。**
+**自治不是让 agent 随便跑，而是在任务看板、状态机和协议约束下，能够主动观察、认领工作并优雅退出。**

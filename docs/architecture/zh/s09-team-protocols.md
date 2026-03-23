@@ -1,123 +1,131 @@
-# s09: Team Protocols
+# 第10章：Team Protocols — 结构化协作语义
 
-> *"Request-Response FSM — pending → approved/rejected"*
+## 从消息到协议
 
-## 问题
+s08 让 Agent 可以互相发消息。但消息只解决"内容能送到"。
 
-s08 中队友能干活能通信，但缺少结构化协调：
+真正的协作需要更多：
 
-**关机：** 直接杀线程会留下写了一半的文件和过期的 config.json。需要握手 — 领导请求，队友批准（收尾退出）或拒绝（继续干）。
+- 这是请求还是响应
+- 对方批准了还是拒绝了
+- 什么时候算完成
+- 什么时候算超时
 
-**计划审批：** 领导说"重构认证模块"，队友立刻开干。高风险变更应该先过审。
+这就是协议存在的原因。
 
-两者结构一样：一方发带唯一 ID 的请求，另一方引用同一 ID 响应。
+## 协议的本质
 
-## 核心设计
+协议不是 JSON 字段约定，而是状态机。
 
-```
-Shutdown Protocol            Plan Approval Protocol
-==================           ======================
+```typescript
+type ProtocolState =
+  | { status: "pending", requestId: string }
+  | { status: "approved", requestId: string }
+  | { status: "rejected", requestId: string, reason: string }
 
-Lead             Teammate    Teammate           Lead
-  |                 |           |                 |
-  |--shutdown_req-->|           |--plan_req------>|
-  | {req_id:"abc"}  |           | {req_id:"xyz"}  |
-  |                 |           |                 |
-  |<--shutdown_resp-|           |<--plan_resp-----|
-  | {req_id:"abc",  |           | {req_id:"xyz",  |
-  |  approve:true}  |           |  approve:true}  |
-
-Shared FSM:
-  [pending] --approve--> [approved]
-  [pending] --reject---> [rejected]
-```
-
-**一个 FSM，两种用途。**
-
-## 为什么需要协议？
-
-### 问题：无结构通信
-
-```
-Lead: "alice, 关机吧"
-Alice: "好的"  (但还在写文件)
-Lead: (杀线程)
-Result: 文件写了一半，状态不一致
+function handleResponse(state: ProtocolState, response: Response) {
+  if (state.status !== "pending") throw new Error("Invalid state")
+  return response.approve
+    ? { status: "approved", requestId: state.requestId }
+    : { status: "rejected", requestId: state.requestId, reason: response.reason }
+}
 ```
 
-### 解决方案：握手协议
+关键是双方共享同一状态转换规则。
 
-```
-Lead: shutdown_request(req_id="abc")
-Alice: (收尾工作)
-Alice: shutdown_response(req_id="abc", approve=true)
-Lead: (确认后清理)
-Result: 状态一致
-```
+## 典型协议：Shutdown Request
 
-## Request ID 的作用
+Leader 要关闭 Worker，不能直接杀进程，要让 Worker 有机会拒绝。
 
-为什么需要 request_id？
+```typescript
+// Leader 发起
+sendMessage({
+  type: "shutdown_request",
+  requestId: uuid(),
+  reason: "Task completed"
+})
 
-```
-场景：多个请求并发
-
-Lead: shutdown_request(req_id="abc")
-Lead: plan_request(req_id="xyz")
-Alice: plan_response(req_id="xyz", approve=true)
-Alice: shutdown_response(req_id="abc", approve=false)
-
-通过 req_id 关联请求和响应，防止混淆。
+// Worker 响应
+sendMessage({
+  type: "shutdown_response",
+  requestId: originalRequestId,
+  approve: false,
+  reason: "Still working on task #3"
+})
 ```
 
-## FSM 的通用性
+`requestId` 是关键：它让响应能对应到请求。
 
-同样的 FSM 可以套用到任何需要确认的操作：
+## 为什么不用简单消息
 
-```
-pending → approved/rejected
+如果没有协议，系统会变成这样：
 
-适用场景：
-- 关机请求
-- 计划审批
-- 资源申请
-- 权限变更
-- ...
-```
+```typescript
+// Leader
+sendMessage("请关机")
 
-## 伪代码
+// Worker
+sendMessage("我还在工作")
 
-```python
-requests = {}  # {req_id: {target, status}}
-
-def send_request(to, type):
-    req_id = uuid()
-    requests[req_id] = {"target": to, "status": "pending"}
-    BUS.send("lead", to, type, {"request_id": req_id})
-    return req_id
-
-def handle_response(req_id, approve):
-    requests[req_id]["status"] = "approved" if approve else "rejected"
+// Leader 收到消息，但不知道：
+// - 这是拒绝关机，还是普通状态汇报？
+// - 如果是拒绝，对应哪个关机请求？
 ```
 
-7 行。FSM + request_id 关联。
+协议让语义明确：
 
-## 设计权衡
+```typescript
+if (msg.type === "shutdown_response" && msg.requestId === myRequestId) {
+  if (msg.approve) {
+    terminateWorker()
+  } else {
+    console.log(`Worker rejected: ${msg.reason}`)
+  }
+}
+```
 
-| 选择 | 优点 | 缺点 |
-|------|------|------|
-| Request-Response | 状态一致，可追踪 | 增加交互轮次 |
-| request_id 关联 | 支持并发请求 | 需要维护映射表 |
-| FSM 通用化 | 一套模式多种用途 | 可能过度抽象 |
-| 优雅关机 | 状态一致性 | 可能被拒绝 |
+## 其他协议场景
 
-## 关键洞察
+同样的模式可以用于：
 
-- **request_id 是协议的核心** — 关联请求和响应，防止混淆
-- **FSM 是通用模式** — 任何需要确认的操作都可以用这个模式
-- **优雅关机 vs 强制关机** — 握手保证状态一致性
-- **计划门控是安全边界** — 高风险操作必须经过审批
+- **Plan Approval**: Worker 提交计划，Leader 审批
+- **Task Assignment**: Leader 分配任务，Worker 确认接受
+- **Resource Request**: Worker 请求资源，Leader 批准或拒绝
+
+核心都是：请求 → 等待 → 响应 → 状态转换。
+
+## 设计原则
+
+**1. 请求必须有 ID**
+
+```typescript
+// ✓ 好
+{ type: "request", requestId: "abc-123", ... }
+
+// ✗ 坏
+{ type: "request", ... }
+```
+
+**2. 响应必须引用请求**
+
+```typescript
+// ✓ 好
+{ type: "response", requestId: "abc-123", approve: true }
+
+// ✗ 坏
+{ type: "response", approve: true }
+```
+
+**3. 状态转换必须明确**
+
+```typescript
+// ✓ 好
+pending → approved | rejected
+
+// ✗ 坏
+pending → done (done 是批准还是拒绝？)
+```
 
 ---
 
-**队友之间要有规矩。一个 FSM 驱动所有协商。**
+**协议把多 Agent 协作从"能发消息"提升到"有明确状态语义的结构化协作"。**

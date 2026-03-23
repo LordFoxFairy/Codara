@@ -1,132 +1,110 @@
-# s07: Task System
+# 第8章：Task System — 任务活得比会话更久
 
-> *"DAG + 磁盘持久化 — blockedBy 解锁，跨会话存活"*
+## 从临时委托到持久化任务
 
-## 问题
+s06 说了：可以把工作交给子 Agent。
 
-s05 的 TodoManager 只是内存中的扁平清单：没有顺序、没有依赖、状态只有做完没做完。
+但那只是"临时委托"，会话结束，任务就消失了。
 
-真实目标是有结构的 — 任务 B 依赖任务 A，任务 C 和 D 可以并行，任务 E 要等 C 和 D 都完成。
+真正的任务系统关心的不是某一轮对话里做了什么，而是：
 
-而且清单只活在内存里，上下文压缩（s02）一跑就没了。
+- 还有什么没做
+- 哪些任务相互依赖
+- 哪些已经完成
+- 系统中断以后如何继续
 
-## 核心设计
+## 任务必须持久化
 
-```
-.tasks/
-  task_1.json  {"id":1, "status":"completed"}
-  task_2.json  {"id":2, "blockedBy":[1], "status":"pending"}
-  task_3.json  {"id":3, "blockedBy":[1], "status":"pending"}
-  task_4.json  {"id":4, "blockedBy":[2,3], "status":"pending"}
+一旦任务比一次对话更长，内存就不再可靠。
 
-任务图 (DAG):
-                 +----------+
-            +--> | task 2   | --+
-            |    | pending  |   |
-+----------+     +----------+    +--> +----------+
-| task 1   |                          | task 4   |
-| completed| --> +----------+    +--> | blocked  |
-+----------+     | task 3   | --+     +----------+
-                 | pending  |
-                 +----------+
-```
+```typescript
+// ✗ 坏：任务只在内存里
+const tasks = [
+  { id: 1, title: "实现功能 A", status: "pending" }
+]
 
-**任务图随时回答三个问题：**
-- **什么可以做？** — 状态为 `pending` 且 `blockedBy` 为空
-- **什么被卡住？** — 等待前置任务完成
-- **什么做完了？** — 状态为 `completed`，自动解锁后续
-
-## 为什么需要 DAG？
-
-### 问题：扁平清单无法表达依赖
-
-```
-TodoManager:
-[ ] Setup project
-[ ] Write code
-[ ] Write tests
-
-问题：
-- "Write code" 能在 "Setup project" 之前做吗？
-- "Write tests" 能和 "Write code" 并行吗？
+// ✓ 好：任务写入磁盘
+await fs.writeFile(
+  `~/.codara/tasks/${taskId}.json`,
+  JSON.stringify(task)
+)
 ```
 
-### 解决方案：显式依赖图
+一旦任务进入磁盘，系统才第一次真正拥有了：
 
-```
-Task System:
-task 1: Setup project (pending)
-task 2: Write code (blocked by 1)
-task 3: Write tests (blocked by 1)
-task 4: Deploy (blocked by 2, 3)
+- 跨会话延续能力
+- 崩溃后恢复能力
+- 多 Agent 共享的稳定真相
 
-清晰表达：
-- 1 完成后，2 和 3 可以并行
-- 2 和 3 都完成后，4 才能开始
-```
+## 核心数据结构
 
-## 依赖自动解锁
+任务不是清单，是图：
 
-```python
-def complete_task(task_id):
-    task.status = "completed"
-
-    # 自动解锁后续任务
-    for other_task in all_tasks:
-        if task_id in other_task.blockedBy:
-            other_task.blockedBy.remove(task_id)
+```typescript
+interface Task {
+  id: string
+  subject: string
+  status: "pending" | "in_progress" | "completed"
+  owner?: string           // 哪个 Agent 在做
+  blockedBy: string[]      // 依赖哪些任务
+  blocks: string[]         // 阻塞哪些任务
+}
 ```
 
-**关键：** 完成任务时，系统自动解锁后续任务，不需要手动管理。
+关键点：
 
-## 磁盘持久化
+**1. 依赖关系是双向的**
 
-为什么要持久化到磁盘？
-
-```
-内存清单:
-- 上下文压缩后丢失
-- 会话结束后丢失
-- 崩溃后丢失
-
-磁盘任务图:
-- 压缩后存活
-- 跨会话存活
-- 崩溃后可恢复
+```typescript
+// 任务 2 依赖任务 1
+task2.blockedBy = ["task-1"]
+task1.blocks = ["task-2"]
 ```
 
-## 伪代码
+双向存储让查询更快：
 
-```python
-class TaskManager:
-    def create(subject):
-        task = {"id": next_id(), "subject": subject,
-                "status": "pending", "blockedBy": []}
-        save_to_disk(task)
+- 查"我能做什么" → 找 `blockedBy` 为空的
+- 查"完成后解锁什么" → 看 `blocks` 列表
 
-    def complete(task_id):
-        task.status = "completed"
-        clear_dependency(task_id)  # 自动解锁
+**2. Owner 决定谁在做**
+
+```typescript
+// 分配任务
+await updateTask(taskId, { owner: "agent-123" })
+
+// Agent 查询自己的任务
+const myTasks = tasks.filter(t => t.owner === agentId)
 ```
 
-7 行。DAG + 持久化 + 自动解锁。
+**3. Status 驱动状态机**
 
-## 设计权衡
+```
+pending → in_progress → completed
+```
 
-| 选择 | 优点 | 缺点 |
-|------|------|------|
-| DAG 结构 | 显式依赖，支持并行 | 复杂度增加 |
-| 磁盘持久化 | 跨会话存活，可恢复 | 文件 I/O 开销 |
-| 自动解锁 | 无需手动管理依赖 | 可能意外解锁 |
-| 每个任务一个文件 | 原子写入，易调试 | 文件数量多 |
+不需要复杂状态，三个就够。
 
-## 关键洞察
+## 为什么不用 Todo
 
-- **DAG 是协调骨架** — 后续所有多 Agent 机制都读写这个结构
-- **磁盘持久化是跨会话的前提** — 内存清单活不过一次对话
-- **依赖自动解锁** — 完成任务时，系统自动解锁后续任务
-- **状态机 + 图结构** — 状态控制进度，图结构控制顺序
+Todo 解决的是单次执行里的顺序和焦点。
+Task System 解决的是跨轮次、跨会话、跨 Agent 的任务存在。
+
+Todo 更像白板。
+Task 更像控制面。
+
+一旦任务开始涉及依赖关系，简单清单就不够了。
+
+## 关键决策
+
+**任务是系统对象，不是对话副产品。**
+
+一旦接受这个判断，后面的设计就会自然清楚：
+
+- 任务有自己的状态
+- 任务有自己的依赖关系
+- 任务有自己的生命周期
+- Agent 只是任务的执行者之一，不是任务本身
 
 ---
 
-**目标要活得比对话长。磁盘上的任务图，跨会话不丢失。**
+**Task System 把任务从会话内临时计划升级成持久化控制面，让依赖、状态、恢复和协作都有稳定真相来源。**

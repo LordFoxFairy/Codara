@@ -1,107 +1,67 @@
-# s06: SubAgent
+# 第7章：SubAgent — 隔离上下文的第一步
 
-> *"上下文隔离 — 子 Agent 独立 messages[]，只返回摘要"*
+## 为什么需要 SubAgent
 
-## 问题
+单 Agent 走到这一步，最先撞上的不是"能力不够"，而是"上下文越来越脏"。
 
-Agent 工作越久，messages 数组越胖。每次读文件、跑命令的输出都永久留在上下文里。
+很多工作不需要把完整过程留在主会话里：
 
-"这个项目用什么测试框架？" 可能要读 5 个文件，但父 Agent 只需要一个词："pytest"。
+- 去读一批文件，只为确认一个事实
+- 跑一轮验证，只要最终结论
+- 做一次独立探索，再回一个摘要
 
-## 核心设计
+这类工作如果都留在父上下文里，主线很快会被淹没。
 
-```
-Parent Agent                     SubAgent
-+------------------+             +------------------+
-| messages=[...]   |             | messages=[]      | <-- fresh
-|                  |  dispatch   |                  |
-| tool: task       | ----------> | while tool_use:  |
-|   prompt="..."   |             |   call tools     |
-|                  |  summary    |   append results |
-|   result = "..." | <---------- | return last text |
-+------------------+             +------------------+
+## SubAgent 的核心价值
 
-父上下文保持干净。子上下文被丢弃。
-```
+**不是并行，而是隔离。**
 
-**关键：** 子 Agent 可能跑了 30+ 次工具调用，但整个消息历史直接丢弃。父 Agent 收到的只是一段摘要文本。
+```typescript
+async function runSubAgent(task: string) {
+    const subMessages = [
+        { role: "user", content: task }
+    ];
 
-## 为什么需要上下文隔离？
+    while (true) {
+        const response = await model(subMessages, tools);
+        if (response.stop_reason !== "tool_use") break;
+        // 子会话独立运行
+    }
 
-### 问题：噪声累积
-
-```
-Parent messages:
-  User: "分析这个项目的测试框架"
-  Assistant: "我要读 5 个文件"
-  User: [file1 内容 1000 tokens]
-  User: [file2 内容 1000 tokens]
-  User: [file3 内容 1000 tokens]
-  User: [file4 内容 1000 tokens]
-  User: [file5 内容 1000 tokens]
-  Assistant: "是 pytest"
-
-总计: 5000+ tokens 噪声
+    return response.content; // 只返回结果
+}
 ```
 
-### 解决方案：隔离 + 摘要
+做法很直接：
 
-```
-Parent messages:
-  User: "分析这个项目的测试框架"
-  Assistant: "我要派发子任务"
-  User: [tool_result: "pytest"]  <- 只有摘要
+- 给子 Agent 一份独立上下文
+- 让它在自己的会话里完成工作
+- 最后只把结果带回父 Agent
 
-总计: ~50 tokens
-```
+**把噪声留在子会话，把结论带回主会话。**
 
-## 递归禁止
+## 为什么不共享全文
 
-子 Agent 不能再生成子 Agent。为什么？
+如果父会话的完整历史直接继承给每个子 Agent，会立刻出现三个问题：
 
-```
-Parent
-  └─ SubAgent 1
-       └─ SubAgent 2
-            └─ SubAgent 3
-                 └─ ...  (无限嵌套)
-```
+- 成本高
+- 焦点散
+- 子任务会被无关信息污染
 
-**解决方案：** 子 Agent 的工具集不包含 `task` 工具。
+所以更合理的默认是：
 
-## 伪代码
+- 父 Agent 给子 Agent 一份裁剪后的任务上下文
+- 子 Agent 完成后只回结构化结果或摘要
+- 完整子 transcript 作为二级信息按需查看
 
-```python
-def run_subagent(prompt):
-    sub_messages = [{"role": "user", "content": prompt}]
+## 为什么它是协作的第一步
 
-    for i in range(30):  # safety limit
-        response = LLM.invoke(sub_messages, tools=CHILD_TOOLS)
-        if response.stop_reason != "tool_use":
-            break
-        # 执行工具，追加结果
+因为多 Agent 之前，先要学会"把工作切干净"。
 
-    return extract_text(response)  # 只返回文本
-```
+如果连最小的父子隔离都做不好，后面的任务持久化、团队协作、协议、自治，都会建立在混乱上下文之上。
 
-7 行。独立循环 + 摘要提取。
-
-## 设计权衡
-
-| 选择 | 优点 | 缺点 |
-|------|------|------|
-| 上下文隔离 | 父 Agent 保持干净 | 子 Agent 无法访问父上下文 |
-| 只返回摘要 | 信息压缩，节省 tokens | 可能丢失细节 |
-| 递归禁止 | 防止无限嵌套 | 限制了灵活性 |
-| 30 轮限制 | 防止死循环 | 可能截断长任务 |
-
-## 关键洞察
-
-- **上下文隔离是性能优化** — 子 Agent 的噪声不污染父 Agent
-- **摘要是信息压缩** — 30 轮对话压缩成 1 段文本
-- **子 Agent 是一次性的** — 没有身份，没有跨调用的记忆
-- **递归禁止** — 防止无限嵌套，保持系统可控
+**协作之前，先学会隔离。**
 
 ---
 
-**大任务拆小，每个小任务干净的上下文。**
+**SubAgent 的核心价值不是多开一个模型，而是给某段工作一个独立上下文，把过程噪声隔离出去，只把结果带回主会话。**

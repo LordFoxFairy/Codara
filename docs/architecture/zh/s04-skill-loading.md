@@ -1,120 +1,110 @@
-# s04: Skill Loading
+# 第5章：Skill Loading — 按需注入知识
 
-> *"两层注入 — System Prompt 放索引，Tool Result 放内容"*
+## 为什么需要 Skill
 
-## 问题
+Agent 会跑、会用工具，但它不知道你的工作流程。
 
-你希望 Agent 遵循特定领域的工作流：git 约定、测试模式、代码审查清单。
+比如：
+- 提交前要跑哪些检查
+- 测试失败了怎么处理
+- 代码审查要看什么
 
-全塞进 System Prompt 太浪费 — 10 个技能，每个 2000 token，就是 20,000 token，大部分跟当前任务毫无关系。
-
-而且违反了 s02 的原则：**System Prompt 必须静态**。
-
-## 核心设计
-
-```
-System Prompt (Layer 1 — 永远存在):
-+--------------------------------------+
-| You are a coding agent.              |
-| Skills available:                    |
-|   - git: Git workflow helpers        |  ~100 tokens/skill
-|   - test: Testing best practices     |
-+--------------------------------------+
-
-当模型调用 load_skill("git"):
-+--------------------------------------+
-| tool_result (Layer 2 — 按需):        |
-| <skill name="git">                   |
-|   Full git workflow instructions...  |  ~2000 tokens
-| </skill>                             |
-+--------------------------------------+
-```
-
-**第一层：** System Prompt 中放技能名称（低成本）
-**第二层：** tool_result 中按需放完整内容
-
-## 为什么两层？
-
-### 单层方案的问题
-
-**方案 A：全部放 System Prompt**
-- 违反静态原则，KV Cache 失效
-- 20k tokens 前置成本，每轮都付费
-
-**方案 B：全部按需加载**
-- Agent 不知道有哪些技能可用
-- 需要额外的"列出技能"工具
-
-### 两层方案的优势
-
-- **Layer 1 静态** — KV Cache 命中
-- **Layer 2 动态** — 只在需要时加载
-- **Agent 可发现** — 知道有什么可用
-
-## 技能设计原则
-
-### 1. 可发现
-
-技能描述要让 Agent 知道什么时候用。
-
-```markdown
----
-name: git
-description: Git workflow — branch naming, commit messages, PR checklist
----
-```
-
-### 2. 自包含
-
-技能内容要完整，不依赖外部文档。
-
-```markdown
-## Git Workflow
-
-1. Branch naming: `feature/<author>/<description>`
-2. Commit messages: `type(scope): description`
-3. PR checklist:
-   - Tests pass
-   - No console.log
-   - Updated docs
-```
-
-### 3. 可执行
-
-技能是行动指南，不是理论文档。
-
-## 伪代码
+你可以把这些写进固定 prompt，但这样做有问题：
 
 ```python
-# Layer 1: System Prompt
-SYSTEM = f"""You are a coding agent.
-Skills available:
-{skill_loader.get_descriptions()}"""
-
-# Layer 2: Tool
-TOOLS = {
-    "load_skill": lambda name: skill_loader.get_content(name)
-}
+system_prompt = """
+你是一个 agent。
+提交前要运行 lint、test、build。
+测试失败要看日志、修代码、重跑。
+代码审查要检查类型、边界、错误处理。
+发布流程是...
+团队规范是...
+"""
 ```
 
-7 行。索引 + 内容分离。
+每加一条规则，prompt 就胖一圈。模型背着一堆无关知识工作。
 
-## 设计权衡
+## Skill 的核心思想
 
-| 选择 | 优点 | 缺点 |
-|------|------|------|
-| 两层注入 | 静态 + 动态平衡，KV Cache 命中 | 需要两次交互（列表 + 加载） |
-| 索引在 System Prompt | Agent 可发现，成本低 | 技能多时索引也会膨胀 |
-| 内容在 tool_result | 按需加载，节省成本 | 加载后占用 messages 空间 |
-| SKILL.md 文件 | 版本控制，易维护 | 需要文件系统访问 |
+把知识分两层：
 
-## 关键洞察
+```python
+# 索引层：告诉模型有哪些 skill
+tools = [
+    {"name": "load_skill", "description": "Load a skill by name"},
+]
 
-- **索引 vs 内容分离** — System Prompt 只放索引，保持静态
-- **按需加载是性能优化** — 不是所有知识都需要前置
-- **技能是领域专长** — 不是通用知识，是特定工作流
-- **Agent 自己决定何时加载** — 不是 Harness 强制注入
+# 内容层：需要时才加载
+if model_calls("load_skill", "commit-check"):
+    messages.append(read_skill("commit-check"))
+```
+
+模型看到索引，决定要不要加载。加载后，知识进入 messages，模型按指导执行。
+
+## 什么适合做成 Skill
+
+不是所有知识都该做成 skill。
+
+**适合的：**
+- 有明确触发场景（"提交前"、"测试失败时"）
+- 可重复使用的流程
+- 需要多步骤的操作指南
+
+**不适合的：**
+- 通用常识（模型已经知道）
+- 一次性的说明
+- 太简单的规则（直接写进 system prompt）
+
+## 实现要点
+
+**1. Skill 是工具，不是文档**
+
+```python
+# ✓ 好：模型主动调用
+model: "我要提交代码，先加载 commit-check"
+system: load_skill("commit-check")
+
+# ✗ 坏：被动塞给模型
+system: "这是所有 skill 的内容..."
+```
+
+**2. 索引要轻**
+
+```python
+skills = [
+    {"name": "commit-check", "trigger": "before commit"},
+    {"name": "test-debug", "trigger": "test failure"},
+]
+```
+
+模型扫一眼就知道有什么，不需要读完整内容。
+
+**3. 内容要可执行**
+
+Skill 不是"提交前要小心"，而是"运行 lint → 运行 test → 检查 diff"。
+
+## 为什么不直接塞进 System Prompt
+
+对比两种方式：
+
+**固定 Prompt：**
+- 所有知识一次性加载
+- 模型背着无关内容工作
+- 难以模块化管理
+
+**Skill Loading：**
+- 按需加载
+- 只引入当前需要的知识
+- 可以独立维护、更新
+
+## 和后面的关系
+
+Skill 解决了"知识怎么进入系统"。
+
+但有知识不代表能执行好。长任务容易偏航，需要外部规划支架。
+
+这就是 s05 要讲的：**Plan Mode。**
 
 ---
 
-**知识不是越多越好。用到什么，加载什么。**
+**Skill Loading 的核心：把知识索引和内容分开，让模型按需加载场景化指导。**

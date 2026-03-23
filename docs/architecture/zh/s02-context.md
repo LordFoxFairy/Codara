@@ -1,105 +1,96 @@
-# s02: Context Window
+# 第4章：Context Management — 静态和动态分层
 
-> *"System Prompt 不可变 → KV Cache 命中 → Token 成本降 90%"*
+## 循环跑起来,上下文就会爆
 
-## 问题
+s01 说了:agent 就是个循环,模型不断调用工具,结果追加到 messages。
 
-每次调用 LLM 都要传完整的 messages 数组。200k token 的上下文，每轮都要重新计算，成本爆炸。
-
-但 LLM 有一个秘密武器：**KV Cache**。
-
-## KV Cache 原理
-
-Transformer 的注意力机制需要计算 Key 和 Value 矩阵。对于已经见过的 token 序列，这些矩阵可以缓存。
-
-```
-第一次调用:
-  System Prompt (5000 tokens) → 计算 KV → 缓存
-  User Message (100 tokens)   → 计算 KV
-  总计算: 5100 tokens
-
-第二次调用（System Prompt 不变）:
-  System Prompt (5000 tokens) → 命中缓存 ✓
-  User Message (100 tokens)   → 计算 KV
-  Tool Result (200 tokens)    → 计算 KV
-  总计算: 300 tokens（节省 94%）
-```
-
-**关键条件：前缀 token 序列必须完全一致。**
-
-## 核心设计
-
-```
-+---------------------------+
-| System Prompt (静态)       |  <-- 永远不变，KV Cache 命中
-| - Agent 身份               |
-| - 工具列表                 |
-| - 技能索引                 |
-+---------------------------+
-           |
-+---------------------------+
-| Messages (动态)            |  <-- 每轮追加，只计算新增部分
-| - User: query             |
-| - Assistant: response     |
-| - User: tool_result       |
-+---------------------------+
-```
-
-**设计原则：**
-- System Prompt 包含所有**静态信息**
-- Messages 包含所有**动态信息**
-- **绝对不要在 System Prompt 中插入动态内容**
-
-## 三层压缩策略
-
-即使有 KV Cache，messages 数组也会无限增长。需要三层压缩：
-
-### Layer 1: Micro Compact（静默，每轮）
-
-将 3 轮以前的 tool_result 替换为占位符。
+但问题来了:
 
 ```python
-# 旧结果 (1000 tokens)
-{"type": "tool_result", "content": "...大量输出..."}
-
-# 压缩后 (20 tokens)
-{"type": "tool_result", "content": "[Previous: used read_file]"}
+messages = [
+  {role: "system", content: "你是一个助手..."},
+  {role: "user", content: "读取 package.json"},
+  {role: "assistant", content: "我要执行 cat"},
+  {role: "user", content: "文件内容 3000 行..."},
+  {role: "assistant", content: "我要修改..."},
+  {role: "user", content: "修改结果 3000 行..."},
+  # 继续增长...
+]
 ```
 
-### Layer 2: Auto Compact（阈值触发）
+每轮循环,messages 都在变长。成本变高,响应变慢,模型开始抓不住重点。
 
-Token 超过 50k 时，保存完整对话到磁盘，让 LLM 做摘要。
+## 核心问题:两种东西混在一起
+
+messages 里有两种完全不同的内容:
+
+**静态层:**
+- 身份定义
+- 工具规则
+- 技能索引
+
+**动态层:**
+- 用户请求
+- 工具结果
+- 任务进展
+
+一旦混在一起,系统就会同时失去性能和清晰度。
+
+## 正确的做法
+
+把静态和动态分开:
 
 ```python
-if tokens > 50000:
-    save_transcript(messages)  # 保存完整历史
-    summary = LLM.summarize(messages)
-    messages = [
-        {"role": "user", "content": f"[Compressed]\n{summary}"},
-        {"role": "assistant", "content": "Understood."}
-    ]
+# 静态层:缓存,不变
+system_prompt = build_system_prompt()
+
+# 动态层:每轮增长
+conversation = []
+
+while True:
+    messages = [system_prompt] + conversation
+    response = model(messages, tools)
+    conversation.append(response)
 ```
 
-### Layer 3: Manual Compact（工具触发）
+静态层可以缓存,动态层可以压缩。
 
-Agent 可以主动调用 `compact` 工具，触发同样的摘要机制。
+## 为什么要压缩
 
-## 设计权衡
+即使分层做对了,动态层也会越跑越大。
 
-| 选择 | 优点 | 缺点 |
-|------|------|------|
-| 静态 System Prompt | KV Cache 命中，成本降 90% | 不能动态调整身份 |
-| Micro Compact | 静默，无感知 | 丢失旧工具结果细节 |
-| Auto Compact | 自动触发，无需干预 | 摘要可能丢失信息 |
-| Transcript 保存 | 完整历史可恢复 | 磁盘占用 |
+成熟系统会做两件事:
 
-## 关键洞察
+**1. 保留最近现场**
 
-- **不变性是性能的前提** — System Prompt 变一个字，KV Cache 全部失效
-- **静态 vs 动态的分割是架构决策** — 不是实现细节
-- **压缩不是丢失** — Transcript 保存完整历史，只是移出活跃上下文
-- **三层压缩递进** — 静默 → 自动 → 手动，激进程度递增
+```python
+# 只保留最近 N 轮对话
+conversation = conversation[-20:]
+```
+
+**2. 完整历史另存**
+
+```python
+# 完整历史存文件,供恢复和追溯
+save_to_disk(full_history)
+```
+
+压缩不是删除真相,而是把"正在参与推理的内容"和"系统长期记忆"分开。
+
+## 三个关键点
+
+**1. 静态层尽量稳定**
+
+不要把临时信息塞进 system prompt。
+
+**2. 动态层可以裁剪**
+
+模型不需要看到所有历史,只需要看到相关的。
+
+**3. 完整历史必须保存**
+
+用户可能要回溯,调试可能要复现。
 
 ---
 
-**Context Window 是有限的。设计决定了你能走多远。**
+**静态和动态分层,系统才能既快又稳。后面的技能按需加载、子 Agent 上下文裁剪,都建立在这个基础上。**
