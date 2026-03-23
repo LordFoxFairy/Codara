@@ -143,6 +143,177 @@ conversation.append({
 
 这样 System Prompt 保持不变，KV Cache 继续命中。
 
+## KV Cache 的深层细节
+
+### 为什么必须是前缀匹配
+
+KV Cache 不能部分缓存，必须是**连续前缀**：
+
+```python
+# ✓ 可以缓存
+第1次: [A, B, C]
+第2次: [A, B, C, D, E]  # 前3个完全一样，缓存命中
+
+# ✗ 不能缓存
+第1次: [A, B, C]
+第2次: [A, X, C, D, E]  # 中间变了，缓存失效
+```
+
+为什么？因为 Attention 是**因果的**：
+
+```
+Token C 的 K,V 依赖于 [A, B]
+如果 B 变成 X，C 的 K,V 就必须重算
+```
+
+这就是为什么 System Prompt 必须在最前面，且不能变。
+
+### 多层多头的缓存
+
+Transformer 不是单层的，是多层多头：
+
+```
+Layer 1:  K1[head1...head32], V1[head1...head32]
+Layer 2:  K2[head1...head32], V2[head1...head32]
+...
+Layer 40: K40[head1...head32], V40[head1...head32]
+```
+
+**缓存的是所有层所有头的 K,V。**
+
+假设模型是 40 层，32 个头，每个头的维度是 128：
+
+```
+每个 token 的 KV 大小 = 40 × 32 × 128 × 2 × 2 bytes
+                    = 655,360 bytes ≈ 640 KB
+```
+
+5000 tokens 的 System Prompt 缓存大小：
+
+```
+5000 × 640 KB = 3.2 GB
+```
+
+这就是为什么 KV Cache 很贵，但值得缓存。
+
+### Prompt Caching vs KV Cache
+
+两个概念容易混淆：
+
+**KV Cache（模型层）：**
+- 在推理过程中自动发生
+- 缓存的是计算好的 K,V 矩阵
+- 生命周期：单次请求内有效
+
+**Prompt Caching（API 层）：**
+- Claude API 提供的功能
+- 缓存的是 System Prompt 的 KV
+- 生命周期：5 分钟内跨请求有效
+
+```python
+# 第1次请求（14:00）
+response = client.messages.create(
+    system=[{
+        "type": "text",
+        "text": "你是助手...",
+        "cache_control": {"type": "ephemeral"}  # 标记为可缓存
+    }],
+    messages=[...]
+)
+# API 缓存这段 System Prompt 的 KV
+
+# 第2次请求（14:02，2分钟后）
+response = client.messages.create(
+    system=[{
+        "type": "text",
+        "text": "你是助手...",  # 完全一样
+        "cache_control": {"type": "ephemeral"}
+    }],
+    messages=[...]
+)
+# API 从缓存读取，不重新计算
+# 成本：只计算 messages 部分
+```
+
+**关键：** Prompt Caching 让 KV Cache 跨请求复用，5 分钟内有效。
+
+### 缓存失效的边界情况
+
+**1. 空格和换行**
+
+```python
+# 第1次
+system = "你是助手"
+
+# 第2次（多了空格）
+system = "你是助手 "
+# 缓存失效！
+```
+
+**2. Unicode 归一化**
+
+```python
+# 第1次
+system = "你好"  # NFC 编码
+
+# 第2次
+system = "你好"  # NFD 编码（看起来一样，实际不同）
+# 缓存失效！
+```
+
+**3. 工具定义顺序**
+
+```python
+# 第1次
+tools = [bash, read, write]
+
+# 第2次
+tools = [read, bash, write]  # 顺序变了
+# 缓存失效！
+```
+
+### 如何设计 System Prompt 最大化缓存
+
+**1. 把静态内容放前面**
+
+```python
+system = f"""
+你是助手。
+
+工具规则：
+- bash: 执行命令
+- read: 读文件
+
+技能列表：
+- git: Git 工作流
+- test: 测试规范
+"""
+# 这部分永远不变，可以缓存
+```
+
+**2. 动态内容通过 messages 注入**
+
+```python
+# ✗ 错误
+system = f"你是助手，当前时间 {now()}"
+
+# ✓ 正确
+messages.append({
+    "role": "user",
+    "content": f"<context>当前时间 {now()}</context>"
+})
+```
+
+**3. 使用 Prompt Caching API**
+
+```python
+system = [{
+    "type": "text",
+    "text": build_system_prompt(),
+    "cache_control": {"type": "ephemeral"}  # 5分钟缓存
+}]
+```
+
 ## 压缩策略
 
 即使分层做对了，动态层也会越跑越大。成熟系统会做：
