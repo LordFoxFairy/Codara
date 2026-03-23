@@ -170,6 +170,14 @@ function shouldKeepPromptTurnRunningAfterAgentLaunch(input: {
     return true;
   }
 
+  // If we launched an agent, always keep running after the streaming phase ends.
+  // The subagent may not be registered in getSubagentRunSummaries yet (async),
+  // so we can't rely on hasTrackedForegroundSubagentRuns here. The useEffect
+  // polling loop will take over and set done when the agent truly completes.
+  if (input.launchedAgent) {
+    return true;
+  }
+
   if (input.sawVisibleReply) {
     return false;
   }
