@@ -10,7 +10,6 @@ import {EchoModel, SystemEchoModel} from './codara-fixtures';
 const createRuntimeForTest = (options: Parameters<typeof createCodaraRuntime>[0]) => (
   createCodaraRuntime({
     ...options,
-    autoMemory: false,
   })
 );
 

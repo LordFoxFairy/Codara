@@ -49,7 +49,7 @@ Codara 划分为 **10 个限界上下文**，每个对应一个顶层目录：
 │                                                                 │
 │  ┌─ 基础设施 ────────────────────────────────────────────────┐  │
 │  │  integration/    外部适配（tool, mcp, channel, provider）  │  │
-│  │  context/        上下文来源（instructions, prompts, memory）│  │
+│  │  context/        上下文来源（instructions, prompts, skills）│  │
 │  │  config/         配置管理                                  │  │
 │  │  bus/            通信基础设施                               │  │
 │  └───────────────────────────────────────────────────────────┘  │
@@ -81,7 +81,7 @@ Codara 划分为 **10 个限界上下文**，每个对应一个顶层目录：
 | 支撑域 | `durability/` | 会话持久化 + 检查点 | 仓储 |
 | 支撑域 | `observability/` | 运行时事件 + 生命周期钩子 | 领域事件 |
 | 基础设施 | `integration/` | 工具、MCP、通道、模型提供商 | 适配器 |
-| 基础设施 | `context/` | 指令、提示、记忆、技能上下文 | 来源仓储 |
+| 基础设施 | `context/` | 指令、提示、技能上下文 | 来源仓储 |
 | 基础设施 | `config/` | 配置文件解析与管理 | 基础设施服务 |
 | 基础设施 | `bus/` | 类型化事件总线 + 多端通信 | 基础设施服务 |
 | 应用层 | `codara/` | 运行时装配 + API 门面 | 应用服务 |
@@ -277,7 +277,6 @@ src/
 │   │
 │   ├── instructions/              # 路径指令（CLAUDE.md 风格）
 │   ├── prompts/                   # 系统提示
-│   ├── memory/                    # 记忆管理（含 eviction.ts 淘汰策略）
 │   ├── skills/                    # 技能上下文（SkillsRuntimeData）
 │   └── session-bundle/            # 会话上下文包
 │
@@ -436,9 +435,8 @@ src/
 │  integration/          context/          config/   bus/     │
 │  ├── tool/      工具   ├── instructions/ ├── settings       │
 │  ├── mcp/       协议   ├── prompts/      └── workspace      │
-│  ├── channel/   通道   ├── memory/                          │
-│  └── provider/  模型   ├── skills/                          │
-│                        └── session-bundle/                  │
+│  ├── channel/   通道   ├── skills/                          │
+│  └── provider/  模型   └── session-bundle/                  │
 │                                                             │
 │  职责：外部系统适配 + 技术实现细节                             │
 └─────────────────────────────────────────────────────────────┘
@@ -578,7 +576,7 @@ Middleware 是 Codara 的**第一且唯一的执行拦截机制**：
 | `skills` | BeforeAgent | 注入技能上下文到 system prompt |
 | `path-instructions` | BeforeAgent | 注入路径指令（CLAUDE.md 等） |
 | `budget` | BeforeModel | Token 预算控制 + 用量追踪 |
-| `summary` | BeforeModel | 消息压缩（超长对话自动摘要） |
+| `summary` | BeforeModel | 消息压缩（token 用量 ≥ 80% 时自动摘要；需显式配置 `options.summary` 启用） |
 | `permission` | ToolCall | 工具调用权限评估（deny→ask→allow） |
 | `hil` | ToolCall | 人机协作 pause/resume 拦截 |
 | `ask-user-question` | ToolCall | 用户提问工具处理 |
@@ -855,7 +853,7 @@ Codara 的扩展机制分为**三层递进**，所有扩展最终通过 Middlewa
    绑定 session + model + channel + middleware chains
 
 ③ 挂载支撑系统
-   context/  → 注入指令、提示、记忆、技能
+   context/  → 注入指令、提示、技能
    durability/ → 绑定 session store + checkpoint
    observability/ → 绑定 events emitter + hook registry
 

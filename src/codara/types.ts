@@ -26,7 +26,7 @@ import type {
 import type {ReviewRequest} from '@shared/contracts/agent-types';
 import type {CodaraModelCatalog} from './assembly/runtime';
 
-// ── Skill & Memory Options ──
+// ── Skill Options ──
 
 export type CodaraReviewOptions = ReviewMiddlewareOptions;
 
@@ -40,14 +40,6 @@ export interface CodaraSkillOptions {
   cacheTtlMs?: number;
   /** 启用后额外扫描 ~/.claude/skills/（Claude Code 兼容），默认关闭。 */
   claudeSkillsCompat?: boolean;
-}
-
-export interface CodaraAutoMemoryOptions {
-  cwd?: string;
-  projectRoot?: string;
-  userHome?: string;
-  autoGlobal?: boolean;
-  rootDir?: string;
 }
 
 // ── Main Configuration ──
@@ -77,7 +69,6 @@ export interface CodaraOptions {
   messages?: import('@core/agent').AgentInput;
   context?: Record<string, unknown>;
   values?: Record<string, unknown>;
-  autoMemory?: false | CodaraAutoMemoryOptions;
   /** MCP server configuration. `false` to disable, omit for auto-detection from .codara/mcp.json. */
   mcp?: false | McpConfig;
 }

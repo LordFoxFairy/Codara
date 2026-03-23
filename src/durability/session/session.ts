@@ -40,10 +40,6 @@ import type {GuidelinesSource} from '@context/instructions/guidelines';
 import {type PromptSource} from '@context/prompts/prompt-source';
 import type {SkillsSource} from '@capability/skill';
 import {
-  type AutoMemoryRuntime,
-  shouldRecordAutoMemoryTurn,
-} from '@context/memory/auto-memory';
-import {
   applyPreparedInstructionContext,
   buildBaseSystemMessage,
   type BaseSystemMessageBundle,
@@ -80,7 +76,6 @@ export interface CreateSessionOptions {
   guidelinesSource?: GuidelinesSource;
   promptSource?: PromptSource;
   skillsSource?: SkillsSource;
-  autoMemory?: AutoMemoryRuntime;
   store?: SessionStore;
   tools?: StructuredToolInterface[];
   handleToolErrors?: ToolErrorHandler;
@@ -277,13 +272,10 @@ export function createSession(options: CreateSessionOptions): Session {
       options.promptSource?.reload?.();
       options.guidelinesSource?.reload?.();
       options.skillsSource?.reload();
-      options.autoMemory?.source.reload();
       baseSystemContext = await buildBaseSystemMessage({
         promptSource: options.promptSource,
         guidelinesSource: options.guidelinesSource,
         skillsSource: options.skillsSource,
-        autoMemorySource: options.autoMemory?.source,
-        memoryRootDir: options.autoMemory?.rootDir,
       });
     }
 
@@ -377,7 +369,6 @@ export function createSession(options: CreateSessionOptions): Session {
     const instance = await getAgent();
     const previousMessages = [...instance.getState().messages];
     const result = await operation(instance);
-    await recordAutoMemory(previousMessages, result.state.messages, result);
     await sync(result.state, {collectUsage: true, previousMessages});
     return result;
   }
@@ -411,7 +402,6 @@ export function createSession(options: CreateSessionOptions): Session {
       throw new Error('Stream finished without an AgentResult.');
     }
 
-    await recordAutoMemory(previousMessages, result.state.messages, result);
     await sync(result.state, {collectUsage: true, previousMessages});
     return result;
   }
@@ -419,27 +409,6 @@ export function createSession(options: CreateSessionOptions): Session {
   async function applySessionContext(context: import('@core/agent').AgentPreparationContext): Promise<void> {
     const next = await loadBaseInstructionContext();
     applyPreparedInstructionContext(context, next);
-  }
-
-  async function recordAutoMemory(
-    previousMessages: readonly BaseMessage[],
-    nextMessages: readonly BaseMessage[],
-    result: AgentResult,
-  ): Promise<void> {
-    if (!options.autoMemory || !shouldRecordAutoMemoryTurn(result)) {
-      return;
-    }
-
-    try {
-      await options.autoMemory.recordTurn({
-        previousMessages,
-        nextMessages,
-        sessionId,
-      });
-    } catch (error) {
-      // Auto memory is best-effort and should not break the turn lifecycle.
-      console.warn('[session] Auto-memory recording failed:', error instanceof Error ? error.message : String(error));
-    }
   }
 
   async function fork(optionsOverride: {id?: string; sessionId?: string; store?: SessionStore} = {}) {

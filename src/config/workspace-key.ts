@@ -5,7 +5,7 @@ import path from 'node:path';
  * Generate a deterministic workspace key from a project root path.
  * Format: `{sanitized-basename}-{sha1-first-12-chars}`
  *
- * Used by: auto-memory, project-scoped user config (AGENTS.md / codara.md).
+ * Used by: project-scoped user config (AGENTS.md / codara.md).
  */
 export function createWorkspaceKey(projectRoot: string): string {
   const base = sanitizeSlug(path.basename(path.resolve(projectRoot))) || 'workspace';

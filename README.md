@@ -44,7 +44,7 @@ src/
 ├── durability/        持久化（Session · Checkpoint）
 ├── observability/     观测（Runtime Events · Lifecycle Hooks）
 ├── integration/       集成适配（Tool · MCP · Channel · Provider）
-├── context/           上下文来源（Instructions · Prompts · Memory · Skills）
+├── context/           上下文来源（Instructions · Prompts · Skills）
 ├── config/            配置管理
 ├── codara/            应用层（Runtime 装配 + API 门面）
 ├── gateway/           消息网关（IM 渠道统一接入）

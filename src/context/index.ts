@@ -15,23 +15,6 @@ export {
   type ConditionalRule,
 } from '@context/instructions/rules';
 
-// ── Memory ───────────────────────────────────────────────────────────
-export {
-  createAutoMemoryRuntime,
-  resolveAutoMemoryRoot,
-  shouldRecordAutoMemoryTurn,
-  type AutoMemoryRuntime,
-  type AutoMemoryRuntimeOptions,
-  type AutoMemorySource,
-  type AutoMemoryTurnInput,
-  type MemoryType,
-} from '@context/memory/auto-memory';
-export {
-  evictMemoryFiles,
-  DEFAULT_EVICTION_POLICY,
-  type EvictionPolicy,
-} from '@context/memory/eviction';
-
 // ── Prompts ──────────────────────────────────────────────────────────
 export {
   createCodaraPromptSource,

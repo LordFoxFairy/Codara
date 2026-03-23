@@ -23,19 +23,12 @@ import {HookRegistryImpl, HookPipeline, createHookExecutor} from '@observability
 import type {HookSource, HookRegistry, SessionLifecycleHooks, AgentLifecycleHooks} from '@observability/hook';
 import {loadMcpConfig, createMcpManager, createMcpLangChainTools, type McpManager} from '@integration/mcp';
 import type {ChannelRegistry} from '@integration/channel';
-import {
-  createCodaraMiddlewares,
-  createRuntimeDefaultMiddlewares,
-  resolveRuntimeLoggingOptions,
-} from './assembly/middleware';
+import {createCodaraMiddlewares, createRuntimeDefaultMiddlewares, resolveRuntimeLoggingOptions,} from './assembly/middleware';
 import {getSubagentRunDetails} from './assembly/subagent-run-details';
 import {getSubagentRunSummaries} from './assembly/subagent-runs';
-import {
-  createCodaraModelCatalog,
-  DEFAULT_CODARA_MODEL_ALIAS,
-} from './assembly/runtime';
+import {createCodaraModelCatalog, DEFAULT_CODARA_MODEL_ALIAS,} from './assembly/runtime';
 import {createCodaraTools} from './assembly/tools';
-import {resolveCodaraAutoMemory, resolveCodaraSkills} from './assembly/context';
+import {resolveCodaraSkills} from './assembly/context';
 import {createCodaraReviewControl} from './review-control';
 import {createCodaraInteractionStream} from './interaction-stream';
 import type {
@@ -44,7 +37,7 @@ import type {
 
 // Re-export all types from types.ts for backward compatibility
 export type {
-  Codara, CodaraOptions, CodaraRuntimeOptions, CodaraAutoMemoryOptions,
+  Codara, CodaraOptions, CodaraRuntimeOptions,
   CodaraSkillOptions, CodaraMiddlewareOptions, CodaraReviewOptions,
   CreateCodaraModelCatalogOptions, CreateCodaraChatModelOptions,
   CodaraPromptStreamRequest, CodaraContinuationStreamRequest,
@@ -85,13 +78,10 @@ export async function createCodaraRuntime(options: CodaraRuntimeOptions = {}): P
   });
   const skills = resolveCodaraSkills(options);
   const skillsSource = skills ? createCodaraSkillsSource(skills) : undefined;
-  const autoMemory = resolveCodaraAutoMemory(options);
   await buildBaseSystemMessage({
     promptSource,
     guidelinesSource,
     skillsSource,
-    autoMemorySource: autoMemory?.source,
-    memoryRootDir: autoMemory?.rootDir,
   });
   const taskStore = options.taskStore ?? createTaskFileStore({
     rootDir: path.join(runtimeStatePath, 'tasks'),
@@ -156,8 +146,6 @@ export async function createCodaraRuntime(options: CodaraRuntimeOptions = {}): P
     promptSource,
     guidelinesSource,
     skillsSource,
-    autoMemorySource: autoMemory?.source,
-    memoryRootDir: autoMemory?.rootDir,
     hookPipeline,
     channelRegistry: options.channelRegistry,
   });
@@ -166,8 +154,6 @@ export async function createCodaraRuntime(options: CodaraRuntimeOptions = {}): P
   const runtime = assembleCodara({
     ...options,
     tools: runtimeTools, middleware: runtimeMiddlewares, review: false,
-    autoMemory: options.autoMemory === false ? false
-      : (typeof options.autoMemory === 'object' && options.autoMemory !== null ? options.autoMemory : {}),
     summary: options.summary === false ? false : (options.summary ?? {}),
     ...(logging === false ? {logging: false} : {logging}),
     ...(catalog ? {catalog} : {}),
@@ -223,7 +209,6 @@ export function assembleCodara(
 ): Codara {
   const skills = resolveCodaraSkills(options);
   const skillsSource = skills ? createCodaraSkillsSource(skills) : undefined;
-  const autoMemory = resolveCodaraAutoMemory(options);
   const alias = normalizeAlias(options.alias);
   const guidelinesSource = preloadedSources?.guidelinesSource ?? createCodaraGuidelinesSource({
     cwd: options.cwd, projectRoot: options.projectRoot, userHome: options.userHome,
@@ -243,7 +228,6 @@ export function assembleCodara(
     ...(!options.model ? {modelCatalog: options.catalog ?? createCodaraModelCatalog({config: options.config})} : {}),
     guidelinesSource, promptSource,
     ...(skillsSource ? {skillsSource} : {}),
-    ...(autoMemory ? {autoMemory} : {}),
     tools,
     ...(options.handleToolErrors !== undefined ? {handleToolErrors: options.handleToolErrors} : {}),
     middleware: createCodaraMiddlewares(options, preloadedSources?.channelRegistry),

@@ -36,7 +36,6 @@ import {seedProjectSkillFixtures} from '../../helpers/project-skill-fixtures';
 const createCliCaseRuntime = async (options: Parameters<typeof createCodaraRuntime>[0]) => (
   createCodaraRuntime({
     ...options,
-    autoMemory: false,
   })
 );
 
