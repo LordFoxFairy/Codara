@@ -572,6 +572,15 @@ export function useCliController(options: UseCliControllerOptions): CliControlle
       return false;
     }
 
+    // Subagent phases own their own completion detection via the polling loop.
+    // Settling here would fire on stale preamble text and mark done prematurely.
+    if (
+      runStateRef.current.phase === 'subagent_wait'
+      || runStateRef.current.phase === 'subagent_completion'
+    ) {
+      return false;
+    }
+
     if (reviewRef.current) {
       return false;
     }
