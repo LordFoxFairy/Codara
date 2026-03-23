@@ -9,10 +9,6 @@ import {
   type BuildBaseSystemMessageOptions,
 } from '@context/session-bundle/base-system-message';
 import {createPathInstructionsMiddleware} from '@core/middleware/path-instructions';
-import {
-  createAutoMemoryRuntime,
-  type AutoMemoryRuntime,
-} from '@context/memory/auto-memory';
 import {resolveWorkspaceRoot} from '@config/workspace';
 import type {GuidelinesSource} from '@context/instructions/guidelines';
 import type {PromptSource} from '@context/prompts/prompt-source';
@@ -53,14 +49,11 @@ export function createInstructionContextPreparer(sources: {
   promptSource?: PromptSource;
   guidelinesSource?: GuidelinesSource;
   skillsSource?: BuildBaseSystemMessageOptions['skillsSource'];
-  autoMemorySource?: BuildBaseSystemMessageOptions['autoMemorySource'];
-  memoryRootDir?: BuildBaseSystemMessageOptions['memoryRootDir'];
 }): AgentContextPreparer | undefined {
   if (
     !sources.promptSource
     && !sources.guidelinesSource
     && !sources.skillsSource
-    && !sources.autoMemorySource
   ) {
     return undefined;
   }
@@ -70,8 +63,6 @@ export function createInstructionContextPreparer(sources: {
       promptSource: sources.promptSource,
       guidelinesSource: sources.guidelinesSource,
       skillsSource: sources.skillsSource,
-      autoMemorySource: sources.autoMemorySource,
-      memoryRootDir: sources.memoryRootDir,
     });
     mergePreparedInstructionContext(context, next);
   };
@@ -87,15 +78,11 @@ export function createInstructionContextRuntime(sources: {
   promptSource?: PromptSource;
   guidelinesSource?: GuidelinesSource;
   skillsSource?: BuildBaseSystemMessageOptions['skillsSource'];
-  autoMemorySource?: BuildBaseSystemMessageOptions['autoMemorySource'];
-  memoryRootDir?: BuildBaseSystemMessageOptions['memoryRootDir'];
 }): InstructionContextRuntime {
   const loadBaseSystemMessage = createBaseSystemMessageLoader({
     promptSource: sources.promptSource,
     guidelinesSource: sources.guidelinesSource,
     skillsSource: sources.skillsSource,
-    autoMemorySource: sources.autoMemorySource,
-    memoryRootDir: sources.memoryRootDir,
   });
 
   const middlewares: BaseMiddleware[] = [];
@@ -111,21 +98,4 @@ export function createInstructionContextRuntime(sources: {
     prepareContext: createInstructionContextPreparer(sources),
     ...(middlewares.length > 0 ? {middlewares} : {}),
   };
-}
-
-export function resolveCodaraAutoMemory(options: CodaraOptions): AutoMemoryRuntime | undefined {
-  if (options.autoMemory === false) {
-    return undefined;
-  }
-  const memoryOptions =
-    typeof options.autoMemory === 'object' && options.autoMemory !== null
-      ? options.autoMemory
-      : {};
-  return createAutoMemoryRuntime({
-    cwd: memoryOptions.cwd ?? options.cwd,
-    projectRoot: memoryOptions.projectRoot ?? options.projectRoot,
-    userHome: memoryOptions.userHome ?? options.userHome,
-    autoGlobal: memoryOptions.autoGlobal,
-    rootDir: memoryOptions.rootDir,
-  });
 }

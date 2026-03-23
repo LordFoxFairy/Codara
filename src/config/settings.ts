@@ -7,9 +7,6 @@ export interface CodaraSettingsRecord {
   plugins?: {
     installGlobal?: boolean;
   };
-  memory?: {
-    autoGlobal?: boolean;
-  };
 }
 
 export interface CodaraSettingsEnvironment extends WorkspaceRootOptions {
@@ -38,7 +35,6 @@ export function readCodaraSettings(filePath: string): CodaraSettingsRecord {
 
     return {
       plugins: readPluginSettings(parsed.plugins),
-      memory: readMemorySettings(parsed.memory),
     };
   } catch {
     return {};
@@ -75,17 +71,6 @@ export function resolvePluginInstallGlobal(environment: CodaraSettingsEnvironmen
   return true;
 }
 
-export function resolveAutoMemoryGlobal(environment: CodaraSettingsEnvironment): boolean {
-  const settings = loadScopedCodaraSettings(environment);
-  if (typeof settings.project.memory?.autoGlobal === 'boolean') {
-    return settings.project.memory.autoGlobal;
-  }
-  if (typeof settings.user.memory?.autoGlobal === 'boolean') {
-    return settings.user.memory.autoGlobal;
-  }
-  return true;
-}
-
 function readPluginSettings(value: unknown): CodaraSettingsRecord['plugins'] {
   if (!isRecord(value)) {
     return undefined;
@@ -93,16 +78,6 @@ function readPluginSettings(value: unknown): CodaraSettingsRecord['plugins'] {
 
   return {
     ...(typeof value.installGlobal === 'boolean' ? {installGlobal: value.installGlobal} : {}),
-  };
-}
-
-function readMemorySettings(value: unknown): CodaraSettingsRecord['memory'] {
-  if (!isRecord(value)) {
-    return undefined;
-  }
-
-  return {
-    ...(typeof value.autoGlobal === 'boolean' ? {autoGlobal: value.autoGlobal} : {}),
   };
 }
 

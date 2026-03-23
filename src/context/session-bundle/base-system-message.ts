@@ -1,7 +1,6 @@
 import type {BaseMessage} from '@langchain/core/messages';
 import type {GuidelinesSource} from '@context/instructions/guidelines';
 import type {PromptSource} from '@context/prompts/prompt-source';
-import type {AutoMemorySource} from '@context/memory/auto-memory';
 import {
   type SkillsSource,
 } from '@capability/skill';
@@ -35,15 +34,12 @@ export interface BuildBaseSystemMessageOptions {
   promptSource?: PromptSource;
   guidelinesSource?: GuidelinesSource;
   skillsSource?: SkillsSource;
-  autoMemorySource?: AutoMemorySource;
-  memoryRootDir?: string;
 }
 
 export async function buildBaseSystemMessage(
   promptSourceOrOptions?: PromptSource | BuildBaseSystemMessageOptions,
   guidelinesSource?: GuidelinesSource,
   skillsSource?: SkillsSource,
-  autoMemorySource?: AutoMemorySource,
 ): Promise<BaseSystemMessageBundle> {
   // Support both old positional args and new options object
   let opts: BuildBaseSystemMessageOptions;
@@ -54,7 +50,6 @@ export async function buildBaseSystemMessage(
       promptSource: promptSourceOrOptions as PromptSource | undefined,
       guidelinesSource,
       skillsSource,
-      autoMemorySource,
     };
   }
 
@@ -62,13 +57,10 @@ export async function buildBaseSystemMessage(
   const guidelinesMessage = await opts.guidelinesSource?.getContent?.();
   const skillsRuntime = await opts.skillsSource?.getRuntime();
   const skillsBundle = skillsRuntime ? createSkillsRuntimeBundle(skillsRuntime) : undefined;
-  const autoMemoryContent = await opts.autoMemorySource?.getContent?.();
-  const memorySection = createAutoMemorySystemMessage(autoMemoryContent, opts.memoryRootDir);
   const systemMessage = [
     promptMessage,
     guidelinesMessage,
     skillsBundle?.systemMessage,
-    memorySection,
   ].filter((value): value is string => Boolean(value));
   const runtimeShared = {
     ...(skillsBundle?.runtimeShared ?? {}),
@@ -161,48 +153,3 @@ export function mergePreparedInstructionContext(
   target.messages = target.state.messages;
 }
 
-function createAutoMemorySystemMessage(content: string | undefined, memoryRootDir: string | undefined): string | undefined {
-  if (!memoryRootDir) {
-    return content;
-  }
-
-  const lines = [
-    '# auto memory',
-    '',
-    `You have a persistent, file-based memory system at \`${memoryRootDir}/\`.`,
-    'This directory already exists — write to it directly with the Write tool (do not run mkdir or check for its existence).',
-    '',
-    '## Types of memory',
-    '',
-    '- **user**: User role, preferences, knowledge level',
-    '- **feedback**: Corrections or guidance from the user',
-    '- **project**: Ongoing work, decisions, deadlines',
-    '- **reference**: Pointers to external resources (URLs, project trackers)',
-    '',
-    '## How to save memories',
-    '',
-    'Write a topic file with YAML frontmatter, then update `MEMORY.md` index:',
-    '',
-    '```markdown',
-    '---',
-    'name: memory-name',
-    'description: one-line description',
-    'type: user | feedback | project | reference',
-    '---',
-    'Memory content...',
-    '```',
-    '',
-    '## When to save',
-    '- User says "remember" or asks you to note something',
-    '- User corrects your behavior → save as **feedback**',
-    '- User shares role/preference → save as **user**',
-    '- You learn project context → save as **project**',
-    '- External resource mentioned → save as **reference**',
-    '',
-    '## Current memory',
-    '',
-    content ?? 'No memories recorded yet.',
-  ];
-
-  return lines.join('\n');
-}

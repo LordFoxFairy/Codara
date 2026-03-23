@@ -1,6 +1,5 @@
 export type {
   Codara,
-  CodaraAutoMemoryOptions,
   CodaraContinuationStreamRequest,
   CodaraReviewOptions,
   CodaraRuntimeOptions,

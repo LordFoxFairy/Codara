@@ -17,7 +17,6 @@ import {AGENT_TOOL_NAME} from '@/capability/subagent/tool';
 const createRuntimeForTest = (options: Parameters<typeof createCodaraRuntime>[0]) => (
   createCodaraRuntime({
     ...options,
-    autoMemory: false,
   })
 );
 

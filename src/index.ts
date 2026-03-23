@@ -7,7 +7,6 @@ export {
   openCodaraSession,
   openLatestCodaraSession,
   type Codara,
-  type CodaraAutoMemoryOptions,
   type CodaraContinuationStreamRequest,
   type CodaraReviewOptions,
   type CodaraRuntimeOptions,

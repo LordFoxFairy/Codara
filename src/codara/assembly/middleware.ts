@@ -34,7 +34,6 @@ import {createToolHooksBridge} from '@observability/hook';
 import type {GuidelinesSource} from '@context/instructions/guidelines';
 import type {PromptSource} from '@context/prompts/prompt-source';
 import type {SkillsSource} from '@capability/skill';
-import type {AutoMemorySource} from '@context/memory/auto-memory';
 import {resolveWorkspaceRoot} from '@config/workspace';
 import type {ChannelRegistry} from '@integration/channel';
 import {createChannelReviewOptions} from '@integration/channel';
@@ -106,8 +105,6 @@ export function createRuntimeDefaultMiddlewares(input: {
   promptSource: PromptSource;
   guidelinesSource: GuidelinesSource;
   skillsSource?: SkillsSource;
-  autoMemorySource?: AutoMemorySource;
-  memoryRootDir?: string;
   hookPipeline?: HookPipeline;
   channelRegistry?: ChannelRegistry;
 }): BaseMiddleware[] {
@@ -185,15 +182,11 @@ function createRuntimeSubagentMiddleware(input: {
   promptSource: PromptSource;
   guidelinesSource: GuidelinesSource;
   skillsSource?: SkillsSource;
-  autoMemorySource?: AutoMemorySource;
-  memoryRootDir?: string;
   hookPipeline?: HookPipeline;
 }): BaseMiddleware {
   const childInstructionContext = createInstructionContextRuntime({
     promptSource: input.promptSource,
     guidelinesSource: input.guidelinesSource,
-    autoMemorySource: input.autoMemorySource,
-    memoryRootDir: input.memoryRootDir,
   });
 
   return createSubagentMiddleware({
@@ -235,8 +228,6 @@ function normalizeCallerMiddlewares(input: {
   promptSource: PromptSource;
   guidelinesSource: GuidelinesSource;
   skillsSource?: SkillsSource;
-  autoMemorySource?: AutoMemorySource;
-  memoryRootDir?: string;
   hookPipeline?: HookPipeline;
 }): BaseMiddleware[] {
   const runtimeOwned = createRuntimeSubagentMiddleware(input);
