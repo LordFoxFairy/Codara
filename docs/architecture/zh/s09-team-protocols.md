@@ -1,0 +1,133 @@
+# s09: Team Protocols
+
+`s00 > s01 > s02 > s03 > s04 > s05 > s06 > s07 > s08 > [ s09 ] s10`
+
+> *"Request-Response FSM — pending → approved/rejected"*
+>
+> **Harness 层**: 协议 — 模型之间的结构化握手。
+
+## 问题
+
+s08 中队友能干活能通信，但缺少结构化协调：
+
+**关机**：直接杀线程会留下写了一半的文件和过期的 config.json。需要握手 — 领导请求，队友批准（收尾退出）或拒绝（继续干）。
+
+**计划审批**：领导说"重构认证模块"，队友立刻开干。高风险变更应该先过审。
+
+两者结构一样：一方发带唯一 ID 的请求，另一方引用同一 ID 响应。
+
+## 解决方案
+
+```
+Shutdown Protocol            Plan Approval Protocol
+==================           ======================
+
+Lead             Teammate    Teammate           Lead
+  |                 |           |                 |
+  |--shutdown_req-->|           |--plan_req------>|
+  | {req_id:"abc"}  |           | {req_id:"xyz"}  |
+  |                 |           |                 |
+  |<--shutdown_resp-|           |<--plan_resp-----|
+  | {req_id:"abc",  |           | {req_id:"xyz",  |
+  |  approve:true}  |           |  approve:true}  |
+
+Shared FSM:
+  [pending] --approve--> [approved]
+  [pending] --reject---> [rejected]
+
+Trackers:
+  shutdownRequests = {req_id: {target, status}}
+  planRequests     = {req_id: {from, plan, status}}
+```
+
+## 工作原理
+
+### 1. 领导生成 request_id，通过收件箱发起关机请求
+
+```typescript
+const shutdownRequests: Record<string, { target: string; status: string }> = {};
+
+function handleShutdownRequest(teammate: string): string {
+  const reqId = crypto.randomUUID().slice(0, 8);
+  shutdownRequests[reqId] = { target: teammate, status: "pending" };
+
+  BUS.send("lead", teammate, "Please shut down gracefully.", "shutdown_request", {
+    request_id: reqId,
+  });
+
+  return `Shutdown request ${reqId} sent (status: pending)`;
+}
+```
+
+### 2. 队友收到请求后，用 approve/reject 响应
+
+```typescript
+// 队友的工具处理
+if (toolName === "shutdown_response") {
+  const { request_id, approve, reason } = args;
+
+  BUS.send(name, "lead", reason || "", "shutdown_response", {
+    request_id,
+    approve,
+  });
+
+  if (approve) {
+    setStatus(name, "shutdown");
+    return; // 退出循环
+  }
+}
+```
+
+### 3. 计划审批遵循完全相同的模式
+
+队友提交计划（生成 request_id），领导审查（引用同一个 request_id）：
+
+```typescript
+const planRequests: Record<string, { from: string; plan: string; status: string }> = {};
+
+// 队友提交计划
+function submitPlan(from: string, plan: string): string {
+  const reqId = crypto.randomUUID().slice(0, 8);
+  planRequests[reqId] = { from, plan, status: "pending" };
+
+  BUS.send(from, "lead", plan, "plan_request", { request_id: reqId });
+
+  return `Plan submitted (request_id: ${reqId}). Waiting for approval.`;
+}
+
+// 领导审批
+function handlePlanReview(requestId: string, approve: boolean, feedback = ""): string {
+  const req = planRequests[requestId];
+  req.status = approve ? "approved" : "rejected";
+
+  BUS.send("lead", req.from, feedback, "plan_approval_response", {
+    request_id: requestId,
+    approve,
+  });
+
+  return `Plan ${approve ? "approved" : "rejected"}`;
+}
+```
+
+**一个 FSM，两种用途。** 同样的 `pending → approved | rejected` 状态机可以套用到任何请求-响应协议上。
+
+## 变更内容
+
+| 组件           | 之前 (s08)       | 之后 (s09)                           |
+|----------------|------------------|--------------------------------------|
+| Tools          | 14               | 18 (+shutdown_req/resp +plan)        |
+| 关机           | 仅自然退出       | 请求-响应握手                        |
+| 计划门控       | 无               | 提交/审查与审批                      |
+| 关联           | 无               | 每个请求一个 request_id              |
+| FSM            | 无               | pending -> approved/rejected         |
+
+## 关键洞察
+
+- **request_id 是协议的核心** — 关联请求和响应，防止混淆
+- **FSM 是通用模式** — 任何需要确认的操作都可以用这个模式
+- **优雅关机 vs 强制关机** — 握手保证状态一致性
+- **计划门控是安全边界** — 高风险操作必须经过审批
+
+---
+
+**队友之间要有规矩。一个 FSM 驱动所有协商。**

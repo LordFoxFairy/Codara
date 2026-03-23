@@ -38,6 +38,7 @@ tmp/
 
 # Docs
 docs/
+!docs/architecture/
 
 /tasks/
 
