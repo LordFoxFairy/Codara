@@ -374,6 +374,47 @@ describe('UI alignment with Claude Code', () => {
   });
 
   describe('Active transcript running task grouping', () => {
+    it('does not render assistant narration while a running subagent block owns the foreground', () => {
+      const items: TranscriptItem[] = [
+        {
+          id: 'active-subagent-run:run-1',
+          role: 'agent',
+          content: '⚙ Explore(Analyze README and package metadata)\nRunning (35s · 17 tool activities)',
+          toolMeta: {
+            toolName: 'Agent',
+            displayName: 'Explore',
+            icon: '⚙',
+            args: 'Analyze README and package metadata',
+            status: 'running',
+            elapsed: '35s',
+            summaryLine: 'Running (35s · 17 tool activities)',
+          },
+        },
+        {
+          id: 'assistant-child-report',
+          role: 'assistant',
+          content: 'src/cli 目录架构分析报告\n\n1. 目录结构\n- app/\n- components/',
+        },
+      ];
+      const taskSummaries: ActiveSubagentRun[] = [
+        {
+          id: 'run-1',
+          name: 'Explore: Analyze README and package metadata',
+          status: 'running',
+          startedAt: Date.parse('2026-03-16T00:00:00Z'),
+          elapsed: 61000,
+          toolUseCount: 17,
+          totalTokens: 32345,
+        },
+      ];
+
+      const {lastFrame} = render(<ActiveTranscript items={items} activeSubagentRuns={taskSummaries} />);
+
+      const frame = lastFrame()!;
+      expect(frame).toContain('Explore(Analyze README and package metadata)');
+      expect(frame).not.toContain('src/cli 目录架构分析报告');
+    });
+
     it('should group parallel running tasks into a single transcript block', () => {
       const items: TranscriptItem[] = [
         {
@@ -799,7 +840,7 @@ describe('UI alignment with Claude Code', () => {
       expect(frame).not.toContain('⚙ Explore(Analyze architecture) (38s)');
     });
 
-    it('should show nested child tool history for a subagent block when global detailed mode is enabled', () => {
+    it('should show only nested child tool history for a subagent block when global detailed mode is enabled', () => {
       const detailItems: TranscriptItem[] = [
         {
           id: 'child-tool-call',
@@ -848,7 +889,7 @@ describe('UI alignment with Claude Code', () => {
       const frame = lastFrame()!;
       expect(frame).toContain('⏺ Explore(Analyze architecture)');
       expect(frame).toContain('📖 Read(package.json)');
-      expect(frame).toContain('I inspected package metadata and noted the runtime entry points.');
+      expect(frame).not.toContain('I inspected package metadata and noted the runtime entry points.');
     });
 
     it('should expand solidified subagent blocks using the same global detailed mode', () => {
@@ -996,6 +1037,50 @@ describe('UI alignment with Claude Code', () => {
       expect(replyIndex).toBeGreaterThan(-1);
       expect(cliRunIndex).toBeLessThan(replyIndex);
       expect(capabilityRunIndex).toBeLessThan(replyIndex);
+    });
+
+    it('should suppress assistant narration while any foreground subagent run is still active', () => {
+      const items: TranscriptItem[] = [
+        {
+          id: 'turn-prompt',
+          role: 'user',
+          content: '请并行分析两个目录，然后汇总。',
+        },
+        {
+          id: 'run-cli',
+          role: 'agent',
+          content: '⚙ Explore(分析 `src/cli` 目录)\nRunning (7 tool uses · 36s)',
+          toolMeta: {
+            toolName: 'Agent',
+            displayName: 'Explore',
+            icon: '⚙',
+            args: '分析 `src/cli` 目录',
+            runId: 'run-cli',
+            status: 'running',
+            summaryLine: 'Running (7 tool uses · 36s)',
+          },
+        },
+        {
+          id: 'leaked-child-text',
+          role: 'assistant',
+          content: 'src/cli 目录架构分析报告\n\n1. 目录结构\n\nsrc/cli/',
+        },
+      ];
+      const activeSubagentRuns: ActiveSubagentRun[] = [{
+        id: 'run-cli',
+        name: 'Explore: 分析 `src/cli` 目录',
+        status: 'running',
+        startedAt: Date.now() - 36_000,
+        elapsed: 36_000,
+        toolUseCount: 7,
+      }];
+
+      const {lastFrame} = render(<ActiveTranscript items={items} activeSubagentRuns={activeSubagentRuns} />);
+      const frame = lastFrame()!;
+
+      expect(frame).toContain('请并行分析两个目录，然后汇总。');
+      expect(frame).toContain('Explore(分析 `src/cli` 目录)');
+      expect(frame).not.toContain('src/cli 目录架构分析报告');
     });
   });
 });

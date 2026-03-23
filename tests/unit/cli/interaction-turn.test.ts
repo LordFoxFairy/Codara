@@ -175,6 +175,26 @@ describe('CLI interaction turn helpers', () => {
     }));
   });
 
+  it('suppresses child-style subagent continuation text before it enters the active turn response buffer', () => {
+    const result = applyInteractionChunkToTurn({
+      id: 'turn-subagent-completion',
+      prompt: 'delegate',
+      response: '',
+      responseRole: 'assistant',
+      kind: 'prompt',
+    }, new AIMessageChunk({
+      content: [{type: 'text', text: 'src/cli 目录架构分析报告\n\n1. 目录结构\n- app/\n- components/'}],
+    }), {
+      shouldSuppressText: (text) => text.includes('目录架构分析报告'),
+    });
+
+    expect(result.sawText).toBe(false);
+    expect(result.turn).toEqual(expect.objectContaining({
+      response: '',
+      pendingResponse: undefined,
+    }));
+  });
+
   it('appends resume text into an existing or fallback turn', () => {
     expect(appendInteractionText(undefined, 'hello', {
       id: 'fallback',

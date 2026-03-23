@@ -8,7 +8,9 @@ import {readSubagentRunLaunchResult} from '@shared/subagent-run-launch';
 import {readSharedTaskCoordinationArtifact} from '@shared/task-coordination-result';
 import {TOOL_NAMES, formatToolDisplayName, formatToolHeaderArgs} from '@shared/tool-display';
 import {formatSubagentDisplayName, normalizeSubagentType} from '@capability/skill';
-import type {CliActiveTurn, CliNotice} from '../app/view-state';
+import type {SubagentRunQuerySummary} from '@codara/types';
+import {isSubagentInternalAssistantText} from '@capability/subagent/completion';
+import type {CliActiveTurn, CliNotice, CliRunState} from '../app/view-state';
 import {formatTokenCount} from '../utils/format';
 import {computeEditDiff, type DiffData} from './diff-compute';
 
@@ -56,6 +58,7 @@ export interface BuildTranscriptItemsInput {
   nowTimestamp?: string;
   limit?: number;
   preserveVisibleAssistantTexts?: ReadonlySet<string>;
+  subagentRuns?: readonly SubagentRunQuerySummary[];
 }
 
 export interface HasTranscriptContentInput {
@@ -135,6 +138,7 @@ export function buildTranscriptItems(input: BuildTranscriptItemsInput): Transcri
       toolLookup,
       preferRuntimeSteps,
       input.preserveVisibleAssistantTexts,
+      input.subagentRuns,
     )),
     ...(input.activeTurn
       ? [
@@ -168,12 +172,13 @@ export function buildSolidifiedItemsFromRange(
   endIndex: number,
   toolLookup: Map<string, ToolCall>,
   preserveVisibleAssistantTexts?: ReadonlySet<string>,
+  subagentRuns?: readonly SubagentRunQuerySummary[],
 ): TranscriptItem[] {
   const items: TranscriptItem[] = [];
   for (let i = startIndex; i < endIndex; i++) {
     const message = coreMessages[i];
     if (!message) continue;
-    items.push(...buildCoreMessageItems(message, i, coreMessages, toolLookup, false, preserveVisibleAssistantTexts));
+    items.push(...buildCoreMessageItems(message, i, coreMessages, toolLookup, false, preserveVisibleAssistantTexts, subagentRuns));
   }
   return items.filter((item) => item.content);
 }
@@ -185,9 +190,33 @@ export function buildActiveItems(input: {
   activeTurn?: CliActiveTurn;
   runtimeEvents?: readonly CodaraRuntimeEvent[];
   nowTimestamp?: string;
+  runState?: CliRunState;
+  subagentRuns?: readonly SubagentRunQuerySummary[];
 }): TranscriptItem[] {
   const visibleRuntimeEvents = input.runtimeEvents ?? [];
   const preferRuntimeSteps = visibleRuntimeEvents.length > 0;
+  const hasActiveSubagentRuns = (input.subagentRuns ?? []).some((run) => run.status === 'running' || run.status === 'paused');
+  const hasLiveSubagentRuntime = visibleRuntimeEvents.some((event) => (
+    event.kind === 'agent'
+    && isConcreteSubagentRuntimeEvent(event)
+    && (
+      (event.phase === 'start' && event.status === 'running')
+      || (event.phase === 'update' && (event.status === 'running' || event.status === 'paused'))
+    )
+  ));
+  const hasAnySubagentRuntime = visibleRuntimeEvents.some((event) => (
+    event.kind === 'agent'
+    && isConcreteSubagentRuntimeEvent(event)
+  ));
+  const suppressAssistantForSubagentTurn = Boolean(
+    hasActiveSubagentRuns
+    || (
+      input.runState?.status === 'running'
+      && (input.runState.phase === 'subagent_wait'
+        || input.runState.phase === 'subagent_completion'
+        || hasAnySubagentRuntime)
+    )
+  );
   const suppressInternalInteractionResponse = shouldSuppressActiveTurnInteractionPreamble(
     input.activeTurn?.responseRole,
     visibleRuntimeEvents,
@@ -206,7 +235,7 @@ export function buildActiveItems(input: {
     input.activeTurn?.pendingAgentLaunch,
     input.activeTurn?.suppressAgentLaunchResponse,
   );
-  const thinkingItem = input.activeTurn?.thinking
+  const thinkingItem = input.activeTurn?.thinking && !hasLiveSubagentRuntime && !hasActiveSubagentRuns && !suppressAssistantForSubagentTurn
     ? [{
         id: `${input.activeTurn.id}-thinking`,
         role: 'system' as const,
@@ -225,6 +254,8 @@ export function buildActiveItems(input: {
   }
 
   const preRuntimeAssistantItems: TranscriptItem[] = input.activeTurn?.responseBeforeRuntime
+    && !hasLiveSubagentRuntime
+    && !suppressAssistantForSubagentTurn
     && !suppressPreRuntimeAssistantResponse
     && !suppressInternalInteractionResponse
     && !input.activeTurn?.suppressInteractionResponse
@@ -238,7 +269,7 @@ export function buildActiveItems(input: {
     ? [{
         id: `${input.activeTurn.id}-response`,
         role: input.activeTurn.responseRole,
-        content: suppressActiveTurnResponse || suppressInternalInteractionResponse || input.activeTurn.suppressInteractionResponse
+        content: hasLiveSubagentRuntime || suppressAssistantForSubagentTurn || suppressActiveTurnResponse || suppressInternalInteractionResponse || input.activeTurn.suppressInteractionResponse
           ? ''
           : input.activeTurn.response,
       }]
@@ -722,12 +753,13 @@ function buildCoreMessageItems(
   toolLookup: Map<string, ToolCall>,
   preferRuntimeSteps: boolean,
   preserveVisibleAssistantTexts?: ReadonlySet<string>,
+  subagentRuns?: readonly SubagentRunQuerySummary[],
 ): TranscriptItem[] {
   const messageId = String(message.id ?? `${message.type}-${index}`);
 
   if (AIMessage.isInstance(message)) {
     const previousMessage = index > 0 ? allMessages[index - 1] : undefined;
-    return buildAssistantItems(message, messageId, previousMessage, toolLookup, preserveVisibleAssistantTexts);
+    return buildAssistantItems(message, messageId, previousMessage, toolLookup, preserveVisibleAssistantTexts, subagentRuns);
   }
 
   if (ToolMessage.isInstance(message)) {
@@ -751,10 +783,14 @@ function buildAssistantItems(
   previousMessage: BaseMessage | undefined,
   toolLookup: Map<string, ToolCall>,
   preserveVisibleAssistantTexts?: ReadonlySet<string>,
+  subagentRuns?: readonly SubagentRunQuerySummary[],
 ): TranscriptItem[] {
   const items: TranscriptItem[] = [];
   const text = readMessageText(message);
   if (text && containsHiddenInteractionToolCall(message)) {
+    return items;
+  }
+  if (text && isSubagentInternalAssistantText({text, runs: subagentRuns})) {
     return items;
   }
   const preserveVisibleText = text ? preserveVisibleAssistantTexts?.has(normalizeVisibleAssistantText(text)) ?? false : false;

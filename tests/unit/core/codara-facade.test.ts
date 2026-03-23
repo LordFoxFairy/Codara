@@ -163,6 +163,29 @@ class StreamingSubagentFollowThroughChildModel {
   }
 }
 
+const RAW_CHILD_REPORT = [
+  'src/cli 目录架构分析报告',
+  '',
+  '1. 目录结构',
+  'src/cli/',
+  '├── app/',
+  '└── components/',
+].join('\n');
+
+class StreamingSubagentVerboseChildModel {
+  async invoke(): Promise<AIMessage> {
+    return new AIMessage(RAW_CHILD_REPORT);
+  }
+
+  async *stream(): AsyncGenerator<AIMessageChunk> {
+    yield new AIMessageChunk({content: RAW_CHILD_REPORT});
+  }
+
+  bindTools(): this {
+    return this;
+  }
+}
+
 class StreamingSubagentRetryingParentModel {
   private completionAttempts = 0;
 
@@ -244,6 +267,54 @@ class StreamingSubagentOrchestrationRetryingParentModel {
     }
 
     return new AIMessage('UNEXPECTED_ORCHESTRATION_PARENT_RESPONSE');
+  }
+
+  async *stream(messages: BaseMessage[]): AsyncGenerator<AIMessageChunk> {
+    const message = await this.invoke(messages);
+    yield new AIMessageChunk({
+      content: message.content,
+      ...(message.tool_calls ? {tool_calls: message.tool_calls} : {}),
+    });
+  }
+
+  bindTools(): this {
+    return this;
+  }
+}
+
+class StreamingSubagentRawReplayRetryingParentModel {
+  private completionAttempts = 0;
+
+  async invoke(messages: BaseMessage[]): Promise<AIMessage> {
+    const systemText = messages
+      .filter((message) => SystemMessage.isInstance(message))
+      .map((message) => String(message.content))
+      .join('\n');
+    const transcriptText = messages.map((message) => String(message.content)).join('\n');
+
+    if (systemText.includes('Completed subagent runs from your previous response are now available.')) {
+      this.completionAttempts += 1;
+      if (this.completionAttempts === 1) {
+        return new AIMessage(RAW_CHILD_REPORT);
+      }
+      return new AIMessage('FINAL_AFTER_RAW_REPLAY_RETRY');
+    }
+
+    if (transcriptText.includes('delegate raw replay')) {
+      return new AIMessage({
+        content: '',
+        tool_calls: [{
+          id: 'call_stream_raw_replay_agent',
+          name: 'Agent',
+          args: {
+            prompt: 'Inspect repository structure',
+            subagent_type: 'Agent',
+          },
+        } as ToolCall],
+      });
+    }
+
+    return new AIMessage('UNEXPECTED_RAW_REPLAY_PARENT_RESPONSE');
   }
 
   async *stream(messages: BaseMessage[]): AsyncGenerator<AIMessageChunk> {
@@ -1205,6 +1276,52 @@ describe('Codara facade runtime', () => {
       expect(chunks).toEqual(['', 'FINAL_AFTER_ORCHESTRATION_RETRY']);
       expect(String(codara.getAgentState().messages.at(-1)?.content)).toBe('FINAL_AFTER_ORCHESTRATION_RETRY');
       expect(codara.getAgentState().messages.map((message) => String(message.content))).not.toContain('两个 subagent 都已完成！现在让我汇总它们的发现，提炼出当前架构最核心的边界：');
+    } finally {
+      await rm(root, {recursive: true, force: true});
+    }
+  });
+
+  it('should suppress raw child-style subagent replay and keep it out of parent-visible messages', async () => {
+    const root = await mkdtemp(path.join(tmpdir(), 'codara-runtime-subagent-raw-replay-retry-'));
+    const cwd = path.join(root, 'project');
+    const codaraRoot = path.join(cwd, '.codara');
+
+    await mkdir(cwd, {recursive: true});
+    await mkdir(codaraRoot, {recursive: true});
+    await writeFile(path.join(codaraRoot, 'config.json'), JSON.stringify({
+      providers: [{name: 'test', apiKey: 'x', models: ['echo']}],
+      router: {default: 'test:echo'},
+    }, null, 2));
+
+    try {
+      const codara = await createRuntimeForTest({
+        cwd,
+        model: new StreamingSubagentRawReplayRetryingParentModel() as unknown as BaseChatModel,
+        skills: false,
+        builtinTools: false,
+        middleware: [
+          createSubagentMiddleware({
+            model: new StreamingSubagentVerboseChildModel() as unknown as BaseChatModel,
+            tools: [],
+          }),
+        ],
+      });
+
+      const chunks: string[] = [];
+      for await (const chunk of codara.streamInteraction({
+        kind: 'prompt',
+        input: 'delegate raw replay',
+        config: {streamMode: 'messages'},
+      })) {
+        if (chunk instanceof AIMessageChunk) {
+          chunks.push(String(chunk.content));
+        }
+      }
+
+      expect(chunks).toEqual(['', 'FINAL_AFTER_RAW_REPLAY_RETRY']);
+      expect(String(codara.getAgentState().messages.at(-1)?.content)).toBe('FINAL_AFTER_RAW_REPLAY_RETRY');
+      expect(codara.getAgentState().messages.map((message) => String(message.content)).join('\n')).not.toContain(RAW_CHILD_REPORT);
+      expect(codara.getAgentState().messages.map((message) => String(message.content)).join('\n')).not.toContain('src/cli 目录架构分析报告');
     } finally {
       await rm(root, {recursive: true, force: true});
     }

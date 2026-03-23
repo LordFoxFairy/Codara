@@ -279,6 +279,7 @@ function resolveSubagentCompletionRetry(input: {
     launchedSubagentToolCall,
     attempt: completionContext.attempt ?? 1,
     maxAttempts: SUBAGENT_COMPLETION_MAX_ATTEMPTS,
+    runs: completionContext.runs,
   })) {
     return undefined;
   }

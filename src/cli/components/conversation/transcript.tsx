@@ -323,15 +323,16 @@ function SingleTaskExecutionBlock({
   const summaryLine = status === 'done' || status === 'error'
     ? formatSyntheticTaskSummaryLine(activeTask, item.toolMeta.summaryLine)
     : formatSingleTaskSummaryLine(item.toolMeta, activeTask);
+  const visibleDetailItems = detailItems.filter((detailItem) => detailItem.role === 'tool');
 
   return (
     <Box marginBottom={1} flexDirection="column">
       <Text bold wrap="truncate-end">{formatTaskExecutionHeader(item.toolMeta, status, activeTask, frame)}</Text>
       <Text dimColor wrap="truncate-end">{`  ⎿ ${summaryLine}`}</Text>
-      {expanded && detailItems.length > 0 ? (
+      {expanded && visibleDetailItems.length > 0 ? (
         <Box paddingLeft={4} marginTop={1}>
           <TranscriptItemsView
-            items={detailItems as import('../../transcript/model').TranscriptItem[]}
+            items={visibleDetailItems as import('../../transcript/model').TranscriptItem[]}
             activeSubagentRuns={[]}
             expandedAll
             subagentDetails={subagentDetails}
@@ -415,9 +416,22 @@ export function TranscriptItemsView({
 }): React.JSX.Element {
   const blocks: React.JSX.Element[] = [];
   const canonicalItems = dedupeCanonicalTranscriptItems(items);
+  const hasForegroundActiveSubagentRuns = activeSubagentRuns.some((run) => run.status === 'running' || run.status === 'paused');
+  const transcriptOwnsRunningSubagentBlock = canonicalItems.some((item) => (
+    item.role === 'agent'
+    && (item.toolMeta?.status === 'running' || item.toolMeta?.status === 'paused')
+  ));
+  const hideAssistantNarrationWhileSubagentsRun = hasForegroundActiveSubagentRuns || transcriptOwnsRunningSubagentBlock;
+  const visibleItems = canonicalItems.filter((item) => {
+    if (!hideAssistantNarrationWhileSubagentsRun) {
+      return true;
+    }
 
-  for (let index = 0; index < canonicalItems.length; index += 1) {
-    const item = canonicalItems[index]!;
+    return item.role !== 'assistant' && item.role !== 'system';
+  });
+
+  for (let index = 0; index < visibleItems.length; index += 1) {
+    const item = visibleItems[index]!;
     if (item.role === 'agent' && item.toolMeta) {
       const taskItem = item as import('../../transcript/model').TranscriptItem & {toolMeta: ToolResultMeta};
       const runId = resolveSubagentRunId(taskItem);

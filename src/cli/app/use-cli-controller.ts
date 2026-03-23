@@ -3,6 +3,8 @@ import {useCallback, useEffect, useMemo, useRef, useState} from 'react';
 import type {Codara, CodaraRuntimeEvent, SessionState} from '@/index';
 import {AIMessage, AIMessageChunk, type BaseMessage} from '@langchain/core/messages';
 import type {ReviewRequest} from '@core/agent';
+import type {SubagentRunQuerySummary} from '@codara/types';
+import {isSubagentInternalAssistantText} from '@capability/subagent/completion';
 import {readVisibleMessageText} from '@shared/messages';
 import {
   backspaceComposerText,
@@ -175,34 +177,49 @@ function shouldKeepPromptTurnRunningAfterAgentLaunch(input: {
   return input.nextAgentState.status === 'running';
 }
 
-function hasVisibleAssistantReply(turn: CliActiveTurn | undefined): boolean {
+function hasVisibleAssistantReply(
+  turn: CliActiveTurn | undefined,
+  subagentRuns?: readonly SubagentRunQuerySummary[],
+): boolean {
   if (!turn || turn.responseRole !== 'assistant') {
     return false;
   }
 
-  return Boolean(
-    turn.responseBeforeRuntime?.trim()
-    || turn.response.trim()
-    || turn.pendingResponse?.trim(),
-  );
+  return hasVisibleMainAssistantText(turn.responseBeforeRuntime, subagentRuns)
+    || hasVisibleMainAssistantText(turn.response, subagentRuns)
+    || hasVisibleMainAssistantText(turn.pendingResponse, subagentRuns);
 }
 
-function activeTurnOwnsVisibleTranscript(turn: CliActiveTurn | undefined): boolean {
+function activeTurnOwnsVisibleTranscript(
+  turn: CliActiveTurn | undefined,
+  subagentRuns?: readonly SubagentRunQuerySummary[],
+): boolean {
   if (!turn) {
     return false;
   }
 
-  return Boolean(
-    turn.responseBeforeRuntime?.trim()
-    || turn.response.trim()
-    || turn.pendingResponse?.trim()
-    || turn.thinking?.trim()
-  );
+  return hasVisibleAssistantReply(turn, subagentRuns) || Boolean(turn.thinking?.trim());
+}
+
+function hasVisibleMainAssistantText(
+  text: string | undefined,
+  subagentRuns?: readonly SubagentRunQuerySummary[],
+): boolean {
+  const normalized = text?.trim();
+  if (!normalized || containsAgentLaunchChatter(normalized)) {
+    return false;
+  }
+
+  return !isSubagentInternalAssistantText({
+    text: normalized,
+    runs: subagentRuns,
+  });
 }
 
 function hasVisibleAssistantReplyInMessages(
   messages: readonly BaseMessage[],
   startIndex = 0,
+  subagentRuns?: readonly SubagentRunQuerySummary[],
 ): boolean {
   for (let index = messages.length - 1; index >= startIndex; index -= 1) {
     const message = messages[index];
@@ -212,6 +229,10 @@ function hasVisibleAssistantReplyInMessages(
 
     const text = readVisibleMessageText(message);
     if (!text || containsAgentLaunchChatter(text)) {
+      continue;
+    }
+
+    if (isSubagentInternalAssistantText({text, runs: subagentRuns})) {
       continue;
     }
 
@@ -227,6 +248,7 @@ function shouldContinuePollingForPromptSettlement(input: {
   activeTurn: CliActiveTurn | undefined;
   messages: readonly BaseMessage[];
   promptStartMessageCount: number;
+  subagentRuns?: readonly SubagentRunQuerySummary[];
 }): boolean {
   if (input.runState.status !== 'running') {
     return false;
@@ -237,7 +259,7 @@ function shouldContinuePollingForPromptSettlement(input: {
   }
 
   return !hasVisibleAssistantReply(input.activeTurn)
-    && !hasVisibleAssistantReplyInMessages(input.messages, input.promptStartMessageCount);
+    && !hasVisibleAssistantReplyInMessages(input.messages, input.promptStartMessageCount, input.subagentRuns);
 }
 
 function resolveHydratedCoreMessages(input: {
@@ -247,6 +269,7 @@ function resolveHydratedCoreMessages(input: {
   review: CliReviewState | undefined;
   activeTurn: CliActiveTurn | undefined;
   promptStartMessageCount: number;
+  subagentRuns?: readonly SubagentRunQuerySummary[];
 }): readonly BaseMessage[] {
   if (input.incomingMessages.length > 0) {
     return input.incomingMessages;
@@ -261,7 +284,7 @@ function resolveHydratedCoreMessages(input: {
   }
 
   const currentTurnHasVisibleReply = hasVisibleAssistantReply(input.activeTurn)
-    || hasVisibleAssistantReplyInMessages(input.currentMessages, input.promptStartMessageCount);
+    || hasVisibleAssistantReplyInMessages(input.currentMessages, input.promptStartMessageCount, input.subagentRuns);
 
   return currentTurnHasVisibleReply ? input.currentMessages : input.incomingMessages;
 }
@@ -545,15 +568,22 @@ export function useCliController(options: UseCliControllerOptions): CliControlle
     const hasVisibleReplyInMessagesNow = hasVisibleAssistantReplyInMessages(
       messages ?? coreMessagesRef.current,
       promptStartMessageCountRef.current,
+      codara.getSubagentRunSummaries(),
     );
-    if (!hasVisibleReplyInMessagesNow) {
+    const hasVisibleReplyInActiveTurn = hasVisibleAssistantReply(
+      activeTurnRef.current,
+      codara.getSubagentRunSummaries(),
+    );
+    if (!hasVisibleReplyInMessagesNow && !hasVisibleReplyInActiveTurn) {
       return false;
     }
 
     setRunState({status: 'done'});
-    setActiveTurn(undefined);
+    if (hasVisibleReplyInMessagesNow) {
+      setActiveTurn(undefined);
+    }
     return true;
-  }, [setActiveTurn]);
+  }, [codara, setActiveTurn]);
 
   const refreshAuxiliaryState = useCallback(() => {
     const projection = readCliReviewProjection(codara);
@@ -582,6 +612,7 @@ export function useCliController(options: UseCliControllerOptions): CliControlle
       review: reviewRef.current,
       activeTurn: activeTurnRef.current,
       promptStartMessageCount: promptStartMessageCountRef.current,
+      subagentRuns: codara.getSubagentRunSummaries(),
     });
     setCoreMessages(nextMessages);
     setSessionState(codara.getState());
@@ -620,6 +651,7 @@ export function useCliController(options: UseCliControllerOptions): CliControlle
         activeTurn: activeTurnRef.current,
         messages: nextAgentState.messages,
         promptStartMessageCount: promptStartMessageCountRef.current,
+        subagentRuns: codara.getSubagentRunSummaries(),
       })) {
         return false;
       }
@@ -628,7 +660,7 @@ export function useCliController(options: UseCliControllerOptions): CliControlle
     }
 
     return false;
-  }, [refreshCoreState, settleRunningPromptTurnIfReady]);
+  }, [codara, refreshCoreState, settleRunningPromptTurnIfReady]);
 
   const runQueuedReviewResponse = useCallback(async (interaction: QueuedReviewResponseInteraction): Promise<boolean> => {
     const nextAgentState = await refreshCoreState();
@@ -785,8 +817,13 @@ export function useCliController(options: UseCliControllerOptions): CliControlle
   }, [coreMessages, settleRunningPromptTurnIfReady]);
 
   useEffect(() => {
-    const visibleReply = hasVisibleAssistantReply(activeTurn)
-      || hasVisibleAssistantReplyInMessages(coreMessages, promptStartMessageCountRef.current);
+    const visibleReplyInActiveTurn = hasVisibleAssistantReply(activeTurn, codara.getSubagentRunSummaries());
+    const visibleReplyInMessages = hasVisibleAssistantReplyInMessages(
+      coreMessages,
+      promptStartMessageCountRef.current,
+      codara.getSubagentRunSummaries(),
+    );
+    const visibleReply = visibleReplyInActiveTurn || visibleReplyInMessages;
 
     if (
       settlingFinalReplyRef.current
@@ -804,6 +841,11 @@ export function useCliController(options: UseCliControllerOptions): CliControlle
       setRunState({status: 'running', phase: 'subagent_completion'});
     }
 
+    if (runState.phase === 'subagent_completion' && visibleReply) {
+      setRunState({status: 'done'});
+      return;
+    }
+
     if (!visibleReply) {
       return;
     }
@@ -819,10 +861,11 @@ export function useCliController(options: UseCliControllerOptions): CliControlle
             break;
           }
 
-          const hasVisibleReplyInActiveTurn = hasVisibleAssistantReply(activeTurnRef.current);
+          const hasVisibleReplyInActiveTurn = hasVisibleAssistantReply(activeTurnRef.current, codara.getSubagentRunSummaries());
           const hasStableVisibleReply = hasVisibleAssistantReplyInMessages(
             nextAgentState.messages,
             promptStartMessageCountRef.current,
+            codara.getSubagentRunSummaries(),
           );
           if (hasStableVisibleReply) {
             setRunState({status: 'done'});
@@ -830,7 +873,7 @@ export function useCliController(options: UseCliControllerOptions): CliControlle
             break;
           }
 
-          if (hasVisibleReplyInActiveTurn && !hasTrackedForegroundSubagentRuns(codara)) {
+          if (hasVisibleReplyInActiveTurn) {
             setRunState({status: 'done'});
             break;
           }
@@ -870,16 +913,16 @@ export function useCliController(options: UseCliControllerOptions): CliControlle
       return;
     }
 
-    if (!activeTurnOwnsVisibleTranscript(activeTurn)) {
+    if (!activeTurnOwnsVisibleTranscript(activeTurn, codara.getSubagentRunSummaries())) {
       return;
     }
 
-    if (!hasVisibleAssistantReplyInMessages(coreMessages, promptStartMessageCountRef.current)) {
+    if (!hasVisibleAssistantReplyInMessages(coreMessages, promptStartMessageCountRef.current, codara.getSubagentRunSummaries())) {
       return;
     }
 
     setActiveTurn(undefined);
-  }, [activeTurn, coreMessages, runState.status, setActiveTurn]);
+  }, [activeTurn, codara, coreMessages, runState.status, setActiveTurn]);
 
   useEffect(() => {
     if (interactionScheduler.isRunning()) {
@@ -976,6 +1019,12 @@ export function useCliController(options: UseCliControllerOptions): CliControlle
         const result = applyInteractionChunkToTurn(current, chunk, {
           captureThinking: true,
           detectAgentLaunch: true,
+          shouldSuppressText: (text) => {
+            return containsAgentLaunchChatter(text) || isSubagentInternalAssistantText({
+              text,
+              runs: codara.getSubagentRunSummaries(),
+            });
+          },
         });
         if (result.sawText) {
           sawText = true;
@@ -998,11 +1047,11 @@ export function useCliController(options: UseCliControllerOptions): CliControlle
 
     sawText = sawText
       || hasVisibleAssistantReply(activeTurnRef.current)
-      || hasVisibleAssistantReplyInMessages(coreMessagesRef.current, promptStartMessageCount);
+      || hasVisibleAssistantReplyInMessages(coreMessagesRef.current, promptStartMessageCount, codara.getSubagentRunSummaries());
     const nextAgentState = await refreshCoreState();
     sawText = sawText
-      || hasVisibleAssistantReplyInMessages(coreMessagesRef.current, promptStartMessageCount)
-      || hasVisibleAssistantReplyInMessages(nextAgentState.messages, promptStartMessageCount);
+      || hasVisibleAssistantReplyInMessages(coreMessagesRef.current, promptStartMessageCount, codara.getSubagentRunSummaries())
+      || hasVisibleAssistantReplyInMessages(nextAgentState.messages, promptStartMessageCount, codara.getSubagentRunSummaries());
     if (nextAgentState.status === 'paused') {
       setRunState({status: 'paused'});
       return;

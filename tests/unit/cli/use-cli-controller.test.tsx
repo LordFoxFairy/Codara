@@ -969,6 +969,101 @@ describe('useCliController background refresh', () => {
     }
   });
 
+  it('settles back to done when the final main reply only exists in the active turn even if tracked subagent summaries still lag as running', async () => {
+    const codara = new FakeCodara();
+    codara.blockNextStream();
+    codara.queueStreamChunk(new AIMessageChunk({
+      tool_calls: [{name: 'Agent', id: 'call-agent'}],
+    }));
+    codara.queueStreamText('Final answer that is still only visible in the active turn.');
+    codara.setHydrateSequence([
+      {status: 'idle', messages: []},
+      {status: 'running', messages: []},
+      {status: 'running', messages: []},
+    ]);
+    const rendered = render(<BackgroundFollowupProbe codara={codara as unknown as Codara} />);
+
+    try {
+      await waitFor(() => (rendered.lastFrame() ?? '').includes('runState:running'));
+
+      codara.setSubagentRunSummaries([
+        {
+          runId: 'run-cli',
+          parentSessionId: 'session-1',
+          label: 'Delegating Explore: Analyze src/cli',
+          agentName: 'Explore',
+          status: 'running',
+          startedAt: new Date(Date.now() - 20_000).toISOString(),
+          updatedAt: new Date().toISOString(),
+        },
+        {
+          runId: 'run-capability',
+          parentSessionId: 'session-1',
+          label: 'Delegating Explore: Analyze src/capability',
+          agentName: 'Explore',
+          status: 'running',
+          startedAt: new Date(Date.now() - 18_000).toISOString(),
+          updatedAt: new Date().toISOString(),
+        },
+      ]);
+      codara.emit({
+        id: 'subagent-run:run-cli-lagging',
+        sessionId: 'session-1',
+        timestamp: new Date().toISOString(),
+        kind: 'agent',
+        phase: 'start',
+        status: 'running',
+        label: 'Delegating Explore: Analyze src/cli',
+      });
+      codara.emit({
+        id: 'subagent-run:run-capability-lagging',
+        sessionId: 'session-1',
+        timestamp: new Date().toISOString(),
+        kind: 'agent',
+        phase: 'start',
+        status: 'running',
+        label: 'Delegating Explore: Analyze src/capability',
+      });
+
+      codara.releaseBlockedStream();
+      await waitFor(() => (rendered.lastFrame() ?? '').includes('activeTurnKind:prompt'));
+
+      codara.emit({
+        id: 'task-end-run-cli-lagging',
+        sessionId: 'session-1',
+        timestamp: new Date().toISOString(),
+        kind: 'agent',
+        phase: 'end',
+        status: 'done',
+        label: 'Subagent completed',
+        parentId: 'subagent-run:run-cli-lagging',
+      });
+      codara.emit({
+        id: 'task-end-run-capability-lagging',
+        sessionId: 'session-1',
+        timestamp: new Date().toISOString(),
+        kind: 'agent',
+        phase: 'end',
+        status: 'done',
+        label: 'Subagent completed',
+        parentId: 'subagent-run:run-capability-lagging',
+      });
+
+      await waitFor(() => (rendered.lastFrame() ?? '').includes('runState:done'), {
+        onTimeout: () => {
+          throw new Error(`Timed out waiting for runState:done.\nFRAME:\n${rendered.lastFrame() ?? '(empty)'}`);
+        },
+      });
+      const frame = rendered.lastFrame() ?? '';
+      expect(frame).toContain('runState:done');
+      expect(frame).not.toContain('runState:running');
+      expect(frame).toContain('streamCalls:1');
+    } finally {
+      codara.releaseBlockedStream();
+      rendered.unmount();
+    }
+  });
+
   it('retries tracked batch resolution when terminal run summaries arrive after the end event', async () => {
     const codara = new FakeCodara();
     codara.blockNextStream();
@@ -2287,6 +2382,7 @@ class FakeCodara {
   private readonly queuedStreamChunks: AIMessageChunk[][] = [];
   private readonly subagentRunUpdateWaiters = new Set<() => void>();
   private observedSubagentLaunch = false;
+  private readonly activeSubagentRuntimeIds = new Set<string>();
   public resumeCount = 0;
   private readonly sessionState: SessionState = {
     sessionId: 'session-1',
@@ -2305,6 +2401,11 @@ class FakeCodara {
   emit(event: CodaraRuntimeEvent): void {
     if (event.kind === 'agent' && event.phase === 'start') {
       this.observedSubagentLaunch = true;
+      this.activeSubagentRuntimeIds.add(event.id);
+      this.flushSubagentRunUpdateWaiters();
+    }
+    if (event.kind === 'agent' && event.phase === 'end' && event.parentId) {
+      this.activeSubagentRuntimeIds.delete(event.parentId);
       this.flushSubagentRunUpdateWaiters();
     }
     for (const listener of this.listeners) {
@@ -2574,11 +2675,15 @@ class FakeCodara {
   }
 
   private async waitForSubagentBatchCompletion(): Promise<boolean> {
-    if (!this.observedSubagentLaunch && this.subagentRunSummaries.length === 0) {
+    if (
+      !this.observedSubagentLaunch
+      && this.subagentRunSummaries.length === 0
+      && this.activeSubagentRuntimeIds.size === 0
+    ) {
       return false;
     }
 
-    if (this.subagentRunSummaries.length === 0) {
+    if (this.subagentRunSummaries.length === 0 && this.activeSubagentRuntimeIds.size === 0) {
       await new Promise<void>((resolve) => {
         const timer = setTimeout(resolve, 500);
         this.subagentRunUpdateWaiters.add(() => {
@@ -2588,17 +2693,24 @@ class FakeCodara {
       });
     }
 
-    if (this.subagentRunSummaries.length === 0) {
+    if (this.subagentRunSummaries.length === 0 && this.activeSubagentRuntimeIds.size === 0) {
       return false;
     }
 
-    while (this.subagentRunSummaries.some((run) => run.status === 'running' || run.status === 'paused')) {
+    while (
+      this.activeSubagentRuntimeIds.size > 0
+      || (
+        this.activeSubagentRuntimeIds.size === 0
+        && !this.observedSubagentLaunch
+        && this.subagentRunSummaries.some((run) => run.status === 'running' || run.status === 'paused')
+      )
+    ) {
       await new Promise<void>((resolve) => {
         this.subagentRunUpdateWaiters.add(resolve);
       });
     }
 
-    return this.subagentRunSummaries.length > 0;
+    return this.subagentRunSummaries.length > 0 || this.observedSubagentLaunch;
   }
 
   async *resumeReviewStream(_payload?: unknown, _config?: unknown) {

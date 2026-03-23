@@ -2,7 +2,9 @@
 import {useEffect, useRef, useMemo, useState} from 'react';
 import {HumanMessage, type BaseMessage} from '@langchain/core/messages';
 import type {CodaraRuntimeEvent} from '@/index';
-import type {CliActiveTurn, CliNotice} from '../app/view-state';
+import type {SubagentRunQuerySummary} from '@codara/types';
+import {isSubagentInternalAssistantText} from '@capability/subagent/completion';
+import type {CliActiveTurn, CliNotice, CliRunState} from '../app/view-state';
 import {
   type SolidifiedItem,
   type TranscriptItem,
@@ -20,6 +22,8 @@ export interface UseSolidifiedTranscriptInput {
   notices: readonly CliNotice[];
   activeTurn?: CliActiveTurn;
   runtimeEvents?: readonly CodaraRuntimeEvent[];
+  runState?: CliRunState;
+  subagentRuns?: readonly SubagentRunQuerySummary[];
 }
 
 export interface UseSolidifiedTranscriptOutput {
@@ -30,9 +34,13 @@ export interface UseSolidifiedTranscriptOutput {
 export function filterSubagentCompletionTranscriptItems(input: {
   completedTurnKind: CliActiveTurn['kind'] | undefined;
   items: readonly TranscriptItem[];
+  subagentRuns?: readonly SubagentRunQuerySummary[];
 }): TranscriptItem[] {
   void input.completedTurnKind;
-  return [...input.items];
+  return stripInternalSubagentAssistantItems({
+    items: input.items,
+    subagentRuns: input.subagentRuns,
+  });
 }
 
 export function orderActiveTranscriptItems(input: {
@@ -62,6 +70,72 @@ export function orderActiveTranscriptItems(input: {
   ];
 }
 
+function filterTrailingAssistantItemsWhileSubagentsRun(input: {
+  trailingItems: readonly TranscriptItem[];
+  runtimeItems: readonly TranscriptItem[];
+  activeTurn?: CliActiveTurn;
+  runState?: CliRunState;
+  subagentRuns?: readonly SubagentRunQuerySummary[];
+}): TranscriptItem[] {
+  const hasActiveSubagentRuns = (input.subagentRuns ?? []).some((run) => run.status === 'running' || run.status === 'paused');
+  const runtimeOwnsActiveSubagentExecution = input.runtimeItems.some((item) => (
+    item.role === 'agent'
+    && item.toolMeta?.status === 'running'
+  ));
+  const subagentTurnStillOwnsForeground = input.runState?.status === 'running'
+    && (
+      input.runState.phase === 'subagent_wait'
+      || input.runState.phase === 'subagent_completion'
+    );
+  const hasVisibleMainReply = input.trailingItems.some((item) => (
+    item.role === 'assistant'
+    && item.content.trim().length > 0
+    && !isSubagentInternalAssistantText({
+      text: item.content,
+      runs: input.subagentRuns,
+    })
+  ));
+
+  if (subagentTurnStillOwnsForeground) {
+    return input.trailingItems.filter((item) => item.role !== 'assistant' && item.role !== 'system');
+  }
+
+  if (hasActiveSubagentRuns && !hasVisibleMainReply) {
+    return input.trailingItems.filter((item) => item.role !== 'assistant' && item.role !== 'system');
+  }
+
+  if (runtimeOwnsActiveSubagentExecution && !input.activeTurn) {
+    return input.trailingItems.filter((item) => item.role !== 'assistant' && item.role !== 'system');
+  }
+
+  if (runtimeOwnsActiveSubagentExecution && !hasVisibleMainReply) {
+    return input.trailingItems.filter((item) => item.role !== 'assistant' && item.role !== 'system');
+  }
+
+  return [...input.trailingItems];
+}
+
+function stripInternalSubagentAssistantItems(input: {
+  items: readonly TranscriptItem[];
+  subagentRuns?: readonly SubagentRunQuerySummary[];
+}): TranscriptItem[] {
+  const runs = input.subagentRuns ?? [];
+  if (runs.length === 0) {
+    return [...input.items];
+  }
+
+  return input.items.filter((item) => {
+    if (item.role !== 'assistant') {
+      return true;
+    }
+
+    return !isSubagentInternalAssistantText({
+      text: item.content,
+      runs,
+    });
+  });
+}
+
 /**
  * Manages the solidified/active transcript split.
  *
@@ -79,7 +153,7 @@ export function orderActiveTranscriptItems(input: {
  * 6. Next turn starts → go to step 1, solidify previous turn
  */
 export function useSolidifiedTranscript(input: UseSolidifiedTranscriptInput): UseSolidifiedTranscriptOutput {
-  const {coreMessages, notices, activeTurn, runtimeEvents} = input;
+  const {coreMessages, notices, activeTurn, runtimeEvents, runState, subagentRuns} = input;
   const [now, setNow] = useState(() => Date.now());
 
   // Instance-level ID counter
@@ -136,10 +210,12 @@ export function useSolidifiedTranscript(input: UseSolidifiedTranscriptInput): Us
       solidifyEndIndex,
       toolLookup,
       visibleAssistantTextsRef.current,
+      subagentRuns,
     );
     const filteredNewItems = filterSubagentCompletionTranscriptItems({
       completedTurnKind: lastCompletedTurnKind,
       items: newItems,
+      subagentRuns,
     });
     if (filteredNewItems.length > 0) {
       solidifiedItemsRef.current = [
@@ -191,7 +267,9 @@ export function useSolidifiedTranscript(input: UseSolidifiedTranscriptInput): Us
           coreMessages.length,
           toolLookup,
           visibleAssistantTextsRef.current,
+          subagentRuns,
         ),
+        subagentRuns,
       }));
     }
 
@@ -200,6 +278,8 @@ export function useSolidifiedTranscript(input: UseSolidifiedTranscriptInput): Us
       activeTurn,
       runtimeEvents,
       nowTimestamp: new Date(now).toISOString(),
+      runState,
+      subagentRuns,
     });
 
     const activeNoticeItems: TranscriptItem[] = notices
@@ -211,10 +291,19 @@ export function useSolidifiedTranscript(input: UseSolidifiedTranscriptInput): Us
       }))
       .filter((item) => item.content);
 
-    const dedupedTrailingItems = dedupeTrailingTranscriptItemsCoveredByRuntime(
-      dedupeTrailingTranscriptItemsCoveredByActiveTurn(trailingItems, activeTurn),
-      runtimeAndStreamingItems,
-    );
+    const dedupedTrailingItems = stripInternalSubagentAssistantItems({
+      items: filterTrailingAssistantItemsWhileSubagentsRun({
+        trailingItems: dedupeTrailingTranscriptItemsCoveredByRuntime(
+          dedupeTrailingTranscriptItemsCoveredByActiveTurn(trailingItems, activeTurn),
+          runtimeAndStreamingItems,
+        ),
+        runtimeItems: runtimeAndStreamingItems,
+        activeTurn,
+        runState,
+        subagentRuns,
+      }),
+      subagentRuns,
+    });
 
     const orderedItems = orderActiveTranscriptItems({
       trailingItems: dedupedTrailingItems,
@@ -234,7 +323,7 @@ export function useSolidifiedTranscript(input: UseSolidifiedTranscriptInput): Us
       const fingerprint = buildCanonicalTranscriptFingerprint(item);
       return !fingerprint || !solidifiedFingerprints.has(fingerprint);
     });
-  }, [activeTurn, coreMessages, notices, now, runtimeEvents, solidifiedCount]);
+  }, [activeTurn, coreMessages, notices, now, runState, runtimeEvents, solidifiedCount, subagentRuns]);
 
   useEffect(() => {
     const visibleAssistantItems = activeItems.filter((item) => item.role === 'assistant' && item.content.trim());

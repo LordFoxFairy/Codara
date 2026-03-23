@@ -40,7 +40,7 @@ export function useSubagentRunDetails(input: UseSubagentRunDetailsInput): Readon
           0,
           detail.messages.length,
           toolLookup,
-        ).filter((item) => item.role !== 'user');
+        ).filter((item) => item.role === 'tool');
         if (items.length > 0) {
           next.set(detail.runId, items);
         }

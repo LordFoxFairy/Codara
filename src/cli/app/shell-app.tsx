@@ -226,13 +226,14 @@ export function CodaraCliApp(props: CodaraCliAppProps): React.JSX.Element {
   });
   const terminalWidth = useTerminalWidth();
   const layoutMode = resolveCliLayoutMode(terminalWidth);
+  const subagentRunSummaries = codara.getSubagentRunSummaries();
   const subagentRuns = useSubagentRuns({
-    subagentRunSummaries: codara.getSubagentRunSummaries(),
+    subagentRunSummaries,
     reviews: codara.listReviewItems(),
   });
   const subagentRunDetails = useSubagentRunDetails({
     codara,
-    runs: codara.getSubagentRunSummaries(),
+    runs: subagentRunSummaries,
     enabled: shell.expandedAll,
   });
   const listCommands = React.useCallback(() => codara.listCommands(), [codara]);
@@ -348,6 +349,8 @@ export function CodaraCliApp(props: CodaraCliAppProps): React.JSX.Element {
     notices: shell.notices,
     activeTurn: shell.activeTurn,
     runtimeEvents: shell.runtimeEvents,
+    runState: shell.runState,
+    subagentRuns: subagentRunSummaries,
   });
   const showPromptFrame = shouldShowPromptFrame({
     review: shell.review,

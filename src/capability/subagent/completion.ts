@@ -2,13 +2,12 @@ import path from 'node:path';
 import {ToolMessage} from '@langchain/core/messages';
 import {resolveToolCallId} from '@core/agent/run/tool-executor';
 import {createMiddleware, type BaseMiddleware, type BeforeModelContext, type ToolCallContext} from '@core/pipeline/types';
-import {createSubagentToolMessage} from '@capability/subagent/bootstrap';
 
 interface SubagentCompletionContinuationContext {
   codaraSubagentCompletion?: {
     attempt?: number;
     previousInvalidResponse?: string;
-    runs?: Array<{
+    runs?: ReadonlyArray<{
       runId: string;
       label: string;
       agentName: string;
@@ -43,6 +42,17 @@ const SUBAGENT_COMPLETION_FUTURE_WORK_PATTERNS = [
   /(?:两个|两条|all|both).*(?:subagent|子代理).*(?:已完成|都已完成|completed).*(?:现在|接下来|让我|let me|now).*(?:汇总|总结|summari[sz]e|synthesi[sz]e)/i,
   /(?:subagent|子代理).*(?:完成|completed).*(?:现在|接下来|让我|let me|now).*(?:汇总|总结|summari[sz]e|synthesi[sz]e)/i,
 ];
+
+type SubagentReplayComparableRun = Readonly<{
+  runId: string;
+  label: string;
+  agentName: string;
+  status: string;
+  summary?: string;
+  errorMessage?: string;
+  toolUseCount?: number;
+  totalTokens?: number;
+}>;
 
 export function createSubagentCompletionMiddleware(): BaseMiddleware {
   return createMiddleware({
@@ -150,22 +160,30 @@ export function maybeHandleSubagentCompletionToolCall(context: ToolCallContext):
 export function createSubagentCompletionToolMessages(
   runs: NonNullable<NonNullable<SubagentCompletionContinuationContext['codaraSubagentCompletion']>['runs']>,
 ): ToolMessage[] {
-  return runs.map((run) => createSubagentToolMessage({
-    type: 'subagent_result',
-    sessionId: run.runId,
-    turns: 0,
-    reason: run.status === 'failed' ? 'error' : 'complete',
-    runId: run.runId,
-    label: run.label,
-    agentName: run.agentName,
-    ...(run.summary ? {summary: run.summary} : {}),
-    ...(run.errorMessage ? {errorMessage: run.errorMessage} : {}),
-    ...(typeof run.toolUseCount === 'number' ? {toolUseCount: run.toolUseCount} : {}),
-    ...(typeof run.totalTokens === 'number' ? {totalTokens: run.totalTokens} : {}),
-  }, run.runId));
+  return runs.map((run) => new ToolMessage({
+    content: buildSubagentCompletionToolMessageContent(run),
+    artifact: {
+      type: 'subagent_result',
+      sessionId: run.runId,
+      turns: 0,
+      reason: run.status === 'failed' ? 'error' : 'complete',
+      runId: run.runId,
+      label: run.label,
+      agentName: run.agentName,
+      ...(run.summary ? {summary: run.summary} : {}),
+      ...(run.errorMessage ? {errorMessage: run.errorMessage} : {}),
+      ...(typeof run.toolUseCount === 'number' ? {toolUseCount: run.toolUseCount} : {}),
+      ...(typeof run.totalTokens === 'number' ? {totalTokens: run.totalTokens} : {}),
+    },
+    status: run.status === 'failed' ? 'error' : 'success',
+    tool_call_id: run.runId,
+  }));
 }
 
-export function isInvalidSubagentCompletionResponse(text: string | undefined): boolean {
+export function isInvalidSubagentCompletionResponse(
+  text: string | undefined,
+  runs: readonly SubagentReplayComparableRun[] = [],
+): boolean {
   const normalized = text
     ?.replace(/\s+/g, ' ')
     .trim();
@@ -173,8 +191,12 @@ export function isInvalidSubagentCompletionResponse(text: string | undefined): b
     return false;
   }
 
-  return [...SUBAGENT_COMPLETION_WAITING_PATTERNS, ...SUBAGENT_COMPLETION_FUTURE_WORK_PATTERNS]
-    .some((pattern) => pattern.test(normalized));
+  if ([...SUBAGENT_COMPLETION_WAITING_PATTERNS, ...SUBAGENT_COMPLETION_FUTURE_WORK_PATTERNS]
+    .some((pattern) => pattern.test(normalized))) {
+    return true;
+  }
+
+  return containsRawSubagentReplay(normalized, runs);
 }
 
 export function shouldRetrySubagentCompletionResponse(input: {
@@ -182,6 +204,7 @@ export function shouldRetrySubagentCompletionResponse(input: {
   launchedSubagentToolCall?: boolean;
   attempt: number;
   maxAttempts: number;
+  runs?: readonly SubagentReplayComparableRun[];
 }): boolean {
   if (input.launchedSubagentToolCall) {
     return false;
@@ -191,7 +214,18 @@ export function shouldRetrySubagentCompletionResponse(input: {
     return false;
   }
 
-  return !input.text?.trim() || isInvalidSubagentCompletionResponse(input.text);
+  return !input.text?.trim() || isInvalidSubagentCompletionResponse(input.text, input.runs ?? []);
+}
+
+export function isSubagentInternalAssistantText(input: {
+  text: string | undefined;
+  runs?: readonly SubagentReplayComparableRun[];
+}): boolean {
+  if (!input.text?.trim()) {
+    return false;
+  }
+
+  return isInvalidSubagentCompletionResponse(input.text, input.runs ?? []);
 }
 
 function shouldBlockInternalMemoryWriteDuringSubagentCompletion(context: ToolCallContext): boolean {
@@ -331,6 +365,91 @@ function formatCompactTaskNumber(value: number): string {
     return `${rendered.replace(/\.0$/, '')}k`;
   }
   return String(value);
+}
+
+function buildSubagentCompletionToolMessageContent(
+  run: NonNullable<NonNullable<SubagentCompletionContinuationContext['codaraSubagentCompletion']>['runs']>[number],
+): string {
+  const lines = [
+    run.status === 'failed' ? 'Subagent failed.' : 'Subagent completed.',
+    `run_id: ${run.runId}`,
+    `agent: ${run.agentName}`,
+    `topic: ${extractSubagentTopic(run.label, run.agentName, run.runId)}`,
+  ];
+
+  if (typeof run.toolUseCount === 'number' && run.toolUseCount > 0) {
+    lines.push(`tool_uses: ${run.toolUseCount}`);
+  }
+  if (typeof run.totalTokens === 'number' && run.totalTokens > 0) {
+    lines.push(`tokens: ${run.totalTokens}`);
+  }
+  if (run.status === 'failed' && run.errorMessage?.trim()) {
+    lines.push(`error: ${summarizeSubagentCompletionDetail(run.errorMessage)}`);
+  }
+
+  return lines.join('\n');
+}
+
+function containsRawSubagentReplay(
+  responseText: string,
+  runs: readonly SubagentReplayComparableRun[],
+): boolean {
+  const normalizedResponse = normalizeSubagentReplayText(responseText);
+  if (!normalizedResponse) {
+    return false;
+  }
+
+  return runs.some((run) => {
+    if (run.status !== 'completed' && run.status !== 'failed') {
+      return false;
+    }
+    const rawDetail = run.status === 'failed'
+      ? run.errorMessage?.trim() || run.summary?.trim()
+      : run.summary?.trim();
+    const normalizedDetail = normalizeSubagentReplayText(rawDetail);
+    if (!normalizedDetail) {
+      return false;
+    }
+
+    if (normalizedDetail.length <= 80 && normalizedResponse.includes(normalizedDetail)) {
+      return true;
+    }
+
+    for (const candidate of buildReplayDetectionCandidates(rawDetail ?? '')) {
+      if (normalizedResponse.includes(candidate)) {
+        return true;
+      }
+    }
+
+    return false;
+  });
+}
+
+function buildReplayDetectionCandidates(detail: string): string[] {
+  const normalized = detail
+    .split('\n')
+    .map((line) => normalizeSubagentReplayText(line))
+    .filter((line): line is string => Boolean(line && line.length >= 48))
+    .slice(0, 8);
+
+  if (normalized.length > 0) {
+    return normalized;
+  }
+
+  const fallback = normalizeSubagentReplayText(detail);
+  if (!fallback) {
+    return [];
+  }
+
+  return fallback.length >= 64 ? [fallback.slice(0, 96)] : [fallback];
+}
+
+function normalizeSubagentReplayText(text: string | undefined): string | undefined {
+  return text
+    ?.toLocaleLowerCase()
+    .replace(/[`*_>#-]+/g, ' ')
+    .replace(/\s+/g, ' ')
+    .trim() || undefined;
 }
 
 function normalizeTaskReplayText(text: string | undefined): string | undefined {

@@ -6,6 +6,7 @@ const INTERNAL_INTERACTION_TOOL_NAMES = new Set(['AskUserQuestion', 'Skill']);
 export interface ApplyInteractionChunkOptions {
   captureThinking?: boolean;
   detectAgentLaunch?: boolean;
+  shouldSuppressText?: (text: string) => boolean;
 }
 
 export interface ApplyInteractionChunkResult {
@@ -73,7 +74,8 @@ export function applyInteractionChunkToTurn(
     };
   }
 
-  const text = chunk.text;
+  const rawText = chunk.text;
+  const text = rawText && options.shouldSuppressText?.(rawText) ? '' : rawText;
   if (text && next.suppressAgentLaunchResponse) {
     if (agentLaunchJustDetected) {
       return {turn: next, sawText: false};

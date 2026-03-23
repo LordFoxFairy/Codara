@@ -200,6 +200,95 @@ describe('solidified transcript model', () => {
     }
   });
 
+  test('suppresses trailing assistant text while the turn is still in subagent completion even after runtime blocks have settled', () => {
+    const rendered = render(React.createElement(ActiveItemsProbe, {
+      coreMessages: [
+        new HumanMessage('请并行分析 src/cli 和 src/capability'),
+        new AIMessage('src/cli 目录架构分析报告\n\n1. 目录结构\n- app/\n- components/'),
+      ],
+      notices: [],
+      runState: {status: 'running', phase: 'subagent_completion'},
+    }));
+
+    try {
+      const frame = rendered.lastFrame() ?? '';
+      expect(frame).toContain('"role":"user"');
+      expect(frame).not.toContain('src/cli 目录架构分析报告');
+    } finally {
+      rendered.unmount();
+    }
+  });
+
+  test('suppresses trailing assistant text while live runtime subagent blocks already own the foreground before run summaries catch up', () => {
+    const rendered = render(React.createElement(ActiveItemsProbe, {
+      coreMessages: [
+        new HumanMessage('并行分析 src/cli 和 src/capability'),
+        new AIMessage('src/cli 目录架构分析报告\n\n1. 目录结构\n- app/\n- components/'),
+      ],
+      notices: [],
+      runState: {status: 'running', phase: 'prompt_stream'},
+      runtimeEvents: [
+        {
+          id: 'subagent-run:run-cli',
+          sessionId: 'session-1',
+          timestamp: new Date().toISOString(),
+          kind: 'agent',
+          phase: 'start',
+          status: 'running',
+          label: 'Delegating Explore: Analyze src/cli',
+        },
+      ],
+      subagentRuns: [],
+    }));
+
+    try {
+      const frame = rendered.lastFrame() ?? '';
+      expect(frame).toContain('"role":"user"');
+      expect(frame).not.toContain('src/cli 目录架构分析报告');
+    } finally {
+      rendered.unmount();
+    }
+  });
+
+  test('filters child-style assistant replay out of finalized transcript items before they are solidified', () => {
+    const items = filterSubagentCompletionTranscriptItems({
+      completedTurnKind: 'prompt',
+      items: [
+        {
+          id: 'assistant-child-report',
+          role: 'assistant',
+          content: 'src/cli 目录架构分析报告\n\n1. 目录结构\n- app/\n- components/',
+        },
+        {
+          id: 'assistant-main',
+          role: 'assistant',
+          content: '最终结论：CLI 只负责宿主 UI 和输入映射。',
+        },
+      ],
+      subagentRuns: [{
+        runId: 'run-cli',
+        parentSessionId: 'session-1',
+        agentName: 'Explore',
+        label: 'Explore',
+        status: 'completed',
+        startedAt: new Date(0).toISOString(),
+        updatedAt: new Date(1).toISOString(),
+        endedAt: new Date(1).toISOString(),
+        summary: 'src/cli 目录架构分析报告\n\n1. 目录结构\n- app/\n- components/',
+        toolUseCount: 12,
+        totalTokens: 3456,
+      }],
+    });
+
+    expect(items).toEqual([
+      {
+        id: 'assistant-main',
+        role: 'assistant',
+        content: '最终结论：CLI 只负责宿主 UI 和输入映射。',
+      },
+    ]);
+  });
+
   describe('buildActiveItems', () => {
     test('should build items from activeTurn', () => {
       const items = buildActiveItems({
@@ -618,6 +707,39 @@ describe('solidified transcript model', () => {
       expect(frame).toContain('"role":"agent"');
     });
 
+    test('should suppress trailing assistant replay text while a live subagent block still owns the current turn', () => {
+      const {lastFrame} = render(React.createElement(ActiveItemsProbe, {
+        coreMessages: [
+          new HumanMessage('delegate it'),
+          new AIMessage('src/cli 目录架构分析报告\n1. 目录结构\n2. 核心职责'),
+        ],
+        notices: [],
+        activeTurn: {
+          id: 'turn-live-subagent',
+          prompt: 'delegate it',
+          response: '',
+          responseRole: 'assistant',
+          kind: 'prompt',
+        },
+        runtimeEvents: [
+          {
+            id: 'subagent-run:run-1',
+            sessionId: 'session-1',
+            timestamp: new Date().toISOString(),
+            kind: 'agent',
+            phase: 'start',
+            status: 'running',
+            label: 'Delegating Explore: Analyze structure',
+          },
+        ],
+      }));
+
+      const frame = lastFrame() ?? '';
+      expect(frame).toContain('"role":"user","content":"delegate it"');
+      expect(frame).toContain('"role":"agent"');
+      expect(frame).not.toContain('src/cli 目录架构分析报告');
+    });
+
     test('should keep a finalized main reply visible while the active turn still owns the current prompt block', () => {
       const {lastFrame} = render(React.createElement(ActiveItemsProbe, {
         coreMessages: [
@@ -648,6 +770,76 @@ describe('solidified transcript model', () => {
       const frame = lastFrame() ?? '';
       expect(frame.match(/"role":"user","content":"delegate it"/g)?.length ?? 0).toBe(1);
       expect(frame.replace(/\s+/g, ' ')).toContain('Unified final answer from the main agent.');
+    });
+
+    test('should hide child-style assistant replay text from the main transcript even after subagent runs have completed', () => {
+      const {lastFrame} = render(React.createElement(ActiveItemsProbe, {
+        coreMessages: [
+          new HumanMessage('delegate it'),
+          new AIMessage('src/cli 目录架构分析报告\n1. 目录结构\n2. 核心职责'),
+        ],
+        notices: [],
+        activeTurn: {
+          id: 'turn-finalize',
+          prompt: 'delegate it',
+          response: '',
+          responseRole: 'assistant',
+          kind: 'prompt',
+        },
+        runtimeEvents: [],
+        runState: {status: 'done'},
+        subagentRuns: [
+          {
+            runId: 'run-1',
+            parentSessionId: 'session-1',
+            label: 'Analyze src/cli',
+            agentName: 'Explore',
+            status: 'completed',
+            startedAt: new Date().toISOString(),
+            updatedAt: new Date().toISOString(),
+            summary: 'src/cli 目录架构分析报告\n1. 目录结构\n2. 核心职责',
+          },
+        ],
+      }));
+
+      const frame = lastFrame() ?? '';
+      expect(frame).toContain('"role":"user","content":"delegate it"');
+      expect(frame).not.toContain('src/cli 目录架构分析报告');
+    });
+
+    test('should keep suppressing child-style assistant text while any subagent run is still active even if runState has already drifted to done', () => {
+      const {lastFrame} = render(React.createElement(ActiveItemsProbe, {
+        coreMessages: [
+          new HumanMessage('delegate it'),
+          new AIMessage('src/capability 目录架构分析报告\n1. 能力模块\n2. 生命周期管理'),
+        ],
+        notices: [],
+        activeTurn: {
+          id: 'turn-stale-done-active-subagent',
+          prompt: 'delegate it',
+          response: '',
+          responseRole: 'assistant',
+          kind: 'prompt',
+        },
+        runtimeEvents: [],
+        runState: {status: 'done'},
+        subagentRuns: [
+          {
+            runId: 'run-capability',
+            parentSessionId: 'session-1',
+            label: 'Analyze src/capability',
+            agentName: 'Explore',
+            status: 'running',
+            startedAt: new Date().toISOString(),
+            updatedAt: new Date().toISOString(),
+            summary: 'src/capability 目录架构分析报告\n1. 能力模块\n2. 生命周期管理',
+          },
+        ],
+      }));
+
+      const frame = lastFrame() ?? '';
+      expect(frame).toContain('"role":"user","content":"delegate it"');
+      expect(frame).not.toContain('src/capability 目录架构分析报告');
     });
   });
 

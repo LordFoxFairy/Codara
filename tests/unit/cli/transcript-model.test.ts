@@ -1,6 +1,6 @@
 import {describe, expect, test} from 'bun:test';
 import {AIMessage, HumanMessage, SystemMessage, ToolMessage, type ToolCall} from '@langchain/core/messages';
-import {buildActiveItems, buildTranscriptItems, hasTranscriptContent} from '@/cli/transcript/model';
+import {buildActiveItems, buildSolidifiedItemsFromRange, buildTranscriptItems, createToolCallLookup, hasTranscriptContent} from '@/cli/transcript/model';
 import {createInternalSharedTaskCoordinationMessage} from '@/shared/task-coordination-result';
 
 describe('cli transcript model', () => {
@@ -146,6 +146,33 @@ describe('cli transcript model', () => {
     expect(items).toHaveLength(1);
     expect(items[0]?.role).toBe('assistant');
     expect(items[0]?.content).toContain('当前团队中组织');
+  });
+
+  test('should suppress child-style assistant text from finalized transcript items when subagent runs are present', () => {
+    const messages = [
+      new HumanMessage('delegate it'),
+      new AIMessage('src/cli 目录架构分析报告\n1. 目录结构\n2. 核心职责'),
+    ];
+    const items = buildSolidifiedItemsFromRange(
+      messages,
+      0,
+      messages.length,
+      createToolCallLookup(messages),
+      undefined,
+      [{
+        runId: 'run-cli',
+        parentSessionId: 'session-1',
+        label: 'Analyze src/cli',
+        agentName: 'Explore',
+        status: 'completed',
+        startedAt: new Date().toISOString(),
+        updatedAt: new Date().toISOString(),
+        summary: 'src/cli 目录架构分析报告\n1. 目录结构\n2. 核心职责',
+      }],
+    );
+
+    expect(items.map((item) => item.role)).toEqual(['user']);
+    expect(items[0]?.content).toBe('delegate it');
   });
 
   test('should hide AskUser tool call groups because the review panel already renders the interaction', () => {
@@ -541,6 +568,50 @@ describe('cli transcript model', () => {
 
     expect(items.map((item) => item.role)).toEqual(['user', 'agent']);
     expect(items.some((item) => item.content.includes('我将立即并行委派'))).toBe(false);
+  });
+
+  test('should suppress any active assistant body text while live subagent runtime blocks are still running', () => {
+    const now = new Date().toISOString();
+    const items = buildActiveItems({
+      activeTurn: {
+        id: 'turn-live-subagent-body',
+        prompt: 'delegate it',
+        response: 'src/cli 目录架构分析报告\n1. 目录结构\n2. 核心职责',
+        responseRole: 'assistant',
+      },
+      runtimeEvents: [
+        {
+          id: 'subagent-run:run-cli',
+          sessionId: 'session-1',
+          timestamp: now,
+          kind: 'agent',
+          phase: 'start',
+          status: 'running',
+          label: 'Delegating Explore: Analyze src/cli',
+        },
+      ],
+    });
+
+    expect(items.map((item) => item.role)).toEqual(['user', 'agent']);
+    expect(items.some((item) => item.content.includes('目录架构分析报告'))).toBe(false);
+  });
+
+  test('should suppress active assistant body text during subagent completion even after runtime blocks have disappeared', () => {
+    const items = buildActiveItems({
+      activeTurn: {
+        id: 'turn-subagent-completion-body',
+        prompt: 'delegate it',
+        response: 'src/capability 目录架构分析报告\n1. 目录结构\n2. 依赖关系',
+        responseRole: 'assistant',
+      },
+      runState: {
+        status: 'running',
+        phase: 'subagent_completion',
+      },
+    });
+
+    expect(items.map((item) => item.role)).toEqual(['user']);
+    expect(items.some((item) => item.content.includes('目录架构分析报告'))).toBe(false);
   });
 
   test('should suppress solidified assistant launch chatter while keeping the delegated running subagent block', () => {

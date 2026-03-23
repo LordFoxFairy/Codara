@@ -8,7 +8,7 @@ import {
 } from '@/cli/transcript/model';
 
 describe('cli transcript visibility', () => {
-  test('keeps already-visible main-agent text and places the running subagent block after it in the same timeline', () => {
+  test('does not keep pre-launch assistant chatter once a running subagent block owns the delegation step', () => {
     const items = buildActiveItems({
       activeTurn: {
         id: 'turn-visible-before-task-launch',
@@ -32,9 +32,9 @@ describe('cli transcript visibility', () => {
       ],
     });
 
-    expect(items.map((item) => item.role)).toEqual(['user', 'assistant', 'agent']);
-    expect(items[1]?.content).toContain('frame the analysis scope first');
-    expect(items[2]?.content).toContain('Explore(Analyze project)');
+    expect(items.map((item) => item.role)).toEqual(['user', 'agent']);
+    expect(items[1]?.content).toContain('Explore(Analyze project)');
+    expect(items.some((item) => item.content.includes('frame the analysis scope first'))).toBe(false);
   });
 
   test('does not preserve previously visible launch prose once an Agent tool call owns delegation in the final transcript', () => {

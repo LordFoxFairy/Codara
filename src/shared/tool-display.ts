@@ -152,7 +152,21 @@ function summarizeAgentPrompt(value: string): string {
     .replace(/\s+/g, ' ')
     .trim();
 
-  return normalized || value.trim();
+  if (!normalized) {
+    return value.trim();
+  }
+
+  const sentenceBoundary = normalized.search(/[。！？.!?]/);
+  if (sentenceBoundary > 0) {
+    return normalized.slice(0, sentenceBoundary + 1).trim();
+  }
+
+  const colonBoundary = normalized.search(/[：:]/);
+  if (colonBoundary > 0) {
+    return normalized.slice(0, colonBoundary + 1).trim();
+  }
+
+  return normalized;
 }
 
 function toTitleCase(value: string): string {
