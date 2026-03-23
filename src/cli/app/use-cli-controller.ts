@@ -258,7 +258,7 @@ function shouldContinuePollingForPromptSettlement(input: {
     return false;
   }
 
-  return !hasVisibleAssistantReply(input.activeTurn)
+  return !hasVisibleAssistantReply(input.activeTurn, input.subagentRuns)
     && !hasVisibleAssistantReplyInMessages(input.messages, input.promptStartMessageCount, input.subagentRuns);
 }
 
@@ -283,7 +283,7 @@ function resolveHydratedCoreMessages(input: {
     return input.incomingMessages;
   }
 
-  const currentTurnHasVisibleReply = hasVisibleAssistantReply(input.activeTurn)
+  const currentTurnHasVisibleReply = hasVisibleAssistantReply(input.activeTurn, input.subagentRuns)
     || hasVisibleAssistantReplyInMessages(input.currentMessages, input.promptStartMessageCount, input.subagentRuns);
 
   return currentTurnHasVisibleReply ? input.currentMessages : input.incomingMessages;
@@ -1046,7 +1046,7 @@ export function useCliController(options: UseCliControllerOptions): CliControlle
     });
 
     sawText = sawText
-      || hasVisibleAssistantReply(activeTurnRef.current)
+      || hasVisibleAssistantReply(activeTurnRef.current, codara.getSubagentRunSummaries())
       || hasVisibleAssistantReplyInMessages(coreMessagesRef.current, promptStartMessageCount, codara.getSubagentRunSummaries());
     const nextAgentState = await refreshCoreState();
     sawText = sawText

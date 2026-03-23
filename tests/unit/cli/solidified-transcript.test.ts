@@ -740,7 +740,7 @@ describe('solidified transcript model', () => {
       expect(frame).not.toContain('src/cli 目录架构分析报告');
     });
 
-    test('should keep a finalized main reply visible while the active turn still owns the current prompt block', () => {
+    test('should keep suppressing finalized assistant text while a running subagent block still owns the current turn', () => {
       const {lastFrame} = render(React.createElement(ActiveItemsProbe, {
         coreMessages: [
           new HumanMessage('delegate it'),
@@ -769,7 +769,8 @@ describe('solidified transcript model', () => {
 
       const frame = lastFrame() ?? '';
       expect(frame.match(/"role":"user","content":"delegate it"/g)?.length ?? 0).toBe(1);
-      expect(frame.replace(/\s+/g, ' ')).toContain('Unified final answer from the main agent.');
+      expect(frame).toContain('"role":"agent"');
+      expect(frame.replace(/\s+/g, ' ')).not.toContain('Unified final answer from the main agent.');
     });
 
     test('should hide child-style assistant replay text from the main transcript even after subagent runs have completed', () => {
@@ -1033,7 +1034,7 @@ describe('solidified transcript model', () => {
   });
 
   describe('filterSubagentCompletionTranscriptItems', () => {
-    test('keeps transcript items untouched during subagent-completion turns', () => {
+    test('filters internal child-style assistant text even when subagent summaries are not available yet', () => {
       const items = filterSubagentCompletionTranscriptItems({
         completedTurnKind: 'subagent_completion',
         items: [
@@ -1043,14 +1044,14 @@ describe('solidified transcript model', () => {
         ],
       });
 
-      expect(items.map((item) => item.id)).toEqual(['assistant-invalid', 'task-1', 'assistant-valid']);
+      expect(items.map((item) => item.id)).toEqual(['task-1', 'assistant-valid']);
     });
 
-    test('keeps assistant items untouched outside task-completion turns', () => {
+    test('keeps assistant items untouched when they are not internal subagent text', () => {
       const items = filterSubagentCompletionTranscriptItems({
         completedTurnKind: 'prompt',
         items: [
-          {id: 'assistant-1', role: 'assistant', content: 'Phase 1 has started. Waiting for subagent results.'},
+          {id: 'assistant-1', role: 'assistant', content: 'Unified final answer from the main agent.'},
         ],
       });
 
