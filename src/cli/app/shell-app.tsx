@@ -405,31 +405,8 @@ export function CodaraCliApp(props: CodaraCliAppProps): React.JSX.Element {
             {/* Independent persistent spinner - only depends on runState.status */}
             {!shell.review && <PersistentSpinner runState={shell.runState} />}
 
-            {shouldShowActivityLine({
-              review: shell.review,
-              runStateStatus: shell.runState.status,
-              latestRuntimeEventKind: shell.latestRuntimeEvent?.kind,
-              activeItems,
-              runningSubagentRunCount: subagentRuns.runningCount,
-              pausedSubagentRunCount: subagentRuns.pausedCount,
-            }) && (
-              <Box flexDirection="row" alignItems="flex-start">
-                {!shell.hasConversation && shell.runState.status === 'running' && (
-                  <RobotMark isRunning />
-                )}
-                <Box flexGrow={1}>
-                  <ActivityLine
-                    runState={shell.runState}
-                    activeTurn={shell.activeTurn}
-                    latestRuntimeEvent={shell.latestRuntimeEvent}
-                    sessionMetadata={shell.sessionState.metadata}
-                    runningSubagentRunCount={subagentRuns.runningCount}
-                    pausedSubagentRunCount={subagentRuns.pausedCount}
-                    hasVisibleAssistantReply={hasVisibleAssistantReply}
-                  />
-                </Box>
-              </Box>
-            )}
+            {/* ActivityLine removed - PersistentSpinner handles all spinner display */}
+
             {sessionPicker.state.visible && (
               <SessionPicker
                 sessions={sessionPicker.state.sessions}
