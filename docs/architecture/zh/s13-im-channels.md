@@ -1,7 +1,3 @@
----
-title: 第14章：IM Channels — 多通道消息路由
----
-
 # 第14章：IM Channels — 多通道消息路由
 
 > **从终端到全平台**：让 agent 接入 Telegram、Slack、Discord、WhatsApp 等 13+ 平台，成为真正的"全渠道助手"。
