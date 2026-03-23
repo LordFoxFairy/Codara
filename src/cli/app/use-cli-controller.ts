@@ -166,18 +166,21 @@ function shouldKeepPromptTurnRunningAfterAgentLaunch(input: {
   launchedAgent: boolean;
   sawVisibleReply: boolean;
 }): boolean {
+  // Foreground subagents still running — always wait for them.
   if (hasTrackedForegroundSubagentRuns(input.codara)) {
     return true;
   }
 
-  // If we launched an agent, always keep running after the streaming phase ends.
-  // The subagent may not be registered in getSubagentRunSummaries yet (async),
-  // so we can't rely on hasTrackedForegroundSubagentRuns here. The useEffect
-  // polling loop will take over and set done when the agent truly completes.
+  // An agent was launched: keep running regardless of preamble text or agent state.
+  // Subagents may not be registered in getSubagentRunSummaries yet (async startup),
+  // so we hand off to the useEffect polling loop which confirms completion via
+  // refreshCoreState() instead of relying on stale snapshots here.
   if (input.launchedAgent) {
     return true;
   }
 
+  // No agent launched (plain tool call): if the main loop already produced a visible
+  // reply, the turn is effectively done — don't keep spinning.
   if (input.sawVisibleReply) {
     return false;
   }
