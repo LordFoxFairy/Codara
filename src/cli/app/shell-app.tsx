@@ -6,6 +6,7 @@ import {CommandOutputPanel} from '../components/chrome/command-output-panel';
 import {Footer} from '../components/chrome/footer';
 import {StatusBar} from '../components/chrome/header';
 import {ActivityLine} from '../components/chrome/activity-line';
+import {PersistentSpinner} from '../components/chrome/persistent-spinner';
 import {RobotMark} from '../components/chrome/robot-mark';
 import {SubagentRunPanel} from '../components/chrome/subagent-run-panel';
 import {ReviewPanel, isPermissionReview} from '../components/conversation/review-panel';
@@ -401,6 +402,9 @@ export function CodaraCliApp(props: CodaraCliAppProps): React.JSX.Element {
 
         {/* Activity / Prompt / Status */}
         <>
+            {/* Independent persistent spinner - only depends on runState.status */}
+            {!shell.review && <PersistentSpinner runState={shell.runState} />}
+
             {shouldShowActivityLine({
               review: shell.review,
               runStateStatus: shell.runState.status,
