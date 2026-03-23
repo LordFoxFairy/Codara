@@ -118,7 +118,7 @@ describe('solidified transcript model', () => {
 
       expect(items).toHaveLength(1);
       expect(items[0]?.role).toBe('agent');
-      expect(items[0]?.content).toContain('⚙ Explore(Analyze the repo)');
+      expect(items[0]?.content).toContain('⏺ Explore(Analyze the repo)');
       expect(items[0]?.content).toContain('Running');
     });
 
@@ -456,7 +456,7 @@ describe('solidified transcript model', () => {
       });
 
       expect(items.map((item) => item.role)).toEqual(['user', 'agent']);
-      expect(items[1]?.content).toContain('⚙ Explore(Analyze project)');
+      expect(items[1]?.content).toContain('⏺ Explore(Analyze project)');
       expect(items[1]?.content).toContain('Running');
     });
 
@@ -510,7 +510,7 @@ describe('solidified transcript model', () => {
 
       expect(items).toHaveLength(1);
       expect(items[0]?.role).toBe('agent');
-      expect(items[0]?.content).toContain('⚙ Explore(Analyze project)');
+      expect(items[0]?.content).toContain('⏺ Explore(Analyze project)');
       expect(items[0]?.content).toContain('Done');
     });
 
@@ -551,7 +551,7 @@ describe('solidified transcript model', () => {
 
       expect(items).toHaveLength(1);
       expect(items[0]?.role).toBe('agent');
-      expect(items[0]?.content).toContain('⚙ Explore(Analyze project)');
+      expect(items[0]?.content).toContain('⏺ Explore(Analyze project)');
       expect(items[0]?.content).toContain('Done');
     });
 
@@ -897,11 +897,11 @@ describe('solidified transcript model', () => {
         {
           id: 'core-skill-result',
           role: 'tool',
-          content: '⚙ Skill(superworkers:brainstorming)\n---',
+          content: '⏺ Skill(superworkers:brainstorming)\n---',
           toolMeta: {
             toolName: 'Skill',
             displayName: 'Skill',
-            icon: '⚙',
+            icon: '⏺',
             args: 'superworkers:brainstorming',
             status: 'done',
             summaryLine: '---',
@@ -912,11 +912,11 @@ describe('solidified transcript model', () => {
         {
           id: 'active-skill-result',
           role: 'tool',
-          content: '⚙ Skill(superworkers:brainstorming)\n---',
+          content: '⏺ Skill(superworkers:brainstorming)\n---',
           toolMeta: {
             toolName: 'Skill',
             displayName: 'Skill',
-            icon: '⚙',
+            icon: '⏺',
             args: 'superworkers:brainstorming',
             status: 'done',
             summaryLine: '---',
@@ -933,11 +933,11 @@ describe('solidified transcript model', () => {
         {
           id: 'core-agent-result',
           role: 'agent',
-          content: '⚙ Explore(Analyze structure)\nDone (5 tool uses · 1.2k tokens)',
+          content: '⏺ Explore(Analyze structure)\nDone (5 tool uses · 1.2k tokens)',
           toolMeta: {
             toolName: 'Agent',
             displayName: 'Explore',
-            icon: '⚙',
+            icon: '⏺',
             args: 'Analyze structure',
             status: 'done',
             summaryLine: 'Done (5 tool uses · 1.2k tokens)',
@@ -948,11 +948,11 @@ describe('solidified transcript model', () => {
         {
           id: 'active-subagent-run:run-1',
           role: 'agent',
-          content: '⚙ Explore(Analyze structure)\nDone (33s)',
+          content: '⏺ Explore(Analyze structure)\nDone (33s)',
           toolMeta: {
             toolName: 'Agent',
             displayName: 'Explore',
-            icon: '⚙',
+            icon: '⏺',
             args: 'Analyze structure',
             status: 'done',
             summaryLine: 'Done (33s)',
@@ -968,11 +968,11 @@ describe('solidified transcript model', () => {
       const runtimeItem: TranscriptItem = {
         id: 'active-subagent-run:run-123',
         role: 'agent',
-        content: '⚙ Explore(Analyze structure)\nDone (33s)',
+        content: '⏺ Explore(Analyze structure)\nDone (33s)',
         toolMeta: {
           toolName: 'Agent',
           displayName: 'Explore',
-          icon: '⚙',
+          icon: '⏺',
           args: 'Analyze structure',
           runId: 'run-123',
           status: 'done',
@@ -982,11 +982,11 @@ describe('solidified transcript model', () => {
       const trailingItem: TranscriptItem = {
         id: 'core-agent-result',
         role: 'agent',
-        content: '⚙ Explore(Analyze structure)\nDone (5 tool uses · 1.2k tokens)',
+        content: '⏺ Explore(Analyze structure)\nDone (5 tool uses · 1.2k tokens)',
         toolMeta: {
           toolName: 'Agent',
           displayName: 'Explore',
-          icon: '⚙',
+          icon: '⏺',
           args: 'Analyze structure but with slightly different prompt text',
           runId: 'run-123',
           status: 'done',
@@ -1003,11 +1003,11 @@ describe('solidified transcript model', () => {
       const runningItem: TranscriptItem = {
         id: 'active-subagent-run:call-agent-1',
         role: 'agent',
-        content: '⚙ Explore(Analyze structure)\nRunning',
+        content: '⏺ Explore(Analyze structure)\nRunning',
         toolMeta: {
           toolName: 'Agent',
           displayName: 'Explore',
-          icon: '⚙',
+          icon: '⏺',
           args: 'Analyze structure',
           status: 'running',
           summaryLine: 'Running',
@@ -1016,11 +1016,11 @@ describe('solidified transcript model', () => {
       const doneItem: TranscriptItem = {
         id: 'core-agent-result',
         role: 'agent',
-        content: '⚙ Explore(Analyze structure)\nDone (5 tool uses · 1.2k tokens)',
+        content: '⏺ Explore(Analyze structure)\nDone (5 tool uses · 1.2k tokens)',
         toolMeta: {
           toolName: 'Agent',
           displayName: 'Explore',
-          icon: '⚙',
+          icon: '⏺',
           args: 'Analyze structure',
           status: 'done',
           summaryLine: 'Done (5 tool uses · 1.2k tokens)',

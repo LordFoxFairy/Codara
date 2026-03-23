@@ -129,7 +129,7 @@ describe('delegated-task activity display', () => {
 
     const agentItems = items.filter((item) => item.role === 'agent');
     expect(agentItems).toHaveLength(1);
-    expect(agentItems[0]?.content).toContain('⚙ Plan(Analyze architecture)');
+    expect(agentItems[0]?.content).toContain('⏺ Plan(Analyze architecture)');
     expect(agentItems[0]?.content).toContain('Running');
     expect(agentItems[0]?.content).not.toContain('read(');
     expect(agentItems[0]?.content).not.toContain('grep(');
@@ -172,7 +172,7 @@ describe('delegated-task activity display', () => {
 
     const agentItems = items.filter((item) => item.role === 'agent');
     expect(agentItems).toHaveLength(1);
-    expect(agentItems[0]?.content).toContain('⚙ Explore(');
+    expect(agentItems[0]?.content).toContain('⏺ Explore(');
     expect(agentItems[0]?.content).toContain('Running');
   });
 

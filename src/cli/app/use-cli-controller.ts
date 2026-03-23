@@ -841,12 +841,10 @@ export function useCliController(options: UseCliControllerOptions): CliControlle
       setRunState({status: 'running', phase: 'subagent_completion'});
     }
 
-    if (runState.phase === 'subagent_completion' && visibleReply) {
-      setRunState({status: 'done'});
-      return;
-    }
-
-    if (!visibleReply) {
+    // In subagent_completion phase, always enter the polling loop to wait for
+    // the main loop to genuinely finish (don't fast-exit based on stale visibleReply
+    // from messages sent before subagents were launched).
+    if (runState.phase !== 'subagent_completion') {
       return;
     }
 

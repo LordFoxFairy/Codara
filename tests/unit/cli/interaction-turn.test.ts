@@ -191,8 +191,8 @@ describe('CLI interaction turn helpers', () => {
     expect(result.sawText).toBe(false);
     expect(result.turn).toEqual(expect.objectContaining({
       response: '',
-      pendingResponse: undefined,
     }));
+    expect(result.turn?.pendingResponse).toBeUndefined();
   });
 
   it('appends resume text into an existing or fallback turn', () => {

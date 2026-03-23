@@ -379,11 +379,11 @@ describe('UI alignment with Claude Code', () => {
         {
           id: 'active-subagent-run:run-1',
           role: 'agent',
-          content: '⚙ Explore(Analyze README and package metadata)\nRunning (35s · 17 tool activities)',
+          content: '⏺ Explore(Analyze README and package metadata)\nRunning (35s · 17 tool activities)',
           toolMeta: {
             toolName: 'Agent',
             displayName: 'Explore',
-            icon: '⚙',
+            icon: '⏺',
             args: 'Analyze README and package metadata',
             status: 'running',
             elapsed: '35s',
@@ -420,11 +420,11 @@ describe('UI alignment with Claude Code', () => {
         {
           id: 'task-1',
           role: 'agent',
-          content: '⚙ Explore(Analyze README and package metadata)\nRunning (35s · 17 tool activities)',
+          content: '⏺ Explore(Analyze README and package metadata)\nRunning (35s · 17 tool activities)',
           toolMeta: {
             toolName: 'Agent',
             displayName: 'Explore',
-            icon: '⚙',
+            icon: '⏺',
             args: 'Analyze README and package metadata',
             status: 'running',
             elapsed: '35s',
@@ -437,11 +437,11 @@ describe('UI alignment with Claude Code', () => {
         {
           id: 'task-2',
           role: 'agent',
-          content: '⚙ Explore(Sync architecture docs)\nRunning (28s · 15 tool activities)',
+          content: '⏺ Explore(Sync architecture docs)\nRunning (28s · 15 tool activities)',
           toolMeta: {
             toolName: 'Agent',
             displayName: 'Explore',
-            icon: '⚙',
+            icon: '⏺',
             args: 'Sync architecture docs',
             status: 'running',
             elapsed: '28s',
@@ -470,11 +470,11 @@ describe('UI alignment with Claude Code', () => {
         {
           id: 'active-subagent-run:run-1',
           role: 'agent',
-          content: '⚙ Explore(Analyze README and package metadata)\nRunning (35s · 17 tool activities)',
+          content: '⏺ Explore(Analyze README and package metadata)\nRunning (35s · 17 tool activities)',
           toolMeta: {
             toolName: 'Agent',
             displayName: 'Explore',
-            icon: '⚙',
+            icon: '⏺',
             args: 'Analyze README and package metadata',
             status: 'running',
             elapsed: '35s',
@@ -510,11 +510,11 @@ describe('UI alignment with Claude Code', () => {
         {
           id: 'active-subagent-run:run-fallback',
           role: 'agent',
-          content: '⚙ Explore(Analyze README and package metadata)\nRunning (35s · 17 tool activities)',
+          content: '⏺ Explore(Analyze README and package metadata)\nRunning (35s · 17 tool activities)',
           toolMeta: {
             toolName: 'Agent',
             displayName: 'Explore',
-            icon: '⚙',
+            icon: '⏺',
             args: 'Analyze README and package metadata',
             status: 'running',
             elapsed: '35s',
@@ -546,11 +546,11 @@ describe('UI alignment with Claude Code', () => {
         {
           id: 'active-subagent-run:run-live-detail',
           role: 'agent',
-          content: '⚙ Explore(Analyze README and package metadata)\nRunning (35s · 2 tool activities)',
+          content: '⏺ Explore(Analyze README and package metadata)\nRunning (35s · 2 tool activities)',
           toolMeta: {
             toolName: 'Agent',
             displayName: 'Explore',
-            icon: '⚙',
+            icon: '⏺',
             args: 'Analyze README and package metadata',
             status: 'running',
             elapsed: '35s',
@@ -584,11 +584,11 @@ describe('UI alignment with Claude Code', () => {
         {
           id: 'active-subagent-run:run-paused',
           role: 'agent',
-          content: '⚙ Explore(Inspect guarded task)\nWaiting for review (53s)',
+          content: '⏺ Explore(Inspect guarded task)\nWaiting for review (53s)',
           toolMeta: {
             toolName: 'Agent',
             displayName: 'Explore',
-            icon: '⚙',
+            icon: '⏺',
             args: 'Inspect guarded task',
             status: 'running',
             elapsed: '53s',
@@ -621,11 +621,11 @@ describe('UI alignment with Claude Code', () => {
         {
           id: 'active-subagent-run:run-done',
           role: 'agent',
-          content: '⚙ Explore(Analyze README and package metadata)\nDone (38s)',
+          content: '⏺ Explore(Analyze README and package metadata)\nDone (38s)',
           toolMeta: {
             toolName: 'Agent',
             displayName: 'Explore',
-            icon: '⚙',
+            icon: '⏺',
             args: 'Analyze README and package metadata',
             status: 'done',
             elapsed: '38s',
@@ -651,11 +651,11 @@ describe('UI alignment with Claude Code', () => {
         {
           id: 'active-subagent-run:run-single-done',
           role: 'agent',
-          content: '⚙ Explore(Analyze architecture)\nRunning (12s · 2 tool activities)',
+          content: '⏺ Explore(Analyze architecture)\nRunning (12s · 2 tool activities)',
           toolMeta: {
             toolName: 'Agent',
             displayName: 'Explore',
-            icon: '⚙',
+            icon: '⏺',
             args: 'Analyze architecture',
             status: 'running',
             elapsed: '12s',
@@ -666,11 +666,11 @@ describe('UI alignment with Claude Code', () => {
       const {lastFrame} = render(<ActiveTranscript items={[{
         id: 'active-subagent-run:run-single-done',
         role: 'agent',
-        content: '⚙ Explore(Analyze architecture)\nDone (2 tool uses · 14.4k tokens · 38s)',
+        content: '⏺ Explore(Analyze architecture)\nDone (2 tool uses · 14.4k tokens · 38s)',
         toolMeta: {
           toolName: 'Agent',
           displayName: 'Explore',
-          icon: '⚙',
+          icon: '⏺',
           args: 'Analyze architecture',
           status: 'done',
           summaryLine: 'Done (2 tool uses · 14.4k tokens · 38s)',
@@ -695,11 +695,11 @@ describe('UI alignment with Claude Code', () => {
             {
               id: 'active-subagent-run:run-done',
               role: 'agent',
-              content: '⚙ Explore(Analyze architecture)\nDone (2 tool uses · 14.4k tokens · 38s)',
+              content: '⏺ Explore(Analyze architecture)\nDone (2 tool uses · 14.4k tokens · 38s)',
               toolMeta: {
                 toolName: 'Agent',
                 displayName: 'Explore',
-                icon: '⚙',
+                icon: '⏺',
                 args: 'Analyze architecture',
                 status: 'done',
                 summaryLine: 'Done (2 tool uses · 14.4k tokens · 38s)',
@@ -708,11 +708,11 @@ describe('UI alignment with Claude Code', () => {
             {
               id: 'active-subagent-run:run-running',
               role: 'agent',
-              content: '⚙ Explore(Analyze tech stack)\nRunning (1 tool uses · 12s)',
+              content: '⏺ Explore(Analyze tech stack)\nRunning (1 tool uses · 12s)',
               toolMeta: {
                 toolName: 'Agent',
                 displayName: 'Explore',
-                icon: '⚙',
+                icon: '⏺',
                 args: 'Analyze tech stack',
                 status: 'running',
                 summaryLine: 'Running (1 tool uses · 12s)',
@@ -736,11 +736,11 @@ describe('UI alignment with Claude Code', () => {
             {
               id: 'active-subagent-run:run-cli',
               role: 'agent',
-              content: '⚙ Explore(分析 `src/cli` 目录的架构和职责)\nDone (14 tool uses · 135.9k tokens · 2m21s)',
+              content: '⏺ Explore(分析 `src/cli` 目录的架构和职责)\nDone (14 tool uses · 135.9k tokens · 2m21s)',
               toolMeta: {
                 toolName: 'Agent',
                 displayName: 'Explore',
-                icon: '⚙',
+                icon: '⏺',
                 args: '分析 `src/cli` 目录的架构和职责',
                 runId: 'run-cli',
                 status: 'done',
@@ -750,11 +750,11 @@ describe('UI alignment with Claude Code', () => {
             {
               id: 'tool-message:run-cli-result',
               role: 'agent',
-              content: '⚙ Explore(分析 `src/cli` 目录的架构和职责)\nDone (14 tool uses · 135.9k tokens · 2m21s)',
+              content: '⏺ Explore(分析 `src/cli` 目录的架构和职责)\nDone (14 tool uses · 135.9k tokens · 2m21s)',
               toolMeta: {
                 toolName: 'Agent',
                 displayName: 'Explore',
-                icon: '⚙',
+                icon: '⏺',
                 args: '分析 `src/cli` 目录的架构和职责',
                 runId: 'run-cli',
                 status: 'done',
@@ -764,11 +764,11 @@ describe('UI alignment with Claude Code', () => {
             {
               id: 'active-subagent-run:run-capability',
               role: 'agent',
-              content: '⚙ Explore(分析 `src/capability` 目录的架构和职责)\nDone (17 tool uses · 132.5k tokens · 2m45s)',
+              content: '⏺ Explore(分析 `src/capability` 目录的架构和职责)\nDone (17 tool uses · 132.5k tokens · 2m45s)',
               toolMeta: {
                 toolName: 'Agent',
                 displayName: 'Explore',
-                icon: '⚙',
+                icon: '⏺',
                 args: '分析 `src/capability` 目录的架构和职责',
                 runId: 'run-capability',
                 status: 'done',
@@ -778,11 +778,11 @@ describe('UI alignment with Claude Code', () => {
             {
               id: 'tool-message:run-capability-result',
               role: 'agent',
-              content: '⚙ Explore(分析 `src/capability` 目录的架构和职责)\nDone (17 tool uses · 132.5k tokens · 2m45s)',
+              content: '⏺ Explore(分析 `src/capability` 目录的架构和职责)\nDone (17 tool uses · 132.5k tokens · 2m45s)',
               toolMeta: {
                 toolName: 'Agent',
                 displayName: 'Explore',
-                icon: '⚙',
+                icon: '⏺',
                 args: '分析 `src/capability` 目录的架构和职责',
                 runId: 'run-capability',
                 status: 'done',
@@ -810,11 +810,11 @@ describe('UI alignment with Claude Code', () => {
               {
                 id: 'active-subagent-run:run-solid-done',
                 role: 'agent',
-                content: '⚙ Explore(Analyze architecture)\nDone (2 tool uses · 14.4k tokens · 38s)',
+                content: '⏺ Explore(Analyze architecture)\nDone (2 tool uses · 14.4k tokens · 38s)',
                 toolMeta: {
                   toolName: 'Agent',
                   displayName: 'Explore',
-                  icon: '⚙',
+                  icon: '⏺',
                   args: 'Analyze architecture',
                   status: 'done',
                   elapsed: '38s',
@@ -837,7 +837,7 @@ describe('UI alignment with Claude Code', () => {
       expect(frame).toContain('⏺ Explore(Analyze architecture)');
       expect(frame).toContain('⎿ Done (2 tool uses · 14.4k tokens · 38s)');
       expect(frame).not.toContain('glob(vite.config.{ts,js})');
-      expect(frame).not.toContain('⚙ Explore(Analyze architecture) (38s)');
+      expect(frame).not.toContain('⏺ Explore(Analyze architecture) (38s)');
     });
 
     it('should show only nested child tool history for a subagent block when global detailed mode is enabled', () => {
@@ -872,11 +872,11 @@ describe('UI alignment with Claude Code', () => {
           items={[{
             id: 'active-subagent-run:run-detailed',
             role: 'agent',
-            content: '⚙ Explore(Analyze architecture)\nDone (2 tool uses · 38s)',
+            content: '⏺ Explore(Analyze architecture)\nDone (2 tool uses · 38s)',
             toolMeta: {
               toolName: 'Agent',
               displayName: 'Explore',
-              icon: '⚙',
+              icon: '⏺',
               args: 'Analyze architecture',
               runId: 'run-detailed',
               status: 'done',
@@ -921,11 +921,11 @@ describe('UI alignment with Claude Code', () => {
               {
                 id: 'active-subagent-run:run-solid-detail',
                 role: 'agent',
-                content: '⚙ Explore(Analyze index exports)\nDone (1 tool use · 18s)',
+                content: '⏺ Explore(Analyze index exports)\nDone (1 tool use · 18s)',
                 toolMeta: {
                   toolName: 'Agent',
                   displayName: 'Explore',
-                  icon: '⚙',
+                  icon: '⏺',
                   args: 'Analyze index exports',
                   runId: 'run-solid-detail',
                   status: 'done',
@@ -994,11 +994,11 @@ describe('UI alignment with Claude Code', () => {
         {
           id: 'run-cli',
           role: 'agent',
-          content: '⚙ Explore(分析 `src/cli` 目录，重点回答：)\nDone (25 tool uses · 270.9k tokens · 2m38s)',
+          content: '⏺ Explore(分析 `src/cli` 目录，重点回答：)\nDone (25 tool uses · 270.9k tokens · 2m38s)',
           toolMeta: {
             toolName: 'Agent',
             displayName: 'Explore',
-            icon: '⚙',
+            icon: '⏺',
             args: '分析 `src/cli` 目录，重点回答：',
             runId: 'run-cli',
             status: 'done',
@@ -1008,11 +1008,11 @@ describe('UI alignment with Claude Code', () => {
         {
           id: 'run-capability',
           role: 'agent',
-          content: '⚙ Explore(分析 `src/capability` 目录，重点回答：)\nDone (21 tool uses · 156.6k tokens · 2m28s)',
+          content: '⏺ Explore(分析 `src/capability` 目录，重点回答：)\nDone (21 tool uses · 156.6k tokens · 2m28s)',
           toolMeta: {
             toolName: 'Agent',
             displayName: 'Explore',
-            icon: '⚙',
+            icon: '⏺',
             args: '分析 `src/capability` 目录，重点回答：',
             runId: 'run-capability',
             status: 'done',
@@ -1049,11 +1049,11 @@ describe('UI alignment with Claude Code', () => {
         {
           id: 'run-cli',
           role: 'agent',
-          content: '⚙ Explore(分析 `src/cli` 目录)\nRunning (7 tool uses · 36s)',
+          content: '⏺ Explore(分析 `src/cli` 目录)\nRunning (7 tool uses · 36s)',
           toolMeta: {
             toolName: 'Agent',
             displayName: 'Explore',
-            icon: '⚙',
+            icon: '⏺',
             args: '分析 `src/cli` 目录',
             runId: 'run-cli',
             status: 'running',

@@ -1,20 +1,40 @@
-import React from 'react';
+import React, {useEffect, useState} from 'react';
 import {Box, Text} from 'ink';
 import {theme} from '../../utils/theme';
+import {SPINNER_INTERVAL_MS} from '../../hooks/use-status-indicator';
 
-// Bilibili-style pixel TV mascot: block chars + face
-const TV_LINES = [
-  ' ▄██████▄ ',
-  ' █ ●  ● █ ',
-  ' █  ──  █ ',
-  ' ▀██████▀ ',
-  '  ██  ██  ',
-];
+const BLINK_FRAMES = ['●', '◉', '●', '●', '◉', '●', '●', '●'] as const;
 
-export function RobotMark(): React.JSX.Element {
+interface RobotMarkProps {
+  isRunning?: boolean;
+}
+
+export function RobotMark({isRunning}: RobotMarkProps): React.JSX.Element {
+  const [frame, setFrame] = useState(0);
+
+  useEffect(() => {
+    if (!isRunning) return;
+    const timer = setInterval(() => {
+      setFrame((f) => f + 1);
+    }, SPINNER_INTERVAL_MS * 3);
+    return () => clearInterval(timer);
+  }, [isRunning]);
+
+  const eye = isRunning
+    ? BLINK_FRAMES[frame % BLINK_FRAMES.length]!
+    : '●';
+
+  const tvLines = [
+    ' ▄██████▄ ',
+    ` █ ${eye}  ${eye} █ `,
+    ' █  ──  █ ',
+    ' ▀██████▀ ',
+    '  ██  ██  ',
+  ];
+
   return (
     <Box flexDirection="column" width={10} marginRight={2} flexShrink={0}>
-      {TV_LINES.map((line, index) => (
+      {tvLines.map((line, index) => (
         <Text key={`tv-${index}`} color={theme.chrome.mascot}>
           {line}
         </Text>

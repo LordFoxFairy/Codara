@@ -308,6 +308,10 @@ async function runWrappedStage<TContext, TResult>(
 }
 
 function createStageError(middlewareName: string, stage: MiddlewareStageName, error: unknown): MiddlewareError {
+  // If already a MiddlewareError, don't double-wrap — preserve the original source
+  if (error instanceof MiddlewareError) {
+    return error;
+  }
   const sourceError = error instanceof Error ? error : new Error(String(error));
   return new MiddlewareError(middlewareName, stage, sourceError);
 }

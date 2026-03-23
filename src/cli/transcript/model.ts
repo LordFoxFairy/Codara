@@ -493,11 +493,11 @@ function buildAgentRuntimeItem(input: {
   return {
     id: startEvent.id,
     role: 'agent',
-    content: `⚙ ${label.displayName}${args ? `(${args})` : ''}\n${summaryLine}`,
+    content: `⏺ ${label.displayName}${args ? `(${args})` : ''}\n${summaryLine}`,
     toolMeta: {
       toolName: TOOL_NAMES.AGENT,
       displayName: label.displayName,
-      icon: '⚙',
+      icon: '⏺',
       ...(args ? {args} : {}),
       ...(readSubagentRuntimeRunId(startEvent.id) ? {runId: readSubagentRuntimeRunId(startEvent.id)} : {}),
       coverageKey: buildAgentCoverageKey(label.displayName, rawArgs, status),
@@ -976,7 +976,7 @@ function buildTaskToolMetaFromCoreMessage(
     return {
       toolName: TOOL_NAMES.AGENT,
       displayName: parsed.displayName,
-      icon: '⚙',
+      icon: '⏺',
       args: parsed.args,
       runId: launched.runId,
       coverageKey: buildAgentCoverageKey(parsed.displayName, parsed.args, 'running'),
@@ -1010,7 +1010,7 @@ function buildTaskToolMetaFromCoreMessage(
     return {
       toolName: TOOL_NAMES.AGENT,
       displayName,
-      icon: '⚙',
+      icon: '⏺',
       args,
       ...(delegated.runId || toolCallId ? {runId: delegated.runId ?? toolCallId} : {}),
       coverageKey: buildAgentCoverageKey(displayName, rawArgs, delegated.reason === 'error' ? 'error' : 'done'),
@@ -1027,7 +1027,7 @@ function buildTaskToolMetaFromCoreMessage(
   return {
     toolName: TOOL_NAMES.AGENT,
     displayName,
-    icon: '⚙',
+    icon: '⏺',
     args,
     ...(toolCallId ? {runId: toolCallId} : {}),
     coverageKey: buildAgentCoverageKey(displayName, rawArgs, message.status === 'error' ? 'error' : 'done'),

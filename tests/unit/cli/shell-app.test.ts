@@ -131,7 +131,7 @@ describe('CLI foreground surface', () => {
         toolMeta: {
           toolName: 'Agent',
           displayName: 'Explore',
-          icon: '⚙',
+          icon: '⏺',
           status: 'running',
         },
       }],
@@ -187,15 +187,15 @@ describe('CLI foreground surface', () => {
     })).toBe(false);
   });
 
-  it('should hide the activity line when a running task block already owns task/tool progress', () => {
+  it('should always show the activity line when a running task block is active (spinner stays visible)', () => {
     const activeItems: TranscriptItem[] = [{
       id: 'active-subagent-run:run-1',
       role: 'agent',
-      content: '⚙ Explore(Inspect repo)\nRunning (12s)',
+      content: '⏺ Explore(Inspect repo)\nRunning (12s)',
       toolMeta: {
         toolName: 'Agent',
         displayName: 'Explore',
-        icon: '⚙',
+        icon: '⏺',
         args: 'Inspect repo',
         status: 'running',
         summaryLine: 'Running (12s)',
@@ -206,17 +206,17 @@ describe('CLI foreground surface', () => {
       runStateStatus: 'running',
       latestRuntimeEventKind: 'tool',
       activeItems,
-    })).toBe(false);
+    })).toBe(true);
   });
 
-  it('should hide the activity line whenever active tasks are still running or paused, even if no running task block is currently projected', () => {
+  it('should always show the activity line even when tasks are running or paused', () => {
     expect(shouldShowActivityLine({
       runStateStatus: 'running',
       latestRuntimeEventKind: 'tool',
       activeItems: [],
       runningSubagentRunCount: 2,
       pausedSubagentRunCount: 1,
-    })).toBe(false);
+    })).toBe(true);
   });
 
   it('should keep the activity line for normal model thinking states', () => {

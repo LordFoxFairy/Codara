@@ -6,6 +6,7 @@ import {CommandOutputPanel} from '../components/chrome/command-output-panel';
 import {Footer} from '../components/chrome/footer';
 import {StatusBar} from '../components/chrome/header';
 import {ActivityLine} from '../components/chrome/activity-line';
+import {RobotMark} from '../components/chrome/robot-mark';
 import {SubagentRunPanel} from '../components/chrome/subagent-run-panel';
 import {ReviewPanel, isPermissionReview} from '../components/conversation/review-panel';
 import {SessionPicker} from '../components/conversation/session-picker';
@@ -154,20 +155,9 @@ export function shouldShowActivityLine(input: {
     return false;
   }
 
-  if (input.runStateStatus !== 'running') {
-    return true;
-  }
-
-  const transcriptOwnsTaskExecution = input.activeItems.some((item) => (
-    item.role === 'agent' && item.toolMeta?.status === 'running'
-  ));
-
-  if (!transcriptOwnsTaskExecution) {
-    return (input.runningSubagentRunCount ?? 0) === 0
-      && (input.pausedSubagentRunCount ?? 0) === 0;
-  }
-
-  return false;
+  // Always show ActivityLine so the spinner is visible throughout execution,
+  // including when tools are running or subagents are active.
+  return true;
 }
 
 function hasVisibleAssistantTranscriptReply(items: readonly TranscriptItem[]): boolean {
@@ -419,15 +409,22 @@ export function CodaraCliApp(props: CodaraCliAppProps): React.JSX.Element {
               runningSubagentRunCount: subagentRuns.runningCount,
               pausedSubagentRunCount: subagentRuns.pausedCount,
             }) && (
-              <ActivityLine
-                runState={shell.runState}
-                activeTurn={shell.activeTurn}
-                latestRuntimeEvent={shell.latestRuntimeEvent}
-                sessionMetadata={shell.sessionState.metadata}
-                runningSubagentRunCount={subagentRuns.runningCount}
-                pausedSubagentRunCount={subagentRuns.pausedCount}
-                hasVisibleAssistantReply={hasVisibleAssistantReply}
-              />
+              <Box flexDirection="row" alignItems="flex-start">
+                {!shell.hasConversation && shell.runState.status === 'running' && (
+                  <RobotMark isRunning />
+                )}
+                <Box flexGrow={1}>
+                  <ActivityLine
+                    runState={shell.runState}
+                    activeTurn={shell.activeTurn}
+                    latestRuntimeEvent={shell.latestRuntimeEvent}
+                    sessionMetadata={shell.sessionState.metadata}
+                    runningSubagentRunCount={subagentRuns.runningCount}
+                    pausedSubagentRunCount={subagentRuns.pausedCount}
+                    hasVisibleAssistantReply={hasVisibleAssistantReply}
+                  />
+                </Box>
+              </Box>
             )}
             {sessionPicker.state.visible && (
               <SessionPicker

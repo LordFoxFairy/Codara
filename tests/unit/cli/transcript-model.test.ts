@@ -518,7 +518,7 @@ describe('cli transcript model', () => {
 
     expect(items.map((item) => item.role)).toEqual(['user', 'agent']);
     expect(items.some((item) => item.content.includes('任务已启动'))).toBe(false);
-    expect(items[1]?.content).toContain('⚙ Explore(Analyze project)');
+    expect(items[1]?.content).toContain('⏺ Explore(Analyze project)');
   });
 
   test('should suppress active launch chatter when the streaming response already contains an Agent tool call', () => {
@@ -652,7 +652,7 @@ describe('cli transcript model', () => {
 
     expect(items).toHaveLength(1);
     expect(items[0]?.role).toBe('agent');
-    expect(items[0]?.content).toContain('⚙ Explore(Analyze the repo)');
+    expect(items[0]?.content).toContain('⏺ Explore(Analyze the repo)');
     expect(items[0]?.content).toContain('Running');
   });
 
@@ -724,7 +724,7 @@ describe('cli transcript model', () => {
       content: 'delegate it',
     });
     expect(items[1]?.role).toBe('agent');
-    expect(items[1]?.content).toContain('⚙ Explore(Analyze the repo)');
+    expect(items[1]?.content).toContain('⏺ Explore(Analyze the repo)');
     expect(items[1]?.content).toContain('Running');
     expect(items[1]?.toolMeta?.status).toBe('running');
   });
@@ -819,7 +819,7 @@ describe('cli transcript model', () => {
 
     expect(items).toHaveLength(1);
     expect(items[0]?.role).toBe('agent');
-    expect(items[0]?.content).toContain('⚙ Explore(Inspect child work)');
+    expect(items[0]?.content).toContain('⏺ Explore(Inspect child work)');
     expect(items[0]?.content).toContain('Done (3 tool uses · 14.4k tokens)');
     expect(items[0]?.content).not.toContain('CHILD_DONE');
     expect(items[0]?.toolMeta?.summaryLine).toBe('Done (3 tool uses · 14.4k tokens)');
@@ -935,7 +935,7 @@ describe('cli transcript model', () => {
       ],
     });
 
-    const exploreItems = items.filter((item) => item.content.includes('⚙ Explore('));
+    const exploreItems = items.filter((item) => item.content.includes('⏺ Explore('));
     expect(exploreItems).toHaveLength(1);
     expect(exploreItems[0]?.content).toContain('Running');
   });
@@ -1054,7 +1054,7 @@ describe('cli transcript model', () => {
       ],
     });
 
-    const exploreItems = items.filter((item) => item.content.includes('⚙ Explore('));
+    const exploreItems = items.filter((item) => item.content.includes('⏺ Explore('));
     expect(exploreItems).toHaveLength(2);
     expect(exploreItems[0]?.content).not.toContain('pending');
     expect(exploreItems[1]?.content).not.toContain('pending');
@@ -1129,7 +1129,7 @@ describe('cli transcript model', () => {
       ],
     });
 
-    const exploreItems = items.filter((item) => item.content.includes('⚙ Explore('));
+    const exploreItems = items.filter((item) => item.content.includes('⏺ Explore('));
     expect(exploreItems).toHaveLength(1);
     expect(exploreItems[0]?.content).toContain('Running');
     expect(exploreItems[0]?.content).not.toContain('glob(');
@@ -1194,7 +1194,7 @@ describe('cli transcript model', () => {
       ],
     });
 
-    const exploreItems = items.filter((item) => item.content.includes('⚙ Explore('));
+    const exploreItems = items.filter((item) => item.content.includes('⏺ Explore('));
     expect(exploreItems).toHaveLength(1);
     expect(exploreItems[0]?.content).toContain('Done');
     expect(items.some((item) => item.content.includes('Codara is a terminal-first AI agent runtime.'))).toBe(false);
