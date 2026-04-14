@@ -38,14 +38,15 @@ export class FileSkillsSource implements SkillsSource {
       return this.inflight;
     }
 
-    this.inflight = this.options.loadRuntime()
-      .then((runtime) => {
+    this.inflight = (async () => {
+      try {
+        const runtime = await this.options.loadRuntime();
         this.cache = runtime;
         return runtime;
-      })
-      .finally(() => {
+      } finally {
         this.inflight = undefined;
-      });
+      }
+    })();
 
     return this.inflight;
   }

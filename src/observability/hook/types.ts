@@ -59,6 +59,8 @@ export type HookGroup = z.infer<typeof hookGroupSchema>;
 export const hooksConfigSchema = z.object({
   description: z.string().optional(),
   hooks: z.record(
+    // z.enum() requires a mutable [string, ...string[]] tuple; HOOK_EVENT_TYPES is readonly.
+    // This cast is safe because HOOK_EVENT_TYPES is a compile-time constant with ≥1 element.
     z.enum(HOOK_EVENT_TYPES as unknown as [string, ...string[]]),
     z.array(hookGroupSchema).optional(),
   ).optional().default({}),

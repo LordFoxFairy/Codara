@@ -96,6 +96,8 @@ export function parseMessageXml(xml: string): WeComMessageEvent {
     }
   }
 
+  // Parsed from XML via regex — required fields (ToUserName, FromUserName, CreateTime, MsgType)
+  // may be absent if the XML is malformed. Callers must handle gracefully.
   return result as unknown as WeComMessageEvent;
 }
 

@@ -156,7 +156,7 @@ export function startFeishuWebhook(options: FeishuWebhookOptions): StopHandle {
 
       // Card action callback (interactive card button press)
       if (feishuEvent.header?.event_type === 'card.action.trigger') {
-        const actionEvent = feishuEvent.event as unknown as Record<string, unknown>;
+        const actionEvent = feishuEvent.event as Record<string, unknown>;
         const action = actionEvent.action as Record<string, unknown> | undefined;
         const operator = actionEvent.operator as Record<string, unknown> | undefined;
         if (action && onCardAction) {

@@ -14,11 +14,12 @@ export class SettingsCache {
   async get(): Promise<CodaraSettings> {
     if (this.cached) return this.cached;
     if (this.loading) return this.loading;
-    this.loading = loadCodaraSettings(this.options).then((settings) => {
+    this.loading = (async () => {
+      const settings = await loadCodaraSettings(this.options);
       this.cached = settings;
       this.loading = undefined;
       return settings;
-    });
+    })();
     return this.loading;
   }
 

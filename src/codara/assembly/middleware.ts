@@ -14,6 +14,8 @@ import {
   createSkillsMiddleware,
   createTodoListMiddleware,
 } from '@core/middleware';
+import {readSkillsRuntimeData} from '@capability/skill';
+import {createSkillTool} from '@capability/skill/runtime/commands';
 import {createPermissionMiddleware} from '@core/middleware/permission';
 import type {AgentCheckpointer} from '@durability/checkpoint/agent';
 import type {ApprovalStore} from '@durability/approval-store';
@@ -79,7 +81,7 @@ export function createCodaraMiddlewares(
     middlewares.push(createLoggingMiddleware(options.logging as LoggingMiddlewareOptions));
   }
   if (!options.middleware?.some((middleware) => middleware.name === MIDDLEWARE_NAMES.Skills)) {
-    middlewares.push(createSkillsMiddleware());
+    middlewares.push(createSkillsMiddleware({readSkillsRuntimeData, createSkillTool}));
   }
   middlewares.push(...(options.middleware ?? []));
   middlewares.push(createBudgetMiddleware());

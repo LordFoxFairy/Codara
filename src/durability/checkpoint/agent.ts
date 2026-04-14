@@ -168,6 +168,8 @@ function deserializeAgentCheckpointState(raw: unknown): AgentCheckpointState {
     messages: messages as BaseMessage[],
     context: deepClone(record.context) as AgentCheckpointContext,
     values: deepClone(record.values) as AgentCheckpointValues,
+    // pendingReview is deserialized from checkpoint storage via loose Zod schema (Record<string, unknown>).
+    // A full ReviewRequest Zod schema would eliminate this cast but is out of scope for checkpoint layer.
     ...(record.pendingReview
       ? {pendingReview: deepClone(record.pendingReview) as unknown as ReviewRequest}
       : {}),

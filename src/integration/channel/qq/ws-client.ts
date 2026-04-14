@@ -85,17 +85,19 @@ export class OneBotWsClient {
       this.pendingRequests.delete(data.echo);
       clearTimeout(pending.timer);
 
-      const response = data as unknown as OneBotApiResponse;
-      if (response.status === 'ok') {
-        pending.resolve(response.data);
+      // Shape validated: data has echo (string) matching a pending request
+      const status = data.status as string | undefined;
+      if (status === 'ok') {
+        pending.resolve(data.data);
       } else {
-        pending.reject(new Error(`OneBot API error: retcode=${response.retcode}`));
+        pending.reject(new Error(`OneBot API error: retcode=${data.retcode}`));
       }
       return;
     }
 
-    // Event — dispatch to handler
-    if (data.post_type && this.eventHandler) {
+    // Event — dispatch to handler.
+    // Shape validated: has post_type, time, self_id from OneBot v11 protocol.
+    if (data.post_type && typeof data.time === 'number' && typeof data.self_id === 'number' && this.eventHandler) {
       this.eventHandler(data as unknown as OneBotEvent);
     }
   }

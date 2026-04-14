@@ -173,16 +173,25 @@ function cloneDurableState(
   };
 }
 
+/** Serialized snapshot used only for JSON.stringify equality comparison. */
+type ComparableSnapshot = {
+  agentType: AgentType;
+  messages: unknown[];
+  context: AgentRuntimeContext;
+  values: AgentRuntimeValues;
+  pendingReview?: ReviewRequest;
+};
+
 function toComparableState(
   state: Pick<DurableState | AgentState, 'agentType' | 'messages' | 'context' | 'values' | 'pendingReview'>,
-): AgentCheckpointState {
+): ComparableSnapshot {
   return {
     agentType: state.agentType,
-    messages: mapChatMessagesToStoredMessages(state.messages) as unknown as BaseMessage[],
+    messages: mapChatMessagesToStoredMessages(state.messages),
     context: cloneAgentContext(state.context),
     values: cloneAgentValues(state.values),
     ...(state.pendingReview ? {pendingReview: cloneReviewRequest(state.pendingReview)} : {}),
-  } as unknown as AgentCheckpointState;
+  };
 }
 
 function isMessage(value: unknown): value is BaseMessage {

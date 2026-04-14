@@ -294,14 +294,17 @@ export function createSession(options: CreateSessionOptions): Session {
       return agent;
     }
     if (!agentPromise) {
-      agentPromise = bootstrapSessionAgent().then((instance) => {
-        agent = instance;
-        return instance;
-      }).finally(() => {
-        if (!agent) {
-          clearAgentCache();
+      agentPromise = (async () => {
+        try {
+          const instance = await bootstrapSessionAgent();
+          agent = instance;
+          return instance;
+        } finally {
+          if (!agent) {
+            clearAgentCache();
+          }
         }
-      });
+      })();
     }
     return agentPromise;
   }

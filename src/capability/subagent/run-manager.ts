@@ -340,11 +340,10 @@ class InMemorySubagentRunManager implements SubagentRunManager {
       handle.agentPromise = (async () => {
         // This is still the single core agent bootstrap path:
         // subagent run manager -> bootstrapSubagent -> bootstrapAgent -> createAgent.
-        return bootstrapSubagent(handle.childSessionId, handle.childOptions);
-      })().then((agent) => {
+        const agent = await bootstrapSubagent(handle.childSessionId, handle.childOptions);
         handle.agent = agent;
         return agent;
-      });
+      })();
     }
     return handle.agentPromise;
   }

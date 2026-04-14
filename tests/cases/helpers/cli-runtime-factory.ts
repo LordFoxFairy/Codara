@@ -29,7 +29,8 @@ import {
 import {createMiddleware} from '@core/pipeline/types';
 import {createSubagentRunFileStore, createSubagentMiddleware} from '@capability/subagent';
 import {AGENT_TOOL_NAME} from '@capability/subagent/tool';
-import {FileSystemSkillStore} from '@capability/skill';
+import {FileSystemSkillStore, readSkillsRuntimeData} from '@capability/skill';
+import {createSkillTool} from '@capability/skill/runtime/commands';
 import {loadSkillsRuntimeBundle} from '@context/skills/build';
 import {seedProjectSkillFixtures} from '../../helpers/project-skill-fixtures';
 
@@ -116,7 +117,7 @@ export async function createCliRuntime(input: {
           },
           tools: [createTaskCreateTool({store})],
           middleware: [
-            createSkillsMiddleware({store: createProjectSkillStore(input.cwd), loadBundle: loadSkillsRuntimeBundle}),
+            createSkillsMiddleware({store: createProjectSkillStore(input.cwd), loadBundle: loadSkillsRuntimeBundle, readSkillsRuntimeData, createSkillTool}),
             createSubagentMiddleware({
               model: new SharedTaskReaderModel() as unknown as BaseChatModel,
               tools: [createTaskListTool({store})],
@@ -211,7 +212,7 @@ export async function createCliRuntime(input: {
             subagentRoots: [path.join(repoRoot, '.codara', 'skills', 'builtin-agents', 'agents')],
           },
           middleware: [
-            createSkillsMiddleware({store: createRepoSkillStore(repoRoot), loadBundle: loadSkillsRuntimeBundle}),
+            createSkillsMiddleware({store: createRepoSkillStore(repoRoot), loadBundle: loadSkillsRuntimeBundle, readSkillsRuntimeData, createSkillTool}),
             createMiddleware({name: 'TaskMiddleware', tools: createTaskTools({store})}),
             createSubagentMiddleware({
               model: childModel as unknown as BaseChatModel,
@@ -443,7 +444,7 @@ export async function createCliRuntime(input: {
               subagentRoots: [path.join(repoRoot, '.codara', 'skills', 'builtin-agents', 'agents')],
             },
             middleware: [
-              createSkillsMiddleware({store: createRepoSkillStore(repoRoot), loadBundle: loadSkillsRuntimeBundle}),
+              createSkillsMiddleware({store: createRepoSkillStore(repoRoot), loadBundle: loadSkillsRuntimeBundle, readSkillsRuntimeData, createSkillTool}),
               createSubagentMiddleware({
                 model: new ChildPermissionCliModel() as unknown as BaseChatModel,
                 tools: [createPermissionBashTool()],

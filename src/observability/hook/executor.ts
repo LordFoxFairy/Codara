@@ -166,14 +166,15 @@ export class PromptExecutionStrategy implements HookExecutionStrategy {
     result = result.replace(/\$HOOK_EVENT/g, context.hookEvent);
     result = result.replace(/\$SESSION_ID/g, context.sessionId);
 
-    // Tool-specific placeholders
-    const record = context as unknown as Record<string, unknown>;
+    // Tool-specific placeholders — use `in` narrowing to access event-specific fields
     if ('toolName' in context) {
-      result = result.replace(/\$TOOL_NAME/g, String(record.toolName ?? ''));
-      result = result.replace(/\$TOOL_INPUT/g, JSON.stringify(record.toolInput ?? {}));
+      const toolCtx = context as HookContextBase & {toolName: string; toolInput?: Record<string, unknown>};
+      result = result.replace(/\$TOOL_NAME/g, toolCtx.toolName);
+      result = result.replace(/\$TOOL_INPUT/g, JSON.stringify(toolCtx.toolInput ?? {}));
     }
     if ('userPrompt' in context) {
-      result = result.replace(/\$USER_PROMPT/g, String(record.userPrompt ?? ''));
+      const promptCtx = context as HookContextBase & {userPrompt: string};
+      result = result.replace(/\$USER_PROMPT/g, promptCtx.userPrompt);
     }
 
     return result;

@@ -8,7 +8,7 @@ export interface FeishuEvent {
     app_id: string;
     tenant_key: string;
   };
-  event: FeishuMessageEvent | FeishuUrlVerificationEvent;
+  event: FeishuMessageEvent | FeishuUrlVerificationEvent | Record<string, unknown>;
 }
 
 export interface FeishuMessageEvent {

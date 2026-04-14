@@ -1,6 +1,11 @@
-import type {CodaraCommandDefinition} from '@capability/command/runtime/types';
+import type {CodaraCommandAgent, CodaraCommandDefinition} from '@capability/command/runtime/types';
 
 const BUILTIN_SOURCE = {type: 'builtin'} as const;
+
+/** Type guard for agents that support the rewind capability. */
+function hasRewind(agent: CodaraCommandAgent): agent is CodaraCommandAgent & {rewind: (count: number) => Promise<void>} {
+  return 'rewind' in agent && typeof (agent as Record<string, unknown>).rewind === 'function';
+}
 
 export const rewindCommand: CodaraCommandDefinition = {
   name: 'rewind',
@@ -33,8 +38,8 @@ export const rewindCommand: CodaraCommandDefinition = {
       return {ok: true, command: command.name, output: 'Nothing to rewind.'};
     }
 
-    if ('rewind' in agent && typeof (agent as unknown as Record<string, unknown>).rewind === 'function') {
-      await (agent as unknown as {rewind: (count: number) => Promise<void>}).rewind(remainingCount);
+    if (hasRewind(agent)) {
+      await agent.rewind(remainingCount);
       return {
         ok: true,
         command: command.name,

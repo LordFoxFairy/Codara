@@ -2,7 +2,8 @@ import {describe, expect, it} from 'bun:test';
 import {
   createSkillsMiddleware,
 } from '@core/middleware';
-import {FileSystemSkillStore, getDefaultSkillSources, type SkillStore} from '@capability/skill';
+import {FileSystemSkillStore, getDefaultSkillSources, readSkillsRuntimeData, type SkillStore} from '@capability/skill';
+import {createSkillTool} from '@capability/skill/runtime/commands';
 import {loadSkillsRuntimeBundle} from '@context/skills/build';
 
 describe('middleware unified skills exports', () => {
@@ -24,7 +25,7 @@ describe('middleware unified skills exports', () => {
       },
     };
 
-    const middleware = createSkillsMiddleware({store, loadBundle: loadSkillsRuntimeBundle});
+    const middleware = createSkillsMiddleware({store, loadBundle: loadSkillsRuntimeBundle, readSkillsRuntimeData, createSkillTool});
     expect(middleware.name).toBe('SkillsMiddleware');
 
     const fsStore = new FileSystemSkillStore({

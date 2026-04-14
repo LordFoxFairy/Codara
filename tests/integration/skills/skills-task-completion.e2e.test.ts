@@ -9,7 +9,8 @@ import {tool} from '@langchain/core/tools'
 import {z} from 'zod'
 import {createAgent} from '@core/agent'
 import {createMiddleware, createSkillsMiddleware} from '@core/middleware'
-import {FileSystemSkillStore} from '@capability/skill'
+import {FileSystemSkillStore, readSkillsRuntimeData} from '@capability/skill'
+import {createSkillTool} from '@capability/skill/runtime/commands'
 import {loadSkillsRuntimeBundle} from '@context/skills/build'
 import {seedProjectSkillFixtures} from '../../helpers/project-skill-fixtures'
 
@@ -128,7 +129,7 @@ describe('Skills task completion flow', () => {
     const runner = createAgent({
       model: model as unknown as BaseChatModel,
       tools: [readFileTool],
-      middleware: [createSkillsMiddleware({store, loadBundle: loadSkillsRuntimeBundle}), probeMiddleware]
+      middleware: [createSkillsMiddleware({store, loadBundle: loadSkillsRuntimeBundle, readSkillsRuntimeData, createSkillTool}), probeMiddleware]
     })
 
     const result = await runner.invoke({
