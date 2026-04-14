@@ -56,6 +56,25 @@ async function loadConfigFile(filePath: string): Promise<McpConfig | undefined> 
 }
 
 /**
+ * Create an McpConfig from settings-provided server definitions.
+ *
+ * Applies the same environment variable expansion as file-based loading.
+ */
+export function createMcpConfigFromSettings(
+  mcpServers: Record<string, McpServerConfig> | undefined,
+): McpConfig {
+  if (!mcpServers || Object.keys(mcpServers).length === 0) {
+    return {mcpServers: {}};
+  }
+
+  const expanded: Record<string, McpServerConfig> = {};
+  for (const [name, server] of Object.entries(mcpServers)) {
+    expanded[name] = expandEnvVars(server) as McpServerConfig;
+  }
+  return {mcpServers: expanded};
+}
+
+/**
  * Recursively expand `${VAR_NAME}` in string values.
  */
 function expandEnvVars(value: unknown): unknown {

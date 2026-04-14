@@ -1,4 +1,5 @@
 export {
+  createMcpConfigFromSettings,
   loadMcpConfig,
 } from './config';
 

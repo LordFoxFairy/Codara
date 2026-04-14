@@ -2,7 +2,7 @@ import {describe, expect, it} from 'bun:test';
 import {mkdir, mkdtemp, writeFile} from 'node:fs/promises';
 import path from 'node:path';
 import {tmpdir} from 'node:os';
-import {loadMcpConfig} from '@integration/mcp';
+import {createMcpConfigFromSettings, loadMcpConfig} from '@integration/mcp';
 
 describe('MCP config loading', () => {
   it('returns empty config when no files exist', async () => {
@@ -113,5 +113,44 @@ describe('MCP config loading', () => {
 
     const config = await loadMcpConfig({userHome});
     expect(config.mcpServers).toEqual({});
+  });
+});
+
+describe('createMcpConfigFromSettings', () => {
+  it('should create config from settings with env expansion', () => {
+    process.env.TEST_MCP_KEY = 'secret123';
+    try {
+      const config = createMcpConfigFromSettings({
+        myServer: {type: 'local', command: ['node', 'server.js'], env: {API_KEY: '${TEST_MCP_KEY}'}},
+      });
+      expect(config.mcpServers.myServer).toBeDefined();
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      expect((config.mcpServers.myServer as any).env?.API_KEY).toBe('secret123');
+    } finally {
+      delete process.env.TEST_MCP_KEY;
+    }
+  });
+
+  it('should return empty config when undefined', () => {
+    const config = createMcpConfigFromSettings(undefined);
+    expect(config.mcpServers).toEqual({});
+  });
+
+  it('should return empty config when empty object', () => {
+    const config = createMcpConfigFromSettings({});
+    expect(config.mcpServers).toEqual({});
+  });
+
+  it('should pass through remote server config with env expansion', () => {
+    process.env.TEST_MCP_TOKEN = 'tok_abc';
+    try {
+      const config = createMcpConfigFromSettings({
+        api: {type: 'remote', url: 'https://mcp.example.com', headers: {Authorization: 'Bearer ${TEST_MCP_TOKEN}'}},
+      });
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      expect((config.mcpServers.api as any).headers.Authorization).toBe('Bearer tok_abc');
+    } finally {
+      delete process.env.TEST_MCP_TOKEN;
+    }
   });
 });
