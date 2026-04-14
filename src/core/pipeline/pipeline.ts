@@ -188,7 +188,8 @@ class MiddlewareError extends Error {
   ) {
     super(`Middleware "${middlewareName}" failed in ${stage}: ${cause.message}`);
     this.name = 'MiddlewareError';
-
+    // Ensure the cause is available for error reporters
+    Object.defineProperty(this, 'cause', { value: cause, enumerable: true });
     if (Error.captureStackTrace) {
       Error.captureStackTrace(this, MiddlewareError);
     }

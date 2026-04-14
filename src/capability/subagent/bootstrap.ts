@@ -257,7 +257,12 @@ function buildSubagentContextPreparer(
   }
 
   return async (context: AgentPreparationContext) => {
-    await prepareContext(context);
+    try {
+      await prepareContext(context);
+    } catch (error) {
+      // Fall back gracefully — file loading failures must not crash the subagent.
+      // The agent will proceed with whatever system message was already set.
+    }
     stripSkillsFromPreparedInstructionContext(context);
   };
 }

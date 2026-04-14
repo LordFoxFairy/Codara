@@ -44,6 +44,7 @@ import type {BaseExecutionContext, MiddlewareRuntimeShared} from '@core/pipeline
 import {MiddlewarePipeline} from '@core/pipeline/pipeline';
 import {deepClone} from '@shared/clone';
 import {formatErrorMessage} from './errors';
+import {compactMessages, isContextWindowExhausted} from './compact';
 import {parseReviewToolMessagePayload} from '@core/middleware/review';
 import type {AgentLifecycleHooks} from '@observability/hook/types';
 
@@ -561,8 +562,11 @@ async function runLoop(
   stream?: ReturnType<typeof createStreamWriter>,
   startTurn = 1,
 ): Promise<AgentResult> {
+  let compactionAttempts = 0;
   for (let turn = startTurn; turn <= run.maxTurns; turn += 1) {
     try {
+      // Freeze message prefix for prompt cache stability between turns
+      run.state.messages = [...run.state.messages];
       const turnResult = await runAgentTurn(run, runtime, turn, stream);
       if (turnResult.reason === 'complete') {
         // Invoke Stop hook — if vetoed, inject messages and continue loop
@@ -598,6 +602,11 @@ async function runLoop(
         };
       }
     } catch (error) {
+      if (isContextWindowExhausted(error) && compactionAttempts < 2) {
+        compactionAttempts += 1;
+        run.state.messages = compactMessages(run.state.messages, {keepRecentTurns: 3});
+        continue;
+      }
       return {reason: 'error', state: run.state, turns: turn, error: error instanceof Error ? error : new Error(String(error))};
     }
   }
@@ -669,7 +678,7 @@ function buildRuntime(options: CreateAgentOptions): AgentRuntime {
   const registry = new Map<string, StructuredToolInterface>();
   for (const tool of tools) {
     if (registry.has(tool.name)) {
-      throw new Error(`Duplicate tool name: ${tool.name}`);
+      continue;
     }
     registry.set(tool.name, tool);
   }
@@ -692,6 +701,9 @@ function buildRuntime(options: CreateAgentOptions): AgentRuntime {
       async *stream(messages) {
         if ('stream' in runnable && typeof runnable.stream === 'function') {
           for await (const chunk of await runnable.stream(messages)) {
+            if (!AIMessageChunk.isInstance(chunk) && !AIMessage.isInstance(chunk)) {
+              continue;
+            }
             yield toMessageChunk(chunk);
           }
           return;

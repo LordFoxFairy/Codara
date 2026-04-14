@@ -148,7 +148,7 @@ describe('CLI interaction turn helpers', () => {
       responseRole: 'assistant',
       kind: 'prompt',
     }, new AIMessageChunk({
-      tool_calls: [{name: 'Agent', id: 'call-agent'}],
+      tool_calls: [{name: 'Agent', id: 'call-agent', args: {}}],
     }), {
       detectAgentLaunch: true,
     }).turn;

@@ -110,8 +110,8 @@ export function applyRuntimeSubagentDefaults(
     ...runtimeDefaults,
     ...options,
     taskStore: runtimeDefaults.taskStore,
-    runStore: runtimeDefaults.runStore,
-    runManager: runtimeDefaults.runManager,
+    runStore: 'runStore' in options ? options.runStore : runtimeDefaults.runStore,
+    runManager: 'runManager' in options ? options.runManager : runtimeDefaults.runManager,
     checkpointer: runtimeDefaults.checkpointer,
     approvalStore: runtimeDefaults.approvalStore,
     model: options.model ?? runtimeDefaults.model,
@@ -121,7 +121,7 @@ export function applyRuntimeSubagentDefaults(
       ...(options.childRuntime ?? {}),
     },
     childMiddleware: options.childMiddleware ?? runtimeDefaults.childMiddleware,
-    childInstructionContext: options.childInstructionContext ?? runtimeDefaults.childInstructionContext,
+    childInstructionContext: 'childInstructionContext' in options ? options.childInstructionContext : runtimeDefaults.childInstructionContext,
     childLifecycle: options.childLifecycle ?? runtimeDefaults.childLifecycle,
   });
 }

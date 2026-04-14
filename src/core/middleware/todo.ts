@@ -131,9 +131,9 @@ export function createTodoListMiddleware(options?: TodoListMiddlewareOptions): B
      * LLM provider prompt caching. Only the dynamic todo snapshot at the end changes per turn.
      * Do NOT reorder these — it would break cache prefix stability.
      */
-    wrapModelCall: (request, handler) => {
-      const todoState = readTodoState(request.state.values);
-      const nextSystemMessages = request.systemMessage.concat(options?.systemPrompt ?? TODO_LIST_MIDDLEWARE_SYSTEM_PROMPT);
+    wrapModelCall: async (request, handler) => {
+      const todoState = readTodoState(request.state?.values);
+      const nextSystemMessages = (request.systemMessage ?? []).concat(options?.systemPrompt ?? TODO_LIST_MIDDLEWARE_SYSTEM_PROMPT);
       const todoSnapshot = formatTodoSnapshot(todoState);
 
       return handler({
@@ -172,9 +172,17 @@ function formatTodoSnapshot(state: TodoMiddlewareState): string | undefined {
     return undefined;
   }
 
+  const hasIncomplete = state.todos.some(t => t.status !== 'completed');
+
   return [
     '## Current To-Do List',
     '',
-    ...state.todos.map((todo, index) => `${index + 1}. [${todo.status}] ${todo.content}`),
+    ...state.todos.map((todo, index) => {
+      const marker = todo.status !== 'completed' ? ' — INCOMPLETE' : '';
+      return `${index + 1}. [${todo.status}] ${todo.content}${marker}`;
+    }),
+    ...(hasIncomplete
+      ? ['', 'You have incomplete items. Continue using tools to complete them before giving a final text response.']
+      : []),
   ].join('\n');
 }

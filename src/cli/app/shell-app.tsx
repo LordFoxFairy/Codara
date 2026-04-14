@@ -1,13 +1,10 @@
 import React, {useCallback, useEffect, useState} from 'react';
 import {Box, Static, useApp} from 'ink';
-import {AIMessage, type BaseMessage} from '@langchain/core/messages';
 import type {Codara, CodaraRuntimeEvent} from '@/index';
 import {CommandOutputPanel} from '../components/chrome/command-output-panel';
 import {Footer} from '../components/chrome/footer';
 import {StatusBar} from '../components/chrome/header';
-import {ActivityLine} from '../components/chrome/activity-line';
 import {PersistentSpinner} from '../components/chrome/persistent-spinner';
-import {RobotMark} from '../components/chrome/robot-mark';
 import {SubagentRunPanel} from '../components/chrome/subagent-run-panel';
 import {ReviewPanel, isPermissionReview} from '../components/conversation/review-panel';
 import {SessionPicker} from '../components/conversation/session-picker';
@@ -30,7 +27,6 @@ import type {CliInteractionSurface, CliReviewState} from './view-state';
 import {shouldSpaceInsertIntoCliReviewDraft} from './review-state';
 import type {TranscriptItem} from '../transcript/model';
 import type {SolidifiedItem} from '../transcript/model';
-import {readVisibleMessageText} from '@shared/messages';
 
 export interface CodaraCliAppProps {
   codara: Codara;
@@ -161,13 +157,6 @@ export function shouldShowActivityLine(input: {
   return true;
 }
 
-function hasVisibleAssistantTranscriptReply(items: readonly TranscriptItem[]): boolean {
-  return items.some((item) => item.role === 'assistant' && item.content.trim().length > 0);
-}
-
-function hasVisibleAssistantMessageReply(messages: readonly BaseMessage[]): boolean {
-  return messages.some((message) => AIMessage.isInstance(message) && Boolean(readVisibleMessageText(message)));
-}
 
 export function hasVisibleAssistantSolidifiedReply(items: readonly SolidifiedItem[]): boolean {
   return items.some((item) => item.items.some((entry) => entry.role === 'assistant' && entry.content.trim().length > 0));
@@ -354,10 +343,6 @@ export function CodaraCliApp(props: CodaraCliAppProps): React.JSX.Element {
     runningSubagentRunCount: subagentRuns.runningCount,
     pausedSubagentRunCount: subagentRuns.pausedCount,
   });
-  const transcriptHasVisibleAssistantReply = hasVisibleAssistantTranscriptReply(activeItems)
-    || hasVisibleAssistantMessageReply(shell.coreMessages);
-  const hasVisibleAssistantReply = transcriptHasVisibleAssistantReply
-    || hasVisibleAssistantSolidifiedReply(solidifiedItems);
 
   useEffect(() => {
     if (

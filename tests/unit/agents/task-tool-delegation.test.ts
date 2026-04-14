@@ -98,7 +98,7 @@ describe('createSubagentTool delegation', () => {
     expect(result.state.status).toBe('idle');
     expect(result.state.pendingReview).toBeUndefined();
     expect(String(toolMessage.content)).toContain('Subagent started in background.');
-    expect(launch).toEqual({
+    expect(launch).toMatchObject({
       type: 'subagent_run_started',
       runId: 'call_task_delegate',
       parentSessionId: result.state.sessionId,

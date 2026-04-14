@@ -1,3 +1,114 @@
+# 2026-03-24 AI Agent 能力文案重写
+
+## Plan
+
+- [x] 识别原始文案的主要问题：工具堆砌、表达口语化、能力抽象层级不统一。
+- [x] 将现有技能点重写为更专业、通用、适合 AI Agent 岗位的能力描述。
+- [x] 保留你现有的 `#skill-row(...)` 结构，直接产出可复用版本。
+- [x] 在本节补充 review，记录本轮改写原则与结果。
+
+## Review
+
+- 原文的核心问题不在技术点本身，而在于表达方式更像“关键词罗列”，缺少“系统能力 + 工程落地 + 结果导向”的专业感。
+- 本轮改写把内容统一收敛到五类能力：Agent 系统、LLM 应用工程、RAG 检索、模型后训练、推理部署与平台工程。
+- 改写策略是“保留可信工具名，但把重点放在可迁移能力和工程方法”，避免写成只适用于单一栈的工具清单。
+- 最终输出保持 `#skill-row(...)` 形式，方便直接贴回技能卡片、简历、主页或作品集。
+
+# 2026-03-23 Architecture ZH Outline整理
+
+## Plan
+
+- [x] 检查 `docs/architecture/zh` 当前目录状态与 README 总纲。
+- [x] 确认章节文件是否实际存在于工作树，而不是只看 README 链接。
+- [x] 基于现有 README 大纲整理出一版清晰的中文结构摘要。
+- [x] 在本节补充 review，记录本轮梳理结论。
+
+## Review
+
+- `docs/architecture/zh` 当前工作树里实际只剩 `README.md` 作为总纲文件。
+- `README.md` 最初的课程结构是 11 章递进式教程：`s00 -> s10`，并按 `基础 / 优化 / 协作` 三段学习路径组织。
+- `README.md` 同时还承担了“总序”和“设计总原则”职责，核心包括：
+  - Agent/Harness 基本定义
+  - 学习路径与阶段里程碑
+  - 五条设计原则
+  - 适用场景与参考来源
+- 当时 README 链接的 `s00` 到 `s10` 章节文件在工作树是删除状态，因此那一轮“当前大纲”只能以 `README.md` 为准。
+
+# 2026-03-23 Architecture ZH README 重写
+
+## Plan
+
+- [x] 收敛 README 的目标读者与写作目标：工程师可理解、面试可复述、少代码重原理。
+- [x] 确认重写范围先聚焦 `docs/architecture/zh/README.md`，不同时展开 `s00-s10` 章节正文。
+- [x] 将 README 从“目录说明”重写为“总序 + 方法论 + 学习路径 + 面试表达骨架”。
+- [x] 自检文案是否满足“少代码、重为什么、重因果链、让读者能复述”。
+- [x] 在本节补充 review，总结本轮文档重写结果。
+
+## Review
+
+- [README.md](/Users/nako/WebstormProjects/github/thefoxfairy/Codara/docs/architecture/zh/README.md#L1) 已从原先偏“课程目录页”的写法，重写为一篇完整的总序文档。
+- 新版 README 的核心调整：
+  - 先回答“这套教程到底在讲什么”，明确焦点是 Agent Runtime 原理，而不是代码抄写
+  - 新增“为什么这里刻意少代码”，把文档方法论直接讲明
+  - 把 11 章重组为一条“系统生长链”，而不是并列知识点清单
+  - 保留课程地图，但每章都补了“它真正回答的问题”
+  - 把学习路径扩展成三阶段能力跃迁说明
+  - 把设计原则从口号改成带因果解释的原理段落
+  - 增加“面试里怎么讲”部分，方便复述
+- 文风自检通过：
+  - 无代码块
+  - 无实现细节依赖
+  - 重点放在机制、边界、设计目的和章节依赖关系
+
+# 2026-03-23 Architecture ZH 全章节重写
+
+## Plan
+
+- [x] 读取当前架构文档与历史 `s00-s10`，提炼统一教程边界与章节主线。
+- [x] 生成正式实施计划到 `docs/superpowers/plans/2026-03-23-architecture-zh-tutorial.md`。
+- [x] 以统一模板重写 `s00-s05`，建立单 Agent 与优化部分。
+- [x] 以统一模板重写 `s06-s10`，完成多 Agent 与自治部分。
+- [x] 通读 README 与所有章节，校对术语、风格、衔接和面试表达一致性。
+- [x] 在本节补充 review，总结最终产物。
+
+## Review
+
+- 已完成 [README.md](/Users/nako/WebstormProjects/github/thefoxfairy/Codara/docs/architecture/zh/README.md#L1) 与教程正文重写；后续用户要求移除 `s00`，现行结构已收口为 `s01-s10`。
+- 最终产物覆盖：
+  - [s01-agent-loop.md](/Users/nako/WebstormProjects/github/thefoxfairy/Codara/docs/architecture/zh/s01-agent-loop.md#L1)
+  - [s02-context.md](/Users/nako/WebstormProjects/github/thefoxfairy/Codara/docs/architecture/zh/s02-context.md#L1)
+  - [s03-tool-system.md](/Users/nako/WebstormProjects/github/thefoxfairy/Codara/docs/architecture/zh/s03-tool-system.md#L1)
+  - [s04-skill-loading.md](/Users/nako/WebstormProjects/github/thefoxfairy/Codara/docs/architecture/zh/s04-skill-loading.md#L1)
+  - [s05-todo-write.md](/Users/nako/WebstormProjects/github/thefoxfairy/Codara/docs/architecture/zh/s05-todo-write.md#L1)
+  - [s06-subagent.md](/Users/nako/WebstormProjects/github/thefoxfairy/Codara/docs/architecture/zh/s06-subagent.md#L1)
+  - [s07-task-system.md](/Users/nako/WebstormProjects/github/thefoxfairy/Codara/docs/architecture/zh/s07-task-system.md#L1)
+  - [s08-agent-teams.md](/Users/nako/WebstormProjects/github/thefoxfairy/Codara/docs/architecture/zh/s08-agent-teams.md#L1)
+  - [s09-team-protocols.md](/Users/nako/WebstormProjects/github/thefoxfairy/Codara/docs/architecture/zh/s09-team-protocols.md#L1)
+  - [s10-autonomous-agents.md](/Users/nako/WebstormProjects/github/thefoxfairy/Codara/docs/architecture/zh/s10-autonomous-agents.md#L1)
+- 文风在用户纠偏后已重新收口：
+  - 删除模板化“本章要回答什么/为什么不这样”等重复转场
+  - 收短段落与标题层级
+  - 保留核心原理、章节衔接、面试表达，但避免解释性废话
+- 另已把这次教训写入 [lessons.md](/Users/nako/WebstormProjects/github/thefoxfairy/Codara/tasks/lessons.md#L3)，后续同类教程默认优先高密度、少模板腔。
+
+# 2026-03-23 Architecture ZH 单章样章重写
+
+## Plan
+
+- [x] 基于教程写作方法论，先停止整套一起推进，改为单章试写。
+- [x] 收敛 `s00` 的样章设计：课本型教程、单线推进、控制在短篇幅内。
+- [x] 重写 `docs/architecture/zh/s00-harness.md`，只保留一个核心学习目标。
+- [x] 根据用户最新裁决移除 `s00`，不再保留单独世界观起手章。
+- [ ] 以 `s01` 作为新的起点继续逐章重写。
+
+## Review
+
+- `s00` 已按用户要求移除，不再作为单独章节保留。
+- 当前教程入口已调整为 `s01 -> s10`：
+  - [README.md](/Users/nako/WebstormProjects/github/thefoxfairy/Codara/docs/architecture/zh/README.md#L1)
+  - [s01-agent-loop.md](/Users/nako/WebstormProjects/github/thefoxfairy/Codara/docs/architecture/zh/s01-agent-loop.md#L1)
+- 所有现存章节导航中的 `s00` 已同步删掉，避免目录与正文不一致。
+
 # 2026-03-22 Subagent Boundary And Permission Propagation Fix
 
 ## Plan

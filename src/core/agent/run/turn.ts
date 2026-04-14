@@ -19,6 +19,8 @@ import {parseReviewToolMessagePayload} from '@core/middleware/review';
 import {toError} from './errors';
 import {readSubagentRunLaunchResult} from '@shared/subagent-run-launch';
 import {TOOL_NAMES} from '@shared/tool-display';
+import {partitionToolCalls} from './tool-concurrency';
+import {isToolReadOnly} from '@integration/tool';
 
 export type AgentTurnOutcome = 'continue' | 'complete';
 
@@ -105,16 +107,47 @@ export async function runTools(
   const expectedSubagentCount = toolCalls.filter((toolCall) => toolCall.name === TOOL_NAMES.AGENT).length;
   let sawDetached = false;
   const launchedSubagentBatchIds = new Set<string>();
-  for (let i = 0; i < toolCalls.length; i++) {
-    const result = await runSingleTool(run, runtime, context, toolCalls, i, expectedSubagentCount, stream);
+
+  // Build concurrency registry from the tool calls
+  const concurrencyRegistry = new Map<string, {isReadOnly: boolean}>();
+  for (const call of toolCalls) {
+    if (!concurrencyRegistry.has(call.name)) {
+      concurrencyRegistry.set(call.name, {isReadOnly: isToolReadOnly({name: call.name})});
+    }
+  }
+
+  const {readOnly, serial} = partitionToolCalls(toolCalls, concurrencyRegistry);
+
+  // Phase 1: Read-only tools run concurrently
+  if (readOnly.length > 0) {
+    const results = await Promise.all(
+      readOnly.map((call) => {
+        const globalIndex = toolCalls.indexOf(call);
+        return runSingleTool(run, runtime, context, toolCalls, globalIndex, expectedSubagentCount, stream);
+      }),
+    );
+    for (const result of results) {
+      for (const batchId of result.launchedSubagentBatchIds) {
+        launchedSubagentBatchIds.add(batchId);
+      }
+      if (result.status === 'paused') {
+        return {status: 'paused', launchedSubagentBatchIds: [...launchedSubagentBatchIds]};
+      }
+      if (result.status === 'detached') {
+        sawDetached = true;
+      }
+    }
+  }
+
+  // Phase 2: Writable / separable tools run serially
+  for (const call of serial) {
+    const globalIndex = toolCalls.indexOf(call);
+    const result = await runSingleTool(run, runtime, context, toolCalls, globalIndex, expectedSubagentCount, stream);
     for (const batchId of result.launchedSubagentBatchIds) {
       launchedSubagentBatchIds.add(batchId);
     }
     if (result.status === 'paused') {
-      return {
-        status: 'paused',
-        launchedSubagentBatchIds: [...launchedSubagentBatchIds],
-      };
+      return {status: 'paused', launchedSubagentBatchIds: [...launchedSubagentBatchIds]};
     }
     if (result.status === 'detached') {
       sawDetached = true;

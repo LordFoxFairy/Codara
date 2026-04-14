@@ -647,22 +647,6 @@ describe('UI alignment with Claude Code', () => {
     });
 
     it('should switch a single task block to done when the live task summary has completed', () => {
-      const _items: TranscriptItem[] = [
-        {
-          id: 'active-subagent-run:run-single-done',
-          role: 'agent',
-          content: '⏺ Explore(Analyze architecture)\nRunning (12s · 2 tool activities)',
-          toolMeta: {
-            toolName: 'Agent',
-            displayName: 'Explore',
-            icon: '⏺',
-            args: 'Analyze architecture',
-            status: 'running',
-            elapsed: '12s',
-            summaryLine: 'Running (12s · 2 tool activities)',
-          },
-        },
-      ];
       const {lastFrame} = render(<ActiveTranscript items={[{
         id: 'active-subagent-run:run-single-done',
         role: 'agent',

@@ -133,6 +133,7 @@ describe('CLI foreground surface', () => {
           displayName: 'Explore',
           icon: '⏺',
           status: 'running',
+          summaryLine: 'Running',
         },
       }],
     })).toBe(true);

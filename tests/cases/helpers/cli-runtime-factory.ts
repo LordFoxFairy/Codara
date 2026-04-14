@@ -136,6 +136,7 @@ export async function createCliRuntime(input: {
           projectRoot: input.cwd,
           codaraPath: path.join(input.cwd, '.codara'),
           ...(input.sessionId ? {sessionId: input.sessionId} : {}),
+          subagentRunStore: promptRunStore,
           model: new ParentTaskPromptModel() as unknown as BaseChatModel,
           skills: {
             projectRoot: input.cwd,
@@ -149,6 +150,7 @@ export async function createCliRuntime(input: {
               model: new ChildPromptInspectorModel() as unknown as BaseChatModel,
               tools: [createNoopTool()],
               runStore: promptRunStore,
+              childInstructionContext: undefined,
             }),
           ],
         }),
@@ -162,11 +164,13 @@ export async function createCliRuntime(input: {
       });
       const childModel = new CoordinatedSubagentModel();
       return {
+
         codara: await createCodaraRuntime({
           cwd: input.cwd,
           projectRoot: input.cwd,
           codaraPath: path.join(input.cwd, '.codara'),
           ...(input.sessionId ? {sessionId: input.sessionId} : {}),
+          subagentRunStore: runStore,
           model: new ParentScriptedModel([
             new AIMessage({
               content: '',
@@ -199,6 +203,7 @@ export async function createCliRuntime(input: {
                 } as ToolCall,
               ],
             }),
+            new AIMessage('MULTI_PROFILE_COORDINATION_DONE'),
           ]) as unknown as BaseChatModel,
           builtinTools: false,
           skills: {
@@ -209,7 +214,6 @@ export async function createCliRuntime(input: {
             createSkillsMiddleware({store: createRepoSkillStore(repoRoot), loadBundle: loadSkillsRuntimeBundle}),
             createMiddleware({name: 'TaskMiddleware', tools: createTaskTools({store})}),
             createSubagentMiddleware({
-              runStore,
               model: childModel as unknown as BaseChatModel,
               tools: [
                 tool(async ({path: targetPath}: {path: string}) => `plan-doc:${targetPath}`, {
@@ -1055,17 +1059,30 @@ class CoordinatedSubagentModel {
       return new AIMessage(`EXPLORE_DONE:${String(grepMessage.content).includes('grep-match:TODO')}`);
     }
 
-    const taskListMessage = findToolMessage(messages, 'call_general_task_list');
-    if (!taskListMessage) {
+    const taskListMessages = messages.filter((message) => (
+      ToolMessage.isInstance(message) && (message as ToolMessage).tool_call_id?.startsWith('call_general_task_list')
+    )) as ToolMessage[];
+    const lastTaskList = taskListMessages[taskListMessages.length - 1];
+    if (!lastTaskList) {
       return new AIMessage({
         content: '',
         tool_calls: [{id: 'call_general_task_list', name: TASK_LIST_TOOL_NAME, args: {}} as ToolCall],
       });
     }
 
+    // Retry if TaskList is empty (race: parent TaskCreate may not have flushed yet)
+    const taskListContent = String(lastTaskList.content);
+    if (taskListContent.includes('No tasks found')) {
+      const retryId = `call_general_task_list_${taskListMessages.length}`;
+      return new AIMessage({
+        content: '',
+        tool_calls: [{id: retryId, name: TASK_LIST_TOOL_NAME, args: {}} as ToolCall],
+      });
+    }
+
     const taskUpdateMessage = findToolMessage(messages, 'call_general_task_update');
     if (!taskUpdateMessage) {
-      const taskId = readFirstTaskId(String(taskListMessage.content));
+      const taskId = readFirstTaskId(taskListContent);
       return new AIMessage({
         content: '',
         tool_calls: [{

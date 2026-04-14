@@ -36,7 +36,7 @@ describe('skill subagent definitions', () => {
     expect(plan.systemPrompt).toContain('Do not edit files');
     expect(plan.systemPrompt).toContain('Do not delegate further');
     expect(general.name).toBe('Agent');
-    expect(general.systemPrompt).toBe('');
+    expect(general.systemPrompt).toContain('You are a background worker agent');
   });
 
   it('应忽略保留的 Agent 基础 child profile 文件，并拒绝旧的隐式或 legacy 名称', async () => {
@@ -63,7 +63,7 @@ You are a custom general-purpose subagent.
       const general = resolveSubagentDefinition(runtime, 'Agent');
 
       expect(general.name).toBe('Agent');
-      expect(general.systemPrompt).toBe('');
+      expect(general.systemPrompt).toContain('You are a background worker agent');
       expect(general.description).not.toContain('custom general-purpose override');
       expect(() => resolveSubagentDefinition(runtime, undefined)).toThrow(
         'Agent requires subagent_type. Use "Agent" for the base child or a named profile such as "Explore".',

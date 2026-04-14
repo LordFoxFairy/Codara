@@ -26,6 +26,7 @@ export {
   ListWorktreesTool,
   createListWorktreesTool,
   createBuiltinTools,
+  isToolReadOnly,
   type BuiltinToolOptions,
 } from '@integration/tool/builtin';
 export {filterToolsByReferences, normalizeToolReferenceName} from '@integration/tool/names';

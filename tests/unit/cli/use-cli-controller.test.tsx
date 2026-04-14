@@ -2,7 +2,7 @@ import {describe, expect, it} from 'bun:test';
 import React, {useEffect} from 'react';
 import {Text} from 'ink';
 import {render} from 'ink-testing-library';
-import {AIMessage, AIMessageChunk} from '@langchain/core/messages';
+import {AIMessage, AIMessageChunk, type BaseMessage} from '@langchain/core/messages';
 import type {
   Codara,
   CodaraStreamRequest,
@@ -484,7 +484,7 @@ describe('useCliController background refresh', () => {
     const codara = new FakeCodara();
     codara.blockNextStream();
     codara.queueStreamChunk(new AIMessageChunk({
-      tool_calls: [{name: 'Agent', id: 'call-agent'}],
+      tool_calls: [{name: 'Agent', id: 'call-agent', args: {}}],
     }));
     codara.queueStreamText('Final answer from the main agent after both subagents finish.');
     const rendered = render(<BackgroundFollowupProbe codara={codara as unknown as Codara} />);
@@ -596,7 +596,7 @@ describe('useCliController background refresh', () => {
     const codara = new FakeCodara();
     codara.blockNextStream();
     codara.queueStreamChunk(new AIMessageChunk({
-      tool_calls: [{name: 'Agent', id: 'call-agent'}],
+      tool_calls: [{name: 'Agent', id: 'call-agent', args: {}}],
     }));
     codara.setHydrateSequence([
       {status: 'idle', messages: []},
@@ -712,7 +712,7 @@ describe('useCliController background refresh', () => {
     const codara = new FakeCodara();
     codara.blockNextStream();
     codara.queueStreamChunk(new AIMessageChunk({
-      tool_calls: [{name: 'Agent', id: 'call-agent'}],
+      tool_calls: [{name: 'Agent', id: 'call-agent', args: {}}],
     }));
     codara.setHydrateSequence([
       {status: 'idle', messages: []},
@@ -790,7 +790,7 @@ describe('useCliController background refresh', () => {
     const codara = new FakeCodara();
     codara.blockNextStream();
     codara.queueStreamChunk(new AIMessageChunk({
-      tool_calls: [{name: 'Agent', id: 'call-agent'}],
+      tool_calls: [{name: 'Agent', id: 'call-agent', args: {}}],
     }));
     codara.setHydrateSequence([
       {status: 'idle', messages: []},
@@ -856,7 +856,7 @@ describe('useCliController background refresh', () => {
     const codara = new FakeCodara();
     codara.blockNextStream();
     codara.queueStreamChunk(new AIMessageChunk({
-      tool_calls: [{name: 'Agent', id: 'call-agent'}],
+      tool_calls: [{name: 'Agent', id: 'call-agent', args: {}}],
     }));
     codara.queueStreamText('Final answer that is still only visible in the active turn.');
     codara.setHydrateSequence([
@@ -973,7 +973,7 @@ describe('useCliController background refresh', () => {
     const codara = new FakeCodara();
     codara.blockNextStream();
     codara.queueStreamChunk(new AIMessageChunk({
-      tool_calls: [{name: 'Agent', id: 'call-agent'}],
+      tool_calls: [{name: 'Agent', id: 'call-agent', args: {}}],
     }));
     codara.queueStreamText('Final answer that is still only visible in the active turn.');
     codara.setHydrateSequence([

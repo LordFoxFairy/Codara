@@ -6,7 +6,24 @@
       "Bash(bun test:*)",
       "Bash(bun run:*)",
       "Bash(git:*)",
-      "Bash(find /Users/nako/WebstormProjects/github/thefoxfairy/Codara/tests -name *team* -o -name *teams*)"
+      "Bash(find /Users/nako/WebstormProjects/github/thefoxfairy/Codara/tests -name *team* -o -name *teams*)",
+      "Bash(grep -n \"^## \" /Users/nako/WebstormProjects/github/thefoxfairy/Codara/docs/architecture/zh/s*.md)",
+      "Read(//tmp/learn-claude-code/docs/**)",
+      "Read(//Users/nako/**)",
+      "Bash(\"/Users/nako/WebstormProjects/github/thefoxfairy/Codara/docs/architecture/zh/s05-todo-write.md\":*)",
+      "Bash(find /Users/nako/WebstormProjects/github/thefoxfairy/Codara/tmp -name *claw* -type d)",
+      "Bash(ls:*)",
+      "Bash(grep -h \"^# 第.*章\" docs/architecture/zh/s*.md)",
+      "Bash(mv s00-bash-tool.md \"第1章 Bash 工具 — 一切能力的基础.md\")",
+      "Bash(mv s01-agent-loop.md \"第2章 Agent Loop — 让模型持续工作的闭环.md\")",
+      "Bash(mv s02-context.md \"第4章 Context Management — KV Cache 决定了架构.md\")",
+      "Bash(mv s03-tool-system.md \"第3章 Tool System — 加工具不改循环.md\")",
+      "Bash(mv s04-skill-loading.md \"第5章 Skill Loading — 按需注入知识.md\")",
+      "Bash(rm \"第1章：Bash 工具 — 一切能力的基础.md\")",
+      "Bash(mv s05-todo-write.md \"第6章 TodoWrite — 把计划从脑内搬到白板.md\")",
+      "Bash(mv s06-subagent.md \"第7章 SubAgent — 隔离上下文的第一步.md\")",
+      "Bash(mv s07-task-system.md \"第8章 Task System — 任务活得比会话更久.md\")",
+      "Bash(mv s08-agent-teams.md \"第9章 Agent Teams — 从委托到协作.md\")"
     ]
   }
 }

@@ -69,7 +69,7 @@ const REVIEW_RESUME_READY_TIMEOUT_MS = 500;
 const REVIEW_RESUME_READY_POLL_MS = 10;
 const PROMPT_SETTLE_REFRESH_TIMEOUT_MS = 500;
 const PROMPT_SETTLE_REFRESH_POLL_MS = 20;
-const FINAL_REPLY_SETTLE_POLL_MS = 80;
+
 
 export interface UseCliControllerOptions {
   codara: Codara;
@@ -171,11 +171,11 @@ function shouldKeepPromptTurnRunningAfterAgentLaunch(input: {
     return true;
   }
 
-  // An agent was launched: keep running regardless of preamble text or agent state.
+  // An agent was launched: keep running unless a visible main reply already exists.
   // Subagents may not be registered in getSubagentRunSummaries yet (async startup),
   // so we hand off to the useEffect polling loop which confirms completion via
   // refreshCoreState() instead of relying on stale snapshots here.
-  if (input.launchedAgent) {
+  if (input.launchedAgent && !input.sawVisibleReply) {
     return true;
   }
 
@@ -334,7 +334,7 @@ function appendRuntimeEventPreservingOpenStarts(
 }
 
 function resolveFocusedSurface(
-  current: CliInteractionSurface,
+  _current: CliInteractionSurface,
   review: CliReviewState | undefined,
 ): CliInteractionSurface {
   if (!review) {
@@ -573,16 +573,11 @@ export function useCliController(options: UseCliControllerOptions): CliControlle
       return false;
     }
 
-    // Subagent phases own their own completion detection via the polling loop.
+    // The subagent completion phase owns its own settlement via the active stream.
     // Settling here would fire on stale preamble text and mark done prematurely.
-    if (
-      runStateRef.current.phase === 'subagent_wait'
-      || runStateRef.current.phase === 'subagent_completion'
-    ) {
-      return false;
-    }
-
-    if (reviewRef.current) {
+    // subagent_wait is NOT excluded — the polling loop should still be able to
+    // settle when a visible reply arrives from refreshCoreState.
+    if (runStateRef.current.phase === 'subagent_completion') {
       return false;
     }
 
@@ -599,6 +594,7 @@ export function useCliController(options: UseCliControllerOptions): CliControlle
       return false;
     }
 
+    settlingFinalReplyRef.current = true;
     setRunState({status: 'done'});
     if (hasVisibleReplyInMessagesNow) {
       setActiveTurn(undefined);
@@ -677,11 +673,18 @@ export function useCliController(options: UseCliControllerOptions): CliControlle
         return false;
       }
 
+      // Yield to React render loop so state effects can fire.
       await new Promise((resolve) => setTimeout(resolve, PROMPT_SETTLE_REFRESH_POLL_MS));
+
+      // Exit if the interaction ended while we were waiting — the runningAgentCount
+      // effect handles the done transition instead.
+      if (!interactionScheduler.isRunning()) {
+        return false;
+      }
     }
 
     return false;
-  }, [codara, refreshCoreState, settleRunningPromptTurnIfReady]);
+  }, [codara, interactionScheduler, refreshCoreState, settleRunningPromptTurnIfReady]);
 
   const runQueuedReviewResponse = useCallback(async (interaction: QueuedReviewResponseInteraction): Promise<boolean> => {
     const nextAgentState = await refreshCoreState();
@@ -763,6 +766,14 @@ export function useCliController(options: UseCliControllerOptions): CliControlle
     }
 
     syncInteractionState();
+
+    // When draining finds nothing and the interaction is done, settle the prompt
+    // if possible. This handles cases where runningAgentCount never changed (e.g.,
+    // detached agent end events with no matching start).
+    if (runStateRef.current.status === 'running' && runStateRef.current.phase !== 'subagent_wait') {
+      settlingFinalReplyRef.current = false;
+      setRunState({status: 'done'});
+    }
   }, [flushPendingBackgroundNotices, interactionScheduler, runQueuedReviewResponse, syncInteractionState]);
 
   useEffect(() => {
@@ -841,13 +852,14 @@ export function useCliController(options: UseCliControllerOptions): CliControlle
     }
 
     if (runningAgentCount > 0) {
-      if (runState.status !== 'running') {
+      if (runState.status !== 'running' && !settlingFinalReplyRef.current) {
         setRunState({status: 'running', phase: 'prompt_stream'});
       }
-    } else if (runState.status === 'running' && !interactionScheduler.isRunning()) {
+    } else if (runState.status === 'running' && !interactionScheduler.isRunning() && runState.phase !== 'subagent_wait') {
+      settlingFinalReplyRef.current = false;
       setRunState({status: 'done'});
     }
-  }, [runningAgentCount, runState.status, review, interactionScheduler]);
+  }, [runningAgentCount, runState.status, runState.phase, review, interactionScheduler]);
 
   useEffect(() => {
     settleRunningPromptTurnIfReady(coreMessages);
@@ -1010,6 +1022,7 @@ export function useCliController(options: UseCliControllerOptions): CliControlle
       launchedAgent,
       sawVisibleReply: sawText,
     })) {
+      setRunState({status: 'running', phase: 'subagent_wait'});
       return;
     }
 
@@ -1022,6 +1035,7 @@ export function useCliController(options: UseCliControllerOptions): CliControlle
 
   const runQueuedSessionPrompt = useCallback(async (prompt: string): Promise<void> => {
     beginInteraction('session_prompt');
+    settlingFinalReplyRef.current = false;
     setRunState({status: 'running', phase: 'prompt_stream'});
     setRuntimeEvents([]);
     setCommandOutput(undefined);

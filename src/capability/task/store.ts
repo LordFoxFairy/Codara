@@ -164,6 +164,9 @@ async function applyTaskUpdate(
   const current = graph.get(existing.id) as TaskRecord;
 
   if (input.status) {
+    if (input.status === 'in_progress') {
+      await validateNotBlocked(current, readTask);
+    }
     current.status = input.status;
   }
   if (input.owner !== undefined) {
@@ -226,7 +229,10 @@ async function addTaskLinks(
   now: string,
 ): Promise<void> {
   for (const taskId of normalizeTaskIds(additions)) {
-    if (taskId === task.id || localLinks.includes(taskId)) {
+    if (taskId === task.id) {
+      throw new Error(`Task "${task.id}" cannot depend on itself`);
+    }
+    if (localLinks.includes(taskId)) {
       continue;
     }
 
@@ -235,11 +241,52 @@ async function addTaskLinks(
       throw new Error(`Task "${taskId}" not found`);
     }
 
+    await detectCycle(task.id, taskId, reciprocalKey === 'blockedBy' ? 'blocks' : 'blockedBy', getTask);
+
     localLinks.push(taskId);
     task.updatedAt = now;
     if (!linked[reciprocalKey].includes(task.id)) {
       linked[reciprocalKey].push(task.id);
       linked.updatedAt = now;
+    }
+  }
+}
+
+async function validateNotBlocked(
+  task: TaskRecord,
+  getTask: (taskId: string) => Promise<TaskRecord | undefined>,
+): Promise<void> {
+  const blockers: string[] = [];
+  for (const blockerId of task.blockedBy) {
+    const blocker = await getTask(blockerId);
+    if (blocker && blocker.status !== 'completed' && blocker.status !== 'deleted') {
+      blockers.push(blockerId);
+    }
+  }
+  if (blockers.length > 0) {
+    throw new Error(`Task "${task.id}" is blocked by: ${blockers.join(', ')}`);
+  }
+}
+
+async function detectCycle(
+  sourceId: string,
+  targetId: string,
+  followKey: 'blockedBy' | 'blocks',
+  getTask: (taskId: string) => Promise<TaskRecord | undefined>,
+): Promise<void> {
+  const visited = new Set<string>();
+  const queue = [targetId];
+  while (queue.length > 0) {
+    const current = queue.shift()!;
+    if (visited.has(current)) continue;
+    visited.add(current);
+    const record = await getTask(current);
+    if (!record) continue;
+    for (const next of record[followKey]) {
+      if (next === sourceId) {
+        throw new Error(`Adding dependency ${targetId} -> ${sourceId} would create a cycle`);
+      }
+      queue.push(next);
     }
   }
 }
