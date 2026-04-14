@@ -35,7 +35,7 @@ const subagentRunRecordSchema = z.object({
   activityLog: z.array(z.string()).optional(),
   summary: z.string().optional(),
   errorMessage: z.string().optional(),
-  reason: z.enum(['complete', 'error', 'max_turns']).optional(),
+  reason: z.enum(['complete', 'error', 'max_turns', 'budget_exhausted']).optional(),
   turns: z.number().optional(),
   toolUseCount: z.number().optional(),
   totalTokens: z.number().optional(),

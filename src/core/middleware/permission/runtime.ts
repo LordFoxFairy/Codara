@@ -18,6 +18,7 @@ import {persistPermissionRule, persistPermissionScope} from '@core/middleware/pe
 import type {PermissionPolicyOptions} from '@core/middleware/permission/types';
 import {normalizeToolReferenceName} from '@shared/tool-names';
 import {extractBashAlwaysPatterns, extractBashWritePathOperands} from '@core/middleware/permission/bash';
+import {PermissionSessionCache} from '@core/middleware/permission/session-cache';
 
 export interface PermissionRuntimeOptions extends PermissionPolicyOptions {}
 
@@ -55,35 +56,31 @@ function toDirectoryScopeExpression(expression: string): string {
 }
 
 /**
- * Check if expression is covered by session memory (supports directory wildcards).
+ * Check if expression is covered by session cache (supports directory wildcards).
+ * Returns the cached PermissionAction if found, undefined otherwise.
  */
-function isSessionAllowed(expression: string, sessionAllowed: Set<string>): boolean {
-  if (sessionAllowed.has(expression)) return true;
+function lookupSessionCache(expression: string, cache: PermissionSessionCache): import('@core/middleware/permission/types').PermissionAction | undefined {
+  // Direct hit
+  const direct = cache.lookup(expression);
+  if (direct !== undefined) return direct;
 
   const openIndex = expression.indexOf('(');
-  if (openIndex < 0) return false;
+  if (openIndex < 0) return undefined;
 
   const toolName = expression.slice(0, openIndex);
   const specifier = expression.slice(openIndex + 1, -1);
 
-  for (const rule of sessionAllowed) {
-    const ruleOpenIndex = rule.indexOf('(');
-    if (ruleOpenIndex < 0) continue;
+  // Check wildcard patterns: tool(*) and tool(dir/*)
+  const toolWild = cache.lookup(`${toolName}(*)`);
+  if (toolWild !== undefined) return toolWild;
 
-    const ruleTool = rule.slice(0, ruleOpenIndex);
-    if (ruleTool !== toolName) continue;
-
-    const ruleSpecifier = rule.slice(ruleOpenIndex + 1, -1);
-    if (ruleSpecifier === '*') return true;
-
-    if (ruleSpecifier.endsWith('/*')) {
-      const ruleDir = ruleSpecifier.slice(0, -2);
-      const specifierDir = specifier.slice(0, specifier.lastIndexOf('/'));
-      if (specifierDir === ruleDir) return true;
-    }
+  const lastSlash = specifier.lastIndexOf('/');
+  if (lastSlash >= 0) {
+    const dirWild = cache.lookup(`${toolName}(${specifier.slice(0, lastSlash)}/*)`);
+    if (dirWild !== undefined) return dirWild;
   }
 
-  return false;
+  return undefined;
 }
 
 /**
@@ -124,15 +121,15 @@ interface PendingPermissionRequest {
 }
 
 export function createPermissionRuntime(options: PermissionRuntimeOptions = {}): PermissionRuntime {
-  const sessionAllowedExpressions = new Set<string>();
+  const sessionCache = new PermissionSessionCache();
   const pendingRequests = new Map<string, PendingPermissionRequest>();
 
   return {
     async resolveToolDecision(context) {
-      return resolvePermissionDecision(context, options, sessionAllowedExpressions, pendingRequests);
+      return resolvePermissionDecision(context, options, sessionCache, pendingRequests);
     },
     handleResume(metadata, resumePayload, context, handler) {
-      return handlePermissionResume(metadata ?? {}, resumePayload, context, handler, options, sessionAllowedExpressions, pendingRequests);
+      return handlePermissionResume(metadata ?? {}, resumePayload, context, handler, options, sessionCache, pendingRequests);
     },
     isPermissionReview,
   };
@@ -141,15 +138,19 @@ export function createPermissionRuntime(options: PermissionRuntimeOptions = {}):
 async function resolvePermissionDecision(
   context: ToolCallContext,
   options: PermissionRuntimeOptions,
-  sessionAllowed: Set<string>,
+  sessionCache: PermissionSessionCache,
   pendingRequests: Map<string, PendingPermissionRequest>,
 ): Promise<ReviewDecision | undefined> {
   const evaluation = await evaluatePermissionToolCall(context.toolCall, options);
   if (!evaluation) return undefined;
 
-  // Check session memory first
-  if (isSessionAllowed(evaluation.input, sessionAllowed)) {
+  // Check session cache first (before Layer 1 rules)
+  const cachedDecision = lookupSessionCache(evaluation.input, sessionCache);
+  if (cachedDecision === 'allow') {
     return {decision: 'allow'};
+  }
+  if (cachedDecision === 'deny') {
+    return {decision: 'deny', reason: `Denied by session cache: ${evaluation.input}`};
   }
 
   if (evaluation.decision === 'allow') {
@@ -261,7 +262,7 @@ async function handlePermissionResume(
   context: ToolCallContext,
   handler: (request?: ToolCallContext) => Promise<ToolMessage>,
   options: PermissionRuntimeOptions,
-  sessionAllowed: Set<string>,
+  sessionCache: PermissionSessionCache,
   pendingRequests: Map<string, PendingPermissionRequest>,
 ): Promise<ToolMessage> {
   const payload = parseReviewResumeActionPayload(resumePayload);
@@ -273,18 +274,18 @@ async function handlePermissionResume(
     return createPermissionDenyMessage(context, payload.comment, payload.metadata);
   }
 
-  // Handle "always" — Claude Code style: add ALL always patterns to session memory
+  // Handle "always" — Claude Code style: add ALL always patterns to session cache
   if (payload.action === 'dont_ask_again' || payload.action === 'always') {
     const alwaysPatterns = extractAlwaysPatterns(_metadata);
     if (alwaysPatterns.length > 0) {
       for (const pattern of alwaysPatterns) {
-        sessionAllowed.add(pattern);
+        sessionCache.remember(pattern, 'allow');
       }
     } else {
       // Fallback: use the expression itself
       const expression = formatPermissionExpression(context.toolCall);
       if (expression) {
-        sessionAllowed.add(expression);
+        sessionCache.remember(expression, 'allow');
       }
     }
 
@@ -303,7 +304,7 @@ async function handlePermissionResume(
       }
     }
 
-    await autoResolvePendingRequests(options, sessionAllowed, pendingRequests);
+    await autoResolvePendingRequests(options, sessionCache, pendingRequests);
   }
 
   // Clean up pending
@@ -320,14 +321,15 @@ async function handlePermissionResume(
  */
 async function autoResolvePendingRequests(
   options: PermissionRuntimeOptions,
-  sessionAllowed: Set<string>,
+  sessionCache: PermissionSessionCache,
   pendingRequests: Map<string, PendingPermissionRequest>,
 ): Promise<void> {
   const toRemove: string[] = [];
 
   for (const [key, pending] of pendingRequests) {
-    // Check session memory
-    if (isSessionAllowed(pending.expression, sessionAllowed)) {
+    // Check session cache
+    const cached = lookupSessionCache(pending.expression, sessionCache);
+    if (cached === 'allow') {
       toRemove.push(key);
       continue;
     }

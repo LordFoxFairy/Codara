@@ -89,6 +89,14 @@ export interface PermissionPolicyOptions {
   userHome?: string;
   policyFiles?: string[];
   settingsFile?: string;
+  /** Active permission mode — transforms final decisions before returning */
+  permissionMode?: import('@config/schema').PermissionMode;
+}
+
+/** A loaded set of permission rules with a default decision */
+export interface PermissionRuleSet {
+  rules: PermissionRuleEntry[];
+  defaultDecision: PermissionAction;
 }
 
 // Legacy compatibility aliases (used by existing imports)

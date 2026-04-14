@@ -14,14 +14,18 @@ export {
   resolvePermissionProjectRoot,
   resolvePermissionSettingsFile,
   createDefaultSettingsRecord,
+  createPermissionRulesFromSettings,
 } from './config';
 
-// Evaluation (last-match-wins)
+// Evaluation (last-match-wins) with 3-layer resolution
 export {
   evaluatePermissionToolCall,
   evaluatePermissionExpression,
   formatPermissionExpression,
   parseExpression,
+  applyPermissionMode,
+  resolvePermissionDecision,
+  getDefaultToolDecision,
 } from './evaluate';
 
 // Persistence

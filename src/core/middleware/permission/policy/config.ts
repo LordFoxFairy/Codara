@@ -14,6 +14,7 @@ import type {
   PermissionConfig,
   PermissionPolicyOptions,
   PermissionRuleEntry,
+  PermissionRuleSet,
   PermissionRuleSource,
   PermissionSourceInfo,
 } from '../types';
@@ -321,6 +322,85 @@ export function createDefaultSettingsRecord(): Record<string, unknown> {
         deny: [],
       },
     },
+  };
+}
+
+/**
+ * Convert the unified CodaraSettings permissions block into a PermissionRuleSet
+ * that the permission evaluation engine can consume directly.
+ *
+ * Maps:
+ *  - alwaysAllow → rules with action 'allow'
+ *  - alwaysDeny  → rules with action 'deny'
+ *  - alwaysAsk   → rules with action 'ask'
+ *  - defaultMode → defaultDecision ('bypassPermissions'|'dontAsk' → 'allow', else 'ask')
+ */
+export function createPermissionRulesFromSettings(
+  permissions: {
+    defaultMode?: string;
+    alwaysAllow?: string[];
+    alwaysDeny?: string[];
+    alwaysAsk?: string[];
+  } | undefined,
+): PermissionRuleSet {
+  const source: PermissionRuleSource = {scope: 'settings', path: '<unified-settings>'};
+
+  const rules: PermissionRuleEntry[] = [];
+
+  // Parse each bucket into PermissionRuleEntry[]
+  const buckets: { entries: string[] | undefined; action: PermissionAction }[] = [
+    {entries: permissions?.alwaysAllow, action: 'allow'},
+    {entries: permissions?.alwaysDeny, action: 'deny'},
+    {entries: permissions?.alwaysAsk, action: 'ask'},
+  ];
+
+  for (const {entries, action} of buckets) {
+    if (!entries) continue;
+    for (const expression of entries) {
+      if (typeof expression !== 'string') continue;
+      const parsed = parseSettingsExpression(expression);
+      if (parsed) {
+        rules.push({...parsed, action, source});
+      }
+    }
+  }
+
+  const defaultDecision = mapDefaultMode(permissions?.defaultMode);
+
+  return {rules, defaultDecision};
+}
+
+/**
+ * Map a unified settings defaultMode to a PermissionAction.
+ */
+function mapDefaultMode(mode: string | undefined): PermissionAction {
+  if (!mode) return 'ask';
+  switch (mode) {
+    case 'bypassPermissions':
+    case 'dontAsk':
+      return 'allow';
+    default:
+      return 'ask';
+  }
+}
+
+/**
+ * Parse a settings expression like "Bash(rm -rf:*)" or "Read" into permission + pattern.
+ * Reuses the same format as parseLegacyRules but exposed for settings use.
+ */
+function parseSettingsExpression(expression: string): { permission: string; pattern: string } | undefined {
+  const text = expression.trim();
+  if (!text) return undefined;
+  const openIndex = text.indexOf('(');
+  if (openIndex < 0) {
+    return {permission: text, pattern: '*'};
+  }
+  if (!text.endsWith(')')) {
+    return undefined;
+  }
+  return {
+    permission: text.slice(0, openIndex).trim(),
+    pattern: text.slice(openIndex + 1, -1) || '*',
   };
 }
 

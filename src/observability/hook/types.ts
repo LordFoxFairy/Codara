@@ -265,3 +265,21 @@ export interface ToolLifecycleHooks {
   onPreToolUse(ctx: ToolUseContext): Promise<HookInterceptResult>;
   onPostToolUse(ctx: ToolResultContext): Promise<HookNotifyResult>;
 }
+
+export interface ExtendedAgentLifecycleHooks {
+  onSubagentStart(ctx: SubagentStartContext): Promise<HookNotifyResult>;
+}
+
+export interface PermissionLifecycleHooks {
+  onPermissionRequest(ctx: PermissionRequestContext): Promise<HookInterceptResult>;
+}
+
+export interface TaskLifecycleHooks {
+  onTaskCreated(ctx: TaskCreatedContext): Promise<HookNotifyResult>;
+  onTaskCompleted(ctx: TaskCompletedContext): Promise<HookNotifyResult>;
+}
+
+export interface ConfigLifecycleHooks {
+  onConfigChange(ctx: ConfigChangeContext): Promise<HookNotifyResult>;
+  onCwdChanged(ctx: CwdChangedContext): Promise<HookNotifyResult>;
+}

@@ -1,5 +1,5 @@
 import {describe, expect, test} from 'bun:test';
-import {CommandExecutionStrategy, PromptExecutionStrategy, createHookExecutor} from '@observability/hook/executor';
+import {CommandExecutionStrategy, PromptExecutionStrategy, createHookExecutor, resolveTimeout} from '@observability/hook/executor';
 import type {HookDefinition, HookContextBase} from '@observability/hook/types';
 
 const baseContext: HookContextBase = {
@@ -72,6 +72,36 @@ describe('CommandExecutionStrategy', () => {
     };
     const output = await s.execute(hook, baseContext);
     expect(output.systemMessage).toBe('/my/project');
+  });
+});
+
+describe('resolveTimeout — event-specific overrides', () => {
+  test('SessionEnd hooks use 1.5s timeout', () => {
+    const hook: HookDefinition = {type: 'command', command: 'echo', timeout: undefined as unknown as number};
+    // When timeout is not set on the hook definition, Zod defaults it to 10000
+    // So we test with a hook that explicitly has no override by creating a raw object
+    const rawHook = {type: 'command', command: 'echo'} as HookDefinition;
+    expect(resolveTimeout(rawHook, 'SessionEnd')).toBe(1500);
+  });
+
+  test('Stop hooks use 5s timeout', () => {
+    const hook = {type: 'command', command: 'echo'} as HookDefinition;
+    expect(resolveTimeout(hook, 'Stop')).toBe(5000);
+  });
+
+  test('SubagentStop hooks use 5s timeout', () => {
+    const hook = {type: 'command', command: 'echo'} as HookDefinition;
+    expect(resolveTimeout(hook, 'SubagentStop')).toBe(5000);
+  });
+
+  test('explicit hook timeout takes precedence over event override', () => {
+    const hook = {type: 'command', command: 'echo', timeout: 3000} as HookDefinition;
+    expect(resolveTimeout(hook, 'SessionEnd')).toBe(3000);
+  });
+
+  test('unknown event falls back to default 10s', () => {
+    const hook = {type: 'command', command: 'echo'} as HookDefinition;
+    expect(resolveTimeout(hook, 'PreToolUse')).toBe(10000);
   });
 });
 

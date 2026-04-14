@@ -11,21 +11,33 @@ import type {
   SessionLifecycleHooks,
   AgentLifecycleHooks,
   ToolLifecycleHooks,
+  ExtendedAgentLifecycleHooks,
+  PermissionLifecycleHooks,
+  TaskLifecycleHooks,
+  ConfigLifecycleHooks,
   SessionStartContext,
   SessionEndContext,
   PromptSubmitContext,
   CompactContext,
   AgentStopContext,
+  SubagentStartContext,
   SubagentStopContext,
   ToolUseContext,
   ToolResultContext,
+  PermissionRequestContext,
+  TaskCreatedContext,
+  TaskCompletedContext,
+  ConfigChangeContext,
+  CwdChangedContext,
 } from '@observability/hook/types';
 
 export interface HookExecutorFactory {
   createStrategy(hook: HookDefinition): HookExecutionStrategy;
 }
 
-export class HookPipeline implements SessionLifecycleHooks, AgentLifecycleHooks, ToolLifecycleHooks {
+export class HookPipeline implements
+  SessionLifecycleHooks, AgentLifecycleHooks, ToolLifecycleHooks,
+  ExtendedAgentLifecycleHooks, PermissionLifecycleHooks, TaskLifecycleHooks, ConfigLifecycleHooks {
   constructor(
     private registry: HookRegistry,
     private executorFactory: HookExecutorFactory,
@@ -75,6 +87,38 @@ export class HookPipeline implements SessionLifecycleHooks, AgentLifecycleHooks,
 
   async onPostToolUse(ctx: ToolResultContext): Promise<HookNotifyResult> {
     return this.runNotify('PostToolUse', ctx);
+  }
+
+  // ── Extended Agent Lifecycle ──
+
+  async onSubagentStart(ctx: SubagentStartContext): Promise<HookNotifyResult> {
+    return this.runNotify('SubagentStart', ctx);
+  }
+
+  // ── Permission Lifecycle ──
+
+  async onPermissionRequest(ctx: PermissionRequestContext): Promise<HookInterceptResult> {
+    return this.runInterceptChain('PermissionRequest', ctx);
+  }
+
+  // ── Task Lifecycle ──
+
+  async onTaskCreated(ctx: TaskCreatedContext): Promise<HookNotifyResult> {
+    return this.runNotify('TaskCreated', ctx);
+  }
+
+  async onTaskCompleted(ctx: TaskCompletedContext): Promise<HookNotifyResult> {
+    return this.runNotify('TaskCompleted', ctx);
+  }
+
+  // ── Config Lifecycle ──
+
+  async onConfigChange(ctx: ConfigChangeContext): Promise<HookNotifyResult> {
+    return this.runNotify('ConfigChange', ctx);
+  }
+
+  async onCwdChanged(ctx: CwdChangedContext): Promise<HookNotifyResult> {
+    return this.runNotify('CwdChanged', ctx);
   }
 
   // ── Chain of Responsibility (Intercept) ──

@@ -11,7 +11,7 @@ import type {AgentType, ReviewRequest} from '@shared/contracts/agent-types';
 import {deepClone} from '@shared/clone';
 
 export type AgentCheckpointStatus = 'idle' | 'paused' | 'closed' | 'error';
-export type AgentCheckpointReason = 'complete' | 'error' | 'max_turns';
+export type AgentCheckpointReason = 'complete' | 'error' | 'max_turns' | 'budget_exhausted';
 export type AgentCheckpointContext = Record<string, unknown>;
 export type AgentCheckpointValues = Record<string, unknown>;
 
@@ -65,7 +65,7 @@ const checkpointStateSchema = z.object({
 const checkpointInfoSchema = z.object({
   source: z.enum(['invoke', 'resume', 'reset', 'dispose', 'manual', 'fork']).catch('manual'),
   status: z.enum(['idle', 'paused', 'closed', 'error']).catch('idle'),
-  reason: z.enum(['complete', 'error', 'max_turns']).optional(),
+  reason: z.enum(['complete', 'error', 'max_turns', 'budget_exhausted']).optional(),
   turns: z.number().optional(),
   errorMessage: z.string().optional(),
   step: z.number().catch(0),

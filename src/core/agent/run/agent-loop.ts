@@ -45,6 +45,7 @@ import {MiddlewarePipeline} from '@core/pipeline/pipeline';
 import {deepClone} from '@shared/clone';
 import {formatErrorMessage} from './errors';
 import {compactMessages, isContextWindowExhausted} from './compact';
+import {createTokenBudgetState, shouldAutoCompact, shouldStopContinuation, estimateMessagesTokenCount} from './token-budget';
 import {parseReviewToolMessagePayload} from '@core/middleware/review';
 import type {AgentLifecycleHooks} from '@observability/hook/types';
 
@@ -562,12 +563,38 @@ async function runLoop(
   stream?: ReturnType<typeof createStreamWriter>,
   startTurn = 1,
 ): Promise<AgentResult> {
+  const keepRecentTurns = run.inputBudget?.keepRecentTurns ?? 3;
+  const maxCompactionAttempts = run.inputBudget?.maxCompactionAttempts ?? 3;
+  const contextWindow = run.inputBudget?.maxInputTokens ?? 128_000;
+  const budget = createTokenBudgetState(contextWindow);
+
   let compactionAttempts = 0;
   for (let turn = startTurn; turn <= run.maxTurns; turn += 1) {
+    // --- Proactive auto-compact ---
+    budget.estimatedUsed = estimateMessagesTokenCount(run.state.messages);
+    if (shouldAutoCompact(budget) && compactionAttempts < maxCompactionAttempts) {
+      compactionAttempts += 1;
+      run.state.messages = compactMessages(run.state.messages, {keepRecentTurns});
+      budget.estimatedUsed = estimateMessagesTokenCount(run.state.messages);
+    }
+
+    // --- Budget exhaustion check (skip on first turn — always attempt at least one) ---
+    if (budget.continuationCount > 0 && shouldStopContinuation(budget)) {
+      return {reason: 'budget_exhausted', state: run.state, turns: turn - startTurn};
+    }
+
     try {
       // Freeze message prefix for prompt cache stability between turns
       run.state.messages = [...run.state.messages];
+      const preEstimate = budget.estimatedUsed;
       const turnResult = await runAgentTurn(run, runtime, turn, stream);
+
+      // --- Post-turn budget tracking ---
+      const newEstimate = estimateMessagesTokenCount(run.state.messages);
+      budget.lastDeltaTokens = newEstimate - preEstimate;
+      budget.estimatedUsed = newEstimate;
+      budget.continuationCount += 1;
+
       if (turnResult.reason === 'complete') {
         // Invoke Stop hook — if vetoed, inject messages and continue loop
         if (runtime.lifecycle) {
@@ -602,9 +629,11 @@ async function runLoop(
         };
       }
     } catch (error) {
-      if (isContextWindowExhausted(error) && compactionAttempts < 2) {
+      // Reactive compact on context window exhaustion (fallback)
+      if (isContextWindowExhausted(error) && compactionAttempts < maxCompactionAttempts) {
         compactionAttempts += 1;
-        run.state.messages = compactMessages(run.state.messages, {keepRecentTurns: 3});
+        run.state.messages = compactMessages(run.state.messages, {keepRecentTurns});
+        budget.estimatedUsed = estimateMessagesTokenCount(run.state.messages);
         continue;
       }
       return {reason: 'error', state: run.state, turns: turn, error: error instanceof Error ? error : new Error(String(error))};

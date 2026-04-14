@@ -5,6 +5,23 @@ import type {HookDefinition, HookContextBase, HookOutput} from '@observability/h
 
 const EMPTY_OUTPUT: HookOutput = {};
 
+const DEFAULT_TIMEOUT = 10_000;
+
+/**
+ * Event-specific timeout overrides.
+ * Cleanup and stop hooks get shorter timeouts to avoid blocking shutdown.
+ */
+const EVENT_TIMEOUT_OVERRIDES: Partial<Record<string, number>> = {
+  SessionEnd: 1500,    // 1.5s for cleanup hooks
+  Stop: 5000,          // 5s for stop hooks
+  SubagentStop: 5000,  // 5s for subagent stop
+};
+
+/** Resolve the effective timeout for a hook execution. */
+export function resolveTimeout(hook: HookDefinition, eventType: string): number {
+  return hook.timeout ?? EVENT_TIMEOUT_OVERRIDES[eventType] ?? DEFAULT_TIMEOUT;
+}
+
 const MAX_COMMAND_LENGTH = 10_000;
 
 /**
@@ -41,7 +58,7 @@ export class CommandExecutionStrategy implements HookExecutionStrategy {
     if (!hook.command) return EMPTY_OUTPUT;
 
     try {
-      const stdout = await this.runCommand(hook.command, context, hook.timeout ?? 10000);
+      const stdout = await this.runCommand(hook.command, context, resolveTimeout(hook, context.hookEvent));
       return this.parseOutput(stdout);
     } catch {
       return EMPTY_OUTPUT; // fail-open: never block
@@ -130,7 +147,7 @@ export class PromptExecutionStrategy implements HookExecutionStrategy {
 
       const response = await raceWithTimeout(
         model.invoke([new HumanMessage(expandedPrompt)]),
-        hook.timeout ?? 10000,
+        resolveTimeout(hook, context.hookEvent),
         'Prompt hook timed out',
       );
 

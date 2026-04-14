@@ -220,7 +220,7 @@ export async function buildRecoveredSubagentChildOptions(
 export function createSubagentResult(
   sessionId: string,
   turns: number,
-  reason: 'complete' | 'error' | 'max_turns',
+  reason: 'complete' | 'error' | 'max_turns' | 'budget_exhausted',
   error: Error | undefined,
   messages: BaseMessage[],
   metadata?: {

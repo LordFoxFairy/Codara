@@ -16,6 +16,8 @@ export type ReviewResumePayload = unknown;
 export interface AgentInputBudget {
   maxInputTokens?: number;
   reservedTokens?: number;
+  keepRecentTurns?: number;
+  maxCompactionAttempts?: number;
 }
 
 export interface AgentExecutionMetadata {
@@ -93,7 +95,7 @@ export interface ReviewRequest {
   metadata?: Record<string, unknown>;
 }
 
-export type AgentFinishReason = 'complete' | 'error' | 'max_turns';
+export type AgentFinishReason = 'complete' | 'error' | 'max_turns' | 'budget_exhausted';
 
 export interface AgentState {
   sessionId: string;

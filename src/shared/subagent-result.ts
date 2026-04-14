@@ -8,7 +8,7 @@ const subagentResultSchema = z.object({
   type: z.literal('subagent_result'),
   sessionId: z.string(),
   turns: z.number(),
-  reason: z.enum(['complete', 'error', 'max_turns']),
+  reason: z.enum(['complete', 'error', 'max_turns', 'budget_exhausted']),
   runId: z.string().optional(),
   label: z.string().optional(),
   agentName: z.string().optional(),
@@ -22,7 +22,7 @@ export interface SubagentResult {
   type: 'subagent_result';
   sessionId: string;
   turns: number;
-  reason: 'complete' | 'error' | 'max_turns';
+  reason: 'complete' | 'error' | 'max_turns' | 'budget_exhausted';
   runId?: string;
   label?: string;
   agentName?: string;

@@ -23,7 +23,27 @@
       "Bash(mv s05-todo-write.md \"第6章 TodoWrite — 把计划从脑内搬到白板.md\")",
       "Bash(mv s06-subagent.md \"第7章 SubAgent — 隔离上下文的第一步.md\")",
       "Bash(mv s07-task-system.md \"第8章 Task System — 任务活得比会话更久.md\")",
-      "Bash(mv s08-agent-teams.md \"第9章 Agent Teams — 从委托到协作.md\")"
+      "Bash(mv s08-agent-teams.md \"第9章 Agent Teams — 从委托到协作.md\")",
+      "Bash(grep -E \"\\\\.\\(ts|tsx\\)$\")",
+      "Bash(find /Users/nako/PycharmProjects/ClaudeCode/LordFoxFairy/civil-engineering-cloud-claude-code-source-v2.1.88 -type f -name \"*.ts\" -path \"*/src/*\" -exec grep -l \"useRef.*settling\\\\|Ref.*settling\\\\|.current.*settling\" {} \\\\;)",
+      "Bash(find /Users/nako/PycharmProjects/ClaudeCode/LordFoxFairy/civil-engineering-cloud-claude-code-source-v2.1.88 -type f -name \"*.ts\" -path \"*/src/*\" -exec grep -l \"\\\\\"done\\\\\"\\\\|\\\\\"running\\\\\"\" {} \\\\;)",
+      "Bash(find /Users/nako/PycharmProjects/ClaudeCode/LordFoxFairy/civil-engineering-cloud-claude-code-source-v2.1.88 -type f -name \"*.ts\" -path \"*/src/*\" -exec grep -l \"settles\\\\|settling\" {} \\\\;)",
+      "Bash(grep:*)",
+      "Bash(bun install:*)",
+      "Bash(python3 -m json.tool)",
+      "Bash(rm -rf /tmp/codara-self-test)",
+      "Bash(mkdir -p /tmp/codara-self-test/.codara)",
+      "Bash(CODARA_CLI_AUTO_EXIT_AFTER_INITIAL_PROMPT=1 NO_COLOR=1 FORCE_COLOR=0 CI=1 COLUMNS=200 timeout 30 bun run dev:once \"创建一个文件 /tmp/codara-self-test/hello.txt 内容是 hello world\")",
+      "Bash(find \"/Users/nako/PycharmProjects/ClaudeCode/LordFoxFairy/civil-engineering-cloud-claude-code-source-v2.1.88/02-claude-code-source-research/src\" -name \"*.ts\" -exec grep -l \"StreamEvent\" {} \\\\;)",
+      "Bash(find:*)",
+      "Bash(bun:*)",
+      "Bash(wc:*)",
+      "Bash(awk '{print $1, $2}')",
+      "Bash(npx tsc:*)",
+      "Bash(echo \"EXIT:$?\")",
+      "Bash(npm ls:*)",
+      "Bash(awk '$1 > 400 { print $2 \": \" $1 }')",
+      "Bash(sort -t: -k2 -rn)"
     ]
   }
 }

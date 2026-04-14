@@ -9,6 +9,7 @@ export {
   type PermissionRuntime,
   type PermissionRuntimeOptions,
 } from '@core/middleware/permission/runtime';
+export {PermissionSessionCache} from '@core/middleware/permission/session-cache';
 export {
   ensurePermissionSettingsFile,
   evaluatePermissionExpression,
@@ -18,6 +19,8 @@ export {
   persistPermissionScope,
   persistPermissionRule,
   resolvePermissionSettingsFile,
+  resolvePermissionDecision,
+  getDefaultToolDecision,
   validatePermissionSettings,
 } from '@core/middleware/permission/policy';
 export type {

@@ -1,7 +1,12 @@
 import {describe, expect, test} from 'bun:test';
 import {HookPipeline} from '@observability/hook/pipeline';
 import type {HookRegistry} from '@observability/hook/registry';
-import type {HookDefinition, HookEntry, HookOutput, ToolUseContext} from '@observability/hook/types';
+import type {
+  HookDefinition, HookEntry, HookOutput, ToolUseContext,
+  PermissionRequestContext, SubagentStartContext,
+  TaskCreatedContext, TaskCompletedContext,
+  ConfigChangeContext, CwdChangedContext,
+} from '@observability/hook/types';
 import type {HookExecutionStrategy} from '@observability/hook/executor';
 
 // Mock registry
@@ -196,5 +201,107 @@ describe('HookPipeline — Stop hook', () => {
     });
     expect(result.vetoed).toBe(true);
     expect(result.vetoReason).toBe('Not done yet');
+  });
+});
+
+describe('HookPipeline — New Lifecycle Methods', () => {
+  test('onSubagentStart notifies hooks', async () => {
+    const registry = createMockRegistry({
+      SubagentStart: [makeEntry('notify', 'SubagentStart' as HookEntry['eventType'])],
+    });
+    const factory = createMockExecutorFactory([{systemMessage: 'agent started'}]);
+    const pipeline = new HookPipeline(registry, factory);
+    const ctx: SubagentStartContext = {
+      sessionId: 'test', hookEvent: 'SubagentStart', timestamp: '',
+      agentName: 'explorer', subagentType: 'explore', prompt: 'find bugs',
+    };
+    const result = await pipeline.onSubagentStart(ctx);
+    expect(result.systemMessages).toContain('agent started');
+  });
+
+  test('onPermissionRequest returns intercept result — can approve', async () => {
+    const registry = createMockRegistry({
+      PermissionRequest: [makeEntry('check-perm', 'PermissionRequest' as HookEntry['eventType'])],
+    });
+    const factory = createMockExecutorFactory([{decision: 'allow', systemMessage: 'approved'}]);
+    const pipeline = new HookPipeline(registry, factory);
+    const ctx: PermissionRequestContext = {
+      sessionId: 'test', hookEvent: 'PermissionRequest', timestamp: '',
+      toolName: 'Bash', args: {command: 'rm -rf /'},
+    };
+    const result = await pipeline.onPermissionRequest(ctx);
+    expect(result.vetoed).toBe(false);
+    expect(result.systemMessages).toContain('approved');
+  });
+
+  test('onPermissionRequest returns intercept result — can block', async () => {
+    const registry = createMockRegistry({
+      PermissionRequest: [makeEntry('check-perm', 'PermissionRequest' as HookEntry['eventType'])],
+    });
+    const factory = createMockExecutorFactory([{decision: 'deny', systemMessage: 'dangerous command'}]);
+    const pipeline = new HookPipeline(registry, factory);
+    const ctx: PermissionRequestContext = {
+      sessionId: 'test', hookEvent: 'PermissionRequest', timestamp: '',
+      toolName: 'Bash', args: {command: 'rm -rf /'},
+    };
+    const result = await pipeline.onPermissionRequest(ctx);
+    expect(result.vetoed).toBe(true);
+    expect(result.vetoReason).toBe('dangerous command');
+  });
+
+  test('onTaskCreated notifies hooks', async () => {
+    const registry = createMockRegistry({
+      TaskCreated: [makeEntry('log-task', 'TaskCreated' as HookEntry['eventType'])],
+    });
+    const factory = createMockExecutorFactory([{systemMessage: 'task logged'}]);
+    const pipeline = new HookPipeline(registry, factory);
+    const ctx: TaskCreatedContext = {
+      sessionId: 'test', hookEvent: 'TaskCreated', timestamp: '',
+      taskId: 't1', subject: 'Fix bug',
+    };
+    const result = await pipeline.onTaskCreated(ctx);
+    expect(result.systemMessages).toContain('task logged');
+  });
+
+  test('onTaskCompleted notifies hooks', async () => {
+    const registry = createMockRegistry({
+      TaskCompleted: [makeEntry('log-done', 'TaskCompleted' as HookEntry['eventType'])],
+    });
+    const factory = createMockExecutorFactory([{systemMessage: 'task done'}]);
+    const pipeline = new HookPipeline(registry, factory);
+    const ctx: TaskCompletedContext = {
+      sessionId: 'test', hookEvent: 'TaskCompleted', timestamp: '',
+      taskId: 't1', subject: 'Fix bug', status: 'completed',
+    };
+    const result = await pipeline.onTaskCompleted(ctx);
+    expect(result.systemMessages).toContain('task done');
+  });
+
+  test('onConfigChange notifies hooks', async () => {
+    const registry = createMockRegistry({
+      ConfigChange: [makeEntry('config-watch', 'ConfigChange' as HookEntry['eventType'])],
+    });
+    const factory = createMockExecutorFactory([{systemMessage: 'config updated'}]);
+    const pipeline = new HookPipeline(registry, factory);
+    const ctx: ConfigChangeContext = {
+      sessionId: 'test', hookEvent: 'ConfigChange', timestamp: '',
+      changedFiles: ['.codara/settings.json'],
+    };
+    const result = await pipeline.onConfigChange(ctx);
+    expect(result.systemMessages).toContain('config updated');
+  });
+
+  test('onCwdChanged notifies hooks', async () => {
+    const registry = createMockRegistry({
+      CwdChanged: [makeEntry('cwd-watch', 'CwdChanged' as HookEntry['eventType'])],
+    });
+    const factory = createMockExecutorFactory([{systemMessage: 'cwd changed'}]);
+    const pipeline = new HookPipeline(registry, factory);
+    const ctx: CwdChangedContext = {
+      sessionId: 'test', hookEvent: 'CwdChanged', timestamp: '',
+      oldCwd: '/old', newCwd: '/new',
+    };
+    const result = await pipeline.onCwdChanged(ctx);
+    expect(result.systemMessages).toContain('cwd changed');
   });
 });
