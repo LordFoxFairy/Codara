@@ -452,12 +452,11 @@ export class CodaraBus {
 // ── Helpers ────────────────────────────────────────────────────────────
 
 function isCustomChunk(chunk: unknown): chunk is AgentStreamCustomChunk {
-  return (
-    chunk !== null &&
-    typeof chunk === 'object' &&
-    'type' in chunk &&
-    (chunk as Record<string, unknown>).type === 'review_event'
-  );
+  if (chunk === null || typeof chunk !== 'object' || !('type' in chunk)) {
+    return false;
+  }
+  const type = (chunk as Record<string, unknown>).type;
+  return type === 'review_event' || type === 'tool_progress';
 }
 
 function isToolResult(

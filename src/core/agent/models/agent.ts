@@ -65,7 +65,9 @@ export type AgentContextPreparer = (context: AgentPreparationContext) => Promise
 
 export interface AgentMessagesInput { messages: BaseMessage[]; }
 
-export interface AgentStreamCustomChunk { type: 'review_event'; runId: string; turn: number; payload: ReviewToolMessagePayload; }
+export type AgentStreamCustomChunk =
+  | { type: 'review_event'; runId: string; turn: number; payload: ReviewToolMessagePayload }
+  | { type: 'tool_progress'; toolCallId: string; toolName: string; status: 'executing' | 'completed' | 'failed' };
 
 export type AgentStreamOutput =
   | AIMessageChunk

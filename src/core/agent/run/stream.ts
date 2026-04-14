@@ -15,6 +15,7 @@ export interface AgentStreamWriter {
   emitToolUpdate(message: ToolMessage): Promise<void>;
   emitValues(messages: BaseMessage[]): Promise<void>;
   emitCustom(input: {runId: string; turn: number; payload: ReviewToolMessagePayload}): Promise<void>;
+  emitToolProgress(input: {toolCallId: string; toolName: string; status: 'executing' | 'completed' | 'failed'}): Promise<void>;
   finish(result: AgentResult): void;
   fail(error: unknown): void;
 }
@@ -24,7 +25,7 @@ export function createStreamWriter(config: AgentStreamConfig | undefined): Agent
   const stream = createAsyncStream<AgentStreamOutput, AgentResult>();
   const push = (
     mode: AgentStreamMode,
-    chunk: AIMessageChunk | {messages: BaseMessage[]} | {model: {messages: [AIMessage]}} | {tools: {messages: [ToolMessage]}} | {type: 'review_event'; runId: string; turn: number; payload: ReviewToolMessagePayload},
+    chunk: AIMessageChunk | {messages: BaseMessage[]} | {model: {messages: [AIMessage]}} | {tools: {messages: [ToolMessage]}} | {type: 'review_event'; runId: string; turn: number; payload: ReviewToolMessagePayload} | {type: 'tool_progress'; toolCallId: string; toolName: string; status: 'executing' | 'completed' | 'failed'},
   ) => {
     stream.push(modes.length === 1 ? chunk : [mode, chunk]);
   };
@@ -71,6 +72,11 @@ export function createStreamWriter(config: AgentStreamConfig | undefined): Agent
     async emitCustom(input) {
       if (modes.includes('custom')) {
         push('custom', {type: 'review_event', runId: input.runId, turn: input.turn, payload: input.payload});
+      }
+    },
+    async emitToolProgress(input) {
+      if (modes.includes('custom')) {
+        push('custom', {type: 'tool_progress', toolCallId: input.toolCallId, toolName: input.toolName, status: input.status});
       }
     },
     finish: stream.finish,

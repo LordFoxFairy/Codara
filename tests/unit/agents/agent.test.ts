@@ -1087,8 +1087,11 @@ describe('Agent', () => {
       events.push(chunk as {type: string; payload: {type: string}});
     }
 
-    expect(events).toHaveLength(1);
-    expect(events[0]?.type).toBe('review_event');
-    expect(events[0]?.payload.type).toBe('review_pause');
+    const reviewEvents = events.filter((e) => e.type === 'review_event');
+    const progressEvents = events.filter((e) => e.type === 'tool_progress');
+    expect(reviewEvents).toHaveLength(1);
+    expect(reviewEvents[0]?.type).toBe('review_event');
+    expect(reviewEvents[0]?.payload.type).toBe('review_pause');
+    expect(progressEvents.length).toBeGreaterThanOrEqual(1);
   });
 });

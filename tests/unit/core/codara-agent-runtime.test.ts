@@ -172,9 +172,12 @@ allowed-tools:
     expect(codara.getAgentState().status).toBe('paused');
     expect(codara.getAgentState().pendingReview?.action.toolName).toBe('bash');
     expect(bashInvokeCount).toBe(0);
-    expect(customEvents).toHaveLength(1);
-    expect(customEvents[0]?.type).toBe('review_event');
-    expect(customEvents[0]?.payload.type).toBe('review_pause');
+    const reviewEvents = customEvents.filter((e) => e.type === 'review_event');
+    const progressEvents = customEvents.filter((e) => e.type === 'tool_progress');
+    expect(reviewEvents).toHaveLength(1);
+    expect(reviewEvents[0]?.type).toBe('review_event');
+    expect((reviewEvents[0] as any)?.payload.type).toBe('review_pause');
+    expect(progressEvents.length).toBeGreaterThanOrEqual(1);
 
     const sawSkillPrompt = firstModel.invocations.some((messages) =>
       messages.some(

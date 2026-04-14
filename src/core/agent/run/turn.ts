@@ -179,6 +179,10 @@ async function runSingleTool(
     toolCallId,
   };
 
+  if (stream) {
+    await stream.emitToolProgress({toolCallId, toolName: toolCall.name, status: 'executing'});
+  }
+
   const baseRuntime = requestRuntime(context);
   const toolMessage = await runtime.pipeline.wrapToolCall({
     ...context,
@@ -212,6 +216,14 @@ async function runSingleTool(
       syncToolRuntimeBack(baseRuntime, request?.runtime, runtimeCarrier);
     });
   });
+
+  if (stream) {
+    await stream.emitToolProgress({
+      toolCallId,
+      toolName: toolCall.name,
+      status: toolMessage.status === 'error' ? 'failed' : 'completed',
+    });
+  }
 
   run.state.messages.push(toolMessage);
   if (stream) {
