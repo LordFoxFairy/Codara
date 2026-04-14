@@ -1,8 +1,9 @@
 import {ToolMessage} from '@langchain/core/messages';
 import {createMiddleware, type BaseMiddleware, type ToolCallContext, type ToolCallHandler} from '@core/pipeline/types';
-import type {ToolLifecycleHooks} from '@observability/hook/types';
+import type {TaskLifecycleHooks, ToolLifecycleHooks} from '@observability/hook/types';
+import {TASK_CREATE_TOOL_NAME, TASK_UPDATE_TOOL_NAME} from '@capability/task/tools';
 
-export function createToolHooksBridge(lifecycle: ToolLifecycleHooks): BaseMiddleware {
+export function createToolHooksBridge(lifecycle: ToolLifecycleHooks & Partial<TaskLifecycleHooks>): BaseMiddleware {
   return createMiddleware({
     name: 'ToolHooksMiddleware',
 
@@ -59,9 +60,60 @@ export function createToolHooksBridge(lifecycle: ToolLifecycleHooks): BaseMiddle
         timestamp: new Date().toISOString(),
       }).catch(() => { /* PostToolUse hooks are best-effort */ });
 
+      // 4. Task lifecycle hooks — fire-and-forget after task tool calls
+      fireTaskHooks(lifecycle, context, result).catch(() => { /* Task hooks are best-effort */ });
+
       return result;
     },
   });
+}
+
+async function fireTaskHooks(
+  lifecycle: ToolLifecycleHooks & Partial<TaskLifecycleHooks>,
+  context: ToolCallContext,
+  result: ToolMessage,
+): Promise<void> {
+  const toolName = context.toolCall.name;
+  const args = (context.toolCall.args ?? {}) as Record<string, unknown>;
+  const resultText = String(result.content);
+
+  if (toolName === TASK_CREATE_TOOL_NAME && lifecycle.onTaskCreated) {
+    const taskId = parseFieldFromResult(resultText, 'id');
+    if (taskId) {
+      await lifecycle.onTaskCreated({
+        hookEvent: 'TaskCreated',
+        sessionId: context.execution.sessionId,
+        taskId,
+        subject: String(args.subject ?? ''),
+        description: args.description ? String(args.description) : undefined,
+        timestamp: new Date().toISOString(),
+      });
+    }
+  }
+
+  if (toolName === TASK_UPDATE_TOOL_NAME && lifecycle.onTaskCompleted) {
+    if (args.status === 'completed') {
+      const taskId = String(args.taskId ?? '');
+      const subject = parseFieldFromResult(resultText, 'subject') ?? '';
+      if (taskId) {
+        await lifecycle.onTaskCompleted({
+          hookEvent: 'TaskCompleted',
+          sessionId: context.execution.sessionId,
+          taskId,
+          subject,
+          status: 'completed',
+          timestamp: new Date().toISOString(),
+        });
+      }
+    }
+  }
+}
+
+function parseFieldFromResult(text: string, field: string): string | undefined {
+  // Task result format: "- id: <value> | subject: <value> | ..."
+  const pattern = new RegExp(`${field}:\\s*([^|\\n]+)`);
+  const match = text.match(pattern);
+  return match?.[1]?.trim() || undefined;
 }
 
 function truncateForHook(text: string, maxLength: number): string {
