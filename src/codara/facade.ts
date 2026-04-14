@@ -1,7 +1,10 @@
 import {existsSync} from 'node:fs';
+import {randomUUID} from 'node:crypto';
 import path from 'node:path';
 import type {StructuredToolInterface} from '@langchain/core/tools';
 import {createAgentFileCheckpointer} from '@durability/checkpoint';
+import {TranscriptWriter} from '../session/transcript';
+import {getTranscriptPath} from '../session/storage';
 import {createApprovalFileStore, type ApprovalStore} from '@durability/approval-store';
 import {ensurePermissionSettingsFile} from '@core/middleware/permission';
 import {createSubagentRunFileStore, createSubagentRunManager, type SubagentRunStore, type SubagentRunManager} from '@capability/subagent';
@@ -202,11 +205,48 @@ export async function createCodaraRuntime(options: CodaraRuntimeOptions = {}): P
     dynamicSections,
   });
 
-  // Wire settings watcher cleanup into runtime dispose
+  // Wire JSONL transcript writer (supplementary to checkpoints, for audit/recovery)
+  const transcriptPath = getTranscriptPath({
+    projectRoot,
+    userHome,
+    sessionId: runtime.getState().sessionId,
+  });
+  const transcriptWriter = new TranscriptWriter({filePath: transcriptPath});
+  runtime.subscribeRuntimeEvents((event) => {
+    if (event.kind === 'model' && event.phase === 'end') {
+      transcriptWriter.append({
+        type: 'assistant',
+        uuid: event.id ?? randomUUID(),
+        timestamp: Date.now(),
+        content: event.label ?? '',
+        metadata: {model: event.detail},
+      });
+    }
+    if (event.kind === 'tool' && event.phase === 'end') {
+      transcriptWriter.append({
+        type: 'tool_result',
+        uuid: event.id ?? randomUUID(),
+        timestamp: Date.now(),
+        content: event.detail ?? '',
+        metadata: {toolName: event.label},
+      });
+    }
+    if (event.kind === 'turn' && event.phase === 'start') {
+      transcriptWriter.append({
+        type: 'user',
+        uuid: event.id ?? randomUUID(),
+        timestamp: Date.now(),
+        content: event.label ?? '',
+      });
+    }
+  });
+
+  // Wire settings watcher + transcript cleanup into runtime dispose
   const originalDispose = runtime.dispose;
   runtime = {
     ...runtime,
     dispose: async () => {
+      await transcriptWriter.close();
       await settingsWatcher.stop();
       await originalDispose();
     },
