@@ -95,6 +95,32 @@ describe('HookPipeline — Intercept Chain', () => {
     expect(result.modifiedInput).toEqual({a: 1, b: 2});
   });
 
+  test('should block processing when continue is false', async () => {
+    const registry = createMockRegistry({PreToolUse: [makeEntry('block-cmd')]});
+    const factory = createMockExecutorFactory([{continue: false, systemMessage: 'blocked by continue'}]);
+    const pipeline = new HookPipeline(registry, factory);
+    const result = await pipeline.onPreToolUse(baseCtx);
+    expect(result.vetoed).toBe(true);
+    expect(result.vetoReason).toBe('blocked by continue');
+  });
+
+  test('should block processing when continue is false without systemMessage', async () => {
+    const registry = createMockRegistry({PreToolUse: [makeEntry('block-cmd')]});
+    const factory = createMockExecutorFactory([{continue: false}]);
+    const pipeline = new HookPipeline(registry, factory);
+    const result = await pipeline.onPreToolUse(baseCtx);
+    expect(result.vetoed).toBe(true);
+    expect(result.vetoReason).toBe('Denied by hook [project]');
+  });
+
+  test('should not block when continue is true', async () => {
+    const registry = createMockRegistry({PreToolUse: [makeEntry('pass-cmd')]});
+    const factory = createMockExecutorFactory([{continue: true}]);
+    const pipeline = new HookPipeline(registry, factory);
+    const result = await pipeline.onPreToolUse(baseCtx);
+    expect(result.vetoed).toBe(false);
+  });
+
   test('hook execution failure treated as pass', async () => {
     const registry = createMockRegistry({PreToolUse: [makeEntry('fail')]});
     const factory = {

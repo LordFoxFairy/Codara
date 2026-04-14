@@ -99,7 +99,7 @@ export class HookPipeline implements SessionLifecycleHooks, AgentLifecycleHooks,
 
         this.applyOutput(output, result);
 
-        if (output.decision === 'deny') {
+        if (output.decision === 'deny' || output.continue === false) {
           result.vetoed = true;
           result.vetoReason = output.systemMessage ?? `Denied by hook [${entry.source.kind}]`;
           break;

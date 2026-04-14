@@ -212,10 +212,19 @@ export type HookContext =
 
 // ── Hook Output & Aggregated Results ──
 
+export interface HookSpecificOutput {
+  updatedInput?: Record<string, unknown>;
+  additionalContext?: string;
+  systemMessage?: string;
+}
+
 export interface HookOutput {
   decision?: 'allow' | 'deny';
   updatedInput?: Record<string, unknown>;
   systemMessage?: string;
+  continue?: boolean;
+  suppressOutput?: boolean;
+  hookSpecificOutput?: HookSpecificOutput;
 }
 
 export interface HookInterceptResult {
