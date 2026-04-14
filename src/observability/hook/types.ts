@@ -9,15 +9,23 @@ export type HookEventType =
   | 'PreCompact'
   | 'PostCompact'
   | 'Stop'
+  | 'SubagentStart'
   | 'SubagentStop'
   | 'PreToolUse'
-  | 'PostToolUse';
+  | 'PostToolUse'
+  | 'PermissionRequest'
+  | 'TaskCreated'
+  | 'TaskCompleted'
+  | 'ConfigChange'
+  | 'CwdChanged';
 
 export const HOOK_EVENT_TYPES: readonly HookEventType[] = [
   'SessionStart', 'SessionEnd', 'UserPromptSubmit',
   'PreCompact', 'PostCompact',
-  'Stop', 'SubagentStop',
+  'Stop', 'SubagentStart', 'SubagentStop',
   'PreToolUse', 'PostToolUse',
+  'PermissionRequest', 'TaskCreated', 'TaskCompleted',
+  'ConfigChange', 'CwdChanged',
 ] as const;
 
 // ── Hook Definition (Configuration) ──
@@ -122,6 +130,13 @@ export interface AgentStopContext extends HookContextBase {
   lastMessage?: string;
 }
 
+export interface SubagentStartContext extends HookContextBase {
+  hookEvent: 'SubagentStart';
+  agentName: string;
+  subagentType: string;
+  prompt: string;
+}
+
 export interface SubagentStopContext extends HookContextBase {
   hookEvent: 'SubagentStop';
   agentName: string;
@@ -144,15 +159,56 @@ export interface ToolResultContext extends HookContextBase {
   durationMs: number;
 }
 
+// Permission layer
+export interface PermissionRequestContext extends HookContextBase {
+  hookEvent: 'PermissionRequest';
+  toolName: string;
+  args: Record<string, unknown>;
+  decision?: string;
+}
+
+// Task layer
+export interface TaskCreatedContext extends HookContextBase {
+  hookEvent: 'TaskCreated';
+  taskId: string;
+  subject: string;
+  description?: string;
+}
+
+export interface TaskCompletedContext extends HookContextBase {
+  hookEvent: 'TaskCompleted';
+  taskId: string;
+  subject: string;
+  status: string;
+}
+
+// Config layer
+export interface ConfigChangeContext extends HookContextBase {
+  hookEvent: 'ConfigChange';
+  changedFiles: string[];
+}
+
+export interface CwdChangedContext extends HookContextBase {
+  hookEvent: 'CwdChanged';
+  oldCwd: string;
+  newCwd: string;
+}
+
 export type HookContext =
   | SessionStartContext
   | SessionEndContext
   | PromptSubmitContext
   | CompactContext
   | AgentStopContext
+  | SubagentStartContext
   | SubagentStopContext
   | ToolUseContext
-  | ToolResultContext;
+  | ToolResultContext
+  | PermissionRequestContext
+  | TaskCreatedContext
+  | TaskCompletedContext
+  | ConfigChangeContext
+  | CwdChangedContext;
 
 // ── Hook Output & Aggregated Results ──
 
