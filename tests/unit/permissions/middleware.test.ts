@@ -2,7 +2,7 @@ import {describe, expect, it} from 'bun:test';
 import {mkdtemp, readFile} from 'node:fs/promises';
 import {tmpdir} from 'node:os';
 import path from 'node:path';
-import {AIMessage, HumanMessage, ToolMessage, type BaseMessage, type ToolCall} from '@langchain/core/messages';
+import {HumanMessage, ToolMessage, type BaseMessage, type ToolCall} from '@langchain/core/messages';
 import {createPermissionMiddleware, ensurePermissionSettingsFile} from '@/index';
 import {parseReviewToolMessagePayload, type ToolCallContext} from '@core/middleware';
 
@@ -25,24 +25,6 @@ function createToolContext(toolCall: ToolCall, runtimeContext: Record<string, un
     toolCall,
     toolIndex: 0,
   };
-}
-
-class StaticPermissionAnalysisModel {
-  constructor(
-    private readonly payload: {
-      reason?: string | null;
-      pathScopeExpression?: string | null;
-      toolScopeExpression?: string | null;
-    },
-  ) {}
-
-  async invoke(): Promise<AIMessage> {
-    return new AIMessage(JSON.stringify({
-      reason: this.payload.reason ?? null,
-      pathScopeExpression: this.payload.pathScopeExpression ?? null,
-      toolScopeExpression: this.payload.toolScopeExpression ?? null,
-    }));
-  }
 }
 
 describe('createPermissionMiddleware', () => {
@@ -239,50 +221,42 @@ describe('createPermissionMiddleware', () => {
     expect(String(result2?.content)).toBe('auto-allowed');
   });
 
-  it('should include classifier reason and suggestions in permission metadata', async () => {
-    const projectRoot = await mkdtemp(path.join(tmpdir(), 'codara-permission-mw-classifier-path-'));
+  it('should include write-path reason from pure shell parsing in permission metadata', async () => {
+    const projectRoot = await mkdtemp(path.join(tmpdir(), 'codara-permission-mw-shell-reason-'));
     ensurePermissionSettingsFile({projectRoot, cwd: projectRoot});
     const middleware = createPermissionMiddleware({
       projectRoot,
       cwd: projectRoot,
-      bashAnalysisModel: new StaticPermissionAnalysisModel({
-        reason: 'Needs approval because this compound command writes under tmp/demo2/.',
-        pathScopeExpression: 'Write(tmp/demo2/)',
-      }),
     });
     const toolCall: ToolCall = {
-      id: 'call_permission_classifier_path_1',
+      id: 'call_permission_shell_reason_1',
       name: 'bash',
-      args: {command: 'cat README.md | tee tmp/demo2/PLAN.md >/dev/null'},
+      args: {command: 'tee tmp/demo2/PLAN.md'},
     };
 
     const result = await middleware.wrapToolCall?.(createToolContext(toolCall), async () => {
-      return new ToolMessage({content: 'should-not-run', tool_call_id: 'call_permission_classifier_path_1'});
+      return new ToolMessage({content: 'should-not-run', tool_call_id: 'call_permission_shell_reason_1'});
     });
 
     const payload = parseReviewToolMessagePayload(result?.content);
     expect(payload?.type).toBe('review_pause');
     const metadata = payload?.type === 'review_pause'
-      ? payload.request.metadata as {permissionPolicy?: {reason?: string; suggestions?: {pathRule?: string}}}
+      ? payload.request.metadata as {permissionPolicy?: {reason?: string}}
       : undefined;
     expect(metadata?.permissionPolicy?.reason).toContain('tmp/demo2/');
-    expect(metadata?.permissionPolicy?.suggestions?.pathRule).toBe('Write(tmp/demo2/)');
   });
 
-  it('should add all always patterns to session memory on dont_ask_again approval', async () => {
-    const projectRoot = await mkdtemp(path.join(tmpdir(), 'codara-permission-mw-classifier-persist-'));
+  it('should add all always patterns to session memory on dont_ask_again approval without LLM', async () => {
+    const projectRoot = await mkdtemp(path.join(tmpdir(), 'codara-permission-mw-persist-'));
     ensurePermissionSettingsFile({projectRoot, cwd: projectRoot});
     const middleware = createPermissionMiddleware({
       projectRoot,
       cwd: projectRoot,
-      bashAnalysisModel: new StaticPermissionAnalysisModel({
-        pathScopeExpression: 'Write(tmp/demo2/)',
-      }),
     });
     const toolCall: ToolCall = {
-      id: 'call_permission_classifier_persist_1',
+      id: 'call_permission_persist_1',
       name: 'bash',
-      args: {command: 'cat README.md | tee tmp/demo2/PLAN.md >/dev/null'},
+      args: {command: 'tee tmp/demo2/PLAN.md'},
     };
 
     // Approve with dont_ask_again — Claude Code style (session memory, not disk)
@@ -295,14 +269,14 @@ describe('createPermissionMiddleware', () => {
           },
         },
       }),
-      async () => new ToolMessage({content: 'continued', tool_call_id: 'call_permission_classifier_persist_1'}),
+      async () => new ToolMessage({content: 'continued', tool_call_id: 'call_permission_persist_1'}),
     );
 
     expect(String(result?.content)).toBe('continued');
   });
 
-  it('should allow complex bash writes when classifier output matches an existing path rule', async () => {
-    const projectRoot = await mkdtemp(path.join(tmpdir(), 'codara-permission-mw-classifier-allow-'));
+  it('should pause complex bash commands using pure shell parsing (no LLM cross-tool matching)', async () => {
+    const projectRoot = await mkdtemp(path.join(tmpdir(), 'codara-permission-mw-complex-pause-'));
     ensurePermissionSettingsFile({projectRoot, cwd: projectRoot});
     const settingsFile = path.join(projectRoot, '.codara', 'settings.local.json');
     const content = JSON.parse(await readFile(settingsFile, 'utf8')) as {
@@ -319,32 +293,31 @@ describe('createPermissionMiddleware', () => {
     const middleware = createPermissionMiddleware({
       projectRoot,
       cwd: projectRoot,
-      bashAnalysisModel: new StaticPermissionAnalysisModel({
-        pathScopeExpression: 'Write(tmp/demo2/)',
-      }),
     });
     const toolCall: ToolCall = {
-      id: 'call_permission_classifier_allow_1',
+      id: 'call_permission_complex_pause_1',
       name: 'bash',
       args: {command: 'cat README.md | tee tmp/demo2/PLAN.md >/dev/null'},
     };
 
+    // Complex piped command: pure shell parsing yields Bash(*), which requires ask
     const result = await middleware.wrapToolCall?.(createToolContext(toolCall), async () => {
-      return new ToolMessage({content: 'continued', tool_call_id: 'call_permission_classifier_allow_1'});
+      return new ToolMessage({content: 'should-not-run', tool_call_id: 'call_permission_complex_pause_1'});
     });
 
-    expect(String(result?.content)).toBe('continued');
+    const payload = parseReviewToolMessagePayload(result?.content);
+    expect(payload?.type).toBe('review_pause');
   });
 
-  it('should keep classifier-derived path matches in ask when the normalized target is guarded', async () => {
-    const projectRoot = await mkdtemp(path.join(tmpdir(), 'codara-permission-mw-classifier-ask-'));
+  it('should allow simple write commands when matching allow rules via pure shell parsing', async () => {
+    const projectRoot = await mkdtemp(path.join(tmpdir(), 'codara-permission-mw-simple-allow-'));
     ensurePermissionSettingsFile({projectRoot, cwd: projectRoot});
     const settingsFile = path.join(projectRoot, '.codara', 'settings.local.json');
     await Bun.write(settingsFile, `${JSON.stringify({
       permissions: {
         rules: {
-          allow: [],
-          ask: ['Write(tmp/demo2/)'],
+          allow: ['Bash(tee *)'],
+          ask: [],
           deny: [],
         },
       },
@@ -353,26 +326,17 @@ describe('createPermissionMiddleware', () => {
     const middleware = createPermissionMiddleware({
       projectRoot,
       cwd: projectRoot,
-      bashAnalysisModel: new StaticPermissionAnalysisModel({
-        pathScopeExpression: 'Write(tmp/demo2/)',
-      }),
     });
     const toolCall: ToolCall = {
-      id: 'call_permission_classifier_ask_1',
+      id: 'call_permission_simple_allow_1',
       name: 'bash',
-      args: {command: 'cat README.md | tee tmp/demo2/PLAN.md >/dev/null'},
+      args: {command: 'tee tmp/demo2/PLAN.md'},
     };
 
     const result = await middleware.wrapToolCall?.(createToolContext(toolCall), async () => {
-      return new ToolMessage({content: 'should-not-run', tool_call_id: 'call_permission_classifier_ask_1'});
+      return new ToolMessage({content: 'continued', tool_call_id: 'call_permission_simple_allow_1'});
     });
 
-    const payload = parseReviewToolMessagePayload(result?.content);
-    expect(payload?.type).toBe('review_pause');
-    expect(
-      payload?.type === 'review_pause'
-        ? (payload.request.metadata as {permissionPolicy?: {matched?: {rule?: string}}}).permissionPolicy?.matched?.rule
-        : undefined,
-    ).toBe('Write(tmp/demo2/)');
+    expect(String(result?.content)).toBe('continued');
   });
 });

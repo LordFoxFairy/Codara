@@ -12,7 +12,6 @@ import {
   type LoggingMiddlewareOptions,
 } from '@core/middleware';
 import {MIDDLEWARE_NAMES} from '@core/pipeline/types';
-import type {PermissionAnalysisModel} from '@core/middleware/permission/analysis';
 import type {PermissionMiddlewareOptions} from '@core/middleware/permission/middleware';
 import type {StructuredToolInterface} from '@langchain/core/tools';
 import {createTaskTools} from '@capability/task/tools';
@@ -36,7 +35,6 @@ export interface SubagentChildRuntimeOptions {
   cwd?: string;
   projectRoot?: string;
   userHome?: string;
-  permissionAnalysisModel?: PermissionAnalysisModel | Promise<PermissionAnalysisModel> | (() => Promise<PermissionAnalysisModel>);
 }
 
 export interface CreateSubagentMiddlewareOptions extends CreateSubagentToolOptions {
@@ -182,7 +180,6 @@ function assembleSubagentChildMiddlewares(options: CreateSubagentMiddlewareOptio
       cwd: options.childRuntime?.cwd,
       projectRoot: options.childRuntime?.projectRoot,
       userHome: options.childRuntime?.userHome,
-      bashAnalysisModel: options.childRuntime?.permissionAnalysisModel,
     };
     push(createPermissionMiddleware(permissionOptions));
   }

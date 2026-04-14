@@ -154,7 +154,6 @@ export function createRuntimeDefaultMiddlewares(input: {
         cwd: input.options.cwd,
         projectRoot: input.options.projectRoot,
         userHome: input.options.userHome,
-        bashAnalysisModel: createRuntimePermissionAnalysisModel(input.options, input.catalog),
       }),
     );
   }
@@ -208,7 +207,6 @@ function createRuntimeSubagentMiddleware(input: {
       cwd: input.options.cwd,
       projectRoot: input.options.projectRoot,
       userHome: input.options.userHome,
-      permissionAnalysisModel: createRuntimePermissionAnalysisModel(input.options, input.catalog),
     },
     childInstructionContext,
     ...(input.hookPipeline ? {childLifecycle: input.hookPipeline} : {}),
@@ -250,23 +248,3 @@ function collectProvidedToolNames(input: {
   return names;
 }
 
-function createRuntimePermissionAnalysisModel(
-  options: Pick<CodaraRuntimeOptions, 'alias' | 'config' | 'model'>,
-  catalog?: CodaraModelCatalog | Promise<CodaraModelCatalog>,
-) {
-  if (options.model) {
-    return typeof options.model === 'function'
-      ? (options.model as () => Promise<BaseChatModel>)
-      : options.model;
-  }
-
-  if (catalog) {
-    return () => createCodaraChatModel({
-      alias: options.alias,
-      config: options.config,
-      catalog,
-    });
-  }
-
-  return undefined;
-}

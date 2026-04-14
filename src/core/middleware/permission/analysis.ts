@@ -1,3 +1,4 @@
+// @deprecated — LLM analysis removed in favor of pure shell parsing. File kept for reference.
 import {HumanMessage, SystemMessage} from '@langchain/core/messages';
 
 export interface PermissionBashAnalysis {

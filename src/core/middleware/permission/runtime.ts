@@ -12,19 +12,14 @@ import {
 import type {ToolCallContext} from '@core/pipeline/types';
 import {
   evaluatePermissionToolCall,
-  evaluatePermissionExpression,
   formatPermissionExpression,
 } from '@core/middleware/permission/policy';
 import {persistPermissionRule, persistPermissionScope} from '@core/middleware/permission/policy/persist';
 import type {PermissionPolicyOptions} from '@core/middleware/permission/types';
 import {normalizeToolReferenceName} from '@shared/tool-names';
-import type {PermissionBashAnalysis, PermissionAnalysisModel} from '@core/middleware/permission/analysis';
-import {createModelPermissionBashAnalysis} from '@core/middleware/permission/analysis';
 import {extractBashAlwaysPatterns, extractBashWritePathOperands} from '@core/middleware/permission/bash';
 
-export interface PermissionRuntimeOptions extends PermissionPolicyOptions {
-  bashAnalysisModel?: PermissionAnalysisModel | Promise<PermissionAnalysisModel> | (() => Promise<PermissionAnalysisModel>);
-}
+export interface PermissionRuntimeOptions extends PermissionPolicyOptions {}
 
 export interface PermissionRuntime {
   resolveToolDecision(context: ToolCallContext): Promise<ReviewDecision | undefined>;
@@ -132,14 +127,9 @@ export function createPermissionRuntime(options: PermissionRuntimeOptions = {}):
   const sessionAllowedExpressions = new Set<string>();
   const pendingRequests = new Map<string, PendingPermissionRequest>();
 
-  // Create bash analysis function if model is provided
-  const bashAnalyze = options.bashAnalysisModel
-    ? createModelPermissionBashAnalysis({model: options.bashAnalysisModel})
-    : undefined;
-
   return {
     async resolveToolDecision(context) {
-      return resolvePermissionDecision(context, options, sessionAllowedExpressions, bashAnalyze, pendingRequests);
+      return resolvePermissionDecision(context, options, sessionAllowedExpressions, pendingRequests);
     },
     handleResume(metadata, resumePayload, context, handler) {
       return handlePermissionResume(metadata ?? {}, resumePayload, context, handler, options, sessionAllowedExpressions, pendingRequests);
@@ -152,7 +142,6 @@ async function resolvePermissionDecision(
   context: ToolCallContext,
   options: PermissionRuntimeOptions,
   sessionAllowed: Set<string>,
-  bashAnalyze: ((input: {command: string; cwd?: string; projectRoot?: string}) => Promise<PermissionBashAnalysis | undefined>) | undefined,
   pendingRequests: Map<string, PendingPermissionRequest>,
 ): Promise<ReviewDecision | undefined> {
   const evaluation = await evaluatePermissionToolCall(context.toolCall, options);
@@ -167,42 +156,17 @@ async function resolvePermissionDecision(
     return {decision: 'allow'};
   }
 
-  // Run bash analysis for bash commands
-  let bashAnalysis: PermissionBashAnalysis | undefined;
+  // Pure shell parsing for bash commands — no LLM needed
   let reason: string | undefined;
   if (isBashTool(context.toolCall.name)) {
     const args = context.toolCall.args as Record<string, unknown>;
     const command = typeof args?.command === 'string' ? args.command : '';
     if (command) {
-      if (bashAnalyze) {
-        bashAnalysis = await bashAnalyze({
-          command,
-          cwd: options.cwd,
-          projectRoot: options.projectRoot,
-        }).catch(() => undefined);
-        reason = bashAnalysis?.reason;
+      const writePaths = extractBashWritePathOperands(command);
+      if (writePaths.length > 0) {
+        const pathList = writePaths.map(p => p.endsWith('/') ? p : `${p}/`).join(', ');
+        reason = `Writes to ${pathList}`;
       }
-
-      // Fallback: generate reason from extracted write paths
-      if (!reason) {
-        const writePaths = extractBashWritePathOperands(command);
-        if (writePaths.length > 0) {
-          const pathList = writePaths.map(p => p.endsWith('/') ? p : `${p}/`).join(', ');
-          reason = `Writes to ${pathList}`;
-        }
-      }
-    }
-  }
-
-  // Re-evaluate classifier's pathScopeExpression against existing rules (cross-tool matching)
-  let classifierMatch: {bucket: string; rule: string; scope: string; path: string; format: null} | null = null;
-  if (bashAnalysis?.pathScopeExpression) {
-    const crossEval = await evaluatePermissionExpression(bashAnalysis.pathScopeExpression, options);
-    if (crossEval.decision === 'allow') {
-      return {decision: 'allow'};
-    }
-    if (crossEval.matched) {
-      classifierMatch = {...crossEval.matched, format: null};
     }
   }
 
@@ -222,21 +186,18 @@ async function resolvePermissionDecision(
       expression: evaluation.input,
       decision: evaluation.decision,
       defaultDecision: evaluation.defaultDecision,
-      matched: classifierMatch ?? (evaluation.matchedRule ? {
+      matched: evaluation.matchedRule ? {
         bucket: evaluation.matchedRule.action,
         rule: `${evaluation.matchedRule.permission}(${evaluation.matchedRule.pattern})`,
         scope: evaluation.matchedRule.source.scope,
         path: evaluation.matchedRule.source.path,
         format: null,
-      } : null),
+      } : null,
       reason,
       sources: evaluation.sources,
       ruleSummary: evaluation.ruleSummary,
       alwaysPatterns,
-      suggestions: {
-        ...(bashAnalysis?.pathScopeExpression ? {pathRule: bashAnalysis.pathScopeExpression} : {}),
-        ...(bashAnalysis?.toolScopeExpression ? {toolRule: bashAnalysis.toolScopeExpression} : {}),
-      },
+      suggestions: {},
     },
   } satisfies Record<string, unknown>;
 
@@ -254,7 +215,7 @@ async function resolvePermissionDecision(
 
   return {
     decision: 'ask',
-    config: createPermissionInterruptConfig(evaluation.input, context, metadata, reason, alwaysPatterns, options, bashAnalysis),
+    config: createPermissionInterruptConfig(evaluation.input, context, metadata, reason, alwaysPatterns, options),
     metadata,
   };
 }
@@ -266,7 +227,6 @@ function createPermissionInterruptConfig(
   _reason: string | undefined,
   _alwaysPatterns: string[],
   _options: PermissionRuntimeOptions,
-  _bashAnalysis: PermissionBashAnalysis | undefined,
 ): ReviewInterruptConfig {
   // Claude Code style: three actions only — once, always, reject
   const actions: ReviewUIActionOption[] = [

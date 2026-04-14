@@ -316,7 +316,7 @@ describe('case: runtime permission default ask', () => {
     expect(second.output).not.toContain('Permission Review');
   });
 
-  it('should reuse existing directory approvals for complex bash writes through the internal classifier in the real CLI', async () => {
+  it('should ask for permission on complex piped bash commands even with path allow rules (no LLM cross-tool matching)', async () => {
     const root = await mkdtemp(path.join(tmpdir(), 'codara-case-permission-complex-path-cli-'));
     const projectRoot = path.join(root, 'project');
     const codaraPath = path.join(projectRoot, '.codara');
@@ -338,8 +338,7 @@ describe('case: runtime permission default ask', () => {
     });
 
     expect(result.exitCode).toBe(0);
-    expect(result.output).toContain('RUNTIME_PERMISSION_COMPLEX_PATH_DONE');
-    expect(result.output).not.toContain('Permission Review');
-    expect(result.output).not.toContain('Review action:');
+    // Without LLM classifier, complex piped commands resolve to Bash(*) which triggers ask
+    expect(result.output).toContain('Allow once');
   });
 });
