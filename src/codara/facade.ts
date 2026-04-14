@@ -19,6 +19,9 @@ import {
 } from '@durability/session';
 import type {CodaraRuntimeEvent, CodaraRuntimeEventListener} from '@observability/events';
 import {resolveWorkspaceRoot} from '@config/workspace';
+import {SettingsCache} from '@config/cache';
+import {resolveSettingsFilePaths} from '@config/sources';
+import {SettingsWatcher} from '@config/watcher';
 import {HookRegistryImpl, HookPipeline, createHookExecutor} from '@observability/hook';
 import type {HookSource, HookRegistry, SessionLifecycleHooks, AgentLifecycleHooks} from '@observability/hook';
 import {loadMcpConfig, createMcpManager, createMcpLangChainTools, type McpManager} from '@integration/mcp';
@@ -68,6 +71,19 @@ export async function createCodaraRuntime(options: CodaraRuntimeOptions = {}): P
   const projectRoot = resolveWorkspaceRoot({cwd: options.cwd, projectRoot: options.projectRoot});
   const codaraPath = resolveCodaraRuntimePath(options);
   const runtimeStatePath = path.join(projectRoot, '.codara');
+  const userHome = options.userHome ?? process.env.HOME ?? '';
+
+  // 0. Unified Settings
+  const settingsCache = new SettingsCache({projectRoot, userHome, skipEnv: false});
+  const settings = await settingsCache.get();
+
+  // Start settings watcher (non-blocking)
+  const settingsFilePaths = resolveSettingsFilePaths({projectRoot, userHome});
+  const settingsWatcher = new SettingsWatcher({
+    watchPaths: Object.values(settingsFilePaths).filter((p): p is string => p !== null),
+    onChange: () => settingsCache.invalidate(),
+  });
+  settingsWatcher.start().catch(() => {/* ignore watch failures */});
 
   // 1. Infrastructure
   const guidelinesSource = createCodaraGuidelinesSource({
@@ -111,20 +127,26 @@ export async function createCodaraRuntime(options: CodaraRuntimeOptions = {}): P
     builtinTools: options.builtinTools, cwd: options.cwd, tools: options.tools,
   });
 
-  // 4. Hooks
-  const hookSources: HookSource[] = [{kind: 'project', path: path.join(runtimeStatePath, 'hooks.json')}];
-  const userHome = options.userHome ?? process.env.HOME ?? '';
-  if (userHome) hookSources.push({kind: 'user', path: path.join(userHome, '.codara', 'hooks.json')});
+  // 4. Hooks (prefer unified settings, fallback to legacy hooks.json)
   const hookRegistry = new HookRegistryImpl();
-  await hookRegistry.load(hookSources);
+  if (settings.hooks && Object.keys(settings.hooks).length > 0) {
+    hookRegistry.loadFromSettings(settings.hooks);
+  } else {
+    const hookSources: HookSource[] = [{kind: 'project', path: path.join(runtimeStatePath, 'hooks.json')}];
+    if (userHome) hookSources.push({kind: 'user', path: path.join(userHome, '.codara', 'hooks.json')});
+    await hookRegistry.load(hookSources);
+  }
   const hookPipeline = new HookPipeline(hookRegistry, {
     createStrategy: (hook) => createHookExecutor(hook, {projectRoot: codaraPath}),
   });
 
-  // 5. MCP
+  // 5. MCP (prefer unified settings, fallback to legacy mcp.json)
   let mcpManager: McpManager | undefined;
   if (options.mcp !== false) {
-    const mcpConfig = options.mcp ?? await loadMcpConfig({projectRoot, userHome: options.userHome});
+    const mcpConfig = options.mcp
+      ?? (settings.mcpServers && Object.keys(settings.mcpServers).length > 0
+        ? {mcpServers: settings.mcpServers}
+        : await loadMcpConfig({projectRoot, userHome: options.userHome}));
     if (Object.keys(mcpConfig.mcpServers).length > 0) {
       mcpManager = createMcpManager(mcpConfig);
       await mcpManager.init();
@@ -151,7 +173,7 @@ export async function createCodaraRuntime(options: CodaraRuntimeOptions = {}): P
   });
 
   // 7. Assemble facade
-  const runtime = assembleCodara({
+  let runtime = assembleCodara({
     ...options,
     tools: runtimeTools, middleware: runtimeMiddlewares, review: false,
     summary: options.summary === false ? false : (options.summary ?? {}),
@@ -167,6 +189,16 @@ export async function createCodaraRuntime(options: CodaraRuntimeOptions = {}): P
     subagentRunStore, subagentRunManager, approvalStore,
     channelRegistry: options.channelRegistry,
   });
+
+  // Wire settings watcher cleanup into runtime dispose
+  const originalDispose = runtime.dispose;
+  runtime = {
+    ...runtime,
+    dispose: async () => {
+      await settingsWatcher.stop();
+      await originalDispose();
+    },
+  };
 
   return runtime;
 }
