@@ -44,6 +44,7 @@ import {
   buildBaseSystemMessage,
   type BaseSystemMessageBundle,
 } from '@context/session-bundle/base-system-message';
+import type {DynamicSectionRegistry} from '@context/sections/dynamic';
 import type {ModelInfo} from '@integration/provider';
 import {
   createSessionMetadata,
@@ -76,6 +77,7 @@ export interface CreateSessionOptions {
   guidelinesSource?: GuidelinesSource;
   promptSource?: PromptSource;
   skillsSource?: SkillsSource;
+  dynamicSections?: DynamicSectionRegistry;
   store?: SessionStore;
   tools?: StructuredToolInterface[];
   handleToolErrors?: ToolErrorHandler;
@@ -276,6 +278,7 @@ export function createSession(options: CreateSessionOptions): Session {
         promptSource: options.promptSource,
         guidelinesSource: options.guidelinesSource,
         skillsSource: options.skillsSource,
+        dynamicSections: options.dynamicSections,
       });
     }
 

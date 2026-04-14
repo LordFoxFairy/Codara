@@ -10,6 +10,9 @@ import {loadModelRoutingConfigFromPath, resolveCodaraPath} from '@integration/pr
 import {createCodaraGuidelinesSource, type GuidelinesSource} from '@context/instructions/guidelines';
 import {createCodaraPromptSource, type PromptSource} from '@context/prompts/prompt-source';
 import {buildBaseSystemMessage} from '@context/session-bundle/base-system-message';
+import {DynamicSectionRegistry} from '@context/sections/dynamic';
+import {createGitContextProvider} from '@context/git-context';
+import {createMemoryContextProvider} from '@context/memory-context';
 import {createCodaraSkillsSource} from '@capability/skill';
 import {createSkillCodaraCommands} from '@capability/command/runtime/skill-commands';
 import {createCodaraCommandRunner, type CodaraCommandResult} from '@capability/command';
@@ -94,10 +97,18 @@ export async function createCodaraRuntime(options: CodaraRuntimeOptions = {}): P
   });
   const skills = resolveCodaraSkills(options);
   const skillsSource = skills ? createCodaraSkillsSource(skills) : undefined;
+
+  // Dynamic context sections (git status, memory)
+  const dynamicSections = new DynamicSectionRegistry();
+  dynamicSections.register('git', createGitContextProvider(projectRoot));
+  const memoryDir = path.join(userHome, '.codara', 'memory');
+  dynamicSections.register('memory', createMemoryContextProvider(memoryDir));
+
   await buildBaseSystemMessage({
     promptSource,
     guidelinesSource,
     skillsSource,
+    dynamicSections,
   });
   const taskStore = options.taskStore ?? createTaskFileStore({
     rootDir: path.join(runtimeStatePath, 'tasks'),
@@ -188,6 +199,7 @@ export async function createCodaraRuntime(options: CodaraRuntimeOptions = {}): P
     promptSource, guidelinesSource, hookPipeline, hookRegistry, mcpManager,
     subagentRunStore, subagentRunManager, approvalStore,
     channelRegistry: options.channelRegistry,
+    dynamicSections,
   });
 
   // Wire settings watcher cleanup into runtime dispose
@@ -237,6 +249,7 @@ export function assembleCodara(
     subagentRunManager?: SubagentRunManager;
     approvalStore?: ApprovalStore;
     channelRegistry?: ChannelRegistry;
+    dynamicSections?: DynamicSectionRegistry;
   },
 ): Codara {
   const skills = resolveCodaraSkills(options);
@@ -260,6 +273,7 @@ export function assembleCodara(
     ...(!options.model ? {modelCatalog: options.catalog ?? createCodaraModelCatalog({config: options.config})} : {}),
     guidelinesSource, promptSource,
     ...(skillsSource ? {skillsSource} : {}),
+    ...(preloadedSources?.dynamicSections ? {dynamicSections: preloadedSources.dynamicSections} : {}),
     tools,
     ...(options.handleToolErrors !== undefined ? {handleToolErrors: options.handleToolErrors} : {}),
     middleware: createCodaraMiddlewares(options, preloadedSources?.channelRegistry),

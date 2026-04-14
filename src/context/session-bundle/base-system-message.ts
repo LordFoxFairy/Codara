@@ -5,6 +5,7 @@ import {
   type SkillsSource,
 } from '@capability/skill';
 import {createSkillsRuntimeBundle} from '@context/skills/build';
+import type {DynamicSectionRegistry} from '@context/sections/dynamic';
 
 const BASE_SYSTEM_MESSAGE_KEY = 'codaraSystemMessage';
 
@@ -34,6 +35,7 @@ export interface BuildBaseSystemMessageOptions {
   promptSource?: PromptSource;
   guidelinesSource?: GuidelinesSource;
   skillsSource?: SkillsSource;
+  dynamicSections?: DynamicSectionRegistry;
 }
 
 export async function buildBaseSystemMessage(
@@ -57,10 +59,12 @@ export async function buildBaseSystemMessage(
   const guidelinesMessage = await opts.guidelinesSource?.getContent?.();
   const skillsRuntime = await opts.skillsSource?.getRuntime();
   const skillsBundle = skillsRuntime ? createSkillsRuntimeBundle(skillsRuntime) : undefined;
+  const dynamicParts = await opts.dynamicSections?.resolve() ?? [];
   const systemMessage = [
     promptMessage,
     guidelinesMessage,
     skillsBundle?.systemMessage,
+    ...dynamicParts,
   ].filter((value): value is string => Boolean(value));
   const runtimeShared = {
     ...(skillsBundle?.runtimeShared ?? {}),
