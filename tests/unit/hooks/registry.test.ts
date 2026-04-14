@@ -143,6 +143,58 @@ describe('HookRegistryImpl', () => {
     expect(registry.size).toBe(1); // only the valid one
   });
 
+  test('should load hooks from unified settings format', () => {
+    const registry = new HookRegistryImpl();
+    registry.loadFromSettings({
+      PreToolUse: [
+        {command: 'echo pre-tool', timeout: 5000, matcher: {toolName: 'Bash'}},
+        {prompt: 'Check this tool use'},
+      ],
+      Stop: [
+        {command: 'echo stopping'},
+      ],
+    });
+
+    const preToolHooks = registry.getHooks('PreToolUse');
+    expect(preToolHooks).toHaveLength(2);
+    expect(preToolHooks[0]!.definition.command).toBe('echo pre-tool');
+    expect(preToolHooks[0]!.definition.type).toBe('command');
+    expect(preToolHooks[0]!.definition.timeout).toBe(5000);
+    expect(preToolHooks[0]!.definition.matcher?.toolName).toBe('Bash');
+    expect(preToolHooks[1]!.definition.prompt).toBe('Check this tool use');
+    expect(preToolHooks[1]!.definition.type).toBe('prompt');
+
+    const stopHooks = registry.getHooks('Stop');
+    expect(stopHooks).toHaveLength(1);
+    expect(stopHooks[0]!.definition.command).toBe('echo stopping');
+
+    expect(registry.size).toBe(3);
+  });
+
+  test('loadFromSettings skips invalid entries', () => {
+    const registry = new HookRegistryImpl();
+    registry.loadFromSettings({
+      PreToolUse: [
+        {},  // no command or prompt
+        {command: 'valid'},
+      ],
+    });
+    expect(registry.size).toBe(1);
+  });
+
+  test('loadFromSettings is additive with load', async () => {
+    const filePath = writeTmpHooks('project', {
+      hooks: {PreToolUse: [{hooks: [{type: 'command', command: 'from-file'}]}]},
+    });
+    const registry = new HookRegistryImpl();
+    await registry.load([{kind: 'project', path: filePath}]);
+    registry.loadFromSettings({
+      PreToolUse: [{command: 'from-settings'}],
+    });
+    expect(registry.getHooks('PreToolUse')).toHaveLength(2);
+    expect(registry.size).toBe(2);
+  });
+
   test('reload clears and reloads', async () => {
     const filePath = writeTmpHooks('project', {
       hooks: {Stop: [{hooks: [{type: 'command', command: 'echo'}]}]},

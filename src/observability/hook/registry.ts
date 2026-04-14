@@ -21,8 +21,16 @@ const lenientConfigSchema = z.object({
   ).optional().default({}),
 });
 
+export type SettingsHookEntry = {
+  command?: string;
+  prompt?: string;
+  timeout?: number;
+  matcher?: {toolName?: string | string[]; commandPattern?: string};
+};
+
 export interface HookRegistry {
   load(sources: HookSource[]): Promise<void>;
+  loadFromSettings(hooks: Record<string, SettingsHookEntry[]>): void;
   reload(): Promise<void>;
   getHooks(eventType: HookEventType): readonly HookEntry[];
   getMatchedHooks(eventType: HookEventType, filter: {
@@ -70,6 +78,34 @@ export class HookRegistryImpl implements HookRegistry {
     }
 
     // Stable sort by priority descending within each eventType
+    for (const entries of this.index.values()) {
+      entries.sort((a, b) => b.priority - a.priority);
+    }
+  }
+
+  loadFromSettings(hooks: Record<string, SettingsHookEntry[]>): void {
+    const source: HookSource = {kind: 'project', path: '<settings>'};
+    const priority = hookSourcePriority(source);
+
+    for (const [eventTypeStr, entries] of Object.entries(hooks)) {
+      const eventType = eventTypeStr as HookEventType;
+      if (!HOOK_EVENT_TYPES.includes(eventType)) continue;
+
+      for (const entry of entries) {
+        const raw = {
+          type: entry.command ? 'command' : 'prompt',
+          ...entry,
+        };
+        const parsed = hookDefinitionSchema.safeParse(raw);
+        if (!parsed.success) {
+          console.warn(`[hooks] Skipping invalid settings hook for ${eventType}:`, parsed.error.message);
+          continue;
+        }
+        this.addEntry(eventType, parsed.data, source, priority);
+      }
+    }
+
+    // Re-sort after adding new entries
     for (const entries of this.index.values()) {
       entries.sort((a, b) => b.priority - a.priority);
     }
