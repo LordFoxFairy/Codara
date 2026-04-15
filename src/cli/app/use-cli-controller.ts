@@ -3,7 +3,6 @@ import {useCallback, useEffect, useMemo, useRef, useState} from 'react';
 import type {Codara, CodaraRuntimeEvent, SessionState} from '@/index';
 import {AIMessageChunk, type BaseMessage} from '@langchain/core/messages';
 import type {ReviewRequest} from '@core/agent';
-import type {SubagentRunQuerySummary} from '@codara/types';
 import {isSubagentInternalAssistantText} from '@capability/subagent/completion';
 import {
   createComposerState,
@@ -63,7 +62,6 @@ import {computeRuntimeEventEffects} from './cli-event-router';
 import {resolveInteractionStateSnapshot, takeNextScheduledInteraction} from './cli-interaction-queue';
 import type {
   CliActiveTurn,
-  CliInteractionSurface,
   CliInteractionKind,
   CliInteractionState,
   CliNotice,

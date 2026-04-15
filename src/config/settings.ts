@@ -22,6 +22,7 @@ export interface ScopedCodaraSettings {
   user: CodaraSettingsRecord;
 }
 
+/** @deprecated Use async `loadCodaraSettings` from `@config/loader` instead. */
 export function readCodaraSettings(filePath: string): CodaraSettingsRecord {
   if (!existsSync(filePath)) {
     return {};
