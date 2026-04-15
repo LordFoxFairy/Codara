@@ -1,3 +1,4 @@
+/** @future — Runtime event effect computation for the next CLI architecture rewrite. Extracted from use-cli-controller for testability. */
 import type {CodaraRuntimeEvent} from '@/index';
 import {routeCliRuntimeEvent, type RuntimeEventRouteResult} from './runtime-event-router';
 import {appendRuntimeEventPreservingOpenStarts} from './cli-controller-logic';

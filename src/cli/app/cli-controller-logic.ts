@@ -1,3 +1,4 @@
+/** @future — Pure controller logic for the next CLI architecture rewrite. Extracted from use-cli-controller for testability. */
 import type {Codara, CodaraRuntimeEvent} from '@/index';
 import {AIMessage, type BaseMessage} from '@langchain/core/messages';
 import type {ReviewRequest} from '@core/agent';

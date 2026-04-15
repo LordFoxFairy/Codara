@@ -16,6 +16,7 @@ import {buildBaseSystemMessage} from '@context/session-bundle/base-system-messag
 import {DynamicSectionRegistry} from '@context/sections/dynamic';
 import {createGitContextProvider} from '@context/git-context';
 import {createMemoryContextProvider} from '@context/memory-context';
+import {loadCodaraMd} from '@config/codara-md';
 import {createCodaraSkillsSource} from '@capability/skill';
 import {createSkillCodaraCommands} from '@capability/command/runtime/skill-commands';
 import {createCodaraCommandRunner, type CodaraCommandResult} from '@capability/command';
@@ -106,6 +107,13 @@ export async function createCodaraRuntime(options: CodaraRuntimeOptions = {}): P
   dynamicSections.register('git', createGitContextProvider(projectRoot));
   const memoryDir = path.join(userHome, '.codara', 'memory');
   dynamicSections.register('memory', createMemoryContextProvider(memoryDir));
+
+  // Load CODARA.md instructions as a dynamic section
+  dynamicSections.register('instructions', async () => {
+    const result = await loadCodaraMd({projectRoot, userHome});
+    if (result.instructions.length === 0) return undefined;
+    return result.instructions.map(i => i.content).join('\n\n');
+  });
 
   await buildBaseSystemMessage({
     promptSource,

@@ -1,3 +1,4 @@
+/** @future — Session restore from JSONL transcript. Not yet integrated; checkpoint system handles current restore needs. */
 import {TranscriptReader} from './transcript';
 import type {TranscriptEntry} from './types';
 
