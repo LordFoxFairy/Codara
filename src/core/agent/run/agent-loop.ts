@@ -45,6 +45,7 @@ import {MiddlewarePipeline} from '@core/pipeline/pipeline';
 import {deepClone} from '@shared/clone';
 import {formatErrorMessage} from './errors';
 import {compactMessages, isContextWindowExhausted} from './compact';
+import {isRateLimitError, isTransientError, extractRetryAfter} from './error-recovery';
 import {createTokenBudgetState, shouldAutoCompact, shouldStopContinuation, estimateMessagesTokenCount} from './token-budget';
 import {parseReviewToolMessagePayload} from '@core/middleware/review';
 import type {AgentLifecycleHooks} from '@observability/hook/types';
@@ -569,7 +570,12 @@ async function runLoop(
   const budget = createTokenBudgetState(contextWindow);
 
   let compactionAttempts = 0;
+  let rateLimitRetried = false;
+  let transientRetried = false;
   for (let turn = startTurn; turn <= run.maxTurns; turn += 1) {
+    // Reset per-turn retry flags so each turn gets one retry attempt
+    rateLimitRetried = false;
+    transientRetried = false;
     // --- Proactive auto-compact ---
     budget.estimatedUsed = estimateMessagesTokenCount(run.state.messages);
     if (shouldAutoCompact(budget) && compactionAttempts < maxCompactionAttempts) {
@@ -629,13 +635,31 @@ async function runLoop(
         };
       }
     } catch (error) {
-      // Reactive compact on context window exhaustion (fallback)
+      // Stage 1: Context window exhaustion → auto-compact and retry
       if (isContextWindowExhausted(error) && compactionAttempts < maxCompactionAttempts) {
         compactionAttempts += 1;
         run.state.messages = compactMessages(run.state.messages, {keepRecentTurns});
         budget.estimatedUsed = estimateMessagesTokenCount(run.state.messages);
         continue;
       }
+
+      // Stage 2: Rate limit → wait retry-after then retry (once per turn)
+      if (isRateLimitError(error) && !rateLimitRetried) {
+        rateLimitRetried = true;
+        const retryAfter = extractRetryAfter(error);
+        if (retryAfter) {
+          await new Promise(resolve => setTimeout(resolve, retryAfter));
+          continue;
+        }
+      }
+
+      // Stage 3: Transient API error → single retry (once per turn)
+      if (isTransientError(error) && !transientRetried) {
+        transientRetried = true;
+        continue;
+      }
+
+      // Stage 4: Unrecoverable → return error result
       return {reason: 'error', state: run.state, turns: turn, error: error instanceof Error ? error : new Error(String(error))};
     }
   }
