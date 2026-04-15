@@ -1,40 +1,50 @@
 import {randomUUID} from 'node:crypto';
 import {useCallback, useEffect, useMemo, useRef, useState} from 'react';
 import type {Codara, CodaraRuntimeEvent, SessionState} from '@/index';
-import {AIMessage, AIMessageChunk, type BaseMessage} from '@langchain/core/messages';
+import {AIMessageChunk, type BaseMessage} from '@langchain/core/messages';
 import type {ReviewRequest} from '@core/agent';
 import type {SubagentRunQuerySummary} from '@codara/types';
 import {isSubagentInternalAssistantText} from '@capability/subagent/completion';
-import {readVisibleMessageText} from '@shared/messages';
 import {
-  backspaceComposerText,
   createComposerState,
-  insertComposerNewline,
-  insertComposerText,
-  moveComposerCursorDown,
-  moveComposerCursorEnd,
-  moveComposerCursorHome,
-  moveComposerCursorLeft,
-  moveComposerCursorRight,
-  moveComposerCursorUp,
-  replaceComposerText,
 } from '../composer/state';
 import type {CliComposerState} from '../composer/types';
 import {hasTranscriptContent} from '../transcript/model';
 import {
+  composerInsertText,
+  composerReplaceText,
+  composerInsertNewline,
+  composerBackspace,
+  composerMoveCursorLeft,
+  composerMoveCursorRight,
+  composerMoveCursorUp,
+  composerMoveCursorDown,
+  composerMoveCursorHome,
+  composerMoveCursorEnd,
+} from './cli-composer-actions';
+import {
+  toggleSubagentRunsPanelAction,
+  toggleExpandAction,
+  dismissCommandOutputAction,
+  scrollCommandOutputAction,
+  focusReviewWindowAction,
+  focusPromptWindowAction,
+  selectPreviousReviewActionUpdate,
+  selectNextReviewActionUpdate,
+  moveReviewLeftUpdate,
+  moveReviewRightUpdate,
+  toggleReviewFocusUpdate,
+  activateReviewSelectionUpdate,
+  insertReviewTextUpdate,
+  insertReviewNewlineUpdate,
+  backspaceReviewInputUpdate,
+} from './cli-review-actions';
+import {
   activateCliReviewFocusedSelection,
   advanceCliReviewToNextStep,
-  applyCliReviewFormShortcut,
   isPermissionReviewState,
-  prepareCliReviewDraftInput,
   prepareCliReviewSubmission,
   resolveCliReviewFocusedFooterAction,
-  selectNextCliReviewTab,
-  selectNextCliReviewAction,
-  selectPreviousCliReviewTab,
-  selectPreviousCliReviewAction,
-  toggleCliReviewFocus,
-  updateCliReviewDraft,
   setPermissionStage,
   type CliReviewAutoAction,
 } from './review-state';
@@ -43,14 +53,14 @@ import {
   applyInteractionChunkToTurn,
   containsAgentLaunchChatter,
   finalizeBufferedInteractionText,
-  sealActiveTurnAtRuntimeBoundary,
 } from './interaction-turn';
 import {
   CliInteractionScheduler,
   type QueuedReviewResponseInteraction,
 } from './interaction-scheduler';
 import {readCliReviewProjection, syncProjectedReview} from './runtime-projection';
-import {routeCliRuntimeEvent} from './runtime-event-router';
+import {computeRuntimeEventEffects} from './cli-event-router';
+import {resolveInteractionStateSnapshot, takeNextScheduledInteraction} from './cli-interaction-queue';
 import type {
   CliActiveTurn,
   CliInteractionSurface,
@@ -60,15 +70,29 @@ import type {
   CliReviewState,
   CliRunState,
 } from './view-state';
+import {
+  appendUniqueNotices,
+  deriveRunStateFromAgentState,
+  hasTrackedForegroundSubagentRuns,
+  shouldKeepPromptTurnRunningAfterAgentLaunch,
+  hasVisibleAssistantReply,
+  activeTurnOwnsVisibleTranscript,
+  hasVisibleMainAssistantText,
+  hasVisibleAssistantReplyInMessages,
+  shouldContinuePollingForPromptSettlement,
+  resolveHydratedCoreMessages,
+  appendRuntimeEventPreservingOpenStarts,
+  shouldHandoffForegroundTurnToReview,
+  suppressActiveTurnForReview,
+  waitForForegroundReviewResumeReady,
+  REVIEW_AUTO_ACTION_DELAY_MS,
+  REVIEW_QUEUE_HANDOFF_TIMEOUT_MS,
+  REVIEW_QUEUE_HANDOFF_POLL_MS,
+  PROMPT_SETTLE_REFRESH_TIMEOUT_MS,
+  PROMPT_SETTLE_REFRESH_POLL_MS,
+} from './cli-controller-logic';
 
 const STARTUP_MESSAGE = '';
-const REVIEW_AUTO_ACTION_DELAY_MS = 30;
-const REVIEW_QUEUE_HANDOFF_TIMEOUT_MS = 500;
-const REVIEW_QUEUE_HANDOFF_POLL_MS = 10;
-const REVIEW_RESUME_READY_TIMEOUT_MS = 500;
-const REVIEW_RESUME_READY_POLL_MS = 10;
-const PROMPT_SETTLE_REFRESH_TIMEOUT_MS = 500;
-const PROMPT_SETTLE_REFRESH_POLL_MS = 20;
 
 
 export interface UseCliControllerOptions {
@@ -132,257 +156,6 @@ export interface CliController {
   permissionConfirm: () => void;
   permissionRejectSend: () => void;
   permissionRejectSilent: () => void;
-}
-
-function appendUniqueNotices(current: CliNotice[], incoming: readonly CliNotice[]): CliNotice[] {
-  if (incoming.length === 0) {
-    return current;
-  }
-
-  const seen = new Set(current.map((notice) => notice.id));
-  const unique = incoming.filter((notice) => !seen.has(notice.id));
-  return unique.length > 0 ? [...current, ...unique] : current;
-}
-
-function deriveRunStateFromAgentState(nextAgentState: {status: string; pendingReview?: unknown}): CliRunState {
-  if (nextAgentState.pendingReview || nextAgentState.status === 'paused') {
-    return {status: 'paused'};
-  }
-
-  if (nextAgentState.status === 'running') {
-    return {status: 'running'};
-  }
-
-  return {status: 'done'};
-}
-
-function hasTrackedForegroundSubagentRuns(codara: Pick<Codara, 'getSubagentRunSummaries'>): boolean {
-  return codara.getSubagentRunSummaries().some((run) => run.status === 'running' || run.status === 'paused');
-}
-
-function shouldKeepPromptTurnRunningAfterAgentLaunch(input: {
-  nextAgentState: {status: string};
-  codara: Pick<Codara, 'getSubagentRunSummaries'>;
-  launchedAgent: boolean;
-  sawVisibleReply: boolean;
-}): boolean {
-  // Foreground subagents still running — always wait for them.
-  if (hasTrackedForegroundSubagentRuns(input.codara)) {
-    return true;
-  }
-
-  // An agent was launched: keep running unless a visible main reply already exists.
-  // Subagents may not be registered in getSubagentRunSummaries yet (async startup),
-  // so we hand off to the useEffect polling loop which confirms completion via
-  // refreshCoreState() instead of relying on stale snapshots here.
-  if (input.launchedAgent && !input.sawVisibleReply) {
-    return true;
-  }
-
-  // No agent launched (plain tool call): if the main loop already produced a visible
-  // reply, the turn is effectively done — don't keep spinning.
-  if (input.sawVisibleReply) {
-    return false;
-  }
-
-  return input.nextAgentState.status === 'running';
-}
-
-function hasVisibleAssistantReply(
-  turn: CliActiveTurn | undefined,
-  subagentRuns?: readonly SubagentRunQuerySummary[],
-): boolean {
-  if (!turn || turn.responseRole !== 'assistant') {
-    return false;
-  }
-
-  return hasVisibleMainAssistantText(turn.responseBeforeRuntime, subagentRuns)
-    || hasVisibleMainAssistantText(turn.response, subagentRuns)
-    || hasVisibleMainAssistantText(turn.pendingResponse, subagentRuns);
-}
-
-function activeTurnOwnsVisibleTranscript(
-  turn: CliActiveTurn | undefined,
-  subagentRuns?: readonly SubagentRunQuerySummary[],
-): boolean {
-  if (!turn) {
-    return false;
-  }
-
-  return hasVisibleAssistantReply(turn, subagentRuns) || Boolean(turn.thinking?.trim());
-}
-
-function hasVisibleMainAssistantText(
-  text: string | undefined,
-  subagentRuns?: readonly SubagentRunQuerySummary[],
-): boolean {
-  const normalized = text?.trim();
-  if (!normalized || containsAgentLaunchChatter(normalized)) {
-    return false;
-  }
-
-  return !isSubagentInternalAssistantText({
-    text: normalized,
-    runs: subagentRuns,
-  });
-}
-
-function hasVisibleAssistantReplyInMessages(
-  messages: readonly BaseMessage[],
-  startIndex = 0,
-  subagentRuns?: readonly SubagentRunQuerySummary[],
-): boolean {
-  for (let index = messages.length - 1; index >= startIndex; index -= 1) {
-    const message = messages[index];
-    if (!AIMessage.isInstance(message)) {
-      continue;
-    }
-
-    const text = readVisibleMessageText(message);
-    if (!text || containsAgentLaunchChatter(text)) {
-      continue;
-    }
-
-    if (isSubagentInternalAssistantText({text, runs: subagentRuns})) {
-      continue;
-    }
-
-    return true;
-  }
-
-  return false;
-}
-
-function shouldContinuePollingForPromptSettlement(input: {
-  runState: CliRunState;
-  review: CliReviewState | undefined;
-  activeTurn: CliActiveTurn | undefined;
-  messages: readonly BaseMessage[];
-  promptStartMessageCount: number;
-  subagentRuns?: readonly SubagentRunQuerySummary[];
-}): boolean {
-  if (input.runState.status !== 'running') {
-    return false;
-  }
-
-  if (input.review) {
-    return false;
-  }
-
-  return !hasVisibleAssistantReply(input.activeTurn, input.subagentRuns)
-    && !hasVisibleAssistantReplyInMessages(input.messages, input.promptStartMessageCount, input.subagentRuns);
-}
-
-function resolveHydratedCoreMessages(input: {
-  incomingMessages: readonly BaseMessage[];
-  currentMessages: readonly BaseMessage[];
-  runState: CliRunState;
-  review: CliReviewState | undefined;
-  activeTurn: CliActiveTurn | undefined;
-  promptStartMessageCount: number;
-  subagentRuns?: readonly SubagentRunQuerySummary[];
-}): readonly BaseMessage[] {
-  if (input.incomingMessages.length > 0) {
-    return input.incomingMessages;
-  }
-
-  if (input.currentMessages.length === 0) {
-    return input.incomingMessages;
-  }
-
-  if (input.runState.status !== 'running' || input.review) {
-    return input.incomingMessages;
-  }
-
-  const currentTurnHasVisibleReply = hasVisibleAssistantReply(input.activeTurn, input.subagentRuns)
-    || hasVisibleAssistantReplyInMessages(input.currentMessages, input.promptStartMessageCount, input.subagentRuns);
-
-  return currentTurnHasVisibleReply ? input.currentMessages : input.incomingMessages;
-}
-
-function appendRuntimeEventPreservingOpenStarts(
-  current: readonly CodaraRuntimeEvent[],
-  event: CodaraRuntimeEvent,
-): CodaraRuntimeEvent[] {
-  const next = [...current, event];
-  const terminalEvents = next.filter((candidate) => (
-    (candidate.kind === 'tool' || candidate.kind === 'agent')
-    && candidate.phase === 'end'
-    && candidate.parentId
-  ));
-  const terminalParentIds = new Set(
-    terminalEvents.map((candidate) => candidate.parentId as string),
-  );
-  const recentEvents = next.slice(-40);
-  const retainedIds = new Set(recentEvents.map((candidate) => candidate.id));
-  const recentTerminalParentIds = new Set(
-    recentEvents
-      .filter((candidate) => (
-        (candidate.kind === 'tool' || candidate.kind === 'agent')
-        && candidate.phase === 'end'
-        && candidate.parentId
-      ))
-      .map((candidate) => candidate.parentId as string),
-  );
-  const openStarts = next.filter((candidate) => (
-    (candidate.kind === 'tool' || candidate.kind === 'agent')
-    && candidate.phase === 'start'
-    && (!terminalParentIds.has(candidate.id) || recentTerminalParentIds.has(candidate.id))
-    && !retainedIds.has(candidate.id)
-  ));
-  return [...openStarts, ...recentEvents];
-}
-
-function resolveFocusedSurface(
-  _current: CliInteractionSurface,
-  review: CliReviewState | undefined,
-): CliInteractionSurface {
-  if (!review) {
-    return 'prompt';
-  }
-  return 'review';
-}
-
-function shouldHandoffForegroundTurnToReview(review: CliReviewState | undefined): boolean {
-  return review?.request.action.toolName === 'AskUserQuestion';
-}
-
-function suppressActiveTurnForReview(
-  current: CliActiveTurn | undefined,
-  review: CliReviewState | undefined,
-): CliActiveTurn | undefined {
-  if (!current || !shouldHandoffForegroundTurnToReview(review)) {
-    return current;
-  }
-
-  return {
-    ...current,
-    responseBeforeRuntime: undefined,
-    response: '',
-    suppressInteractionResponse: true,
-  };
-}
-
-async function waitForForegroundReviewResumeReady(
-  codara: Codara,
-  reviewId: string,
-  refreshCoreState: () => Promise<{status: string; pendingReview?: ReviewRequest}>,
-): Promise<void> {
-  const deadline = Date.now() + REVIEW_RESUME_READY_TIMEOUT_MS;
-
-  while (Date.now() <= deadline) {
-    const nextAgentState = await refreshCoreState();
-    const activeReviewRequest = readCliReviewProjection(codara, {
-      pendingReview: nextAgentState.pendingReview,
-    }).activeReviewRequest;
-    if (activeReviewRequest?.id !== reviewId) {
-      return;
-    }
-    if (nextAgentState.status !== 'running') {
-      return;
-    }
-    await new Promise((resolve) => setTimeout(resolve, REVIEW_RESUME_READY_POLL_MS));
-  }
 }
 
 export function useCliController(options: UseCliControllerOptions): CliController {
@@ -493,16 +266,9 @@ export function useCliController(options: UseCliControllerOptions): CliControlle
   }, []);
 
   const syncInteractionState = useCallback(() => {
-    setInteractionState((current) => {
-      const snapshot = interactionScheduler.readSnapshot();
-      const focusedSurface = resolveFocusedSurface(current.focusedSurface, reviewRef.current);
-      return {
-        focusedSurface,
-        activeKind: snapshot.activeKind,
-        pendingCount: snapshot.pendingCount,
-        promptBlocked: focusedSurface !== 'prompt',
-      };
-    });
+    setInteractionState((current) =>
+      resolveInteractionStateSnapshot(current, interactionScheduler, reviewRef.current),
+    );
   }, [interactionScheduler]);
 
   const suppressSettlingDismissedReview = useCallback((
@@ -744,18 +510,20 @@ export function useCliController(options: UseCliControllerOptions): CliControlle
   }, [beginInteraction, codara, endInteraction, interactionScheduler, refreshCoreState, reportError, setActiveTurn, syncInteractionState]);
 
   const drainScheduledInteractions = useCallback(() => {
-    if (interactionScheduler.isRunning()) {
+    const result = takeNextScheduledInteraction(interactionScheduler);
+
+    if (result.kind === 'busy') {
       return;
     }
-    const nextInteraction = interactionScheduler.takeNextInteraction();
-    if (nextInteraction) {
+
+    if (result.kind === 'session_prompt' || result.kind === 'review_response') {
       syncInteractionState();
       void (async () => {
         let handled = true;
-        if (nextInteraction.kind === 'session_prompt') {
-          await runQueuedSessionPromptRef.current(nextInteraction.prompt);
+        if (result.kind === 'session_prompt') {
+          await runQueuedSessionPromptRef.current(result.prompt);
         } else {
-          handled = await runQueuedReviewResponse(nextInteraction);
+          handled = await runQueuedReviewResponse(result.interaction);
         }
         flushPendingBackgroundNotices();
         if (handled) {
@@ -765,6 +533,7 @@ export function useCliController(options: UseCliControllerOptions): CliControlle
       return;
     }
 
+    // result.kind === 'empty'
     syncInteractionState();
 
     // When draining finds nothing and the interaction is done, settle the prompt
@@ -779,71 +548,71 @@ export function useCliController(options: UseCliControllerOptions): CliControlle
   useEffect(() => {
     setRuntimeEvents([]);
     return codara.subscribeRuntimeEvents((event: CodaraRuntimeEvent) => {
-      // Track agent lifecycle for spinner state
-      if ((event.kind === 'turn' || event.kind === 'agent') && event.phase === 'start') {
-        setRunningAgentCount((count) => count + 1);
-      }
-      if ((event.kind === 'turn' || event.kind === 'agent') && event.phase === 'end') {
-        setRunningAgentCount((count) => Math.max(0, count - 1));
-      }
-
-      const route = routeCliRuntimeEvent({
+      const effects = computeRuntimeEventEffects({
         event,
+        currentRuntimeEvents: [],  // appendRuntimeEventPreservingOpenStarts uses the setter's prev value
         interactionRunning: interactionScheduler.isRunning(),
       });
 
-      setRuntimeEvents((current) => appendRuntimeEventPreservingOpenStarts(current, event));
-      if (route.shouldSealActiveTurn) {
-        setActiveTurn((current) => sealActiveTurnAtRuntimeBoundary(current));
+      // Apply agent count delta
+      if (effects.agentCountDelta !== 0) {
+        const delta = effects.agentCountDelta;
+        setRunningAgentCount((count) => Math.max(0, count + delta));
       }
 
-      if (route.immediateNotice) {
-        setNotices((current) => appendUniqueNotices(current, [route.immediateNotice!]));
+      // Update runtime events via setter to get latest state
+      setRuntimeEvents((current) => appendRuntimeEventPreservingOpenStarts(current, event));
+
+      // Seal active turn if needed
+      if (effects.sealedActiveTurn) {
+        setActiveTurn(effects.sealedActiveTurn);
       }
-      if (route.queuedNotice) {
+
+      // Apply notices
+      if (effects.immediateNotices.length > 0) {
+        setNotices((current) => appendUniqueNotices(current, effects.immediateNotices));
+      }
+      if (effects.queuedNotices.length > 0) {
         pendingBackgroundNoticesRef.current = appendUniqueNotices(
           pendingBackgroundNoticesRef.current,
-          [route.queuedNotice],
+          effects.queuedNotices,
         );
       }
-      if (route.foregroundSubagentReview) {
+
+      // Handle foreground subagent review interrupt
+      if (effects.foregroundSubagentReview) {
         endInteraction();
         setRunState({status: 'paused'});
         refreshAuxiliaryState();
         return;
       }
 
-      const shouldRefreshDuringRunningAgentHandoff = event.kind === 'agent'
-        && (
-          event.phase === 'end'
-          || (event.phase === 'update' && event.status === 'paused')
-        );
-
-      if (shouldRefreshDuringRunningAgentHandoff || route.shouldRefreshAuxiliaryState) {
-        if (event.kind === 'agent') {
-          void refreshCoreState()
-            .then((nextAgentState) => {
-              const settled = settleRunningPromptTurnIfReady(nextAgentState.messages);
-              if (!settled && event.phase === 'end') {
-                void refreshCoreStateUntilPromptSettles();
-              }
-              return nextAgentState;
-            })
-            .catch(() => {
-              refreshAuxiliaryState();
-            });
-        } else {
-          refreshAuxiliaryState();
-        }
+      // Apply refresh strategy
+      if (effects.refreshStrategy.kind === 'core_then_settle') {
+        const agentPhase = effects.refreshStrategy.agentPhase;
+        void refreshCoreState()
+          .then((nextAgentState) => {
+            const settled = settleRunningPromptTurnIfReady(nextAgentState.messages);
+            if (!settled && agentPhase === 'end') {
+              void refreshCoreStateUntilPromptSettles();
+            }
+            return nextAgentState;
+          })
+          .catch(() => {
+            refreshAuxiliaryState();
+          });
+      } else if (effects.refreshStrategy.kind === 'auxiliary_only') {
+        refreshAuxiliaryState();
       }
 
-      if (event.kind === 'agent') {
+      // Drain interactions on agent events
+      if (effects.shouldDrainInteractions) {
         queueMicrotask(() => {
           drainScheduledInteractions();
         });
       }
     });
-  }, [codara, drainScheduledInteractions, endInteraction, interactionScheduler, refreshAuxiliaryState, refreshCoreState, refreshCoreStateUntilPromptSettles, setActiveTurn, settleRunningPromptTurnIfReady, syncInteractionState]);
+  }, [codara, drainScheduledInteractions, endInteraction, interactionScheduler, refreshAuxiliaryState, refreshCoreState, refreshCoreStateUntilPromptSettles, setActiveTurn, settleRunningPromptTurnIfReady]);
 
   // Update runState based on runningAgentCount
   useEffect(() => {
@@ -1105,66 +874,59 @@ export function useCliController(options: UseCliControllerOptions): CliControlle
   }, []);
 
   const insertText = useCallback((input: string) => {
-    applyComposerChange((current) => insertComposerText(current, input));
+    applyComposerChange((current) => composerInsertText(current, input));
   }, [applyComposerChange]);
 
   const replaceText = useCallback((text: string) => {
-    applyComposerChange(() => replaceComposerText(text));
+    applyComposerChange(() => composerReplaceText(text));
   }, [applyComposerChange]);
 
   const insertNewline = useCallback(() => {
-    applyComposerChange((current) => insertComposerNewline(current));
+    applyComposerChange((current) => composerInsertNewline(current));
   }, [applyComposerChange]);
 
   const backspace = useCallback(() => {
-    applyComposerChange((current) => backspaceComposerText(current));
+    applyComposerChange((current) => composerBackspace(current));
   }, [applyComposerChange]);
 
   const moveCursorLeft = useCallback(() => {
-    applyComposerChange((current) => moveComposerCursorLeft(current));
+    applyComposerChange((current) => composerMoveCursorLeft(current));
   }, [applyComposerChange]);
 
   const moveCursorRight = useCallback(() => {
-    applyComposerChange((current) => moveComposerCursorRight(current));
+    applyComposerChange((current) => composerMoveCursorRight(current));
   }, [applyComposerChange]);
 
   const moveCursorUp = useCallback(() => {
-    applyComposerChange((current) => moveComposerCursorUp(current));
+    applyComposerChange((current) => composerMoveCursorUp(current));
   }, [applyComposerChange]);
 
   const moveCursorDown = useCallback(() => {
-    applyComposerChange((current) => moveComposerCursorDown(current));
+    applyComposerChange((current) => composerMoveCursorDown(current));
   }, [applyComposerChange]);
 
   const moveCursorHome = useCallback(() => {
-    applyComposerChange((current) => moveComposerCursorHome(current));
+    applyComposerChange((current) => composerMoveCursorHome(current));
   }, [applyComposerChange]);
 
   const moveCursorEnd = useCallback(() => {
-    applyComposerChange((current) => moveComposerCursorEnd(current));
+    applyComposerChange((current) => composerMoveCursorEnd(current));
   }, [applyComposerChange]);
 
   const toggleSubagentRunsPanel = useCallback(() => {
-    setSubagentRunPanelVisible(current => !current);
+    setSubagentRunPanelVisible((current) => toggleSubagentRunsPanelAction(current));
   }, []);
 
   const toggleExpand = useCallback(() => {
-    setExpandedAll(current => !current);
+    setExpandedAll((current) => toggleExpandAction(current));
   }, []);
 
   const dismissCommandOutput = useCallback(() => {
-    setCommandOutput(undefined);
+    setCommandOutput(dismissCommandOutputAction());
   }, []);
 
   const scrollCommandOutput = useCallback((delta: number) => {
-    setCommandOutput((current) => {
-      if (!current) return current;
-      const totalLines = current.content.split('\n').length;
-      const maxOffset = Math.max(0, totalLines - 20);
-      const nextOffset = Math.max(0, Math.min(maxOffset, current.scrollOffset + delta));
-      if (nextOffset === current.scrollOffset) return current;
-      return {...current, scrollOffset: nextOffset};
-    });
+    setCommandOutput((current) => scrollCommandOutputAction(current, delta));
   }, []);
 
   const submitDraft = useCallback(() => {
@@ -1190,33 +952,19 @@ export function useCliController(options: UseCliControllerOptions): CliControlle
   }, [submitPrompt]);
 
   const focusReviewWindow = useCallback(() => {
-    if (!reviewRef.current) {
-      return;
-    }
-    setInteractionState((current) => ({
-      ...current,
-      focusedSurface: 'review',
-      promptBlocked: true,
-    }));
+    setInteractionState((current) => focusReviewWindowAction(current, !!reviewRef.current));
   }, []);
 
   const focusPromptWindow = useCallback(() => {
-    if (reviewRef.current) {
-      return;
-    }
-    setInteractionState((current) => ({
-      ...current,
-      focusedSurface: 'prompt',
-      promptBlocked: false,
-    }));
+    setInteractionState((current) => focusPromptWindowAction(current, !!reviewRef.current));
   }, []);
 
   const selectPreviousReviewAction = useCallback(() => {
-    setReviewState((current) => current ? selectPreviousCliReviewAction(current) : current);
+    setReviewState((current) => selectPreviousReviewActionUpdate(current));
   }, [setReviewState]);
 
   const selectNextReviewAction = useCallback(() => {
-    setReviewState((current) => current ? selectNextCliReviewAction(current) : current);
+    setReviewState((current) => selectNextReviewActionUpdate(current));
   }, [setReviewState]);
 
   const shiftReviewFocus = useCallback(async (direction: -1 | 1) => {
@@ -1247,72 +995,33 @@ export function useCliController(options: UseCliControllerOptions): CliControlle
   }, [shiftReviewFocus]);
 
   const moveReviewLeft = useCallback(() => {
-    setReviewState((current) => current?.form ? selectPreviousCliReviewTab(current) : current ? toggleCliReviewFocus(current) : current);
+    setReviewState((current) => moveReviewLeftUpdate(current));
   }, [setReviewState]);
 
   const moveReviewRight = useCallback(() => {
-    setReviewState((current) => current?.form ? selectNextCliReviewTab(current) : current ? toggleCliReviewFocus(current) : current);
+    setReviewState((current) => moveReviewRightUpdate(current));
   }, [setReviewState]);
 
   const toggleReviewFocus = useCallback(() => {
-    setReviewState((current) => current ? toggleCliReviewFocus(current) : current);
+    setReviewState((current) => toggleReviewFocusUpdate(current));
   }, [setReviewState]);
 
   const activateReviewSelection = useCallback(() => {
-    setReviewState((current) => current ? activateCliReviewFocusedSelection(current) ?? current : current);
+    const result = activateReviewSelectionUpdate(reviewRef.current);
+    setReviewState(result.review);
     setRunState({status: 'paused'});
   }, [setReviewState]);
 
   const insertReviewText = useCallback((input: string) => {
-    setReviewState((current) => {
-      if (!current) {
-        return current;
-      }
-      const activeTab = current.form?.tabs[current.form.activeTabIndex];
-      const customIndex = activeTab ? activeTab.options.length : -1;
-      const customInputSelected = current.form
-        && current.focus === 'input'
-        && current.selectedActionIndex === customIndex;
-      const reviewShortcut = applyCliReviewFormShortcut(current, input);
-      const isSelectionDigit = /^[1-9]$/.test(input);
-      if (reviewShortcut && isSelectionDigit) {
-        return reviewShortcut;
-      }
-      const shouldTypeIntoDraft = Boolean(current.customInputActive || customInputSelected);
-      if (shouldTypeIntoDraft && current.focus === 'input') {
-        const prepared = prepareCliReviewDraftInput(current) ?? current;
-        return updateCliReviewDraft(prepared, prepared.draft + input);
-      }
-      if (reviewShortcut) {
-        return reviewShortcut;
-      }
-      if (current.focus !== 'input') {
-        return current;
-      }
-      const prepared = prepareCliReviewDraftInput(current);
-      if (!prepared) {
-        return current;
-      }
-      return updateCliReviewDraft(prepared, prepared.draft + input);
-    });
+    setReviewState((current) => insertReviewTextUpdate(current, input));
   }, [setReviewState]);
 
   const insertReviewNewline = useCallback(() => {
-    setReviewState((current) => {
-      if (!current || current.focus !== 'input') {
-        return current;
-      }
-      return updateCliReviewDraft(current, `${current.draft}\n`);
-    });
+    setReviewState((current) => insertReviewNewlineUpdate(current));
   }, [setReviewState]);
 
   const backspaceReviewInput = useCallback(() => {
-    setReviewState((current) => {
-      if (!current || current.focus !== 'input' || current.draft.length === 0) {
-        return current;
-      }
-      return updateCliReviewDraft(current, current.draft.slice(0, -1));
-    });
+    setReviewState((current) => backspaceReviewInputUpdate(current));
   }, [setReviewState]);
 
   const submitReviewAction = useCallback(async (autoAction?: CliReviewAutoAction) => {
