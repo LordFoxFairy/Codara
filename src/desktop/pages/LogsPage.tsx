@@ -18,6 +18,7 @@ const LEVEL_STYLES: Record<string, string> = {
   debug: "text-stone-500 bg-stone-50",
 };
 
+/** Status monitor — polls the runtime status endpoint periodically. */
 export function LogsPage() {
   const [logs, setLogs] = useState<LogEntry[]>([]);
   const [paused, setPaused] = useState(false);

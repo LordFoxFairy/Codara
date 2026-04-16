@@ -1,9 +1,7 @@
-/** @future — Pure controller logic for the next CLI architecture rewrite. Extracted from use-cli-controller for testability. */
-import type {Codara, CodaraRuntimeEvent} from '@/index';
+/** Pure predicate functions and constants extracted from the CLI controller for testability. */
+import {isSubagentInternalAssistantText, type Codara, type CodaraRuntimeEvent, type ReviewRequest} from '@/index';
 import {AIMessage, type BaseMessage} from '@langchain/core/messages';
-import type {ReviewRequest} from '@core/agent';
 import type {SubagentRunQuerySummary} from '@codara/types';
-import {isSubagentInternalAssistantText} from '@capability/subagent/completion';
 import {readVisibleMessageText} from '@shared/messages';
 import {containsAgentLaunchChatter} from './interaction-turn';
 import {readCliReviewProjection} from './runtime-projection';

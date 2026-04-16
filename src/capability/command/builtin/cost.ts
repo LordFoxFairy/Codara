@@ -1,12 +1,6 @@
 import type {CodaraCommandDefinition} from '@capability/command/runtime/types';
-
-const BUILTIN_SOURCE = {type: 'builtin'} as const;
-
-function formatTokens(n: number): string {
-  if (n >= 1_000_000) return `${(n / 1_000_000).toFixed(1)}M`;
-  if (n >= 1_000) return `${(n / 1_000).toFixed(1)}k`;
-  return String(n);
-}
+import {formatCost, formatCostSnapshot, formatNumber} from '@observability/cost';
+import {BUILTIN_SOURCE, formatTokens} from './formatters';
 
 export const costCommand: CodaraCommandDefinition = {
   name: 'cost',
@@ -15,6 +9,14 @@ export const costCommand: CodaraCommandDefinition = {
   source: BUILTIN_SOURCE,
   help: {executionMode: 'runtime_command'},
   async execute({command, agent, environment}) {
+    // Prefer the CostTracker snapshot (has pricing-based cost estimates + per-model breakdown)
+    const snapshot = agent.getCostSnapshot?.();
+    if (snapshot && snapshot.totalCalls > 0) {
+      const header = `Session cost summary (model: ${environment.modelAlias ?? 'default'})`;
+      return {ok: true, command: command.name, output: `${header}\n${formatCostSnapshot(snapshot)}`};
+    }
+
+    // Fallback to session metadata usage (basic token counts without cost estimates)
     const state = agent.getState();
     const usage = state.metadata?.usage;
 

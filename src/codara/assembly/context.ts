@@ -7,11 +7,12 @@ import {
   mergePreparedInstructionContext,
   type BaseSystemMessageLoader,
   type BuildBaseSystemMessageOptions,
-} from '@context/session-bundle/base-system-message';
+} from '@context/system-message';
 import {createPathInstructionsMiddleware} from '@core/middleware/path-instructions';
 import {resolveWorkspaceRoot} from '@config/workspace';
-import type {GuidelinesSource} from '@context/instructions/guidelines';
-import type {PromptSource} from '@context/prompts/prompt-source';
+import type {GuidelinesSource} from '@context/guidelines';
+import type {PromptSource} from '@context/prompts';
+import {type ConditionalRule} from '@context/rules';
 import type {CodaraOptions} from '../types';
 
 export function resolveCodaraSkills(
@@ -78,6 +79,7 @@ export function createInstructionContextRuntime(sources: {
   promptSource?: PromptSource;
   guidelinesSource?: GuidelinesSource;
   skillsSource?: BuildBaseSystemMessageOptions['skillsSource'];
+  conditionalRules?: ConditionalRule[];
 }): InstructionContextRuntime {
   const loadBaseSystemMessage = createBaseSystemMessageLoader({
     promptSource: sources.promptSource,
@@ -86,10 +88,11 @@ export function createInstructionContextRuntime(sources: {
   });
 
   const middlewares: BaseMiddleware[] = [];
-  if (sources.promptSource || sources.guidelinesSource) {
+  if (sources.promptSource || sources.guidelinesSource || (sources.conditionalRules && sources.conditionalRules.length > 0)) {
     middlewares.push(createPathInstructionsMiddleware({
       promptSource: sources.promptSource,
       guidelinesSource: sources.guidelinesSource,
+      conditionalRules: sources.conditionalRules,
     }));
   }
 

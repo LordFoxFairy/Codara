@@ -7,9 +7,9 @@ import type {BaseChatModel} from '@langchain/core/language_models/chat_models';
 import {tool, type StructuredToolInterface} from '@langchain/core/tools';
 import {z} from 'zod';
 import {createAgent} from '@core/agent';
-import {createCodaraGuidelinesSource} from '@context/instructions/guidelines';
-import {createCodaraPromptSource} from '@context/prompts/prompt-source';
-import {buildBaseSystemMessage} from '@context/session-bundle/base-system-message';
+import {createCodaraGuidelinesSource} from '@context/guidelines';
+import {createCodaraPromptSource} from '@context/prompts';
+import {buildBaseSystemMessage} from '@context/system-message';
 import {
   createTaskMemoryStore,
   createTaskTools,

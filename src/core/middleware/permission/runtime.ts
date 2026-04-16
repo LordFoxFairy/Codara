@@ -17,8 +17,10 @@ import {
 import {persistPermissionRule, persistPermissionScope} from '@core/middleware/permission/policy/persist';
 import type {PermissionPolicyOptions} from '@core/middleware/permission/types';
 import {normalizeToolReferenceName} from '@shared/tool-names';
+import {getToolMetadata} from '@shared/tool-metadata';
 import {extractBashAlwaysPatterns, extractBashWritePathOperands} from '@core/middleware/permission/bash';
 import {PermissionSessionCache} from '@core/middleware/permission/session-cache';
+import {DenialTracker} from '@core/middleware/permission/denial-tracking';
 
 export interface PermissionRuntimeOptions extends PermissionPolicyOptions {}
 
@@ -123,13 +125,14 @@ interface PendingPermissionRequest {
 export function createPermissionRuntime(options: PermissionRuntimeOptions = {}): PermissionRuntime {
   const sessionCache = new PermissionSessionCache();
   const pendingRequests = new Map<string, PendingPermissionRequest>();
+  const denialTracker = new DenialTracker();
 
   return {
     async resolveToolDecision(context) {
-      return resolvePermissionDecision(context, options, sessionCache, pendingRequests);
+      return resolvePermissionDecision(context, options, sessionCache, pendingRequests, denialTracker);
     },
     handleResume(metadata, resumePayload, context, handler) {
-      return handlePermissionResume(metadata ?? {}, resumePayload, context, handler, options, sessionCache, pendingRequests);
+      return handlePermissionResume(metadata ?? {}, resumePayload, context, handler, options, sessionCache, pendingRequests, denialTracker);
     },
     isPermissionReview,
   };
@@ -140,6 +143,7 @@ async function resolvePermissionDecision(
   options: PermissionRuntimeOptions,
   sessionCache: PermissionSessionCache,
   pendingRequests: Map<string, PendingPermissionRequest>,
+  denialTracker: DenialTracker,
 ): Promise<ReviewDecision | undefined> {
   const evaluation = await evaluatePermissionToolCall(context.toolCall, options);
   if (!evaluation) return undefined;
@@ -155,6 +159,11 @@ async function resolvePermissionDecision(
 
   if (evaluation.decision === 'allow') {
     return {decision: 'allow'};
+  }
+
+  // Auto-deny if the tool has been repeatedly denied within the tracking window
+  if (denialTracker.shouldAutoDeny(context.toolCall.name)) {
+    return {decision: 'deny', reason: `Auto-denied after repeated rejections: ${evaluation.input}`};
   }
 
   // Pure shell parsing for bash commands — no LLM needed
@@ -173,6 +182,10 @@ async function resolvePermissionDecision(
 
   // Generate suggested "always" patterns
   const alwaysPatterns = generateAlwaysPatterns(evaluation.input);
+
+  // Attach per-tool safety metadata so the UI and downstream consumers
+  // can make smarter decisions (e.g., destructive tools get a warning badge).
+  const toolMeta = getToolMetadata(context.toolCall.name);
 
   const metadata = {
     codara: {
@@ -199,6 +212,11 @@ async function resolvePermissionDecision(
       ruleSummary: evaluation.ruleSummary,
       alwaysPatterns,
       suggestions: {},
+      toolMetadata: {
+        isReadOnly: toolMeta.isReadOnly,
+        isDestructive: toolMeta.isDestructive,
+        isConcurrencySafe: toolMeta.isConcurrencySafe,
+      },
     },
   } satisfies Record<string, unknown>;
 
@@ -264,11 +282,13 @@ async function handlePermissionResume(
   options: PermissionRuntimeOptions,
   sessionCache: PermissionSessionCache,
   pendingRequests: Map<string, PendingPermissionRequest>,
+  denialTracker: DenialTracker,
 ): Promise<ToolMessage> {
   const payload = parseReviewResumeActionPayload(resumePayload);
 
-  // Handle reject
+  // Handle reject — record denial for fatigue tracking
   if (payload.action === 'deny' || payload.decision === 'reject') {
+    denialTracker.recordDenial(context.toolCall.name);
     const requestKey = context.toolCall.id || `tool_${context.toolIndex}`;
     pendingRequests.delete(requestKey);
     return createPermissionDenyMessage(context, payload.comment, payload.metadata);

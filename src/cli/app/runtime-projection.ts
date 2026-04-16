@@ -1,5 +1,4 @@
-import type {Codara, ReviewQueryItem} from '@/index';
-import type {ReviewRequest} from '@core/agent';
+import type {Codara, ReviewQueryItem, ReviewRequest} from '@/index';
 import {syncCliReviewState} from './review-state';
 import type {CliReviewState} from './view-state';
 

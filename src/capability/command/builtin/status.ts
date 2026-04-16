@@ -1,11 +1,9 @@
-import {existsSync} from 'node:fs';
 import path from 'node:path';
 import {homedir} from 'node:os';
 import type {CodaraCommandDefinition} from '@capability/command/runtime/types';
 import {resolvePermissionSettingsFile} from '@core/middleware/permission';
 import {resolveWorkspaceRoot} from '@config/workspace';
-
-const BUILTIN_SOURCE = {type: 'builtin'} as const;
+import {BUILTIN_SOURCE, formatContextWindow, formatFilePath, formatUsage} from './formatters';
 
 export const statusCommand: CodaraCommandDefinition = {
   name: 'status',
@@ -42,37 +40,11 @@ export const statusCommand: CodaraCommandDefinition = {
         `- context: ${formatContextWindow(contextWindow)}`,
         `- usage: ${formatUsage(usage)}`,
         `- pending_review: ${state.pendingReview ? 'yes' : 'no'}`,
-        `- project_memory: ${projectMemory}${existsSync(projectMemory) ? '' : ' (missing)'}`,
-        `- global_memory: ${globalMemory}${existsSync(globalMemory) ? '' : ' (missing)'}`,
+        `- project_memory: ${formatFilePath(projectMemory)}`,
+        `- global_memory: ${formatFilePath(globalMemory)}`,
         `- permissions: ${permissionFile}`,
       ].join('\n'),
     };
   },
 };
 
-function formatContextWindow(contextWindow: {
-  maxInputTokens: number;
-  availableInputTokens: number;
-  estimatedInputTokens: number;
-  usagePercent: number;
-  overBudget: boolean;
-} | undefined): string {
-  if (!contextWindow) {
-    return 'n/a';
-  }
-
-  return `${Math.round(contextWindow.usagePercent)}% (${contextWindow.estimatedInputTokens}/${contextWindow.maxInputTokens})${contextWindow.overBudget ? ' over-budget' : ''}`;
-}
-
-function formatUsage(usage: {
-  modelCalls?: number;
-  promptTokens?: number;
-  completionTokens?: number;
-  totalTokens?: number;
-} | undefined): string {
-  if (!usage) {
-    return 'n/a';
-  }
-
-  return `model_calls=${usage.modelCalls ?? 0}, prompt=${usage.promptTokens ?? 0}, completion=${usage.completionTokens ?? 0}, total=${usage.totalTokens ?? 0}`;
-}

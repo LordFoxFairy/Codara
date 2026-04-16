@@ -2,7 +2,7 @@ import {ToolMessage} from '@langchain/core/messages';
 import {tool, type StructuredToolInterface} from '@langchain/core/tools';
 import {z} from 'zod';
 import {readSkillsRuntimeData, resolveSubagentDefinition, normalizeSubagentType} from '@capability/skill';
-import {createAgentMemoryCheckpointer} from '@durability/checkpoint/agent';
+import {createAgentMemoryCheckpointer} from './adapters/core-bridge';
 import {formatSubagentRunLaunchResult} from '@shared/subagent-run-launch';
 import {createSubagentRunManager, type SubagentRunManager} from '@capability/subagent/run-manager';
 import {createSubagentRunMemoryStore} from '@capability/subagent/run-store';
@@ -18,11 +18,10 @@ import {
   type SubagentParentRuntimeMetadata,
 } from '@capability/subagent/review-metadata';
 import type {SubagentRunRecord, SubagentRunStore} from '@capability/subagent/types';
-import type {BootstrapAgentOptions} from '@core/agent/bootstrap';
-import type {AgentCheckpointer} from '@durability/checkpoint/agent';
+import type {BootstrapAgentOptions, AgentCheckpointer} from './adapters/core-bridge';
 import {filterToolsByReferences} from '@integration/tool';
 import {formatSubagentDisplayName, type SubagentDefinition} from '@capability/skill';
-import type {ApprovalStore} from '@durability/approval-store';
+import type {ApprovalStore} from './adapters/core-bridge';
 
 export const AGENT_TOOL_NAME = 'Agent';
 

@@ -5,7 +5,6 @@ export {
   type FileSkillsSourceOptions,
 } from '@capability/skill/discovery/source';
 export {
-  formatSkillAnnotations,
   formatSkillsList,
   formatSkillsLocations,
   normalizeDiscoveredSkills,
@@ -36,7 +35,6 @@ export {
   type MarkdownFrontmatterDocument,
 } from '@capability/skill/catalog/loading';
 export {
-  discoverSkillCommands,
   discoverSkillCommandsFromRuntime,
   createSkillCommandInvocation,
   type SkillCommandDefinition,

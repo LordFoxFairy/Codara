@@ -40,12 +40,21 @@ import {
   type AgentCheckpoint,
   type AgentCheckpointInfo,
 } from '@durability/checkpoint/agent';
-import type {BaseExecutionContext, MiddlewareRuntimeShared} from '@core/pipeline/types';
+import {MIDDLEWARE_NAMES, type BaseExecutionContext, type MiddlewareRuntimeShared} from '@core/pipeline/types';
 import {MiddlewarePipeline} from '@core/pipeline/pipeline';
 import {deepClone} from '@shared/clone';
 import {formatErrorMessage} from './errors';
-import {compactMessages, isContextWindowExhausted} from './compact';
-import {isRateLimitError, isTransientError, extractRetryAfter} from './error-recovery';
+import {cheapDrainMessages, compactMessages, isContextWindowExhausted} from './compact';
+import {
+  computeRetryDelay,
+  createRecoveryState,
+  extractRetryAfter,
+  isMaxOutputTokensError,
+  isRateLimitError,
+  isTransientError,
+  MAX_OUTPUT_TOKENS_RECOVERY_LIMIT,
+  resetPerTurnFlags,
+} from './error-recovery';
 import {createTokenBudgetState, shouldAutoCompact, shouldStopContinuation, estimateMessagesTokenCount} from './token-budget';
 import {parseReviewToolMessagePayload} from '@core/middleware/review';
 import type {AgentLifecycleHooks} from '@observability/hook/types';
@@ -76,6 +85,7 @@ export interface AgentRunContext {
   runtimeContext: AgentRuntimeContext;
   shared: MiddlewareRuntimeShared;
   inputBudget?: AgentInputBudget;
+  signal?: AbortSignal;
 }
 
 export function normalizeAgentInput(input: AgentInput): BaseMessage[] {
@@ -144,7 +154,7 @@ export function injectReviewResumePayload(
 
 export function createRunContext(
   state: AgentState,
-  config: Pick<AgentInvokeConfig, 'recursionLimit' | 'context' | 'inputBudget'> = {},
+  config: Pick<AgentInvokeConfig, 'recursionLimit' | 'context' | 'inputBudget' | 'signal'> = {},
   runtimeShared: MiddlewareRuntimeShared = {},
 ): AgentRunContext {
   const maxTurns = config.recursionLimit ?? DEFAULT_RECURSION_LIMIT;
@@ -158,6 +168,7 @@ export function createRunContext(
     runtimeContext: deepClone(config.context ?? {}),
     shared: deepClone(runtimeShared),
     inputBudget: config.inputBudget,
+    signal: config.signal,
   };
 }
 
@@ -167,6 +178,7 @@ export function createAgent(options: CreateAgentOptions): Agent {
   const sessionId = checkpoint?.ref.sessionId ?? options.sessionId ?? randomUUID();
   const checkpointer = options.checkpointer ?? createAgentMemoryCheckpointer();
   const inputBudget = options.inputBudget;
+  let internalAbortController: AbortController | undefined;
   const state = createInitialAgentState(
     sessionId,
     {
@@ -208,7 +220,7 @@ export function createAgent(options: CreateAgentOptions): Agent {
 
   const createRun = (
     input: AgentInput,
-    config: Pick<AgentInvokeConfig, 'recursionLimit' | 'context' | 'inputBudget'>,
+    config: Pick<AgentInvokeConfig, 'recursionLimit' | 'context' | 'inputBudget' | 'signal'>,
     options: {clearPendingReview?: boolean} = {},
   ): AgentRunContext => {
     const runState = toAgentState(state);
@@ -220,7 +232,12 @@ export function createAgent(options: CreateAgentOptions): Agent {
       runState.pendingReview = undefined;
     }
     runState.status = 'running';
-    return createRunContext(runState, {...config, inputBudget: config.inputBudget ?? inputBudget}, runtime.runtimeShared);
+
+    // Create an internal AbortController for agent.abort() and combine with external signal
+    internalAbortController = new AbortController();
+    const signal = combineAbortSignals(internalAbortController.signal, config.signal);
+
+    return createRunContext(runState, {...config, inputBudget: config.inputBudget ?? inputBudget, signal}, runtime.runtimeShared);
   };
 
   const applyRunResult = async (
@@ -327,14 +344,18 @@ export function createAgent(options: CreateAgentOptions): Agent {
   const createResumeRun = (
     review: ReviewRequest,
     payload: ReviewResumePayload,
-    config: Pick<AgentResumeConfig, 'context' | 'recursionLimit' | 'inputBudget'>,
+    config: Pick<AgentResumeConfig, 'context' | 'recursionLimit' | 'inputBudget' | 'signal'>,
   ): AgentRunContext => {
+    internalAbortController = new AbortController();
+    const signal = combineAbortSignals(internalAbortController.signal, config.signal);
+
     return createRunContext(
       toAgentState(state),
       {
         inputBudget: config.inputBudget ?? inputBudget,
         recursionLimit: config.recursionLimit,
         context: injectReviewResumePayload(config.context, review, payload),
+        signal,
       },
       runtime.runtimeShared,
     );
@@ -441,7 +462,7 @@ export function createAgent(options: CreateAgentOptions): Agent {
     }
   };
 
-  const resumeReviewdTool = async (
+  const resumeReviewedTool = async (
     payload: ReviewResumePayload,
     config: AgentResumeConfig,
   ): Promise<AgentResult> => {
@@ -462,7 +483,7 @@ export function createAgent(options: CreateAgentOptions): Agent {
     }
   };
 
-  const resumeReviewdToolStream = async function* (
+  const resumeReviewedToolStream = async function* (
     payload: ReviewResumePayload,
     config: AgentResumeStreamConfig,
   ): AsyncGenerator<AgentStreamOutput, AgentResult, void> {
@@ -507,7 +528,7 @@ export function createAgent(options: CreateAgentOptions): Agent {
     async resume(payload, config = {}) {
       assertReadyForResume(state);
       if (config.resumeMode !== 'model') {
-        return resumeReviewdTool(payload, config);
+        return resumeReviewedTool(payload, config);
       }
       const pause = state.pendingReview as ReviewRequest;
       return execute(
@@ -546,7 +567,7 @@ export function createAgent(options: CreateAgentOptions): Agent {
     async *resumeStream(payload, config = {}) {
       assertReadyForResume(state);
       if (config.resumeMode !== 'model') {
-        return yield* resumeReviewdToolStream(payload, config);
+        return yield* resumeReviewedToolStream(payload, config);
       }
       const pause = state.pendingReview as ReviewRequest;
       return yield* executeStream(
@@ -555,7 +576,45 @@ export function createAgent(options: CreateAgentOptions): Agent {
         'resume',
       );
     },
+
+    abort() {
+      if (state.status !== 'running' || !internalAbortController) {
+        return;
+      }
+      internalAbortController.abort('abort');
+    },
   };
+}
+
+/** Combine an internal and optional external AbortSignal into one signal. */
+function combineAbortSignals(internal: AbortSignal, external?: AbortSignal): AbortSignal {
+  if (!external) {
+    return internal;
+  }
+  // If AbortSignal.any is available (Node 20+), use it; otherwise wire manually.
+  if (typeof AbortSignal.any === 'function') {
+    return AbortSignal.any([internal, external]);
+  }
+  const controller = new AbortController();
+  const onAbort = () => {
+    controller.abort(internal.aborted ? internal.reason : external.reason);
+  };
+  if (internal.aborted || external.aborted) {
+    onAbort();
+  } else {
+    internal.addEventListener('abort', onAbort, {once: true});
+    external.addEventListener('abort', onAbort, {once: true});
+  }
+  return controller.signal;
+}
+
+/** Check if signal is aborted; if so throw an AbortError for the loop to catch. */
+export function throwIfAborted(signal?: AbortSignal): void {
+  if (signal?.aborted) {
+    const error = new Error('Agent run aborted');
+    error.name = 'AbortError';
+    throw error;
+  }
 }
 
 async function runLoop(
@@ -568,18 +627,30 @@ async function runLoop(
   const maxCompactionAttempts = run.inputBudget?.maxCompactionAttempts ?? 3;
   const contextWindow = run.inputBudget?.maxInputTokens ?? 128_000;
   const budget = createTokenBudgetState(contextWindow);
+  // When SummaryMiddleware is active it handles proactive compaction via its
+  // beforeModel hook — skip simple turn-based compaction to prevent double
+  // compression in the same turn. compactMessages still serves as a last-resort
+  // fallback for context-window-exhaustion errors below.
+  const summaryHandlesCompaction = runtime.pipeline.has(MIDDLEWARE_NAMES.Summary);
 
-  let compactionAttempts = 0;
-  let rateLimitRetried = false;
-  let transientRetried = false;
+  // Cross-turn recovery state with "already attempted" markers.
+  // Aligned with Claude Code's State type in query.ts — each recovery strategy
+  // carries a flag that prevents it from firing in a loop.
+  const recovery = createRecoveryState();
+
   for (let turn = startTurn; turn <= run.maxTurns; turn += 1) {
-    // Reset per-turn retry flags so each turn gets one retry attempt
-    rateLimitRetried = false;
-    transientRetried = false;
-    // --- Proactive auto-compact ---
+    // --- Abort check before each turn ---
+    if (run.signal?.aborted) {
+      return {reason: 'aborted', state: run.state, turns: turn - startTurn};
+    }
+
+    // Reset per-turn retry flags so each turn gets fresh retry attempts
+    resetPerTurnFlags(recovery);
+
+    // --- Proactive auto-compact (skip when SummaryMiddleware handles it) ---
     budget.estimatedUsed = estimateMessagesTokenCount(run.state.messages);
-    if (shouldAutoCompact(budget) && compactionAttempts < maxCompactionAttempts) {
-      compactionAttempts += 1;
+    if (!summaryHandlesCompaction && shouldAutoCompact(budget) && recovery.compactionAttempts < maxCompactionAttempts) {
+      recovery.compactionAttempts += 1;
       run.state.messages = compactMessages(run.state.messages, {keepRecentTurns});
       budget.estimatedUsed = estimateMessagesTokenCount(run.state.messages);
     }
@@ -600,6 +671,9 @@ async function runLoop(
       budget.lastDeltaTokens = newEstimate - preEstimate;
       budget.estimatedUsed = newEstimate;
       budget.continuationCount += 1;
+
+      // --- Task budget: cumulative token tracking across turns ---
+      recovery.cumulativeTokensUsed += (newEstimate - preEstimate);
 
       if (turnResult.reason === 'complete') {
         // Invoke Stop hook — if vetoed, inject messages and continue loop
@@ -635,31 +709,71 @@ async function runLoop(
         };
       }
     } catch (error) {
-      // Stage 1: Context window exhaustion → auto-compact and retry
-      if (isContextWindowExhausted(error) && compactionAttempts < maxCompactionAttempts) {
-        compactionAttempts += 1;
-        run.state.messages = compactMessages(run.state.messages, {keepRecentTurns});
-        budget.estimatedUsed = estimateMessagesTokenCount(run.state.messages);
-        continue;
+      // Stage 0: Abort — return gracefully with 'aborted' reason
+      if (error instanceof Error && error.name === 'AbortError') {
+        return {reason: 'aborted', state: run.state, turns: turn - startTurn};
       }
 
-      // Stage 2: Rate limit → wait retry-after then retry (once per turn)
-      if (isRateLimitError(error) && !rateLimitRetried) {
-        rateLimitRetried = true;
-        const retryAfter = extractRetryAfter(error);
-        if (retryAfter) {
-          await new Promise(resolve => setTimeout(resolve, retryAfter));
+      // Stage 1: Max output tokens → escalate then multi-turn recovery
+      // Aligned with Claude Code's isWithheldMaxOutputTokens + recovery loop.
+      // First: try escalating max_output_tokens. Then: inject a continuation
+      // message up to MAX_OUTPUT_TOKENS_RECOVERY_LIMIT times.
+      if (isMaxOutputTokensError(error)) {
+        if (recovery.maxOutputTokensRecoveryCount < MAX_OUTPUT_TOKENS_RECOVERY_LIMIT) {
+          recovery.maxOutputTokensRecoveryCount += 1;
+          // Inject a continuation prompt like Claude Code does
+          run.state.messages.push(new HumanMessage({
+            content:
+              'Output token limit hit. Resume directly — no apology, no recap of what you were doing. ' +
+              'Pick up mid-thought if that is where the cut happened. Break remaining work into smaller pieces.',
+          }));
+          continue;
+        }
+        // Recovery exhausted — fall through to error result
+      }
+
+      // Stage 2: Context window exhaustion → layered recovery
+      // First try cheap drain (strip old tool results), then full compact.
+      // Aligned with Claude Code's collapse drain → reactive compact pipeline.
+      if (isContextWindowExhausted(error)) {
+        // 2a: Cheap drain — strip old tool result content (one-shot)
+        if (!recovery.cheapDrainAttempted) {
+          recovery.cheapDrainAttempted = true;
+          const drainResult = cheapDrainMessages(run.state.messages, keepRecentTurns);
+          if (drainResult.freedCount > 0) {
+            run.state.messages = drainResult.messages;
+            budget.estimatedUsed = estimateMessagesTokenCount(run.state.messages);
+            continue;
+          }
+        }
+
+        // 2b: Full compaction — LLM summary of older turns
+        if (recovery.compactionAttempts < maxCompactionAttempts) {
+          recovery.compactionAttempts += 1;
+          run.state.messages = compactMessages(run.state.messages, {keepRecentTurns});
+          budget.estimatedUsed = estimateMessagesTokenCount(run.state.messages);
           continue;
         }
       }
 
-      // Stage 3: Transient API error → single retry (once per turn)
-      if (isTransientError(error) && !transientRetried) {
-        transientRetried = true;
+      // Stage 3: Rate limit → exponential backoff with jitter
+      // Aligned with Claude Code's getRetryDelay: 500ms * 2^attempt + 25% jitter.
+      // Respects retry-after header when present. Up to 3 attempts per turn.
+      if (isRateLimitError(error) && recovery.rateLimitAttempt < 3) {
+        recovery.rateLimitAttempt += 1;
+        const retryAfterMs = extractRetryAfter(error);
+        const delay = computeRetryDelay(recovery.rateLimitAttempt, retryAfterMs);
+        await new Promise(resolve => setTimeout(resolve, delay));
         continue;
       }
 
-      // Stage 4: Unrecoverable → return error result
+      // Stage 4: Transient API error → single retry (once per turn)
+      if (isTransientError(error) && !recovery.transientRetried) {
+        recovery.transientRetried = true;
+        continue;
+      }
+
+      // Stage 5: Unrecoverable → return error result
       return {reason: 'error', state: run.state, turns: turn, error: error instanceof Error ? error : new Error(String(error))};
     }
   }

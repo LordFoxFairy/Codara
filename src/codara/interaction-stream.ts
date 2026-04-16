@@ -89,82 +89,7 @@ async function* streamMainSessionWithSubagentFollowThrough(input: {
   start: () => AsyncGenerator<AgentStreamOutput, AgentResult, void>;
   buildContinuationConfig: (context: AgentRuntimeContext) => Omit<AgentStreamConfig, 'context'> & {context: AgentRuntimeContext};
 }): AsyncGenerator<AgentStreamOutput, void, void> {
-  const {session, subagentRunStore, subagentRunManager, start, buildContinuationConfig} = input;
-  let execute = start;
-  let claimedCompletion: SubagentCompletionContinuation | undefined;
-  let completionContext: SubagentCompletionRuntimeContext | undefined;
-
-  while (true) {
-    const previousMessageCount = readSessionMessageCount(session);
-    let result: AgentResult;
-
-    try {
-      if (completionContext) {
-        const buffered = await collectBufferedAgentStream(execute);
-        result = buffered.result;
-
-        const completionRetry = resolveSubagentCompletionRetry({
-          result,
-          previousMessageCount,
-          completionContext,
-        });
-        if (completionRetry) {
-          await pruneInvalidSubagentContinuationMessages(session, result.state.messages, previousMessageCount);
-          completionContext = completionRetry.context;
-          execute = () => session.stream(undefined, buildContinuationConfig({
-            codaraSubagentCompletion: completionContext,
-          }));
-          continue;
-        }
-
-        for (const chunk of buffered.chunks) {
-          yield chunk;
-        }
-      } else {
-        result = yield* execute();
-      }
-    } catch (error) {
-      if (claimedCompletion) {
-        subagentRunStore?.restorePendingCompletion(session.getState().sessionId, claimedCompletion.batchId);
-      }
-      throw error;
-    }
-
-    claimedCompletion = undefined;
-    if (!subagentRunStore || result.state.pendingReview) {
-      return;
-    }
-
-    completionContext = undefined;
-
-    const launchedBatchIds = collectLaunchedSubagentBatchIds({
-      messages: result.state.messages.slice(previousMessageCount),
-      resultBatchIds: result.launchedSubagentBatchIds,
-      subagentRunStore,
-    });
-    if (launchedBatchIds.length === 0) {
-      return;
-    }
-
-    claimedCompletion = await waitForSubagentCompletion({
-      subagentRunManager,
-      subagentRunStore,
-      parentSessionId: session.getState().sessionId,
-      batchIds: launchedBatchIds,
-    });
-    if (!claimedCompletion) {
-      return;
-    }
-
-    const completionMessages = createSubagentCompletionToolMessages(claimedCompletion.runs);
-    completionContext = {
-      runs: claimedCompletion.runs,
-      attempt: 1,
-    };
-    execute = () => session.stream({messages: completionMessages}, buildContinuationConfig({
-      codaraSubagentCompletion: completionContext,
-    }));
-  }
+  yield* streamWithSubagentFollowThrough(input);
 }
 
 async function* streamReviewWithSubagentFollowThrough(input: {
@@ -174,6 +99,16 @@ async function* streamReviewWithSubagentFollowThrough(input: {
   start: () => AsyncGenerator<AgentStreamOutput, AgentResult | undefined, void>;
   buildContinuationConfig: (context: AgentRuntimeContext) => Omit<AgentStreamConfig, 'context'> & {context: AgentRuntimeContext};
 }): AsyncGenerator<AgentStreamOutput, void, void> {
+  yield* streamWithSubagentFollowThrough(input);
+}
+
+async function* streamWithSubagentFollowThrough<T extends AgentResult | undefined>(input: {
+  session: Session;
+  subagentRunStore?: SubagentRunStore;
+  subagentRunManager?: SubagentRunManager;
+  start: () => AsyncGenerator<AgentStreamOutput, T, void>;
+  buildContinuationConfig: (context: AgentRuntimeContext) => Omit<AgentStreamConfig, 'context'> & {context: AgentRuntimeContext};
+}): AsyncGenerator<AgentStreamOutput, void, void> {
   const {session, subagentRunStore, subagentRunManager, start, buildContinuationConfig} = input;
   let execute = start;
   let claimedCompletion: SubagentCompletionContinuation | undefined;
@@ -181,7 +116,7 @@ async function* streamReviewWithSubagentFollowThrough(input: {
 
   while (true) {
     const previousMessageCount = readSessionMessageCount(session);
-    let result: AgentResult | undefined;
+    let result: T;
 
     try {
       if (completionContext) {
@@ -200,9 +135,9 @@ async function* streamReviewWithSubagentFollowThrough(input: {
         if (completionRetry) {
           await pruneInvalidSubagentContinuationMessages(session, result.state.messages, previousMessageCount);
           completionContext = completionRetry.context;
-          execute = () => session.stream(undefined, buildContinuationConfig({
+          execute = (() => session.stream(undefined, buildContinuationConfig({
             codaraSubagentCompletion: completionContext,
-          }));
+          }))) as () => AsyncGenerator<AgentStreamOutput, T, void>;
           continue;
         }
 
@@ -250,9 +185,9 @@ async function* streamReviewWithSubagentFollowThrough(input: {
       runs: claimedCompletion.runs,
       attempt: 1,
     };
-    execute = () => session.stream({messages: completionMessages}, buildContinuationConfig({
+    execute = (() => session.stream({messages: completionMessages}, buildContinuationConfig({
       codaraSubagentCompletion: completionContext,
-    }));
+    }))) as () => AsyncGenerator<AgentStreamOutput, T, void>;
   }
 }
 

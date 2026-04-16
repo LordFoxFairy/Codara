@@ -1,6 +1,6 @@
 import {describe, expect, it} from 'bun:test';
 import {AIMessage, HumanMessage, SystemMessage, ToolMessage} from '@langchain/core/messages';
-import {compactMessages, isContextWindowExhausted} from '@core/agent/run/compact';
+import {cheapDrainMessages, compactMessages, isContextWindowExhausted} from '@core/agent/run/compact';
 
 describe('compactMessages', () => {
   it('returns empty array for empty input', () => {
@@ -123,6 +123,90 @@ describe('compactMessages', () => {
       m => m instanceof SystemMessage && typeof m.content === 'string' && m.content.includes('[Conversation compacted]'),
     );
     expect(summaryMessages).toHaveLength(0);
+  });
+});
+
+describe('cheapDrainMessages', () => {
+  it('returns unchanged when fewer turns than keepRecentTurns', () => {
+    const messages = [
+      new HumanMessage('hello'),
+      new AIMessage({
+        content: '',
+        tool_calls: [{id: 'tc1', name: 'read', args: {}, type: 'tool_call'}],
+      }),
+      new ToolMessage({content: 'x'.repeat(300), tool_call_id: 'tc1'}),
+    ];
+    const result = cheapDrainMessages(messages, 3);
+    expect(result.freedCount).toBe(0);
+    expect(result.messages).toHaveLength(3);
+  });
+
+  it('strips large tool results from older turns', () => {
+    const messages = [
+      new HumanMessage('turn1'),
+      new AIMessage({
+        content: '',
+        tool_calls: [{id: 'tc1', name: 'read', args: {}, type: 'tool_call'}],
+      }),
+      new ToolMessage({content: 'x'.repeat(300), tool_call_id: 'tc1'}),
+      new HumanMessage('turn2'),
+      new AIMessage('resp2'),
+    ];
+    const result = cheapDrainMessages(messages, 1);
+    expect(result.freedCount).toBe(1);
+    // The old tool message should be replaced with placeholder
+    const toolMsg = result.messages.find(m => m instanceof ToolMessage);
+    expect(toolMsg).toBeDefined();
+    expect(toolMsg!.content).toBe('[tool result removed to free context]');
+  });
+
+  it('preserves small tool results in older turns', () => {
+    const messages = [
+      new HumanMessage('turn1'),
+      new AIMessage({
+        content: '',
+        tool_calls: [{id: 'tc1', name: 'read', args: {}, type: 'tool_call'}],
+      }),
+      new ToolMessage({content: 'short', tool_call_id: 'tc1'}),
+      new HumanMessage('turn2'),
+      new AIMessage('resp2'),
+    ];
+    const result = cheapDrainMessages(messages, 1);
+    expect(result.freedCount).toBe(0);
+  });
+
+  it('preserves recent turn tool results', () => {
+    const messages = [
+      new HumanMessage('turn1'),
+      new AIMessage('resp1'),
+      new HumanMessage('turn2'),
+      new AIMessage({
+        content: '',
+        tool_calls: [{id: 'tc1', name: 'read', args: {}, type: 'tool_call'}],
+      }),
+      new ToolMessage({content: 'x'.repeat(300), tool_call_id: 'tc1'}),
+    ];
+    const result = cheapDrainMessages(messages, 1);
+    // turn2 is the last turn, so its large tool result should be preserved
+    expect(result.freedCount).toBe(0);
+  });
+
+  it('preserves SystemMessages', () => {
+    const messages = [
+      new SystemMessage('system'),
+      new HumanMessage('turn1'),
+      new AIMessage({
+        content: '',
+        tool_calls: [{id: 'tc1', name: 'read', args: {}, type: 'tool_call'}],
+      }),
+      new ToolMessage({content: 'x'.repeat(300), tool_call_id: 'tc1'}),
+      new HumanMessage('turn2'),
+      new AIMessage('resp2'),
+    ];
+    const result = cheapDrainMessages(messages, 1);
+    const sysMessages = result.messages.filter(m => m instanceof SystemMessage);
+    expect(sysMessages).toHaveLength(1);
+    expect(sysMessages[0].content).toBe('system');
   });
 });
 

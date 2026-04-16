@@ -7,8 +7,7 @@ import type {
   CodaraCommandSource,
   CodaraCommandSpec,
 } from '@capability/command/runtime/types';
-
-const BUILTIN_SOURCE = {type: 'builtin'} as const;
+import {BUILTIN_SOURCE} from './formatters';
 const HELP_PAGE_SIZE = 8;
 
 interface HelpEntry {

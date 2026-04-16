@@ -4,6 +4,7 @@ import type {AgentStreamWriter} from './stream';
 import {
   chunkToMessage,
   createTurnContext,
+  throwIfAborted,
   toMessageChunk,
   type AgentRunContext,
   type AgentRuntime,
@@ -20,7 +21,6 @@ import {toError} from './errors';
 import {readSubagentRunLaunchResult} from '@shared/subagent-run-launch';
 import {TOOL_NAMES} from '@shared/tool-display';
 import {partitionToolCalls} from './tool-concurrency';
-import {isToolReadOnly} from '@integration/tool';
 
 export type AgentTurnOutcome = 'continue' | 'complete';
 
@@ -34,6 +34,9 @@ export async function runAgentTurn(
   let result: AgentRunSummary = {reason: 'continue', turns: turn};
 
   try {
+    // Check abort before model call
+    throwIfAborted(run.signal);
+
     const response = await runModel(runtime, context, stream);
     run.state.messages.push(response);
     if (stream) {
@@ -45,6 +48,9 @@ export async function runAgentTurn(
     if (!response.tool_calls?.length) {
       result = {reason: 'complete', turns: turn};
     } else {
+      // Check abort before tool execution
+      throwIfAborted(run.signal);
+
       const toolOutcome = await runTools(run, runtime, context, response.tool_calls, stream);
       if (toolOutcome.status === 'paused' || run.state.pendingReview) {
         result = {reason: 'complete', turns: turn, launchedSubagentBatchIds: toolOutcome.launchedSubagentBatchIds};
@@ -53,6 +59,10 @@ export async function runAgentTurn(
       }
     }
   } catch (error) {
+    // Re-throw AbortError so the loop handles it gracefully
+    if (error instanceof Error && error.name === 'AbortError') {
+      throw error;
+    }
     result = {reason: 'error', turns: turn, error: toError(error)};
   }
 
@@ -108,15 +118,8 @@ export async function runTools(
   let sawDetached = false;
   const launchedSubagentBatchIds = new Set<string>();
 
-  // Build concurrency registry from the tool calls
-  const concurrencyRegistry = new Map<string, {isReadOnly: boolean}>();
-  for (const call of toolCalls) {
-    if (!concurrencyRegistry.has(call.name)) {
-      concurrencyRegistry.set(call.name, {isReadOnly: isToolReadOnly({name: call.name})});
-    }
-  }
-
-  const {readOnly, serial} = partitionToolCalls(toolCalls, concurrencyRegistry);
+  // Partition using the global tool-metadata registry (no local map needed)
+  const {readOnly, serial} = partitionToolCalls(toolCalls);
 
   // Phase 1: Read-only tools run concurrently
   if (readOnly.length > 0) {
@@ -141,6 +144,7 @@ export async function runTools(
 
   // Phase 2: Writable / separable tools run serially
   for (const call of serial) {
+    throwIfAborted(run.signal);
     const globalIndex = toolCalls.indexOf(call);
     const result = await runSingleTool(run, runtime, context, toolCalls, globalIndex, expectedSubagentCount, stream);
     for (const batchId of result.launchedSubagentBatchIds) {

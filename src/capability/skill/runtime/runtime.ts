@@ -3,6 +3,7 @@ import path from 'node:path';
 import {z} from 'zod';
 import {parseMarkdownDocument} from '@capability/skill/catalog/loading';
 import {normalizeDiscoveredSkills} from '@capability/skill/catalog/metadata';
+import {normalizeSubagentType} from '@shared/tool-display';
 import type {
   SkillMetadata,
   SkillStore,
@@ -102,14 +103,7 @@ export function resolveSubagentDefinition(
   throw new Error(`Unknown subagent_type "${normalized}"`);
 }
 
-export function normalizeSubagentType(subagentType: string | undefined): string | undefined {
-  const normalized = subagentType?.trim();
-  return normalized || undefined;
-}
-
-export function formatSubagentDisplayName(subagentType: string | undefined): string {
-  return normalizeSubagentType(subagentType) ?? AGENT_SUBAGENT_TYPE;
-}
+export {normalizeSubagentType, formatSubagentDisplayName} from '@shared/tool-display';
 
 export function isReservedSubagentName(name: string | undefined): boolean {
   const normalized = name?.trim().toLowerCase();

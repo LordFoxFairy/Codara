@@ -20,6 +20,7 @@ export function createPermissionMiddleware(
     userHome,
     policyFiles,
     settingsFile,
+    permissionMode,
     ...reviewOptions
   } = options;
 
@@ -29,6 +30,7 @@ export function createPermissionMiddleware(
     userHome,
     policyFiles,
     settingsFile,
+    permissionMode,
   });
   const fallbackResolveDecision = reviewOptions.resolveDecision;
   const fallbackHandleResume = reviewOptions.handleResume;

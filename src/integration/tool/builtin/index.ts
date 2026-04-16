@@ -34,24 +34,8 @@ export {EnterWorktreeTool, createEnterWorktreeTool};
 export {ExitWorktreeTool, createExitWorktreeTool};
 export {ListWorktreesTool, createListWorktreesTool};
 
-/**
- * 只读工具名称集合。
- * 这些工具不会修改文件系统或外部状态，可以安全并发执行。
- */
-const READ_ONLY_TOOLS = new Set([
-  'read_file',
-  'glob',
-  'grep',
-  'fetch_url',
-  'web_search',
-  'notebook_read',
-  'list_worktrees',
-]);
-
 /** 判断工具是否为只读（不会修改文件系统或外部状态）。 */
-export function isToolReadOnly(tool: {name: string}): boolean {
-  return READ_ONLY_TOOLS.has(tool.name);
-}
+export {isToolReadOnly} from '@shared/tool-metadata';
 
 /**
  * 内置工具配置选项。

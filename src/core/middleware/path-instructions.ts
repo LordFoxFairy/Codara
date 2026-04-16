@@ -6,7 +6,8 @@ import {
   type ToolCallContext,
   type ToolCallHandler,
 } from '@core/pipeline/types';
-import type {ProgressiveInstructionSource} from '@context/instructions/progressive-source';
+import type {ProgressiveInstructionSource} from '@context/instructions';
+import {type ConditionalRule, matchRulesForPath} from '@context/rules';
 
 /** Tools that access files and may trigger path-scoped instruction projection. */
 const FILE_TOOL_NAMES = new Set(['read_file', 'edit_file', 'write_file', 'grep', 'glob']);
@@ -14,6 +15,8 @@ const FILE_TOOL_NAMES = new Set(['read_file', 'edit_file', 'write_file', 'grep',
 export interface PathInstructionsMiddlewareOptions {
   guidelinesSource?: ProgressiveInstructionSource;
   promptSource?: ProgressiveInstructionSource;
+  /** Conditional rules loaded from .codara/rules/*.md — matched by glob against touched file paths. */
+  conditionalRules?: ConditionalRule[];
 }
 
 /**
@@ -27,6 +30,9 @@ export interface PathInstructionsMiddlewareOptions {
 export function createPathInstructionsMiddleware(
   options: PathInstructionsMiddlewareOptions,
 ): BaseMiddleware {
+  /** Track which conditional rules have already been injected to avoid duplicates. */
+  const injectedRuleNames = new Set<string>();
+
   return createMiddleware({
     name: MIDDLEWARE_NAMES.PathInstructions,
 
@@ -53,6 +59,17 @@ export function createPathInstructionsMiddleware(
         const resolved = await options.promptSource.resolve(filePath);
         if (resolved) {
           reminders.push(resolved);
+        }
+      }
+
+      // Match conditional rules against the touched file path
+      if (options.conditionalRules && options.conditionalRules.length > 0) {
+        const matched = matchRulesForPath(options.conditionalRules, filePath);
+        for (const rule of matched) {
+          if (!injectedRuleNames.has(rule.name)) {
+            injectedRuleNames.add(rule.name);
+            reminders.push(`# Rule: ${rule.name}\n${rule.content}`);
+          }
         }
       }
 

@@ -4,7 +4,6 @@ import {cp, mkdir, mkdtemp, readFile, readdir, rm, writeFile} from 'node:fs/prom
 import {homedir, tmpdir} from 'node:os';
 import path from 'node:path';
 import {parseMarkdownFrontmatterDocument} from '@capability/skill/catalog/loading';
-import {resolvePluginInstallGlobal} from '@config/settings';
 import {resolveWorkspaceRoot} from '@config/workspace';
 
 export interface PluginInstallEnvironment {
@@ -223,7 +222,25 @@ async function resolvePluginDestinationRoot(environment: PluginInstallEnvironmen
 }
 
 async function resolvePluginInstallScope(environment: PluginInstallEnvironment): Promise<'global' | 'project'> {
-  return resolvePluginInstallGlobal(environment) ? 'global' : 'project';
+  // Read plugin install scope from project or user settings.
+  // Sync read is acceptable here — this runs once during plugin install.
+  const projectRoot = resolveWorkspaceRoot({cwd: environment.cwd, projectRoot: environment.projectRoot});
+  const userHome = path.resolve(environment.userHome ?? homedir());
+
+  for (const settingsPath of [
+    path.join(projectRoot, '.codara', 'settings.json'),
+    path.join(userHome, '.codara', 'settings.json'),
+  ]) {
+    try {
+      if (!existsSync(settingsPath)) continue;
+      const content = JSON.parse(await readFile(settingsPath, 'utf8'));
+      if (typeof content?.plugins?.installGlobal === 'boolean') {
+        return content.plugins.installGlobal ? 'global' : 'project';
+      }
+    } catch { /* settings file unreadable, try next */ }
+  }
+
+  return 'global'; // default
 }
 
 interface MaterializedPluginSource {

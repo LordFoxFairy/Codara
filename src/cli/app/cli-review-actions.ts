@@ -1,4 +1,4 @@
-/** @future — Pure review UI actions for the next CLI architecture rewrite. Extracted from use-cli-controller for testability. */
+/** Pure review UI state transition functions for the CLI review panel. */
 import {
   activateCliReviewFocusedSelection,
   applyCliReviewFormShortcut,

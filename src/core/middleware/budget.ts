@@ -1,16 +1,13 @@
-import type {BaseMessage} from '@langchain/core/messages';
 import type {AgentInputBudget} from '@shared/contracts/agent-types';
 import type {ContextBudgetSnapshot} from '@shared/contracts/execution';
 import {createMiddleware, type BaseMiddleware, type BeforeModelContext} from '@core/pipeline/types';
+import {estimateModelInputTokens, type TokenEstimator, type TokenEstimateInput} from '@shared/token-estimate';
 
 export type {ContextBudgetSnapshot} from '@shared/contracts/execution';
+export {estimateModelInputTokens} from '@shared/token-estimate';
 
-export interface ContextBudgetEstimateInput {
-  systemMessage: string[];
-  messages: BaseMessage[];
-}
-
-export type ContextBudgetEstimator = (input: ContextBudgetEstimateInput) => number;
+export type ContextBudgetEstimateInput = TokenEstimateInput;
+export type ContextBudgetEstimator = TokenEstimator;
 
 export interface BudgetMiddlewareOptions {
   estimateTokens?: ContextBudgetEstimator;
@@ -69,40 +66,4 @@ export function createContextBudgetSnapshot(
   };
 }
 
-export function estimateModelInputTokens(input: ContextBudgetEstimateInput): number {
-  const systemTokens = input.systemMessage.reduce((total, content) => total + estimateTextTokens(content) + 4, 0);
-  const messageTokens = input.messages.reduce((total, message) => total + estimateTextTokens(serializeMessageContent(message)) + 6, 0);
-  return systemTokens + messageTokens;
-}
-
-/**
- * CJK 字符范围正则 — 匹配中日韩统一汉字及常用符号。
- * CJK 字符通常 1-2 tokens/字，ASCII 约 0.25 tokens/字。
- */
-const CJK_REGEX = /[\u2E80-\u9FFF\uF900-\uFAFF\uFE30-\uFE4F]/g;
-
-function estimateTextTokens(text: string): number {
-  const cjkCount = (text.match(CJK_REGEX) ?? []).length;
-  const asciiLength = text.length - cjkCount;
-  // ASCII: ~4 chars/token; CJK: ~1.5 chars/token
-  return Math.max(1, Math.ceil(asciiLength / 4 + cjkCount * 1.5));
-}
-
-function serializeMessageContent(message: BaseMessage): string {
-  const parts: string[] = [];
-  const text = message.text.trim();
-
-  if (text) {
-    parts.push(text);
-  }
-
-  if ('tool_calls' in message && Array.isArray((message as {tool_calls?: unknown[]}).tool_calls)) {
-    parts.push(JSON.stringify((message as {tool_calls?: unknown[]}).tool_calls));
-  }
-
-  if ('additional_kwargs' in message && (message as {additional_kwargs?: unknown}).additional_kwargs) {
-    parts.push(JSON.stringify((message as {additional_kwargs?: unknown}).additional_kwargs));
-  }
-
-  return parts.join('\n');
-}
+// estimateModelInputTokens and helpers are now in @shared/token-estimate

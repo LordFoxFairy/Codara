@@ -22,7 +22,7 @@ export interface SubagentResult {
   type: 'subagent_result';
   sessionId: string;
   turns: number;
-  reason: 'complete' | 'error' | 'max_turns' | 'budget_exhausted';
+  reason: 'complete' | 'error' | 'max_turns' | 'budget_exhausted' | 'aborted';
   runId?: string;
   label?: string;
   agentName?: string;

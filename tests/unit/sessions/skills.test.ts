@@ -2,7 +2,7 @@ import {describe, expect, it} from 'bun:test';
 import path from 'node:path';
 import {createCodaraSkillsSource} from '@capability/skill';
 import type {SkillMetadata, SkillStore} from '@capability/skill';
-import {createSkillsRuntimeBundle} from '@context/skills/build';
+import {createSkillsRuntimeBundle} from '@context/skills-bundle';
 
 describe('Codara skills source', () => {
   it('should let source.reload invalidate runtime cache and rebuild the context bundle from refreshed runtime', async () => {

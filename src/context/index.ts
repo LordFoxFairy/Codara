@@ -2,24 +2,24 @@
 export {
   createCodaraGuidelinesSource,
   type GuidelinesSource,
-} from '@context/instructions/guidelines';
+} from '@context/guidelines';
 export {
   SessionScopedProgressiveInstructionSource,
   type ProgressiveInstructionSource,
   type ProgressiveInstructionSourceOptions,
   type ProgressiveInstructionWorkspaceOptions,
-} from '@context/instructions/progressive-source';
+} from '@context/instructions';
 export {
   loadConditionalRules,
   matchRulesForPath,
   type ConditionalRule,
-} from '@context/instructions/rules';
+} from '@context/rules';
 
 // ── Prompts ──────────────────────────────────────────────────────────
 export {
   createCodaraPromptSource,
   type PromptSource,
-} from '@context/prompts/prompt-source';
+} from '@context/prompts';
 
 // ── Session Bundle ───────────────────────────────────────────────────
 export {
@@ -31,9 +31,9 @@ export {
   type BaseSystemMessageRuntimeData,
   type BuildBaseSystemMessageOptions,
   type PreparedInstructionContextTarget,
-} from '@context/session-bundle/base-system-message';
+} from '@context/system-message';
 export {
   createSkillsRuntimeBundle,
   loadSkillsRuntimeBundle,
   type SkillsRuntimeBundle,
-} from '@context/skills/build';
+} from '@context/skills-bundle';

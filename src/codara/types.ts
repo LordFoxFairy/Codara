@@ -24,6 +24,8 @@ import type {
   ReviewResumePayload,
 } from '@core/agent';
 import type {ReviewRequest} from '@shared/contracts/agent-types';
+import type {CostSnapshot} from '@observability/cost';
+import type {MemoryWriter} from '@capability/memory/writer';
 import type {CodaraModelCatalog} from './assembly/runtime';
 
 // ── Skill Options ──
@@ -186,4 +188,6 @@ export type Codara = Omit<Session, 'resumeReview' | 'resumeReviewStream'> & {
   streamInteraction(request: CodaraStreamRequest): AsyncGenerator<AgentStreamOutput, void, void>;
   resumeReview(payload: ReviewResumePayload, config?: AgentResumeStreamConfig): Promise<AgentResult | undefined>;
   getChannelRegistry(): ChannelRegistry | undefined;
+  getMemoryWriter(): MemoryWriter | undefined;
+  getCostSnapshot(): CostSnapshot;
 };

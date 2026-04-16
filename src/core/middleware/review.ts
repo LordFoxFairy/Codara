@@ -53,20 +53,7 @@ export type ReviewRequest = SharedReviewRequest;
 export type ReviewUIActionOption = SharedReviewUIActionOption;
 export type ReviewResumePayload = SharedReviewResumePayload;
 
-export type ReviewToolMessagePayload =
-  | {
-      type: 'review_pause';
-      request: ReviewRequest;
-    }
-  | {
-      type: 'review_deny';
-      reason: string;
-      metadata: Record<string, unknown>;
-      action: {
-        toolCallId: string;
-        toolName: string;
-      };
-    };
+export type {ReviewToolMessagePayload} from '@shared/contracts/agent-types';
 
 export type ReviewDescriptionFactory = (
   toolCall: import('@langchain/core/messages').ToolCall,

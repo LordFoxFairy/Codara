@@ -1,7 +1,12 @@
-import {AIMessage, type BaseMessage, HumanMessage, SystemMessage} from '@langchain/core/messages';
+import {AIMessage, type BaseMessage, HumanMessage, SystemMessage, ToolMessage} from '@langchain/core/messages';
 
 export interface CompactOptions {
   keepRecentTurns: number;
+}
+
+export interface CheapDrainResult {
+  messages: BaseMessage[];
+  freedCount: number;
 }
 
 /**
@@ -33,6 +38,55 @@ export function compactMessages(
     ...(summary ? [summary] : []),
     ...keptTurns.flat(),
   ];
+}
+
+/**
+ * Cheap drain: strip tool result content from older messages to free context
+ * space without a full LLM summary pass.
+ *
+ * Aligned with Claude Code's context collapse drain strategy — this is the
+ * first recovery attempt before falling back to full compaction. It replaces
+ * the content of old ToolMessage results with a short placeholder while
+ * preserving the most recent turns intact.
+ *
+ * @param keepRecentTurns  Number of recent turns to leave untouched
+ */
+export function cheapDrainMessages(
+  messages: readonly BaseMessage[],
+  keepRecentTurns = 3,
+): CheapDrainResult {
+  const systemMessages = messages.filter(m => m instanceof SystemMessage);
+  const nonSystem = messages.filter(m => !(m instanceof SystemMessage));
+  const turns = groupIntoTurns(nonSystem);
+
+  if (turns.length <= keepRecentTurns) {
+    return {messages: [...messages], freedCount: 0};
+  }
+
+  const protectedStart = turns.length - keepRecentTurns;
+  let freedCount = 0;
+
+  const result: BaseMessage[] = [...systemMessages];
+  for (let i = 0; i < turns.length; i++) {
+    for (const msg of turns[i]!) {
+      if (i < protectedStart && msg instanceof ToolMessage) {
+        const content = typeof msg.content === 'string' ? msg.content : JSON.stringify(msg.content);
+        if (content.length > 200) {
+          // Replace with placeholder — keeps the tool_call_id linkage intact
+          result.push(new ToolMessage({
+            content: '[tool result removed to free context]',
+            tool_call_id: msg.tool_call_id,
+            name: msg.name,
+          }));
+          freedCount += 1;
+          continue;
+        }
+      }
+      result.push(msg);
+    }
+  }
+
+  return {messages: result, freedCount};
 }
 
 /**

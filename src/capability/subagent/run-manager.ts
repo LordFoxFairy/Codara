@@ -1,9 +1,7 @@
 import {HumanMessage} from '@langchain/core/messages';
-import type {AgentResumeStreamConfig, AgentStreamOutput, ReviewRequest, ReviewResumePayload} from '@core/agent';
-import type {Agent} from '@core/agent/models/agent';
-import type {BootstrapAgentOptions} from '@core/agent/bootstrap';
+import type {AgentResumeStreamConfig, AgentStreamOutput, ReviewRequest, ReviewResumePayload, Agent, BootstrapAgentOptions} from './adapters/core-bridge';
 import type {AgentResult} from '@shared/contracts/agent-types';
-import type {ApprovalRecord, ApprovalStore} from '@durability/approval-store';
+import type {ApprovalRecord, ApprovalStore} from './adapters/core-bridge';
 import {bootstrapSubagent, createSubagentResult} from '@capability/subagent/bootstrap';
 import {mergeSubagentRunRecoveryMetadata} from '@capability/subagent/review-metadata';
 import type {ChildToolActivityCallback} from '@observability/events';

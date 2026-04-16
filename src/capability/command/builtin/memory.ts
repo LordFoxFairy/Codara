@@ -1,11 +1,9 @@
-import {existsSync} from 'node:fs';
 import {homedir} from 'node:os';
 import path from 'node:path';
 import {resolveWorkspaceRoot} from '@config/workspace';
 import {createWorkspaceKey} from '@config/workspace-key';
 import type {CodaraCommandDefinition} from '@capability/command/runtime/types';
-
-const BUILTIN_SOURCE = {type: 'builtin'} as const;
+import {BUILTIN_SOURCE, formatFilePath} from './formatters';
 const MEMORY_FILE_NAME = 'AGENTS.md';
 
 export const memoryCommand: CodaraCommandDefinition = {
@@ -75,5 +73,5 @@ function resolveMemoryFiles(environment: {
 }
 
 function formatMemoryScope(scope: string, filePath: string): string {
-  return `- ${scope}: ${filePath}${existsSync(filePath) ? '' : ' (missing)'}`;
+  return `- ${scope}: ${formatFilePath(filePath)}`;
 }

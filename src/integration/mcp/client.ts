@@ -1,7 +1,7 @@
 import {Client} from '@modelcontextprotocol/sdk/client/index.js';
 import type {Transport} from '@modelcontextprotocol/sdk/shared/transport.js';
 import {createStdioTransport} from './transport/stdio';
-import {createHttpTransport} from './transport/http';
+import {connectHttpTransport} from './transport/http';
 import type {McpClientInfo, McpClientStatus, McpServerConfig, McpToolDefinition} from './types';
 import {DEFAULT_MCP_TIMEOUT} from './types';
 
@@ -54,24 +54,37 @@ export class McpClient {
 
   /**
    * Connect to the MCP server and discover tools.
+   *
+   * For HTTP/remote servers, follows the MCP spec backwards-compatibility
+   * pattern: try StreamableHTTP first, fall back to SSE on failure.
+   * The probe happens at connection time (not constructor time) because
+   * StreamableHTTP only fails on the first real POST request.
    */
   async connect(): Promise<void> {
     if (this._status === 'disabled') return;
 
     this._status = 'connecting';
     const connectTimeout = this.config.timeout ?? DEFAULT_MCP_TIMEOUT;
-    try {
-      this.transport = await this.createTransport();
-      this.client = new Client(
-        {name: `codara-${this.name}`, version: '1.0.0'},
-        {capabilities: {}},
-      );
+    const clientInfo = {name: `codara-${this.name}`, version: '1.0.0'};
 
-      await raceWithTimeout(
-        this.client.connect(this.transport),
-        connectTimeout,
-        `MCP server "${this.name}" connection timed out after ${connectTimeout}ms`,
-      );
+    try {
+      if (this.config.type === 'local') {
+        // Stdio: create transport, then connect normally
+        this.transport = createStdioTransport(this.config);
+        this.client = new Client(clientInfo, {capabilities: {}});
+        await raceWithTimeout(
+          this.client.connect(this.transport),
+          connectTimeout,
+          `MCP server "${this.name}" connection timed out after ${connectTimeout}ms`,
+        );
+      } else {
+        // HTTP: connectHttpTransport does StreamableHTTP→SSE fallback
+        // and returns an already-connected client + transport pair
+        const result = await connectHttpTransport(this.config, clientInfo, connectTimeout);
+        this.client = result.client;
+        this.transport = result.transport;
+      }
+
       await this.discoverTools();
       this._status = 'connected';
       this._lastError = undefined;
@@ -113,13 +126,6 @@ export class McpClient {
     this.transport = undefined;
     this._status = 'disconnected';
     this._tools = [];
-  }
-
-  private async createTransport(): Promise<Transport> {
-    if (this.config.type === 'local') {
-      return createStdioTransport(this.config);
-    }
-    return createHttpTransport(this.config);
   }
 
   private async discoverTools(): Promise<void> {

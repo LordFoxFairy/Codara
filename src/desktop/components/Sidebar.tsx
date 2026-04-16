@@ -6,14 +6,13 @@ import {
   Settings,
   Bug,
   ScrollText,
-  FileText,
   Hash,
 } from "lucide-react";
 import type { Session } from "../types";
 
 /* ── Types ──────────────────────────────────────────────────────── */
 
-type NavPage = "chat" | "sessions" | "skills" | "config" | "debug" | "logs" | "docs";
+type NavPage = "chat" | "sessions" | "skills" | "config" | "debug" | "logs";
 
 interface SidebarProps {
   sessions: Session[];
@@ -307,15 +306,9 @@ export function Sidebar({
         />
         <NavItem
           icon={ScrollText}
-          label="Logs"
+          label="Status"
           active={activePage === "logs"}
           onClick={() => onNavigate("logs")}
-        />
-        <NavItem
-          icon={FileText}
-          label="Docs"
-          active={activePage === "docs"}
-          onClick={() => onNavigate("docs")}
         />
       </div>
     </aside>

@@ -1,4 +1,4 @@
-import type {ReviewRequest, ReviewUIActionOption, ReviewUIFormOption, ReviewUIFormTab} from '@core/agent';
+import type {ReviewRequest, ReviewUIActionOption, ReviewUIFormOption, ReviewUIFormTab} from '@/index';
 import type {ReviewBlockingScope} from '../../codara/types';
 import type {PermissionStage} from './review-types';
 

@@ -5,24 +5,52 @@ import type {TelegramCallbackQuery, TelegramMessage, TelegramUpdate} from './typ
 const RETRY_DELAY_MS = 5_000;
 const DEFAULT_POLLING_TIMEOUT = 30;
 
+export interface TelegramBotInfo {
+  id: number;
+  username?: string;
+}
+
 export interface TelegramPollingOptions {
   token: string;
   accountId: string;
   pollingTimeout?: number;
   onMessage: (msg: InboundMessage) => Promise<void>;
   onCallbackQuery?: (query: TelegramCallbackQuery) => void;
+  /** Bot info for mention detection. Fetched via getMe before polling starts. */
+  botInfo?: TelegramBotInfo | null;
 }
 
 /**
  * Normalize a TelegramMessage into Codara's InboundMessage format.
+ *
+ * @param botInfo - The bot's own info (id + username from getMe).
+ *   Used to detect mentions via message entities.
  */
 export function normalizeTelegramMessage(
   msg: TelegramMessage,
   accountId: string,
+  botInfo?: TelegramBotInfo | null,
 ): InboundMessage {
   const chatType = msg.chat.type;
   const peerKind: 'direct' | 'group' | 'channel' =
     chatType === 'private' ? 'direct' : chatType === 'channel' ? 'channel' : 'group';
+
+  // Telegram mention detection:
+  // - "mention" entity type: text contains @username
+  // - "text_mention" entity type: mention by user object (for users without username)
+  let isMentioned = false;
+  if (botInfo && msg.entities) {
+    const text = msg.text ?? '';
+    for (const entity of msg.entities) {
+      if (entity.type === 'mention' && botInfo.username) {
+        const mentionText = text.slice(entity.offset, entity.offset + entity.length);
+        if (mentionText.toLowerCase() === `@${botInfo.username.toLowerCase()}`) {
+          isMentioned = true;
+          break;
+        }
+      }
+    }
+  }
 
   return {
     channel: 'telegram',
@@ -40,6 +68,7 @@ export function normalizeTelegramMessage(
     },
     text: msg.text ?? msg.caption ?? '',
     replyToId: msg.reply_to_message ? String(msg.reply_to_message.message_id) : undefined,
+    isMentioned,
     timestamp: msg.date * 1000,
     raw: msg,
   };
@@ -54,7 +83,7 @@ export function normalizeTelegramMessage(
  * 4. On error: logs, waits 5s, retries
  */
 export function startTelegramPolling(options: TelegramPollingOptions): StopHandle {
-  const {token, accountId, pollingTimeout, onMessage, onCallbackQuery} = options;
+  const {token, accountId, pollingTimeout, onMessage, onCallbackQuery, botInfo} = options;
   const api = new TelegramApi(token);
   const timeout = pollingTimeout ?? DEFAULT_POLLING_TIMEOUT;
 
@@ -91,7 +120,7 @@ export function startTelegramPolling(options: TelegramPollingOptions): StopHandl
     }
 
     if (update.message) {
-      const inbound = normalizeTelegramMessage(update.message, accountId);
+      const inbound = normalizeTelegramMessage(update.message, accountId, botInfo);
       if (inbound.text) {
         await onMessage(inbound);
       }

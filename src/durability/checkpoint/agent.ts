@@ -11,7 +11,7 @@ import type {AgentType, ReviewRequest} from '@shared/contracts/agent-types';
 import {deepClone} from '@shared/clone';
 
 export type AgentCheckpointStatus = 'idle' | 'paused' | 'closed' | 'error';
-export type AgentCheckpointReason = 'complete' | 'error' | 'max_turns' | 'budget_exhausted';
+export type AgentCheckpointReason = 'complete' | 'error' | 'max_turns' | 'budget_exhausted' | 'aborted';
 export type AgentCheckpointContext = Record<string, unknown>;
 export type AgentCheckpointValues = Record<string, unknown>;
 

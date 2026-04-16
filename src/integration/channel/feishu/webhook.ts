@@ -55,6 +55,10 @@ export function normalizeFeishuMessage(
     text = messageEvent.message.content;
   }
 
+  // Feishu delivers group messages to the bot only when the bot is @-mentioned.
+  // If the mentions array is non-empty, the bot was mentioned.
+  const isMentioned = (messageEvent.message.mentions?.length ?? 0) > 0;
+
   return {
     channel: 'feishu',
     accountId,
@@ -70,6 +74,7 @@ export function normalizeFeishuMessage(
     text,
     replyToId: messageEvent.message.parent_id ?? undefined,
     threadId: messageEvent.message.root_id ?? undefined,
+    isMentioned,
     timestamp: messageEvent.message.create_time
       ? Number(messageEvent.message.create_time)
       : Date.now(),

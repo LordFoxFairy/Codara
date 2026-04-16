@@ -1,3 +1,6 @@
+import type {BaseMessage} from '@langchain/core/messages';
+import {estimateModelInputTokens} from '@shared/token-estimate';
+
 export interface TokenBudgetState {
   contextWindow: number;        // max tokens for the model
   reservedOutput: number;       // tokens reserved for output (default 4096)
@@ -32,23 +35,10 @@ export function shouldStopContinuation(budget: TokenBudgetState): boolean {
   return false;
 }
 
-// Simple token estimator (4 chars ≈ 1 token)
-export function estimateTokenCount(text: string): number {
-  return Math.ceil(text.length / 4);
-}
-
-export function estimateMessagesTokenCount(messages: Array<{content?: unknown}>): number {
-  let total = 0;
-  for (const msg of messages) {
-    if (typeof msg.content === 'string') {
-      total += estimateTokenCount(msg.content);
-    } else if (Array.isArray(msg.content)) {
-      for (const part of msg.content) {
-        if (typeof part === 'string') total += estimateTokenCount(part);
-        else if (typeof part?.text === 'string') total += estimateTokenCount(part.text);
-      }
-    }
-    total += 4; // message overhead
-  }
-  return total;
+/**
+ * Convenience wrapper: estimate token count for an array of messages.
+ * Delegates to the CJK-aware shared estimator.
+ */
+export function estimateMessagesTokenCount(messages: BaseMessage[]): number {
+  return estimateModelInputTokens({systemMessage: [], messages});
 }

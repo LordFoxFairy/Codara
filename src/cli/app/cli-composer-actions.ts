@@ -1,4 +1,4 @@
-/** @future — Pure composer actions for the next CLI architecture rewrite. Extracted from use-cli-controller for testability. */
+/** Pure composer state update functions for the CLI text input. */
 import type {CliComposerState} from '../composer/types';
 import {
   backspaceComposerText,

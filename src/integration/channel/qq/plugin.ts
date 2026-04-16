@@ -1,6 +1,7 @@
 import {z} from 'zod';
 import type {ChannelPlugin, GatewayListenContext} from '@integration/channel/contracts';
 import type {InboundMessage, OutboundContext, ReviewPromptContext, SendResult, StopHandle} from '@gateway/types';
+import {resolveEnvValue} from '@integration/channel/utils';
 import {OneBotWsClient} from './ws-client';
 import type {OneBotEvent, OneBotMessageEvent, OneBotMessageSegment} from './types';
 
@@ -39,21 +40,6 @@ const qqAccountConfigSchema = z.object({
 
 // ── Helpers ────────────────────────────────────────────────────────────
 
-/**
- * Resolve `$ENV_VAR` syntax. If value starts with `$`, read from env.
- */
-function resolveEnvValue(value: string): string {
-  if (value.startsWith('$')) {
-    const envKey = value.slice(1);
-    const envValue = process.env[envKey];
-    if (!envValue) {
-      throw new Error(`Environment variable "${envKey}" is not set (referenced as "${value}")`);
-    }
-    return envValue;
-  }
-  return value;
-}
-
 function isMessageEvent(event: OneBotEvent): event is OneBotMessageEvent {
   return event.post_type === 'message';
 }
@@ -84,12 +70,15 @@ function extractReplyId(segments: OneBotMessageSegment[]): string | undefined {
 /**
  * Normalize an OneBot message event into Codara's InboundMessage format.
  */
-export function normalizeOneBotMessage(event: OneBotMessageEvent, accountId: string): InboundMessage {
+export function normalizeOneBotMessage(event: OneBotMessageEvent, accountId: string, selfId?: string): InboundMessage {
   const peerKind = event.message_type === 'private' ? 'direct' : 'group';
   // For groups, prefix peer.id with "group:" so sendText can distinguish target type.
   const rawPeerId = event.message_type === 'group' ? String(event.group_id) : String(event.user_id);
   const peerId = event.message_type === 'group' ? `group:${rawPeerId}` : rawPeerId;
   const displayName = event.sender.card || event.sender.nickname;
+
+  // QQ uses @-segments in message arrays to mention users.
+  const isMentioned = selfId ? isBotMentioned(event.message, selfId) : false;
 
   return {
     channel: 'qq',
@@ -108,6 +97,7 @@ export function normalizeOneBotMessage(event: OneBotMessageEvent, accountId: str
     text: extractText(event.message),
     mediaUrls: extractMediaUrls(event.message),
     replyToId: extractReplyId(event.message),
+    isMentioned,
     timestamp: event.time * 1000,
     raw: event,
   };
@@ -166,7 +156,7 @@ export const qqPlugin: ChannelPlugin<QQAccount> = {
         account.selfId = selfId;
       }
 
-      const msg = normalizeOneBotMessage(event, accountId);
+      const msg = normalizeOneBotMessage(event, accountId, selfId);
 
       // Access control
       if (account.allowUsers && !account.allowUsers.includes(msg.sender.id)) return;

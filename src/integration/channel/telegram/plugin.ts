@@ -1,6 +1,7 @@
 import {z} from 'zod';
 import type {ChannelPlugin, GatewayListenContext} from '@integration/channel/contracts';
 import type {OutboundContext, ReviewPromptContext, SendResult, StopHandle} from '@gateway/types';
+import {resolveEnvValue} from '@integration/channel/utils';
 import {TelegramApi, TelegramApiError} from './api';
 import {startTelegramPolling} from './polling';
 import type {TelegramCallbackQuery} from './types';
@@ -24,22 +25,6 @@ const telegramAccountConfigSchema = z.object({
     .optional(),
   pollingTimeout: z.number().int().positive().optional(),
 });
-
-/**
- * Resolve `$ENV_VAR` syntax in a string value.
- * If the value starts with `$`, treat the rest as an env variable name.
- */
-function resolveEnvValue(value: string): string {
-  if (value.startsWith('$')) {
-    const envKey = value.slice(1);
-    const envValue = process.env[envKey];
-    if (!envValue) {
-      throw new Error(`Environment variable "${envKey}" is not set (referenced as "${value}")`);
-    }
-    return envValue;
-  }
-  return value;
-}
 
 export const telegramPlugin: ChannelPlugin<TelegramAccount> = {
   id: 'telegram',
@@ -75,6 +60,15 @@ export const telegramPlugin: ChannelPlugin<TelegramAccount> = {
   async startListening(ctx: GatewayListenContext<TelegramAccount>): Promise<StopHandle> {
     const {account, accountId, onMessage, onReviewResponse} = ctx;
 
+    // Fetch bot info for mention detection in group messages.
+    let botInfo: {id: number; username?: string} | null = null;
+    try {
+      botInfo = await account.api.getMe();
+    } catch {
+      // Non-fatal: mention detection will be unavailable but DMs still work.
+      console.warn('[telegram] getMe failed — mention detection disabled');
+    }
+
     const onCallbackQuery = (query: TelegramCallbackQuery) => {
       // Acknowledge the button press
       account.api.answerCallbackQuery(query.id).catch(() => {});
@@ -96,6 +90,7 @@ export const telegramPlugin: ChannelPlugin<TelegramAccount> = {
       pollingTimeout: account.pollingTimeout,
       onMessage,
       onCallbackQuery,
+      botInfo,
     });
   },
 

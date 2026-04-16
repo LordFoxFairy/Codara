@@ -51,12 +51,17 @@ export function formatMemoryContextSection(ctx: MemoryContext): string | undefin
   return parts.length > 0 ? `# Memory\n\n${parts.join('\n\n')}` : undefined;
 }
 
-export function createMemoryContextProvider(memoryDir: string) {
+const DEFAULT_CACHE_TTL_MS = 60_000;
+
+export function createMemoryContextProvider(memoryDir: string, cacheTtlMs = DEFAULT_CACHE_TTL_MS) {
   let cached: string | undefined | null = null;
+  let cachedAt = 0;
   return async (): Promise<string | undefined> => {
-    if (cached !== null) return cached;
+    const now = Date.now();
+    if (cached !== null && (now - cachedAt) < cacheTtlMs) return cached;
     const ctx = await loadMemoryContext(memoryDir);
     cached = formatMemoryContextSection(ctx);
+    cachedAt = now;
     return cached;
   };
 }

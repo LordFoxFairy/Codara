@@ -10,6 +10,8 @@ export interface InboundMessage {
   mediaUrls?: string[];
   replyToId?: string;
   threadId?: string;
+  /** Whether the bot was explicitly mentioned (@bot) in this message. */
+  isMentioned?: boolean;
   timestamp: number;
   raw?: unknown;
 }

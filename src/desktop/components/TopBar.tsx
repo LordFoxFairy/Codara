@@ -1,5 +1,4 @@
-import { Menu, RotateCcw, Monitor, Sun, Moon } from "lucide-react";
-import { useCallback, useState } from "react";
+import { Menu, RotateCcw, Monitor } from "lucide-react";
 import type { ConnectionStatus, RuntimeStatus } from "../types";
 
 interface TopBarProps {
@@ -45,16 +44,6 @@ function HealthBadge({ status }: { status: ConnectionStatus }) {
 }
 
 export function TopBar({ connectionStatus, onToggleSidebar, onRefresh, onOpenDebug }: TopBarProps) {
-  const [isDark, setIsDark] = useState(false);
-
-  const toggleTheme = useCallback(() => {
-    setIsDark((prev) => {
-      const next = !prev;
-      document.documentElement.classList.toggle("dark", next);
-      return next;
-    });
-  }, []);
-
   return (
     <header className="flex h-[46px] shrink-0 items-center justify-between border-b border-[var(--color-border)] bg-[var(--color-surface-elevated)] px-3">
       {/* Left: hamburger + brand */}
@@ -89,13 +78,6 @@ export function TopBar({ connectionStatus, onToggleSidebar, onRefresh, onOpenDeb
           title="Debug console"
         >
           <Monitor size={15} strokeWidth={1.75} />
-        </button>
-        <button
-          onClick={toggleTheme}
-          className="rounded-md p-1.5 text-[var(--color-text-tertiary)] transition-colors hover:bg-[var(--color-surface-hover)] hover:text-[var(--color-text-secondary)]"
-          title={isDark ? "Switch to light mode" : "Switch to dark mode"}
-        >
-          {isDark ? <Moon size={15} strokeWidth={1.75} /> : <Sun size={15} strokeWidth={1.75} />}
         </button>
         <button
           onClick={onRefresh}

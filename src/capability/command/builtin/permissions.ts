@@ -4,8 +4,7 @@ import {
   resolvePermissionSettingsFile,
   validatePermissionSettings,
 } from '@core/middleware/permission';
-
-const BUILTIN_SOURCE = {type: 'builtin'} as const;
+import {BUILTIN_SOURCE} from './formatters';
 
 export const permissionsCommand: CodaraCommandDefinition = {
   name: 'permissions',

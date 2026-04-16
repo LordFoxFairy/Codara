@@ -67,4 +67,9 @@ export class TelegramApi {
   async deleteWebhook(): Promise<boolean> {
     return this.call<boolean>('deleteWebhook', {drop_pending_updates: false});
   }
+
+  /** Get information about the bot itself. */
+  async getMe(): Promise<{id: number; is_bot: boolean; first_name: string; username?: string}> {
+    return this.call<{id: number; is_bot: boolean; first_name: string; username?: string}>('getMe');
+  }
 }

@@ -27,7 +27,7 @@ export const hookDefinitionSchema = z.object({
 );
 
 export const hookEventTypeSchema = z.enum([
-  'SessionStart', 'SessionEnd', 'PromptSubmit',
+  'SessionStart', 'SessionEnd', 'UserPromptSubmit',
   'PreToolUse', 'PostToolUse', 'Stop',
   'SubagentStart', 'SubagentStop',
   'PreCompact', 'PostCompact',
@@ -46,10 +46,10 @@ export const mcpServerConfigSchema = z.object({
   type: z.enum(['stdio', 'sse']).optional().default('stdio'),
   command: z.string().optional(),
   args: z.array(z.string()).optional(),
-  env: z.record(z.string()).optional(),
+  env: z.record(z.string(), z.string()).optional(),
   cwd: z.string().optional(),
   url: z.string().optional(),
-  headers: z.record(z.string()).optional(),
+  headers: z.record(z.string(), z.string()).optional(),
   timeout: z.number().positive().optional(),
   enabled: z.boolean().optional().default(true),
 });

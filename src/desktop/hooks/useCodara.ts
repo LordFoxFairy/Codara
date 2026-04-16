@@ -72,6 +72,59 @@ export function useCodara({ sessionId }: UseCodaraOptions) {
 
   const isStreaming = status === "streaming" || status === "thinking";
 
+  /** Consume an SSE response stream, dispatching parsed events to state. */
+  const streamSSE = useCallback(
+    async (response: Response, assistantId: string, controller: AbortController) => {
+      abortRef.current = controller;
+
+      try {
+        if (!response.ok) {
+          throw new Error(`Server responded with ${response.status}`);
+        }
+
+        const reader = response.body?.getReader();
+        if (!reader) throw new Error("No response body");
+
+        const decoder = new TextDecoder();
+        let buffer = "";
+
+        while (true) {
+          const { done, value } = await reader.read();
+          if (done) break;
+
+          buffer += decoder.decode(value, { stream: true });
+          const { events, remaining } = parseSSEChunk(buffer);
+          buffer = remaining;
+
+          for (const event of events) {
+            processEvent(event, assistantId, setMessages, setStatus, setError, setReviewRequest, setRuntimeEvent);
+          }
+        }
+
+        // Process any remaining buffer
+        if (buffer.trim()) {
+          const { events } = parseSSEChunk(buffer + "\n\n");
+          for (const event of events) {
+            processEvent(event, assistantId, setMessages, setStatus, setError, setReviewRequest, setRuntimeEvent);
+          }
+        }
+
+        setStatus((prev) => (prev === "paused" ? "paused" : "idle"));
+      } catch (err) {
+        if ((err as Error).name === "AbortError") {
+          setStatus("idle");
+          return;
+        }
+        const message = err instanceof Error ? err.message : "Unknown error";
+        setError(message);
+        setStatus("idle");
+      } finally {
+        abortRef.current = null;
+      }
+    },
+    [],
+  );
+
   const sendMessage = useCallback(
     async (prompt: string) => {
       if (!sessionId || isStreaming) return;
@@ -101,61 +154,24 @@ export function useCodara({ sessionId }: UseCodaraOptions) {
       setStatus("streaming");
 
       const controller = new AbortController();
-      abortRef.current = controller;
-
-      try {
-        const response = await fetch(`${API_BASE}/api/chat`, {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ sessionId, prompt }),
-          signal: controller.signal,
-        });
-
-        if (!response.ok) {
-          throw new Error(`Server responded with ${response.status}`);
+      const response = await fetch(`${API_BASE}/api/chat`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ sessionId, prompt }),
+        signal: controller.signal,
+      }).catch((err) => {
+        if ((err as Error).name !== "AbortError") {
+          setError(err instanceof Error ? err.message : "Unknown error");
         }
-
-        const reader = response.body?.getReader();
-        if (!reader) throw new Error("No response body");
-
-        const decoder = new TextDecoder();
-        let buffer = "";
-
-        while (true) {
-          const { done, value } = await reader.read();
-          if (done) break;
-
-          buffer += decoder.decode(value, { stream: true });
-          const { events, remaining } = parseSSEChunk(buffer);
-          buffer = remaining;
-
-          for (const event of events) {
-            processEvent(event, assistantId, setMessages, setStatus, setError, setReviewRequest, setRuntimeEvent);
-          }
-        }
-
-        // Process any remaining buffer
-        if (buffer.trim()) {
-          const { events } = parseSSEChunk(buffer + "\n\n");
-          for (const event of events) {
-            processEvent(event, assistantId, setMessages, setStatus, setError, setReviewRequest, setRuntimeEvent);
-          }
-        }
-
-        setStatus((prev) => (prev === "paused" ? "paused" : "idle"));
-      } catch (err) {
-        if ((err as Error).name === "AbortError") {
-          setStatus("idle");
-          return;
-        }
-        const message = err instanceof Error ? err.message : "Unknown error";
-        setError(message);
         setStatus("idle");
-      } finally {
-        abortRef.current = null;
+        return null;
+      });
+
+      if (response) {
+        await streamSSE(response, assistantId, controller);
       }
     },
-    [sessionId, isStreaming],
+    [sessionId, isStreaming, streamSSE],
   );
 
   const stopStreaming = useCallback(() => {
@@ -169,7 +185,6 @@ export function useCodara({ sessionId }: UseCodaraOptions) {
       setReviewRequest(null);
       setStatus("streaming");
 
-      // Create an assistant message to accumulate the response after resume.
       const assistantId = generateId();
       const assistantMessage: Message = {
         id: assistantId,
@@ -182,61 +197,24 @@ export function useCodara({ sessionId }: UseCodaraOptions) {
       setMessages((prev) => [...prev, assistantMessage]);
 
       const controller = new AbortController();
-      abortRef.current = controller;
-
-      try {
-        const response = await fetch(`${API_BASE}/api/resume`, {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ sessionId, action }),
-          signal: controller.signal,
-        });
-
-        if (!response.ok) {
-          throw new Error(`Server responded with ${response.status}`);
+      const response = await fetch(`${API_BASE}/api/resume`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ sessionId, action }),
+        signal: controller.signal,
+      }).catch((err) => {
+        if ((err as Error).name !== "AbortError") {
+          setError(err instanceof Error ? err.message : "Unknown error");
         }
-
-        const reader = response.body?.getReader();
-        if (!reader) throw new Error("No response body");
-
-        const decoder = new TextDecoder();
-        let buffer = "";
-
-        while (true) {
-          const { done, value } = await reader.read();
-          if (done) break;
-
-          buffer += decoder.decode(value, { stream: true });
-          const { events, remaining } = parseSSEChunk(buffer);
-          buffer = remaining;
-
-          for (const event of events) {
-            processEvent(event, assistantId, setMessages, setStatus, setError, setReviewRequest, setRuntimeEvent);
-          }
-        }
-
-        // Process any remaining buffer
-        if (buffer.trim()) {
-          const { events } = parseSSEChunk(buffer + "\n\n");
-          for (const event of events) {
-            processEvent(event, assistantId, setMessages, setStatus, setError, setReviewRequest, setRuntimeEvent);
-          }
-        }
-
-        setStatus((prev) => (prev === "paused" ? "paused" : "idle"));
-      } catch (err) {
-        if ((err as Error).name === "AbortError") {
-          setStatus("idle");
-          return;
-        }
-        const message = err instanceof Error ? err.message : "Unknown error";
-        setError(message);
         setStatus("idle");
-      } finally {
-        abortRef.current = null;
+        return null;
+      });
+
+      if (response) {
+        await streamSSE(response, assistantId, controller);
       }
     },
-    [sessionId],
+    [sessionId, streamSSE],
   );
 
   const clearMessages = useCallback(() => {

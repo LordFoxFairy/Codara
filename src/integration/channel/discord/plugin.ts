@@ -1,6 +1,7 @@
 import {z} from 'zod';
 import type {ChannelPlugin, GatewayListenContext} from '@integration/channel/contracts';
 import type {InboundMessage, OutboundContext, ReviewPromptContext, SendResult, StopHandle} from '@gateway/types';
+import {resolveEnvValue} from '@integration/channel/utils';
 import {DiscordApi} from './api';
 import {DiscordGatewayClient} from './gateway-ws';
 import type {DiscordMessage, DiscordInteraction, DiscordActionRow} from './types';
@@ -24,30 +25,21 @@ const discordAccountConfigSchema = z.object({
   allowChannels: z.array(z.string()).optional(),
 });
 
-// ── Helpers ────────────────────────────────────────────────────────────
-
-/**
- * Resolve `$ENV_VAR` syntax. If value starts with `$`, read from env.
- */
-function resolveEnvValue(value: string): string {
-  if (value.startsWith('$')) {
-    const envKey = value.slice(1);
-    const envValue = process.env[envKey];
-    if (!envValue) {
-      throw new Error(`Environment variable "${envKey}" is not set (referenced as "${value}")`);
-    }
-    return envValue;
-  }
-  return value;
-}
-
 // ── Normalize ──────────────────────────────────────────────────────────
 
 /**
  * Normalize a Discord MESSAGE_CREATE event into Codara's InboundMessage format.
+ *
+ * @param botUserId - The bot's own Discord user ID (from READY event).
+ *   Used to determine `isMentioned` from the `mentions` array.
  */
-export function normalizeDiscordMessage(msg: DiscordMessage, accountId: string): InboundMessage {
+export function normalizeDiscordMessage(msg: DiscordMessage, accountId: string, botUserId?: string | null): InboundMessage {
   const peerKind: 'direct' | 'group' | 'channel' = msg.guild_id ? 'group' : 'direct';
+
+  // Discord provides a `mentions` array of users mentioned in the message.
+  const isMentioned = botUserId
+    ? msg.mentions?.some((u) => u.id === botUserId) ?? false
+    : false;
 
   return {
     channel: 'discord',
@@ -65,6 +57,7 @@ export function normalizeDiscordMessage(msg: DiscordMessage, accountId: string):
     },
     text: msg.content,
     replyToId: msg.referenced_message?.id,
+    isMentioned,
     timestamp: new Date(msg.timestamp).getTime(),
     raw: msg,
   };
@@ -116,7 +109,7 @@ export const discordPlugin: ChannelPlugin<DiscordAccount> = {
           return;
         }
 
-        const inbound = normalizeDiscordMessage(message, accountId);
+        const inbound = normalizeDiscordMessage(message, accountId, gateway.botUserId);
         if (inbound.text) {
           onMessage(inbound).catch((err) => {
             console.error('[discord] Error processing message:', err);

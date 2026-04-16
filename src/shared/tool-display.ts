@@ -1,4 +1,3 @@
-import {formatSubagentDisplayName, normalizeSubagentType} from '@capability/skill';
 import path from 'node:path';
 
 /** Canonical tool name constants to avoid magic strings across the codebase. */
@@ -22,6 +21,9 @@ export const TOOL_NAMES = {
   TASK_UPDATE: 'TaskUpdate',
   TASK_LIST: 'TaskList',
   ASK_USER: 'AskUserQuestion',
+  MEMORY_WRITE: 'MemoryWrite',
+  MEMORY_READ: 'MemoryRead',
+  MEMORY_LIST: 'MemoryList',
 } as const;
 
 /**
@@ -67,6 +69,11 @@ export function formatToolSummary(toolName: string, args: unknown): string | und
       return readString(record.summary)
         ? `summary: ${readString(record.summary)}`
         : undefined;
+    case TOOL_NAMES.MEMORY_WRITE:
+    case TOOL_NAMES.MEMORY_READ:
+      return readString(record.name);
+    case TOOL_NAMES.MEMORY_LIST:
+      return readString(record.query);
     default:
       return undefined;
   }
@@ -175,4 +182,21 @@ function toTitleCase(value: string): string {
     .filter(Boolean)
     .map((part) => part.charAt(0).toUpperCase() + part.slice(1))
     .join(' ');
+}
+
+/**
+ * Normalize a subagent type string — trims whitespace and returns undefined for empty values.
+ * Moved here from capability/skill so shared layer has no upward dependency.
+ */
+export function normalizeSubagentType(subagentType: string | undefined): string | undefined {
+  const normalized = subagentType?.trim();
+  return normalized || undefined;
+}
+
+/**
+ * Format a human-readable display name for a subagent type.
+ * Falls back to the default "Agent" label when the type is empty.
+ */
+export function formatSubagentDisplayName(subagentType: string | undefined): string {
+  return normalizeSubagentType(subagentType) ?? 'Agent';
 }

@@ -16,7 +16,7 @@ import {
 import {createSkillsMiddleware} from '@core/middleware';
 import {FileSystemSkillStore, readSkillsRuntimeData} from '@capability/skill';
 import {createSkillTool} from '@capability/skill/runtime/commands';
-import {loadSkillsRuntimeBundle} from '@context/skills/build';
+import {loadSkillsRuntimeBundle} from '@context/skills-bundle';
 import {createSubagentRunMemoryStore} from '@capability/subagent';
 import {AGENT_TOOL_NAME, createSubagentTool} from '@capability/subagent/tool';
 import {readSubagentRunLaunchResult} from '@shared/subagent-run-launch';

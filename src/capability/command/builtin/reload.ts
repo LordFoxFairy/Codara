@@ -1,6 +1,5 @@
 import type {CodaraCommandDefinition} from '@capability/command/runtime/types';
-
-const BUILTIN_SOURCE = {type: 'builtin'} as const;
+import {BUILTIN_SOURCE} from './formatters';
 
 export const reloadCommand: CodaraCommandDefinition = {
   name: 'reload',

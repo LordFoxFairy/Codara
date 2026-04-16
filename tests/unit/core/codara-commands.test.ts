@@ -81,6 +81,9 @@ describe('Codara slash commands', () => {
       {name: 'config', source: 'builtin'},
       {name: 'diff', source: 'builtin'},
       {name: 'rewind', source: 'builtin'},
+      {name: 'exit', source: 'builtin'},
+      {name: 'session', source: 'builtin'},
+      {name: 'export', source: 'builtin'},
     ]);
   });
 

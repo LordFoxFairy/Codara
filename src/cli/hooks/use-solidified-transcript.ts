@@ -3,7 +3,7 @@ import {useEffect, useRef, useMemo, useState} from 'react';
 import {HumanMessage, type BaseMessage} from '@langchain/core/messages';
 import type {CodaraRuntimeEvent} from '@/index';
 import type {SubagentRunQuerySummary} from '@codara/types';
-import {isSubagentInternalAssistantText} from '@capability/subagent/completion';
+import {isSubagentInternalAssistantText} from '@/index';
 import type {CliActiveTurn, CliNotice, CliRunState} from '../app/view-state';
 import {
   type SolidifiedItem,

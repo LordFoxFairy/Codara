@@ -1,7 +1,7 @@
 import {
   isInvalidSubagentCompletionResponse,
   shouldRetrySubagentCompletionResponse,
-} from '@capability/subagent/completion';
+} from '@/index';
 
 export function isInvalidTaskCloseoutResponse(text: string | undefined): boolean {
   return isInvalidSubagentCompletionResponse(text);

@@ -1,5 +1,5 @@
 import {describe, expect, it} from 'bun:test';
-import {toFilesystemSafeId, getTranscriptPath} from '../../../src/session/storage';
+import {toFilesystemSafeId, getTranscriptPath} from '../../../src/durability/session/storage';
 
 describe('toFilesystemSafeId', () => {
   it('should pass through safe strings', () => {

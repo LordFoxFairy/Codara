@@ -1,125 +1,54 @@
-import type {AIMessage, AIMessageChunk, BaseMessage, ToolCall, ToolMessage} from '@langchain/core/messages';
+import type {BaseMessage} from '@langchain/core/messages';
 import type {BaseChatModel} from '@langchain/core/language_models/chat_models';
 import type {StructuredToolInterface} from '@langchain/core/tools';
 import type {BaseMiddleware} from '@core/pipeline/types';
 import type {AgentCheckpoint, AgentCheckpointer} from '@durability/checkpoint/agent';
-import type {ReviewToolMessagePayload} from '@core/middleware/review';
 import type {AgentLifecycleHooks} from '@observability/hook/types';
 import type {
-  AgentExecutionMetadata,
+  AgentContextPreparer,
   AgentInputBudget,
-  AgentResult,
   AgentRuntimeContext,
   AgentRuntimeValues,
-  AgentState,
   AgentType,
-  ReviewResumePayload,
-} from './types';
+  ToolErrorHandler,
+} from '@shared/contracts/agent-types';
+
+// Re-export all shared agent types for backward compatibility
 export type {
+  Agent,
+  AgentContextPreparer,
   AgentExecutionMetadata,
   AgentFinishReason,
+  AgentInput,
   AgentInputBudget,
+  AgentInvokeConfig,
+  AgentMessagesInput,
+  AgentPreparationContext,
+  AgentResumeConfig,
+  AgentResumeStreamConfig,
   AgentResult,
   AgentRuntimeContext,
   AgentRuntimeValues,
   AgentState,
   AgentStatus,
+  AgentStreamConfig,
+  AgentStreamCustomChunk,
+  AgentStreamMode,
+  AgentStreamOutput,
   AgentType,
-  ReviewRequest,
   ReviewActionDescriptor,
   ReviewDecision,
+  ReviewRequest,
   ReviewSpec,
+  ReviewToolMessagePayload,
   ReviewUIActionOption,
   ReviewUIConfig,
   ReviewUIFormConfig,
   ReviewUIFormOption,
   ReviewUIFormTab,
   ReviewResumePayload,
-} from './types';
-
-export type AgentStreamMode = 'values' | 'updates' | 'messages' | 'custom';
-export type AgentInput = AgentMessagesInput | string | BaseMessage | BaseMessage[] | undefined;
-export type ToolErrorHandler =
-  | boolean
-  | ((error: unknown, toolCall: ToolCall) => ToolMessage | void | Promise<ToolMessage | void>);
-
-/** Current agent context assembled immediately before the next model call. */
-export interface AgentPreparationContext {
-  state: {
-    messages: BaseMessage[];
-    context?: AgentRuntimeContext;
-    values?: AgentRuntimeValues;
-  };
-  messages: BaseMessage[];
-  runtime: {
-    context: AgentRuntimeContext;
-    runtimeContext?: AgentRuntimeContext;
-    shared?: Record<string, unknown>;
-  };
-  systemMessage: string[];
-  execution: AgentExecutionMetadata;
-  inputBudget?: AgentInputBudget;
-}
-
-export type AgentContextPreparer = (context: AgentPreparationContext) => Promise<void> | void;
-
-export interface AgentMessagesInput { messages: BaseMessage[]; }
-
-export type AgentStreamCustomChunk =
-  | { type: 'review_event'; runId: string; turn: number; payload: ReviewToolMessagePayload }
-  | { type: 'tool_progress'; toolCallId: string; toolName: string; status: 'executing' | 'completed' | 'failed' };
-
-export type AgentStreamOutput =
-  | AIMessageChunk
-  | {messages: BaseMessage[]}
-  | {model: {messages: [AIMessage]}}
-  | {tools: {messages: [ToolMessage]}}
-  | AgentStreamCustomChunk
-  | [AgentStreamMode, AIMessageChunk | {messages: BaseMessage[]} | {model: {messages: [AIMessage]}} | {tools: {messages: [ToolMessage]}} | AgentStreamCustomChunk];
-
-export interface AgentInvokeConfig {
-  recursionLimit?: number;
-  context?: AgentRuntimeContext;
-  inputBudget?: AgentInputBudget;
-  checkpoint?: boolean;
-  beforeRun?: (context: {state: AgentState; runId: string; maxTurns: number}) => Promise<void> | void;
-  afterRun?: (context: {
-    state: AgentState;
-    runId: string;
-    maxTurns: number;
-    result: AgentResult;
-  }) => Promise<void> | void;
-}
-
-export interface AgentStreamConfig extends Omit<AgentInvokeConfig, 'context'> {
-  context?: AgentRuntimeContext;
-  checkpoint?: boolean;
-  streamMode?: AgentStreamMode | AgentStreamMode[];
-}
-
-export interface AgentResumeConfig extends Omit<AgentInvokeConfig, 'context'> {
-  input?: AgentInput;
-  context?: AgentRuntimeContext;
-  resumeMode?: 'model' | 'tool';
-}
-export interface AgentResumeStreamConfig extends Omit<AgentStreamConfig, 'context'> {
-  input?: AgentInput;
-  context?: AgentRuntimeContext;
-  resumeMode?: 'model' | 'tool';
-}
-
-export interface Agent {
-  getState(): AgentState;
-  invoke(input?: AgentInput, config?: AgentInvokeConfig): Promise<AgentResult>;
-  resume(payload: ReviewResumePayload, config?: AgentResumeConfig): Promise<AgentResult>;
-  reset(): Promise<void>;
-  dispose(): Promise<void>;
-  stream(input?: AgentInput, config?: AgentStreamConfig): AsyncGenerator<AgentStreamOutput, AgentResult, void>;
-  resumeStream(
-    payload: ReviewResumePayload,
-    config?: AgentResumeStreamConfig
-  ): AsyncGenerator<AgentStreamOutput, AgentResult, void>;
-}
+  ToolErrorHandler,
+} from '@shared/contracts/agent-types';
 
 export interface CreateAgentOptions {
   model: BaseChatModel;

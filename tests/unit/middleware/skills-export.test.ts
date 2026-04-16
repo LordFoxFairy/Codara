@@ -4,7 +4,7 @@ import {
 } from '@core/middleware';
 import {FileSystemSkillStore, getDefaultSkillSources, readSkillsRuntimeData, type SkillStore} from '@capability/skill';
 import {createSkillTool} from '@capability/skill/runtime/commands';
-import {loadSkillsRuntimeBundle} from '@context/skills/build';
+import {loadSkillsRuntimeBundle} from '@context/skills-bundle';
 
 describe('middleware unified skills exports', () => {
   it('should expose the skills middleware without leaking skills store helpers from @core/middleware', async () => {

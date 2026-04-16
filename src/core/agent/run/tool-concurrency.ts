@@ -1,8 +1,12 @@
 import type {ToolCall} from '@langchain/core/messages';
+import type {ToolMetadata} from '@shared/contracts/tool-metadata';
+import {getToolMetadata} from '@shared/tool-metadata';
 
-export interface ToolConcurrencyMeta {
-  isReadOnly?: boolean;
-}
+/**
+ * @deprecated Use ToolMetadata from '@shared/contracts/tool-metadata' instead.
+ * Kept for backward compatibility with existing tests.
+ */
+export type ToolConcurrencyMeta = Pick<ToolMetadata, 'isReadOnly'>;
 
 export interface PartitionedToolCalls {
   /** Read-only tools that can execute concurrently via Promise.all */
@@ -14,17 +18,24 @@ export interface PartitionedToolCalls {
 /**
  * Partition tool calls into concurrent (read-only) and serial (writable) batches.
  * Read-only tools run in parallel for speed. All others run serially for safety.
+ *
+ * When a registry override is provided, it takes precedence over the global
+ * tool-metadata registry (useful for tests). Otherwise, metadata is resolved
+ * from the global registry with fail-closed defaults.
  */
 export function partitionToolCalls(
   toolCalls: ToolCall[],
-  registry: Map<string, ToolConcurrencyMeta>,
+  registry?: Map<string, ToolConcurrencyMeta>,
 ): PartitionedToolCalls {
   const readOnly: ToolCall[] = [];
   const serial: ToolCall[] = [];
 
   for (const call of toolCalls) {
-    const meta = registry.get(call.name);
-    if (meta?.isReadOnly) {
+    const isReadOnly = registry
+      ? registry.get(call.name)?.isReadOnly ?? false
+      : getToolMetadata(call.name).isReadOnly;
+
+    if (isReadOnly) {
       readOnly.push(call);
     } else {
       serial.push(call);

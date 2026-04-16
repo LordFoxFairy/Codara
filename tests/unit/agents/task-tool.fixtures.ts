@@ -4,7 +4,7 @@ import type {StructuredToolInterface} from '@langchain/core/tools';
 import {createSkillsMiddleware} from '@core/middleware';
 import {FileSystemSkillStore, readSkillsRuntimeData} from '@capability/skill';
 import {createSkillTool} from '@capability/skill/runtime/commands';
-import {loadSkillsRuntimeBundle} from '@context/skills/build';
+import {loadSkillsRuntimeBundle} from '@context/skills-bundle';
 
 export function createBuiltinSubagentStore() {
   return new FileSystemSkillStore({

@@ -59,6 +59,9 @@ export function normalizeDingTalkMessage(
   const peerKind = msg.conversationType === '1' ? 'direct' as const : 'group' as const;
   const text = msg.text?.content?.trim() ?? '';
 
+  // DingTalk provides `isInAtList` indicating whether the bot was @-mentioned.
+  const isMentioned = msg.isInAtList ?? false;
+
   return {
     channel: 'dingtalk',
     accountId,
@@ -73,6 +76,7 @@ export function normalizeDingTalkMessage(
       name: msg.conversationTitle,
     },
     text,
+    isMentioned,
     timestamp: Number(msg.createAt),
     raw: msg,
   };

@@ -1,5 +1,5 @@
 import {describe, test, expect} from 'bun:test';
-import {loadConditionalRules, matchRulesForPath} from '@context/instructions/rules';
+import {loadConditionalRules, matchRulesForPath} from '@context/rules';
 import {mkdtempSync, writeFileSync, mkdirSync} from 'node:fs';
 import {join} from 'node:path';
 import {tmpdir} from 'node:os';

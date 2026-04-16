@@ -1,6 +1,6 @@
 import {AIMessage, HumanMessage, type BaseMessage} from '@langchain/core/messages';
-import type {AgentInputBudget, AgentState} from '@core/agent/models/agent';
-import {estimateModelInputTokens} from '@core/middleware/budget';
+import type {AgentInputBudget, AgentState} from '@shared/contracts/agent-types';
+import {estimateModelInputTokens} from '@shared/token-estimate';
 import type {ModelInfo} from '@integration/provider';
 import {readLatestVisibleMessageText, readMessageText} from '@shared/messages';
 import type {SessionMetadata} from './types';

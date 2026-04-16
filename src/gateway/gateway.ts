@@ -91,7 +91,7 @@ export class Gateway {
     if (!plugin) return;
 
     if (!this.router.isAllowed(msg)) return;
-    if (this.router.requiresMention(msg)) return;
+    if (this.router.requiresMention(msg) && !msg.isMentioned) return;
 
     const profile = this.router.resolveProfile(msg);
     const account = this.accounts.get(`${msg.channel}:${msg.accountId}`);
@@ -104,7 +104,7 @@ export class Gateway {
       const {session} = await this.sessionManager.getOrCreate(msg, profile);
 
       if (plugin.sendTyping) {
-        plugin.sendTyping(account, {accountId: msg.accountId, to: msg.peer.id, text: ''}).catch(() => {});
+        plugin.sendTyping(account, {accountId: msg.accountId, to: msg.peer.id, text: '', threadId: msg.threadId}).catch(() => {});
       }
 
       let response: string;
@@ -114,7 +114,7 @@ export class Gateway {
         let fullResponse = '';
         const typingInterval = plugin.sendTyping
           ? setInterval(() => {
-            plugin.sendTyping!(account, {accountId: msg.accountId, to: msg.peer.id, text: ''}).catch(() => {});
+            plugin.sendTyping!(account, {accountId: msg.accountId, to: msg.peer.id, text: '', threadId: msg.threadId}).catch(() => {});
           }, 5000)
           : undefined;
 
@@ -139,6 +139,7 @@ export class Gateway {
           to: msg.peer.id,
           text: chunk,
           replyToId: msg.messageId,
+          threadId: msg.threadId,
         });
       }
     } catch (err) {
@@ -149,6 +150,7 @@ export class Gateway {
           to: msg.peer.id,
           text: `[Error] ${errorText}`,
           replyToId: msg.messageId,
+          threadId: msg.threadId,
         })
         .catch(() => {});
     }

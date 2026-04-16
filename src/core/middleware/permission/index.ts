@@ -10,6 +10,7 @@ export {
   type PermissionRuntimeOptions,
 } from '@core/middleware/permission/runtime';
 export {PermissionSessionCache} from '@core/middleware/permission/session-cache';
+export {DenialTracker, type DenialRecord} from '@core/middleware/permission/denial-tracking';
 export {
   ensurePermissionSettingsFile,
   evaluatePermissionExpression,

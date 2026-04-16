@@ -1,7 +1,6 @@
 import type {CodaraCommandDefinition} from '@capability/command/runtime/types';
 import type {McpClientStatus} from '@integration/mcp';
-
-const BUILTIN_SOURCE = {type: 'builtin'} as const;
+import {BUILTIN_SOURCE} from './formatters';
 
 const STATUS_ICON: Record<McpClientStatus, string> = {
   connected: '+',

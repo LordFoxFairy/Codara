@@ -1,6 +1,5 @@
 import type {CodaraCommandAgent, CodaraCommandDefinition} from '@capability/command/runtime/types';
-
-const BUILTIN_SOURCE = {type: 'builtin'} as const;
+import {BUILTIN_SOURCE} from './formatters';
 
 /** Type guard for agents that support the rewind capability. */
 function hasRewind(agent: CodaraCommandAgent): agent is CodaraCommandAgent & {rewind: (count: number) => Promise<void>} {

@@ -3,6 +3,7 @@ import type {AgentRuntimeContext} from '@shared/contracts/agent-types';
 import type {CompactOptions} from '@durability/checkpoint/types';
 import type {ConversationCompactionResult} from '@durability/session';
 import type {HookRegistry} from '@observability/hook/registry';
+import type {CostSnapshot} from '@observability/cost';
 export interface ParsedCodaraCommand {
   raw: string;
   name: string;
@@ -50,6 +51,8 @@ export interface CodaraCommandResult {
     sessionId: string;
   } | {
     type: 'show_session_picker';
+  } | {
+    type: 'exit';
   };
 }
 
@@ -90,6 +93,7 @@ export interface CodaraCommandAgent {
   reset(): Promise<void>;
   hookRegistry?: HookRegistry;
   getMcpStatus?(): import('@integration/mcp').McpClientInfo[];
+  getCostSnapshot?(): CostSnapshot;
 }
 
 export interface CodaraCommandEnvironment {

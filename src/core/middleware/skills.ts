@@ -4,7 +4,7 @@ import {
   type ModelCallContext
 } from '@core/pipeline/types'
 import type {SkillStore} from '@capability/skill/contracts'
-import type {SkillsRuntimeBundle} from '@context/skills/build'
+import type {SkillsRuntimeBundle} from '@context/skills-bundle'
 
 /** Runtime data read from shared context (type alias to avoid importing the full contract). */
 export type SkillsRuntimeData = SkillsRuntimeBundle['runtimeShared']['skills']

@@ -1,5 +1,6 @@
 import {describe, expect, it} from 'bun:test';
-import {createTokenBudgetState, shouldAutoCompact, shouldStopContinuation, estimateTokenCount, estimateMessagesTokenCount} from '../../../src/core/agent/run/token-budget';
+import {HumanMessage} from '@langchain/core/messages';
+import {createTokenBudgetState, shouldAutoCompact, shouldStopContinuation, estimateMessagesTokenCount} from '../../../src/core/agent/run/token-budget';
 
 describe('token-budget', () => {
   it('should create initial budget state', () => {
@@ -43,15 +44,19 @@ describe('token-budget', () => {
     expect(shouldStopContinuation(budget)).toBe(false);
   });
 
-  it('should estimate token count', () => {
-    expect(estimateTokenCount('hello world')).toBe(3); // 11 chars / 4 = 2.75 → ceil = 3
-  });
-
-  it('should estimate messages token count', () => {
+  it('should estimate messages token count using shared CJK-aware estimator', () => {
     const count = estimateMessagesTokenCount([
-      {content: 'Hello'},
-      {content: 'World'},
+      new HumanMessage('Hello'),
+      new HumanMessage('World'),
     ]);
     expect(count).toBeGreaterThan(0);
+  });
+
+  it('should produce higher estimates for CJK text', () => {
+    const ascii = estimateMessagesTokenCount([new HumanMessage('hello')]);
+    const cjk = estimateMessagesTokenCount([new HumanMessage('你好世界呀')]);
+    // CJK chars are estimated at ~1.5 tokens/char vs ASCII ~0.25 tokens/char
+    // 5 CJK chars should produce more tokens than 5 ASCII chars
+    expect(cjk).toBeGreaterThan(ascii);
   });
 });

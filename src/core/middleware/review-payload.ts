@@ -5,6 +5,7 @@
 
 import {ToolMessage, type ToolCall} from '@langchain/core/messages';
 import {readExecutionMetadata, type ToolCallContext} from '@core/pipeline/types';
+import {resolveToolCallId} from '@shared/tool-call-id';
 import type {
   ReviewDecision as ReviewDecisionValue,
   ReviewRequest as SharedReviewRequest,
@@ -261,13 +262,7 @@ async function resolveDescription(
   return `${descriptionPrefix}\n\nTool: ${toolName}\nArgs: ${JSON.stringify(toolArgs, null, 2)}`;
 }
 
-export function resolveToolCallId(toolCall: ToolCall, toolIndex: number): string {
-  const existingId = typeof toolCall.id === 'string' ? toolCall.id.trim() : '';
-  if (existingId) {
-    return existingId;
-  }
-  return `review_${toolIndex}`;
-}
+export {resolveToolCallId} from '@shared/tool-call-id';
 
 function normalizeArgs(args: unknown): Record<string, unknown> {
   return readRecord(args);

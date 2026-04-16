@@ -12,7 +12,3 @@ export async function loadGatewayConfig(configPath?: string): Promise<GatewayCon
     return {channels: {}};
   }
 }
-
-export function expandEnvVars(value: string): string {
-  return value.replace(/\$([A-Z_][A-Z0-9_]*)/g, (_, name) => process.env[name] ?? '');
-}

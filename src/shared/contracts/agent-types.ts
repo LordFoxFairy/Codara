@@ -5,7 +5,7 @@
  * can depend on them without creating cross-layer cycles.
  */
 
-import type {BaseMessage} from '@langchain/core/messages';
+import type {AIMessage, AIMessageChunk, BaseMessage, ToolCall, ToolMessage} from '@langchain/core/messages';
 
 export type AgentRuntimeContext = Record<string, unknown>;
 export type AgentRuntimeValues = Record<string, unknown>;
@@ -95,7 +95,7 @@ export interface ReviewRequest {
   metadata?: Record<string, unknown>;
 }
 
-export type AgentFinishReason = 'complete' | 'error' | 'max_turns' | 'budget_exhausted';
+export type AgentFinishReason = 'complete' | 'error' | 'max_turns' | 'budget_exhausted' | 'aborted';
 
 export interface AgentState {
   sessionId: string;
@@ -113,4 +113,109 @@ export interface AgentResult {
   turns: number;
   error?: Error;
   launchedSubagentBatchIds?: string[];
+}
+
+// ── Agent interface types (shared for cross-layer use) ──
+
+export type AgentInput = AgentMessagesInput | string | BaseMessage | BaseMessage[] | undefined;
+export interface AgentMessagesInput { messages: BaseMessage[]; }
+export type ToolErrorHandler =
+  | boolean
+  | ((error: unknown, toolCall: ToolCall) => ToolMessage | void | Promise<ToolMessage | void>);
+
+export interface AgentInvokeConfig {
+  recursionLimit?: number;
+  context?: AgentRuntimeContext;
+  inputBudget?: AgentInputBudget;
+  checkpoint?: boolean;
+  signal?: AbortSignal;
+  beforeRun?: (context: {state: AgentState; runId: string; maxTurns: number}) => Promise<void> | void;
+  afterRun?: (context: {
+    state: AgentState;
+    runId: string;
+    maxTurns: number;
+    result: AgentResult;
+  }) => Promise<void> | void;
+}
+
+export interface AgentStreamConfig extends Omit<AgentInvokeConfig, 'context'> {
+  context?: AgentRuntimeContext;
+  checkpoint?: boolean;
+  streamMode?: AgentStreamMode | AgentStreamMode[];
+}
+
+export interface AgentResumeConfig extends Omit<AgentInvokeConfig, 'context'> {
+  input?: AgentInput;
+  context?: AgentRuntimeContext;
+  resumeMode?: 'model' | 'tool';
+}
+
+export interface AgentResumeStreamConfig extends Omit<AgentStreamConfig, 'context'> {
+  input?: AgentInput;
+  context?: AgentRuntimeContext;
+  resumeMode?: 'model' | 'tool';
+}
+
+export type AgentStreamMode = 'values' | 'updates' | 'messages' | 'custom';
+
+export type ReviewToolMessagePayload =
+  | {
+      type: 'review_pause';
+      request: ReviewRequest;
+    }
+  | {
+      type: 'review_deny';
+      reason: string;
+      metadata: Record<string, unknown>;
+      action: {
+        toolCallId: string;
+        toolName: string;
+      };
+    };
+
+export type AgentStreamCustomChunk =
+  | { type: 'review_event'; runId: string; turn: number; payload: ReviewToolMessagePayload }
+  | { type: 'tool_progress'; toolCallId: string; toolName: string; status: 'executing' | 'completed' | 'failed' };
+
+export type AgentStreamOutput =
+  | AIMessageChunk
+  | {messages: BaseMessage[]}
+  | {model: {messages: [AIMessage]}}
+  | {tools: {messages: [ToolMessage]}}
+  | AgentStreamCustomChunk
+  | [AgentStreamMode, AIMessageChunk | {messages: BaseMessage[]} | {model: {messages: [AIMessage]}} | {tools: {messages: [ToolMessage]}} | AgentStreamCustomChunk];
+
+/** Current agent context assembled immediately before the next model call. */
+export interface AgentPreparationContext {
+  state: {
+    messages: BaseMessage[];
+    context?: AgentRuntimeContext;
+    values?: AgentRuntimeValues;
+  };
+  messages: BaseMessage[];
+  runtime: {
+    context: AgentRuntimeContext;
+    runtimeContext?: AgentRuntimeContext;
+    shared?: Record<string, unknown>;
+  };
+  systemMessage: string[];
+  execution: AgentExecutionMetadata;
+  inputBudget?: AgentInputBudget;
+}
+
+export type AgentContextPreparer = (context: AgentPreparationContext) => Promise<void> | void;
+
+export interface Agent {
+  getState(): AgentState;
+  invoke(input?: AgentInput, config?: AgentInvokeConfig): Promise<AgentResult>;
+  resume(payload: ReviewResumePayload, config?: AgentResumeConfig): Promise<AgentResult>;
+  reset(): Promise<void>;
+  dispose(): Promise<void>;
+  stream(input?: AgentInput, config?: AgentStreamConfig): AsyncGenerator<AgentStreamOutput, AgentResult, void>;
+  resumeStream(
+    payload: ReviewResumePayload,
+    config?: AgentResumeStreamConfig
+  ): AsyncGenerator<AgentStreamOutput, AgentResult, void>;
+  /** Abort the currently running agent loop. No-op if the agent is not running. */
+  abort(): void;
 }

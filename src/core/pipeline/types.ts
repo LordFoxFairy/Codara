@@ -147,4 +147,5 @@ export const MIDDLEWARE_NAMES = {
   Task: 'TaskMiddleware',
   TodoList: 'TodoListMiddleware',
   ToolHooks: 'ToolHooksMiddleware',
+  Cost: 'CostMiddleware',
 } as const;

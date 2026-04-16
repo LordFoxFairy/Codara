@@ -5,10 +5,7 @@ import {Command, applyAgentStateUpdate, isCommand, mergeContext} from '../models
 import type {AgentState, ToolErrorHandler} from '../models/agent';
 import type {ExecutionContextMetadata} from '@core/pipeline/types';
 
-export function resolveToolCallId(toolCall: ToolCall, toolIndex: number): string {
-  const id = typeof toolCall.id === 'string' ? toolCall.id.trim() : '';
-  return id || `${toolCall.name?.trim() || 'tool'}_${toolIndex}`;
-}
+export {resolveToolCallId} from '@shared/tool-call-id';
 
 export async function executeToolCall(
   toolCall: ToolCall,

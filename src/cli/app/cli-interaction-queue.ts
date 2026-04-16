@@ -1,4 +1,4 @@
-/** @future — Interaction queue logic for the next CLI architecture rewrite. Extracted from use-cli-controller for testability. */
+/** Interaction queue resolution logic for the CLI controller. */
 import type {CliInteractionScheduler, QueuedCliInteraction, QueuedReviewResponseInteraction} from './interaction-scheduler';
 import type {CliInteractionKind, CliInteractionState} from './view-state';
 import {resolveFocusedSurface} from './cli-controller-logic';

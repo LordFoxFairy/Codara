@@ -1,7 +1,6 @@
 import path from 'node:path';
 import {ToolMessage} from '@langchain/core/messages';
-import {resolveToolCallId} from '@core/agent/run/tool-executor';
-import {createMiddleware, type BaseMiddleware, type BeforeModelContext, type ToolCallContext} from '@core/pipeline/types';
+import {resolveToolCallId, createMiddleware, type BaseMiddleware, type BeforeModelContext, type ToolCallContext} from './adapters/core-bridge';
 
 interface SubagentCompletionContinuationContext {
   codaraSubagentCompletion?: {

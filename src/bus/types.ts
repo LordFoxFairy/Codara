@@ -32,8 +32,7 @@ export type BusEvent =
   | { type: 'client.joined'; clientId: ClientId; metadata?: Record<string, unknown> }
   | { type: 'client.left'; clientId: ClientId }
   | { type: 'session.updated'; sessionId: string }
-  | { type: 'agent.spawned'; agentId: string; sessionId: string; task: string }
-  | { type: 'agent.completed'; agentId: string; sessionId: string };
+;
 
 /** Client metadata for registration. */
 export interface BusClientInfo {
@@ -48,5 +47,4 @@ export interface BusClientInfo {
 /** Bus configuration. */
 export interface BusConfig {
   cwd?: string;
-  port?: number;
 }

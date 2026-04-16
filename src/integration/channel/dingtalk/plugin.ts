@@ -9,6 +9,7 @@
 import {z} from 'zod';
 import type {ChannelPlugin, GatewayListenContext} from '@integration/channel/contracts';
 import type {OutboundContext, ReviewPromptContext, SendResult, StopHandle} from '@gateway/types';
+import {resolveEnvValue} from '@integration/channel/utils';
 import {DingTalkApi, DingTalkApiError} from './api';
 import {startDingTalkWebhook} from './webhook';
 import type {DingTalkActionCardButton} from './types';
@@ -31,22 +32,6 @@ const dingtalkAccountConfigSchema = z.object({
   webhookPath: z.string().optional(),
   callbackBaseUrl: z.url().optional(),
 });
-
-/**
- * Resolve `$ENV_VAR` syntax in a string value.
- * If the value starts with `$`, treat the rest as an env variable name.
- */
-function resolveEnvValue(value: string): string {
-  if (value.startsWith('$')) {
-    const envKey = value.slice(1);
-    const envValue = process.env[envKey];
-    if (!envValue) {
-      throw new Error(`Environment variable "${envKey}" is not set (referenced as "${value}")`);
-    }
-    return envValue;
-  }
-  return value;
-}
 
 export const dingtalkPlugin: ChannelPlugin<DingTalkAccount> = {
   id: 'dingtalk',

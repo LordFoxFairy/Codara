@@ -130,3 +130,8 @@ export {
   type TodoListMiddlewareOptions,
   type TodoMiddlewareState,
 } from './todo';
+export {
+  createCostMiddleware,
+  COST_TRACKER_SHARED_KEY,
+  type CostMiddlewareOptions,
+} from './cost';

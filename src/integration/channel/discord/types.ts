@@ -67,6 +67,8 @@ export interface DiscordMessage {
   content: string;
   timestamp: string;
   referenced_message?: DiscordMessage | null;
+  /** Users mentioned in this message (populated by Discord gateway). */
+  mentions?: DiscordUser[];
 }
 
 // ── Interaction Types ───────────────────────────────────────────────────

@@ -33,12 +33,15 @@ import {
 } from '@capability/task';
 import type {HookPipeline} from '@observability/hook';
 import {createToolHooksBridge} from '@observability/hook';
-import type {GuidelinesSource} from '@context/instructions/guidelines';
-import type {PromptSource} from '@context/prompts/prompt-source';
+import type {GuidelinesSource} from '@context/guidelines';
+import type {PromptSource} from '@context/prompts';
 import type {SkillsSource} from '@capability/skill';
 import {resolveWorkspaceRoot} from '@config/workspace';
+import {loadConditionalRules} from '@context/rules';
 import type {ChannelRegistry} from '@integration/channel';
 import {createChannelReviewOptions} from '@integration/channel';
+import type {MemoryWriter} from '@capability/memory/writer';
+import type {MemoryReader} from '@capability/memory/reader';
 import {createInstructionContextRuntime} from './context';
 import type {
   CodaraMiddlewareOptions,
@@ -109,6 +112,8 @@ export function createRuntimeDefaultMiddlewares(input: {
   skillsSource?: SkillsSource;
   hookPipeline?: HookPipeline;
   channelRegistry?: ChannelRegistry;
+  memoryWriter?: MemoryWriter;
+  memoryReader?: MemoryReader;
 }): BaseMiddleware[] {
   const callerMiddlewares = normalizeCallerMiddlewares(input);
   const byName = new Map<string, BaseMiddleware>();
@@ -122,11 +127,16 @@ export function createRuntimeDefaultMiddlewares(input: {
   }
 
   if (!byName.has(MIDDLEWARE_NAMES.PathInstructions)) {
+    const projectRoot = resolveWorkspaceRoot({
+      cwd: input.options.cwd,
+      projectRoot: input.options.projectRoot,
+    });
     byName.set(
       MIDDLEWARE_NAMES.PathInstructions,
       createPathInstructionsMiddleware({
         guidelinesSource: input.guidelinesSource,
         promptSource: input.promptSource,
+        conditionalRules: loadConditionalRules(projectRoot),
       }),
     );
   }
@@ -184,14 +194,23 @@ function createRuntimeSubagentMiddleware(input: {
   guidelinesSource: GuidelinesSource;
   skillsSource?: SkillsSource;
   hookPipeline?: HookPipeline;
+  memoryWriter?: MemoryWriter;
+  memoryReader?: MemoryReader;
 }): BaseMiddleware {
+  const childProjectRoot = resolveWorkspaceRoot({
+    cwd: input.options.cwd,
+    projectRoot: input.options.projectRoot,
+  });
   const childInstructionContext = createInstructionContextRuntime({
     promptSource: input.promptSource,
     guidelinesSource: input.guidelinesSource,
+    conditionalRules: loadConditionalRules(childProjectRoot),
   });
 
   return createSubagentMiddleware({
     taskStore: input.taskStore,
+    memoryWriter: input.memoryWriter,
+    memoryReader: input.memoryReader,
     runStore: input.subagentRunStore,
     runManager: input.subagentRunManager,
     checkpointer: input.subagentCheckpointer,
@@ -229,6 +248,8 @@ function normalizeCallerMiddlewares(input: {
   guidelinesSource: GuidelinesSource;
   skillsSource?: SkillsSource;
   hookPipeline?: HookPipeline;
+  memoryWriter?: MemoryWriter;
+  memoryReader?: MemoryReader;
 }): BaseMiddleware[] {
   const runtimeOwned = createRuntimeSubagentMiddleware(input);
   return (input.options.middleware ?? []).map((middleware) => applyRuntimeSubagentDefaults(middleware, runtimeOwned));

@@ -16,9 +16,8 @@ import type {
   ReviewRequest,
   ReviewResumePayload,
   ToolErrorHandler,
-} from '@core/agent/models/agent';
-import {normalizeAgentInput} from '@core/agent/run/agent-loop';
-import {bootstrapAgent} from '@core/agent/bootstrap';
+} from '@shared/contracts/agent-types';
+import {mergeContext as mergeAgentContext} from '@shared/context-merge';
 import type {CompactOptions} from '@durability/checkpoint/types';
 import {
   createAgentMemoryCheckpointer,
@@ -26,29 +25,14 @@ import {
   putManualCheckpoint,
   type AgentCheckpointer,
 } from '@durability/checkpoint/agent';
-import {MIDDLEWARE_NAMES, type BaseMiddleware} from '@core/pipeline/types';
-import {
-  compactConversationWithSummary,
-  createModelSummaryGenerator,
-  createSummaryMiddleware,
-  resolveSummaryOptions,
-  type SummaryOptions,
-  type SummarySettings,
-} from '@core/middleware/summary';
 import type {SessionLifecycleHooks} from '@observability/hook/types';
-import type {GuidelinesSource} from '@context/instructions/guidelines';
-import {type PromptSource} from '@context/prompts/prompt-source';
+import type {GuidelinesSource} from '@context/guidelines';
+import {type PromptSource} from '@context/prompts';
 import type {SkillsSource} from '@capability/skill';
-import {
-  applyPreparedInstructionContext,
-  buildBaseSystemMessage,
-  type BaseSystemMessageBundle,
-} from '@context/session-bundle/base-system-message';
-import type {DynamicSectionRegistry} from '@context/sections/dynamic';
+import type {DynamicSectionRegistry} from '@context/dynamic-sections';
 import type {ModelInfo} from '@integration/provider';
 import {
   createSessionMetadata,
-  deriveSessionInputBudget,
   forkSessionMetadata,
   syncSessionMetadata,
 } from './metadata';
@@ -57,15 +41,17 @@ import {
   RuntimeEventsController,
   type CodaraRuntimeEventListener,
 } from '@observability/events';
-import type {SessionMetadata, SessionState, SessionStatus} from './types';
-import type {AgentRuntimeContext} from '@shared/contracts/agent-types';
-import {mergeContext as mergeAgentContext} from '@core/agent/models/command';
+import type {AgentFactory, SessionMetadata, SessionMiddlewareFactory, SessionState, SessionStatus} from './types';
+import type {AgentPreparationContext, AgentRuntimeContext} from '@shared/contracts/agent-types';
+import {
+  bootstrapSessionAgent,
+  loadBaseInstructionContext,
+  type SessionModelCatalog,
+} from './session-bootstrap';
+import {applyPreparedInstructionContext, type BaseSystemMessageBundle} from '@context/system-message';
+import {compactConversation as doCompactConversation} from './session-compact';
 export type {CodaraRuntimeEvent, CodaraRuntimeEventListener} from '@observability/events';
-
-export interface SessionModelCatalog {
-  create(modelRef?: string): Promise<BaseChatModel>;
-  getInfo(modelRef?: string): ModelInfo;
-}
+export type {SessionModelCatalog} from './session-bootstrap';
 
 export interface CreateSessionOptions {
   state?: SessionState;
@@ -81,9 +67,9 @@ export interface CreateSessionOptions {
   store?: SessionStore;
   tools?: StructuredToolInterface[];
   handleToolErrors?: ToolErrorHandler;
-  middleware?: BaseMiddleware[];
+  middleware?: unknown[];
   checkpointer?: AgentCheckpointer;
-  summary?: false | SummarySettings;
+  summary?: false | unknown;
   restore?: 'latest' | 'never';
   inputBudget?: AgentInputBudget;
   messages?: AgentInput;
@@ -91,6 +77,10 @@ export interface CreateSessionOptions {
   values?: Record<string, unknown>;
   metadata?: Partial<SessionMetadata>;
   lifecycle?: SessionLifecycleHooks;
+  /** Agent creation factory — required for decoupled session operation. */
+  agentFactory: AgentFactory;
+  /** Middleware factory — required for summary/middleware operations. */
+  middlewareFactory: SessionMiddlewareFactory;
 }
 
 export interface Session {
@@ -137,7 +127,7 @@ export function createSession(options: CreateSessionOptions): Session {
   let inputBudget = options.inputBudget;
   let agent: Agent | undefined;
   let agentPromise: Promise<Agent> | undefined;
-  let summaryOptions: Required<SummaryOptions> | undefined;
+  let summaryOptions: unknown;
   let baseSystemContext: BaseSystemMessageBundle | undefined;
   const runtimeEvents = new RuntimeEventsController(sessionId);
   const lifecycle = options.lifecycle;
@@ -208,7 +198,7 @@ export function createSession(options: CreateSessionOptions): Session {
       }
     }
 
-    for (const middleware of options.middleware ?? []) {
+    for (const middleware of (options.middleware ?? []) as Array<{tools?: Array<{name?: string}>}>) {
       for (const tool of middleware.tools ?? []) {
         const name = tool.name?.trim();
         if (name) {
@@ -266,22 +256,19 @@ export function createSession(options: CreateSessionOptions): Session {
     }
   }
 
-  async function loadBaseInstructionContext(forceReload = false): Promise<{
-    systemMessage: string[];
-    runtimeShared?: Record<string, unknown>;
-  }> {
+  async function loadInstructionContext(forceReload = false): Promise<BaseSystemMessageBundle> {
     if (forceReload || !baseSystemContext) {
-      options.promptSource?.reload?.();
-      options.guidelinesSource?.reload?.();
-      options.skillsSource?.reload();
-      baseSystemContext = await buildBaseSystemMessage({
-        promptSource: options.promptSource,
-        guidelinesSource: options.guidelinesSource,
-        skillsSource: options.skillsSource,
-        dynamicSections: options.dynamicSections,
-      });
+      baseSystemContext = await loadBaseInstructionContext(
+        {
+          promptSource: options.promptSource,
+          guidelinesSource: options.guidelinesSource,
+          skillsSource: options.skillsSource,
+          dynamicSections: options.dynamicSections,
+        },
+        forceReload,
+        baseSystemContext,
+      );
     }
-
     return baseSystemContext;
   }
 
@@ -292,6 +279,11 @@ export function createSession(options: CreateSessionOptions): Session {
     return agent;
   }
 
+  async function applySessionContext(context: AgentPreparationContext): Promise<void> {
+    const next = await loadInstructionContext();
+    applyPreparedInstructionContext(context, next);
+  }
+
   async function getAgent(): Promise<Agent> {
     if (agent) {
       return agent;
@@ -299,9 +291,36 @@ export function createSession(options: CreateSessionOptions): Session {
     if (!agentPromise) {
       agentPromise = (async () => {
         try {
-          const instance = await bootstrapSessionAgent();
-          agent = instance;
-          return instance;
+          const result = await bootstrapSessionAgent({
+            sessionId,
+            model: options.model,
+            modelRef: options.modelRef,
+            modelCatalog: options.modelCatalog,
+            promptSource: options.promptSource,
+            guidelinesSource: options.guidelinesSource,
+            skillsSource: options.skillsSource,
+            dynamicSections: options.dynamicSections,
+            tools: options.tools,
+            handleToolErrors: options.handleToolErrors,
+            middleware: options.middleware,
+            summary: options.summary,
+            messages: options.messages,
+            context: options.context,
+            values: options.values,
+            agentFactory: options.agentFactory,
+            middlewareFactory: options.middlewareFactory,
+            runtimeEvents,
+            checkpointer,
+            restoreCheckpoint,
+            inputBudget,
+            getLatestCheckpoint,
+            prepareContext: applySessionContext,
+          });
+          agent = result.agent;
+          summaryOptions = result.summaryOptions;
+          inputBudget = result.inputBudget;
+          baseSystemContext = result.baseSystemContext;
+          return result.agent;
         } finally {
           if (!agent) {
             clearAgentCache();
@@ -310,59 +329,6 @@ export function createSession(options: CreateSessionOptions): Session {
       })();
     }
     return agentPromise;
-  }
-
-  async function bootstrapSessionAgent(): Promise<Agent> {
-    const systemContext = await loadBaseInstructionContext();
-    const modelSelection = await resolveSessionModel(options);
-    const checkpoint = restoreCheckpoint ? await getLatestCheckpoint() : undefined;
-
-    inputBudget = options.inputBudget ?? deriveSessionInputBudget(modelSelection.modelInfo);
-    summaryOptions = options.summary
-      ? resolveSummaryOptions(options.summary, createModelSummaryGenerator(modelSelection.model))
-      : undefined;
-
-    return bootstrapAgent({
-      model: modelSelection.model,
-      agentType: 'main',
-      tools: options.tools,
-      handleToolErrors: options.handleToolErrors,
-      middleware: buildSessionMiddleware(summaryOptions),
-      checkpointer,
-      sessionId,
-      inputBudget,
-      ...(checkpoint ? {checkpoint} : {}),
-      ...(options.messages ? {messages: normalizeAgentInput(options.messages)} : {}),
-      ...(options.context ? {context: options.context} : {}),
-      ...(options.values ? {values: options.values} : {}),
-      ...(systemContext.systemMessage.length > 0 ? {systemMessage: systemContext.systemMessage} : {}),
-      ...(systemContext.runtimeShared ? {runtimeShared: systemContext.runtimeShared} : {}),
-      prepareContext: applySessionContext,
-    });
-  }
-
-  function buildSessionMiddleware(summary: Required<SummaryOptions> | undefined): BaseMiddleware[] | undefined {
-    const middlewares = [
-      runtimeEvents.createMiddleware(),
-      ...(options.middleware ?? []),
-    ];
-    if (!summary || middlewares.some((middleware) => middleware.name === MIDDLEWARE_NAMES.Summary)) {
-      return middlewares.length > 0 ? middlewares : undefined;
-    }
-
-    const summaryMiddleware = createSummaryMiddleware({summary});
-    if (!summaryMiddleware) {
-      return middlewares.length > 0 ? middlewares : undefined;
-    }
-
-    const reviewIndex = middlewares.findIndex((middleware) => middleware.name === MIDDLEWARE_NAMES.Review);
-    if (reviewIndex < 0) {
-      middlewares.push(summaryMiddleware);
-      return middlewares;
-    }
-
-    middlewares.splice(reviewIndex, 0, summaryMiddleware);
-    return middlewares;
   }
 
   function ensureReady() {
@@ -412,11 +378,6 @@ export function createSession(options: CreateSessionOptions): Session {
     return result;
   }
 
-  async function applySessionContext(context: import('@core/agent').AgentPreparationContext): Promise<void> {
-    const next = await loadBaseInstructionContext();
-    applyPreparedInstructionContext(context, next);
-  }
-
   async function fork(optionsOverride: {id?: string; sessionId?: string; store?: SessionStore} = {}) {
     const base = (await getAgent()).getState();
     const childSessionId = resolveSessionId(undefined, {
@@ -441,100 +402,6 @@ export function createSession(options: CreateSessionOptions): Session {
     });
     await child.hydrate();
     return child;
-  }
-
-  async function compactConversation(compactOptions: {instructions?: string} = {}) {
-    ensureReady();
-    if (!options.summary) {
-      throw new Error('Conversation compaction is not configured for this session.');
-    }
-
-    const instance = await getAgent();
-    const summary = summaryOptions;
-
-    if (!summary) {
-      throw new Error('Conversation compaction is not configured for this session.');
-    }
-
-    const current = instance.getState();
-    if (current.status === 'running') {
-      throw new Error('Agent is currently running.');
-    }
-    if (current.status === 'paused') {
-      throw new Error('Agent is paused; resume(...) or reset() before compacting the conversation.');
-    }
-
-    const summaryEventId = runtimeEvents.summaryStarted('Compacting context');
-
-    if (lifecycle) {
-      const preResult = await safeLifecycleCall(() =>
-        lifecycle.onPreCompact({
-          sessionId,
-          hookEvent: 'PreCompact',
-          timestamp: new Date().toISOString(),
-          messageCount: current.messages.length,
-        }),
-      );
-      if (preResult?.vetoed) {
-        runtimeEvents.summaryFinished(summaryEventId, 'done', 'Context compact skipped by hook');
-        return {
-          state: current,
-          outcome: 'skipped',
-          reason: 'hook',
-        } satisfies ConversationCompactionResult;
-      }
-    }
-
-    const systemContext = await loadBaseInstructionContext();
-    const compacted = await compactConversationWithSummary({
-      messages: current.messages,
-      context: current.context,
-      values: current.values,
-      systemMessage: systemContext.systemMessage,
-      runtimeShared: systemContext.runtimeShared,
-      sessionId,
-      requestId: `${sessionId}:compact:${randomUUID()}`,
-      inputBudget,
-      instructions: compactOptions.instructions,
-    }, summary);
-
-    if (!compacted) {
-      await sync(current);
-      runtimeEvents.summaryFinished(summaryEventId, 'done', 'Context compact skipped');
-      return {
-        state: current,
-        outcome: 'skipped',
-        reason: 'noop',
-      } satisfies ConversationCompactionResult;
-    }
-
-    await putManualCheckpoint(checkpointer, sessionId, {
-      agentType: current.agentType,
-      messages: compacted.messages,
-      context: compacted.context,
-      values: compacted.values,
-    }, await getLatestCheckpoint());
-
-    clearAgentCache();
-    const next = (await getAgent()).getState();
-    await sync(next);
-
-    if (lifecycle) {
-      await safeLifecycleCall(() =>
-        lifecycle.onPostCompact({
-          sessionId,
-          hookEvent: 'PostCompact',
-          timestamp: new Date().toISOString(),
-          messageCount: next.messages.length,
-        }),
-      );
-    }
-
-    runtimeEvents.summaryFinished(summaryEventId, 'done', 'Context compacted');
-    return {
-      state: next,
-      outcome: 'compacted',
-    } satisfies ConversationCompactionResult;
   }
 
   async function runHilResume<T>(operation: () => Promise<T>, pendingDescription: string | undefined): Promise<T> {
@@ -635,7 +502,25 @@ export function createSession(options: CreateSessionOptions): Session {
       await sync(next, {touchActivity: false});
       return next;
     },
-    compactConversation,
+    async compactConversation(compactOptions = {}) {
+      ensureReady();
+      return doCompactConversation({
+        sessionId,
+        summary: options.summary,
+        summaryOptions,
+        inputBudget,
+        middlewareFactory: options.middlewareFactory,
+        runtimeEvents,
+        lifecycle,
+        checkpointer,
+        getAgent,
+        getLatestCheckpoint,
+        loadBaseInstructionContext: () => loadInstructionContext(),
+        clearAgentCache,
+        sync: (agentState) => sync(agentState),
+        safeLifecycleCall,
+      }, compactOptions);
+    },
     async fork(forkOptions = {}) {
       ensureReady();
       return fork(forkOptions);
@@ -689,7 +574,7 @@ export function createSession(options: CreateSessionOptions): Session {
     },
     async reloadSources() {
       ensureReady();
-      await loadBaseInstructionContext(true);
+      await loadInstructionContext(true);
       clearAgentCache();
       await persistSessionState();
     },
@@ -820,20 +705,4 @@ function extractPromptText(input: AgentInput): string | undefined {
     }
   }
   return undefined;
-}
-
-async function resolveSessionModel(
-  options: CreateSessionOptions,
-): Promise<{model: BaseChatModel; modelInfo?: ModelInfo}> {
-  if (options.model) {
-    return {model: await options.model};
-  }
-
-  if (!options.modelCatalog) {
-    throw new Error('Either model or modelCatalog must be provided');
-  }
-
-  const catalog = await options.modelCatalog;
-  const modelRef = options.modelRef ?? 'default';
-  return {model: await catalog.create(modelRef), modelInfo: catalog.getInfo(modelRef)};
 }

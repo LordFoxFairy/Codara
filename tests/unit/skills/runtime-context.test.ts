@@ -9,7 +9,7 @@ import {createAgentMemoryCheckpointer} from '@durability/checkpoint';
 import {createSkillsMiddleware} from '@core/middleware';
 import {FileSystemSkillStore, readSkillsRuntimeData} from '@capability/skill';
 import {createSkillTool} from '@capability/skill/runtime/commands';
-import {loadSkillsRuntimeBundle} from '@context/skills/build';
+import {loadSkillsRuntimeBundle} from '@context/skills-bundle';
 
 class SingleResponseModel {
   async invoke() {

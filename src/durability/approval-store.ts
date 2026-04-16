@@ -43,63 +43,20 @@ export function createApprovalFileStore(options: ApprovalFileStoreOptions): Appr
   return new FileApprovalStore(options.rootDir);
 }
 
-class InMemoryApprovalStore implements ApprovalStore {
-  private readonly records = new Map<string, ApprovalRecord>();
-  private readonly sessionIndex = new Map<string, Set<string>>();
-  private readonly subagentRunIndex = new Map<string, Set<string>>();
+// ── Shared indexing logic ──
 
-  list(sessionId?: string): ApprovalRecord[] {
-    const records = sessionId
-      ? this.lookupBySession(sessionId)
-      : Array.from(this.records.values());
-    return sortApprovals(records);
-  }
+abstract class BaseApprovalStore implements ApprovalStore {
+  protected readonly records = new Map<string, ApprovalRecord>();
+  protected readonly sessionIndex = new Map<string, Set<string>>();
+  protected readonly subagentRunIndex = new Map<string, Set<string>>();
 
-  get(approvalId: string): ApprovalRecord | undefined {
-    const record = this.records.get(normalizeApprovalId(approvalId));
-    return record ? cloneApprovalRecord(record) : undefined;
-  }
+  abstract list(sessionId?: string): ApprovalRecord[];
+  abstract get(approvalId: string): ApprovalRecord | undefined;
+  abstract upsertSubagentRunApproval(input: ApprovalSubagentRunInput): ApprovalRecord;
+  abstract remove(approvalId: string): void;
+  abstract removeBySubagentRunId(subagentRunId: string): void;
 
-  upsertSubagentRunApproval(input: ApprovalSubagentRunInput): ApprovalRecord {
-    const normalizedSubagentRunId = normalizeSubagentRunId(input.subagentRunId);
-    const approvalId = normalizeApprovalId(input.reviewRequest.id);
-    const existing = this.records.get(approvalId);
-    const now = new Date().toISOString();
-    const next: ApprovalRecord = {
-      approvalId,
-      sessionId: normalizeSessionId(input.sessionId),
-      source: 'subagent_run',
-      subagentRunId: normalizedSubagentRunId,
-      description: input.reviewRequest.description,
-      toolName: input.reviewRequest.action.toolName,
-      createdAt: existing?.createdAt ?? now,
-      updatedAt: now,
-      ...(input.childSessionId ? {childSessionId: input.childSessionId} : {}),
-      reviewRequest: cloneReviewRequest(input.reviewRequest),
-    };
-    this.store(next, existing);
-    return cloneApprovalRecord(next);
-  }
-
-  remove(approvalId: string): void {
-    const normalizedApprovalId = normalizeApprovalId(approvalId);
-    const record = this.records.get(normalizedApprovalId);
-    if (!record) {
-      return;
-    }
-    this.records.delete(normalizedApprovalId);
-    this.unindex(record);
-  }
-
-  removeBySubagentRunId(subagentRunId: string): void {
-    const normalizedSubagentRunId = normalizeSubagentRunId(subagentRunId);
-    const approvalIds = [...(this.subagentRunIndex.get(normalizedSubagentRunId) ?? [])];
-    for (const approvalId of approvalIds) {
-      this.remove(approvalId);
-    }
-  }
-
-  private lookupBySession(sessionId: string): ApprovalRecord[] {
+  protected lookupBySession(sessionId: string): ApprovalRecord[] {
     const approvalIds = this.sessionIndex.get(normalizeSessionId(sessionId));
     if (!approvalIds) {
       return [];
@@ -109,37 +66,102 @@ class InMemoryApprovalStore implements ApprovalStore {
       .filter((record): record is ApprovalRecord => Boolean(record));
   }
 
-  private store(record: ApprovalRecord, previous?: ApprovalRecord): void {
+  protected storeRecord(record: ApprovalRecord, previous?: ApprovalRecord): void {
     if (previous) {
-      this.unindex(previous);
+      this.unindexRecord(previous);
     }
 
     this.records.set(record.approvalId, record);
-    this.index(record);
+    this.indexRecord(record);
   }
 
-  private index(record: ApprovalRecord): void {
+  protected indexRecord(record: ApprovalRecord): void {
     indexValue(this.sessionIndex, normalizeSessionId(record.sessionId), record.approvalId);
     if (record.subagentRunId) {
       indexValue(this.subagentRunIndex, normalizeSubagentRunId(record.subagentRunId), record.approvalId);
     }
   }
 
-  private unindex(record: ApprovalRecord): void {
+  protected unindexRecord(record: ApprovalRecord): void {
     unindexValue(this.sessionIndex, normalizeSessionId(record.sessionId), record.approvalId);
     if (record.subagentRunId) {
       unindexValue(this.subagentRunIndex, normalizeSubagentRunId(record.subagentRunId), record.approvalId);
     }
   }
+
+  protected buildUpsertRecord(input: ApprovalSubagentRunInput): {record: ApprovalRecord; existing: ApprovalRecord | undefined} {
+    const approvalId = normalizeApprovalId(input.reviewRequest.id);
+    const existing = this.records.get(approvalId);
+    const now = new Date().toISOString();
+    const record: ApprovalRecord = {
+      approvalId,
+      sessionId: normalizeSessionId(input.sessionId),
+      source: 'subagent_run',
+      subagentRunId: normalizeSubagentRunId(input.subagentRunId),
+      description: input.reviewRequest.description,
+      toolName: input.reviewRequest.action.toolName,
+      createdAt: existing?.createdAt ?? now,
+      updatedAt: now,
+      ...(input.childSessionId ? {childSessionId: input.childSessionId} : {}),
+      reviewRequest: cloneReviewRequest(input.reviewRequest),
+    };
+    return {record, existing};
+  }
+
+  protected removeRecord(approvalId: string): ApprovalRecord | undefined {
+    const normalizedApprovalId = normalizeApprovalId(approvalId);
+    const record = this.records.get(normalizedApprovalId);
+    if (!record) {
+      return undefined;
+    }
+    this.records.delete(normalizedApprovalId);
+    this.unindexRecord(record);
+    return record;
+  }
+
+  protected removeBySubagentRunIdImpl(subagentRunId: string): void {
+    const normalizedSubagentRunId = normalizeSubagentRunId(subagentRunId);
+    const approvalIds = [...(this.subagentRunIndex.get(normalizedSubagentRunId) ?? [])];
+    for (const approvalId of approvalIds) {
+      this.remove(approvalId);
+    }
+  }
 }
 
-class FileApprovalStore implements ApprovalStore {
-  private readonly records = new Map<string, ApprovalRecord>();
-  private readonly sessionIndex = new Map<string, Set<string>>();
-  private readonly subagentRunIndex = new Map<string, Set<string>>();
+class InMemoryApprovalStore extends BaseApprovalStore {
+  list(sessionId?: string): ApprovalRecord[] {
+    const records = sessionId
+      ? this.lookupBySession(sessionId)
+      : Array.from(this.records.values());
+    return sortApprovals(records);
+  }
+
+  get(approvalId: string): ApprovalRecord | undefined {
+    const record = this.records.get(normalizeApprovalId(approvalId));
+    return record ? cloneApprovalRecord(record) : undefined;
+  }
+
+  upsertSubagentRunApproval(input: ApprovalSubagentRunInput): ApprovalRecord {
+    const {record, existing} = this.buildUpsertRecord(input);
+    this.storeRecord(record, existing);
+    return cloneApprovalRecord(record);
+  }
+
+  remove(approvalId: string): void {
+    this.removeRecord(approvalId);
+  }
+
+  removeBySubagentRunId(subagentRunId: string): void {
+    this.removeBySubagentRunIdImpl(subagentRunId);
+  }
+}
+
+class FileApprovalStore extends BaseApprovalStore {
   private loaded = false;
 
-  constructor(private readonly rootDir: string) {}
+  constructor(private readonly rootDir: string) {
+    super();
+  }
 
   list(sessionId?: string): ApprovalRecord[] {
     this.ensureLoaded();
@@ -157,47 +179,23 @@ class FileApprovalStore implements ApprovalStore {
 
   upsertSubagentRunApproval(input: ApprovalSubagentRunInput): ApprovalRecord {
     this.ensureLoaded();
-    const normalizedSubagentRunId = normalizeSubagentRunId(input.subagentRunId);
-    const approvalId = normalizeApprovalId(input.reviewRequest.id);
-    const existing = this.records.get(approvalId);
-    const now = new Date().toISOString();
-    const next: ApprovalRecord = {
-      approvalId,
-      sessionId: normalizeSessionId(input.sessionId),
-      source: 'subagent_run',
-      subagentRunId: normalizedSubagentRunId,
-      description: input.reviewRequest.description,
-      toolName: input.reviewRequest.action.toolName,
-      createdAt: existing?.createdAt ?? now,
-      updatedAt: now,
-      ...(input.childSessionId ? {childSessionId: input.childSessionId} : {}),
-      reviewRequest: cloneReviewRequest(input.reviewRequest),
-    };
-    this.store(next, existing);
-    this.persist(next);
-    return cloneApprovalRecord(next);
+    const {record, existing} = this.buildUpsertRecord(input);
+    this.storeRecord(record, existing);
+    this.persist(record);
+    return cloneApprovalRecord(record);
   }
 
   remove(approvalId: string): void {
     this.ensureLoaded();
-    const normalizedApprovalId = normalizeApprovalId(approvalId);
-    const record = this.records.get(normalizedApprovalId);
-    if (!record) {
-      return;
+    const removed = this.removeRecord(approvalId);
+    if (removed) {
+      rmSync(this.recordPath(normalizeApprovalId(approvalId)), {force: true});
     }
-
-    this.records.delete(normalizedApprovalId);
-    this.unindex(record);
-    rmSync(this.recordPath(normalizedApprovalId), {force: true});
   }
 
   removeBySubagentRunId(subagentRunId: string): void {
     this.ensureLoaded();
-    const normalizedSubagentRunId = normalizeSubagentRunId(subagentRunId);
-    const approvalIds = [...(this.subagentRunIndex.get(normalizedSubagentRunId) ?? [])];
-    for (const approvalId of approvalIds) {
-      this.remove(approvalId);
-    }
+    this.removeBySubagentRunIdImpl(subagentRunId);
   }
 
   private ensureLoaded(): void {
@@ -219,7 +217,7 @@ class FileApprovalStore implements ApprovalStore {
         }
 
         this.records.set(record.approvalId, record);
-        this.index(record);
+        this.indexRecord(record);
       }
     } catch (error) {
       if (isMissingFile(error)) {
@@ -227,16 +225,6 @@ class FileApprovalStore implements ApprovalStore {
       }
       throw error;
     }
-  }
-
-  private lookupBySession(sessionId: string): ApprovalRecord[] {
-    const approvalIds = this.sessionIndex.get(normalizeSessionId(sessionId));
-    if (!approvalIds) {
-      return [];
-    }
-    return [...approvalIds]
-      .map((approvalId) => this.records.get(approvalId))
-      .filter((record): record is ApprovalRecord => Boolean(record));
   }
 
   private recordPath(approvalId: string): string {
@@ -255,22 +243,6 @@ class FileApprovalStore implements ApprovalStore {
     }
   }
 
-  private store(record: ApprovalRecord, previous?: ApprovalRecord): void {
-    if (previous) {
-      this.unindex(previous);
-    }
-
-    this.records.set(record.approvalId, record);
-    this.index(record);
-  }
-
-  private index(record: ApprovalRecord): void {
-    indexValue(this.sessionIndex, normalizeSessionId(record.sessionId), record.approvalId);
-    if (record.subagentRunId) {
-      indexValue(this.subagentRunIndex, normalizeSubagentRunId(record.subagentRunId), record.approvalId);
-    }
-  }
-
   private persist(record: ApprovalRecord): void {
     mkdirSync(this.rootDir, {recursive: true});
     const filePath = this.recordPath(record.approvalId);
@@ -278,13 +250,6 @@ class FileApprovalStore implements ApprovalStore {
     writeFileSync(tempPath, `${JSON.stringify(record, null, 2)}\n`, 'utf8');
     rmSync(filePath, {force: true});
     renameSync(tempPath, filePath);
-  }
-
-  private unindex(record: ApprovalRecord): void {
-    unindexValue(this.sessionIndex, normalizeSessionId(record.sessionId), record.approvalId);
-    if (record.subagentRunId) {
-      unindexValue(this.subagentRunIndex, normalizeSubagentRunId(record.subagentRunId), record.approvalId);
-    }
   }
 }
 

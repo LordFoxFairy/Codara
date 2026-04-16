@@ -1,4 +1,4 @@
-import type {ReviewResumePayload} from '@core/agent';
+import type {ReviewResumePayload} from '@/index';
 import type {CliInteractionKind} from './view-state';
 
 export interface QueuedSessionPromptInteraction {

@@ -10,7 +10,6 @@ import { SkillsPage } from "./pages/SkillsPage";
 import { ConfigPage } from "./pages/ConfigPage";
 import { DebugPage } from "./pages/DebugPage";
 import { LogsPage } from "./pages/LogsPage";
-import { DocsPage } from "./pages/DocsPage";
 import { useCodara } from "./hooks/useCodara";
 import { useSessions } from "./hooks/useSessions";
 import { useStatus } from "./hooks/useStatus";
@@ -23,8 +22,7 @@ const PAGE_META: Record<NavPage, { title: string; subtitle: string }> = {
   skills: { title: "Skills & Tools", subtitle: "MCP servers, tools, and skill registry." },
   config: { title: "Configuration", subtitle: "Runtime settings, models, and providers." },
   debug: { title: "Debug", subtitle: "Command runner and runtime inspector." },
-  logs: { title: "Logs", subtitle: "Live runtime event stream." },
-  docs: { title: "Documentation", subtitle: "Quick reference for Codara features." },
+  logs: { title: "Status Monitor", subtitle: "Periodic runtime status polling." },
 };
 
 /* ── App ─────────────────────────────────────────────────── */
@@ -201,7 +199,6 @@ export function App() {
           {activePage === "config" && <ConfigPage />}
           {activePage === "debug" && <DebugPage />}
           {activePage === "logs" && <LogsPage />}
-          {activePage === "docs" && <DocsPage />}
         </main>
       </div>
     </div>

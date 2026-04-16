@@ -39,6 +39,11 @@ export {
   type AgentStreamOutput,
   type AgentType,
   type CreateAgentOptions,
+  type ReviewRequest,
+  type ReviewDecision,
+  type ReviewUIActionOption,
+  type ReviewUIFormOption,
+  type ReviewUIFormTab,
 } from '@core/agent';
 export {
   createTaskFileStore,
@@ -56,6 +61,14 @@ export {
   type CreateSubagentMiddlewareOptions,
 } from '@capability/subagent';
 export {
+  isSubagentInternalAssistantText,
+  isInvalidSubagentCompletionResponse,
+  shouldRetrySubagentCompletionResponse,
+} from '@capability/subagent/completion';
+export {
+  type CodaraCommandSpec,
+} from '@capability/command/runtime/types';
+export {
   createDailySessionFileLogSink,
   createBudgetMiddleware,
   createReviewMiddleware,
@@ -65,19 +78,14 @@ export {
   createPathInstructionsMiddleware,
   ASK_USER_TOOL_NAME,
   parseAskUserResult,
+  parseReviewToolMessagePayload,
   createPermissionMiddleware,
   createPermissionRuntime,
   ensurePermissionSettingsFile,
-  evaluatePermissionExpression,
   evaluatePermissionToolCall,
-  formatPermissionExpression,
-  handlePermissionFallbackResume,
   isPermissionReview,
-  persistAllowedPermission,
   persistPermissionScope,
   persistPermissionRule,
-  resolvePermissionSettingsFile,
-  validatePermissionSettings,
   createSummaryMiddleware,
   createSkillsMiddleware,
   type AskUserInput,
@@ -97,29 +105,27 @@ export {
 export {
   createMiddleware,
   type BaseMiddleware,
-  type ExecutionContextMetadata,
 } from '@core/pipeline/types';
 export {
-  FileCheckpointer,
-  InMemoryCheckpointer,
   createAgentFileCheckpointer,
   createAgentMemoryCheckpointer,
   type AgentCheckpoint,
   type AgentCheckpointer,
 } from '@durability/checkpoint';
+// FileCheckpointer, InMemoryCheckpointer — implementation details, import from @durability/checkpoint directly
 export {
   createCodaraGuidelinesSource,
   type GuidelinesSource,
-} from '@context/instructions/guidelines';
+} from '@context/guidelines';
 export {
   createCodaraPromptSource,
   type PromptSource,
-} from '@context/prompts/prompt-source';
+} from '@context/prompts';
 export {
   readBaseSystemMessage,
   type BaseSystemMessageBundle,
   type BaseSystemMessageRuntimeData,
-} from '@context/session-bundle/base-system-message';
+} from '@context/system-message';
 export {
   type SkillMetadata,
   type SkillCommandMetadata,
@@ -156,7 +162,7 @@ export {
   createSkillsRuntimeBundle,
   loadSkillsRuntimeBundle,
   type SkillsRuntimeBundle,
-} from '@context/skills/build';
+} from '@context/skills-bundle';
 export {
   createSession,
   FileSessionStore,
@@ -200,18 +206,11 @@ export {
   createMcpManager,
   createMcpLangChainTools,
   loadMcpConfig,
-  McpClient,
-  McpConfigSchema,
-  namespacedToolName,
-  parseNamespacedToolName,
-  routeMcpToolCall,
-  sanitizeToolName,
   type McpClientInfo,
-  type McpClientStatus,
   type McpConfig,
-  type McpLocalServerConfig,
   type McpManager,
-  type McpRemoteServerConfig,
   type McpServerConfig,
-  type McpToolDefinition,
 } from '@integration/mcp';
+// McpClient, McpConfigSchema, sanitizeToolName, etc. — internal, import from @integration/mcp directly
+export {MemoryWriter, MemoryReader, type MemoryType, type MemoryFile, type MemoryHeader} from '@capability/memory';
+export {restoreSession, type RestoredSession} from '@durability/session/restore';

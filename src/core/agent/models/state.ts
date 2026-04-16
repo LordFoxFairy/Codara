@@ -9,7 +9,7 @@ import type {
   AgentStatus,
   AgentType,
   ReviewRequest,
-} from './types';
+} from '@shared/contracts/agent-types';
 import type {
   AgentCheckpoint,
   AgentCheckpointInfo,
@@ -123,13 +123,6 @@ export function restoreCheckpointMetadata(state: MutableAgentState, record: Agen
   state.lastResult = summarizeCheckpointInfo(record.info);
 }
 
-export function hasEquivalentCheckpointState(
-  left: Pick<DurableState | AgentState, 'agentType' | 'messages' | 'context' | 'values' | 'pendingReview'>,
-  right: Pick<DurableState | AgentState, 'agentType' | 'messages' | 'context' | 'values' | 'pendingReview'>,
-): boolean {
-  return JSON.stringify(toComparableState(left)) === JSON.stringify(toComparableState(right));
-}
-
 export function cloneAgentState(state: AgentState): AgentState {
   return {sessionId: state.sessionId, ...cloneDurableState(state), status: state.status};
 }
@@ -167,27 +160,6 @@ function cloneDurableState(
   return {
     agentType: state.agentType,
     messages: cloneAgentMessages(state.messages),
-    context: cloneAgentContext(state.context),
-    values: cloneAgentValues(state.values),
-    ...(state.pendingReview ? {pendingReview: cloneReviewRequest(state.pendingReview)} : {}),
-  };
-}
-
-/** Serialized snapshot used only for JSON.stringify equality comparison. */
-type ComparableSnapshot = {
-  agentType: AgentType;
-  messages: unknown[];
-  context: AgentRuntimeContext;
-  values: AgentRuntimeValues;
-  pendingReview?: ReviewRequest;
-};
-
-function toComparableState(
-  state: Pick<DurableState | AgentState, 'agentType' | 'messages' | 'context' | 'values' | 'pendingReview'>,
-): ComparableSnapshot {
-  return {
-    agentType: state.agentType,
-    messages: mapChatMessagesToStoredMessages(state.messages),
     context: cloneAgentContext(state.context),
     values: cloneAgentValues(state.values),
     ...(state.pendingReview ? {pendingReview: cloneReviewRequest(state.pendingReview)} : {}),

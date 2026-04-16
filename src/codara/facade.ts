@@ -1,22 +1,14 @@
 import {existsSync} from 'node:fs';
-import {randomUUID} from 'node:crypto';
 import path from 'node:path';
 import type {StructuredToolInterface} from '@langchain/core/tools';
 import {createAgentFileCheckpointer} from '@durability/checkpoint';
-import {TranscriptWriter} from '../session/transcript';
-import {getTranscriptPath} from '../session/storage';
 import {createApprovalFileStore, type ApprovalStore} from '@durability/approval-store';
 import {ensurePermissionSettingsFile} from '@core/middleware/permission';
 import {createSubagentRunFileStore, createSubagentRunManager, type SubagentRunStore, type SubagentRunManager} from '@capability/subagent';
 import {createTaskFileStore} from '@capability/task';
 import {loadModelRoutingConfigFromPath, resolveCodaraPath} from '@integration/provider';
-import {createCodaraGuidelinesSource, type GuidelinesSource} from '@context/instructions/guidelines';
-import {createCodaraPromptSource, type PromptSource} from '@context/prompts/prompt-source';
-import {buildBaseSystemMessage} from '@context/session-bundle/base-system-message';
-import {DynamicSectionRegistry} from '@context/sections/dynamic';
-import {createGitContextProvider} from '@context/git-context';
-import {createMemoryContextProvider} from '@context/memory-context';
-import {loadCodaraMd} from '@config/codara-md';
+import {createCodaraGuidelinesSource, type GuidelinesSource} from '@context/guidelines';
+import {createCodaraPromptSource, type PromptSource} from '@context/prompts';
 import {createCodaraSkillsSource} from '@capability/skill';
 import {createSkillCodaraCommands} from '@capability/command/runtime/skill-commands';
 import {createCodaraCommandRunner, type CodaraCommandResult} from '@capability/command';
@@ -25,14 +17,21 @@ import {
   type SessionState, type SessionStore,
 } from '@durability/session';
 import type {CodaraRuntimeEvent, CodaraRuntimeEventListener} from '@observability/events';
+import {CostTracker, type CostSnapshot} from '@observability/cost';
 import {resolveWorkspaceRoot} from '@config/workspace';
-import {SettingsCache} from '@config/cache';
-import {resolveSettingsFilePaths} from '@config/sources';
-import {SettingsWatcher} from '@config/watcher';
-import {HookRegistryImpl, HookPipeline, createHookExecutor} from '@observability/hook';
-import type {HookSource, HookRegistry, SessionLifecycleHooks, AgentLifecycleHooks} from '@observability/hook';
-import {loadMcpConfig, createMcpManager, createMcpLangChainTools, type McpManager} from '@integration/mcp';
+import type {HookRegistry, SessionLifecycleHooks, AgentLifecycleHooks} from '@observability/hook';
+import {HookPipeline} from '@observability/hook';
+import type {McpManager} from '@integration/mcp';
 import type {ChannelRegistry} from '@integration/channel';
+import type {DynamicSectionRegistry} from '@context/dynamic-sections';
+import {MemoryWriter} from '@capability/memory/writer';
+import {MemoryReader} from '@capability/memory/reader';
+import {initSettings} from './runtime/init-settings';
+import {initContextSources} from './runtime/init-context';
+import {initHooks} from './runtime/init-hooks';
+import {initMcp} from './runtime/init-mcp';
+import {wireTranscript, wrapDispose} from './runtime/init-transcript';
+import {createCostMiddleware} from '@core/middleware/cost';
 import {createCodaraMiddlewares, createRuntimeDefaultMiddlewares, resolveRuntimeLoggingOptions,} from './assembly/middleware';
 import {getSubagentRunDetails} from './assembly/subagent-run-details';
 import {getSubagentRunSummaries} from './assembly/subagent-runs';
@@ -41,6 +40,7 @@ import {createCodaraTools} from './assembly/tools';
 import {resolveCodaraSkills} from './assembly/context';
 import {createCodaraReviewControl} from './review-control';
 import {createCodaraInteractionStream} from './interaction-stream';
+import {createDefaultAgentFactory, createDefaultMiddlewareFactory} from './agent-factory';
 import type {
   Codara, CodaraOptions, CodaraRuntimeOptions,
 } from './types';
@@ -81,186 +81,86 @@ export async function createCodaraRuntime(options: CodaraRuntimeOptions = {}): P
   const userHome = options.userHome ?? process.env.HOME ?? '';
 
   // 0. Unified Settings
-  const settingsCache = new SettingsCache({projectRoot, userHome, skipEnv: false});
-  const settings = await settingsCache.get();
+  const {settings, settingsWatcher} = await initSettings(projectRoot, userHome);
 
-  // Start settings watcher (non-blocking)
-  const settingsFilePaths = resolveSettingsFilePaths({projectRoot, userHome});
-  const settingsWatcher = new SettingsWatcher({
-    watchPaths: Object.values(settingsFilePaths).filter((p): p is string => p !== null),
-    onChange: () => settingsCache.invalidate(),
-  });
-  settingsWatcher.start().catch(() => {/* ignore watch failures */});
+  // 1. Context sources (guidelines, prompts, skills, dynamic sections)
+  const context = await initContextSources(options, projectRoot, userHome);
 
-  // 1. Infrastructure
-  const guidelinesSource = createCodaraGuidelinesSource({
-    cwd: options.cwd, projectRoot: options.projectRoot, userHome: options.userHome,
-  });
-  const promptSource = createCodaraPromptSource({
-    cwd: options.cwd, projectRoot: options.projectRoot, userHome: options.userHome,
-  });
-  const skills = resolveCodaraSkills(options);
-  const skillsSource = skills ? createCodaraSkillsSource(skills) : undefined;
-
-  // Dynamic context sections (git status, memory)
-  const dynamicSections = new DynamicSectionRegistry();
-  dynamicSections.register('git', createGitContextProvider(projectRoot));
-  const memoryDir = path.join(userHome, '.codara', 'memory');
-  dynamicSections.register('memory', createMemoryContextProvider(memoryDir));
-
-  // Load CODARA.md instructions as a dynamic section
-  dynamicSections.register('instructions', async () => {
-    const result = await loadCodaraMd({projectRoot, userHome});
-    if (result.instructions.length === 0) return undefined;
-    return result.instructions.map(i => i.content).join('\n\n');
-  });
-
-  await buildBaseSystemMessage({
-    promptSource,
-    guidelinesSource,
-    skillsSource,
-    dynamicSections,
-  });
-  const taskStore = options.taskStore ?? createTaskFileStore({
-    rootDir: path.join(runtimeStatePath, 'tasks'),
-  });
-  const subagentRunStore = options.subagentRunStore ?? createSubagentRunFileStore({
-    rootDir: path.join(runtimeStatePath, 'agent-runs'),
-  });
-  const approvalStore = options.approvalStore ?? createApprovalFileStore({
-    rootDir: path.join(runtimeStatePath, 'approvals'),
-  });
-  const runtimeCheckpointer = options.checkpointer ?? createAgentFileCheckpointer({
-    rootDir: path.join(runtimeStatePath, 'sessions'),
-  });
+  // 2. Persistence stores
+  const taskStore = options.taskStore ?? createTaskFileStore({rootDir: path.join(runtimeStatePath, 'tasks')});
+  const subagentRunStore = options.subagentRunStore ?? createSubagentRunFileStore({rootDir: path.join(runtimeStatePath, 'agent-runs')});
+  const approvalStore = options.approvalStore ?? createApprovalFileStore({rootDir: path.join(runtimeStatePath, 'approvals')});
+  const runtimeCheckpointer = options.checkpointer ?? createAgentFileCheckpointer({rootDir: path.join(runtimeStatePath, 'sessions')});
   const subagentRunManager = createSubagentRunManager({runStore: subagentRunStore, approvalStore});
-  ensurePermissionSettingsFile({
-    cwd: options.cwd, projectRoot: options.projectRoot, userHome: options.userHome,
-  });
+  ensurePermissionSettingsFile({cwd: options.cwd, projectRoot: options.projectRoot, userHome: options.userHome});
 
-  // 2. Model catalog
+  // 3. Model catalog
   const catalog = !options.model && !options.catalog && !options.config
     ? loadModelRoutingConfigFromPath(codaraPath).then((config) => createCodaraModelCatalog({config}))
     : options.catalog;
 
-  // 3. Logging + tools
+  // 4. Logging + tools
   const logging = resolveRuntimeLoggingOptions(options);
   const runtimeTools: StructuredToolInterface[] = createCodaraTools({
     builtinTools: options.builtinTools, cwd: options.cwd, tools: options.tools,
   });
 
-  // 4. Hooks (prefer unified settings, fallback to legacy hooks.json)
-  const hookRegistry = new HookRegistryImpl();
-  if (settings.hooks && Object.keys(settings.hooks).length > 0) {
-    hookRegistry.loadFromSettings(settings.hooks);
-  } else {
-    const hookSources: HookSource[] = [{kind: 'project', path: path.join(runtimeStatePath, 'hooks.json')}];
-    if (userHome) hookSources.push({kind: 'user', path: path.join(userHome, '.codara', 'hooks.json')});
-    await hookRegistry.load(hookSources);
+  // Steps 5+ can fail — wrap in try/catch to clean up earlier resources
+  let hooks: Awaited<ReturnType<typeof initHooks>> | undefined;
+  let mcp: Awaited<ReturnType<typeof initMcp>> | undefined;
+
+  try {
+    // 5. Hooks
+    hooks = await initHooks(settings, runtimeStatePath, userHome, codaraPath);
+
+    // 6. MCP
+    mcp = await initMcp(options.mcp, settings, projectRoot, userHome);
+    runtimeTools.push(...mcp.mcpTools);
+
+    // 7. Memory writer + reader
+    const memoryDir = path.join(userHome, '.codara', 'memory');
+    const memoryWriter = new MemoryWriter(memoryDir);
+    const memoryReader = new MemoryReader(memoryDir);
+
+    // 8. Middleware chain
+    const runtimeMiddlewares = createRuntimeDefaultMiddlewares({
+      options, runtimeTools, taskStore, subagentRunStore, subagentRunManager,
+      subagentCheckpointer: runtimeCheckpointer, approvalStore, logging, catalog,
+      promptSource: context.promptSource, guidelinesSource: context.guidelinesSource,
+      skillsSource: context.skillsSource, hookPipeline: hooks.hookPipeline,
+      channelRegistry: options.channelRegistry, memoryWriter, memoryReader,
+    });
+
+    // 9. Assemble facade
+    let runtime = assembleCodara({
+      ...options,
+      tools: runtimeTools, middleware: runtimeMiddlewares, review: false,
+      summary: options.summary === false ? false : (options.summary ?? {}),
+      ...(logging === false ? {logging: false} : {logging}),
+      ...(catalog ? {catalog} : {}),
+      ...(options.store ? {} : {store: new FileSessionStore({basePath: path.join(runtimeStatePath, 'sessions')})}),
+      ...(options.checkpointer ? {} : {checkpointer: runtimeCheckpointer}),
+      restore: options.restore ?? 'latest',
+    }, undefined, {
+      promptSource: context.promptSource, guidelinesSource: context.guidelinesSource,
+      hookPipeline: hooks.hookPipeline, hookRegistry: hooks.hookRegistry,
+      mcpManager: mcp.mcpManager, subagentRunStore, subagentRunManager, approvalStore,
+      channelRegistry: options.channelRegistry, dynamicSections: context.dynamicSections,
+      memoryWriter, memoryReader,
+    });
+
+    // 10. Wire transcript + dispose chain
+    const transcriptWriter = wireTranscript(runtime, projectRoot, userHome);
+    const originalDispose = runtime.dispose;
+    runtime = {...runtime, dispose: wrapDispose(originalDispose, transcriptWriter, settingsWatcher)};
+
+    return runtime;
+  } catch (error) {
+    // Clean up resources from earlier steps on failure
+    if (mcp?.mcpManager) await mcp.mcpManager.dispose().catch(() => {});
+    await settingsWatcher.stop().catch(() => {});
+    throw error;
   }
-  const hookPipeline = new HookPipeline(hookRegistry, {
-    createStrategy: (hook) => createHookExecutor(hook, {projectRoot: codaraPath}),
-  });
-
-  // 5. MCP (prefer unified settings, fallback to legacy mcp.json)
-  let mcpManager: McpManager | undefined;
-  if (options.mcp !== false) {
-    const mcpConfig = options.mcp
-      ?? (settings.mcpServers && Object.keys(settings.mcpServers).length > 0
-        ? {mcpServers: settings.mcpServers}
-        : await loadMcpConfig({projectRoot, userHome: options.userHome}));
-    if (Object.keys(mcpConfig.mcpServers).length > 0) {
-      mcpManager = createMcpManager(mcpConfig);
-      await mcpManager.init();
-      runtimeTools.push(...createMcpLangChainTools(mcpManager));
-    }
-  }
-
-  // 6. Middleware chain
-  const runtimeMiddlewares = createRuntimeDefaultMiddlewares({
-    options,
-    runtimeTools,
-    taskStore,
-    subagentRunStore,
-    subagentRunManager,
-    subagentCheckpointer: runtimeCheckpointer,
-    approvalStore,
-    logging,
-    catalog,
-    promptSource,
-    guidelinesSource,
-    skillsSource,
-    hookPipeline,
-    channelRegistry: options.channelRegistry,
-  });
-
-  // 7. Assemble facade
-  let runtime = assembleCodara({
-    ...options,
-    tools: runtimeTools, middleware: runtimeMiddlewares, review: false,
-    summary: options.summary === false ? false : (options.summary ?? {}),
-    ...(logging === false ? {logging: false} : {logging}),
-    ...(catalog ? {catalog} : {}),
-    ...(options.store ? {} : {store: new FileSessionStore({basePath: path.join(runtimeStatePath, 'sessions')})}),
-    ...(options.checkpointer ? {} : {
-      checkpointer: runtimeCheckpointer,
-    }),
-    restore: options.restore ?? 'latest',
-  }, undefined, {
-    promptSource, guidelinesSource, hookPipeline, hookRegistry, mcpManager,
-    subagentRunStore, subagentRunManager, approvalStore,
-    channelRegistry: options.channelRegistry,
-    dynamicSections,
-  });
-
-  // Wire JSONL transcript writer (supplementary to checkpoints, for audit/recovery)
-  const transcriptPath = getTranscriptPath({
-    projectRoot,
-    userHome,
-    sessionId: runtime.getState().sessionId,
-  });
-  const transcriptWriter = new TranscriptWriter({filePath: transcriptPath});
-  runtime.subscribeRuntimeEvents((event) => {
-    if (event.kind === 'model' && event.phase === 'end') {
-      transcriptWriter.append({
-        type: 'assistant',
-        uuid: event.id ?? randomUUID(),
-        timestamp: Date.now(),
-        content: event.label ?? '',
-        metadata: {model: event.detail},
-      });
-    }
-    if (event.kind === 'tool' && event.phase === 'end') {
-      transcriptWriter.append({
-        type: 'tool_result',
-        uuid: event.id ?? randomUUID(),
-        timestamp: Date.now(),
-        content: event.detail ?? '',
-        metadata: {toolName: event.label},
-      });
-    }
-    if (event.kind === 'turn' && event.phase === 'start') {
-      transcriptWriter.append({
-        type: 'user',
-        uuid: event.id ?? randomUUID(),
-        timestamp: Date.now(),
-        content: event.label ?? '',
-      });
-    }
-  });
-
-  // Wire settings watcher + transcript cleanup into runtime dispose
-  const originalDispose = runtime.dispose;
-  runtime = {
-    ...runtime,
-    dispose: async () => {
-      await transcriptWriter.close();
-      await settingsWatcher.stop();
-      await originalDispose();
-    },
-  };
-
-  return runtime;
 }
 
 // ── Session Openers ──
@@ -269,8 +169,24 @@ export async function openCodaraSession(
   options: CodaraOptions & {sessionId: string; store: SessionStore},
 ): Promise<Codara> {
   const sessionState = await options.store.get(options.sessionId);
-  if (!sessionState) throw new Error(`Session not found: ${options.sessionId}`);
-  return reopenCodaraSession(options, sessionState);
+  if (sessionState) return reopenCodaraSession(options, sessionState);
+
+  // Fallback: attempt transcript-based restore
+  if (options.projectRoot || options.cwd) {
+    const {restoreSession} = await import('@durability/session/restore');
+    const {getTranscriptPath} = await import('@durability/session/storage');
+    const projectRoot = resolveWorkspaceRoot({cwd: options.cwd, projectRoot: options.projectRoot});
+    const userHome = options.userHome ?? process.env.HOME ?? '';
+    const transcriptPath = getTranscriptPath({projectRoot, userHome, sessionId: options.sessionId});
+    try {
+      const restored = await restoreSession(transcriptPath);
+      if (restored.entries.length > 0) {
+        return assembleCodara({...options, sessionId: options.sessionId, restore: 'never'});
+      }
+    } catch { /* transcript not available */ }
+  }
+
+  throw new Error(`Session not found: ${options.sessionId}`);
 }
 
 export async function openLatestCodaraSession(
@@ -298,8 +214,12 @@ export function assembleCodara(
     approvalStore?: ApprovalStore;
     channelRegistry?: ChannelRegistry;
     dynamicSections?: DynamicSectionRegistry;
+    memoryWriter?: MemoryWriter;
+    memoryReader?: MemoryReader;
+    costTracker?: CostTracker;
   },
 ): Codara {
+  const costTracker = preloadedSources?.costTracker ?? new CostTracker();
   const skills = resolveCodaraSkills(options);
   const skillsSource = skills ? createCodaraSkillsSource(skills) : undefined;
   const alias = normalizeAlias(options.alias);
@@ -311,12 +231,14 @@ export function assembleCodara(
   });
 
   const tools = createCodaraTools(options);
+  const agentFactory = createDefaultAgentFactory();
+  const middlewareFactory = createDefaultMiddlewareFactory();
   const session = createSession({
     ...(restoredState ? {state: restoredState} : {}),
     id: options.id, sessionId: options.sessionId, store: options.store,
     checkpointer: options.checkpointer, restore: options.restore,
     messages: options.messages, context: options.context, values: options.values,
-    modelRef: alias,
+    modelRef: alias, agentFactory, middlewareFactory,
     ...(options.model ? {model: options.model} : {}),
     ...(!options.model ? {modelCatalog: options.catalog ?? createCodaraModelCatalog({config: options.config})} : {}),
     guidelinesSource, promptSource,
@@ -324,8 +246,8 @@ export function assembleCodara(
     ...(preloadedSources?.dynamicSections ? {dynamicSections: preloadedSources.dynamicSections} : {}),
     tools,
     ...(options.handleToolErrors !== undefined ? {handleToolErrors: options.handleToolErrors} : {}),
-    middleware: createCodaraMiddlewares(options, preloadedSources?.channelRegistry),
-    ...(options.summary ? {summary: options.summary} : {}),
+    middleware: [createCostMiddleware({tracker: costTracker}), ...createCodaraMiddlewares(options, preloadedSources?.channelRegistry)],
+    ...(options.summary ? {summary: options.summary as false | Record<string, unknown>} : {}),
     ...(options.inputBudget ? {inputBudget: options.inputBudget} : {}),
     ...(preloadedSources?.hookPipeline ? {lifecycle: preloadedSources.hookPipeline as SessionLifecycleHooks & AgentLifecycleHooks} : {}),
   });
@@ -333,10 +255,12 @@ export function assembleCodara(
 
   // Extra properties for commands (/reload, /hooks, /mcp)
   const mcpManager = preloadedSources?.mcpManager;
-  const extraProps: Record<string, PropertyDescriptor> = {};
-  if (preloadedSources?.hookRegistry) extraProps.hookRegistry = {value: preloadedSources.hookRegistry, writable: false};
-  if (mcpManager) extraProps.getMcpStatus = {value: () => mcpManager.status(), writable: false};
-  const commandAgent = Object.keys(extraProps).length > 0 ? Object.create(session, extraProps) : session;
+  const commandAgent = {
+    ...session,
+    ...(preloadedSources?.hookRegistry ? {hookRegistry: preloadedSources.hookRegistry} : {}),
+    ...(mcpManager ? {getMcpStatus: () => mcpManager.status()} : {}),
+    getCostSnapshot: () => costTracker.getSnapshot(),
+  };
 
   const commands = createCodaraCommandRunner({
     agent: commandAgent,
@@ -417,6 +341,8 @@ export function assembleCodara(
     streamInteraction,
     resumeReview: reviewControl.resumeReview,
     getChannelRegistry: () => channelRegistry,
+    getMemoryWriter: () => preloadedSources?.memoryWriter,
+    getCostSnapshot: () => costTracker.getSnapshot(),
     dispose,
   };
 }

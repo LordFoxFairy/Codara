@@ -11,7 +11,7 @@ import {
   type SkillStore
 } from '@capability/skill'
 import {createSkillTool} from '@capability/skill/runtime/commands'
-import {loadSkillsRuntimeBundle} from '@context/skills/build'
+import {loadSkillsRuntimeBundle} from '@context/skills-bundle'
 
 function createBaseContext(runId: string) {
   const messages: BaseMessage[] = [new HumanMessage('hello')]

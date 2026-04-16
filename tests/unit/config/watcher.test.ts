@@ -1,5 +1,5 @@
 import {describe, expect, it} from 'bun:test';
-import {mkdtemp, rm, writeFile} from 'node:fs/promises';
+import {mkdir, mkdtemp, rm, writeFile} from 'node:fs/promises';
 import os from 'node:os';
 import path from 'node:path';
 import {SettingsWatcher} from '@config/watcher';
@@ -7,20 +7,23 @@ import {SettingsWatcher} from '@config/watcher';
 describe('SettingsWatcher', () => {
   it('should detect file changes and invoke callback', async () => {
     const root = await mkdtemp(path.join(os.tmpdir(), 'codara-watcher-'));
-    const settingsPath = path.join(root, 'settings.json');
+    const settingsDir = path.join(root, '.codara');
+    await mkdir(settingsDir, {recursive: true});
+    const settingsPath = path.join(settingsDir, 'settings.json');
     try {
       await writeFile(settingsPath, JSON.stringify({model: 'opus'}));
       let changeCount = 0;
       const watcher = new SettingsWatcher({
         watchPaths: [settingsPath],
-        onChange: () => {
+        onChange: (_changedPath: string) => {
           changeCount++;
         },
         stabilityThreshold: 100,
       });
       await watcher.start();
       await writeFile(settingsPath, JSON.stringify({model: 'sonnet'}));
-      await new Promise(resolve => setTimeout(resolve, 300));
+      // Allow time for fs.watch event + debounce stabilityThreshold (100ms)
+      await new Promise(resolve => setTimeout(resolve, 500));
       expect(changeCount).toBeGreaterThanOrEqual(1);
       await watcher.stop();
     } finally {
@@ -30,19 +33,21 @@ describe('SettingsWatcher', () => {
 
   it('should ignore internal writes', async () => {
     const root = await mkdtemp(path.join(os.tmpdir(), 'codara-watcher-'));
-    const settingsPath = path.join(root, 'settings.json');
+    const settingsDir = path.join(root, '.codara');
+    await mkdir(settingsDir, {recursive: true});
+    const settingsPath = path.join(settingsDir, 'settings.json');
     try {
       await writeFile(settingsPath, JSON.stringify({model: 'opus'}));
       let changeCount = 0;
       const watcher = new SettingsWatcher({
         watchPaths: [settingsPath],
-        onChange: () => {
+        onChange: (_changedPath: string) => {
           changeCount++;
         },
         stabilityThreshold: 100,
       });
       await watcher.start();
-      watcher.markInternalWrite();
+      watcher.markInternalWrite(settingsPath);
       await writeFile(settingsPath, JSON.stringify({model: 'sonnet'}));
       await new Promise(resolve => setTimeout(resolve, 300));
       expect(changeCount).toBe(0);

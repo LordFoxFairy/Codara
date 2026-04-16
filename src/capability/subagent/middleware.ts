@@ -1,8 +1,7 @@
-import {createMiddleware, type BaseMiddleware} from '@core/pipeline/types';
-import {createSubagentCatalogMessage, readSkillsRuntimeData} from '@capability/skill';
-import {createSubagentRunManager} from '@capability/subagent/run-manager';
-import {createSubagentRunMemoryStore} from '@capability/subagent/run-store';
 import {
+  createMiddleware,
+  type BaseMiddleware,
+  MIDDLEWARE_NAMES,
   createAskUserQuestionMiddleware,
   createBudgetMiddleware,
   type ReviewMiddlewareOptions,
@@ -10,12 +9,17 @@ import {
   createPermissionMiddleware,
   createTodoListMiddleware,
   type LoggingMiddlewareOptions,
-} from '@core/middleware';
-import {MIDDLEWARE_NAMES} from '@core/pipeline/types';
-import type {PermissionMiddlewareOptions} from '@core/middleware/permission/middleware';
+  type PermissionMiddlewareOptions,
+} from './adapters/core-bridge';
+import {createSubagentCatalogMessage, readSkillsRuntimeData} from '@capability/skill';
+import {createSubagentRunManager} from '@capability/subagent/run-manager';
+import {createSubagentRunMemoryStore} from '@capability/subagent/run-store';
 import type {StructuredToolInterface} from '@langchain/core/tools';
 import {createTaskTools} from '@capability/task/tools';
 import type {TaskStore} from '@capability/task/types';
+import {createMemoryWriteTool, createMemoryReadTool, createMemoryListTool} from '@capability/memory/tool';
+import type {MemoryWriter} from '@capability/memory/writer';
+import type {MemoryReader} from '@capability/memory/reader';
 import {
   AGENT_TOOL_NAME,
   createSubagentTool,
@@ -41,6 +45,8 @@ export interface CreateSubagentMiddlewareOptions extends CreateSubagentToolOptio
   name?: string;
   childRuntime?: SubagentChildRuntimeOptions;
   taskStore?: TaskStore;
+  memoryWriter?: MemoryWriter;
+  memoryReader?: MemoryReader;
 }
 
 export function createSubagentMiddleware(options: CreateSubagentMiddlewareOptions): BaseMiddleware {
@@ -51,11 +57,16 @@ export function createSubagentMiddleware(options: CreateSubagentMiddlewareOption
   });
   const childMiddlewares = buildSubagentChildMiddlewares(options);
   const taskTools = options.taskStore ? createTaskTools({store: options.taskStore}) : [];
+  const memoryTools = [
+    ...(options.memoryWriter ? [createMemoryWriteTool({writer: options.memoryWriter})] : []),
+    ...(options.memoryReader ? [createMemoryReadTool({reader: options.memoryReader}), createMemoryListTool({reader: options.memoryReader})] : []),
+  ];
 
   const middleware = createMiddleware({
     name: options.name?.trim() || MIDDLEWARE_NAMES.Agent,
     tools: [
       ...taskTools,
+      ...memoryTools,
       createSubagentTool({...options, runStore, runManager, childMiddleware: childMiddlewares}),
     ],
     beforeModel(context) {
@@ -108,6 +119,8 @@ export function applyRuntimeSubagentDefaults(
     ...runtimeDefaults,
     ...options,
     taskStore: runtimeDefaults.taskStore,
+    memoryWriter: runtimeDefaults.memoryWriter,
+    memoryReader: runtimeDefaults.memoryReader,
     runStore: 'runStore' in options ? options.runStore : runtimeDefaults.runStore,
     runManager: 'runManager' in options ? options.runManager : runtimeDefaults.runManager,
     checkpointer: runtimeDefaults.checkpointer,

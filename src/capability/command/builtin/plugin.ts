@@ -1,7 +1,6 @@
 import type {CodaraCommandDefinition} from '@capability/command/runtime/types';
 import {installPluginSkills, listSupportedPluginSpecs} from '@capability/command/catalog/plugin-install';
-
-const BUILTIN_SOURCE = {type: 'builtin'} as const;
+import {BUILTIN_SOURCE} from './formatters';
 
 export const pluginCommand: CodaraCommandDefinition = {
   name: 'plugin',

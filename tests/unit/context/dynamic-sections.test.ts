@@ -1,5 +1,5 @@
 import {describe, expect, it} from 'bun:test';
-import {DynamicSectionRegistry, SYSTEM_PROMPT_DYNAMIC_BOUNDARY} from '@context/sections/dynamic';
+import {DynamicSectionRegistry, SYSTEM_PROMPT_DYNAMIC_BOUNDARY} from '@context/dynamic-sections';
 
 describe('DynamicSectionRegistry', () => {
   it('should register and resolve sections', async () => {

@@ -147,9 +147,17 @@ export class CodaraBus {
         case 'status':
           await this.handleStatus(clientId, request);
           break;
-        default:
+        default: {
           // Exhaustive — future request types will trigger a compile error.
+          const _exhaustive: never = request;
+          this.events.emit({
+            type: 'error',
+            sessionId: 'unknown',
+            requestId: 'unknown',
+            message: `Unknown request type: ${(request as {type: string}).type}`,
+          });
           break;
+        }
       }
     } catch (error) {
       // Emit error for requests that carry a requestId.
@@ -418,15 +426,10 @@ export class CodaraBus {
       return;
     }
 
-    // Custom chunk — review pause event.
+    // Custom chunk — review pause / tool progress events.
+    // review_required is emitted from the result handler in pipeStream;
+    // in-flight custom chunks are intentionally ignored here.
     if (isCustomChunk(chunk)) {
-      if (chunk.type === 'review_event' && chunk.payload) {
-        const payload = chunk.payload as {type?: string; request?: unknown};
-        if (payload.type === 'review_pause') {
-          // The review_required event is emitted from the result handler in pipeStream.
-          // This is an in-flight notification; no separate event needed here.
-        }
-      }
       return;
     }
 

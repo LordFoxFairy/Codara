@@ -1,7 +1,6 @@
 import type {CodaraCommandDefinition} from '@capability/command/runtime/types';
 import type {ConversationCompactionResult} from '@durability/session';
-
-const BUILTIN_SOURCE = {type: 'builtin'} as const;
+import {BUILTIN_SOURCE} from './formatters';
 
 export const compactCommand: CodaraCommandDefinition = {
   name: 'compact',

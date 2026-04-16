@@ -33,6 +33,7 @@ export class DiscordGatewayClient {
   private resumeGatewayUrl: string | null = null;
   private running = false;
   private reconnectAttempts = 0;
+  private _botUserId: string | null = null;
 
   private readonly botToken: string;
   private onMessageCreate: ((message: DiscordMessage) => void) | null = null;
@@ -158,6 +159,7 @@ export class DiscordGatewayClient {
         const data = payload.d as GatewayReadyData;
         this.sessionId = data.session_id;
         this.resumeGatewayUrl = data.resume_gateway_url;
+        this._botUserId = data.user.id;
         break;
       }
 
@@ -290,5 +292,10 @@ export class DiscordGatewayClient {
   /** Whether the client is currently connected. */
   get connected(): boolean {
     return this.ws !== null && this.ws.readyState === WebSocket.OPEN;
+  }
+
+  /** The bot's own user ID, available after READY. */
+  get botUserId(): string | null {
+    return this._botUserId;
   }
 }

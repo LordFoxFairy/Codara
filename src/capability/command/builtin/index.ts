@@ -5,6 +5,8 @@ import {configCommand} from './config';
 import {contextCommand} from './context';
 import {costCommand} from './cost';
 import {diffCommand} from './diff';
+import {exitCommand} from './exit';
+import {exportCommand} from './export';
 import {helpCommand} from './help';
 import {hooksCommand} from './hooks';
 import {mcpCommand} from './mcp';
@@ -15,6 +17,7 @@ import {pluginCommand} from './plugin';
 import {reloadCommand} from './reload';
 import {resumeCommand} from './resume';
 import {rewindCommand} from './rewind';
+import {sessionCommand} from './session';
 import {statusCommand} from './status';
 
 export function createBuiltInCommands(): readonly CodaraCommandDefinition[] {
@@ -36,5 +39,8 @@ export function createBuiltInCommands(): readonly CodaraCommandDefinition[] {
     configCommand,
     diffCommand,
     rewindCommand,
+    exitCommand,
+    sessionCommand,
+    exportCommand,
   ];
 }
