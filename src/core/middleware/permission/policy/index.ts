@@ -1,11 +1,8 @@
 /**
- * Permission policy module — replaces the monolithic policy.ts.
+ * Permission policy module.
  *
- * Re-exports all public API from sub-modules for backwards compatibility.
+ * Re-exports all public API from sub-modules.
  */
-
-// Wildcard matching
-export {match as wildcardMatch, matchTool, globToRegExp} from './wildcard';
 
 // Config loading
 export {

@@ -17,9 +17,32 @@ import type {
   PermissionRuleMatch,
   PermissionRuleSet,
 } from '../types';
-import {match as wildcardMatch, matchTool} from './wildcard';
 import {loadPermissionRules, resolvePermissionProjectRoot} from './config';
 import path from 'node:path';
+
+// ── Glob/wildcard matching ──────────────────────────────────────────
+
+function escapeRegExp(value: string): string {
+  return value.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+}
+
+/** Convert a glob pattern (with `*` wildcards) to a RegExp. */
+export function globToRegExp(pattern: string, caseInsensitive = false): RegExp {
+  const escaped = escapeRegExp(pattern).replace(/\\\*/g, '.*');
+  return new RegExp(`^${escaped}$`, caseInsensitive ? 'i' : '');
+}
+
+/** Test if a value matches a glob pattern. `*` is the only wildcard. */
+function wildcardMatch(value: string, pattern: string): boolean {
+  if (pattern === '*') return true;
+  if (!pattern.includes('*')) return value === pattern;
+  return globToRegExp(pattern, true).test(value);
+}
+
+/** Test if a tool name matches a rule tool pattern (case-insensitive). */
+function matchTool(callTool: string, ruleTool: string): boolean {
+  return globToRegExp(ruleTool, true).test(callTool);
+}
 
 /** Tools that are considered "edit/file" tools for the acceptEdits mode */
 const EDIT_TOOLS = new Set([
@@ -211,7 +234,7 @@ export async function evaluatePermissionExpression(
   };
 }
 
-/** Convert PermissionRuleEntry to legacy PermissionRuleMatch format. */
+/** Convert PermissionRuleEntry to compact PermissionRuleMatch format. */
 function toRuleMatch(entry: PermissionRuleEntry | null): PermissionRuleMatch | null {
   if (!entry) return null;
   return {
@@ -219,7 +242,6 @@ function toRuleMatch(entry: PermissionRuleEntry | null): PermissionRuleMatch | n
     rule: `${entry.permission}(${entry.pattern})`,
     scope: entry.source.scope,
     path: entry.source.path,
-    format: null,
   };
 }
 

@@ -1,5 +1,5 @@
 import path from 'node:path';
-import {globToRegExp} from '@core/middleware/permission/policy/wildcard';
+import {globToRegExp} from '@core/middleware/permission/policy/evaluate';
 import type {NormalizedBashCommand} from '@core/middleware/permission/bash-parser';
 import {
   normalizeBashCommandTokens,
@@ -65,6 +65,14 @@ export function bashSpecifierMatches(callSpecifier: string, ruleSpecifier: strin
     return false;
   }
 
+  // Legacy prefix syntax from Claude Code: "npm:*" matches "npm install", "npm run dev", etc.
+  const colonPrefix = extractPrefixFromColonStar(rule);
+  if (colonPrefix !== null) {
+    const normalized = normalizeBashCommandForMatching(raw);
+    if (!normalized) return false;
+    return normalized.specifier === colonPrefix || normalized.specifier.startsWith(colonPrefix + ' ');
+  }
+
   if (!rule.includes('*')) {
     if (raw === rule) {
       return true;
@@ -102,6 +110,16 @@ export function bashSpecifierMatches(callSpecifier: string, ruleSpecifier: strin
   }
 
   return globToRegExp(rule).test(normalized.specifier);
+}
+
+/**
+ * Extract prefix from legacy `:*` syntax (e.g. "npm:*" -> "npm").
+ * Ported from Claude Code's shellRuleMatching.ts.
+ */
+function extractPrefixFromColonStar(rule: string): string | null {
+  if (!rule.endsWith(':*')) return null;
+  const prefix = rule.slice(0, -2);
+  return prefix || null;
 }
 
 export function normalizeCompoundBashCommands(command: string): NormalizedBashCommand[] {

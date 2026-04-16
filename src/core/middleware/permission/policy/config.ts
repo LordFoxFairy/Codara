@@ -358,7 +358,7 @@ export function createPermissionRulesFromSettings(
     if (!entries) continue;
     for (const expression of entries) {
       if (typeof expression !== 'string') continue;
-      const parsed = parseSettingsExpression(expression);
+      const parsed = parseExpression(expression);
       if (parsed) {
         rules.push({...parsed, action, source});
       }
@@ -384,24 +384,5 @@ function mapDefaultMode(mode: string | undefined): PermissionAction {
   }
 }
 
-/**
- * Parse a settings expression like "Bash(rm -rf:*)" or "Read" into permission + pattern.
- * Reuses the same format as parseLegacyRules but exposed for settings use.
- */
-function parseSettingsExpression(expression: string): { permission: string; pattern: string } | undefined {
-  const text = expression.trim();
-  if (!text) return undefined;
-  const openIndex = text.indexOf('(');
-  if (openIndex < 0) {
-    return {permission: text, pattern: '*'};
-  }
-  if (!text.endsWith(')')) {
-    return undefined;
-  }
-  return {
-    permission: text.slice(0, openIndex).trim(),
-    pattern: text.slice(openIndex + 1, -1) || '*',
-  };
-}
 
 export {DEFAULT_ALLOWED_RULES};

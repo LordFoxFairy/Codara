@@ -20,14 +20,22 @@ export {
   resolvePermissionSettingsFile,
   validatePermissionSettings,
 } from '@core/middleware/permission/policy';
+export {
+  checkPathSafety,
+  isPathWithinDirectory,
+  DANGEROUS_FILES,
+  DANGEROUS_DIRECTORIES,
+} from '@core/middleware/permission/path-safety';
+export {
+  detectUnreachableRules,
+  type UnreachableRule,
+  type ShadowType,
+} from '@core/middleware/permission/shadowed-rules';
 export type {
   PermissionAction,
   PermissionEvaluationResult,
   PermissionPolicyOptions,
   PermissionRule,
-  PermissionRuleMatch,
-  PermissionSourceInfo,
   PermissionValidationResult,
-  PermissionReply,
   PermissionConfig,
 } from '@core/middleware/permission/types';

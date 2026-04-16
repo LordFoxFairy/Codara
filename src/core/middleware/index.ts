@@ -111,8 +111,6 @@ export {
   type PermissionPolicyOptions,
   type PermissionRuntime,
   type PermissionRuntimeOptions,
-  type PermissionRuleMatch,
-  type PermissionSourceInfo,
   type PermissionValidationResult,
 } from './permission';
 export {

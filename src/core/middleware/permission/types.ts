@@ -17,12 +17,6 @@ export interface PermissionRule {
   action: PermissionAction;
 }
 
-/** Reply from the user when asked about a permission */
-export type PermissionReply =
-  | { type: 'once' }
-  | { type: 'always'; rule: PermissionRule }
-  | { type: 'reject'; message?: string };
-
 /**
  * Configuration format for settings.json.
  * Supports both flat and nested formats:
@@ -45,6 +39,14 @@ export interface PermissionRuleEntry extends PermissionRule {
   source: PermissionRuleSource;
 }
 
+/** Compact representation of a matched rule for metadata/UI consumption. */
+export interface PermissionRuleMatch {
+  bucket: PermissionAction;
+  rule: string;
+  scope: string;
+  path: string;
+}
+
 /** Result of evaluating a permission expression */
 export interface PermissionEvaluationResult {
   /** The expression that was evaluated (e.g. "Bash(git status)") */
@@ -53,7 +55,7 @@ export interface PermissionEvaluationResult {
   decision: PermissionAction;
   /** The rule that matched, if any */
   matchedRule: PermissionRuleEntry | null;
-  /** Legacy accessor — same data as matchedRule in PermissionRuleMatch format */
+  /** Compact representation of the matched rule — derived from matchedRule */
   matched: PermissionRuleMatch | null;
   /** Default decision when no rules match */
   defaultDecision: PermissionAction;
@@ -97,12 +99,4 @@ export interface PermissionPolicyOptions {
 export interface PermissionRuleSet {
   rules: PermissionRuleEntry[];
   defaultDecision: PermissionAction;
-}
-
-export interface PermissionRuleMatch {
-  bucket: PermissionAction;
-  rule: string;
-  scope: string;
-  path: string;
-  format: string | null;
 }

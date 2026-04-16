@@ -205,7 +205,6 @@ async function resolvePermissionDecision(
         rule: `${evaluation.matchedRule.permission}(${evaluation.matchedRule.pattern})`,
         scope: evaluation.matchedRule.source.scope,
         path: evaluation.matchedRule.source.path,
-        format: null,
       } : null,
       reason,
       sources: evaluation.sources,
