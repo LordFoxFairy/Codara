@@ -3,7 +3,7 @@
 import {readFile} from 'node:fs/promises';
 import {StructuredTool} from '@langchain/core/tools';
 import {z} from 'zod';
-import {validatePath, formatError, getErrorCode, getErrorMessage} from '@integration/tool/utils';
+import {validatePath, formatError, getErrorCode, getErrorMessage} from '@tools/utils';
 
 // ── Notebook JSON 类型 ──────────────────────────────────────────────────
 

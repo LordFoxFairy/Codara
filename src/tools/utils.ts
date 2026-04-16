@@ -7,7 +7,7 @@ export function formatError(type: string, details: string, context?: string): st
         : `Error: ${type}: ${details}`;
 }
 
-/** 构造统一的“无结果”消息。 */
+/** 构造统一的"无结果"消息。 */
 export function formatNoResults(message: string): string {
     return `No results: ${message}`;
 }

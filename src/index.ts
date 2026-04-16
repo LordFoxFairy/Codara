@@ -152,7 +152,7 @@ export {
   filterToolsByReferences,
   normalizeToolReferenceName,
   type BuiltinToolOptions,
-} from '@integration/tool';
+} from '@tools';
 export {
   createCodaraSkillsSource,
   FileSystemSkillStore,

@@ -19,7 +19,7 @@ import {
 } from '@capability/subagent/review-metadata';
 import type {SubagentRunRecord, SubagentRunStore} from '@capability/subagent/types';
 import type {BootstrapAgentOptions, AgentCheckpointer} from './adapters/core-bridge';
-import {filterToolsByReferences} from '@integration/tool';
+import {filterToolsByReferences} from '@tools';
 import {formatSubagentDisplayName, type SubagentDefinition} from '@capability/skill';
 import type {ApprovalStore} from './adapters/core-bridge';
 

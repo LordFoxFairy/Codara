@@ -2,8 +2,8 @@ import {describe, expect, it} from 'bun:test';
 import path from 'node:path';
 import {mkdtemp, writeFile} from 'node:fs/promises';
 import {tmpdir} from 'node:os';
-import {parseNotebook} from '@integration/tool/extended/notebook';
-import {createNotebookReadTool} from '@integration/tool';
+import {parseNotebook} from '@tools/extended/notebook';
+import {createNotebookReadTool} from '@tools';
 
 describe('parseNotebook', () => {
   it('should render markdown cells as plain text', () => {

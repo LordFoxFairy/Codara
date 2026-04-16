@@ -1,5 +1,5 @@
 import type {StructuredToolInterface} from '@langchain/core/tools';
-import {createBuiltinTools} from '@integration/tool';
+import {createBuiltinTools} from '@tools';
 import type {CodaraOptions} from '../types';
 
 export type CodaraToolsOptions = Pick<CodaraOptions, 'builtinTools' | 'cwd' | 'tools'>;

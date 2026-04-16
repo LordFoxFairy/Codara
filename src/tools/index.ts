@@ -28,8 +28,8 @@ export {
   createBuiltinTools,
   isToolReadOnly,
   type BuiltinToolOptions,
-} from '@integration/tool/builtin';
-export {filterToolsByReferences, normalizeToolReferenceName} from '@integration/tool/names';
+} from '@tools/builtin';
+export {filterToolsByReferences, normalizeToolReferenceName} from '@tools/names';
 export {
   countLines,
   countOccurrences,
@@ -39,4 +39,4 @@ export {
   getErrorMessage,
   isNodeError,
   validatePath,
-} from '@integration/tool/utils';
+} from '@tools/utils';

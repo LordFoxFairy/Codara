@@ -7,8 +7,8 @@ import {
   createEnterWorktreeTool,
   createExitWorktreeTool,
   createListWorktreesTool,
-} from '@integration/tool';
-import {parseWorktreeList} from '@integration/tool/extended/worktree';
+} from '@tools';
+import {parseWorktreeList} from '@tools/extended/worktree';
 
 // ── parseWorktreeList 单元测试 ──────────────────────────────────────────
 

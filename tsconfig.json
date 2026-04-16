@@ -23,6 +23,8 @@
       "@core/*": ["src/core/*"],
       "@durability/*": ["src/durability/*"],
       "@observability/*": ["src/observability/*"],
+      "@tools": ["src/tools/index.ts"],
+      "@tools/*": ["src/tools/*"],
       "@integration/*": ["src/integration/*"],
       "@context/*": ["src/context/*"],
       "@config/*": ["src/config/*"],

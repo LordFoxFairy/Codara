@@ -2,7 +2,7 @@ import {stat} from 'node:fs/promises';
 import path from 'node:path';
 import {StructuredTool} from '@langchain/core/tools';
 import {z} from 'zod';
-import {formatError, formatNoResults} from '@integration/tool/utils';
+import {formatError, formatNoResults} from '@tools/utils';
 
 const RESULT_LIMIT = 200;
 const SCAN_LIMIT = 5000;
