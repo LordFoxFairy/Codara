@@ -85,10 +85,12 @@ export {
   AskUserSchema,
   createAskUserTool,
   createAskUserQuestionMiddleware,
+  parseAskUserInput,
   parseAskUserResult,
   type AskUserInput,
   type AskUserOption,
   type AskUserQuestion,
+  type AskUserAnswerValue,
   type AskUserResult,
   type AskUserQuestionMiddlewareOptions,
 } from './ask-user-question';

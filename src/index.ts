@@ -75,6 +75,7 @@ export {
   createAskUserQuestionMiddleware,
   createLoggingMiddleware,
   createAskUserTool,
+  parseAskUserInput,
   createPathInstructionsMiddleware,
   ASK_USER_TOOL_NAME,
   parseAskUserResult,

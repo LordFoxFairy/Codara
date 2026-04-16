@@ -66,3 +66,18 @@ export {
   normalizeQuotes,
   validatePath,
 } from '@tools/utils';
+export {
+  AskUserQuestionTool,
+  AskUserSchema,
+  ASK_USER_TOOL_NAME,
+  createAskUserTool,
+  parseAskUserInput,
+  parseAskUserResult,
+  normalizeAnswers,
+  getAskUserToolPrompt,
+  type AskUserInput,
+  type AskUserQuestion,
+  type AskUserOption,
+  type AskUserAnswerValue,
+  type AskUserResult,
+} from '@tools/ask-user';

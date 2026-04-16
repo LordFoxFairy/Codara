@@ -19,6 +19,7 @@ import {getGlobToolPrompt} from '@tools/builtin/glob-prompt';
 import {getGrepToolPrompt} from '@tools/builtin/grep-prompt';
 import {getFetchToolPrompt} from '@tools/builtin/fetch-prompt';
 import {getSearchToolPrompt} from '@tools/builtin/search-prompt';
+import {getAskUserToolPrompt} from '@tools/ask-user/prompt';
 
 // ── Types ──
 
@@ -237,18 +238,7 @@ registerTool({
 registerTool({
   name: 'AskUserQuestion',
   category: 'capability',
-  getPrompt: () => [
-    'Use this tool when you need to ask the user questions during execution. This allows you to:',
-    '1. Gather user preferences or requirements',
-    '2. Clarify ambiguous instructions',
-    '3. Get decisions on implementation choices as you work',
-    '4. Offer choices to the user about what direction to take.',
-    '',
-    'Usage notes:',
-    '- Users will always be able to select "Other" to provide custom text input',
-    '- Use multiSelect: true to allow multiple answers',
-    '- If you recommend a specific option, make that the first option and add "(Recommended)" at the end of the label',
-  ].join('\n'),
+  getPrompt: getAskUserToolPrompt,
 });
 
 registerTool({
