@@ -17,6 +17,9 @@ import {tmpdir} from 'node:os';
 import path from 'node:path';
 import {StructuredTool} from '@langchain/core/tools';
 import {z} from 'zod';
+import {getGlobalTaskRegistry} from '@capability/task/task-registry';
+import {generateTaskId} from '@capability/task/task-types';
+import type {ShellTaskState} from '@capability/task/task-types';
 
 const DEFAULT_TIMEOUT = 120_000;
 const MAX_TIMEOUT = 600_000;
@@ -70,13 +73,18 @@ class BackgroundProcessRegistry {
         return this.outputDir;
     }
 
+    /** Get the child process reference for a background process (used by TaskStop). */
+    getChildProcess(id: string): ChildProcess | undefined {
+        return this.childRefs.get(id);
+    }
+
     /** Spawn a command in the background and return its info immediately. */
     async spawn(opts: {
         command: string;
         cwd: string;
         description?: string;
     }): Promise<BackgroundProcessInfo> {
-        const id = randomUUID().slice(0, 8);
+        const id = generateTaskId('shell').slice(0, 9);
         const dir = await this.ensureOutputDir();
         const stdoutPath = path.join(dir, `${id}.stdout`);
         const stderrPath = path.join(dir, `${id}.stderr`);
@@ -115,6 +123,22 @@ class BackgroundProcessRegistry {
         this.childRefs.set(id, child);
         this.streams.set(id, {stdout: stdoutStream, stderr: stderrStream});
 
+        // Register with unified task registry.
+        const taskState: ShellTaskState = {
+            id,
+            type: 'shell',
+            status: 'running',
+            description: opts.description ?? opts.command,
+            startTime: info.startedAt,
+            outputOffset: 0,
+            command: opts.command,
+            pid: child.pid!,
+            cwd: opts.cwd,
+            stdoutPath,
+            stderrPath,
+        };
+        getGlobalTaskRegistry().register(taskState);
+
         child.on('close', (code) => {
             info.exitedAt = Date.now();
             info.exitCode = code;
@@ -126,6 +150,12 @@ class BackgroundProcessRegistry {
                 s.stderr.end();
                 this.streams.delete(id);
             }
+            // Sync with unified task registry.
+            getGlobalTaskRegistry().terminate(
+                id,
+                code === 0 ? 'completed' : 'failed',
+                {exitCode: code} as Partial<ShellTaskState>,
+            );
         });
 
         child.on('error', () => {
@@ -139,6 +169,8 @@ class BackgroundProcessRegistry {
                 s.stderr.end();
                 this.streams.delete(id);
             }
+            // Sync with unified task registry.
+            getGlobalTaskRegistry().terminate(id, 'failed', {exitCode: null} as Partial<ShellTaskState>);
         });
 
         return info;

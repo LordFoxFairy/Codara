@@ -11,6 +11,8 @@ import type {CodaraRuntimeEventListener, EmitRuntimeEventInput} from '@observabi
 import type {SubagentCompletionContinuation, SubagentRunRecord, SubagentRunStore} from '@capability/subagent/types';
 import type {SubagentRunLaunchResult} from '@shared/subagent-run-launch';
 import type {SubagentResult} from '@shared/subagent-result';
+import {getGlobalTaskRegistry} from '@capability/task/task-registry';
+import type {AgentTaskState} from '@capability/task/task-types';
 
 // ---------------------------------------------------------------------------
 // Public types
@@ -156,6 +158,22 @@ class InMemorySubagentRunManager implements SubagentRunManager {
 
     const handle = buildHandle(input);
     this.handles.set(input.runId, handle);
+
+    // Register with unified task registry.
+    const agentTask: AgentTaskState = {
+      id: input.runId,
+      type: 'agent',
+      status: 'running',
+      description: input.label,
+      startTime: Date.now(),
+      outputOffset: 0,
+      runId: input.runId,
+      childSessionId: input.childSessionId,
+      agentName: input.agentName,
+      label: input.label,
+    };
+    getGlobalTaskRegistry().register(agentTask);
+
     this.emitAgentEvent({
       id: subagentRunEventId(input.runId),
       kind: 'agent',
@@ -354,6 +372,14 @@ class InMemorySubagentRunManager implements SubagentRunManager {
     );
     this.options.runStore?.finish(handle.runId, subagentResult);
     this.notifyCompletionWaiters(handle.parentSessionId, handle.batchId);
+
+    // Sync with unified task registry.
+    const terminalStatus = subagentResult.reason === 'error' ? 'failed' as const : 'completed' as const;
+    getGlobalTaskRegistry().terminate(handle.runId, terminalStatus, {
+      summary: subagentResult.summary,
+      errorMessage: subagentResult.errorMessage,
+    } as Partial<AgentTaskState>);
+
     this.emitAgentEvent({
       kind: 'agent',
       phase: 'end',
@@ -378,6 +404,12 @@ class InMemorySubagentRunManager implements SubagentRunManager {
     };
     this.options.runStore?.finish(handle.runId, subagentResult);
     this.notifyCompletionWaiters(handle.parentSessionId, handle.batchId);
+
+    // Sync with unified task registry.
+    getGlobalTaskRegistry().terminate(handle.runId, 'failed', {
+      errorMessage: subagentResult.errorMessage,
+    } as Partial<AgentTaskState>);
+
     this.emitAgentEvent({
       kind: 'agent',
       phase: 'end',

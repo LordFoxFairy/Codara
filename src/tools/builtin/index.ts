@@ -38,6 +38,16 @@ export {EnterWorktreeTool, createEnterWorktreeTool};
 export {ExitWorktreeTool, createExitWorktreeTool};
 export {ListWorktreesTool, createListWorktreesTool};
 
+// Prompt 导出 — 对齐 Claude Code 每工具独立 prompt 模式
+export {getBashToolPrompt} from '@tools/builtin/bash-prompt';
+export {getReadToolPrompt} from '@tools/builtin/read-prompt';
+export {getEditToolPrompt} from '@tools/builtin/edit-prompt';
+export {getWriteToolPrompt} from '@tools/builtin/write-prompt';
+export {getGlobToolPrompt} from '@tools/builtin/glob-prompt';
+export {getGrepToolPrompt} from '@tools/builtin/grep-prompt';
+export {getFetchToolPrompt} from '@tools/builtin/fetch-prompt';
+export {getSearchToolPrompt} from '@tools/builtin/search-prompt';
+
 /** 判断工具是否为只读（不会修改文件系统或外部状态）。 */
 export {isToolReadOnly} from '@shared/tool-metadata';
 

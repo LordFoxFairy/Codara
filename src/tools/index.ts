@@ -33,6 +33,26 @@ export {
 } from '@tools/builtin';
 export {filterToolsByReferences, normalizeToolReferenceName} from '@tools/names';
 export {
+  registerTool,
+  getToolEntry,
+  getToolPrompt,
+  getAllToolEntries,
+  getToolsByCategory,
+  type ToolCategory,
+  type ToolRegistryEntry,
+  type ValidationResult,
+} from '@tools/registry';
+export {
+  getBashToolPrompt,
+  getReadToolPrompt,
+  getEditToolPrompt,
+  getWriteToolPrompt,
+  getGlobToolPrompt,
+  getGrepToolPrompt,
+  getFetchToolPrompt,
+  getSearchToolPrompt,
+} from '@tools/builtin';
+export {
   countLines,
   countOccurrences,
   findActualString,
