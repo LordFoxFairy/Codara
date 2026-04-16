@@ -32,7 +32,7 @@ export function describeFooter(
     return 'Enter send  ·  ? shortcuts  ·  Ctrl+C exit';
   }
 
-  return 'Enter send  ·  Ctrl+C exit  ·  / commands  ·  Ctrl+T tasks  ·  Ctrl+O expand';
+  return 'Enter send  ·  Ctrl+C exit  ·  / commands  ·  Ctrl+T agents  ·  Ctrl+O expand';
 }
 
 export function Footer({layoutMode, hasCommandOutput, focusedSurface}: FooterProps): React.JSX.Element {
