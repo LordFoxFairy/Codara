@@ -6,11 +6,8 @@
  */
 import type {ToolCall} from '@langchain/core/messages';
 import {normalizeToolReferenceName} from '@shared/tool-names';
-import {
-  bashSpecifierMatches,
-  extractBashWritePathOperands,
-  normalizeBashCommandForMatching,
-} from '@core/middleware/permission/bash';
+import {bashSpecifierMatches, normalizeBashCommandForMatching} from '@core/middleware/permission/bash-matcher';
+import {extractBashWritePathOperands} from '@core/middleware/permission/bash-scope';
 import type {PermissionMode} from '@config/schema';
 import type {
   PermissionAction,

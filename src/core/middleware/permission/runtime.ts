@@ -18,7 +18,7 @@ import {persistPermissionRule, persistPermissionScope} from '@core/middleware/pe
 import type {PermissionPolicyOptions} from '@core/middleware/permission/types';
 import {normalizeToolReferenceName} from '@shared/tool-names';
 import {getToolMetadata} from '@shared/tool-metadata';
-import {extractBashAlwaysPatterns, extractBashWritePathOperands} from '@core/middleware/permission/bash';
+import {extractBashAlwaysPatterns, extractBashWritePathOperands} from '@core/middleware/permission/bash-scope';
 import {PermissionSessionCache} from '@core/middleware/permission/session-cache';
 import {DenialTracker} from '@core/middleware/permission/denial-tracking';
 

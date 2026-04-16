@@ -99,11 +99,6 @@ export interface PermissionRuleSet {
   defaultDecision: PermissionAction;
 }
 
-/** @deprecated Use `PermissionAction` directly. */
-export type PermissionDecision = PermissionAction;
-/** @deprecated Unused legacy alias — scope values are inlined at call sites. */
-export type PermissionGrantScope = 'exact' | 'path' | 'tool' | 'project';
-
 export interface PermissionRuleMatch {
   bucket: PermissionAction;
   rule: string;

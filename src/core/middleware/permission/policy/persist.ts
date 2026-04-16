@@ -13,11 +13,8 @@ import type {
 } from '../types';
 import {formatPermissionExpression, parseExpression} from './evaluate';
 import {resolvePermissionSettingsFile, resolvePermissionProjectRoot, createDefaultSettingsRecord} from './config';
-import {
-  extractBashWritePathOperands,
-  formatBashToolScopeExpression,
-  normalizeBashCommandForMatching,
-} from '@core/middleware/permission/bash';
+import {normalizeBashCommandForMatching} from '@core/middleware/permission/bash-matcher';
+import {extractBashWritePathOperands, formatBashToolScopeExpression} from '@core/middleware/permission/bash-scope';
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === 'object' && value !== null && !Array.isArray(value);
