@@ -1,3 +1,12 @@
+/**
+ * Checkpoint persistence barrel.
+ *
+ * Re-exports the generic checkpoint abstractions (types, in-memory, file) and
+ * the agent-specific adapter that handles LangChain message serialization.
+ *
+ * @module
+ */
+
 export type {
   CheckpointRef,
   CheckpointRecord,

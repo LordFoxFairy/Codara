@@ -1,6 +1,6 @@
 import {McpClient} from './client';
 import type {McpClientInfo, McpConfig, McpManager, McpServerConfig, McpToolDefinition} from './types';
-import {namespacedToolName, parseNamespacedToolName, sanitizeToolName} from './types';
+import {MAX_MCP_DESCRIPTION_LENGTH, namespacedToolName, parseNamespacedToolName, sanitizeToolName} from './types';
 
 /**
  * Create an MCP manager that handles multiple server connections.
@@ -8,7 +8,7 @@ import {namespacedToolName, parseNamespacedToolName, sanitizeToolName} from './t
  * Design principles (matching Claude Code):
  * - Lazy initialization: clients created on first init()
  * - Failure isolation: one server failing doesn't block others
- * - Tool namespacing: `mcp_{server}__{tool}` prevents name collisions
+ * - Tool namespacing: `mcp__{server}__{tool}` prevents name collisions
  * - Graceful cleanup: dispose() closes all connections + kills child processes
  *
  * Clients are keyed by sanitized server name so that `routeMcpToolCall`
@@ -38,9 +38,14 @@ export function createMcpManager(config: McpConfig): McpManager {
         if (client.status !== 'connected') continue;
         const displayName = client.name;
         for (const tool of client.tools) {
+          const rawDesc = tool.description
+            ? `[${displayName}] ${tool.description}`
+            : `[${displayName}] ${tool.name}`;
           tools.push({
             name: namespacedToolName(displayName, tool.name),
-            description: tool.description ? `[${displayName}] ${tool.description}` : `[${displayName}] ${tool.name}`,
+            description: rawDesc.length > MAX_MCP_DESCRIPTION_LENGTH
+              ? rawDesc.slice(0, MAX_MCP_DESCRIPTION_LENGTH - 3) + '...'
+              : rawDesc,
             inputSchema: tool.inputSchema,
           });
         }
@@ -72,7 +77,7 @@ export function createMcpManager(config: McpConfig): McpManager {
 /**
  * Route a namespaced tool call to the correct MCP server.
  *
- * Given a full tool name like `mcp_filesystem__read_file`,
+ * Given a full tool name like `mcp__filesystem__read_file`,
  * parses the server name and tool name, then calls the manager.
  */
 export async function routeMcpToolCall(

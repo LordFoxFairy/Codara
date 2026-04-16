@@ -1,8 +1,17 @@
 /**
  * Advisory file lock for session checkpoint writes.
  *
- * Uses exclusive file creation (flag: 'wx') to prevent concurrent writes
- * to the same session from multiple processes.
+ * Uses exclusive file creation (`flag: 'wx'`) to prevent concurrent writes
+ * to the same session from multiple processes. A lock file contains the
+ * owning PID and a timestamp; stale locks (dead process or TTL expiry) are
+ * automatically reclaimed with a single retry.
+ *
+ * Design notes (compared to Claude Code's `lockfile` package):
+ * - Claude Code uses the `proper-lockfile` npm package with retry/stale options.
+ * - Codara uses a minimal PID+timestamp approach with no external dependencies,
+ *   which is sufficient for single-machine CLI usage.
+ *
+ * @module
  */
 
 import {mkdir, readFile, unlink, writeFile} from 'node:fs/promises';

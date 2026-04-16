@@ -75,11 +75,21 @@ export function createMcpConfigFromSettings(
 }
 
 /**
- * Recursively expand `${VAR_NAME}` in string values.
+ * Recursively expand `${VAR_NAME}` and `${VAR_NAME:-default}` in string values.
+ *
+ * Supports the same syntax as Claude Code's envExpansion.ts:
+ *   - `${VAR}` — expands to the env var value, or empty string if unset
+ *   - `${VAR:-fallback}` — expands to the env var value, or `fallback` if unset
  */
 function expandEnvVars(value: unknown): unknown {
   if (typeof value === 'string') {
-    return value.replace(/\$\{([^}]+)}/g, (_, envVar: string) => process.env[envVar] ?? '');
+    return value.replace(/\$\{([^}]+)}/g, (_match, varContent: string) => {
+      const [varName, defaultValue] = varContent.split(':-', 2);
+      const envValue = process.env[varName!];
+      if (envValue !== undefined) return envValue;
+      if (defaultValue !== undefined) return defaultValue;
+      return '';
+    });
   }
   if (Array.isArray(value)) {
     return value.map(expandEnvVars);

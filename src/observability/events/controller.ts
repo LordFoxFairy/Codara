@@ -1,3 +1,13 @@
+/**
+ * Runtime events controller — the central hub for emitting and subscribing to
+ * structured lifecycle events during an agent session.
+ *
+ * Events form a parent-child tree: turn → model / tool → review.
+ * CLI and desktop UIs subscribe via `controller.subscribe()` to render live activity.
+ *
+ * Also provides a middleware factory (`createMiddleware()`) that instruments
+ * the agent pipeline with automatic turn/model/tool event emission.
+ */
 import {randomUUID} from 'node:crypto';
 import {
   createMiddleware,
@@ -19,6 +29,12 @@ import {
   summarizePauseLabel,
 } from './formatters';
 
+/**
+ * Session-scoped runtime event emitter.
+ *
+ * Maintains Maps of turn/model/tool root event IDs for parent-child linking.
+ * Automatically prunes stale entries when maps exceed 1 000 entries.
+ */
 export class RuntimeEventsController {
   private readonly listeners = new Set<CodaraRuntimeEventListener>();
   private readonly turnRoots = new Map<string, string>();
@@ -274,7 +290,6 @@ export class RuntimeEventsController {
       afterAgent: (context) => {
         const currentTurnKey = turnKey(context);
         const turnRootId = this.turnRoots.get(currentTurnKey);
-        const modelRootId = this.modelRoots.get(currentTurnKey);
         this.emit({
           kind: 'turn',
           phase: 'end',
@@ -289,9 +304,6 @@ export class RuntimeEventsController {
         });
         this.turnRoots.delete(currentTurnKey);
         this.modelRoots.delete(currentTurnKey);
-        if (modelRootId) {
-          void modelRootId;
-        }
       },
     });
   }

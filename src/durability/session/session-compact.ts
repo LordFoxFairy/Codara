@@ -1,3 +1,21 @@
+/**
+ * Conversation compaction orchestration.
+ *
+ * Delegates the actual summarization to the middleware factory's
+ * `compactConversation()` method, but owns the surrounding lifecycle:
+ * pre/post compact hooks, checkpoint persistence, agent cache invalidation,
+ * and runtime event emission.
+ *
+ * Compared to Claude Code's `compact.ts` (1700+ lines):
+ * - Claude Code performs compaction inline with image stripping, PTL retry
+ *   loops, post-compact file/skill/plan re-injection, and analytics.
+ * - Codara keeps the session-level orchestration thin and pushes the heavy
+ *   summarization + post-compact context restoration into the middleware layer,
+ *   matching the overall "session orchestrates, middleware executes" split.
+ *
+ * @module
+ */
+
 import {randomUUID} from 'node:crypto';
 import type {Agent, AgentInputBudget, AgentState} from '@shared/agent-types';
 import type {AgentCheckpointer} from '@durability/checkpoint/agent';

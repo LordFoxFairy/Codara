@@ -1,3 +1,15 @@
+/**
+ * In-memory checkpoint storage.
+ *
+ * Keeps full checkpoint history per session in process memory. Suitable for
+ * tests and ephemeral single-process runs; data is lost on process exit.
+ *
+ * When codecs are provided, records are round-tripped through serialize/deserialize
+ * on every read to guarantee the same isolation semantics as the file-backed store.
+ *
+ * @module
+ */
+
 import {randomUUID} from 'node:crypto';
 import type {
   CheckpointRecord,
@@ -7,11 +19,13 @@ import type {
 } from '@durability/checkpoint/types';
 import {deepClone} from '@shared/clone';
 
+/** Optional serialize/deserialize pair for deep-clone isolation. */
 interface MemoryCodec<T> {
   serialize(value: T): unknown;
   deserialize(raw: unknown): T;
 }
 
+/** Per-session bookkeeping: ordered list + map of checkpoint records. */
 interface SessionState<TState, TInfo> {
   latestCheckpointId?: string;
   order: string[];

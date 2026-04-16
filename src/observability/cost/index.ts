@@ -1,3 +1,13 @@
+/**
+ * Cost tracking — session-scoped token usage and USD cost accumulation.
+ *
+ * Adapted from Claude Code's cost-tracker.ts architecture:
+ * - Per-model usage breakdown with pricing lookup
+ * - Threshold crossing events for cost warnings
+ * - Formatting utilities matching Claude Code's display conventions
+ *
+ * @module observability/cost
+ */
 export * from './types';
 export {
   CostTracker,
@@ -10,13 +20,6 @@ export {
 export {
   MODEL_PRICING,
   DEFAULT_UNKNOWN_MODEL_PRICING,
-  COST_TIER_3_15,
-  COST_TIER_15_75,
-  COST_TIER_5_25,
-  COST_HAIKU_35,
-  COST_HAIKU_45,
-  COST_GPT4O,
-  COST_GPT4O_MINI,
   normalizeModelName,
   getModelPricing,
   calculateUSDCost,

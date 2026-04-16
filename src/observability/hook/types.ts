@@ -1,3 +1,14 @@
+/**
+ * Hook system types — configuration schemas, runtime contexts, and lifecycle contracts.
+ *
+ * The hook pipeline is modeled after Claude Code's settings-based hook system:
+ * - Hooks are defined in JSON config files (project, user, plugin, skill scope)
+ * - Each hook targets a specific event type (SessionStart, PreToolUse, etc.)
+ * - Intercept hooks can veto or modify input; notify hooks are fire-and-forget
+ * - Execution strategies: shell command or LLM prompt
+ *
+ * @module observability/hook/types
+ */
 import {z} from 'zod';
 
 // ── Hook Event Types ──
@@ -214,19 +225,16 @@ export type HookContext =
 
 // ── Hook Output & Aggregated Results ──
 
-export interface HookSpecificOutput {
-  updatedInput?: Record<string, unknown>;
-  additionalContext?: string;
-  systemMessage?: string;
-}
-
+/** Raw output returned by a single hook execution (command or prompt strategy). */
 export interface HookOutput {
+  /** Explicit allow/deny decision — "deny" vetoes the intercepted action. */
   decision?: 'allow' | 'deny';
+  /** Partial input overrides to merge into the tool's arguments. */
   updatedInput?: Record<string, unknown>;
+  /** System message injected into the next model context. */
   systemMessage?: string;
+  /** When false, short-circuits the intercept chain (same effect as deny). */
   continue?: boolean;
-  suppressOutput?: boolean;
-  hookSpecificOutput?: HookSpecificOutput;
 }
 
 export interface HookInterceptResult {

@@ -120,23 +120,24 @@ describe('MCP types', () => {
 
   describe('namespacedToolName', () => {
     it('creates namespaced name', () => {
-      expect(namespacedToolName('filesystem', 'read_file')).toBe('mcp_filesystem__read_file');
+      expect(namespacedToolName('filesystem', 'read_file')).toBe('mcp__filesystem__read_file');
     });
 
     it('sanitizes server and tool names', () => {
-      expect(namespacedToolName('my-server', 'list.files')).toBe('mcp_my_server__list_files');
+      expect(namespacedToolName('my-server', 'list.files')).toBe('mcp__my_server__list_files');
     });
   });
 
   describe('parseNamespacedToolName', () => {
     it('parses valid namespaced name', () => {
-      const result = parseNamespacedToolName('mcp_filesystem__read_file');
+      const result = parseNamespacedToolName('mcp__filesystem__read_file');
       expect(result).toEqual({serverName: 'filesystem', toolName: 'read_file'});
     });
 
     it('returns undefined for non-MCP names', () => {
       expect(parseNamespacedToolName('read_file')).toBeUndefined();
       expect(parseNamespacedToolName('mcp_nodelimiter')).toBeUndefined();
+      expect(parseNamespacedToolName('mcp__nodelimiter')).toBeUndefined();
     });
 
     it('roundtrips with namespacedToolName', () => {

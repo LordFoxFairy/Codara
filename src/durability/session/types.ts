@@ -1,5 +1,16 @@
-// ── Transcript Types (moved from src/session/) ──
+/**
+ * Shared types for the durability/session module.
+ *
+ * Houses transcript entry shapes, session metadata, agent factory
+ * abstractions, and middleware factory contracts. Kept in one file to
+ * avoid circular imports between session.ts, store.ts, and bootstrap.
+ *
+ * @module
+ */
 
+// ── Transcript Types ──
+
+/** A single line in the JSONL transcript log. */
 export interface TranscriptEntry {
   type: 'user' | 'assistant' | 'tool_use' | 'tool_result' | 'system' | 'attachment';
   uuid: string;
@@ -14,6 +25,7 @@ export interface TranscriptEntry {
   };
 }
 
+/** Header metadata written once at the start of each transcript file. */
 export interface TranscriptSessionMetadata {
   sessionId: string;
   projectRoot: string;
@@ -23,6 +35,7 @@ export interface TranscriptSessionMetadata {
 }
 
 // ── Agent / Session Types ──
+// These types decouple the session layer from concrete @core/agent imports.
 
 import type {BaseChatModel} from '@langchain/core/language_models/chat_models';
 import type {StructuredToolInterface} from '@langchain/core/tools';

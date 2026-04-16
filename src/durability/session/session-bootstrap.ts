@@ -1,3 +1,14 @@
+/**
+ * Session agent bootstrap.
+ *
+ * Assembles all dependencies (model, tools, middleware, checkpointer,
+ * system message) and creates a fully configured {@link Agent} instance.
+ * Factored out of `session.ts` to keep the main session file focused on
+ * lifecycle orchestration.
+ *
+ * @module
+ */
+
 import type {BaseChatModel} from '@langchain/core/language_models/chat_models';
 import type {Agent, AgentInputBudget} from '@shared/agent-types';
 import {

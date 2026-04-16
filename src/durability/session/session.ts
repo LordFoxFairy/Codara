@@ -1,3 +1,27 @@
+/**
+ * Core session lifecycle.
+ *
+ * A Session is the top-level stateful container for a single conversation.
+ * It owns:
+ * - An agent instance (lazily bootstrapped via {@link bootstrapSessionAgent})
+ * - A checkpointer for persistence across process restarts
+ * - Runtime event emission for the CLI/UI layer
+ * - Lifecycle hooks (session start/end, prompt veto, pre/post compact)
+ *
+ * The closure-based factory (`createSession`) keeps internal state private
+ * while exposing a clean {@link Session} interface. This is intentional --
+ * the session has ~15 pieces of mutable state that should not leak.
+ *
+ * Architecture comparison with Claude Code:
+ * - Claude Code uses a Zustand-style store (`createStore` in `state/store.ts`)
+ *   with `AppStateStore` holding messages + UI state in one flat object.
+ * - Codara separates concerns: session state (this file) owns agent lifecycle,
+ *   while the CLI layer (`cli/app/`) owns UI projection. The session never
+ *   touches rendering.
+ *
+ * @module
+ */
+
 import {randomUUID} from 'node:crypto';
 import {AIMessageChunk, type BaseMessage} from '@langchain/core/messages';
 import type {BaseChatModel} from '@langchain/core/language_models/chat_models';
@@ -83,25 +107,42 @@ export interface CreateSessionOptions {
 }
 
 export interface Session {
+  /** Lightweight session metadata (id, status, timestamps). */
   getState(): SessionState;
+  /** Full agent state including messages, context, values, pending review. */
   getAgentState(): AgentState;
+  /** Patch agent context and persist a new checkpoint. */
   updateContext(context: AgentRuntimeContext): Promise<AgentState>;
+  /** Replace the entire message array and persist a new checkpoint. */
   replaceMessages(messages: BaseMessage[]): Promise<AgentState>;
+  /** Names of all tools available to the agent (from tools + middleware). */
   getAvailableToolNames(): string[];
+  /** Subscribe to runtime events (model responding, review, summary, etc.). Returns unsubscribe function. */
   subscribeRuntimeEvents(listener: CodaraRuntimeEventListener): () => void;
+  /** Bootstrap the agent (if needed) and sync metadata. Idempotent. */
   hydrate(): Promise<AgentState>;
+  /** Summarize the conversation to reduce context window usage. */
   compactConversation(options?: {instructions?: string}): Promise<ConversationCompactionResult>;
+  /** Create a child session from the current agent state. */
   fork(options?: {id?: string; sessionId?: string; store?: SessionStore}): Promise<Session>;
+  /** Send a prompt and wait for the full result. */
   invoke(input?: AgentInput, config?: AgentInvokeConfig): Promise<AgentResult>;
+  /** Send a prompt and stream intermediate chunks. */
   stream(input?: AgentInput, config?: AgentStreamConfig): AsyncGenerator<AgentStreamOutput, AgentResult, void>;
+  /** Resume from a human-in-the-loop review decision (non-streaming). */
   resumeReview(payload: ReviewResumePayload, config?: AgentResumeConfig): Promise<AgentResult>;
+  /** Resume from a human-in-the-loop review decision (streaming). */
   resumeReviewStream(
     payload: ReviewResumePayload,
     config?: AgentResumeStreamConfig,
   ): AsyncGenerator<AgentStreamOutput, AgentResult, void>;
+  /** Reload prompt/guidelines/skills sources and invalidate the agent cache. */
   reloadSources(): Promise<void>;
+  /** Prune old checkpoint history (delegates to checkpointer.compact). */
   compactCheckpoints(options?: CompactOptions): Promise<void>;
+  /** Clear agent state (messages, context) while keeping the session alive. */
   reset(): Promise<void>;
+  /** Shut down the session: fire lifecycle hooks, persist final state. */
   dispose(): Promise<void>;
 }
 
@@ -132,6 +173,7 @@ export function createSession(options: CreateSessionOptions): Session {
   const lifecycle = options.lifecycle;
   let sessionStarted = false;
 
+  /** Call a lifecycle hook, swallowing errors. Hooks are advisory, not critical. */
   async function safeLifecycleCall<T>(fn: () => Promise<T>): Promise<T | undefined> {
     try {
       return await fn();
@@ -336,6 +378,7 @@ export function createSession(options: CreateSessionOptions): Session {
     }
   }
 
+  /** Run a synchronous agent operation and sync metadata + usage afterwards. */
   async function run(operation: (instance: Agent) => Promise<AgentResult>) {
     const instance = await getAgent();
     const previousMessages = [...instance.getState().messages];
@@ -344,6 +387,7 @@ export function createSession(options: CreateSessionOptions): Session {
     return result;
   }
 
+  /** Run a streaming agent operation, emitting model-responding events and syncing on completion. */
   async function* runStream(operation: (instance: Agent) => AsyncGenerator<AgentStreamOutput, AgentResult, void>) {
     const instance = await getAgent();
     const previousMessages = [...instance.getState().messages];
@@ -636,6 +680,12 @@ export function createSession(options: CreateSessionOptions): Session {
   return session;
 }
 
+/**
+ * Merge a context patch into the current context.
+ *
+ * - Keys with `undefined` value are deleted from the result.
+ * - All other keys are deep-merged via `mergeAgentContext`.
+ */
 function applyContextPatch(current: AgentRuntimeContext, patch: AgentRuntimeContext): AgentRuntimeContext {
   const normalizedPatch: AgentRuntimeContext = {};
 
@@ -681,6 +731,11 @@ function resolveSessionId(
   return restoredSessionId || input.id || input.sessionId || randomUUID();
 }
 
+/**
+ * Extract the user prompt text from various {@link AgentInput} shapes.
+ *
+ * Supports: raw string, `{messages: [...]}`, `BaseMessage[]`, single `BaseMessage`.
+ */
 function extractPromptText(input: AgentInput): string | undefined {
   if (typeof input === 'string') {
     return input.trim() || undefined;

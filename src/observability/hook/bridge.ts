@@ -1,8 +1,17 @@
+/**
+ * Tool hooks bridge — middleware adapter that connects the hook pipeline
+ * to the agent's tool execution layer.
+ *
+ * Intercepts every tool call with PreToolUse (can veto or modify input),
+ * then fires PostToolUse as a best-effort notification after execution.
+ * Also detects task tool calls (create/update) and fires TaskCreated/TaskCompleted hooks.
+ */
 import {ToolMessage} from '@langchain/core/messages';
 import {createMiddleware, type BaseMiddleware, type ToolCallContext, type ToolCallHandler} from '@core/pipeline/types';
 import type {TaskLifecycleHooks, ToolLifecycleHooks} from '@observability/hook/types';
 import {TASK_CREATE_TOOL_NAME, TASK_UPDATE_TOOL_NAME} from '@capability/task/tools';
 
+/** Create a middleware that bridges tool lifecycle hooks into the agent pipeline. */
 export function createToolHooksBridge(lifecycle: ToolLifecycleHooks & Partial<TaskLifecycleHooks>): BaseMiddleware {
   return createMiddleware({
     name: 'ToolHooksMiddleware',

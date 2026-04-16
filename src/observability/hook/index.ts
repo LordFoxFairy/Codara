@@ -1,3 +1,9 @@
+/**
+ * Hook pipeline — configurable lifecycle hooks that intercept or observe
+ * session, agent, tool, task, and config events.
+ *
+ * @module observability/hook
+ */
 export {
   // Types
   type HookEventType,

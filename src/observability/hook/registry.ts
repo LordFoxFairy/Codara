@@ -1,3 +1,12 @@
+/**
+ * Hook registry — loads, indexes, and queries hook definitions from multiple sources.
+ *
+ * Sources can be JSON config files (project, user, plugin, skill) or in-memory
+ * settings entries. Hooks are indexed by event type and sorted by source priority
+ * (user > project > plugin > skill).
+ *
+ * Supports matcher-based filtering for tool-specific hooks (toolName, commandPattern).
+ */
 import {readFileSync, existsSync} from 'fs';
 import {z} from 'zod';
 import {

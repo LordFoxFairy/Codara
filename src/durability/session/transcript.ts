@@ -1,7 +1,27 @@
+/**
+ * JSONL transcript I/O.
+ *
+ * {@link TranscriptWriter} appends entries with a coalescing buffer (similar to
+ * Claude Code's `pendingEntries` + `flushPromptHistory` pattern in `history.ts`)
+ * to reduce disk I/O during streaming.
+ *
+ * {@link TranscriptReader} supports:
+ * - Full scan (`readAll`)
+ * - Tail-only scan (`readTail`) for large files
+ * - Compact-boundary-aware scan (`readFromLastBoundary`) for session restore
+ *
+ * @module
+ */
+
 import {appendFile, mkdir, readFile, stat} from 'node:fs/promises';
 import path from 'node:path';
 import type {TranscriptEntry} from './types';
 
+/**
+ * Buffered JSONL writer. Entries are coalesced and flushed after a short
+ * interval to avoid one syscall per streamed token. Call `close()` or
+ * `flush()` explicitly before process exit.
+ */
 export class TranscriptWriter {
   private readonly filePath: string;
   private buffer: string[] = [];
@@ -54,6 +74,12 @@ export class TranscriptWriter {
   }
 }
 
+/**
+ * JSONL transcript reader with tail-scan and compact-boundary support.
+ *
+ * Corrupted lines (partial writes from crashes) are silently skipped --
+ * the append-only JSONL format guarantees only the last line can be partial.
+ */
 export class TranscriptReader {
   private readonly filePath: string;
 

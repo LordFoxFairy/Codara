@@ -1,3 +1,17 @@
+/**
+ * Session metadata persistence.
+ *
+ * Stores lightweight {@link SessionState} (id, status, timestamps, metadata)
+ * as JSON files alongside checkpoint data. This is the source of truth for
+ * `/resume` session listing and session discovery.
+ *
+ * Analogous to Claude Code's session storage in `sessionStorage.ts`, but
+ * using a structured directory layout (`<base>/<sessionId>/metadata.json`)
+ * rather than a single JSONL file.
+ *
+ * @module
+ */
+
 import {mkdir, readFile, readdir, rename, rm, writeFile} from 'node:fs/promises';
 import {existsSync} from 'node:fs';
 import {randomUUID} from 'node:crypto';

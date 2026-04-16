@@ -1,3 +1,20 @@
+/**
+ * Agent-specific checkpoint adapter.
+ *
+ * Wraps the generic {@link Checkpointer} with domain-aware serialization:
+ * - Messages are converted to/from LangChain stored format for JSON persistence.
+ * - Context and values are deep-cloned to prevent aliasing between checkpoint
+ *   snapshots and live agent state.
+ * - A Zod schema provides forward-compatible deserialization (`.catch()` defaults
+ *   for missing fields, `.loose()` for unknown fields).
+ *
+ * Also exports convenience helpers for common checkpoint operations:
+ * - `putForkCheckpoint` -- seed a child session from a parent snapshot.
+ * - `putManualCheckpoint` -- save state after context updates, message replacement, etc.
+ *
+ * @module
+ */
+
 import {
   mapChatMessagesToStoredMessages,
   mapStoredMessagesToChatMessages,

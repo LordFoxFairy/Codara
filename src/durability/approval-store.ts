@@ -1,3 +1,21 @@
+/**
+ * Approval record store for subagent review requests.
+ *
+ * When a subagent encounters a tool call that requires human review, the
+ * approval is persisted here so the parent session can list, resolve, or
+ * clean up pending approvals across process restarts.
+ *
+ * Two implementations:
+ * - {@link InMemoryApprovalStore} -- for tests and ephemeral sessions.
+ * - {@link FileApprovalStore} -- JSON files under a root directory, loaded
+ *   lazily on first access. Writes use atomic tmp+rename.
+ *
+ * Both share indexing logic via {@link BaseApprovalStore} which maintains
+ * O(1) lookups by session ID and subagent run ID.
+ *
+ * @module
+ */
+
 import {mkdirSync, readFileSync, readdirSync, renameSync, rmSync, writeFileSync} from 'node:fs';
 import {randomUUID} from 'node:crypto';
 import path from 'node:path';
@@ -45,9 +63,19 @@ export function createApprovalFileStore(options: ApprovalFileStoreOptions): Appr
 
 // ── Shared indexing logic ──
 
+/**
+ * Base class providing O(1) index maintenance for approval records.
+ *
+ * Subclasses implement the {@link ApprovalStore} interface methods and call
+ * `storeRecord` / `removeRecord` / `removeBySubagentRunIdImpl` to keep the
+ * in-memory indexes consistent. The file-backed subclass additionally
+ * persists/removes JSON files on disk.
+ */
 abstract class BaseApprovalStore implements ApprovalStore {
   protected readonly records = new Map<string, ApprovalRecord>();
+  /** approvalId set keyed by normalized session ID. */
   protected readonly sessionIndex = new Map<string, Set<string>>();
+  /** approvalId set keyed by normalized subagent run ID. */
   protected readonly subagentRunIndex = new Map<string, Set<string>>();
 
   abstract list(sessionId?: string): ApprovalRecord[];

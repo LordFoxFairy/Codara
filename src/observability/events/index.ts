@@ -1,3 +1,15 @@
+/**
+ * Runtime events — tree-structured lifecycle events for turns, model calls,
+ * tool calls, reviews, commands, and summaries.
+ *
+ * @module observability/events
+ */
 export * from './types';
-export * from './controller';
-export * from './formatters';
+export {RuntimeEventsController} from './controller';
+export {
+  turnKey,
+  toolKey,
+  formatToolLabel,
+  summarizeToolMessage,
+  summarizePauseLabel,
+} from './formatters';

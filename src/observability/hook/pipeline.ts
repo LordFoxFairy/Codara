@@ -1,3 +1,15 @@
+/**
+ * Hook pipeline — orchestrates hook execution across all lifecycle events.
+ *
+ * Two execution patterns:
+ * - **Intercept chain** (runInterceptChain): hooks run sequentially; any hook
+ *   can veto or modify input. Used for PreToolUse, UserPromptSubmit, Stop, etc.
+ * - **Notify** (runNotify): hooks run in parallel (Promise.allSettled); failures
+ *   are absorbed. Used for SessionStart, PostToolUse, TaskCreated, etc.
+ *
+ * Implements all lifecycle contracts (SessionLifecycleHooks, AgentLifecycleHooks, etc.)
+ * so it can be injected as a single dependency.
+ */
 import type {HookRegistry} from '@observability/hook/registry';
 import type {HookExecutionStrategy} from '@observability/hook/executor';
 import type {

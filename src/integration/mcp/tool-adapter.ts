@@ -13,7 +13,7 @@ export interface CreateMcpLangChainToolsOptions {
 /**
  * Convert MCP tools into LangChain StructuredToolInterface instances.
  *
- * Each tool is namespaced as `mcp_{server}__{tool}` and routes through
+ * Each tool is namespaced as `mcp__{server}__{tool}` and routes through
  * the MCP manager for execution.
  */
 export function createMcpLangChainTools(

@@ -1,9 +1,23 @@
+/**
+ * Transcript storage path resolution.
+ *
+ * Transcripts are stored as JSONL files under `~/.codara/projects/<slug>/`.
+ * The slug is derived from the project directory name, and the filename from
+ * the session ID -- both sanitized for filesystem safety.
+ *
+ * This mirrors Claude Code's `getTranscriptPath()` in `sessionStorage.ts`,
+ * but uses Codara's own `~/.codara` config home instead of `~/.claude`.
+ *
+ * @module
+ */
+
 import path from 'node:path';
 import {readdir} from 'node:fs/promises';
 import {toFilesystemSafeId} from '@shared/filesystem-safe-id';
 
 export {toFilesystemSafeId};
 
+/** Resolve the JSONL transcript path for a specific session within a project. */
 export function getTranscriptPath(options: {
   projectRoot: string;
   userHome: string;
@@ -16,6 +30,7 @@ export function getTranscriptPath(options: {
   );
 }
 
+/** List all JSONL transcript files for a project. Returns absolute paths. */
 export async function listSessionTranscripts(options: {
   projectRoot: string;
   userHome: string;

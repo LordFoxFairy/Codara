@@ -1,3 +1,5 @@
+import {readFile} from 'node:fs/promises';
+import {existsSync} from 'node:fs';
 import {homedir} from 'node:os';
 import {fromZodError} from "zod-validation-error";
 import {ConfigSchema, ModelMetadataConfigSchema} from "@integration/provider/config/schema";
@@ -87,7 +89,7 @@ export async function loadModelRoutingConfigFromPath(codaraPath: string): Promis
 
     try {
         const [data, metadata] = await Promise.all([
-            Bun.file(configPath).json(),
+            readJsonFile(configPath),
             loadModelMetadataConfig(metadataPath),
         ]);
         return parseModelRoutingConfig(data, metadata);
@@ -96,10 +98,15 @@ export async function loadModelRoutingConfigFromPath(codaraPath: string): Promis
     }
 }
 
+/** Read and parse a JSON file using Node.js fs (runtime-agnostic). */
+async function readJsonFile(filePath: string): Promise<unknown> {
+    const content = await readFile(filePath, 'utf8');
+    return JSON.parse(content);
+}
+
 async function loadModelMetadataConfig(metadataPath: string): Promise<unknown> {
-    const file = Bun.file(metadataPath);
-    if (!(await file.exists())) {
+    if (!existsSync(metadataPath)) {
         return {};
     }
-    return file.json();
+    return readJsonFile(metadataPath);
 }

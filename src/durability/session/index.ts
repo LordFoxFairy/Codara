@@ -1,3 +1,12 @@
+/**
+ * Session durability barrel.
+ *
+ * Re-exports session creation, metadata types, transcript I/O, storage
+ * helpers, and the session restore fallback.
+ *
+ * @module
+ */
+
 export type {
   Session,
   ConversationCompactionResult,

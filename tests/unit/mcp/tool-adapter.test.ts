@@ -17,7 +17,7 @@ describe('MCP tool adapter', () => {
   it('converts MCP tools to LangChain tools', () => {
     const manager = createMockManager([
       {
-        name: 'mcp_server__read_file',
+        name: 'mcp__server__read_file',
         description: '[server] Read a file',
         inputSchema: {
           type: 'object',
@@ -29,7 +29,7 @@ describe('MCP tool adapter', () => {
 
     const tools = createMcpLangChainTools(manager);
     expect(tools).toHaveLength(1);
-    expect(tools[0].name).toBe('mcp_server__read_file');
+    expect(tools[0].name).toBe('mcp__server__read_file');
     expect(tools[0].description).toBe('[server] Read a file');
   });
 
@@ -39,7 +39,7 @@ describe('MCP tool adapter', () => {
     const manager: McpManager = {
       async init() {},
       getTools: () => [{
-        name: 'mcp_fs__list',
+        name: 'mcp__fs__list',
         description: '[fs] List files',
         inputSchema: {type: 'object', properties: {dir: {type: 'string'}}, required: ['dir']},
       }],
@@ -62,7 +62,7 @@ describe('MCP tool adapter', () => {
     const manager: McpManager = {
       async init() {},
       getTools: () => [{
-        name: 'mcp_bad__fail',
+        name: 'mcp__bad__fail',
         inputSchema: {type: 'object', properties: {}},
       }],
       async callTool() {
@@ -83,7 +83,7 @@ describe('MCP tool adapter', () => {
     const manager: McpManager = {
       async init() {},
       getTools: () => [{
-        name: 'mcp_crash__boom',
+        name: 'mcp__crash__boom',
         inputSchema: {type: 'object', properties: {}},
       }],
       async callTool() {

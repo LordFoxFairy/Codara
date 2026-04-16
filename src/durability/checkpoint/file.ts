@@ -1,3 +1,23 @@
+/**
+ * Filesystem-backed checkpoint storage.
+ *
+ * Each session stores a single durable checkpoint snapshot at
+ * `<rootDir>/<sessionId>/checkpoints/latest.json`. Writes are atomic
+ * (tmp file + rename) and protected by an advisory file lock so that
+ * concurrent processes cannot corrupt the snapshot.
+ *
+ * Compaction strategy (compared to Claude Code):
+ * - Claude Code performs conversation-level compaction by summarizing messages
+ *   via a secondary LLM call, producing compact boundaries, and re-injecting
+ *   recently-read files + skill content post-compact.
+ * - Codara keeps it simpler: `compact()` truncates the serialized message array
+ *   to `keepLast` entries and clears the parent chain. The actual conversation
+ *   summarization lives in `session-compact.ts` and delegates to the middleware
+ *   factory, keeping checkpoint storage concerns separate.
+ *
+ * @module
+ */
+
 import {randomUUID} from 'node:crypto';
 import {mkdir, readFile, rename, rm, writeFile} from 'node:fs/promises';
 import path from 'node:path';
@@ -10,6 +30,7 @@ import type {
 import {acquireSessionLock, releaseSessionLock} from '@durability/checkpoint/lock';
 import {resolveDurableStoragePath, resolveDurableStoragePathCandidates} from '@durability/storage-key';
 
+/** Serialize/deserialize pair for JSON round-tripping checkpoint payloads. */
 interface JsonCodec<T> {
   serialize(value: T): unknown;
   deserialize(raw: unknown): T;

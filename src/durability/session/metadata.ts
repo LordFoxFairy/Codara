@@ -1,3 +1,18 @@
+/**
+ * Session metadata derivation and synchronization.
+ *
+ * After each agent turn, {@link syncSessionMetadata} updates the session's
+ * metadata snapshot: message count, last message preview, title (from first
+ * human message), context window utilization, and cumulative token usage.
+ *
+ * This serves the same purpose as Claude Code's `reAppendSessionMetadata()`
+ * in `sessionStorage.ts` -- keeping displayable session info up to date for
+ * the `/resume` list -- but computes it structurally from agent state rather
+ * than re-appending to a JSONL tail.
+ *
+ * @module
+ */
+
 import {AIMessage, HumanMessage, type BaseMessage} from '@langchain/core/messages';
 import type {AgentInputBudget, AgentState} from '@shared/agent-types';
 import {estimateModelInputTokens} from '@shared/token-estimate';

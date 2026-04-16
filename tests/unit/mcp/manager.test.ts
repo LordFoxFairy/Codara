@@ -110,7 +110,7 @@ describe('MCP tool routing', () => {
 
   it('handles special characters in names', () => {
     const full = namespacedToolName('my-server.v2', 'list.files');
-    expect(full).toBe('mcp_my_server_v2__list_files');
+    expect(full).toBe('mcp__my_server_v2__list_files');
 
     const parsed = parseNamespacedToolName(full);
     expect(parsed?.serverName).toBe('my_server_v2');

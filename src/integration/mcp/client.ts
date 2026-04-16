@@ -3,7 +3,8 @@ import type {Transport} from '@modelcontextprotocol/sdk/shared/transport.js';
 import {createStdioTransport} from './transport/stdio';
 import {connectHttpTransport} from './transport/http';
 import type {McpClientInfo, McpClientStatus, McpServerConfig, McpToolDefinition} from './types';
-import {DEFAULT_MCP_TIMEOUT} from './types';
+import {DEFAULT_MCP_TIMEOUT, MAX_MCP_DESCRIPTION_LENGTH, getMcpToolTimeoutMs} from './types';
+import {raceWithTimeout} from './race-timeout';
 
 /** Progress callback fired at the start and end of each MCP tool call. */
 export type McpProgressCallback = (event: {
@@ -13,9 +14,15 @@ export type McpProgressCallback = (event: {
 }) => void;
 
 /**
+ * Default maximum reconnection attempts for transient failures.
+ */
+const DEFAULT_MAX_RECONNECT_ATTEMPTS = 3;
+
+/**
  * McpClient wraps the MCP SDK Client for a single server connection.
  *
- * Handles connection lifecycle, tool discovery, and tool invocation.
+ * Handles connection lifecycle, tool discovery, tool invocation,
+ * and automatic reconnection on transient failures.
  */
 export class McpClient {
   private client: Client | undefined;
@@ -24,6 +31,8 @@ export class McpClient {
   private _tools: McpToolDefinition[] = [];
   private _lastError: string | undefined;
   private readonly config: McpServerConfig;
+  private reconnectAttempt = 0;
+
   constructor(
     readonly name: string,
     config: McpServerConfig,
@@ -78,7 +87,7 @@ export class McpClient {
           `MCP server "${this.name}" connection timed out after ${connectTimeout}ms`,
         );
       } else {
-        // HTTP: connectHttpTransport does StreamableHTTP→SSE fallback
+        // HTTP: connectHttpTransport does StreamableHTTP->SSE fallback
         // and returns an already-connected client + transport pair
         const result = await connectHttpTransport(this.config, clientInfo, connectTimeout);
         this.client = result.client;
@@ -88,6 +97,7 @@ export class McpClient {
       await this.discoverTools();
       this._status = 'connected';
       this._lastError = undefined;
+      this.reconnectAttempt = 0;
     } catch (error) {
       this._status = 'failed';
       this._lastError = error instanceof Error ? error.message : String(error);
@@ -98,14 +108,36 @@ export class McpClient {
   }
 
   /**
+   * Attempt to reconnect after a transient failure.
+   * Returns true if reconnection succeeded.
+   */
+  async reconnect(): Promise<boolean> {
+    if (this._status === 'disabled') return false;
+    if (this.reconnectAttempt >= DEFAULT_MAX_RECONNECT_ATTEMPTS) return false;
+
+    this.reconnectAttempt++;
+
+    // Clean up existing connection
+    try { await this.client?.close(); } catch { /* best-effort */ }
+    this.client = undefined;
+    this.transport = undefined;
+
+    await this.connect();
+    return this._status === 'connected';
+  }
+
+  /**
    * Call a tool on this server.
+   *
+   * Uses the configurable MCP tool timeout (env: MCP_TOOL_TIMEOUT),
+   * which defaults to ~27.8 hours (effectively infinite), matching Claude Code.
    */
   async callTool(toolName: string, args: Record<string, unknown>): Promise<unknown> {
     if (!this.client || this._status !== 'connected') {
       throw new Error(`MCP server "${this.name}" is not connected (status: ${this._status})`);
     }
 
-    const timeout = this.config.timeout ?? DEFAULT_MCP_TIMEOUT;
+    const timeout = getMcpToolTimeoutMs();
     return raceWithTimeout(
       this.client.callTool({name: toolName, arguments: args}),
       timeout,
@@ -135,7 +167,7 @@ export class McpClient {
       const response = await this.client.listTools();
       this._tools = (response.tools ?? []).map((tool) => ({
         name: tool.name,
-        description: tool.description,
+        description: truncateDescription(tool.description),
         inputSchema: (tool.inputSchema ?? {}) as Record<string, unknown>,
       }));
     } catch {
@@ -144,11 +176,12 @@ export class McpClient {
   }
 }
 
-/** Race a promise against a timeout, cleaning up the timer on completion. */
-function raceWithTimeout<T>(promise: Promise<T>, ms: number, message: string): Promise<T> {
-  let timer: ReturnType<typeof setTimeout>;
-  const timeout = new Promise<never>((_, reject) => {
-    timer = setTimeout(() => reject(new Error(message)), ms);
-  });
-  return Promise.race([promise, timeout]).finally(() => clearTimeout(timer));
+/**
+ * Truncate tool description to MAX_MCP_DESCRIPTION_LENGTH.
+ * OpenAPI-generated MCP servers can dump huge descriptions (15-60KB).
+ */
+function truncateDescription(description: string | undefined): string | undefined {
+  if (!description) return description;
+  if (description.length <= MAX_MCP_DESCRIPTION_LENGTH) return description;
+  return description.slice(0, MAX_MCP_DESCRIPTION_LENGTH - 3) + '...';
 }
