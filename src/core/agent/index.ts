@@ -32,7 +32,7 @@ export type {
   ReviewUIFormTab,
   ReviewResumePayload,
   ToolErrorHandler,
-} from '@core/agent/models/agent';
+} from '@core/agent/agent-types';
 export {
   createAgent,
 } from '@core/agent/run/agent-loop';

@@ -12,7 +12,7 @@ import {
   type BaseMiddleware,
   type BeforeModelContext,
   type MiddlewareRuntimeShared,
-} from '@core/pipeline/types';
+} from '@core/pipeline-types';
 
 const KEEP_LAST_MESSAGES = 2;
 const AUTO_COMPACT_THRESHOLD = 0.80;

@@ -105,7 +105,7 @@ export {
 export {
   createMiddleware,
   type BaseMiddleware,
-} from '@core/pipeline/types';
+} from '@core/pipeline-types';
 export {
   createAgentFileCheckpointer,
   createAgentMemoryCheckpointer,

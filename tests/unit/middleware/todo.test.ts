@@ -3,7 +3,7 @@ import {AIMessage, HumanMessage, ToolMessage, type BaseMessage} from '@langchain
 import type {BaseChatModel} from '@langchain/core/language_models/chat_models';
 import {createAgent} from '@core/agent';
 import {createAgentMemoryCheckpointer} from '@durability/checkpoint';
-import {MiddlewarePipeline} from '@core/pipeline/pipeline';
+import {MiddlewarePipeline} from '@core/pipeline';
 import {readTodoState, createTodoListMiddleware, TODO_TOOL_NAME} from '@core/middleware/todo';
 
 class TodoTestModel {

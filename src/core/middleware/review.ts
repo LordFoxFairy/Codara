@@ -1,4 +1,4 @@
-import {createMiddleware, type ToolCallContext} from '@core/pipeline/types';
+import {createMiddleware, type ToolCallContext} from '@core/pipeline-types';
 import type {
   ReviewActionDescriptor as SharedReviewActionDescriptor,
   ReviewRequest as SharedReviewRequest,

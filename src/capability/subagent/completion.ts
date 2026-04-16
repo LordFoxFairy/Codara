@@ -1,7 +1,7 @@
 import path from 'node:path';
 import {ToolMessage} from '@langchain/core/messages';
 import {resolveToolCallId} from '@core/agent/run/tool-executor';
-import {createMiddleware, type BaseMiddleware, type BeforeModelContext, type ToolCallContext} from '@core/pipeline/types';
+import {createMiddleware, type BaseMiddleware, type BeforeModelContext, type ToolCallContext} from '@core/pipeline-types';
 
 // ---------------------------------------------------------------------------
 // Types
@@ -16,26 +16,27 @@ interface SubagentCompletionContinuationContext {
 }
 
 interface SubagentCompletionRunEntry {
-  runId: string;
-  label: string;
-  agentName: string;
-  status: 'completed' | 'failed';
-  summary?: string;
-  errorMessage?: string;
-  toolUseCount?: number;
-  totalTokens?: number;
+  readonly runId: string;
+  readonly label: string;
+  readonly agentName: string;
+  readonly status: 'completed' | 'failed';
+  readonly summary?: string;
+  readonly errorMessage?: string;
+  readonly toolUseCount?: number;
+  readonly totalTokens?: number;
 }
 
-type SubagentReplayComparableRun = Readonly<{
-  runId: string;
-  label: string;
-  agentName: string;
-  status: string;
-  summary?: string;
-  errorMessage?: string;
-  toolUseCount?: number;
-  totalTokens?: number;
-}>;
+/** Broader run entry type accepted by validation/replay functions. */
+interface SubagentRunComparableEntry {
+  readonly runId: string;
+  readonly label: string;
+  readonly agentName: string;
+  readonly status: string;
+  readonly summary?: string;
+  readonly errorMessage?: string;
+  readonly toolUseCount?: number;
+  readonly totalTokens?: number;
+}
 
 // ---------------------------------------------------------------------------
 // Validation pattern registry — declarative, easy to add/remove patterns
@@ -242,7 +243,7 @@ export function createSubagentCompletionToolMessages(
 
 export function isInvalidSubagentCompletionResponse(
   text: string | undefined,
-  runs: readonly SubagentReplayComparableRun[] = [],
+  runs: readonly SubagentRunComparableEntry[] = [],
 ): boolean {
   const normalized = text?.replace(/\s+/g, ' ').trim();
   if (!normalized) {
@@ -261,7 +262,7 @@ export function shouldRetrySubagentCompletionResponse(input: {
   launchedSubagentToolCall?: boolean;
   attempt: number;
   maxAttempts: number;
-  runs?: readonly SubagentReplayComparableRun[];
+  runs?: readonly SubagentRunComparableEntry[];
 }): boolean {
   if (input.launchedSubagentToolCall) {
     return false;
@@ -276,7 +277,7 @@ export function shouldRetrySubagentCompletionResponse(input: {
 
 export function isSubagentInternalAssistantText(input: {
   text: string | undefined;
-  runs?: readonly SubagentReplayComparableRun[];
+  runs?: readonly SubagentRunComparableEntry[];
 }): boolean {
   if (!input.text?.trim()) {
     return false;
@@ -469,7 +470,7 @@ function buildToolMessageContent(run: SubagentCompletionRunEntry): string {
 
 function containsRawSubagentReplay(
   responseText: string,
-  runs: readonly SubagentReplayComparableRun[],
+  runs: readonly SubagentRunComparableEntry[],
 ): boolean {
   const normalizedResponse = normalizeForReplayDetection(responseText);
   if (!normalizedResponse) {

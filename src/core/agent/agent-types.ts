@@ -1,7 +1,7 @@
 import type {BaseMessage} from '@langchain/core/messages';
 import type {BaseChatModel} from '@langchain/core/language_models/chat_models';
 import type {StructuredToolInterface} from '@langchain/core/tools';
-import type {BaseMiddleware} from '@core/pipeline/types';
+import type {BaseMiddleware} from '@core/pipeline-types';
 import type {AgentCheckpoint, AgentCheckpointer} from '@durability/checkpoint/agent';
 import type {AgentLifecycleHooks} from '@observability/hook/types';
 import type {

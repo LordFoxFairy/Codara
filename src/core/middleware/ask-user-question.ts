@@ -3,7 +3,7 @@ import {tool} from '@langchain/core/tools';
 import {z} from 'zod';
 import type {ReviewUIActionOption} from '@shared/agent-types';
 import {createReviewMiddleware, parseReviewResumeActionPayload, type ReviewMiddlewareOptions} from '@core/middleware/review';
-import {createMiddleware} from '@core/pipeline/types';
+import {createMiddleware} from '@core/pipeline-types';
 
 const ASK_USER_TOOL_NAME = 'AskUserQuestion';
 const DEFAULT_CHANNEL = 'interaction-center';

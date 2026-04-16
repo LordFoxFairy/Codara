@@ -26,7 +26,7 @@ export interface RuntimeEventsDeps {
   setNotices: React.Dispatch<React.SetStateAction<CliNotice[]>>;
   setRunningAgentCount: React.Dispatch<React.SetStateAction<number>>;
   setRunState: (input: CliRunState | ((current: CliRunState) => CliRunState)) => void;
-  dispatchEvent: (event: CliEvent) => void;
+  dispatchEvent?: (event: CliEvent) => void;
   endInteraction: () => void;
   refreshAuxiliaryState: () => void;
   refreshCoreState: () => Promise<{status: string; pendingReview?: ReviewRequest; messages: readonly BaseMessage[]}>;
@@ -75,8 +75,8 @@ export function useRuntimeEvents(deps: RuntimeEventsDeps): RuntimeEventsResult {
       if (effects.agentCountDelta !== 0) {
         const delta = effects.agentCountDelta;
         setRunningAgentCount((count) => Math.max(0, count + delta));
-        if (delta > 0) dispatchEvent({type: 'SUBAGENT_LAUNCHED'});
-        else dispatchEvent({type: 'SUBAGENT_COMPLETED'});
+        if (delta > 0) dispatchEvent?.({type: 'SUBAGENT_LAUNCHED'});
+        else dispatchEvent?.({type: 'SUBAGENT_COMPLETED'});
       }
 
       // Update runtime events via setter to get latest state

@@ -1,6 +1,6 @@
 import {HumanMessage} from '@langchain/core/messages';
 import type {AgentResumeStreamConfig, AgentStreamOutput, ReviewRequest} from '@core/agent';
-import type {Agent, ReviewResumePayload} from '@core/agent/models/agent';
+import type {Agent, ReviewResumePayload} from '@core/agent/agent-types';
 import type {BootstrapAgentOptions} from '@core/agent/bootstrap';
 import type {AgentResult} from '@shared/agent-types';
 import type {ApprovalRecord, ApprovalStore} from '@durability/approval-store';
@@ -11,7 +11,7 @@ import type {CodaraRuntimeEventListener, EmitRuntimeEventInput} from '@observabi
 import type {SubagentCompletionContinuation, SubagentRunRecord, SubagentRunStore} from '@capability/subagent/types';
 import type {SubagentRunLaunchResult} from '@shared/subagent-run-launch';
 import type {SubagentResult} from '@shared/subagent-result';
-import {getGlobalTaskRegistry} from '@capability/task/task-registry';
+import type {TaskRegistry} from '@capability/task/task-registry';
 import type {AgentTaskState} from '@capability/task/task-types';
 
 // ---------------------------------------------------------------------------
@@ -66,6 +66,7 @@ export interface SubagentReviewResumer {
 export interface CreateSubagentRunManagerOptions {
   runStore?: SubagentRunStore;
   approvalStore?: ApprovalStore;
+  taskRegistry?: TaskRegistry;
 }
 
 export interface SubagentRecoverySpec {
@@ -172,7 +173,7 @@ class InMemorySubagentRunManager implements SubagentRunManager {
       agentName: input.agentName,
       label: input.label,
     };
-    getGlobalTaskRegistry().register(agentTask);
+    this.options.taskRegistry?.register(agentTask);
 
     this.emitAgentEvent({
       id: subagentRunEventId(input.runId),
@@ -375,10 +376,10 @@ class InMemorySubagentRunManager implements SubagentRunManager {
 
     // Sync with unified task registry.
     const terminalStatus = subagentResult.reason === 'error' ? 'failed' as const : 'completed' as const;
-    getGlobalTaskRegistry().terminate(handle.runId, terminalStatus, {
+    this.options.taskRegistry?.terminate(handle.runId, terminalStatus, {
       summary: subagentResult.summary,
       errorMessage: subagentResult.errorMessage,
-    } as Partial<AgentTaskState>);
+    });
 
     this.emitAgentEvent({
       kind: 'agent',
@@ -406,9 +407,9 @@ class InMemorySubagentRunManager implements SubagentRunManager {
     this.notifyCompletionWaiters(handle.parentSessionId, handle.batchId);
 
     // Sync with unified task registry.
-    getGlobalTaskRegistry().terminate(handle.runId, 'failed', {
+    this.options.taskRegistry?.terminate(handle.runId, 'failed', {
       errorMessage: subagentResult.errorMessage,
-    } as Partial<AgentTaskState>);
+    });
 
     this.emitAgentEvent({
       kind: 'agent',

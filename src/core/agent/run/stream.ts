@@ -5,7 +5,7 @@ import type {
   AgentStreamConfig,
   AgentStreamMode,
   AgentStreamOutput,
-} from '../models/agent';
+} from '../agent-types';
 import type {ReviewToolMessagePayload} from '@core/middleware/review';
 
 export interface AgentStreamWriter {

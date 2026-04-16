@@ -2,7 +2,7 @@ import {
   createReviewMiddleware,
   type ReviewMiddlewareOptions,
 } from '@core/middleware/review';
-import type {BaseMiddleware} from '@core/pipeline/types';
+import type {BaseMiddleware} from '@core/pipeline-types';
 import {
   createPermissionRuntime,
   handlePermissionFallbackResume,

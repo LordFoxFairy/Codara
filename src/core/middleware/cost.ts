@@ -13,7 +13,7 @@
  */
 
 import type {AIMessage} from '@langchain/core/messages';
-import {createMiddleware} from '@core/pipeline/types';
+import {createMiddleware} from '@core/pipeline-types';
 import type {CostTracker} from '@observability/cost';
 
 /** Well-known key used to store the CostTracker in middleware runtime.shared. */

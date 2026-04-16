@@ -2,7 +2,7 @@ import {readFile} from 'node:fs/promises';
 import {existsSync} from 'node:fs';
 import {homedir} from 'node:os';
 import {fromZodError} from "zod-validation-error";
-import {ConfigSchema, ModelMetadataConfigSchema} from "@integration/provider/config/schema";
+import {ConfigSchema, ModelMetadataConfigSchema} from "@integration/provider/schema";
 import type {ModelMetadataConfig, ModelRoutingConfig, RouterRule} from "@integration/provider/model";
 
 const CODARA_PATH_ENV = 'CODARA_PATH';

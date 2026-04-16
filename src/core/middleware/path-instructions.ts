@@ -5,7 +5,7 @@ import {
   type BaseMiddleware,
   type ToolCallContext,
   type ToolCallHandler,
-} from '@core/pipeline/types';
+} from '@core/pipeline-types';
 import type {ProgressiveInstructionSource} from '@context/instructions';
 import {type ConditionalRule, matchRulesForPath} from '@context/rules';
 

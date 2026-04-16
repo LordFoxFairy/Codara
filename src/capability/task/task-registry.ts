@@ -6,7 +6,7 @@
  * tools query this registry to provide a unified interface.
  */
 
-import type {TaskState, TaskStatus, TaskType} from './task-types';
+import type {TaskState, ExecutionTaskStatus, TaskType} from './task-types';
 import {isTerminalTaskStatus} from './task-types';
 
 // ---------------------------------------------------------------------------
@@ -27,7 +27,7 @@ export interface TaskRegistry {
   update(taskId: string, patch: Partial<Omit<TaskState, 'id' | 'type'>>): TaskState | undefined;
 
   /** Mark a task as completed/failed/killed. */
-  terminate(taskId: string, status: 'completed' | 'failed' | 'killed', patch?: Partial<TaskState>): TaskState | undefined;
+  terminate(taskId: string, status: 'completed' | 'failed' | 'killed', patch?: TaskTerminatePatch): TaskState | undefined;
 
   /** Remove a terminal task from the registry. */
   remove(taskId: string): boolean;
@@ -36,9 +36,16 @@ export interface TaskRegistry {
   prune(): number;
 }
 
+/** Explicit fields allowed when terminating a task. */
+export interface TaskTerminatePatch {
+  summary?: string;
+  errorMessage?: string;
+  exitCode?: number | null;
+}
+
 export interface TaskListFilter {
   type?: TaskType;
-  status?: TaskStatus;
+  status?: ExecutionTaskStatus;
   /** If true, only return non-terminal (active) tasks. */
   activeOnly?: boolean;
 }
@@ -84,23 +91,23 @@ class InMemoryTaskRegistry implements TaskRegistry {
       return undefined;
     }
 
-    const updated = {...existing, ...patch} as TaskState;
+    const updated: TaskState = {...existing, ...patch};
     this.tasks.set(taskId, updated);
     return updated;
   }
 
-  terminate(taskId: string, status: 'completed' | 'failed' | 'killed', patch?: Partial<TaskState>): TaskState | undefined {
+  terminate(taskId: string, status: 'completed' | 'failed' | 'killed', patch?: TaskTerminatePatch): TaskState | undefined {
     const existing = this.tasks.get(taskId);
     if (!existing) {
       return undefined;
     }
 
-    const updated = {
+    const updated: TaskState = {
       ...existing,
       ...(patch ?? {}),
       status,
       endTime: Date.now(),
-    } as TaskState;
+    };
     this.tasks.set(taskId, updated);
     return updated;
   }
@@ -125,24 +132,3 @@ class InMemoryTaskRegistry implements TaskRegistry {
   }
 }
 
-// ---------------------------------------------------------------------------
-// Singleton
-// ---------------------------------------------------------------------------
-
-let _globalRegistry: TaskRegistry | undefined;
-
-/**
- * Get the global task registry. Creates one if it doesn't exist.
- * Use this for production code. Tests should use createTaskRegistry().
- */
-export function getGlobalTaskRegistry(): TaskRegistry {
-  if (!_globalRegistry) {
-    _globalRegistry = createTaskRegistry();
-  }
-  return _globalRegistry;
-}
-
-/** Reset the global registry (for testing only). */
-export function _resetGlobalRegistryForTest(): void {
-  _globalRegistry = undefined;
-}

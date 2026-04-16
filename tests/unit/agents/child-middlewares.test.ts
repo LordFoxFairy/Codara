@@ -3,7 +3,7 @@ import {mkdtemp} from 'node:fs/promises';
 import {tmpdir} from 'node:os';
 import path from 'node:path';
 import {HumanMessage, ToolMessage, type BaseMessage, type ToolCall} from '@langchain/core/messages';
-import {MIDDLEWARE_NAMES} from '@core/pipeline/types';
+import {MIDDLEWARE_NAMES} from '@core/pipeline-types';
 import {buildSubagentChildMiddlewares} from '@capability/subagent/middleware';
 import {ensurePermissionSettingsFile} from '@core/middleware/permission';
 import {parseReviewToolMessagePayload, type ToolCallContext} from '@core/middleware';

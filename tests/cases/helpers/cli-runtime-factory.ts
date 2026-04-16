@@ -26,7 +26,7 @@ import {
   TASK_CREATE_TOOL_NAME,
   TASK_LIST_TOOL_NAME,
 } from '@capability/task';
-import {createMiddleware} from '@core/pipeline/types';
+import {createMiddleware} from '@core/pipeline-types';
 import {createSubagentRunFileStore, createSubagentMiddleware} from '@capability/subagent';
 import {AGENT_TOOL_NAME} from '@capability/subagent/tool';
 import {FileSystemSkillStore, readSkillsRuntimeData} from '@capability/skill';

@@ -33,9 +33,9 @@ export type RefreshCoreStateFn = () => Promise<{
 
 export type DrainScheduledInteractionsFn = () => void;
 
-export type ClearRuntimeEventsFn = React.Dispatch<
-  React.SetStateAction<readonly CodaraRuntimeEvent[]>
->;
+export type ClearRuntimeEventsFn = (
+  value: readonly CodaraRuntimeEvent[] | ((prev: readonly CodaraRuntimeEvent[]) => readonly CodaraRuntimeEvent[]),
+) => void;
 
 // ─── Store state shape ───────────────────────────────────────────────
 export interface CliStoreState {

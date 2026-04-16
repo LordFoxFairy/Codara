@@ -18,7 +18,9 @@ import {createAgentFileCheckpointer} from '@durability/checkpoint';
 import {createApprovalFileStore, type ApprovalStore} from '@durability/approval-store';
 import {ensurePermissionSettingsFile} from '@core/middleware/permission';
 import {createSubagentRunFileStore, createSubagentRunManager, type SubagentRunStore, type SubagentRunManager} from '@capability/subagent';
-import {createTaskFileStore} from '@capability/task';
+import type {SessionListOptions} from '@durability/session';
+import {createTaskFileStore, createTaskRegistry} from '@capability/task';
+import type {TaskRegistry} from '@capability/task/task-registry';
 import {loadModelRoutingConfigFromPath, resolveCodaraPath} from '@integration/provider';
 import {createCodaraGuidelinesSource, type GuidelinesSource, createCodaraPromptSource, type PromptSource} from '@context/sources';
 import {createCodaraSkillsSource} from '@capability/skill';
@@ -41,6 +43,7 @@ import {MemoryReader} from '@capability/memory/reader';
 import {initSettings} from './runtime/init-settings';
 import {initContextSources} from './runtime/init-context';
 import {initHooks} from './runtime/init-hooks';
+import {backgroundProcesses} from '@tools/builtin/bash';
 import {initMcp} from './runtime/init-mcp';
 import {wireTranscript, wrapDispose} from './runtime/init-transcript';
 import {createCostMiddleware} from '@core/middleware/cost';
@@ -110,7 +113,9 @@ export async function createCodaraRuntime(options: CodaraRuntimeOptions = {}): P
   const subagentRunStore = options.subagentRunStore ?? createSubagentRunFileStore({rootDir: path.join(runtimeStatePath, 'agent-runs')});
   const approvalStore = options.approvalStore ?? createApprovalFileStore({rootDir: path.join(runtimeStatePath, 'approvals')});
   const runtimeCheckpointer = options.checkpointer ?? createAgentFileCheckpointer({rootDir: path.join(runtimeStatePath, 'sessions')});
-  const subagentRunManager = createSubagentRunManager({runStore: subagentRunStore, approvalStore});
+  const taskRegistry = createTaskRegistry();
+  backgroundProcesses.taskRegistry = taskRegistry;
+  const subagentRunManager = createSubagentRunManager({runStore: subagentRunStore, approvalStore, taskRegistry});
   ensurePermissionSettingsFile({cwd: options.cwd, projectRoot: options.projectRoot, userHome: options.userHome});
 
   // 3. Model catalog
@@ -356,7 +361,7 @@ export function assembleCodara(
   // ── Compose the Codara handle ──
   return {
     ...session, subscribeRuntimeEvents, listCommands: commands.listCommands, executeCommand,
-    listSessions: async (opts?: import('@durability/session').SessionListOptions) => options.store ? options.store.list(opts) : [],
+    listSessions: async (opts?: SessionListOptions) => options.store ? options.store.list(opts) : [],
     getMcpStatus: () => mcpManager?.status() ?? [],
     getSubagentRunSummaries: () => getSubagentRunSummaries(preloadedSources?.subagentRunStore, session.getState().sessionId),
     getSubagentRunDetails: async (runIds?: readonly string[]) => getSubagentRunDetails({

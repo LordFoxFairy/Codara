@@ -3,7 +3,7 @@ import {ChannelRegistry} from '@integration/channel/registry';
 import {createChannelReviewOptions} from '@integration/channel/review-adapter';
 import type {Channel} from '@shared/channel-types';
 import type {ReviewRequest} from '@shared/agent-types';
-import type {ToolCallContext} from '@core/pipeline/types';
+import type {ToolCallContext} from '@core/pipeline-types';
 
 function createMockChannel(id: string): Channel & {
   reviewRequests: ReviewRequest[];

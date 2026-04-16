@@ -15,7 +15,7 @@ import {
   type BaseExecutionContext,
   type ModelCallContext,
   type ToolCallContext,
-} from '@core/pipeline/types';
+} from '@core/pipeline-types';
 import {parseReviewToolMessagePayload} from '@core/middleware/review';
 import {toError} from '@shared/errors';
 import {readSubagentRunLaunchResult} from '@shared/subagent-run-launch';

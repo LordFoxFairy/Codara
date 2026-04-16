@@ -12,7 +12,7 @@ import type {BaseChatModel} from '@langchain/core/language_models/chat_models';
 import type {StructuredToolInterface} from '@langchain/core/tools';
 import type {BaseMessage} from '@langchain/core/messages';
 import type {AgentCheckpointer} from '@durability/checkpoint';
-import type {BaseMiddleware} from '@core/pipeline/types';
+import type {BaseMiddleware} from '@core/pipeline-types';
 import type {ReviewMiddlewareOptions, LoggingMiddlewareOptions} from '@core/middleware';
 import type {SummarySettings} from '@core/middleware/summary';
 import type {TaskStore} from '@capability/task';

@@ -1,6 +1,6 @@
 import {describe, expect, it} from 'bun:test';
 import {HumanMessage, ToolMessage} from '@langchain/core/messages';
-import {mergeContext} from '@core/agent/models/command';
+import {mergeContext} from '@core/agent/command';
 import {
   injectReviewResumePayload,
   normalizeAgentInput,

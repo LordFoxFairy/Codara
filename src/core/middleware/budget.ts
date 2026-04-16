@@ -1,6 +1,6 @@
 import type {AgentInputBudget} from '@shared/agent-types';
 import type {ContextBudgetSnapshot} from '@shared/execution-types';
-import {createMiddleware, type BaseMiddleware, type BeforeModelContext} from '@core/pipeline/types';
+import {createMiddleware, type BaseMiddleware, type BeforeModelContext} from '@core/pipeline-types';
 import {estimateModelInputTokens, type TokenEstimator, type TokenEstimateInput} from '@shared/token-estimate';
 
 export type {ContextBudgetSnapshot} from '@shared/execution-types';

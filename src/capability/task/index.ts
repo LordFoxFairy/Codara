@@ -27,7 +27,7 @@ export {
 // --- Unified task system (background execution) ---
 export type {
   TaskType as UnifiedTaskType,
-  TaskStatus as UnifiedTaskStatus,
+  ExecutionTaskStatus,
   TaskStateBase,
   ShellTaskState,
   AgentTaskState,
@@ -42,10 +42,10 @@ export {
 export type {
   TaskRegistry,
   TaskListFilter,
+  TaskTerminatePatch,
 } from '@capability/task/task-registry';
 export {
   createTaskRegistry,
-  getGlobalTaskRegistry,
 } from '@capability/task/task-registry';
 export {
   TASK_STOP_TOOL_NAME,

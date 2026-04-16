@@ -20,7 +20,7 @@ import type {
   ContextBudgetSnapshot,
   ExecutionContextMetadata,
 } from '@shared/execution-types';
-import type {AgentStateUpdate} from '@core/agent/models/command';
+import type {AgentStateUpdate} from '@core/agent/command';
 
 export type {ExecutionContextMetadata} from '@shared/execution-types';
 

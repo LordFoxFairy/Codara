@@ -2,7 +2,7 @@ import {mapChatMessagesToStoredMessages, mapStoredMessagesToChatMessages, type B
 import type {
   AgentResult,
   AgentState,
-} from './agent';
+} from './agent-types';
 import type {
   AgentRuntimeContext,
   AgentRuntimeValues,

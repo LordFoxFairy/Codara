@@ -41,7 +41,6 @@ import {
   type QueuedReviewResponseInteraction,
 } from './interaction-scheduler';
 import {resolveInteractionStateSnapshot} from './cli-interaction-queue';
-import type {CliEvent} from './view-state';
 import type {
   CliActiveTurn,
   CliInteractionKind,
@@ -179,8 +178,6 @@ export function useCliController(options: UseCliControllerOptions): CliControlle
   // ─── Shared scheduler (stable reference) ──────────────────────────
   const interactionScheduler = useMemo(() => new CliInteractionScheduler(), []);
 
-  // dispatchEvent is a no-op — retained for type compat with hooks
-  const dispatchEvent = useMemo<(event: CliEvent) => void>(() => () => {}, []);
 
   // ─── Store-synced state setters ───────────────────────────────────
   // These update both React state (for re-renders) and the store (for
@@ -361,7 +358,6 @@ export function useCliController(options: UseCliControllerOptions): CliControlle
     appendNotice,
     reportError,
     flushPendingBackgroundNotices,
-    dispatchEvent,
     reopenSession,
     openFile,
     onShowSessionPicker,
@@ -380,7 +376,6 @@ export function useCliController(options: UseCliControllerOptions): CliControlle
     setNotices,
     setRunningAgentCount,
     setRunState,
-    dispatchEvent,
     endInteraction,
     refreshAuxiliaryState: messageSync.refreshAuxiliaryState,
     refreshCoreState: messageSync.refreshCoreState,

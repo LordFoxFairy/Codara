@@ -2,7 +2,7 @@ import {describe, expect, it} from 'bun:test';
 import {AIMessage, HumanMessage, type BaseMessage} from '@langchain/core/messages';
 import type {ModelCallContext} from '@core/middleware';
 import {createBudgetMiddleware} from '@core/middleware';
-import {MiddlewarePipeline} from '@core/pipeline/pipeline';
+import {MiddlewarePipeline} from '@core/pipeline';
 import {createSummaryMiddleware} from '@core/middleware/summary';
 
 describe('budget and summary middleware', () => {

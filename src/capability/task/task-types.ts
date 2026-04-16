@@ -17,14 +17,14 @@ import {randomBytes} from 'node:crypto';
 
 export type TaskType = 'shell' | 'agent';
 
-export type TaskStatus = 'pending' | 'running' | 'completed' | 'failed' | 'killed';
+export type ExecutionTaskStatus = 'pending' | 'running' | 'completed' | 'failed' | 'killed';
 
 /**
  * True when a task is in a terminal state and will not transition further.
  * Guards against injecting messages into dead tasks, evicting finished tasks,
  * and orphan-cleanup paths.
  */
-export function isTerminalTaskStatus(status: TaskStatus): boolean {
+export function isTerminalTaskStatus(status: ExecutionTaskStatus): boolean {
   return status === 'completed' || status === 'failed' || status === 'killed';
 }
 
@@ -35,7 +35,7 @@ export function isTerminalTaskStatus(status: TaskStatus): boolean {
 export interface TaskStateBase {
   id: string;
   type: TaskType;
-  status: TaskStatus;
+  status: ExecutionTaskStatus;
   description: string;
   startTime: number;
   endTime?: number;

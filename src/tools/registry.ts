@@ -40,28 +40,49 @@ export interface ValidationResult {
   message?: string;
 }
 
-// ── Registry singleton ──
+// ── Registry ──
 
-const entries = new Map<string, ToolRegistryEntry>();
+export interface ToolRegistry {
+  register(entry: ToolRegistryEntry): void;
+  get(name: string): ToolRegistryEntry | undefined;
+  getPrompt(name: string): string | undefined;
+  getAll(): ReadonlyMap<string, ToolRegistryEntry>;
+  getByCategory(category: ToolCategory): ToolRegistryEntry[];
+}
+
+export function createToolRegistry(): ToolRegistry {
+  const entries = new Map<string, ToolRegistryEntry>();
+  return {
+    register(entry) { entries.set(entry.name, entry); },
+    get(name) { return entries.get(name); },
+    getPrompt(name) { return entries.get(name)?.getPrompt(); },
+    getAll() { return entries; },
+    getByCategory(category) { return [...entries.values()].filter((e) => e.category === category); },
+  };
+}
+
+// ── Default registry (module-level, pre-populated with builtins) ──
+
+const defaultRegistry = createToolRegistry();
 
 export function registerTool(entry: ToolRegistryEntry): void {
-  entries.set(entry.name, entry);
+  defaultRegistry.register(entry);
 }
 
 export function getToolEntry(name: string): ToolRegistryEntry | undefined {
-  return entries.get(name);
+  return defaultRegistry.get(name);
 }
 
 export function getToolPrompt(name: string): string | undefined {
-  return entries.get(name)?.getPrompt();
+  return defaultRegistry.getPrompt(name);
 }
 
 export function getAllToolEntries(): ReadonlyMap<string, ToolRegistryEntry> {
-  return entries;
+  return defaultRegistry.getAll();
 }
 
 export function getToolsByCategory(category: ToolCategory): ToolRegistryEntry[] {
-  return [...entries.values()].filter((e) => e.category === category);
+  return defaultRegistry.getByCategory(category);
 }
 
 // ── Builtin tool validation helpers ──

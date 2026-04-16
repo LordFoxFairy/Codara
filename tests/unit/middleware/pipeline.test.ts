@@ -1,7 +1,7 @@
 import {describe, expect, it} from 'bun:test';
 import {AIMessage, HumanMessage, ToolMessage, type BaseMessage, type ToolCall} from '@langchain/core/messages';
 import type {BaseMiddleware} from '@core/middleware';
-import {MiddlewarePipeline} from '@core/pipeline/pipeline';
+import {MiddlewarePipeline} from '@core/pipeline';
 import {z} from 'zod';
 
 function createBaseContext() {

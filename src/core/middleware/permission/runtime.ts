@@ -9,7 +9,7 @@ import {
   type ReviewResumePayload,
   type ReviewToolMessagePayload,
 } from '@core/middleware/review';
-import type {ToolCallContext} from '@core/pipeline/types';
+import type {ToolCallContext} from '@core/pipeline-types';
 import {
   evaluatePermissionToolCall,
   formatPermissionExpression,

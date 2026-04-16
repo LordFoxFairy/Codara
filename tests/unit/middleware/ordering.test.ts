@@ -1,6 +1,6 @@
 import {describe, test, expect} from 'bun:test';
-import {MiddlewarePipeline} from '@core/pipeline/pipeline';
-import type {BaseMiddleware} from '@core/pipeline/types';
+import {MiddlewarePipeline} from '@core/pipeline';
+import type {BaseMiddleware} from '@core/pipeline-types';
 
 /** Minimal middleware stub — must have at least one hook to pass createMiddleware(). */
 function stub(name: string, dependsOn?: readonly string[]): BaseMiddleware {

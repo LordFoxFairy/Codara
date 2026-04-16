@@ -10,7 +10,7 @@ import type {BusEvent} from '../../bus/types';
 import {jsonResponse, errorResponse} from '../sse';
 import {getBus, generateRequestId, oneShot} from '../bus-manager';
 import {createAgentFileCheckpointer} from '@durability/checkpoint';
-import {resolveCodaraPath} from '@integration/provider/config/loader';
+import {resolveCodaraPath} from '@integration/provider/loader';
 import {resolveWorkspaceRoot} from '@config/workspace';
 
 /**

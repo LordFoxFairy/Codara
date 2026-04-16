@@ -33,12 +33,14 @@ export {
 } from '@tools/builtin';
 export {filterToolsByReferences, normalizeToolReferenceName} from '@tools/names';
 export {
+  createToolRegistry,
   registerTool,
   getToolEntry,
   getToolPrompt,
   getAllToolEntries,
   getToolsByCategory,
   type ToolCategory,
+  type ToolRegistry,
   type ToolRegistryEntry,
   type ValidationResult,
 } from '@tools/registry';

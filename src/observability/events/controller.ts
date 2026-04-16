@@ -12,7 +12,7 @@ import {randomUUID} from 'node:crypto';
 import {
   createMiddleware,
   readExecutionMetadata,
-} from '@core/pipeline/types';
+} from '@core/pipeline-types';
 import {parseReviewToolMessagePayload} from '@core/middleware/review';
 
 import type {

@@ -7,7 +7,7 @@
  * Also detects task tool calls (create/update) and fires TaskCreated/TaskCompleted hooks.
  */
 import {ToolMessage} from '@langchain/core/messages';
-import {createMiddleware, type BaseMiddleware, type ToolCallContext, type ToolCallHandler} from '@core/pipeline/types';
+import {createMiddleware, type BaseMiddleware, type ToolCallContext, type ToolCallHandler} from '@core/pipeline-types';
 import type {TaskLifecycleHooks, ToolLifecycleHooks} from '@observability/hook/types';
 import {TASK_CREATE_TOOL_NAME, TASK_UPDATE_TOOL_NAME} from '@capability/task/tools';
 

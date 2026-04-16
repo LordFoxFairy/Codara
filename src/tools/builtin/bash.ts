@@ -17,7 +17,7 @@ import {tmpdir} from 'node:os';
 import path from 'node:path';
 import {StructuredTool} from '@langchain/core/tools';
 import {z} from 'zod';
-import {getGlobalTaskRegistry} from '@capability/task/task-registry';
+import type {TaskRegistry} from '@capability/task/task-registry';
 import {generateTaskId} from '@capability/task/task-types';
 import type {ShellTaskState} from '@capability/task/task-types';
 
@@ -56,7 +56,7 @@ export interface BackgroundProcessInfo {
     status: 'running' | 'completed' | 'failed';
 }
 
-/** Singleton registry that tracks all background processes. */
+/** Registry that tracks all background processes. */
 class BackgroundProcessRegistry {
     private processes = new Map<string, BackgroundProcessInfo>();
     private childRefs = new Map<string, ChildProcess>();
@@ -64,6 +64,9 @@ class BackgroundProcessRegistry {
 
     /** Directory where background process output files are stored. */
     private outputDir: string | undefined;
+
+    /** Optional unified task registry for cross-system task tracking. */
+    taskRegistry: TaskRegistry | undefined;
 
     private async ensureOutputDir(): Promise<string> {
         if (!this.outputDir) {
@@ -137,7 +140,7 @@ class BackgroundProcessRegistry {
             stdoutPath,
             stderrPath,
         };
-        getGlobalTaskRegistry().register(taskState);
+        this.taskRegistry?.register(taskState);
 
         child.on('close', (code) => {
             info.exitedAt = Date.now();
@@ -151,10 +154,10 @@ class BackgroundProcessRegistry {
                 this.streams.delete(id);
             }
             // Sync with unified task registry.
-            getGlobalTaskRegistry().terminate(
+            this.taskRegistry?.terminate(
                 id,
                 code === 0 ? 'completed' : 'failed',
-                {exitCode: code} as Partial<ShellTaskState>,
+                {exitCode: code},
             );
         });
 
@@ -170,7 +173,7 @@ class BackgroundProcessRegistry {
                 this.streams.delete(id);
             }
             // Sync with unified task registry.
-            getGlobalTaskRegistry().terminate(id, 'failed', {exitCode: null} as Partial<ShellTaskState>);
+            this.taskRegistry?.terminate(id, 'failed', {exitCode: null});
         });
 
         return info;

@@ -10,8 +10,8 @@
 import path from 'node:path';
 import type {BaseChatModel} from '@langchain/core/language_models/chat_models';
 import type {StructuredToolInterface} from '@langchain/core/tools';
-import type {BaseMiddleware} from '@core/pipeline/types';
-import {MIDDLEWARE_NAMES} from '@core/pipeline/types';
+import type {BaseMiddleware} from '@core/pipeline-types';
+import {MIDDLEWARE_NAMES} from '@core/pipeline-types';
 import type {LoggingMiddlewareOptions} from '@core/middleware';
 import {
   createAskUserQuestionMiddleware,

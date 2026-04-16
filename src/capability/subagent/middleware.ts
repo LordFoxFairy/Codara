@@ -1,4 +1,4 @@
-import {createMiddleware, type BaseMiddleware, MIDDLEWARE_NAMES} from '@core/pipeline/types';
+import {createMiddleware, type BaseMiddleware, MIDDLEWARE_NAMES} from '@core/pipeline-types';
 import {
   createAskUserQuestionMiddleware,
   createBudgetMiddleware,

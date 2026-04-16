@@ -2,7 +2,7 @@ import {randomUUID} from 'node:crypto';
 import {AIMessage, AIMessageChunk, BaseMessage, HumanMessage, ToolMessage, type ToolCall} from '@langchain/core/messages';
 import type {StructuredToolInterface} from '@langchain/core/tools';
 import {z} from 'zod';
-import {mergeContext} from '../models/command';
+import {mergeContext} from '../command';
 import {
   applyAgentStateSnapshot,
   cloneAgentValues,
@@ -13,7 +13,7 @@ import {
   toCheckpointInfo,
   toCheckpointState,
   type MutableAgentState,
-} from '../models/state';
+} from '../state';
 import {createStreamWriter} from './stream';
 import {finishTurn, runAgentTurn, runTools} from './turn';
 import type {
@@ -34,14 +34,14 @@ import type {
   ReviewRequest,
   ReviewResumePayload,
   ToolErrorHandler,
-} from '../models/agent';
+} from '../agent-types';
 import {
   createAgentMemoryCheckpointer,
   type AgentCheckpoint,
   type AgentCheckpointInfo,
 } from '@durability/checkpoint/agent';
-import {MIDDLEWARE_NAMES, type BaseExecutionContext, type MiddlewareRuntimeShared} from '@core/pipeline/types';
-import {MiddlewarePipeline} from '@core/pipeline/pipeline';
+import {MIDDLEWARE_NAMES, type BaseExecutionContext, type MiddlewareRuntimeShared} from '@core/pipeline-types';
+import {MiddlewarePipeline} from '@core/pipeline';
 import {deepClone} from '@shared/clone';
 import {formatErrorMessage} from '@shared/errors';
 import {cheapDrainMessages, compactMessages, isContextWindowExhausted} from './compact';
@@ -750,8 +750,9 @@ async function invokeStopHook(
       }
       return true;
     }
-  } catch {
-    // Fail-open: if hook errors, allow stop
+  } catch (err) {
+    // Fail-open: if hook errors, allow stop. Log for observability.
+    if (process.env.DEBUG) console.warn('[agent] Stop hook error (fail-open):', err);
   }
   return false;
 }

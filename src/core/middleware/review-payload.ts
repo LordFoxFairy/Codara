@@ -4,7 +4,7 @@
  */
 
 import {ToolMessage, type ToolCall} from '@langchain/core/messages';
-import {readExecutionMetadata, type ToolCallContext} from '@core/pipeline/types';
+import {readExecutionMetadata, type ToolCallContext} from '@core/pipeline-types';
 import {resolveToolCallId} from '@shared/tool-call-id';
 import type {
   ReviewDecision as ReviewDecisionValue,

@@ -50,7 +50,7 @@ export interface PromptSubmissionDeps {
   appendNotice: (level: CliNotice['level'], content: string) => void;
   reportError: (error: unknown) => string;
   flushPendingBackgroundNotices: () => void;
-  dispatchEvent: (event: CliEvent) => void;
+  dispatchEvent?: (event: CliEvent) => void;
   reopenSession?: (sessionId: string) => Promise<void>;
   openFile?: (targetPath: string) => Promise<boolean>;
   onShowSessionPicker?: () => void;
@@ -309,7 +309,7 @@ export function usePromptSubmission(deps: PromptSubmissionDeps): PromptSubmissio
       return;
     }
 
-    dispatchEvent({type: 'PROMPT_SUBMITTED'});
+    dispatchEvent?.({type: 'PROMPT_SUBMITTED'});
     await runQueuedSessionPrompt(prompt);
     flushPendingBackgroundNotices();
     drainScheduledInteractions();

@@ -4,7 +4,7 @@
  */
 
 import type {AgentContextPreparer} from '@core/agent';
-import type {BaseMiddleware} from '@core/pipeline/types';
+import type {BaseMiddleware} from '@core/pipeline-types';
 import {FileSystemSkillStore, type SkillStore} from '@capability/skill';
 import {
   buildBaseSystemMessage,

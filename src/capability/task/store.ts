@@ -29,7 +29,35 @@ export function createTaskFileStore(options: TaskFileStoreOptions): TaskStore {
   return new FileTaskStore(options.rootDir);
 }
 
-class InMemoryTaskStore implements TaskStore {
+abstract class BaseTaskStore implements TaskStore {
+  abstract list(): Promise<TaskRecord[]>;
+  abstract get(taskId: string): Promise<TaskRecord | undefined>;
+
+  /** Persist a batch of records after a graph update. */
+  protected abstract persistBatch(records: Map<string, TaskRecord>): Promise<void>;
+
+  /** Persist a single newly created record. */
+  protected abstract persistOne(record: TaskRecord): Promise<void>;
+
+  async create(input: CreateTaskInput): Promise<TaskRecord> {
+    const record = createTaskRecord(input);
+    await this.persistOne(record);
+    return cloneTask(record);
+  }
+
+  async update(input: UpdateTaskInput): Promise<TaskRecord> {
+    const existing = await this.get(input.taskId);
+    if (!existing) {
+      throw new Error(`Task "${input.taskId}" not found`);
+    }
+
+    const nextGraph = await applyTaskUpdate(existing, input, (taskId) => this.get(taskId));
+    await this.persistBatch(nextGraph);
+    return cloneTask(nextGraph.get(input.taskId) as TaskRecord);
+  }
+}
+
+class InMemoryTaskStore extends BaseTaskStore {
   private readonly records = new Map<string, TaskRecord>();
 
   async list(): Promise<TaskRecord[]> {
@@ -41,29 +69,21 @@ class InMemoryTaskStore implements TaskStore {
     return record ? cloneTask(record) : undefined;
   }
 
-  async create(input: CreateTaskInput): Promise<TaskRecord> {
-    const record = createTaskRecord(input);
+  protected async persistOne(record: TaskRecord): Promise<void> {
     this.records.set(record.id, record);
-    return cloneTask(record);
   }
 
-  async update(input: UpdateTaskInput): Promise<TaskRecord> {
-    const existing = this.records.get(input.taskId);
-    if (!existing) {
-      throw new Error(`Task "${input.taskId}" not found`);
-    }
-
-    const nextGraph = await applyTaskUpdate(existing, input, (taskId) => this.records.get(taskId));
-    for (const [taskId, record] of nextGraph.entries()) {
+  protected async persistBatch(records: Map<string, TaskRecord>): Promise<void> {
+    for (const [taskId, record] of records.entries()) {
       this.records.set(taskId, record);
     }
-
-    return cloneTask(nextGraph.get(input.taskId) as TaskRecord);
   }
 }
 
-class FileTaskStore implements TaskStore {
-  constructor(private readonly rootDir: string) {}
+class FileTaskStore extends BaseTaskStore {
+  constructor(private readonly rootDir: string) {
+    super();
+  }
 
   async list(): Promise<TaskRecord[]> {
     let entries: string[] = [];
@@ -85,21 +105,12 @@ class FileTaskStore implements TaskStore {
     return this.readTask(this.taskPath(taskId));
   }
 
-  async create(input: CreateTaskInput): Promise<TaskRecord> {
-    const record = createTaskRecord(input);
+  protected async persistOne(record: TaskRecord): Promise<void> {
     await this.writeTask(record);
-    return cloneTask(record);
   }
 
-  async update(input: UpdateTaskInput): Promise<TaskRecord> {
-    const existing = await this.get(input.taskId);
-    if (!existing) {
-      throw new Error(`Task "${input.taskId}" not found`);
-    }
-
-    const nextGraph = await applyTaskUpdate(existing, input, (taskId) => this.get(taskId));
-    await Promise.all([...nextGraph.values()].map((record) => this.writeTask(record)));
-    return cloneTask(nextGraph.get(input.taskId) as TaskRecord);
+  protected async persistBatch(records: Map<string, TaskRecord>): Promise<void> {
+    await Promise.all([...records.values()].map((record) => this.writeTask(record)));
   }
 
   private taskPath(taskId: string): string {

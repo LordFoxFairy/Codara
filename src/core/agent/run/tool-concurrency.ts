@@ -1,9 +1,6 @@
 import type {ToolCall} from '@langchain/core/messages';
 import {getToolMetadata, type ToolMetadata} from '@shared/tool-metadata';
 
-/** @deprecated Use ToolMetadata from '@shared/tool-metadata' instead. */
-export type ToolConcurrencyMeta = Pick<ToolMetadata, 'isReadOnly'>;
-
 export interface PartitionedToolCalls {
   /** Read-only tools that can execute concurrently via Promise.all */
   readOnly: ToolCall[];
@@ -21,7 +18,7 @@ export interface PartitionedToolCalls {
  */
 export function partitionToolCalls(
   toolCalls: ToolCall[],
-  registry?: Map<string, ToolConcurrencyMeta>,
+  registry?: Map<string, Pick<ToolMetadata, 'isReadOnly'>>,
 ): PartitionedToolCalls {
   const readOnly: ToolCall[] = [];
   const serial: ToolCall[] = [];

@@ -2,7 +2,7 @@ import type {StructuredToolInterface} from '@langchain/core/tools'
 import {
   createMiddleware,
   type ModelCallContext
-} from '@core/pipeline/types'
+} from '@core/pipeline-types'
 import type {SkillStore} from '@capability/skill/contracts'
 import type {SkillsRuntimeBundle} from '@context/skills-bundle'
 

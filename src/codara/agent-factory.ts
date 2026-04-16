@@ -18,7 +18,7 @@ import {
   type SummaryOptions,
   type SummarySettings,
 } from '@core/middleware/summary';
-import {MIDDLEWARE_NAMES, type BaseMiddleware} from '@core/pipeline/types';
+import {MIDDLEWARE_NAMES, type BaseMiddleware} from '@core/pipeline-types';
 import type {AgentFactory, AgentFactoryCreateOptions, SessionMiddlewareFactory} from '@durability/session/types';
 
 // ── AgentFactory ──

@@ -11,7 +11,7 @@ import {
   toCheckpointInfo,
   toCheckpointState,
   type MutableAgentState,
-} from '@core/agent/models/state';
+} from '@core/agent/state';
 import type {AgentCheckpoint} from '@durability/checkpoint';
 
 describe('agent checkpoint state helpers', () => {

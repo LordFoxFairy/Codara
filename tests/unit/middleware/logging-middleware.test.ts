@@ -13,7 +13,7 @@ import {
   type MiddlewareLogRecord,
   type ToolCallContext,
 } from '@core/middleware';
-import {MiddlewarePipeline} from '@core/pipeline/pipeline';
+import {MiddlewarePipeline} from '@core/pipeline';
 
 class FakeModel {
   private index = 0;

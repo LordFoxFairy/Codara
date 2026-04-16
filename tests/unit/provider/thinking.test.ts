@@ -1,7 +1,7 @@
 import {describe, expect, it} from 'bun:test';
-import {resolveThinkingConfig} from '@integration/provider/runtime/factory';
+import {resolveThinkingConfig} from '@integration/provider/factory';
 import type {ThinkingConfig} from '@integration/provider/model';
-import {ModelRegistry} from '@integration/provider/runtime/registry';
+import {ModelRegistry} from '@integration/provider/registry';
 import type {ModelRoutingConfig} from '@integration/provider/model';
 
 describe('resolveThinkingConfig', () => {

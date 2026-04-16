@@ -10,9 +10,9 @@ import type {
   Agent,
   AgentPreparationContext,
   ToolErrorHandler,
-} from '@core/agent/models/agent';
+} from '@core/agent/agent-types';
 import {bootstrapAgent, type BootstrapAgentOptions} from '@core/agent/bootstrap';
-import {createMiddleware, type BaseMiddleware} from '@core/pipeline/types';
+import {createMiddleware, type BaseMiddleware} from '@core/pipeline-types';
 import {createAgentMemoryCheckpointer, type AgentCheckpointer} from '@durability/checkpoint/agent';
 import type {ApprovalRecord} from '@durability/approval-store';
 import type {AgentLifecycleHooks} from '@observability/hook/types';

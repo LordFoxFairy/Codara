@@ -16,10 +16,10 @@ export {
   readExecutionMetadata,
   type ToolCallContext,
   type ToolCallHandler,
-} from '@core/pipeline/types';
+} from '@core/pipeline-types';
 export {
   MiddlewarePipeline,
-} from '@core/pipeline/pipeline';
+} from '@core/pipeline';
 export {
   createSkillsMiddleware,
   type SkillsMiddlewareOptions,

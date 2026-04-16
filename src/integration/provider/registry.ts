@@ -1,6 +1,6 @@
 import type {ModelInfo, ModelMetadataConfig, ModelRoutingConfig, ProviderConfig, RouterRule} from "@integration/provider/model";
 import {lookupWellKnownContextWindow} from "@integration/provider/model";
-import {expandApiKey} from "@integration/provider/runtime/api-key";
+import {expandApiKey} from "@integration/provider/api-key";
 
 /** 模型注册表与别名索引。 */
 export class ModelRegistry {

@@ -8,7 +8,7 @@
 import type {ReviewRequest, ReviewResumePayload} from '@shared/agent-types';
 import type {ReviewMiddlewareOptions} from '@core/middleware/review';
 import type {ChannelRegistry} from './registry';
-import type {ToolCallContext} from '@core/pipeline/types';
+import type {ToolCallContext} from '@core/pipeline-types';
 
 /**
  * Create review middleware options that route review requests through the ChannelRegistry.

@@ -1,6 +1,6 @@
 import {z} from 'zod';
-import type {ReviewResumePayload} from '@core/agent/models/agent';
-import type {ExecutionContextMetadata} from '@core/pipeline/types';
+import type {ReviewResumePayload} from '@core/agent/agent-types';
+import type {ExecutionContextMetadata} from '@core/pipeline-types';
 
 const parentExecutionSchema = z.object({
   sessionId: z.string().trim().min(1),
