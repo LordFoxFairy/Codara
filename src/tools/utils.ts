@@ -1,4 +1,16 @@
+/**
+ * Tool utilities — shared helpers for error formatting, string operations,
+ * path validation, and text normalization.
+ *
+ * Aligned with Claude Code's tool utility patterns:
+ * - Consistent error/result formatting across all tools
+ * - Quote normalization for robust string matching (edit tool)
+ * - Path security validation (traversal, null bytes, length)
+ */
+
 import path from 'node:path';
+
+// ── Error & result formatting ───────────────────────────────────────────
 
 /** 构造统一错误消息。 */
 export function formatError(type: string, details: string, context?: string): string {
@@ -12,12 +24,14 @@ export function formatNoResults(message: string): string {
     return `No results: ${message}`;
 }
 
+// ── String counting ─────────────────────────────────────────────────────
+
 /** 计算文本行数（空串返回 0）。 */
 export function countLines(text: string): number {
     return text.length === 0 ? 0 : text.split('\n').length;
 }
 
-/** 计算 `target` 在 `source` 中的出现次数。 */
+/** 计算 `target` 在 `source` 中的出现次数（非重叠）。 */
 export function countOccurrences(source: string, target: string): number {
     if (target.length === 0) return 0;
 
@@ -29,6 +43,8 @@ export function countOccurrences(source: string, target: string): number {
     }
     return count;
 }
+
+// ── Error introspection ─────────────────────────────────────────────────
 
 /** 判断是否为 NodeJS.ErrnoException。 */
 export function isNodeError(error: unknown): error is NodeJS.ErrnoException {
@@ -52,6 +68,48 @@ export function getErrorMessage(error: unknown): string {
     }
     return String(error);
 }
+
+// ── Quote normalization (aligned with Claude Code FileEditTool/utils.ts) ──
+
+const LEFT_SINGLE_CURLY = '\u2018';  // '
+const RIGHT_SINGLE_CURLY = '\u2019'; // '
+const LEFT_DOUBLE_CURLY = '\u201C';  // "
+const RIGHT_DOUBLE_CURLY = '\u201D'; // "
+
+/** 将弯引号标准化为直引号。 */
+export function normalizeQuotes(str: string): string {
+    return str
+        .replaceAll(LEFT_SINGLE_CURLY, "'")
+        .replaceAll(RIGHT_SINGLE_CURLY, "'")
+        .replaceAll(LEFT_DOUBLE_CURLY, '"')
+        .replaceAll(RIGHT_DOUBLE_CURLY, '"');
+}
+
+/**
+ * 在文件内容中查找 searchString 的实际匹配。
+ * 先尝试精确匹配，再尝试引号标准化后匹配。
+ *
+ * 对齐 Claude Code FileEditTool — 处理 LLM 无法输出弯引号的情况。
+ */
+export function findActualString(fileContent: string, searchString: string): string | null {
+    // 精确匹配
+    if (fileContent.includes(searchString)) {
+        return searchString;
+    }
+
+    // 引号标准化后匹配
+    const normalizedSearch = normalizeQuotes(searchString);
+    const normalizedFile = normalizeQuotes(fileContent);
+
+    const searchIndex = normalizedFile.indexOf(normalizedSearch);
+    if (searchIndex !== -1) {
+        return fileContent.substring(searchIndex, searchIndex + searchString.length);
+    }
+
+    return null;
+}
+
+// ── Path validation ─────────────────────────────────────────────────────
 
 /**
  * 校验路径格式。

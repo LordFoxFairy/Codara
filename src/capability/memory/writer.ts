@@ -1,13 +1,14 @@
 import {readFile, writeFile, mkdir} from 'node:fs/promises';
 import path from 'node:path';
-import type {MemoryFile, MemoryType} from './types';
+import {sanitizeMemoryFileName} from './types';
+import type {MemoryFile} from './types';
 
 export class MemoryWriter {
   constructor(private readonly memoryDir: string) {}
 
   async write(memory: MemoryFile): Promise<string> {
     await mkdir(this.memoryDir, {recursive: true});
-    const fileName = sanitizeFileName(memory.name) + '.md';
+    const fileName = sanitizeMemoryFileName(memory.name) + '.md';
     const filePath = path.join(this.memoryDir, fileName);
     const content = formatMemoryFile(memory);
     await writeFile(filePath, content, 'utf8');
@@ -16,7 +17,7 @@ export class MemoryWriter {
   }
 
   async remove(name: string): Promise<void> {
-    const fileName = sanitizeFileName(name) + '.md';
+    const fileName = sanitizeMemoryFileName(name) + '.md';
     const filePath = path.join(this.memoryDir, fileName);
     try {
       const {unlink} = await import('node:fs/promises');
@@ -66,12 +67,4 @@ function formatMemoryFile(memory: MemoryFile): string {
     memory.content,
     '',
   ].join('\n');
-}
-
-function sanitizeFileName(name: string): string {
-  return name
-    .toLowerCase()
-    .replace(/[^a-z0-9_-]/g, '_')
-    .replace(/_+/g, '_')
-    .replace(/^_|_$/g, '');
 }

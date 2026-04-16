@@ -1,4 +1,6 @@
-/** Tools 导出入口。 */
+/**
+ * Tools 导出入口 — 内置工具、扩展工具及共用工具函数。
+ */
 
 export {
   BashTool,
@@ -33,10 +35,12 @@ export {filterToolsByReferences, normalizeToolReferenceName} from '@tools/names'
 export {
   countLines,
   countOccurrences,
+  findActualString,
   formatError,
   formatNoResults,
   getErrorCode,
   getErrorMessage,
   isNodeError,
+  normalizeQuotes,
   validatePath,
 } from '@tools/utils';

@@ -1,3 +1,14 @@
+/**
+ * Bash 工具 — 在持久化工作目录中执行 shell 命令。
+ *
+ * 对齐 Claude Code BashTool 的核心能力：
+ * - 持久化 cwd（通过 marker 探测子进程 pwd 变化）
+ * - 后台进程注册表（spawn + 输出文件 + status/output 子命令）
+ * - 超时控制（SIGTERM → 5s 后 SIGKILL）
+ * - 输出截断（stdout 200KB, stderr 100KB, 合并后 100KB）
+ * - head+tail 截断策略（保留首尾各 50%）
+ */
+
 import {spawn, type ChildProcess} from 'node:child_process';
 import {randomUUID} from 'node:crypto';
 import {createWriteStream, type WriteStream} from 'node:fs';

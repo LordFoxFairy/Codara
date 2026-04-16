@@ -12,9 +12,11 @@ export {
 } from '@capability/task/store';
 export {
   TASK_CREATE_TOOL_NAME,
+  TASK_GET_TOOL_NAME,
   TASK_LIST_TOOL_NAME,
   TASK_UPDATE_TOOL_NAME,
   createTaskCreateTool,
+  createTaskGetTool,
   createTaskListTool,
   createTaskTools,
   createTaskUpdateTool,

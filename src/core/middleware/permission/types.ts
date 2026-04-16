@@ -99,8 +99,9 @@ export interface PermissionRuleSet {
   defaultDecision: PermissionAction;
 }
 
-// Legacy compatibility aliases (used by existing imports)
+/** @deprecated Use `PermissionAction` directly. */
 export type PermissionDecision = PermissionAction;
+/** @deprecated Unused legacy alias — scope values are inlined at call sites. */
 export type PermissionGrantScope = 'exact' | 'path' | 'tool' | 'project';
 
 export interface PermissionRuleMatch {

@@ -1,3 +1,7 @@
+/**
+ * 内置工具注册中心 — 组装核心 + 扩展工具列表。
+ */
+
 import type {StructuredToolInterface} from '@langchain/core/tools';
 import {BashTool, createBashTool} from '@tools/builtin/bash';
 import {createReadTool, ReadTool} from '@tools/builtin/read';

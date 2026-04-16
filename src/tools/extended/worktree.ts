@@ -1,4 +1,11 @@
-/** Git Worktree 管理工具。 */
+/**
+ * Git Worktree 管理工具 — 创建/删除/列出 git worktree。
+ *
+ * 对齐 Claude Code EnterWorktreeTool / ExitWorktreeTool：
+ * - 自动生成 worktree 分支名和路径
+ * - 支持复用已有分支
+ * - porcelain 格式解析 worktree 列表
+ */
 
 import {execFile as execFileCb} from 'node:child_process';
 import {randomBytes} from 'node:crypto';

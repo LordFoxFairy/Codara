@@ -10,5 +10,6 @@ export {
 } from '@capability/memory/tool';
 
 export type {MemoryType, MemoryFile} from './types';
+export {sanitizeMemoryFileName} from './types';
 export {MemoryWriter} from './writer';
 export {MemoryReader, type MemoryHeader} from './reader';

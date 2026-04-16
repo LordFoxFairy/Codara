@@ -1,3 +1,13 @@
+/**
+ * FileRead 工具 — 读取文件内容，支持文本、图片、PDF。
+ *
+ * 对齐 Claude Code FileReadTool：
+ * - 扩展的设备文件黑名单（/dev/full, /dev/tty, /dev/console, /proc fd 别名）
+ * - 二进制扩展名检测（跳过不可读格式）
+ * - 行号格式 "lineNum\tcontent"
+ * - 图片 base64 / SVG 原文 / PDF pdftotext
+ */
+
 import {readFile, stat} from 'node:fs/promises';
 import path from 'node:path';
 import {execFile} from 'node:child_process';
@@ -24,7 +34,32 @@ const BINARY_EXTENSIONS = new Set([
     '.mp3', '.mp4', '.avi', '.mov', '.mkv', '.flac', '.wav',
 ]);
 
-const BLOCKED_DEVICE_PATHS = new Set(['/dev/null', '/dev/zero', '/dev/random', '/dev/urandom', '/dev/stdin', '/dev/stdout', '/dev/stderr']);
+/**
+ * 阻止读取的设备文件路径。
+ * 对齐 Claude Code — 无限输出或阻塞输入的设备。
+ * /dev/null 故意不在列表中（安全可读）。
+ */
+const BLOCKED_DEVICE_PATHS = new Set([
+    // 无限输出 — 永不到达 EOF
+    '/dev/zero', '/dev/random', '/dev/urandom', '/dev/full',
+    // 阻塞等待输入
+    '/dev/stdin', '/dev/tty', '/dev/console',
+    // 读取无意义
+    '/dev/stdout', '/dev/stderr',
+    // stdio 的 fd 别名
+    '/dev/fd/0', '/dev/fd/1', '/dev/fd/2',
+]);
+
+/** 检查是否为阻塞型设备路径（含 /proc fd 别名）。 */
+function isBlockedDevicePath(filePath: string): boolean {
+    if (BLOCKED_DEVICE_PATHS.has(filePath)) return true;
+    // /proc/self/fd/0-2 and /proc/<pid>/fd/0-2 are Linux aliases for stdio
+    if (filePath.startsWith('/proc/') &&
+        (filePath.endsWith('/fd/0') || filePath.endsWith('/fd/1') || filePath.endsWith('/fd/2'))) {
+        return true;
+    }
+    return false;
+}
 
 function isImageFile(filePath: string): boolean {
     const ext = path.extname(filePath).toLowerCase();
@@ -66,10 +101,10 @@ function isBinary(buffer: Buffer): boolean {
 /** 文件读取工具。 */
 export class ReadTool extends StructuredTool<typeof readInputSchema> {
     name = 'read_file';
-    description = `Reads file content with line numbers in format "lineNum→content".
+    description = `Reads file content with line numbers in format "lineNum\\tcontent".
 Supports images (PNG, JPG, GIF, WEBP, SVG, BMP, ICO, TIFF) as base64, and PDF files with optional page range.
 Use when: examining source code, checking file contents, viewing images, reading PDFs.
-Don't use when: path is directory, need to write/modify file.
+Don't use when: path is directory, need to write/modify file, reading .ipynb notebooks (use notebook_read).
 Returns: formatted text with line numbers, base64 data URL for images, or extracted text for PDFs.`;
     schema = readInputSchema;
 
@@ -80,8 +115,8 @@ Returns: formatted text with line numbers, base64 data URL for images, or extrac
             return pathError;
         }
 
-        if (BLOCKED_DEVICE_PATHS.has(filePath)) {
-            return formatError('Blocked path', `${filePath} is a device file and cannot be read`);
+        if (isBlockedDevicePath(filePath)) {
+            return formatError('Blocked path', `${filePath} is a device file that would block or produce infinite output`);
         }
 
         const ext = path.extname(filePath).toLowerCase();
@@ -153,7 +188,7 @@ Returns: formatted text with line numbers, base64 data URL for images, or extrac
             .map((line, index) => {
                 const lineNumber = offset + index + 1;
                 const visible = line.length > MAX_LINE_LENGTH ? `${line.slice(0, MAX_LINE_LENGTH)}...` : line;
-                return `${String(lineNumber).padStart(6, ' ')}→${visible}`;
+                return `${String(lineNumber).padStart(6, ' ')}\t${visible}`;
             })
             .join('\n');
     }

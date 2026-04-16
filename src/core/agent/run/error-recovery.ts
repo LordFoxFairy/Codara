@@ -160,8 +160,8 @@ export function isMaxOutputTokensError(error: unknown): boolean {
 }
 
 /**
- * Detect context-window / payload-too-large errors (413 or 400 with context messages).
- * This complements `isContextWindowExhausted` in compact.ts for non-compaction scenarios.
+ * @deprecated Use `isContextWindowExhausted` from `./compact` instead.
+ * That function now covers both structured (HTTP 413) and message-based detection.
  */
 export function isContextWindowError(error: unknown): boolean {
   const status = getErrorStatus(error);

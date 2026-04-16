@@ -1,4 +1,11 @@
-/** Jupyter Notebook 读取工具。 */
+/**
+ * Jupyter Notebook 读取工具 — 解析 .ipynb 为可读文本。
+ *
+ * 对齐 Claude Code FileReadTool 中 notebook 分支：
+ * - 解析 markdown/code/raw cell 类型
+ * - 渲染 stream/execute_result/error/display_data 输出
+ * - In [N] / Out [N] 标签格式
+ */
 
 import {readFile} from 'node:fs/promises';
 import {StructuredTool} from '@langchain/core/tools';

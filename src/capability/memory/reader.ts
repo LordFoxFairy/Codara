@@ -1,5 +1,6 @@
 import {readFile, readdir} from 'node:fs/promises';
 import path from 'node:path';
+import {sanitizeMemoryFileName} from './types';
 import type {MemoryFile, MemoryType} from './types';
 
 export interface MemoryHeader {
@@ -45,7 +46,7 @@ export class MemoryReader {
   }
 
   async read(name: string): Promise<MemoryFile | undefined> {
-    const fileName = sanitizeFileName(name) + '.md';
+    const fileName = sanitizeMemoryFileName(name) + '.md';
     const filePath = path.join(this.memoryDir, fileName);
     let raw: string;
     try {
@@ -113,12 +114,4 @@ function parseMemoryType(value: string | undefined): MemoryType | undefined {
   if (!value) return undefined;
   const valid: MemoryType[] = ['user', 'feedback', 'project', 'reference'];
   return valid.includes(value as MemoryType) ? (value as MemoryType) : undefined;
-}
-
-function sanitizeFileName(name: string): string {
-  return name
-    .toLowerCase()
-    .replace(/[^a-z0-9_-]/g, '_')
-    .replace(/_+/g, '_')
-    .replace(/^_|_$/g, '');
 }

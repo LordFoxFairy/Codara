@@ -1,3 +1,12 @@
+/**
+ * Glob 工具 — 按文件名模式查找文件，按修改时间排序。
+ *
+ * 对齐 Claude Code GlobTool：
+ * - 排除 node_modules、dist 和所有 VCS 目录
+ * - 结果限制 200 条，扫描限制 5000 条
+ * - 隐藏文件（.开头目录）默认排除
+ */
+
 import {stat} from 'node:fs/promises';
 import path from 'node:path';
 import {StructuredTool} from '@langchain/core/tools';
@@ -7,20 +16,21 @@ import {formatError, formatNoResults} from '@tools/utils';
 const RESULT_LIMIT = 200;
 const SCAN_LIMIT = 5000;
 
+/** 排除的目录段。包含 VCS 目录 + 构建产物。 */
+const EXCLUDED_DIRS = new Set([
+    'node_modules', '.git', '.svn', '.hg', '.bzr', '.jj', '.sl', 'dist',
+]);
+
 const globInputSchema = z.object({
     pattern: z.string().min(1).describe('Glob pattern to match files. Examples: "**/*.ts" (all TypeScript files), "src/**/*.js" (JS files in src), "*.json" (JSON files in current dir)'),
-    path: z.string().optional().describe('Directory to search in. If not specified, uses current working directory.'),
+    path: z.string().optional().describe('Directory to search in. If not specified, uses current working directory. IMPORTANT: Omit this field to use the default directory. DO NOT enter "undefined" or "null".'),
 });
 
 type GlobInput = z.infer<typeof globInputSchema>;
 
 function isExcluded(filePath: string): boolean {
-    const normalized = filePath.split(path.sep).join('/');
-    return (
-        normalized.includes('/node_modules/')
-        || normalized.includes('/.git/')
-        || normalized.includes('/dist/')
-    );
+    const segments = filePath.split(path.sep);
+    return segments.some(seg => EXCLUDED_DIRS.has(seg));
 }
 
 function hasDotPath(filePath: string): boolean {
@@ -35,7 +45,7 @@ export class GlobTool extends StructuredTool<typeof globInputSchema> {
     description = `Finds files matching glob patterns, sorted by modification time (newest first).
 Use when: locating files by name/extension, finding all files of a type, exploring project structure.
 Don't use when: searching file contents (use grep), need exact path, searching by file size/permissions.
-Returns: list of matching absolute paths (max 200 results), automatically excludes node_modules/.git/dist/hidden directories.`;
+Returns: list of matching absolute paths (max 200 results), automatically excludes node_modules/VCS dirs/dist/hidden directories.`;
     schema = globInputSchema;
 
     private readonly defaultCwd: string;
@@ -97,7 +107,7 @@ Returns: list of matching absolute paths (max 200 results), automatically exclud
 
         const visible = sorted.slice(0, RESULT_LIMIT);
         if (sorted.length > RESULT_LIMIT) {
-            return `${visible.join('\n')}\n... and ${sorted.length - RESULT_LIMIT} more files`;
+            return `${visible.join('\n')}\n... and ${sorted.length - RESULT_LIMIT} more files (consider using a more specific pattern)`;
         }
 
         return visible.join('\n');

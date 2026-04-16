@@ -3,6 +3,7 @@ import {z} from 'zod';
 import type {TaskRecord, TaskStore, TaskStatus} from './types';
 
 export const TASK_CREATE_TOOL_NAME = 'TaskCreate';
+export const TASK_GET_TOOL_NAME = 'TaskGet';
 export const TASK_UPDATE_TOOL_NAME = 'TaskUpdate';
 export const TASK_LIST_TOOL_NAME = 'TaskList';
 
@@ -15,6 +16,7 @@ export interface TaskToolOptions {
 export function createTaskTools(options: TaskToolOptions): StructuredToolInterface[] {
   return [
     createTaskCreateTool(options),
+    createTaskGetTool(options),
     createTaskUpdateTool(options),
     createTaskListTool(options),
   ];
@@ -33,6 +35,25 @@ export function createTaskCreateTool(options: TaskToolOptions): StructuredToolIn
         subject: z.string().min(1).describe('Task title written as an imperative action'),
         description: z.string().min(1).describe('Detailed task description'),
         activeForm: z.string().optional().describe('Optional in-progress label, e.g. "Running tests"'),
+      }),
+    },
+  );
+}
+
+export function createTaskGetTool(options: TaskToolOptions): StructuredToolInterface {
+  return tool(
+    async ({taskId}) => {
+      const record = await options.store.get(taskId);
+      if (!record) {
+        return `Task not found: ${taskId}`;
+      }
+      return formatSingleTaskResult('Task details.', record);
+    },
+    {
+      name: TASK_GET_TOOL_NAME,
+      description: 'Get a single task by its ID. Returns full task details including status, owner, and dependencies.',
+      schema: z.object({
+        taskId: z.string().min(1).describe('Task ID to look up'),
       }),
     },
   );

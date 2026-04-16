@@ -17,9 +17,7 @@ import {
   type ToolCallContext,
 } from '@core/pipeline/types';
 import {parseReviewToolMessagePayload} from '@core/middleware/review';
-function toError(error: unknown): Error {
-  return error instanceof Error ? error : new Error(String(error));
-}
+import {toError} from '@shared/errors';
 import {readSubagentRunLaunchResult} from '@shared/subagent-run-launch';
 import {TOOL_NAMES} from '@shared/tool-display';
 import {partitionToolCalls} from './tool-concurrency';
@@ -189,7 +187,7 @@ async function runSingleTool(
     await stream.emitToolProgress({toolCallId, toolName: toolCall.name, status: 'executing'});
   }
 
-  const baseRuntime = requestRuntime(context);
+  const baseRuntime = context.runtime;
   const toolMessage = await runtime.pipeline.wrapToolCall({
     ...context,
     execution: baseExecution,
@@ -261,10 +259,6 @@ async function runSingleTool(
 
 function createSubagentBatchId(execution: BaseExecutionContext['execution']): string {
   return `${execution.sessionId}:${execution.runId}:turn:${execution.turn}`;
-}
-
-function requestRuntime(context: BaseExecutionContext): BaseExecutionContext['runtime'] {
-  return context.runtime;
 }
 
 function createMutableToolRuntime(

@@ -1,3 +1,13 @@
+/**
+ * Fetch 工具 — HTTP/HTTPS 请求，支持流式读取和大小限制。
+ *
+ * 对齐 Claude Code WebFetchTool 的核心逻辑：
+ * - URL 协议校验（仅 http/https）
+ * - 流式 body 读取避免 OOM（readLimitedText）
+ * - Content-Length 预检
+ * - AbortController 超时控制
+ */
+
 import {StructuredTool} from '@langchain/core/tools';
 import {z} from 'zod';
 import {formatError, getErrorMessage} from '@tools/utils';

@@ -61,8 +61,8 @@ describe('builtin tools', () => {
     expect(String(writeResult)).toContain('File written:');
 
     const readResult = await read.invoke({file_path: filePath, offset: 1, limit: 2});
-    expect(String(readResult)).toContain('2→line2');
-    expect(String(readResult)).toContain('3→line3');
+    expect(String(readResult)).toContain('2\tline2');
+    expect(String(readResult)).toContain('3\tline3');
 
     const duplicatedPath = path.join(root, 'dup.txt');
     await writeFile(duplicatedPath, 'abc\nabc\nabc', 'utf8');

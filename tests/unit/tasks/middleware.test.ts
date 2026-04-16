@@ -423,6 +423,7 @@ describe('tasks middlewares', () => {
 
     expect(taskMiddleware.tools?.map((tool) => tool.name)).toEqual([
       TASK_CREATE_TOOL_NAME,
+      'TaskGet',
       'TaskUpdate',
       TASK_LIST_TOOL_NAME,
     ]);

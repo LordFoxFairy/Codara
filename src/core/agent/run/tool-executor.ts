@@ -4,6 +4,7 @@ import {ToolInvocationError} from 'langchain';
 import {Command, applyAgentStateUpdate, isCommand, mergeContext} from '../models/command';
 import type {AgentState, ToolErrorHandler} from '../models/agent';
 import type {ExecutionContextMetadata} from '@core/pipeline/types';
+import {toError} from '@shared/errors';
 
 export {resolveToolCallId} from '@shared/tool-call-id';
 
@@ -134,8 +135,4 @@ function normalizeCommandMessages(messages: BaseMessage[] | undefined, toolCallI
         : message
     ))
     : [];
-}
-
-function toError(error: unknown): Error {
-  return error instanceof Error ? error : new Error(String(error));
 }

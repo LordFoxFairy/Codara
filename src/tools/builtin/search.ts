@@ -1,3 +1,10 @@
+/**
+ * WebSearch 工具 — 通过 SearXNG 元搜索引擎执行网络搜索。
+ *
+ * Claude Code 使用 Anthropic API 内置的 web_search_20250305 server tool；
+ * Codara 使用开源 SearXNG 实例作为替代方案，支持多实例故障转移。
+ */
+
 import {StructuredTool} from '@langchain/core/tools';
 import {z} from 'zod';
 import {formatError, getErrorMessage} from '@tools/utils';

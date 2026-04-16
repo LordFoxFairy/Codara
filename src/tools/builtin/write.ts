@@ -1,3 +1,11 @@
+/**
+ * FileWrite 工具 — 创建或覆盖文件内容。
+ *
+ * 对齐 Claude Code FileWriteTool：
+ * - 自动创建父目录
+ * - 完整的文件系统错误处理（EACCES, ENOSPC, EROFS, EISDIR）
+ */
+
 import {mkdir, writeFile} from 'node:fs/promises';
 import path from 'node:path';
 import {StructuredTool} from '@langchain/core/tools';
@@ -42,6 +50,9 @@ Returns: success message with line count, or error if permission denied/no space
             }
             if (code === 'EROFS') {
                 return formatError('Read-only file system', filePath);
+            }
+            if (code === 'EISDIR') {
+                return formatError('Path is a directory', filePath);
             }
             return formatError('Write failed', getErrorMessage(error));
         }

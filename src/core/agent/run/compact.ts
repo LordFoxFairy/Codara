@@ -91,8 +91,25 @@ export function cheapDrainMessages(
 
 /**
  * Detect if an error represents context window exhaustion.
+ *
+ * Checks structured fields first (HTTP status 413, error type), then falls
+ * back to error message matching. Subsumes the old `isContextWindowError`
+ * from error-recovery.ts so there is a single detection point.
  */
 export function isContextWindowExhausted(error: unknown): boolean {
+  // Structured check: HTTP 413 (Request Entity Too Large)
+  if (error && typeof error === 'object') {
+    const record = error as Record<string, unknown>;
+    const status =
+      typeof record.status === 'number'
+        ? record.status
+        : typeof (record.response as Record<string, unknown> | undefined)?.status === 'number'
+          ? (record.response as Record<string, unknown>).status as number
+          : undefined;
+    if (status === 413) return true;
+  }
+
+  // Message-based check
   if (!(error instanceof Error)) return false;
   const msg = error.message.toLowerCase();
   return msg.includes('context length exceeded')

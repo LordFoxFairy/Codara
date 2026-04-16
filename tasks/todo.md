@@ -1,3 +1,27 @@
+# 2026-04-16 capability/ 逐文件打磨 — 对照 Claude Code
+
+## 改进清单
+
+- [x] memory/: 提取重复的 sanitizeFileName → types.ts 的 sanitizeMemoryFileName
+- [x] plugin-install: 添加 git clone 超时 → 60s GIT_CLONE_TIMEOUT_MS
+- [x] task/tools: 添加 TaskGet tool → 对齐 Claude Code TaskGetTool
+- [ ] task/tools: 添加 TaskStop tool（需要统一 Task 接口后实现）
+- [ ] task/tools: 添加 TaskOutput tool（需要统一 Task 接口后实现）
+
+## 未来架构改造（记录，不在本轮实施）
+
+- [ ] 定义统一的 CodaraTask 接口，将 bash BackgroundProcessRegistry + SubagentRunManager 纳入
+- [ ] RemoteAgentTask / InProcessTeammateTask 支持
+- [ ] DreamTask（后台推理）支持
+
+## 验证
+
+- [x] `npx tsc --noEmit` 零错误
+- [x] 1552/1553 测试通过（1 个预存失败 builtin.test.ts 与本轮无关）
+- [x] barrel export 验证完整
+
+---
+
 # 2026-03-24 AI Agent 能力文案重写
 
 ## Plan

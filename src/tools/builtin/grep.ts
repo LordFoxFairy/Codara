@@ -1,3 +1,13 @@
+/**
+ * Grep 工具 — 使用 ripgrep (rg) 或 grep 搜索文件内容。
+ *
+ * 对齐 Claude Code GrepTool：
+ * - 排除所有 VCS 目录（.git, .svn, .hg, .bzr, .jj, .sl）
+ * - 支持 rg --type 文件类型过滤
+ * - 以 `-` 开头的 pattern 使用 -e 标志避免解析为选项
+ * - --max-columns 500 防止 minified/base64 内容膨胀输出
+ */
+
 import {execFile, spawn} from 'node:child_process';
 import {promisify} from 'node:util';
 import path from 'node:path';
@@ -12,6 +22,9 @@ const MAX_STDERR = 50_000;
 
 const execFileAsync = promisify(execFile);
 
+/** VCS 目录排除列表 — 对齐 Claude Code。 */
+const VCS_DIRECTORIES_TO_EXCLUDE = ['.git', '.svn', '.hg', '.bzr', '.jj', '.sl'] as const;
+
 const grepInputSchema = z.object({
     pattern: z.string().min(1).describe('Regex pattern to search for. Examples: "function.*test", "TODO:", "import.*from"'),
     path: z.string().optional().describe('File or directory to search in. If not specified, searches current directory recursively.'),
@@ -23,6 +36,7 @@ const grepInputSchema = z.object({
     '-B': z.number().int().min(0).max(100).optional().describe('Number of lines to show BEFORE each match'),
     '-i': z.boolean().optional().describe('Case insensitive search (overrides case_sensitive when true)'),
     case_sensitive: z.boolean().default(false).describe('Case sensitive search (default: false)'),
+    type: z.string().optional().describe('File type filter (rg --type). Common: js, py, rust, go, java, ts, css, html. More efficient than glob for standard types.'),
     head_limit: z.number().int().min(0).default(MAX_OUTPUT_LINES).describe('Limit output to first N lines/entries. Default: 500'),
     offset: z.number().int().min(0).default(0).describe('Skip first N lines/entries before applying head_limit'),
 });
@@ -126,8 +140,13 @@ Returns: matching lines with line numbers (content mode) or file paths (files mo
         let command = 'rg';
 
         if (useRg) {
-            // Sensible defaults: search hidden files, exclude .git, cap column width
-            args.push('--hidden', '--glob', '!.git', '--max-columns', '500');
+            // Sensible defaults: search hidden files, cap column width
+            args.push('--hidden', '--max-columns', '500');
+
+            // Exclude all VCS directories — aligned with Claude Code
+            for (const dir of VCS_DIRECTORIES_TO_EXCLUDE) {
+                args.push('--glob', `!${dir}`);
+            }
 
             if (outputMode === 'files_with_matches') {
                 args.push('--files-with-matches');
@@ -159,7 +178,18 @@ Returns: matching lines with line numbers (content mode) or file paths (files mo
                 args.push('-g', input.glob);
             }
 
-            args.push(input.pattern, target);
+            // File type filter (rg --type) — aligned with Claude Code
+            if (input.type) {
+                args.push('--type', input.type);
+            }
+
+            // Dash-prefixed patterns need -e to avoid being parsed as rg flags
+            if (input.pattern.startsWith('-')) {
+                args.push('-e', input.pattern);
+            } else {
+                args.push(input.pattern);
+            }
+            args.push(target);
         } else {
             command = 'grep';
             args.push('-R', '-E');

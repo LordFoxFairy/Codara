@@ -1,3 +1,10 @@
+/**
+ * Tool name resolution — 过滤工具列表和别名解析。
+ *
+ * normalizeToolReferenceName 将用户输入别名映射为内部工具名
+ * （如 "read" → "read_file"），供权限规则和工具引用使用。
+ */
+
 import type {StructuredToolInterface} from '@langchain/core/tools';
 import {normalizeToolReferenceName} from '@shared/tool-names';
 
