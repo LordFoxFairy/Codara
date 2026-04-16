@@ -5,12 +5,14 @@
  * layers, so they live in shared to prevent cross-layer imports.
  */
 
-export interface ExecutionContextMetadata {
-  sessionId: string;
-  runId: string;
-  turn: number;
-  maxTurns: number;
-  requestId: string;
+import type {AgentExecutionMetadata} from '@shared/agent-types';
+
+/**
+ * Execution metadata extended with tool-level coordinates.
+ * Superset of AgentExecutionMetadata — adds toolIndex and toolCallId
+ * so middleware can identify exactly which tool invocation is running.
+ */
+export interface ExecutionContextMetadata extends AgentExecutionMetadata {
   toolIndex?: number;
   toolCallId?: string;
 }

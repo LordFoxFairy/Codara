@@ -1,7 +1,6 @@
 /** Context sources initialization: guidelines, prompts, skills, dynamic sections. */
 import path from 'node:path';
-import {createCodaraGuidelinesSource, type GuidelinesSource} from '@context/guidelines';
-import {createCodaraPromptSource, type PromptSource} from '@context/prompts';
+import {createCodaraGuidelinesSource, type GuidelinesSource, createCodaraPromptSource, type PromptSource} from '@context/sources';
 import {type SkillsSource, createCodaraSkillsSource} from '@capability/skill';
 import {buildBaseSystemMessage} from '@context/system-message';
 import {DynamicSectionRegistry} from '@context/dynamic-sections';

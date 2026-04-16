@@ -1,5 +1,5 @@
 import {describe, expect, it} from 'bun:test';
-import {DynamicSectionRegistry, SYSTEM_PROMPT_DYNAMIC_BOUNDARY} from '@context/dynamic-sections';
+import {DynamicSectionRegistry} from '@context/dynamic-sections';
 
 describe('DynamicSectionRegistry', () => {
   it('should register and resolve sections', async () => {
@@ -45,7 +45,10 @@ describe('DynamicSectionRegistry', () => {
     expect(sections).toEqual([]);
   });
 
-  it('should have DYNAMIC boundary constant', () => {
-    expect(SYSTEM_PROMPT_DYNAMIC_BOUNDARY).toBe('<!-- DYNAMIC -->');
+  it('should report size', () => {
+    const registry = new DynamicSectionRegistry();
+    expect(registry.size).toBe(0);
+    registry.register('git', () => 'Branch: main');
+    expect(registry.size).toBe(1);
   });
 });

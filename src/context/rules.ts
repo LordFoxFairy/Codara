@@ -1,3 +1,9 @@
+/**
+ * Conditional rules — loads .codara/rules/*.md files with glob frontmatter
+ * and matches them against file paths for context-sensitive instructions.
+ *
+ * Consumed by: assembly/middleware.ts, core/middleware/path-instructions.ts.
+ */
 import {readdirSync, readFileSync, existsSync} from 'node:fs';
 import {join, basename} from 'node:path';
 

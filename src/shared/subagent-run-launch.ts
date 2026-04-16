@@ -1,6 +1,10 @@
+/**
+ * Subagent run launch result — parsing and formatting.
+ */
+
 import {z} from 'zod';
 
-export const agentRunLaunchResultSchema = z.object({
+const subagentRunLaunchResultSchema = z.object({
   type: z.literal('subagent_run_started'),
   runId: z.string().min(1),
   batchId: z.string().min(1).optional(),
@@ -11,31 +15,26 @@ export const agentRunLaunchResultSchema = z.object({
   label: z.string().min(1),
 });
 
-export type SubagentRunLaunchResult = {
-  type: 'subagent_run_started';
-  runId: string;
-  batchId?: string;
-  batchExpectedCount?: number;
-  parentSessionId: string;
-  sessionId: string;
-  agentName: string;
-  label: string;
-};
+export type SubagentRunLaunchResult = z.infer<typeof subagentRunLaunchResultSchema>;
 
 export function readSubagentRunLaunchResult(value: unknown): SubagentRunLaunchResult | undefined {
-  const record = agentRunLaunchResultSchema.safeParse(value);
-  return record.success ? record.data : undefined;
+  const parsed = subagentRunLaunchResultSchema.safeParse(value);
+  return parsed.success ? parsed.data : undefined;
 }
 
+/** Format a launch result into a human-readable multi-line string. */
 export function formatSubagentRunLaunchResult(result: SubagentRunLaunchResult): string {
-  return [
+  const lines = [
     'Subagent started in background.',
     `run_id: ${result.runId}`,
-    ...(result.batchId ? [`batch_id: ${result.batchId}`] : []),
-    ...(typeof result.batchExpectedCount === 'number' ? [`batch_expected_count: ${result.batchExpectedCount}`] : []),
+  ];
+  if (result.batchId) lines.push(`batch_id: ${result.batchId}`);
+  if (typeof result.batchExpectedCount === 'number') lines.push(`batch_expected_count: ${result.batchExpectedCount}`);
+  lines.push(
     `agent: ${result.agentName}`,
     `label: ${result.label}`,
     `session_id: ${result.sessionId}`,
     `parent_session_id: ${result.parentSessionId}`,
-  ].join('\n');
+  );
+  return lines.join('\n');
 }

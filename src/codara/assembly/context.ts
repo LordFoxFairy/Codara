@@ -10,8 +10,7 @@ import {
 } from '@context/system-message';
 import {createPathInstructionsMiddleware} from '@core/middleware/path-instructions';
 import {resolveWorkspaceRoot} from '@config/workspace';
-import type {GuidelinesSource} from '@context/guidelines';
-import type {PromptSource} from '@context/prompts';
+import type {GuidelinesSource, PromptSource} from '@context/sources';
 import {type ConditionalRule} from '@context/rules';
 import type {CodaraOptions} from '../types';
 

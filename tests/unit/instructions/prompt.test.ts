@@ -2,7 +2,7 @@ import {describe, expect, it} from 'bun:test';
 import {mkdir, mkdtemp, writeFile} from 'node:fs/promises';
 import path from 'node:path';
 import {tmpdir} from 'node:os';
-import {createCodaraPromptSource} from '@context/prompts';
+import {createCodaraPromptSource} from '@context/sources';
 
 describe('Codara handbook prompt source', () => {
   it('loads the unique global handbook and the project-root handbook before deeper paths are touched', async () => {

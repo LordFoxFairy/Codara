@@ -1,3 +1,9 @@
+/**
+ * Git context provider — fetches branch, status, recent commits, and user name
+ * to inject as a dynamic section into the system prompt.
+ *
+ * Consumed by: init-context.ts (registered as dynamic section "git").
+ */
 import {exec} from 'node:child_process';
 import {promisify} from 'node:util';
 

@@ -8,7 +8,7 @@ const subagentResultSchema = z.object({
   type: z.literal('subagent_result'),
   sessionId: z.string(),
   turns: z.number(),
-  reason: z.enum(['complete', 'error', 'max_turns', 'budget_exhausted']),
+  reason: z.enum(['complete', 'error', 'max_turns', 'budget_exhausted', 'aborted']),
   runId: z.string().optional(),
   label: z.string().optional(),
   agentName: z.string().optional(),
@@ -18,19 +18,7 @@ const subagentResultSchema = z.object({
   totalTokens: z.number().optional(),
 });
 
-export interface SubagentResult {
-  type: 'subagent_result';
-  sessionId: string;
-  turns: number;
-  reason: 'complete' | 'error' | 'max_turns' | 'budget_exhausted' | 'aborted';
-  runId?: string;
-  label?: string;
-  agentName?: string;
-  summary?: string;
-  errorMessage?: string;
-  toolUseCount?: number;
-  totalTokens?: number;
-}
+export type SubagentResult = z.infer<typeof subagentResultSchema>;
 
 export function readSubagentResult(value: unknown): SubagentResult | undefined {
   const parsed = subagentResultSchema.safeParse(value);

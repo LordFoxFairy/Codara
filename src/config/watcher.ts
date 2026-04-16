@@ -5,13 +5,8 @@ import path from 'node:path';
 /**
  * Settings file change detector.
  *
- * Pattern reference: Claude Code changeDetector.ts — chokidar-based watcher
- * with deletion grace period, internal write suppression, and centralized
- * cache reset before listener notification.
- *
- * Our simplified version uses node:fs.watch (adequate for settings files)
- * but implements the same key patterns:
- *   - Internal write suppression (prevent self-echo)
+ * Uses node:fs.watch (adequate for settings files) with:
+ *   - Internal write suppression (prevent self-echo on our own saves)
  *   - Debounced change notification (avoid partial-write triggers)
  *   - Deletion grace period (absorb delete-and-recreate patterns)
  *   - Per-path tracking (know which source changed)

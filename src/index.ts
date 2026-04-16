@@ -116,11 +116,9 @@ export {
 export {
   createCodaraGuidelinesSource,
   type GuidelinesSource,
-} from '@context/guidelines';
-export {
   createCodaraPromptSource,
   type PromptSource,
-} from '@context/prompts';
+} from '@context/sources';
 export {
   readBaseSystemMessage,
   type BaseSystemMessageBundle,

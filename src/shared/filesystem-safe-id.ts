@@ -1,9 +1,8 @@
 /**
- * Canonical implementation of filesystem-safe ID encoding.
+ * Filesystem-safe ID encoding.
  *
- * Encodes any string into a filename-safe representation by replacing
- * characters outside [A-Za-z0-9_-] with their hex codepoint (~hex~).
- * Also handles empty strings and Windows reserved names.
+ * Replaces characters outside [A-Za-z0-9_-] with ~hex~ codepoint escapes.
+ * Handles empty strings (returns "_") and Windows reserved names (prefixes "_").
  */
 
 const SAFE_STORAGE_CHAR = /^[A-Za-z0-9_-]$/;

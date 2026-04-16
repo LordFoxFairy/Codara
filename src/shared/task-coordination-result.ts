@@ -1,13 +1,19 @@
+/**
+ * Shared task coordination artifact — internal ToolMessage payloads
+ * used to pass coordination data between tasks without exposing it to users.
+ */
+
 import {ToolMessage} from '@langchain/core/messages';
 
-const SHARED_TASK_COORDINATION_KIND = 'shared_task_coordination';
+const ARTIFACT_KIND = 'shared_task_coordination' as const;
 
 export interface SharedTaskCoordinationArtifact {
-  kind: typeof SHARED_TASK_COORDINATION_KIND;
+  kind: typeof ARTIFACT_KIND;
   visibility: 'internal';
   content: string;
 }
 
+/** Create an internal-only ToolMessage carrying task coordination content. */
 export function createInternalSharedTaskCoordinationMessage(
   content: string,
   toolCallId: string,
@@ -16,31 +22,20 @@ export function createInternalSharedTaskCoordinationMessage(
     content,
     tool_call_id: toolCallId,
     artifact: {
-      kind: SHARED_TASK_COORDINATION_KIND,
+      kind: ARTIFACT_KIND,
       visibility: 'internal',
       content,
     } satisfies SharedTaskCoordinationArtifact,
   });
 }
 
+/** Read a SharedTaskCoordinationArtifact from an unknown value, or undefined if invalid. */
 export function readSharedTaskCoordinationArtifact(value: unknown): SharedTaskCoordinationArtifact | undefined {
-  if (!value || typeof value !== 'object' || Array.isArray(value)) {
-    return undefined;
-  }
+  if (!value || typeof value !== 'object' || Array.isArray(value)) return undefined;
 
   const record = value as Record<string, unknown>;
-  if (record.kind !== SHARED_TASK_COORDINATION_KIND || record.visibility !== 'internal') {
-    return undefined;
-  }
+  if (record.kind !== ARTIFACT_KIND || record.visibility !== 'internal') return undefined;
+  if (typeof record.content !== 'string' || !record.content) return undefined;
 
-  const content = typeof record.content === 'string' ? record.content : undefined;
-  if (!content) {
-    return undefined;
-  }
-
-  return {
-    kind: SHARED_TASK_COORDINATION_KIND,
-    visibility: 'internal',
-    content,
-  };
+  return {kind: ARTIFACT_KIND, visibility: 'internal', content: record.content};
 }

@@ -1,3 +1,9 @@
+/**
+ * Skills runtime bundle — transforms discovered skill metadata into the system
+ * prompt fragment and runtime data that the agent loop needs.
+ *
+ * Consumed by: system-message.ts, integration tests.
+ */
 import {
   formatSkillsList,
   formatSkillsLocations,

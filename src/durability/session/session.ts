@@ -26,8 +26,7 @@ import {
   type AgentCheckpointer,
 } from '@durability/checkpoint/agent';
 import type {SessionLifecycleHooks} from '@observability/hook/types';
-import type {GuidelinesSource} from '@context/guidelines';
-import {type PromptSource} from '@context/prompts';
+import type {GuidelinesSource, PromptSource} from '@context/sources';
 import type {SkillsSource} from '@capability/skill';
 import type {DynamicSectionRegistry} from '@context/dynamic-sections';
 import type {ModelInfo} from '@integration/provider';

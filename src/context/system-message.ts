@@ -1,6 +1,15 @@
+/**
+ * System message assembly — builds the complete system prompt from all instruction
+ * sources (handbook, guidelines, skills, dynamic sections) and provides helpers
+ * to apply/merge the result into agent runtime context.
+ *
+ * This is the central orchestrator that combines every context source into the
+ * final system message array sent to the LLM.
+ *
+ * Consumed by: init-context.ts, assembly/context.ts, session-bootstrap.ts, subagent/bootstrap.ts.
+ */
 import type {BaseMessage} from '@langchain/core/messages';
-import type {GuidelinesSource} from '@context/guidelines';
-import type {PromptSource} from '@context/prompts';
+import type {GuidelinesSource, PromptSource} from '@context/sources';
 import {
   type SkillsSource,
 } from '@capability/skill';
@@ -39,27 +48,13 @@ export interface BuildBaseSystemMessageOptions {
 }
 
 export async function buildBaseSystemMessage(
-  promptSourceOrOptions?: PromptSource | BuildBaseSystemMessageOptions,
-  guidelinesSource?: GuidelinesSource,
-  skillsSource?: SkillsSource,
+  options: BuildBaseSystemMessageOptions = {},
 ): Promise<BaseSystemMessageBundle> {
-  // Support both old positional args and new options object
-  let opts: BuildBaseSystemMessageOptions;
-  if (promptSourceOrOptions && typeof promptSourceOrOptions === 'object' && 'promptSource' in promptSourceOrOptions) {
-    opts = promptSourceOrOptions;
-  } else {
-    opts = {
-      promptSource: promptSourceOrOptions as PromptSource | undefined,
-      guidelinesSource,
-      skillsSource,
-    };
-  }
-
-  const promptMessage = await opts.promptSource?.getContent?.();
-  const guidelinesMessage = await opts.guidelinesSource?.getContent?.();
-  const skillsRuntime = await opts.skillsSource?.getRuntime();
+  const promptMessage = await options.promptSource?.getContent?.();
+  const guidelinesMessage = await options.guidelinesSource?.getContent?.();
+  const skillsRuntime = await options.skillsSource?.getRuntime();
   const skillsBundle = skillsRuntime ? createSkillsRuntimeBundle(skillsRuntime) : undefined;
-  const dynamicParts = await opts.dynamicSections?.resolve() ?? [];
+  const dynamicParts = await options.dynamicSections?.resolve() ?? [];
   const systemMessage = [
     promptMessage,
     guidelinesMessage,

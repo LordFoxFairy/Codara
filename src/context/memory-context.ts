@@ -1,3 +1,9 @@
+/**
+ * Memory context provider — loads ~/.codara/memory/*.md files and formats them
+ * as a dynamic section for the system prompt.
+ *
+ * Consumed by: init-context.ts (registered as dynamic section "memory").
+ */
 import {readdir, readFile} from 'node:fs/promises';
 import path from 'node:path';
 

@@ -1,6 +1,12 @@
-export type DynamicSectionProvider = () => string | undefined | Promise<string | undefined>;
+/**
+ * Dynamic section registry — allows runtime registration of lazy-evaluated
+ * context providers (git status, memory, CLAUDE.md, etc.) that are resolved
+ * when building the system message.
+ *
+ * Consumed by: system-message.ts, init-context.ts, session.ts.
+ */
 
-export const SYSTEM_PROMPT_DYNAMIC_BOUNDARY = '<!-- DYNAMIC -->';
+export type DynamicSectionProvider = () => string | undefined | Promise<string | undefined>;
 
 export class DynamicSectionRegistry {
   private sections = new Map<string, DynamicSectionProvider>();

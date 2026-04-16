@@ -7,11 +7,15 @@
 
 import type {AIMessage, AIMessageChunk, BaseMessage, ToolCall, ToolMessage} from '@langchain/core/messages';
 
+// ── Primitive aliases ──
+
 export type AgentRuntimeContext = Record<string, unknown>;
 export type AgentRuntimeValues = Record<string, unknown>;
 export type AgentStatus = 'idle' | 'running' | 'paused' | 'closed';
 export type AgentType = 'main' | 'subagent';
 export type ReviewResumePayload = unknown;
+
+// ── Budget & Execution metadata ──
 
 export interface AgentInputBudget {
   maxInputTokens?: number;
@@ -27,6 +31,8 @@ export interface AgentExecutionMetadata {
   maxTurns: number;
   requestId: string;
 }
+
+// ── Review system ──
 
 export interface ReviewActionDescriptor {
   toolCallId: string;
@@ -95,6 +101,8 @@ export interface ReviewRequest {
   metadata?: Record<string, unknown>;
 }
 
+// ── Agent state & result ──
+
 export type AgentFinishReason = 'complete' | 'error' | 'max_turns' | 'budget_exhausted' | 'aborted';
 
 export interface AgentState {
@@ -115,7 +123,7 @@ export interface AgentResult {
   launchedSubagentBatchIds?: string[];
 }
 
-// ── Agent interface types (shared for cross-layer use) ──
+// ── Agent input & config ──
 
 export type AgentInput = AgentMessagesInput | string | BaseMessage | BaseMessage[] | undefined;
 export interface AgentMessagesInput { messages: BaseMessage[]; }
@@ -156,6 +164,8 @@ export interface AgentResumeStreamConfig extends Omit<AgentStreamConfig, 'contex
   resumeMode?: 'model' | 'tool';
 }
 
+// ── Streaming ──
+
 export type AgentStreamMode = 'values' | 'updates' | 'messages' | 'custom';
 
 export type ReviewToolMessagePayload =
@@ -185,7 +195,9 @@ export type AgentStreamOutput =
   | AgentStreamCustomChunk
   | [AgentStreamMode, AIMessageChunk | {messages: BaseMessage[]} | {model: {messages: [AIMessage]}} | {tools: {messages: [ToolMessage]}} | AgentStreamCustomChunk];
 
-/** Current agent context assembled immediately before the next model call. */
+// ── Context preparation ──
+
+/** Agent context assembled immediately before the next model call. */
 export interface AgentPreparationContext {
   state: {
     messages: BaseMessage[];
@@ -204,6 +216,8 @@ export interface AgentPreparationContext {
 }
 
 export type AgentContextPreparer = (context: AgentPreparationContext) => Promise<void> | void;
+
+// ── Agent interface ──
 
 export interface Agent {
   getState(): AgentState;

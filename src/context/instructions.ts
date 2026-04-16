@@ -1,3 +1,9 @@
+/**
+ * Progressive instruction engine — loads, caches, and renders hierarchical instruction files
+ * (AGENTS.md, codara.md, etc.) from the global/user/project directory stack.
+ *
+ * Consumed by: guidelines.ts, prompts.ts (concrete instruction sources).
+ */
 import {readFile} from 'node:fs/promises';
 import {homedir} from 'node:os';
 import path from 'node:path';

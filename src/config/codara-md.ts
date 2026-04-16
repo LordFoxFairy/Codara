@@ -1,6 +1,22 @@
 import {readFile} from 'node:fs/promises';
 import path from 'node:path';
 
+/**
+ * CODARA.md loader for the config layer.
+ *
+ * This module loads CODARA.md instruction files from known locations
+ * (user home, project root, local override) and resolves `@`-prefixed
+ * include directives.
+ *
+ * Relationship with `context/instructions.ts`:
+ *   - This module: simple one-shot loader used by `init-context.ts` to inject
+ *     CODARA.md content into dynamic sections. Frontmatter-aware, flat result.
+ *   - `context/instructions.ts`: progressive instruction system with lazy
+ *     per-directory resolution during the agent loop. Session-scoped caching.
+ *   Both resolve `@`-includes independently — this is intentional because
+ *   they operate at different lifecycle stages (init vs. runtime).
+ */
+
 export interface CodaraMdInstruction {
   source: 'user' | 'project' | 'local';
   filePath: string;

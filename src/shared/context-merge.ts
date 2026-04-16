@@ -1,10 +1,11 @@
 import type {AgentRuntimeContext} from '@shared/agent-types';
-import {z} from 'zod';
-
-const recordSchema = z.record(z.string(), z.unknown());
 
 /**
- * Merge two agent runtime contexts with deep-merge semantics for nested records.
+ * Merge two agent runtime contexts with shallow-merge semantics for nested records.
+ *
+ * Top-level keys from `overrides` replace those in `base`,
+ * except when both sides are plain objects — in that case their
+ * entries are shallow-merged ({...left, ...right}).
  */
 export function mergeContext(base: AgentRuntimeContext, overrides: AgentRuntimeContext | undefined): AgentRuntimeContext {
   if (!overrides || Object.keys(overrides).length === 0) {
@@ -13,9 +14,16 @@ export function mergeContext(base: AgentRuntimeContext, overrides: AgentRuntimeC
 
   const merged: AgentRuntimeContext = {...base};
   for (const [key, value] of Object.entries(overrides)) {
-    const left = recordSchema.safeParse(merged[key]);
-    const right = recordSchema.safeParse(value);
-    merged[key] = left.success && right.success ? {...left.data, ...right.data} : value;
+    const left = merged[key];
+    if (isPlainRecord(left) && isPlainRecord(value)) {
+      merged[key] = {...left, ...value};
+    } else {
+      merged[key] = value;
+    }
   }
   return merged;
+}
+
+function isPlainRecord(value: unknown): value is Record<string, unknown> {
+  return value !== null && typeof value === 'object' && !Array.isArray(value);
 }

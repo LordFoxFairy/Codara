@@ -33,8 +33,7 @@ import {
 } from '@capability/task';
 import type {HookPipeline} from '@observability/hook';
 import {createToolHooksBridge} from '@observability/hook';
-import type {GuidelinesSource} from '@context/guidelines';
-import type {PromptSource} from '@context/prompts';
+import type {GuidelinesSource, PromptSource} from '@context/sources';
 import type {SkillsSource} from '@capability/skill';
 import {resolveWorkspaceRoot} from '@config/workspace';
 import {loadConditionalRules} from '@context/rules';

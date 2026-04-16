@@ -7,8 +7,8 @@ import type {BaseChatModel} from '@langchain/core/language_models/chat_models';
 import {tool, type StructuredToolInterface} from '@langchain/core/tools';
 import {z} from 'zod';
 import {createAgent} from '@core/agent';
-import {createCodaraGuidelinesSource} from '@context/guidelines';
-import {createCodaraPromptSource} from '@context/prompts';
+import {createCodaraGuidelinesSource} from '@context/sources';
+import {createCodaraPromptSource} from '@context/sources';
 import {buildBaseSystemMessage} from '@context/system-message';
 import {
   createTaskMemoryStore,
@@ -345,9 +345,9 @@ describe('tasks middlewares', () => {
         }),
       ],
       childInstructionContext: {
-        loadBaseSystemMessage: () => buildBaseSystemMessage(promptSource, guidelinesSource),
+        loadBaseSystemMessage: () => buildBaseSystemMessage({promptSource, guidelinesSource}),
         prepareContext: async (context) => {
-          const next = await buildBaseSystemMessage(promptSource, guidelinesSource);
+          const next = await buildBaseSystemMessage({promptSource, guidelinesSource});
           context.systemMessage = [...next.systemMessage];
           context.runtime.shared = next.runtimeShared ? {...next.runtimeShared} : {};
           context.messages = context.state.messages;

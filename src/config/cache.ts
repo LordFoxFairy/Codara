@@ -4,14 +4,12 @@ import type {CodaraSettings} from '@config/schema';
 /**
  * Reactive settings cache with automatic reload on invalidation.
  *
- * Pattern reference: Claude Code settingsCache.ts — centralized cache with
- * resetSettingsCache() clearing all layers. Our addition: auto-reload after
- * invalidation so listeners always receive the NEW settings, not stale data.
- *
  * Lifecycle:
- *   get() → cache hit / load from disk → return settings
- *   invalidate() → clear cache → reload from disk → notify listeners with NEW settings
- *   onChange() → subscribe to post-reload notifications
+ *   get()        → cache hit / load from disk → return settings
+ *   invalidate() → clear → reload from disk → notify listeners with NEW settings
+ *   reset()      → clear cache without reloading (lazy: next get() loads fresh)
+ *   onChange()   → subscribe to post-reload notifications
+ *   peek()       → synchronous read of cached value (no disk I/O)
  */
 export class SettingsCache {
   private cached: CodaraSettings | undefined;

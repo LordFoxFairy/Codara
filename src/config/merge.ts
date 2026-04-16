@@ -1,5 +1,11 @@
 import type {CodaraSettings} from '@config/schema';
 
+/**
+ * Deep-merge two settings objects. Arrays are replaced (not concatenated) —
+ * this matches Claude Code's settingsMergeCustomizer for array fields like
+ * `alwaysAllow` where replacement is the expected semantic ("my project
+ * overrides the user allow-list").
+ */
 export function mergeSettings(base: CodaraSettings, overlay: CodaraSettings): CodaraSettings {
   return deepMerge(base, overlay) as CodaraSettings;
 }
