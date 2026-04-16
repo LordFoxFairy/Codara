@@ -5,7 +5,7 @@
  * through the ChannelRegistry instead of the default CLI interaction.
  */
 
-import type {ReviewRequest, ReviewResumePayload} from '@shared/contracts/agent-types';
+import type {ReviewRequest, ReviewResumePayload} from '@shared/agent-types';
 import type {ReviewMiddlewareOptions} from '@core/middleware/review';
 import type {ChannelRegistry} from './registry';
 import type {ToolCallContext} from '@core/pipeline/types';

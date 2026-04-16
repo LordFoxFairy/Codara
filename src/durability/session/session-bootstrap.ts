@@ -1,5 +1,5 @@
 import type {BaseChatModel} from '@langchain/core/language_models/chat_models';
-import type {Agent, AgentInputBudget} from '@shared/contracts/agent-types';
+import type {Agent, AgentInputBudget} from '@shared/agent-types';
 import {
   buildBaseSystemMessage,
   type BaseSystemMessageBundle,
@@ -29,10 +29,10 @@ export interface BootstrapDependencies {
   skillsSource?: SkillsSource;
   dynamicSections?: DynamicSectionRegistry;
   tools?: import('@langchain/core/tools').StructuredToolInterface[];
-  handleToolErrors?: import('@shared/contracts/agent-types').ToolErrorHandler;
+  handleToolErrors?: import('@shared/agent-types').ToolErrorHandler;
   middleware?: unknown[];
   summary?: false | unknown;
-  messages?: import('@shared/contracts/agent-types').AgentInput;
+  messages?: import('@shared/agent-types').AgentInput;
   context?: Record<string, unknown>;
   values?: Record<string, unknown>;
   agentFactory: AgentFactory;
@@ -43,7 +43,7 @@ export interface BootstrapDependencies {
   inputBudget?: AgentInputBudget;
   getLatestCheckpoint: () => Promise<import('@durability/checkpoint/agent').AgentCheckpoint | undefined>;
   /** Session-owned context preparer that shares the session's instruction cache. */
-  prepareContext?: import('@shared/contracts/agent-types').AgentContextPreparer;
+  prepareContext?: import('@shared/agent-types').AgentContextPreparer;
 }
 
 export interface BootstrapResult {

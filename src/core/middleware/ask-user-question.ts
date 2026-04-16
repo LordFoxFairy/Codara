@@ -1,7 +1,7 @@
 import {ToolMessage} from '@langchain/core/messages';
 import {tool} from '@langchain/core/tools';
 import {z} from 'zod';
-import type {ReviewUIActionOption} from '@shared/contracts/agent-types';
+import type {ReviewUIActionOption} from '@shared/agent-types';
 import {createReviewMiddleware, parseReviewResumeActionPayload, type ReviewMiddlewareOptions} from '@core/middleware/review';
 import {createMiddleware} from '@core/pipeline/types';
 

@@ -7,7 +7,7 @@ import {z} from 'zod';
 import {FileCheckpointer} from '@durability/checkpoint/file';
 import {InMemoryCheckpointer} from '@durability/checkpoint/in-memory';
 import type {CheckpointRecord, Checkpointer} from '@durability/checkpoint/types';
-import type {AgentType, ReviewRequest} from '@shared/contracts/agent-types';
+import type {AgentType, ReviewRequest} from '@shared/agent-types';
 import {deepClone} from '@shared/clone';
 
 export type AgentCheckpointStatus = 'idle' | 'paused' | 'closed' | 'error';

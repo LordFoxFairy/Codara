@@ -165,7 +165,7 @@ describe('sendReviewPrompt', () => {
       accountId: 'wecom-bot-1',
       to: 'user_001',
       text: 'Approve this action?',
-      review: {id: 'review_001'} as unknown as import('@shared/contracts/agent-types').ReviewRequest,
+      review: {id: 'review_001'} as unknown as import('@shared/agent-types').ReviewRequest,
       actions: [
         {id: 'approve', label: 'Approve', style: 'approve'},
         {id: 'reject', label: 'Reject', style: 'reject'},

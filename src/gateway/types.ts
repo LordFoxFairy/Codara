@@ -1,4 +1,4 @@
-import type {ReviewRequest} from '@shared/contracts/agent-types';
+import type {ReviewRequest} from '@shared/agent-types';
 
 export interface InboundMessage {
   channel: string;

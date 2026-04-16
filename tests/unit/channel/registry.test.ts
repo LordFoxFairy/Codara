@@ -1,7 +1,7 @@
 import {describe, test, expect, beforeEach} from 'bun:test';
 import {ChannelRegistry} from '@integration/channel/registry';
-import type {Channel} from '@shared/contracts/channel';
-import type {ReviewRequest} from '@shared/contracts/agent-types';
+import type {Channel} from '@shared/channel-types';
+import type {ReviewRequest} from '@shared/agent-types';
 
 function createMockChannel(id: string, type: Channel['type'] = 'cli'): Channel & {
   lastReview?: ReviewRequest;

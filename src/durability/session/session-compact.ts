@@ -1,5 +1,5 @@
 import {randomUUID} from 'node:crypto';
-import type {Agent, AgentInputBudget, AgentState} from '@shared/contracts/agent-types';
+import type {Agent, AgentInputBudget, AgentState} from '@shared/agent-types';
 import type {AgentCheckpointer} from '@durability/checkpoint/agent';
 import {putManualCheckpoint} from '@durability/checkpoint/agent';
 import type {SessionLifecycleHooks} from '@observability/hook/types';

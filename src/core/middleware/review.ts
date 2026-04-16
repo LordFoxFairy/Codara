@@ -6,7 +6,7 @@ import type {
   ReviewUIActionOption as SharedReviewUIActionOption,
   ReviewUIConfig,
   ReviewResumePayload as SharedReviewResumePayload,
-} from '@shared/contracts/agent-types';
+} from '@shared/agent-types';
 
 // Re-export evaluator functions used by external consumers
 export {
@@ -53,7 +53,7 @@ export type ReviewRequest = SharedReviewRequest;
 export type ReviewUIActionOption = SharedReviewUIActionOption;
 export type ReviewResumePayload = SharedReviewResumePayload;
 
-export type {ReviewToolMessagePayload} from '@shared/contracts/agent-types';
+export type {ReviewToolMessagePayload} from '@shared/agent-types';
 
 export type ReviewDescriptionFactory = (
   toolCall: import('@langchain/core/messages').ToolCall,

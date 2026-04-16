@@ -1,5 +1,5 @@
 import type {BaseMessage} from '@langchain/core/messages';
-import type {AgentRuntimeContext, AgentRuntimeValues} from '@shared/contracts/agent-types';
+import type {AgentRuntimeContext, AgentRuntimeValues} from '@shared/agent-types';
 import {deepClone} from '@shared/clone';
 import {mergeContext} from '@shared/context-merge';
 export {mergeContext} from '@shared/context-merge';

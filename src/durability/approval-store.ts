@@ -1,7 +1,7 @@
 import {mkdirSync, readFileSync, readdirSync, renameSync, rmSync, writeFileSync} from 'node:fs';
 import {randomUUID} from 'node:crypto';
 import path from 'node:path';
-import type {ReviewRequest} from '@shared/contracts/agent-types';
+import type {ReviewRequest} from '@shared/agent-types';
 
 export interface ApprovalRecord {
   approvalId: string;

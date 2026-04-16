@@ -1,7 +1,7 @@
 import {describe, test, expect, beforeEach} from 'bun:test';
 import {GatewayChannelBridge} from '@gateway/channel-bridge';
 import type {ChannelPlugin} from '@integration/channel/contracts';
-import type {ReviewRequest} from '@shared/contracts/agent-types';
+import type {ReviewRequest} from '@shared/agent-types';
 import {z} from 'zod';
 
 function createMockPlugin(overrides: Partial<ChannelPlugin> = {}): ChannelPlugin & {

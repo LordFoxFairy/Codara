@@ -11,7 +11,7 @@ import type {AIMessage, ToolMessage} from '@langchain/core/messages';
 import type {StructuredToolInterface} from '@langchain/core/tools';
 import {z} from 'zod';
 import {applyAgentStateUpdate} from '@core/agent/models/command';
-import type {AgentRuntimeContext} from '@shared/contracts/agent-types';
+import type {AgentRuntimeContext} from '@shared/agent-types';
 import {
   type AfterAgentContext,
   type AfterModelContext,

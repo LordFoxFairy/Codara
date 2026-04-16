@@ -15,14 +15,14 @@ import type {
   AgentRuntimeContext,
   AgentRuntimeValues,
   AgentType,
-} from '@shared/contracts/agent-types';
+} from '@shared/agent-types';
 import type {
   ContextBudgetSnapshot,
   ExecutionContextMetadata,
-} from '@shared/contracts/execution';
+} from '@shared/execution-types';
 import type {AgentStateUpdate} from '@core/agent/models/command';
 
-export type {ExecutionContextMetadata} from '@shared/contracts/execution';
+export type {ExecutionContextMetadata} from '@shared/execution-types';
 
 export type MiddlewareRuntimeShared = Record<string, unknown>;
 

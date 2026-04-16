@@ -7,8 +7,8 @@
  * - Fall back to default channel when no specific channel is specified
  */
 
-import type {Channel, ChannelType} from '@shared/contracts/channel';
-import type {ReviewRequest, ReviewResumePayload} from '@shared/contracts/agent-types';
+import type {Channel, ChannelType} from '@shared/channel-types';
+import type {ReviewRequest, ReviewResumePayload} from '@shared/agent-types';
 
 export class ChannelRegistry {
   private readonly channels = new Map<string, Channel>();

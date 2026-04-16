@@ -3,7 +3,7 @@ import {mkdtemp, rm} from 'node:fs/promises';
 import {tmpdir} from 'node:os';
 import path from 'node:path';
 import {createApprovalFileStore} from '@durability/approval-store';
-import type {ReviewRequest} from '@shared/contracts/agent-types';
+import type {ReviewRequest} from '@shared/agent-types';
 
 function makeReviewRequest(id: string, description: string, toolName: string): ReviewRequest {
   return {

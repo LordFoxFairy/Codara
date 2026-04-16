@@ -1,6 +1,6 @@
 import {HumanMessage} from '@langchain/core/messages';
 import type {AgentResumeStreamConfig, AgentStreamOutput, ReviewRequest, ReviewResumePayload, Agent, BootstrapAgentOptions} from './adapters/core-bridge';
-import type {AgentResult} from '@shared/contracts/agent-types';
+import type {AgentResult} from '@shared/agent-types';
 import type {ApprovalRecord, ApprovalStore} from './adapters/core-bridge';
 import {bootstrapSubagent, createSubagentResult} from '@capability/subagent/bootstrap';
 import {mergeSubagentRunRecoveryMetadata} from '@capability/subagent/review-metadata';

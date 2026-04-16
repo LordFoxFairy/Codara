@@ -11,7 +11,7 @@ import type {
   ReviewRequest as SharedReviewRequest,
   ReviewUIConfig,
   ReviewResumePayload as SharedReviewResumePayload,
-} from '@shared/contracts/agent-types';
+} from '@shared/agent-types';
 import type {
   ReviewDenyDecision,
   ReviewDenyMessageFactory,

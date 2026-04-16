@@ -1,5 +1,5 @@
 import type {ChannelPlugin} from '@integration/channel/contracts';
-import type {ChannelType} from '@shared/contracts/channel';
+import type {ChannelType} from '@shared/channel-types';
 import type {GatewayConfig, InboundMessage, StopHandle} from './types';
 import type {GatewaySessionFactory} from './session-manager';
 import type {DebouncedHandler} from './debounce';

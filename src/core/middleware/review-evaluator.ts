@@ -5,7 +5,7 @@
 
 import type {
   ReviewDecision as ReviewDecisionValue,
-} from '@shared/contracts/agent-types';
+} from '@shared/agent-types';
 import type {
   ReviewAskDecision,
   ReviewContextConfig,

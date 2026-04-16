@@ -1,4 +1,4 @@
-import type {AgentRuntimeContext} from '@shared/contracts/agent-types';
+import type {AgentRuntimeContext} from '@shared/agent-types';
 import {z} from 'zod';
 
 const recordSchema = z.record(z.string(), z.unknown());

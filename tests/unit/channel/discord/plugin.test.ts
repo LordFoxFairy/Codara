@@ -138,7 +138,7 @@ describe('discordPlugin', () => {
         accountId: 'bot-1',
         to: 'ch-1',
         text: 'Approve this action?',
-        review: {id: 'review-1', description: 'Run command'} as unknown as import('@shared/contracts/agent-types').ReviewRequest,
+        review: {id: 'review-1', description: 'Run command'} as unknown as import('@shared/agent-types').ReviewRequest,
         actions: [
           {id: 'approve', label: 'Approve', style: 'approve'},
           {id: 'reject', label: 'Reject', style: 'reject'},

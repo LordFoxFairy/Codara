@@ -7,7 +7,7 @@
 
 import type {BaseChatModel} from '@langchain/core/language_models/chat_models';
 import type {BaseMessage} from '@langchain/core/messages';
-import type {Agent, AgentInput} from '@shared/contracts/agent-types';
+import type {Agent, AgentInput} from '@shared/agent-types';
 import {bootstrapAgent} from '@core/agent/bootstrap';
 import {normalizeAgentInput} from '@core/agent/run/agent-loop';
 import {

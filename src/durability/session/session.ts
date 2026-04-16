@@ -16,7 +16,7 @@ import type {
   ReviewRequest,
   ReviewResumePayload,
   ToolErrorHandler,
-} from '@shared/contracts/agent-types';
+} from '@shared/agent-types';
 import {mergeContext as mergeAgentContext} from '@shared/context-merge';
 import type {CompactOptions} from '@durability/checkpoint/types';
 import {
@@ -42,7 +42,7 @@ import {
   type CodaraRuntimeEventListener,
 } from '@observability/events';
 import type {AgentFactory, SessionMetadata, SessionMiddlewareFactory, SessionState, SessionStatus} from './types';
-import type {AgentPreparationContext, AgentRuntimeContext} from '@shared/contracts/agent-types';
+import type {AgentPreparationContext, AgentRuntimeContext} from '@shared/agent-types';
 import {
   bootstrapSessionAgent,
   loadBaseInstructionContext,

@@ -9,7 +9,7 @@ import type {
   AgentStatus,
   AgentType,
   ReviewRequest,
-} from '@shared/contracts/agent-types';
+} from '@shared/agent-types';
 import type {
   AgentCheckpoint,
   AgentCheckpointInfo,

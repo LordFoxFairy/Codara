@@ -11,7 +11,7 @@ import type {
   AgentRuntimeValues,
   AgentType,
   ToolErrorHandler,
-} from '@shared/contracts/agent-types';
+} from '@shared/agent-types';
 
 // Re-export all shared agent types for backward compatibility
 export type {
@@ -48,7 +48,7 @@ export type {
   ReviewUIFormTab,
   ReviewResumePayload,
   ToolErrorHandler,
-} from '@shared/contracts/agent-types';
+} from '@shared/agent-types';
 
 export interface CreateAgentOptions {
   model: BaseChatModel;

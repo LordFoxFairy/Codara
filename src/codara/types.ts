@@ -23,7 +23,7 @@ import type {
   AgentStreamOutput,
   ReviewResumePayload,
 } from '@core/agent';
-import type {ReviewRequest} from '@shared/contracts/agent-types';
+import type {ReviewRequest} from '@shared/agent-types';
 import type {CostSnapshot} from '@observability/cost';
 import type {MemoryWriter} from '@capability/memory/writer';
 import type {CodaraModelCatalog} from './assembly/runtime';

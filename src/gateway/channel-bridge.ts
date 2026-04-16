@@ -1,5 +1,5 @@
-import type {Channel, ChannelMessage, ChannelRuntimeEvent, ChannelType} from '@shared/contracts/channel';
-import type {ReviewRequest, ReviewResumePayload} from '@shared/contracts/agent-types';
+import type {Channel, ChannelMessage, ChannelRuntimeEvent, ChannelType} from '@shared/channel-types';
+import type {ReviewRequest, ReviewResumePayload} from '@shared/agent-types';
 import type {ChannelPlugin} from '@integration/channel/contracts';
 import type {ReviewPromptAction} from './types';
 

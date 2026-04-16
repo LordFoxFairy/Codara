@@ -8,11 +8,23 @@
  * - tool-concurrency.ts for partitioning concurrent vs serial execution
  * - permission middleware for smarter default decisions
  */
-import {
-  TOOL_METADATA_DEFAULTS,
-  type ToolMetadata,
-  type ToolMetadataInput,
-} from '@shared/contracts/tool-metadata';
+// ── Types (formerly in contracts/tool-metadata.ts) ──
+
+export interface ToolMetadata {
+  isReadOnly: boolean;
+  isConcurrencySafe: boolean;
+  isDestructive: boolean;
+  interruptBehavior: 'cancel' | 'block';
+}
+
+export type ToolMetadataInput = Partial<ToolMetadata>;
+
+export const TOOL_METADATA_DEFAULTS: Readonly<ToolMetadata> = {
+  isReadOnly: false,
+  isConcurrencySafe: false,
+  isDestructive: false,
+  interruptBehavior: 'block',
+};
 
 // ---------------------------------------------------------------------------
 // Registry

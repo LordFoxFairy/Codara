@@ -1,5 +1,5 @@
-import type {AgentResult, AgentState} from '@shared/contracts/agent-types';
-import type {AgentRuntimeContext} from '@shared/contracts/agent-types';
+import type {AgentResult, AgentState} from '@shared/agent-types';
+import type {AgentRuntimeContext} from '@shared/agent-types';
 import type {CompactOptions} from '@durability/checkpoint/types';
 import type {ConversationCompactionResult} from '@durability/session';
 import type {HookRegistry} from '@observability/hook/registry';

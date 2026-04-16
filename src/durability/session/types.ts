@@ -35,7 +35,7 @@ import type {
   AgentRuntimeContext,
   AgentRuntimeValues,
   ToolErrorHandler,
-} from '@shared/contracts/agent-types';
+} from '@shared/agent-types';
 import type {AgentCheckpointer, AgentCheckpoint} from '@durability/checkpoint/agent';
 
 // ── Agent Factory ──

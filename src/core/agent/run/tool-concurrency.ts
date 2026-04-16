@@ -1,11 +1,7 @@
 import type {ToolCall} from '@langchain/core/messages';
-import type {ToolMetadata} from '@shared/contracts/tool-metadata';
-import {getToolMetadata} from '@shared/tool-metadata';
+import {getToolMetadata, type ToolMetadata} from '@shared/tool-metadata';
 
-/**
- * @deprecated Use ToolMetadata from '@shared/contracts/tool-metadata' instead.
- * Kept for backward compatibility with existing tests.
- */
+/** @deprecated Use ToolMetadata from '@shared/tool-metadata' instead. */
 export type ToolConcurrencyMeta = Pick<ToolMetadata, 'isReadOnly'>;
 
 export interface PartitionedToolCalls {
