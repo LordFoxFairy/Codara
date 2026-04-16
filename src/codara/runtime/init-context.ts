@@ -1,4 +1,9 @@
-/** Context sources initialization: guidelines, prompts, skills, dynamic sections. */
+/**
+ * Context sources initialization: guidelines, prompts, skills, dynamic sections.
+ *
+ * Eagerly loads the base system message so that the first user turn
+ * does not pay the full I/O cost of reading all instruction files.
+ */
 import path from 'node:path';
 import {createCodaraGuidelinesSource, type GuidelinesSource, createCodaraPromptSource, type PromptSource} from '@context/sources';
 import {type SkillsSource, createCodaraSkillsSource} from '@capability/skill';
@@ -17,6 +22,7 @@ export interface ContextSources {
   dynamicSections: DynamicSectionRegistry;
 }
 
+/** Discover and pre-warm all instruction context sources for the runtime. */
 export async function initContextSources(
   options: Pick<CodaraRuntimeOptions, 'cwd' | 'projectRoot' | 'userHome' | 'skills'>,
   projectRoot: string,

@@ -1,3 +1,13 @@
+/**
+ * @module gateway/debounce
+ *
+ * Debounced message handler for IM platforms.
+ *
+ * Users in IM apps often send multiple short messages in rapid succession.
+ * This module buffers those messages and merges them before dispatching to
+ * the agent, avoiding redundant processing and reducing API calls.
+ */
+
 import type {InboundMessage} from './types';
 
 export interface DebounceOptions {
@@ -45,10 +55,15 @@ function mergeMessages(messages: InboundMessage[]): InboundMessage {
  *   "看看这个文件"
  *   "src/index.ts"
  * → Merged into: "帮我\n看看这个文件\nsrc/index.ts"
+ *
+ * @param handler  — called with the merged message when the debounce window fires.
+ * @param options  — debounce timing configuration.
+ * @param onError  — called when `handler` rejects. If omitted, errors are silently lost.
  */
 export function createDebouncedHandler(
   handler: (msg: InboundMessage) => Promise<void>,
   options?: DebounceOptions,
+  onError?: (err: unknown, msg: InboundMessage) => void,
 ): DebouncedHandler {
   const windowMs = options?.windowMs ?? 1500;
   const maxBuffer = options?.maxBuffer ?? 10;
@@ -60,7 +75,9 @@ export function createDebouncedHandler(
     clearTimeout(entry.timer);
     buffers.delete(key);
     const merged = mergeMessages(entry.messages);
-    return handler(merged);
+    return handler(merged).catch((err) => {
+      if (onError) onError(err, merged);
+    });
   }
 
   function add(msg: InboundMessage): void {

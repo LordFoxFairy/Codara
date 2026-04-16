@@ -1,9 +1,10 @@
+/** @module desktop/components/TopBar — Global header with brand, health badge, and quick actions. */
+
 import { Menu, RotateCcw, Monitor } from "lucide-react";
-import type { ConnectionStatus, RuntimeStatus } from "../types";
+import type { ConnectionStatus } from "../types";
 
 interface TopBarProps {
   connectionStatus: ConnectionStatus;
-  runtimeStatus: RuntimeStatus;
   onToggleSidebar: () => void;
   onRefresh?: () => void;
   onOpenDebug?: () => void;

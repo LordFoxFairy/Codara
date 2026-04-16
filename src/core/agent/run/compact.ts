@@ -9,6 +9,19 @@ export interface CheapDrainResult {
   freedCount: number;
 }
 
+// ── Message partitioning ────────────────────────────────────────────────────
+
+/** Split messages into system + conversation turns. Shared by compact and drain. */
+function partitionMessages(messages: readonly BaseMessage[], keepRecentTurns: number) {
+  const system = messages.filter(m => m instanceof SystemMessage);
+  const nonSystem = messages.filter(m => !(m instanceof SystemMessage));
+  const turns = groupIntoTurns(nonSystem);
+  const hasEnoughTurns = turns.length > keepRecentTurns;
+  return {system, turns, hasEnoughTurns};
+}
+
+// ── Compact ─────────────────────────────────────────────────────────────────
+
 /**
  * Compact messages by removing old turns while preserving:
  * - All SystemMessages
@@ -20,12 +33,9 @@ export function compactMessages(
   messages: readonly BaseMessage[],
   options: CompactOptions = {keepRecentTurns: 3},
 ): BaseMessage[] {
-  const systemMessages = messages.filter(m => m instanceof SystemMessage);
-  const nonSystem = messages.filter(m => !(m instanceof SystemMessage));
-  const turns = groupIntoTurns(nonSystem);
-
-  if (turns.length <= options.keepRecentTurns) {
-    return [...messages]; // Nothing to compact
+  const {system, turns, hasEnoughTurns} = partitionMessages(messages, options.keepRecentTurns);
+  if (!hasEnoughTurns) {
+    return [...messages];
   }
 
   const keepCount = Math.min(options.keepRecentTurns, turns.length);
@@ -34,53 +44,47 @@ export function compactMessages(
   const summary = buildCompactionSummary(droppedTurns.flat());
 
   return [
-    ...systemMessages,
+    ...system,
     ...(summary ? [summary] : []),
     ...keptTurns.flat(),
   ];
 }
 
+// ── Cheap drain ─────────────────────────────────────────────────────────────
+
+/** Minimum content length to consider a ToolMessage worth draining. */
+const DRAIN_THRESHOLD_CHARS = 200;
+
 /**
- * Cheap drain: strip tool result content from older messages to free context
- * space without a full LLM summary pass.
+ * Strip tool result content from older messages to free context space
+ * without a full LLM summary pass.
  *
  * Aligned with Claude Code's context collapse drain strategy — this is the
- * first recovery attempt before falling back to full compaction. It replaces
- * the content of old ToolMessage results with a short placeholder while
- * preserving the most recent turns intact.
- *
- * @param keepRecentTurns  Number of recent turns to leave untouched
+ * first recovery attempt before falling back to full compaction.
  */
 export function cheapDrainMessages(
   messages: readonly BaseMessage[],
   keepRecentTurns = 3,
 ): CheapDrainResult {
-  const systemMessages = messages.filter(m => m instanceof SystemMessage);
-  const nonSystem = messages.filter(m => !(m instanceof SystemMessage));
-  const turns = groupIntoTurns(nonSystem);
-
-  if (turns.length <= keepRecentTurns) {
+  const {system, turns, hasEnoughTurns} = partitionMessages(messages, keepRecentTurns);
+  if (!hasEnoughTurns) {
     return {messages: [...messages], freedCount: 0};
   }
 
   const protectedStart = turns.length - keepRecentTurns;
   let freedCount = 0;
 
-  const result: BaseMessage[] = [...systemMessages];
+  const result: BaseMessage[] = [...system];
   for (let i = 0; i < turns.length; i++) {
     for (const msg of turns[i]!) {
-      if (i < protectedStart && msg instanceof ToolMessage) {
-        const content = typeof msg.content === 'string' ? msg.content : JSON.stringify(msg.content);
-        if (content.length > 200) {
-          // Replace with placeholder — keeps the tool_call_id linkage intact
-          result.push(new ToolMessage({
-            content: '[tool result removed to free context]',
-            tool_call_id: msg.tool_call_id,
-            name: msg.name,
-          }));
-          freedCount += 1;
-          continue;
-        }
+      if (i < protectedStart && isLargeToolMessage(msg)) {
+        result.push(new ToolMessage({
+          content: '[tool result removed to free context]',
+          tool_call_id: msg.tool_call_id,
+          name: msg.name,
+        }));
+        freedCount += 1;
+        continue;
       }
       result.push(msg);
     }
@@ -89,15 +93,21 @@ export function cheapDrainMessages(
   return {messages: result, freedCount};
 }
 
+function isLargeToolMessage(msg: BaseMessage): msg is ToolMessage {
+  if (!(msg instanceof ToolMessage)) return false;
+  const content = typeof msg.content === 'string' ? msg.content : JSON.stringify(msg.content);
+  return content.length > DRAIN_THRESHOLD_CHARS;
+}
+
+// ── Context window detection ────────────────────────────────────────────────
+
 /**
  * Detect if an error represents context window exhaustion.
  *
  * Checks structured fields first (HTTP status 413, error type), then falls
- * back to error message matching. Subsumes the old `isContextWindowError`
- * from error-recovery.ts so there is a single detection point.
+ * back to error message matching.
  */
 export function isContextWindowExhausted(error: unknown): boolean {
-  // Structured check: HTTP 413 (Request Entity Too Large)
   if (error && typeof error === 'object') {
     const record = error as Record<string, unknown>;
     const status =
@@ -109,7 +119,6 @@ export function isContextWindowExhausted(error: unknown): boolean {
     if (status === 413) return true;
   }
 
-  // Message-based check
   if (!(error instanceof Error)) return false;
   const msg = error.message.toLowerCase();
   return msg.includes('context length exceeded')
@@ -118,6 +127,8 @@ export function isContextWindowExhausted(error: unknown): boolean {
     || msg.includes('prompt is too long')
     || msg.includes('context_length_exceeded');
 }
+
+// ── Helpers ─────────────────────────────────────────────────────────────────
 
 /**
  * Group messages into turn-aligned units.

@@ -1,3 +1,9 @@
+/**
+ * @module desktop/hooks/useSessions
+ *
+ * React hook for session CRUD — list, create, and load message history.
+ */
+
 import { useCallback, useEffect, useState } from "react";
 import type { Session } from "../types";
 

@@ -1,16 +1,14 @@
+import {createMiddleware, type BaseMiddleware, MIDDLEWARE_NAMES} from '@core/pipeline/types';
 import {
-  createMiddleware,
-  type BaseMiddleware,
-  MIDDLEWARE_NAMES,
   createAskUserQuestionMiddleware,
   createBudgetMiddleware,
-  type ReviewMiddlewareOptions,
   createLoggingMiddleware,
   createPermissionMiddleware,
   createTodoListMiddleware,
+  type ReviewMiddlewareOptions,
   type LoggingMiddlewareOptions,
-  type PermissionMiddlewareOptions,
-} from './adapters/core-bridge';
+} from '@core/middleware';
+import type {PermissionMiddlewareOptions} from '@core/middleware/permission/middleware';
 import {createSubagentCatalogMessage, readSkillsRuntimeData} from '@capability/skill';
 import {createSubagentRunManager} from '@capability/subagent/run-manager';
 import {createSubagentRunMemoryStore} from '@capability/subagent/run-store';

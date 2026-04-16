@@ -1,3 +1,9 @@
+/**
+ * Permission review state transitions.
+ *
+ * Manages the three-stage permission flow: prompt -> always-confirm -> reject-feedback.
+ * Reads always-patterns from review metadata for the confirmation stage.
+ */
 import type {CliReviewState} from './view-state';
 import type {PermissionStage} from './view-state';
 

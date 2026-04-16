@@ -1,3 +1,5 @@
+/** @module desktop/components/ContentHeader — Page title bar with agent label and action buttons. */
+
 import { RotateCcw, Settings } from "lucide-react";
 
 interface ContentHeaderProps {

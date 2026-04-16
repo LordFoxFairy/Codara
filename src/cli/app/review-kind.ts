@@ -1,3 +1,11 @@
+/**
+ * Review kind classifier.
+ *
+ * Inspects a CliReviewState's request metadata to determine whether it
+ * represents a permission review, ask-user question, tool review, or
+ * generic review. Used by the review panel to select the appropriate
+ * rendering component.
+ */
 import type {CliReviewState} from './view-state';
 import type {CliReviewKind} from './view-state';
 

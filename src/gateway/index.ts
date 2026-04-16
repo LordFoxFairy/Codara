@@ -1,3 +1,11 @@
+/**
+ * @module gateway
+ *
+ * Public API for the IM message gateway.
+ * Re-exports all types and factory functions needed to construct and
+ * configure a Gateway instance programmatically.
+ */
+
 export {Gateway} from './gateway';
 export {createCodaraSessionFactory} from './codara-session-factory';
 export type {CodaraSessionFactoryOptions} from './codara-session-factory';

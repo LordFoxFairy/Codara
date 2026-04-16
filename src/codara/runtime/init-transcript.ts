@@ -5,6 +5,7 @@ import {getTranscriptPath} from '@durability/session/storage';
 import type {SettingsWatcher} from '@config/watcher';
 import type {Codara} from '../types';
 
+/** Subscribe to runtime events and persist model/tool/turn entries as JSONL transcript. */
 export function wireTranscript(
   runtime: Codara,
   projectRoot: string,
@@ -49,6 +50,7 @@ export function wireTranscript(
   return transcriptWriter;
 }
 
+/** Augment the original dispose with transcript flush and settings watcher stop. */
 export function wrapDispose(
   originalDispose: () => Promise<void>,
   transcriptWriter: TranscriptWriter,

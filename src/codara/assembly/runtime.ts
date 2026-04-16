@@ -1,3 +1,8 @@
+/**
+ * Model catalog & factory -- wraps ModelRegistry + ChatModelFactory into
+ * the `CodaraModelCatalog` class used for alias-based model resolution.
+ */
+
 import type {BaseChatModel} from '@langchain/core/language_models/chat_models';
 import {
   ChatModelFactory,
@@ -12,6 +17,7 @@ import type {
 
 export const DEFAULT_CODARA_MODEL_ALIAS = 'default';
 
+/** Alias-aware model catalog that resolves model aliases to ChatModel instances. */
 export class CodaraModelCatalog {
   constructor(
     private readonly registry: ModelRegistry,

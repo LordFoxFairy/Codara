@@ -1,3 +1,9 @@
+/**
+ * @module desktop/types
+ *
+ * Shared type definitions for the desktop Web UI.
+ */
+
 export interface Message {
   id: string;
   role: "user" | "assistant";

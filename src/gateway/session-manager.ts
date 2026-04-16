@@ -1,3 +1,16 @@
+/**
+ * @module gateway/session-manager
+ *
+ * Manages the lifecycle of gateway agent sessions. Each unique conversation
+ * (determined by {@link buildSessionKey}) maps to one session. Sessions are
+ * cached in memory and persisted to disk for reset-policy evaluation.
+ *
+ * Note: This is the *gateway-specific* session layer, separate from
+ * `durability/session` which handles the core agent checkpoint persistence.
+ * Gateway sessions wrap a Codara runtime per conversation and add IM-specific
+ * concerns (idle reset, per-type reset policies, capacity eviction).
+ */
+
 import type {GatewaySessionConfig, InboundMessage, SessionResetPolicy} from './types';
 import {buildSessionKey, type SessionKeyOptions} from './session-key';
 import {createFileSessionStore, type GatewaySessionStore} from './session-store';

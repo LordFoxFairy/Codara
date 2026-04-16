@@ -1,3 +1,5 @@
+/** @module desktop/pages/LogsPage — Periodic status monitor with pause/clear controls. */
+
 import { useCallback, useEffect, useRef, useState } from "react";
 import { ScrollText, Pause, Play, Trash2 } from "lucide-react";
 

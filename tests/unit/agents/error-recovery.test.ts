@@ -3,13 +3,13 @@ import {
   isRateLimitError,
   isTransientError,
   isMaxOutputTokensError,
-  isContextWindowError,
   extractRetryAfter,
   computeRetryDelay,
   createRecoveryState,
   resetPerTurnFlags,
   MAX_OUTPUT_TOKENS_RECOVERY_LIMIT,
 } from '../../../src/core/agent/run/error-recovery';
+import {isContextWindowExhausted} from '../../../src/core/agent/run/compact';
 
 describe('error-recovery', () => {
   describe('isRateLimitError', () => {
@@ -117,26 +117,26 @@ describe('error-recovery', () => {
     });
   });
 
-  describe('isContextWindowError', () => {
+  describe('isContextWindowExhausted', () => {
     it('should detect HTTP 413', () => {
-      expect(isContextWindowError({status: 413})).toBe(true);
+      expect(isContextWindowExhausted({status: 413})).toBe(true);
     });
 
     it('should detect HTTP 400 with context length message', () => {
       const error = Object.assign(new Error('context length exceeded'), {status: 400});
-      expect(isContextWindowError(error)).toBe(true);
+      expect(isContextWindowExhausted(error)).toBe(true);
     });
 
     it('should detect context_length_exceeded error type with matching message', () => {
       const error = Object.assign(new Error('too many tokens in context'), {
         error: {type: 'context_length_exceeded'},
       });
-      expect(isContextWindowError(error)).toBe(true);
+      expect(isContextWindowExhausted(error)).toBe(true);
     });
 
     it('should reject unrelated 400 errors', () => {
       const error = Object.assign(new Error('invalid parameter'), {status: 400});
-      expect(isContextWindowError(error)).toBe(false);
+      expect(isContextWindowExhausted(error)).toBe(false);
     });
   });
 

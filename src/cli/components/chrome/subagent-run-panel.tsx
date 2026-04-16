@@ -1,10 +1,11 @@
+/**
+ * SubagentRunPanel -- displays a compact list of running/paused/done subagent
+ * runs with animated spinners and status checkboxes.
+ */
 import React, {useEffect, useState} from 'react';
 import {Box, Text} from 'ink';
 import type {ActiveSubagentRun} from '../../hooks/use-subagent-runs';
-import {SPINNER_INTERVAL_MS} from '../../hooks/use-status-indicator';
-import {theme} from '../../utils/theme';
-
-const BRAILLE_FRAMES = ['⠋', '⠙', '⠹', '⠸', '⠼', '⠴', '⠦', '⠧', '⠇', '⠏'] as const;
+import {BRAILLE_FRAMES, SPINNER_INTERVAL_MS, theme} from '../../utils/theme';
 
 interface SubagentRunPanelProps {
   runs: ActiveSubagentRun[];

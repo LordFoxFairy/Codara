@@ -1,3 +1,5 @@
+/** @module desktop/components/Sidebar — Navigation sidebar with session list, collapsible to icon-only. */
+
 import { useMemo } from "react";
 import {
   MessageSquare,

@@ -17,6 +17,7 @@ import {
 import type {CliInteractionScheduler} from '../interaction-scheduler';
 import {takeNextScheduledInteraction} from '../cli-interaction-queue';
 import type {QueuedReviewResponseInteraction} from '../interaction-scheduler';
+import type {CliStore} from '../cli-store';
 import {
   hasVisibleAssistantReply,
   hasVisibleAssistantReplyInMessages,
@@ -35,15 +36,9 @@ export interface PromptSubmissionDeps {
   codara: Codara;
   interactionScheduler: CliInteractionScheduler;
   initialPrompt: string;
-  reviewRef: React.MutableRefObject<import('../view-state').CliReviewState | undefined>;
-  activeTurnRef: React.MutableRefObject<CliActiveTurn | undefined>;
-  coreMessagesRef: React.MutableRefObject<readonly BaseMessage[]>;
-  runStateRef: React.MutableRefObject<CliRunState>;
-  promptStartMessageCountRef: React.MutableRefObject<number>;
-  pendingBackgroundNoticesRef: React.MutableRefObject<CliNotice[]>;
-  settlingFinalReplyRef: React.MutableRefObject<boolean>;
+  store: CliStore;
   setActiveTurn: (input: CliActiveTurn | undefined | ((current: CliActiveTurn | undefined) => CliActiveTurn | undefined)) => void;
-  setRunState: React.Dispatch<React.SetStateAction<CliRunState>>;
+  setRunState: (input: CliRunState | ((current: CliRunState) => CliRunState)) => void;
   setCommandOutput: React.Dispatch<React.SetStateAction<{content: string; commandName?: string; scrollOffset: number} | undefined>>;
   setRuntimeEvents: React.Dispatch<React.SetStateAction<readonly import('@/index').CodaraRuntimeEvent[]>>;
   sessionState: SessionState;
@@ -74,13 +69,7 @@ export function usePromptSubmission(deps: PromptSubmissionDeps): PromptSubmissio
     codara,
     interactionScheduler,
     initialPrompt,
-    reviewRef,
-    activeTurnRef,
-    coreMessagesRef,
-    runStateRef,
-    promptStartMessageCountRef,
-    pendingBackgroundNoticesRef,
-    settlingFinalReplyRef,
+    store,
     setActiveTurn,
     setRunState,
     setCommandOutput,
@@ -164,8 +153,9 @@ export function usePromptSubmission(deps: PromptSubmissionDeps): PromptSubmissio
   }, [appendNotice, codara, onShowSessionPicker, openFile, refreshCoreState, reopenSession, sessionState.sessionId, setCommandOutput, setRunState]);
 
   const runAgentPrompt = useCallback(async (prompt: string) => {
-    const promptStartMessageCount = coreMessagesRef.current.length;
-    promptStartMessageCountRef.current = promptStartMessageCount;
+    const s = store.getState();
+    const promptStartMessageCount = s.coreMessages.length;
+    store.patch({promptStartMessageCount});
     setActiveTurn({
       id: `turn-${randomUUID()}`,
       prompt,
@@ -218,12 +208,14 @@ export function usePromptSubmission(deps: PromptSubmissionDeps): PromptSubmissio
       return finalized;
     });
 
+    const s2 = store.getState();
     sawText = sawText
-      || hasVisibleAssistantReply(activeTurnRef.current, codara.getSubagentRunSummaries())
-      || hasVisibleAssistantReplyInMessages(coreMessagesRef.current, promptStartMessageCount, codara.getSubagentRunSummaries());
+      || hasVisibleAssistantReply(s2.activeTurn, codara.getSubagentRunSummaries())
+      || hasVisibleAssistantReplyInMessages(s2.coreMessages, promptStartMessageCount, codara.getSubagentRunSummaries());
     const nextAgentState = await refreshCoreState();
+    const s3 = store.getState();
     sawText = sawText
-      || hasVisibleAssistantReplyInMessages(coreMessagesRef.current, promptStartMessageCount, codara.getSubagentRunSummaries())
+      || hasVisibleAssistantReplyInMessages(s3.coreMessages, promptStartMessageCount, codara.getSubagentRunSummaries())
       || hasVisibleAssistantReplyInMessages(nextAgentState.messages, promptStartMessageCount, codara.getSubagentRunSummaries());
 
     if (nextAgentState.status === 'paused') {
@@ -246,11 +238,11 @@ export function usePromptSubmission(deps: PromptSubmissionDeps): PromptSubmissio
     }
 
     setActiveTurn(undefined);
-  }, [codara, activeTurnRef, coreMessagesRef, promptStartMessageCountRef, refreshCoreState, setActiveTurn, setRunState]);
+  }, [codara, store, refreshCoreState, setActiveTurn, setRunState]);
 
   const runQueuedSessionPrompt = useCallback(async (prompt: string): Promise<void> => {
     beginInteraction('session_prompt');
-    settlingFinalReplyRef.current = false;
+    store.patch({settlingFinalReply: false});
     setRunState({status: 'running', phase: 'prompt_stream'});
     setRuntimeEvents([]);
     setCommandOutput(undefined);
@@ -269,7 +261,7 @@ export function usePromptSubmission(deps: PromptSubmissionDeps): PromptSubmissio
     } finally {
       endInteraction();
     }
-  }, [beginInteraction, endInteraction, refreshCoreState, reportError, runAgentPrompt, runSlashCommand, setActiveTurn, setCommandOutput, setRuntimeEvents, setRunState, settlingFinalReplyRef]);
+  }, [beginInteraction, endInteraction, refreshCoreState, reportError, runAgentPrompt, runSlashCommand, setActiveTurn, setCommandOutput, setRuntimeEvents, setRunState, store]);
   runQueuedSessionPromptRef.current = runQueuedSessionPrompt;
 
   const drainScheduledInteractions = useCallback(() => {
@@ -299,11 +291,12 @@ export function usePromptSubmission(deps: PromptSubmissionDeps): PromptSubmissio
     // result.kind === 'empty'
     syncInteractionState();
 
-    if (runStateRef.current.status === 'running' && runStateRef.current.phase !== 'subagent_wait') {
-      settlingFinalReplyRef.current = false;
+    const s = store.getState();
+    if (s.runState.status === 'running' && s.runState.phase !== 'subagent_wait') {
+      store.patch({settlingFinalReply: false});
       setRunState({status: 'done'});
     }
-  }, [flushPendingBackgroundNotices, interactionScheduler, runQueuedReviewResponse, runStateRef, settlingFinalReplyRef, setRunState, syncInteractionState]);
+  }, [flushPendingBackgroundNotices, interactionScheduler, runQueuedReviewResponse, store, setRunState, syncInteractionState]);
 
   const submitPrompt = useCallback(async (rawPrompt: string): Promise<void> => {
     const prompt = rawPrompt.trim();

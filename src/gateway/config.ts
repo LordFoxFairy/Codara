@@ -1,3 +1,10 @@
+/**
+ * @module gateway/config
+ *
+ * Loads the gateway configuration from `~/.codara/gateway.json`.
+ * Returns an empty config if the file is missing or unparseable.
+ */
+
 import {readFile} from 'node:fs/promises';
 import {homedir} from 'node:os';
 import path from 'node:path';

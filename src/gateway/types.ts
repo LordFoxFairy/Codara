@@ -1,3 +1,9 @@
+/**
+ * @module gateway/types
+ *
+ * Shared type definitions for the IM gateway layer.
+ */
+
 import type {ReviewRequest} from '@shared/agent-types';
 
 export interface InboundMessage {

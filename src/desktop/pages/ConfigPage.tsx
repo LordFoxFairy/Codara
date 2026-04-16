@@ -1,3 +1,5 @@
+/** @module desktop/pages/ConfigPage — Runtime configuration and token usage display. */
+
 import { useCallback, useEffect, useState } from "react";
 import { Settings, Cpu, Globe, Shield } from "lucide-react";
 

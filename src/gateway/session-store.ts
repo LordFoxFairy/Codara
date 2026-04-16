@@ -1,3 +1,16 @@
+/**
+ * @module gateway/session-store
+ *
+ * File-backed persistence for gateway session metadata.
+ * Tracks session creation time, last activity, and peer info
+ * to support idle/daily reset policies.
+ *
+ * Data is stored as a single JSON index file with atomic writes.
+ * This is distinct from `durability/session` which stores agent
+ * checkpoint state (messages, tool results). The gateway store
+ * only tracks *metadata* for reset-policy decisions.
+ */
+
 import {readFile, writeFile, mkdir, rename} from 'node:fs/promises';
 import {homedir} from 'node:os';
 import path from 'node:path';

@@ -1,3 +1,27 @@
+# 2026-04-16 cli/ 逐文件打磨 — 对照 Claude Code
+
+## 改进清单
+
+- [x] 删除死组件 ActivityLine (activity-line.tsx) + 死函数 shouldShowActivityLine
+- [x] 删除死状态机 store/actions.ts (transition/isValidTransition/AppState/AgentStatus) — 只保留 CliEvent 类型
+- [x] 删除死文件 cli-composer-actions.ts — 每个函数都是 1:1 转发，controller 直接从 composer/state 导入
+- [x] 合并 4 处重复的 BRAILLE_FRAMES + SPINNER_INTERVAL_MS → utils/theme.ts 单一来源
+- [x] 修复 transcript/model.ts 底部 import → 移到顶部
+- [x] 清理 use-cli-controller.ts 中未使用的 runtimeEventsForDrain 状态
+- [x] 从 useRuntimeEvents 暴露 clearRuntimeEvents 替代已删除的独立状态
+- [x] 更新 robot-mark.tsx 直接从 theme 导入 SPINNER_INTERVAL_MS
+- [x] 标注 cli-args.ts 中 @future 未实现标志 (continueLatest/forkSession/dangerouslySkipPermissions)
+- [x] 所有文件添加模块级文档注释
+- [x] 更新 shell-app.test.ts 移除对已删除函数的测试
+
+## 验证
+
+- [x] `npx tsc --noEmit` 零错误
+- [x] 1549/1549 测试全部通过（0 失败）
+- [x] 总行数 11598 → 11471（净减 127 行，含新增文档注释）
+
+---
+
 # 2026-04-16 capability/ 逐文件打磨 — 对照 Claude Code
 
 ## 改进清单

@@ -13,14 +13,18 @@ import {createAgentFileCheckpointer} from '@durability/checkpoint';
 import {resolveCodaraPath} from '@integration/provider/config/loader';
 import {resolveWorkspaceRoot} from '@config/workspace';
 
-/** Resolve the sessions directory from project root or home .codara. */
+/**
+ * Resolve the sessions checkpoint directory.
+ * Prefers the project-local `.codara/sessions` if it exists,
+ * falls back to the global `~/.codara/sessions`.
+ */
 function resolveSessionsDir(): string {
   const projectRoot = resolveWorkspaceRoot();
   const projectPath = path.join(projectRoot, '.codara', 'sessions');
   try {
     const stat = Bun.file(projectPath).size;
     if (stat !== undefined) return projectPath;
-  } catch { /* fallback */ }
+  } catch { /* fallback to global */ }
   return path.join(resolveCodaraPath(), 'sessions');
 }
 

@@ -1,3 +1,14 @@
+/**
+ * @module gateway/outbound
+ *
+ * Outbound message chunking for IM platforms.
+ *
+ * Most IM platforms impose per-message character limits (e.g., Telegram 4096,
+ * Discord 2000). These utilities split long responses at natural boundaries
+ * (paragraphs, code blocks, list items) rather than hard-cutting mid-word.
+ */
+
+/** Split plain text into chunks at newline or space boundaries. */
 export function chunkText(text: string, limit: number): string[] {
   if (text.length <= limit) return [text];
   const chunks: string[] = [];

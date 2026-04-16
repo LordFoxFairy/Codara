@@ -1,3 +1,10 @@
+/**
+ * Interaction scheduler -- serializes CLI interactions.
+ *
+ * Only one interaction (prompt submission or review response) can be
+ * active at a time. Additional requests are queued and drained in FIFO
+ * order once the current interaction completes.
+ */
 import type {ReviewResumePayload} from '@/index';
 import type {CliInteractionKind} from './view-state';
 

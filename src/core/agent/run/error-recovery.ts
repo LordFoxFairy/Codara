@@ -159,39 +159,7 @@ export function isMaxOutputTokensError(error: unknown): boolean {
   );
 }
 
-/**
- * @deprecated Use `isContextWindowExhausted` from `./compact` instead.
- * That function now covers both structured (HTTP 413) and message-based detection.
- */
-export function isContextWindowError(error: unknown): boolean {
-  const status = getErrorStatus(error);
-
-  // HTTP 413: Request Entity Too Large
-  if (status === 413) return true;
-
-  // HTTP 400 with context-window-related message
-  if (status === 400 && error instanceof Error) {
-    const msg = error.message.toLowerCase();
-    if (
-      msg.includes('context length exceeded') ||
-      msg.includes('maximum context length') ||
-      msg.includes('too many tokens') ||
-      msg.includes('prompt is too long') ||
-      msg.includes('context_length_exceeded')
-    ) return true;
-  }
-
-  // Structured error type check
-  const errorType = getErrorType(error);
-  if (errorType === 'context_length_exceeded' || errorType === 'invalid_request_error') {
-    if (error instanceof Error) {
-      const msg = error.message.toLowerCase();
-      if (msg.includes('context') || msg.includes('token') || msg.includes('too long')) return true;
-    }
-  }
-
-  return false;
-}
+// isContextWindowError was removed — use isContextWindowExhausted from ./compact instead.
 
 // ─── Retry Delay ─────────────────────────────────────────────────────────────
 

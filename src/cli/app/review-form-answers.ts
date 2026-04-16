@@ -1,3 +1,10 @@
+/**
+ * Review form answer manipulation.
+ *
+ * Pure functions for updating, reading, committing, and auto-applying
+ * answers within the review form state. Handles both single-select and
+ * multiselect tabs, custom (free-text) answers, and validation clearing.
+ */
 import type {
   CliReviewAnswerValue,
   CliReviewFormState,

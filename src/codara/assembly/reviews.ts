@@ -1,3 +1,8 @@
+/**
+ * Review item projection -- converts raw approval records and foreground
+ * review requests into the unified `ReviewQueryItem[]` list for UI consumption.
+ */
+
 import type {ApprovalStore} from '@durability/approval-store';
 import type {ReviewRequest} from '@core/agent';
 import type {
@@ -7,6 +12,7 @@ import type {
   ReviewQueryKind,
 } from '../types';
 
+/** Build the list of pending review items, merging queued approvals with the foreground review. */
 export function getReviewItems(options: {
   approvalStore: ApprovalStore | undefined;
   sessionId: string | undefined;
@@ -58,6 +64,7 @@ export function getReviewItems(options: {
   ];
 }
 
+/** Classify a review request into one of the query kind categories. */
 function inferReviewKind(request: ReviewRequest): ReviewQueryKind {
   if (request.ui?.modal === 'permission-review' || request.channel === 'permission-center') {
     return 'permission';
@@ -71,6 +78,7 @@ function inferReviewKind(request: ReviewRequest): ReviewQueryKind {
   return 'generic';
 }
 
+/** Determine the interaction style (approval buttons, form, freeform chat, hybrid). */
 function inferReviewInteractionMode(request: ReviewRequest): ReviewInteractionMode {
   if (request.ui?.form) {
     return request.ui.actions?.some((action) => action.label.toLowerCase().includes('chat'))
@@ -86,6 +94,7 @@ function inferReviewInteractionMode(request: ReviewRequest): ReviewInteractionMo
   return 'freeform';
 }
 
+/** Determine the blocking scope -- currently always 'session' (placeholder for future task-level scoping). */
 function inferReviewBlockingScope(_request: ReviewRequest): ReviewBlockingScope {
   return 'session';
 }

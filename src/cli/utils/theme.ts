@@ -1,9 +1,14 @@
 /**
- * Centralized CLI color theme.
+ * Centralized CLI color theme and shared visual constants.
  *
- * All semantic colors are defined here so that individual components
- * reference a single source of truth rather than hard-coding color strings.
+ * All semantic colors and spinner constants are defined here so that
+ * individual components reference a single source of truth rather than
+ * hard-coding color strings or animation parameters.
  */
+
+// ── Spinner constants (shared across all animated indicators) ──
+export const BRAILLE_FRAMES = ['⠋', '⠙', '⠹', '⠸', '⠼', '⠴', '⠦', '⠧', '⠇', '⠏'] as const;
+export const SPINNER_INTERVAL_MS = 80;
 
 // ── Semantic tokens ────────────────────────────────────────────
 export const theme = {

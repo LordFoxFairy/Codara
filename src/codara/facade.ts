@@ -1,3 +1,16 @@
+/**
+ * Codara facade -- the single public entry point for creating runtime instances.
+ *
+ * Provides three tiers of construction:
+ *  - `createCodara()`        -- lightweight, no I/O, uses caller-provided deps
+ *  - `createCodaraRuntime()` -- full runtime with settings, hooks, MCP, transcript
+ *  - `openCodaraSession()`   -- restores an existing persisted session
+ *
+ * All three ultimately delegate to `assembleCodara()`, which wires Session,
+ * Commands, Review, InteractionStream, SubagentRuns and CostTracker into the
+ * unified `Codara` handle returned to consumers.
+ */
+
 import {existsSync} from 'node:fs';
 import path from 'node:path';
 import type {StructuredToolInterface} from '@langchain/core/tools';
@@ -34,7 +47,7 @@ import {createCostMiddleware} from '@core/middleware/cost';
 import {createCodaraMiddlewares, createRuntimeDefaultMiddlewares, resolveRuntimeLoggingOptions,} from './assembly/middleware';
 import {getSubagentRunDetails} from './assembly/subagent-run-details';
 import {getSubagentRunSummaries} from './assembly/subagent-runs';
-import {createCodaraModelCatalog, DEFAULT_CODARA_MODEL_ALIAS,} from './assembly/runtime';
+import {createCodaraModelCatalog, DEFAULT_CODARA_MODEL_ALIAS, normalizeCodaraAlias,} from './assembly/runtime';
 import {createCodaraTools} from './assembly/tools';
 import {resolveCodaraSkills} from './assembly/context';
 import {createCodaraReviewControl} from './review-control';
@@ -69,10 +82,17 @@ export {
 
 // ── Public Entry Points ──
 
+/** Lightweight Codara instance -- no I/O, caller supplies all dependencies. */
 export function createCodara(options: CodaraOptions = {}): Codara {
   return assembleCodara(options);
 }
 
+/**
+ * Full runtime Codara with auto-discovered settings, hooks, MCP and transcript.
+ *
+ * Performs async I/O: reads config files, starts MCP servers, wires file watchers.
+ * Call `dispose()` on the returned handle to release all resources.
+ */
 export async function createCodaraRuntime(options: CodaraRuntimeOptions = {}): Promise<Codara> {
   const projectRoot = resolveWorkspaceRoot({cwd: options.cwd, projectRoot: options.projectRoot});
   const codaraPath = resolveCodaraRuntimePath(options);
@@ -164,6 +184,7 @@ export async function createCodaraRuntime(options: CodaraRuntimeOptions = {}): P
 
 // ── Session Openers ──
 
+/** Reopen a persisted session by ID, falling back to transcript-based restore. */
 export async function openCodaraSession(
   options: CodaraOptions & {sessionId: string; store: SessionStore},
 ): Promise<Codara> {
@@ -188,6 +209,7 @@ export async function openCodaraSession(
   throw new Error(`Session not found: ${options.sessionId}`);
 }
 
+/** Open the most recently active session from the store. */
 export async function openLatestCodaraSession(
   options: CodaraOptions & {store: SessionStore},
 ): Promise<Codara> {
@@ -201,6 +223,14 @@ export async function openLatestCodaraSession(
 
 // ── Core Assembly ──
 
+/**
+ * Wire all Codara subsystems (Session, Commands, Review, InteractionStream)
+ * into the unified `Codara` handle.
+ *
+ * Called by both `createCodara` (minimal) and `createCodaraRuntime` (full).
+ * The optional `preloadedSources` bypass redundant I/O when the caller already
+ * holds references to hooks/MCP/stores created during runtime bootstrap.
+ */
 export function assembleCodara(
   options: CodaraOptions,
   restoredState?: SessionState,
@@ -221,7 +251,7 @@ export function assembleCodara(
   const costTracker = preloadedSources?.costTracker ?? new CostTracker();
   const skills = resolveCodaraSkills(options);
   const skillsSource = skills ? createCodaraSkillsSource(skills) : undefined;
-  const alias = normalizeAlias(options.alias);
+  const alias = normalizeCodaraAlias(options.alias);
   const guidelinesSource = preloadedSources?.guidelinesSource ?? createCodaraGuidelinesSource({
     cwd: options.cwd, projectRoot: options.projectRoot, userHome: options.userHome,
   });
@@ -323,6 +353,7 @@ export function assembleCodara(
     if (channelRegistry) await channelRegistry.disposeAll();
   };
 
+  // ── Compose the Codara handle ──
   return {
     ...session, subscribeRuntimeEvents, listCommands: commands.listCommands, executeCommand,
     listSessions: async (opts?: import('@durability/session').SessionListOptions) => options.store ? options.store.list(opts) : [],
@@ -346,16 +377,14 @@ export function assembleCodara(
   };
 }
 
+/** Hydrate an already-loaded session state into a live Codara instance. */
 async function reopenCodaraSession(options: CodaraOptions, state: SessionState): Promise<Codara> {
   const codara = assembleCodara({...options, sessionId: state.sessionId, restore: 'latest'}, state);
   await codara.hydrate();
   return codara;
 }
 
-function normalizeAlias(alias: string | undefined): string {
-  return alias?.trim() || DEFAULT_CODARA_MODEL_ALIAS;
-}
-
+/** Resolve the `.codara` config directory: explicit path > project-local > global. */
 function resolveCodaraRuntimePath(options: Pick<CodaraRuntimeOptions, 'codaraPath' | 'cwd' | 'projectRoot'>): string {
   if (options.codaraPath?.trim()) return path.resolve(options.codaraPath.trim());
   const projectRoot = resolveWorkspaceRoot({cwd: options.cwd, projectRoot: options.projectRoot});

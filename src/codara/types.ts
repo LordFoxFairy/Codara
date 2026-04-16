@@ -1,3 +1,13 @@
+/**
+ * Codara public type definitions.
+ *
+ * This file is the single source of truth for the facade layer's type surface:
+ *  - Configuration options  (CodaraOptions, CodaraRuntimeOptions)
+ *  - Stream request types   (CodaraStreamRequest variants)
+ *  - Query models           (ReviewQueryItem, SubagentRunQuerySummary, ...)
+ *  - The Codara API handle  (Codara)
+ */
+
 import type {BaseChatModel} from '@langchain/core/language_models/chat_models';
 import type {StructuredToolInterface} from '@langchain/core/tools';
 import type {BaseMessage} from '@langchain/core/messages';
@@ -28,10 +38,11 @@ import type {CostSnapshot} from '@observability/cost';
 import type {MemoryWriter} from '@capability/memory/writer';
 import type {CodaraModelCatalog} from './assembly/runtime';
 
-// ── Skill Options ──
+// ── Auxiliary Options ──
 
 export type CodaraReviewOptions = ReviewMiddlewareOptions;
 
+/** Configuration for the built-in skill discovery system. */
 export interface CodaraSkillOptions {
   store?: SkillStore;
   sources?: string[];
@@ -46,6 +57,7 @@ export interface CodaraSkillOptions {
 
 // ── Main Configuration ──
 
+/** Base options shared by `createCodara` and `createCodaraRuntime`. */
 export interface CodaraOptions {
   id?: string;
   config?: ModelRoutingConfig;
@@ -75,6 +87,7 @@ export interface CodaraOptions {
   mcp?: false | McpConfig;
 }
 
+/** Extended options for the full-runtime path (`createCodaraRuntime`). */
 export interface CodaraRuntimeOptions extends CodaraOptions {
   codaraPath?: string;
   taskStore?: TaskStore;
@@ -92,8 +105,9 @@ export type CreateCodaraChatModelOptions =
 
 export type CodaraMiddlewareOptions = Pick<CodaraOptions, 'middleware' | 'review' | 'logging'>;
 
-// ── Query Types ──
+// ── Query Types (read-only projections for UI/CLI) ──
 
+/** Lightweight summary for listing subagent runs. */
 export interface SubagentRunQuerySummary {
   runId: string;
   parentSessionId: string;
@@ -108,16 +122,20 @@ export interface SubagentRunQuerySummary {
   activityLog?: string[];
   summary?: string;
   errorMessage?: string;
+  reason?: 'complete' | 'error' | 'max_turns' | 'budget_exhausted' | 'aborted';
   turns?: number;
   toolUseCount?: number;
   totalTokens?: number;
 }
 
+/** Full message history for a single subagent run (used by detail views). */
 export interface SubagentRunQueryDetail {
   runId: string;
   childSessionId: string;
   messages: BaseMessage[];
 }
+
+// ── Review Query Types ──
 
 export type ReviewQuerySource = 'subagent_run' | 'session_review';
 export type ReviewQueryKind = 'approval' | 'permission' | 'ask_user' | 'generic';
@@ -150,18 +168,23 @@ export interface FocusedReviewQuery {
   request: ReviewRequest;
 }
 
+// ── Stream Request Variants ──
+
+/** Start a new interaction turn from user input. */
 export interface CodaraPromptStreamRequest {
   kind: 'prompt';
   input?: AgentInput;
   config?: AgentStreamConfig;
 }
 
+/** Continue an ongoing turn with additional runtime context. */
 export interface CodaraContinuationStreamRequest {
   kind: 'continuation';
   context: AgentRuntimeContext;
   config?: Omit<AgentStreamConfig, 'context'>;
 }
 
+/** Resume after a review decision (approve/reject/provide input). */
 export interface CodaraReviewStreamRequest {
   kind: 'review';
   payload: ReviewResumePayload;
@@ -173,8 +196,14 @@ export type CodaraStreamRequest =
   | CodaraContinuationStreamRequest
   | CodaraReviewStreamRequest;
 
-// ── Codara API Type ──
+// ── Codara API Handle ──
 
+/**
+ * The unified Codara runtime handle.
+ *
+ * Extends `Session` (minus raw review methods) with Commands, Review,
+ * InteractionStream, SubagentRun queries, MCP status, Memory, and Cost.
+ */
 export type Codara = Omit<Session, 'resumeReview' | 'resumeReviewStream'> & {
   listCommands(): Promise<readonly CodaraCommandSpec[]>;
   executeCommand(input: string): Promise<CodaraCommandResult>;

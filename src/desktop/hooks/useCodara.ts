@@ -1,8 +1,17 @@
+/**
+ * @module desktop/hooks/useCodara
+ *
+ * Core React hook for agent communication.
+ * Manages the SSE streaming lifecycle: sending prompts, receiving token/thinking/
+ * tool_call events, handling review pauses, and maintaining the message list.
+ */
+
 import { useCallback, useRef, useState } from "react";
 import type { Message, ReviewRequest, RuntimeEvent, StreamStatus, ToolCall } from "../types";
 
 import { API_BASE } from "../config";
 
+/** Generate a unique message ID for the frontend message list. */
 function generateId(): string {
   return `msg_${Date.now()}_${Math.random().toString(36).slice(2, 9)}`;
 }
@@ -18,7 +27,7 @@ type SSEEventType =
   | "runtime_event"
   | "done"
   | "error"
-  | "paused";
+  | "review_required";
 
 interface SSEEvent {
   type: SSEEventType;
@@ -321,7 +330,7 @@ function processEvent(
       setStatus("idle");
       break;
 
-    case "paused":
+    case "review_required":
       setStatus("paused");
       setReviewRequest({
         request: event.data.request as Record<string, unknown>,

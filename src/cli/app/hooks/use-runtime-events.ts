@@ -10,6 +10,7 @@ import type {BaseMessage} from '@langchain/core/messages';
 import {computeRuntimeEventEffects} from '../cli-event-router';
 import {appendRuntimeEventPreservingOpenStarts, appendUniqueNotices} from '../cli-controller-logic';
 import type {CliInteractionScheduler} from '../interaction-scheduler';
+import type {CliStore} from '../cli-store';
 import type {CliEvent} from '../../store/actions';
 import type {
   CliActiveTurn,
@@ -20,11 +21,11 @@ import type {
 export interface RuntimeEventsDeps {
   codara: Codara;
   interactionScheduler: CliInteractionScheduler;
+  store: CliStore;
   setActiveTurn: (input: CliActiveTurn | undefined | ((current: CliActiveTurn | undefined) => CliActiveTurn | undefined)) => void;
   setNotices: React.Dispatch<React.SetStateAction<CliNotice[]>>;
   setRunningAgentCount: React.Dispatch<React.SetStateAction<number>>;
-  setRunState: React.Dispatch<React.SetStateAction<CliRunState>>;
-  pendingBackgroundNoticesRef: React.MutableRefObject<CliNotice[]>;
+  setRunState: (input: CliRunState | ((current: CliRunState) => CliRunState)) => void;
   dispatchEvent: (event: CliEvent) => void;
   endInteraction: () => void;
   refreshAuxiliaryState: () => void;
@@ -37,17 +38,19 @@ export interface RuntimeEventsDeps {
 export interface RuntimeEventsResult {
   runtimeEvents: readonly CodaraRuntimeEvent[];
   latestRuntimeEvent: CodaraRuntimeEvent | undefined;
+  /** Clear accumulated runtime events (called at the start of a new prompt). */
+  clearRuntimeEvents: React.Dispatch<React.SetStateAction<readonly CodaraRuntimeEvent[]>>;
 }
 
 export function useRuntimeEvents(deps: RuntimeEventsDeps): RuntimeEventsResult {
   const {
     codara,
     interactionScheduler,
+    store,
     setActiveTurn,
     setNotices,
     setRunningAgentCount,
     setRunState,
-    pendingBackgroundNoticesRef,
     dispatchEvent,
     endInteraction,
     refreshAuxiliaryState,
@@ -89,10 +92,13 @@ export function useRuntimeEvents(deps: RuntimeEventsDeps): RuntimeEventsResult {
         setNotices((current) => appendUniqueNotices(current, effects.immediateNotices));
       }
       if (effects.queuedNotices.length > 0) {
-        pendingBackgroundNoticesRef.current = appendUniqueNotices(
-          pendingBackgroundNoticesRef.current,
-          effects.queuedNotices,
-        );
+        const s = store.getState();
+        store.patch({
+          pendingBackgroundNotices: appendUniqueNotices(
+            s.pendingBackgroundNotices,
+            effects.queuedNotices,
+          ),
+        });
       }
 
       // Handle foreground subagent review interrupt
@@ -128,10 +134,11 @@ export function useRuntimeEvents(deps: RuntimeEventsDeps): RuntimeEventsResult {
         });
       }
     });
-  }, [codara, drainScheduledInteractions, endInteraction, interactionScheduler, refreshAuxiliaryState, refreshCoreState, refreshCoreStateUntilPromptSettles, setActiveTurn, settleRunningPromptTurnIfReady, setNotices, setRunningAgentCount, setRunState, pendingBackgroundNoticesRef, dispatchEvent]);
+  }, [codara, drainScheduledInteractions, endInteraction, interactionScheduler, store, refreshAuxiliaryState, refreshCoreState, refreshCoreStateUntilPromptSettles, setActiveTurn, settleRunningPromptTurnIfReady, setNotices, setRunningAgentCount, setRunState, dispatchEvent]);
 
   return {
     runtimeEvents,
     latestRuntimeEvent: runtimeEvents[runtimeEvents.length - 1],
+    clearRuntimeEvents: setRuntimeEvents,
   };
 }

@@ -4,8 +4,8 @@
  * Manages message synchronization between the Codara core and the CLI UI.
  * Handles hydration, review projection, and prompt settlement polling.
  */
-import {useCallback, useRef, useState} from 'react';
-import type {Codara, CodaraRuntimeEvent, SessionState, ReviewRequest} from '@/index';
+import {useCallback, useState} from 'react';
+import type {Codara, SessionState, ReviewRequest} from '@/index';
 import type {BaseMessage} from '@langchain/core/messages';
 import {readCliReviewProjection, syncProjectedReview} from '../runtime-projection';
 import {
@@ -16,21 +16,16 @@ import {
   PROMPT_SETTLE_REFRESH_POLL_MS,
 } from '../cli-controller-logic';
 import type {CliInteractionScheduler} from '../interaction-scheduler';
+import type {CliStore} from '../cli-store';
 import type {
   CliActiveTurn,
-  CliNotice,
   CliReviewState,
-  CliRunState,
 } from '../view-state';
 
 export interface MessageSyncDeps {
   codara: Codara;
   interactionScheduler: CliInteractionScheduler;
-  reviewRef: React.MutableRefObject<CliReviewState | undefined>;
-  activeTurnRef: React.MutableRefObject<CliActiveTurn | undefined>;
-  coreMessagesRef: React.MutableRefObject<readonly BaseMessage[]>;
-  runStateRef: React.MutableRefObject<CliRunState>;
-  promptStartMessageCountRef: React.MutableRefObject<number>;
+  store: CliStore;
   setReviewState: (input: CliReviewState | undefined | ((current: CliReviewState | undefined) => CliReviewState | undefined)) => void;
   setActiveTurn: (input: CliActiveTurn | undefined | ((current: CliActiveTurn | undefined) => CliActiveTurn | undefined)) => void;
   syncInteractionState: () => void;
@@ -52,11 +47,7 @@ export function useMessageSync(deps: MessageSyncDeps): MessageSyncResult {
   const {
     codara,
     interactionScheduler,
-    reviewRef,
-    activeTurnRef,
-    coreMessagesRef,
-    runStateRef,
-    promptStartMessageCountRef,
+    store,
     setReviewState,
     setActiveTurn,
     syncInteractionState,
@@ -68,22 +59,24 @@ export function useMessageSync(deps: MessageSyncDeps): MessageSyncResult {
   const [sessionState, setSessionState] = useState<SessionState>(() => codara.getState());
 
   const setCoreMessages = useCallback((messages: readonly BaseMessage[]) => {
-    coreMessagesRef.current = messages;
+    store.patch({coreMessages: messages});
     setCoreMessagesState(messages);
-  }, [coreMessagesRef]);
+  }, [store]);
 
   const refreshAuxiliaryState = useCallback(() => {
+    const s = store.getState();
     const projection = readCliReviewProjection(codara);
-    const nextReview = suppressSettlingDismissedReview(syncProjectedReview(codara, reviewRef.current, {
+    const nextReview = suppressSettlingDismissedReview(syncProjectedReview(codara, s.review, {
       pendingReview: projection.activeReviewRequest,
     }), projection.activeReviewRequest);
     setSessionState(codara.getState());
     setReviewState(nextReview);
     setActiveTurn((current) => suppressActiveTurnForReview(current, nextReview));
     syncInteractionState();
-  }, [codara, setActiveTurn, setReviewState, suppressSettlingDismissedReview, syncInteractionState, reviewRef]);
+  }, [codara, store, setActiveTurn, setReviewState, suppressSettlingDismissedReview, syncInteractionState]);
 
   const refreshCoreState = useCallback(async () => {
+    const s = store.getState();
     const nextAgentState = await codara.hydrate();
     if (!nextAgentState.pendingReview) {
       const queuedReviews = codara.listReviewItems();
@@ -94,16 +87,16 @@ export function useMessageSync(deps: MessageSyncDeps): MessageSyncResult {
     }
     const nextMessages = resolveHydratedCoreMessages({
       incomingMessages: nextAgentState.messages,
-      currentMessages: coreMessagesRef.current,
-      runState: runStateRef.current,
-      review: reviewRef.current,
-      activeTurn: activeTurnRef.current,
-      promptStartMessageCount: promptStartMessageCountRef.current,
+      currentMessages: s.coreMessages,
+      runState: s.runState,
+      review: s.review,
+      activeTurn: s.activeTurn,
+      promptStartMessageCount: s.promptStartMessageCount,
       subagentRuns: codara.getSubagentRunSummaries(),
     });
     setCoreMessages(nextMessages);
     setSessionState(codara.getState());
-    const nextReview = suppressSettlingDismissedReview(syncProjectedReview(codara, reviewRef.current, {
+    const nextReview = suppressSettlingDismissedReview(syncProjectedReview(codara, s.review, {
       pendingReview: nextAgentState.pendingReview,
     }), nextAgentState.pendingReview);
     setReviewState(nextReview);
@@ -121,7 +114,7 @@ export function useMessageSync(deps: MessageSyncDeps): MessageSyncResult {
       ...nextAgentState,
       messages: nextMessages,
     };
-  }, [codara, activeTurnRef, coreMessagesRef, promptStartMessageCountRef, reviewRef, runStateRef, setActiveTurn, setCoreMessages, setReviewState, settleRunningPromptTurnIfReady, suppressSettlingDismissedReview, syncInteractionState]);
+  }, [codara, store, setCoreMessages, setActiveTurn, setReviewState, settleRunningPromptTurnIfReady, suppressSettlingDismissedReview, syncInteractionState]);
 
   const refreshCoreStateUntilPromptSettles = useCallback(async (): Promise<boolean> => {
     const deadline = Date.now() + PROMPT_SETTLE_REFRESH_TIMEOUT_MS;
@@ -132,12 +125,13 @@ export function useMessageSync(deps: MessageSyncDeps): MessageSyncResult {
         return true;
       }
 
+      const s = store.getState();
       if (!shouldContinuePollingForPromptSettlement({
-        runState: runStateRef.current,
-        review: reviewRef.current,
-        activeTurn: activeTurnRef.current,
+        runState: s.runState,
+        review: s.review,
+        activeTurn: s.activeTurn,
         messages: nextAgentState.messages,
-        promptStartMessageCount: promptStartMessageCountRef.current,
+        promptStartMessageCount: s.promptStartMessageCount,
         subagentRuns: codara.getSubagentRunSummaries(),
       })) {
         return false;
@@ -151,7 +145,7 @@ export function useMessageSync(deps: MessageSyncDeps): MessageSyncResult {
     }
 
     return false;
-  }, [codara, activeTurnRef, interactionScheduler, promptStartMessageCountRef, refreshCoreState, reviewRef, runStateRef, settleRunningPromptTurnIfReady]);
+  }, [codara, interactionScheduler, store, refreshCoreState, settleRunningPromptTurnIfReady]);
 
   return {
     coreMessages,

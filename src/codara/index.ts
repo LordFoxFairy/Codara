@@ -1,3 +1,10 @@
+/**
+ * Package barrel -- re-exports the public Codara API surface.
+ *
+ * Consumers should import from `@codara` (this module), not from
+ * individual files like `facade.ts` or `types.ts`.
+ */
+
 export type {
   Codara,
   CodaraContinuationStreamRequest,

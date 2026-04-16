@@ -1,10 +1,22 @@
+/**
+ * @module desktop/hooks/useStatus
+ *
+ * Polls the server `/api/status` endpoint to track connection health
+ * and runtime state. Uses fast retries on startup (1s intervals for
+ * 15 seconds) then settles into 5s polling.
+ */
+
 import { useCallback, useEffect, useRef, useState } from "react";
 import type { ConnectionStatus, RuntimeStatus } from "../types";
 
 import { API_BASE } from "../config";
+
+/** Normal polling interval once connected. */
 const POLL_INTERVAL = 5000;
-const RETRY_INTERVAL = 1000; // faster retries when disconnected
-const MAX_FAST_RETRIES = 15; // try for 15 seconds on startup
+/** Fast retry interval during startup. */
+const RETRY_INTERVAL = 1000;
+/** Number of fast retries before switching to normal polling. */
+const MAX_FAST_RETRIES = 15;
 
 export function useStatus() {
   const [connectionStatus, setConnectionStatus] =

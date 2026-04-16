@@ -1,3 +1,5 @@
+/** @module desktop/pages/DebugPage — Command runner and raw runtime state inspector. */
+
 import { useCallback, useEffect, useState } from "react";
 import { Activity, Terminal } from "lucide-react";
 

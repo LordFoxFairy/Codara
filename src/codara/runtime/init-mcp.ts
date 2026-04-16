@@ -8,6 +8,7 @@ export interface McpInfrastructure {
   mcpTools: StructuredToolInterface[];
 }
 
+/** Initialize MCP servers: resolve config, create manager, extract LangChain tools. */
 export async function initMcp(
   mcpOption: false | McpConfig | undefined,
   settings: CodaraSettings,

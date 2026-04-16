@@ -7,7 +7,7 @@ import type {ActiveSubagentRun} from '../../hooks/use-subagent-runs';
 import {buildTranscriptItems, dedupeCanonicalTranscriptItems, type ToolResultMeta, type TranscriptRole} from '../../transcript/model';
 import {formatToolHeaderArgs} from '../../../shared/tool-display';
 import {formatElapsedMs, formatTokenCount} from '../../utils/format';
-import {theme} from '../../utils/theme';
+import {BRAILLE_FRAMES, SPINNER_INTERVAL_MS, theme} from '../../utils/theme';
 import {DiffView} from './diff-view';
 import {MarkdownText} from './markdown-text';
 
@@ -240,7 +240,7 @@ function formatTaskExecutionHeader(
   spinnerFrame?: number,
 ): string {
   const prefix = status === 'running'
-    ? TASK_SPINNER_FRAMES[((spinnerFrame ?? 0) % TASK_SPINNER_FRAMES.length + TASK_SPINNER_FRAMES.length) % TASK_SPINNER_FRAMES.length]
+    ? BRAILLE_FRAMES[((spinnerFrame ?? 0) % BRAILLE_FRAMES.length + BRAILLE_FRAMES.length) % BRAILLE_FRAMES.length]
     : status === 'paused'
       ? '⏸'
       : status === 'error'
@@ -308,7 +308,7 @@ function SingleTaskExecutionBlock({
 
     const timer = setInterval(() => {
       setFrame((current) => current + 1);
-    }, TASK_SPINNER_INTERVAL_MS);
+    }, SPINNER_INTERVAL_MS);
 
     return () => clearInterval(timer);
   }, [item.toolMeta.status, activeTask?.status]);
@@ -342,9 +342,6 @@ function SingleTaskExecutionBlock({
     </Box>
   );
 }
-
-const TASK_SPINNER_FRAMES = ['⠋', '⠙', '⠹', '⠸', '⠼', '⠴', '⠦', '⠧', '⠇', '⠏'] as const;
-const TASK_SPINNER_INTERVAL_MS = 80;
 
 function formatSyntheticTaskSummaryLine(
   task: ActiveSubagentRun | undefined,

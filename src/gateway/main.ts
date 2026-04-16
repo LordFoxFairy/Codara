@@ -1,3 +1,12 @@
+/**
+ * @module gateway/main
+ *
+ * CLI entrypoint for the IM gateway.
+ * Loads config, discovers available channel plugins, and starts the Gateway.
+ *
+ * Usage: bun src/gateway/main.ts [--config path/to/gateway.json]
+ */
+
 import {Gateway} from './gateway';
 import {loadGatewayConfig} from './config';
 import {createCodaraSessionFactory} from './codara-session-factory';

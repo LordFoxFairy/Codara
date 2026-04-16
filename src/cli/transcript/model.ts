@@ -1,3 +1,11 @@
+/**
+ * Transcript model -- the core data layer for building displayable transcript items.
+ *
+ * Orchestrates message parsing, runtime event rendering, deduplication, and
+ * fingerprinting to produce TranscriptItem arrays consumed by the transcript
+ * and solidified-block components. Sub-modules (message-parser, event-renderer,
+ * diff-compute, tool-formatter) handle specific concerns.
+ */
 import {AIMessage, HumanMessage, ToolMessage, SystemMessage, type BaseMessage} from '@langchain/core/messages';
 import {readMessageText} from '@shared/messages';
 import {TOOL_NAMES} from '@shared/tool-display';
@@ -11,7 +19,7 @@ export {createToolCallLookup, buildCoreMessageItems, normalizeVisibleAssistantTe
 export {shouldHideRuntimeEventForTranscript} from './event-renderer';
 
 // Internal imports (not re-exported)
-import {createToolCallLookup, buildCoreMessageItems, shouldSuppressAssistantTaskLaunchChatter} from './message-parser';
+import {createToolCallLookup, buildCoreMessageItems, shouldSuppressAssistantTaskLaunchChatter, shouldSuppressActiveTurnInteractionPreamble} from './message-parser';
 import {buildRuntimeEventItems, isConcreteSubagentRuntimeEvent} from './event-renderer';
 
 // ── Types ─────────────────────────────────────────────────────────
@@ -343,7 +351,3 @@ export function hasTranscriptContent(input: HasTranscriptContentInput): boolean 
     ));
   });
 }
-
-// ── Internal import for buildActiveItems ──────────────────────────
-
-import {shouldSuppressActiveTurnInteractionPreamble} from './message-parser';

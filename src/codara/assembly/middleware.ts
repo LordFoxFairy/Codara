@@ -1,3 +1,12 @@
+/**
+ * Middleware assembly -- builds the ordered middleware chain for both
+ * lightweight (`createCodaraMiddlewares`) and full-runtime (`createRuntimeDefaultMiddlewares`) paths.
+ *
+ * The runtime path auto-registers: PathInstructions, TodoList, Subagent,
+ * AskUserQuestion, Permission, and ToolHooks middlewares unless already
+ * provided by the caller.
+ */
+
 import path from 'node:path';
 import type {BaseChatModel} from '@langchain/core/language_models/chat_models';
 import type {StructuredToolInterface} from '@langchain/core/tools';
@@ -50,6 +59,7 @@ import {createCodaraChatModel, type CodaraModelCatalog} from './runtime';
 
 const DEFAULT_RUNTIME_FILE_LOGGING_ENABLED = true;
 
+/** Resolve logging config: disabled when explicitly false, otherwise default to file logging. */
 export function resolveRuntimeLoggingOptions(
   options: Pick<CodaraRuntimeOptions, 'logging' | 'cwd' | 'projectRoot'>,
 ): false | LoggingMiddlewareOptions {
@@ -74,6 +84,7 @@ export function resolveRuntimeLoggingOptions(
     logger: provided.logger ?? createDailySessionFileLogSink({rootDir}),
   };
 }
+/** Assemble the lightweight middleware chain (logging + skills + caller + budget + review). */
 export function createCodaraMiddlewares(
   options: CodaraMiddlewareOptions = {},
   channelRegistry?: ChannelRegistry,
@@ -96,6 +107,12 @@ export function createCodaraMiddlewares(
   return middlewares;
 }
 
+/**
+ * Assemble the full-runtime middleware chain.
+ *
+ * Fills in any middleware the caller did not provide (PathInstructions,
+ * TodoList, Subagent, AskUserQuestion, Permission, ToolHooks).
+ */
 export function createRuntimeDefaultMiddlewares(input: {
   options: CodaraRuntimeOptions;
   runtimeTools: StructuredToolInterface[];
@@ -233,6 +250,11 @@ function createRuntimeSubagentMiddleware(input: {
   });
 }
 
+/**
+ * If the caller provided their own Agent middleware, merge runtime-owned
+ * defaults (stores, checkpointer, approval) into it so the caller doesn't
+ * have to wire those manually.
+ */
 function normalizeCallerMiddlewares(input: {
   options: CodaraRuntimeOptions;
   runtimeTools: StructuredToolInterface[];
@@ -254,6 +276,7 @@ function normalizeCallerMiddlewares(input: {
   return (input.options.middleware ?? []).map((middleware) => applyRuntimeSubagentDefaults(middleware, runtimeOwned));
 }
 
+/** Collect tool names already registered by the caller (avoids duplicate registration). */
 function collectProvidedToolNames(input: {
   tools?: StructuredToolInterface[];
   middlewares?: BaseMiddleware[];

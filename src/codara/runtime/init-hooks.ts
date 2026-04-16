@@ -1,4 +1,9 @@
-/** Hook system initialization: registry + pipeline, unified settings with legacy fallback. */
+/**
+ * Hook system initialization: registry + pipeline.
+ *
+ * Reads hook definitions from unified settings (preferred) or falls back
+ * to legacy per-file hooks.json sources.
+ */
 import path from 'node:path';
 import type {CodaraSettings} from '@config/schema';
 import {HookRegistryImpl, HookPipeline, createHookExecutor} from '@observability/hook';
@@ -9,6 +14,7 @@ export interface HooksInfrastructure {
   hookPipeline: HookPipeline;
 }
 
+/** Load hook definitions and create the execution pipeline. */
 export async function initHooks(
   settings: CodaraSettings,
   runtimeStatePath: string,

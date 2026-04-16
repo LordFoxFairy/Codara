@@ -256,42 +256,37 @@ export class BusClient {
    * to pending one-shot request handlers.
    */
   private dispatch(event: BusEvent): void {
-    // Notify type-specific listeners.
-    const typeListeners = this.listeners.get(event.type);
-    if (typeListeners) {
-      for (const listener of typeListeners) {
-        try {
-          listener(event);
-        } catch {
-          // Listener errors are silently swallowed to avoid breaking the dispatch loop.
-        }
-      }
-    }
+    this.notifyListeners(event.type, event);
+    this.notifyListeners('*', event);
+    this.resolvePendingRequest(event);
+  }
 
-    // Notify wildcard listeners.
-    const wildcardListeners = this.listeners.get('*');
-    if (wildcardListeners) {
-      for (const listener of wildcardListeners) {
-        try {
-          listener(event);
-        } catch {
-          // Silently swallowed.
-        }
+  /** Safely notify all listeners for a given event type key. */
+  private notifyListeners(key: string, event: BusEvent): void {
+    const listeners = this.listeners.get(key);
+    if (!listeners) return;
+    for (const listener of listeners) {
+      try {
+        listener(event);
+      } catch {
+        // One listener throwing must not break others.
       }
     }
+  }
 
-    // Resolve pending one-shot requests.
-    if ('requestId' in event && event.requestId) {
-      const pending = this.pendingRequests.get(event.requestId);
-      if (pending) {
-        if (event.type === 'error') {
-          clearTimeout(pending.timer);
-          this.pendingRequests.delete(event.requestId);
-          pending.reject(new Error((event as BusEvent & Record<string, unknown>).message as string ?? 'Unknown bus error'));
-        }
-        // One-shot result types resolve in sendAndWait via the listener mechanism.
-      }
+  /** Resolve a pending one-shot request if this event carries its requestId. */
+  private resolvePendingRequest(event: BusEvent): void {
+    if (!('requestId' in event) || !event.requestId) return;
+
+    const pending = this.pendingRequests.get(event.requestId);
+    if (!pending) return;
+
+    if (event.type === 'error') {
+      clearTimeout(pending.timer);
+      this.pendingRequests.delete(event.requestId);
+      pending.reject(new Error((event as BusEvent & Record<string, unknown>).message as string ?? 'Unknown bus error'));
     }
+    // One-shot result types resolve in sendAndWait via the wildcard listener.
   }
 
   /**

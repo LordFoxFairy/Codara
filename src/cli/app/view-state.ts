@@ -1,3 +1,10 @@
+/**
+ * CLI view state types.
+ *
+ * Pure data structures describing the entire UI state surface: run status,
+ * interaction focus, active turn, review panel, composer, and notices.
+ * No logic -- just shapes consumed by hooks, components, and the controller.
+ */
 import type {ReviewRequest, ReviewUIActionOption, ReviewUIFormOption, ReviewUIFormTab} from '@/index';
 import type {ReviewBlockingScope} from '../../codara/types';
 

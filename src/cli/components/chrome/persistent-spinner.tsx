@@ -1,19 +1,19 @@
+/**
+ * Persistent spinner component.
+ *
+ * Shows a braille-frame spinner ONLY when runState.status === 'running'.
+ * Independent of all other state -- no complex logic, no dependencies.
+ * Lifecycle matches the main agent loop exactly.
+ */
 import React, {useEffect, useState} from 'react';
 import {Box, Text} from 'ink';
 import type {CliRunState} from '../../app/view-state';
-
-const BRAILLE_FRAMES = ['⠋', '⠙', '⠹', '⠸', '⠼', '⠴', '⠦', '⠧', '⠇', '⠏'] as const;
-const SPINNER_INTERVAL_MS = 80;
+import {BRAILLE_FRAMES, SPINNER_INTERVAL_MS} from '../../utils/theme';
 
 interface PersistentSpinnerProps {
   runState: CliRunState;
 }
 
-/**
- * Persistent spinner that shows ONLY when runState.status === 'running'.
- * Independent of all other state - no complex logic, no dependencies.
- * Lifecycle matches main agent loop exactly.
- */
 export function PersistentSpinner({runState}: PersistentSpinnerProps): React.JSX.Element {
   const [frame, setFrame] = useState(0);
 

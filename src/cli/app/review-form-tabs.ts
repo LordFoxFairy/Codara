@@ -1,3 +1,10 @@
+/**
+ * Review form tab navigation and query helpers.
+ *
+ * Pure functions for navigating between tabs, counting selectable items,
+ * resolving selection indices, and reading footer actions. Extracted from
+ * review-form-state.ts for single-responsibility.
+ */
 import type {
   CliReviewAction,
   CliReviewFormState,

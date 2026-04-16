@@ -1,3 +1,9 @@
+/**
+ * Review form config parser.
+ *
+ * Reads and normalizes the `ui.form` structure from a ReviewRequest into
+ * the internal CliReviewFormState shape used by the review panel.
+ */
 import type {ReviewRequest} from '@/index';
 import type {CliReviewFormState} from './view-state';
 

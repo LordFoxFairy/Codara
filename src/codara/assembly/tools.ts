@@ -1,9 +1,12 @@
+/** Tool assembly -- merges built-in tools with caller-provided tools (last-write-wins by name). */
+
 import type {StructuredToolInterface} from '@langchain/core/tools';
 import {createBuiltinTools} from '@tools';
 import type {CodaraOptions} from '../types';
 
 export type CodaraToolsOptions = Pick<CodaraOptions, 'builtinTools' | 'cwd' | 'tools'>;
 
+/** Build the final tool set: builtin tools (unless disabled) + caller overrides by name. */
 export function createCodaraTools(options: CodaraToolsOptions = {}): StructuredToolInterface[] {
   if (options.builtinTools === false) {
     return [...(options.tools ?? [])];

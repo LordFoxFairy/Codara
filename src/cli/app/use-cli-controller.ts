@@ -1,24 +1,34 @@
+/**
+ * Hook: useCliController
+ *
+ * Composes the four core CLI hooks (message sync, review machine, prompt
+ * submission, runtime events) into a single CliController object consumed
+ * by the shell UI. All mutable state, scheduling, and lifecycle orchestration
+ * lives here so that the rendering layer stays declarative.
+ *
+ * Architecture: An external CliStore holds shared mutable state (replaces
+ * the old "ref bridge" pattern). Hooks read/write via store.getState() /
+ * store.patch() so circular dependencies are impossible.
+ */
 import {randomUUID} from 'node:crypto';
-import {useCallback, useEffect, useMemo, useRef, useState} from 'react';
-import type {Codara, CodaraRuntimeEvent, ReviewRequest, SessionState} from '@/index';
+import {useCallback, useEffect, useMemo, useState} from 'react';
+import type {Codara, CodaraRuntimeEvent, SessionState} from '@/index';
 import type {BaseMessage} from '@langchain/core/messages';
 import {
   createComposerState,
+  insertComposerText,
+  replaceComposerText,
+  insertComposerNewline,
+  backspaceComposerText,
+  moveComposerCursorLeft,
+  moveComposerCursorRight,
+  moveComposerCursorUp,
+  moveComposerCursorDown,
+  moveComposerCursorHome,
+  moveComposerCursorEnd,
+  type CliComposerState,
 } from '../composer/state';
-import type {CliComposerState} from '../composer/state';
 import {hasTranscriptContent} from '../transcript/model';
-import {
-  composerInsertText,
-  composerReplaceText,
-  composerInsertNewline,
-  composerBackspace,
-  composerMoveCursorLeft,
-  composerMoveCursorRight,
-  composerMoveCursorUp,
-  composerMoveCursorDown,
-  composerMoveCursorHome,
-  composerMoveCursorEnd,
-} from './cli-composer-actions';
 import {
   toggleSubagentRunsPanelAction,
   toggleExpandAction,
@@ -52,6 +62,9 @@ import {useMessageSync} from './hooks/use-message-sync';
 import {useRuntimeEvents} from './hooks/use-runtime-events';
 import {useReviewMachine} from './hooks/use-review-machine';
 import {usePromptSubmission} from './hooks/use-prompt-submission';
+
+// External store
+import {createCliStore, type CliStore} from './cli-store';
 
 const STARTUP_MESSAGE = '';
 
@@ -130,6 +143,9 @@ export function useCliController(options: UseCliControllerOptions): CliControlle
     onShowSessionPicker,
   } = options;
 
+  // ─── External store (created once, stable reference) ──────────────
+  const [store] = useState<CliStore>(() => createCliStore());
+
   // ─── Startup notices ───────────────────────────────────────────────
   const initialNotices = useMemo<CliNotice[]>(
     () => startupMessage.trim()
@@ -143,13 +159,13 @@ export function useCliController(options: UseCliControllerOptions): CliControlle
   );
   const initialNoticeCount = initialNotices.length;
 
-  // ─── Local UI state ────────────────────────────────────────────────
+  // ─── React-driven UI state (triggers re-renders) ──────────────────
   const [composer, setComposer] = useState(() => createComposerState());
   const [composerActivityVersion, setComposerActivityVersion] = useState(0);
   const [notices, setNotices] = useState<CliNotice[]>(initialNotices);
-  const [activeTurn, setActiveTurnState] = useState<CliActiveTurn | undefined>();
-  const [review, setReview] = useState<CliReviewState | undefined>();
-  const [runState, setRunState] = useState<CliRunState>({status: 'idle'});
+  const [activeTurn, setActiveTurnReact] = useState<CliActiveTurn | undefined>();
+  const [review, setReviewReact] = useState<CliReviewState | undefined>();
+  const [runState, setRunStateReact] = useState<CliRunState>({status: 'idle'});
   const [runningAgentCount, setRunningAgentCount] = useState(0);
   const [interactionState, setInteractionState] = useState<CliInteractionState>({
     focusedSurface: 'prompt',
@@ -160,48 +176,74 @@ export function useCliController(options: UseCliControllerOptions): CliControlle
   const [expandedAll, setExpandedAll] = useState(false);
   const [commandOutput, setCommandOutput] = useState<{content: string; commandName?: string; scrollOffset: number} | undefined>();
 
-  // ─── Shared mutable refs ───────────────────────────────────────────
+  // ─── Shared scheduler (stable reference) ──────────────────────────
   const interactionScheduler = useMemo(() => new CliInteractionScheduler(), []);
-  const reviewRef = useRef<CliReviewState | undefined>(undefined);
-  const activeTurnRef = useRef<CliActiveTurn | undefined>(undefined);
-  const coreMessagesRef = useRef<readonly BaseMessage[]>([]);
-  const runStateRef = useRef<CliRunState>({status: 'idle'});
-  const promptStartMessageCountRef = useRef(0);
-  const pendingBackgroundNoticesRef = useRef<CliNotice[]>([]);
-  const settlingFinalReplyRef = useRef(false);
-  const initialCoreStateLoadedRef = useRef(false);
 
-  // dispatchEvent is a no-op — the store was write-only (never read by any component).
-  // The CliEvent type is retained so that hooks can still accept the callback signature.
-  const dispatchEvent = useCallback((_event: CliEvent) => {}, []);
+  // dispatchEvent is a no-op — retained for type compat with hooks
+  const dispatchEvent = useMemo<(event: CliEvent) => void>(() => () => {}, []);
 
-  // ─── Ref sync effects ─────────────────────────────────────────────
-  useEffect(() => { reviewRef.current = review; }, [review]);
-  useEffect(() => { activeTurnRef.current = activeTurn; }, [activeTurn]);
-  useEffect(() => { runStateRef.current = runState; }, [runState]);
+  // ─── Store-synced state setters ───────────────────────────────────
+  // These update both React state (for re-renders) and the store (for
+  // synchronous reads by callbacks). Created once — store is stable.
 
-  // ─── Wrapped state setters (keep refs in sync) ────────────────────
-  const setReviewState = useCallback((
+  const setReviewState = useMemo(() => (
     input: CliReviewState | undefined | ((current: CliReviewState | undefined) => CliReviewState | undefined),
   ) => {
     const next = typeof input === 'function'
-      ? (input as (current: CliReviewState | undefined) => CliReviewState | undefined)(reviewRef.current)
+      ? (input as (current: CliReviewState | undefined) => CliReviewState | undefined)(store.getState().review)
       : input;
-    reviewRef.current = next;
-    setReview(next);
-  }, []);
+    store.patch({review: next});
+    setReviewReact(next);
+  }, [store]);
 
-  const setActiveTurn = useCallback((
+  const setActiveTurn = useMemo(() => (
     input: CliActiveTurn | undefined | ((current: CliActiveTurn | undefined) => CliActiveTurn | undefined),
   ) => {
     const next = typeof input === 'function'
-      ? (input as (current: CliActiveTurn | undefined) => CliActiveTurn | undefined)(activeTurnRef.current)
+      ? (input as (current: CliActiveTurn | undefined) => CliActiveTurn | undefined)(store.getState().activeTurn)
       : input;
-    activeTurnRef.current = next;
-    setActiveTurnState(next);
-  }, []);
+    store.patch({activeTurn: next});
+    setActiveTurnReact(next);
+  }, [store]);
 
-  const appendNotice = useCallback((level: CliNotice['level'], content: string) => {
+  const setRunState = useMemo(() => (
+    input: CliRunState | ((current: CliRunState) => CliRunState),
+  ) => {
+    const next = typeof input === 'function' ? input(store.getState().runState) : input;
+    store.patch({runState: next});
+    setRunStateReact(next);
+  }, [store]);
+
+  // ─── Interaction scheduling + notice helpers ──────────────────────
+  // All created once. interactionScheduler and store are stable refs.
+
+  const syncInteractionState = useMemo(() => () => {
+    setInteractionState((current) =>
+      resolveInteractionStateSnapshot(current, interactionScheduler, store.getState().review),
+    );
+  }, [interactionScheduler, store]);
+
+  const beginInteraction = useMemo(() => (kind: CliInteractionKind) => {
+    interactionScheduler.begin(kind);
+    syncInteractionState();
+  }, [interactionScheduler, syncInteractionState]);
+
+  const endInteraction = useMemo(() => () => {
+    interactionScheduler.end();
+    syncInteractionState();
+  }, [interactionScheduler, syncInteractionState]);
+
+  const enqueueSessionPrompt = useMemo(() => (prompt: string) => {
+    interactionScheduler.enqueueSessionPrompt(prompt);
+    syncInteractionState();
+  }, [interactionScheduler, syncInteractionState]);
+
+  const enqueueReviewResponse = useMemo(() => (interaction: Omit<QueuedReviewResponseInteraction, 'kind'>) => {
+    interactionScheduler.enqueueReviewResponse(interaction);
+    syncInteractionState();
+  }, [interactionScheduler, syncInteractionState]);
+
+  const appendNotice = useMemo(() => (level: CliNotice['level'], content: string) => {
     const message = content.trim();
     if (!message) return;
     setNotices((current) => [
@@ -210,88 +252,56 @@ export function useCliController(options: UseCliControllerOptions): CliControlle
     ]);
   }, []);
 
-  // ─── Interaction scheduling primitives ─────────────────────────────
-  const syncInteractionState = useCallback(() => {
-    setInteractionState((current) =>
-      resolveInteractionStateSnapshot(current, interactionScheduler, reviewRef.current),
-    );
-  }, [interactionScheduler]);
-
-  const beginInteraction = useCallback((kind: CliInteractionKind) => {
-    interactionScheduler.begin(kind);
-    syncInteractionState();
-  }, [interactionScheduler, syncInteractionState]);
-
-  const endInteraction = useCallback(() => {
-    interactionScheduler.end();
-    syncInteractionState();
-  }, [interactionScheduler, syncInteractionState]);
-
-  const enqueueSessionPrompt = useCallback((prompt: string) => {
-    interactionScheduler.enqueueSessionPrompt(prompt);
-    syncInteractionState();
-  }, [interactionScheduler, syncInteractionState]);
-
-  const enqueueReviewResponse = useCallback((interaction: Omit<QueuedReviewResponseInteraction, 'kind'>) => {
-    interactionScheduler.enqueueReviewResponse(interaction);
-    syncInteractionState();
-  }, [interactionScheduler, syncInteractionState]);
-
-  const flushPendingBackgroundNotices = useCallback(() => {
-    if (pendingBackgroundNoticesRef.current.length === 0) return;
-    const queued = pendingBackgroundNoticesRef.current;
-    pendingBackgroundNoticesRef.current = [];
+  const flushPendingBackgroundNotices = useMemo(() => () => {
+    const s = store.getState();
+    if (s.pendingBackgroundNotices.length === 0) return;
+    const queued = s.pendingBackgroundNotices;
+    store.patch({pendingBackgroundNotices: []});
     setNotices((current) => appendUniqueNotices(current, queued));
-  }, []);
+  }, [store]);
 
-  const reportError = useCallback((error: unknown) => {
+  const reportError = useMemo(() => (error: unknown) => {
     const message = error instanceof Error ? error.message : String(error);
     setRunState({status: 'error', error: message});
-    dispatchEvent({type: 'AGENT_ERROR', error: message});
     setActiveTurn(undefined);
     appendNotice('error', message);
     return message;
-  }, [appendNotice, dispatchEvent, setActiveTurn]);
+  }, [appendNotice, setActiveTurn, setRunState]);
 
   // ─── Settlement logic ──────────────────────────────────────────────
-  const settleRunningPromptTurnIfReady = useCallback((messages?: readonly BaseMessage[]): boolean => {
-    if (runStateRef.current.status !== 'running') return false;
-    if (runStateRef.current.phase === 'subagent_completion') return false;
+  const settleRunningPromptTurnIfReady = useMemo(() => (messages?: readonly BaseMessage[]): boolean => {
+    const s = store.getState();
+    if (s.runState.status !== 'running') return false;
+    if (s.runState.phase === 'subagent_completion') return false;
 
     const hasVisibleReplyInMessagesNow = hasVisibleAssistantReplyInMessages(
-      messages ?? coreMessagesRef.current,
-      promptStartMessageCountRef.current,
+      messages ?? s.coreMessages,
+      s.promptStartMessageCount,
       codara.getSubagentRunSummaries(),
     );
     const hasVisibleReplyInActiveTurn = hasVisibleAssistantReply(
-      activeTurnRef.current,
+      s.activeTurn,
       codara.getSubagentRunSummaries(),
     );
     if (!hasVisibleReplyInMessagesNow && !hasVisibleReplyInActiveTurn) return false;
 
-    settlingFinalReplyRef.current = true;
+    store.patch({settlingFinalReply: true});
     setRunState({status: 'done'});
     if (hasVisibleReplyInMessagesNow) {
       setActiveTurn(undefined);
     }
     return true;
-  }, [codara, setActiveTurn]);
+  }, [codara, setActiveTurn, setRunState, store]);
 
-  // ─── Ref bridges for circular deps between hooks ───────────────────
-  const refreshCoreStateRef = useRef<() => Promise<{status: string; pendingReview?: ReviewRequest; messages: readonly BaseMessage[]}>>(
-    async () => ({status: 'idle', messages: []}),
+  // ─── Store-based function bridges ─────────────────────────────────
+  // Stable wrappers that always delegate to store.getState().fn
+  const refreshCoreStateBridge = useMemo(
+    () => () => store.getState().refreshCoreState(),
+    [store],
   );
-  const drainScheduledInteractionsRef = useRef<() => void>(() => undefined);
-
-  // Stable function wrappers that delegate to the latest ref value.
-  // These never change identity, so downstream useCallback deps stay stable.
-  const refreshCoreStateBridge = useCallback(
-    () => refreshCoreStateRef.current(),
-    [],
-  );
-  const drainScheduledInteractionsBridge = useCallback(
-    () => drainScheduledInteractionsRef.current(),
-    [],
+  const drainScheduledInteractionsBridge = useMemo(
+    () => () => store.getState().drainScheduledInteractions(),
+    [store],
   );
 
   // ─── Compose: useReviewMachine ─────────────────────────────────────
@@ -299,9 +309,7 @@ export function useCliController(options: UseCliControllerOptions): CliControlle
     codara,
     interactionScheduler,
     reviewAutoActions,
-    reviewRef,
-    runStateRef,
-    pendingBackgroundNoticesRef,
+    store,
     review,
     runState,
     setReviewState,
@@ -323,11 +331,7 @@ export function useCliController(options: UseCliControllerOptions): CliControlle
   const messageSync = useMessageSync({
     codara,
     interactionScheduler,
-    reviewRef,
-    activeTurnRef,
-    coreMessagesRef,
-    runStateRef,
-    promptStartMessageCountRef,
+    store,
     setReviewState,
     setActiveTurn,
     syncInteractionState,
@@ -335,26 +339,19 @@ export function useCliController(options: UseCliControllerOptions): CliControlle
     suppressSettlingDismissedReview: reviewMachine.suppressSettlingDismissedReview,
   });
 
-  // Wire the ref bridge for refreshCoreState
-  refreshCoreStateRef.current = messageSync.refreshCoreState;
+  // Wire the function bridge for refreshCoreState
+  store.patch({refreshCoreState: messageSync.refreshCoreState});
 
   // ─── Compose: usePromptSubmission ──────────────────────────────────
-  const [runtimeEventsForDrain, setRuntimeEventsForDrain] = useState<readonly CodaraRuntimeEvent[]>([]);
   const promptSubmission = usePromptSubmission({
     codara,
     interactionScheduler,
     initialPrompt,
-    reviewRef,
-    activeTurnRef,
-    coreMessagesRef,
-    runStateRef,
-    promptStartMessageCountRef,
-    pendingBackgroundNoticesRef,
-    settlingFinalReplyRef,
+    store,
     setActiveTurn,
     setRunState,
     setCommandOutput,
-    setRuntimeEvents: setRuntimeEventsForDrain,
+    setRuntimeEvents: ((v: React.SetStateAction<readonly CodaraRuntimeEvent[]>) => store.getState().clearRuntimeEvents(v)) as React.Dispatch<React.SetStateAction<readonly CodaraRuntimeEvent[]>>,
     sessionState: messageSync.sessionState,
     beginInteraction,
     endInteraction,
@@ -371,18 +368,18 @@ export function useCliController(options: UseCliControllerOptions): CliControlle
     runQueuedReviewResponse: reviewMachine.runQueuedReviewResponse,
   });
 
-  // Wire the ref bridge for drainScheduledInteractions
-  drainScheduledInteractionsRef.current = promptSubmission.drainScheduledInteractions;
+  // Wire the function bridge for drainScheduledInteractions
+  store.patch({drainScheduledInteractions: promptSubmission.drainScheduledInteractions});
 
   // ─── Compose: useRuntimeEvents ─────────────────────────────────────
   const runtimeEventsHook = useRuntimeEvents({
     codara,
     interactionScheduler,
+    store,
     setActiveTurn,
     setNotices,
     setRunningAgentCount,
     setRunState,
-    pendingBackgroundNoticesRef,
     dispatchEvent,
     endInteraction,
     refreshAuxiliaryState: messageSync.refreshAuxiliaryState,
@@ -392,18 +389,21 @@ export function useCliController(options: UseCliControllerOptions): CliControlle
     drainScheduledInteractions: promptSubmission.drainScheduledInteractions,
   });
 
+  // Wire the function bridge for clearRuntimeEvents
+  store.patch({clearRuntimeEvents: runtimeEventsHook.clearRuntimeEvents});
+
   // ─── Agent count / run state effects ───────────────────────────────
   useEffect(() => {
     if (review) return;
     if (runningAgentCount > 0) {
-      if (runState.status !== 'running' && !settlingFinalReplyRef.current) {
+      if (runState.status !== 'running' && !store.getState().settlingFinalReply) {
         setRunState({status: 'running', phase: 'prompt_stream'});
       }
     } else if (runState.status === 'running' && !interactionScheduler.isRunning() && runState.phase !== 'subagent_wait') {
-      settlingFinalReplyRef.current = false;
+      store.patch({settlingFinalReply: false});
       setRunState({status: 'done'});
     }
-  }, [runningAgentCount, runState.status, runState.phase, review, interactionScheduler]);
+  }, [runningAgentCount, runState.status, runState.phase, review, interactionScheduler, store, setRunState]);
 
   useEffect(() => {
     settleRunningPromptTurnIfReady(messageSync.coreMessages);
@@ -412,9 +412,10 @@ export function useCliController(options: UseCliControllerOptions): CliControlle
   useEffect(() => {
     if (runState.status !== 'done') return;
     if (!activeTurnOwnsVisibleTranscript(activeTurn, codara.getSubagentRunSummaries())) return;
-    if (!hasVisibleAssistantReplyInMessages(messageSync.coreMessages, promptStartMessageCountRef.current, codara.getSubagentRunSummaries())) return;
+    const s = store.getState();
+    if (!hasVisibleAssistantReplyInMessages(messageSync.coreMessages, s.promptStartMessageCount, codara.getSubagentRunSummaries())) return;
     setActiveTurn(undefined);
-  }, [activeTurn, codara, messageSync.coreMessages, runState.status, setActiveTurn]);
+  }, [activeTurn, codara, messageSync.coreMessages, runState.status, setActiveTurn, store]);
 
   useEffect(() => {
     if (interactionScheduler.isRunning()) return;
@@ -433,77 +434,46 @@ export function useCliController(options: UseCliControllerOptions): CliControlle
   }, [codara, endInteraction]);
 
   useEffect(() => {
-    if (initialCoreStateLoadedRef.current) return;
-    initialCoreStateLoadedRef.current = true;
+    if (store.getState().initialCoreStateLoaded) return;
+    store.patch({initialCoreStateLoaded: true});
     void messageSync.refreshCoreState().catch((error) => {
       reportError(error);
     });
-  }, [messageSync.refreshCoreState, reportError]);
+  }, [messageSync.refreshCoreState, reportError, store]);
 
-  // ─── Composer actions ──────────────────────────────────────────────
-  const applyComposerChange = useCallback((updater: (current: CliComposerState) => CliComposerState) => {
-    setComposer((current) => updater(current));
-    setComposerActivityVersion((current) => current + 1);
+  // ─── Composer, UI toggle, and submit actions ────────────────────────
+  // All created once (empty deps). Composer and toggle actions are pure
+  // delegations to stable React setters; submit reads mutable state via
+  // refs/closures that are always current.
+  const actions = useMemo(() => {
+    const applyComposerChange = (updater: (current: CliComposerState) => CliComposerState) => {
+      setComposer((current) => updater(current));
+      setComposerActivityVersion((current) => current + 1);
+    };
+
+    return {
+      // Composer
+      insertText: (input: string) => applyComposerChange((c) => insertComposerText(c, input)),
+      replaceText: (text: string) => applyComposerChange(() => replaceComposerText(text)),
+      insertNewline: () => applyComposerChange((c) => insertComposerNewline(c)),
+      backspace: () => applyComposerChange((c) => backspaceComposerText(c)),
+      moveCursorLeft: () => applyComposerChange((c) => moveComposerCursorLeft(c)),
+      moveCursorRight: () => applyComposerChange((c) => moveComposerCursorRight(c)),
+      moveCursorUp: () => applyComposerChange((c) => moveComposerCursorUp(c)),
+      moveCursorDown: () => applyComposerChange((c) => moveComposerCursorDown(c)),
+      moveCursorHome: () => applyComposerChange((c) => moveComposerCursorHome(c)),
+      moveCursorEnd: () => applyComposerChange((c) => moveComposerCursorEnd(c)),
+      // UI toggles
+      toggleSubagentRunsPanel: () => setSubagentRunPanelVisible((c) => toggleSubagentRunsPanelAction(c)),
+      toggleExpand: () => setExpandedAll((c) => toggleExpandAction(c)),
+      dismissCommandOutput: () => setCommandOutput(dismissCommandOutputAction()),
+      scrollCommandOutput: (delta: number) => setCommandOutput((c) => scrollCommandOutputAction(c, delta)),
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- stable React setters
   }, []);
 
-  const insertText = useCallback((input: string) => {
-    applyComposerChange((current) => composerInsertText(current, input));
-  }, [applyComposerChange]);
-
-  const replaceText = useCallback((text: string) => {
-    applyComposerChange(() => composerReplaceText(text));
-  }, [applyComposerChange]);
-
-  const insertNewline = useCallback(() => {
-    applyComposerChange((current) => composerInsertNewline(current));
-  }, [applyComposerChange]);
-
-  const backspace = useCallback(() => {
-    applyComposerChange((current) => composerBackspace(current));
-  }, [applyComposerChange]);
-
-  const moveCursorLeft = useCallback(() => {
-    applyComposerChange((current) => composerMoveCursorLeft(current));
-  }, [applyComposerChange]);
-
-  const moveCursorRight = useCallback(() => {
-    applyComposerChange((current) => composerMoveCursorRight(current));
-  }, [applyComposerChange]);
-
-  const moveCursorUp = useCallback(() => {
-    applyComposerChange((current) => composerMoveCursorUp(current));
-  }, [applyComposerChange]);
-
-  const moveCursorDown = useCallback(() => {
-    applyComposerChange((current) => composerMoveCursorDown(current));
-  }, [applyComposerChange]);
-
-  const moveCursorHome = useCallback(() => {
-    applyComposerChange((current) => composerMoveCursorHome(current));
-  }, [applyComposerChange]);
-
-  const moveCursorEnd = useCallback(() => {
-    applyComposerChange((current) => composerMoveCursorEnd(current));
-  }, [applyComposerChange]);
-
-  // ─── Simple UI toggles ─────────────────────────────────────────────
-  const toggleSubagentRunsPanel = useCallback(() => {
-    setSubagentRunPanelVisible((current) => toggleSubagentRunsPanelAction(current));
-  }, []);
-
-  const toggleExpand = useCallback(() => {
-    setExpandedAll((current) => toggleExpandAction(current));
-  }, []);
-
-  const dismissCommandOutput = useCallback(() => {
-    setCommandOutput(dismissCommandOutputAction());
-  }, []);
-
-  const scrollCommandOutput = useCallback((delta: number) => {
-    setCommandOutput((current) => scrollCommandOutputAction(current, delta));
-  }, []);
-
-  // ─── Draft submission ──────────────────────────────────────────────
+  // Submit callbacks reference mutable promptSubmission via closure.
+  // Wrapped in useCallback so they update when promptSubmission changes.
   const submitDraft = useCallback(() => {
     const prompt = composer.text.trim();
     if (!prompt) return;
@@ -538,8 +508,8 @@ export function useCliController(options: UseCliControllerOptions): CliControlle
     composerActivityVersion,
     notices,
     commandOutput,
-    dismissCommandOutput,
-    scrollCommandOutput,
+    dismissCommandOutput: actions.dismissCommandOutput,
+    scrollCommandOutput: actions.scrollCommandOutput,
     activeTurn,
     review,
     coreMessages: messageSync.coreMessages,
@@ -549,24 +519,24 @@ export function useCliController(options: UseCliControllerOptions): CliControlle
     runState,
     interactionState,
     sessionState: messageSync.sessionState,
-    insertText,
-    replaceText,
-    insertNewline,
-    backspace,
-    moveCursorLeft,
-    moveCursorRight,
-    moveCursorUp,
-    moveCursorDown,
-    moveCursorHome,
-    moveCursorEnd,
+    insertText: actions.insertText,
+    replaceText: actions.replaceText,
+    insertNewline: actions.insertNewline,
+    backspace: actions.backspace,
+    moveCursorLeft: actions.moveCursorLeft,
+    moveCursorRight: actions.moveCursorRight,
+    moveCursorUp: actions.moveCursorUp,
+    moveCursorDown: actions.moveCursorDown,
+    moveCursorHome: actions.moveCursorHome,
+    moveCursorEnd: actions.moveCursorEnd,
     submitDraft,
     submitText,
     focusReviewWindow: reviewMachine.focusReviewWindow,
     focusPromptWindow: reviewMachine.focusPromptWindow,
     subagentRunPanelVisible,
-    toggleSubagentRunsPanel,
+    toggleSubagentRunsPanel: actions.toggleSubagentRunsPanel,
     expandedAll,
-    toggleExpand,
+    toggleExpand: actions.toggleExpand,
     moveReviewLeft: reviewMachine.moveReviewLeft,
     moveReviewRight: reviewMachine.moveReviewRight,
     selectPreviousReviewAction: reviewMachine.selectPreviousReviewAction,
@@ -585,35 +555,22 @@ export function useCliController(options: UseCliControllerOptions): CliControlle
     permissionRejectSend: reviewMachine.permissionRejectSend,
     permissionRejectSilent: reviewMachine.permissionRejectSilent,
   }), [
+    actions,
     activeTurn,
-    backspace,
     commandOutput,
     composer,
     composerActivityVersion,
-    dismissCommandOutput,
     expandedAll,
     hasConversation,
     interactionState,
-    review,
-    insertNewline,
-    insertText,
     messageSync,
-    moveCursorDown,
-    moveCursorEnd,
-    moveCursorHome,
-    moveCursorLeft,
-    moveCursorRight,
-    moveCursorUp,
     notices,
-    replaceText,
+    review,
     reviewMachine,
     runState,
     runtimeEventsHook,
-    scrollCommandOutput,
     submitDraft,
     submitText,
     subagentRunPanelVisible,
-    toggleExpand,
-    toggleSubagentRunsPanel,
   ]);
 }

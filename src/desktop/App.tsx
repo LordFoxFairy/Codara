@@ -1,3 +1,10 @@
+/**
+ * @module desktop/App
+ *
+ * Root component — orchestrates page navigation, session selection,
+ * and wires up the three core hooks (useCodara, useSessions, useStatus).
+ */
+
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { AlertCircle, X } from "lucide-react";
 import { TopBar } from "./components/TopBar";
@@ -34,7 +41,7 @@ export function App() {
   const [errorVisible, setErrorVisible] = useState(false);
 
   const { sessions, loading: sessionsLoading, createSession, loadMessages } = useSessions();
-  const { connectionStatus, runtimeStatus, check: refreshStatus } = useStatus();
+  const { connectionStatus, check: refreshStatus } = useStatus();
   const {
     messages,
     status,
@@ -130,7 +137,6 @@ export function App() {
       {/* ── Global top bar ────────────────────────────── */}
       <TopBar
         connectionStatus={connectionStatus}
-        runtimeStatus={runtimeStatus}
         onToggleSidebar={() => setSidebarCollapsed((c) => !c)}
         onRefresh={() => void refreshStatus()}
         onOpenDebug={() => setActivePage("debug")}

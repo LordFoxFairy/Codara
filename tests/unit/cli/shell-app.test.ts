@@ -3,14 +3,13 @@ import {
   isFloatingReview,
   shouldShowFloatingSubagentRunPanel,
   resolveCliForegroundSurface,
-  shouldShowActivityLine,
   shouldDisablePromptInput,
   shouldShowSubagentRunPanel,
   shouldShowPromptFrame,
   hasVisibleAssistantSolidifiedReply,
 } from '../../../src/cli/app/shell-app';
 import type {CliReviewState} from '../../../src/cli/app/view-state';
-import type {SolidifiedItem, TranscriptItem} from '../../../src/cli/transcript/model';
+import type {SolidifiedItem} from '../../../src/cli/transcript/model';
 
 describe('CLI foreground surface', () => {
   it('should keep the transcript foreground when a review is active', () => {
@@ -186,58 +185,6 @@ describe('CLI foreground surface', () => {
       hasBlockingOverlay: false,
       hasReview: true,
     })).toBe(false);
-  });
-
-  it('should always show the activity line when a running task block is active (spinner stays visible)', () => {
-    const activeItems: TranscriptItem[] = [{
-      id: 'active-subagent-run:run-1',
-      role: 'agent',
-      content: '⏺ Explore(Inspect repo)\nRunning (12s)',
-      toolMeta: {
-        toolName: 'Agent',
-        displayName: 'Explore',
-        icon: '⏺',
-        args: 'Inspect repo',
-        status: 'running',
-        summaryLine: 'Running (12s)',
-      },
-    }];
-
-    expect(shouldShowActivityLine({
-      runStateStatus: 'running',
-      latestRuntimeEventKind: 'tool',
-      activeItems,
-    })).toBe(true);
-  });
-
-  it('should always show the activity line even when tasks are running or paused', () => {
-    expect(shouldShowActivityLine({
-      runStateStatus: 'running',
-      latestRuntimeEventKind: 'tool',
-      activeItems: [],
-      runningSubagentRunCount: 2,
-      pausedSubagentRunCount: 1,
-    })).toBe(true);
-  });
-
-  it('should keep the activity line for normal model thinking states', () => {
-    expect(shouldShowActivityLine({
-      runStateStatus: 'running',
-      latestRuntimeEventKind: 'model',
-      activeItems: [],
-      runningSubagentRunCount: 0,
-      pausedSubagentRunCount: 0,
-    })).toBe(true);
-  });
-
-  it('should still show the activity line through raw turn lifecycle events while the run is active', () => {
-    expect(shouldShowActivityLine({
-      runStateStatus: 'running',
-      latestRuntimeEventKind: 'turn',
-      activeItems: [],
-      runningSubagentRunCount: 0,
-      pausedSubagentRunCount: 0,
-    })).toBe(true);
   });
 
   it('should treat assistant replies already solidified into scrollback as visible replies', () => {

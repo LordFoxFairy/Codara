@@ -1,3 +1,11 @@
+/**
+ * Review control -- manages the focused-review state and routes resume
+ * decisions to either the foreground session or a background subagent run.
+ *
+ * Maintains a `focusedReviewId` pointer that the CLI/Desktop can set via
+ * `focusReview()` to select which pending review item to interact with.
+ */
+
 import type {AgentResult, AgentResumeStreamConfig, AgentStreamOutput, ReviewRequest, ReviewResumePayload} from '@core/agent';
 import type {SubagentReviewResumer} from '@capability/subagent';
 import type {ApprovalStore} from '@durability/approval-store';
@@ -5,6 +13,7 @@ import type {Session} from '@durability/session';
 import {getReviewItems} from './assembly/reviews';
 import type {FocusedReviewQuery, ReviewQueryItem} from './types';
 
+/** Public interface for review list/focus/resume operations. */
 export interface CodaraReviewControl {
   listReviewItems(): ReviewQueryItem[];
   getFocusedReview(): FocusedReviewQuery | undefined;
@@ -16,6 +25,7 @@ export interface CodaraReviewControl {
   ): AsyncGenerator<AgentStreamOutput, AgentResult | undefined, void>;
 }
 
+/** Create a ReviewControl bound to a Session and its approval/subagent stores. */
 export function createCodaraReviewControl(options: {
   session: Session;
   approvalStore?: ApprovalStore;

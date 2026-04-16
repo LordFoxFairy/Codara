@@ -1,6 +1,9 @@
+/** Subagent run summary query -- lightweight listing for UI display. */
+
 import type {SubagentRunStore} from '@capability/subagent';
 import type {SubagentRunQuerySummary} from '../types';
 
+/** Project SubagentRunStore records into lightweight query summaries. */
 export function getSubagentRunSummaries(
   store: SubagentRunStore | undefined,
   parentSessionId: string | undefined,

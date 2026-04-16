@@ -1,3 +1,10 @@
+/**
+ * @module gateway/codara-session-factory
+ *
+ * Factory that creates real Codara agent sessions for the Gateway.
+ * Each session key receives an isolated runtime with full agent capabilities.
+ */
+
 import type {AIMessageChunk, BaseMessage} from '@langchain/core/messages';
 import {createCodaraRuntime} from '@codara/facade';
 import type {GatewaySession, GatewaySessionFactory} from './session-manager';

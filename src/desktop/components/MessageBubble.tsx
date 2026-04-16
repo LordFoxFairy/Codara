@@ -1,3 +1,5 @@
+/** @module desktop/components/MessageBubble — Renders user/assistant messages with thinking and tool call blocks. */
+
 import { useState } from "react";
 import { Bot, ChevronRight, Lightbulb, User, Wrench } from "lucide-react";
 import type { Message, ToolCall } from "../types";

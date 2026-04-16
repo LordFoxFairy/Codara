@@ -2,22 +2,19 @@ import {AIMessage, ToolMessage, type BaseMessage} from '@langchain/core/messages
 import type {BaseChatModel} from '@langchain/core/language_models/chat_models';
 import type {StructuredToolInterface} from '@langchain/core/tools';
 import {z} from 'zod';
-import {
-  type AgentInputBudget,
-  type AgentRuntimeContext,
-  type AgentContextPreparer,
-  type AgentRuntimeValues,
-  type Agent,
-  type AgentPreparationContext,
-  type ToolErrorHandler,
-  bootstrapAgent,
-  type BootstrapAgentOptions,
-  createMiddleware,
-  type BaseMiddleware,
-  createAgentMemoryCheckpointer,
-  type AgentCheckpointer,
-  type ApprovalRecord,
-} from './adapters/core-bridge';
+import type {
+  AgentInputBudget,
+  AgentRuntimeContext,
+  AgentContextPreparer,
+  AgentRuntimeValues,
+  Agent,
+  AgentPreparationContext,
+  ToolErrorHandler,
+} from '@core/agent/models/agent';
+import {bootstrapAgent, type BootstrapAgentOptions} from '@core/agent/bootstrap';
+import {createMiddleware, type BaseMiddleware} from '@core/pipeline/types';
+import {createAgentMemoryCheckpointer, type AgentCheckpointer} from '@durability/checkpoint/agent';
+import type {ApprovalRecord} from '@durability/approval-store';
 import type {AgentLifecycleHooks} from '@observability/hook/types';
 import type {ChildToolActivityCallback} from '@observability/events';
 import {deepClone} from '@shared/clone';

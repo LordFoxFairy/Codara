@@ -1,15 +1,17 @@
 /**
- * CLI 参数解析。
+ * CLI argument parser.
  *
- * 支持的标志：
- * - `--resume / -r <id>`   — 恢复指定 session
- * - `-p / --prompt <text>` — headless 模式，执行后直接退出
- * - `--json`               — 输出格式为 JSON（配合 -p）
- * - `-c / --continue`      — 恢复最近 session
- * - `--fork-session`       — fork 当前 session
- * - `--dangerously-skip-permissions` — 跳过权限检查（CI 用）
+ * Supported flags:
+ * - `--resume / -r <id>`   -- resume a specific session
+ * - `-p / --prompt <text>` -- headless mode, execute and exit
+ * - `--json`               -- JSON output format (with -p)
+ * - `-c / --continue`      -- resume the most recent session (@future)
+ * - `--fork-session`       -- fork the current session (@future)
+ * - `--dangerously-skip-permissions` -- skip permission checks for CI (@future)
  *
- * 其余参数拼接为 initialPrompt。
+ * Remaining arguments are joined into initialPrompt.
+ *
+ * @future flags are parsed but not yet wired into main.tsx.
  */
 
 export type OutputFormat = 'json';

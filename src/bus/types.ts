@@ -1,4 +1,14 @@
-/** Unique client identifier. */
+/**
+ * @module bus/types
+ *
+ * Type definitions for the event bus protocol.
+ *
+ * The bus uses a request/event model:
+ *   Client -> Bus: {@link BusRequest} (typed union)
+ *   Bus -> Client: {@link BusEvent}   (typed union)
+ */
+
+/** Unique client identifier (UUID). */
 export type ClientId = string;
 
 /** Client -> Bus requests. */

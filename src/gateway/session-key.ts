@@ -1,3 +1,11 @@
+/**
+ * @module gateway/session-key
+ *
+ * Builds deterministic session keys from inbound messages.
+ * Keys follow the pattern `codara:<scope-specific-path>` and support
+ * cross-channel identity linking (e.g., same user on Telegram + Discord).
+ */
+
 import type {InboundMessage, DmScope, IdentityLinks} from './types';
 
 export interface SessionKeyOptions {

@@ -1,6 +1,14 @@
+/**
+ * Shell application -- the root Ink component for the interactive CLI.
+ *
+ * Composes the CLI controller, transcript, prompt frame, review panel,
+ * session picker, command output overlay, and subagent run panel into
+ * the full terminal UI. Also exports pure predicate functions for
+ * visibility decisions so they can be unit-tested independently.
+ */
 import React, {useCallback, useEffect, useState} from 'react';
 import {Box, Static, useApp} from 'ink';
-import type {Codara, CodaraRuntimeEvent} from '@/index';
+import type {Codara} from '@/index';
 import {CommandOutputPanel} from '../components/chrome/command-output-panel';
 import {Footer} from '../components/chrome/footer';
 import {StatusBar} from '../components/chrome/header';
@@ -139,24 +147,6 @@ export function shouldShowFloatingSubagentRunPanel(input: {
     subagentRunCount: input.subagentRunCount,
   });
 }
-
-export function shouldShowActivityLine(input: {
-  review?: CliReviewState;
-  runStateStatus: 'idle' | 'running' | 'paused' | 'done' | 'error';
-  latestRuntimeEventKind?: CodaraRuntimeEvent['kind'];
-  activeItems: readonly TranscriptItem[];
-  runningSubagentRunCount?: number;
-  pausedSubagentRunCount?: number;
-}): boolean {
-  if (input.review) {
-    return false;
-  }
-
-  // Always show ActivityLine so the spinner is visible throughout execution,
-  // including when tools are running or subagents are active.
-  return true;
-}
-
 
 export function hasVisibleAssistantSolidifiedReply(items: readonly SolidifiedItem[]): boolean {
   return items.some((item) => item.items.some((entry) => entry.role === 'assistant' && entry.content.trim().length > 0));

@@ -1,3 +1,13 @@
+/**
+ * Interaction stream -- orchestrates prompt/continuation/review streaming
+ * with automatic subagent completion follow-through.
+ *
+ * When a main-session turn launches subagent runs, the stream waits for
+ * those runs to complete, injects their results as tool messages, and
+ * continues the conversation so the model can summarise or react.
+ * Invalid completion responses are retried up to MAX_ATTEMPTS.
+ */
+
 import {AIMessage, ToolMessage, type BaseMessage} from '@langchain/core/messages';
 import type {SubagentCompletionContinuation, SubagentRunManager, SubagentRunStore} from '@capability/subagent';
 import {
@@ -12,8 +22,10 @@ import {TOOL_NAMES} from '@shared/tool-display';
 import type {CodaraStreamRequest} from './types';
 import type {CodaraReviewControl} from './review-control';
 
+/** Maximum retry attempts for an invalid subagent completion response. */
 const SUBAGENT_COMPLETION_MAX_ATTEMPTS = 3;
 
+/** Runtime context injected into continuation turns for subagent completion. */
 interface SubagentCompletionRuntimeContext {
   runs: Array<{
     runId: string;
@@ -29,6 +41,7 @@ interface SubagentCompletionRuntimeContext {
   previousInvalidResponse?: string;
 }
 
+/** Create the `streamInteraction` function bound to a Session + ReviewControl pair. */
 export function createCodaraInteractionStream(options: {
   session: Session;
   reviewControl: CodaraReviewControl;
@@ -102,6 +115,11 @@ async function* streamReviewWithSubagentFollowThrough(input: {
   yield* streamWithSubagentFollowThrough(input);
 }
 
+/**
+ * Core loop: stream a session turn, then check for launched subagent batches.
+ * If subagents completed, inject their results and continue the session.
+ * Retries invalid model responses up to SUBAGENT_COMPLETION_MAX_ATTEMPTS.
+ */
 async function* streamWithSubagentFollowThrough<T extends AgentResult | undefined>(input: {
   session: Session;
   subagentRunStore?: SubagentRunStore;
@@ -191,6 +209,7 @@ async function* streamWithSubagentFollowThrough<T extends AgentResult | undefine
   }
 }
 
+/** Determine whether the model's completion response warrants a retry. */
 function resolveSubagentCompletionRetry(input: {
   result: AgentResult;
   previousMessageCount: number;
@@ -241,6 +260,7 @@ function readLatestAssistantMessageText(messages: readonly BaseMessage[]): strin
   return undefined;
 }
 
+/** Gather batch IDs from both explicit result metadata and tool-message artifacts. */
 function collectLaunchedSubagentBatchIds(input: {
   messages: readonly BaseMessage[];
   resultBatchIds?: readonly string[];
@@ -278,6 +298,7 @@ function collectLaunchedSubagentBatchIds(input: {
   return [...batchIds];
 }
 
+/** Block until all subagent batches finish (or claim already-pending results). */
 async function waitForSubagentCompletion(input: {
   subagentRunManager?: SubagentRunManager;
   subagentRunStore: SubagentRunStore;
@@ -292,6 +313,7 @@ async function waitForSubagentCompletion(input: {
   return subagentRunStore.takePendingCompletion(parentSessionId, batchIds);
 }
 
+/** Shallow-merge two runtime contexts, deep-merging the subagent completion key. */
 function mergeContinuationContext(
   base: AgentRuntimeContext,
   next: AgentRuntimeContext,
@@ -318,6 +340,7 @@ function readSessionMessageCount(session: Session): number {
   }
 }
 
+/** Best-effort removal of trailing AI messages from a failed completion attempt. */
 async function pruneInvalidSubagentContinuationMessages(
   session: Session,
   resultMessages: BaseMessage[],
@@ -356,6 +379,7 @@ function pruneTrailingAssistantMessages(
   return {messages: next, changed: false};
 }
 
+/** Consume an entire agent stream, buffering chunks for deferred emission. */
 async function collectBufferedAgentStream<T extends AgentResult | undefined>(
   start: () => AsyncGenerator<AgentStreamOutput, T, void>,
 ): Promise<{chunks: AgentStreamOutput[]; result: T}> {

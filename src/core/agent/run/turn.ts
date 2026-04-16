@@ -1,4 +1,4 @@
-import {AIMessage, SystemMessage, type ToolCall} from '@langchain/core/messages';
+import {AIMessage, SystemMessage, ToolMessage, type ToolCall} from '@langchain/core/messages';
 import {executeToolCall, resolveToolCallId} from './tool-executor';
 import type {AgentStreamWriter} from './stream';
 import {
@@ -24,6 +24,8 @@ import {partitionToolCalls} from './tool-concurrency';
 
 export type AgentTurnOutcome = 'continue' | 'complete';
 
+// ── Turn entry point ────────────────────────────────────────────────────────
+
 export async function runAgentTurn(
   run: AgentRunContext,
   runtime: AgentRuntime,
@@ -34,7 +36,6 @@ export async function runAgentTurn(
   let result: AgentRunSummary = {reason: 'continue', turns: turn};
 
   try {
-    // Check abort before model call
     throwIfAborted(run.signal);
 
     const response = await runModel(runtime, context, stream);
@@ -45,21 +46,17 @@ export async function runAgentTurn(
     }
 
     await runtime.pipeline.afterModel({...context, response});
+
     if (!response.tool_calls?.length) {
       result = {reason: 'complete', turns: turn};
     } else {
-      // Check abort before tool execution
       throwIfAborted(run.signal);
-
       const toolOutcome = await runTools(run, runtime, context, response.tool_calls, stream);
-      if (toolOutcome.status === 'paused' || run.state.pendingReview) {
-        result = {reason: 'complete', turns: turn, launchedSubagentBatchIds: toolOutcome.launchedSubagentBatchIds};
-      } else if (toolOutcome.status === 'detached') {
+      if (toolOutcome.status === 'paused' || toolOutcome.status === 'detached' || run.state.pendingReview) {
         result = {reason: 'complete', turns: turn, launchedSubagentBatchIds: toolOutcome.launchedSubagentBatchIds};
       }
     }
   } catch (error) {
-    // Re-throw AbortError so the loop handles it gracefully
     if (error instanceof Error && error.name === 'AbortError') {
       throw error;
     }
@@ -72,6 +69,8 @@ export async function runAgentTurn(
   }
   return result;
 }
+
+// ── Model call ──────────────────────────────────────────────────────────────
 
 async function runModel(
   runtime: AgentRuntime,
@@ -102,6 +101,8 @@ async function runModel(
   });
 }
 
+// ── Tool execution orchestration ────────────────────────────────────────────
+
 interface ToolExecutionOutcome {
   status: 'ok' | 'paused' | 'detached';
   launchedSubagentBatchIds: string[];
@@ -114,81 +115,122 @@ export async function runTools(
   toolCalls: ToolCall[],
   stream?: AgentStreamWriter,
 ): Promise<ToolExecutionOutcome> {
-  const expectedSubagentCount = toolCalls.filter((toolCall) => toolCall.name === TOOL_NAMES.AGENT).length;
-  let sawDetached = false;
-  const launchedSubagentBatchIds = new Set<string>();
+  const expectedSubagentCount = toolCalls.filter((tc) => tc.name === TOOL_NAMES.AGENT).length;
+  const collector = createOutcomeCollector();
 
-  // Partition using the global tool-metadata registry (no local map needed)
   const {readOnly, serial} = partitionToolCalls(toolCalls);
 
   // Phase 1: Read-only tools run concurrently
   if (readOnly.length > 0) {
     const results = await Promise.all(
-      readOnly.map((call) => {
-        const globalIndex = toolCalls.indexOf(call);
-        return runSingleTool(run, runtime, context, toolCalls, globalIndex, expectedSubagentCount, stream);
-      }),
+      readOnly.map((call) =>
+        executeSingleTool(run, runtime, context, toolCalls, call, expectedSubagentCount, stream),
+      ),
     );
     for (const result of results) {
-      for (const batchId of result.launchedSubagentBatchIds) {
-        launchedSubagentBatchIds.add(batchId);
-      }
+      collector.absorb(result);
       if (result.status === 'paused') {
-        return {status: 'paused', launchedSubagentBatchIds: [...launchedSubagentBatchIds]};
-      }
-      if (result.status === 'detached') {
-        sawDetached = true;
+        return collector.finalize();
       }
     }
   }
 
-  // Phase 2: Writable / separable tools run serially
+  // Phase 2: Writable tools run serially
   for (const call of serial) {
     throwIfAborted(run.signal);
-    const globalIndex = toolCalls.indexOf(call);
-    const result = await runSingleTool(run, runtime, context, toolCalls, globalIndex, expectedSubagentCount, stream);
-    for (const batchId of result.launchedSubagentBatchIds) {
-      launchedSubagentBatchIds.add(batchId);
-    }
+    const result = await executeSingleTool(run, runtime, context, toolCalls, call, expectedSubagentCount, stream);
+    collector.absorb(result);
     if (result.status === 'paused') {
-      return {status: 'paused', launchedSubagentBatchIds: [...launchedSubagentBatchIds]};
-    }
-    if (result.status === 'detached') {
-      sawDetached = true;
+      return collector.finalize();
     }
   }
 
+  return collector.finalize();
+}
+
+// ── Outcome accumulator ─────────────────────────────────────────────────────
+
+function createOutcomeCollector() {
+  const batchIds = new Set<string>();
+  let sawDetached = false;
+  let sawPaused = false;
+
   return {
-    status: sawDetached ? 'detached' : 'ok',
-    launchedSubagentBatchIds: [...launchedSubagentBatchIds],
+    absorb(outcome: ToolExecutionOutcome) {
+      for (const id of outcome.launchedSubagentBatchIds) batchIds.add(id);
+      if (outcome.status === 'detached') sawDetached = true;
+      if (outcome.status === 'paused') sawPaused = true;
+    },
+    finalize(): ToolExecutionOutcome {
+      const status = sawPaused ? 'paused' : sawDetached ? 'detached' : 'ok';
+      return {status, launchedSubagentBatchIds: [...batchIds]};
+    },
   };
 }
 
-async function runSingleTool(
+// ── Single tool execution ───────────────────────────────────────────────────
+
+async function executeSingleTool(
   run: AgentRunContext,
   runtime: AgentRuntime,
   context: BaseExecutionContext,
   toolCalls: ToolCall[],
-  toolIndex: number,
+  toolCall: ToolCall,
   expectedSubagentCount: number,
   stream?: AgentStreamWriter,
 ): Promise<ToolExecutionOutcome> {
-  const toolCall = toolCalls[toolIndex] as ToolCall;
+  const toolIndex = toolCalls.indexOf(toolCall);
   const toolCallId = resolveToolCallId(toolCall, toolIndex);
   const tool = runtime.tools.get(toolCall.name);
+
+  // Emit progress: executing
+  if (stream) {
+    await stream.emitToolProgress({toolCallId, toolName: toolCall.name, status: 'executing'});
+  }
+
+  // Execute through middleware pipeline
+  const toolMessage = await invokeToolViaPipeline(
+    run, runtime, context, toolCall, toolIndex, toolCallId, tool, expectedSubagentCount,
+  );
+
+  // Emit progress: completed/failed
+  if (stream) {
+    await stream.emitToolProgress({
+      toolCallId,
+      toolName: toolCall.name,
+      status: toolMessage.status === 'error' ? 'failed' : 'completed',
+    });
+  }
+
+  // Commit to state and stream
+  run.state.messages.push(toolMessage);
+  await emitToolResultToStream(stream, context, toolMessage, run.state.messages);
+
+  // Classify the tool result
+  return classifyToolResult(toolMessage, run);
+}
+
+// ── Pipeline invocation ─────────────────────────────────────────────────────
+
+async function invokeToolViaPipeline(
+  run: AgentRunContext,
+  runtime: AgentRuntime,
+  context: BaseExecutionContext,
+  toolCall: ToolCall,
+  toolIndex: number,
+  toolCallId: string,
+  tool: ReturnType<typeof runtime.tools.get>,
+  expectedSubagentCount: number,
+): Promise<ToolMessage> {
   const baseExecution = {
     ...readExecutionMetadata(context),
     requestId: `${readExecutionMetadata(context).requestId}:tool:${toolCallId}`,
     toolIndex,
     toolCallId,
   };
-
-  if (stream) {
-    await stream.emitToolProgress({toolCallId, toolName: toolCall.name, status: 'executing'});
-  }
-
   const baseRuntime = context.runtime;
-  const toolMessage = await runtime.pipeline.wrapToolCall({
+
+  return runtime.pipeline.wrapToolCall({
     ...context,
     execution: baseExecution,
     toolCall,
@@ -199,6 +241,7 @@ async function runSingleTool(
     const nextIndex = request?.toolIndex ?? toolIndex;
     const nextToolCallId = resolveToolCallId(nextCall, nextIndex);
     const runtimeCarrier = createMutableToolRuntime(request?.runtime ?? baseRuntime, nextIndex, nextToolCallId, baseExecution);
+
     if (nextCall.name === TOOL_NAMES.AGENT && expectedSubagentCount > 0) {
       runtimeCarrier.runtimeContext = {
         ...(runtimeCarrier.runtimeContext ?? {}),
@@ -208,6 +251,7 @@ async function runSingleTool(
         },
       };
     }
+
     return executeToolCall(
       nextCall,
       nextToolCallId,
@@ -220,26 +264,34 @@ async function runSingleTool(
       syncToolRuntimeBack(baseRuntime, request?.runtime, runtimeCarrier);
     });
   });
+}
 
-  if (stream) {
-    await stream.emitToolProgress({
-      toolCallId,
-      toolName: toolCall.name,
-      status: toolMessage.status === 'error' ? 'failed' : 'completed',
-    });
+// ── Stream emission ─────────────────────────────────────────────────────────
+
+async function emitToolResultToStream(
+  stream: AgentStreamWriter | undefined,
+  context: BaseExecutionContext,
+  toolMessage: ToolMessage,
+  allMessages: import('@langchain/core/messages').BaseMessage[],
+): Promise<void> {
+  if (!stream) return;
+
+  await stream.emitToolUpdate(toolMessage);
+  await stream.emitValues(allMessages);
+
+  const payload = parseReviewToolMessagePayload(toolMessage.content);
+  if (payload) {
+    const execution = readExecutionMetadata(context);
+    await stream.emitCustom({runId: execution.runId, turn: execution.turn, payload});
   }
+}
 
-  run.state.messages.push(toolMessage);
-  if (stream) {
-    await stream.emitToolUpdate(toolMessage);
-    await stream.emitValues(run.state.messages);
-    const payload = parseReviewToolMessagePayload(toolMessage.content);
-    if (payload) {
-      const execution = readExecutionMetadata(context);
-      await stream.emitCustom({runId: execution.runId, turn: execution.turn, payload});
-    }
-  }
+// ── Result classification ───────────────────────────────────────────────────
 
+function classifyToolResult(
+  toolMessage: ToolMessage,
+  run: AgentRunContext,
+): ToolExecutionOutcome {
   const pausePayload = parseReviewToolMessagePayload(toolMessage.content);
   if (pausePayload?.type === 'review_pause') {
     run.state.pendingReview = pausePayload.request;
@@ -256,6 +308,8 @@ async function runSingleTool(
 
   return {status: 'ok', launchedSubagentBatchIds: []};
 }
+
+// ── Helpers ─────────────────────────────────────────────────────────────────
 
 function createSubagentBatchId(execution: BaseExecutionContext['execution']): string {
   return `${execution.sessionId}:${execution.runId}:turn:${execution.turn}`;
@@ -290,6 +344,8 @@ function syncToolRuntimeBack(
     requestRuntime.shared = runtimeCarrier.shared;
   }
 }
+
+// ── Turn finalization ───────────────────────────────────────────────────────
 
 export async function finishTurn(
   runtime: AgentRuntime,

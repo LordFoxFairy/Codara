@@ -366,93 +366,101 @@ export class CodaraBus {
 
   /**
    * Classify a single stream chunk and emit the appropriate BusEvent(s).
+   *
+   * Classification order:
+   *   1. Tagged tuple — unwrap and recurse
+   *   2. AIMessageChunk — thinking / text / tool_call tokens
+   *   3. Custom chunk — review_event / tool_progress (ignored here)
+   *   4. Tool result — tool name + truncated output
+   *   5. Anything else — skip (full model response, batch messages)
    */
   private classifyAndEmit(sessionId: string, chunk: AgentStreamOutput): void {
-    // Tagged tuple [mode, payload] — unwrap and recurse.
+    // 1. Tagged tuple [mode, payload] — unwrap and recurse.
     if (Array.isArray(chunk) && chunk.length === 2 && typeof chunk[0] === 'string') {
       this.classifyAndEmit(sessionId, chunk[1] as AgentStreamOutput);
       return;
     }
 
-    // AIMessageChunk — incremental text / thinking / tool_call tokens.
+    // 2. AIMessageChunk — incremental text / thinking / tool_call tokens.
     if (AIMessageChunk.isInstance(chunk)) {
-      const aiChunk = chunk as AIMessageChunk;
-
-      // Thinking blocks in content array.
-      if (Array.isArray(aiChunk.content)) {
-        for (const block of aiChunk.content) {
-          if (
-            block &&
-            typeof block === 'object' &&
-            'type' in block &&
-            block.type === 'thinking' &&
-            'thinking' in block &&
-            typeof block.thinking === 'string' &&
-            block.thinking
-          ) {
-            this.events.emit({
-              type: 'thinking',
-              sessionId,
-              text: block.thinking,
-            });
-          }
-        }
-      }
-
-      // Text token.
-      const text = typeof aiChunk.text === 'string' ? aiChunk.text : '';
-      if (text) {
-        this.events.emit({type: 'token', sessionId, text});
-      }
-
-      // Tool call chunks.
-      if (aiChunk.tool_call_chunks && aiChunk.tool_call_chunks.length > 0) {
-        for (const tc of aiChunk.tool_call_chunks) {
-          if (tc.name) {
-            this.events.emit({
-              type: 'tool_call',
-              sessionId,
-              name: tc.name,
-              args: {
-                argsFragment: tc.args ?? '',
-                id: tc.id,
-                index: tc.index,
-              },
-            });
-          }
-        }
-      }
-
+      this.emitAIChunkEvents(sessionId, chunk as AIMessageChunk);
       return;
     }
 
-    // Custom chunk — review pause / tool progress events.
-    // review_required is emitted from the result handler in pipeStream;
-    // in-flight custom chunks are intentionally ignored here.
-    if (isCustomChunk(chunk)) {
-      return;
-    }
+    // 3. Custom chunk — review / progress events are handled by pipeStream result.
+    if (isCustomChunk(chunk)) return;
 
-    // Tool result messages.
+    // 4. Tool result messages.
     if (isToolResult(chunk)) {
-      const toolMsg = chunk.tools.messages[0];
-      this.events.emit({
-        type: 'tool_result',
-        sessionId,
-        name: toolMsg.name ?? 'unknown',
-        output: typeof toolMsg.content === 'string'
-          ? toolMsg.content.slice(0, 4000)
-          : String(toolMsg.content).slice(0, 4000),
-      });
+      this.emitToolResultEvent(sessionId, chunk);
       return;
     }
 
-    // Full model response {model: ...} and batch {messages: ...} — skip.
-    // We already stream incremental chunks above.
+    // 5. Full model response / batch — skip (already streamed incrementally).
+  }
+
+  /** Emit thinking, token, and tool_call events from an AIMessageChunk. */
+  private emitAIChunkEvents(sessionId: string, aiChunk: AIMessageChunk): void {
+    // Thinking blocks.
+    if (Array.isArray(aiChunk.content)) {
+      for (const block of aiChunk.content) {
+        if (isThinkingBlock(block)) {
+          this.events.emit({type: 'thinking', sessionId, text: block.thinking});
+        }
+      }
+    }
+
+    // Text token.
+    const text = typeof aiChunk.text === 'string' ? aiChunk.text : '';
+    if (text) {
+      this.events.emit({type: 'token', sessionId, text});
+    }
+
+    // Tool call chunks.
+    if (aiChunk.tool_call_chunks && aiChunk.tool_call_chunks.length > 0) {
+      for (const tc of aiChunk.tool_call_chunks) {
+        if (tc.name) {
+          this.events.emit({
+            type: 'tool_call',
+            sessionId,
+            name: tc.name,
+            args: {argsFragment: tc.args ?? '', id: tc.id, index: tc.index},
+          });
+        }
+      }
+    }
+  }
+
+  /** Emit a tool_result event, truncating output to 4000 chars. */
+  private emitToolResultEvent(sessionId: string, chunk: ToolResultChunk): void {
+    const toolMsg = chunk.tools.messages[0];
+    this.events.emit({
+      type: 'tool_result',
+      sessionId,
+      name: toolMsg.name ?? 'unknown',
+      output: typeof toolMsg.content === 'string'
+        ? toolMsg.content.slice(0, 4000)
+        : String(toolMsg.content).slice(0, 4000),
+    });
   }
 }
 
-// ── Helpers ────────────────────────────────────────────────────────────
+// ── Type Guards ───────────────────────────────────────────────────────
+
+/** A tool result chunk from the stream. */
+type ToolResultChunk = {tools: {messages: [{name?: string; content: unknown; status?: string; tool_call_id?: string}]}};
+
+function isThinkingBlock(block: unknown): block is {type: 'thinking'; thinking: string} {
+  return (
+    block !== null &&
+    typeof block === 'object' &&
+    'type' in block &&
+    (block as Record<string, unknown>).type === 'thinking' &&
+    'thinking' in block &&
+    typeof (block as Record<string, unknown>).thinking === 'string' &&
+    !!(block as Record<string, unknown>).thinking
+  );
+}
 
 function isCustomChunk(chunk: unknown): chunk is AgentStreamCustomChunk {
   if (chunk === null || typeof chunk !== 'object' || !('type' in chunk)) {
@@ -462,9 +470,7 @@ function isCustomChunk(chunk: unknown): chunk is AgentStreamCustomChunk {
   return type === 'review_event' || type === 'tool_progress';
 }
 
-function isToolResult(
-  chunk: unknown,
-): chunk is {tools: {messages: [{name?: string; content: unknown; status?: string; tool_call_id?: string}]}} {
+function isToolResult(chunk: unknown): chunk is ToolResultChunk {
   return (
     chunk !== null &&
     typeof chunk === 'object' &&

@@ -30,6 +30,7 @@ import {
   REVIEW_QUEUE_HANDOFF_TIMEOUT_MS,
   REVIEW_QUEUE_HANDOFF_POLL_MS,
 } from '../cli-controller-logic';
+import type {CliStore} from '../cli-store';
 import type {
   CliActiveTurn,
   CliInteractionKind,
@@ -56,14 +57,12 @@ export interface ReviewMachineDeps {
   codara: Codara;
   interactionScheduler: CliInteractionScheduler;
   reviewAutoActions: CliReviewAutoAction[];
-  reviewRef: React.MutableRefObject<CliReviewState | undefined>;
-  runStateRef: React.MutableRefObject<CliRunState>;
-  pendingBackgroundNoticesRef: React.MutableRefObject<CliNotice[]>;
+  store: CliStore;
   review: CliReviewState | undefined;
   runState: CliRunState;
   setReviewState: (input: CliReviewState | undefined | ((current: CliReviewState | undefined) => CliReviewState | undefined)) => void;
   setActiveTurn: (input: CliActiveTurn | undefined | ((current: CliActiveTurn | undefined) => CliActiveTurn | undefined)) => void;
-  setRunState: React.Dispatch<React.SetStateAction<CliRunState>>;
+  setRunState: (input: CliRunState | ((current: CliRunState) => CliRunState)) => void;
   setInteractionState: React.Dispatch<React.SetStateAction<CliInteractionState>>;
   beginInteraction: (kind: CliInteractionKind) => void;
   endInteraction: () => void;
@@ -111,9 +110,7 @@ export function useReviewMachine(deps: ReviewMachineDeps): ReviewMachineResult {
     codara,
     interactionScheduler,
     reviewAutoActions,
-    reviewRef,
-    runStateRef,
-    pendingBackgroundNoticesRef,
+    store,
     review,
     runState,
     setReviewState,
@@ -138,12 +135,12 @@ export function useReviewMachine(deps: ReviewMachineDeps): ReviewMachineResult {
   // --- Navigation ---
 
   const focusReviewWindow = useCallback(() => {
-    setInteractionState((current) => focusReviewWindowAction(current, !!reviewRef.current));
-  }, [reviewRef, setInteractionState]);
+    setInteractionState((current) => focusReviewWindowAction(current, !!store.getState().review));
+  }, [store, setInteractionState]);
 
   const focusPromptWindow = useCallback(() => {
-    setInteractionState((current) => focusPromptWindowAction(current, !!reviewRef.current));
-  }, [reviewRef, setInteractionState]);
+    setInteractionState((current) => focusPromptWindowAction(current, !!store.getState().review));
+  }, [store, setInteractionState]);
 
   const selectPreviousReviewAction = useCallback(() => {
     setReviewState((current) => selectPreviousReviewActionUpdate(current));
@@ -159,7 +156,7 @@ export function useReviewMachine(deps: ReviewMachineDeps): ReviewMachineResult {
       return;
     }
 
-    const currentReviewId = reviewRef.current?.request.id;
+    const currentReviewId = store.getState().review?.request.id;
     const currentIndex = reviews.findIndex((review) => review.reviewId === currentReviewId);
     const baseIndex = currentIndex >= 0 ? currentIndex : 0;
     const nextIndex = (baseIndex + direction + reviews.length) % reviews.length;
@@ -170,7 +167,7 @@ export function useReviewMachine(deps: ReviewMachineDeps): ReviewMachineResult {
 
     await codara.focusReview(nextReview.reviewId);
     await refreshCoreState();
-  }, [codara, refreshCoreState, reviewRef]);
+  }, [codara, refreshCoreState, store]);
 
   const selectPreviousReview = useCallback(() => {
     void shiftReviewFocus(-1);
@@ -193,10 +190,10 @@ export function useReviewMachine(deps: ReviewMachineDeps): ReviewMachineResult {
   }, [setReviewState]);
 
   const activateReviewSelection = useCallback(() => {
-    const result = activateReviewSelectionUpdate(reviewRef.current);
+    const result = activateReviewSelectionUpdate(store.getState().review);
     setReviewState(result.review);
     setRunState({status: 'paused'});
-  }, [reviewRef, setReviewState, setRunState]);
+  }, [store, setReviewState, setRunState]);
 
   // --- Text input ---
 
@@ -302,7 +299,7 @@ export function useReviewMachine(deps: ReviewMachineDeps): ReviewMachineResult {
   // --- submitReviewAction (core) ---
 
   const submitReviewActionImpl = useCallback(async (autoAction?: CliReviewAutoAction) => {
-    const currentReview = reviewRef.current ?? review;
+    const currentReview = store.getState().review ?? review;
     if (!currentReview) {
       return;
     }
@@ -391,8 +388,9 @@ export function useReviewMachine(deps: ReviewMachineDeps): ReviewMachineResult {
           return;
         }
 
-        const busyReview = reviewRef.current?.request.id === prepared.review.request.id
-          ? {...reviewRef.current, busy: true}
+        const s = store.getState();
+        const busyReview = s.review?.request.id === prepared.review.request.id
+          ? {...s.review, busy: true}
           : {...prepared.review, busy: true};
         setReviewState(busyReview);
         void (async () => {
@@ -411,7 +409,8 @@ export function useReviewMachine(deps: ReviewMachineDeps): ReviewMachineResult {
               }).activeReviewRequest;
               const stillShowingCurrent = reviews.some((review) => review.reviewId === currentReviewId);
               if (!stillShowingCurrent) {
-                const nextReview = syncProjectedReview(codara, reviewRef.current, {pendingReview: activeReviewRequest});
+                const s2 = store.getState();
+                const nextReview = syncProjectedReview(codara, s2.review, {pendingReview: activeReviewRequest});
                 setReviewState(nextReview);
                 syncInteractionState();
                 setRunState(deriveRunStateFromAgentState(nextAgentState));
@@ -464,7 +463,7 @@ export function useReviewMachine(deps: ReviewMachineDeps): ReviewMachineResult {
       endInteraction();
       drainScheduledInteractions();
     }
-  }, [appendNotice, beginInteraction, codara, drainScheduledInteractions, endInteraction, enqueueReviewResponse, interactionScheduler, refreshCoreState, reportError, review, reviewRef, setActiveTurn, setReviewState, setRunState, syncInteractionState]);
+  }, [appendNotice, beginInteraction, codara, drainScheduledInteractions, endInteraction, enqueueReviewResponse, interactionScheduler, refreshCoreState, reportError, review, store, setActiveTurn, setReviewState, setRunState, syncInteractionState]);
 
   const submitReviewAction = useCallback(() => {
     void submitReviewActionImpl();
@@ -491,10 +490,10 @@ export function useReviewMachine(deps: ReviewMachineDeps): ReviewMachineResult {
   }, [submitReviewActionImpl]);
 
   const permissionRejectSend = useCallback(() => {
-    const currentReview = reviewRef.current;
+    const currentReview = store.getState().review;
     if (!currentReview) return;
     void submitReviewActionImpl({action: 'deny', comment: currentReview.draft.trim() || undefined});
-  }, [reviewRef, submitReviewActionImpl]);
+  }, [store, submitReviewActionImpl]);
 
   const permissionRejectSilent = useCallback(() => {
     void submitReviewActionImpl({action: 'deny'});

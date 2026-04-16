@@ -1,3 +1,5 @@
+/** @module desktop/components/InputArea — Auto-resizing textarea with send/stop controls. */
+
 import {
   useCallback,
   useEffect,

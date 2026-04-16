@@ -1,3 +1,5 @@
+/** @module desktop/components/Chat — Main chat message list with streaming indicators. */
+
 import { useEffect, useRef } from "react";
 import { Sparkles } from "lucide-react";
 import type { Message, ReviewRequest, RuntimeEvent, StreamStatus } from "../types";

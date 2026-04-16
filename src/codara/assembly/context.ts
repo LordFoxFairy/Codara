@@ -1,3 +1,8 @@
+/**
+ * Context assembly -- resolves skill stores, instruction context preparers,
+ * and the instruction-context runtime (system message loader + path-instructions middleware).
+ */
+
 import type {AgentContextPreparer} from '@core/agent';
 import type {BaseMiddleware} from '@core/pipeline/types';
 import {FileSystemSkillStore, type SkillStore} from '@capability/skill';
@@ -14,6 +19,7 @@ import type {GuidelinesSource, PromptSource} from '@context/sources';
 import {type ConditionalRule} from '@context/rules';
 import type {CodaraOptions} from '../types';
 
+/** Resolve skill store + subagent roots from options, defaulting to FileSystemSkillStore. */
 export function resolveCodaraSkills(
   options: Pick<CodaraOptions, 'skills' | 'cwd' | 'projectRoot' | 'userHome'>,
 ): {store: SkillStore; subagentRoots: string[]} | undefined {
@@ -45,6 +51,7 @@ export function resolveCodaraSkills(
   };
 }
 
+/** Build an AgentContextPreparer that merges prompt/guidelines/skills into system context. */
 export function createInstructionContextPreparer(sources: {
   promptSource?: PromptSource;
   guidelinesSource?: GuidelinesSource;
@@ -68,12 +75,14 @@ export function createInstructionContextPreparer(sources: {
   };
 }
 
+/** Bundle of instruction-related runtime resources for child agent bootstrapping. */
 export interface InstructionContextRuntime {
   prepareContext?: AgentContextPreparer;
   loadBaseSystemMessage?: BaseSystemMessageLoader;
   middlewares?: BaseMiddleware[];
 }
 
+/** Assemble the full instruction context runtime (loader + optional path-instructions middleware). */
 export function createInstructionContextRuntime(sources: {
   promptSource?: PromptSource;
   guidelinesSource?: GuidelinesSource;

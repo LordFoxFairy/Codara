@@ -1,10 +1,16 @@
+/**
+ * Hook: useStatusIndicator
+ *
+ * Derives a human-readable status label, color, and optional spinner banner
+ * from the current run state and runtime events. Used by ActivityLine and
+ * any component that needs to display the agent's current phase.
+ */
 import {useEffect, useState} from 'react';
 import type {CodaraRuntimeEvent} from '@/index';
 import type {CliActiveTurn, CliRunState} from '../app/view-state';
-import {theme} from '../utils/theme';
+import {BRAILLE_FRAMES, SPINNER_INTERVAL_MS, theme} from '../utils/theme';
 
-const BRAILLE_FRAMES = ['⠋', '⠙', '⠹', '⠸', '⠼', '⠴', '⠦', '⠧', '⠇', '⠏'] as const;
-export const SPINNER_INTERVAL_MS = 80;
+export {SPINNER_INTERVAL_MS} from '../utils/theme';
 
 export interface StatusIndicatorInput {
   runState: CliRunState;

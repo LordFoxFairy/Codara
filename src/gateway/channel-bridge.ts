@@ -1,15 +1,18 @@
+/**
+ * @module gateway/channel-bridge
+ *
+ * Adapts the ChannelPlugin (gateway-level) to the Channel interface
+ * (used by ChannelRegistry and review middleware). One bridge instance
+ * represents a single active conversation (one peer, one IM platform).
+ *
+ * Handles review request presentation (inline buttons or text fallback)
+ * and resolves review responses from user interactions.
+ */
+
 import type {Channel, ChannelMessage, ChannelRuntimeEvent, ChannelType} from '@shared/channel-types';
 import type {ReviewRequest, ReviewResumePayload} from '@shared/agent-types';
 import type {ChannelPlugin} from '@integration/channel/contracts';
 import type {ReviewPromptAction} from './types';
-
-/**
- * Bridges the old Channel interface (used by ChannelRegistry/review middleware)
- * with the ChannelPlugin system (used by Gateway).
- *
- * Each GatewayChannelBridge instance represents one active conversation
- * (one peer on one IM platform).
- */
 export class GatewayChannelBridge implements Channel {
   readonly id: string;
   readonly type: ChannelType;

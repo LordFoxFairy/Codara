@@ -10,6 +10,7 @@ export interface SettingsInfrastructure {
   settingsWatcher: SettingsWatcher;
 }
 
+/** Load settings from all sources and start a file watcher for hot reload. */
 export async function initSettings(projectRoot: string, userHome: string): Promise<SettingsInfrastructure> {
   const settingsCache = new SettingsCache({projectRoot, userHome, skipEnv: false});
   const settings = await settingsCache.get();

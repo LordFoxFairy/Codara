@@ -1,7 +1,6 @@
 import React, {useEffect, useState} from 'react';
 import {Box, Text} from 'ink';
-import {theme} from '../../utils/theme';
-import {SPINNER_INTERVAL_MS} from '../../hooks/use-status-indicator';
+import {SPINNER_INTERVAL_MS, theme} from '../../utils/theme';
 
 const BLINK_FRAMES = ['●', '◉', '●', '●', '◉', '●', '●', '●'] as const;
 

@@ -1,3 +1,11 @@
+/**
+ * @module gateway/router
+ *
+ * Inbound message router — decides whether to accept a message based on
+ * channel config (enabled, allowUsers/allowGroups, requireMention) and
+ * resolves the profile binding for session creation.
+ */
+
 import type {InboundMessage, GatewayConfig} from './types';
 
 export interface GatewayRouter {
