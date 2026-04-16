@@ -5,7 +5,7 @@ import type {BaseMessage} from '@langchain/core/messages';
 import {
   createComposerState,
 } from '../composer/state';
-import type {CliComposerState} from '../composer/types';
+import type {CliComposerState} from '../composer/state';
 import {hasTranscriptContent} from '../transcript/model';
 import {
   composerInsertText,

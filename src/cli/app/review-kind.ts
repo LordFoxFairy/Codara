@@ -1,5 +1,5 @@
 import type {CliReviewState} from './view-state';
-import type {CliReviewKind} from './review-types';
+import type {CliReviewKind} from './view-state';
 
 export function getCliReviewKind(review: CliReviewState | undefined): CliReviewKind {
   if (!review) {

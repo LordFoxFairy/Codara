@@ -1,5 +1,5 @@
 /** Pure composer state update functions for the CLI text input. */
-import type {CliComposerState} from '../composer/types';
+import type {CliComposerState} from '../composer/state';
 import {
   backspaceComposerText,
   insertComposerNewline,

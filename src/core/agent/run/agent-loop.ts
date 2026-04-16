@@ -43,7 +43,14 @@ import {
 import {MIDDLEWARE_NAMES, type BaseExecutionContext, type MiddlewareRuntimeShared} from '@core/pipeline/types';
 import {MiddlewarePipeline} from '@core/pipeline/pipeline';
 import {deepClone} from '@shared/clone';
-import {formatErrorMessage} from './errors';
+function toError(error: unknown): Error {
+  return error instanceof Error ? error : new Error(String(error));
+}
+
+function formatErrorMessage(error: unknown, prefix?: string): string {
+  const message = toError(error).message;
+  return prefix ? `${prefix}: ${message}` : message;
+}
 import {cheapDrainMessages, compactMessages, isContextWindowExhausted} from './compact';
 import {
   computeRetryDelay,

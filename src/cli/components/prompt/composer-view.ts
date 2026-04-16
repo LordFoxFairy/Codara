@@ -1,4 +1,4 @@
-import type {CliComposerState} from '../../composer/types';
+import type {CliComposerState} from '../../composer/state';
 
 export const COMPOSER_VIEWPORT_LINE_LIMIT = 10;
 

@@ -1,7 +1,7 @@
 import React from 'react';
 import {Box, Text} from 'ink';
 import {useBlinkingCursor} from '../../hooks/use-blinking-cursor';
-import type {CliComposerState} from '../../composer/types';
+import type {CliComposerState} from '../../composer/state';
 import {buildComposerViewport} from './composer-view';
 
 interface PromptFrameProps {

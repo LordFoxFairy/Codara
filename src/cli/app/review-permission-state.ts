@@ -1,5 +1,5 @@
 import type {CliReviewState} from './view-state';
-import type {PermissionStage} from './review-types';
+import type {PermissionStage} from './view-state';
 
 /** Read alwaysPatterns from permission review metadata. */
 export function readPermissionAlwaysPatterns(metadata: unknown): string[] {

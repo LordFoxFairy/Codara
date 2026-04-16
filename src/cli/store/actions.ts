@@ -1,4 +1,14 @@
-import type {AppState, AgentStatus} from './app-state';
+export type AgentStatus = 'idle' | 'running' | 'paused' | 'error' | 'subagent_wait';
+
+export interface AppState {
+  sessionId: string;
+  agentStatus: AgentStatus;
+  currentTurn: number;
+  activeToolCount: number;
+  runningSubagentCount: number;
+  permissionPending: boolean;
+  errorMessage?: string;
+}
 
 export type CliEvent =
   | {type: 'PROMPT_SUBMITTED'}

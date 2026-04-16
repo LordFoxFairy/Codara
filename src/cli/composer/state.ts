@@ -1,4 +1,7 @@
-﻿import type {CliComposerState} from './types';
+﻿export interface CliComposerState {
+  text: string;
+  cursorOffset: number;
+}
 
 export function createComposerState(text = '', cursorOffset = text.length): CliComposerState {
   const normalizedText = normalizeComposerText(text);

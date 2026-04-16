@@ -94,7 +94,7 @@ describe('builtin tools', () => {
     const read = createReadTool();
     const result = await read.invoke({file_path: filePath});
 
-    expect(String(result)).toContain('Binary file detected');
+    expect(String(result)).toContain('Binary file');
   });
 
   it('glob should ignore node_modules and dot paths', async () => {

@@ -17,7 +17,9 @@ import {
   type ToolCallContext,
 } from '@core/pipeline/types';
 import {parseReviewToolMessagePayload} from '@core/middleware/review';
-import {toError} from './errors';
+function toError(error: unknown): Error {
+  return error instanceof Error ? error : new Error(String(error));
+}
 import {readSubagentRunLaunchResult} from '@shared/subagent-run-launch';
 import {TOOL_NAMES} from '@shared/tool-display';
 import {partitionToolCalls} from './tool-concurrency';

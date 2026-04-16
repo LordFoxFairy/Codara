@@ -126,6 +126,9 @@ Returns: matching lines with line numbers (content mode) or file paths (files mo
         let command = 'rg';
 
         if (useRg) {
+            // Sensible defaults: search hidden files, exclude .git, cap column width
+            args.push('--hidden', '--glob', '!.git', '--max-columns', '500');
+
             if (outputMode === 'files_with_matches') {
                 args.push('--files-with-matches');
             } else if (outputMode === 'count') {

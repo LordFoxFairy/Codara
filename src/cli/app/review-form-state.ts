@@ -1,5 +1,5 @@
 import type {ReviewRequest, ReviewDecision, ReviewResumePayload} from '@/index';
-import type {CliReviewAutoAction} from './review-auto-action';
+import type {CliReviewAutoAction} from './view-state';
 import type {
   CliReviewAction,
   CliReviewAnswerValue,

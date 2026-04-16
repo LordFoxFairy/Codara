@@ -1,6 +1,6 @@
 import type {ReviewRequest} from '@/index';
 import type {CliReviewState} from './view-state';
-export type {CliReviewAutoAction} from './review-auto-action';
+export type {CliReviewAutoAction} from './view-state';
 export {
   activateCliReviewFocusedSelection,
   advanceCliReviewToNextStep,

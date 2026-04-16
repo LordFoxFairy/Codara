@@ -1,6 +1,9 @@
 import type {ReviewRequest, ReviewUIActionOption, ReviewUIFormOption, ReviewUIFormTab} from '@/index';
 import type {ReviewBlockingScope} from '../../codara/types';
-import type {PermissionStage} from './review-types';
+
+export type PermissionStage = 'prompt' | 'always-confirm' | 'reject-feedback';
+
+export type CliReviewKind = 'permission' | 'ask-user' | 'tool-review' | 'generic-review';
 
 export type CliStatus = 'idle' | 'running' | 'paused' | 'done' | 'error';
 export type CliRunPhase = 'prompt_stream' | 'subagent_wait' | 'subagent_completion' | 'review_resume';
@@ -85,4 +88,12 @@ export interface CliReviewState {
   permissionAlwaysPatterns?: string[];
   reviewIndex?: number;
   reviewCount?: number;
+}
+
+export interface CliReviewAutoAction {
+  action: string;
+  scope?: string;
+  comment?: string;
+  editedToolArgs?: Record<string, unknown>;
+  answers?: Record<string, CliReviewAnswerValue>;
 }

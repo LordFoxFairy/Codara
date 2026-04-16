@@ -16,6 +16,16 @@ const MAX_IMAGE_SIZE = 20 * 1024 * 1024; // 20MB
 
 const IMAGE_EXTENSIONS = new Set(['.png', '.jpg', '.jpeg', '.gif', '.webp', '.bmp', '.ico', '.tiff', '.tif']);
 
+const BINARY_EXTENSIONS = new Set([
+    '.exe', '.dll', '.so', '.dylib', '.bin', '.o', '.a', '.lib',
+    '.zip', '.tar', '.gz', '.bz2', '.xz', '.7z', '.rar',
+    '.wasm', '.pyc', '.class', '.jar',
+    '.db', '.sqlite', '.sqlite3',
+    '.mp3', '.mp4', '.avi', '.mov', '.mkv', '.flac', '.wav',
+]);
+
+const BLOCKED_DEVICE_PATHS = new Set(['/dev/null', '/dev/zero', '/dev/random', '/dev/urandom', '/dev/stdin', '/dev/stdout', '/dev/stderr']);
+
 function isImageFile(filePath: string): boolean {
     const ext = path.extname(filePath).toLowerCase();
     return IMAGE_EXTENSIONS.has(ext) || ext === '.svg';
@@ -68,6 +78,15 @@ Returns: formatted text with line numbers, base64 data URL for images, or extrac
         const pathError = validatePath(filePath);
         if (pathError) {
             return pathError;
+        }
+
+        if (BLOCKED_DEVICE_PATHS.has(filePath)) {
+            return formatError('Blocked path', `${filePath} is a device file and cannot be read`);
+        }
+
+        const ext = path.extname(filePath).toLowerCase();
+        if (BINARY_EXTENSIONS.has(ext)) {
+            return formatError('Binary file', `${filePath} has binary extension "${ext}"`, 'use a specialized tool for this file type');
         }
 
         let fileSize: number;

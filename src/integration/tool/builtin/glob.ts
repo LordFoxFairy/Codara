@@ -2,7 +2,7 @@ import {stat} from 'node:fs/promises';
 import path from 'node:path';
 import {StructuredTool} from '@langchain/core/tools';
 import {z} from 'zod';
-import {formatNoResults} from '@integration/tool/utils';
+import {formatError, formatNoResults} from '@integration/tool/utils';
 
 const RESULT_LIMIT = 200;
 const SCAN_LIMIT = 5000;
@@ -47,6 +47,16 @@ Returns: list of matching absolute paths (max 200 results), automatically exclud
 
     async _call(input: GlobInput): Promise<string> {
         const searchRoot = path.resolve(input.path ?? this.defaultCwd);
+
+        try {
+            const info = await stat(searchRoot);
+            if (!info.isDirectory()) {
+                return formatError('Not a directory', searchRoot);
+            }
+        } catch {
+            return formatError('Directory not found', searchRoot);
+        }
+
         const collected: string[] = [];
 
         for await (const relativePath of new Bun.Glob(input.pattern).scan({cwd: searchRoot})) {

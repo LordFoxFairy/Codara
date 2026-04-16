@@ -1,6 +1,5 @@
 import {useInput, useStdin} from 'ink';
-import type {CliInteractionSurface} from '../app/view-state';
-import type {PermissionStage} from '../app/review-types';
+import type {CliInteractionSurface, PermissionStage} from '../app/view-state';
 import {resolvePromptInputAction} from './prompt-input-action';
 import {resolveReviewInputAction} from './review-input-action';
 
