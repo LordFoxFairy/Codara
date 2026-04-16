@@ -24,7 +24,7 @@ import {
   shouldKeepPromptTurnRunningAfterAgentLaunch,
   appendUniqueNotices,
 } from '../cli-controller-logic';
-import type {CliEvent} from '../../store/actions';
+import type {CliEvent} from '../view-state';
 import type {
   CliActiveTurn,
   CliInteractionKind,

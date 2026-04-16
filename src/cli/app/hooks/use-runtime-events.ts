@@ -11,7 +11,7 @@ import {computeRuntimeEventEffects} from '../cli-event-router';
 import {appendRuntimeEventPreservingOpenStarts, appendUniqueNotices} from '../cli-controller-logic';
 import type {CliInteractionScheduler} from '../interaction-scheduler';
 import type {CliStore} from '../cli-store';
-import type {CliEvent} from '../../store/actions';
+import type {CliEvent} from '../view-state';
 import type {
   CliActiveTurn,
   CliNotice,

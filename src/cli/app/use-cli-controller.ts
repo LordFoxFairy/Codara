@@ -41,7 +41,7 @@ import {
   type QueuedReviewResponseInteraction,
 } from './interaction-scheduler';
 import {resolveInteractionStateSnapshot} from './cli-interaction-queue';
-import type {CliEvent} from '../store/actions';
+import type {CliEvent} from './view-state';
 import type {
   CliActiveTurn,
   CliInteractionKind,
