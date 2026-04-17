@@ -5,7 +5,8 @@
  * between actions/tabs, handling focus/draft toggles, applying option
  * selections, and advancing through form steps. Submission-related code
  * (payload building, action resolution) lives in form-submit.ts; form
- * parsing lives in form-config.ts; answer mutation lives in form-answers.ts.
+ * parsing lives in form-config.ts; answer mutation lives in form-answers.ts;
+ * absolute-index resolution + tab-switch in form-navigation.ts.
  */
 import type {ReviewRequest} from '@/index';
 import type {
@@ -18,14 +19,11 @@ import {
   getActiveReviewTab,
   countTotalNavigableItems,
   toAbsoluteIndex,
-  getQuestionSelectableItemCount,
   supportsCustomReviewAnswer,
   acceptsReviewDraftInput,
   resolveDraftInputSelectionIndex,
-  isCustomSelectionIndex,
   resolveReviewInputSelectionIndex,
   getVisibleReviewFooterActions,
-  findNextIncompleteTabIndex,
   isReviewAnswerComplete,
 } from './form-tabs';
 import {
@@ -33,11 +31,15 @@ import {
   readReviewFormDraft,
   readReviewCustomDraft,
   hasCustomAnswerForActiveTab,
-  isCustomAnswerValue,
   applyCliReviewOptionSelection,
-  commitCliReviewAnswer,
   clearCliReviewValidation,
 } from './form-answers';
+import {
+  advanceToNextStep,
+  applyAbsoluteIndex,
+  applyEndStep,
+  applyTabSwitch,
+} from './form-navigation';
 
 // ── Re-exports (preserve the original public API) ──────────────────────
 export {resolveReviewInputSelectionIndex} from './form-tabs';
@@ -105,31 +107,6 @@ export function updateCliReviewDraft(current: CliReviewState, draft: string): Cl
 
 // ── Tab Navigation ─────────────────────────────────────────────────────
 
-function applyTabSwitch(current: CliReviewState, nextTabIndex: number): CliReviewState {
-  const nextForm = {...current.form!, endStep: false, activeTabIndex: nextTabIndex};
-  return {
-    ...clearCliReviewValidation(current),
-    form: nextForm,
-    draft: readReviewFormDraft(nextForm),
-    focus: 'input',
-    selectedActionIndex: resolveReviewInputSelectionIndex(nextForm),
-    customInputSelected: hasCustomAnswerForActiveTab(nextForm),
-    customInputActive: false,
-  };
-}
-
-function applyEndStep(current: CliReviewState): CliReviewState {
-  return {
-    ...clearCliReviewValidation(current),
-    form: {...current.form!, endStep: true},
-    draft: '',
-    focus: 'actions',
-    selectedActionIndex: 0,
-    customInputSelected: false,
-    customInputActive: false,
-  };
-}
-
 export function selectPreviousCliReviewTab(current: CliReviewState): CliReviewState {
   if (!current.form || current.form.tabs.length === 0) return current;
   if (current.form.endStep) return applyTabSwitch(current, Math.max(current.form.tabs.length - 1, 0));
@@ -146,25 +123,17 @@ export function selectNextCliReviewTab(current: CliReviewState): CliReviewState 
 // ── Shortcuts / Selection ──────────────────────────────────────────────
 
 export function applyCliReviewFormShortcut(current: CliReviewState, input: string): CliReviewState | undefined {
-  if (!current.form) {
-    return undefined;
-  }
+  if (!current.form) return undefined;
 
   const activeTab = getActiveReviewTab(current.form);
-  if (!activeTab) {
-    return undefined;
-  }
+  if (!activeTab) return undefined;
 
   const optionIndex = Number.parseInt(input, 10) - 1;
-  if (!Number.isFinite(optionIndex) || optionIndex < 0) {
-    return undefined;
-  }
+  if (!Number.isFinite(optionIndex) || optionIndex < 0) return undefined;
 
   if (optionIndex < activeTab.options.length) {
     const option = activeTab.options[optionIndex];
-    if (!option) {
-      return undefined;
-    }
+    if (!option) return undefined;
 
     return applyCliReviewOptionSelection(current, option.label);
   }
@@ -183,14 +152,10 @@ export function applyCliReviewFormShortcut(current: CliReviewState, input: strin
 }
 
 export function activateCliReviewFocusedSelection(current: CliReviewState): CliReviewState | undefined {
-  if (!current.form || current.focus === 'actions') {
-    return undefined;
-  }
+  if (!current.form || current.focus === 'actions') return undefined;
 
   const activeTab = getActiveReviewTab(current.form);
-  if (!activeTab) {
-    return undefined;
-  }
+  if (!activeTab) return undefined;
 
   const optionCount = activeTab.options.length;
   const selectedIndex = current.selectedActionIndex;
@@ -214,14 +179,10 @@ export function activateCliReviewFocusedSelection(current: CliReviewState): CliR
 }
 
 export function confirmCliReviewFocusedSelection(current: CliReviewState): CliReviewState | undefined {
-  if (!current.form || current.focus === 'actions') {
-    return undefined;
-  }
+  if (!current.form || current.focus === 'actions') return undefined;
 
   const activeTab = getActiveReviewTab(current.form);
-  if (!activeTab) {
-    return undefined;
-  }
+  if (!activeTab) return undefined;
 
   if (activeTab.input === 'multiselect') {
     return isReviewAnswerComplete(current.form.answers[activeTab.id])
@@ -236,9 +197,7 @@ export function confirmCliReviewFocusedSelection(current: CliReviewState): CliRe
 }
 
 export function prepareCliReviewDraftInput(current: CliReviewState): CliReviewState | undefined {
-  if (!current.form || current.focus !== 'input') {
-    return undefined;
-  }
+  if (!current.form || current.focus !== 'input') return undefined;
 
   const activeTab = getActiveReviewTab(current.form);
   if (!activeTab || !acceptsReviewDraftInput(activeTab, current.selectedActionIndex)) {
@@ -260,84 +219,30 @@ export function resolveCliReviewFocusedFooterAction(current: CliReviewState): Cl
 }
 
 export function shouldSpaceInsertIntoCliReviewDraft(review: CliReviewState | undefined): boolean {
-  if (!review?.form || review.focus !== 'input') {
-    return false;
-  }
+  if (!review?.form || review.focus !== 'input') return false;
 
   const activeTab = getActiveReviewTab(review.form);
-  if (!activeTab || !supportsCustomReviewAnswer(activeTab)) {
-    return false;
-  }
+  if (!activeTab || !supportsCustomReviewAnswer(activeTab)) return false;
 
   const customIndex = activeTab.options.length;
-  if (review.selectedActionIndex === customIndex) {
-    return true;
-  }
+  if (review.selectedActionIndex === customIndex) return true;
 
   const answer = review.form.answers[activeTab.id];
-  if (typeof answer !== 'string' || !answer.trim()) {
-    return false;
-  }
+  if (typeof answer !== 'string' || !answer.trim()) return false;
 
   return activeTab.options.every((option) => option.label !== answer);
 }
 
 // ── Step Advancement ───────────────────────────────────────────────────
 
-export function advanceCliReviewToNextStep(current: CliReviewState): CliReviewState {
-  if (!current.form) {
-    return current;
-  }
-
-  const currentTab = getActiveReviewTab(current.form);
-  if (currentTab && !isReviewAnswerComplete(current.form.answers[currentTab.id])) {
-    return {
-      ...current,
-      validationMessage: `Complete ${currentTab.label} before continuing.`,
-    };
-  }
-
-  let nextForm = current.form;
-  const nextIncompleteTabIndex = findNextIncompleteTabIndex(nextForm, current.form.activeTabIndex);
-  if (nextIncompleteTabIndex >= 0) {
-    nextForm = {
-      ...nextForm,
-      endStep: false,
-      activeTabIndex: nextIncompleteTabIndex,
-    };
-    return {
-      ...clearCliReviewValidation(current),
-      draft: readReviewFormDraft(nextForm),
-      form: nextForm,
-      focus: 'input',
-      selectedActionIndex: resolveReviewInputSelectionIndex(nextForm),
-      customInputSelected: hasCustomAnswerForActiveTab(nextForm),
-      customInputActive: false,
-    };
-  }
-
-  return {
-    ...clearCliReviewValidation(current),
-    draft: '',
-    form: {
-      ...nextForm,
-      endStep: true,
-    },
-    focus: 'actions',
-    selectedActionIndex: 0,
-    customInputSelected: false,
-    customInputActive: false,
-  };
-}
+export const advanceCliReviewToNextStep = advanceToNextStep;
 
 export function resolveCliReviewFormState(
   request: ReviewRequest,
   current: CliReviewFormState | undefined,
 ): CliReviewFormState | undefined {
   const parsed = readReviewFormConfig(request.ui);
-  if (!parsed) {
-    return undefined;
-  }
+  if (!parsed) return undefined;
 
   return {
     ...parsed,
@@ -346,52 +251,5 @@ export function resolveCliReviewFormState(
       : 0,
     answers: current?.answers ?? {},
     endStep: current?.endStep ?? false,
-  };
-}
-
-// ── Private helpers ────────────────────────────────────────────────────
-
-function applyAbsoluteIndex(current: CliReviewState, absoluteIndex: number): CliReviewState {
-  if (!current.form) {
-    return {
-      ...clearCliReviewValidation(current),
-      selectedActionIndex: absoluteIndex % Math.max(current.actions.length, 1),
-    };
-  }
-
-  if (!current.form.endStep) {
-    const activeTab = getActiveReviewTab(current.form);
-    const inputCount = getQuestionSelectableItemCount(getActiveReviewTab(current.form));
-    if (absoluteIndex < inputCount) {
-      if (
-        activeTab
-        && activeTab.input !== 'multiselect'
-        && absoluteIndex < activeTab.options.length
-        && isCustomAnswerValue(activeTab, current.form.answers[activeTab.id])
-      ) {
-        return commitCliReviewAnswer(current, activeTab.options[absoluteIndex]?.label ?? '', absoluteIndex);
-      }
-
-      return {
-        ...clearCliReviewValidation(current),
-        focus: 'input',
-        selectedActionIndex: absoluteIndex,
-        customInputSelected: current.customInputSelected,
-        customInputActive: isCustomSelectionIndex(current.form, absoluteIndex) ? current.customInputActive : false,
-      };
-    }
-
-    return {
-      ...clearCliReviewValidation(current),
-      focus: 'actions',
-      selectedActionIndex: absoluteIndex - inputCount,
-      customInputSelected: current.customInputSelected,
-      customInputActive: false,
-    };
-  }
-
-  return {
-    ...clearCliReviewValidation(current),
-    selectedActionIndex: absoluteIndex,
   };
 }
