@@ -177,15 +177,19 @@ export function resolveHydratedCoreMessages(input: {
     return input.incomingMessages;
   }
 
-  if (input.review) {
-    return input.incomingMessages;
-  }
-
-  // Preserve current messages when either:
-  // (a) the prompt turn is still running and we already have a visible reply, or
+  // Preserve current messages when:
+  // (a) the prompt turn is still running and we already have a visible reply,
   // (b) the prompt turn has just settled (transitioned to 'done') — a late
-  //     empty hydrate must not clobber the messages that drove that settlement.
-  if (input.runState.status !== 'running' && input.runState.status !== 'done') {
+  //     empty hydrate must not clobber the messages that drove that settlement,
+  // (c) a review (permission/ask-user) is active and incoming hydrate is empty
+  //     — losing messages mid-review leaves the transcript blank while the user
+  //     answers the prompt.
+  if (
+    input.runState.status !== 'running'
+    && input.runState.status !== 'done'
+    && input.runState.status !== 'paused'
+    && !input.review
+  ) {
     return input.incomingMessages;
   }
 
