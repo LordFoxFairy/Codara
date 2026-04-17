@@ -1,7 +1,19 @@
+/**
+ * Subagent run stores.
+ *
+ * Two implementations with a shared base class:
+ *  - {@link InMemorySubagentRunStore} — ephemeral, wiped on process exit.
+ *  - {@link FileSubagentRunStore} — JSON-per-run persistence under a root dir.
+ *
+ * All record state transitions live in {@link ./run-store-mutations}; this
+ * module only coordinates read/write/persist around them.
+ *
+ * @module
+ */
+
 import {randomUUID} from 'node:crypto';
 import {mkdirSync, readdirSync, readFileSync, renameSync, writeFileSync} from 'node:fs';
 import path from 'node:path';
-import {z} from 'zod';
 import type {
   SubagentCompletionContinuation,
   SubagentRunPauseInput,
@@ -12,35 +24,25 @@ import type {
   SubagentRunUpdateInput,
 } from '@tasks/subagent/types';
 import type {SubagentResult} from '@shared/subagent-result';
+import {
+  applySubagentRunFinish,
+  applySubagentRunPause,
+  applySubagentRunResume,
+  applySubagentRunStart,
+  applySubagentRunUpdate,
+  cloneSubagentRun,
+  findPendingCompletionBatch,
+  normalizeBatchId,
+  normalizeRunId,
+  normalizeSessionId,
+  parseSubagentRunRecord,
+  serializePendingCompletionBatch,
+  sortSubagentRuns,
+} from './run-store-mutations';
 
 export interface SubagentRunFileStoreOptions {
   rootDir: string;
 }
-
-const subagentRunRecordSchema = z.object({
-  runId: z.string(),
-  parentSessionId: z.string(),
-  batchId: z.string(),
-  batchExpectedCount: z.number().int().positive(),
-  label: z.string(),
-  agentName: z.string(),
-  subagentType: z.string().optional(),
-  permissionMode: z.string().optional(),
-  status: z.enum(['running', 'paused', 'completed', 'failed']),
-  startedAt: z.string(),
-  updatedAt: z.string(),
-  endedAt: z.string().optional(),
-  childSessionId: z.string().optional(),
-  latestActivity: z.string().optional(),
-  activityLog: z.array(z.string()).optional(),
-  summary: z.string().optional(),
-  errorMessage: z.string().optional(),
-  reason: z.enum(['complete', 'error', 'max_turns', 'budget_exhausted']).optional(),
-  turns: z.number().optional(),
-  toolUseCount: z.number().optional(),
-  totalTokens: z.number().optional(),
-  completionClaimedAt: z.string().optional(),
-});
 
 export function createSubagentRunMemoryStore(): SubagentRunStore {
   return new InMemorySubagentRunStore();
@@ -123,9 +125,7 @@ abstract class BaseSubagentRunStore implements SubagentRunStore {
       normalizeSessionId(parentSessionId),
       preferredBatchIds,
     );
-    if (!pending) {
-      return undefined;
-    }
+    if (!pending) return undefined;
 
     const claimedAt = new Date().toISOString();
     for (const record of pending.records) {
@@ -141,9 +141,7 @@ abstract class BaseSubagentRunStore implements SubagentRunStore {
     const normalizedSessionId = normalizeSessionId(parentSessionId);
     const normalizedBatchId = normalizeBatchId(batchId);
     for (const record of this.records.values()) {
-      if (record.parentSessionId !== normalizedSessionId || record.batchId !== normalizedBatchId || !record.completionClaimedAt) {
-        continue;
-      }
+      if (record.parentSessionId !== normalizedSessionId || record.batchId !== normalizedBatchId || !record.completionClaimedAt) continue;
       const next = {...record, completionClaimedAt: undefined};
       this.storeRecord(next, record);
     }
@@ -155,9 +153,7 @@ abstract class BaseSubagentRunStore implements SubagentRunStore {
     const now = new Date().toISOString();
 
     for (const record of this.records.values()) {
-      if (record.parentSessionId !== normalizedSessionId || record.status !== 'running') {
-        continue;
-      }
+      if (record.parentSessionId !== normalizedSessionId || record.status !== 'running') continue;
       const next = applySubagentRunPause(record, undefined, now);
       this.storeRecord(next, record);
     }
@@ -165,9 +161,7 @@ abstract class BaseSubagentRunStore implements SubagentRunStore {
 
   protected requireRun(runId: string): SubagentRunRecord {
     const record = this.records.get(normalizeRunId(runId));
-    if (!record) {
-      throw new Error(`Subagent run "${runId}" not found`);
-    }
+    if (!record) throw new Error(`Subagent run "${runId}" not found`);
     return record;
   }
 }
@@ -183,9 +177,7 @@ class FileSubagentRunStore extends BaseSubagentRunStore {
   }
 
   protected override ensureReady(): void {
-    if (this.loaded) {
-      return;
-    }
+    if (this.loaded) return;
     this.loaded = true;
 
     let entries: string[] = [];
@@ -196,9 +188,7 @@ class FileSubagentRunStore extends BaseSubagentRunStore {
     }
 
     for (const entry of entries) {
-      if (!entry.endsWith('.json')) {
-        continue;
-      }
+      if (!entry.endsWith('.json')) continue;
       const record = this.readSubagentRun(path.join(this.rootDir, entry));
       if (record) {
         this.records.set(record.runId, record);
@@ -219,16 +209,12 @@ class FileSubagentRunStore extends BaseSubagentRunStore {
     this.ensureReady();
     const normalizedSessionId = normalizeSessionId(sessionId);
     const runIds = this.sessionIndex.get(normalizedSessionId);
-    if (!runIds || runIds.size === 0) {
-      return;
-    }
+    if (!runIds || runIds.size === 0) return;
 
     const now = new Date().toISOString();
     for (const runId of runIds) {
       const record = this.records.get(runId);
-      if (!record || record.status !== 'running') {
-        continue;
-      }
+      if (!record || record.status !== 'running') continue;
       const next = applySubagentRunPause(record, undefined, now);
       this.storeRecord(next, record);
     }
@@ -261,244 +247,8 @@ class FileSubagentRunStore extends BaseSubagentRunStore {
   private unindexSubagentRun(sessionId: string, runId: string): void {
     const normalizedSessionId = normalizeSessionId(sessionId);
     const runIds = this.sessionIndex.get(normalizedSessionId);
-    if (!runIds) {
-      return;
-    }
+    if (!runIds) return;
     runIds.delete(runId);
-    if (runIds.size === 0) {
-      this.sessionIndex.delete(normalizedSessionId);
-    }
+    if (runIds.size === 0) this.sessionIndex.delete(normalizedSessionId);
   }
-}
-
-function createSubagentRunRecord(runId: string, input: SubagentRunStartInput, now: string): SubagentRunRecord {
-  return {
-    runId,
-    parentSessionId: normalizeSessionId(input.parentSessionId),
-    batchId: normalizeBatchId(input.batchId ?? `${normalizeSessionId(input.parentSessionId)}:${runId}`),
-    batchExpectedCount: normalizeBatchExpectedCount(input.batchExpectedCount ?? 1),
-    label: normalizeText(input.label),
-    agentName: normalizeText(input.agentName),
-    ...(input.subagentType !== undefined ? {subagentType: normalizeOptionalText(input.subagentType)} : {}),
-    ...(input.permissionMode !== undefined ? {permissionMode: normalizeOptionalText(input.permissionMode)} : {}),
-    status: 'running',
-    startedAt: now,
-    updatedAt: now,
-    ...(input.childSessionId !== undefined ? {childSessionId: normalizeOptionalText(input.childSessionId)} : {}),
-  };
-}
-
-function cloneSubagentRun(record: SubagentRunRecord): SubagentRunRecord {
-  return {...record};
-}
-
-function sortSubagentRuns(records: SubagentRunRecord[]): SubagentRunRecord[] {
-  return records
-    .map((record) => cloneSubagentRun(record))
-    .sort((left, right) => {
-      const started = left.startedAt.localeCompare(right.startedAt);
-      return started !== 0 ? started : left.runId.localeCompare(right.runId);
-    });
-}
-
-function applySubagentRunStart(
-  existing: SubagentRunRecord | undefined,
-  runId: string,
-  input: SubagentRunStartInput,
-  now: string,
-): SubagentRunRecord {
-  const next: SubagentRunRecord = {
-    ...(existing ? cloneSubagentRun(existing) : createSubagentRunRecord(runId, input, now)),
-    runId,
-    parentSessionId: normalizeSessionId(input.parentSessionId),
-    batchId: normalizeBatchId(input.batchId ?? existing?.batchId ?? `${normalizeSessionId(input.parentSessionId)}:${runId}`),
-    batchExpectedCount: normalizeBatchExpectedCount(input.batchExpectedCount ?? existing?.batchExpectedCount ?? 1),
-    label: normalizeText(input.label),
-    agentName: normalizeText(input.agentName),
-    ...(input.subagentType !== undefined ? {subagentType: normalizeOptionalText(input.subagentType)} : {}),
-    status: 'running',
-    updatedAt: now,
-    ...(input.childSessionId !== undefined ? {childSessionId: normalizeOptionalText(input.childSessionId)} : {}),
-    ...(existing ? {} : {startedAt: now}),
-  };
-
-  if (existing) {
-    next.startedAt = existing.startedAt;
-    delete next.endedAt;
-  }
-
-  return next;
-}
-
-function applySubagentRunUpdate(record: SubagentRunRecord, input: SubagentRunUpdateInput, now: string): SubagentRunRecord {
-  const nextActivityLog = appendSubagentActivityLog(record.activityLog, input.activityLabel);
-  return {
-    ...record,
-    ...(input.latestActivity !== undefined ? {latestActivity: normalizeOptionalText(input.latestActivity)} : {}),
-    ...(nextActivityLog ? {activityLog: nextActivityLog} : {}),
-    ...(typeof input.toolUseCount === 'number' ? {toolUseCount: input.toolUseCount} : {}),
-    updatedAt: now,
-  };
-}
-
-function applySubagentRunResume(record: SubagentRunRecord, input: SubagentRunResumeInput | undefined, now: string): SubagentRunRecord {
-  return {
-    ...record,
-    status: 'running',
-    ...(input?.childSessionId !== undefined ? {childSessionId: normalizeOptionalText(input.childSessionId)} : {}),
-    ...(input?.latestActivity !== undefined ? {latestActivity: normalizeOptionalText(input.latestActivity)} : {}),
-    updatedAt: now,
-    endedAt: undefined,
-  };
-}
-
-function applySubagentRunPause(record: SubagentRunRecord, input: SubagentRunPauseInput | undefined, now: string): SubagentRunRecord {
-  return {
-    ...record,
-    status: 'paused',
-    ...(input?.childSessionId !== undefined ? {childSessionId: normalizeOptionalText(input.childSessionId)} : {}),
-    ...(input?.latestActivity !== undefined ? {latestActivity: normalizeOptionalText(input.latestActivity)} : {}),
-    updatedAt: now,
-    endedAt: undefined,
-  };
-}
-
-function applySubagentRunFinish(record: SubagentRunRecord, result: SubagentResult, now: string): SubagentRunRecord {
-  return {
-    ...record,
-    status: result.reason === 'complete' ? 'completed' : 'failed',
-    childSessionId: normalizeOptionalText(result.sessionId),
-    reason: result.reason,
-    turns: result.turns,
-    ...(result.summary ? {summary: result.summary} : {}),
-    ...(result.errorMessage ? {errorMessage: result.errorMessage} : {}),
-    ...(result.toolUseCount !== undefined ? {toolUseCount: result.toolUseCount} : {}),
-    ...(result.totalTokens !== undefined ? {totalTokens: result.totalTokens} : {}),
-    updatedAt: now,
-    endedAt: now,
-  };
-}
-
-function findPendingCompletionBatch(
-  records: SubagentRunRecord[],
-  parentSessionId: string,
-  preferredBatchIds: readonly string[] = [],
-): {records: SubagentRunRecord[]} | undefined {
-  const batches = new Map<string, SubagentRunRecord[]>();
-  for (const record of records) {
-    if (record.parentSessionId !== parentSessionId) {
-      continue;
-    }
-    const bucket = batches.get(record.batchId) ?? [];
-    bucket.push(record);
-    batches.set(record.batchId, bucket);
-  }
-
-  const preferredBatchIdSet = new Set(preferredBatchIds.map((batchId) => normalizeBatchId(batchId)));
-  const sortedBatches = [...batches.values()]
-    .filter((batchRecords) => batchRecords.length > 0)
-    .filter((batchRecords) => preferredBatchIdSet.size === 0 || preferredBatchIdSet.has(batchRecords[0]!.batchId))
-    .sort((left, right) => {
-      const leftStartedAt = left[0]!.startedAt;
-      const rightStartedAt = right[0]!.startedAt;
-      const started = leftStartedAt.localeCompare(rightStartedAt);
-      return started !== 0 ? started : left[0]!.batchId.localeCompare(right[0]!.batchId);
-    });
-
-  for (const batchRecords of sortedBatches) {
-    const expectedCount = Math.max(...batchRecords.map((record) => record.batchExpectedCount));
-    if (batchRecords.length < expectedCount) {
-      continue;
-    }
-    if (batchRecords.some((record) => record.status === 'running' || record.status === 'paused')) {
-      continue;
-    }
-    if (batchRecords.some((record) => record.completionClaimedAt)) {
-      continue;
-    }
-    return {records: sortSubagentRuns(batchRecords)};
-  }
-
-  return undefined;
-}
-
-function serializePendingCompletionBatch(records: SubagentRunRecord[]): SubagentCompletionContinuation {
-  const [first] = records;
-  return {
-    parentSessionId: first!.parentSessionId,
-    batchId: first!.batchId,
-    runs: records.map((record) => ({
-      runId: record.runId,
-      label: record.label,
-      agentName: record.agentName,
-      status: record.status === 'failed' ? 'failed' : 'completed',
-      ...(record.summary ? {summary: record.summary} : {}),
-      ...(record.errorMessage ? {errorMessage: record.errorMessage} : {}),
-      ...(typeof record.toolUseCount === 'number' ? {toolUseCount: record.toolUseCount} : {}),
-      ...(typeof record.totalTokens === 'number' ? {totalTokens: record.totalTokens} : {}),
-    })),
-  };
-}
-
-function parseSubagentRunRecord(value: unknown): SubagentRunRecord | undefined {
-  const parsed = subagentRunRecordSchema.safeParse(value);
-  return parsed.success ? parsed.data : undefined;
-}
-
-function appendSubagentActivityLog(current: string[] | undefined, nextLabel: string | undefined): string[] | undefined {
-  const normalized = normalizeOptionalText(nextLabel);
-  if (!normalized) {
-    return current ? [...current] : undefined;
-  }
-
-  const next = [...(current ?? [])];
-  if (next[next.length - 1] !== normalized) {
-    next.push(normalized);
-  }
-
-  return next.slice(-12);
-}
-
-function normalizeRunId(value: string): string {
-  const runId = value.trim();
-  if (!runId) {
-    throw new Error('Subagent run id is required');
-  }
-  return runId;
-}
-
-function normalizeSessionId(value: string): string {
-  const sessionId = value.trim();
-  if (!sessionId) {
-    throw new Error('Subagent run session id is required');
-  }
-  return sessionId;
-}
-
-function normalizeBatchId(value: string): string {
-  const batchId = value.trim();
-  if (!batchId) {
-    throw new Error('Subagent run batch id is required');
-  }
-  return batchId;
-}
-
-function normalizeBatchExpectedCount(value: number): number {
-  if (!Number.isInteger(value) || value <= 0) {
-    throw new Error('Subagent run batch expected count must be a positive integer');
-  }
-  return value;
-}
-
-function normalizeText(value: string): string {
-  const text = value.trim();
-  if (!text) {
-    throw new Error('Subagent run label and agent name are required');
-  }
-  return text;
-}
-
-function normalizeOptionalText(value: string | undefined): string | undefined {
-  const text = value?.trim();
-  return text ? text : undefined;
 }
