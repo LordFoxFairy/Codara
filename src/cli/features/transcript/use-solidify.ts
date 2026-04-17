@@ -4,7 +4,7 @@ import {HumanMessage, type BaseMessage} from '@langchain/core/messages';
 import type {CodaraRuntimeEvent} from '@/index';
 import type {SubagentRunQuerySummary} from '@codara/types';
 import {isSubagentInternalAssistantText} from '@/index';
-import type {CliActiveTurn, CliNotice, CliRunState} from '../app/view-state';
+import type {CliActiveTurn, CliNotice, CliRunState} from '../../app/view-state';
 import {
   type SolidifiedItem,
   type TranscriptItem,
@@ -14,7 +14,7 @@ import {
   createToolCallLookup,
   dedupeTrailingTranscriptItemsCoveredByRuntime,
   normalizeVisibleAssistantText,
-} from '../transcript/model';
+} from './model';
 import {readMessageText} from '@shared/messages';
 
 export interface UseSolidifiedTranscriptInput {

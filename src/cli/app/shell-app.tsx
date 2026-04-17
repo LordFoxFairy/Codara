@@ -16,8 +16,8 @@ import {PersistentSpinner} from '../components/chrome/persistent-spinner';
 import {SubagentRunPanel} from '../components/chrome/subagent-run-panel';
 import {ReviewPanel, isPermissionReview} from '../features/review/panel';
 import {SessionPicker} from '../components/conversation/session-picker';
-import {ActiveTranscript} from '../components/conversation/transcript';
-import {SolidifiedBlock} from '../components/conversation/solidified-block';
+import {ActiveTranscript} from '../features/transcript/render';
+import {SolidifiedBlock} from '../features/transcript/solidified-block';
 import {TIPS} from '../hooks/use-rotating-tip';
 import {CompletionMenu} from '../components/prompt/completion-menu';
 import {PromptFrame} from '../components/prompt/prompt-frame';
@@ -29,12 +29,12 @@ import {useSubagentRunDetails} from '../hooks/use-subagent-run-details';
 import {useCommandCompletion} from '../hooks/use-command-completion';
 import {useCliInteractionInput} from '../hooks/use-cli-interaction-input';
 import {useSessionPicker} from '../hooks/use-session-picker';
-import {useSolidifiedTranscript} from '../hooks/use-solidified-transcript';
+import {useSolidifiedTranscript} from '../features/transcript/use-solidify';
 import {useTerminalWidth} from '../hooks/use-terminal-width';
 import type {CliInteractionSurface, CliReviewState} from './view-state';
 import {shouldSpaceInsertIntoCliReviewDraft} from '../features/review/state-core';
-import type {TranscriptItem} from '../transcript/model';
-import type {SolidifiedItem} from '../transcript/model';
+import type {TranscriptItem} from '../features/transcript/model';
+import type {SolidifiedItem} from '../features/transcript/model';
 
 export interface CodaraCliAppProps {
   codara: Codara;

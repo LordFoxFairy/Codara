@@ -4,7 +4,7 @@ import {
   buildSolidifiedItemsFromRange,
   createToolCallLookup,
   type TranscriptItem,
-} from '../transcript/model';
+} from '../features/transcript/model';
 
 export interface UseSubagentRunDetailsInput {
   codara: Codara;

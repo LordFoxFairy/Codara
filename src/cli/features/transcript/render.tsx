@@ -4,19 +4,19 @@ import type {BaseMessage} from '@langchain/core/messages';
 import {Box, Text} from 'ink';
 import type {CliActiveTurn, CliNotice} from '../../app/view-state';
 import type {ActiveSubagentRun} from '../../hooks/use-subagent-runs';
-import {buildTranscriptItems, dedupeCanonicalTranscriptItems, type ToolResultMeta, type TranscriptRole} from '../../transcript/model';
+import {buildTranscriptItems, dedupeCanonicalTranscriptItems, type ToolResultMeta, type TranscriptRole} from './model';
 import {formatToolHeaderArgs} from '../../../shared/tool-display';
 import {formatElapsedMs, formatTokenCount} from '../../utils/format';
 import {BRAILLE_FRAMES, SPINNER_INTERVAL_MS, theme} from '../../utils/theme';
-import {DiffView} from './diff-view';
-import {MarkdownText} from './markdown-text';
+import {DiffView} from '../../components/conversation/diff-view';
+import {MarkdownText} from '../../components/conversation/markdown-text';
 
 interface TranscriptProps {
   coreMessages: readonly BaseMessage[];
   notices: readonly CliNotice[];
   activeTurn?: CliActiveTurn;
   runtimeEvents?: readonly CodaraRuntimeEvent[];
-  subagentDetails?: ReadonlyMap<string, import('../../transcript/model').TranscriptItem[]>;
+  subagentDetails?: ReadonlyMap<string, import('./model').TranscriptItem[]>;
   expandedAll?: boolean;
 }
 
@@ -191,7 +191,7 @@ function parseSubagentRunId(itemId: string): string | undefined {
 }
 
 function resolveSubagentRunId(
-  item: import('../../transcript/model').TranscriptItem & {toolMeta: ToolResultMeta},
+  item: import('./model').TranscriptItem & {toolMeta: ToolResultMeta},
 ): string | undefined {
   return item.toolMeta.runId ?? parseSubagentRunId(item.id);
 }
@@ -294,11 +294,11 @@ function SingleTaskExecutionBlock({
   detailItems = [],
   subagentDetails,
 }: {
-  item: import('../../transcript/model').TranscriptItem & {toolMeta: ToolResultMeta};
+  item: import('./model').TranscriptItem & {toolMeta: ToolResultMeta};
   activeTask?: ActiveSubagentRun;
   expanded?: boolean;
-  detailItems?: readonly import('../../transcript/model').TranscriptItem[];
-  subagentDetails?: ReadonlyMap<string, import('../../transcript/model').TranscriptItem[]>;
+  detailItems?: readonly import('./model').TranscriptItem[];
+  subagentDetails?: ReadonlyMap<string, import('./model').TranscriptItem[]>;
 }): React.JSX.Element {
   const [frame, setFrame] = React.useState(0);
   React.useEffect(() => {
@@ -332,7 +332,7 @@ function SingleTaskExecutionBlock({
       {expanded && visibleDetailItems.length > 0 ? (
         <Box paddingLeft={4} marginTop={1}>
           <TranscriptItemsView
-            items={visibleDetailItems as import('../../transcript/model').TranscriptItem[]}
+            items={visibleDetailItems as import('./model').TranscriptItem[]}
             activeSubagentRuns={[]}
             expandedAll
             subagentDetails={subagentDetails}
@@ -392,10 +392,10 @@ export function ActiveTranscript({
   expandedAll = false,
   subagentDetails,
 }: {
-  items: import('../../transcript/model').TranscriptItem[];
+  items: import('./model').TranscriptItem[];
   activeSubagentRuns?: readonly ActiveSubagentRun[];
   expandedAll?: boolean;
-  subagentDetails?: ReadonlyMap<string, import('../../transcript/model').TranscriptItem[]>;
+  subagentDetails?: ReadonlyMap<string, import('./model').TranscriptItem[]>;
 }): React.JSX.Element {
   return <TranscriptItemsView items={items} activeSubagentRuns={activeSubagentRuns} expandedAll={expandedAll} subagentDetails={subagentDetails} />;
 }
@@ -406,10 +406,10 @@ export function TranscriptItemsView({
   expandedAll = false,
   subagentDetails,
 }: {
-  items: import('../../transcript/model').TranscriptItem[];
+  items: import('./model').TranscriptItem[];
   activeSubagentRuns?: readonly ActiveSubagentRun[];
   expandedAll?: boolean;
-  subagentDetails?: ReadonlyMap<string, import('../../transcript/model').TranscriptItem[]>;
+  subagentDetails?: ReadonlyMap<string, import('./model').TranscriptItem[]>;
 }): React.JSX.Element {
   const blocks: React.JSX.Element[] = [];
   const canonicalItems = dedupeCanonicalTranscriptItems(items);
@@ -430,7 +430,7 @@ export function TranscriptItemsView({
   for (let index = 0; index < visibleItems.length; index += 1) {
     const item = visibleItems[index]!;
     if (item.role === 'agent' && item.toolMeta) {
-      const taskItem = item as import('../../transcript/model').TranscriptItem & {toolMeta: ToolResultMeta};
+      const taskItem = item as import('./model').TranscriptItem & {toolMeta: ToolResultMeta};
       const runId = resolveSubagentRunId(taskItem);
       const activeTask = runId ? activeSubagentRuns.find((run) => run.id === runId) : undefined;
       blocks.push(

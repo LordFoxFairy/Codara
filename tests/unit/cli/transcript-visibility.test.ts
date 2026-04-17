@@ -5,7 +5,7 @@ import {
   buildSolidifiedItemsFromRange,
   createToolCallLookup,
   normalizeVisibleAssistantText,
-} from '@/cli/transcript/model';
+} from '@/cli/features/transcript/model';
 
 describe('cli transcript visibility', () => {
   test('does not keep pre-launch assistant chatter once a running subagent block owns the delegation step', () => {

@@ -1,5 +1,5 @@
 import type {CodaraRuntimeEvent} from '@/index';
-import {shouldHideRuntimeEventForTranscript} from '../transcript/model';
+import {shouldHideRuntimeEventForTranscript} from '../features/transcript/model';
 import type {CliNotice} from './view-state';
 
 export interface RuntimeEventRouteResult {

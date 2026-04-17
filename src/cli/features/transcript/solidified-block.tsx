@@ -1,9 +1,9 @@
 import React from 'react';
 import {Box} from 'ink';
 import type {CliLayoutMode} from '../../app/layout-mode';
-import type {SolidifiedItem} from '../../transcript/model';
-import {StaticWelcome} from './welcome-state';
-import {TranscriptItemsView} from './transcript';
+import type {SolidifiedItem} from './model';
+import {StaticWelcome} from '../../components/conversation/welcome-state';
+import {TranscriptItemsView} from './render';
 
 interface SolidifiedBlockProps {
   turn: SolidifiedItem;
@@ -12,7 +12,7 @@ interface SolidifiedBlockProps {
   modelAlias?: string;
   tip: string;
   expandedAll?: boolean;
-  subagentDetails?: ReadonlyMap<string, import('../../transcript/model').TranscriptItem[]>;
+  subagentDetails?: ReadonlyMap<string, import('./model').TranscriptItem[]>;
 }
 
 export function SolidifiedBlock({turn, layoutMode, cwd, modelAlias, tip, expandedAll = false, subagentDetails}: SolidifiedBlockProps): React.JSX.Element {

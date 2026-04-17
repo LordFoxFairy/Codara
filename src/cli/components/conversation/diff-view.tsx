@@ -1,6 +1,6 @@
 import React from 'react';
 import {Box, Text} from 'ink';
-import type {DiffData} from '../../transcript/diff-compute';
+import type {DiffData} from '../../features/transcript/diff-compute';
 import type {StructuredPatchHunk} from 'diff';
 import {theme} from '../../utils/theme';
 

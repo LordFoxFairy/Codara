@@ -9,7 +9,7 @@ import {
   hasVisibleAssistantSolidifiedReply,
 } from '../../../src/cli/app/shell-app';
 import type {CliReviewState} from '../../../src/cli/app/view-state';
-import type {SolidifiedItem} from '../../../src/cli/transcript/model';
+import type {SolidifiedItem} from '../../../src/cli/features/transcript/model';
 
 describe('CLI foreground surface', () => {
   it('should keep the transcript foreground when a review is active', () => {

@@ -1,7 +1,7 @@
 import {describe, expect, test} from 'bun:test';
 import type {CodaraRuntimeEvent} from '@events';
 import {RuntimeEventsController} from '@events';
-import {buildActiveItems} from '@/cli/transcript/model';
+import {buildActiveItems} from '@/cli/features/transcript/model';
 import type {SessionState} from '@state/session/types';
 import {FileSessionStore} from '@state/session/store';
 import {mkdtemp} from 'node:fs/promises';

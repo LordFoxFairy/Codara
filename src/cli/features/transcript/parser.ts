@@ -7,7 +7,7 @@ import {readMessageText} from '@shared/messages';
 import {readSubagentRunLaunchResult} from '@shared/subagent-run-launch';
 import {TOOL_NAMES} from '@shared/tool-display';
 import type {SubagentRunQuerySummary} from '@codara/types';
-import {formatTokenCount} from '../utils/format';
+import {formatTokenCount} from '../../utils/format';
 import type {TranscriptItem, TranscriptRole} from './model';
 import {
   isAgentToolName,

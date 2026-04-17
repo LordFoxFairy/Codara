@@ -11,12 +11,12 @@ import {
   createToolCallLookup,
   dedupeTrailingTranscriptItemsCoveredByRuntime,
   type TranscriptItem,
-} from '@/cli/transcript/model';
+} from '@/cli/features/transcript/model';
 import {
   filterSubagentCompletionTranscriptItems,
   orderActiveTranscriptItems,
   useSolidifiedTranscript,
-} from '@/cli/hooks/use-solidified-transcript';
+} from '@/cli/features/transcript/use-solidify';
 import type {CodaraRuntimeEvent} from '@/index';
 
 describe('solidified transcript model', () => {

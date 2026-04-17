@@ -11,15 +11,15 @@ import {readMessageText} from '@shared/messages';
 import {TOOL_NAMES} from '@shared/tool-display';
 import type {CodaraRuntimeEvent} from '@/index';
 import type {SubagentRunQuerySummary} from '@codara/types';
-import type {CliActiveTurn, CliNotice, CliRunState} from '../app/view-state';
+import type {CliActiveTurn, CliNotice, CliRunState} from '../../app/view-state';
 import type {DiffData} from './diff-compute';
 
 // Re-export sub-modules so all consumers keep working via `transcript/model`.
-export {createToolCallLookup, buildCoreMessageItems, normalizeVisibleAssistantText} from './message-parser';
+export {createToolCallLookup, buildCoreMessageItems, normalizeVisibleAssistantText} from './parser';
 export {shouldHideRuntimeEventForTranscript} from './event-renderer';
 
 // Internal imports (not re-exported)
-import {createToolCallLookup, buildCoreMessageItems, shouldSuppressAssistantTaskLaunchChatter, shouldSuppressActiveTurnInteractionPreamble} from './message-parser';
+import {createToolCallLookup, buildCoreMessageItems, shouldSuppressAssistantTaskLaunchChatter, shouldSuppressActiveTurnInteractionPreamble} from './parser';
 import {buildRuntimeEventItems, isConcreteSubagentRuntimeEvent} from './event-renderer';
 
 // ── Types ─────────────────────────────────────────────────────────

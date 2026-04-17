@@ -17,7 +17,7 @@ import {readSubagentResult} from '@shared/subagent-result';
 import {readSubagentRunLaunchResult} from '@shared/subagent-run-launch';
 import {readSharedTaskCoordinationArtifact} from '@shared/task-coordination-result';
 import {TOOL_NAMES, formatToolDisplayName, formatToolHeaderArgs} from '@shared/tool-display';
-import {formatTokenCount} from '../utils/format';
+import {formatTokenCount} from '../../utils/format';
 import {computeEditDiff, type DiffData} from './diff-compute';
 import type {ToolResultMeta, TranscriptItem, TranscriptRole} from './model';
 import {

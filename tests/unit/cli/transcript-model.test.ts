@@ -1,6 +1,6 @@
 import {describe, expect, test} from 'bun:test';
 import {AIMessage, HumanMessage, SystemMessage, ToolMessage, type ToolCall} from '@langchain/core/messages';
-import {buildActiveItems, buildSolidifiedItemsFromRange, buildTranscriptItems, createToolCallLookup, hasTranscriptContent} from '@/cli/transcript/model';
+import {buildActiveItems, buildSolidifiedItemsFromRange, buildTranscriptItems, createToolCallLookup, hasTranscriptContent} from '@/cli/features/transcript/model';
 import {createInternalSharedTaskCoordinationMessage} from '@/shared/task-coordination-result';
 
 describe('cli transcript model', () => {
