@@ -1,6 +1,6 @@
 import {describe, test, expect, beforeEach} from 'bun:test';
-import {ChannelRegistry} from '@integration/channel/registry';
-import {createChannelReviewOptions} from '@integration/channel/review-adapter';
+import {ChannelRegistry} from '@channels/registry';
+import {createChannelReviewOptions} from '@channels/review-adapter';
 import type {Channel} from '@shared/channel-types';
 import type {ReviewRequest} from '@shared/agent-types';
 import type {ToolCallContext} from '@core/pipeline-types';

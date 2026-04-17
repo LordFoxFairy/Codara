@@ -9,7 +9,7 @@ import {
   loadModelRoutingConfig,
   ModelRegistry,
   type ModelInfo,
-} from '@integration/provider';
+} from '@models';
 import type {
   CreateCodaraModelCatalogOptions,
   CreateCodaraChatModelOptions,

@@ -1,13 +1,13 @@
 import {describe, expect, test} from 'bun:test';
-import {HookPipeline} from '@observability/hook/pipeline';
-import type {HookRegistry} from '@observability/hook/registry';
+import {HookPipeline} from '@hooks/pipeline';
+import type {HookRegistry} from '@hooks/registry';
 import type {
   HookDefinition, HookEntry, HookOutput, ToolUseContext,
   PermissionRequestContext, SubagentStartContext,
   TaskCreatedContext, TaskCompletedContext,
   ConfigChangeContext, CwdChangedContext,
-} from '@observability/hook/types';
-import type {HookExecutionStrategy} from '@observability/hook/executor';
+} from '@hooks/types';
+import type {HookExecutionStrategy} from '@hooks/executor';
 
 // Mock registry
 function createMockRegistry(entries: Record<string, HookEntry[]>): HookRegistry {

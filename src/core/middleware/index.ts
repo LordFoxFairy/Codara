@@ -52,7 +52,6 @@ export {
   parseReviewToolMessagePayload,
   type ReviewActionDescriptor,
   type ReviewAskDecision,
-  type ReviewContextConfig,
   type ReviewDecision,
   type ReviewDecisionContext,
   type ReviewDecisionResolver,

@@ -3,7 +3,7 @@ import {mkdtemp, readdir} from 'node:fs/promises';
 import {tmpdir} from 'node:os';
 import path from 'node:path';
 import {describe, expect, it, spyOn} from 'bun:test';
-import {createSubagentRunFileStore} from '@capability/subagent';
+import {createSubagentRunFileStore} from '@tasks/subagent';
 
 describe('agent run file store', () => {
   it('persists delegated runs to disk and reloads them', async () => {

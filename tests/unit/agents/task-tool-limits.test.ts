@@ -7,9 +7,9 @@ import type {BaseChatModel} from '@langchain/core/language_models/chat_models';
 import {tool} from '@langchain/core/tools';
 import {z} from 'zod';
 import {createAgent} from '@core/agent';
-import {createSubagentRunMemoryStore, type SubagentRunRecord} from '@capability/subagent';
-import {AGENT_TOOL_NAME, createSubagentTool} from '@capability/subagent/tool';
-import {FileSystemSkillStore} from '@capability/skill';
+import {createSubagentRunMemoryStore, type SubagentRunRecord} from '@tasks/subagent';
+import {AGENT_TOOL_NAME, createSubagentTool} from '@tasks/subagent/tool';
+import {FileSystemSkillStore} from '@skills';
 import {readSubagentRunLaunchResult} from '@shared/subagent-run-launch';
 import {createAgentSkillsMiddleware, ScriptedModel} from './task-tool.fixtures';
 

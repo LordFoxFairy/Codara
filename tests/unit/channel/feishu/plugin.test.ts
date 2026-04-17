@@ -1,5 +1,5 @@
 import {describe, test, expect, beforeEach, afterEach, mock} from 'bun:test';
-import {feishuPlugin} from '@integration/channel/feishu/plugin';
+import {feishuPlugin} from '@channels/feishu/plugin';
 
 function mockFetchSequence(responses: Array<Record<string, unknown>>) {
   let callIndex = 0;

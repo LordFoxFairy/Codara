@@ -2,7 +2,7 @@ import {describe, expect, it} from 'bun:test'
 import {mkdir, mkdtemp, writeFile} from 'node:fs/promises'
 import {tmpdir} from 'node:os'
 import path from 'node:path'
-import {FileSystemSkillStore, getDefaultSkillSources} from '@capability/skill'
+import {FileSystemSkillStore, getDefaultSkillSources} from '@skills'
 
 interface FileSystemSkillStoreOptions {
   sources?: string[]

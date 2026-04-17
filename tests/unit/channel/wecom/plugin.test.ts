@@ -1,6 +1,6 @@
 import {describe, test, expect} from 'bun:test';
-import {wecomPlugin} from '@integration/channel/wecom/plugin';
-import type {WeComAccount} from '@integration/channel/wecom/plugin';
+import {wecomPlugin} from '@channels/wecom/plugin';
+import type {WeComAccount} from '@channels/wecom/plugin';
 
 describe('wecomPlugin', () => {
   test('has correct id and name', () => {

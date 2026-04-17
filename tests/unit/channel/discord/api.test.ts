@@ -1,5 +1,5 @@
 import {describe, test, expect, beforeEach, afterEach, mock} from 'bun:test';
-import {DiscordApi, DiscordApiError} from '@integration/channel/discord/api';
+import {DiscordApi, DiscordApiError} from '@channels/discord/api';
 
 function mockFetch(response: unknown, status = 200) {
   return mock(() =>

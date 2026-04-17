@@ -44,7 +44,8 @@
       "Bash(npm ls:*)",
       "Bash(awk '$1 > 400 { print $2 \": \" $1 }')",
       "Bash(sort -t: -k2 -rn)",
-      "Bash(cat src/core/middleware/review*.ts)"
+      "Bash(cat src/core/middleware/review*.ts)",
+      "Bash(set -e)"
     ]
   }
 }

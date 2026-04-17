@@ -2,9 +2,9 @@ import {describe, expect, it} from 'bun:test';
 import {access, mkdtemp} from 'node:fs/promises';
 import {tmpdir} from 'node:os';
 import path from 'node:path';
-import {FileSessionStore} from '@durability/session/store';
-import {toFilesystemSafeId} from '@durability/storage-key';
-import type {SessionState} from '@durability/session/types';
+import {FileSessionStore} from '@state/session/store';
+import {toFilesystemSafeId} from '@state/storage-key';
+import type {SessionState} from '@state/session/types';
 
 describe('FileSessionStore', () => {
   it('should persist and list sessions with Windows-invalid session ids via a safe storage key', async () => {

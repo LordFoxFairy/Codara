@@ -12,7 +12,7 @@ import type {BaseMessage} from '@langchain/core/messages';
 import type {GuidelinesSource, PromptSource} from '@context/sources';
 import {
   type SkillsSource,
-} from '@capability/skill';
+} from '@skills';
 import {createSkillsRuntimeBundle} from '@context/skills-bundle';
 import type {DynamicSectionRegistry} from '@context/dynamic-sections';
 

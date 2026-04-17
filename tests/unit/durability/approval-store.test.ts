@@ -2,7 +2,7 @@ import {describe, expect, test} from 'bun:test';
 import {mkdtemp, rm} from 'node:fs/promises';
 import {tmpdir} from 'node:os';
 import path from 'node:path';
-import {createApprovalFileStore} from '@durability/approval-store';
+import {createApprovalFileStore} from '@state/approval-store';
 import type {ReviewRequest} from '@shared/agent-types';
 
 function makeReviewRequest(id: string, description: string, toolName: string): ReviewRequest {

@@ -39,7 +39,7 @@ import {
   createAgentMemoryCheckpointer,
   type AgentCheckpoint,
   type AgentCheckpointInfo,
-} from '@durability/checkpoint/agent';
+} from '@state/checkpoint/agent';
 import {MIDDLEWARE_NAMES, type BaseExecutionContext, type MiddlewareRuntimeShared} from '@core/pipeline-types';
 import {MiddlewarePipeline} from '@core/pipeline';
 import {deepClone} from '@shared/clone';
@@ -57,7 +57,7 @@ import {
 } from './error-recovery';
 import {createTokenBudgetState, shouldAutoCompact, shouldStopContinuation, estimateMessagesTokenCount} from './token-budget';
 import {parseReviewToolMessagePayload} from '@core/middleware/review';
-import type {AgentLifecycleHooks} from '@observability/hook/types';
+import type {AgentLifecycleHooks} from '@hooks/types';
 
 const DEFAULT_RECURSION_LIMIT = 25;
 const recordSchema = z.record(z.string(), z.unknown());

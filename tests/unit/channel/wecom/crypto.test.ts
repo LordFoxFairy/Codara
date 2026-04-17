@@ -6,7 +6,7 @@ import {
   encryptMessage,
   parseMessageXml,
   extractEncryptFromXml,
-} from '@integration/channel/wecom/crypto';
+} from '@channels/wecom/crypto';
 import {createHash, randomBytes} from 'node:crypto';
 
 describe('computeSignature', () => {

@@ -3,7 +3,7 @@ import {HumanMessage, ToolMessage} from '@langchain/core/messages';
 import {tool} from '@langchain/core/tools';
 import {z} from 'zod';
 import {createAgent} from '@core/agent';
-import {ChatModelFactory, ModelRegistry, parseModelRoutingConfig} from '@integration/provider';
+import {ChatModelFactory, ModelRegistry, parseModelRoutingConfig} from '@models';
 import {createMockRoutingConfig, startMockOpenAIServer} from '../provider/mock-openai-server';
 
 describe('Agent Loop End-to-End', () => {

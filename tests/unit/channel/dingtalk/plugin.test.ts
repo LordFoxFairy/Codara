@@ -1,6 +1,6 @@
 import {describe, it, expect, beforeEach, mock} from 'bun:test';
-import {dingtalkPlugin, type DingTalkAccount} from '@integration/channel/dingtalk/plugin';
-import {DingTalkApi} from '@integration/channel/dingtalk/api';
+import {dingtalkPlugin, type DingTalkAccount} from '@channels/dingtalk/plugin';
+import {DingTalkApi} from '@channels/dingtalk/api';
 import type {OutboundContext, ReviewPromptContext} from '@gateway/types';
 import type {ReviewRequest} from '@shared/agent-types';
 

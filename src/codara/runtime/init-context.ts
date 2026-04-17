@@ -6,7 +6,7 @@
  */
 import path from 'node:path';
 import {createCodaraGuidelinesSource, type GuidelinesSource, createCodaraPromptSource, type PromptSource} from '@context/sources';
-import {type SkillsSource, createCodaraSkillsSource} from '@capability/skill';
+import {type SkillsSource, createCodaraSkillsSource} from '@skills';
 import {buildBaseSystemMessage} from '@context/system-message';
 import {DynamicSectionRegistry} from '@context/dynamic-sections';
 import {createGitContextProvider} from '@context/git-context';

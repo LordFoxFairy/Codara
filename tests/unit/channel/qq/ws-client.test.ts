@@ -1,5 +1,5 @@
 import {describe, test, expect, beforeEach, afterEach} from 'bun:test';
-import {OneBotWsClient} from '@integration/channel/qq/ws-client';
+import {OneBotWsClient} from '@channels/qq/ws-client';
 
 /**
  * Mock WebSocket that simulates the OneBot server.

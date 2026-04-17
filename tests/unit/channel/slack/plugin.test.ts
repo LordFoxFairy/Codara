@@ -1,5 +1,5 @@
 import {describe, test, expect, beforeEach, afterEach, mock} from 'bun:test';
-import {slackPlugin} from '@integration/channel/slack/plugin';
+import {slackPlugin} from '@channels/slack/plugin';
 
 function mockFetch(response: unknown) {
   return mock(() =>

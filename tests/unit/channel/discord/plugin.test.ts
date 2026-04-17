@@ -1,5 +1,5 @@
 import {describe, test, expect, beforeEach, afterEach, mock} from 'bun:test';
-import {discordPlugin} from '@integration/channel/discord/plugin';
+import {discordPlugin} from '@channels/discord/plugin';
 
 function mockFetch(response: unknown, status = 200) {
   return mock(() =>

@@ -100,8 +100,7 @@ export interface ReviewMiddlewareOptions {
   createDenyMessage?: ReviewDenyMessageFactory;
 }
 
-// Keep for backward compat — types previously exported separately
-export type ReviewContextConfig = Pick<ReviewMiddlewareOptions, 'interruptOn' | 'descriptionPrefix'>;
+type ReviewContextConfig = Pick<ReviewMiddlewareOptions, 'interruptOn' | 'descriptionPrefix'>;
 export interface ReviewEffectiveConfig { interruptOn?: ReviewInterruptOn; descriptionPrefix: string }
 
 // ---------------------------------------------------------------------------
@@ -113,24 +112,24 @@ const DEFAULT_DESCRIPTION_PREFIX = 'Tool execution requires user review';
 const DEFAULT_ALLOWED_DECISIONS: ReviewDecisionValue[] = ['approve', 'edit', 'reject'];
 
 // ---------------------------------------------------------------------------
-// Record / string helpers (used across the module)
+// Record / string helpers (module-private)
 // ---------------------------------------------------------------------------
 
-export function isRecord(value: unknown): value is Record<string, unknown> {
+function isRecord(value: unknown): value is Record<string, unknown> {
   return Boolean(value && typeof value === 'object' && !Array.isArray(value));
 }
 
-export function readRecord(value: unknown): Record<string, unknown> {
+function readRecord(value: unknown): Record<string, unknown> {
   return isRecord(value) ? value : {};
 }
 
-export function readOptionalString(value: unknown): string | undefined {
+function readOptionalString(value: unknown): string | undefined {
   if (typeof value !== 'string') return undefined;
-  const normalized = value.trim();
-  return normalized.length > 0 ? normalized : undefined;
+  const trimmed = value.trim();
+  return trimmed || undefined;
 }
 
-export function readReviewContext(runtimeContext: unknown): Record<string, unknown> {
+function readReviewContext(runtimeContext: unknown): Record<string, unknown> {
   const root = readRecord(runtimeContext);
   const nested = readRecord(root.review);
   return Object.keys(nested).length > 0 ? nested : root;
@@ -140,25 +139,22 @@ export function readReviewContext(runtimeContext: unknown): Record<string, unkno
 // Decision evaluation
 // ---------------------------------------------------------------------------
 
-export function defaultDecisionResolver(input: ReviewDecisionContext): ReviewDecision {
+function defaultDecisionResolver(input: ReviewDecisionContext): ReviewDecision {
   return input.interruptConfig ? {decision: 'ask', config: input.interruptConfig} : {decision: 'allow'};
 }
 
-export function normalizeAllowedDecisions(allowedDecisions: ReviewDecisionValue[] | undefined): ReviewDecisionValue[] {
+function normalizeAllowedDecisions(allowedDecisions: ReviewDecisionValue[] | undefined): ReviewDecisionValue[] {
   if (!allowedDecisions || allowedDecisions.length === 0) return [...DEFAULT_ALLOWED_DECISIONS];
-  const unique: ReviewDecisionValue[] = [];
-  const seen = new Set<ReviewDecisionValue>();
-  for (const d of allowedDecisions) { if (!seen.has(d)) { seen.add(d); unique.push(d); } }
-  return unique;
+  return [...new Set(allowedDecisions)];
 }
 
-export function normalizeResumeDecision(value: unknown): ReviewDecisionValue | undefined {
+function normalizeResumeDecision(value: unknown): ReviewDecisionValue | undefined {
   if (value === 'allow') return 'approve';
   if (value === 'deny') return 'reject';
   return isReviewDecisionValue(value) ? value : undefined;
 }
 
-export function isReviewDecisionValue(value: unknown): value is ReviewDecisionValue {
+function isReviewDecisionValue(value: unknown): value is ReviewDecisionValue {
   return value === 'approve' || value === 'edit' || value === 'reject';
 }
 

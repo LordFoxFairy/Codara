@@ -1,3 +1,10 @@
+/**
+ * Permission runtime — resolves tool call decisions and handles resume.
+ *
+ * Simplified from Claude Code's permissions.ts to Codara's review/interrupt
+ * architecture. Session cache, denial tracking, and "always allow" patterns
+ * are all handled here.
+ */
 import {ToolMessage} from '@langchain/core/messages';
 import {
   applyReviewResumeToolEdits,
@@ -35,334 +42,187 @@ export interface PermissionRuntime {
   isPermissionReview(metadata: unknown): boolean;
 }
 
-const DEFAULT_PERMISSION_CHANNEL = 'permission-center';
+const PERMISSION_CHANNEL = 'permission-center';
 
-function isBashTool(toolName: string): boolean {
-  return normalizeToolReferenceName(toolName) === 'bash';
+function isBashTool(name: string): boolean {
+  return normalizeToolReferenceName(name) === 'bash';
 }
 
-/**
- * Convert file expression to directory-level wildcard for session memory.
- * Edit(src/components/Header.tsx) → Edit(src/components/*)
- */
-function toDirectoryScopeExpression(expression: string): string {
-  const openIndex = expression.indexOf('(');
-  if (openIndex < 0) return expression;
-
-  const toolName = expression.slice(0, openIndex);
-  const specifier = expression.slice(openIndex + 1, -1);
-  const lastSlash = specifier.lastIndexOf('/');
-
-  if (lastSlash < 0) return `${toolName}(*)`;
-  return `${toolName}(${specifier.slice(0, lastSlash)}/*)`;
+/** Edit(src/components/Header.tsx) -> Edit(src/components/*) */
+function toDirectoryScope(expression: string): string {
+  const open = expression.indexOf('(');
+  if (open < 0) return expression;
+  const tool = expression.slice(0, open);
+  const spec = expression.slice(open + 1, -1);
+  const slash = spec.lastIndexOf('/');
+  return slash < 0 ? `${tool}(*)` : `${tool}(${spec.slice(0, slash)}/*)`;
 }
 
-/**
- * Check if expression is covered by session cache (supports directory wildcards).
- * Returns the cached PermissionAction if found, undefined otherwise.
- */
-function lookupSessionCache(expression: string, cache: PermissionSessionCache): import('@core/middleware/permission/types').PermissionAction | undefined {
-  // Direct hit
+function lookupCache(expression: string, cache: PermissionSessionCache) {
   const direct = cache.lookup(expression);
   if (direct !== undefined) return direct;
 
-  const openIndex = expression.indexOf('(');
-  if (openIndex < 0) return undefined;
+  const open = expression.indexOf('(');
+  if (open < 0) return undefined;
+  const tool = expression.slice(0, open);
+  const spec = expression.slice(open + 1, -1);
 
-  const toolName = expression.slice(0, openIndex);
-  const specifier = expression.slice(openIndex + 1, -1);
-
-  // Check wildcard patterns: tool(*) and tool(dir/*)
-  const toolWild = cache.lookup(`${toolName}(*)`);
+  const toolWild = cache.lookup(`${tool}(*)`);
   if (toolWild !== undefined) return toolWild;
 
-  const lastSlash = specifier.lastIndexOf('/');
-  if (lastSlash >= 0) {
-    const dirWild = cache.lookup(`${toolName}(${specifier.slice(0, lastSlash)}/*)`);
+  const slash = spec.lastIndexOf('/');
+  if (slash >= 0) {
+    const dirWild = cache.lookup(`${tool}(${spec.slice(0, slash)}/*)`);
     if (dirWild !== undefined) return dirWild;
   }
-
   return undefined;
 }
 
-/**
- * Generate "always" pattern suggestions for a tool call expression.
- * For Bash: uses BashArity to suggest escalating patterns.
- * For file tools: suggests directory-level patterns.
- */
 function generateAlwaysPatterns(expression: string): string[] {
-  const openIndex = expression.indexOf('(');
-  if (openIndex < 0) return [expression];
+  const open = expression.indexOf('(');
+  if (open < 0) return [expression];
+  const tool = expression.slice(0, open);
+  const spec = expression.slice(open + 1, -1);
+  const norm = tool.trim().toLowerCase();
 
-  const toolName = expression.slice(0, openIndex);
-  const specifier = expression.slice(openIndex + 1, -1);
-  const toolNorm = toolName.trim().toLowerCase();
-
-  if (toolNorm === 'bash') {
-    return extractBashAlwaysPatterns(specifier).map(p => `Bash(${p})`);
-  }
-
-  // File tools: suggest directory-level → tool-level
-  if (toolNorm === 'edit' || toolNorm === 'write' || toolNorm === 'read') {
+  if (norm === 'bash') return extractBashAlwaysPatterns(spec).map(p => `Bash(${p})`);
+  if (norm === 'edit' || norm === 'write' || norm === 'read') {
     const patterns: string[] = [];
-    const dirExpr = toDirectoryScopeExpression(expression);
-    if (dirExpr !== expression) {
-      patterns.push(dirExpr);
-    }
-    patterns.push(`${toolName}(*)`);
+    const dir = toDirectoryScope(expression);
+    if (dir !== expression) patterns.push(dir);
+    patterns.push(`${tool}(*)`);
     return patterns;
   }
-
-  return [`${toolName}(*)`];
-}
-
-/** Pending request waiting for user approval */
-interface PendingPermissionRequest {
-  context: ToolCallContext;
-  expression: string;
+  return [`${tool}(*)`];
 }
 
 export function createPermissionRuntime(options: PermissionRuntimeOptions = {}): PermissionRuntime {
   const sessionCache = new PermissionSessionCache();
-  const pendingRequests = new Map<string, PendingPermissionRequest>();
   const denialTracker = new DenialTracker();
 
   return {
     async resolveToolDecision(context) {
-      return resolvePermissionDecision(context, options, sessionCache, pendingRequests, denialTracker);
+      const evaluation = await evaluatePermissionToolCall(context.toolCall, options);
+      if (!evaluation) return undefined;
+
+      // Session cache check
+      const cached = lookupCache(evaluation.input, sessionCache);
+      if (cached === 'allow') return {decision: 'allow'};
+      if (cached === 'deny') return {decision: 'deny', reason: `Denied by session cache: ${evaluation.input}`};
+
+      if (evaluation.decision === 'allow') return {decision: 'allow'};
+
+      // Auto-deny on repeated rejections
+      if (denialTracker.shouldAutoDeny(context.toolCall.name)) {
+        return {decision: 'deny', reason: `Auto-denied after repeated rejections: ${evaluation.input}`};
+      }
+
+      // Bash write path detection
+      let reason: string | undefined;
+      if (isBashTool(context.toolCall.name)) {
+        const cmd = typeof (context.toolCall.args as Record<string, unknown>)?.command === 'string'
+          ? (context.toolCall.args as Record<string, unknown>).command as string : '';
+        if (cmd) {
+          const paths = extractBashWritePathOperands(cmd);
+          if (paths.length > 0) reason = `Writes to ${paths.map(p => p.endsWith('/') ? p : `${p}/`).join(', ')}`;
+        }
+      }
+
+      const alwaysPatterns = generateAlwaysPatterns(evaluation.input);
+      const toolMeta = getToolMetadata(context.toolCall.name);
+
+      const metadata = {
+        codara: {
+          actor: {agentType: context.state.agentType ?? 'main'},
+          interaction: {kind: 'permission'},
+        },
+        permissionPolicy: {
+          expression: evaluation.input,
+          decision: evaluation.decision,
+          defaultDecision: evaluation.defaultDecision,
+          matched: evaluation.matchedRule ? {
+            bucket: evaluation.matchedRule.action,
+            rule: `${evaluation.matchedRule.permission}(${evaluation.matchedRule.pattern})`,
+            scope: evaluation.matchedRule.source.scope,
+            path: evaluation.matchedRule.source.path,
+          } : null,
+          reason,
+          sources: evaluation.sources,
+          ruleSummary: evaluation.ruleSummary,
+          alwaysPatterns,
+          suggestions: {},
+          toolMetadata: {
+            isReadOnly: toolMeta.isReadOnly,
+            isDestructive: toolMeta.isDestructive,
+            isConcurrencySafe: toolMeta.isConcurrencySafe,
+          },
+        },
+      } satisfies Record<string, unknown>;
+
+      if (evaluation.decision === 'deny') {
+        return {decision: 'deny', reason: `Denied by permission policy: ${evaluation.input}`, metadata};
+      }
+
+      const actions: ReviewUIActionOption[] = [
+        {id: 'allow_once', label: 'Allow once', kind: 'primary'},
+        {id: 'dont_ask_again', label: 'Allow always', kind: 'secondary'},
+        {id: 'deny', label: 'Reject', kind: 'danger'},
+      ];
+
+      return {
+        decision: 'ask',
+        config: {
+          description: `${context.state.agentType === 'subagent' ? 'Subagent wants to run' : 'Codara wants to run'} ${evaluation.input}`,
+          channel: PERMISSION_CHANNEL,
+          ui: {tab: 'Security', modal: 'permission-review', actions},
+          metadata,
+        } satisfies ReviewInterruptConfig,
+        metadata,
+      };
     },
-    handleResume(metadata, resumePayload, context, handler) {
-      return handlePermissionResume(metadata ?? {}, resumePayload, context, handler, options, sessionCache, pendingRequests, denialTracker);
+
+    async handleResume(meta, resumePayload, context, handler) {
+      const payload = parseReviewResumeActionPayload(resumePayload);
+
+      // Reject
+      if (payload.action === 'deny' || payload.decision === 'reject') {
+        denialTracker.recordDenial(context.toolCall.name);
+        return createDenyMessage(context, payload.comment, payload.metadata);
+      }
+
+      // Always allow — add patterns to session cache
+      if (payload.action === 'dont_ask_again' || payload.action === 'always') {
+        const patterns = extractAlwaysPatterns(meta ?? {});
+        if (patterns.length > 0) {
+          for (const p of patterns) sessionCache.remember(p, 'allow');
+        } else {
+          const expr = formatPermissionExpression(context.toolCall);
+          if (expr) sessionCache.remember(expr, 'allow');
+        }
+
+        // Persist to disk
+        const expr = formatPermissionExpression(context.toolCall);
+        if (expr) {
+          const scope = payload.scope as 'exact' | 'path' | 'tool' | 'project' | undefined;
+          const persist = scope && scope !== 'exact'
+            ? persistPermissionScope(expr, scope, options)
+            : persistPermissionRule(expr, 'allow', options);
+          await persist.catch(e => console.warn('[permissions] Failed to persist:', e instanceof Error ? e.message : String(e)));
+        }
+      }
+
+      return handler(context);
     },
+
     isPermissionReview,
   };
 }
-
-async function resolvePermissionDecision(
-  context: ToolCallContext,
-  options: PermissionRuntimeOptions,
-  sessionCache: PermissionSessionCache,
-  pendingRequests: Map<string, PendingPermissionRequest>,
-  denialTracker: DenialTracker,
-): Promise<ReviewDecision | undefined> {
-  const evaluation = await evaluatePermissionToolCall(context.toolCall, options);
-  if (!evaluation) return undefined;
-
-  // Check session cache first (before Layer 1 rules)
-  const cachedDecision = lookupSessionCache(evaluation.input, sessionCache);
-  if (cachedDecision === 'allow') {
-    return {decision: 'allow'};
-  }
-  if (cachedDecision === 'deny') {
-    return {decision: 'deny', reason: `Denied by session cache: ${evaluation.input}`};
-  }
-
-  if (evaluation.decision === 'allow') {
-    return {decision: 'allow'};
-  }
-
-  // Auto-deny if the tool has been repeatedly denied within the tracking window
-  if (denialTracker.shouldAutoDeny(context.toolCall.name)) {
-    return {decision: 'deny', reason: `Auto-denied after repeated rejections: ${evaluation.input}`};
-  }
-
-  // Pure shell parsing for bash commands — no LLM needed
-  let reason: string | undefined;
-  if (isBashTool(context.toolCall.name)) {
-    const args = context.toolCall.args as Record<string, unknown>;
-    const command = typeof args?.command === 'string' ? args.command : '';
-    if (command) {
-      const writePaths = extractBashWritePathOperands(command);
-      if (writePaths.length > 0) {
-        const pathList = writePaths.map(p => p.endsWith('/') ? p : `${p}/`).join(', ');
-        reason = `Writes to ${pathList}`;
-      }
-    }
-  }
-
-  // Generate suggested "always" patterns
-  const alwaysPatterns = generateAlwaysPatterns(evaluation.input);
-
-  // Attach per-tool safety metadata so the UI and downstream consumers
-  // can make smarter decisions (e.g., destructive tools get a warning badge).
-  const toolMeta = getToolMetadata(context.toolCall.name);
-
-  const metadata = {
-    codara: {
-      actor: {
-        agentType: context.state.agentType ?? 'main',
-      },
-      interaction: {
-        kind: 'permission',
-      },
-    },
-    permissionPolicy: {
-      expression: evaluation.input,
-      decision: evaluation.decision,
-      defaultDecision: evaluation.defaultDecision,
-      matched: evaluation.matchedRule ? {
-        bucket: evaluation.matchedRule.action,
-        rule: `${evaluation.matchedRule.permission}(${evaluation.matchedRule.pattern})`,
-        scope: evaluation.matchedRule.source.scope,
-        path: evaluation.matchedRule.source.path,
-      } : null,
-      reason,
-      sources: evaluation.sources,
-      ruleSummary: evaluation.ruleSummary,
-      alwaysPatterns,
-      suggestions: {},
-      toolMetadata: {
-        isReadOnly: toolMeta.isReadOnly,
-        isDestructive: toolMeta.isDestructive,
-        isConcurrencySafe: toolMeta.isConcurrencySafe,
-      },
-    },
-  } satisfies Record<string, unknown>;
-
-  if (evaluation.decision === 'deny') {
-    return {
-      decision: 'deny',
-      reason: `Denied by permission policy: ${evaluation.input}`,
-      metadata,
-    };
-  }
-
-  // Store as pending for auto-resolve cascade
-  const requestKey = context.toolCall.id || `tool_${context.toolIndex}`;
-  pendingRequests.set(requestKey, {context, expression: evaluation.input});
-
-  return {
-    decision: 'ask',
-    config: createPermissionInterruptConfig(evaluation.input, context, metadata, reason, alwaysPatterns, options),
-    metadata,
-  };
-}
-
-function createPermissionInterruptConfig(
-  expression: string,
-  context: ToolCallContext,
-  metadata: Record<string, unknown>,
-  _reason: string | undefined,
-  _alwaysPatterns: string[],
-  _options: PermissionRuntimeOptions,
-): ReviewInterruptConfig {
-  // Claude Code style: three actions only — once, always, reject
-  const actions: ReviewUIActionOption[] = [
-    {id: 'allow_once', label: 'Allow once', kind: 'primary'},
-    {id: 'dont_ask_again', label: 'Allow always', kind: 'secondary'},
-    {id: 'deny', label: 'Reject', kind: 'danger'},
-  ];
-
-  return {
-    description: `${context.state.agentType === 'subagent' ? 'Subagent wants to run' : 'Codara wants to run'} ${expression}`,
-    channel: DEFAULT_PERMISSION_CHANNEL,
-    ui: {
-      tab: 'Security',
-      modal: 'permission-review',
-      actions,
-    },
-    metadata,
-  };
-}
-
 
 function extractAlwaysPatterns(metadata: Record<string, unknown>): string[] {
   const policy = metadata.permissionPolicy;
   if (!policy || typeof policy !== 'object' || Array.isArray(policy)) return [];
   const patterns = (policy as Record<string, unknown>).alwaysPatterns;
   return Array.isArray(patterns) ? patterns.filter((p): p is string => typeof p === 'string') : [];
-}
-
-async function handlePermissionResume(
-  _metadata: Record<string, unknown>,
-  resumePayload: ReviewResumePayload,
-  context: ToolCallContext,
-  handler: (request?: ToolCallContext) => Promise<ToolMessage>,
-  options: PermissionRuntimeOptions,
-  sessionCache: PermissionSessionCache,
-  pendingRequests: Map<string, PendingPermissionRequest>,
-  denialTracker: DenialTracker,
-): Promise<ToolMessage> {
-  const payload = parseReviewResumeActionPayload(resumePayload);
-
-  // Handle reject — record denial for fatigue tracking
-  if (payload.action === 'deny' || payload.decision === 'reject') {
-    denialTracker.recordDenial(context.toolCall.name);
-    const requestKey = context.toolCall.id || `tool_${context.toolIndex}`;
-    pendingRequests.delete(requestKey);
-    return createPermissionDenyMessage(context, payload.comment, payload.metadata);
-  }
-
-  // Handle "always" — Claude Code style: add ALL always patterns to session cache
-  if (payload.action === 'dont_ask_again' || payload.action === 'always') {
-    const alwaysPatterns = extractAlwaysPatterns(_metadata);
-    if (alwaysPatterns.length > 0) {
-      for (const pattern of alwaysPatterns) {
-        sessionCache.remember(pattern, 'allow');
-      }
-    } else {
-      // Fallback: use the expression itself
-      const expression = formatPermissionExpression(context.toolCall);
-      if (expression) {
-        sessionCache.remember(expression, 'allow');
-      }
-    }
-
-    // Persist to disk based on scope
-    const expression = formatPermissionExpression(context.toolCall);
-    if (expression) {
-      const scope = payload.scope as 'exact' | 'path' | 'tool' | 'project' | undefined;
-      if (scope && scope !== 'exact') {
-        await persistPermissionScope(expression, scope, options).catch((e) => {
-          console.warn('[permissions] Failed to persist scope:', e instanceof Error ? e.message : String(e));
-        });
-      } else {
-        await persistPermissionRule(expression, 'allow', options).catch((e) => {
-          console.warn('[permissions] Failed to persist rule:', e instanceof Error ? e.message : String(e));
-        });
-      }
-    }
-
-    await autoResolvePendingRequests(options, sessionCache, pendingRequests);
-  }
-
-  // Clean up pending
-  const requestKey = context.toolCall.id || `tool_${context.toolIndex}`;
-  pendingRequests.delete(requestKey);
-
-  return handler(context);
-}
-
-/**
- * Auto-resolve cascade: after a new "always" rule is added,
- * re-evaluate all pending requests. If any now resolve to "allow",
- * they're automatically approved (OpenCode-style).
- */
-async function autoResolvePendingRequests(
-  options: PermissionRuntimeOptions,
-  sessionCache: PermissionSessionCache,
-  pendingRequests: Map<string, PendingPermissionRequest>,
-): Promise<void> {
-  const toRemove: string[] = [];
-
-  for (const [key, pending] of pendingRequests) {
-    // Check session cache
-    const cached = lookupSessionCache(pending.expression, sessionCache);
-    if (cached === 'allow') {
-      toRemove.push(key);
-      continue;
-    }
-
-    // Re-evaluate against updated rules
-    const evaluation = await evaluatePermissionToolCall(pending.context.toolCall, options);
-    if (evaluation?.decision === 'allow') {
-      toRemove.push(key);
-    }
-  }
-
-  for (const key of toRemove) {
-    pendingRequests.delete(key);
-  }
 }
 
 export function handlePermissionFallbackResume(
@@ -372,35 +232,25 @@ export function handlePermissionFallbackResume(
   context: Parameters<ReviewResumeHandler>[2],
   handler: Parameters<ReviewResumeHandler>[3],
 ): Promise<ToolMessage> {
-  if (fallback) {
-    return fallback(request, resumePayload, context, handler);
-  }
-
+  if (fallback) return fallback(request, resumePayload, context, handler);
   const payload = parseReviewResumeActionPayload(resumePayload);
-  if (payload.decision === 'reject') {
-    return Promise.resolve(createPermissionDenyMessage(context, payload.comment, payload.metadata));
-  }
-
+  if (payload.decision === 'reject') return Promise.resolve(createDenyMessage(context, payload.comment, payload.metadata));
   return handler(applyReviewResumeToolEdits(context, payload));
 }
 
-function createPermissionDenyMessage(
+function createDenyMessage(
   context: ToolCallContext,
   reason: string | undefined,
   metadata: Record<string, unknown> | undefined,
 ): ToolMessage {
   const toolCallId = typeof context.toolCall.id === 'string' && context.toolCall.id.trim()
-    ? context.toolCall.id.trim()
-    : `tool_${context.toolIndex}`;
+    ? context.toolCall.id.trim() : `tool_${context.toolIndex}`;
 
   const payload: ReviewToolMessagePayload = {
     type: 'review_deny',
     reason: reason?.trim() || 'Tool execution denied by user',
     metadata: metadata ?? {},
-    action: {
-      toolCallId,
-      toolName: context.toolCall.name,
-    },
+    action: {toolCallId, toolName: context.toolCall.name},
   };
 
   return new ToolMessage({
@@ -412,8 +262,6 @@ function createPermissionDenyMessage(
 }
 
 export function isPermissionReview(metadata: unknown): boolean {
-  if (!metadata || typeof metadata !== 'object' || Array.isArray(metadata)) {
-    return false;
-  }
+  if (!metadata || typeof metadata !== 'object' || Array.isArray(metadata)) return false;
   return typeof (metadata as Record<string, unknown>).permissionPolicy === 'object';
 }

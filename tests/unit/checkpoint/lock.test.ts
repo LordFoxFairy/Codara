@@ -2,7 +2,7 @@ import {describe, test, expect, beforeEach, afterEach} from 'bun:test';
 import {mkdtempSync, rmSync, writeFileSync} from 'node:fs';
 import path from 'node:path';
 import os from 'node:os';
-import {acquireSessionLock, releaseSessionLock, isLockStale, LOCK_TTL_MS} from '@durability/checkpoint/lock';
+import {acquireSessionLock, releaseSessionLock, isLockStale, LOCK_TTL_MS} from '@state/checkpoint/lock';
 
 let tmpDir: string;
 

@@ -23,33 +23,33 @@ import {
   createSkillsMiddleware,
   createTodoListMiddleware,
 } from '@core/middleware';
-import {readSkillsRuntimeData} from '@capability/skill';
-import {createSkillTool} from '@capability/skill/runtime/commands';
+import {readSkillsRuntimeData} from '@skills';
+import {createSkillTool} from '@skills/runtime/commands';
 import {createPermissionMiddleware} from '@core/middleware/permission';
-import type {AgentCheckpointer} from '@durability/checkpoint/agent';
-import type {ApprovalStore} from '@durability/approval-store';
+import type {AgentCheckpointer} from '@state/checkpoint/agent';
+import type {ApprovalStore} from '@state/approval-store';
 import {
   createSubagentMiddleware,
   type SubagentRunManager,
   type SubagentRunStore,
-} from '@capability/subagent';
+} from '@tasks/subagent';
 import {
   applyRuntimeSubagentDefaults,
   assertNoRawSubagentTools,
-} from '@capability/subagent/middleware';
+} from '@tasks/subagent/middleware';
 import {
   type TaskStore,
-} from '@capability/task';
-import type {HookPipeline} from '@observability/hook';
-import {createToolHooksBridge} from '@observability/hook';
+} from '@tasks';
+import type {HookPipeline} from '@hooks';
+import {createToolHooksBridge} from '@hooks';
 import type {GuidelinesSource, PromptSource} from '@context/sources';
-import type {SkillsSource} from '@capability/skill';
+import type {SkillsSource} from '@skills';
 import {resolveWorkspaceRoot} from '@config/workspace';
 import {loadConditionalRules} from '@context/rules';
-import type {ChannelRegistry} from '@integration/channel';
-import {createChannelReviewOptions} from '@integration/channel';
-import type {MemoryWriter} from '@capability/memory/writer';
-import type {MemoryReader} from '@capability/memory/reader';
+import type {ChannelRegistry} from '@channels';
+import {createChannelReviewOptions} from '@channels';
+import type {MemoryWriter} from '@memory/writer';
+import type {MemoryReader} from '@memory/reader';
 import {createInstructionContextRuntime} from './context';
 import type {
   CodaraMiddlewareOptions,

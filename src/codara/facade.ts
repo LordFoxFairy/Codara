@@ -14,32 +14,32 @@
 import {existsSync} from 'node:fs';
 import path from 'node:path';
 import type {StructuredToolInterface} from '@langchain/core/tools';
-import {createAgentFileCheckpointer} from '@durability/checkpoint';
-import {createApprovalFileStore, type ApprovalStore} from '@durability/approval-store';
+import {createAgentFileCheckpointer} from '@state/checkpoint';
+import {createApprovalFileStore, type ApprovalStore} from '@state/approval-store';
 import {ensurePermissionSettingsFile} from '@core/middleware/permission';
-import {createSubagentRunFileStore, createSubagentRunManager, type SubagentRunStore, type SubagentRunManager} from '@capability/subagent';
-import type {SessionListOptions} from '@durability/session';
-import {createTaskFileStore, createTaskRegistry} from '@capability/task';
-import type {TaskRegistry} from '@capability/task/task-registry';
-import {loadModelRoutingConfigFromPath, resolveCodaraPath} from '@integration/provider';
+import {createSubagentRunFileStore, createSubagentRunManager, type SubagentRunStore, type SubagentRunManager} from '@tasks/subagent';
+import type {SessionListOptions} from '@state/session';
+import {createTaskFileStore, createTaskRegistry} from '@tasks';
+import type {TaskRegistry} from '@tasks/task-registry';
+import {loadModelRoutingConfigFromPath, resolveCodaraPath} from '@models';
 import {createCodaraGuidelinesSource, type GuidelinesSource, createCodaraPromptSource, type PromptSource} from '@context/sources';
-import {createCodaraSkillsSource} from '@capability/skill';
-import {createSkillCodaraCommands} from '@capability/command/runtime/skill-commands';
-import {createCodaraCommandRunner, type CodaraCommandResult} from '@capability/command';
+import {createCodaraSkillsSource} from '@skills';
+import {createSkillCodaraCommands} from '@commands/runtime/skill-commands';
+import {createCodaraCommandRunner, type CodaraCommandResult} from '@commands';
 import {
   createSession, FileSessionStore,
-  type SessionState, type SessionStore,
-} from '@durability/session';
-import type {CodaraRuntimeEvent, CodaraRuntimeEventListener} from '@observability/events';
-import {CostTracker, type CostSnapshot} from '@observability/cost';
+  type Session, type SessionState, type SessionStore,
+} from '@state/session';
+import type {CodaraRuntimeEvent, CodaraRuntimeEventListener} from '@events';
+import {CostTracker, type CostSnapshot} from '@cost';
 import {resolveWorkspaceRoot} from '@config/workspace';
-import type {HookRegistry, SessionLifecycleHooks, AgentLifecycleHooks} from '@observability/hook';
-import {HookPipeline} from '@observability/hook';
-import type {McpManager} from '@integration/mcp';
-import type {ChannelRegistry} from '@integration/channel';
+import type {HookRegistry, SessionLifecycleHooks, AgentLifecycleHooks} from '@hooks';
+import {HookPipeline} from '@hooks';
+import type {McpManager} from '@mcp';
+import type {ChannelRegistry} from '@channels';
 import type {DynamicSectionRegistry} from '@context/dynamic-sections';
-import {MemoryWriter} from '@capability/memory/writer';
-import {MemoryReader} from '@capability/memory/reader';
+import {MemoryWriter} from '@memory/writer';
+import {MemoryReader} from '@memory/reader';
 import {initSettings} from './runtime/init-settings';
 import {initContextSources} from './runtime/init-context';
 import {initHooks} from './runtime/init-hooks';
@@ -198,8 +198,8 @@ export async function openCodaraSession(
 
   // Fallback: attempt transcript-based restore
   if (options.projectRoot || options.cwd) {
-    const {restoreSession} = await import('@durability/session/restore');
-    const {getTranscriptPath} = await import('@durability/session/storage');
+    const {restoreSession} = await import('@state/session/restore');
+    const {getTranscriptPath} = await import('@state/session/storage');
     const projectRoot = resolveWorkspaceRoot({cwd: options.cwd, projectRoot: options.projectRoot});
     const userHome = options.userHome ?? process.env.HOME ?? '';
     const transcriptPath = getTranscriptPath({projectRoot, userHome, sessionId: options.sessionId});
@@ -287,68 +287,30 @@ export function assembleCodara(
   });
   preloadedSources?.subagentRunStore?.recoverSession?.(session.getState().sessionId);
 
-  // Extra properties for commands (/reload, /hooks, /mcp)
   const mcpManager = preloadedSources?.mcpManager;
-  const commandAgent = {
-    ...session,
-    ...(preloadedSources?.hookRegistry ? {hookRegistry: preloadedSources.hookRegistry} : {}),
-    ...(mcpManager ? {getMcpStatus: () => mcpManager.status()} : {}),
-    getCostSnapshot: () => costTracker.getSnapshot(),
-  };
+  const channelRegistry = preloadedSources?.channelRegistry;
+  const subagentRunManager = preloadedSources?.subagentRunManager;
 
-  const commands = createCodaraCommandRunner({
-    agent: commandAgent,
-    environment: {cwd: options.cwd, projectRoot: options.projectRoot, userHome: options.userHome, modelAlias: alias},
-    ...(skillsSource ? {getDynamicCommands: () => createSkillCodaraCommands(skillsSource)} : {}),
+  // Wire commands + event relay
+  const {subscribeRuntimeEvents, executeCommand, listCommands, eventListeners} = wireCommandExecution({
+    session, costTracker, skillsSource, alias, options,
+    hookRegistry: preloadedSources?.hookRegistry, mcpManager,
   });
 
-  // Command event relay
-  const commandEventListeners = new Set<CodaraRuntimeEventListener>();
-  const subscribeRuntimeEvents = (listener: CodaraRuntimeEventListener) => {
-    const unsubscribeSession = session.subscribeRuntimeEvents(listener);
-    commandEventListeners.add(listener);
-    return () => { unsubscribeSession(); commandEventListeners.delete(listener); };
-  };
-  const emitCommandEvent = (input: Omit<CodaraRuntimeEvent, 'sessionId' | 'timestamp'>) => {
-    const event: CodaraRuntimeEvent = {
-      ...input, sessionId: session.getState().sessionId, timestamp: new Date().toISOString(),
-    };
-    for (const listener of commandEventListeners) listener(event);
-  };
-  const executeCommand = async (input: string): Promise<CodaraCommandResult> => {
-    const id = `command:${Date.now()}:${Math.random().toString(36).slice(2, 8)}`;
-    emitCommandEvent({id, kind: 'command', phase: 'start', status: 'running', label: `Running ${input.trim()}`});
-    const result = await commands.executeCommand(input);
-    emitCommandEvent({
-      id: `command:end:${Date.now()}:${Math.random().toString(36).slice(2, 8)}`,
-      kind: 'command', phase: 'end', status: result.ok ? 'done' : 'error',
-      label: result.ok ? `Completed ${input.trim()}` : `Failed ${input.trim()}`,
-      detail: result.output.trim() || undefined, parentId: id,
-    });
-    return result;
-  };
-
-  // Wire subagent events into runtime event stream
-  if (preloadedSources?.subagentRunManager) {
-    preloadedSources.subagentRunManager.setOnAgentEvent(
-      (event) => { for (const listener of commandEventListeners) listener(event); },
+  // Wire subagent events
+  if (subagentRunManager) {
+    subagentRunManager.setOnAgentEvent(
+      (event) => { for (const listener of eventListeners) listener(event); },
       () => session.getState().sessionId,
     );
   }
 
-  const channelRegistry = preloadedSources?.channelRegistry;
-
-  const subagentRunManager = preloadedSources?.subagentRunManager;
+  // Wire review + interaction stream
   const reviewControl = createCodaraReviewControl({
-    session,
-    approvalStore: preloadedSources?.approvalStore,
-    subagentReviewResumer: subagentRunManager,
+    session, approvalStore: preloadedSources?.approvalStore, subagentReviewResumer: subagentRunManager,
   });
   const streamInteraction = createCodaraInteractionStream({
-    session,
-    reviewControl,
-    subagentRunStore: preloadedSources?.subagentRunStore,
-    subagentRunManager,
+    session, reviewControl, subagentRunStore: preloadedSources?.subagentRunStore, subagentRunManager,
   });
 
   const dispose = async (): Promise<void> => {
@@ -358,17 +320,14 @@ export function assembleCodara(
     if (channelRegistry) await channelRegistry.disposeAll();
   };
 
-  // ── Compose the Codara handle ──
   return {
-    ...session, subscribeRuntimeEvents, listCommands: commands.listCommands, executeCommand,
+    ...session, subscribeRuntimeEvents, listCommands, executeCommand,
     listSessions: async (opts?: SessionListOptions) => options.store ? options.store.list(opts) : [],
     getMcpStatus: () => mcpManager?.status() ?? [],
     getSubagentRunSummaries: () => getSubagentRunSummaries(preloadedSources?.subagentRunStore, session.getState().sessionId),
     getSubagentRunDetails: async (runIds?: readonly string[]) => getSubagentRunDetails({
-      store: preloadedSources?.subagentRunStore,
-      checkpointer: options.checkpointer,
-      parentSessionId: session.getState().sessionId,
-      runIds,
+      store: preloadedSources?.subagentRunStore, checkpointer: options.checkpointer,
+      parentSessionId: session.getState().sessionId, runIds,
     }),
     listReviewItems: reviewControl.listReviewItems,
     getFocusedReview: reviewControl.getFocusedReview,
@@ -387,6 +346,56 @@ async function reopenCodaraSession(options: CodaraOptions, state: SessionState):
   const codara = assembleCodara({...options, sessionId: state.sessionId, restore: 'latest'}, state);
   await codara.hydrate();
   return codara;
+}
+
+// ── Command Execution Wiring ──
+
+function wireCommandExecution(input: {
+  session: Session;
+  costTracker: CostTracker;
+  skillsSource?: ReturnType<typeof createCodaraSkillsSource>;
+  alias: string;
+  options: CodaraOptions;
+  hookRegistry?: HookRegistry;
+  mcpManager?: McpManager;
+}) {
+  const {session, costTracker, skillsSource, alias, options, hookRegistry, mcpManager} = input;
+  const commandAgent = {
+    ...session,
+    ...(hookRegistry ? {hookRegistry} : {}),
+    ...(mcpManager ? {getMcpStatus: () => mcpManager.status()} : {}),
+    getCostSnapshot: () => costTracker.getSnapshot(),
+  };
+  const commands = createCodaraCommandRunner({
+    agent: commandAgent,
+    environment: {cwd: options.cwd, projectRoot: options.projectRoot, userHome: options.userHome, modelAlias: alias},
+    ...(skillsSource ? {getDynamicCommands: () => createSkillCodaraCommands(skillsSource)} : {}),
+  });
+
+  const eventListeners = new Set<CodaraRuntimeEventListener>();
+  const subscribeRuntimeEvents = (listener: CodaraRuntimeEventListener) => {
+    const unsub = session.subscribeRuntimeEvents(listener);
+    eventListeners.add(listener);
+    return () => { unsub(); eventListeners.delete(listener); };
+  };
+  const emitEvent = (input: Omit<CodaraRuntimeEvent, 'sessionId' | 'timestamp'>) => {
+    const event: CodaraRuntimeEvent = {...input, sessionId: session.getState().sessionId, timestamp: new Date().toISOString()};
+    for (const listener of eventListeners) listener(event);
+  };
+  const executeCommand = async (raw: string): Promise<CodaraCommandResult> => {
+    const id = `command:${Date.now()}:${Math.random().toString(36).slice(2, 8)}`;
+    emitEvent({id, kind: 'command', phase: 'start', status: 'running', label: `Running ${raw.trim()}`});
+    const result = await commands.executeCommand(raw);
+    emitEvent({
+      id: `command:end:${Date.now()}:${Math.random().toString(36).slice(2, 8)}`,
+      kind: 'command', phase: 'end', status: result.ok ? 'done' : 'error',
+      label: result.ok ? `Completed ${raw.trim()}` : `Failed ${raw.trim()}`,
+      detail: result.output.trim() || undefined, parentId: id,
+    });
+    return result;
+  };
+
+  return {subscribeRuntimeEvents, executeCommand, listCommands: commands.listCommands, eventListeners};
 }
 
 /** Resolve the `.codara` config directory: explicit path > project-local > global. */

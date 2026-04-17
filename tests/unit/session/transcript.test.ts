@@ -2,8 +2,8 @@ import {describe, expect, it} from 'bun:test';
 import {mkdtemp, rm, readFile, appendFile} from 'node:fs/promises';
 import os from 'node:os';
 import path from 'node:path';
-import {TranscriptWriter, TranscriptReader} from '../../../src/durability/session/transcript';
-import type {TranscriptEntry} from '../../../src/durability/session/types';
+import {TranscriptWriter, TranscriptReader} from '../../../src/state/session/transcript';
+import type {TranscriptEntry} from '../../../src/state/session/types';
 
 function makeEntry(type: TranscriptEntry['type'], content: string): TranscriptEntry {
   return {type, uuid: crypto.randomUUID(), timestamp: Date.now(), content};

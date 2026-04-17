@@ -1,7 +1,7 @@
 /** MCP server initialization: config resolution, manager creation, tool wiring. */
 import type {StructuredToolInterface} from '@langchain/core/tools';
 import type {CodaraSettings} from '@config/schema';
-import {loadMcpConfig, createMcpManager, createMcpLangChainTools, type McpManager, type McpConfig, type McpServerConfig} from '@integration/mcp';
+import {loadMcpConfig, createMcpManager, createMcpLangChainTools, type McpManager, type McpConfig, type McpServerConfig} from '@mcp';
 
 export interface McpInfrastructure {
   mcpManager?: McpManager;

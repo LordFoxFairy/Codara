@@ -1,5 +1,5 @@
 import {describe, test, expect, beforeEach, afterEach, mock} from 'bun:test';
-import {FeishuApi, FeishuApiError} from '@integration/channel/feishu/api';
+import {FeishuApi, FeishuApiError} from '@channels/feishu/api';
 
 function mockFetchSequence(responses: Array<{code: number; msg: string; [key: string]: unknown}>) {
   let callIndex = 0;

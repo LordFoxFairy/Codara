@@ -1,8 +1,9 @@
 /**
- * Configuration loading and rule flattening.
+ * Permission config loading and rule flattening.
  *
- * Loads permission config from settings files and converts the
- * hierarchical PermissionConfig format into a flat PermissionRule[] list.
+ * Loads rules from settings files and converts hierarchical PermissionConfig
+ * into flat PermissionRuleEntry[] lists. Sources are loaded in priority order:
+ * explicit -> local -> project -> user.
  */
 import {existsSync} from 'node:fs';
 import {readFile} from 'node:fs/promises';
@@ -20,58 +21,19 @@ import type {
 } from '../types';
 
 const DEFAULT_ALLOWED_RULES: readonly string[] = [
-  'Read(*)',
-  'Fetch(*)',
-  'Search(*)',
-  'Glob(*)',
-  'Grep(*)',
-  'Bash(git status)',
-  'Bash(git diff *)',
-  'Bash(git show *)',
-  'Bash(git log *)',
-  'Bash(git branch *)',
-  'Bash(git rev-parse *)',
-  'Bash(git ls-files *)',
-  'Bash(ls *)',
-  'Bash(pwd)',
-  'Bash(cat *)',
-  'Bash(head *)',
-  'Bash(tail *)',
-  'Bash(wc *)',
-  'Bash(stat *)',
-  'Bash(file *)',
-  'Bash(find *)',
-  'Bash(rg *)',
-  'Bash(grep *)',
+  'Read(*)', 'Fetch(*)', 'Search(*)', 'Glob(*)', 'Grep(*)',
+  'Bash(git status)', 'Bash(git diff *)', 'Bash(git show *)',
+  'Bash(git log *)', 'Bash(git branch *)', 'Bash(git rev-parse *)',
+  'Bash(git ls-files *)', 'Bash(ls *)', 'Bash(pwd)', 'Bash(cat *)',
+  'Bash(head *)', 'Bash(tail *)', 'Bash(wc *)', 'Bash(stat *)',
+  'Bash(file *)', 'Bash(find *)', 'Bash(rg *)', 'Bash(grep *)',
 ] as const;
 
-interface SourceRecord {
-  scope: string;
-  path: string;
-}
+// ── Rule Loading ────────────────────────────────────────────────────
 
-interface LoadedSource {
-  scope: string;
-  path: string;
-  exists: boolean;
-  rules: PermissionRuleEntry[];
-  defaultDecision: PermissionAction | null;
-  errors: string[];
-}
-
-/**
- * Load all permission rules from config sources, flattened into order.
- * Sources are loaded in priority order: explicit → local → project → user.
- * Rules from earlier sources come first; within a source, rules preserve
- * their declaration order.
- */
 export async function loadPermissionRules(
   options: PermissionPolicyOptions = {},
-): Promise<{
-  rules: PermissionRuleEntry[];
-  defaultDecision: PermissionAction;
-  sources: PermissionSourceInfo[];
-}> {
+): Promise<{ rules: PermissionRuleEntry[]; defaultDecision: PermissionAction; sources: PermissionSourceInfo[] }> {
   const sourceList = buildSourceList(options);
   const loaded = await Promise.all(sourceList.map(loadSource));
 
@@ -81,9 +43,7 @@ export async function loadPermissionRules(
   for (const source of loaded) {
     if (!source.exists) continue;
     allRules.push(...source.rules);
-    if (defaultDecision == null && source.defaultDecision != null) {
-      defaultDecision = source.defaultDecision;
-    }
+    if (defaultDecision == null && source.defaultDecision != null) defaultDecision = source.defaultDecision;
   }
 
   return {
@@ -93,23 +53,14 @@ export async function loadPermissionRules(
   };
 }
 
-/**
- * Flatten a PermissionConfig object into PermissionRuleEntry[].
- *
- * Supports two formats:
- * - Flat:   { "Read": "allow" }           → rule: { permission: "Read", pattern: "*", action: "allow" }
- * - Nested: { "Bash": { "git *": "allow" } } → rule: { permission: "Bash", pattern: "git *", action: "allow" }
- */
-export function flattenConfig(
-  config: PermissionConfig,
-  source: PermissionRuleSource,
-): PermissionRuleEntry[] {
-  const rules: PermissionRuleEntry[] = [];
+// ── Config Flattening ───────────────────────────────────────────────
 
+export function flattenConfig(config: PermissionConfig, source: PermissionRuleSource): PermissionRuleEntry[] {
+  const rules: PermissionRuleEntry[] = [];
   for (const [permission, value] of Object.entries(config)) {
     if (typeof value === 'string' && isValidAction(value)) {
       rules.push({permission, pattern: '*', action: value, source});
-    } else if (typeof value === 'object' && value !== null && !Array.isArray(value)) {
+    } else if (isRecord(value)) {
       for (const [pattern, action] of Object.entries(value)) {
         if (typeof action === 'string' && isValidAction(action)) {
           rules.push({permission, pattern, action, source});
@@ -117,81 +68,79 @@ export function flattenConfig(
       }
     }
   }
-
   return rules;
 }
 
-/**
- * Parse legacy rules format (string[] in allow/ask/deny buckets)
- * into PermissionRuleEntry[].
- */
+// ── Legacy Rules Format ─────────────────────────────────────────────
+
 function parseLegacyRules(
   buckets: { allow?: string[]; ask?: string[]; deny?: string[] },
   source: PermissionRuleSource,
 ): PermissionRuleEntry[] {
   const rules: PermissionRuleEntry[] = [];
-
   for (const [bucket, entries] of Object.entries(buckets)) {
     if (!Array.isArray(entries)) continue;
     const action = bucket as PermissionAction;
     if (!isValidAction(action)) continue;
-
-    for (const expression of entries) {
-      if (typeof expression !== 'string') continue;
-      const parsed = parseExpression(expression);
-      if (parsed) {
-        rules.push({...parsed, action, source});
-      }
+    for (const expr of entries) {
+      if (typeof expr !== 'string') continue;
+      const parsed = parseExpression(expr);
+      if (parsed) rules.push({...parsed, action, source});
     }
   }
-
   return rules;
 }
 
-/**
- * Parse a tool expression like "Bash(git *)" into permission + pattern.
- */
 function parseExpression(expression: string): { permission: string; pattern: string } | undefined {
   const text = expression.trim();
-  const openIndex = text.indexOf('(');
-  if (openIndex < 0) {
-    return {permission: text, pattern: '*'};
-  }
-  if (!text.endsWith(')')) {
-    return undefined;
-  }
-  return {
-    permission: text.slice(0, openIndex).trim(),
-    pattern: text.slice(openIndex + 1, -1) || '*',
-  };
+  const open = text.indexOf('(');
+  if (open < 0) return {permission: text, pattern: '*'};
+  if (!text.endsWith(')')) return undefined;
+  return {permission: text.slice(0, open).trim(), pattern: text.slice(open + 1, -1) || '*'};
 }
 
-function isValidAction(value: string): value is PermissionAction {
-  return value === 'allow' || value === 'ask' || value === 'deny';
-}
+// ── Unified Settings Support ────────────────────────────────────────
 
-function isRecord(value: unknown): value is Record<string, unknown> {
-  return typeof value === 'object' && value !== null && !Array.isArray(value);
-}
+export function createPermissionRulesFromSettings(
+  permissions: { defaultMode?: string; alwaysAllow?: string[]; alwaysDeny?: string[]; alwaysAsk?: string[] } | undefined,
+): PermissionRuleSet {
+  const source: PermissionRuleSource = {scope: 'settings', path: '<unified-settings>'};
+  const rules: PermissionRuleEntry[] = [];
 
-function buildSourceList(options: PermissionPolicyOptions): SourceRecord[] {
-  const list: SourceRecord[] = [];
-
-  for (const policyFile of options.policyFiles ?? []) {
-    list.push({scope: 'explicit', path: path.resolve(policyFile)});
+  for (const {entries, action} of [
+    {entries: permissions?.alwaysAllow, action: 'allow' as const},
+    {entries: permissions?.alwaysDeny, action: 'deny' as const},
+    {entries: permissions?.alwaysAsk, action: 'ask' as const},
+  ]) {
+    if (!entries) continue;
+    for (const expr of entries) {
+      if (typeof expr !== 'string') continue;
+      const parsed = parseExpression(expr);
+      if (parsed) rules.push({...parsed, action, source});
+    }
   }
 
-  const projectRoot = resolvePermissionProjectRoot(options);
-  const userHome = resolveUserHome(options);
+  const mode = permissions?.defaultMode;
+  const defaultDecision: PermissionAction = (mode === 'bypassPermissions' || mode === 'dontAsk') ? 'allow' : 'ask';
+  return {rules, defaultDecision};
+}
+
+// ── Source Loading ───────────────────────────────────────────────────
+
+function buildSourceList(options: PermissionPolicyOptions) {
+  const list: { scope: string; path: string }[] = [];
+  for (const f of options.policyFiles ?? []) list.push({scope: 'explicit', path: path.resolve(f)});
+
+  const root = resolvePermissionProjectRoot(options);
+  const home = options.userHome ?? os.homedir();
   list.push(
-    {scope: 'codara_local', path: path.join(projectRoot, '.codara', 'settings.local.json')},
-    {scope: 'codara_project', path: path.join(projectRoot, '.codara', 'settings.json')},
-    {scope: 'codara_user', path: path.join(userHome, '.codara', 'settings.json')},
+    {scope: 'codara_local', path: path.join(root, '.codara', 'settings.local.json')},
+    {scope: 'codara_project', path: path.join(root, '.codara', 'settings.json')},
+    {scope: 'codara_user', path: path.join(home, '.codara', 'settings.json')},
   );
 
-  // Deduplicate by resolved path
   const seen = new Set<string>();
-  return list.filter((item) => {
+  return list.filter(item => {
     const resolved = path.resolve(item.path);
     if (seen.has(resolved)) return false;
     seen.add(resolved);
@@ -200,189 +149,91 @@ function buildSourceList(options: PermissionPolicyOptions): SourceRecord[] {
   });
 }
 
-async function loadSource(source: SourceRecord): Promise<LoadedSource> {
+interface LoadedSource {
+  scope: string; path: string; exists: boolean;
+  rules: PermissionRuleEntry[]; defaultDecision: PermissionAction | null;
+}
+
+async function loadSource(source: { scope: string; path: string }): Promise<LoadedSource> {
   if (!existsSync(source.path)) {
-    return {scope: source.scope, path: source.path, exists: false, rules: [], defaultDecision: null, errors: []};
+    return {scope: source.scope, path: source.path, exists: false, rules: [], defaultDecision: null};
   }
 
   try {
     const content = await readFile(source.path, 'utf8');
     const parsed = JSON.parse(content) as unknown;
-    if (!isRecord(parsed)) {
-      return {scope: source.scope, path: source.path, exists: true, rules: [], defaultDecision: null, errors: ['invalid JSON root']};
-    }
-
+    if (!isRecord(parsed)) return {scope: source.scope, path: source.path, exists: true, rules: [], defaultDecision: null};
     return parseSourceData(parsed, {scope: source.scope, path: source.path});
-  } catch (error) {
+  } catch {
+    return {scope: source.scope, path: source.path, exists: true, rules: [], defaultDecision: null};
+  }
+}
+
+function parseSourceData(root: Record<string, unknown>, source: PermissionRuleSource): LoadedSource {
+  // New format: { permission: { "Read": "allow", "Bash": { "git *": "allow" } } }
+  if (isRecord(root.permission)) {
+    return {scope: source.scope, path: source.path, exists: true, rules: flattenConfig(root.permission as PermissionConfig, source), defaultDecision: null};
+  }
+
+  // Legacy format: { permissions: { rules: { allow: [...] }, defaultDecision: "ask" } }
+  if (isRecord(root.permissions)) {
+    const p = root.permissions as Record<string, unknown>;
+    if (isRecord(p.rules)) {
+      const r = p.rules as Record<string, unknown>;
+      return {
+        scope: source.scope, path: source.path, exists: true,
+        rules: parseLegacyRules({allow: toStrArr(r.allow), ask: toStrArr(r.ask), deny: toStrArr(r.deny)}, source),
+        defaultDecision: readAction(p.defaultDecision),
+      };
+    }
+  }
+
+  // Root-level legacy: { rules: { allow: [...] } }
+  if (isRecord(root.rules)) {
+    const r = root.rules as Record<string, unknown>;
     return {
-      scope: source.scope,
-      path: source.path,
-      exists: true,
-      rules: [],
-      defaultDecision: null,
-      errors: [`parse error: ${error instanceof Error ? error.message : String(error)}`],
+      scope: source.scope, path: source.path, exists: true,
+      rules: parseLegacyRules({allow: toStrArr(r.allow), ask: toStrArr(r.ask), deny: toStrArr(r.deny)}, source),
+      defaultDecision: readAction(root.defaultDecision),
     };
   }
-}
 
-function parseSourceData(
-  root: Record<string, unknown>,
-  source: PermissionRuleSource,
-): LoadedSource {
-  const errors: string[] = [];
-  let rules: PermissionRuleEntry[] = [];
-  let defaultDecision: PermissionAction | null = null;
-
-  // Try new format: { permission: { "Read": "allow", "Bash": { "git *": "allow" } } }
-  const permissionBlock = isRecord(root.permission) ? root.permission : undefined;
-  if (permissionBlock) {
-    const config = permissionBlock as PermissionConfig;
-    rules = flattenConfig(config, source);
-    return {scope: source.scope, path: source.path, exists: true, rules, defaultDecision, errors};
+  // Root-level buckets: { allow: [...], deny: [...] }
+  const allow = toStrArr(root.allow), ask = toStrArr(root.ask), deny = toStrArr(root.deny);
+  if (allow.length || ask.length || deny.length) {
+    return {
+      scope: source.scope, path: source.path, exists: true,
+      rules: parseLegacyRules({allow, ask, deny}, source),
+      defaultDecision: readAction(root.defaultDecision),
+    };
   }
 
-  // Try legacy format: { permissions: { rules: { allow: [...], deny: [...] }, defaultDecision: "ask" } }
-  const permissions = isRecord(root.permissions) ? root.permissions : undefined;
-  if (permissions) {
-    const nestedRules = isRecord(permissions.rules) ? permissions.rules : undefined;
-    if (nestedRules) {
-      rules = parseLegacyRules(
-        {
-          allow: normalizeStringArray(nestedRules.allow),
-          ask: normalizeStringArray(nestedRules.ask),
-          deny: normalizeStringArray(nestedRules.deny),
-        },
-        source,
-      );
-      defaultDecision = readDefaultDecision(permissions.defaultDecision);
-      return {scope: source.scope, path: source.path, exists: true, rules, defaultDecision, errors};
-    }
-  }
-
-  // Try root-level legacy: { rules: { allow: [...] } }
-  const rootRules = isRecord(root.rules) ? root.rules : undefined;
-  if (rootRules) {
-    rules = parseLegacyRules(
-      {
-        allow: normalizeStringArray(rootRules.allow),
-        ask: normalizeStringArray(rootRules.ask),
-        deny: normalizeStringArray(rootRules.deny),
-      },
-      source,
-    );
-    defaultDecision = readDefaultDecision(root.defaultDecision);
-    return {scope: source.scope, path: source.path, exists: true, rules, defaultDecision, errors};
-  }
-
-  // Try root-level buckets: { allow: [...], deny: [...] }
-  const rootAllow = normalizeStringArray(root.allow);
-  const rootAsk = normalizeStringArray(root.ask);
-  const rootDeny = normalizeStringArray(root.deny);
-  if (rootAllow.length || rootAsk.length || rootDeny.length) {
-    rules = parseLegacyRules({allow: rootAllow, ask: rootAsk, deny: rootDeny}, source);
-    defaultDecision = readDefaultDecision(root.defaultDecision);
-  }
-
-  return {scope: source.scope, path: source.path, exists: true, rules, defaultDecision, errors};
+  return {scope: source.scope, path: source.path, exists: true, rules: [], defaultDecision: null};
 }
 
-function normalizeStringArray(value: unknown): string[] {
-  return Array.isArray(value) ? value.filter((item): item is string => typeof item === 'string') : [];
+// ── Helpers ─────────────────────────────────────────────────────────
+
+function isValidAction(v: string): v is PermissionAction { return v === 'allow' || v === 'ask' || v === 'deny'; }
+function isRecord(v: unknown): v is Record<string, unknown> { return typeof v === 'object' && v !== null && !Array.isArray(v); }
+function toStrArr(v: unknown): string[] { return Array.isArray(v) ? v.filter((x): x is string => typeof x === 'string') : []; }
+function readAction(v: unknown): PermissionAction | null {
+  if (typeof v !== 'string') return null;
+  return isValidAction(v.trim()) ? v.trim() as PermissionAction : null;
 }
 
-function readDefaultDecision(value: unknown): PermissionAction | null {
-  if (typeof value !== 'string') return null;
-  return isValidAction(value.trim()) ? (value.trim() as PermissionAction) : null;
-}
+// ── Exports ─────────────────────────────────────────────────────────
 
 export function resolvePermissionProjectRoot(options: PermissionPolicyOptions): string {
   return resolveWorkspaceRoot({cwd: options.cwd, projectRoot: options.projectRoot});
 }
 
-function resolveUserHome(options: PermissionPolicyOptions): string {
-  return path.resolve(options.userHome ?? os.homedir());
-}
-
 export function resolvePermissionSettingsFile(options: PermissionPolicyOptions): string {
-  if (options.settingsFile?.trim()) {
-    return path.resolve(options.settingsFile);
-  }
+  if (options.settingsFile?.trim()) return path.resolve(options.settingsFile);
   return path.join(resolvePermissionProjectRoot(options), '.codara', 'settings.local.json');
 }
 
-/**
- * Create default settings record for a new settings file.
- */
 export function createDefaultSettingsRecord(): Record<string, unknown> {
-  return {
-    permissions: {
-      rules: {
-        allow: [...DEFAULT_ALLOWED_RULES],
-        ask: [],
-        deny: [],
-      },
-    },
-  };
+  return {permissions: {rules: {allow: [...DEFAULT_ALLOWED_RULES], ask: [], deny: []}}};
 }
-
-/**
- * Convert the unified CodaraSettings permissions block into a PermissionRuleSet
- * that the permission evaluation engine can consume directly.
- *
- * Maps:
- *  - alwaysAllow → rules with action 'allow'
- *  - alwaysDeny  → rules with action 'deny'
- *  - alwaysAsk   → rules with action 'ask'
- *  - defaultMode → defaultDecision ('bypassPermissions'|'dontAsk' → 'allow', else 'ask')
- */
-export function createPermissionRulesFromSettings(
-  permissions: {
-    defaultMode?: string;
-    alwaysAllow?: string[];
-    alwaysDeny?: string[];
-    alwaysAsk?: string[];
-  } | undefined,
-): PermissionRuleSet {
-  const source: PermissionRuleSource = {scope: 'settings', path: '<unified-settings>'};
-
-  const rules: PermissionRuleEntry[] = [];
-
-  // Parse each bucket into PermissionRuleEntry[]
-  const buckets: { entries: string[] | undefined; action: PermissionAction }[] = [
-    {entries: permissions?.alwaysAllow, action: 'allow'},
-    {entries: permissions?.alwaysDeny, action: 'deny'},
-    {entries: permissions?.alwaysAsk, action: 'ask'},
-  ];
-
-  for (const {entries, action} of buckets) {
-    if (!entries) continue;
-    for (const expression of entries) {
-      if (typeof expression !== 'string') continue;
-      const parsed = parseExpression(expression);
-      if (parsed) {
-        rules.push({...parsed, action, source});
-      }
-    }
-  }
-
-  const defaultDecision = mapDefaultMode(permissions?.defaultMode);
-
-  return {rules, defaultDecision};
-}
-
-/**
- * Map a unified settings defaultMode to a PermissionAction.
- */
-function mapDefaultMode(mode: string | undefined): PermissionAction {
-  if (!mode) return 'ask';
-  switch (mode) {
-    case 'bypassPermissions':
-    case 'dontAsk':
-      return 'allow';
-    default:
-      return 'ask';
-  }
-}
-
 
 export {DEFAULT_ALLOWED_RULES};

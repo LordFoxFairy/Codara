@@ -6,8 +6,8 @@
  */
 import path from 'node:path';
 import type {CodaraSettings} from '@config/schema';
-import {HookRegistryImpl, HookPipeline, createHookExecutor} from '@observability/hook';
-import type {HookSource, HookRegistry} from '@observability/hook';
+import {HookRegistryImpl, HookPipeline, createHookExecutor} from '@hooks';
+import type {HookSource, HookRegistry} from '@hooks';
 
 export interface HooksInfrastructure {
   hookRegistry: HookRegistry;

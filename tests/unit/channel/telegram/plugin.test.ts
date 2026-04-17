@@ -1,5 +1,5 @@
 import {describe, test, expect, beforeEach, afterEach, mock} from 'bun:test';
-import {telegramPlugin} from '@integration/channel/telegram/plugin';
+import {telegramPlugin} from '@channels/telegram/plugin';
 
 function mockFetch(response: {ok: boolean; result?: unknown; description?: string; error_code?: number}) {
   return mock(() =>

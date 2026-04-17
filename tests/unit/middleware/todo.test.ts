@@ -2,7 +2,7 @@ import {describe, expect, it} from 'bun:test';
 import {AIMessage, HumanMessage, ToolMessage, type BaseMessage} from '@langchain/core/messages';
 import type {BaseChatModel} from '@langchain/core/language_models/chat_models';
 import {createAgent} from '@core/agent';
-import {createAgentMemoryCheckpointer} from '@durability/checkpoint';
+import {createAgentMemoryCheckpointer} from '@state/checkpoint';
 import {MiddlewarePipeline} from '@core/pipeline';
 import {readTodoState, createTodoListMiddleware, TODO_TOOL_NAME} from '@core/middleware/todo';
 

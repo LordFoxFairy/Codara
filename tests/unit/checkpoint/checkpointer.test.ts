@@ -2,8 +2,8 @@ import {describe, expect, it} from 'bun:test';
 import {access, mkdtemp} from 'node:fs/promises';
 import os from 'node:os';
 import path from 'node:path';
-import {FileCheckpointer, InMemoryCheckpointer} from '@durability/checkpoint';
-import {toFilesystemSafeId} from '@durability/storage-key';
+import {FileCheckpointer, InMemoryCheckpointer} from '@state/checkpoint';
+import {toFilesystemSafeId} from '@state/storage-key';
 
 interface TestState {
   counter: number;

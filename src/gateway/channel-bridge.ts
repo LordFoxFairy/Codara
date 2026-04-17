@@ -11,7 +11,7 @@
 
 import type {Channel, ChannelMessage, ChannelRuntimeEvent, ChannelType} from '@shared/channel-types';
 import type {ReviewRequest, ReviewResumePayload} from '@shared/agent-types';
-import type {ChannelPlugin} from '@integration/channel/contracts';
+import type {ChannelPlugin} from '@channels/contracts';
 import type {ReviewPromptAction} from './types';
 export class GatewayChannelBridge implements Channel {
   readonly id: string;

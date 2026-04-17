@@ -17,9 +17,9 @@ import {tmpdir} from 'node:os';
 import path from 'node:path';
 import {StructuredTool} from '@langchain/core/tools';
 import {z} from 'zod';
-import type {TaskRegistry} from '@capability/task/task-registry';
-import {generateTaskId} from '@capability/task/task-types';
-import type {ShellTaskState} from '@capability/task/task-types';
+import type {TaskRegistry} from '@tasks/task-registry';
+import {generateTaskId} from '@tasks/task-types';
+import type {ShellTaskState} from '@tasks/task-types';
 
 const DEFAULT_TIMEOUT = 120_000;
 const MAX_TIMEOUT = 600_000;

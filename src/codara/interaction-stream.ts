@@ -9,12 +9,12 @@
  */
 
 import {AIMessage, ToolMessage, type BaseMessage} from '@langchain/core/messages';
-import type {SubagentCompletionContinuation, SubagentRunManager, SubagentRunStore} from '@capability/subagent';
+import type {SubagentCompletionContinuation, SubagentRunManager, SubagentRunStore} from '@tasks/subagent';
 import {
   createSubagentCompletionToolMessages,
   shouldRetrySubagentCompletionResponse,
-} from '@capability/subagent/completion';
-import type {Session} from '@durability/session';
+} from '@tasks/subagent/completion';
+import type {Session} from '@state/session';
 import {readMessageText} from '@shared/messages';
 import {readSubagentRunLaunchResult} from '@shared/subagent-run-launch';
 import type {AgentResult, AgentRuntimeContext, AgentStreamConfig, AgentStreamOutput} from '@core/agent';
@@ -51,68 +51,31 @@ export function createCodaraInteractionStream(options: {
   const {session, reviewControl, subagentRunStore, subagentRunManager} = options;
 
   return async function* streamInteraction(request: CodaraStreamRequest) {
+    const base = {session, subagentRunStore, subagentRunManager};
     switch (request.kind) {
       case 'prompt':
-        yield* streamMainSessionWithSubagentFollowThrough({
-          session,
-          subagentRunStore,
-          subagentRunManager,
+        yield* streamWithSubagentFollowThrough({
+          ...base,
           start: () => session.stream(request.input, request.config),
-          buildContinuationConfig: (context) => ({
-            ...request.config,
-            context,
-          }),
+          buildContinuationConfig: (context) => ({...request.config, context}),
         });
         return;
       case 'continuation':
-        yield* streamMainSessionWithSubagentFollowThrough({
-          session,
-          subagentRunStore,
-          subagentRunManager,
-          start: () => session.stream(undefined, {
-            ...request.config,
-            context: request.context,
-          }),
-          buildContinuationConfig: (context) => ({
-            ...request.config,
-            context: mergeContinuationContext(request.context, context),
-          }),
+        yield* streamWithSubagentFollowThrough({
+          ...base,
+          start: () => session.stream(undefined, {...request.config, context: request.context}),
+          buildContinuationConfig: (context) => ({...request.config, context: mergeContinuationContext(request.context, context)}),
         });
         return;
       case 'review':
-        yield* streamReviewWithSubagentFollowThrough({
-          session,
-          subagentRunStore,
-          subagentRunManager,
+        yield* streamWithSubagentFollowThrough({
+          ...base,
           start: () => reviewControl.streamReview(request.payload, request.config),
-          buildContinuationConfig: (context) => ({
-            ...request.config,
-            context,
-          }),
+          buildContinuationConfig: (context) => ({...request.config, context}),
         });
         return;
     }
   };
-}
-
-async function* streamMainSessionWithSubagentFollowThrough(input: {
-  session: Session;
-  subagentRunStore?: SubagentRunStore;
-  subagentRunManager?: SubagentRunManager;
-  start: () => AsyncGenerator<AgentStreamOutput, AgentResult, void>;
-  buildContinuationConfig: (context: AgentRuntimeContext) => Omit<AgentStreamConfig, 'context'> & {context: AgentRuntimeContext};
-}): AsyncGenerator<AgentStreamOutput, void, void> {
-  yield* streamWithSubagentFollowThrough(input);
-}
-
-async function* streamReviewWithSubagentFollowThrough(input: {
-  session: Session;
-  subagentRunStore?: SubagentRunStore;
-  subagentRunManager?: SubagentRunManager;
-  start: () => AsyncGenerator<AgentStreamOutput, AgentResult | undefined, void>;
-  buildContinuationConfig: (context: AgentRuntimeContext) => Omit<AgentStreamConfig, 'context'> & {context: AgentRuntimeContext};
-}): AsyncGenerator<AgentStreamOutput, void, void> {
-  yield* streamWithSubagentFollowThrough(input);
 }
 
 /**

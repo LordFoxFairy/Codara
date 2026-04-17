@@ -4,7 +4,7 @@ import type {BaseChatModel} from '@langchain/core/language_models/chat_models';
 import {tool} from '@langchain/core/tools';
 import {z} from 'zod';
 import {createAgent} from '@core/agent';
-import {AGENT_TOOL_NAME, createSubagentTool} from '@capability/subagent/tool';
+import {AGENT_TOOL_NAME, createSubagentTool} from '@tasks/subagent/tool';
 import {createBuiltinSubagentStore, createAgentSkillsMiddleware, ChildSummaryModel, ScriptedModel} from './task-tool.fixtures';
 
 describe('createSubagentTool filtering', () => {

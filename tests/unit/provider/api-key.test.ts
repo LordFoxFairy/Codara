@@ -1,5 +1,5 @@
 import {describe, expect, it, beforeEach, afterEach, mock} from "bun:test";
-import {expandApiKey} from "@integration/provider";
+import {expandApiKey} from "@models";
 
 describe("expandApiKey", () => {
     const originalEnv = process.env;

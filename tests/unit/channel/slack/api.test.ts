@@ -1,5 +1,5 @@
 import {describe, test, expect, beforeEach, afterEach, mock} from 'bun:test';
-import {SlackApi, SlackApiError} from '@integration/channel/slack/api';
+import {SlackApi, SlackApiError} from '@channels/slack/api';
 
 function mockFetch(response: unknown) {
   return mock(() =>

@@ -101,34 +101,8 @@ export function updateCliReviewDraft(current: CliReviewState, draft: string): Cl
 
 // ── Tab Navigation ─────────────────────────────────────────────────────
 
-export function selectPreviousCliReviewTab(current: CliReviewState): CliReviewState {
-  if (!current.form || current.form.tabs.length === 0) {
-    return current;
-  }
-
-  if (current.form.endStep) {
-    const nextForm = {
-      ...current.form,
-      endStep: false,
-      activeTabIndex: Math.max(current.form.tabs.length - 1, 0),
-    };
-    return {
-      ...clearCliReviewValidation(current),
-      form: nextForm,
-      draft: readReviewFormDraft(nextForm),
-      focus: 'input',
-      selectedActionIndex: resolveReviewInputSelectionIndex(nextForm),
-      customInputSelected: hasCustomAnswerForActiveTab(nextForm),
-      customInputActive: false,
-    };
-  }
-
-  const nextForm = {
-    ...current.form,
-    endStep: false,
-    activeTabIndex: (current.form.activeTabIndex - 1 + current.form.tabs.length) % current.form.tabs.length,
-  };
-
+function applyTabSwitch(current: CliReviewState, nextTabIndex: number): CliReviewState {
+  const nextForm = {...current.form!, endStep: false, activeTabIndex: nextTabIndex};
   return {
     ...clearCliReviewValidation(current),
     form: nextForm,
@@ -140,58 +114,29 @@ export function selectPreviousCliReviewTab(current: CliReviewState): CliReviewSt
   };
 }
 
-export function selectNextCliReviewTab(current: CliReviewState): CliReviewState {
-  if (!current.form || current.form.tabs.length === 0) {
-    return current;
-  }
-
-  if (current.form.endStep) {
-    const nextForm = {
-      ...current.form,
-      endStep: false,
-      activeTabIndex: 0,
-    };
-    return {
-      ...clearCliReviewValidation(current),
-      form: nextForm,
-      draft: readReviewFormDraft(nextForm),
-      focus: 'input',
-      selectedActionIndex: resolveReviewInputSelectionIndex(nextForm),
-      customInputActive: false,
-    };
-  }
-
-  if (current.form.activeTabIndex === current.form.tabs.length - 1) {
-    const nextForm = {
-      ...current.form,
-      endStep: true,
-    };
-    return {
-      ...clearCliReviewValidation(current),
-      form: nextForm,
-      draft: '',
-      focus: 'actions',
-      selectedActionIndex: 0,
-      customInputSelected: false,
-      customInputActive: false,
-    };
-  }
-
-  const nextForm = {
-    ...current.form,
-    endStep: false,
-    activeTabIndex: (current.form.activeTabIndex + 1) % current.form.tabs.length,
-  };
-
+function applyEndStep(current: CliReviewState): CliReviewState {
   return {
     ...clearCliReviewValidation(current),
-    form: nextForm,
-    draft: readReviewFormDraft(nextForm),
-    focus: 'input',
-    selectedActionIndex: resolveReviewInputSelectionIndex(nextForm),
-    customInputSelected: hasCustomAnswerForActiveTab(nextForm),
+    form: {...current.form!, endStep: true},
+    draft: '',
+    focus: 'actions',
+    selectedActionIndex: 0,
+    customInputSelected: false,
     customInputActive: false,
   };
+}
+
+export function selectPreviousCliReviewTab(current: CliReviewState): CliReviewState {
+  if (!current.form || current.form.tabs.length === 0) return current;
+  if (current.form.endStep) return applyTabSwitch(current, Math.max(current.form.tabs.length - 1, 0));
+  return applyTabSwitch(current, (current.form.activeTabIndex - 1 + current.form.tabs.length) % current.form.tabs.length);
+}
+
+export function selectNextCliReviewTab(current: CliReviewState): CliReviewState {
+  if (!current.form || current.form.tabs.length === 0) return current;
+  if (current.form.endStep) return applyTabSwitch(current, 0);
+  if (current.form.activeTabIndex === current.form.tabs.length - 1) return applyEndStep(current);
+  return applyTabSwitch(current, (current.form.activeTabIndex + 1) % current.form.tabs.length);
 }
 
 // ── Shortcuts / Selection ──────────────────────────────────────────────

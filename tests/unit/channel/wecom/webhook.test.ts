@@ -1,12 +1,12 @@
 import {describe, test, expect} from 'bun:test';
-import {normalizeWeComMessage} from '@integration/channel/wecom/webhook';
+import {normalizeWeComMessage} from '@channels/wecom/webhook';
 import {
   computeSignature,
   encryptMessage,
   decryptMessage,
   parseMessageXml,
-} from '@integration/channel/wecom/crypto';
-import type {WeComMessageEvent} from '@integration/channel/wecom/types';
+} from '@channels/wecom/crypto';
+import type {WeComMessageEvent} from '@channels/wecom/types';
 import {randomBytes} from 'node:crypto';
 
 describe('normalizeWeComMessage', () => {

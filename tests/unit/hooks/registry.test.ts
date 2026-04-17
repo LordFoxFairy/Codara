@@ -1,5 +1,5 @@
 import {describe, expect, test, beforeEach} from 'bun:test';
-import {HookRegistryImpl} from '@observability/hook/registry';
+import {HookRegistryImpl} from '@hooks/registry';
 import {writeFileSync, mkdirSync, rmSync} from 'fs';
 import path from 'path';
 

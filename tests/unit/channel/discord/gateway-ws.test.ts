@@ -1,6 +1,6 @@
 import {describe, test, expect} from 'bun:test';
-import {normalizeDiscordMessage} from '@integration/channel/discord/plugin';
-import type {DiscordMessage} from '@integration/channel/discord/types';
+import {normalizeDiscordMessage} from '@channels/discord/plugin';
+import type {DiscordMessage} from '@channels/discord/types';
 
 describe('normalizeDiscordMessage', () => {
   test('normalizes guild message', () => {

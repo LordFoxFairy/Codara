@@ -1,6 +1,6 @@
 import {describe, test, expect} from 'bun:test';
-import {normalizeTelegramMessage} from '@integration/channel/telegram/polling';
-import type {TelegramMessage} from '@integration/channel/telegram/types';
+import {normalizeTelegramMessage} from '@channels/telegram/polling';
+import type {TelegramMessage} from '@channels/telegram/types';
 
 function makeMessage(overrides: Partial<TelegramMessage> = {}): TelegramMessage {
   return {

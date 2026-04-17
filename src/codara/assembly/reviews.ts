@@ -3,7 +3,7 @@
  * review requests into the unified `ReviewQueryItem[]` list for UI consumption.
  */
 
-import type {ApprovalStore} from '@durability/approval-store';
+import type {ApprovalStore} from '@state/approval-store';
 import type {ReviewRequest} from '@core/agent';
 import type {
   ReviewBlockingScope,

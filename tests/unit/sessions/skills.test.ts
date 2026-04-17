@@ -1,7 +1,7 @@
 import {describe, expect, it} from 'bun:test';
 import path from 'node:path';
-import {createCodaraSkillsSource} from '@capability/skill';
-import type {SkillMetadata, SkillStore} from '@capability/skill';
+import {createCodaraSkillsSource} from '@skills';
+import type {SkillMetadata, SkillStore} from '@skills';
 import {createSkillsRuntimeBundle} from '@context/skills-bundle';
 
 describe('Codara skills source', () => {

@@ -8,9 +8,9 @@ import {tool, type StructuredToolInterface} from '@langchain/core/tools';
 import {z} from 'zod';
 import {createAgent} from '@core/agent';
 import {createReviewMiddleware, createMiddleware} from '@core/middleware';
-import {createAgentFileCheckpointer, createAgentMemoryCheckpointer} from '@durability/checkpoint';
-import {createSubagentRunMemoryStore, createSubagentRunManager, type SubagentRunRecord} from '@capability/subagent';
-import {AGENT_TOOL_NAME, createSubagentTool} from '@capability/subagent/tool';
+import {createAgentFileCheckpointer, createAgentMemoryCheckpointer} from '@state/checkpoint';
+import {createSubagentRunMemoryStore, createSubagentRunManager, type SubagentRunRecord} from '@tasks/subagent';
+import {AGENT_TOOL_NAME, createSubagentTool} from '@tasks/subagent/tool';
 import {readSubagentRunLaunchResult} from '@shared/subagent-run-launch';
 
 class ScriptedModel {

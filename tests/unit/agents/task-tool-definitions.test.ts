@@ -8,9 +8,9 @@ import {tool} from '@langchain/core/tools';
 import {z} from 'zod';
 import {createAgent} from '@core/agent';
 import {createReviewMiddleware} from '@core/middleware';
-import {createSubagentRunMemoryStore, createSubagentRunManager, type SubagentRunRecord} from '@capability/subagent';
-import {AGENT_TOOL_NAME, createSubagentTool} from '@capability/subagent/tool';
-import {FileSystemSkillStore} from '@capability/skill';
+import {createSubagentRunMemoryStore, createSubagentRunManager, type SubagentRunRecord} from '@tasks/subagent';
+import {AGENT_TOOL_NAME, createSubagentTool} from '@tasks/subagent/tool';
+import {FileSystemSkillStore} from '@skills';
 import {readSubagentRunLaunchResult} from '@shared/subagent-run-launch';
 import {createAgentSkillsMiddleware, ChildSummaryModel, ScriptedModel} from './task-tool.fixtures';
 

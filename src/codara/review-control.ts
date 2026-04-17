@@ -7,9 +7,9 @@
  */
 
 import type {AgentResult, AgentResumeStreamConfig, AgentStreamOutput, ReviewRequest, ReviewResumePayload} from '@core/agent';
-import type {SubagentReviewResumer} from '@capability/subagent';
-import type {ApprovalStore} from '@durability/approval-store';
-import type {Session} from '@durability/session';
+import type {SubagentReviewResumer} from '@tasks/subagent';
+import type {ApprovalStore} from '@state/approval-store';
+import type {Session} from '@state/session';
 import {getReviewItems} from './assembly/reviews';
 import type {FocusedReviewQuery, ReviewQueryItem} from './types';
 

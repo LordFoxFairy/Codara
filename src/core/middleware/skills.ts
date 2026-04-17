@@ -3,7 +3,7 @@ import {
   createMiddleware,
   type ModelCallContext
 } from '@core/pipeline-types'
-import type {SkillStore} from '@capability/skill/contracts'
+import type {SkillStore} from '@skills/contracts'
 import type {SkillsRuntimeBundle} from '@context/skills-bundle'
 
 /** Runtime data read from shared context (type alias to avoid importing the full contract). */

@@ -54,20 +54,20 @@ export {
   type TaskStatus,
   type TaskStore,
   type UpdateTaskInput,
-} from '@capability/task';
+} from '@tasks';
 export {
   createSubagentMiddleware,
   type SubagentChildRuntimeOptions,
   type CreateSubagentMiddlewareOptions,
-} from '@capability/subagent';
+} from '@tasks/subagent';
 export {
   isSubagentInternalAssistantText,
   isInvalidSubagentCompletionResponse,
   shouldRetrySubagentCompletionResponse,
-} from '@capability/subagent/completion';
+} from '@tasks/subagent/completion';
 export {
   type CodaraCommandSpec,
-} from '@capability/command/runtime/types';
+} from '@commands/runtime/types';
 export {
   createDailySessionFileLogSink,
   createBudgetMiddleware,
@@ -112,8 +112,8 @@ export {
   createAgentMemoryCheckpointer,
   type AgentCheckpoint,
   type AgentCheckpointer,
-} from '@durability/checkpoint';
-// FileCheckpointer, InMemoryCheckpointer — implementation details, import from @durability/checkpoint directly
+} from '@state/checkpoint';
+// FileCheckpointer, InMemoryCheckpointer — implementation details, import from @state/checkpoint directly
 export {
   createCodaraGuidelinesSource,
   type GuidelinesSource,
@@ -137,13 +137,13 @@ export {
   formatSubagentDisplayName,
   loadSkillsRuntimeData,
   normalizeSubagentType,
-} from '@capability/skill';
+} from '@skills';
 export {
   AGENT_SUBAGENT_TYPE,
   isReservedSubagentName,
   readSkillsRuntimeData,
   resolveSubagentDefinition,
-} from '@capability/skill';
+} from '@skills';
 export {
   createBuiltinTools,
   createFetchTool,
@@ -156,7 +156,7 @@ export {
   createCodaraSkillsSource,
   FileSystemSkillStore,
   getDefaultSkillSources,
-} from '@capability/skill';
+} from '@skills';
 export {
   createSkillsRuntimeBundle,
   loadSkillsRuntimeBundle,
@@ -169,18 +169,18 @@ export {
   type SessionStore,
   type SessionState,
   type SessionStatus,
-} from '@durability/session';
+} from '@state/session';
 export {
   type CodaraRuntimeEvent,
   type CodaraRuntimeEventListener,
-} from '@observability/events';
+} from '@events';
 export {
   ChatModelFactory,
   loadModelRoutingConfig,
   ModelRegistry,
   type ModelInfo,
   type ModelRoutingConfig,
-} from '@integration/provider';
+} from '@models';
 export {
   type HookEventType,
   type HookDefinition,
@@ -200,7 +200,7 @@ export {
   HookPipeline,
   createToolHooksBridge,
   createHookExecutor,
-} from '@observability/hook';
+} from '@hooks';
 export {
   createMcpManager,
   createMcpLangChainTools,
@@ -209,7 +209,7 @@ export {
   type McpConfig,
   type McpManager,
   type McpServerConfig,
-} from '@integration/mcp';
-// McpClient, McpConfigSchema, sanitizeToolName, etc. — internal, import from @integration/mcp directly
-export {MemoryWriter, MemoryReader, type MemoryType, type MemoryFile, type MemoryHeader} from '@capability/memory';
-export {restoreSession, type RestoredSession} from '@durability/session/restore';
+} from '@mcp';
+// McpClient, McpConfigSchema, sanitizeToolName, etc. — internal, import from @mcp directly
+export {MemoryWriter, MemoryReader, type MemoryType, type MemoryFile, type MemoryHeader} from '@memory';
+export {restoreSession, type RestoredSession} from '@state/session/restore';

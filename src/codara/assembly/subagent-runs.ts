@@ -1,6 +1,6 @@
 /** Subagent run summary query -- lightweight listing for UI display. */
 
-import type {SubagentRunStore} from '@capability/subagent';
+import type {SubagentRunStore} from '@tasks/subagent';
 import type {SubagentRunQuerySummary} from '../types';
 
 /** Project SubagentRunStore records into lightweight query summaries. */

@@ -1,6 +1,6 @@
 import {describe, expect, it} from 'bun:test';
 import {ToolMessage} from '@langchain/core/messages';
-import {summarizeSubagent} from '@observability/events/formatters';
+import {summarizeSubagent} from '@events/formatters';
 
 describe('observability event formatters', () => {
   it('suppresses launch metadata details for delegated subagent start messages', () => {

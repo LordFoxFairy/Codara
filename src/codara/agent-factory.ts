@@ -19,7 +19,7 @@ import {
   type SummarySettings,
 } from '@core/middleware/summary';
 import {MIDDLEWARE_NAMES, type BaseMiddleware} from '@core/pipeline-types';
-import type {AgentFactory, AgentFactoryCreateOptions, SessionMiddlewareFactory} from '@durability/session/types';
+import type {AgentFactory, AgentFactoryCreateOptions, SessionMiddlewareFactory} from '@state/session/types';
 
 // ── AgentFactory ──
 

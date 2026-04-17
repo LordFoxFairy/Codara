@@ -1,6 +1,6 @@
 import {describe, expect, it} from 'bun:test';
 import {filterCommands, mapCommandSpecs, matchCommandPrefix, type CompletionItem} from '../../../src/cli/hooks/use-command-completion';
-import type {CodaraCommandSpec} from '@capability/command/runtime/types';
+import type {CodaraCommandSpec} from '@commands/runtime/types';
 
 describe('matchCommandPrefix', () => {
   it('matches / at start', () => {

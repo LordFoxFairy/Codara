@@ -1,7 +1,7 @@
 import {describe, expect, it} from 'bun:test';
 import {createAgentFileCheckpointer, createAgentMemoryCheckpointer, createCodara, createCodaraRuntime} from '@/index';
-import {putManualCheckpoint} from '@durability/checkpoint';
-import {createApprovalFileStore, createApprovalMemoryStore} from '@durability/approval-store';
+import {putManualCheckpoint} from '@state/checkpoint';
+import {createApprovalFileStore, createApprovalMemoryStore} from '@state/approval-store';
 import {createReviewMiddleware} from '@core/middleware';
 import type {BaseChatModel} from '@langchain/core/language_models/chat_models';
 import {AIMessage, AIMessageChunk, HumanMessage, SystemMessage, ToolMessage, type BaseMessage, type ToolCall} from '@langchain/core/messages';
@@ -11,8 +11,8 @@ import {mkdtemp, mkdir, readFile, rm, stat, writeFile} from 'node:fs/promises';
 import {tmpdir} from 'node:os';
 import path from 'node:path';
 import {EchoModel, StreamingEchoModel} from './codara-fixtures';
-import {createSubagentRunFileStore, createSubagentRunMemoryStore, createSubagentMiddleware} from '@/capability/subagent';
-import {AGENT_TOOL_NAME} from '@/capability/subagent/tool';
+import {createSubagentRunFileStore, createSubagentRunMemoryStore, createSubagentMiddleware} from '@tasks/subagent';
+import {AGENT_TOOL_NAME} from '@tasks/subagent/tool';
 
 const createRuntimeForTest = (options: Parameters<typeof createCodaraRuntime>[0]) => (
   createCodaraRuntime({

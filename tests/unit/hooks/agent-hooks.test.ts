@@ -4,7 +4,7 @@ import type {
   AgentStopContext,
   SubagentStopContext,
   HookInterceptResult,
-} from '@observability/hook/types';
+} from '@hooks/types';
 
 function createTrackingAgentLifecycle(stopBehavior: 'allow' | 'deny' = 'allow') {
   // eslint-disable-next-line @typescript-eslint/no-explicit-any

@@ -2,7 +2,7 @@ import {describe, expect, it} from 'bun:test';
 import {mkdtemp, readFile, rm} from 'node:fs/promises';
 import os from 'node:os';
 import path from 'node:path';
-import {MemoryWriter} from '../../../src/capability/memory/writer';
+import {MemoryWriter} from '../../../src/memory/writer';
 
 describe('MemoryWriter', () => {
   it('should write memory file with frontmatter', async () => {

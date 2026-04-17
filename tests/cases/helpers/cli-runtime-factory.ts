@@ -25,12 +25,12 @@ import {
   createTaskUpdateTool,
   TASK_CREATE_TOOL_NAME,
   TASK_LIST_TOOL_NAME,
-} from '@capability/task';
+} from '@tasks';
 import {createMiddleware} from '@core/pipeline-types';
-import {createSubagentRunFileStore, createSubagentMiddleware} from '@capability/subagent';
-import {AGENT_TOOL_NAME} from '@capability/subagent/tool';
-import {FileSystemSkillStore, readSkillsRuntimeData} from '@capability/skill';
-import {createSkillTool} from '@capability/skill/runtime/commands';
+import {createSubagentRunFileStore, createSubagentMiddleware} from '@tasks/subagent';
+import {AGENT_TOOL_NAME} from '@tasks/subagent/tool';
+import {FileSystemSkillStore, readSkillsRuntimeData} from '@skills';
+import {createSkillTool} from '@skills/runtime/commands';
 import {loadSkillsRuntimeBundle} from '@context/skills-bundle';
 import {seedProjectSkillFixtures} from '../../helpers/project-skill-fixtures';
 

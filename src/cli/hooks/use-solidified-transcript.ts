@@ -77,29 +77,15 @@ function filterTrailingAssistantItemsWhileSubagentsRun(input: {
   runState?: CliRunState;
   subagentRuns?: readonly SubagentRunQuerySummary[];
 }): TranscriptItem[] {
-  const hasActiveSubagentRuns = (input.subagentRuns ?? []).some((run) => run.status === 'running' || run.status === 'paused');
-  const runtimeOwnsActiveSubagentExecution = input.runtimeItems.some((item) => (
-    item.role === 'agent'
-    && item.toolMeta?.status === 'running'
-  ));
-  const subagentTurnStillOwnsForeground = input.runState?.status === 'running'
-    && (
-      input.runState.phase === 'subagent_wait'
-      || input.runState.phase === 'subagent_completion'
-    );
+  const subagentActive
+    = (input.runState?.status === 'running'
+        && (input.runState.phase === 'subagent_wait' || input.runState.phase === 'subagent_completion'))
+    || (input.subagentRuns ?? []).some((run) => run.status === 'running' || run.status === 'paused')
+    || input.runtimeItems.some((item) => item.role === 'agent' && item.toolMeta?.status === 'running');
 
-  if (subagentTurnStillOwnsForeground) {
+  if (subagentActive) {
     return input.trailingItems.filter((item) => item.role !== 'assistant' && item.role !== 'system');
   }
-
-  if (hasActiveSubagentRuns) {
-    return input.trailingItems.filter((item) => item.role !== 'assistant' && item.role !== 'system');
-  }
-
-  if (runtimeOwnsActiveSubagentExecution) {
-    return input.trailingItems.filter((item) => item.role !== 'assistant' && item.role !== 'system');
-  }
-
   return [...input.trailingItems];
 }
 

@@ -1,6 +1,6 @@
 import {describe, expect, it, mock} from 'bun:test';
-import {modelCommand} from '@capability/command/builtin/model';
-import type {CodaraCommandContext, ParsedCodaraCommand} from '@capability/command/runtime/types';
+import {modelCommand} from '@commands/builtin/model';
+import type {CodaraCommandContext, ParsedCodaraCommand} from '@commands/runtime/types';
 
 function makeContext(overrides: {
   args?: string[];

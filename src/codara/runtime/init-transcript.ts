@@ -1,7 +1,7 @@
 /** JSONL transcript wiring: event subscription + dispose chain. */
 import {randomUUID} from 'node:crypto';
-import {TranscriptWriter} from '@durability/session/transcript';
-import {getTranscriptPath} from '@durability/session/storage';
+import {TranscriptWriter} from '@state/session/transcript';
+import {getTranscriptPath} from '@state/session/storage';
 import type {SettingsWatcher} from '@config/watcher';
 import type {Codara} from '../types';
 

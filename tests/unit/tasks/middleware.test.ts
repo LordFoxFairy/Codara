@@ -15,10 +15,10 @@ import {
   createTaskTools,
   TASK_CREATE_TOOL_NAME,
   TASK_LIST_TOOL_NAME,
-} from '@capability/task';
+} from '@tasks';
 import {createMiddleware} from '@core/pipeline-types';
-import {createSubagentRunMemoryStore, createSubagentMiddleware} from '@capability/subagent';
-import {AGENT_TOOL_NAME} from '@capability/subagent/tool';
+import {createSubagentRunMemoryStore, createSubagentMiddleware} from '@tasks/subagent';
+import {AGENT_TOOL_NAME} from '@tasks/subagent/tool';
 import {formatSubagentRunLaunchResult, readSubagentRunLaunchResult} from '@shared/subagent-run-launch';
 import {createAgentSkillsMiddleware, createBuiltinSubagentStore} from '../agents/task-tool.fixtures';
 

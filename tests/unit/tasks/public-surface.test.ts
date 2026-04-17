@@ -1,5 +1,5 @@
 import {describe, expect, it} from 'bun:test';
-import * as tasks from '@capability/task';
+import * as tasks from '@tasks';
 
 describe('tasks public surface', () => {
   it('should expose task tools and stores without a second outward middleware surface', () => {

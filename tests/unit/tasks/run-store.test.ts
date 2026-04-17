@@ -1,5 +1,5 @@
 import {describe, expect, it} from 'bun:test';
-import {createSubagentRunMemoryStore} from '@capability/subagent';
+import {createSubagentRunMemoryStore} from '@tasks/subagent';
 
 describe('agent run store', () => {
   it('tracks start, activity, and completion for delegated runs', () => {

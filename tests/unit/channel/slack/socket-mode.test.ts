@@ -1,6 +1,6 @@
 import {describe, test, expect} from 'bun:test';
-import {normalizeSlackMessage} from '@integration/channel/slack/plugin';
-import type {SlackMessageEvent} from '@integration/channel/slack/types';
+import {normalizeSlackMessage} from '@channels/slack/plugin';
+import type {SlackMessageEvent} from '@channels/slack/types';
 
 describe('normalizeSlackMessage', () => {
   test('normalizes channel message', () => {

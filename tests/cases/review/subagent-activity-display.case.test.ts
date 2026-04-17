@@ -9,8 +9,8 @@ import type {StructuredToolInterface} from '@langchain/core/tools';
 import {tool} from '@langchain/core/tools';
 import {z} from 'zod';
 import {createCodaraRuntime} from '@/index';
-import {createSubagentMiddleware} from '@capability/subagent/middleware';
-import type {CodaraRuntimeEvent} from '@observability/events';
+import {createSubagentMiddleware} from '@tasks/subagent/middleware';
+import type {CodaraRuntimeEvent} from '@events';
 
 /**
  * Pipeline integration test: Sub-agent Activity Display

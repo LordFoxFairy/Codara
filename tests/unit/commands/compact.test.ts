@@ -1,10 +1,10 @@
 import {describe, expect, it} from 'bun:test';
-import {compactCommand} from '@capability/command/builtin/compact';
+import {compactCommand} from '@commands/builtin/compact';
 import type {
   CodaraCommandAgent,
   CodaraCommandContext,
   ParsedCodaraCommand,
-} from '@capability/command/runtime/types';
+} from '@commands/runtime/types';
 
 function makeIdleAgentState() {
   return {

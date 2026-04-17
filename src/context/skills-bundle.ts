@@ -8,9 +8,9 @@ import {
   formatSkillsList,
   formatSkillsLocations,
   SKILLS_SYSTEM_PROMPT,
-} from '@capability/skill/catalog/metadata';
-import type {SkillStore, SkillsRuntimeData} from '@capability/skill/contracts';
-import {loadSkillsRuntimeData} from '@capability/skill/runtime/runtime';
+} from '@skills/catalog/metadata';
+import type {SkillStore, SkillsRuntimeData} from '@skills/contracts';
+import {loadSkillsRuntimeData} from '@skills/runtime/runtime';
 
 export interface SkillsRuntimeBundle {
   systemMessage: string;

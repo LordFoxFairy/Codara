@@ -16,13 +16,13 @@ export async function startGateway(configPath?: string): Promise<Gateway> {
 
   // Dynamically import all available channel plugins
   const pluginImports = [
-    () => import('@integration/channel/telegram').then(m => m.telegramPlugin),
-    () => import('@integration/channel/feishu').then(m => m.feishuPlugin),
-    () => import('@integration/channel/dingtalk').then(m => m.dingtalkPlugin),
-    () => import('@integration/channel/qq').then(m => m.qqPlugin),
-    () => import('@integration/channel/wecom').then(m => m.wecomPlugin),
-    () => import('@integration/channel/discord').then(m => m.discordPlugin),
-    () => import('@integration/channel/slack').then(m => m.slackPlugin),
+    () => import('@channels/telegram').then(m => m.telegramPlugin),
+    () => import('@channels/feishu').then(m => m.feishuPlugin),
+    () => import('@channels/dingtalk').then(m => m.dingtalkPlugin),
+    () => import('@channels/qq').then(m => m.qqPlugin),
+    () => import('@channels/wecom').then(m => m.wecomPlugin),
+    () => import('@channels/discord').then(m => m.discordPlugin),
+    () => import('@channels/slack').then(m => m.slackPlugin),
   ];
 
   const plugins = [];

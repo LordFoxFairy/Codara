@@ -1,6 +1,6 @@
 import {afterEach, beforeEach, describe, expect, it} from "bun:test";
 import path from "node:path";
-import {ChatModelFactory, loadModelRoutingConfig, ModelRegistry, parseModelRoutingConfig} from "@integration/provider";
+import {ChatModelFactory, loadModelRoutingConfig, ModelRegistry, parseModelRoutingConfig} from "@models";
 import {createMockRoutingConfig, startMockOpenAIServer} from "./mock-openai-server";
 
 describe("DeepSeek End-to-End", () => {

@@ -1,8 +1,8 @@
 import {describe, test, expect} from 'bun:test';
 import {tool} from '@langchain/core/tools';
 import {z} from 'zod';
-import {buildSubagentChildOptions} from '@capability/subagent/bootstrap';
-import {AGENT_TOOL_NAME} from '@capability/subagent/tool';
+import {buildSubagentChildOptions} from '@tasks/subagent/bootstrap';
+import {AGENT_TOOL_NAME} from '@tasks/subagent/tool';
 
 describe('Task delegation recursion prevention', () => {
   test('buildSubagentChildOptions removes Agent delegation tools from child tool sets', async () => {

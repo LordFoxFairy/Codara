@@ -9,8 +9,8 @@ import {
   readSkillsRuntimeData,
   type SkillMetadata,
   type SkillStore
-} from '@capability/skill'
-import {createSkillTool} from '@capability/skill/runtime/commands'
+} from '@skills'
+import {createSkillTool} from '@skills/runtime/commands'
 import {loadSkillsRuntimeBundle} from '@context/skills-bundle'
 
 function createBaseContext(runId: string) {

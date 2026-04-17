@@ -1,5 +1,5 @@
 import {describe, test, expect, beforeEach, afterEach, mock} from 'bun:test';
-import {TelegramApi, TelegramApiError} from '@integration/channel/telegram/api';
+import {TelegramApi, TelegramApiError} from '@channels/telegram/api';
 
 function mockFetch(response: {ok: boolean; result?: unknown; description?: string; error_code?: number}) {
   return mock(() =>

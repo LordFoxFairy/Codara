@@ -2,8 +2,8 @@ import {describe, expect, it} from 'bun:test';
 import {
   createSkillsMiddleware,
 } from '@core/middleware';
-import {FileSystemSkillStore, getDefaultSkillSources, readSkillsRuntimeData, type SkillStore} from '@capability/skill';
-import {createSkillTool} from '@capability/skill/runtime/commands';
+import {FileSystemSkillStore, getDefaultSkillSources, readSkillsRuntimeData, type SkillStore} from '@skills';
+import {createSkillTool} from '@skills/runtime/commands';
 import {loadSkillsRuntimeBundle} from '@context/skills-bundle';
 
 describe('middleware unified skills exports', () => {

@@ -1,7 +1,7 @@
 import {describe, it, expect} from 'bun:test';
-import {verifyDingTalkSignature, normalizeDingTalkMessage} from '@integration/channel/dingtalk/webhook';
+import {verifyDingTalkSignature, normalizeDingTalkMessage} from '@channels/dingtalk/webhook';
 import {createHmac} from 'node:crypto';
-import type {DingTalkWebhookMessage} from '@integration/channel/dingtalk/types';
+import type {DingTalkWebhookMessage} from '@channels/dingtalk/types';
 
 describe('verifyDingTalkSignature', () => {
   const secret = 'test-secret-key';

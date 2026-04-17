@@ -2,8 +2,8 @@ import {describe, expect, it} from 'bun:test';
 import {mkdtemp, rm} from 'node:fs/promises';
 import os from 'node:os';
 import path from 'node:path';
-import {MemoryWriter} from '../../../src/capability/memory/writer';
-import {MemoryReader} from '../../../src/capability/memory/reader';
+import {MemoryWriter} from '../../../src/memory/writer';
+import {MemoryReader} from '../../../src/memory/reader';
 
 describe('MemoryReader', () => {
   it('should list all memory files', async () => {

@@ -1,7 +1,7 @@
 import {describe, test, expect} from 'bun:test';
 import {Gateway} from '@gateway/gateway';
 import type {GatewayConfig, InboundMessage, StopHandle} from '@gateway/types';
-import type {ChannelPlugin, ChannelPluginCapabilities, GatewayListenContext} from '@integration/channel/contracts';
+import type {ChannelPlugin, ChannelPluginCapabilities, GatewayListenContext} from '@channels/contracts';
 import {z} from 'zod';
 
 interface MockAccount {

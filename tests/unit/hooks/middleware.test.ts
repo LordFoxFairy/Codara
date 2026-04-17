@@ -1,8 +1,8 @@
 import {describe, expect, test} from 'bun:test';
-import {createToolHooksBridge} from '@observability/hook/bridge';
-import type {TaskCreatedContext, TaskCompletedContext, TaskLifecycleHooks, ToolLifecycleHooks, ToolResultContext} from '@observability/hook/types';
+import {createToolHooksBridge} from '@hooks/bridge';
+import type {TaskCreatedContext, TaskCompletedContext, TaskLifecycleHooks, ToolLifecycleHooks, ToolResultContext} from '@hooks/types';
 import {ToolMessage} from '@langchain/core/messages';
-import {TASK_CREATE_TOOL_NAME, TASK_UPDATE_TOOL_NAME} from '@capability/task/tools';
+import {TASK_CREATE_TOOL_NAME, TASK_UPDATE_TOOL_NAME} from '@tasks/tools';
 
 function createMockLifecycle(overrides: Partial<ToolLifecycleHooks> = {}): ToolLifecycleHooks {
   return {

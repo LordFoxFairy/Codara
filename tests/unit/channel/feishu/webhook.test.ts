@@ -1,6 +1,6 @@
 import {describe, test, expect} from 'bun:test';
-import {verifySignature, normalizeFeishuMessage} from '@integration/channel/feishu/webhook';
-import type {FeishuEvent, FeishuMessageEvent} from '@integration/channel/feishu/types';
+import {verifySignature, normalizeFeishuMessage} from '@channels/feishu/webhook';
+import type {FeishuEvent, FeishuMessageEvent} from '@channels/feishu/types';
 import {createHash} from 'node:crypto';
 
 describe('verifySignature', () => {

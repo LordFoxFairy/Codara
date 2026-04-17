@@ -4,7 +4,7 @@ import {
   mergeSubagentRunRecoveryMetadata,
   readSubagentPauseMetadata,
   readSubagentRunRecoveryMetadata,
-} from '@capability/subagent/review-metadata';
+} from '@tasks/subagent/review-metadata';
 
 describe('subagent review metadata helpers', () => {
   it('should round-trip subagent pause metadata for wrapped parent reviews', () => {

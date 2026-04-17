@@ -12,13 +12,13 @@ import {
   createTaskMemoryStore,
   TASK_CREATE_TOOL_NAME,
   TASK_LIST_TOOL_NAME,
-} from '@capability/task';
+} from '@tasks';
 import {createSkillsMiddleware} from '@core/middleware';
-import {FileSystemSkillStore, readSkillsRuntimeData} from '@capability/skill';
-import {createSkillTool} from '@capability/skill/runtime/commands';
+import {FileSystemSkillStore, readSkillsRuntimeData} from '@skills';
+import {createSkillTool} from '@skills/runtime/commands';
 import {loadSkillsRuntimeBundle} from '@context/skills-bundle';
-import {createSubagentRunMemoryStore} from '@capability/subagent';
-import {AGENT_TOOL_NAME, createSubagentTool} from '@capability/subagent/tool';
+import {createSubagentRunMemoryStore} from '@tasks/subagent';
+import {AGENT_TOOL_NAME, createSubagentTool} from '@tasks/subagent/tool';
 import {readSubagentRunLaunchResult} from '@shared/subagent-run-launch';
 
 function createBuiltinSubagentStore() {

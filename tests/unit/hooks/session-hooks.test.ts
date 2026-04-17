@@ -7,7 +7,7 @@ import type {
   CompactContext,
   HookInterceptResult,
   HookNotifyResult,
-} from '@observability/hook/types';
+} from '@hooks/types';
 
 // Test the lifecycle hooks contract with a mock implementation
 function createTrackingLifecycle() {

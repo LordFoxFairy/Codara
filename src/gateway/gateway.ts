@@ -12,7 +12,7 @@
  *   5. respond  — chunkMarkdown → plugin.sendText
  */
 
-import type {ChannelPlugin} from '@integration/channel/contracts';
+import type {ChannelPlugin} from '@channels/contracts';
 import type {ChannelType} from '@shared/channel-types';
 import type {GatewayConfig, InboundMessage, StopHandle} from './types';
 import type {GatewaySessionFactory, GatewaySession} from './session-manager';
@@ -22,7 +22,7 @@ import {createGatewaySessionManager} from './session-manager';
 import {chunkMarkdown} from './outbound';
 import {createDebouncedHandler} from './debounce';
 import {GatewayChannelBridge} from './channel-bridge';
-import {ChannelRegistry} from '@integration/channel/registry';
+import {ChannelRegistry} from '@channels/registry';
 
 export interface GatewayOptions {
   config: GatewayConfig;

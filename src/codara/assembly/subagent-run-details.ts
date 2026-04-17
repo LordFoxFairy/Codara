@@ -1,7 +1,7 @@
 /** Subagent run detail query -- loads full message history from checkpoints. */
 
-import type {AgentCheckpointer} from '@durability/checkpoint';
-import type {SubagentRunStore} from '@capability/subagent';
+import type {AgentCheckpointer} from '@state/checkpoint';
+import type {SubagentRunStore} from '@tasks/subagent';
 import type {SubagentRunQueryDetail} from '../types';
 
 /** Load message-level details for specific subagent runs (or all runs under a parent session). */

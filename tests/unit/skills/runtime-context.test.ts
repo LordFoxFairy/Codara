@@ -5,10 +5,10 @@ import path from 'node:path';
 import {AIMessage} from '@langchain/core/messages';
 import type {BaseChatModel} from '@langchain/core/language_models/chat_models';
 import {createAgent} from '@core/agent';
-import {createAgentMemoryCheckpointer} from '@durability/checkpoint';
+import {createAgentMemoryCheckpointer} from '@state/checkpoint';
 import {createSkillsMiddleware} from '@core/middleware';
-import {FileSystemSkillStore, readSkillsRuntimeData} from '@capability/skill';
-import {createSkillTool} from '@capability/skill/runtime/commands';
+import {FileSystemSkillStore, readSkillsRuntimeData} from '@skills';
+import {createSkillTool} from '@skills/runtime/commands';
 import {loadSkillsRuntimeBundle} from '@context/skills-bundle';
 
 class SingleResponseModel {

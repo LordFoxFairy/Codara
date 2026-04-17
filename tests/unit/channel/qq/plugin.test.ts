@@ -1,6 +1,6 @@
 import {describe, test, expect, beforeEach, afterEach} from 'bun:test';
-import {qqPlugin, normalizeOneBotMessage, type QQAccount} from '@integration/channel/qq/plugin';
-import type {OneBotMessageEvent} from '@integration/channel/qq/types';
+import {qqPlugin, normalizeOneBotMessage, type QQAccount} from '@channels/qq/plugin';
+import type {OneBotMessageEvent} from '@channels/qq/types';
 
 describe('qqPlugin', () => {
   let originalEnv: NodeJS.ProcessEnv;

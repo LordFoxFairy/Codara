@@ -13,9 +13,11 @@ import {
   isAgentToolName,
   isInteractionToolName,
   isHiddenTranscriptToolName,
+} from './tool-formatter';
+import {
   resolveToolMessageName,
   buildToolResultItems,
-} from './tool-formatter';
+} from './tool-message-builder';
 
 // ── Tool call lookup ──────────────────────────────────────────────
 

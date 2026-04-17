@@ -11,19 +11,19 @@
 import type {BaseChatModel} from '@langchain/core/language_models/chat_models';
 import type {StructuredToolInterface} from '@langchain/core/tools';
 import type {BaseMessage} from '@langchain/core/messages';
-import type {AgentCheckpointer} from '@durability/checkpoint';
+import type {AgentCheckpointer} from '@state/checkpoint';
 import type {BaseMiddleware} from '@core/pipeline-types';
 import type {ReviewMiddlewareOptions, LoggingMiddlewareOptions} from '@core/middleware';
 import type {SummarySettings} from '@core/middleware/summary';
-import type {TaskStore} from '@capability/task';
-import type {SubagentRunStore} from '@capability/subagent';
-import type {ModelRoutingConfig} from '@integration/provider';
-import type {SkillStore} from '@capability/skill';
-import type {CodaraCommandResult, CodaraCommandSpec} from '@capability/command';
-import type {Session, SessionState, SessionStore} from '@durability/session';
-import type {ApprovalStore} from '@durability/approval-store';
-import type {McpClientInfo, McpConfig} from '@integration/mcp';
-import type {ChannelRegistry} from '@integration/channel';
+import type {TaskStore} from '@tasks';
+import type {SubagentRunStore} from '@tasks/subagent';
+import type {ModelRoutingConfig} from '@models';
+import type {SkillStore} from '@skills';
+import type {CodaraCommandResult, CodaraCommandSpec} from '@commands';
+import type {Session, SessionState, SessionStore} from '@state/session';
+import type {ApprovalStore} from '@state/approval-store';
+import type {McpClientInfo, McpConfig} from '@mcp';
+import type {ChannelRegistry} from '@channels';
 import type {
   AgentInput,
   AgentResumeStreamConfig,
@@ -34,8 +34,8 @@ import type {
   ReviewResumePayload,
 } from '@core/agent';
 import type {ReviewRequest} from '@shared/agent-types';
-import type {CostSnapshot} from '@observability/cost';
-import type {MemoryWriter} from '@capability/memory/writer';
+import type {CostSnapshot} from '@cost';
+import type {MemoryWriter} from '@memory/writer';
 import type {CodaraModelCatalog} from './assembly/runtime';
 
 // ── Auxiliary Options ──
@@ -207,7 +207,7 @@ export type CodaraStreamRequest =
 export type Codara = Omit<Session, 'resumeReview' | 'resumeReviewStream'> & {
   listCommands(): Promise<readonly CodaraCommandSpec[]>;
   executeCommand(input: string): Promise<CodaraCommandResult>;
-  listSessions(options?: import('@durability/session').SessionListOptions): Promise<SessionState[]>;
+  listSessions(options?: import('@state/session').SessionListOptions): Promise<SessionState[]>;
   getMcpStatus(): McpClientInfo[];
   getSubagentRunSummaries(): SubagentRunQuerySummary[];
   getSubagentRunDetails(runIds?: readonly string[]): Promise<SubagentRunQueryDetail[]>;

@@ -4,7 +4,7 @@ import {
   createTaskListTool,
   createTaskMemoryStore,
   createTaskUpdateTool,
-} from '@capability/task';
+} from '@tasks';
 
 describe('task tools', () => {
   it('应通过 TaskCreate/TaskList/TaskUpdate 操作共享任务', async () => {
