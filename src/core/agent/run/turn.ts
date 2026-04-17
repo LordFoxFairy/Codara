@@ -1,4 +1,4 @@
-import {AIMessage, SystemMessage, ToolMessage, type ToolCall} from '@langchain/core/messages';
+import {AIMessage, HumanMessage, SystemMessage, ToolMessage, type ToolCall} from '@langchain/core/messages';
 import {executeToolCall, resolveToolCallId} from './tool-executor';
 import type {AgentStreamWriter} from './stream';
 import {
@@ -23,6 +23,22 @@ import {TOOL_NAMES} from '@shared/tool-display';
 import {partitionToolCalls} from './tool-concurrency';
 
 export type AgentTurnOutcome = 'continue' | 'complete';
+
+/** Continuation prompts should only be injected once in a row, not on every turn. */
+const CONTINUATION_MARKER = 'Continue with the task. If complete, provide a brief summary.';
+function shouldTryContinuation(messages: ReadonlyArray<{content?: unknown; _getType?: () => string}>): boolean {
+  // Look back through recent messages — if we already pushed a continuation and
+  // got ANOTHER empty response, stop (avoid infinite loops).
+  let continuations = 0;
+  for (let i = messages.length - 1; i >= Math.max(0, messages.length - 10); i--) {
+    const msg = messages[i];
+    if (msg && typeof msg.content === 'string' && msg.content === CONTINUATION_MARKER) {
+      continuations++;
+      if (continuations >= 2) return false;
+    }
+  }
+  return true;
+}
 
 /** True when an AI message has no visible text and no tool calls — a silent end. */
 function isResponseEmpty(response: AIMessage): boolean {
@@ -64,13 +80,21 @@ export async function runAgentTurn(
     await runtime.pipeline.afterModel({...context, response});
 
     if (!response.tool_calls?.length) {
-      // Empty response (no text + no tool_calls) leaves the user with silence.
-      // Happens e.g. after a skill tool returns and the model chooses to stop.
-      // Inject a visible fallback so the transcript isn't blank.
-      if (isResponseEmpty(response)) {
-        response.content = '(model returned no response)';
+      // Empty response (no text + no tool_calls): the model stopped mid-task
+      // — typically after a tool result. Inject a continuation prompt and
+      // let the loop try again (bounded by the max-recursion guard below).
+      if (isResponseEmpty(response) && shouldTryContinuation(run.state.messages)) {
+        run.state.messages.push(new HumanMessage({
+          content: 'Continue with the task. If complete, provide a brief summary.',
+        }));
+        if (stream) await stream.emitValues(run.state.messages);
+        result = {reason: 'continue', turns: turn};
+      } else {
+        if (isResponseEmpty(response)) {
+          response.content = '(model returned no response)';
+        }
+        result = {reason: 'complete', turns: turn};
       }
-      result = {reason: 'complete', turns: turn};
     } else {
       throwIfAborted(run.signal);
       const toolOutcome = await runTools(run, runtime, context, response.tool_calls, stream);
