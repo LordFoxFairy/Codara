@@ -3,7 +3,7 @@ import type {CodaraRuntimeEvent} from '@/index';
 import type {BaseMessage} from '@langchain/core/messages';
 import {Box, Text} from 'ink';
 import type {CliActiveTurn, CliNotice} from '../../app/view-state';
-import type {ActiveSubagentRun} from '../../hooks/use-subagent-runs';
+import type {ActiveSubagentRun} from '../subagent/use-runs';
 import {buildTranscriptItems, dedupeCanonicalTranscriptItems, type ToolResultMeta, type TranscriptRole} from './model';
 import {formatToolHeaderArgs} from '../../../shared/tool-display';
 import {formatElapsedMs, formatTokenCount} from '../../utils/format';

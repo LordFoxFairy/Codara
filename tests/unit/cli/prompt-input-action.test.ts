@@ -1,5 +1,5 @@
 ﻿import {describe, expect, test} from 'bun:test';
-import {resolvePromptInputAction} from '@/cli/hooks/prompt-input-action';
+import {resolvePromptInputAction} from '@/cli/features/composer/input-action';
 
 describe('cli prompt input action', () => {
   test('should map ctrl+c and escape to exit', () => {

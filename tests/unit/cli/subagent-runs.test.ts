@@ -4,7 +4,7 @@ import {
   deriveVisibleSubagentRuns,
   extractSubagentRunName,
   type SubagentRunQuerySummary,
-} from '../../../src/cli/hooks/use-subagent-runs';
+} from '../../../src/cli/features/subagent/use-runs';
 
 function createAgentRun(overrides: Partial<SubagentRunQuerySummary>): SubagentRunQuerySummary {
   return {

@@ -1,6 +1,6 @@
 import React from 'react';
 import {Box, Text, useInput} from 'ink';
-import type {SessionPickerItem} from '../../hooks/use-session-picker';
+import type {SessionPickerItem} from './use-picker';
 import {formatTokenCount} from '../../utils/format';
 import {theme} from '../../utils/theme';
 

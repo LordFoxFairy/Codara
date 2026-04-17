@@ -2,7 +2,7 @@ import {describe, expect, it} from 'bun:test';
 import {
   calculateCompletionLayout,
   truncateWithEllipsis,
-} from '@/cli/components/prompt/completion-menu';
+} from '@/cli/features/composer/completion-menu';
 
 describe('completion menu layout helpers', () => {
   it('truncates long content with three ASCII dots', () => {

@@ -1,6 +1,6 @@
 import {useCallback, useEffect, useState} from 'react';
 import type {SessionState} from '@/index';
-import {formatTimeAgo} from '../utils/format';
+import {formatTimeAgo} from '../../utils/format';
 
 export interface SessionPickerItem {
   sessionId: string;

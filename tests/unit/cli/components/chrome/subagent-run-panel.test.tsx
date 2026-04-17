@@ -1,7 +1,7 @@
 import {describe, expect, it} from 'bun:test';
 import {render} from 'ink-testing-library';
-import {SubagentRunPanel} from '@/cli/components/chrome/subagent-run-panel';
-import type {ActiveSubagentRun} from '@/cli/hooks/use-subagent-runs';
+import {SubagentRunPanel} from '@/cli/features/subagent/run-panel';
+import type {ActiveSubagentRun} from '@/cli/features/subagent/use-runs';
 
 describe('SubagentRunPanel', () => {
   it('renders paused approval-waiting tasks with a paused marker', () => {

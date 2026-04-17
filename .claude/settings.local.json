@@ -48,7 +48,10 @@
       "Bash(set -e)",
       "Bash(xargs -0 sed -i '' ' *)",
       "Bash(sed -i '' \"s|import\\('./view-state'\\)|import\\('../../app/view-state'\\)|g\" src/cli/features/review/form-tabs.ts)",
-      "Bash(sed -i '' \"s|'./app/review-state'|'./features/review/state-core'|g\" src/cli/main.tsx)"
+      "Bash(sed -i '' \"s|'./app/review-state'|'./features/review/state-core'|g\" src/cli/main.tsx)",
+      "Bash(sed -i '' \"s|from '../../hooks/use-subagent-runs'|from '../subagent/use-runs'|g\" src/cli/features/transcript/render.tsx)",
+      "Bash(sed -i '' \"s|from './use-runs'|from '../subagent/use-runs'|g\" src/cli/features/transcript/render.tsx)",
+      "Bash(sed -i '' \"s|from './prompt-input-action'|from '../features/composer/input-action'|g\" src/cli/hooks/use-cli-interaction-input.ts)"
     ]
   }
 }

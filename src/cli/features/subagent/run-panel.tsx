@@ -4,7 +4,7 @@
  */
 import React, {useEffect, useState} from 'react';
 import {Box, Text} from 'ink';
-import type {ActiveSubagentRun} from '../../hooks/use-subagent-runs';
+import type {ActiveSubagentRun} from './use-runs';
 import {BRAILLE_FRAMES, SPINNER_INTERVAL_MS, theme} from '../../utils/theme';
 
 interface SubagentRunPanelProps {

@@ -27,7 +27,7 @@ import {
   moveComposerCursorHome,
   moveComposerCursorEnd,
   type CliComposerState,
-} from '../composer/state';
+} from '../features/composer/state';
 import {hasTranscriptContent} from '../features/transcript/model';
 import {
   toggleSubagentRunsPanelAction,

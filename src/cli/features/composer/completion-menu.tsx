@@ -1,6 +1,6 @@
 import React from 'react';
 import {Box, Text} from 'ink';
-import type {CommandCompletionState} from '../../hooks/use-command-completion';
+import type {CommandCompletionState} from './use-completion';
 import {theme} from '../../utils/theme';
 
 const VIEWPORT_SIZE = 10;

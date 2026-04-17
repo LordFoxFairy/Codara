@@ -1,16 +1,16 @@
 import {describe, expect, it} from 'bun:test';
 import {render} from 'ink-testing-library';
 import {StatusBar} from '../../../src/cli/components/chrome/header';
-import {SubagentRunPanel} from '../../../src/cli/components/chrome/subagent-run-panel';
+import {SubagentRunPanel} from '../../../src/cli/features/subagent/run-panel';
 import {ActiveTranscript, Transcript} from '../../../src/cli/features/transcript/render';
 import {SolidifiedBlock} from '../../../src/cli/features/transcript/solidified-block';
 import {StaticWelcome, deriveRecentSessions} from '../../../src/cli/components/conversation/welcome-state';
-import {SessionPicker} from '../../../src/cli/components/conversation/session-picker';
+import {SessionPicker} from '../../../src/cli/features/session/picker';
 import {resolveCliForegroundSurface} from '../../../src/cli/app/shell-app';
 import {HumanMessage, AIMessage} from '@langchain/core/messages';
 import type {SessionState} from '@/index';
-import type {SessionPickerItem} from '../../../src/cli/hooks/use-session-picker';
-import type {ActiveSubagentRun} from '../../../src/cli/hooks/use-subagent-runs';
+import type {SessionPickerItem} from '../../../src/cli/features/session/use-picker';
+import type {ActiveSubagentRun} from '../../../src/cli/features/subagent/use-runs';
 import type {TranscriptItem} from '../../../src/cli/features/transcript/model';
 
 describe('UI alignment with Claude Code', () => {
