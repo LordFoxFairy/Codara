@@ -177,19 +177,18 @@ export function resolveHydratedCoreMessages(input: {
     return input.incomingMessages;
   }
 
-  // Preserve current messages when:
-  // (a) the prompt turn is still running and we already have a visible reply,
-  // (b) the prompt turn has just settled (transitioned to 'done') — a late
-  //     empty hydrate must not clobber the messages that drove that settlement,
-  // (c) a review (permission/ask-user) is active and incoming hydrate is empty
-  //     — losing messages mid-review leaves the transcript blank while the user
-  //     answers the prompt.
-  if (
-    input.runState.status !== 'running'
-    && input.runState.status !== 'done'
-    && input.runState.status !== 'paused'
-    && !input.review
-  ) {
+  // Review/paused: always preserve current messages so the transcript stays
+  // visible while the user answers the prompt — losing them mid-review is a
+  // broken UX. Skip the "visible reply" heuristic here because tool-only turns
+  // (e.g., an AskUser pause right after a skill call) legitimately have no
+  // assistant text yet, but we still want to show the conversation so far.
+  if (input.review || input.runState.status === 'paused') {
+    return input.currentMessages;
+  }
+
+  // Running/done: preserve current only if a visible reply exists — otherwise
+  // accept incoming (empty) so late hydrates don't leak a dead prior turn.
+  if (input.runState.status !== 'running' && input.runState.status !== 'done') {
     return input.incomingMessages;
   }
 

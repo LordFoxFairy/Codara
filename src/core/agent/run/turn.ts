@@ -24,6 +24,22 @@ import {partitionToolCalls} from './tool-concurrency';
 
 export type AgentTurnOutcome = 'continue' | 'complete';
 
+/** True when an AI message has no visible text and no tool calls — a silent end. */
+function isResponseEmpty(response: AIMessage): boolean {
+  if (response.tool_calls?.length) return false;
+  const content = response.content;
+  if (typeof content === 'string') return content.trim().length === 0;
+  if (!Array.isArray(content)) return true;
+  return !content.some((block: unknown) => {
+    if (typeof block === 'string') return block.trim().length > 0;
+    if (block && typeof block === 'object' && 'text' in block) {
+      const text = (block as {text?: unknown}).text;
+      return typeof text === 'string' && text.trim().length > 0;
+    }
+    return false;
+  });
+}
+
 // ── Turn entry point ────────────────────────────────────────────────────────
 
 export async function runAgentTurn(
@@ -48,6 +64,12 @@ export async function runAgentTurn(
     await runtime.pipeline.afterModel({...context, response});
 
     if (!response.tool_calls?.length) {
+      // Empty response (no text + no tool_calls) leaves the user with silence.
+      // Happens e.g. after a skill tool returns and the model chooses to stop.
+      // Inject a visible fallback so the transcript isn't blank.
+      if (isResponseEmpty(response)) {
+        response.content = '(model returned no response)';
+      }
       result = {reason: 'complete', turns: turn};
     } else {
       throwIfAborted(run.signal);
