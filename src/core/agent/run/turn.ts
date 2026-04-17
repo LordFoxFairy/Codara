@@ -1,4 +1,4 @@
-import {AIMessage, HumanMessage, SystemMessage, ToolMessage, type ToolCall} from '@langchain/core/messages';
+import {AIMessage, SystemMessage, ToolMessage, type ToolCall} from '@langchain/core/messages';
 import {executeToolCall, resolveToolCallId} from './tool-executor';
 import type {AgentStreamWriter} from './stream';
 import {
@@ -24,24 +24,18 @@ import {partitionToolCalls} from './tool-concurrency';
 
 export type AgentTurnOutcome = 'continue' | 'complete';
 
-/** Prefixes we inject when the model's response is broken. Used to bound retries. */
-const CONTINUATION_MARKERS = [
-  'Your previous tool call could not be parsed',
-  'Your response was truncated',
-];
-
-/** Stop injecting continuations after 2 in a row — the retry isn't working. */
-function shouldTryContinuation(messages: ReadonlyArray<{content?: unknown}>): boolean {
-  let continuations = 0;
-  for (let i = messages.length - 1; i >= Math.max(0, messages.length - 10); i--) {
-    const msg = messages[i];
-    if (msg && typeof msg.content === 'string'
-      && CONTINUATION_MARKERS.some((marker) => msg.content!.toString().startsWith(marker))) {
-      continuations++;
-      if (continuations >= 2) return false;
-    }
-  }
-  return true;
+/**
+ * True when the model response is broken and should be retried silently:
+ *   - finish_reason='tool_calls' but tool_calls is empty (LangChain parser lost them)
+ *   - finish_reason='length'/'max_tokens' with empty content (truncation)
+ * These are transient provider-side issues worth retrying without polluting
+ * conversation history with visible "please retry" messages.
+ */
+function isEmptyModelResponse(response: AIMessage): boolean {
+  if (response.tool_calls?.length) return false;
+  if (!isResponseEmpty(response)) return false;
+  const reason = readFinishReason(response);
+  return reason === 'tool_calls' || reason === 'length' || reason === 'max_tokens';
 }
 
 /** Extract finish_reason from response metadata (handles LangChain's nested shape). */
@@ -81,7 +75,16 @@ export async function runAgentTurn(
   try {
     throwIfAborted(run.signal);
 
-    const response = await runModel(runtime, context, stream);
+    // Invoke the model. If the response is empty (parser lost tool_calls,
+    // truncation, etc.), silently retry up to 2 times within the same turn
+    // WITHOUT polluting conversation history. The retried response replaces
+    // the failed one so the transcript stays clean.
+    let response = await runModel(runtime, context, stream);
+    for (let attempt = 0; attempt < 2 && isEmptyModelResponse(response); attempt++) {
+      throwIfAborted(run.signal);
+      response = await runModel(runtime, context, stream);
+    }
+
     run.state.messages.push(response);
     if (stream) {
       await stream.emitModelUpdate(response);
@@ -91,43 +94,13 @@ export async function runAgentTurn(
     await runtime.pipeline.afterModel({...context, response});
 
     if (!response.tool_calls?.length) {
-      // Diagnose why the response came back with no tool_calls. There are
-      // three distinct cases that require different handling:
-      //
-      //  1. finish_reason === 'tool_calls' but tool_calls is empty
-      //     → LangChain failed to parse the tool call from the provider
-      //       (common with non-Anthropic providers like GLM/Zhipu).
-      //       Retry once with a hint so the model retries in a parseable format.
-      //
-      //  2. finish_reason === 'length' / 'max_tokens' with empty content
-      //     → Output was truncated. Retry with a continuation prompt.
-      //
-      //  3. finish_reason === 'stop' with empty content
-      //     → Model legitimately decided to stop but said nothing.
-      //       Show a placeholder and let the user continue manually.
-      const finishReason = readFinishReason(response);
-      const emptyContent = isResponseEmpty(response);
-
-      if (finishReason === 'tool_calls' && shouldTryContinuation(run.state.messages)) {
-        // Provider said "tool_calls" but we got none — parser lost them.
-        run.state.messages.push(new HumanMessage({
-          content: 'Your previous tool call could not be parsed. Please retry using the standard tool-call format.',
-        }));
-        if (stream) await stream.emitValues(run.state.messages);
-        result = {reason: 'continue', turns: turn};
-      } else if ((finishReason === 'length' || finishReason === 'max_tokens') && emptyContent && shouldTryContinuation(run.state.messages)) {
-        // Output truncated without any visible content — ask to continue.
-        run.state.messages.push(new HumanMessage({
-          content: 'Your response was truncated. Please continue from where you left off.',
-        }));
-        if (stream) await stream.emitValues(run.state.messages);
-        result = {reason: 'continue', turns: turn};
-      } else {
-        if (emptyContent) {
-          response.content = '(model returned no response)';
-        }
-        result = {reason: 'complete', turns: turn};
+      // Final response has no tool_calls — turn completes. If the response
+      // is still empty after retries, show a placeholder so the transcript
+      // isn't blank. The user can then decide how to proceed.
+      if (isResponseEmpty(response)) {
+        response.content = '(model returned no response after retries)';
       }
+      result = {reason: 'complete', turns: turn};
     } else {
       throwIfAborted(run.signal);
       const toolOutcome = await runTools(run, runtime, context, response.tool_calls, stream);
