@@ -188,13 +188,16 @@ export function CodaraCliApp(props: CodaraCliAppProps): React.JSX.Element {
       || !hasInitialPrompt
       || !shell.hasConversation
       || shell.runState.status === 'running'
-      || shell.runState.status === 'paused'
       || shell.review?.busy
     ) {
       return;
     }
 
-    const timer = setTimeout(() => exit(), 50);
+    // On 'paused' (review waiting for user input), hold briefly to give any
+    // queued auto-actions a chance to fire first. In non-interactive CI mode,
+    // Ink only writes the final frame on unmount, so we must exit to capture
+    // the review panel output — otherwise the test sees only the initial frame.
+    const timer = setTimeout(() => exit(), shell.runState.status === 'paused' ? 300 : 50);
     return () => clearTimeout(timer);
   }, [autoExitOnSettledPrompt, exit, hasInitialPrompt, shell.hasConversation, shell.review?.busy, shell.runState.status]);
 
