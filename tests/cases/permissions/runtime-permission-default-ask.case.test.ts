@@ -337,9 +337,6 @@ describe('case: runtime permission default ask', () => {
       scenario: 'runtime-permission-complex-path',
     });
 
-    // DEBUG log
-    require('node:fs').writeFileSync('/Users/nako/WebstormProjects/github/thefoxfairy/Codara/tmp/debug-complex-output.log', JSON.stringify({exitCode: result.exitCode, output: result.output, stderr: result.stderr}, null, 2));
-
     expect(result.exitCode).toBe(0);
     // Without LLM classifier, complex piped commands resolve to Bash(*) which triggers ask
     expect(result.output).toContain('Allow once');

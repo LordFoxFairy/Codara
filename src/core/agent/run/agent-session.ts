@@ -52,6 +52,11 @@ import {
   combineAbortSignals,
   createErrorResult,
 } from './agent-session-helpers';
+import {
+  appendRunInput,
+  continueFromPausedTool,
+  prepareResumeRun,
+} from './agent-session-resume';
 
 // ── AgentSession — the class that replaces the createAgent closure ──────────
 
@@ -264,55 +269,6 @@ class AgentSession {
     }
   }
 
-  // ── Review resume helpers ───────────────────────────────────────────────
-
-  private prepareResumeRun(run: AgentRunContext, review: ReviewRequest): number {
-    const pauseMessageIndex = findPauseMessageIndex(run.state.messages, review);
-    if (pauseMessageIndex >= 0) {
-      run.state.messages.splice(pauseMessageIndex, 1);
-      return pauseMessageIndex;
-    }
-    return run.state.messages.length;
-  }
-
-  private async appendRunInput(
-    run: AgentRunContext,
-    input: AgentInput,
-    stream?: ReturnType<typeof createStreamWriter>,
-  ): Promise<void> {
-    const appended = normalizeAgentInput(input);
-    if (appended.length === 0) return;
-    run.state.messages.push(...appended);
-    if (stream) {
-      await stream.emitValues(run.state.messages);
-    }
-  }
-
-  private async continueFromPausedTool(
-    run: AgentRunContext,
-    review: ReviewRequest,
-    input: AgentInput,
-    stream?: ReturnType<typeof createStreamWriter>,
-  ): Promise<AgentResult> {
-    run.state.pendingReview = undefined;
-    const toolContext = await createTurnContext(run, this.runtime, 1, `${run.runId}:resume-tool`);
-    const pausedToolCall: ToolCall = {
-      id: review.action.toolCallId,
-      name: review.action.toolName,
-      args: review.action.toolArgs ?? {},
-    };
-    await runTools(run, this.runtime, toolContext, [pausedToolCall], stream);
-    await this.appendRunInput(run, input, stream);
-
-    if (run.state.pendingReview) {
-      await finishTurn(this.runtime, toolContext, {reason: 'complete', turns: 1});
-      return {reason: 'complete', state: run.state, turns: 1};
-    }
-
-    await finishTurn(this.runtime, toolContext, {reason: 'continue', turns: 1});
-    return runLoop(run, this.runtime, stream, 2);
-  }
-
   // ── Core execution paths ────────────────────────────────────────────────
 
   private async execute(
@@ -364,14 +320,14 @@ class AgentSession {
   ): Promise<AgentResult> {
     const pause = this.state.pendingReview as ReviewRequest;
     const run = this.createResumeRun(pause, payload, config);
-    const startIndex = this.prepareResumeRun(run, pause);
+    const startIndex = prepareResumeRun(run, pause);
     const lifecycle = this.enterRunningState();
 
     const preflightResult = await this.runPreflight(run, lifecycle, config, 'resume failed');
     if (preflightResult) return preflightResult;
 
     try {
-      return this.finalizeRun(run, await this.continueFromPausedTool(run, pause, config.input), startIndex, 'resume', config);
+      return this.finalizeRun(run, await continueFromPausedTool(run, this.runtime, pause, config.input), startIndex, 'resume', config);
     } catch (error) {
       return this.abortPreflight(lifecycle, createErrorResult(run.state, 0, formatErrorMessage(error, 'resume failed')));
     }
@@ -383,7 +339,7 @@ class AgentSession {
   ): AsyncGenerator<AgentStreamOutput, AgentResult, void> {
     const pause = this.state.pendingReview as ReviewRequest;
     const run = this.createResumeRun(pause, payload, config);
-    const startIndex = this.prepareResumeRun(run, pause);
+    const startIndex = prepareResumeRun(run, pause);
     const lifecycle = this.enterRunningState();
 
     const preflightResult = await this.runPreflight(run, lifecycle, config, 'resume failed');
@@ -394,7 +350,7 @@ class AgentSession {
         await stream.emitValues(run.state.messages);
         const finalized = await this.finalizeRun(
           run,
-          await this.continueFromPausedTool(run, pause, config.input, stream),
+          await continueFromPausedTool(run, this.runtime, pause, config.input, stream),
           startIndex,
           'resume',
           config,

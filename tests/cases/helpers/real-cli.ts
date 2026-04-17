@@ -56,10 +56,6 @@ export async function runRealCliCase(options: RealCliCaseOptions): Promise<RealC
         output,
       });
     });
-    const killTimer = setTimeout(() => {
-      child.kill('SIGTERM');
-    }, 4500);
-    child.on('close', () => clearTimeout(killTimer));
   });
 }
 
