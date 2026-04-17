@@ -7,27 +7,26 @@
  * Message format:
  *   Client → Server: JSON-encoded BusRequest
  *   Server → Client: JSON-encoded BusEvent
+ *
+ * Streaming/one-shot dispatch lives in `./client-stream`; this file covers
+ * connection lifecycle, event routing, and the public request API.
  */
 
 import type {BusRequest, BusEvent} from './types';
-
-// ── Types ────────────────────────────────────────────────────────────
-
-type EventListener = (event: BusEvent) => void;
-
-interface PendingRequest<T = unknown> {
-  resolve: (value: T) => void;
-  reject: (error: Error) => void;
-  timer: ReturnType<typeof setTimeout>;
-}
+import {
+  awaitOneShotEvent,
+  iterateBusEventStream,
+  type BusEventListener,
+  type PendingRequest,
+} from './client-stream';
 
 const REQUEST_TIMEOUT_MS = 60_000;
-
-// ── BusClient ────────────────────────────────────────────────────────
+const CONNECT_TIMEOUT_MS = 10_000;
+const DISCONNECT_TIMEOUT_MS = 3_000;
 
 export class BusClient {
   private ws: WebSocket | null = null;
-  private listeners = new Map<string, Set<EventListener>>();
+  private listeners = new Map<string, Set<BusEventListener>>();
   private pendingRequests = new Map<string, PendingRequest>();
   private connected = false;
 
@@ -49,7 +48,7 @@ export class BusClient {
       const connectTimeout = setTimeout(() => {
         this.ws?.close();
         reject(new Error(`Connection to ${wsUrl} timed out`));
-      }, 10_000);
+      }, CONNECT_TIMEOUT_MS);
 
       this.ws.onopen = () => {
         // The server registers us on connection; we wait for client.joined.
@@ -85,135 +84,16 @@ export class BusClient {
         clearTimeout(connectTimeout);
 
         // Reject all pending requests.
-        for (const [_id, pending] of this.pendingRequests) {
+        for (const pending of this.pendingRequests.values()) {
           clearTimeout(pending.timer);
           pending.reject(new Error(`WebSocket closed (code: ${ev.code})`));
         }
         this.pendingRequests.clear();
 
-        if (!this.connected) {
-          reject(new Error(`WebSocket closed before connected (code: ${ev.code})`));
-        }
+        reject(new Error(`WebSocket closed before connected (code: ${ev.code})`));
       };
     });
   }
-
-  // ── Streaming requests ───────────────────────────────────────────
-
-  /**
-   * Send a chat message. Returns an async generator of BusEvents.
-   * Yields streaming events (token, thinking, tool_call, runtime_event, review_required)
-   * and returns when `done` or `error` is received.
-   */
-  async *chat(prompt: string, sessionId?: string): AsyncGenerator<BusEvent> {
-    const requestId = crypto.randomUUID();
-    const request: BusRequest = {
-      type: 'chat',
-      requestId,
-      prompt,
-      ...(sessionId ? {sessionId} : {}),
-    };
-    yield* this.streamRequest(request, requestId);
-  }
-
-  /**
-   * Resume a blocked review. Returns an async generator of BusEvents.
-   */
-  async *resume(sessionId: string, action: string, input?: string): AsyncGenerator<BusEvent> {
-    const requestId = crypto.randomUUID();
-    const request: BusRequest = {
-      type: 'resume',
-      requestId,
-      sessionId,
-      action,
-      ...(input !== undefined ? {input} : {}),
-    };
-    yield* this.streamRequest(request, requestId);
-  }
-
-  // ── One-shot requests ────────────────────────────────────────────
-
-  /** Execute a slash command. */
-  async command(command: string): Promise<{output: string; ok: boolean}> {
-    const requestId = crypto.randomUUID();
-    const event = await this.sendAndWait(
-      {type: 'command', requestId, command},
-      requestId,
-      'command.result',
-    );
-    const ev = event as BusEvent & Record<string, unknown>;
-    return {output: ev.output as string, ok: ev.ok as boolean};
-  }
-
-  /** List sessions. */
-  async listSessions(): Promise<unknown[]> {
-    const requestId = crypto.randomUUID();
-    const event = await this.sendAndWait(
-      {type: 'sessions.list', requestId},
-      requestId,
-      'sessions.list.result',
-    );
-    return (event as BusEvent & Record<string, unknown>).sessions as unknown[];
-  }
-
-  /** Create a new session. Returns the new sessionId. */
-  async createSession(cwd?: string): Promise<string> {
-    const requestId = crypto.randomUUID();
-    const event = await this.sendAndWait(
-      {type: 'sessions.create', requestId, ...(cwd ? {cwd} : {})},
-      requestId,
-      'sessions.create.result',
-    );
-    return (event as BusEvent & Record<string, unknown>).sessionId as string;
-  }
-
-  /** Get server status. */
-  async status(): Promise<unknown> {
-    const requestId = crypto.randomUUID();
-    const event = await this.sendAndWait(
-      {type: 'status', requestId},
-      requestId,
-      'status.result',
-    );
-    return (event as BusEvent & Record<string, unknown>).data;
-  }
-
-  // ── Session subscription ─────────────────────────────────────────
-
-  /**
-   * Subscribe to a session's events on the server.
-   * After calling this, events for the given session will be forwarded to
-   * any listeners registered via `on()`.
-   */
-  subscribe(sessionId: string): void {
-    this.send({type: 'subscribe', sessionId} as BusRequest);
-  }
-
-  // ── Event listeners ──────────────────────────────────────────────
-
-  /**
-   * Listen for specific event types. Returns an unsubscribe function.
-   *
-   * @example
-   * const off = client.on('token', (e) => process.stdout.write(e.text));
-   * // later:
-   * off();
-   */
-  on(eventType: string, listener: EventListener): () => void {
-    let set = this.listeners.get(eventType);
-    if (!set) {
-      set = new Set();
-      this.listeners.set(eventType, set);
-    }
-    set.add(listener);
-
-    return () => {
-      set!.delete(listener);
-      if (set!.size === 0) this.listeners.delete(eventType);
-    };
-  }
-
-  // ── Disconnect ───────────────────────────────────────────────────
 
   async disconnect(): Promise<void> {
     if (!this.ws) return;
@@ -238,8 +118,102 @@ export class BusClient {
         this.connected = false;
         this.ws = null;
         resolve();
-      }, 3_000);
+      }, DISCONNECT_TIMEOUT_MS);
     });
+  }
+
+  // ── Streaming requests ───────────────────────────────────────────
+
+  /** Send a chat message. Yields BusEvents until done/error. */
+  async *chat(prompt: string, sessionId?: string): AsyncGenerator<BusEvent> {
+    const requestId = crypto.randomUUID();
+    const request: BusRequest = {
+      type: 'chat',
+      requestId,
+      prompt,
+      ...(sessionId ? {sessionId} : {}),
+    };
+    yield* this.streamRequest(request, requestId);
+  }
+
+  /** Resume a blocked review. Returns an async generator of BusEvents. */
+  async *resume(sessionId: string, action: string, input?: string): AsyncGenerator<BusEvent> {
+    const requestId = crypto.randomUUID();
+    const request: BusRequest = {
+      type: 'resume',
+      requestId,
+      sessionId,
+      action,
+      ...(input !== undefined ? {input} : {}),
+    };
+    yield* this.streamRequest(request, requestId);
+  }
+
+  // ── One-shot requests ────────────────────────────────────────────
+
+  /** Execute a slash command. */
+  async command(command: string): Promise<{output: string; ok: boolean}> {
+    const event = await this.oneShotRequest(
+      (requestId) => ({type: 'command', requestId, command}),
+      'command.result',
+    );
+    const ev = event as BusEvent & Record<string, unknown>;
+    return {output: ev.output as string, ok: ev.ok as boolean};
+  }
+
+  /** List sessions. */
+  async listSessions(): Promise<unknown[]> {
+    const event = await this.oneShotRequest(
+      (requestId) => ({type: 'sessions.list', requestId}),
+      'sessions.list.result',
+    );
+    return (event as BusEvent & Record<string, unknown>).sessions as unknown[];
+  }
+
+  /** Create a new session. Returns the new sessionId. */
+  async createSession(cwd?: string): Promise<string> {
+    const event = await this.oneShotRequest(
+      (requestId) => ({type: 'sessions.create', requestId, ...(cwd ? {cwd} : {})}),
+      'sessions.create.result',
+    );
+    return (event as BusEvent & Record<string, unknown>).sessionId as string;
+  }
+
+  /** Get server status. */
+  async status(): Promise<unknown> {
+    const event = await this.oneShotRequest(
+      (requestId) => ({type: 'status', requestId}),
+      'status.result',
+    );
+    return (event as BusEvent & Record<string, unknown>).data;
+  }
+
+  // ── Session subscription ─────────────────────────────────────────
+
+  /**
+   * Subscribe to a session's events on the server.
+   * After calling this, events for the given session will be forwarded to
+   * any listeners registered via `on()`.
+   */
+  subscribe(sessionId: string): void {
+    this.send({type: 'subscribe', sessionId} as BusRequest);
+  }
+
+  // ── Event listeners ──────────────────────────────────────────────
+
+  /** Listen for specific event types. Returns an unsubscribe function. */
+  on(eventType: string, listener: BusEventListener): () => void {
+    let set = this.listeners.get(eventType);
+    if (!set) {
+      set = new Set();
+      this.listeners.set(eventType, set);
+    }
+    set.add(listener);
+
+    return () => {
+      set!.delete(listener);
+      if (set!.size === 0) this.listeners.delete(eventType);
+    };
   }
 
   // ── Internal helpers ─────────────────────────────────────────────
@@ -252,16 +226,15 @@ export class BusClient {
   }
 
   /**
-   * Dispatch a received BusEvent to type-specific listeners and
-   * to pending one-shot request handlers.
+   * Dispatch a received BusEvent to type-specific listeners and to any
+   * pending one-shot request whose requestId matches an `error` event.
    */
   private dispatch(event: BusEvent): void {
     this.notifyListeners(event.type, event);
     this.notifyListeners('*', event);
-    this.resolvePendingRequest(event);
+    this.rejectPendingOnError(event);
   }
 
-  /** Safely notify all listeners for a given event type key. */
   private notifyListeners(key: string, event: BusEvent): void {
     const listeners = this.listeners.get(key);
     if (!listeners) return;
@@ -274,131 +247,37 @@ export class BusClient {
     }
   }
 
-  /** Resolve a pending one-shot request if this event carries its requestId. */
-  private resolvePendingRequest(event: BusEvent): void {
-    if (!('requestId' in event) || !event.requestId) return;
-
+  private rejectPendingOnError(event: BusEvent): void {
+    if (!('requestId' in event) || !event.requestId || event.type !== 'error') return;
     const pending = this.pendingRequests.get(event.requestId);
     if (!pending) return;
-
-    if (event.type === 'error') {
-      clearTimeout(pending.timer);
-      this.pendingRequests.delete(event.requestId);
-      pending.reject(new Error((event as BusEvent & Record<string, unknown>).message as string ?? 'Unknown bus error'));
-    }
-    // One-shot result types resolve in sendAndWait via the wildcard listener.
+    clearTimeout(pending.timer);
+    this.pendingRequests.delete(event.requestId);
+    pending.reject(new Error((event as BusEvent & Record<string, unknown>).message as string ?? 'Unknown bus error'));
   }
 
-  /**
-   * Send a request and wait for a specific result event type.
-   * Used for non-streaming one-shot requests (command, listSessions, etc.).
-   */
-  private sendAndWait(request: BusRequest, requestId: string, expectedType: string): Promise<BusEvent> {
-    return new Promise<BusEvent>((resolve, reject) => {
-      const timer = setTimeout(() => {
-        this.pendingRequests.delete(requestId);
-        off();
-        reject(new Error(`Request timed out waiting for ${expectedType}`));
-      }, REQUEST_TIMEOUT_MS);
-
-      this.pendingRequests.set(requestId, {resolve: resolve as (value: unknown) => void, reject, timer});
-
-      // Listen for the specific result event.
-      const off = this.on('*', (event) => {
-        if ('requestId' in event && event.requestId === requestId) {
-          if (event.type === expectedType) {
-            clearTimeout(timer);
-            this.pendingRequests.delete(requestId);
-            off();
-            resolve(event);
-          } else if (event.type === 'error') {
-            clearTimeout(timer);
-            this.pendingRequests.delete(requestId);
-            off();
-            reject(new Error((event as BusEvent & Record<string, unknown>).message as string ?? 'Unknown bus error'));
-          }
-        }
-      });
-
-      try {
-        this.send(request);
-      } catch (err) {
-        clearTimeout(timer);
-        this.pendingRequests.delete(requestId);
-        off();
-        reject(err);
-      }
+  private oneShotRequest(
+    build: (requestId: string) => BusRequest,
+    expectedType: string,
+  ): Promise<BusEvent> {
+    const requestId = crypto.randomUUID();
+    return awaitOneShotEvent({
+      request: build(requestId),
+      requestId,
+      expectedType,
+      timeoutMs: REQUEST_TIMEOUT_MS,
+      send: (request) => this.send(request),
+      on: (type, listener) => this.on(type, listener),
+      pending: this.pendingRequests,
     });
   }
 
-  /**
-   * Send a streaming request and yield events as an async generator.
-   * Used for chat() and resume() which produce a stream of events
-   * until a `done` or `error` event is received.
-   */
-  private async *streamRequest(request: BusRequest, requestId: string): AsyncGenerator<BusEvent> {
-    // Buffer incoming events and signal when new ones arrive.
-    const buffer: BusEvent[] = [];
-    let finished = false;
-    // Error tracking removed — errors terminate the stream via `finished = true`.
-    let notifyResolve: (() => void) | null = null;
-
-    const notify = (): void => {
-      if (notifyResolve) {
-        const r = notifyResolve;
-        notifyResolve = null;
-        r();
-      }
-    };
-
-    const waitForEvent = (): Promise<void> => {
-      if (buffer.length > 0 || finished) return Promise.resolve();
-      return new Promise<void>((r) => {
-        notifyResolve = r;
-      });
-    };
-
-    // Listen for events matching this requestId, plus session-scoped streaming events.
-    const off = this.on('*', (event) => {
-      // Check if this event belongs to our request.
-      const hasRequestId = 'requestId' in event && event.requestId === requestId;
-      const isStreamEvent =
-        event.type === 'token' ||
-        event.type === 'thinking' ||
-        event.type === 'tool_call' ||
-        event.type === 'runtime_event';
-
-      if (!hasRequestId && !isStreamEvent) return;
-
-      if (event.type === 'done' && hasRequestId) {
-        buffer.push(event);
-        finished = true;
-        notify();
-      } else if (event.type === 'error' && hasRequestId) {
-        // Error event terminates the stream
-        buffer.push(event);
-        finished = true;
-        notify();
-      } else {
-        buffer.push(event);
-        notify();
-      }
+  private streamRequest(request: BusRequest, requestId: string): AsyncGenerator<BusEvent> {
+    return iterateBusEventStream({
+      request,
+      requestId,
+      send: (r) => this.send(r),
+      on: (type, listener) => this.on(type, listener),
     });
-
-    try {
-      this.send(request);
-
-      while (true) {
-        await waitForEvent();
-
-        while (buffer.length > 0) {
-          yield buffer.shift()!;
-        }
-
-        if (finished) break;
-      }
-    } finally {
-      off();
-    }
   }
 }
