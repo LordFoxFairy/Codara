@@ -1,10 +1,26 @@
-import {spawn} from 'node:child_process';
+/**
+ * Plugin install command.
+ *
+ * Supports two input forms:
+ *  1. Known plugin specs: `<name>@<source>` (see {@link SUPPORTED_PLUGINS}).
+ *  2. Any git URL: the plugin name is derived from the repo basename.
+ *
+ * Both paths clone to a temp dir, auto-detect skills/ and commands/, and copy
+ * new entries into the resolved destination (project-local or user-global).
+ *
+ * Git handling lives in `./plugin-install-git`; command-to-skill translation
+ * lives in `./plugin-install-commands` — this module only orchestrates them.
+ *
+ * @module
+ */
+
 import {existsSync} from 'node:fs';
-import {cp, mkdir, mkdtemp, readFile, readdir, rm, writeFile} from 'node:fs/promises';
+import {cp, mkdir, mkdtemp, readFile, readdir, rm} from 'node:fs/promises';
 import {homedir, tmpdir} from 'node:os';
 import path from 'node:path';
-import {parseMarkdownFrontmatterDocument} from '@skills/catalog/loading';
 import {resolveWorkspaceRoot} from '@config/workspace';
+import {derivePluginNameFromUrl, isGitUrl, runGitClone} from './plugin-install-git';
+import {importPluginCommandsAsSkills} from './plugin-install-commands';
 
 export interface PluginInstallEnvironment {
   cwd?: string;
@@ -65,7 +81,6 @@ export async function installPluginSkills(
   spec: string,
   environment: PluginInstallEnvironment = {},
 ): Promise<PluginInstallResult> {
-  // Support both known plugins (name@source) and generic git URLs
   if (isGitUrl(spec)) {
     return installFromGitUrl(spec, environment);
   }
@@ -100,45 +115,22 @@ async function installFromGitUrl(
     await runGitClone(url, repoDir);
     await mkdir(destinationRoot, {recursive: true});
 
-    const installedSkills: string[] = [];
-    const skippedSkills: string[] = [];
-
-    // Auto-detect skills: try skills/, then root
     const skillsRoot = existsSync(path.join(repoDir, 'skills'))
       ? path.join(repoDir, 'skills')
       : repoDir;
+    const copied = await copySkillDirectories(skillsRoot, destinationRoot);
 
-    const skillNames = await listSkillDirectories(skillsRoot);
-    for (const skillName of skillNames) {
-      const fromDir = path.join(skillsRoot, skillName);
-      const toDir = path.join(destinationRoot, skillName);
-      if (existsSync(toDir)) {
-        skippedSkills.push(skillName);
-        continue;
-      }
-
-      await cp(fromDir, toDir, {recursive: true});
-      installedSkills.push(skillName);
-    }
-
-    // Auto-detect commands: try commands/
     if (existsSync(path.join(repoDir, 'commands'))) {
-      const importedCommands = await importPluginCommandsAsSkills({
+      const imported = await importPluginCommandsAsSkills({
         pluginName,
         commandsRoot: path.join(repoDir, 'commands'),
         destinationRoot,
       });
-      installedSkills.push(...importedCommands.installedSkills);
-      skippedSkills.push(...importedCommands.skippedSkills);
+      copied.installedSkills.push(...imported.installedSkills);
+      copied.skippedSkills.push(...imported.skippedSkills);
     }
 
-    return {
-      plugin: pluginName,
-      source: url,
-      destinationRoot,
-      installedSkills,
-      skippedSkills,
-    };
+    return {plugin: pluginName, source: url, destinationRoot, ...copied};
   } finally {
     await rm(tempRoot, {recursive: true, force: true});
   }
@@ -153,60 +145,29 @@ async function installFromDefinition(
   const sourceRoot = await materializePluginSource(definition);
 
   try {
-    const installedSkills: string[] = [];
-    const skippedSkills: string[] = [];
-
     await mkdir(destinationRoot, {recursive: true});
 
     const pluginRoot = resolvePluginRoot(sourceRoot, definition.rootPath);
-    if (definition.skillsPath) {
-      const skillsRoot = resolveRelativeDir(pluginRoot, definition.skillsPath);
-      const skillNames = await listSkillDirectories(skillsRoot);
-      for (const skillName of skillNames) {
-        const fromDir = path.join(skillsRoot, skillName);
-        const toDir = path.join(destinationRoot, skillName);
-        if (existsSync(toDir)) {
-          skippedSkills.push(skillName);
-          continue;
-        }
-
-        await cp(fromDir, toDir, {recursive: true});
-        installedSkills.push(skillName);
-      }
-    }
+    const copied = definition.skillsPath
+      ? await copySkillDirectories(resolveRelativeDir(pluginRoot, definition.skillsPath), destinationRoot)
+      : {installedSkills: [] as string[], skippedSkills: [] as string[]};
 
     if (definition.commandsPath) {
-      const commandsRoot = resolveRelativeDir(pluginRoot, definition.commandsPath);
-      const importedCommands = await importPluginCommandsAsSkills({
+      const imported = await importPluginCommandsAsSkills({
         pluginName: definition.name,
-        commandsRoot,
+        commandsRoot: resolveRelativeDir(pluginRoot, definition.commandsPath),
         destinationRoot,
       });
-      installedSkills.push(...importedCommands.installedSkills);
-      skippedSkills.push(...importedCommands.skippedSkills);
+      copied.installedSkills.push(...imported.installedSkills);
+      copied.skippedSkills.push(...imported.skippedSkills);
     }
 
-    return {
-      plugin: definition.name,
-      source,
-      destinationRoot,
-      installedSkills,
-      skippedSkills,
-    };
+    return {plugin: definition.name, source, destinationRoot, ...copied};
   } finally {
     if (sourceRoot.cleanup) {
       await sourceRoot.cleanup();
     }
   }
-}
-
-function isGitUrl(spec: string): boolean {
-  return spec.startsWith('https://') || spec.startsWith('git@') || spec.startsWith('http://') || spec.endsWith('.git');
-}
-
-function derivePluginNameFromUrl(url: string): string {
-  const basename = url.replace(/\.git$/, '').split('/').pop() ?? 'plugin';
-  return basename.toLowerCase().replace(/[^a-z0-9-]/g, '-').replace(/-+/g, '-').replace(/^-|-$/g, '') || 'plugin';
 }
 
 async function resolvePluginDestinationRoot(environment: PluginInstallEnvironment): Promise<string> {
@@ -222,8 +183,6 @@ async function resolvePluginDestinationRoot(environment: PluginInstallEnvironmen
 }
 
 async function resolvePluginInstallScope(environment: PluginInstallEnvironment): Promise<'global' | 'project'> {
-  // Read plugin install scope from project or user settings.
-  // Sync read is acceptable here — this runs once during plugin install.
   const projectRoot = resolveWorkspaceRoot({cwd: environment.cwd, projectRoot: environment.projectRoot});
   const userHome = path.resolve(environment.userHome ?? homedir());
 
@@ -240,7 +199,7 @@ async function resolvePluginInstallScope(environment: PluginInstallEnvironment):
     } catch { /* settings file unreadable, try next */ }
   }
 
-  return 'global'; // default
+  return 'global';
 }
 
 interface MaterializedPluginSource {
@@ -268,20 +227,34 @@ async function materializePluginSource(definition: SupportedPluginDefinition): P
 
 function resolvePluginRoot(source: MaterializedPluginSource, rootPath: string | undefined): string {
   const candidate = path.join(source.rootDir, rootPath ?? '.');
-  if (existsSync(candidate)) {
-    return candidate;
-  }
-
-  return source.rootDir;
+  return existsSync(candidate) ? candidate : source.rootDir;
 }
 
 function resolveRelativeDir(rootDir: string, relativePath: string): string {
   const candidate = path.join(rootDir, relativePath);
-  if (existsSync(candidate)) {
-    return candidate;
+  return existsSync(candidate) ? candidate : rootDir;
+}
+
+async function copySkillDirectories(
+  skillsRoot: string,
+  destinationRoot: string,
+): Promise<{installedSkills: string[]; skippedSkills: string[]}> {
+  const installedSkills: string[] = [];
+  const skippedSkills: string[] = [];
+  const skillNames = await listSkillDirectories(skillsRoot);
+
+  for (const skillName of skillNames) {
+    const fromDir = path.join(skillsRoot, skillName);
+    const toDir = path.join(destinationRoot, skillName);
+    if (existsSync(toDir)) {
+      skippedSkills.push(skillName);
+      continue;
+    }
+    await cp(fromDir, toDir, {recursive: true});
+    installedSkills.push(skillName);
   }
 
-  return rootDir;
+  return {installedSkills, skippedSkills};
 }
 
 async function listSkillDirectories(rootDir: string): Promise<string[]> {
@@ -290,120 +263,6 @@ async function listSkillDirectories(rootDir: string): Promise<string[]> {
     .filter((entry) => entry.isDirectory() && existsSync(path.join(rootDir, entry.name, 'SKILL.md')))
     .map((entry) => entry.name)
     .sort();
-}
-
-async function importPluginCommandsAsSkills(input: {
-  pluginName: string;
-  commandsRoot: string;
-  destinationRoot: string;
-}): Promise<{installedSkills: string[]; skippedSkills: string[]}> {
-  if (!existsSync(input.commandsRoot)) {
-    return {installedSkills: [], skippedSkills: []};
-  }
-
-  const entries = await readdir(input.commandsRoot, {withFileTypes: true});
-  const installedSkills: string[] = [];
-  const skippedSkills: string[] = [];
-
-  for (const entry of entries) {
-    if (!entry.isFile() || !entry.name.endsWith('.md')) {
-      continue;
-    }
-
-    const commandFile = path.join(input.commandsRoot, entry.name);
-    const command = await translatePluginCommand(commandFile, input.pluginName);
-    if (!command) {
-      continue;
-    }
-
-    const skillDir = path.join(input.destinationRoot, command.skillName);
-    if (existsSync(skillDir)) {
-      skippedSkills.push(command.skillName);
-      continue;
-    }
-
-    await mkdir(skillDir, {recursive: true});
-    await writeFile(path.join(skillDir, 'SKILL.md'), command.skillContent, 'utf8');
-    installedSkills.push(command.skillName);
-  }
-
-  return {installedSkills, skippedSkills};
-}
-
-async function translatePluginCommand(
-  commandFile: string,
-  pluginName: string,
-): Promise<{skillName: string; skillContent: string} | undefined> {
-  const raw = await readFile(commandFile, 'utf8');
-  const parsed = parseMarkdownFrontmatterDocument(raw, commandFile);
-  const body = parsed?.body?.trim() ?? raw.trim();
-  const frontmatter = parsed?.frontmatter ?? {};
-  const commandName = normalizeCommandName(path.basename(commandFile, '.md'));
-  if (!commandName) {
-    return undefined;
-  }
-
-  const skillName = normalizeSkillName(`${pluginName}-${commandName}`);
-  const description = normalizeScalar(frontmatter.description) ?? `Imported plugin command ${commandName}.`;
-  const allowedTools = normalizeAllowedTools(frontmatter['allowed-tools']);
-  const lines = [
-    '---',
-    `name: ${skillName}`,
-    `description: ${escapeYamlScalar(description)}`,
-    `command-name: ${commandName}`,
-    `command-description: ${escapeYamlScalar(description)}`,
-    `command-usage: /${commandName}`,
-    ...(allowedTools.length > 0 ? [`allowed-tools: ${allowedTools.join(', ')}`] : []),
-    'metadata:',
-    `  imported-from-plugin: ${pluginName}`,
-    `  source-command: ${path.basename(commandFile)}`,
-    '---',
-    '',
-    `# Imported Plugin Command: /${commandName}`,
-    '',
-    `This skill was generated from the ${pluginName} plugin command \`${path.basename(commandFile)}\`.`,
-    '',
-    body,
-    '',
-  ];
-
-  return {
-    skillName,
-    skillContent: `${lines.join('\n')}\n`,
-  };
-}
-
-function normalizeCommandName(value: string): string | undefined {
-  const normalized = value.trim().toLowerCase().replace(/[^a-z0-9-]/g, '-').replace(/-+/g, '-').replace(/^-|-$/g, '');
-  return normalized || undefined;
-}
-
-function normalizeSkillName(value: string): string {
-  return value.trim().toLowerCase().replace(/[^a-z0-9-]/g, '-').replace(/-+/g, '-').replace(/^-|-$/g, '');
-}
-
-function normalizeScalar(value: unknown): string | undefined {
-  if (typeof value !== 'string') {
-    return undefined;
-  }
-  const normalized = value.trim();
-  return normalized || undefined;
-}
-
-function normalizeAllowedTools(value: unknown): string[] {
-  if (Array.isArray(value)) {
-    return value.map((item) => String(item).trim()).filter(Boolean);
-  }
-
-  if (typeof value === 'string') {
-    return value.split(',').map((item) => item.trim()).filter(Boolean);
-  }
-
-  return [];
-}
-
-function escapeYamlScalar(value: string): string {
-  return JSON.stringify(value);
 }
 
 function parsePluginSpec(spec: string): {name: string; source: string} {
@@ -416,27 +275,4 @@ function parsePluginSpec(spec: string): {name: string; source: string} {
     name: rawName.trim(),
     source: rawSource.trim(),
   };
-}
-
-async function runGitClone(repoUrl: string, destination: string): Promise<void> {
-  await new Promise<void>((resolve, reject) => {
-    const child = spawn('git', ['clone', '--depth', '1', repoUrl, destination], {
-      stdio: ['ignore', 'ignore', 'pipe'],
-    });
-
-    let stderr = '';
-    child.stderr.on('data', (chunk) => {
-      stderr += String(chunk);
-    });
-    child.on('error', (error) => {
-      reject(new Error(`Failed to start git clone: ${error.message}`));
-    });
-    child.on('exit', (code) => {
-      if (code === 0) {
-        resolve();
-        return;
-      }
-      reject(new Error(stderr.trim() || `git clone failed with exit code ${code ?? -1}`));
-    });
-  });
 }
