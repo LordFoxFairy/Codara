@@ -1,5 +1,5 @@
-import type {CodaraCommandDefinition} from '@commands/runtime/types';
-import {installPluginSkills, listSupportedPluginSpecs} from '@commands/catalog/plugin-install';
+import type {CodaraCommandDefinition} from '@commands/types';
+import {installPluginSkills, listSupportedPluginSpecs} from '@commands/plugin-install';
 import {BUILTIN_SOURCE} from './formatters';
 
 export const pluginCommand: CodaraCommandDefinition = {

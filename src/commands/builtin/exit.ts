@@ -1,4 +1,4 @@
-import type {CodaraCommandDefinition} from '@commands/runtime/types';
+import type {CodaraCommandDefinition} from '@commands/types';
 import {BUILTIN_SOURCE} from './formatters';
 
 const GOODBYE_MESSAGES = ['Goodbye!', 'See ya!', 'Bye!', 'Catch you later!'];

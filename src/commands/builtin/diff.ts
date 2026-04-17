@@ -1,5 +1,5 @@
 import {execSync} from 'node:child_process';
-import type {CodaraCommandDefinition} from '@commands/runtime/types';
+import type {CodaraCommandDefinition} from '@commands/types';
 import {BUILTIN_SOURCE} from './formatters';
 
 export const diffCommand: CodaraCommandDefinition = {

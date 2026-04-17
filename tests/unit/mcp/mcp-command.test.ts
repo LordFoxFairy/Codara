@@ -1,6 +1,6 @@
 import {describe, expect, it} from 'bun:test';
 import {mcpCommand} from '@commands/builtin/mcp';
-import type {CodaraCommandContext, CodaraCommandAgent} from '@commands/runtime/types';
+import type {CodaraCommandContext, CodaraCommandAgent} from '@commands/types';
 import type {McpClientInfo} from '@mcp';
 
 function createMockContext(overrides: Partial<CodaraCommandAgent> = {}): CodaraCommandContext {

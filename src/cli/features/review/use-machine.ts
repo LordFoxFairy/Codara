@@ -21,7 +21,7 @@ import {
 } from '../../app/interaction-turn';
 import type {CliInteractionScheduler, QueuedReviewResponseInteraction} from '../../app/interaction-scheduler';
 import {readCliReviewProjection, syncProjectedReview} from '../../app/runtime-projection';
-import {takeNextScheduledInteraction} from '../../app/cli-interaction-queue';
+import {takeNextScheduledInteraction} from '../../app/interaction-queue';
 import {
   deriveRunStateFromAgentState,
   waitForForegroundReviewResumeReady,
@@ -29,8 +29,8 @@ import {
   REVIEW_AUTO_ACTION_DELAY_MS,
   REVIEW_QUEUE_HANDOFF_TIMEOUT_MS,
   REVIEW_QUEUE_HANDOFF_POLL_MS,
-} from '../../app/cli-controller-logic';
-import type {CliStore} from '../../app/cli-store';
+} from '../../app/controller-logic';
+import type {CliStore} from '../../app/store';
 import type {
   CliActiveTurn,
   CliInteractionKind,
@@ -50,7 +50,7 @@ import {
   backspaceReviewInputUpdate,
   focusReviewWindowAction,
   focusPromptWindowAction,
-} from '../../app/cli-review-actions';
+} from '../../app/review-actions';
 import type {CliInteractionState} from '../../app/view-state';
 
 export interface ReviewMachineDeps {

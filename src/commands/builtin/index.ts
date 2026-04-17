@@ -1,5 +1,5 @@
 import {clearCommand} from './clear';
-import type {CodaraCommandDefinition} from '@commands/runtime/types';
+import type {CodaraCommandDefinition} from '@commands/types';
 import {compactCommand} from './compact';
 import {configCommand} from './config';
 import {contextCommand} from './context';

@@ -15,15 +15,15 @@ import {
   finalizeBufferedInteractionText,
 } from '../interaction-turn';
 import type {CliInteractionScheduler} from '../interaction-scheduler';
-import {takeNextScheduledInteraction} from '../cli-interaction-queue';
+import {takeNextScheduledInteraction} from '../interaction-queue';
 import type {QueuedReviewResponseInteraction} from '../interaction-scheduler';
-import type {CliStore} from '../cli-store';
+import type {CliStore} from '../store';
 import {
   hasVisibleAssistantReply,
   hasVisibleAssistantReplyInMessages,
   shouldKeepPromptTurnRunningAfterAgentLaunch,
   appendUniqueNotices,
-} from '../cli-controller-logic';
+} from '../controller-logic';
 import type {CliEvent} from '../view-state';
 import type {
   CliActiveTurn,

@@ -34,13 +34,13 @@ import {
   toggleExpandAction,
   dismissCommandOutputAction,
   scrollCommandOutputAction,
-} from './cli-review-actions';
+} from './review-actions';
 import type {CliReviewAutoAction} from '../features/review/state-core';
 import {
   CliInteractionScheduler,
   type QueuedReviewResponseInteraction,
 } from './interaction-scheduler';
-import {resolveInteractionStateSnapshot} from './cli-interaction-queue';
+import {resolveInteractionStateSnapshot} from './interaction-queue';
 import type {
   CliActiveTurn,
   CliInteractionKind,
@@ -54,7 +54,7 @@ import {
   hasVisibleAssistantReplyInMessages,
   hasVisibleAssistantReply,
   activeTurnOwnsVisibleTranscript,
-} from './cli-controller-logic';
+} from './controller-logic';
 
 // Composed hooks
 import {useMessageSync} from './hooks/use-message-sync';
@@ -63,7 +63,7 @@ import {useReviewMachine} from '../features/review/use-machine';
 import {usePromptSubmission} from './hooks/use-prompt-submission';
 
 // External store
-import {createCliStore, type CliStore} from './cli-store';
+import {createCliStore, type CliStore} from './store';
 
 const STARTUP_MESSAGE = '';
 

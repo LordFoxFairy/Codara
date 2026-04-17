@@ -1,10 +1,102 @@
-/** Pure function that computes side effects from runtime events. */
+/**
+ * Runtime event routing + effect computation for the CLI controller.
+ *
+ * Two layers:
+ *   1. {@link routeCliRuntimeEvent} — pure routing predicate: given an event,
+ *      decide whether it seals the active turn, requires an auxiliary refresh,
+ *      represents a foreground subagent review, and which notice to surface.
+ *   2. {@link computeRuntimeEventEffects} — builds on the router to produce the
+ *      full effect bundle the controller needs to apply (updated event list,
+ *      agent count delta, refresh strategy, etc.). This keeps the useEffect
+ *      callback thin — it only applies the returned effects to React state.
+ */
 import type {CodaraRuntimeEvent} from '@/index';
-import {routeCliRuntimeEvent, type RuntimeEventRouteResult} from './runtime-event-router';
-import {appendRuntimeEventPreservingOpenStarts} from './cli-controller-logic';
+import {shouldHideRuntimeEventForTranscript} from '../features/transcript/model';
+import {appendRuntimeEventPreservingOpenStarts} from './controller-logic';
 import {sealActiveTurnAtRuntimeBoundary} from './interaction-turn';
-import {appendUniqueNotices} from './cli-controller-logic';
 import type {CliActiveTurn, CliNotice} from './view-state';
+
+// ─── Layer 1: pure routing ───────────────────────────────────────────
+
+export interface RuntimeEventRouteResult {
+  foregroundSubagentReview: boolean;
+  shouldSealActiveTurn: boolean;
+  shouldRefreshAuxiliaryState: boolean;
+  immediateNotice?: CliNotice;
+  queuedNotice?: CliNotice;
+}
+
+export function routeCliRuntimeEvent(input: {
+  event: CodaraRuntimeEvent;
+  interactionRunning: boolean;
+}): RuntimeEventRouteResult {
+  const {event, interactionRunning} = input;
+  const foregroundSubagentReview = isSubagentReviewEvent(event);
+  const notice = summarizeBackgroundTaskNotice(event);
+
+  return {
+    foregroundSubagentReview,
+    shouldSealActiveTurn: shouldSealActiveTurnForRuntimeEvent(event),
+    shouldRefreshAuxiliaryState: !interactionRunning && !foregroundSubagentReview && shouldRefreshAuxiliaryState(event),
+    ...(notice && !interactionRunning && !foregroundSubagentReview ? {immediateNotice: notice} : {}),
+    ...(notice && interactionRunning && !foregroundSubagentReview ? {queuedNotice: notice} : {}),
+  };
+}
+
+function shouldRefreshAuxiliaryState(event: CodaraRuntimeEvent): boolean {
+  return event.kind === 'agent' || event.kind === 'review';
+}
+
+function shouldSealActiveTurnForRuntimeEvent(event: CodaraRuntimeEvent): boolean {
+  if (shouldHideRuntimeEventForTranscript(event)) {
+    return false;
+  }
+
+  if (event.kind === 'tool') {
+    return event.phase === 'start' || event.phase === 'end';
+  }
+
+  if (event.kind === 'agent') {
+    return event.phase === 'start'
+      || (event.phase === 'update' && event.status === 'paused')
+      || event.phase === 'end';
+  }
+
+  return false;
+}
+
+function isSubagentReviewEvent(event: CodaraRuntimeEvent): boolean {
+  return event.kind === 'agent' && event.phase === 'update' && event.status === 'paused';
+}
+
+function summarizeBackgroundTaskNotice(event: CodaraRuntimeEvent): CliNotice | undefined {
+  if (event.kind !== 'agent') {
+    return undefined;
+  }
+
+  const detail = event.detail?.trim();
+  const suffix = detail ? `: ${detail}` : '';
+
+  if (event.phase === 'end' && event.status === 'error') {
+    return {
+      id: `task-notice:${event.id}`,
+      level: 'error',
+      content: `Background task failed${suffix}`,
+    };
+  }
+
+  if (event.phase === 'update' && event.status === 'paused') {
+    return {
+      id: `task-notice:${event.id}`,
+      level: 'warning',
+      content: `Background task waiting for review${suffix}`,
+    };
+  }
+
+  return undefined;
+}
+
+// ─── Layer 2: effect computation ─────────────────────────────────────
 
 /**
  * Determines what refresh strategy to apply after a runtime event
@@ -49,7 +141,7 @@ export function computeRuntimeEventEffects(input: {
 }): RuntimeEventEffects {
   const {event, currentRuntimeEvents, interactionRunning} = input;
 
-  // 1. Route the event through the existing pure router
+  // 1. Route the event through the pure router
   const route = routeCliRuntimeEvent({event, interactionRunning});
 
   // 2. Compute agent count delta

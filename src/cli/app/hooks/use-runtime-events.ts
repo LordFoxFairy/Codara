@@ -7,10 +7,10 @@
 import {useCallback, useEffect, useState} from 'react';
 import type {Codara, CodaraRuntimeEvent, ReviewRequest} from '@/index';
 import type {BaseMessage} from '@langchain/core/messages';
-import {computeRuntimeEventEffects} from '../cli-event-router';
-import {appendRuntimeEventPreservingOpenStarts, appendUniqueNotices} from '../cli-controller-logic';
+import {computeRuntimeEventEffects} from '../event-router';
+import {appendRuntimeEventPreservingOpenStarts, appendUniqueNotices} from '../controller-logic';
 import type {CliInteractionScheduler} from '../interaction-scheduler';
-import type {CliStore} from '../cli-store';
+import type {CliStore} from '../store';
 import type {CliEvent} from '../view-state';
 import type {
   CliActiveTurn,

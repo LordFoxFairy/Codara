@@ -6,7 +6,7 @@ import type {
   CodaraCommandHelpMetadata,
   CodaraCommandSource,
   CodaraCommandSpec,
-} from '@commands/runtime/types';
+} from '@commands/types';
 import {BUILTIN_SOURCE} from './formatters';
 const HELP_PAGE_SIZE = 8;
 

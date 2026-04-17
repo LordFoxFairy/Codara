@@ -1,4 +1,4 @@
-import type {CodaraCommandDefinition} from '@commands/runtime/types';
+import type {CodaraCommandDefinition} from '@commands/types';
 import {formatCost, formatCostSnapshot, formatNumber} from '@cost';
 import {BUILTIN_SOURCE, formatTokens} from './formatters';
 

@@ -1,4 +1,4 @@
-import type {CodaraCommandDefinition} from '@commands/runtime/types';
+import type {CodaraCommandDefinition} from '@commands/types';
 import {BUILTIN_SOURCE, formatContextWindow, formatUsage} from './formatters';
 
 export const sessionCommand: CodaraCommandDefinition = {

@@ -2,7 +2,7 @@ import {homedir} from 'node:os';
 import path from 'node:path';
 import {resolveWorkspaceRoot} from '@config/workspace';
 import {createWorkspaceKey} from '@config/workspace';
-import type {CodaraCommandDefinition} from '@commands/runtime/types';
+import type {CodaraCommandDefinition} from '@commands/types';
 import {BUILTIN_SOURCE, formatFilePath} from './formatters';
 const MEMORY_FILE_NAME = 'AGENTS.md';
 

@@ -3,7 +3,7 @@ import {
   deriveSkillCommandRequirements,
   extractShellCommandName,
   parseAllowedToolReference,
-} from '@commands/runtime/skill-requirements';
+} from '@commands/skill-requirements';
 
 describe('skill command requirements', () => {
   it('should normalize allowed tools into runtime tools and shell command requirements', () => {

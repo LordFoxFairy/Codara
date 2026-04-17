@@ -1,6 +1,6 @@
 import path from 'node:path';
 import {homedir} from 'node:os';
-import type {CodaraCommandDefinition} from '@commands/runtime/types';
+import type {CodaraCommandDefinition} from '@commands/types';
 import {resolvePermissionSettingsFile} from '@core/middleware/permission';
 import {resolveWorkspaceRoot} from '@config/workspace';
 import {BUILTIN_SOURCE, formatContextWindow, formatFilePath, formatUsage} from './formatters';

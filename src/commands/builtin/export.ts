@@ -1,7 +1,7 @@
 import {writeFile} from 'node:fs/promises';
 import path from 'node:path';
 import type {BaseMessage} from '@langchain/core/messages';
-import type {CodaraCommandDefinition} from '@commands/runtime/types';
+import type {CodaraCommandDefinition} from '@commands/types';
 import {BUILTIN_SOURCE} from './formatters';
 
 /**

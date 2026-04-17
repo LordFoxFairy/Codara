@@ -14,9 +14,9 @@ import {
   suppressActiveTurnForReview,
   PROMPT_SETTLE_REFRESH_TIMEOUT_MS,
   PROMPT_SETTLE_REFRESH_POLL_MS,
-} from '../cli-controller-logic';
+} from '../controller-logic';
 import type {CliInteractionScheduler} from '../interaction-scheduler';
-import type {CliStore} from '../cli-store';
+import type {CliStore} from '../store';
 import type {
   CliActiveTurn,
   CliReviewState,

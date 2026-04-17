@@ -1,7 +1,7 @@
 /** Interaction queue resolution logic for the CLI controller. */
 import type {CliInteractionScheduler, QueuedCliInteraction, QueuedReviewResponseInteraction} from './interaction-scheduler';
 import type {CliInteractionKind, CliInteractionState} from './view-state';
-import {resolveFocusedSurface} from './cli-controller-logic';
+import {resolveFocusedSurface} from './controller-logic';
 import type {CliReviewState} from './view-state';
 
 /**

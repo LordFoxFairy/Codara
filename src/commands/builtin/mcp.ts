@@ -1,4 +1,4 @@
-import type {CodaraCommandDefinition} from '@commands/runtime/types';
+import type {CodaraCommandDefinition} from '@commands/types';
 import type {McpClientStatus} from '@mcp';
 import {BUILTIN_SOURCE} from './formatters';
 

@@ -1,5 +1,5 @@
 // Runtime
-export {createCodaraCommandRunner} from '@commands/runtime/runner';
+export {createCodaraCommandRunner} from '@commands/runner';
 export type {
   CodaraCommandContext,
   CodaraCommandDefinition,
@@ -11,14 +11,14 @@ export type {
   CodaraCommandExecutionMode,
   CodaraCommandHelpMetadata,
   ParsedCodaraCommand,
-} from '@commands/runtime/types';
+} from '@commands/types';
 
 // Skill commands
-export {createSkillCodaraCommands} from '@commands/runtime/skill-commands';
+export {createSkillCodaraCommands} from '@commands/skill-commands';
 export type {
   SkillCommandRequirements,
   SkillCommandPreflightResult,
-} from '@commands/runtime/skill-requirements';
+} from '@commands/skill-requirements';
 
 // Builtin
 export {createBuiltInCommands} from '@commands/builtin';

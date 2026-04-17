@@ -4,7 +4,7 @@ import type {
   CodaraCommandAgent,
   CodaraCommandContext,
   ParsedCodaraCommand,
-} from '@commands/runtime/types';
+} from '@commands/types';
 
 function makeIdleAgentState() {
   return {

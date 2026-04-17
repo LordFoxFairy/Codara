@@ -24,7 +24,7 @@ import type {TaskRegistry} from '@tasks/task-registry';
 import {loadModelRoutingConfigFromPath, resolveCodaraPath} from '@models';
 import {createCodaraGuidelinesSource, type GuidelinesSource, createCodaraPromptSource, type PromptSource} from '@context/sources';
 import {createCodaraSkillsSource} from '@skills';
-import {createSkillCodaraCommands} from '@commands/runtime/skill-commands';
+import {createSkillCodaraCommands} from '@commands/skill-commands';
 import {createCodaraCommandRunner, type CodaraCommandResult} from '@commands';
 import {
   createSession, FileSessionStore,

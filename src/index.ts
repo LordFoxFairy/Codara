@@ -67,7 +67,7 @@ export {
 } from '@tasks/subagent/completion';
 export {
   type CodaraCommandSpec,
-} from '@commands/runtime/types';
+} from '@commands/types';
 export {
   createDailySessionFileLogSink,
   createBudgetMiddleware,

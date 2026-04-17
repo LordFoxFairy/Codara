@@ -1,4 +1,4 @@
-import type {CodaraCommandAgent, CodaraCommandDefinition} from '@commands/runtime/types';
+import type {CodaraCommandAgent, CodaraCommandDefinition} from '@commands/types';
 import {BUILTIN_SOURCE} from './formatters';
 
 /** Type guard for agents that support the rewind capability. */
