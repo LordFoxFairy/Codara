@@ -24,20 +24,31 @@ import {partitionToolCalls} from './tool-concurrency';
 
 export type AgentTurnOutcome = 'continue' | 'complete';
 
-/** Continuation prompts should only be injected once in a row, not on every turn. */
-const CONTINUATION_MARKER = 'Continue with the task. If complete, provide a brief summary.';
-function shouldTryContinuation(messages: ReadonlyArray<{content?: unknown; _getType?: () => string}>): boolean {
-  // Look back through recent messages — if we already pushed a continuation and
-  // got ANOTHER empty response, stop (avoid infinite loops).
+/** Prefixes we inject when the model's response is broken. Used to bound retries. */
+const CONTINUATION_MARKERS = [
+  'Your previous tool call could not be parsed',
+  'Your response was truncated',
+];
+
+/** Stop injecting continuations after 2 in a row — the retry isn't working. */
+function shouldTryContinuation(messages: ReadonlyArray<{content?: unknown}>): boolean {
   let continuations = 0;
   for (let i = messages.length - 1; i >= Math.max(0, messages.length - 10); i--) {
     const msg = messages[i];
-    if (msg && typeof msg.content === 'string' && msg.content === CONTINUATION_MARKER) {
+    if (msg && typeof msg.content === 'string'
+      && CONTINUATION_MARKERS.some((marker) => msg.content!.toString().startsWith(marker))) {
       continuations++;
       if (continuations >= 2) return false;
     }
   }
   return true;
+}
+
+/** Extract finish_reason from response metadata (handles LangChain's nested shape). */
+function readFinishReason(response: AIMessage): string | undefined {
+  const metadata = response.response_metadata as Record<string, unknown> | undefined;
+  const reason = metadata?.finish_reason;
+  return typeof reason === 'string' ? reason : undefined;
 }
 
 /** True when an AI message has no visible text and no tool calls — a silent end. */
@@ -80,17 +91,39 @@ export async function runAgentTurn(
     await runtime.pipeline.afterModel({...context, response});
 
     if (!response.tool_calls?.length) {
-      // Empty response (no text + no tool_calls): the model stopped mid-task
-      // — typically after a tool result. Inject a continuation prompt and
-      // let the loop try again (bounded by the max-recursion guard below).
-      if (isResponseEmpty(response) && shouldTryContinuation(run.state.messages)) {
+      // Diagnose why the response came back with no tool_calls. There are
+      // three distinct cases that require different handling:
+      //
+      //  1. finish_reason === 'tool_calls' but tool_calls is empty
+      //     → LangChain failed to parse the tool call from the provider
+      //       (common with non-Anthropic providers like GLM/Zhipu).
+      //       Retry once with a hint so the model retries in a parseable format.
+      //
+      //  2. finish_reason === 'length' / 'max_tokens' with empty content
+      //     → Output was truncated. Retry with a continuation prompt.
+      //
+      //  3. finish_reason === 'stop' with empty content
+      //     → Model legitimately decided to stop but said nothing.
+      //       Show a placeholder and let the user continue manually.
+      const finishReason = readFinishReason(response);
+      const emptyContent = isResponseEmpty(response);
+
+      if (finishReason === 'tool_calls' && shouldTryContinuation(run.state.messages)) {
+        // Provider said "tool_calls" but we got none — parser lost them.
         run.state.messages.push(new HumanMessage({
-          content: 'Continue with the task. If complete, provide a brief summary.',
+          content: 'Your previous tool call could not be parsed. Please retry using the standard tool-call format.',
+        }));
+        if (stream) await stream.emitValues(run.state.messages);
+        result = {reason: 'continue', turns: turn};
+      } else if ((finishReason === 'length' || finishReason === 'max_tokens') && emptyContent && shouldTryContinuation(run.state.messages)) {
+        // Output truncated without any visible content — ask to continue.
+        run.state.messages.push(new HumanMessage({
+          content: 'Your response was truncated. Please continue from where you left off.',
         }));
         if (stream) await stream.emitValues(run.state.messages);
         result = {reason: 'continue', turns: turn};
       } else {
-        if (isResponseEmpty(response)) {
+        if (emptyContent) {
           response.content = '(model returned no response)';
         }
         result = {reason: 'complete', turns: turn};
