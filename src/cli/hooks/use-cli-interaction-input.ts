@@ -3,7 +3,7 @@ import type {CliInteractionSurface, PermissionStage} from '../app/view-state';
 import {resolvePromptInputAction} from '../features/composer/input-action';
 import {resolveReviewInputAction} from '../features/review/input-action';
 
-interface UseCliInteractionInputOptions {
+export interface UseCliInteractionInputOptions {
   activeSurface: CliInteractionSurface;
   promptDisabled?: boolean;
   interactive?: boolean;

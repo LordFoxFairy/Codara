@@ -10,30 +10,28 @@ import {ToolMessage} from '@langchain/core/messages';
 import {createMiddleware, readExecutionMetadata, type ToolCallContext} from '@core/pipeline-types';
 import {resolveToolCallId} from '@shared/tool-call-id';
 import type {
-  ReviewActionDescriptor as SharedReviewActionDescriptor,
-  ReviewRequest as SharedReviewRequest,
   ReviewDecision as ReviewDecisionValue,
-  ReviewUIActionOption as SharedReviewUIActionOption,
+  ReviewRequest,
+  ReviewResumePayload,
+  ReviewToolMessagePayload,
   ReviewUIConfig,
-  ReviewResumePayload as SharedReviewResumePayload,
 } from '@shared/agent-types';
 
-// ---------------------------------------------------------------------------
-// Re-exported shared types
-// ---------------------------------------------------------------------------
-
-export type ReviewActionDescriptor = SharedReviewActionDescriptor;
-export type ReviewRequest = SharedReviewRequest;
-export type ReviewUIActionOption = SharedReviewUIActionOption;
-export type ReviewResumePayload = SharedReviewResumePayload;
-export type {ReviewToolMessagePayload} from '@shared/agent-types';
-type ReviewToolMessagePayload = import('@shared/agent-types').ReviewToolMessagePayload;
+// Re-export shared types so downstream code can keep importing them from
+// '@core/middleware/review'. No intermediate aliasing required.
+export type {
+  ReviewActionDescriptor,
+  ReviewRequest,
+  ReviewUIActionOption,
+  ReviewResumePayload,
+  ReviewToolMessagePayload,
+} from '@shared/agent-types';
 
 // ---------------------------------------------------------------------------
 // Configuration types
 // ---------------------------------------------------------------------------
 
-export type ReviewDescriptionFactory = (
+type ReviewDescriptionFactory = (
   toolCall: import('@langchain/core/messages').ToolCall,
   state: ToolCallContext['state'],
   runtime: ToolCallContext['runtime']
@@ -49,7 +47,7 @@ export interface ReviewInterruptConfig {
 
 export type ReviewInterruptOn = Record<string, boolean | ReviewInterruptConfig>;
 
-export interface ReviewResumeActionPayload {
+interface ReviewResumeActionPayload {
   decision?: ReviewDecisionValue;
   action?: string;
   scope?: string;
@@ -63,12 +61,12 @@ export interface ReviewResumeActionPayload {
 // Decision types
 // ---------------------------------------------------------------------------
 
-export interface ReviewAllowDecision { decision: 'allow' }
-export interface ReviewAskDecision { decision: 'ask'; config?: ReviewInterruptConfig; metadata?: Record<string, unknown> }
-export interface ReviewDenyDecision { decision: 'deny'; reason?: string; metadata?: Record<string, unknown>; message?: ToolMessage }
+interface ReviewAllowDecision { decision: 'allow' }
+interface ReviewAskDecision { decision: 'ask'; config?: ReviewInterruptConfig; metadata?: Record<string, unknown> }
+interface ReviewDenyDecision { decision: 'deny'; reason?: string; metadata?: Record<string, unknown>; message?: ToolMessage }
 export type ReviewDecision = ReviewAllowDecision | ReviewAskDecision | ReviewDenyDecision;
 
-export interface ReviewDecisionContext {
+interface ReviewDecisionContext {
   context: ToolCallContext;
   effectiveConfig: ReviewEffectiveConfig;
   interruptConfig: ReviewInterruptConfig | null;
@@ -78,13 +76,13 @@ export interface ReviewDecisionContext {
 // Middleware option types
 // ---------------------------------------------------------------------------
 
-export type ReviewDecisionResolver = (input: ReviewDecisionContext) => Promise<ReviewDecision | undefined> | ReviewDecision | undefined;
-export type ReviewRequestFactory = (context: ToolCallContext, config: ReviewInterruptConfig, descriptionPrefix: string) => Promise<ReviewRequest> | ReviewRequest;
-export type ReviewNotifier = (request: ReviewRequest, context: ToolCallContext) => Promise<void> | void;
-export type ReviewResumeResolver = (request: ReviewRequest, context: ToolCallContext) => Promise<ReviewResumePayload | undefined> | ReviewResumePayload | undefined;
+type ReviewDecisionResolver = (input: ReviewDecisionContext) => Promise<ReviewDecision | undefined> | ReviewDecision | undefined;
+type ReviewRequestFactory = (context: ToolCallContext, config: ReviewInterruptConfig, descriptionPrefix: string) => Promise<ReviewRequest> | ReviewRequest;
+type ReviewNotifier = (request: ReviewRequest, context: ToolCallContext) => Promise<void> | void;
+type ReviewResumeResolver = (request: ReviewRequest, context: ToolCallContext) => Promise<ReviewResumePayload | undefined> | ReviewResumePayload | undefined;
 export type ReviewResumeHandler = (request: ReviewRequest, resumePayload: ReviewResumePayload, context: ToolCallContext, handler: (request?: ToolCallContext) => Promise<ToolMessage>) => Promise<ToolMessage>;
-export type ReviewMessageFactory = (request: ReviewRequest, context: ToolCallContext) => ToolMessage;
-export type ReviewDenyMessageFactory = (decision: ReviewDenyDecision, context: ToolCallContext) => ToolMessage;
+type ReviewMessageFactory = (request: ReviewRequest, context: ToolCallContext) => ToolMessage;
+type ReviewDenyMessageFactory = (decision: ReviewDenyDecision, context: ToolCallContext) => ToolMessage;
 
 export interface ReviewMiddlewareOptions {
   enabled?: boolean;
@@ -101,7 +99,7 @@ export interface ReviewMiddlewareOptions {
 }
 
 type ReviewContextConfig = Pick<ReviewMiddlewareOptions, 'interruptOn' | 'descriptionPrefix'>;
-export interface ReviewEffectiveConfig { interruptOn?: ReviewInterruptOn; descriptionPrefix: string }
+interface ReviewEffectiveConfig { interruptOn?: ReviewInterruptOn; descriptionPrefix: string }
 
 // ---------------------------------------------------------------------------
 // Constants

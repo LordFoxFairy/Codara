@@ -2,38 +2,21 @@
  * Hook: useReviewMachine
  *
  * Manages the complete review state machine: review navigation, submission,
- * permission flow, auto-actions, and queued review responses.
+ * permission flow, auto-actions, and queued review responses. The heavy
+ * async callbacks live in `machine-actions.ts`; the auto-action effect
+ * lives in `machine-effects.ts`; this file stays focused on wiring those
+ * pieces plus thin navigation/text callbacks together.
  */
-import {useCallback, useEffect, useRef} from 'react';
+import {useCallback, useMemo, useRef} from 'react';
 import type {Codara, ReviewRequest} from '@/index';
-import {AIMessageChunk, type BaseMessage} from '@langchain/core/messages';
-import {
-  activateCliReviewFocusedSelection,
-  advanceCliReviewToNextStep,
-  isPermissionReviewState,
-  prepareCliReviewSubmission,
-  resolveCliReviewFocusedFooterAction,
-  setPermissionStage,
-  type CliReviewAutoAction,
-} from './state-core';
-import {
-  appendInteractionText,
-} from '../../app/interaction-turn';
+import type {BaseMessage} from '@langchain/core/messages';
+import {setPermissionStage, type CliReviewAutoAction} from './state-core';
 import type {CliInteractionScheduler, QueuedReviewResponseInteraction} from '../../app/interaction-scheduler';
-import {readCliReviewProjection, syncProjectedReview} from '../../app/runtime-projection';
-import {takeNextScheduledInteraction} from '../../app/interaction-queue';
-import {
-  deriveRunStateFromAgentState,
-  waitForForegroundReviewResumeReady,
-  appendUniqueNotices,
-  REVIEW_AUTO_ACTION_DELAY_MS,
-  REVIEW_QUEUE_HANDOFF_TIMEOUT_MS,
-  REVIEW_QUEUE_HANDOFF_POLL_MS,
-} from '../../app/controller-logic';
 import type {CliStore} from '../../app/store';
 import type {
   CliActiveTurn,
   CliInteractionKind,
+  CliInteractionState,
   CliNotice,
   CliReviewState,
   CliRunState,
@@ -51,7 +34,12 @@ import {
   focusReviewWindowAction,
   focusPromptWindowAction,
 } from '../../app/review-actions';
-import type {CliInteractionState} from '../../app/view-state';
+import {
+  createSubmitReviewAction,
+  createRunQueuedReviewResponse,
+  createSuppressSettlingDismissedReview,
+} from './machine-actions';
+import {useReviewAutoActions} from './machine-effects';
 
 export interface ReviewMachineDeps {
   codara: Codara;
@@ -124,7 +112,6 @@ export function useReviewMachine(deps: ReviewMachineDeps): ReviewMachineResult {
     refreshCoreState,
     appendNotice,
     reportError,
-    flushPendingBackgroundNotices,
     drainScheduledInteractions,
   } = deps;
 
@@ -132,7 +119,7 @@ export function useReviewMachine(deps: ReviewMachineDeps): ReviewMachineResult {
   const handledAutoReviewIdsRef = useRef<Set<string>>(new Set());
   const settlingDismissedReviewIdRef = useRef<string | undefined>(undefined);
 
-  // --- Navigation ---
+  // ── Navigation ────────────────────────────────────────────────────────
 
   const focusReviewWindow = useCallback(() => {
     setInteractionState((current) => focusReviewWindowAction(current, !!store.getState().review));
@@ -195,7 +182,7 @@ export function useReviewMachine(deps: ReviewMachineDeps): ReviewMachineResult {
     setRunState({status: 'paused'});
   }, [store, setReviewState, setRunState]);
 
-  // --- Text input ---
+  // ── Text input ────────────────────────────────────────────────────────
 
   const insertReviewText = useCallback((input: string) => {
     setReviewState((current) => insertReviewTextUpdate(current, input));
@@ -209,261 +196,45 @@ export function useReviewMachine(deps: ReviewMachineDeps): ReviewMachineResult {
     setReviewState((current) => backspaceReviewInputUpdate(current));
   }, [setReviewState]);
 
-  // --- suppressSettlingDismissedReview (internal) ---
+  // ── Submission / queued response / suppression ───────────────────────
 
-  const suppressSettlingDismissedReview = useCallback((
-    candidate: CliReviewState | undefined,
-    pendingReview?: ReviewRequest,
-  ): CliReviewState | undefined => {
-    const settlingReviewId = settlingDismissedReviewIdRef.current;
-    if (!settlingReviewId) {
-      return candidate;
-    }
+  const suppressSettlingDismissedReview = useMemo(
+    () => createSuppressSettlingDismissedReview({codara, settlingDismissedReviewIdRef}),
+    [codara],
+  );
 
-    const stillPresent = (
-      codara.listReviewItems().some((item) => item.reviewId === settlingReviewId)
-      || pendingReview?.id === settlingReviewId
-    );
+  const actionDeps = useMemo(() => ({
+    codara,
+    interactionScheduler,
+    store,
+    review,
+    setReviewState,
+    setActiveTurn,
+    setRunState,
+    beginInteraction,
+    endInteraction,
+    enqueueReviewResponse,
+    syncInteractionState,
+    refreshCoreState,
+    appendNotice,
+    reportError,
+    drainScheduledInteractions,
+    settlingDismissedReviewIdRef,
+  }), [
+    appendNotice, beginInteraction, codara, drainScheduledInteractions, endInteraction,
+    enqueueReviewResponse, interactionScheduler, refreshCoreState, reportError, review,
+    store, setActiveTurn, setReviewState, setRunState, syncInteractionState,
+  ]);
 
-    if (!stillPresent) {
-      settlingDismissedReviewIdRef.current = undefined;
-      return candidate;
-    }
+  const submitReviewActionImpl = useCallback(
+    (autoAction?: CliReviewAutoAction) => createSubmitReviewAction(actionDeps)(autoAction),
+    [actionDeps],
+  );
 
-    if (candidate?.request.id === settlingReviewId) {
-      return undefined;
-    }
-
-    return candidate;
-  }, [codara]);
-
-  // --- Queued review response ---
-
-  const runQueuedReviewResponse = useCallback(async (interaction: QueuedReviewResponseInteraction): Promise<boolean> => {
-    const nextAgentState = await refreshCoreState();
-    const activeForegroundReview = nextAgentState.pendingReview;
-    if (activeForegroundReview && activeForegroundReview.id !== interaction.reviewId) {
-      interactionScheduler.requeueInteraction(interaction);
-      setRunState({status: 'paused'});
-      syncInteractionState();
-      return false;
-    }
-
-    const queuedReviewStillExists = codara.listReviewItems().some((review) => review.reviewId === interaction.reviewId);
-    if (!queuedReviewStillExists && activeForegroundReview?.id !== interaction.reviewId) {
-      setRunState(deriveRunStateFromAgentState(nextAgentState));
-      syncInteractionState();
-      return true;
-    }
-
-    beginInteraction('review_response');
-    setRunState({status: 'running', phase: 'review_resume'});
-
-    try {
-      await waitForForegroundReviewResumeReady(codara, interaction.reviewId, refreshCoreState);
-      await codara.focusReview(interaction.reviewId);
-
-      const resumeStream = codara.streamInteraction({
-        kind: 'review',
-        payload: interaction.payload,
-        config: {streamMode: 'messages'},
-      });
-      for await (const chunk of resumeStream) {
-        if (!AIMessageChunk.isInstance(chunk)) {
-          continue;
-        }
-        const text = chunk.text;
-        if (text) {
-          setActiveTurn((current) => appendInteractionText(current, text, {
-            id: `turn-resume-${Date.now()}`,
-            prompt: '',
-            responseRole: 'assistant',
-          }));
-        }
-      }
-
-      setActiveTurn(undefined);
-      const postAgentState = await refreshCoreState();
-      setRunState(postAgentState.pendingReview || postAgentState.status === 'paused'
-        ? {status: 'paused'}
-        : {status: 'done'});
-    } catch (error) {
-      reportError(error);
-      await refreshCoreState().catch(() => undefined);
-    } finally {
-      endInteraction();
-    }
-    return true;
-  }, [beginInteraction, codara, endInteraction, interactionScheduler, refreshCoreState, reportError, setActiveTurn, setRunState, syncInteractionState]);
-
-  // --- submitReviewAction (core) ---
-
-  const submitReviewActionImpl = useCallback(async (autoAction?: CliReviewAutoAction) => {
-    const currentReview = store.getState().review ?? review;
-    if (!currentReview) {
-      return;
-    }
-
-    if (!autoAction && currentReview.form && currentReview.focus !== 'actions') {
-      const activated = activateCliReviewFocusedSelection(currentReview);
-      if (activated) {
-        setReviewState(activated);
-        setRunState({status: 'paused'});
-      }
-      return;
-    }
-
-    if (!autoAction && currentReview.form && !currentReview.form.endStep && currentReview.focus === 'actions') {
-      const footerAction = resolveCliReviewFocusedFooterAction(currentReview);
-      if (footerAction?.id === 'next') {
-        const advanced = advanceCliReviewToNextStep(currentReview);
-        setReviewState(advanced);
-        setRunState({status: 'paused'});
-        return;
-      }
-    }
-
-    const prepared = prepareCliReviewSubmission(currentReview, autoAction);
-    if (!prepared.payload) {
-      setReviewState(prepared.review);
-      setRunState({status: 'paused'});
-      return;
-    }
-
-    const focusedReview = codara.getFocusedReview();
-    const reviewMatchesCurrentReview = focusedReview?.request.id === prepared.review.request.id;
-
-    if (interactionScheduler.isRunning()) {
-      const busyReview = {...prepared.review, busy: true};
-      setReviewState(busyReview);
-      enqueueReviewResponse({
-        reviewId: prepared.review.request.id,
-        payload: prepared.payload,
-      });
-      return;
-    }
-
-    beginInteraction('review_response');
-    setRunState({status: 'running', phase: 'review_resume'});
-
-    try {
-      const selectedAction = autoAction
-        ? prepared.review.actions.find((action) => action.id.toLowerCase() === autoAction.action.trim().toLowerCase())
-        : prepared.review.actions[prepared.review.selectedActionIndex];
-      if (!prepared.review.form && !isPermissionReviewState(prepared.review)) {
-        appendNotice('system', `Review action: ${selectedAction?.label ?? autoAction?.action ?? 'resume'}`);
-      }
-
-      if (reviewMatchesCurrentReview) {
-        const queuedReviewCount = codara.listReviewItems().length;
-        if (queuedReviewCount <= 1) {
-          settlingDismissedReviewIdRef.current = prepared.review.request.id;
-          setReviewState(undefined);
-          syncInteractionState();
-
-          const resumeStream = codara.streamInteraction({
-            kind: 'review',
-            payload: prepared.payload,
-            config: {streamMode: 'messages'},
-          });
-          for await (const chunk of resumeStream) {
-            if (!AIMessageChunk.isInstance(chunk)) {
-              continue;
-            }
-            const text = chunk.text;
-            if (text) {
-              setActiveTurn((current) => appendInteractionText(current, text, {
-                id: `turn-review-${Date.now()}`,
-                prompt: '',
-                responseRole: 'assistant',
-              }));
-            }
-          }
-
-          setActiveTurn(undefined);
-          const nextAgentState = await refreshCoreState();
-          setRunState(nextAgentState.pendingReview || nextAgentState.status === 'paused'
-            ? {status: 'paused'}
-            : {status: 'done'});
-          return;
-        }
-
-        const s = store.getState();
-        const busyReview = s.review?.request.id === prepared.review.request.id
-          ? {...s.review, busy: true}
-          : {...prepared.review, busy: true};
-        setReviewState(busyReview);
-        void (async () => {
-          try {
-            const currentReviewId = prepared.review.request.id;
-            void codara.resumeReview(prepared.payload, {streamMode: 'messages'}).catch((error) => {
-              reportError(error);
-            });
-
-            const deadline = Date.now() + REVIEW_QUEUE_HANDOFF_TIMEOUT_MS;
-            while (Date.now() <= deadline) {
-              const nextAgentState = await refreshCoreState();
-              const reviews = codara.listReviewItems();
-              const activeReviewRequest = readCliReviewProjection(codara, {
-                pendingReview: nextAgentState.pendingReview,
-              }).activeReviewRequest;
-              const stillShowingCurrent = reviews.some((review) => review.reviewId === currentReviewId);
-              if (!stillShowingCurrent) {
-                const s2 = store.getState();
-                const nextReview = syncProjectedReview(codara, s2.review, {pendingReview: activeReviewRequest});
-                setReviewState(nextReview);
-                syncInteractionState();
-                setRunState(deriveRunStateFromAgentState(nextAgentState));
-                return;
-              }
-              await new Promise((resolve) => setTimeout(resolve, REVIEW_QUEUE_HANDOFF_POLL_MS));
-            }
-
-            const nextAgentState = await refreshCoreState();
-            setRunState(deriveRunStateFromAgentState(nextAgentState));
-          } catch (error) {
-            reportError(error);
-            await refreshCoreState().catch(() => undefined);
-          } finally {
-            endInteraction();
-            drainScheduledInteractions();
-          }
-        })();
-        return;
-      }
-
-      await waitForForegroundReviewResumeReady(codara, prepared.review.request.id, refreshCoreState);
-      await codara.focusReview(prepared.review.request.id);
-      const resumeStream = codara.streamInteraction({
-        kind: 'review',
-        payload: prepared.payload,
-        config: {streamMode: 'messages'},
-      });
-      for await (const chunk of resumeStream) {
-        if (!AIMessageChunk.isInstance(chunk)) continue;
-        const text = chunk.text;
-        if (text) {
-          setActiveTurn((current) => appendInteractionText(current, text, {
-            id: `turn-resume-${Date.now()}`,
-            prompt: '',
-            responseRole: 'assistant',
-          }));
-        }
-      }
-
-      setActiveTurn(undefined);
-      const nextAgentState = await refreshCoreState();
-      setRunState(nextAgentState.pendingReview || nextAgentState.status === 'paused'
-        ? {status: 'paused'}
-        : {status: 'done'});
-    } catch (error) {
-      reportError(error);
-      await refreshCoreState().catch(() => undefined);
-    } finally {
-      endInteraction();
-      drainScheduledInteractions();
-    }
-  }, [appendNotice, beginInteraction, codara, drainScheduledInteractions, endInteraction, enqueueReviewResponse, interactionScheduler, refreshCoreState, reportError, review, store, setActiveTurn, setReviewState, setRunState, syncInteractionState]);
+  const runQueuedReviewResponse = useCallback(
+    (interaction: QueuedReviewResponseInteraction) => createRunQueuedReviewResponse(actionDeps)(interaction),
+    [actionDeps],
+  );
 
   const submitReviewAction = useCallback(() => {
     void submitReviewActionImpl();
@@ -480,6 +251,8 @@ export function useReviewMachine(deps: ReviewMachineDeps): ReviewMachineResult {
     }
     void submitReviewActionImpl({action: actionId});
   }, [setReviewState, submitReviewActionImpl]);
+
+  // ── Permission flow ──────────────────────────────────────────────────
 
   const permissionBack = useCallback(() => {
     setReviewState((current) => current ? setPermissionStage(current, 'prompt') : current);
@@ -499,29 +272,15 @@ export function useReviewMachine(deps: ReviewMachineDeps): ReviewMachineResult {
     void submitReviewActionImpl({action: 'deny'});
   }, [submitReviewActionImpl]);
 
-  // --- Auto-actions effect ---
+  // ── Auto-actions effect ──────────────────────────────────────────────
 
-  useEffect(() => {
-    if (!review || runState.status === 'running' || autoActionsRef.current.length === 0) {
-      return;
-    }
-
-    if (handledAutoReviewIdsRef.current.has(review.request.id)) {
-      return;
-    }
-
-    handledAutoReviewIdsRef.current.add(review.request.id);
-    const nextAction = autoActionsRef.current.shift();
-    if (!nextAction) {
-      return;
-    }
-
-    const timer = setTimeout(() => {
-      void submitReviewActionImpl(nextAction);
-    }, REVIEW_AUTO_ACTION_DELAY_MS);
-
-    return () => clearTimeout(timer);
-  }, [review, runState.status, submitReviewActionImpl]);
+  useReviewAutoActions({
+    review,
+    runState,
+    autoActionsRef,
+    handledAutoReviewIdsRef,
+    submitReviewActionImpl,
+  });
 
   return {
     focusReviewWindow,

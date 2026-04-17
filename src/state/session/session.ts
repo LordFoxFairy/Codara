@@ -19,11 +19,15 @@
  *   while the CLI layer (`cli/app/`) owns UI projection. The session never
  *   touches rendering.
  *
+ * Most closure-internal mechanics (lifecycle hooks, stream iteration,
+ * fork/mutation helpers) live in sibling `session-*.ts` files; this file
+ * only wires them together.
+ *
  * @module
  */
 
 import {randomUUID} from 'node:crypto';
-import {AIMessageChunk, type BaseMessage} from '@langchain/core/messages';
+import type {BaseMessage} from '@langchain/core/messages';
 import type {BaseChatModel} from '@langchain/core/language_models/chat_models';
 import type {StructuredToolInterface} from '@langchain/core/tools';
 import type {
@@ -41,19 +45,15 @@ import type {
   ReviewResumePayload,
   ToolErrorHandler,
 } from '@shared/agent-types';
-import {mergeContext as mergeAgentContext} from '@shared/context-merge';
 import type {CompactOptions} from '@state/checkpoint/types';
 import {
   createAgentMemoryCheckpointer,
-  putForkCheckpoint,
-  putManualCheckpoint,
   type AgentCheckpointer,
 } from '@state/checkpoint/agent';
 import type {SessionLifecycleHooks} from '@hooks/types';
 import type {GuidelinesSource, PromptSource} from '@context/sources';
 import type {SkillsSource} from '@skills';
 import type {DynamicSectionRegistry} from '@context/dynamic-sections';
-import type {ModelInfo} from '@models';
 import {
   createSessionMetadata,
   forkSessionMetadata,
@@ -73,6 +73,26 @@ import {
 } from './session-bootstrap';
 import {applyPreparedInstructionContext, type BaseSystemMessageBundle} from '@context/system-message';
 import {compactConversation as doCompactConversation} from './session-compact';
+import {
+  checkPromptVeto,
+  fireSessionEndHook,
+  fireSessionStartHook,
+  safeLifecycleCall,
+} from './session-lifecycle';
+import {
+  runHilResume,
+  runOperation,
+  runStreamOperation,
+  type SyncFn,
+  type SyncOptions,
+} from './session-invoke';
+import {
+  focusReview as focusReviewHelper,
+  replaceMessages as replaceMessagesHelper,
+  updateContext as updateContextHelper,
+  writeForkCheckpoint,
+} from './session-fork';
+
 export type {CodaraRuntimeEvent, CodaraRuntimeEventListener} from '@events';
 export type {SessionModelCatalog} from './session-bootstrap';
 
@@ -173,58 +193,6 @@ export function createSession(options: CreateSessionOptions): Session {
   const lifecycle = options.lifecycle;
   let sessionStarted = false;
 
-  /** Call a lifecycle hook, swallowing errors. Hooks are advisory, not critical. */
-  async function safeLifecycleCall<T>(fn: () => Promise<T>): Promise<T | undefined> {
-    try {
-      return await fn();
-    } catch {
-      // Lifecycle hooks are best-effort and should not break the session.
-    }
-  }
-
-  async function ensureSessionStartHook(): Promise<void> {
-    if (sessionStarted || !lifecycle) {
-      return;
-    }
-    sessionStarted = true;
-    await safeLifecycleCall(() =>
-      lifecycle.onSessionStart({
-        sessionId,
-        hookEvent: 'SessionStart',
-        timestamp: new Date().toISOString(),
-        cwd: process.cwd(),
-      }),
-    );
-  }
-
-  async function checkPromptVeto(input: AgentInput | undefined): Promise<AgentResult | undefined> {
-    if (!lifecycle || input == null) {
-      return undefined;
-    }
-    const prompt = extractPromptText(input);
-    if (!prompt) {
-      return undefined;
-    }
-    const result = await safeLifecycleCall(() =>
-      lifecycle.onUserPromptSubmit({
-        sessionId,
-        hookEvent: 'UserPromptSubmit',
-        timestamp: new Date().toISOString(),
-        userPrompt: prompt,
-      }),
-    );
-    if (result?.vetoed) {
-      const agentState = (await getAgent()).getState();
-      return {
-        reason: 'complete',
-        state: agentState,
-        turns: 0,
-        error: result.vetoReason ? new Error(result.vetoReason) : undefined,
-      };
-    }
-    return undefined;
-  }
-
   function state(): SessionState {
     return {sessionId, sessionStatus, createdAt, updatedAt, metadata};
   }
@@ -279,10 +247,7 @@ export function createSession(options: CreateSessionOptions): Session {
     return Boolean(await getLatestCheckpoint());
   }
 
-  async function sync(
-    next: AgentState,
-    syncOptions: {touchActivity?: boolean; collectUsage?: boolean; previousMessages?: readonly BaseMessage[]} = {},
-  ) {
+  const sync: SyncFn = async (next, syncOptions: SyncOptions = {}) => {
     if (syncOptions.touchActivity !== false) {
       touch();
     }
@@ -295,7 +260,7 @@ export function createSession(options: CreateSessionOptions): Session {
     if (options.store) {
       await options.store.save(sessionId, state());
     }
-  }
+  };
 
   async function loadInstructionContext(forceReload = false): Promise<BaseSystemMessageBundle> {
     if (forceReload || !baseSystemContext) {
@@ -378,62 +343,12 @@ export function createSession(options: CreateSessionOptions): Session {
     }
   }
 
-  /** Run a synchronous agent operation and sync metadata + usage afterwards. */
-  async function run(operation: (instance: Agent) => Promise<AgentResult>) {
-    const instance = await getAgent();
-    const previousMessages = [...instance.getState().messages];
-    const result = await operation(instance);
-    await sync(result.state, {collectUsage: true, previousMessages});
-    return result;
-  }
-
-  /** Run a streaming agent operation, emitting model-responding events and syncing on completion. */
-  async function* runStream(operation: (instance: Agent) => AsyncGenerator<AgentStreamOutput, AgentResult, void>) {
-    const instance = await getAgent();
-    const previousMessages = [...instance.getState().messages];
-    let sawModelResponse = false;
-    const stream = operation(instance);
-    let result: AgentResult | undefined;
-    while (true) {
-      const next = await stream.next();
-      if (next.done) {
-        result = next.value;
-        break;
-      }
-
-      if (!sawModelResponse && AIMessageChunk.isInstance(next.value)) {
-        const runId = readResponseMetadataString(next.value.response_metadata, 'runId');
-        const turn = readResponseMetadataNumber(next.value.response_metadata, 'turn');
-        if (runId && typeof turn === 'number' && next.value.text?.trim()) {
-          runtimeEvents.modelResponding(runId, turn);
-          sawModelResponse = true;
-        }
-      }
-
-      yield next.value;
-    }
-
-    if (!result) {
-      throw new Error('Stream finished without an AgentResult.');
-    }
-
-    await sync(result.state, {collectUsage: true, previousMessages});
-    return result;
-  }
-
   async function fork(optionsOverride: {id?: string; sessionId?: string; store?: SessionStore} = {}) {
-    const base = (await getAgent()).getState();
     const childSessionId = resolveSessionId(undefined, {
       id: optionsOverride.id,
       sessionId: optionsOverride.sessionId,
     });
-    await putForkCheckpoint(checkpointer, childSessionId, {
-      agentType: base.agentType,
-      messages: base.messages,
-      context: base.context,
-      values: base.values,
-      ...(base.pendingReview ? {pendingReview: base.pendingReview} : {}),
-    });
+    await writeForkCheckpoint({sessionId, checkpointer, getAgent}, childSessionId);
 
     const child = createSession({
       ...options,
@@ -447,83 +362,43 @@ export function createSession(options: CreateSessionOptions): Session {
     return child;
   }
 
-  async function runHilResume<T>(operation: () => Promise<T>, pendingDescription: string | undefined): Promise<T> {
-    const eventId = runtimeEvents.reviewResumeStarted(
-      pendingDescription?.trim() ? `Resuming review: ${pendingDescription.trim()}` : 'Applying review selection',
-    );
-
-    try {
-      const result = await operation();
-      runtimeEvents.reviewResumeFinished(eventId, 'done', 'Review selection applied');
-      return result;
-    } catch (error) {
-      runtimeEvents.reviewResumeFinished(
-        eventId,
-        'error',
-        'Review selection failed',
-        error instanceof Error ? error.message : String(error),
-      );
-      throw error;
-    }
-  }
+  const mutateDeps = {
+    sessionId,
+    checkpointer,
+    getAgent,
+    getLatestCheckpoint,
+    clearAgentCache,
+    sync,
+  };
 
   async function focusReview(request: ReviewRequest): Promise<AgentState> {
     ensureReady();
-    const current = (await getAgent()).getState();
-
-    if (current.pendingReview?.id === request.id) {
-      return current;
-    }
-
-    await putManualCheckpoint(checkpointer, sessionId, {
-      agentType: current.agentType,
-      messages: current.messages,
-      context: current.context,
-      values: current.values,
-      pendingReview: request,
-    }, await getLatestCheckpoint());
-
-    clearAgentCache();
-    const next = (await getAgent()).getState();
-    await sync(next, {touchActivity: false});
-    return next;
+    return focusReviewHelper(mutateDeps, request);
   }
 
   async function updateContext(contextPatch: AgentRuntimeContext): Promise<AgentState> {
     ensureReady();
-    const current = (await getAgent()).getState();
-    const nextContext = applyContextPatch(current.context, contextPatch);
-
-    await putManualCheckpoint(checkpointer, sessionId, {
-      agentType: current.agentType,
-      messages: current.messages,
-      context: nextContext,
-      values: current.values,
-      ...(current.pendingReview ? {pendingReview: current.pendingReview} : {}),
-    }, await getLatestCheckpoint());
-
-    clearAgentCache();
-    const next = (await getAgent()).getState();
-    await sync(next, {touchActivity: false});
-    return next;
+    return updateContextHelper(mutateDeps, contextPatch);
   }
 
   async function replaceMessages(messages: BaseMessage[]): Promise<AgentState> {
     ensureReady();
-    const current = (await getAgent()).getState();
+    return replaceMessagesHelper(mutateDeps, messages);
+  }
 
-    await putManualCheckpoint(checkpointer, sessionId, {
-      agentType: current.agentType,
-      messages,
-      context: current.context,
-      values: current.values,
-      ...(current.pendingReview ? {pendingReview: current.pendingReview} : {}),
-    }, await getLatestCheckpoint());
+  async function ensureSessionStart(): Promise<void> {
+    sessionStarted = await fireSessionStartHook({sessionId, lifecycle}, sessionStarted);
+  }
 
-    clearAgentCache();
-    const next = (await getAgent()).getState();
-    await sync(next, {touchActivity: false});
-    return next;
+  async function maybeVetoPrompt(input: AgentInput | undefined): Promise<AgentResult | undefined> {
+    return checkPromptVeto(
+      {
+        sessionId,
+        lifecycle,
+        getAgentState: async () => (await getAgent()).getState(),
+      },
+      input,
+    );
   }
 
   const session: Session & {
@@ -570,28 +445,34 @@ export function createSession(options: CreateSessionOptions): Session {
     },
     async invoke(input, config) {
       ensureReady();
-      await ensureSessionStartHook();
-      const vetoResult = await checkPromptVeto(input);
+      await ensureSessionStart();
+      const vetoResult = await maybeVetoPrompt(input);
       if (vetoResult) {
         return vetoResult;
       }
-      return run((instance) => instance.invoke(input, config));
+      return runOperation(getAgent, sync, (instance) => instance.invoke(input, config));
     },
     async *stream(input, config) {
       ensureReady();
-      await ensureSessionStartHook();
-      const vetoResult = await checkPromptVeto(input);
+      await ensureSessionStart();
+      const vetoResult = await maybeVetoPrompt(input);
       if (vetoResult) {
         return vetoResult;
       }
-      return yield* runStream((instance) => instance.stream(input, config));
+      return yield* runStreamOperation(
+        getAgent,
+        sync,
+        runtimeEvents,
+        (instance) => instance.stream(input, config),
+      );
     },
     async resumeReview(payload, config) {
       ensureReady();
       const instance = await getAgent();
       return runHilResume(
-        () => run((current) => current.resume(payload, config)),
+        runtimeEvents,
         instance.getState().pendingReview?.description,
+        () => runOperation(getAgent, sync, (current) => current.resume(payload, config)),
       );
     },
     async *resumeReviewStream(payload, config) {
@@ -602,7 +483,12 @@ export function createSession(options: CreateSessionOptions): Session {
       );
 
       try {
-        const result = yield* runStream((instance) => instance.resumeStream(payload, config));
+        const result = yield* runStreamOperation(
+          getAgent,
+          sync,
+          runtimeEvents,
+          (instance) => instance.resumeStream(payload, config),
+        );
         runtimeEvents.reviewResumeFinished(eventId, 'done', 'Review selection applied');
         return result;
       } catch (error) {
@@ -649,16 +535,7 @@ export function createSession(options: CreateSessionOptions): Session {
       if (sessionStatus === 'closed') {
         return;
       }
-      if (lifecycle) {
-        await safeLifecycleCall(() =>
-          lifecycle.onSessionEnd({
-            sessionId,
-            hookEvent: 'SessionEnd',
-            timestamp: new Date().toISOString(),
-            reason: 'user_exit',
-          }),
-        );
-      }
+      await fireSessionEndHook({sessionId, lifecycle});
       // If bootstrap is in-flight, await it before deciding whether to clean up.
       if (!agent && agentPromise) {
         try {
@@ -680,46 +557,6 @@ export function createSession(options: CreateSessionOptions): Session {
   return session;
 }
 
-/**
- * Merge a context patch into the current context.
- *
- * - Keys with `undefined` value are deleted from the result.
- * - All other keys are deep-merged via `mergeAgentContext`.
- */
-function applyContextPatch(current: AgentRuntimeContext, patch: AgentRuntimeContext): AgentRuntimeContext {
-  const normalizedPatch: AgentRuntimeContext = {};
-
-  for (const [key, value] of Object.entries(patch)) {
-    if (value !== undefined) {
-      normalizedPatch[key] = value;
-    }
-  }
-
-  const merged = mergeAgentContext(current ?? {}, normalizedPatch);
-  for (const [key, value] of Object.entries(patch)) {
-    if (value === undefined) {
-      delete merged[key];
-    }
-  }
-  return merged;
-}
-
-function readResponseMetadataString(
-  metadata: Record<string, unknown> | undefined,
-  key: string,
-): string | undefined {
-  const value = metadata?.[key];
-  return typeof value === 'string' && value.trim() ? value.trim() : undefined;
-}
-
-function readResponseMetadataNumber(
-  metadata: Record<string, unknown> | undefined,
-  key: string,
-): number | undefined {
-  const value = metadata?.[key];
-  return typeof value === 'number' && Number.isFinite(value) ? value : undefined;
-}
-
 function resolveSessionId(
   restored: SessionState | undefined,
   input: {
@@ -729,34 +566,4 @@ function resolveSessionId(
 ): string {
   const restoredSessionId = restored?.sessionId?.trim();
   return restoredSessionId || input.id || input.sessionId || randomUUID();
-}
-
-/**
- * Extract the user prompt text from various {@link AgentInput} shapes.
- *
- * Supports: raw string, `{messages: [...]}`, `BaseMessage[]`, single `BaseMessage`.
- */
-function extractPromptText(input: AgentInput): string | undefined {
-  if (typeof input === 'string') {
-    return input.trim() || undefined;
-  }
-  if (input && typeof input === 'object' && 'messages' in input && Array.isArray(input.messages)) {
-    const last = input.messages[input.messages.length - 1];
-    if (last && typeof last.content === 'string') {
-      return last.content.trim() || undefined;
-    }
-  }
-  if (Array.isArray(input)) {
-    const last = input[input.length - 1];
-    if (last && typeof last.content === 'string') {
-      return last.content.trim() || undefined;
-    }
-  }
-  if (input && typeof input === 'object' && 'content' in input) {
-    const content = (input as BaseMessage).content;
-    if (typeof content === 'string') {
-      return content.trim() || undefined;
-    }
-  }
-  return undefined;
 }

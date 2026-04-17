@@ -1,26 +1,17 @@
 /**
  * Shell application -- the root Ink component for the interactive CLI.
  *
- * Composes the CLI controller, transcript, prompt frame, review panel,
- * session picker, command output overlay, and subagent run panel into
- * the full terminal UI. Also exports pure predicate functions for
- * visibility decisions so they can be unit-tested independently.
+ * Composes the CLI controller, command-completion, session picker, and
+ * subagent data sources, computes the visibility flags, wires every
+ * callback through `useCliInteractionInput`, and delegates rendering to
+ * `ShellLayout`. Pure predicates live in `shell-predicates.ts`; input
+ * binding lives in `shell-input-bindings.ts`; layout lives in
+ * `shell-layout.tsx`.
  */
 import React, {useCallback, useEffect, useState} from 'react';
-import {Box, Static, useApp} from 'ink';
+import {useApp} from 'ink';
 import type {Codara} from '@/index';
-import {CommandOutputPanel} from '../components/chrome/command-output-panel';
-import {Footer} from '../components/chrome/footer';
-import {StatusBar} from '../components/chrome/header';
-import {PersistentSpinner} from '../components/chrome/persistent-spinner';
-import {SubagentRunPanel} from '../features/subagent/run-panel';
-import {ReviewPanel, isPermissionReview} from '../features/review/panel';
-import {SessionPicker} from '../features/session/picker';
-import {ActiveTranscript} from '../features/transcript/render';
-import {SolidifiedBlock} from '../features/transcript/solidified-block';
 import {TIPS} from '../hooks/use-rotating-tip';
-import {CompletionMenu} from '../features/composer/completion-menu';
-import {PromptFrame} from '../features/composer/frame';
 import type {CliReviewAutoAction} from '../features/review/state-core';
 import {resolveCliLayoutMode} from './layout-mode';
 import {useCliController} from './use-cli-controller';
@@ -31,10 +22,28 @@ import {useCliInteractionInput} from '../hooks/use-cli-interaction-input';
 import {useSessionPicker} from '../features/session/use-picker';
 import {useSolidifiedTranscript} from '../features/transcript/use-solidify';
 import {useTerminalWidth} from '../hooks/use-terminal-width';
-import type {CliInteractionSurface, CliReviewState} from './view-state';
-import {shouldSpaceInsertIntoCliReviewDraft} from '../features/review/state-core';
-import type {TranscriptItem} from '../features/transcript/model';
-import type {SolidifiedItem} from '../features/transcript/model';
+import {
+  isFloatingReview,
+  resolveActiveInteractionSurface,
+  shouldDisablePromptInput,
+  shouldShowPromptFrame,
+} from './shell-predicates';
+import {buildShellInputBindings} from './shell-input-bindings';
+import {ShellLayout} from './shell-layout';
+
+// Re-export predicates so existing consumers (e.g. unit tests) that import
+// them from shell-app continue to work unchanged.
+export {
+  resolveCliForegroundSurface,
+  isFloatingReview,
+  shouldShowPromptFrame,
+  shouldDisablePromptInput,
+  resolveActiveInteractionSurface,
+  shouldShowSubagentRunPanel,
+  shouldShowFloatingSubagentRunPanel,
+  hasVisibleAssistantSolidifiedReply,
+  type CliForegroundSurface,
+} from './shell-predicates';
 
 export interface CodaraCliAppProps {
   codara: Codara;
@@ -46,110 +55,6 @@ export interface CodaraCliAppProps {
   autoExitOnSettledPrompt?: boolean;
   reopenSession?: (sessionId: string) => Promise<void>;
   openFile?: (targetPath: string) => Promise<boolean>;
-}
-
-export type CliForegroundSurface = 'transcript' | 'welcome';
-
-export function resolveCliForegroundSurface(input: {
-  hasReview: boolean;
-  hasConversation: boolean;
-}): CliForegroundSurface {
-  if (input.hasConversation || input.hasReview) {
-    return 'transcript';
-  }
-  return 'welcome';
-}
-
-export function isFloatingReview(review: CliReviewState | undefined): boolean {
-  return Boolean(review);
-}
-
-export function shouldShowPromptFrame(input: {
-  review?: CliReviewState;
-  focusedSurface: CliInteractionSurface;
-  hasCommandOutput: boolean;
-  hasCompletion: boolean;
-  hasSessionPicker: boolean;
-  activeItems: readonly TranscriptItem[];
-  runStateStatus: 'idle' | 'running' | 'paused' | 'done' | 'error';
-  runningSubagentRunCount?: number;
-  pausedSubagentRunCount?: number;
-}): boolean {
-  if (input.hasCommandOutput || input.hasSessionPicker) {
-    return false;
-  }
-
-  if (input.review) {
-    return false;
-  }
-
-  return true;
-}
-
-export function shouldDisablePromptInput(input: {
-  review?: CliReviewState;
-  focusedSurface: CliInteractionSurface;
-  hasSessionPicker: boolean;
-  hasCompletion: boolean;
-  hasCommandOutput: boolean;
-  runStateStatus: 'idle' | 'running' | 'paused' | 'done' | 'error';
-}): boolean {
-  return Boolean(input.review)
-    || input.hasSessionPicker
-    || input.hasCompletion
-    || input.hasCommandOutput
-    || input.runStateStatus === 'running'
-    || input.runStateStatus === 'paused';
-}
-
-export function resolveActiveInteractionSurface(input: {
-  focusedSurface: CliInteractionSurface;
-  hasCommandOutput: boolean;
-  hasCompletion: boolean;
-  hasSessionPicker: boolean;
-}): CliInteractionSurface {
-  if (input.hasSessionPicker) {
-    return 'session-picker';
-  }
-  if (input.hasCommandOutput) {
-    return 'command-output';
-  }
-  if (input.hasCompletion) {
-    return 'completion';
-  }
-  return input.focusedSurface;
-}
-
-export function shouldShowSubagentRunPanel(input: {
-  subagentRunPanelVisible: boolean;
-  subagentRunCount: number;
-}): boolean {
-  return input.subagentRunPanelVisible && input.subagentRunCount > 1;
-}
-
-export function shouldShowFloatingSubagentRunPanel(input: {
-  hasConversation: boolean;
-  subagentRunPanelVisible: boolean;
-  subagentRunCount: number;
-  hasBlockingOverlay: boolean;
-  hasReview: boolean;
-}): boolean {
-  if (
-    input.hasBlockingOverlay
-    || input.hasReview
-    || input.hasConversation
-  ) {
-    return false;
-  }
-
-  return shouldShowSubagentRunPanel({
-    subagentRunPanelVisible: input.subagentRunPanelVisible,
-    subagentRunCount: input.subagentRunCount,
-  });
-}
-
-export function hasVisibleAssistantSolidifiedReply(items: readonly SolidifiedItem[]): boolean {
-  return items.some((item) => item.items.some((entry) => entry.role === 'assistant' && entry.content.trim().length > 0));
 }
 
 export function CodaraCliApp(props: CodaraCliAppProps): React.JSX.Element {
@@ -245,74 +150,17 @@ export function CodaraCliApp(props: CodaraCliAppProps): React.JSX.Element {
     hasCommandOutput: Boolean(shell.commandOutput),
     runStateStatus: shell.runState.status,
   });
-  useCliInteractionInput({
+
+  useCliInteractionInput(buildShellInputBindings({
+    shell,
+    completion,
+    sessionPicker,
     activeSurface,
-    promptDisabled: promptInputDisabled,
+    promptInputDisabled,
+    hasReview,
     interactive: !(autoExitOnSettledPrompt && hasInitialPrompt),
-    reviewDisabled: shell.review?.busy ?? false,
-    reviewSpaceInsertsText: shouldSpaceInsertIntoCliReviewDraft(shell.review),
-    reviewPermissionStage: isPermissionReview(shell.review) ? (shell.review?.permissionStage ?? 'prompt') : undefined,
-    onPromptInsertText: shell.insertText,
-    onPromptInsertNewline: shell.insertNewline,
-    onPromptBackspace: shell.backspace,
-    onPromptMoveCursorLeft: shell.moveCursorLeft,
-    onPromptMoveCursorRight: shell.moveCursorRight,
-    onPromptMoveCursorUp: shell.moveCursorUp,
-    onPromptMoveCursorDown: shell.moveCursorDown,
-    onPromptMoveCursorHome: shell.moveCursorHome,
-    onPromptMoveCursorEnd: shell.moveCursorEnd,
-    onPromptSubmit: shell.submitDraft,
-    onExit: () => {
-      if (activeSurface === 'completion') { completion.dismiss(); return; }
-      if (activeSurface === 'command-output') { shell.dismissCommandOutput(); return; }
-      if (activeSurface === 'session-picker') { sessionPicker.hide(); return; }
-      exit();
-    },
-    onToggleAgentRunsPanel: shell.toggleSubagentRunsPanel,
-    onToggleExpand: shell.toggleExpand,
-    onFocusReview: hasReview ? shell.focusReviewWindow : undefined,
-    onReviewMoveLeft: shell.moveReviewLeft,
-    onReviewMoveRight: shell.moveReviewRight,
-    onReviewSelectPrevious: shell.selectPreviousReviewAction,
-    onReviewSelectNext: shell.selectNextReviewAction,
-    onReviewSelectPreviousReview: shell.selectPreviousReview,
-    onReviewSelectNextReview: shell.selectNextReview,
-    onReviewToggleFocus: shell.toggleReviewFocus,
-    onReviewActivateSelection: shell.activateReviewSelection,
-    onReviewInsertText: shell.insertReviewText,
-    onReviewInsertNewline: shell.insertReviewNewline,
-    onReviewBackspace: shell.backspaceReviewInput,
-    onReviewSubmit: shell.submitReviewAction,
-    onReviewQuickAction: isPermissionReview(shell.review) ? shell.quickReviewAction : undefined,
-    onFocusPrompt: shell.focusPromptWindow,
-    onPermissionBack: shell.permissionBack,
-    onPermissionConfirm: shell.permissionConfirm,
-    onPermissionRejectSend: shell.permissionRejectSend,
-    onPermissionRejectSilent: shell.permissionRejectSilent,
-    onCompletionMoveUp: completion.moveUp,
-    onCompletionMoveDown: completion.moveDown,
-    onCompletionAcceptSubmit: () => {
-      const accepted = completion.accept();
-      completion.dismiss();
-      if (accepted) {
-        shell.submitText(accepted);
-      }
-    },
-    onCompletionAcceptReplace: () => {
-      const accepted = completion.accept();
-      if (accepted) {
-        shell.replaceText(accepted);
-      }
-      completion.dismiss();
-    },
-    onCompletionDismiss: completion.dismiss,
-    onCommandOutputScroll: shell.scrollCommandOutput,
-    onCommandOutputClose: shell.dismissCommandOutput,
-    onSessionPickerMoveUp: sessionPicker.moveUp,
-    onSessionPickerMoveDown: sessionPicker.moveDown,
-    onSessionPickerSelect: sessionPicker.select,
-    onSessionPickerCancel: sessionPicker.hide,
-  });
+    onExit: exit,
+  }));
 
   const {solidifiedItems, activeItems} = useSolidifiedTranscript({
     coreMessages: shell.coreMessages,
@@ -351,104 +199,26 @@ export function CodaraCliApp(props: CodaraCliAppProps): React.JSX.Element {
   }, [autoExitOnSettledPrompt, exit, hasInitialPrompt, shell.hasConversation, shell.review?.busy, shell.runState.status]);
 
   return (
-      <Box flexDirection="column" paddingX={1}>
-        <Static items={solidifiedItems}>
-          {(turn) => (
-            <SolidifiedBlock
-              key={turn.id}
-              turn={turn}
-              layoutMode={layoutMode}
-              cwd={cwd}
-              modelAlias={modelAlias}
-              tip={frozenTip}
-              expandedAll={shell.expandedAll}
-              subagentDetails={subagentRunDetails}
-            />
-          )}
-        </Static>
-        {activeItems.length > 0 && (
-          <ActiveTranscript
-            items={activeItems}
-            activeSubagentRuns={subagentRuns.runs}
-            expandedAll={shell.expandedAll}
-            subagentDetails={subagentRunDetails}
-          />
-        )}
-
-        {/* Activity / Prompt / Status */}
-        <>
-            {/* Independent persistent spinner - only depends on runState.status */}
-            {!shell.review && <PersistentSpinner runState={shell.runState} />}
-
-            {/* ActivityLine removed - PersistentSpinner handles all spinner display */}
-
-            {sessionPicker.state.visible && (
-              <SessionPicker
-                sessions={sessionPicker.state.sessions}
-                loading={sessionPicker.state.loading}
-                selectedIndex={sessionPicker.state.selectedIndex}
-                onMoveUp={sessionPicker.moveUp}
-                onMoveDown={sessionPicker.moveDown}
-                onSelect={sessionPicker.select}
-                onCancel={sessionPicker.hide}
-              />
-            )}
-            {shell.commandOutput && (
-              <CommandOutputPanel content={shell.commandOutput.content} commandName={shell.commandOutput.commandName} scrollOffset={shell.commandOutput.scrollOffset} />
-            )}
-            {shouldShowFloatingSubagentRunPanel({
-              hasConversation: shell.hasConversation,
-              subagentRunPanelVisible: shell.subagentRunPanelVisible,
-              subagentRunCount: subagentRuns.runs.length,
-              hasBlockingOverlay,
-              hasReview,
-            }) && (
-              <Box marginTop={1}>
-                <SubagentRunPanel
-                  runs={subagentRuns.runs}
-                  runningCount={subagentRuns.runningCount}
-                  pausedCount={subagentRuns.pausedCount}
-                  doneCount={subagentRuns.doneCount}
-                  errorCount={subagentRuns.errorCount}
-                />
-              </Box>
-            )}
-            {showPromptFrame && (
-              <Box>
-                <Box flexGrow={1}>
-                  <PromptFrame
-                    composer={shell.composer}
-                    cursorActivityVersion={shell.composerActivityVersion}
-                    isRunning={promptInputDisabled}
-                    placeholder={shell.hasConversation ? 'Reply to Codara...' : 'Ask Codara...'}
-                    terminalWidth={terminalWidth}
-                  />
-                </Box>
-              </Box>
-            )}
-            {floatingReview && !shell.commandOutput && !completion.completion.visible && !sessionPicker.state.visible && (
-              <Box marginTop={1}>
-                <ReviewPanel review={floatingReview} terminalWidth={terminalWidth} />
-              </Box>
-            )}
-            <CompletionMenu completion={completion.completion} terminalWidth={terminalWidth} />
-            {shell.hasConversation && (
-              <StatusBar
-                layoutMode={layoutMode}
-                session={shell.sessionState}
-                cwd={cwd}
-                modelAlias={modelAlias}
-                runState={shell.runState}
-                latestRuntimeEvent={shell.latestRuntimeEvent}
-                mcpStatus={mcpStatus}
-              />
-            )}
-            <Footer
-              layoutMode={layoutMode}
-              hasCommandOutput={Boolean(shell.commandOutput)}
-              focusedSurface={activeSurface}
-            />
-        </>
-      </Box>
+    <ShellLayout
+      shell={shell}
+      cwd={cwd}
+      modelAlias={modelAlias}
+      tip={frozenTip}
+      layoutMode={layoutMode}
+      terminalWidth={terminalWidth}
+      solidifiedItems={solidifiedItems}
+      activeItems={activeItems}
+      subagentRuns={subagentRuns}
+      subagentRunDetails={subagentRunDetails}
+      completion={completion}
+      sessionPicker={sessionPicker}
+      activeSurface={activeSurface}
+      showPromptFrame={showPromptFrame}
+      promptInputDisabled={promptInputDisabled}
+      hasBlockingOverlay={hasBlockingOverlay}
+      hasReview={hasReview}
+      floatingReview={floatingReview}
+      mcpStatus={mcpStatus}
+    />
   );
 }

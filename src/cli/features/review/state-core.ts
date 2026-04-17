@@ -5,11 +5,8 @@ export {
   activateCliReviewFocusedSelection,
   advanceCliReviewToNextStep,
   applyCliReviewFormShortcut,
-  buildCliReviewResumePayload,
   confirmCliReviewFocusedSelection,
   prepareCliReviewDraftInput,
-  prepareCliReviewSubmission,
-  resolveCliReviewActions,
   resolveCliReviewFocusedFooterAction,
   resolveCliReviewFormState,
   resolveReviewInputSelectionIndex,
@@ -24,6 +21,11 @@ export {
   hasCustomAnswerForActiveTab,
 } from './form-state';
 export {
+  buildCliReviewResumePayload,
+  prepareCliReviewSubmission,
+  resolveCliReviewActions,
+} from './form-submit';
+export {
   readPermissionAlwaysPatterns,
   setPermissionStage,
 } from './permission-state';
@@ -31,10 +33,10 @@ export {getCliReviewKind, isPermissionReviewState, isToolReviewState} from './ki
 import {
   hasCustomAnswerForActiveTab,
   readReviewFormDraft,
-  resolveCliReviewActions,
   resolveCliReviewFormState,
   resolveReviewInputSelectionIndex,
 } from './form-state';
+import {resolveCliReviewActions} from './form-submit';
 
 export function syncCliReviewState(
   current: CliReviewState | undefined,

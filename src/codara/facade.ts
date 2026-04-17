@@ -43,7 +43,7 @@ import {MemoryReader} from '@memory/reader';
 import {initSettings} from './runtime/init-settings';
 import {initContextSources} from './runtime/init-context';
 import {initHooks} from './runtime/init-hooks';
-import {backgroundProcesses} from '@tools/builtin/bash';
+import {backgroundProcesses} from '@tasks/shell-task';
 import {initMcp} from './runtime/init-mcp';
 import {wireTranscript, wrapDispose} from './runtime/init-transcript';
 import {createCostMiddleware} from '@core/middleware/cost';

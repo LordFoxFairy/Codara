@@ -13,24 +13,24 @@ import {
   applyInteractionChunkToTurn,
   containsAgentLaunchChatter,
   finalizeBufferedInteractionText,
-} from '../interaction-turn';
-import type {CliInteractionScheduler} from '../interaction-scheduler';
-import {takeNextScheduledInteraction} from '../interaction-queue';
-import type {QueuedReviewResponseInteraction} from '../interaction-scheduler';
-import type {CliStore} from '../store';
+} from './interaction-turn';
+import type {CliInteractionScheduler} from './interaction-scheduler';
+import {takeNextScheduledInteraction} from './interaction-queue';
+import type {QueuedReviewResponseInteraction} from './interaction-scheduler';
+import type {CliStore} from './store';
 import {
   hasVisibleAssistantReply,
   hasVisibleAssistantReplyInMessages,
   shouldKeepPromptTurnRunningAfterAgentLaunch,
   appendUniqueNotices,
-} from '../controller-logic';
-import type {CliEvent} from '../view-state';
+} from './controller-logic';
+import type {CliEvent} from './view-state';
 import type {
   CliActiveTurn,
   CliInteractionKind,
   CliNotice,
   CliRunState,
-} from '../view-state';
+} from './view-state';
 
 export interface PromptSubmissionDeps {
   codara: Codara;

@@ -1,9 +1,8 @@
 /* eslint-disable react-hooks/refs */
 import {useEffect, useRef, useMemo, useState} from 'react';
-import {HumanMessage, type BaseMessage} from '@langchain/core/messages';
+import {type BaseMessage} from '@langchain/core/messages';
 import type {CodaraRuntimeEvent} from '@/index';
 import type {SubagentRunQuerySummary} from '@codara/types';
-import {isSubagentInternalAssistantText} from '@/index';
 import type {CliActiveTurn, CliNotice, CliRunState} from '../../app/view-state';
 import {
   type SolidifiedItem,
@@ -15,7 +14,16 @@ import {
   dedupeTrailingTranscriptItemsCoveredByRuntime,
   normalizeVisibleAssistantText,
 } from './model';
-import {readMessageText} from '@shared/messages';
+import {
+  filterSubagentCompletionTranscriptItems,
+  filterTrailingAssistantItemsWhileSubagentsRun,
+  orderActiveTranscriptItems,
+  stripInternalSubagentAssistantItems,
+  dedupeTrailingTranscriptItemsCoveredByActiveTurn,
+  resolveSolidifyEndIndex,
+} from './solidify-helpers';
+
+export {filterSubagentCompletionTranscriptItems, orderActiveTranscriptItems} from './solidify-helpers';
 
 export interface UseSolidifiedTranscriptInput {
   coreMessages: readonly BaseMessage[];
@@ -29,82 +37,6 @@ export interface UseSolidifiedTranscriptInput {
 export interface UseSolidifiedTranscriptOutput {
   solidifiedItems: SolidifiedItem[];
   activeItems: TranscriptItem[];
-}
-
-export function filterSubagentCompletionTranscriptItems(input: {
-  completedTurnKind: CliActiveTurn['kind'] | undefined;
-  items: readonly TranscriptItem[];
-  subagentRuns?: readonly SubagentRunQuerySummary[];
-}): TranscriptItem[] {
-  void input.completedTurnKind;
-  return stripInternalSubagentAssistantItems({
-    items: input.items,
-    subagentRuns: input.subagentRuns,
-  });
-}
-
-export function orderActiveTranscriptItems(input: {
-  trailingItems: readonly TranscriptItem[];
-  runtimeItems: readonly TranscriptItem[];
-  activeNoticeItems: readonly TranscriptItem[];
-  latestCompletedTurnKind?: CliActiveTurn['kind'];
-}): TranscriptItem[] {
-  void input.latestCompletedTurnKind;
-  if (input.runtimeItems.length === 0) {
-    return [...input.trailingItems, ...input.activeNoticeItems];
-  }
-
-  let lastUserIndex = -1;
-  for (let index = input.trailingItems.length - 1; index >= 0; index -= 1) {
-    if (input.trailingItems[index]?.role === 'user') {
-      lastUserIndex = index;
-      break;
-    }
-  }
-  const insertionIndex = lastUserIndex >= 0 ? lastUserIndex + 1 : 0;
-  return [
-    ...input.trailingItems.slice(0, insertionIndex),
-    ...input.runtimeItems,
-    ...input.trailingItems.slice(insertionIndex),
-    ...input.activeNoticeItems,
-  ];
-}
-
-function filterTrailingAssistantItemsWhileSubagentsRun(input: {
-  trailingItems: readonly TranscriptItem[];
-  runtimeItems: readonly TranscriptItem[];
-  activeTurn?: CliActiveTurn;
-  runState?: CliRunState;
-  subagentRuns?: readonly SubagentRunQuerySummary[];
-}): TranscriptItem[] {
-  const subagentActive
-    = (input.runState?.status === 'running'
-        && (input.runState.phase === 'subagent_wait' || input.runState.phase === 'subagent_completion'))
-    || (input.subagentRuns ?? []).some((run) => run.status === 'running' || run.status === 'paused')
-    || input.runtimeItems.some((item) => item.role === 'agent' && item.toolMeta?.status === 'running');
-
-  if (subagentActive) {
-    return input.trailingItems.filter((item) => item.role !== 'assistant' && item.role !== 'system');
-  }
-  return [...input.trailingItems];
-}
-
-function stripInternalSubagentAssistantItems(input: {
-  items: readonly TranscriptItem[];
-  subagentRuns?: readonly SubagentRunQuerySummary[];
-}): TranscriptItem[] {
-  const runs = input.subagentRuns ?? [];
-
-  return input.items.filter((item) => {
-    if (item.role !== 'assistant') {
-      return true;
-    }
-
-    return !isSubagentInternalAssistantText({
-      text: item.content,
-      runs,
-    });
-  });
 }
 
 /**
@@ -298,9 +230,7 @@ export function useSolidifiedTranscript(input: UseSolidifiedTranscriptInput): Us
 
   useEffect(() => {
     const visibleAssistantItems = activeItems.filter((item) => item.role === 'assistant' && item.content.trim());
-    if (visibleAssistantItems.length === 0) {
-      return;
-    }
+    if (visibleAssistantItems.length === 0) return;
 
     for (const item of visibleAssistantItems) {
       visibleAssistantTextsRef.current.add(normalizeVisibleAssistantText(item.content));
@@ -308,9 +238,7 @@ export function useSolidifiedTranscript(input: UseSolidifiedTranscriptInput): Us
 
     while (visibleAssistantTextsRef.current.size > 50) {
       const oldest = visibleAssistantTextsRef.current.values().next().value as string | undefined;
-      if (!oldest) {
-        break;
-      }
+      if (!oldest) break;
       visibleAssistantTextsRef.current.delete(oldest);
     }
   }, [activeItems]);
@@ -322,17 +250,11 @@ export function useSolidifiedTranscript(input: UseSolidifiedTranscriptInput): Us
         .map((event) => event.parentId as string),
     );
     const hasRunningRuntimeItem = (runtimeEvents ?? []).some((event) => {
-      if (event.phase === 'update' && event.status === 'running') {
-        return true;
-      }
-      if (event.phase !== 'start') {
-        return false;
-      }
+      if (event.phase === 'update' && event.status === 'running') return true;
+      if (event.phase !== 'start') return false;
       return !endedIds.has(event.id);
     });
-    if (!hasRunningRuntimeItem) {
-      return;
-    }
+    if (!hasRunningRuntimeItem) return;
 
     const timer = setInterval(() => {
       setNow(Date.now());
@@ -345,110 +267,4 @@ export function useSolidifiedTranscript(input: UseSolidifiedTranscriptInput): Us
     solidifiedItems: solidifiedItemsRef.current,
     activeItems,
   };
-}
-
-function activeTurnOwnsVisibleTranscript(activeTurn: CliActiveTurn | undefined): boolean {
-  if (!activeTurn) {
-    return false;
-  }
-
-  return Boolean(
-    activeTurn.prompt.trim()
-    || activeTurn.responseBeforeRuntime?.trim()
-    || activeTurn.response.trim()
-    || activeTurn.pendingResponse?.trim(),
-  );
-}
-
-function dedupeTrailingTranscriptItemsCoveredByActiveTurn(
-  trailingItems: readonly TranscriptItem[],
-  activeTurn: CliActiveTurn | undefined,
-): TranscriptItem[] {
-  if (!activeTurn) {
-    return [...trailingItems];
-  }
-
-  const pendingFingerprints = new Map<string, number>();
-  const track = (role: TranscriptItem['role'], content: string | undefined) => {
-    const normalized = normalizeTranscriptFingerprintContent(content);
-    if (!normalized) {
-      return;
-    }
-    const key = `${role}|${normalized}`;
-    pendingFingerprints.set(key, (pendingFingerprints.get(key) ?? 0) + 1);
-  };
-
-  track('user', activeTurn.prompt);
-  track(activeTurn.responseRole, activeTurn.responseBeforeRuntime);
-  track(activeTurn.responseRole, activeTurn.response);
-  track(activeTurn.responseRole, activeTurn.pendingResponse);
-
-  if (pendingFingerprints.size === 0) {
-    return [...trailingItems];
-  }
-
-  return trailingItems.filter((item) => {
-    if (item.role !== 'user' && item.role !== 'assistant' && item.role !== 'system') {
-      return true;
-    }
-
-    const normalized = normalizeTranscriptFingerprintContent(item.content);
-    if (!normalized) {
-      return true;
-    }
-
-    const key = `${item.role}|${normalized}`;
-    const remaining = pendingFingerprints.get(key) ?? 0;
-    if (remaining <= 0) {
-      return true;
-    }
-
-    pendingFingerprints.set(key, remaining - 1);
-    return false;
-  });
-}
-
-function normalizeTranscriptFingerprintContent(content: string | undefined): string | undefined {
-  const normalized = content?.trim().replace(/\s+/g, ' ');
-  return normalized || undefined;
-}
-
-function resolveSolidifyEndIndex(input: {
-  coreMessages: readonly BaseMessage[];
-  startIndex: number;
-  activeTurn?: CliActiveTurn;
-}): number {
-  const {coreMessages, startIndex, activeTurn} = input;
-  if (!activeTurn) {
-    return coreMessages.length;
-  }
-
-  if (!activeTurnOwnsVisibleTranscript(activeTurn)) {
-    for (let index = coreMessages.length - 1; index >= startIndex; index -= 1) {
-      const message = coreMessages[index];
-      if (message && HumanMessage.isInstance(message)) {
-        return index;
-      }
-    }
-    return coreMessages.length;
-  }
-
-  const prompt = activeTurn.prompt.trim();
-  if (!prompt) {
-    return coreMessages.length;
-  }
-
-  for (let index = coreMessages.length - 1; index >= startIndex; index -= 1) {
-    const message = coreMessages[index];
-    if (!message || !HumanMessage.isInstance(message)) {
-      continue;
-    }
-
-    const content = readMessageText(message)?.trim();
-    if (content === prompt) {
-      return index;
-    }
-  }
-
-  return coreMessages.length;
 }

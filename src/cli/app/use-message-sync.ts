@@ -7,20 +7,20 @@
 import {useCallback, useState} from 'react';
 import type {Codara, SessionState, ReviewRequest} from '@/index';
 import type {BaseMessage} from '@langchain/core/messages';
-import {readCliReviewProjection, syncProjectedReview} from '../runtime-projection';
+import {readCliReviewProjection, syncProjectedReview} from './runtime-projection';
 import {
   resolveHydratedCoreMessages,
   shouldContinuePollingForPromptSettlement,
   suppressActiveTurnForReview,
   PROMPT_SETTLE_REFRESH_TIMEOUT_MS,
   PROMPT_SETTLE_REFRESH_POLL_MS,
-} from '../controller-logic';
-import type {CliInteractionScheduler} from '../interaction-scheduler';
-import type {CliStore} from '../store';
+} from './controller-logic';
+import type {CliInteractionScheduler} from './interaction-scheduler';
+import type {CliStore} from './store';
 import type {
   CliActiveTurn,
   CliReviewState,
-} from '../view-state';
+} from './view-state';
 
 export interface MessageSyncDeps {
   codara: Codara;

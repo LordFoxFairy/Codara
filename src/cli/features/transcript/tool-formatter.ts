@@ -10,7 +10,7 @@ import type {CodaraRuntimeEvent} from '@/index';
 // ── Constants ────────────────────────────────────────────────────
 
 export const TODO_TOOL_NAME = 'write_todos';
-const TOOL_META_MAX_LINES = 4;
+export const TOOL_META_MAX_LINES = 4;
 
 // ── Tool name predicates ─────────────────────────────────────────
 
@@ -33,9 +33,9 @@ export function isRepeatedAskUserContinuationNotice(detail: unknown): boolean {
   return typeof detail === 'string' && detail.includes('AskUserQuestion was just answered in this flow.');
 }
 
-// ── Private helpers ──────────────────────────────────────────────
+// ── Shared tool output helpers ───────────────────────────────────
 
-function toolIcon(toolName: string): string {
+export function toolIcon(toolName: string): string {
   switch (toolName) {
     case TOOL_NAMES.SKILL: return '\u2699';
     case TOOL_NAMES.BASH: return '\u26A1';
@@ -58,13 +58,13 @@ function toolIcon(toolName: string): string {
   }
 }
 
-function truncateOutput(detail?: string, maxLines: number = TOOL_META_MAX_LINES): {visible: string[]; all: string[]; total: number} {
+export function truncateOutput(detail?: string, maxLines: number = TOOL_META_MAX_LINES): {visible: string[]; all: string[]; total: number} {
   if (!detail?.trim()) return {visible: [], all: [], total: 0};
   const allLines = detail.trim().split('\n');
   return {visible: allLines.slice(0, maxLines), all: allLines, total: allLines.length};
 }
 
-function buildEditSummary(detail: string): string {
+export function buildEditSummary(detail: string): string {
   const lines = detail.split('\n');
   let added = 0;
   let removed = 0;
@@ -79,7 +79,7 @@ function buildEditSummary(detail: string): string {
   return parts.join(', ');
 }
 
-function buildToolOutput(
+export function buildToolOutput(
   toolName: string,
   status: 'done' | 'error',
   detail?: string,

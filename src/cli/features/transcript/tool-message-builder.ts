@@ -28,6 +28,8 @@ import {
   isRepeatedAskUserContinuationNotice,
   parseAgentRuntimeLabel,
   buildAgentCoverageKey,
+  toolIcon,
+  buildToolOutput,
 } from './tool-formatter';
 
 // ── Primitive helpers (private) ──────────────────────────────────
@@ -43,97 +45,7 @@ function limitSummary(value: string | undefined, maxLength = 72): string | undef
   return value.length > maxLength ? `${value.slice(0, maxLength - 3)}...` : value;
 }
 
-// ── Tool output formatting (private) ─────────────────────────────
-
-const TOOL_META_MAX_LINES = 4;
-
-function toolIcon(toolName: string): string {
-  switch (toolName) {
-    case TOOL_NAMES.SKILL: return '\u2699';
-    case TOOL_NAMES.BASH: return '\u26A1';
-    case TOOL_NAMES.READ_FILE:
-    case TOOL_NAMES.READ: return '\u2192';
-    case TOOL_NAMES.WRITE_FILE:
-    case TOOL_NAMES.WRITE: return '\u2190';
-    case TOOL_NAMES.EDIT_FILE:
-    case TOOL_NAMES.EDIT: return '\u25CF';
-    case TOOL_NAMES.GLOB:
-    case TOOL_NAMES.GREP: return '\u2731';
-    case TOOL_NAMES.FETCH_URL:
-    case TOOL_NAMES.FETCH: return '%';
-    case TOOL_NAMES.WEB_SEARCH:
-    case TOOL_NAMES.SEARCH: return '\u25C8';
-    case TOOL_NAMES.TASK_CREATE:
-    case TOOL_NAMES.TASK_UPDATE:
-    case TOOL_NAMES.TASK_LIST: return '\u2502';
-    default: return '\u2699';
-  }
-}
-
-function truncateOutput(detail?: string, maxLines: number = TOOL_META_MAX_LINES): {visible: string[]; all: string[]; total: number} {
-  if (!detail?.trim()) return {visible: [], all: [], total: 0};
-  const allLines = detail.trim().split('\n');
-  return {visible: allLines.slice(0, maxLines), all: allLines, total: allLines.length};
-}
-
-function buildEditSummary(detail: string): string {
-  const lines = detail.split('\n');
-  let added = 0;
-  let removed = 0;
-  for (const line of lines) {
-    if (line.startsWith('+') && !line.startsWith('+++')) added++;
-    if (line.startsWith('-') && !line.startsWith('---')) removed++;
-  }
-  if (added === 0 && removed === 0) return 'Edited';
-  const parts: string[] = [];
-  if (added > 0) parts.push(`Added ${added} line${added === 1 ? '' : 's'}`);
-  if (removed > 0) parts.push(`removed ${removed} line${removed === 1 ? '' : 's'}`);
-  return parts.join(', ');
-}
-
-function buildToolOutput(
-  toolName: string,
-  status: 'done' | 'error',
-  detail?: string,
-): {summaryLine: string; outputLines?: string[]; allOutputLines?: string[]; totalOutputLines?: number} {
-  if (status === 'error') {
-    const lines = truncateOutput(detail);
-    return {summaryLine: 'Error', outputLines: lines.visible, allOutputLines: lines.all, totalOutputLines: lines.total};
-  }
-
-  const trimmed = detail?.trim() ?? '';
-  switch (toolName) {
-    case TOOL_NAMES.WRITE_FILE:
-    case TOOL_NAMES.WRITE: {
-      const lines = truncateOutput(trimmed);
-      const fileMatch = trimmed.match(/^Wrote \d+ lines? to (.+)/);
-      const summaryLine = fileMatch
-        ? `Wrote ${lines.total} lines to ${fileMatch[1]}`
-        : `Wrote ${lines.total} lines`;
-      return {summaryLine, outputLines: lines.visible, allOutputLines: lines.all, totalOutputLines: lines.total};
-    }
-    case TOOL_NAMES.EDIT_FILE:
-    case TOOL_NAMES.EDIT: {
-      const lines = truncateOutput(trimmed);
-      return {summaryLine: buildEditSummary(trimmed), outputLines: lines.visible, allOutputLines: lines.all, totalOutputLines: lines.total};
-    }
-    case TOOL_NAMES.BASH: {
-      if (!trimmed) return {summaryLine: 'Done'};
-      const lines = truncateOutput(trimmed);
-      return {summaryLine: lines.visible[0] ?? 'Done', outputLines: lines.visible.slice(1), allOutputLines: lines.all.slice(1), totalOutputLines: lines.total};
-    }
-    case TOOL_NAMES.AGENT: {
-      if (!trimmed) return {summaryLine: 'Done'};
-      const taskLines = trimmed.split('\n');
-      return {summaryLine: taskLines[0] ?? 'Done', outputLines: taskLines.slice(1), allOutputLines: taskLines.slice(1), totalOutputLines: taskLines.length};
-    }
-    default: {
-      if (!trimmed) return {summaryLine: 'Done'};
-      const lines = truncateOutput(trimmed);
-      return {summaryLine: lines.visible[0] ?? 'Done', outputLines: lines.visible.slice(1), allOutputLines: lines.all.slice(1), totalOutputLines: lines.total};
-    }
-  }
-}
+// ── Tool argument summarisation (private) ────────────────────────
 
 function formatFriendlyToolSummary(toolName: string, args: unknown): string | undefined {
   if (!args || typeof args !== 'object' || Array.isArray(args)) return undefined;

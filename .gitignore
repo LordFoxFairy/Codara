@@ -61,5 +61,4 @@ coverage/
 # .codara — ignore all except skills/
 .codara/*
 !.codara/skills/
-.codara/sessions
 .claude

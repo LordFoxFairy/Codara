@@ -57,10 +57,10 @@ import {
 } from './controller-logic';
 
 // Composed hooks
-import {useMessageSync} from './hooks/use-message-sync';
-import {useRuntimeEvents} from './hooks/use-runtime-events';
+import {useMessageSync} from './use-message-sync';
+import {useRuntimeEvents} from './use-runtime-events';
 import {useReviewMachine} from '../features/review/use-machine';
-import {usePromptSubmission} from './hooks/use-prompt-submission';
+import {usePromptSubmission} from './use-prompt-submission';
 
 // External store
 import {createCliStore, type CliStore} from './store';
