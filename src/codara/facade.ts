@@ -24,13 +24,10 @@ import type {TaskRegistry} from '@tasks/task-registry';
 import {loadModelRoutingConfigFromPath, resolveCodaraPath} from '@models';
 import {createCodaraGuidelinesSource, type GuidelinesSource, createCodaraPromptSource, type PromptSource} from '@context/sources';
 import {createCodaraSkillsSource} from '@skills';
-import {createSkillCodaraCommands} from '@commands/skill-commands';
-import {createCodaraCommandRunner, type CodaraCommandResult} from '@commands';
 import {
   createSession, FileSessionStore,
-  type Session, type SessionState, type SessionStore,
+  type SessionState, type SessionStore,
 } from '@state/session';
-import type {CodaraRuntimeEvent, CodaraRuntimeEventListener} from '@events';
 import {CostTracker, type CostSnapshot} from '@cost';
 import {resolveWorkspaceRoot} from '@config/workspace';
 import type {HookRegistry, SessionLifecycleHooks, AgentLifecycleHooks} from '@hooks';
@@ -56,6 +53,7 @@ import {resolveCodaraSkills} from './assembly/context';
 import {createCodaraReviewControl} from './review-control';
 import {createCodaraInteractionStream} from './interaction-stream';
 import {createDefaultAgentFactory, createDefaultMiddlewareFactory} from './agent-factory';
+import {wireCommandExecution} from './command-wiring';
 import type {
   Codara, CodaraOptions, CodaraRuntimeOptions,
 } from './types';
@@ -346,56 +344,6 @@ async function reopenCodaraSession(options: CodaraOptions, state: SessionState):
   const codara = assembleCodara({...options, sessionId: state.sessionId, restore: 'latest'}, state);
   await codara.hydrate();
   return codara;
-}
-
-// ── Command Execution Wiring ──
-
-function wireCommandExecution(input: {
-  session: Session;
-  costTracker: CostTracker;
-  skillsSource?: ReturnType<typeof createCodaraSkillsSource>;
-  alias: string;
-  options: CodaraOptions;
-  hookRegistry?: HookRegistry;
-  mcpManager?: McpManager;
-}) {
-  const {session, costTracker, skillsSource, alias, options, hookRegistry, mcpManager} = input;
-  const commandAgent = {
-    ...session,
-    ...(hookRegistry ? {hookRegistry} : {}),
-    ...(mcpManager ? {getMcpStatus: () => mcpManager.status()} : {}),
-    getCostSnapshot: () => costTracker.getSnapshot(),
-  };
-  const commands = createCodaraCommandRunner({
-    agent: commandAgent,
-    environment: {cwd: options.cwd, projectRoot: options.projectRoot, userHome: options.userHome, modelAlias: alias},
-    ...(skillsSource ? {getDynamicCommands: () => createSkillCodaraCommands(skillsSource)} : {}),
-  });
-
-  const eventListeners = new Set<CodaraRuntimeEventListener>();
-  const subscribeRuntimeEvents = (listener: CodaraRuntimeEventListener) => {
-    const unsub = session.subscribeRuntimeEvents(listener);
-    eventListeners.add(listener);
-    return () => { unsub(); eventListeners.delete(listener); };
-  };
-  const emitEvent = (input: Omit<CodaraRuntimeEvent, 'sessionId' | 'timestamp'>) => {
-    const event: CodaraRuntimeEvent = {...input, sessionId: session.getState().sessionId, timestamp: new Date().toISOString()};
-    for (const listener of eventListeners) listener(event);
-  };
-  const executeCommand = async (raw: string): Promise<CodaraCommandResult> => {
-    const id = `command:${Date.now()}:${Math.random().toString(36).slice(2, 8)}`;
-    emitEvent({id, kind: 'command', phase: 'start', status: 'running', label: `Running ${raw.trim()}`});
-    const result = await commands.executeCommand(raw);
-    emitEvent({
-      id: `command:end:${Date.now()}:${Math.random().toString(36).slice(2, 8)}`,
-      kind: 'command', phase: 'end', status: result.ok ? 'done' : 'error',
-      label: result.ok ? `Completed ${raw.trim()}` : `Failed ${raw.trim()}`,
-      detail: result.output.trim() || undefined, parentId: id,
-    });
-    return result;
-  };
-
-  return {subscribeRuntimeEvents, executeCommand, listCommands: commands.listCommands, eventListeners};
 }
 
 /** Resolve the `.codara` config directory: explicit path > project-local > global. */
