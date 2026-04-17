@@ -1,5 +1,5 @@
 import {describe, expect, it} from 'bun:test';
-import {resolveReviewInputAction} from '../../../src/cli/hooks/review-input-action';
+import {resolveReviewInputAction} from '../../../src/cli/features/review/input-action';
 
 describe('cli review input shortcuts', () => {
   it('should map bracket keys to review queue navigation', () => {

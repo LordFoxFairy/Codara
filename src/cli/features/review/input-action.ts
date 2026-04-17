@@ -1,4 +1,4 @@
-import type {PermissionStage} from '../app/view-state';
+import type {PermissionStage} from '../../app/view-state';
 
 export type ReviewInputAction =
   | 'noop'

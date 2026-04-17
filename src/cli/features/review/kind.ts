@@ -6,8 +6,8 @@
  * generic review. Used by the review panel to select the appropriate
  * rendering component.
  */
-import type {CliReviewState} from './view-state';
-import type {CliReviewKind} from './view-state';
+import type {CliReviewState} from '../../app/view-state';
+import type {CliReviewKind} from '../../app/view-state';
 
 export function getCliReviewKind(review: CliReviewState | undefined): CliReviewKind {
   if (!review) {

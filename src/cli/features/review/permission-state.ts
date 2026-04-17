@@ -4,8 +4,8 @@
  * Manages the three-stage permission flow: prompt -> always-confirm -> reject-feedback.
  * Reads always-patterns from review metadata for the confirmation stage.
  */
-import type {CliReviewState} from './view-state';
-import type {PermissionStage} from './view-state';
+import type {CliReviewState} from '../../app/view-state';
+import type {PermissionStage} from '../../app/view-state';
 
 /** Read alwaysPatterns from permission review metadata. */
 export function readPermissionAlwaysPatterns(metadata: unknown): string[] {

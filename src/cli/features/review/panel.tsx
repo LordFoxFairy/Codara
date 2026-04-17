@@ -1,12 +1,12 @@
 import React from 'react';
 import {Box} from 'ink';
 import type {CliReviewState} from '../../app/view-state';
-import {getCliReviewKind, isPermissionReviewState} from '../../app/review-kind';
-import {AskUserReviewBody} from './review/ask-user-review';
-import {GenericReviewBody} from './review/generic-review';
-import {PermissionReviewBody} from './review/permission-review';
-import {ToolReviewBody} from './review/tool-review';
-import {FloatingReviewShell, ReviewQueueBanner} from './review/review-panel-shell';
+import {getCliReviewKind, isPermissionReviewState} from './kind';
+import {AskUserReviewBody} from './ask-user-view';
+import {GenericReviewBody} from './generic-view';
+import {PermissionReviewBody} from './permission';
+import {ToolReviewBody} from './tool-view';
+import {FloatingReviewShell, ReviewQueueBanner} from './panel-shell';
 
 interface ReviewPanelProps {
   review: CliReviewState;

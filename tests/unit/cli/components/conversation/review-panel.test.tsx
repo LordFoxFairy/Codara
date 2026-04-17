@@ -1,6 +1,6 @@
 import {describe, expect, it} from 'bun:test';
 import {render} from 'ink-testing-library';
-import {ReviewPanel} from '@/cli/components/conversation/review-panel';
+import {ReviewPanel} from '@/cli/features/review/panel';
 import type {CliReviewState} from '@/cli/app/view-state';
 
 describe('ReviewPanel review queue banner', () => {

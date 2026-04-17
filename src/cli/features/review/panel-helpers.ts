@@ -1,4 +1,4 @@
-import type {CliReviewAction} from '../../../app/view-state';
+import type {CliReviewAction} from '../../app/view-state';
 
 export function formatPermissionShortcut(action: CliReviewAction): string {
   switch (action.label) {

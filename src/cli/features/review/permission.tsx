@@ -1,8 +1,8 @@
 import React from 'react';
 import {Box, Text} from 'ink';
-import type {CliReviewState} from '../../../app/view-state';
-import {formatToolDisplayName, formatToolSummary} from '../../../../shared/tool-display';
-import {formatPermissionShortcut, resolveActionColor} from './review-panel-helpers';
+import type {CliReviewState} from '../../app/view-state';
+import {formatToolDisplayName, formatToolSummary} from '@shared/tool-display';
+import {formatPermissionShortcut, resolveActionColor} from './panel-helpers';
 
 export function PermissionReviewBody(
   {review, terminalWidth}: {review: CliReviewState; terminalWidth?: number},

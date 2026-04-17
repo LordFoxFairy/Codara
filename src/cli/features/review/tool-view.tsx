@@ -1,8 +1,8 @@
 import React from 'react';
 import {Box, Text} from 'ink';
-import type {CliReviewState} from '../../../app/view-state';
-import {formatToolSummary} from '../../../../shared/tool-display';
-import {resolveActionColor} from './review-panel-helpers';
+import type {CliReviewState} from '../../app/view-state';
+import {formatToolSummary} from '@shared/tool-display';
+import {resolveActionColor} from './panel-helpers';
 
 function stringifyEditedToolArgs(value: unknown): string | undefined {
   if (!value || typeof value !== 'object' || Array.isArray(value)) {

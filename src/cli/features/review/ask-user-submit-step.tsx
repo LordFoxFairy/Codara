@@ -1,8 +1,8 @@
 import React from 'react';
 import {Box, Text} from 'ink';
-import type {CliReviewState} from '../../../app/view-state';
-import {isAnswered} from './ask-user-review-helpers';
-import {resolveActionColor} from './review-panel-helpers';
+import type {CliReviewState} from '../../app/view-state';
+import {isAnswered} from './ask-user-helpers';
+import {resolveActionColor} from './panel-helpers';
 
 export function AskUserSubmitStep({review}: {review: CliReviewState}): React.JSX.Element {
   const form = review.form!;

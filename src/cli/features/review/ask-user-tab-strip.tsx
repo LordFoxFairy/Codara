@@ -1,7 +1,7 @@
 import React from 'react';
 import {Box, Text} from 'ink';
-import type {CliReviewState} from '../../../app/view-state';
-import {truncateLabel} from './review-panel-helpers';
+import type {CliReviewState} from '../../app/view-state';
+import {truncateLabel} from './panel-helpers';
 
 export function AskUserTabStrip(
   {form}: {form: NonNullable<CliReviewState['form']>},

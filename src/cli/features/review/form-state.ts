@@ -1,12 +1,12 @@
 import type {ReviewRequest, ReviewDecision, ReviewResumePayload} from '@/index';
-import type {CliReviewAutoAction} from './view-state';
+import type {CliReviewAutoAction} from '../../app/view-state';
 import type {
   CliReviewAction,
   CliReviewAnswerValue,
   CliReviewFormState,
   CliReviewState,
-} from './view-state';
-import {readReviewFormConfig} from './review-form-config';
+} from '../../app/view-state';
+import {readReviewFormConfig} from './form-config';
 import {
   getActiveReviewTab,
   countTotalNavigableItems,
@@ -21,7 +21,7 @@ import {
   findFirstIncompleteTabIndex,
   findNextIncompleteTabIndex,
   isReviewAnswerComplete,
-} from './review-form-tabs';
+} from './form-tabs';
 import {
   updateReviewFormAnswer,
   readReviewFormDraft,
@@ -33,11 +33,11 @@ import {
   applyCliReviewAutoAnswers,
   clearCliReviewValidation,
   normalizeAnswerEntry,
-} from './review-form-answers';
+} from './form-answers';
 
 // ── Re-exports (preserve the original public API) ──────────────────────
-export {resolveReviewInputSelectionIndex} from './review-form-tabs';
-export {readReviewFormDraft, hasCustomAnswerForActiveTab} from './review-form-answers';
+export {resolveReviewInputSelectionIndex} from './form-tabs';
+export {readReviewFormDraft, hasCustomAnswerForActiveTab} from './form-answers';
 
 // ── Navigation ─────────────────────────────────────────────────────────
 

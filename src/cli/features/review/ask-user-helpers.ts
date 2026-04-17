@@ -1,4 +1,4 @@
-import type {CliReviewAnswerValue, CliReviewState} from '../../../app/view-state';
+import type {CliReviewAnswerValue, CliReviewState} from '../../app/view-state';
 
 export function supportsAskUserCustomOption(
   tab: NonNullable<CliReviewState['form']>['tabs'][number] | undefined,

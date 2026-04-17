@@ -15,13 +15,13 @@ import {
   resolveCliReviewFocusedFooterAction,
   setPermissionStage,
   type CliReviewAutoAction,
-} from '../review-state';
+} from './state-core';
 import {
   appendInteractionText,
-} from '../interaction-turn';
-import type {CliInteractionScheduler, QueuedReviewResponseInteraction} from '../interaction-scheduler';
-import {readCliReviewProjection, syncProjectedReview} from '../runtime-projection';
-import {takeNextScheduledInteraction} from '../cli-interaction-queue';
+} from '../../app/interaction-turn';
+import type {CliInteractionScheduler, QueuedReviewResponseInteraction} from '../../app/interaction-scheduler';
+import {readCliReviewProjection, syncProjectedReview} from '../../app/runtime-projection';
+import {takeNextScheduledInteraction} from '../../app/cli-interaction-queue';
 import {
   deriveRunStateFromAgentState,
   waitForForegroundReviewResumeReady,
@@ -29,15 +29,15 @@ import {
   REVIEW_AUTO_ACTION_DELAY_MS,
   REVIEW_QUEUE_HANDOFF_TIMEOUT_MS,
   REVIEW_QUEUE_HANDOFF_POLL_MS,
-} from '../cli-controller-logic';
-import type {CliStore} from '../cli-store';
+} from '../../app/cli-controller-logic';
+import type {CliStore} from '../../app/cli-store';
 import type {
   CliActiveTurn,
   CliInteractionKind,
   CliNotice,
   CliReviewState,
   CliRunState,
-} from '../view-state';
+} from '../../app/view-state';
 import {
   selectPreviousReviewActionUpdate,
   selectNextReviewActionUpdate,
@@ -50,8 +50,8 @@ import {
   backspaceReviewInputUpdate,
   focusReviewWindowAction,
   focusPromptWindowAction,
-} from '../cli-review-actions';
-import type {CliInteractionState} from '../view-state';
+} from '../../app/cli-review-actions';
+import type {CliInteractionState} from '../../app/view-state';
 
 export interface ReviewMachineDeps {
   codara: Codara;

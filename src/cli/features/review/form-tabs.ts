@@ -9,7 +9,7 @@ import type {
   CliReviewAction,
   CliReviewFormState,
   CliReviewState,
-} from './view-state';
+} from '../../app/view-state';
 
 export function getActiveReviewTab(
   form: CliReviewFormState,
@@ -155,7 +155,7 @@ export function findNextIncompleteTabIndex(form: CliReviewFormState, currentInde
   return -1;
 }
 
-export function isReviewAnswerComplete(value: import('./view-state').CliReviewAnswerValue | undefined): boolean {
+export function isReviewAnswerComplete(value: import('../../app/view-state').CliReviewAnswerValue | undefined): boolean {
   if (typeof value === 'string') {
     return value.trim().length > 0;
   }

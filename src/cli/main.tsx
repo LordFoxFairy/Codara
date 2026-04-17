@@ -8,7 +8,7 @@ import {pathToFileURL} from 'node:url';
 import React from 'react';
 import {render} from 'ink';
 import {createCodaraRuntime, DEFAULT_CODARA_MODEL_ALIAS, type Codara} from '@/index';
-import type {CliReviewAutoAction} from './app/review-state';
+import type {CliReviewAutoAction} from './features/review/state-core';
 import {parseCliArgs} from '@cli/cli-args';
 import {runHeadless} from '@cli/headless';
 

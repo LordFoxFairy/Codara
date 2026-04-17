@@ -5,7 +5,7 @@
  * the internal CliReviewFormState shape used by the review panel.
  */
 import type {ReviewRequest} from '@/index';
-import type {CliReviewFormState} from './view-state';
+import type {CliReviewFormState} from '../../app/view-state';
 
 export function readReviewFormConfig(ui: ReviewRequest['ui']): CliReviewFormState | undefined {
   if (!ui || !ui.form || typeof ui.form !== 'object' || Array.isArray(ui.form)) {

@@ -9,7 +9,7 @@ import {
   selectPreviousCliReviewAction,
   toggleCliReviewFocus,
   updateCliReviewDraft,
-} from './review-state';
+} from '../features/review/state-core';
 import type {CliInteractionState, CliReviewState} from './view-state';
 
 /**

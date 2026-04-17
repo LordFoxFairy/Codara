@@ -1,8 +1,8 @@
 import React from 'react';
 import {Box, Text} from 'ink';
-import {theme} from '../../../utils/theme';
-import type {CliReviewState} from '../../../app/view-state';
-import {getCliReviewKind} from '../../../app/review-kind';
+import {theme} from '../../utils/theme';
+import type {CliReviewState} from '../../app/view-state';
+import {getCliReviewKind} from './kind';
 
 export function ReviewQueueBanner({review}: {review: CliReviewState}): React.JSX.Element | null {
   if (getCliReviewKind(review) === 'permission') {

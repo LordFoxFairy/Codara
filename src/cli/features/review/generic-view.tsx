@@ -1,7 +1,7 @@
 import React from 'react';
 import {Box, Text} from 'ink';
-import type {CliReviewState} from '../../../app/view-state';
-import {resolveActionColor} from './review-panel-helpers';
+import type {CliReviewState} from '../../app/view-state';
+import {resolveActionColor} from './panel-helpers';
 
 export function GenericReviewBody({review}: {review: CliReviewState}): React.JSX.Element {
   return (

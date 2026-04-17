@@ -1,5 +1,5 @@
 import type {Codara, ReviewQueryItem, ReviewRequest} from '@/index';
-import {syncCliReviewState} from './review-state';
+import {syncCliReviewState} from '../features/review/state-core';
 import type {CliReviewState} from './view-state';
 
 export interface CliReviewProjection {

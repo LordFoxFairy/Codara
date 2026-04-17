@@ -1,11 +1,11 @@
 import React from 'react';
 import {Box, Text} from 'ink';
-import type {CliReviewState} from '../../../app/view-state';
+import type {CliReviewState} from '../../app/view-state';
 import {
   isOptionSelected,
   renderAskUserCustomRow,
   supportsAskUserCustomOption,
-} from './ask-user-review-helpers';
+} from './ask-user-helpers';
 
 export function AskUserQuestionStep(
   {

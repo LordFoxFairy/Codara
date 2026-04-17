@@ -9,13 +9,13 @@ import type {
   CliReviewAnswerValue,
   CliReviewFormState,
   CliReviewState,
-} from './view-state';
+} from '../../app/view-state';
 import {
   getActiveReviewTab,
   isCustomSelectionIndex,
   supportsCustomReviewAnswer,
   resolveReviewInputSelectionIndex,
-} from './review-form-tabs';
+} from './form-tabs';
 
 export function updateReviewFormAnswer(
   form: CliReviewFormState,

@@ -35,7 +35,7 @@ import {
   dismissCommandOutputAction,
   scrollCommandOutputAction,
 } from './cli-review-actions';
-import type {CliReviewAutoAction} from './review-state';
+import type {CliReviewAutoAction} from '../features/review/state-core';
 import {
   CliInteractionScheduler,
   type QueuedReviewResponseInteraction,
@@ -59,7 +59,7 @@ import {
 // Composed hooks
 import {useMessageSync} from './hooks/use-message-sync';
 import {useRuntimeEvents} from './hooks/use-runtime-events';
-import {useReviewMachine} from './hooks/use-review-machine';
+import {useReviewMachine} from '../features/review/use-machine';
 import {usePromptSubmission} from './hooks/use-prompt-submission';
 
 // External store

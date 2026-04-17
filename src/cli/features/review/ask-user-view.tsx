@@ -1,6 +1,6 @@
 import React from 'react';
 import {Box, Text} from 'ink';
-import type {CliReviewState} from '../../../app/view-state';
+import type {CliReviewState} from '../../app/view-state';
 import {AskUserQuestionStep} from './ask-user-question-step';
 import {AskUserSubmitStep} from './ask-user-submit-step';
 import {AskUserTabStrip} from './ask-user-tab-strip';

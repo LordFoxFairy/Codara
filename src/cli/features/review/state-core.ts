@@ -1,6 +1,6 @@
 import type {ReviewRequest} from '@/index';
-import type {CliReviewState} from './view-state';
-export type {CliReviewAutoAction} from './view-state';
+import type {CliReviewState} from '../../app/view-state';
+export type {CliReviewAutoAction} from '../../app/view-state';
 export {
   activateCliReviewFocusedSelection,
   advanceCliReviewToNextStep,
@@ -22,19 +22,19 @@ export {
   toggleCliReviewFocus,
   updateCliReviewDraft,
   hasCustomAnswerForActiveTab,
-} from './review-form-state';
+} from './form-state';
 export {
   readPermissionAlwaysPatterns,
   setPermissionStage,
-} from './review-permission-state';
-export {getCliReviewKind, isPermissionReviewState, isToolReviewState} from './review-kind';
+} from './permission-state';
+export {getCliReviewKind, isPermissionReviewState, isToolReviewState} from './kind';
 import {
   hasCustomAnswerForActiveTab,
   readReviewFormDraft,
   resolveCliReviewActions,
   resolveCliReviewFormState,
   resolveReviewInputSelectionIndex,
-} from './review-form-state';
+} from './form-state';
 
 export function syncCliReviewState(
   current: CliReviewState | undefined,

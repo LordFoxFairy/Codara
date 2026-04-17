@@ -11,7 +11,7 @@ import {
   toggleCliReviewFocus,
   updateCliReviewDraft,
   type CliReviewAutoAction,
-} from '../../../src/cli/app/review-state';
+} from '../../../src/cli/features/review/state-core';
 import type {CliReviewState} from '../../../src/cli/app/view-state';
 
 describe('cli review helpers', () => {
