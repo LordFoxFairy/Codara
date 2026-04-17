@@ -36,7 +36,11 @@ import {
   scrollCommandOutputAction,
 } from './review-actions';
 import type {CliReviewAutoAction} from '../features/review/state-core';
-import {CliInteractionScheduler} from './interaction-scheduler';
+import {
+  CliInteractionScheduler,
+  type QueuedReviewResponseInteraction,
+} from './interaction-scheduler';
+import {resolveInteractionStateSnapshot} from './interaction-queue';
 import type {
   CliActiveTurn,
   CliInteractionState,
