@@ -12,13 +12,12 @@ import type {
   ToolErrorHandler,
 } from '@core/agent/agent-types';
 import {bootstrapAgent, type BootstrapAgentOptions} from '@core/agent/bootstrap';
-import {createMiddleware, type BaseMiddleware} from '@core/pipeline-types';
+import {type BaseMiddleware} from '@core/pipeline-types';
 import {createAgentMemoryCheckpointer, type AgentCheckpointer} from '@state/checkpoint/agent';
 import type {ApprovalRecord} from '@state/approval-store';
 import type {AgentLifecycleHooks} from '@hooks/types';
 import type {ChildToolActivityCallback} from '@events';
 import {deepClone} from '@shared/clone';
-import {formatToolSummary} from '@shared/tool-display';
 import {readLatestAssistantText} from '@shared/messages';
 import type {SubagentResult} from '@shared/subagent-result';
 import {
@@ -30,6 +29,14 @@ import {
 } from './review-metadata';
 import type {SubagentRunManager, SubagentRecoverySpec} from './run-manager';
 import type {SubagentRunRecord} from './types';
+import {
+  createRecoveredSubagentActivityMiddleware,
+  createSubagentActivityMiddleware,
+} from './bootstrap-middleware';
+import {
+  stripInheritedSkillsFromBaseSystemMessage,
+  stripSkillsFromPreparedInstructionContext,
+} from './bootstrap-system-message';
 
 export {readSubagentResult, type SubagentResult} from '@shared/subagent-result';
 
@@ -324,48 +331,6 @@ function mergeRuntimeContext(
   };
 }
 
-function stripInheritedSkillsFromBaseSystemMessage(
-  base: ReturnType<typeof extendBaseSystemMessage>,
-): ReturnType<typeof extendBaseSystemMessage> {
-  const systemMessage = base.systemMessage.filter((section) => !section.trimStart().startsWith('## Skills System'));
-  const runtimeShared = base.runtimeShared ? {...base.runtimeShared} : undefined;
-
-  if (runtimeShared && Object.prototype.hasOwnProperty.call(runtimeShared, 'skills')) {
-    delete runtimeShared.skills;
-  }
-
-  return {
-    systemMessage,
-    ...(runtimeShared && Object.keys(runtimeShared).length > 0 ? {runtimeShared} : {}),
-  };
-}
-
-function stripSkillsFromPreparedInstructionContext(context: AgentPreparationContext): void {
-  context.systemMessage = context.systemMessage.filter((section) => !section.trimStart().startsWith('## Skills System'));
-  if (context.runtime.shared && Object.prototype.hasOwnProperty.call(context.runtime.shared, 'skills')) {
-    const nextShared = {...context.runtime.shared};
-    delete nextShared.skills;
-    context.runtime.shared = Object.keys(nextShared).length > 0 ? nextShared : undefined;
-  }
-}
-
-function createSubagentActivityMiddleware(callback: ChildToolActivityCallback): BaseMiddleware {
-  return createMiddleware({
-    name: 'SubagentActivityMiddleware',
-    wrapToolCall: async (context, handler) => {
-      const toolName = context.toolCall.name ?? 'tool';
-      const summary = shortenToolActivityLabel(formatToolSummary(toolName, context.toolCall.args));
-      const label = summary ? `${toolName}(${summary})` : toolName;
-      try {
-        callback({toolName, label});
-      } catch {
-        // Best-effort only.
-      }
-      return handler(context);
-    },
-  });
-}
-
 function readRecoveredSubagentRecoverySpec(
   approval: ApprovalRecord | undefined,
 ): {
@@ -402,22 +367,6 @@ function filterRecoveredSubagentTools(
   return tools.filter((tool) => allowed.has(tool.name));
 }
 
-function createRecoveredSubagentActivityMiddleware(
-  runManager: SubagentRunManager,
-  runId: string,
-): BaseMiddleware {
-  return createMiddleware({
-    name: `SubagentRecoveryActivityMiddleware:${runId}`,
-    wrapToolCall: async (context, handler) => {
-      const toolName = context.toolCall.name ?? 'tool';
-      const summary = shortenToolActivityLabel(formatToolSummary(toolName, context.toolCall.args));
-      const label = summary ? `${toolName}(${summary})` : toolName;
-      runManager.recordActivity(runId, {toolName, label});
-      return handler(context);
-    },
-  });
-}
-
 function readSubagentTokenTotal(messages: BaseMessage[]): number {
   let total = 0;
   for (const message of messages) {
@@ -429,12 +378,4 @@ function readSubagentTokenTotal(messages: BaseMessage[]): number {
     total += all > 0 ? all : input + output;
   }
   return total;
-}
-
-function shortenToolActivityLabel(value: string | undefined, max = 60): string | undefined {
-  if (!value) {
-    return undefined;
-  }
-
-  return value.length > max ? `${value.slice(0, max - 1)}…` : value;
 }
