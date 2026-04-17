@@ -36,21 +36,15 @@ import {
   scrollCommandOutputAction,
 } from './review-actions';
 import type {CliReviewAutoAction} from '../features/review/state-core';
-import {
-  CliInteractionScheduler,
-  type QueuedReviewResponseInteraction,
-} from './interaction-scheduler';
-import {resolveInteractionStateSnapshot} from './interaction-queue';
+import {CliInteractionScheduler} from './interaction-scheduler';
 import type {
   CliActiveTurn,
-  CliInteractionKind,
   CliInteractionState,
   CliNotice,
   CliReviewState,
   CliRunState,
 } from './view-state';
 import {
-  appendUniqueNotices,
   hasVisibleAssistantReplyInMessages,
   hasVisibleAssistantReply,
   activeTurnOwnsVisibleTranscript,
@@ -64,6 +58,12 @@ import {usePromptSubmission} from './use-prompt-submission';
 
 // External store
 import {createCliStore, type CliStore} from './store';
+import {
+  buildInteractionHelpers,
+  makeActiveTurnSetter,
+  makeReviewSetter,
+  makeRunStateSetter,
+} from './use-cli-controller-helpers';
 
 const STARTUP_MESSAGE = '';
 
@@ -182,88 +182,31 @@ export function useCliController(options: UseCliControllerOptions): CliControlle
   // ─── Store-synced state setters ───────────────────────────────────
   // These update both React state (for re-renders) and the store (for
   // synchronous reads by callbacks). Created once — store is stable.
-
-  const setReviewState = useMemo(() => (
-    input: CliReviewState | undefined | ((current: CliReviewState | undefined) => CliReviewState | undefined),
-  ) => {
-    const next = typeof input === 'function'
-      ? (input as (current: CliReviewState | undefined) => CliReviewState | undefined)(store.getState().review)
-      : input;
-    store.patch({review: next});
-    setReviewReact(next);
-  }, [store]);
-
-  const setActiveTurn = useMemo(() => (
-    input: CliActiveTurn | undefined | ((current: CliActiveTurn | undefined) => CliActiveTurn | undefined),
-  ) => {
-    const next = typeof input === 'function'
-      ? (input as (current: CliActiveTurn | undefined) => CliActiveTurn | undefined)(store.getState().activeTurn)
-      : input;
-    store.patch({activeTurn: next});
-    setActiveTurnReact(next);
-  }, [store]);
-
-  const setRunState = useMemo(() => (
-    input: CliRunState | ((current: CliRunState) => CliRunState),
-  ) => {
-    const next = typeof input === 'function' ? input(store.getState().runState) : input;
-    store.patch({runState: next});
-    setRunStateReact(next);
-  }, [store]);
+  const setReviewState = useMemo(() => makeReviewSetter(store, setReviewReact), [store]);
+  const setActiveTurn = useMemo(() => makeActiveTurnSetter(store, setActiveTurnReact), [store]);
+  const setRunState = useMemo(() => makeRunStateSetter(store, setRunStateReact), [store]);
 
   // ─── Interaction scheduling + notice helpers ──────────────────────
-  // All created once. interactionScheduler and store are stable refs.
-
-  const syncInteractionState = useMemo(() => () => {
-    setInteractionState((current) =>
-      resolveInteractionStateSnapshot(current, interactionScheduler, store.getState().review),
-    );
-  }, [interactionScheduler, store]);
-
-  const beginInteraction = useMemo(() => (kind: CliInteractionKind) => {
-    interactionScheduler.begin(kind);
-    syncInteractionState();
-  }, [interactionScheduler, syncInteractionState]);
-
-  const endInteraction = useMemo(() => () => {
-    interactionScheduler.end();
-    syncInteractionState();
-  }, [interactionScheduler, syncInteractionState]);
-
-  const enqueueSessionPrompt = useMemo(() => (prompt: string) => {
-    interactionScheduler.enqueueSessionPrompt(prompt);
-    syncInteractionState();
-  }, [interactionScheduler, syncInteractionState]);
-
-  const enqueueReviewResponse = useMemo(() => (interaction: Omit<QueuedReviewResponseInteraction, 'kind'>) => {
-    interactionScheduler.enqueueReviewResponse(interaction);
-    syncInteractionState();
-  }, [interactionScheduler, syncInteractionState]);
-
-  const appendNotice = useMemo(() => (level: CliNotice['level'], content: string) => {
-    const message = content.trim();
-    if (!message) return;
-    setNotices((current) => [
-      ...current,
-      {id: `${level}-${randomUUID()}`, level, content: message},
-    ]);
-  }, []);
-
-  const flushPendingBackgroundNotices = useMemo(() => () => {
-    const s = store.getState();
-    if (s.pendingBackgroundNotices.length === 0) return;
-    const queued = s.pendingBackgroundNotices;
-    store.patch({pendingBackgroundNotices: []});
-    setNotices((current) => appendUniqueNotices(current, queued));
-  }, [store]);
-
-  const reportError = useMemo(() => (error: unknown) => {
-    const message = error instanceof Error ? error.message : String(error);
-    setRunState({status: 'error', error: message});
-    setActiveTurn(undefined);
-    appendNotice('error', message);
-    return message;
-  }, [appendNotice, setActiveTurn, setRunState]);
+  const {
+    syncInteractionState,
+    beginInteraction,
+    endInteraction,
+    enqueueSessionPrompt,
+    enqueueReviewResponse,
+    appendNotice,
+    flushPendingBackgroundNotices,
+    reportError,
+  } = useMemo(
+    () => buildInteractionHelpers({
+      store,
+      interactionScheduler,
+      setInteractionState,
+      setNotices,
+      setActiveTurn,
+      setRunState,
+    }),
+    [interactionScheduler, setActiveTurn, setRunState, store],
+  );
 
   // ─── Settlement logic ──────────────────────────────────────────────
   const settleRunningPromptTurnIfReady = useMemo(() => (messages?: readonly BaseMessage[]): boolean => {
