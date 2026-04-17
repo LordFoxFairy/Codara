@@ -212,6 +212,16 @@ export function usePromptSubmission(deps: PromptSubmissionDeps): PromptSubmissio
     sawText = sawText
       || hasVisibleAssistantReply(s2.activeTurn, codara.getSubagentRunSummaries())
       || hasVisibleAssistantReplyInMessages(s2.coreMessages, promptStartMessageCount, codara.getSubagentRunSummaries());
+
+    // If settlement already fired (runState transitioned to 'done') while the
+    // stream was in flight, the final reply is already visible to the user.
+    // Do NOT issue another refresh or re-evaluate run state — a late hydrate
+    // can clobber the just-settled messages and falsely reopen 'subagent_wait'.
+    if (s2.settlingFinalReply) {
+      setActiveTurn(undefined);
+      return;
+    }
+
     const nextAgentState = await refreshCoreState();
     const s3 = store.getState();
     sawText = sawText
@@ -220,6 +230,12 @@ export function usePromptSubmission(deps: PromptSubmissionDeps): PromptSubmissio
 
     if (nextAgentState.status === 'paused') {
       setRunState({status: 'paused'});
+      return;
+    }
+
+    // Another chance: settlement might have occurred during refreshCoreState.
+    if (s3.settlingFinalReply) {
+      setActiveTurn(undefined);
       return;
     }
 

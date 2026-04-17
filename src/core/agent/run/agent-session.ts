@@ -45,6 +45,13 @@ import {
   type AgentCheckpointInfo,
 } from '@state/checkpoint/agent';
 import {formatErrorMessage} from '@shared/errors';
+import {
+  assertNotRunning,
+  assertReadyForInvoke,
+  assertReadyForResume,
+  combineAbortSignals,
+  createErrorResult,
+} from './agent-session-helpers';
 
 // ── AgentSession — the class that replaces the createAgent closure ──────────
 
@@ -477,53 +484,4 @@ class AgentSession {
 
 export function createAgent(options: CreateAgentOptions): Agent {
   return new AgentSession(options).toAgent();
-}
-
-// ── Abort signal combiner ───────────────────────────────────────────────────
-
-function combineAbortSignals(internal: AbortSignal, external?: AbortSignal): AbortSignal {
-  if (!external) return internal;
-  if (typeof AbortSignal.any === 'function') {
-    return AbortSignal.any([internal, external]);
-  }
-  const controller = new AbortController();
-  const onAbort = () => {
-    controller.abort(internal.aborted ? internal.reason : external.reason);
-  };
-  if (internal.aborted || external.aborted) {
-    onAbort();
-  } else {
-    internal.addEventListener('abort', onAbort, {once: true});
-    external.addEventListener('abort', onAbort, {once: true});
-  }
-  return controller.signal;
-}
-
-// ── State assertions ────────────────────────────────────────────────────────
-
-function assertReadyForInvoke(state: MutableAgentState): void {
-  assertUsable(state);
-  if (state.status === 'paused') {
-    throw new Error('Agent is paused; call resume(...) or reset() before invoking again.');
-  }
-}
-
-function assertReadyForResume(state: MutableAgentState): void {
-  assertUsable(state);
-  if (state.status !== 'paused' || !state.pendingReview) {
-    throw new Error('Agent is not paused; resume(...) is only valid after a review pause.');
-  }
-}
-
-function assertUsable(state: MutableAgentState): void {
-  if (state.status === 'running') throw new Error('Agent is currently running.');
-  if (state.status === 'closed') throw new Error('Agent is closed.');
-}
-
-function assertNotRunning(state: MutableAgentState): void {
-  if (state.status === 'running') throw new Error('Agent is currently running.');
-}
-
-function createErrorResult(state: AgentState, turns: number, message: string): AgentResult {
-  return {reason: 'error', state, turns, error: new Error(message)};
 }
